@@ -8,8 +8,8 @@ defmodule Tars.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: Tars.Worker.start_link(arg)
-      # {Tars.Worker, arg}
+      {Task.Supervisor, name: Tars.TaskSupervisor},
+      {Tars.Agent.Supervisor, []}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
