@@ -66,9 +66,9 @@ defmodule Tars.LLM do
     %{llm | context: new_context}
   end
 
-  def stream(%LLM{config: config, context: context} = llm) do
+  def stream(%LLM{config: config, context: context} = llm, subscriber \\ self()) do
     with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, tools: llm.tools),
-         {:ok, response} <- process_stream(streamed, config.callback_mod),
+         {:ok, response} <- process_stream(streamed, subscriber),
          {:ok, handled} <- handle_response(llm, response) do
       %{llm | context: handled.context}
     else
@@ -78,7 +78,7 @@ defmodule Tars.LLM do
     end
   end
 
-  defp handle_response( %LLM{context: context} = llm, %ReqLLM.Response{} = response) do
+  defp handle_response(%LLM{context: context} = llm, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do
       %{type: :final_answer, text: text} ->
         Logger.debug("Final answer: #{text}")
@@ -93,14 +93,14 @@ defmodule Tars.LLM do
     end
   end
 
-  defp process_stream(streamed, callback_mod) do
+  defp process_stream(streamed, subscriber_pid) do
     streamed
     |> ReqLLM.StreamResponse.process_stream(
-      on_chunk: &callback_mod.handle_chunk/1,
-      on_meta: &callback_mod.handle_meta/1,
-      on_result: &callback_mod.handle_result/1,
-      on_thinking: &callback_mod.handle_thinking/1,
-      on_tool_call: &callback_mod.handle_tool_call/1
+      on_chunk: fn chunk -> send(subscriber_pid, {:chunk, chunk}) end,
+      on_meta: fn meta -> send(subscriber_pid, {:meta, meta}) end,
+      on_result: fn result -> send(subscriber_pid, {:result, result}) end,
+      on_thinking: fn thinking -> send(subscriber_pid, {:thinking, thinking}) end,
+      on_tool_call: fn tool_call -> send(subscriber_pid, {:tool_call, tool_call}) end
     )
   end
 end
