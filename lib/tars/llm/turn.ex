@@ -55,18 +55,14 @@ defmodule Tars.LLM.Turn do
   defp handle_response(config, context, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do
       %{type: :final_answer, text: text} ->
-        Logger.debug("Final answer: #{text}")
         {:done, [assistant_message(response, text)]}
 
       %{type: :tool_calls, tool_calls: tool_calls, text: text} ->
-        # `classify/1` reports provider-executed calls alongside ours, but
-        # `append_tool_exchange/3` only expects results for application calls.
         case Enum.reject(tool_calls, &ReqLLM.ToolCall.flagged_builtin?/1) do
           [] ->
             {:done, [assistant_message(response, text)]}
 
           calls ->
-            Logger.debug("Tool calls: #{inspect(calls)}")
             results = LLM.ToolRunner.execute_many_async(calls, config)
             append_tool_exchange(context, response, results)
         end

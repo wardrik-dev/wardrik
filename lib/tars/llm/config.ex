@@ -30,4 +30,39 @@ defmodule Tars.LLM.Config do
   def add_tool(%__MODULE__{tools: tools} = config, %ReqLLM.Tool{} = tool) do
     %{config | tools: [tool | tools]}
   end
+
+  # For testing, to be removed eventually
+  def test_tools() do
+    {:ok, tool_1} =
+      ReqLLM.Tool.new(
+        name: "echo",
+        description: "echo",
+        parameter_schema: [
+          value: [type: :any, required: true]
+        ],
+        callback: fn i -> {:ok, i} end
+      )
+
+    {:ok, tool_2} =
+      ReqLLM.Tool.new(
+        name: "fail",
+        description: "fail",
+        parameter_schema: [
+          value: [type: :any, required: true]
+        ],
+        callback: fn _i -> {:error, "failed"} end
+      )
+
+    {:ok, tool_3} =
+      ReqLLM.Tool.new(
+        name: "crash",
+        description: "crash",
+        parameter_schema: [
+          value: [type: :any, required: true]
+        ],
+        callback: fn _i -> raise "crashed" end
+      )
+
+    [tool_1, tool_2, tool_3]
+  end
 end

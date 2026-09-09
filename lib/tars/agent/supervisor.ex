@@ -5,8 +5,6 @@ defmodule Tars.Agent.Supervisor do
 
   use DynamicSupervisor
 
-  alias Tars.LLM
-
   def start_link(opts \\ []) do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -23,9 +21,9 @@ defmodule Tars.Agent.Supervisor do
   set here too. `agent_name` doubles as the agent's event id — subscribe to it
   with `Tars.Events.subscribe/1`.
   """
-  @spec start(GenServer.name(), LLM.Config.t(), keyword()) :: DynamicSupervisor.on_start_child()
-  def start(agent_name, config \\ LLM.Config.new(), opts \\ []) do
-    spec = {Tars.Agent, Keyword.merge(opts, name: agent_name, config: config)}
+  @spec start(GenServer.name(), keyword()) :: DynamicSupervisor.on_start_child()
+  def start(agent_name, opts \\ []) do
+    spec = {Tars.Agent, Keyword.merge(opts, name: agent_name)}
 
     DynamicSupervisor.start_child(Tars.Agent.Supervisor, spec)
   end

@@ -26,7 +26,7 @@ defmodule Tars.Agent.SupervisorTest do
     tool = ReqLLM.Tool.new!(name: "echo", description: "e", callback: fn i -> {:ok, i} end)
     config = Config.new(tools: [tool])
 
-    assert {:ok, pid} = Tars.Agent.Supervisor.start(name, config, runner: runner(self()))
+    assert {:ok, pid} = Tars.Agent.Supervisor.start(name, config: config, runner: runner(self()))
 
     on_exit(fn ->
       if Process.alive?(pid), do: stop(pid)
@@ -52,8 +52,11 @@ defmodule Tars.Agent.SupervisorTest do
     one = unique_name()
     two = unique_name()
 
-    {:ok, pid_one} = Tars.Agent.Supervisor.start(one, Config.new(), runner: runner(self()))
-    {:ok, pid_two} = Tars.Agent.Supervisor.start(two, Config.new(), runner: runner(self()))
+    {:ok, pid_one} =
+      Tars.Agent.Supervisor.start(one, config: Config.new(), runner: runner(self()))
+
+    {:ok, pid_two} =
+      Tars.Agent.Supervisor.start(two, config: Config.new(), runner: runner(self()))
 
     on_exit(fn ->
       for pid <- [pid_one, pid_two], Process.alive?(pid), do: stop(pid)

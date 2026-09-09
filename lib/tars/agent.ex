@@ -74,8 +74,6 @@ defmodule Tars.Agent do
     state = %__MODULE__{
       config: config,
       context: Keyword.get(opts, :context, Context.new()),
-      # Injectable so the queueing and ordering invariants can be tested
-      # without reaching a model.
       runner: Keyword.get(opts, :runner, &LLM.Turn.run/2)
     }
 
