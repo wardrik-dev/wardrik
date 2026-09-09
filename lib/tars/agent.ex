@@ -1,112 +1,145 @@
 defmodule Tars.Agent do
   @moduledoc """
-  GenServer managing agent state.
+  Owns one agent's conversation and serializes turns against it.
+
+  `ask/2` is non-blocking. Messages are queued in `pending` and drained one turn
+  at a time: exactly one turn task runs at once, and this GenServer is the only
+  writer of `context`. Order is therefore a structural property rather than
+  something callers have to coordinate.
+
+  The turn itself runs in a `Task.Supervisor.async_nolink/3` task, so a failure
+  inside `ReqLLM` or a tool cannot take the agent down.
+
+  Stream and tool events do not pass through this process at all — the turn
+  publishes them via `Tars.Events`, and any number of listeners can subscribe
+  with `Tars.Events.subscribe/1`. See `Tars.Console` for a terminal one.
+
+  The agent adds two events of its own so subscribers can tell when it goes
+  idle: `{:turn_finished, messages}` and `{:turn_failed, reason}`.
   """
   require Logger
 
   use GenServer
 
+  alias ReqLLM.Context
+  alias Tars.Events
   alias Tars.LLM
 
   defstruct [
     :config,
     :context,
-    tools: [],
-    tasks: []
+    :runner,
+    :running,
+    pending: :queue.new()
   ]
+
+  @typedoc "Runs one turn and returns the messages it appended."
+  @type runner() ::
+          (LLM.Config.t(), Context.t() -> {:ok, [ReqLLM.Message.t()]} | {:error, any()})
 
   @type t() :: %__MODULE__{
           config: LLM.Config.t(),
-          context: ReqLLM.Context.t(),
-          tools: list(ReqLLM.Tool.t()),
-          tasks: list(Task.t())
+          context: Context.t(),
+          runner: runner(),
+          running: Task.t() | nil,
+          pending: :queue.queue(String.t())
         }
 
+  @doc """
+  Start an agent.
+
+  Options: `:name`, `:config`, `:context`, `:runner`. The agent's event id is
+  its `:name` when given, otherwise its pid — subscribe to it with
+  `Tars.Events.subscribe/1`.
+  """
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name))
   end
 
+  @spec ask(GenServer.server(), String.t()) :: :ok
+  def ask(agent, question), do: GenServer.cast(agent, {:ask, question})
+
+  @spec get_context(GenServer.server()) :: Context.t()
+  def get_context(agent), do: GenServer.call(agent, :get_context)
+
   @impl true
   def init(opts) do
-    state = %{
-      llm: Keyword.get(opts, :llm, LLM.new()),
-      config: Keyword.get(opts, :config, LLM.Config.new()),
-      context: Keyword.get(opts, :context, %ReqLLM.Context{}),
-      tools: Keyword.get(opts, :tools, []),
-      tasks: []
+    agent_id = Keyword.get(opts, :name) || self()
+
+    config =
+      opts
+      |> Keyword.get(:config, LLM.Config.new())
+      |> Map.put(:agent_id, agent_id)
+
+    state = %__MODULE__{
+      config: config,
+      context: Keyword.get(opts, :context, Context.new()),
+      # Injectable so the queueing and ordering invariants can be tested
+      # without reaching a model.
+      runner: Keyword.get(opts, :runner, &LLM.Turn.run/2)
     }
 
     {:ok, state}
   end
 
-  def ask_async(agent, question) do
-    GenServer.cast(agent, {:ask_async, question})
+  @impl true
+  def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
+
+  @impl true
+  def handle_cast({:ask, question}, state) do
+    {:noreply, %{state | pending: :queue.in(question, state.pending)}, {:continue, :maybe_run}}
   end
 
   @impl true
-  def handle_cast({:ask_async, question}, state) do
-    new_llm = LLM.Context.append_user_message(state.llm.context, question)
-    subscriber = self()
-    dbg(new_llm)
+  def handle_continue(:maybe_run, %{running: %Task{}} = state), do: {:noreply, state}
 
-    task =
-      Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
-        LLM.stream(state.llm, subscriber)
-      end)
+  def handle_continue(:maybe_run, state) do
+    case :queue.to_list(state.pending) do
+      [] ->
+        {:noreply, state}
 
-    {:noreply, %{state | llm: new_llm, tasks: state.tasks ++ [task.ref]}}
+      questions ->
+        context =
+          Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
+
+        %{config: config, runner: runner} = state
+
+        task =
+          Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
+            runner.(config, context)
+          end)
+
+        {:noreply, %{state | context: context, running: task, pending: :queue.new()}}
+    end
   end
 
   @impl true
-  def handle_info({:stream_finish, stream_response}, state) do
-    Logger.debug("stream_finish: #{inspect(stream_response)}")
-    {:noreply, %{state | context: stream_response.context}}
-  end
-
-  @impl true
-  def handle_info({ref, {:stream_finish, stream_response}}, state) do
+  def handle_info({ref, {:ok, messages}}, %{running: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, %{state | context: stream_response.context}}
+
+    state = %{state | context: Context.append(state.context, messages), running: nil}
+    Events.emit(state.config.agent_id, {:turn_finished, messages})
+    {:noreply, state, {:continue, :maybe_run}}
   end
 
-  @impl true
-  def handle_info({ref, {:ok, %ReqLLM.Response{context: context}}}, state) do
+  def handle_info({ref, {:error, reason}}, %{running: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, %{state | context: context}}
+    Logger.error("Turn failed: #{inspect(reason)}")
+    Events.emit(state.config.agent_id, {:turn_failed, reason})
+    {:noreply, %{state | running: nil}, {:continue, :maybe_run}}
   end
 
-  @impl true
-  def handle_info({ref, :error}, state) do
-    Process.demonitor(ref, [:flush])
-    Logger.error("Task #{inspect(ref)} failed with error")
-    {:noreply, %{state | tasks: List.delete(state.tasks, ref)}}
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{running: %Task{ref: ref}} = state) do
+    Logger.error("Turn crashed: #{inspect(reason)}")
+    Events.emit(state.config.agent_id, {:turn_failed, reason})
+    {:noreply, %{state | running: nil}, {:continue, :maybe_run}}
   end
 
-  @impl true
-  def handle_info({:DOWN, ref, :process, _pid, :normal}, state) do
-    Process.demonitor(ref, [:flush])
-    {:noreply, %{state | tasks: List.delete(state.tasks, ref)}}
-  end
+  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
-  @impl true
-  def handle_info({:chunk, _chunk}, state) do
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:meta, _meta}, state) do
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:result, result}, state) do
-    IO.write(result)
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:thinking, thinking}, state) do
-    IO.write(thinking)
+  def handle_info(message, state) do
+    Logger.debug("Unhandled message: #{inspect(message)}")
     {:noreply, state}
   end
 end

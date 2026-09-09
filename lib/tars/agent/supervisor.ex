@@ -1,9 +1,11 @@
 defmodule Tars.Agent.Supervisor do
   @moduledoc """
-  Supervisor for managing Tars agents.
+  Supervises the running agents.
   """
 
   use DynamicSupervisor
+
+  alias Tars.LLM
 
   def start_link(opts \\ []) do
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -14,9 +16,17 @@ defmodule Tars.Agent.Supervisor do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 
-  def start(agent_name, llm \\ Tars.LLM.new(), tools \\ []) do
-    spec = {Tars.Agent, [name: agent_name, llm: llm, tools: tools]}
+  @doc """
+  Start an agent under supervision.
 
-    DynamicSupervisor.start_child(__MODULE__, spec)
+  `opts` are passed through to `Tars.Agent`, so `:context` and `:runner` can be
+  set here too. `agent_name` doubles as the agent's event id — subscribe to it
+  with `Tars.Events.subscribe/1`.
+  """
+  @spec start(GenServer.name(), LLM.Config.t(), keyword()) :: DynamicSupervisor.on_start_child()
+  def start(agent_name, config \\ LLM.Config.new(), opts \\ []) do
+    spec = {Tars.Agent, Keyword.merge(opts, name: agent_name, config: config)}
+
+    DynamicSupervisor.start_child(Tars.Agent.Supervisor, spec)
   end
 end

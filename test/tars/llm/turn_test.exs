@@ -1,0 +1,159 @@
+defmodule Tars.LLM.TurnTest do
+  use ExUnit.Case, async: true
+
+  use Mimic
+
+  alias ReqLLM.Context
+  alias Tars.Events
+  alias Tars.LLM
+
+  setup :verify_on_exit!
+
+  setup do
+    agent_id = make_ref()
+    :ok = Events.subscribe(agent_id)
+    {:ok, agent_id: agent_id}
+  end
+
+  defp response(message, finish_reason) do
+    %ReqLLM.Response{
+      id: "resp_1",
+      model: "test",
+      context: Context.new(),
+      message: message,
+      finish_reason: finish_reason
+    }
+  end
+
+  defp final_answer(text), do: response(Context.assistant(text), :stop)
+
+  defp tool_call_response(id, name, arguments) do
+    # `valid_call?/1` in ToolExchange requires arguments as a JSON string.
+    call = ReqLLM.ToolCall.new(id, name, Jason.encode!(arguments))
+    response(Context.assistant("", tool_calls: [call]), :tool_calls)
+  end
+
+  # Feeds `responses` to successive iterations of the turn loop, invoking each
+  # stream callback on the way so the publishing path is exercised too.
+  defp stub_stream(responses) do
+    {:ok, agent} = Agent.start_link(fn -> responses end)
+
+    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+    stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+      opts[:on_chunk].("chunk")
+      opts[:on_meta].(%{tokens: 1})
+      opts[:on_thinking].("thinking")
+      opts[:on_result].("result")
+      opts[:on_tool_call].(%{name: "echo"})
+
+      Agent.get_and_update(agent, fn [head | rest] -> {{:ok, head}, rest} end)
+    end)
+  end
+
+  defp config(agent_id, tools \\ []), do: LLM.Config.new(agent_id: agent_id, tools: tools)
+
+  test "a final answer terminates the loop and returns the assistant message", %{
+    agent_id: agent_id
+  } do
+    stub_stream([final_answer("hello")])
+
+    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert message.role == :assistant
+  end
+
+  test "tool calls loop once, then terminate on the final answer", %{agent_id: agent_id} do
+    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+
+    stub_stream([
+      tool_call_response("call_1", "echo", %{"input" => "hi"}),
+      final_answer("done")
+    ])
+
+    context = Context.new([Context.user("hi")])
+
+    assert {:ok, messages} = LLM.Turn.run(config(agent_id, [tool]), context)
+
+    # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
+    # pre-existing user message is NOT re-reported: this is a delta.
+    assert Enum.map(messages, & &1.role) == [:assistant, :tool, :assistant]
+    assert_receive {:tool_started, "call_1", "echo"}
+    assert_receive {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}}
+  end
+
+  test "stream callbacks are published as events for the agent", %{agent_id: agent_id} do
+    stub_stream([final_answer("hello")])
+
+    assert {:ok, _messages} = LLM.Turn.run(config(agent_id), Context.new())
+
+    assert_receive {:chunk, "chunk"}
+    assert_receive {:meta, %{tokens: 1}}
+    assert_receive {:thinking, "thinking"}
+    assert_receive {:result, "result"}
+    assert_receive {:tool_call, %{name: "echo"}}
+  end
+
+  test "stream events are not published to other agents", %{agent_id: agent_id} do
+    stub_stream([final_answer("hello")])
+
+    assert {:ok, _messages} = LLM.Turn.run(config(make_ref()), Context.new())
+
+    refute_receive {:chunk, _}
+    assert Tars.Events.subscribers(agent_id) == [self()]
+  end
+
+  test "a stream error aborts the turn", %{agent_id: agent_id} do
+    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+
+    assert capture(fn -> LLM.Turn.run(config(agent_id), Context.new()) end) ==
+             {:error, :rate_limited}
+  end
+
+  test "a response with no assistant message falls back to the classified text", %{
+    agent_id: agent_id
+  } do
+    stub_stream([response(nil, :stop)])
+
+    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert message.role == :assistant
+  end
+
+  test "provider-executed calls are not run as tools and end the turn", %{agent_id: agent_id} do
+    call = ReqLLM.ToolCall.new("call_1", "web_search", "{}")
+    builtin = %{call | function: Map.put(call.function, :builtin?, true)}
+
+    stub_stream([response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
+
+    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert message.role == :assistant
+    refute_receive {:tool_started, _, _}
+  end
+
+  test "an unpairable tool exchange aborts rather than looping", %{agent_id: agent_id} do
+    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+
+    # An empty call id fails ToolExchange's `valid_call?/1`, so results can
+    # never be matched back to the assistant message.
+    stub_stream([tool_call_response("", "echo", %{})])
+
+    assert {:error, _reason} =
+             capture(fn -> LLM.Turn.run(config(agent_id, [tool]), Context.new()) end)
+  end
+
+  test "the iteration cap stops a model that never stops calling tools", %{agent_id: agent_id} do
+    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+
+    stub_stream(List.duplicate(tool_call_response("call_1", "echo", %{}), 30))
+
+    assert {:ok, messages} =
+             capture(fn -> LLM.Turn.run(config(agent_id, [tool]), Context.new()) end)
+
+    # 25 iterations, each appending an assistant message and its tool result.
+    assert Enum.count_until(messages, 51) == 50
+  end
+
+  defp capture(fun) do
+    {result, _log} = ExUnit.CaptureLog.with_log(fun)
+    result
+  end
+end
