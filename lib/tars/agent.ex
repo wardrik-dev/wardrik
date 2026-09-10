@@ -10,28 +10,32 @@ defmodule Tars.Agent do
   The turn itself runs in a `Task.Supervisor.async_nolink/3` task, so a failure
   inside `ReqLLM` or a tool cannot take the agent down.
 
-  Stream and tool events do not pass through this process at all — the turn
-  publishes them via `Tars.Events`, and any number of listeners can subscribe
-  with `Tars.Events.subscribe/1`. See `Tars.Console` for a terminal one.
+  Stream and tool events do not pass through this process at all. The turn
+  publishes them through its scope, and any number of listeners can subscribe
+  with `Tars.Event.Bus.subscribe/1`. See `Tars.TUI` for a terminal one.
 
   The agent adds three events of its own so subscribers can follow its state
   without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`
-  and `{:turn_failed, reason}`. A client attaching mid-turn can catch up with
-  `status/1`.
+  and `{:turn_failed, reason}`. All three are emitted on the turn's root span,
+  so a subscriber can tell them from events the turn's own work produced. A
+  client attaching mid-turn can catch up with `status/1`.
   """
   require Logger
 
   use GenServer
 
   alias ReqLLM.Context
-  alias Tars.Events
+  alias Tars.Event
   alias Tars.LLM
+  alias Tars.Scope
 
   defstruct [
+    :agent_id,
     :config,
     :context,
     :runner,
     :running,
+    :source,
     pending: :queue.new()
   ]
 
@@ -40,13 +44,15 @@ defmodule Tars.Agent do
 
   @typedoc "Runs one turn and returns the messages it appended."
   @type runner() ::
-          (LLM.Config.t(), Context.t() -> {:ok, [ReqLLM.Message.t()]} | {:error, any()})
+          (Scope.t(), Context.t() -> {:ok, [ReqLLM.Message.t()]} | {:error, any()})
 
   @type t() :: %__MODULE__{
+          agent_id: Tars.Event.Bus.agent_id(),
           config: LLM.Config.t(),
           context: Context.t(),
           runner: runner(),
           running: Task.t() | nil,
+          source: Tars.Event.Source.t() | nil,
           pending: :queue.queue(String.t())
         }
 
@@ -54,8 +60,8 @@ defmodule Tars.Agent do
   Start an agent.
 
   Options: `:name`, `:config`, `:context`, `:runner`. The agent's event id is
-  its `:name` when given, otherwise its pid — subscribe to it with
-  `Tars.Events.subscribe/1`.
+  its `:name` when given, otherwise its pid. Subscribe to it with
+  `Tars.Event.Bus.subscribe/1`.
   """
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name))
@@ -72,15 +78,9 @@ defmodule Tars.Agent do
 
   @impl true
   def init(opts) do
-    agent_id = Keyword.get(opts, :name) || self()
-
-    config =
-      opts
-      |> Keyword.get(:config, LLM.Config.new())
-      |> Map.put(:agent_id, agent_id)
-
     state = %__MODULE__{
-      config: config,
+      agent_id: Keyword.get(opts, :name) || self(),
+      config: Keyword.get(opts, :config, LLM.Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
       runner: Keyword.get(opts, :runner, &LLM.Turn.run/2)
     }
@@ -117,15 +117,24 @@ defmodule Tars.Agent do
         context =
           Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
 
-        %{config: config, runner: runner} = state
+        %{runner: runner} = state
+        scope = Scope.root(state.config, state.agent_id, name: "turn")
 
         task =
           Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
-            runner.(config, context)
+            runner.(scope, context)
           end)
 
-        Events.emit(config.agent_id, {:turn_started, questions})
-        {:noreply, %{state | context: context, running: task, pending: :queue.new()}}
+        Event.emit(scope.source, {:turn_started, questions})
+
+        {:noreply,
+         %{
+           state
+           | context: context,
+             running: task,
+             source: scope.source,
+             pending: :queue.new()
+         }}
     end
   end
 
@@ -133,22 +142,22 @@ defmodule Tars.Agent do
   def handle_info({ref, {:ok, messages}}, %{running: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
 
-    state = %{state | context: Context.append(state.context, messages), running: nil}
-    Events.emit(state.config.agent_id, {:turn_finished, messages})
-    {:noreply, state, {:continue, :maybe_run}}
+    Event.emit(state.source, {:turn_finished, messages})
+    state = %{state | context: Context.append(state.context, messages)}
+    {:noreply, idle(state), {:continue, :maybe_run}}
   end
 
   def handle_info({ref, {:error, reason}}, %{running: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     Logger.error("Turn failed: #{inspect(reason)}")
-    Events.emit(state.config.agent_id, {:turn_failed, reason})
-    {:noreply, %{state | running: nil}, {:continue, :maybe_run}}
+    Event.emit(state.source, {:turn_failed, reason})
+    {:noreply, idle(state), {:continue, :maybe_run}}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{running: %Task{ref: ref}} = state) do
     Logger.error("Turn crashed: #{inspect(reason)}")
-    Events.emit(state.config.agent_id, {:turn_failed, reason})
-    {:noreply, %{state | running: nil}, {:continue, :maybe_run}}
+    Event.emit(state.source, {:turn_failed, reason})
+    {:noreply, idle(state), {:continue, :maybe_run}}
   end
 
   def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
@@ -158,4 +167,6 @@ defmodule Tars.Agent do
     Logger.debug("Unhandled message: #{inspect(message)}")
     {:noreply, state}
   end
+
+  defp idle(state), do: %{state | running: nil, source: nil}
 end

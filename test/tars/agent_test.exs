@@ -5,11 +5,11 @@ defmodule Tars.AgentTest do
 
   alias ReqLLM.Context
   alias Tars.Agent
-  alias Tars.Events
+  alias Tars.Event
 
   # Reports the context each turn was handed, then answers immediately.
   defp runner(test_pid, reply \\ "ok") do
-    fn _config, context ->
+    fn _scope, context ->
       send(test_pid, {:turn, snapshot(context)})
       {:ok, [Context.assistant(reply)]}
     end
@@ -18,7 +18,7 @@ defmodule Tars.AgentTest do
   # Same, but hands back its own pid and blocks until released, so a test can
   # hold a turn open for exactly as long as it needs without timing guesses.
   defp blocking_runner(test_pid, reply \\ "ok") do
-    fn _config, context ->
+    fn _scope, context ->
       send(test_pid, {:turn, snapshot(context), self()})
       receive do: (:release -> :ok)
       {:ok, [Context.assistant(reply)]}
@@ -36,7 +36,7 @@ defmodule Tars.AgentTest do
   defp start_agent(opts) do
     agent = start_supervised!({Agent, opts})
     # Unnamed agents use their own pid as the event id.
-    :ok = Events.subscribe(agent)
+    :ok = Event.Bus.subscribe(agent)
     agent
   end
 
@@ -54,7 +54,7 @@ defmodule Tars.AgentTest do
     assert :ok = Agent.ask(agent, "hello")
 
     assert_receive {:turn, [{:user, "hello"}]}
-    assert_receive {:turn_finished, [_assistant]}
+    assert_receive %Event{payload: {:turn_finished, [_assistant]}}
     assert roles(agent) == [:user, :assistant]
   end
 
@@ -98,10 +98,10 @@ defmodule Tars.AgentTest do
     agent = start_agent(runner: runner(self()))
 
     Agent.ask(agent, "one")
-    assert_receive {:turn_finished, _}
+    assert_receive %Event{payload: {:turn_finished, _}}
 
     Agent.ask(agent, "two")
-    assert_receive {:turn_finished, _}
+    assert_receive %Event{payload: {:turn_finished, _}}
 
     assert roles(agent) == [:user, :assistant, :user, :assistant]
   end
@@ -109,7 +109,7 @@ defmodule Tars.AgentTest do
   test "a crashing turn does not take the agent down, and the queue drains" do
     test_pid = self()
 
-    runner = fn _config, context ->
+    runner = fn _scope, context ->
       send(test_pid, {:turn, snapshot(context)})
       if text(List.last(context.messages)) == "boom", do: raise("kaboom")
       {:ok, [Context.assistant("ok")]}
@@ -120,7 +120,7 @@ defmodule Tars.AgentTest do
 
       Agent.ask(agent, "boom")
       assert_receive {:turn, [{:user, "boom"}]}
-      assert_receive {:turn_failed, _reason}
+      assert_receive %Event{payload: {:turn_failed, _reason}}
 
       # Still alive, still serving, and the failed turn left no result behind.
       Agent.ask(agent, "after")
@@ -130,21 +130,21 @@ defmodule Tars.AgentTest do
   end
 
   test "a turn that returns an error leaves context untouched" do
-    runner = fn _config, _context -> {:error, :rate_limited} end
+    runner = fn _scope, _context -> {:error, :rate_limited} end
 
     capture_log(fn ->
       agent = start_agent(runner: runner)
 
       Agent.ask(agent, "hello")
 
-      assert_receive {:turn_failed, :rate_limited}
+      assert_receive %Event{payload: {:turn_failed, :rate_limited}}
       assert roles(agent) == [:user]
     end)
   end
 
   test "stream events are published to subscribers, not routed through the agent" do
-    runner = fn config, _context ->
-      Events.emit(config.agent_id, {:result, "streamed"})
+    runner = fn scope, _context ->
+      Event.emit(scope.source, {:result, "streamed"})
       {:ok, [Context.assistant("ok")]}
     end
 
@@ -152,7 +152,7 @@ defmodule Tars.AgentTest do
 
     Agent.ask(agent, "hello")
 
-    assert_receive {:result, "streamed"}
+    assert_receive %Event{payload: {:result, "streamed"}}
   end
 
   describe "status/1" do
@@ -184,7 +184,7 @@ defmodule Tars.AgentTest do
       agent = start_agent(runner: runner(self()))
 
       Agent.ask(agent, "hello")
-      assert_receive {:turn_finished, _}
+      assert_receive %Event{payload: {:turn_finished, _}}
 
       assert %{state: :idle, pending: 0} = Agent.status(agent)
     end
@@ -195,8 +195,51 @@ defmodule Tars.AgentTest do
 
     Agent.ask(agent, "hello")
 
-    assert_receive {:turn_started, ["hello"]}
-    assert_receive {:turn_finished, _}
+    assert_receive %Event{payload: {:turn_started, ["hello"]}}
+    assert_receive %Event{payload: {:turn_finished, _}}
+  end
+
+  test "a turn's lifecycle events share one root span, and the next turn opens another" do
+    agent = start_agent(runner: runner(self()))
+
+    Agent.ask(agent, "one")
+    assert_receive %Event{payload: {:turn_started, ["one"]}} = started
+    assert_receive %Event{payload: {:turn_finished, _}} = finished
+
+    Agent.ask(agent, "two")
+    assert_receive %Event{payload: {:turn_started, ["two"]}} = next_turn
+
+    assert Event.root?(started)
+    assert started.source.trace.span_id == finished.source.trace.span_id
+    assert next_turn.source.trace.trace_id != started.source.trace.trace_id
+  end
+
+  test "a failing turn closes on the span it opened" do
+    runner = fn _scope, _context -> {:error, :rate_limited} end
+
+    capture_log(fn ->
+      agent = start_agent(runner: runner)
+
+      Agent.ask(agent, "hello")
+
+      assert_receive %Event{payload: {:turn_started, _}} = started
+      assert_receive %Event{payload: {:turn_failed, :rate_limited}} = failed
+
+      assert started.source.trace.span_id == failed.source.trace.span_id
+    end)
+  end
+
+  test "the turn is handed a scope addressed to the agent" do
+    test_pid = self()
+    runner = fn scope, _context -> send(test_pid, {:scope, scope}) && {:ok, []} end
+
+    agent = start_agent(runner: runner)
+    Agent.ask(agent, "hello")
+
+    assert_receive {:scope, scope}
+    assert scope.source.agent_id == agent
+    assert scope.config == Tars.LLM.Config.new()
+    assert Tars.Trace.root?(scope.source.trace)
   end
 
   describe "messages from abandoned or unknown senders" do
@@ -204,7 +247,7 @@ defmodule Tars.AgentTest do
       agent = start_agent(runner: runner(self()))
 
       Agent.ask(agent, "hello")
-      assert_receive {:turn_finished, _}
+      assert_receive %Event{payload: {:turn_finished, _}}
 
       # Replies carrying a ref the agent is not waiting on.
       send(agent, {make_ref(), {:ok, [Context.assistant("injected")]}})

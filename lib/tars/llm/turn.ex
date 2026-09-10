@@ -3,44 +3,47 @@ defmodule Tars.LLM.Turn do
   Runs a single agent turn: streams a model response, executes any tool calls,
   and loops until the model produces a final answer.
 
-  Returns the messages appended *during* this turn — a delta, not a snapshot —
-  so the caller remains the single writer of context. Stream and tool progress
-  go out through `Tars.Events`, which means this module needs no subscriber pid
-  and does not care how many listeners there are.
+  Returns the messages appended *during* this turn, a delta rather than a
+  snapshot, so the caller remains the single writer of context. Stream and tool
+  progress go out through the scope's event source, which means this module
+  needs no subscriber pid and does not care how many listeners there are.
 
   Pure orchestration: it holds no state of its own, so tests can drive `run/2`
-  directly after subscribing to the config's `agent_id`.
+  directly after subscribing to the scope's agent id.
   """
   require Logger
 
   alias ReqLLM.Context
-  alias Tars.Events
+  alias Tars.Event
   alias Tars.LLM
+  alias Tars.Scope
 
   # A model that never stops calling tools would otherwise loop against a paid
   # API forever. Generous, but bounded.
   @max_iterations 25
 
-  @spec run(LLM.Config.t(), Context.t()) :: {:ok, [ReqLLM.Message.t()]} | {:error, any()}
-  def run(%LLM.Config{} = config, %Context{} = context) do
-    loop(config, context, [], @max_iterations)
+  @spec run(Scope.t(), Context.t()) :: {:ok, [ReqLLM.Message.t()]} | {:error, any()}
+  def run(%Scope{} = scope, %Context{} = context) do
+    loop(scope, context, [], @max_iterations)
   end
 
   # `acc` holds this turn's messages in reverse order.
-  defp loop(_config, _context, acc, 0) do
+  defp loop(_scope, _context, acc, 0) do
     Logger.warning("Turn hit the #{@max_iterations} iteration cap, stopping")
     {:ok, Enum.reverse(acc)}
   end
 
-  defp loop(config, context, acc, remaining) do
+  defp loop(scope, context, acc, remaining) do
+    %{config: config} = scope
+
     with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, tools: config.tools),
-         {:ok, response} <- process_stream(streamed, config.agent_id) do
-      case handle_response(config, context, response) do
+         {:ok, response} <- process_stream(streamed, scope) do
+      case handle_response(scope, context, response) do
         {:done, messages} ->
           {:ok, Enum.reverse(acc, messages)}
 
         {:cont, context, messages} ->
-          loop(config, context, Enum.reverse(messages, acc), remaining - 1)
+          loop(scope, context, Enum.reverse(messages, acc), remaining - 1)
 
         {:error, reason} ->
           {:error, reason}
@@ -52,7 +55,7 @@ defmodule Tars.LLM.Turn do
     end
   end
 
-  defp handle_response(config, context, %ReqLLM.Response{} = response) do
+  defp handle_response(scope, context, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do
       %{type: :final_answer, text: text} ->
         {:done, [assistant_message(response, text)]}
@@ -63,7 +66,7 @@ defmodule Tars.LLM.Turn do
             {:done, [assistant_message(response, text)]}
 
           calls ->
-            results = LLM.ToolRunner.execute_many_async(calls, config)
+            results = LLM.ToolRunner.execute_many_async(calls, scope)
             append_tool_exchange(context, response, results)
         end
     end
@@ -87,14 +90,14 @@ defmodule Tars.LLM.Turn do
     end
   end
 
-  defp process_stream(streamed, agent_id) do
+  defp process_stream(streamed, %Scope{source: source}) do
     streamed
     |> ReqLLM.StreamResponse.process_stream(
-      on_chunk: &Events.emit(agent_id, {:chunk, &1}),
-      on_meta: &Events.emit(agent_id, {:meta, &1}),
-      on_result: &Events.emit(agent_id, {:result, &1}),
-      on_thinking: &Events.emit(agent_id, {:thinking, &1}),
-      on_tool_call: &Events.emit(agent_id, {:tool_call, &1})
+      on_chunk: &Event.emit(source, {:chunk, &1}),
+      on_meta: &Event.emit(source, {:meta, &1}),
+      on_result: &Event.emit(source, {:result, &1}),
+      on_thinking: &Event.emit(source, {:thinking, &1}),
+      on_tool_call: &Event.emit(source, {:tool_call, &1})
     )
   end
 end

@@ -1,24 +1,24 @@
 defmodule Tars.LLM.Config do
   @moduledoc """
-  Everything a turn needs that is not the conversation: who it is running for,
-  which model, and which tools are available.
+  What a caller supplies to an agent: which model to run, and what it can call.
 
-  This is wiring, not data. It is set when an agent starts and stays constant
-  for the life of a turn, which is why tools live here rather than alongside
-  `ReqLLM.Context` — context is what you will eventually persist, and tool
-  callbacks (which may be anonymous functions) are not serializable.
+  Declarative and inert. Nothing here is assigned by the running system, so a
+  config is the piece you can build once and reuse, hand to another agent, or
+  read out of a file.
 
-  `agent_id` rides along so `Tars.LLM.Turn` and `Tars.LLM.ToolRunner` can emit
-  events without a subscriber pid being threaded through their signatures.
-  `Tars.Agent` fills it in at start-up.
+      config = Tars.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
+      Tars.Agent.Supervisor.start(:assistant, config: config)
+
+  The runtime wiring a turn also needs, such as who its events are published
+  to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
+  does not travel: prefer `{module, function}` over an anonymous function for
+  any agent that may be started on another node.
   """
 
-  defstruct agent_id: nil,
-            model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
+  defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
             tools: []
 
   @type t :: %__MODULE__{
-          agent_id: Tars.Events.agent_id(),
           model_spec: {atom(), keyword()},
           tools: list(ReqLLM.Tool.t())
         }

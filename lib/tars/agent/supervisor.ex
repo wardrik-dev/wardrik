@@ -19,7 +19,7 @@ defmodule Tars.Agent.Supervisor do
 
   `opts` are passed through to `Tars.Agent`, so `:context` and `:runner` can be
   set here too. `agent_name` doubles as the agent's event id — subscribe to it
-  with `Tars.Events.subscribe/1`.
+  with `Tars.Event.Bus.subscribe/1`.
   """
   @spec start(GenServer.name(), keyword()) :: DynamicSupervisor.on_start_child()
   def start(agent_name, opts \\ []) do

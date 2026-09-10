@@ -4,7 +4,7 @@ defmodule Tars.ConsoleTest do
   import ExUnit.CaptureIO
 
   alias Tars.Console
-  alias Tars.Events
+  alias Tars.Test.Events
 
   # The console inherits the group leader of whoever starts it, so it has to be
   # started inside the capture block. `:sys.get_state/1` then flushes its

@@ -86,7 +86,7 @@ defmodule Tars.TUI.View do
   def error(reason), do: Owl.Data.tag("\n✗ #{inspect(reason)}\n", :red)
 
   @doc """
-  One structural `Tars.Events` message as a trace line.
+  One structural event payload as a trace line.
 
   Clipped to the terminal width so a large payload cannot wrap into a wall of
   text — the point is the sequence of events, not their full contents.

@@ -2,8 +2,8 @@ defmodule Tars.TUI do
   @moduledoc """
   A terminal client for one agent.
 
-  It is an ordinary `Tars.Events` subscriber — it holds no conversation state
-  and never talks to the turn loop, so several can watch the same agent.
+  It is an ordinary `Tars.Event.Bus` subscriber. It holds no conversation
+  state and never talks to the turn loop, so several can watch the same agent.
 
   Two modes over the same event stream. By default it reads as a chat: the
   answer streams out as plain text, with progress on a single status line that
@@ -16,12 +16,15 @@ defmodule Tars.TUI do
 
   Reading input blocks, so it happens in a separate reader process, and the
   reader only prompts while the agent is idle. Typing during a turn is not
-  possible yet — that lands with interruption.
+  possible yet, that lands with interruption.
+
+  Only the turn's own events are rendered. Events from work a turn spawns
+  carry a child span and are ignored here.
   """
   use GenServer
 
   alias Tars.Agent
-  alias Tars.Events
+  alias Tars.Event
   alias Tars.TUI.View
 
   @tick 100
@@ -73,7 +76,7 @@ defmodule Tars.TUI do
     # the reader is cleaned up, and a reader that dies (stdin closed) arrives
     # as a message rather than taking the TUI down with it.
     Process.flag(:trap_exit, true)
-    :ok = Events.subscribe(agent_id)
+    :ok = Event.Bus.subscribe(agent_id)
 
     state = %__MODULE__{
       agent: agent,
@@ -99,78 +102,10 @@ defmodule Tars.TUI do
 
   def handle_info(:quit, state), do: {:stop, :normal, state}
 
-  # -- turn lifecycle --------------------------------------------------------
+  # -- published events ------------------------------------------------------
 
-  def handle_info({:turn_started, _questions} = event, state) do
-    state = %{state | thinking: "", tools: [], chunks: 0, chars: 0}
-    trace(state, event)
-    {:noreply, start_ticking(state)}
-  end
-
-  def handle_info({:turn_finished, _messages} = event, state) do
-    state = finish_stream(state)
-    trace(state, event)
-    unless state.verbose?, do: state.screen.write("\n")
-    {:noreply, prompt(state)}
-  end
-
-  def handle_info({:turn_failed, reason} = event, state) do
-    state = finish_stream(state)
-    trace(state, event)
-    unless state.verbose?, do: state.screen.write(View.error(reason))
-    {:noreply, prompt(state)}
-  end
-
-  # -- streaming -------------------------------------------------------------
-
-  def handle_info({:thinking, text} = event, state) do
-    state = %{state | thinking: state.thinking <> text}
-    trace(state, event)
-    {:noreply, refresh_status(state)}
-  end
-
-  # In chat mode the answer arriving is itself the progress indicator, so the
-  # status line steps aside for good once text starts. In verbose mode nothing
-  # else is being written per token, so the counters keep ticking instead.
-  def handle_info({:result, text} = event, state) do
-    state = %{state | chars: state.chars + String.length(text)}
-    trace(state, event)
-
-    if state.verbose? do
-      {:noreply, state}
-    else
-      state = stop_ticking(state)
-      state.screen.write(View.answer(text))
-      {:noreply, state}
-    end
-  end
-
-  # -- tools -----------------------------------------------------------------
-
-  def handle_info({:tool_started, _id, name} = event, state) do
-    state = %{state | tools: [{name, :running} | state.tools]}
-    trace(state, event)
-    {:noreply, refresh_status(state)}
-  end
-
-  def handle_info({:tool_finished, _id, name, result} = event, state) do
-    resolution = if match?({:ok, _}, result), do: :ok, else: :error
-    state = %{state | tools: List.keyreplace(state.tools, name, 0, {name, resolution})}
-    trace(state, event)
-    {:noreply, refresh_status(state)}
-  end
-
-  # -- low-level events, only interesting when tracing ------------------------
-
-  def handle_info({:chunk, _chunk} = event, state) do
-    state = %{state | chunks: state.chunks + 1}
-    trace(state, event)
-    {:noreply, state}
-  end
-
-  def handle_info({kind, _payload} = event, state) when kind in [:meta, :tool_call] do
-    trace(state, event)
-    {:noreply, state}
+  def handle_info(%Event{} = event, state) do
+    if Event.root?(event), do: handle_event(event.payload, state), else: {:noreply, state}
   end
 
   def handle_info(:tick, %{ticking?: true} = state) do
@@ -187,6 +122,82 @@ defmodule Tars.TUI do
     if is_pid(state.reader), do: Process.exit(state.reader, :kill)
     :ok
   end
+
+  # -- turn lifecycle --------------------------------------------------------
+
+  defp handle_event({:turn_started, _questions} = event, state) do
+    state = %{state | thinking: "", tools: [], chunks: 0, chars: 0}
+    trace(state, event)
+    {:noreply, start_ticking(state)}
+  end
+
+  defp handle_event({:turn_finished, _messages} = event, state) do
+    state = finish_stream(state)
+    trace(state, event)
+    unless state.verbose?, do: state.screen.write("\n")
+    {:noreply, prompt(state)}
+  end
+
+  defp handle_event({:turn_failed, reason} = event, state) do
+    state = finish_stream(state)
+    trace(state, event)
+    unless state.verbose?, do: state.screen.write(View.error(reason))
+    {:noreply, prompt(state)}
+  end
+
+  # -- streaming -------------------------------------------------------------
+
+  defp handle_event({:thinking, text} = event, state) do
+    state = %{state | thinking: state.thinking <> text}
+    trace(state, event)
+    {:noreply, refresh_status(state)}
+  end
+
+  # In chat mode the answer arriving is itself the progress indicator, so the
+  # status line steps aside for good once text starts. In verbose mode nothing
+  # else is being written per token, so the counters keep ticking instead.
+  defp handle_event({:result, text} = event, state) do
+    state = %{state | chars: state.chars + String.length(text)}
+    trace(state, event)
+
+    if state.verbose? do
+      {:noreply, state}
+    else
+      state = stop_ticking(state)
+      state.screen.write(View.answer(text))
+      {:noreply, state}
+    end
+  end
+
+  # -- tools -----------------------------------------------------------------
+
+  defp handle_event({:tool_started, _id, name} = event, state) do
+    state = %{state | tools: [{name, :running} | state.tools]}
+    trace(state, event)
+    {:noreply, refresh_status(state)}
+  end
+
+  defp handle_event({:tool_finished, _id, name, result} = event, state) do
+    resolution = if match?({:ok, _}, result), do: :ok, else: :error
+    state = %{state | tools: List.keyreplace(state.tools, name, 0, {name, resolution})}
+    trace(state, event)
+    {:noreply, refresh_status(state)}
+  end
+
+  # -- low-level events, only interesting when tracing ------------------------
+
+  defp handle_event({:chunk, _chunk} = event, state) do
+    state = %{state | chunks: state.chunks + 1}
+    trace(state, event)
+    {:noreply, state}
+  end
+
+  defp handle_event({kind, _payload} = event, state) when kind in [:meta, :tool_call] do
+    trace(state, event)
+    {:noreply, state}
+  end
+
+  defp handle_event(_payload, state), do: {:noreply, state}
 
   # -- output ----------------------------------------------------------------
 

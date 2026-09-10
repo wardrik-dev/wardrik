@@ -6,8 +6,8 @@ defmodule Tars.Agent.SupervisorTest do
   alias Tars.LLM.Config
 
   defp runner(test_pid) do
-    fn config, _context ->
-      send(test_pid, {:turn, config.agent_id})
+    fn scope, _context ->
+      send(test_pid, {:turn, scope.source.agent_id})
       {:ok, [Context.assistant("ok")]}
     end
   end

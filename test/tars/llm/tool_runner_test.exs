@@ -3,13 +3,14 @@ defmodule Tars.LLM.ToolRunnerTest do
 
   import ExUnit.CaptureLog
 
-  alias Tars.Events
+  alias Tars.Event
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
+  alias Tars.Scope
 
   setup do
     agent_id = make_ref()
-    :ok = Events.subscribe(agent_id)
+    :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
 
@@ -17,7 +18,9 @@ defmodule Tars.LLM.ToolRunnerTest do
     ReqLLM.Tool.new!(name: name, description: "test tool", callback: callback)
   end
 
-  defp config(agent_id, tools), do: Config.new(agent_id: agent_id, tools: tools)
+  defp scope(agent_id, tools) do
+    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
+  end
 
   # The shape `ReqLLM.Response.classify/1` actually produces: `:arguments`,
   # already decoded, with string ids.
@@ -35,12 +38,16 @@ defmodule Tars.LLM.ToolRunnerTest do
         call("call_2", "reverse", %{"input" => "World"})
       ]
 
-      messages = ToolRunner.execute_many_async(calls, config(agent_id, tools))
+      messages = ToolRunner.execute_many_async(calls, scope(agent_id, tools))
 
-      assert_receive {:tool_started, "call_1", "echo"}
-      assert_receive {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}}
-      assert_receive {:tool_started, "call_2", "reverse"}
-      assert_receive {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+
+      assert_receive %Event{
+        payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}}
+      }
+
+      assert_receive %Event{payload: {:tool_started, "call_2", "reverse"}}
+      assert_receive %Event{payload: {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}}}
 
       assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
       assert Enum.map(messages, & &1.name) == ["echo", "reverse"]
@@ -52,9 +59,12 @@ defmodule Tars.LLM.ToolRunnerTest do
     } do
       calls = [call("call_1", "nope", %{})]
 
-      assert [message] = ToolRunner.execute_many_async(calls, config(agent_id, []))
+      assert [message] = ToolRunner.execute_many_async(calls, scope(agent_id, []))
 
-      assert_receive {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}}
+      assert_receive %Event{
+        payload: {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}}
+      }
+
       assert message.tool_call_id == "call_1"
       assert message.metadata.is_error
     end
@@ -64,7 +74,7 @@ defmodule Tars.LLM.ToolRunnerTest do
       calls = [call("call_1", "boom", %{})]
 
       {[message], _log} =
-        with_log(fn -> ToolRunner.execute_many_async(calls, config(agent_id, tools)) end)
+        with_log(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
 
       assert message.tool_call_id == "call_1"
       assert message.name == "boom"
@@ -77,7 +87,7 @@ defmodule Tars.LLM.ToolRunnerTest do
       assert [message] =
                ToolRunner.execute_many_async(
                  [call("call_1", "boom", %{})],
-                 config(agent_id, tools)
+                 scope(agent_id, tools)
                )
 
       assert message.tool_call_id == "call_1"
@@ -102,7 +112,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       calls = [call("call_1", "waiter", %{}), call("call_2", "runner", %{})]
 
-      task = Task.async(fn -> ToolRunner.execute_many_async(calls, config(agent_id, tools)) end)
+      task = Task.async(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
 
       # call_2's tool completes first; call_1's is still blocked. Any ordering
       # by completion rather than by call would put call_2 first.
@@ -120,19 +130,53 @@ defmodule Tars.LLM.ToolRunnerTest do
       test_pid = self()
 
       spawn_link(fn ->
-        Events.subscribe(agent_id)
+        Event.Bus.subscribe(agent_id)
         send(test_pid, :ready)
         receive do: (event -> send(test_pid, {:other, event}))
       end)
 
       assert_receive :ready
-      assert [_, _] = Events.subscribers(agent_id)
+      assert [_, _] = Event.Bus.subscribers(agent_id)
 
       tools = [tool!("echo", fn input -> {:ok, input} end)]
-      ToolRunner.execute_many_async([call("call_1", "echo", %{})], config(agent_id, tools))
+      ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
 
-      assert_receive {:tool_started, "call_1", "echo"}
-      assert_receive {:other, {:tool_started, "call_1", "echo"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+      assert_receive {:other, %Event{payload: {:tool_started, "call_1", "echo"}}}
+    end
+  end
+
+  describe "spans" do
+    test "each call runs on its own child span of the turn", %{agent_id: agent_id} do
+      tools = [tool!("echo", fn input -> {:ok, input} end)]
+
+      calls = [call("call_1", "echo", %{}), call("call_2", "echo", %{})]
+      turn = scope(agent_id, tools)
+
+      ToolRunner.execute_many_async(calls, turn)
+
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}} = one
+      assert_receive %Event{payload: {:tool_started, "call_2", "echo"}} = two
+
+      for event <- [one, two] do
+        refute Event.root?(event)
+        assert event.source.trace.trace_id == turn.source.trace.trace_id
+        assert event.source.trace.parent_span_id == turn.source.trace.span_id
+        assert event.source.trace.name == "echo"
+      end
+
+      assert one.source.trace.span_id != two.source.trace.span_id
+    end
+
+    test "a call's start and finish share one span", %{agent_id: agent_id} do
+      tools = [tool!("echo", fn input -> {:ok, input} end)]
+
+      ToolRunner.execute(call("call_1", "echo", %{}), scope(agent_id, tools))
+
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}} = started
+      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
     end
   end
 
@@ -140,10 +184,10 @@ defmodule Tars.LLM.ToolRunnerTest do
     test "returns a canonical tool-result message", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
-      message = ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), config(agent_id, tools))
+      message = ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), scope(agent_id, tools))
 
-      assert_receive {:tool_started, "call_1", "echo"}
-      assert_receive {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}}}
       assert message.role == :tool
       assert message.tool_call_id == "call_1"
       assert message.name == "echo"

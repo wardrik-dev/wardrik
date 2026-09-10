@@ -1,7 +1,7 @@
 defmodule Tars.TUITest do
   use ExUnit.Case, async: false
 
-  alias Tars.Events
+  alias Tars.Test.Events
   alias Tars.Test.RecordingScreen
   alias Tars.TUI
 
@@ -103,6 +103,21 @@ defmodule Tars.TUITest do
 
     assert latest =~ "second thoughts"
     refute latest =~ "echo"
+  end
+
+  test "events from work a turn spawned are left to a nested view", %{
+    tui: tui,
+    agent_id: agent_id
+  } do
+    Events.emit(agent_id, {:turn_started, ["hi"]})
+    drain()
+
+    Events.emit_nested(agent_id, {:result, "from a subagent"})
+    Events.emit_nested(agent_id, {:tool_started, "c1", "nested_tool"})
+    sync(tui)
+
+    refute collect_writes() |> Enum.join() =~ "from a subagent"
+    refute collect_labels() |> Enum.any?(&(&1 =~ "nested_tool"))
   end
 
   test "chat mode ignores the low-level events", %{tui: tui, agent_id: agent_id} do

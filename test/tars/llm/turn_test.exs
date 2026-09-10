@@ -4,14 +4,15 @@ defmodule Tars.LLM.TurnTest do
   use Mimic
 
   alias ReqLLM.Context
-  alias Tars.Events
+  alias Tars.Event
   alias Tars.LLM
+  alias Tars.Scope
 
   setup :verify_on_exit!
 
   setup do
     agent_id = make_ref()
-    :ok = Events.subscribe(agent_id)
+    :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
 
@@ -51,14 +52,16 @@ defmodule Tars.LLM.TurnTest do
     end)
   end
 
-  defp config(agent_id, tools \\ []), do: LLM.Config.new(agent_id: agent_id, tools: tools)
+  defp scope(agent_id, tools \\ []) do
+    LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
+  end
 
   test "a final answer terminates the loop and returns the assistant message", %{
     agent_id: agent_id
   } do
     stub_stream([final_answer("hello")])
 
-    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -72,40 +75,40 @@ defmodule Tars.LLM.TurnTest do
 
     context = Context.new([Context.user("hi")])
 
-    assert {:ok, messages} = LLM.Turn.run(config(agent_id, [tool]), context)
+    assert {:ok, messages} = LLM.Turn.run(scope(agent_id, [tool]), context)
 
     # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
     # pre-existing user message is NOT re-reported: this is a delta.
     assert Enum.map(messages, & &1.role) == [:assistant, :tool, :assistant]
-    assert_receive {:tool_started, "call_1", "echo"}
-    assert_receive {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}}
+    assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+    assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}}}
   end
 
   test "stream callbacks are published as events for the agent", %{agent_id: agent_id} do
     stub_stream([final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(config(agent_id), Context.new())
+    assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
 
-    assert_receive {:chunk, "chunk"}
-    assert_receive {:meta, %{tokens: 1}}
-    assert_receive {:thinking, "thinking"}
-    assert_receive {:result, "result"}
-    assert_receive {:tool_call, %{name: "echo"}}
+    assert_receive %Event{payload: {:chunk, "chunk"}}
+    assert_receive %Event{payload: {:meta, %{tokens: 1}}}
+    assert_receive %Event{payload: {:thinking, "thinking"}}
+    assert_receive %Event{payload: {:result, "result"}}
+    assert_receive %Event{payload: {:tool_call, %{name: "echo"}}}
   end
 
   test "stream events are not published to other agents", %{agent_id: agent_id} do
     stub_stream([final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(config(make_ref()), Context.new())
+    assert {:ok, _messages} = LLM.Turn.run(scope(make_ref()), Context.new())
 
-    refute_receive {:chunk, _}
-    assert Tars.Events.subscribers(agent_id) == [self()]
+    refute_receive %Event{}
+    assert Event.Bus.subscribers(agent_id) == [self()]
   end
 
   test "a stream error aborts the turn", %{agent_id: agent_id} do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-    assert capture(fn -> LLM.Turn.run(config(agent_id), Context.new()) end) ==
+    assert capture(fn -> LLM.Turn.run(scope(agent_id), Context.new()) end) ==
              {:error, :rate_limited}
   end
 
@@ -114,7 +117,7 @@ defmodule Tars.LLM.TurnTest do
   } do
     stub_stream([response(nil, :stop)])
 
-    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -124,9 +127,9 @@ defmodule Tars.LLM.TurnTest do
 
     stub_stream([response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
 
-    assert {:ok, [message]} = LLM.Turn.run(config(agent_id), Context.new())
+    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
-    refute_receive {:tool_started, _, _}
+    refute_receive %Event{payload: {:tool_started, _, _}}
   end
 
   test "an unpairable tool exchange aborts rather than looping", %{agent_id: agent_id} do
@@ -137,7 +140,7 @@ defmodule Tars.LLM.TurnTest do
     stub_stream([tool_call_response("", "echo", %{})])
 
     assert {:error, _reason} =
-             capture(fn -> LLM.Turn.run(config(agent_id, [tool]), Context.new()) end)
+             capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
   end
 
   test "the iteration cap stops a model that never stops calling tools", %{agent_id: agent_id} do
@@ -146,7 +149,7 @@ defmodule Tars.LLM.TurnTest do
     stub_stream(List.duplicate(tool_call_response("call_1", "echo", %{}), 30))
 
     assert {:ok, messages} =
-             capture(fn -> LLM.Turn.run(config(agent_id, [tool]), Context.new()) end)
+             capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
 
     # 25 iterations, each appending an assistant message and its tool result.
     assert Enum.count_until(messages, 51) == 50

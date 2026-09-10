@@ -8,7 +8,7 @@ defmodule Tars.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      Tars.Events,
+      Tars.Event.Bus,
       {Task.Supervisor, name: Tars.TaskSupervisor},
       {Tars.Agent.Supervisor, []}
     ]
