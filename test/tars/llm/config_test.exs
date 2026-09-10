@@ -23,6 +23,14 @@ defmodule Tars.LLM.ConfigTest do
     assert config.tools == [tool]
   end
 
+  test "new/1 leaves the persona unset, so an agent has none until given one" do
+    assert Config.new().system == nil
+  end
+
+  test "new/1 takes a persona" do
+    assert Config.new(system: "You answer briefly.").system == "You answer briefly."
+  end
+
   test "new/1 builds the tools a config names by module" do
     config = Config.new(tools: [EchoTool])
 

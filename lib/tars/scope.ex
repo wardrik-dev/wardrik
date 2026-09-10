@@ -15,8 +15,9 @@ defmodule Tars.Scope do
 
       branch = Tars.Scope.child(scope, name: "web_search")
 
-  Pass a config to `child/3` to run that work under a different model or tool
-  set, which is what delegating to another agent needs.
+  Work that should run under a different model or tool set takes that config
+  where it is used, such as `Tars.Subagent.run/3`, rather than carrying it on
+  a scope of its own.
   """
 
   alias Tars.Event.Bus
@@ -47,11 +48,5 @@ defmodule Tars.Scope do
   @spec child(t(), keyword()) :: t()
   def child(%__MODULE__{} = scope, opts \\ []) do
     %{scope | source: Source.child(scope.source, opts)}
-  end
-
-  @doc "A child scope running a different config, for delegating to another agent."
-  @spec child(t(), Config.t(), keyword()) :: t()
-  def child(%__MODULE__{} = scope, %Config{} = config, opts) do
-    %{child(scope, opts) | config: config}
   end
 end

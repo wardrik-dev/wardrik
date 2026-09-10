@@ -24,8 +24,8 @@ defmodule TarsBrave.Config do
   When Brave moves out into `tars_brave`, three things change and nothing else:
 
     1. `lib/tars_brave/` and `test/tars_brave/` move into the new project, which
-       declares `{:req, "~> 0.7"}` itself.
-    2. Tars depends on it, first as `{:tars_brave, path: "tools/tars_brave"}`
+       declares `{:tars, "~> 0.1"}` and `{:req, "~> 0.7"}` itself.
+    2. Tars depends on it, first as `{:tars_brave, path: "packs/tars_brave"}`
        and later as a version.
     3. The setting becomes `config :tars_brave, api_key: ...`, and `new/1` reads
        `Application.get_env(:tars_brave, :api_key)` instead of the nested key.

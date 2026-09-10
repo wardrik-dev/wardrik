@@ -36,7 +36,7 @@ defmodule Tars.LLM.Turn do
   defp loop(scope, context, acc, remaining) do
     %{config: config} = scope
 
-    with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, tools: config.tools),
+    with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, stream_opts(config)),
          {:ok, response} <- process_stream(streamed, scope) do
       case handle_response(scope, context, response) do
         {:done, messages} ->
@@ -54,6 +54,11 @@ defmodule Tars.LLM.Turn do
         {:error, reason}
     end
   end
+
+  defp stream_opts(%LLM.Config{system: nil} = config), do: [tools: config.tools]
+
+  defp stream_opts(%LLM.Config{} = config),
+    do: [tools: config.tools, system_prompt: config.system]
 
   defp handle_response(scope, context, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do

@@ -9,6 +9,12 @@ defmodule Tars.LLM.Config do
       config = Tars.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
       Tars.Agent.Supervisor.start(:assistant, config: config)
 
+  `:system` is who the agent is. It is prepended to every turn rather than
+  stored in the conversation, so changing it changes the agent and replaying a
+  context never duplicates it.
+
+      Tars.LLM.Config.new(system: "You answer briefly and admit what you do not know.")
+
   `:tools` is given as `t:Tars.Tool.spec/0` values and held as the tools they
   build, so a config carries callable tools from the moment it exists and
   nothing downstream has to resolve anything.
@@ -24,10 +30,12 @@ defmodule Tars.LLM.Config do
   alias Tars.Tool
 
   defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
+            system: nil,
             tools: []
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
+          system: String.t() | nil,
           tools: list(ReqLLM.Tool.t())
         }
 

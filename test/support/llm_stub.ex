@@ -25,6 +25,50 @@ defmodule Tars.Test.LLMStub do
     end)
   end
 
+  @doc """
+  Answers each turn according to what it was asked.
+
+  `fun` receives `%{prompt: prompt, system: system, tools: tool_names, model:
+  model_spec}` and returns a response the way `stream/1` does. Nothing is
+  shared between turns, so concurrent turns stay deterministic where an
+  ordered list of responses would race.
+  """
+  def answering(fun) when is_function(fun, 1) do
+    stub(ReqLLM, :stream_text, fn model, context, opts ->
+      asked = %{
+        prompt: prompt(context),
+        system: opts[:system_prompt],
+        tools: Enum.map(opts[:tools], & &1.name),
+        model: model
+      }
+
+      {:ok, {:asked, asked}}
+    end)
+
+    stub(ReqLLM.StreamResponse, :process_stream, fn {:asked, asked}, opts ->
+      opts[:on_result].("...")
+      fun.(asked)
+    end)
+  end
+
+  @doc "The text of the last user message in a context."
+  def prompt(%ReqLLM.Context{} = context) do
+    context.messages
+    |> Enum.reverse()
+    |> Enum.find_value("", fn
+      %{role: :user, content: content} -> text(content)
+      _message -> nil
+    end)
+  end
+
+  defp text(content) when is_binary(content), do: content
+
+  defp text(parts) when is_list(parts) do
+    parts
+    |> Enum.filter(&(&1.type == :text))
+    |> Enum.map_join(& &1.text)
+  end
+
   @doc "A response the loop treats as a final answer."
   def final_answer(text), do: response(ReqLLM.Context.assistant(text), :stop)
 

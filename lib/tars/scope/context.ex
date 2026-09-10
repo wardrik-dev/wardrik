@@ -7,8 +7,11 @@ defmodule Tars.Scope.Context do
 
       def run(args) do
         scope = Tars.Scope.Context.current()
-        Tars.Subagent.run(scope, researcher(), args["topic"], name: "researcher")
+        Tars.Subagent.run(Tars.Scope.child(scope, name: "researcher"), config(), args.topic)
       end
+
+  `Tars.Workflow.call/2` does this for every workflow, so a workflow reached
+  through a tool never touches this module itself.
 
   `Tars.LLM.ToolRunner` sets this before invoking a callback. Each call already
   runs in its own task, so there is one scope per process and concurrent calls

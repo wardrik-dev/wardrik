@@ -6,10 +6,6 @@ defmodule Tars.ScopeTest do
   alias Tars.Test.EchoTool
   alias Tars.Trace
 
-  defp tool!(name) do
-    ReqLLM.Tool.new!(name: name, description: "test tool", callback: fn i -> {:ok, i} end)
-  end
-
   test "root/3 pairs a config with a fresh root span" do
     config = Config.new()
     scope = Scope.root(config, :assistant, name: "turn")
@@ -28,18 +24,6 @@ defmodule Tars.ScopeTest do
     assert child.source.agent_id == :assistant
     assert child.source.trace.parent_span_id == scope.source.trace.span_id
     assert child.source.trace.name == "echo"
-  end
-
-  test "child/3 swaps the config for delegated work" do
-    scope = Scope.root(Config.new(), :assistant)
-    researcher = Config.new(model_spec: {:test, model: "m"}, tools: [tool!("search")])
-
-    child = Scope.child(scope, researcher, name: "researcher")
-
-    assert child.config == researcher
-    assert child.source.agent_id == :assistant
-    assert child.source.trace.trace_id == scope.source.trace.trace_id
-    assert child.source.trace.parent_span_id == scope.source.trace.span_id
   end
 
   test "child/2 carries the config, tools and all" do

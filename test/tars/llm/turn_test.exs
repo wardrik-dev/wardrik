@@ -21,6 +21,40 @@ defmodule Tars.LLM.TurnTest do
     LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
   end
 
+  describe "the persona" do
+    test "is prepended per call rather than stored in the conversation", %{agent_id: agent_id} do
+      test_pid = self()
+
+      LLMStub.answering(fn asked ->
+        send(test_pid, {:asked, asked})
+        {:ok, LLMStub.final_answer("done")}
+      end)
+
+      scope =
+        [system: "You answer briefly."]
+        |> LLM.Config.new()
+        |> Scope.root(agent_id, name: "turn")
+
+      assert {:ok, messages} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+
+      assert_receive {:asked, %{system: "You answer briefly."}}
+      refute Enum.any?(messages, &(&1.role == :system))
+    end
+
+    test "is left out entirely when a config has none", %{agent_id: agent_id} do
+      test_pid = self()
+
+      LLMStub.answering(fn asked ->
+        send(test_pid, {:asked, asked})
+        {:ok, LLMStub.final_answer("done")}
+      end)
+
+      assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
+
+      assert_receive {:asked, %{system: nil}}
+    end
+  end
+
   test "a final answer terminates the loop and returns the assistant message", %{
     agent_id: agent_id
   } do
