@@ -24,6 +24,13 @@ defmodule Tars.LLM.ConfigTest do
     assert config.tools == [tool]
   end
 
+  test "test_tools/0 provides one tool per failure mode" do
+    tools = Config.test_tools()
+
+    assert Enum.map(tools, & &1.name) |> Enum.sort() == ["crash", "echo", "fail"]
+    assert Enum.all?(tools, &match?(%ReqLLM.Tool{}, &1))
+  end
+
   test "add_tool/2 prepends without disturbing the rest of the config" do
     first = tool!("first")
     second = tool!("second")

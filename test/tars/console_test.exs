@@ -36,6 +36,18 @@ defmodule Tars.ConsoleTest do
     assert output =~ "✗ boom: :timeout"
   end
 
+  test "renders turn completion and failure" do
+    output =
+      render(make_ref(), [
+        {:result, "answer"},
+        {:turn_finished, []},
+        {:turn_failed, :rate_limited}
+      ])
+
+    assert output =~ "answer"
+    assert output =~ "turn failed: :rate_limited"
+  end
+
   test "ignores events it does not render" do
     output = render(make_ref(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
 

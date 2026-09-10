@@ -7,6 +7,9 @@ defmodule Tars.MixProject do
       version: "0.1.0",
       elixir: "~> 1.20",
       aliases: aliases(),
+      elixirc_paths: elixirc_paths(Mix.env()),
+      dialyzer: [plt_add_apps: [:mix]],
+      test_coverage: [ignore_modules: ignored_modules()],
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -17,6 +20,20 @@ defmodule Tars.MixProject do
     [
       extra_applications: [:logger],
       mod: {Tars.Application, []}
+    ]
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
+
+  # Thin shells over things that only exist at a real terminal, plus test
+  # support. Excluded because covering them would mean asserting on mocks of
+  # Owl and Mix rather than on any behaviour of ours.
+  defp ignored_modules do
+    [
+      Mix.Tasks.Tars,
+      Tars.TUI.Screen.Terminal,
+      Tars.Test.RecordingScreen
     ]
   end
 

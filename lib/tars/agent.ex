@@ -14,8 +14,10 @@ defmodule Tars.Agent do
   publishes them via `Tars.Events`, and any number of listeners can subscribe
   with `Tars.Events.subscribe/1`. See `Tars.Console` for a terminal one.
 
-  The agent adds two events of its own so subscribers can tell when it goes
-  idle: `{:turn_finished, messages}` and `{:turn_failed, reason}`.
+  The agent adds three events of its own so subscribers can follow its state
+  without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`
+  and `{:turn_failed, reason}`. A client attaching mid-turn can catch up with
+  `status/1`.
   """
   require Logger
 
@@ -32,6 +34,9 @@ defmodule Tars.Agent do
     :running,
     pending: :queue.new()
   ]
+
+  @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
+  @type status() :: %{state: :idle | :running, pending: non_neg_integer()}
 
   @typedoc "Runs one turn and returns the messages it appended."
   @type runner() ::
@@ -62,6 +67,9 @@ defmodule Tars.Agent do
   @spec get_context(GenServer.server()) :: Context.t()
   def get_context(agent), do: GenServer.call(agent, :get_context)
 
+  @spec status(GenServer.server()) :: status()
+  def status(agent), do: GenServer.call(agent, :status)
+
   @impl true
   def init(opts) do
     agent_id = Keyword.get(opts, :name) || self()
@@ -82,6 +90,15 @@ defmodule Tars.Agent do
 
   @impl true
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
+
+  def handle_call(:status, _from, state) do
+    status = %{
+      state: if(state.running, do: :running, else: :idle),
+      pending: :queue.len(state.pending)
+    }
+
+    {:reply, status, state}
+  end
 
   @impl true
   def handle_cast({:ask, question}, state) do
@@ -107,6 +124,7 @@ defmodule Tars.Agent do
             runner.(config, context)
           end)
 
+        Events.emit(config.agent_id, {:turn_started, questions})
         {:noreply, %{state | context: context, running: task, pending: :queue.new()}}
     end
   end

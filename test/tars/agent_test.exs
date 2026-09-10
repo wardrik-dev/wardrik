@@ -155,6 +155,50 @@ defmodule Tars.AgentTest do
     assert_receive {:result, "streamed"}
   end
 
+  describe "status/1" do
+    test "reports idle with nothing pending" do
+      agent = start_agent(runner: runner(self()))
+
+      assert Agent.status(agent) == %{state: :idle, pending: 0}
+    end
+
+    test "reports running, and counts what is queued behind the turn" do
+      agent = start_agent(runner: blocking_runner(self()))
+
+      Agent.ask(agent, "first")
+      assert_receive {:turn, [{:user, "first"}], first_turn}
+
+      assert %{state: :running, pending: 0} = Agent.status(agent)
+
+      Agent.ask(agent, "second")
+      Agent.ask(agent, "third")
+
+      assert %{state: :running, pending: 2} = Agent.status(agent)
+
+      send(first_turn, :release)
+      assert_receive {:turn, _snapshot, second_turn}
+      send(second_turn, :release)
+    end
+
+    test "returns to idle once the turn ends" do
+      agent = start_agent(runner: runner(self()))
+
+      Agent.ask(agent, "hello")
+      assert_receive {:turn_finished, _}
+
+      assert %{state: :idle, pending: 0} = Agent.status(agent)
+    end
+  end
+
+  test "a starting turn is announced before any output" do
+    agent = start_agent(runner: runner(self()))
+
+    Agent.ask(agent, "hello")
+
+    assert_receive {:turn_started, ["hello"]}
+    assert_receive {:turn_finished, _}
+  end
+
   describe "messages from abandoned or unknown senders" do
     test "a stale task reply never touches context" do
       agent = start_agent(runner: runner(self()))

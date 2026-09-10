@@ -32,7 +32,7 @@ defmodule Tars.LLM.Config do
   end
 
   # For testing, to be removed eventually
-  def test_tools() do
+  def test_tools do
     {:ok, tool_1} =
       ReqLLM.Tool.new(
         name: "echo",
