@@ -9,11 +9,19 @@ defmodule Tars.LLM.Config do
       config = Tars.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
       Tars.Agent.Supervisor.start(:assistant, config: config)
 
+  `:tools` is given as `t:Tars.Tool.spec/0` values and held as the tools they
+  build, so a config carries callable tools from the moment it exists and
+  nothing downstream has to resolve anything.
+
+      Tars.LLM.Config.new(tools: [MyApp.Tools.Ping])
+
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
   does not travel: prefer `{module, function}` over an anonymous function for
   any agent that may be started on another node.
   """
+
+  alias Tars.Tool
 
   defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
             tools: []
@@ -23,12 +31,22 @@ defmodule Tars.LLM.Config do
           tools: list(ReqLLM.Tool.t())
         }
 
-  @spec new(keyword()) :: t()
-  def new(opts \\ []), do: struct(__MODULE__, opts)
+  @doc """
+  Builds a config, resolving every tool it names.
 
-  @spec add_tool(t(), ReqLLM.Tool.t()) :: t()
-  def add_tool(%__MODULE__{tools: tools} = config, %ReqLLM.Tool{} = tool) do
-    %{config | tools: [tool | tools]}
+  Use this rather than the struct literal: a tool named as a module is only
+  built here. Raises when one cannot be, which is a configuration error worth
+  hearing about at construction rather than mid-turn.
+  """
+  @spec new(keyword()) :: t()
+  def new(opts \\ []) do
+    config = struct(__MODULE__, opts)
+    %{config | tools: Tool.resolve!(config.tools)}
+  end
+
+  @spec add_tool(t(), Tool.spec()) :: t()
+  def add_tool(%__MODULE__{tools: tools} = config, tool) do
+    %{config | tools: Tool.resolve!([tool]) ++ tools}
   end
 
   # For testing, to be removed eventually

@@ -3,6 +3,7 @@ defmodule Tars.ScopeTest do
 
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.EchoTool
   alias Tars.Trace
 
   defp tool!(name) do
@@ -39,6 +40,12 @@ defmodule Tars.ScopeTest do
     assert child.source.agent_id == :assistant
     assert child.source.trace.trace_id == scope.source.trace.trace_id
     assert child.source.trace.parent_span_id == scope.source.trace.span_id
+  end
+
+  test "child/2 carries the config, tools and all" do
+    scope = Scope.root(Config.new(tools: [EchoTool]), :assistant)
+
+    assert Scope.child(scope, name: "echo").config == scope.config
   end
 
   test "a scope's own children are siblings" do

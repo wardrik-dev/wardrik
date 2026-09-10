@@ -16,7 +16,7 @@ defmodule Tars.Scope do
       branch = Tars.Scope.child(scope, name: "web_search")
 
   Pass a config to `child/3` to run that work under a different model or tool
-  set, which is what a subagent needs.
+  set, which is what delegating to another agent needs.
   """
 
   alias Tars.Event.Bus
@@ -26,7 +26,7 @@ defmodule Tars.Scope do
   @enforce_keys [:config, :source]
   defstruct [:config, :source]
 
-  @typedoc "The config a run was given, and the source its events are published under."
+  @typedoc "The config a run was given, and where its events go."
   @type t() :: %__MODULE__{config: Config.t(), source: Source.t()}
 
   @doc """

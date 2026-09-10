@@ -81,6 +81,10 @@ defmodule Tars.TUI.ScreenTest do
 
     assert out =~ "turn_started"
     assert out =~ "tool_finished"
-    assert out |> String.split("\n", trim: true) |> Enum.count() == Enum.count(events)
+
+    # Counted rather than split: with ANSI on, Owl closes the whole chardata
+    # with a reset that lands after the final newline.
+    newlines = length(String.split(out, "\n")) - 1
+    assert newlines == Enum.count(events)
   end
 end

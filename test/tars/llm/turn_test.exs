@@ -7,6 +7,7 @@ defmodule Tars.LLM.TurnTest do
   alias Tars.Event
   alias Tars.LLM
   alias Tars.Scope
+  alias Tars.Test.LLMStub
 
   setup :verify_on_exit!
 
@@ -16,42 +17,6 @@ defmodule Tars.LLM.TurnTest do
     {:ok, agent_id: agent_id}
   end
 
-  defp response(message, finish_reason) do
-    %ReqLLM.Response{
-      id: "resp_1",
-      model: "test",
-      context: Context.new(),
-      message: message,
-      finish_reason: finish_reason
-    }
-  end
-
-  defp final_answer(text), do: response(Context.assistant(text), :stop)
-
-  defp tool_call_response(id, name, arguments) do
-    # `valid_call?/1` in ToolExchange requires arguments as a JSON string.
-    call = ReqLLM.ToolCall.new(id, name, Jason.encode!(arguments))
-    response(Context.assistant("", tool_calls: [call]), :tool_calls)
-  end
-
-  # Feeds `responses` to successive iterations of the turn loop, invoking each
-  # stream callback on the way so the publishing path is exercised too.
-  defp stub_stream(responses) do
-    {:ok, agent} = Agent.start_link(fn -> responses end)
-
-    stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
-
-    stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
-      opts[:on_chunk].("chunk")
-      opts[:on_meta].(%{tokens: 1})
-      opts[:on_thinking].("thinking")
-      opts[:on_result].("result")
-      opts[:on_tool_call].(%{name: "echo"})
-
-      Agent.get_and_update(agent, fn [head | rest] -> {{:ok, head}, rest} end)
-    end)
-  end
-
   defp scope(agent_id, tools \\ []) do
     LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
   end
@@ -59,7 +24,7 @@ defmodule Tars.LLM.TurnTest do
   test "a final answer terminates the loop and returns the assistant message", %{
     agent_id: agent_id
   } do
-    stub_stream([final_answer("hello")])
+    LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
@@ -68,9 +33,9 @@ defmodule Tars.LLM.TurnTest do
   test "tool calls loop once, then terminate on the final answer", %{agent_id: agent_id} do
     tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
 
-    stub_stream([
-      tool_call_response("call_1", "echo", %{"input" => "hi"}),
-      final_answer("done")
+    LLMStub.stream([
+      LLMStub.tool_call("call_1", "echo", %{"input" => "hi"}),
+      LLMStub.final_answer("done")
     ])
 
     context = Context.new([Context.user("hi")])
@@ -85,7 +50,7 @@ defmodule Tars.LLM.TurnTest do
   end
 
   test "stream callbacks are published as events for the agent", %{agent_id: agent_id} do
-    stub_stream([final_answer("hello")])
+    LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
 
@@ -97,7 +62,7 @@ defmodule Tars.LLM.TurnTest do
   end
 
   test "stream events are not published to other agents", %{agent_id: agent_id} do
-    stub_stream([final_answer("hello")])
+    LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert {:ok, _messages} = LLM.Turn.run(scope(make_ref()), Context.new())
 
@@ -115,7 +80,7 @@ defmodule Tars.LLM.TurnTest do
   test "a response with no assistant message falls back to the classified text", %{
     agent_id: agent_id
   } do
-    stub_stream([response(nil, :stop)])
+    LLMStub.stream([LLMStub.response(nil, :stop)])
 
     assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
@@ -125,7 +90,7 @@ defmodule Tars.LLM.TurnTest do
     call = ReqLLM.ToolCall.new("call_1", "web_search", "{}")
     builtin = %{call | function: Map.put(call.function, :builtin?, true)}
 
-    stub_stream([response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
+    LLMStub.stream([LLMStub.response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
 
     assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
@@ -137,7 +102,7 @@ defmodule Tars.LLM.TurnTest do
 
     # An empty call id fails ToolExchange's `valid_call?/1`, so results can
     # never be matched back to the assistant message.
-    stub_stream([tool_call_response("", "echo", %{})])
+    LLMStub.stream([LLMStub.tool_call("", "echo", %{})])
 
     assert {:error, _reason} =
              capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
@@ -146,7 +111,7 @@ defmodule Tars.LLM.TurnTest do
   test "the iteration cap stops a model that never stops calling tools", %{agent_id: agent_id} do
     tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
 
-    stub_stream(List.duplicate(tool_call_response("call_1", "echo", %{}), 30))
+    LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 30))
 
     assert {:ok, messages} =
              capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)

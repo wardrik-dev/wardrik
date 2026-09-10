@@ -2,6 +2,7 @@ defmodule Tars.LLM.ConfigTest do
   use ExUnit.Case, async: true
 
   alias Tars.LLM.Config
+  alias Tars.Test.EchoTool
 
   defp tool!(name) do
     ReqLLM.Tool.new!(name: name, description: "test tool", callback: fn i -> {:ok, i} end)
@@ -22,6 +23,22 @@ defmodule Tars.LLM.ConfigTest do
     assert config.tools == [tool]
   end
 
+  test "new/1 builds the tools a config names by module" do
+    config = Config.new(tools: [EchoTool])
+
+    assert [%ReqLLM.Tool{name: "echo"}] = config.tools
+  end
+
+  test "new/1 leaves an already-built tool alone, so building twice is safe" do
+    once = Config.new(tools: [EchoTool])
+
+    assert Config.new(tools: once.tools).tools == once.tools
+  end
+
+  test "new/1 raises on a tool it cannot build" do
+    assert_raise ArgumentError, fn -> Config.new(tools: [:no_such_tool]) end
+  end
+
   test "test_tools/0 provides one tool per failure mode" do
     tools = Config.test_tools()
 
@@ -40,5 +57,10 @@ defmodule Tars.LLM.ConfigTest do
 
     assert config.tools == [second, first]
     assert config.model_spec == {:test, model: "m"}
+  end
+
+  test "add_tool/2 takes a module as readily as a built tool" do
+    assert [%ReqLLM.Tool{name: "echo"}] =
+             Config.new() |> Config.add_tool(EchoTool) |> Map.fetch!(:tools)
   end
 end

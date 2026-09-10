@@ -8,7 +8,9 @@ defmodule Tars.LLM.ToolRunner do
   what `ReqLLM.Context.append_tool_exchange/3` requires.
 
   Each call runs under its own child scope, so its events are attributed to
-  that call rather than to the turn as a whole.
+  that call rather than to the turn as a whole. That scope is also published
+  through `Tars.Scope.Context`, which is how a tool that delegates finds its
+  place in the tree.
 
   Tool calls are expected in the normalized shape produced by
   `ReqLLM.Response.classify/1`: `%{id: String.t(), name: String.t(), arguments: map()}`.
@@ -42,17 +44,18 @@ defmodule Tars.LLM.ToolRunner do
 
   @spec execute(tool_call(), Scope.t()) :: ReqLLM.Message.t()
   def execute(%{id: id, name: name, arguments: args}, %Scope{} = scope) do
-    %{config: config, source: source} = Scope.child(scope, name: name)
+    scope = Scope.child(scope, name: name)
+    :ok = Scope.Context.put(scope)
 
-    Event.emit(source, {:tool_started, id, name})
+    Event.emit(scope.source, {:tool_started, id, name})
 
     result =
-      case Enum.find(config.tools, &(&1.name == name)) do
+      case Enum.find(scope.config.tools, &(&1.name == name)) do
         nil -> {:error, "Unknown tool: #{name}"}
         tool -> ReqLLM.Tool.execute(tool, args)
       end
 
-    Event.emit(source, {:tool_finished, id, name, result})
+    Event.emit(scope.source, {:tool_finished, id, name, result})
 
     case result do
       {:ok, output} -> Context.tool_result_message(name, id, output)
