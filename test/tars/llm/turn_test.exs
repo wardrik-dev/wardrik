@@ -84,6 +84,8 @@ defmodule Tars.LLM.TurnTest do
   end
 
   test "stream callbacks are published as events for the agent", %{agent_id: agent_id} do
+    :ok = Event.Bus.unsubscribe(agent_id)
+    :ok = Event.Bus.subscribe(agent_id, level: :raw)
     LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
@@ -93,6 +95,25 @@ defmodule Tars.LLM.TurnTest do
     assert_receive %Event{payload: {:thinking, "thinking"}}
     assert_receive %Event{payload: {:result, "result"}}
     assert_receive %Event{payload: {:tool_call, %{name: "echo"}}}
+  end
+
+  test "the model request announces both ends", %{agent_id: agent_id} do
+    LLMStub.stream([LLMStub.final_answer("hello")])
+
+    assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
+
+    assert_receive %Event{payload: {:model_started, _model_spec}}
+    assert_receive %Event{payload: {:model_finished, :ok, _ms}}
+  end
+
+  test "a failed request is announced before the turn gives up", %{agent_id: agent_id} do
+    Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+
+    {_result, _log} =
+      ExUnit.CaptureLog.with_log(fn -> LLM.Turn.run(scope(agent_id), Context.new()) end)
+
+    assert_receive %Event{payload: {:model_started, _model_spec}}
+    assert_receive %Event{payload: {:model_finished, {:error, :rate_limited}, _ms}}
   end
 
   test "stream events are not published to other agents", %{agent_id: agent_id} do

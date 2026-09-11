@@ -11,8 +11,8 @@ defmodule Tars.TUI do
 
   With `verbose: true` the structural events — turn boundaries, tool calls,
   metadata — each get a trace line, while token-level events are accumulated
-  into the status line's counters. A turn emits hundreds of `:chunk` and
-  `:result` messages, so printing them is what makes a trace unreadable.
+  into the status line's counters. A turn emits hundreds of `:result`
+  messages, so printing them is what makes a trace unreadable.
 
   Reading input blocks, so it happens in a separate reader process, and the
   reader only prompts while the agent is idle. Typing during a turn is not
@@ -39,7 +39,6 @@ defmodule Tars.TUI do
     thinking: "",
     tools: [],
     frame: 0,
-    chunks: 0,
     chars: 0,
     ticking?: false
   ]
@@ -126,7 +125,7 @@ defmodule Tars.TUI do
   # -- turn lifecycle --------------------------------------------------------
 
   defp handle_event({:turn_started, _questions} = event, state) do
-    state = %{state | thinking: "", tools: [], chunks: 0, chars: 0}
+    state = %{state | thinking: "", tools: [], chars: 0}
     trace(state, event)
     {:noreply, start_ticking(state)}
   end
@@ -186,12 +185,6 @@ defmodule Tars.TUI do
 
   # -- low-level events, only interesting when tracing ------------------------
 
-  defp handle_event({:chunk, _chunk} = event, state) do
-    state = %{state | chunks: state.chunks + 1}
-    trace(state, event)
-    {:noreply, state}
-  end
-
   defp handle_event({kind, _payload} = event, state) when kind in [:meta, :tool_call] do
     trace(state, event)
     {:noreply, state}
@@ -228,7 +221,7 @@ defmodule Tars.TUI do
     state
   end
 
-  defp status_state(state), do: Map.take(state, [:frame, :thinking, :tools, :chunks, :chars])
+  defp status_state(state), do: Map.take(state, [:frame, :thinking, :tools, :chars])
 
   defp start_ticking(state) do
     state = %{state | ticking?: true, frame: 0}

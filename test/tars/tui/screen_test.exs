@@ -32,12 +32,12 @@ defmodule Tars.TUI.ScreenTest do
         Terminal.write(View.error(:rate_limited))
 
         Terminal.status(
-          View.status(%{frame: 3, thinking: "pondering", tools: [], chunks: 0, chars: 0}, @width)
+          View.status(%{frame: 3, thinking: "pondering", tools: [], chars: 0}, @width)
         )
 
         Terminal.status(
           View.status(
-            %{frame: 4, thinking: "", tools: [{"echo", :ok}], chunks: 12, chars: 340},
+            %{frame: 4, thinking: "", tools: [{"echo", :ok}], chars: 340},
             @width
           )
         )
@@ -50,7 +50,7 @@ defmodule Tars.TUI.ScreenTest do
     assert out =~ ":rate_limited"
     assert out =~ "pondering"
     assert out =~ "echo"
-    assert out =~ "12 chunks"
+    assert out =~ "340 chars"
   end
 
   test "status/1 erases the line before rewriting, so it never scrolls" do

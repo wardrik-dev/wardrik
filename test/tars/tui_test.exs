@@ -170,10 +170,7 @@ defmodule Tars.TUITest do
     } do
       Events.emit(agent_id, {:turn_started, ["hi"]})
 
-      for _ <- 1..200 do
-        Events.emit(agent_id, {:chunk, %{type: :content}})
-        Events.emit(agent_id, {:result, "tok"})
-      end
+      for _ <- 1..200, do: Events.emit(agent_id, {:result, "tok"})
 
       Events.emit(agent_id, {:thinking, "pondering"})
       Events.emit(agent_id, {:turn_finished, []})
@@ -182,23 +179,21 @@ defmodule Tars.TUITest do
       trace = collect_writes() |> Enum.join()
       lines = String.split(trace, "\n", trim: true)
 
-      # 400 token events; a naive trace would be 400 lines.
+      # 200 token events; a naive trace would be 200 lines.
       assert Enum.count(lines) < 10
       refute trace =~ "tok"
 
       # One summary line stands in for the whole stream.
       assert trace =~ "stream"
-      assert trace =~ "200 chunks"
       assert trace =~ "600 chars"
     end
 
     test "counters reset between turns", %{tui: tui, agent_id: agent_id} do
       Events.emit(agent_id, {:turn_started, ["one"]})
-      Events.emit(agent_id, {:chunk, %{}})
+      Events.emit(agent_id, {:result, "a"})
       Events.emit(agent_id, {:turn_finished, []})
       Events.emit(agent_id, {:turn_started, ["two"]})
-      Events.emit(agent_id, {:chunk, %{}})
-      Events.emit(agent_id, {:chunk, %{}})
+      Events.emit(agent_id, {:result, "bb"})
       Events.emit(agent_id, {:turn_finished, []})
       sync(tui)
 
@@ -208,8 +203,8 @@ defmodule Tars.TUITest do
         |> Enum.map(&String.trim/1)
 
       assert [first, second] = summaries
-      assert first =~ "1 chunks"
-      assert second =~ "2 chunks"
+      assert first =~ "1 chars"
+      assert second =~ "2 chars"
     end
 
     test "still drives the status line", %{tui: tui, agent_id: agent_id} do

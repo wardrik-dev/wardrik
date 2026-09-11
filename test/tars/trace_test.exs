@@ -57,4 +57,20 @@ defmodule Tars.TraceTest do
     assert Trace.root().name == nil
     assert Trace.root() |> Trace.child() |> Map.fetch!(:name) == nil
   end
+
+  describe "elapsed_ms/1" do
+    test "reports milliseconds since the span was built" do
+      ago = System.convert_time_unit(50, :millisecond, :native)
+      trace = %{Trace.root() | started_at: System.monotonic_time() - ago}
+
+      assert Trace.elapsed_ms(trace) in 50..1_000
+    end
+
+    test "a child starts its own clock" do
+      parent = Trace.root()
+      child = Trace.child(parent)
+
+      assert Trace.elapsed_ms(child) <= Trace.elapsed_ms(parent)
+    end
+  end
 end

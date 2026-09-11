@@ -175,6 +175,33 @@ defmodule Tars.SubagentTest do
       assert event.source.trace.parent_span_id == scope.source.trace.span_id
       assert event.source.trace.name == "researcher"
     end
+
+    test "announces both ends of that span", %{scope: scope} do
+      stub_llm()
+
+      {:ok, _text} = Subagent.run(scope, "pricing?", name: "researcher")
+
+      assert_receive %Event{payload: {:span_started, "researcher"}} = started
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
+    end
+
+    test "a failed delegation closes its span as a failure", %{scope: scope} do
+      stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+
+      ExUnit.CaptureLog.with_log(fn -> Subagent.run(scope, "pricing?", name: "researcher") end)
+
+      assert_receive %Event{payload: {:span_finished, {:error, :rate_limited}, _ms}}
+    end
+  end
+
+  test "an unnamed delegation announces no span of its own", %{scope: scope} do
+    stub_llm()
+
+    {:ok, _text} = Subagent.run(scope, "pricing?")
+
+    refute_receive %Event{payload: {:span_started, _name}}
   end
 
   test "a failed turn is reported to the caller", %{scope: scope} do

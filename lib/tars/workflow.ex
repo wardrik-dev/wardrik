@@ -44,8 +44,9 @@ defmodule Tars.Workflow do
 
   ## Spans
 
-  Both combinators create the child span their work runs under, so a step
-  author cannot forget and the event tree is right by construction. One
+  Both combinators open the child span their work runs under and close it
+  afterwards, so a step author cannot forget and the event tree is right by
+  construction. A branch killed at the timeout is closed by the fan-out. One
   subscription to the agent sees every level of it.
   """
 
@@ -122,11 +123,8 @@ defmodule Tars.Workflow do
 
     Tars.TaskSupervisor
     |> Task.Supervisor.async_stream_nolink(
-      Enum.with_index(inputs),
-      fn {input, index} ->
-        branch = Scope.child(scope, name: branch_name(name, input, index))
-        {input, Step.invoke(step, input, branch)}
-      end,
+      branches(scope, inputs, name),
+      fn {input, branch} -> {input, Scope.closing(branch, &Step.invoke(step, input, &1))} end,
       ordered: true,
       max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
       timeout: Keyword.get(opts, :timeout, @timeout),
@@ -135,8 +133,21 @@ defmodule Tars.Workflow do
     )
     |> Enum.map(fn
       {:ok, outcome} -> outcome
-      {:exit, {{input, _index}, reason}} -> {input, {:error, reason}}
+      {:exit, {{input, branch}, reason}} -> reap(input, branch, reason)
     end)
+  end
+
+  defp branches(scope, inputs, name) do
+    inputs
+    |> Enum.with_index()
+    |> Enum.map(fn {input, index} ->
+      {input, Scope.open(scope, branch_name(name, input, index))}
+    end)
+  end
+
+  defp reap(input, branch, reason) do
+    Scope.close(branch, {:error, reason})
+    {input, {:error, reason}}
   end
 
   @doc """
@@ -150,9 +161,7 @@ defmodule Tars.Workflow do
     steps
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, input}, fn {step, index}, {:ok, input} ->
-      stage = Scope.child(scope, name: Step.name(step, index))
-
-      case Step.invoke(step, input, stage) do
+      case Scope.span(scope, Step.name(step, index), &Step.invoke(step, input, &1)) do
         {:ok, output} -> {:cont, {:ok, output}}
         {:error, reason} -> {:halt, {:error, reason}}
       end

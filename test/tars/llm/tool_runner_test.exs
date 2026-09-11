@@ -132,7 +132,7 @@ defmodule Tars.LLM.ToolRunnerTest do
       spawn_link(fn ->
         Event.Bus.subscribe(agent_id)
         send(test_pid, :ready)
-        receive do: (event -> send(test_pid, {:other, event}))
+        receive do: (%Event{payload: {:tool_started, _, _}} = e -> send(test_pid, {:other, e}))
       end)
 
       assert_receive :ready
@@ -175,6 +175,40 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo"}} = started
       assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
+    end
+
+    test "a call announces both ends of its span", %{agent_id: agent_id} do
+      tools = [tool!("echo", fn input -> {:ok, input} end)]
+      turn = scope(agent_id, tools)
+
+      ToolRunner.execute(call("call_1", "echo", %{}), turn)
+
+      assert_receive %Event{payload: {:span_started, "echo"}} = started
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
+      assert started.source.trace.parent_span_id == turn.source.trace.span_id
+    end
+
+    test "a failing tool closes its span as a failure", %{agent_id: agent_id} do
+      tools = [tool!("boom", fn _input -> {:error, :nope} end)]
+
+      ToolRunner.execute(call("call_1", "boom", %{}), scope(agent_id, tools))
+
+      assert_receive %Event{payload: {:span_finished, {:error, :nope}, _ms}}
+    end
+
+    test "a crashing call still closes its span", %{agent_id: agent_id} do
+      tools = [tool!("boom", fn _input -> exit(:kaboom) end)]
+
+      with_log(fn ->
+        ToolRunner.execute_many_async([call("call_1", "boom", %{})], scope(agent_id, tools))
+      end)
+
+      assert_receive %Event{payload: {:span_started, "boom"}} = started
+      assert_receive %Event{payload: {:span_finished, {:error, :kaboom}, _ms}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end

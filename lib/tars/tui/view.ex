@@ -8,8 +8,8 @@ defmodule Tars.TUI.View do
   arithmetic.
 
   The verbose trace prints one line per *structural* event — turn boundaries,
-  tool calls, metadata. Token-level events (`:chunk`, `:result`, `:thinking`)
-  arrive hundreds of times per turn and are accumulated into the status line's
+  tool calls, metadata. Token-level events (`:result`, `:thinking`) arrive
+  hundreds of times per turn and are accumulated into the status line's
   counters instead, so the trace stays readable at any response length.
   """
 
@@ -22,7 +22,6 @@ defmodule Tars.TUI.View do
           frame: non_neg_integer(),
           thinking: String.t(),
           tools: [{String.t(), :running | :ok | :error}],
-          chunks: non_neg_integer(),
           chars: non_neg_integer()
         }
 
@@ -68,11 +67,11 @@ defmodule Tars.TUI.View do
   @doc """
   One line standing in for a whole stream, once it has finished.
 
-  This is what replaces the hundreds of `chunk`/`result` lines a naive trace
-  would print.
+  This is what replaces the hundreds of `result` lines a naive trace would
+  print.
   """
   @spec summary(status_state()) :: Owl.Data.t()
-  def summary(%{chunks: 0}), do: []
+  def summary(%{chars: 0}), do: []
 
   def summary(state) do
     [
@@ -120,10 +119,10 @@ defmodule Tars.TUI.View do
   defp payload({_kind, term}), do: inspect(term)
   defp payload(other), do: inspect(other)
 
-  defp counters(%{chunks: 0}), do: []
+  defp counters(%{chars: 0}), do: []
   defp counters(state), do: Owl.Data.tag(counter_text(state), @faint)
 
-  defp counter_text(state), do: "#{count(state.chunks)} chunks · #{count(state.chars)} chars"
+  defp counter_text(state), do: "#{count(state.chars)} chars"
 
   defp count(n) when n < 1_000, do: Integer.to_string(n)
   defp count(n) when n < 1_000_000, do: "#{Float.round(n / 1_000, 1)}k"

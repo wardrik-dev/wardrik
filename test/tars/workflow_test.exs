@@ -226,9 +226,57 @@ defmodule Tars.WorkflowTest do
     refute leaf.parent_span_id == scope.source.trace.span_id
   end
 
+  describe "spans" do
+    test "a branch announces both ends of its own span", %{scope: scope} do
+      Workflow.fan_out(scope, [:only], Steps.Echo)
+
+      assert_receive %Event{payload: {:span_started, "only"}} = started
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
+      assert started.source.trace.parent_span_id == scope.source.trace.span_id
+    end
+
+    test "a branch that errors closes as a failure", %{scope: scope} do
+      Workflow.fan_out(scope, [:only], Steps.Boom)
+
+      assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
+    end
+
+    test "a branch killed at the timeout is closed by the fan-out", %{scope: scope} do
+      step = fn _input, _scope -> receive do: (:never -> :ok) end
+
+      {_outcomes, _log} =
+        ExUnit.CaptureLog.with_log(fn ->
+          Workflow.fan_out(scope, [:slow], step, timeout: 20)
+        end)
+
+      assert_receive %Event{payload: {:span_started, "slow"}} = started
+      assert_receive %Event{payload: {:span_finished, {:error, :timeout}, _ms}} = finished
+
+      assert started.source.trace.span_id == finished.source.trace.span_id
+    end
+
+    test "each stage of a sequence announces its own span", %{scope: scope} do
+      Workflow.sequence(scope, :in, [Steps.Echo, Steps.Echo])
+
+      assert_receive %Event{payload: {:span_started, "echo"}}
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+      assert_receive %Event{payload: {:span_started, "echo"}}
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+    end
+
+    test "a sequence stops at the first failed stage", %{scope: scope} do
+      Workflow.sequence(scope, :in, [Steps.Boom, Steps.Echo])
+
+      assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
+      refute_receive %Event{payload: {:span_started, "echo"}}
+    end
+  end
+
   defp drain(acc \\ []) do
     receive do
-      message -> drain(acc ++ [message])
+      {:ran, _input} = message -> drain(acc ++ [message])
     after
       0 -> acc
     end

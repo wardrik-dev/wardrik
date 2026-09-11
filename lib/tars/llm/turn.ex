@@ -17,6 +17,7 @@ defmodule Tars.LLM.Turn do
   alias Tars.Event
   alias Tars.LLM
   alias Tars.Scope
+  alias Tars.Trace
 
   # A model that never stops calling tools would otherwise loop against a paid
   # API forever. Generous, but bounded.
@@ -34,26 +35,41 @@ defmodule Tars.LLM.Turn do
   end
 
   defp loop(scope, context, acc, remaining) do
-    %{config: config} = scope
+    case request(scope, context) do
+      {:ok, response} ->
+        case handle_response(scope, context, response) do
+          {:done, messages} ->
+            {:ok, Enum.reverse(acc, messages)}
 
-    with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, stream_opts(config)),
-         {:ok, response} <- process_stream(streamed, scope) do
-      case handle_response(scope, context, response) do
-        {:done, messages} ->
-          {:ok, Enum.reverse(acc, messages)}
+          {:cont, context, messages} ->
+            loop(scope, context, Enum.reverse(messages, acc), remaining - 1)
 
-        {:cont, context, messages} ->
-          loop(scope, context, Enum.reverse(messages, acc), remaining - 1)
+          {:error, reason} ->
+            {:error, reason}
+        end
 
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
       {:error, reason} ->
         Logger.warning("Error streaming text: #{inspect(reason)}")
         {:error, reason}
     end
   end
+
+  defp request(%Scope{source: source, config: config} = scope, context) do
+    started_at = System.monotonic_time()
+    Event.emit(source, {:model_started, config.model_spec})
+
+    result =
+      with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, stream_opts(config)) do
+        process_stream(streamed, scope)
+      end
+
+    Event.emit(source, {:model_finished, outcome(result), Trace.elapsed_ms(started_at)})
+
+    result
+  end
+
+  defp outcome({:error, reason}), do: {:error, reason}
+  defp outcome(_result), do: :ok
 
   defp stream_opts(%LLM.Config{system: nil} = config), do: [tools: config.tools]
 

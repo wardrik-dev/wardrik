@@ -41,7 +41,7 @@ defmodule Tars.TUI.ViewTest do
 
   describe "status/2" do
     test "falls back to a thinking label with no reasoning or tools" do
-      assert View.status(%{frame: 0, thinking: "", tools: [], chunks: 0, chars: 0}, 80) |> plain() =~
+      assert View.status(%{frame: 0, thinking: "", tools: [], chars: 0}, 80) |> plain() =~
                "thinking…"
     end
 
@@ -49,7 +49,7 @@ defmodule Tars.TUI.ViewTest do
       thinking = Enum.map_join(1..50, "\n", &"line #{&1}")
 
       out =
-        View.status(%{frame: 0, thinking: thinking, tools: [], chunks: 0, chars: 0}, 80)
+        View.status(%{frame: 0, thinking: thinking, tools: [], chars: 0}, 80)
         |> plain()
 
       assert out =~ "line 50"
@@ -59,7 +59,7 @@ defmodule Tars.TUI.ViewTest do
     test "clips a long reasoning line to the width" do
       out =
         View.status(
-          %{frame: 0, thinking: String.duplicate("y", 500), tools: [], chunks: 0, chars: 0},
+          %{frame: 0, thinking: String.duplicate("y", 500), tools: [], chars: 0},
           40
         )
         |> plain()
@@ -70,11 +70,11 @@ defmodule Tars.TUI.ViewTest do
 
     test "is faded, and led by a spinner frame" do
       # ANSI is stripped when there is no tty, so assert on the tag itself.
-      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chunks: 0, chars: 0}, 80)
+      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chars: 0}, 80)
              |> sequences()
              |> Enum.member?(:faint)
 
-      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chunks: 0, chars: 0}, 80)
+      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chars: 0}, 80)
              |> plain() =~ View.spinner(0)
     end
 
@@ -85,7 +85,6 @@ defmodule Tars.TUI.ViewTest do
             frame: 0,
             thinking: "ignored",
             tools: [{"second", :running}, {"first", :ok}],
-            chunks: 0,
             chars: 0
           },
           80
@@ -100,7 +99,7 @@ defmodule Tars.TUI.ViewTest do
 
     test "marks tool failures" do
       assert View.status(
-               %{frame: 0, thinking: "", tools: [{"boom", :error}], chunks: 0, chars: 0},
+               %{frame: 0, thinking: "", tools: [{"boom", :error}], chars: 0},
                80
              )
              |> plain() =~ "✗ boom"

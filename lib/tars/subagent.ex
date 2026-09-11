@@ -41,15 +41,19 @@ defmodule Tars.Subagent do
   @doc "Runs `prompt` as one turn under `scope`."
   @spec run(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def run(%Scope{} = scope, prompt, opts \\ []) when is_binary(prompt) do
-    delegate = %{named(scope, opts[:name]) | config: config(scope.config, opts)}
+    config = config(scope.config, opts)
 
+    case Keyword.get(opts, :name) do
+      nil -> answer(%{scope | config: config}, prompt)
+      name -> Scope.span(scope, name, &answer(%{&1 | config: config}, prompt))
+    end
+  end
+
+  defp answer(delegate, prompt) do
     with {:ok, messages} <- LLM.Turn.run(delegate, Context.new([Context.user(prompt)])) do
       {:ok, final_text(messages)}
     end
   end
-
-  defp named(scope, nil), do: scope
-  defp named(scope, name), do: Scope.child(scope, name: name)
 
   defp config(config, opts) do
     case Keyword.fetch(opts, :config) do

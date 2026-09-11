@@ -40,6 +40,42 @@ defmodule Tars.Event do
   @spec type(t()) :: atom()
   def type(%__MODULE__{payload: payload}), do: elem(payload, 0)
 
+  @typedoc """
+  How much of an agent's stream to take.
+
+    * `:activity` - what the agent is doing: turns, spans, model requests, tool
+      calls, answer text and reasoning
+    * `:raw` - everything, including the provider's own stream records
+  """
+  @type level() :: :activity | :raw
+
+  @levels [:activity, :raw]
+
+  @raw [:chunk, :tool_call]
+
+  @doc "Every level, from least to most."
+  @spec levels() :: [level()]
+  def levels, do: @levels
+
+  @doc """
+  The lowest level at which `type` is delivered.
+
+  `:chunk` repeats every stream record that `:result`, `:thinking` and
+  `:tool_call` already report, and `:tool_call` repeats what `:tool_started`
+  reports with the call resolved. A type nobody has classified is activity.
+  """
+  @spec level(atom()) :: level()
+  def level(type) when type in @raw, do: :raw
+  def level(_type), do: :activity
+
+  @doc "Whether a subscriber at `level` is sent events of `type`."
+  @spec delivers?(level(), atom()) :: boolean()
+  def delivers?(level, type) when level in @levels do
+    rank(level) >= rank(level(type))
+  end
+
+  defp rank(level), do: Enum.find_index(@levels, &(&1 == level))
+
   @doc "Whether the event came from a turn itself rather than work the turn spawned."
   @spec root?(t()) :: boolean()
   def root?(%__MODULE__{source: %Source{trace: trace}}), do: Trace.root?(trace)

@@ -16,25 +16,25 @@ defmodule Tars.Event.BusTest do
     :ok = Bus.subscribe(agent_id)
     :ok = Bus.subscribe(other_agent)
 
-    emit(agent_id, {:chunk, "a"})
+    emit(agent_id, {:result, "a"})
 
-    assert_receive %Event{payload: {:chunk, "a"}}
-    refute_receive %Event{payload: {:chunk, "b"}}
+    assert_receive %Event{payload: {:result, "a"}}
+    refute_receive %Event{payload: {:result, "b"}}
   end
 
   test "the published event carries the source it was emitted on", %{agent_id: agent_id} do
     :ok = Bus.subscribe(agent_id)
     source = Source.root(agent_id, name: "turn")
 
-    Event.emit(source, {:chunk, "a"})
+    Event.emit(source, {:result, "a"})
 
-    assert_receive %Event{source: ^source, payload: {:chunk, "a"}, at: at}
+    assert_receive %Event{source: ^source, payload: {:result, "a"}, at: at}
     assert is_integer(at)
   end
 
   test "publish with no subscribers is a no-op", %{agent_id: agent_id} do
     assert Bus.subscribers(agent_id) == []
-    assert emit(agent_id, {:chunk, "a"}) == :ok
+    assert emit(agent_id, {:result, "a"}) == :ok
   end
 
   test "unsubscribe stops delivery", %{agent_id: agent_id} do
@@ -43,7 +43,7 @@ defmodule Tars.Event.BusTest do
 
     assert Bus.subscribers(agent_id) == []
 
-    emit(agent_id, {:chunk, "a"})
+    emit(agent_id, {:result, "a"})
     refute_receive %Event{}
   end
 
@@ -63,8 +63,54 @@ defmodule Tars.Event.BusTest do
     send(dead, :stop)
     assert_receive {:DOWN, ^ref, :process, ^dead, _reason}
 
-    emit(agent_id, {:chunk, "a"})
-    assert_receive %Event{payload: {:chunk, "a"}}
+    emit(agent_id, {:result, "a"})
+    assert_receive %Event{payload: {:result, "a"}}
+  end
+
+  describe "levels" do
+    test "activity is what a subscriber gets by default", %{agent_id: agent_id} do
+      :ok = Bus.subscribe(agent_id)
+
+      emit(agent_id, {:chunk, "a"})
+      emit(agent_id, {:result, "a"})
+
+      assert_receive %Event{payload: {:result, "a"}}
+      refute_received %Event{payload: {:chunk, "a"}}
+    end
+
+    test "raw takes the provider's records too", %{agent_id: agent_id} do
+      :ok = Bus.subscribe(agent_id, level: :raw)
+
+      emit(agent_id, {:chunk, "a"})
+      emit(agent_id, {:result, "a"})
+
+      assert_receive %Event{payload: {:chunk, "a"}}
+      assert_receive %Event{payload: {:result, "a"}}
+    end
+
+    test "each subscriber has its own", %{agent_id: agent_id} do
+      test_pid = self()
+
+      spawn_link(fn ->
+        Bus.subscribe(agent_id, level: :raw)
+        send(test_pid, :ready)
+        receive do: (%Event{payload: {:chunk, _}} = e -> send(test_pid, {:other, e}))
+      end)
+
+      assert_receive :ready
+      :ok = Bus.subscribe(agent_id)
+
+      emit(agent_id, {:chunk, "a"})
+
+      assert_receive {:other, %Event{payload: {:chunk, "a"}}}
+      refute_received %Event{payload: {:chunk, "a"}}
+    end
+
+    test "an unknown level is a mistake worth hearing about", %{agent_id: agent_id} do
+      assert_raise ArgumentError, ~r/unknown level :loud/, fn ->
+        Bus.subscribe(agent_id, level: :loud)
+      end
+    end
   end
 
   test "events are published as telemetry, stamped with the span", %{agent_id: agent_id} do

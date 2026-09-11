@@ -120,12 +120,12 @@ defmodule Tars.Agent do
         %{runner: runner} = state
         scope = Scope.root(state.config, state.agent_id, name: "turn")
 
+        Event.emit(scope.source, {:turn_started, questions})
+
         task =
           Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
             runner.(scope, context)
           end)
-
-        Event.emit(scope.source, {:turn_started, questions})
 
         {:noreply,
          %{
