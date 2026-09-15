@@ -12,11 +12,22 @@ defmodule Mix.Tasks.Tars do
       mix tars --log /tmp/tars.log
       mix tars --tool TarsBrave.WebSearch --tool TarsResearch.Deep
       mix tars --no-tools
+      mix tars --policy MyApp.Policy --user jon --org acme
+      mix tars --timeout 600
 
   The agent boots with the tool packages this repo ships —
   `#{Enum.map_join(@default_tools, "`, `", &inspect/1)}` — because a turn with
   no tools exercises none of the tree. `--tool` names a different set, and
   `--no-tools` boots without any.
+
+  `--policy` names a `Tars.Policy` module, and `--user` and `--org` say who the
+  turn is for, which is what a policy reads to decide. A policy that answers
+  `{:ask, prompt}` parks the turn; resume it from anywhere that can reach the
+  node:
+
+      Tars.Agent.resume(:tars_tui, %{"call_abc" => :approve})
+
+  `--timeout` bounds a whole turn, in seconds.
 
   `--verbose` adds a trace line for the lower-level events — model requests,
   tool calls, metadata — and commits the model's reasoning to the transcript.
@@ -41,7 +52,11 @@ defmodule Mix.Tasks.Tars do
           log: :string,
           verbose: :boolean,
           tool: :keep,
-          tools: :boolean
+          tools: :boolean,
+          policy: :string,
+          user: :string,
+          org: :string,
+          timeout: :integer
         ]
       )
 
@@ -54,7 +69,9 @@ defmodule Mix.Tasks.Tars do
 
     agent_id = :tars_tui
     config = config(opts)
-    {:ok, _agent} = Tars.Agent.Supervisor.start(agent_id, config: config)
+
+    {:ok, _agent} =
+      Tars.Agent.Supervisor.start(agent_id, [config: config] ++ scope_opts(opts))
 
     :ok =
       Breeze.Server.run(
@@ -92,6 +109,18 @@ defmodule Mix.Tasks.Tars do
     |> Keyword.put(:tools, tools(opts))
     |> LLM.Config.new()
   end
+
+  # Only what was actually given: an agent started with no policy and no
+  # deadline should look exactly as it did before either existed.
+  defp scope_opts(opts) do
+    opts
+    |> Keyword.take([:user, :org])
+    |> put_new_option(:policy, opts[:policy], &Module.safe_concat([&1]))
+    |> put_new_option(:timeout, opts[:timeout], &:timer.seconds/1)
+  end
+
+  defp put_new_option(opts, _key, nil, _cast), do: opts
+  defp put_new_option(opts, key, value, cast), do: Keyword.put(opts, key, cast.(value))
 
   defp tools(opts) do
     if Keyword.get(opts, :tools, true), do: named(Keyword.get_values(opts, :tool)), else: []

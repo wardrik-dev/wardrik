@@ -24,6 +24,9 @@ defmodule Tars.MixProject do
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # `dev/` holds the demo policy and tools used to drive the governance seams
+  # from a terminal. Nothing in it ships.
+  defp elixirc_paths(:dev), do: ["lib", "dev"]
   defp elixirc_paths(_env), do: ["lib"]
 
   # A thin shell over a real terminal. Excluded because covering it would mean
