@@ -14,7 +14,7 @@ defmodule TarsTUI.AppTest do
     session =
       Breeze.Test.start!(App,
         size: {70, 14},
-        start_opts: [agent: self(), agent_id: agent_id, model: "test:model"],
+        start_opts: [agent: self(), agent_id: agent_id, model: "test:model", sidebar: false],
         global_keybindings: App.keybindings()
       )
 

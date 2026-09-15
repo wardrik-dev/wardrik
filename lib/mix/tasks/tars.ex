@@ -33,15 +33,17 @@ defmodule Mix.Tasks.Tars do
 
   ## Clustering
 
-  `--sname` starts distribution before the fleet boots, so the node has a name
-  and a data directory of its own. `--cookie` sets the cookie, and `--connect`
-  takes a node to connect to once the application is up, repeatable.
+  `--sname` names this node and `--cookie` sets its cookie, both before the
+  application starts so the node has a data directory of its own. `--connect`
+  names a peer to connect to, repeatable, and also runs first: the fleet's
+  store counts its quorum over the peers already connected, so a node that
+  joins afterwards is too late.
 
-      mix tars --sname tars_a --cookie tars
       mix tars --sname tars_b --cookie tars --connect tars_a@$hostname
 
-  Agents started on either node then appear in both, and `/connect` in the
-  client attaches to one wherever it is running.
+  Agents started on either node appear in both, and `/connect` in the client
+  attaches to one wherever it is running. `dev/cluster.sh` brings up three
+  nodes in tmux.
 
   `--verbose` adds a trace line for the lower-level events — model requests,
   tool calls, metadata — and commits the model's reasoning to the transcript.
@@ -78,12 +80,12 @@ defmodule Mix.Tasks.Tars do
         ]
       )
 
-    # Before the application, so the fleet's store is named after this node.
+    # Both before the application: the store is named after this node, and the
+    # fleet's quorum is counted over the peers that are already connected.
     distribute(opts)
+    Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
     Mix.Task.run("app.start")
-
-    Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
     # After app.start, not before: starting the :logger application installs
     # the default handler, so removing it earlier is undone.

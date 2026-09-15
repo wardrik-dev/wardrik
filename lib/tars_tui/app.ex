@@ -26,15 +26,22 @@ defmodule TarsTUI.App do
   Only text on the turn's root span is rendered as prose. Text streamed by
   delegated work appears as the tree of spans and tool calls.
 
-  Keys: `Enter` sends, `Esc` interrupts, `Ctrl-T` toggles tracing, `Tab` moves
-  focus to the transcript so `PageUp`/`PageDown`/`Home`/`End` scroll it,
-  `Ctrl-D` quits. `/stop` and `/quit` do the same as the keys.
+  A fleet panel down the right lists every agent in the cluster, what each is
+  doing, and which node it is on. It is driven by `Tars.Fleet.watch/1` rather
+  than polling. `/spawn` starts an agent, `/connect` attaches this client to
+  one, and `/kill` interrupts everything under a prefix.
+
+  Keys: `Enter` sends, `Esc` interrupts, `Ctrl-T` toggles tracing, `Ctrl-F`
+  toggles the fleet panel, `Tab` moves focus to the transcript so
+  `PageUp`/`PageDown`/`Home`/`End` scroll it, `Ctrl-D` quits. `/stop` and
+  `/quit` do the same as the keys.
   """
   use Breeze.View
   import Breeze.Blocks
 
   alias Tars.Agent
   alias Tars.Event
+  alias Tars.Fleet
   alias TarsTUI.Activity
   alias TarsTUI.Markdown
   alias TarsTUI.Render
@@ -46,6 +53,11 @@ defmodule TarsTUI.App do
 
   @tick 100
   @frame_after 50
+  # The fleet republishes on every transition, so a busy turn would redraw the
+  # panel constantly. One refresh per window is enough to read.
+  @fleet_after 200
+  @sidebar_width 22
+  @min_log_width 40
   @thinking_tail 240
   # Header, the spacer under the transcript, activity, and meta.
   @chrome_rows 4
@@ -54,7 +66,16 @@ defmodule TarsTUI.App do
 
   @typedoc "How a line typed at the prompt is interpreted."
   @type command() ::
-          :blank | :quit | :stop | :approve | {:deny, String.t() | nil} | {:ask, String.t()}
+          :blank
+          | :quit
+          | :stop
+          | :approve
+          | :fleet
+          | {:deny, String.t() | nil}
+          | {:spawn, String.t(), String.t() | nil}
+          | {:connect, String.t()}
+          | {:kill, String.t()}
+          | {:ask, String.t()}
 
   @default_denial "Denied by the person watching."
 
@@ -70,13 +91,39 @@ defmodule TarsTUI.App do
   def command(line, parked? \\ false) do
     case String.trim(line) do
       "" -> :blank
+      "/" <> _rest = slash -> slash(slash)
+      text -> answer(text, parked?)
+    end
+  end
+
+  defp slash(line) do
+    case line do
       slash when slash in ["/quit", "/exit"] -> :quit
       "/stop" -> :stop
+      "/fleet" -> :fleet
+      "/spawn " <> rest -> spawn_command(rest)
+      "/connect " <> name -> {:connect, String.trim(name)}
+      "/kill " <> prefix -> {:kill, String.trim(prefix)}
+      "/kill" -> {:kill, ""}
+      other -> decision(other)
+    end
+  end
+
+  # An unrecognised slash is a question that happens to start with one.
+  defp decision(line) do
+    case line do
       slash when slash in ["/approve", "/y"] -> :approve
       slash when slash in ["/deny", "/n"] -> {:deny, nil}
       "/deny " <> reason -> {:deny, String.trim(reason)}
       "/n " <> reason -> {:deny, String.trim(reason)}
-      text -> answer(text, parked?)
+      text -> {:ask, text}
+    end
+  end
+
+  defp spawn_command(rest) do
+    case rest |> String.trim() |> String.split(" ", parts: 2) do
+      [name] -> {:spawn, name, nil}
+      [name, prompt] -> {:spawn, name, String.trim(prompt)}
     end
   end
 
@@ -108,6 +155,7 @@ defmodule TarsTUI.App do
       {"^y", "Approve", &__MODULE__.approve/2},
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
+      {"^f", "Fleet", &__MODULE__.toggle_fleet/2},
       {"^d", "Quit", &__MODULE__.quit/2}
     ]
   end
@@ -126,6 +174,10 @@ defmodule TarsTUI.App do
     do: {:noreply, assign(term, verbose?: not term.assigns.verbose?)}
 
   @doc false
+  def toggle_fleet(_event, term),
+    do: {:noreply, assign(term, sidebar?: not term.assigns.sidebar?)}
+
+  @doc false
   def quit(_event, term), do: {:stop, term}
 
   @impl Breeze.View
@@ -137,12 +189,16 @@ defmodule TarsTUI.App do
 
     # `:raw` delivers `{:tool_call, chunk}` with its arguments.
     :ok = Event.Bus.subscribe(agent_id, level: :raw)
+    :ok = watch_fleet()
 
     term =
       term
       |> assign(
         agent: agent,
         agent_id: agent_id,
+        fleet: fleet_members(),
+        fleet_due?: false,
+        sidebar?: Keyword.get(opts, :sidebar, true),
         model: model,
         verbose?: Keyword.get(opts, :verbose, false),
         transcript: Transcript.new(width),
@@ -167,7 +223,20 @@ defmodule TarsTUI.App do
   end
 
   defp banner do
-    [Text.tag("Enter sends · Esc stops · Ctrl-T trace · Tab scrolls · Ctrl-D quits", @faint)]
+    [
+      Text.tag("Enter sends · Esc stops · Ctrl-T trace · Ctrl-F fleet · Ctrl-D quits", @faint),
+      Text.tag("/spawn NAME [prompt] · /connect NAME · /fleet · /kill PREFIX", @faint)
+    ]
+  end
+
+  # The fleet is optional: a client watching a single agent on a node started
+  # without one still runs, with the panel empty.
+  defp watch_fleet do
+    if Fleet.running?(), do: Fleet.watch(), else: :ok
+  end
+
+  defp fleet_members do
+    if Fleet.running?(), do: Fleet.list(), else: []
   end
 
   # -- render ----------------------------------------------------------------
@@ -177,16 +246,21 @@ defmodule TarsTUI.App do
     width = assigns.breeze.terminal.width
     height = assigns.breeze.terminal.height
 
-    if wrap_width(width) != assigns.transcript.width do
-      send(self(), {:rewrap, wrap_width(width)})
+    if wrap_width(width - sidebar_width(assigns, width)) != assigns.transcript.width do
+      send(self(), {:rewrap, wrap_width(width - sidebar_width(assigns, width))})
     end
 
     prompt_height = prompt_rows(assigns.draft, width) + 2
+    log_height = max(height - @chrome_rows - prompt_height, 1)
+    side_width = sidebar_width(assigns, width)
 
     assigns =
       assign(assigns,
         source: Transcript.source(assigns.transcript),
-        log_height: max(height - @chrome_rows - prompt_height, 1),
+        log_height: log_height,
+        log_width: width - side_width,
+        side_width: side_width,
+        sidebar: sidebar(assigns, side_width, log_height),
         prompt_class: "block w-full h-#{prompt_height} bg-none border-primary",
         header: header(assigns),
         status: status(assigns, width),
@@ -196,14 +270,17 @@ defmodule TarsTUI.App do
     ~H"""
     <box class="block w-screen h-screen overflow-hidden">
       <box class="block w-full h-1 overflow-hidden">{@header}</box>
-      <box
-        id="log"
-        focusable
-        implicit={TarsTUI.Scroll}
-        scroll-autoscroll="bottom"
-        class={"block w-full overflow-scroll scrollbar-arrows h-#{@log_height}"}
-      >
-        {@source}
+      <box class={"inline w-full overflow-hidden h-#{@log_height}"}>
+        <box
+          id="log"
+          focusable
+          implicit={TarsTUI.Scroll}
+          scroll-autoscroll="bottom"
+          class={"inline overflow-scroll scrollbar-arrows w-#{@log_width} h-#{@log_height}"}
+        >
+          {@source}
+        </box>
+        <box class={"inline overflow-hidden w-#{@side_width} h-#{@log_height}"}>{@sidebar}</box>
       </box>
       <box class="block w-full h-1 overflow-hidden">
       </box>
@@ -221,6 +298,19 @@ defmodule TarsTUI.App do
       <box class="block w-full h-1 overflow-hidden">{@meta}</box>
     </box>
     """
+  end
+
+  # The panel is dropped rather than squeezed on a narrow terminal.
+  defp sidebar_width(%{sidebar?: false}, _width), do: 0
+
+  defp sidebar_width(_assigns, width) do
+    if width - @sidebar_width >= @min_log_width, do: @sidebar_width, else: 0
+  end
+
+  defp sidebar(_assigns, 0, _height), do: ""
+
+  defp sidebar(assigns, width, height) do
+    TarsTUI.Fleet.panel(assigns.fleet, assigns.agent_id, width, height)
   end
 
   # Rows the draft occupies inside the box: one per line, more when a line
@@ -327,16 +417,63 @@ defmodule TarsTUI.App do
     term = term |> assign(draft: "") |> reset("prompt")
 
     case command(value, term.assigns.parked != []) do
-      :blank -> {:noreply, term}
       :quit -> {:stop, term}
-      :stop -> {:noreply, interrupt(term)}
-      :approve -> {:noreply, decide(term, :approve)}
-      {:deny, reason} -> {:noreply, decide(term, {:deny, reason || @default_denial})}
-      {:ask, text} -> {:noreply, ask(term, text)}
+      command -> {:noreply, apply_command(command, term)}
     end
   end
 
   def handle_event(_name, _event, term), do: {:noreply, term}
+
+  defp apply_command(:blank, term), do: term
+  defp apply_command(:stop, term), do: interrupt(term)
+  defp apply_command(:approve, term), do: decide(term, :approve)
+  defp apply_command(:fleet, term), do: list_fleet(term)
+  defp apply_command({:deny, reason}, term), do: decide(term, {:deny, reason || @default_denial})
+  defp apply_command({:spawn, name, prompt}, term), do: spawn_agent(term, name, prompt)
+  defp apply_command({:connect, name}, term), do: connect(term, name)
+  defp apply_command({:kill, prefix}, term), do: kill(term, prefix)
+  defp apply_command({:ask, text}, term), do: ask(term, text)
+
+  defp list_fleet(term) do
+    term
+    |> refresh_fleet()
+    |> append_lines([""] ++ TarsTUI.Fleet.listing(fleet_members()))
+  end
+
+  defp spawn_agent(term, name, prompt) do
+    case Fleet.spawn(name, []) do
+      {:ok, _pid} ->
+        key = Fleet.key(name)
+        if prompt, do: Agent.ask(key, prompt)
+
+        term |> refresh_fleet() |> append(View.spawned(key, prompt))
+
+      {:error, reason} ->
+        append(term, View.error(reason))
+    end
+  end
+
+  defp connect(term, name) do
+    key = Fleet.key(name)
+
+    case Fleet.whereis(key) do
+      nil ->
+        append(term, View.no_such_agent(key))
+
+      pid ->
+        Event.Bus.unsubscribe(term.assigns.agent_id)
+        :ok = Event.Bus.subscribe(key, level: :raw)
+
+        term
+        |> assign(agent: pid, agent_id: key, running?: false, parked: [], queued: 0)
+        |> refresh_fleet()
+        |> append(View.connected(key))
+    end
+  end
+
+  defp kill(term, prefix) do
+    append(term, View.killed(prefix, Fleet.kill(prefix)))
+  end
 
   # Every parked call takes the same answer. One question at a time is what a
   # terminal can ask clearly; a surface that needs them separately has
@@ -387,6 +524,19 @@ defmodule TarsTUI.App do
 
   def handle_info(:frame, term), do: {:noreply, assign(term, frame_due?: false)}
 
+  # A group event says something in the fleet changed; the refresh behind it
+  # reads the whole list once, however many events arrived.
+  def handle_info({:group, _events, _info}, term) do
+    if term.assigns.fleet_due? do
+      {:noreply, term, invalidate: false}
+    else
+      Process.send_after(self(), :refresh_fleet, @fleet_after)
+      {:noreply, assign(term, fleet_due?: true), invalidate: false}
+    end
+  end
+
+  def handle_info(:refresh_fleet, term), do: {:noreply, refresh_fleet(term)}
+
   def handle_info(:tick, %{assigns: %{running?: true}} = term) do
     schedule_tick()
     {:noreply, assign(term, frame: term.assigns.frame + 1)}
@@ -399,6 +549,8 @@ defmodule TarsTUI.App do
   end
 
   def handle_info(_message, term), do: {:noreply, term}
+
+  defp refresh_fleet(term), do: assign(term, fleet: fleet_members(), fleet_due?: false)
 
   defp frame_due(%{assigns: %{frame_due?: true}} = term), do: term
 

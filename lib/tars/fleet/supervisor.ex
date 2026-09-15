@@ -20,8 +20,8 @@ defmodule Tars.Fleet.Supervisor do
 
   `:data_dir` falls back to `TARS_DATA_DIR`, then to a directory named after
   the node under the system temp directory. `:cluster_size` is the number of
-  voting members EKV does quorum arithmetic against. `:log` is passed to
-  `Group`.
+  voting members EKV does quorum arithmetic against, falling back to
+  `TARS_CLUSTER_SIZE` and then to 1. `:log` is passed to `Group`.
   """
 
   use Supervisor
@@ -40,8 +40,7 @@ defmodule Tars.Fleet.Supervisor do
   @impl true
   def init(opts) do
     children = [
-      {EKV,
-       name: @ekv, data_dir: data_dir(opts), cluster_size: Keyword.get(opts, :cluster_size, 1)},
+      {EKV, name: @ekv, data_dir: data_dir(opts), cluster_size: cluster_size(opts)},
       {DurableServer.Supervisor,
        name: Tars.Fleet,
        prefix: Tars.Fleet.prefix(),
@@ -50,6 +49,21 @@ defmodule Tars.Fleet.Supervisor do
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)
+  end
+
+  @doc "How many voting members EKV does quorum arithmetic against."
+  @spec cluster_size(keyword()) :: pos_integer()
+  def cluster_size(opts \\ []) do
+    Keyword.get(opts, :cluster_size) || env_integer("TARS_CLUSTER_SIZE") || 1
+  end
+
+  defp env_integer(name) do
+    with value when is_binary(value) <- System.get_env(name),
+         {integer, ""} <- Integer.parse(value) do
+      integer
+    else
+      _other -> nil
+    end
   end
 
   @doc "Where this node's durable state is written. See the module options."

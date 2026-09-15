@@ -47,4 +47,21 @@ defmodule TarsTUI.App.CommandTest do
     assert App.command("/stop") == :stop
     assert App.command(" hello ") == {:ask, "hello"}
   end
+
+  test "the fleet has its own vocabulary" do
+    assert App.command("/fleet") == :fleet
+    assert App.command("/spawn researcher") == {:spawn, "researcher", nil}
+
+    assert App.command("/spawn researcher look into it") ==
+             {:spawn, "researcher", "look into it"}
+
+    assert App.command("/connect researcher") == {:connect, "researcher"}
+    assert App.command("/kill acme/") == {:kill, "acme/"}
+    assert App.command("/kill") == {:kill, ""}
+  end
+
+  test "the fleet vocabulary works while a turn is parked" do
+    assert App.command("/fleet", true) == :fleet
+    assert App.command("/connect other", true) == {:connect, "other"}
+  end
 end

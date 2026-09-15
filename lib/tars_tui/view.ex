@@ -198,6 +198,33 @@ defmodule TarsTUI.View do
   @spec nothing_to_answer() :: Text.t()
   def nothing_to_answer, do: [Text.tag("  ▌ nothing is waiting for a decision\n\n", @faint)]
 
+  @doc "That an agent was started in the fleet, and what it was asked."
+  @spec spawned(String.t(), String.t() | nil) :: Text.t()
+  def spawned(key, nil), do: note(["spawned ", Text.tag(key, :bright)])
+
+  def spawned(key, prompt),
+    do: note(["spawned ", Text.tag(key, :bright), " · asked ", Text.tag(prompt, :bright)])
+
+  @doc "That this client is now watching a different agent."
+  @spec connected(String.t()) :: Text.t()
+  def connected(key), do: note(["connected to ", Text.tag(key, [:bright, :cyan])])
+
+  @doc "That a key names nothing the fleet is holding."
+  @spec no_such_agent(String.t()) :: Text.t()
+  def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
+
+  @doc "How many agents a kill reached."
+  @spec killed(String.t(), non_neg_integer()) :: Text.t()
+  def killed(prefix, 0), do: note(["nothing running under ", Text.tag(quoted(prefix), :bright)])
+
+  def killed(prefix, count),
+    do: note(["stopped #{count} under ", Text.tag(quoted(prefix), :bright)])
+
+  defp quoted(""), do: "the whole fleet"
+  defp quoted(prefix), do: prefix
+
+  defp note(content), do: ["\n", Text.tag("· ", @faint), content, "\n"]
+
   # Two columns go to the glyph and its trailing space, and one is left spare.
   defp room(width), do: max(width - 3, 1)
 

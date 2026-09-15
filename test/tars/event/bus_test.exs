@@ -144,4 +144,33 @@ defmodule Tars.Event.BusTest do
     assert metadata.parent_span_id == source.trace.parent_span_id
     assert %Event{payload: {:tool_started, "call_1", "echo"}} = metadata.event
   end
+
+  describe "across the cluster" do
+    test "delivery goes through the fleet while it is running" do
+      assert Tars.Event.Bus.transport() == :cluster
+    end
+
+    test "a raw subscriber is sent each event once, not once per level" do
+      agent_id = Tars.Test.Fleet.key("levels")
+      :ok = Bus.subscribe(agent_id, level: :raw)
+      source = Source.root(agent_id)
+
+      Event.emit(source, {:result, "activity"})
+      Event.emit(source, {:chunk, "raw"})
+
+      assert_receive %Event{payload: {:result, "activity"}}
+      assert_receive %Event{payload: {:chunk, "raw"}}
+      refute_receive %Event{}
+    end
+
+    test "unsubscribing leaves both levels" do
+      agent_id = Tars.Test.Fleet.key("leaving")
+      :ok = Bus.subscribe(agent_id, level: :raw)
+      assert Bus.subscribers(agent_id) == [self()]
+
+      :ok = Bus.unsubscribe(agent_id)
+
+      assert Bus.subscribers(agent_id) == []
+    end
+  end
 end
