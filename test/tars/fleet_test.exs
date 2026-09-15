@@ -10,6 +10,7 @@ defmodule Tars.FleetTest do
   defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
   defp parking_runner(test_pid), do: {AgentRunners, :parking, [test_pid, "call_1"]}
   defp blocking_runner(test_pid), do: {AgentRunners, :blocking, [test_pid, "ok"]}
+  defp streaming_runner(test_pid), do: {AgentRunners, :streaming, [test_pid]}
 
   defp start(key, opts) do
     {:ok, pid} = Fleet.spawn(key, opts)
@@ -153,20 +154,20 @@ defmodule Tars.FleetTest do
       org = "org#{System.unique_integer([:positive])}"
       one = Fleet.key("one", org: org)
       two = Fleet.key("two", org: org)
-      start(one, runner: blocking_runner(self()))
-      start(two, runner: blocking_runner(self()))
+      start(one, runner: streaming_runner(self()))
+      start(two, runner: streaming_runner(self()))
       Event.Bus.subscribe(one)
       Event.Bus.subscribe(two)
 
       Agent.ask(one, "go")
       Agent.ask(two, "go")
-      assert_receive {:turn, _one, _pid_one}
-      assert_receive {:turn, _two, _pid_two}
+      assert_receive {:running, _pid_one}
+      assert_receive {:running, _pid_two}
 
       assert Fleet.kill("#{org}/") == 2
 
-      assert_receive %Event{payload: {:turn_interrupted, _stats}}, 5_000
-      assert_receive %Event{payload: {:turn_interrupted, _stats}}, 5_000
+      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :stopped}}}, 1_000
+      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :stopped}}}, 1_000
     end
 
     test "leaves agents outside the prefix alone" do

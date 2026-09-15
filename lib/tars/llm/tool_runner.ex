@@ -231,10 +231,14 @@ defmodule Tars.LLM.ToolRunner do
     :ok = Scope.Context.put(scope, call)
     register(scope, call)
 
-    case decide(call, scope, opts) do
-      :allow -> invoke(call, scope)
-      {:deny, reason} -> deny(call, scope, reason)
-      {:ask, prompt} -> park(call, scope, prompt)
+    try do
+      case decide(call, scope, opts) do
+        :allow -> invoke(call, scope)
+        {:deny, reason} -> deny(call, scope, reason)
+        {:ask, prompt} -> park(call, scope, prompt)
+      end
+    after
+      Registry.unregister(@registry, {scope.source.agent_id, call.id})
     end
   end
 
