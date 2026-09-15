@@ -13,8 +13,8 @@ defmodule TarsTUI.Fleet do
 
   @faint [:faint, :light_black]
 
-  @glyphs %{idle: "○", running: "◐", parked: "?", unknown: "·"}
-  @colours %{idle: @faint, running: :cyan, parked: :yellow, unknown: @faint}
+  @glyphs %{idle: "○", running: "◐", parked: "?"}
+  @colours %{idle: @faint, running: :cyan, parked: :yellow}
 
   @doc """
   The panel as one string per row, clipped to `width`.
@@ -44,7 +44,7 @@ defmodule TarsTUI.Fleet do
     row = [
       marker,
       " ",
-      Text.tag(@glyphs[member.status] || @glyphs.unknown, @colours[member.status] || @faint),
+      Text.tag(@glyphs[member.status], @colours[member.status]),
       " ",
       Text.tag(member.name, name_colour(member, attached)),
       suffix(member)
@@ -85,7 +85,7 @@ defmodule TarsTUI.Fleet do
   def listing(members) do
     Enum.map(members, fn member ->
       [
-        Text.tag("  #{@glyphs[member.status] || @glyphs.unknown} ", @colours[member.status]),
+        Text.tag("  #{@glyphs[member.status]} ", @colours[member.status]),
         Text.tag(member.key, :bright),
         Text.tag(" #{member.status} on #{member.node}", @faint)
       ]

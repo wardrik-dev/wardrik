@@ -31,6 +31,13 @@ defmodule Mix.Tasks.Tars do
 
   `--timeout` bounds a whole turn, in seconds.
 
+  `--name`, with `--org` and `--user`, is the agent's key in the fleet, and the
+  fleet keeps an agent's conversation across restarts. Starting with the same
+  three attaches to the same agent and shows what was said so far, which is how
+  a session is resumed:
+
+      mix tars --name researcher --org acme --user jon
+
   ## Clustering
 
   `--sname` names this node and `--cookie` sets its cookie, both before the
@@ -93,10 +100,10 @@ defmodule Mix.Tasks.Tars do
     redirect_logging(opts[:log] || System.get_env("TARS_LOG"))
 
     config = config(opts)
-    scope_opts = scope_opts(opts)
-    agent_id = Tars.Fleet.key(opts[:name] || "assistant", scope_opts)
+    spawn_opts = [config: config] ++ scope_opts(opts)
+    agent_id = Tars.Fleet.key(opts[:name] || "assistant", spawn_opts)
 
-    {:ok, _agent} = Tars.Fleet.spawn(agent_id, [config: config] ++ scope_opts)
+    {:ok, _agent} = Tars.Fleet.spawn(agent_id, spawn_opts)
 
     :ok =
       Breeze.Server.run(
@@ -104,6 +111,7 @@ defmodule Mix.Tasks.Tars do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
+          spawn_opts: spawn_opts,
           model: config.model_spec,
           verbose: opts[:verbose] || false
         ],

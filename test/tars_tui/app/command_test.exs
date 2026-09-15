@@ -45,15 +45,25 @@ defmodule TarsTUI.App.CommandTest do
     assert App.command("/quit") == :quit
     assert App.command("/exit") == :quit
     assert App.command("/stop") == :stop
+    assert App.command("/help") == :help
     assert App.command(" hello ") == {:ask, "hello"}
   end
 
   test "the fleet has its own vocabulary" do
     assert App.command("/fleet") == :fleet
-    assert App.command("/spawn researcher") == {:spawn, "researcher", nil}
+    assert App.command("/spawn researcher") == {:spawn, "researcher", %{}, nil}
 
     assert App.command("/spawn researcher look into it") ==
-             {:spawn, "researcher", "look into it"}
+             {:spawn, "researcher", %{}, "look into it"}
+
+    assert App.command("/spawn researcher node=tars_b look into it") ==
+             {:spawn, "researcher", %{"node" => "tars_b"}, "look into it"}
+
+    assert App.command("/spawn researcher node=tars_b") ==
+             {:spawn, "researcher", %{"node" => "tars_b"}, nil}
+
+    assert App.command("/move researcher node=tars_b") ==
+             {:move, "researcher", %{"node" => "tars_b"}}
 
     assert App.command("/connect researcher") == {:connect, "researcher"}
     assert App.command("/kill acme/") == {:kill, "acme/"}

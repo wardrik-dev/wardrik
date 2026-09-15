@@ -7,12 +7,13 @@ defmodule TarsTUI.ScrollTest do
 
   # Forty lines of transcript in a pane that shows seven rows.
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
+    {:ok, agent} = Tars.Test.FakeAgent.start_link(self())
 
     session =
       Breeze.Test.start!(App,
         size: {60, 14},
-        start_opts: [agent: self(), agent_id: agent_id, model: "m"]
+        start_opts: [agent: agent, agent_id: agent_id, model: "m"]
       )
 
     on_exit(fn -> Breeze.Test.stop(session) end)

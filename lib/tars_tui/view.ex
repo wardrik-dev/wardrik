@@ -198,20 +198,56 @@ defmodule TarsTUI.View do
   @spec nothing_to_answer() :: Text.t()
   def nothing_to_answer, do: [Text.tag("  ▌ nothing is waiting for a decision\n\n", @faint)]
 
-  @doc "That an agent was started in the fleet, and what it was asked."
-  @spec spawned(String.t(), String.t() | nil) :: Text.t()
-  def spawned(key, nil), do: note(["spawned ", Text.tag(key, :bright)])
+  @doc "That an agent was started in the fleet, and this client attached to it."
+  @spec spawned(String.t()) :: Text.t()
+  def spawned(key), do: note(["spawned and connected to ", Text.tag(key, [:bright, :cyan])])
 
-  def spawned(key, prompt),
-    do: note(["spawned ", Text.tag(key, :bright), " · asked ", Text.tag(prompt, :bright)])
+  @doc "That an agent was restarted on another node."
+  @spec moved(String.t(), node()) :: Text.t()
+  def moved(key, node),
+    do: note(["moved ", Text.tag(key, :bright), " to ", Text.tag(Atom.to_string(node), :bright)])
 
   @doc "That this client is now watching a different agent."
   @spec connected(String.t()) :: Text.t()
   def connected(key), do: note(["connected to ", Text.tag(key, [:bright, :cyan])])
 
+  @doc "The glyph in front of what a person typed: `›` sent, `»` queued behind a turn."
+  @spec prompt(String.t()) :: Text.t()
+  def prompt(glyph), do: Text.tag(glyph <> " ", [:bright, :cyan])
+
+  @doc "A message a person sent, as the transcript shows it."
+  @spec question(String.t()) :: Text.t()
+  def question(text), do: [prompt("›"), Text.tag(text, :bright)]
+
   @doc "That a key names nothing the fleet is holding."
   @spec no_such_agent(String.t()) :: Text.t()
   def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
+
+  @doc "That one agent was told to stop."
+  @spec interrupting(String.t()) :: Text.t()
+  def interrupting(key), do: note(["interrupting ", Text.tag(key, :bright)])
+
+  @help [
+    {"Enter", "send · Esc stop · Tab scroll the transcript"},
+    {"Ctrl-T", "toggle the trace · Ctrl-F the fleet panel · Ctrl-D quit"},
+    {"/spawn NAME [node=N] [prompt]", "start an agent beside this one and attach to it"},
+    {"/connect NAME", "attach to an agent and show its conversation"},
+    {"/move NAME node=N", "restart an agent on another node, as it was"},
+    {"/kill NAME · /kill PREFIX/ · /kill", "interrupt one agent, a prefix, or everything"},
+    {"/fleet", "list every agent in the cluster"},
+    {"/approve · /deny [reason]", "answer a parked turn; y and n do too while it waits"},
+    {"/stop · /quit", "interrupt this agent · leave"}
+  ]
+
+  @doc "Every key and command, one per line."
+  @spec help() :: [Text.t()]
+  def help do
+    width = @help |> Enum.map(fn {what, _does} -> String.length(what) end) |> Enum.max()
+
+    Enum.map(@help, fn {what, does} ->
+      ["  ", Text.tag(String.pad_trailing(what, width), :bright), Text.tag("  #{does}", @faint)]
+    end)
+  end
 
   @doc "How many agents a kill reached."
   @spec killed(String.t(), non_neg_integer()) :: Text.t()

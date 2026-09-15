@@ -5,16 +5,16 @@ defmodule TarsTUI.AppTest do
   alias Tars.Event.Source
   alias TarsTUI.App
 
-  # The view is driven purely by events, so a fake agent id is enough — no
-  # agent process is needed. `agent: self()` means `Agent.ask/2` and
-  # `Agent.interrupt/1` land in this test's mailbox as casts.
+  # The view is driven purely by events, so a fake agent is enough. It forwards
+  # `Agent.ask/2` and `Agent.interrupt/1` to this test's mailbox as casts.
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
+    {:ok, agent} = Tars.Test.FakeAgent.start_link(self())
 
     session =
       Breeze.Test.start!(App,
         size: {70, 14},
-        start_opts: [agent: self(), agent_id: agent_id, model: "test:model", sidebar: false],
+        start_opts: [agent: agent, agent_id: agent_id, model: "test:model", sidebar: false],
         global_keybindings: App.keybindings()
       )
 

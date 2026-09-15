@@ -28,8 +28,18 @@ defmodule TarsTUI.App do
 
   A fleet panel down the right lists every agent in the cluster, what each is
   doing, and which node it is on. It is driven by `Tars.Fleet.watch/1` rather
-  than polling. `/spawn` starts an agent, `/connect` attaches this client to
-  one, and `/kill` interrupts everything under a prefix.
+  than polling. `/spawn NAME [node=NODE] [prompt]` starts an agent with the
+  same `:spawn_opts` this client's own agent was given, on the named node if
+  one is given, attaches to it, and sends it the prompt. `/connect NAME`
+  attaches this client to an agent under its own org and user: the transcript
+  is cleared and the agent's conversation played back, so what is on screen is
+  that agent's. `/move NAME node=NODE` restarts
+  an agent on another node with the conversation it has. `/kill NAME`
+  interrupts one agent, `/kill PREFIX/` everything under a prefix, and `/kill`
+  the whole fleet. `/help` lists all of this.
+
+  Attaching works the same way on start, so an agent named on the command line
+  that already has a conversation shows it.
 
   Keys: `Enter` sends, `Esc` interrupts, `Ctrl-T` toggles tracing, `Ctrl-F`
   toggles the fleet panel, `Tab` moves focus to the transcript so
@@ -42,6 +52,7 @@ defmodule TarsTUI.App do
   alias Tars.Agent
   alias Tars.Event
   alias Tars.Fleet
+  alias Tars.LLM
   alias TarsTUI.Activity
   alias TarsTUI.Markdown
   alias TarsTUI.Render
@@ -71,11 +82,16 @@ defmodule TarsTUI.App do
           | :stop
           | :approve
           | :fleet
+          | :help
           | {:deny, String.t() | nil}
-          | {:spawn, String.t(), String.t() | nil}
+          | {:spawn, String.t(), options(), String.t() | nil}
+          | {:move, String.t(), options()}
           | {:connect, String.t()}
           | {:kill, String.t()}
           | {:ask, String.t()}
+
+  @typedoc "The `key=value` words a command was given."
+  @type options() :: %{String.t() => String.t()}
 
   @default_denial "Denied by the person watching."
 
@@ -100,8 +116,16 @@ defmodule TarsTUI.App do
     case line do
       slash when slash in ["/quit", "/exit"] -> :quit
       "/stop" -> :stop
+      "/help" -> :help
+      other -> fleet_command(other)
+    end
+  end
+
+  defp fleet_command(line) do
+    case line do
       "/fleet" -> :fleet
       "/spawn " <> rest -> spawn_command(rest)
+      "/move " <> rest -> move_command(rest)
       "/connect " <> name -> {:connect, String.trim(name)}
       "/kill " <> prefix -> {:kill, String.trim(prefix)}
       "/kill" -> {:kill, ""}
@@ -121,11 +145,28 @@ defmodule TarsTUI.App do
   end
 
   defp spawn_command(rest) do
-    case rest |> String.trim() |> String.split(" ", parts: 2) do
-      [name] -> {:spawn, name, nil}
-      [name, prompt] -> {:spawn, name, String.trim(prompt)}
-    end
+    {name, options, prompt} = arguments(rest)
+    {:spawn, name, options, prompt}
   end
+
+  defp move_command(rest) do
+    {name, options, _prompt} = arguments(rest)
+    {:move, name, options}
+  end
+
+  # A name, then `key=value` words as options; the first word without `=`
+  # starts the free text.
+  defp arguments(rest) do
+    [name | words] = String.split(rest)
+    {options, text} = Enum.split_while(words, &String.contains?(&1, "="))
+
+    {name, Map.new(options, &option/1), presence(Enum.join(text, " "))}
+  end
+
+  defp option(word), do: word |> String.split("=", parts: 2) |> List.to_tuple()
+
+  defp presence(""), do: nil
+  defp presence(text), do: text
 
   defp answer(text, false), do: {:ask, text}
 
@@ -183,61 +224,84 @@ defmodule TarsTUI.App do
   @impl Breeze.View
   def mount(opts, term) do
     agent = Keyword.fetch!(opts, :agent)
-    agent_id = Keyword.get(opts, :agent_id, agent)
     model = Keyword.get(opts, :model, "")
-    width = width(term)
 
-    # `:raw` delivers `{:tool_call, chunk}` with its arguments.
-    :ok = Event.Bus.subscribe(agent_id, level: :raw)
-    :ok = watch_fleet()
+    :ok = Fleet.watch()
 
     term =
       term
       |> assign(
-        agent: agent,
-        agent_id: agent_id,
-        fleet: fleet_members(),
+        spawn_opts: Keyword.get(opts, :spawn_opts, []),
+        fleet: Fleet.list(),
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),
         model: model,
         verbose?: Keyword.get(opts, :verbose, false),
-        transcript: Transcript.new(width),
-        activity: Activity.new(),
-        answer: Markdown.new(),
-        reasoning: Markdown.new(),
-        thinking: "",
         usage: Usage.new(model),
-        running?: false,
-        parked: [],
         frame: 0,
         frame_due?: false,
         started_at: nil,
-        chars: 0,
-        queued: 0,
-        answering?: false,
         draft: ""
       )
+      |> attach(agent, Keyword.get(opts, :agent_id, agent))
+      |> append_lines(banner())
       |> focus("prompt")
 
-    {:ok, append_lines(term, banner())}
+    {:ok, term}
   end
 
-  defp banner do
-    [
-      Text.tag("Enter sends · Esc stops · Ctrl-T trace · Ctrl-F fleet · Ctrl-D quits", @faint),
-      Text.tag("/spawn NAME [prompt] · /connect NAME · /fleet · /kill PREFIX", @faint)
-    ]
+  # Subscribes to `agent`'s events, and starts the transcript over with its
+  # conversation and what it is doing now. `agent_id` is what the events are
+  # published under.
+  defp attach(term, agent, agent_id) do
+    # `:raw` delivers `{:tool_call, chunk}` with its arguments.
+    :ok = Event.Bus.subscribe(agent_id, level: :raw)
+    %{state: state, pending: pending} = Agent.status(agent)
+    parked = Agent.parked(agent)
+
+    term
+    |> assign(
+      agent: agent,
+      agent_id: agent_id,
+      transcript: Transcript.new(width(term)),
+      activity: Activity.new(),
+      answer: Markdown.new(),
+      reasoning: Markdown.new(),
+      thinking: "",
+      running?: state == :running,
+      parked: parked,
+      queued: pending,
+      chars: 0,
+      answering?: false
+    )
+    |> playback(Agent.get_context(agent))
+    |> parked_notice(parked)
   end
 
-  # The fleet is optional: a client watching a single agent on a node started
-  # without one still runs, with the panel empty.
-  defp watch_fleet do
-    if Fleet.running?(), do: Fleet.watch(), else: :ok
+  # The conversation so far, as the transcript would have shown it: what the
+  # person asked, and what the agent answered. Tool exchanges are left out.
+  defp playback(term, %ReqLLM.Context{messages: messages}) do
+    Enum.reduce(messages, term, &play/2)
   end
 
-  defp fleet_members do
-    if Fleet.running?(), do: Fleet.list(), else: []
+  defp play(%{role: :user} = message, term), do: question(term, LLM.Context.text(message))
+
+  defp play(%{role: :assistant} = message, term) do
+    {streamed, answer} = Markdown.push(Markdown.new(), LLM.Context.text(message))
+    {rest, _answer} = Markdown.flush(answer)
+
+    term |> assign(answering?: false) |> answer_lines(streamed ++ rest)
   end
+
+  defp play(_tool_message, term), do: term
+
+  defp parked_notice(term, []), do: term
+  defp parked_notice(term, calls), do: append(term, View.parked(calls))
+
+  defp question(term, text), do: append_lines(term, ["", View.question(text)])
+
+  defp banner,
+    do: [Text.tag("Enter sends · Esc stops · Ctrl-D quits · /help for the rest", @faint)]
 
   # -- render ----------------------------------------------------------------
 
@@ -290,7 +354,7 @@ defmodule TarsTUI.App do
         br-change="draft"
         br-submit="ask"
         textarea-value={@draft}
-        textarea-placeholder="Ask anything · /stop · /quit"
+        textarea-placeholder="Ask anything · /help"
         textarea-prefix="› "
         textarea-submit-on-enter={true}
         class={@prompt_class}
@@ -428,8 +492,13 @@ defmodule TarsTUI.App do
   defp apply_command(:stop, term), do: interrupt(term)
   defp apply_command(:approve, term), do: decide(term, :approve)
   defp apply_command(:fleet, term), do: list_fleet(term)
+  defp apply_command(:help, term), do: append_lines(term, [""] ++ View.help())
   defp apply_command({:deny, reason}, term), do: decide(term, {:deny, reason || @default_denial})
-  defp apply_command({:spawn, name, prompt}, term), do: spawn_agent(term, name, prompt)
+
+  defp apply_command({:spawn, name, options, prompt}, term),
+    do: spawn_agent(term, name, options, prompt)
+
+  defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
   defp apply_command({:connect, name}, term), do: connect(term, name)
   defp apply_command({:kill, prefix}, term), do: kill(term, prefix)
   defp apply_command({:ask, text}, term), do: ask(term, text)
@@ -437,42 +506,94 @@ defmodule TarsTUI.App do
   defp list_fleet(term) do
     term
     |> refresh_fleet()
-    |> append_lines([""] ++ TarsTUI.Fleet.listing(fleet_members()))
+    |> append_lines([""] ++ TarsTUI.Fleet.listing(Fleet.list()))
   end
 
-  defp spawn_agent(term, name, prompt) do
-    case Fleet.spawn(name, []) do
-      {:ok, _pid} ->
-        key = Fleet.key(name)
-        if prompt, do: Agent.ask(key, prompt)
+  defp spawn_agent(term, name, options, prompt) do
+    key = key(term, name)
 
-        term |> refresh_fleet() |> append(View.spawned(key, prompt))
-
-      {:error, reason} ->
-        append(term, View.error(reason))
+    with {:ok, placement} <- placement(options),
+         {:ok, pid} <- Fleet.spawn(key, term.assigns.spawn_opts ++ placement) do
+      term |> switch(pid, key) |> append(View.spawned(key)) |> ask_if(prompt)
+    else
+      {:error, reason} -> append(term, View.error(reason))
     end
   end
 
+  defp ask_if(term, nil), do: term
+  defp ask_if(term, prompt), do: ask(term, prompt)
+
+  defp move_agent(term, name, options) do
+    key = key(term, name)
+
+    with {:ok, [node: node]} <- placement(options),
+         {:ok, _pid} <- Fleet.move(key, node) do
+      term |> refresh_fleet() |> append(View.moved(key, node))
+    else
+      {:ok, []} -> append(term, View.error(:node_required))
+      {:error, reason} -> append(term, View.error(reason))
+    end
+  end
+
+  defp placement(%{"node" => name} = options) when map_size(options) == 1 do
+    case node_named(name) do
+      nil -> {:error, {:no_such_node, name}}
+      node -> {:ok, [node: node]}
+    end
+  end
+
+  defp placement(options) when map_size(options) == 0, do: {:ok, []}
+  defp placement(options), do: {:error, {:unknown_options, Map.keys(options) -- ["node"]}}
+
+  # A node by its full name, or by the part before the `@`.
+  defp node_named(name) do
+    Enum.find([node() | Node.list()], fn node ->
+      Atom.to_string(node) in [name, "#{name}@#{host(node)}"]
+    end)
+  end
+
+  defp host(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> List.last()
+
   defp connect(term, name) do
-    key = Fleet.key(name)
+    key = key(term, name)
 
     case Fleet.whereis(key) do
       nil ->
         append(term, View.no_such_agent(key))
 
       pid ->
-        Event.Bus.unsubscribe(term.assigns.agent_id)
-        :ok = Event.Bus.subscribe(key, level: :raw)
-
-        term
-        |> assign(agent: pid, agent_id: key, running?: false, parked: [], queued: 0)
-        |> refresh_fleet()
-        |> append(View.connected(key))
+        term |> switch(pid, key) |> append(View.connected(key))
     end
   end
 
-  defp kill(term, prefix) do
-    append(term, View.killed(prefix, Fleet.kill(prefix)))
+  # Leaves the agent this client is attached to for `pid`, registered under
+  # `key`. The agent is addressed by pid from here on: the registry is
+  # eventually consistent, so a key may not yet resolve on this node for an
+  # agent that just started on another.
+  defp switch(term, pid, key) do
+    Event.Bus.unsubscribe(term.assigns.agent_id)
+
+    term |> attach(pid, key) |> refresh_fleet()
+  end
+
+  # Agents this client names live beside its own, under the same org and user.
+  defp key(term, name), do: Fleet.key(name, term.assigns.spawn_opts)
+
+  # A prefix ends in `/`; anything else names an agent under this client's org
+  # and user.
+  defp kill(term, ""), do: append(term, View.killed("", Fleet.kill()))
+
+  defp kill(term, target) do
+    if String.ends_with?(target, "/") do
+      append(term, View.killed(target, Fleet.kill(target)))
+    else
+      key = key(term, target)
+
+      case Agent.interrupt(key) do
+        :ok -> append(term, View.interrupting(key))
+        {:error, :not_found} -> append(term, View.no_such_agent(key))
+      end
+    end
   end
 
   # Every parked call takes the same answer. One question at a time is what a
@@ -501,10 +622,10 @@ defmodule TarsTUI.App do
       |> assign(queued: term.assigns.queued + 1)
       |> append_lines([
         "",
-        [prompt("»"), Text.tag(text, :bright), Text.tag("  · queued", @faint)]
+        [View.prompt("»"), Text.tag(text, :bright), Text.tag("  · queued", @faint)]
       ])
     else
-      append_lines(term, ["", [prompt("›"), Text.tag(text, :bright)]])
+      question(term, text)
     end
   end
 
@@ -550,7 +671,7 @@ defmodule TarsTUI.App do
 
   def handle_info(_message, term), do: {:noreply, term}
 
-  defp refresh_fleet(term), do: assign(term, fleet: fleet_members(), fleet_due?: false)
+  defp refresh_fleet(term), do: assign(term, fleet: Fleet.list(), fleet_due?: false)
 
   defp frame_due(%{assigns: %{frame_due?: true}} = term), do: term
 
@@ -729,8 +850,6 @@ defmodule TarsTUI.App do
   end
 
   defp trace(term, _event), do: term
-
-  defp prompt(glyph), do: Text.tag(glyph <> " ", [:bright, :cyan])
 
   # The answer is one block: a blank line, a bullet on its first line, and the
   # rest indented under it. A table takes its indent as a table, and one that
