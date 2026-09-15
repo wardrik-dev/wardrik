@@ -8,7 +8,7 @@ defmodule Tars.LLM.Dispatch do
   model it lands on, or which key pays for it does all three here, once, rather
   than wrapping the runtime.
 
-      Tars.Agent.Supervisor.start(:assistant, config: config, dispatch: MyApp.Gateway)
+      Tars.Fleet.spawn("assistant", config: config, dispatch: MyApp.Gateway)
 
   `admit/2` is the only place a credential enters a call, and `settle/3` is the
   only place its usage leaves one. A host that enforces that rule gets a

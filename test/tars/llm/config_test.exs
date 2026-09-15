@@ -31,16 +31,46 @@ defmodule Tars.LLM.ConfigTest do
     assert Config.new(system: "You answer briefly.").system == "You answer briefly."
   end
 
-  test "new/1 builds the tools a config names by module" do
+  test "new/1 holds the specs as given, and tools/1 builds them" do
     config = Config.new(tools: [EchoTool])
 
-    assert [%ReqLLM.Tool{name: "echo"}] = config.tools
+    assert config.tools == [EchoTool]
+    assert [%ReqLLM.Tool{name: "echo"}] = Config.tools(config)
   end
 
-  test "new/1 leaves an already-built tool alone, so building twice is safe" do
-    once = Config.new(tools: [EchoTool])
+  test "tools/1 leaves an already-built tool alone, so building twice is safe" do
+    once = Config.tools(Config.new(tools: [EchoTool]))
 
-    assert Config.new(tools: once.tools).tools == once.tools
+    assert Config.tools(Config.new(tools: once)) == once
+  end
+
+  describe "tool_timeout/2" do
+    defmodule Patient do
+      @behaviour Tars.Tool
+
+      @impl true
+      def tool do
+        ReqLLM.Tool.new!(name: "patient", description: "slow", callback: fn _ -> {:ok, %{}} end)
+      end
+
+      @impl true
+      def timeout, do: :timer.minutes(10)
+    end
+
+    test "reads what the tool declares" do
+      assert Config.tool_timeout(Config.new(tools: [Patient]), "patient") == :timer.minutes(10)
+    end
+
+    test "what the config says wins" do
+      config = Config.new(tools: [Patient], tool_timeouts: %{"patient" => 5})
+
+      assert Config.tool_timeout(config, "patient") == 5
+    end
+
+    test "nil for a tool declaring none, or one the config does not have" do
+      assert Config.tool_timeout(Config.new(tools: [EchoTool]), "echo") == nil
+      assert Config.tool_timeout(Config.new(), "nope") == nil
+    end
   end
 
   test "new/1 raises on a tool it cannot build" do
@@ -69,7 +99,11 @@ defmodule Tars.LLM.ConfigTest do
 
   test "add_tool/2 takes a module as readily as a built tool" do
     assert [%ReqLLM.Tool{name: "echo"}] =
-             Config.new() |> Config.add_tool(EchoTool) |> Map.fetch!(:tools)
+             Config.new() |> Config.add_tool(EchoTool) |> Config.tools()
+  end
+
+  test "add_tool/2 raises on a tool it cannot build" do
+    assert_raise ArgumentError, fn -> Config.add_tool(Config.new(), :no_such_tool) end
   end
 
   describe "dump/1 and load/1" do
@@ -78,10 +112,18 @@ defmodule Tars.LLM.ConfigTest do
 
       loaded = config |> Config.dump() |> Config.load()
 
-      assert loaded.model_spec == {:test, model: "m"}
-      assert loaded.system == "be brief"
-      assert [%ReqLLM.Tool{name: "echo"}] = loaded.tools
-      assert loaded.tool_specs == [EchoTool]
+      assert loaded == config
+    end
+
+    test "a tool this node cannot build is dropped, with a warning" do
+      dumped = %{Config.dump(Config.new(tools: [EchoTool])) | tools: [EchoTool, No.Such.Tool]}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert Config.load(dumped).tools == [EchoTool]
+        end)
+
+      assert log =~ "No.Such.Tool"
     end
 
     test "generation and iteration limits travel" do

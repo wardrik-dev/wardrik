@@ -6,7 +6,7 @@ defmodule Tars.Policy do
   `Tars.LLM.ToolRunner` asks it about every call, so governance is a property
   of the runtime rather than something each tool remembers to check.
 
-      Tars.Agent.Supervisor.start(:assistant, config: config, policy: MyApp.Policy)
+      Tars.Fleet.spawn("assistant", config: config, policy: MyApp.Policy)
 
   A policy sees the call and the scope it would run under, which carries the
   user and organisation the work is for. It sees no credentials and resolves

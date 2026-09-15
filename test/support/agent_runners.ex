@@ -108,9 +108,5 @@ defmodule Tars.Test.AgentRunners do
   @doc "The roles and text of a context, for asserting on what a turn was handed."
   def snapshot(context), do: Enum.map(context.messages, &{&1.role, text(&1)})
 
-  defp text(message) do
-    message.content
-    |> Enum.filter(&(&1.type == :text))
-    |> Enum.map_join(& &1.text)
-  end
+  defp text(message), do: Tars.LLM.Context.text(message)
 end

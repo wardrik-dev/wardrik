@@ -7,7 +7,7 @@ defmodule Tars.LLM.Config do
   read out of a file.
 
       config = Tars.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
-      Tars.Agent.Supervisor.start(:assistant, config: config)
+      Tars.Fleet.spawn("assistant", config: config)
 
   `:system` is who the agent is. It is prepended to every turn rather than
   stored in the conversation, so changing it changes the agent and replaying a
@@ -15,11 +15,9 @@ defmodule Tars.LLM.Config do
 
       Tars.LLM.Config.new(system: "You answer briefly and admit what you do not know.")
 
-  `:tools` is given as `t:Tars.Tool.spec/0` values. `new/1` keeps them in
-  `:tool_specs` and puts the tools they build in `:tools`, so a config carries
-  callable tools from the moment it exists and nothing downstream has to
-  resolve anything. `:tools` is derived: set it through `new/1` or
-  `add_tool/2`, never by hand.
+  `:tools` is given as `t:Tars.Tool.spec/0` values and held as given. The
+  tools they name are built where a turn needs them, through `tools/1`.
+  `new/1` builds each one once to check that it can be.
 
       Tars.LLM.Config.new(tools: [MyApp.Tools.Ping])
 
@@ -47,16 +45,14 @@ defmodule Tars.LLM.Config do
   where something else is doing the stopping.
 
   The runtime wiring a turn also needs, such as who its events are published
-  to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
-  does not travel: prefer `{module, function}` over an anonymous function for
-  any agent that may be started on another node.
+  to, lives on `Tars.Scope`.
 
   ## Travelling
 
-  `dump/1` writes down the specs a config was built from, and `load/1` resolves
-  them again on whatever node reads it. A tool given inline holds a callback
-  rather than a name, so it cannot be rebuilt: those are dropped, and `load/1`
-  warns with their names.
+  `dump/1` writes a config down with its module-named tools, and `load/1` reads
+  it back on whatever node holds it. A tool given inline holds a callback
+  rather than a name, so it cannot travel; a module this node cannot build
+  cannot either. Both are dropped, and `load/1` warns with their names.
   """
 
   require Logger
@@ -66,7 +62,6 @@ defmodule Tars.LLM.Config do
   defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
             system: nil,
             tools: [],
-            tool_specs: [],
             tool_timeouts: %{},
             generation: [],
             max_iterations: 30
@@ -74,14 +69,13 @@ defmodule Tars.LLM.Config do
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
-          tools: list(ReqLLM.Tool.t()),
-          tool_specs: list(Tool.spec()),
+          tools: [Tool.spec()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity
         }
 
-  @typedoc "A config written down: the specs that travel, and the names of what did not."
+  @typedoc "A config written down: its fields, with the names of the tools that could not travel."
   @type dumped() :: %{
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
@@ -93,69 +87,65 @@ defmodule Tars.LLM.Config do
         }
 
   @doc """
-  Builds a config, resolving every tool it names.
+  Builds a config, checking every tool it names can be built here.
 
-  Use this rather than the struct literal: a tool named as a module is only
-  built here. Raises when one cannot be, which is a configuration error worth
-  hearing about at construction rather than mid-turn.
+  Raises when one cannot be, which is a configuration error worth hearing
+  about at construction rather than mid-turn.
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     config = struct(__MODULE__, opts)
-    specs = config.tools
-    tools = Tool.resolve!(specs)
-
-    %{
-      config
-      | tools: tools,
-        tool_specs: specs,
-        tool_timeouts: Map.merge(Tool.timeouts(specs, tools), config.tool_timeouts)
-    }
+    Tool.resolve!(config.tools)
+    config
   end
 
   @spec add_tool(t(), Tool.spec()) :: t()
-  def add_tool(%__MODULE__{} = config, tool) do
-    %{
-      config
-      | tools: Tool.resolve!([tool]) ++ config.tools,
-        tool_specs: [tool | config.tool_specs]
-    }
+  def add_tool(%__MODULE__{} = config, spec) do
+    Tool.resolve!([spec])
+    %{config | tools: [spec | config.tools]}
   end
 
-  @doc """
-  Writes a config down as data, keeping module-named tools as modules.
+  @doc "The tools this config names, built on this node."
+  @spec tools(t()) :: [ReqLLM.Tool.t()]
+  def tools(%__MODULE__{} = config), do: Tool.resolve!(config.tools)
 
-  A tool given inline is kept only as its name, under `:dropped_tools`.
+  @doc """
+  How long one call to the named tool may take: what `:tool_timeouts` says,
+  else what the tool declares, else `nil`.
   """
+  @spec tool_timeout(t(), String.t()) :: timeout() | nil
+  def tool_timeout(%__MODULE__{} = config, name) do
+    Map.get_lazy(config.tool_timeouts, name, fn -> declared(config, name) end)
+  end
+
+  defp declared(config, name) do
+    config.tools
+    |> Enum.zip(tools(config))
+    |> Enum.find_value(fn {spec, tool} -> tool.name == name and Tool.timeout(spec) end)
+  end
+
+  @doc "Writes a config down as data. Tools given inline are kept only by name."
   @spec dump(t()) :: dumped()
   def dump(%__MODULE__{} = config) do
-    {modules, inline} = Enum.split_with(config.tool_specs, &is_atom/1)
+    {modules, inline} = Enum.split_with(config.tools, &is_atom/1)
 
-    %{
-      model_spec: config.model_spec,
-      system: config.system,
-      tools: modules,
-      dropped_tools: Enum.map(inline, & &1.name),
-      tool_timeouts: config.tool_timeouts,
-      generation: config.generation,
-      max_iterations: config.max_iterations
-    }
+    config
+    |> Map.from_struct()
+    |> Map.merge(%{tools: modules, dropped_tools: Enum.map(inline, & &1.name)})
   end
 
   @doc """
-  Rebuilds a config from `dump/1`, resolving its tool modules on this node.
+  Reads a config back from `dump/1`, keeping the tools this node can build.
 
-  Tools that could not travel are named in a warning and never stop the config
-  being rebuilt.
+  Tools that could not travel, and modules this node does not have, are named
+  in a warning and never stop the config being read.
   """
   @spec load(dumped()) :: t()
-  def load(dumped) when is_map(dumped) do
-    warn_dropped(Map.get(dumped, :dropped_tools, []))
+  def load(%{tools: modules, dropped_tools: dropped} = dumped) do
+    {here, missing} = Enum.split_with(modules, &Tool.available?/1)
+    warn_dropped(dropped ++ Enum.map(missing, &inspect/1))
 
-    dumped
-    |> Map.drop([:dropped_tools])
-    |> Keyword.new()
-    |> new()
+    struct!(__MODULE__, dumped |> Map.delete(:dropped_tools) |> Map.put(:tools, here))
   end
 
   defp warn_dropped([]), do: :ok

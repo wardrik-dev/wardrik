@@ -6,19 +6,18 @@ defmodule Tars.Test.Fleet do
 
   alias Tars.Fleet
 
-  @doc "Starts an agent and returns its key and pid."
-  @spec start_agent(keyword()) :: {String.t(), pid()}
-  def start_agent(opts \\ []) do
-    key = key()
+  @doc "Starts an agent under `key` and returns the key and pid."
+  @spec start_agent(keyword(), String.t()) :: {String.t(), pid()}
+  def start_agent(opts \\ [], key \\ key()) do
     {:ok, pid} = Fleet.spawn(key, opts)
     ExUnit.Callbacks.on_exit(fn -> Fleet.forget(key) end)
 
     {key, pid}
   end
 
-  @doc "A key nothing else in the suite will use."
+  @doc "A key nothing else in the suite will use, under the `test` org and no user."
   @spec key(String.t()) :: String.t()
   def key(name \\ "agent") do
-    "test/#{System.unique_integer([:positive])}/#{name}"
+    "test/_/#{name}-#{System.unique_integer([:positive])}"
   end
 end

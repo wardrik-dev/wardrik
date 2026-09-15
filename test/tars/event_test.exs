@@ -5,7 +5,7 @@ defmodule Tars.EventTest do
   alias Tars.Event.Source
 
   setup do
-    {:ok, source: Source.root(make_ref(), name: "turn")}
+    {:ok, source: Source.root(Tars.Test.Fleet.key(), name: "turn")}
   end
 
   test "new/2 wraps a payload without publishing it", %{source: source} do

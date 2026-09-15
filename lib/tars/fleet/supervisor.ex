@@ -8,18 +8,18 @@ defmodule Tars.Fleet.Supervisor do
       connected nodes.
     * `DurableServer.Supervisor` - keyed processes over that store, named
       `Tars.Fleet`. It starts a `Group` instance under the same name, which is
-      the registry `Tars.Fleet` and `Tars.Event.Bus` both read.
+      the registry `Tars.Fleet` reads.
 
   ## Configuration
 
       config :tars, Tars.Fleet,
-        enabled?: true,
         data_dir: "/var/lib/tars",
         cluster_size: 3,
         log: false
 
   `:data_dir` falls back to `TARS_DATA_DIR`, then to a directory named after
-  the node under the system temp directory. `:cluster_size` is the number of
+  the node in the user's data directory, `~/.local/share/tars` on Linux.
+  `:cluster_size` is the number of
   voting members EKV does quorum arithmetic against, falling back to
   `TARS_CLUSTER_SIZE` and then to 1. `:log` is passed to `Group`.
   """
@@ -70,6 +70,6 @@ defmodule Tars.Fleet.Supervisor do
   @spec data_dir(keyword()) :: String.t()
   def data_dir(opts \\ []) do
     Keyword.get(opts, :data_dir) || System.get_env("TARS_DATA_DIR") ||
-      Path.join([System.tmp_dir!(), "tars", to_string(node())])
+      Path.join(:filename.basedir(:user_data, "tars"), to_string(node()))
   end
 end

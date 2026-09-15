@@ -4,15 +4,16 @@ defmodule Tars.Event.BusTest do
   alias Tars.Event
   alias Tars.Event.Bus
   alias Tars.Event.Source
+  alias Tars.Test.Fleet
 
   setup do
-    {:ok, agent_id: make_ref()}
+    {:ok, agent_id: Fleet.key()}
   end
 
   defp emit(agent_id, payload), do: agent_id |> Source.root() |> Event.emit(payload)
 
   test "publish reaches every subscriber and no one else", %{agent_id: agent_id} do
-    other_agent = make_ref()
+    other_agent = Fleet.key()
     :ok = Bus.subscribe(agent_id)
     :ok = Bus.subscribe(other_agent)
 
@@ -48,7 +49,7 @@ defmodule Tars.Event.BusTest do
   end
 
   test "a dead subscriber does not affect the others" do
-    agent_id = make_ref()
+    agent_id = Fleet.key()
     test_pid = self()
     :ok = Bus.subscribe(agent_id)
 
@@ -145,11 +146,7 @@ defmodule Tars.Event.BusTest do
     assert %Event{payload: {:tool_started, "call_1", "echo"}} = metadata.event
   end
 
-  describe "across the cluster" do
-    test "delivery goes through the fleet while it is running" do
-      assert Tars.Event.Bus.transport() == :cluster
-    end
-
+  describe "levels as topics" do
     test "a raw subscriber is sent each event once, not once per level" do
       agent_id = Tars.Test.Fleet.key("levels")
       :ok = Bus.subscribe(agent_id, level: :raw)

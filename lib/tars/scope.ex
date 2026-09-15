@@ -8,7 +8,7 @@ defmodule Tars.Scope do
   written down, shared and reused, while a scope belongs to one run and carries
   the things that change per run.
 
-      scope = Tars.Scope.root(config, :assistant, name: "turn", user: user, org: org)
+      scope = Tars.Scope.root(config, "acme/jon/assistant", name: "turn", user: user, org: org)
       Tars.Event.emit(scope.source, {:turn_started, ["hello"]})
 
   Work the turn spawns takes a child scope, so its events land in the same
@@ -41,7 +41,7 @@ defmodule Tars.Scope do
   through however many layers of delegation without anyone recomputing it.
   Give one as a duration and it is resolved once:
 
-      scope = Tars.Scope.root(config, :assistant, timeout: :timer.minutes(10))
+      scope = Tars.Scope.root(config, "acme/jon/assistant", timeout: :timer.minutes(10))
       Tars.Scope.remaining_ms(scope)
 
   `with_timeout/2` only ever narrows. Work cannot award itself more time than
@@ -85,6 +85,10 @@ defmodule Tars.Scope do
   @enforce_keys [:config, :source]
   defstruct [:config, :source, :user, :org, :deadline, :policy, :dispatch]
 
+  # An agent carries `:timeout` rather than `:deadline`, and resolves it when
+  # each turn's scope is built.
+  @seams [:policy, :dispatch, :timeout]
+
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
           config: Config.t(),
@@ -98,6 +102,14 @@ defmodule Tars.Scope do
 
   @typedoc "How a span ended."
   @type outcome() :: :ok | {:error, term()}
+
+  @doc """
+  The `root/3` options a host supplies that an agent keeps for every turn it
+  runs. Who the work is for is named by the agent's key; everything else
+  `root/3` takes belongs to one run.
+  """
+  @spec seams() :: [atom()]
+  def seams, do: @seams
 
   @doc """
   A scope at the root of a new trace.

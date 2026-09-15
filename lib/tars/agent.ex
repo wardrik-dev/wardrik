@@ -50,15 +50,20 @@ defmodule Tars.Agent do
   it rather than starting a turn of their own, because the parked work is still
   the current work; `interrupt/1` abandons it if that is what you want.
 
-  A parked turn is written to the store, so it outlives the node it parked on.
+  A parked turn is written to the store and outlives the node it parked on. A
+  turn lost after being resumed comes back parked on the same calls. Resuming
+  gives the turn this node's tools and a fresh budget.
 
   ## What a host supplies
 
   Beyond `:config`, an agent takes the seams every scope it roots is built
-  with: `:user` and `:org` say who the work is for, `:policy` decides whether a
-  tool call may run, `:dispatch` decides what a model call is and who pays for
-  it, and `:timeout` bounds the whole turn. Each is optional and inert by
-  default.
+  with: `:policy` decides whether a tool call may run, `:dispatch` decides what
+  a model call is and who pays for it, and `:timeout` bounds the whole turn.
+  Each is optional and inert by default. Who the work is for is read from the
+  agent's key.
+
+  A config's tools are built on whichever node runs the agent. One that node
+  cannot build is left out with a warning.
 
   The agent adds four events of its own so subscribers can follow its state
   without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`,
@@ -98,7 +103,7 @@ defmodule Tars.Agent do
   The state an agent starts life with, for `Tars.Fleet.spawn/2` to hand over.
 
   Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and the
-  scope options `:user`, `:org`, `:policy`, `:dispatch` and `:timeout`.
+  scope's `Tars.Scope.seams/0`.
 
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
@@ -164,21 +169,14 @@ defmodule Tars.Agent do
 
   # -- durability ------------------------------------------------------------
 
-  # Idempotent: between `load_state/2` and `init/2` the process holds the dump
-  # itself, and DurableServer writes it down again while taking its lock.
   @impl DurableServer
   def dump_state(%State{} = state), do: State.dump(state)
-  def dump_state(dumped) when is_map(dumped), do: dumped
-
-  # Returns the dump rather than a state: building one needs the key, which
-  # only `init/2` is given. Concurrent nodes race this, so it has no effects.
-  @impl DurableServer
-  def load_state(_old_vsn, dumped), do: dumped
 
   @impl DurableServer
-  def init(dumped, info) do
-    state = State.load(dumped, [], info.key)
+  def load_state(_old_vsn, dumped), do: State.load(dumped)
 
+  @impl DurableServer
+  def init(%State{} = state) do
     # `init` cannot return a continue, so the queue is drained by message.
     send(self(), :maybe_run)
 
@@ -206,11 +204,11 @@ defmodule Tars.Agent do
   end
 
   def handle_cast({:resume, decisions}, state) do
-    case State.resume(state, decisions) do
+    case State.resume(state) do
       {:resume, scope, turn, started_at} ->
         task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
-        stay(State.resumed(state, task, scope, started_at))
+        stay(State.resumed(state, task, scope, turn, started_at), sync: true)
 
       :none ->
         stay(state)

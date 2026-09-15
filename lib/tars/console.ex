@@ -2,7 +2,7 @@ defmodule Tars.Console do
   @moduledoc """
   Renders one agent's stream and tool events to stdout.
 
-      {:ok, _pid} = Tars.Console.start_link(agent_id: :assistant)
+      {:ok, _pid} = Tars.Console.start_link(agent_id: "acme/jon/assistant")
 
   Just a subscriber. Several can run at once alongside other listeners, and
   none of them are known to `Tars.Agent` or `Tars.LLM.Turn`.

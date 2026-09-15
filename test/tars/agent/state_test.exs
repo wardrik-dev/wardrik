@@ -9,9 +9,9 @@ defmodule Tars.Agent.StateTest do
   alias Tars.LLM.Turn.Parked
   alias Tars.Scope
 
-  defp state, do: State.new([config: Config.new()], :assistant)
+  defp state, do: State.new([config: Config.new()], "acme/jon/assistant")
 
-  defp scope, do: Scope.root(Config.new(), :assistant, name: "turn")
+  defp scope, do: Scope.root(Config.new(), "acme/jon/assistant", name: "turn")
 
   # A task nobody runs. The state never touches the process, only its ref.
   defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
@@ -219,18 +219,19 @@ defmodule Tars.Agent.StateTest do
   end
 
   describe "resuming" do
-    test "a waiting agent hands back the turn it parked, under the same scope" do
-      state = waiting()
+    test "a waiting agent hands back the turn it parked, under the source that parked" do
+      %State{mode: %Waiting{source: source}} = state = waiting()
 
-      assert {:resume, scope, turn, started_at} = State.resume(state, %{"call_1" => :approve})
-      assert scope.source.agent_id == :assistant
+      assert {:resume, scope, turn, started_at} = State.resume(state)
+      assert scope.source == source
+      assert scope.config == Config.new()
       assert %Parked{} = turn
       assert is_integer(started_at)
     end
 
     test "answering an agent that is not asking does nothing" do
-      assert State.resume(state(), %{}) == :none
-      assert State.resume(running(), %{}) == :none
+      assert State.resume(state()) == :none
+      assert State.resume(running()) == :none
     end
   end
 
@@ -250,9 +251,26 @@ defmodule Tars.Agent.StateTest do
   end
 
   describe "being written down" do
-    defp reload(state, opts \\ []) do
-      state |> State.dump() |> State.load(opts, state.agent_id)
+    defp reload(state), do: state |> State.dump() |> State.load()
+
+    defp resumed do
+      {:resume, scope, turn, started_at} = State.resume(waiting())
+      State.resumed(waiting(), task(), scope, turn, started_at)
     end
+
+    # Pids, references, ports and functions, wherever they sit in a term.
+    defp runtime_terms(term) when is_pid(term) or is_reference(term) or is_port(term),
+      do: [term]
+
+    defp runtime_terms(term) when is_function(term), do: [term]
+    defp runtime_terms(%_{} = struct), do: struct |> Map.from_struct() |> runtime_terms()
+    defp runtime_terms(map) when is_map(map), do: map |> Map.to_list() |> runtime_terms()
+    defp runtime_terms(list) when is_list(list), do: Enum.flat_map(list, &runtime_terms/1)
+
+    defp runtime_terms(tuple) when is_tuple(tuple),
+      do: tuple |> Tuple.to_list() |> runtime_terms()
+
+    defp runtime_terms(_other), do: []
 
     test "an idle agent comes back idle, with its queue" do
       {state, _effects} = State.queue(state(), "hello")
@@ -278,37 +296,42 @@ defmodule Tars.Agent.StateTest do
       assert [{%{id: "call_1", name: "deploy"}, "Really?"}] = State.waiting_on(state)
     end
 
-    test "a parked turn comes back under a scope built here" do
-      %State{mode: %Waiting{scope: scope}} = reload(waiting())
+    test "a parked turn keeps the source that parked" do
+      %State{mode: %Waiting{source: source}} = state = waiting()
 
-      assert scope.source.agent_id == :assistant
-      assert scope.config == Config.new()
+      assert %State{mode: %Waiting{source: ^source}} = reload(state)
+    end
+
+    test "a turn resumed from a park comes back parked on the same calls" do
+      state = reload(resumed())
+
+      assert %State{mode: %Waiting{}} = state
+      assert [{%{id: "call_1"}, "Really?"}] = State.waiting_on(state)
+    end
+
+    test "who the work is for is read from the key" do
+      assert State.new([], "acme/jon/x").scope_opts == [user: "jon", org: "acme"]
+      assert State.new([], "_/_/x").scope_opts == [user: nil, org: nil]
     end
 
     test "the runner and resumer travel" do
-      state = State.new([config: Config.new(), runner: {SomeHost, :run, [:arg]}], :assistant)
+      state =
+        State.new([config: Config.new(), runner: {SomeHost, :run, [:arg]}], "acme/jon/assistant")
 
       assert reload(state).runner == {SomeHost, :run, [:arg]}
     end
 
-    test "options given on the way back override what was written down" do
-      state = State.new([config: Config.new(), grace: 10], :assistant)
-
-      assert reload(state, grace: 99).grace == 99
-      assert reload(state).grace == 10
-    end
-
     test "a dump holds no processes, timers or callbacks" do
-      dumped = State.dump(stopping())
-      terms = dumped |> :erlang.term_to_binary() |> :erlang.binary_to_term()
+      for state <- [stopping(), waiting(), resumed()] do
+        assert runtime_terms(State.dump(state)) == []
+      end
 
-      assert terms == dumped
-      assert dumped.mode == :owed
+      assert State.dump(stopping()).mode == :owed
     end
 
     test "a runner that is not an MFA is refused when the state is built" do
       assert_raise ArgumentError, ~r/must be \{module, function, args\}/, fn ->
-        State.new([runner: fn _scope, _context -> :ok end], :assistant)
+        State.new([runner: fn _scope, _context -> :ok end], "acme/jon/assistant")
       end
     end
   end

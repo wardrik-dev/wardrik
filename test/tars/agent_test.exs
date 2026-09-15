@@ -22,8 +22,8 @@ defmodule Tars.AgentTest do
 
   defp parked_turn(call_id), do: AgentRunners.parked_turn(call_id)
 
-  defp start_agent(opts) do
-    {key, agent} = Tars.Test.Fleet.start_agent(opts)
+  defp start_agent(opts, key \\ Tars.Test.Fleet.key()) do
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts, key)
     :ok = Event.Bus.subscribe(key)
     agent
   end
@@ -473,18 +473,19 @@ defmodule Tars.AgentTest do
 
       agent =
         start_agent(
-          runner: reporting_runner(test_pid),
-          user: %{id: 7},
-          org: "acme",
-          policy: SomePolicy,
-          dispatch: SomeGateway,
-          timeout: 60_000
+          [
+            runner: reporting_runner(test_pid),
+            policy: SomePolicy,
+            dispatch: SomeGateway,
+            timeout: 60_000
+          ],
+          Tars.Fleet.key("seams-#{System.unique_integer([:positive])}", org: "acme", user: 7)
         )
 
       Agent.ask(agent, "hi")
 
       assert_receive {:scope, scope}
-      assert scope.user == %{id: 7}
+      assert scope.user == "7"
       assert scope.org == "acme"
       assert scope.policy == SomePolicy
       assert scope.dispatch == SomeGateway
@@ -499,6 +500,7 @@ defmodule Tars.AgentTest do
 
       assert_receive {:scope, scope}
       assert scope.user == nil
+      assert scope.org == "test"
       assert scope.policy == nil
       assert scope.dispatch == nil
       assert Tars.Scope.remaining_ms(scope) == :infinity

@@ -15,7 +15,7 @@ defmodule Tars.LLM.TurnTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
@@ -172,7 +172,7 @@ defmodule Tars.LLM.TurnTest do
   test "stream events are not published to other agents", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(scope(make_ref()), Context.new())
+    assert {:ok, _messages} = LLM.Turn.run(scope(Tars.Test.Fleet.key()), Context.new())
 
     refute_receive %Event{}
     assert Event.Bus.subscribers(agent_id) == [self()]

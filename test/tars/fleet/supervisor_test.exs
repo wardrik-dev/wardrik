@@ -43,7 +43,6 @@ defmodule Tars.Fleet.SupervisorTest do
   end
 
   test "the fleet is running, with a store under it" do
-    assert Tars.Fleet.running?()
     assert is_pid(Process.whereis(Supervisor))
     assert EKV.put(Supervisor.store(), "probe/1", :ok) == :ok
     assert EKV.get(Supervisor.store(), "probe/1") == :ok

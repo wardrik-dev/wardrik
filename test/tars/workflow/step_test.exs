@@ -7,7 +7,7 @@ defmodule Tars.Workflow.StepTest do
   alias Tars.Workflow.Step
 
   setup do
-    {:ok, scope: Scope.root(Config.new(), make_ref(), name: "turn")}
+    {:ok, scope: Scope.root(Config.new(), Tars.Test.Fleet.key(), name: "turn")}
   end
 
   describe "invoke/3" do

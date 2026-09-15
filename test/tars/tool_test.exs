@@ -35,7 +35,7 @@ defmodule Tars.ToolTest do
   end
 
   test "resolve!/1 rejects a module that cannot be loaded" do
-    assert_raise ArgumentError, ~r/cannot load tool/, fn ->
+    assert_raise ArgumentError, ~r/cannot be loaded/, fn ->
       Tool.resolve!([:no_such_tool_module])
     end
   end
@@ -59,22 +59,29 @@ defmodule Tars.ToolTest do
       def timeout, do: :timer.minutes(10)
     end
 
-    test "reads what a module declares, by tool name" do
-      specs = [Patient]
-
-      assert Tool.timeouts(specs, Tool.resolve!(specs)) == %{"patient" => :timer.minutes(10)}
+    test "reads what a module declares" do
+      assert Tool.timeout(Patient) == :timer.minutes(10)
     end
 
-    test "a module that declares none contributes none" do
-      specs = [Tars.Test.EchoTool]
-
-      assert Tool.timeouts(specs, Tool.resolve!(specs)) == %{}
-    end
-
-    test "an inline tool contributes none" do
+    test "a module that declares none, or an inline tool, declares none" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
 
-      assert Tool.timeouts([tool], [tool]) == %{}
+      assert Tool.timeout(Tars.Test.EchoTool) == nil
+      assert Tool.timeout(tool) == nil
+    end
+  end
+
+  describe "available?/1" do
+    test "a module implementing the behaviour, or an inline tool, is available" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.available?(Tars.Test.EchoTool)
+      assert Tool.available?(tool)
+    end
+
+    test "a module that is missing or does not implement it is not" do
+      refute Tool.available?(No.Such.Module)
+      refute Tool.available?(Enum)
     end
   end
 end

@@ -14,7 +14,7 @@ defmodule TarsResearch.DeepTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
 
     config = Config.new(tools: [SearchTool, Deep])
@@ -78,7 +78,7 @@ defmodule TarsResearch.DeepTest do
     test "researchers get the agent's tools, minus this workflow", %{scope: scope} do
       stub_llm()
 
-      assert scope.config.tools |> Enum.map(& &1.name) |> Enum.sort() == [
+      assert scope.config |> Config.tools() |> Enum.map(& &1.name) |> Enum.sort() == [
                "deep_research",
                "web_search"
              ]
@@ -365,8 +365,10 @@ defmodule TarsResearch.DeepTest do
     end
 
     test "a config naming the module resolves it like any other tool" do
-      assert %Config{tools: tools} = Config.new(tools: [Deep])
-      assert Enum.map(tools, & &1.name) == ["deep_research"]
+      config = Config.new(tools: [Deep])
+
+      assert config.tools == [Deep]
+      assert Enum.map(Config.tools(config), & &1.name) == ["deep_research"]
     end
 
     test "tool/1 carries its angles into the sweep", %{scope: scope} do

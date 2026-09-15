@@ -9,7 +9,7 @@ defmodule Tars.LLM.ToolRunnerTest do
   alias Tars.Scope
 
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
@@ -488,7 +488,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       assert [%{call_id: "call_1", name: "hang", pid: pid}] = ToolRunner.in_flight(agent_id)
       assert is_pid(pid)
-      assert ToolRunner.in_flight(make_ref()) == []
+      assert ToolRunner.in_flight(Tars.Test.Fleet.key()) == []
 
       Task.shutdown(task, :brutal_kill)
     end

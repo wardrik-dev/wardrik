@@ -40,7 +40,7 @@ defmodule Tars.LLM.ToolRunner do
   Every call in flight is registered under its agent and call id, so a single
   runaway tool can be stopped without touching the turn around it:
 
-      Tars.LLM.ToolRunner.kill_call(:assistant, "call_abc")
+      Tars.LLM.ToolRunner.kill_call("acme/jon/assistant", "call_abc")
 
   The killed call is answered with an error result the same way a crash is, so
   the model is never left with an unanswered call. `in_flight/1` lists what
@@ -48,6 +48,7 @@ defmodule Tars.LLM.ToolRunner do
   """
   alias ReqLLM.Context
   alias Tars.Event
+  alias Tars.LLM.Config
   alias Tars.Policy
   alias Tars.Scope
   alias Tars.Tool
@@ -129,7 +130,7 @@ defmodule Tars.LLM.ToolRunner do
   @spec timeout([Tool.call()], Scope.t()) :: timeout()
   def timeout(tool_calls, %Scope{config: config} = scope) do
     tool_calls
-    |> Enum.map(&Map.get(config.tool_timeouts, &1.name, @tool_timeout))
+    |> Enum.map(&(Config.tool_timeout(config, &1.name) || @tool_timeout))
     |> Enum.max(fn -> @tool_timeout end)
     |> within(Scope.remaining_ms(scope))
   end
@@ -257,7 +258,7 @@ defmodule Tars.LLM.ToolRunner do
     Event.emit(scope.source, {:tool_started, id, name})
 
     result =
-      case Enum.find(scope.config.tools, &(&1.name == name)) do
+      case Enum.find(Config.tools(scope.config), &(&1.name == name)) do
         nil -> {:error, "Unknown tool: #{name}"}
         tool -> ReqLLM.Tool.execute(tool, args)
       end

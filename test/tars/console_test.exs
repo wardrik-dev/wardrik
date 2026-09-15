@@ -5,6 +5,7 @@ defmodule Tars.ConsoleTest do
 
   alias Tars.Console
   alias Tars.Test.Events
+  alias Tars.Test.Fleet
 
   # The console inherits the group leader of whoever starts it, so it has to be
   # started inside the capture block. `:sys.get_state/1` then flushes its
@@ -18,14 +19,14 @@ defmodule Tars.ConsoleTest do
   end
 
   test "renders result and thinking text verbatim" do
-    output = render(make_ref(), [{:thinking, "hmm"}, {:result, "answer"}])
+    output = render(Fleet.key(), [{:thinking, "hmm"}, {:result, "answer"}])
 
     assert output == "hmmanswer"
   end
 
   test "renders tool lifecycle" do
     output =
-      render(make_ref(), [
+      render(Fleet.key(), [
         {:tool_started, "call_1", "echo"},
         {:tool_finished, "call_1", "echo", {:ok, "done"}},
         {:tool_finished, "call_2", "boom", {:error, :timeout}}
@@ -38,7 +39,7 @@ defmodule Tars.ConsoleTest do
 
   test "renders turn completion and failure" do
     output =
-      render(make_ref(), [
+      render(Fleet.key(), [
         {:result, "answer"},
         {:turn_finished, []},
         {:turn_failed, :rate_limited}
@@ -49,14 +50,14 @@ defmodule Tars.ConsoleTest do
   end
 
   test "ignores events it does not render" do
-    output = render(make_ref(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
+    output = render(Fleet.key(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
 
     assert output == ""
   end
 
   test "only receives its own agent's events" do
-    mine = make_ref()
-    theirs = make_ref()
+    mine = Fleet.key()
+    theirs = Fleet.key()
 
     output =
       capture_io(fn ->

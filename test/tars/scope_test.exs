@@ -8,7 +8,7 @@ defmodule Tars.ScopeTest do
   alias Tars.Trace
 
   defp subscribed do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
     Scope.root(Config.new(), agent_id, name: "turn")
   end

@@ -39,7 +39,7 @@ defmodule Tars.LLM.Request do
 
   defp opts(%Config{} = config) do
     config.generation
-    |> Keyword.put(:tools, config.tools)
+    |> Keyword.put(:tools, Config.tools(config))
     |> put_system(config.system)
   end
 

@@ -7,7 +7,7 @@ defmodule Tars.Event.Source do
   a child span, which is what puts a subagent's events in its parent's stream
   without a second subscription.
 
-      source = Tars.Event.Source.root(:assistant, name: "turn")
+      source = Tars.Event.Source.root("acme/jon/assistant", name: "turn")
       branch = Tars.Event.Source.child(source, name: "web_search")
 
       branch.agent_id == source.agent_id

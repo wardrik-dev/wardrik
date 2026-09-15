@@ -8,7 +8,7 @@ defmodule Tars.WorkflowTest do
   alias Tars.Workflow
 
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
 
     {:ok, agent_id: agent_id, scope: Scope.root(Config.new(), agent_id, name: "turn")}

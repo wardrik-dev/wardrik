@@ -68,45 +68,33 @@ defmodule Tars.Tool do
   @spec resolve!([spec()]) :: [ReqLLM.Tool.t()]
   def resolve!(specs) when is_list(specs), do: Enum.map(specs, &resolve_one!/1)
 
-  @doc """
-  The timeouts the given specs declare, by tool name.
-
-  Takes the specs alongside what `resolve!/1` built from them, so a tool is
-  only built once.
-  """
-  @spec timeouts([spec()], [ReqLLM.Tool.t()]) :: %{String.t() => timeout()}
-  def timeouts(specs, tools) when is_list(specs) and is_list(tools) do
-    specs
-    |> Enum.zip(tools)
-    |> Enum.flat_map(fn
-      {module, tool} when is_atom(module) -> declared(module, tool)
-      {_inline, _tool} -> []
-    end)
-    |> Map.new()
+  @doc "The timeout a spec declares, or `nil` when it leaves that to the runner."
+  @spec timeout(spec()) :: timeout() | nil
+  def timeout(module) when is_atom(module) do
+    if function_exported?(module, :timeout, 0), do: module.timeout(), else: nil
   end
 
-  defp declared(module, tool) do
-    if function_exported?(module, :timeout, 0), do: [{tool.name, module.timeout()}], else: []
+  def timeout(%ReqLLM.Tool{}), do: nil
+
+  @doc "Whether this node can build the tool a spec names."
+  @spec available?(spec()) :: boolean()
+  def available?(%ReqLLM.Tool{}), do: true
+
+  def available?(module) when is_atom(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :tool, 0)
   end
 
   defp resolve_one!(%ReqLLM.Tool{} = tool), do: tool
 
   defp resolve_one!(module) when is_atom(module) do
-    case Code.ensure_loaded(module) do
-      {:module, ^module} -> build!(module)
-      {:error, reason} -> raise ArgumentError, "cannot load tool #{inspect(module)}: #{reason}"
+    if available?(module) do
+      module.tool()
+    else
+      raise ArgumentError, "#{inspect(module)} cannot be loaded or does not implement Tars.Tool"
     end
   end
 
   defp resolve_one!(other) do
     raise ArgumentError, "expected a tool module or %ReqLLM.Tool{}, got: #{inspect(other)}"
-  end
-
-  defp build!(module) do
-    if function_exported?(module, :tool, 0) do
-      module.tool()
-    else
-      raise ArgumentError, "#{inspect(module)} does not implement Tars.Tool"
-    end
   end
 end

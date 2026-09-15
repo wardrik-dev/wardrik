@@ -8,6 +8,7 @@ defmodule Tars.Fleet do
   | `list/1` | which agents are running, and what each is doing |
   | `watch/1` | the same, as messages, whenever it changes |
   | `kill/1` | stop everything under a prefix |
+  | `move/2` | restart an agent on another node, as it was |
   | `whereis/1` | the pid behind a key, on whatever node holds it |
 
   ## Keys
@@ -20,13 +21,14 @@ defmodule Tars.Fleet do
       Tars.Fleet.list("acme/")      # one tenant
       Tars.Fleet.list("acme/jon/")  # one person's agents
 
-  The org and user are the same `:user` and `:org` the agent's scope carries,
-  written down through `Tars.Fleet.Segment`, so identity is given once:
+  `key/2` builds one from a name and the host's own org and user values,
+  written down through `Tars.Fleet.Segment`. The agent's scope reads `:org`
+  and `:user` back out of the key, so identity is given once:
 
-      Tars.Fleet.spawn("researcher", user: current_user, org: current_org)
+      key = Tars.Fleet.key("researcher", user: current_user, org: current_org)
+      Tars.Fleet.spawn(key, config: config)
 
-  An absent org or user becomes `#{inspect("_")}`, so a deployment with no
-  identity still has keys:
+  An absent org or user is `#{inspect("_")}` in the key and `nil` on the scope:
 
       Tars.Fleet.key("researcher")                           #=> "_/_/researcher"
       Tars.Fleet.key("researcher", org: "acme", user: "jon") #=> "acme/jon/researcher"
@@ -57,37 +59,26 @@ defmodule Tars.Fleet do
   @spec prefix() :: String.t()
   def prefix, do: @prefix
 
-  @doc "Whether the fleet is running on this node."
-  @spec running?() :: boolean()
-  def running?, do: is_pid(Process.whereis(@name))
-
   # -- keys ------------------------------------------------------------------
 
   @doc """
-  The key an agent is addressed by. A name containing a `/` is already a key
-  and is passed through.
-
-  Options are the scope's own `:org` and `:user`, written down through
-  `Tars.Fleet.Segment`.
+  The key an agent is addressed by, from its name and the `:org` and `:user`
+  it works for. Each is written down through `Tars.Fleet.Segment`, and none
+  may contain `/`.
   """
   @spec key(String.t(), keyword()) :: String.t()
   def key(name, opts \\ []) when is_binary(name) do
-    if String.contains?(name, "/") do
-      name
-    else
-      Enum.map_join([opts[:org], opts[:user], name], "/", &segment/1)
-    end
+    Enum.map_join([opts[:org], opts[:user], name], "/", &segment/1)
   end
 
   defp segment(nil), do: @anonymous
-  defp segment(""), do: @anonymous
 
   defp segment(value) do
     case Segment.to_segment(value) do
       "" ->
         @anonymous
 
-      segment ->
+      segment when is_binary(segment) ->
         if String.contains?(segment, "/") do
           raise ArgumentError,
                 "a fleet key segment may not contain \"/\", got #{inspect(segment)} " <>
@@ -99,43 +90,64 @@ defmodule Tars.Fleet do
   end
 
   @doc """
-  The org, user and name a key is made of.
-
-  A key with fewer than three segments reports `#{inspect(@anonymous)}` for what
-  it does not carry.
+  The org, user and name a key is made of, with `nil` for an org or user the
+  key does not carry. Raises on anything `key/2` would not have built.
   """
-  @spec parse(String.t()) :: {String.t(), String.t(), String.t()}
+  @spec parse(String.t()) :: {String.t() | nil, String.t() | nil, String.t()}
   def parse(key) when is_binary(key) do
     case String.split(key, "/") do
-      [org, user, name] -> {org, user, name}
-      [user, name] -> {@anonymous, user, name}
-      [name] -> {@anonymous, @anonymous, name}
-      [org, user | rest] -> {org, user, Enum.join(rest, "/")}
+      [org, user, name] -> {identity(org), identity(user), name}
+      _other -> raise ArgumentError, "a fleet key is org/user/name, got #{inspect(key)}"
     end
   end
+
+  defp identity(@anonymous), do: nil
+  defp identity(segment), do: segment
 
   # -- lifecycle -------------------------------------------------------------
 
   @doc """
   Starts an agent in the fleet, or returns the one already running under its key.
 
-  `name` is either a bare name or a full key. Options are everything
-  `Tars.Agent.initial_state/2` takes; `:org` and `:user` also build the key.
+  Options are everything `Tars.Agent.initial_state/2` takes, and `:node`, the
+  node to start it on. Without one the agent is placed on whichever node has
+  capacity, so the pid may be remote either way.
 
-      {:ok, pid} = Tars.Fleet.spawn("researcher", config: config, org: "acme")
-
-  The agent is placed on whichever node has capacity, so the pid may be remote.
+      {:ok, pid} = Tars.Fleet.spawn(Tars.Fleet.key("researcher", org: "acme"), config: config)
+      {:ok, pid} = Tars.Fleet.spawn(key, config: config, node: :"tars_b@host")
   """
   @spec spawn(String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def spawn(name, opts \\ []) when is_binary(name) do
-    key = key(name, opts)
-    child = {Agent, key: key, initial_state: Agent.initial_state(opts, key)}
+  def spawn(key, opts \\ []) when is_binary(key) do
+    {node, opts} = Keyword.pop(opts, :node)
 
-    case DurableServer.Supervisor.ensure_started_child(@name, child) do
-      {:ok, {pid, _meta}} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
-    end
+    child(key, opts) |> start(node) |> started()
   end
+
+  @doc """
+  Stops an agent and starts it again on `node`, with the state it had.
+
+      {:ok, pid} = Tars.Fleet.move("acme/jon/researcher", :"tars_b@host")
+  """
+  @spec move(String.t(), node()) :: {:ok, pid()} | {:error, term()}
+  def move(key, node) when is_binary(key) and is_atom(node) do
+    @name
+    |> DurableServer.Supervisor.rehome_child(child(key, []), target_node: node)
+    |> started()
+  end
+
+  defp child(key, opts), do: {Agent, key: key, initial_state: Agent.initial_state(opts, key)}
+
+  defp start(child, nil), do: DurableServer.Supervisor.ensure_started_child(@name, child)
+
+  defp start(child, node) do
+    args = [@name, child, [local_only: true]]
+    :erpc.call(node, DurableServer.Supervisor, :ensure_started_child, args)
+  catch
+    :error, {:erpc, reason} -> {:error, {:erpc, reason}}
+  end
+
+  defp started({:ok, {pid, _meta}}), do: {:ok, pid}
+  defp started({:error, reason}), do: {:error, reason}
 
   @doc "Stops an agent, syncing its state first so `spawn/2` brings it back as it was."
   @spec stop(String.t()) :: :ok | {:error, term()}
@@ -162,7 +174,7 @@ defmodule Tars.Fleet do
   @spec lookup(String.t()) :: Member.t() | nil
   def lookup(key) when is_binary(key) do
     case DurableServer.Supervisor.lookup(@name, key) do
-      {pid, meta} -> Member.new(key, pid, meta || %{})
+      {pid, meta} -> Member.new(key, pid, meta)
       nil -> nil
     end
   end
@@ -177,22 +189,12 @@ defmodule Tars.Fleet do
   """
   @spec list(String.t()) :: [Member.t()]
   def list(prefix \\ "") when is_binary(prefix) do
-    @name
-    |> DurableServer.Supervisor.global_members()
-    |> Enum.filter(&agent_under?(&1, prefix))
-    |> Enum.map(fn {key, {pid, meta}} -> Member.new(key, pid, user_meta(meta)) end)
+    for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
+        String.starts_with?(key, prefix) do
+      Member.new(key, pid, meta.user_meta)
+    end
     |> Enum.sort_by(& &1.key)
   end
-
-  defp agent_under?({key, {_pid, meta}}, prefix) do
-    String.starts_with?(key, prefix) and module(meta) == Agent
-  end
-
-  defp module(%DurableServer.GroupMeta{module: module}), do: module
-  defp module(_meta), do: nil
-
-  defp user_meta(%DurableServer.GroupMeta{user_meta: meta}) when is_map(meta), do: meta
-  defp user_meta(_meta), do: %{}
 
   @doc """
   Sends this process a message whenever an agent under `prefix` starts, stops,
@@ -223,9 +225,8 @@ defmodule Tars.Fleet do
   """
   @spec kill(String.t()) :: non_neg_integer()
   def kill(prefix \\ "") when is_binary(prefix) do
-    prefix
-    |> list()
-    |> Enum.map(&Agent.interrupt(&1.pid))
-    |> length()
+    members = list(prefix)
+    Enum.each(members, &Agent.interrupt(&1.pid))
+    length(members)
   end
 end

@@ -70,7 +70,7 @@ defmodule Tars.Subagent do
     tools =
       case Keyword.fetch(opts, :tools) do
         {:ok, tools} -> Tool.resolve!(tools)
-        :error -> config.tools
+        :error -> LLM.Config.tools(config)
       end
 
     except = Keyword.get(opts, :except_tools, [])
@@ -106,19 +106,10 @@ defmodule Tars.Subagent do
     messages
     |> Enum.reverse()
     |> Enum.find_value("", fn
-      %{role: :assistant} = message -> presence(text(message))
+      %{role: :assistant} = message -> presence(LLM.Context.text(message))
       _message -> nil
     end)
   end
-
-  defp text(%{content: parts}) when is_list(parts) do
-    parts
-    |> Enum.filter(&(&1.type == :text))
-    |> Enum.map_join(& &1.text)
-  end
-
-  defp text(%{content: content}) when is_binary(content), do: content
-  defp text(_message), do: ""
 
   defp presence(""), do: nil
   defp presence(text), do: text

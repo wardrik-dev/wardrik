@@ -14,24 +14,15 @@ defmodule Tars.Event.Bus do
       disqualifying for user-visible output. Telemetry sees every event at
       every level.
 
-    * **The fleet's `Group`**, for delivery, or a local `Registry` when the
-      fleet is not running. A subscriber that dies is unregistered
+    * **A `Group` of its own**, for delivery. Subscriptions are memberships and
+      reach subscribers on any connected node, so a terminal here can watch an
+      agent running three nodes away. A subscriber that dies is unregistered
       automatically, and a broken handler cannot switch the stream off for
       everyone else.
 
   Dispatch runs in the calling process, so each subscriber observes one
   publisher's events in emission order. `send/2` never blocks, so a slow
   subscriber cannot slow a turn, though its mailbox will grow.
-
-  ## Across the cluster
-
-  With `Tars.Fleet` running, subscriptions are `Group` memberships and reach
-  subscribers on any connected node, so a terminal here can watch an agent
-  running three nodes away. Without it, delivery is local.
-
-  Which one is in use is fixed when the application starts, so a subscriber and
-  a publisher never disagree about where events go. A subscriber must
-  resubscribe if the fleet or the local registry restarts.
 
   ## Levels
 
@@ -52,53 +43,29 @@ defmodule Tars.Event.Bus do
   """
 
   alias Tars.Event
-  alias Tars.Fleet
 
-  @registry Tars.Event.Bus.Registry
+  @group __MODULE__
 
   @default_level :activity
 
-  @typedoc "What subscribers subscribe to. An agent's fleet key, or its pid."
-  @type agent_id() :: term()
-
-  @typedoc "Where events are delivered: across the cluster, or on this node only."
-  @type transport() :: :cluster | :local
+  @typedoc "What subscribers subscribe to: an agent's fleet key."
+  @type agent_id() :: String.t()
 
   @doc false
-  @spec put_transport(transport()) :: :ok
-  def put_transport(transport) when transport in [:cluster, :local] do
-    :persistent_term.put({__MODULE__, :transport}, transport)
-  end
-
-  @doc "Where this node delivers events. Set when the application starts."
-  @spec transport() :: transport()
-  def transport, do: :persistent_term.get({__MODULE__, :transport}, :local)
-
-  @doc false
-  def child_spec(_opts) do
-    Registry.child_spec(keys: :duplicate, name: @registry)
-  end
+  def child_spec(_opts), do: Group.child_spec(name: @group)
 
   @doc """
-  Receive `agent_id`'s events as plain messages in the calling process.
+  Subscribe the calling process to an agent's events.
 
   Options:
 
-    * `:level` - how much of the stream to take, `#{inspect(@default_level)}` by default
-
-  Subscriptions are dropped automatically when the subscriber exits.
+    * `:level` - a `t:Tars.Event.level/0`, `:activity` by default.
   """
   @spec subscribe(agent_id(), keyword()) :: :ok
   def subscribe(agent_id, opts \\ []) do
     level = level!(opts)
 
-    if clustered?() do
-      Enum.each(topics(level), &Group.join(Fleet, topic(agent_id, &1), %{level: level}))
-    else
-      {:ok, _pid} = Registry.register(@registry, agent_id, level)
-    end
-
-    :ok
+    Enum.each(topics(level), &Group.join(@group, topic(agent_id, &1), %{level: level}))
   end
 
   defp level!(opts) do
@@ -114,25 +81,15 @@ defmodule Tars.Event.Bus do
 
   @spec unsubscribe(agent_id()) :: :ok
   def unsubscribe(agent_id) do
-    if clustered?() do
-      Enum.each(Event.levels(), &Group.leave(Fleet, topic(agent_id, &1)))
-    else
-      Registry.unregister(@registry, agent_id)
-    end
-
-    :ok
+    Enum.each(Event.levels(), &Group.leave(@group, topic(agent_id, &1)))
   end
 
   @spec subscribers(agent_id()) :: [pid()]
   def subscribers(agent_id) do
-    if clustered?() do
-      Event.levels()
-      |> Enum.flat_map(&Group.members(Fleet, topic(agent_id, &1)))
-      |> Enum.map(&elem(&1, 0))
-      |> Enum.uniq()
-    else
-      @registry |> Registry.lookup(agent_id) |> Enum.map(&elem(&1, 0))
-    end
+    Event.levels()
+    |> Enum.flat_map(&Group.members(@group, topic(agent_id, &1)))
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.uniq()
   end
 
   @doc """
@@ -156,17 +113,7 @@ defmodule Tars.Event.Bus do
       }
     )
 
-    if clustered?() do
-      Group.dispatch(Fleet, topic(source.agent_id, Event.level(type)), event)
-    else
-      Registry.dispatch(@registry, source.agent_id, &deliver(&1, type, event))
-    end
-  end
-
-  defp deliver(subscribers, type, event) do
-    subscribers
-    |> Enum.filter(fn {_pid, level} -> Event.delivers?(level, type) end)
-    |> Enum.each(fn {pid, _level} -> send(pid, event) end)
+    Group.dispatch(@group, topic(source.agent_id, Event.level(type)), event)
   end
 
   # A `:raw` subscriber holds both topics, so an activity event dispatched to
@@ -174,12 +121,5 @@ defmodule Tars.Event.Bus do
   defp topics(:activity), do: [:activity]
   defp topics(:raw), do: [:activity, :raw]
 
-  defp topic(agent_id, level), do: "tars/events/#{ident(agent_id)}/#{level}"
-
-  defp ident(agent_id) when is_binary(agent_id), do: agent_id
-  defp ident(agent_id) when is_atom(agent_id), do: Atom.to_string(agent_id)
-  defp ident(pid) when is_pid(pid), do: "#{node(pid)}#{:erlang.pid_to_list(pid)}"
-  defp ident(other), do: inspect(other)
-
-  defp clustered?, do: transport() == :cluster
+  defp topic(agent_id, level), do: "#{agent_id}/#{level}"
 end

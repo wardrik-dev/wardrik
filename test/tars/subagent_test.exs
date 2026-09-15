@@ -14,7 +14,7 @@ defmodule Tars.SubagentTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = make_ref()
+    agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
 
     config = Config.new(tools: [EchoTool, SearchTool])
@@ -166,7 +166,7 @@ defmodule Tars.SubagentTest do
 
       {:ok, _text} = Subagent.run(scope, "pricing?", tools: [])
 
-      assert Enum.map(scope.config.tools, & &1.name) == ["echo", "web_search"]
+      assert scope.config |> Config.tools() |> Enum.map(& &1.name) == ["echo", "web_search"]
     end
   end
 

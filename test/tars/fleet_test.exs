@@ -30,14 +30,12 @@ defmodule Tars.FleetTest do
       assert Fleet.key("researcher", org: :acme, user: 7) == "acme/7/researcher"
     end
 
-    test "passes a full key through untouched" do
-      assert Fleet.key("acme/jon/researcher", org: "other") == "acme/jon/researcher"
-    end
-
     test "refuses a segment holding the separator" do
       assert_raise ArgumentError, ~r|may not contain|, fn ->
         Fleet.key("researcher", org: "acme/eu")
       end
+
+      assert_raise ArgumentError, ~r|may not contain|, fn -> Fleet.key("acme/researcher") end
     end
 
     test "a value with no Segment implementation says so" do
@@ -50,13 +48,13 @@ defmodule Tars.FleetTest do
       assert Fleet.parse("acme/jon/researcher") == {"acme", "jon", "researcher"}
     end
 
-    test "reports what a short key does not carry" do
-      assert Fleet.parse("researcher") == {"_", "_", "researcher"}
-      assert Fleet.parse("jon/researcher") == {"_", "jon", "researcher"}
+    test "reports nil for an org or user the key does not carry" do
+      assert Fleet.parse("_/_/researcher") == {nil, nil, "researcher"}
     end
 
-    test "keeps the remainder of a longer key as the name" do
-      assert Fleet.parse("acme/jon/team/researcher") == {"acme", "jon", "team/researcher"}
+    test "refuses anything key/2 would not have built" do
+      assert_raise ArgumentError, ~r|org/user/name|, fn -> Fleet.parse("researcher") end
+      assert_raise ArgumentError, ~r|org/user/name|, fn -> Fleet.parse("a/b/c/d") end
     end
   end
 
@@ -77,15 +75,48 @@ defmodule Tars.FleetTest do
       assert {:ok, ^pid} = Fleet.spawn(key, runner: runner(self()))
     end
 
-    test "builds the key from the same identity the scope is given" do
-      user = 42
-      key = Fleet.key("planner", org: "acme", user: user)
-      on_exit(fn -> Fleet.forget(key) end)
+    test "the scope's identity is the key's" do
+      key = Fleet.key("planner", org: "acme", user: 42)
+      pid = start(key, runner: {AgentRunners, :reporting, [self()]})
 
-      {:ok, pid} = Fleet.spawn("planner", org: "acme", user: user, runner: runner(self()))
+      Agent.ask(pid, "hi")
 
-      assert Fleet.whereis(key) == pid
+      assert_receive {:scope, %{org: "acme", user: "42"}}
       assert %{org: "acme", user: "42", name: "planner"} = Fleet.lookup(key)
+    end
+
+    test "refuses a key that is not org/user/name" do
+      assert_raise ArgumentError, fn -> Fleet.spawn("planner", []) end
+    end
+
+    test "places the agent on the node it is given" do
+      key = Tars.Test.Fleet.key()
+      pid = start(key, runner: runner(self()), node: node())
+
+      assert node(pid) == node()
+      assert Fleet.whereis(key) == pid
+    end
+
+    test "reports a node that cannot be reached" do
+      assert {:error, {:erpc, :noconnection}} =
+               Fleet.spawn(Tars.Test.Fleet.key(), node: :nowhere@nohost)
+    end
+  end
+
+  describe "move/2" do
+    test "restarts an agent on the target node with the conversation it had" do
+      key = Tars.Test.Fleet.key()
+      pid = start(key, runner: runner(self()))
+      Event.Bus.subscribe(key)
+      Agent.ask(pid, "hello")
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+
+      {:ok, moved} = Fleet.move(key, node())
+
+      assert moved != pid
+      assert node(moved) == node()
+      assert Fleet.whereis(key) == moved
+      assert [:user, :assistant] = roles(moved)
     end
   end
 
