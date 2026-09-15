@@ -65,6 +65,41 @@ defmodule TarsTUI.TranscriptTest do
     assert Transcript.to_list(transcript) == ["  • aaaa bbbb", "    cccc dddd", "    eeee ffff"]
   end
 
+  test "a line opening with a bar repeats the bar on every wrapped row" do
+    transcript = Transcript.append(Transcript.new(12), [Text.tag("│ ", :cyan), "aaaa bbbb cccc"])
+
+    assert Transcript.to_list(transcript) == ["│ aaaa bbbb", "│ cccc"]
+
+    [_first, second] = Transcript.source(transcript).slice_fn.(0, 2, 12)
+    assert [{"│ ", %{foreground_color: 6}}, {"cccc", %{}}] = second
+
+    transcript = Transcript.append(Transcript.new(14), ["  ", "┊ aaaa bbbb cccc"])
+    assert Transcript.to_list(transcript) == ["  ┊ aaaa bbbb", "  ┊ cccc"]
+  end
+
+  test "trailing spaces never make a row of their own" do
+    transcript = Transcript.append(Transcript.new(8), "aaaa" <> String.duplicate(" ", 20))
+
+    assert Transcript.to_list(transcript) == ["aaaa"]
+
+    transcript = Transcript.append(Transcript.new(8), "aaaa bbbb   ")
+    assert Transcript.to_list(transcript) == ["aaaa", "bbbb"]
+  end
+
+  test "a table is laid out to the width and again on rewrap" do
+    table = TarsTUI.Table.new(["a", "b"], [["1", "one two three"]])
+    transcript = Transcript.append(Transcript.new(40), table)
+
+    assert Transcript.to_list(transcript) == ["a │ b", "──┼──────────────", "1 │ one two three"]
+
+    assert Transcript.to_list(Transcript.rewrap(transcript, 12)) == [
+             "a │ b",
+             "──┼─────────",
+             "1 │ one two",
+             "  │ three"
+           ]
+  end
+
   test "rewrapping at a new width keeps every line" do
     transcript =
       Transcript.new(40)

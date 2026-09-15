@@ -3,18 +3,20 @@ defmodule TarsTUI.Transcript do
   The append-only transcript, kept as terminal rows.
 
   Lines arrive as `TarsTUI.Text` and are wrapped to the transcript's width as they
-  are appended. `source/1` presents the rows to Breeze as a lazy
+  are appended. A `TarsTUI.Table` arrives as one line and is laid out to the
+  width the same way. `source/1` presents the rows to Breeze as a lazy
   `BackBreeze.VirtualText`, which fetches only the rows it draws. `rewrap/2`
   rebuilds the rows for a new width.
   """
 
   alias BackBreeze.VirtualText
   alias TarsTUI.Line
+  alias TarsTUI.Table
   alias TarsTUI.Text
 
   @type t() :: %__MODULE__{
           width: pos_integer(),
-          lines: [Line.t()],
+          lines: [Line.t() | Table.t()],
           rows: :array.array(),
           version: non_neg_integer()
         }
@@ -31,7 +33,9 @@ defmodule TarsTUI.Transcript do
   Appends one line of `TarsTUI.Text`. Data containing newlines is appended as
   several lines.
   """
-  @spec append(t(), Text.t()) :: t()
+  @spec append(t(), Text.t() | Table.t()) :: t()
+  def append(%__MODULE__{} = transcript, %Table{} = table), do: append_line(transcript, table)
+
   def append(%__MODULE__{} = transcript, data) do
     data
     |> Line.segments()
@@ -40,7 +44,7 @@ defmodule TarsTUI.Transcript do
   end
 
   @doc "Appends each of `lines` in order."
-  @spec append_all(t(), [Text.t()]) :: t()
+  @spec append_all(t(), [Text.t() | Table.t()]) :: t()
   def append_all(%__MODULE__{} = transcript, lines) when is_list(lines) do
     Enum.reduce(lines, transcript, &append(&2, &1))
   end
@@ -48,11 +52,14 @@ defmodule TarsTUI.Transcript do
   defp append_line(transcript, line) do
     rows =
       line
-      |> Line.wrap(transcript.width)
+      |> layout(transcript.width)
       |> Enum.reduce(transcript.rows, fn row, rows -> :array.set(:array.size(rows), row, rows) end)
 
     %{transcript | lines: [line | transcript.lines], rows: rows, version: transcript.version + 1}
   end
+
+  defp layout(%Table{} = table, width), do: Table.rows(table, width)
+  defp layout(line, width), do: Line.wrap(line, width)
 
   @doc "Wraps every line again at `width`. A no-op when the width is unchanged."
   @spec rewrap(t(), pos_integer()) :: t()

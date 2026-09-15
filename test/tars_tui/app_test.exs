@@ -299,6 +299,25 @@ defmodule TarsTUI.AppTest do
       assert screen(session) =~ "turn · I should look this up carefully and then decide"
     end
 
+    test "a chunk ending in a space still separates words", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}, {:thinking, "I should "}, {:thinking, "rank these"}])
+
+      assert screen(session) =~ "turn · I should rank these"
+    end
+
+    test "long reasoning shows its newest words, cut at a word and marked", %{
+      session: session,
+      turn: turn
+    } do
+      words = Enum.map_join(1..30, " ", &"word#{&1}")
+      emit(turn, [{:turn_started, ["hi"]}, {:thinking, words}])
+
+      [row] = session |> screen() |> String.split("\n") |> Enum.filter(&(&1 =~ "turn ·"))
+
+      assert row =~ ~r/turn · …word\d+ /
+      assert row =~ "word30"
+    end
+
     test "reasoning stays off the transcript unless tracing is on", %{
       session: session,
       turn: turn

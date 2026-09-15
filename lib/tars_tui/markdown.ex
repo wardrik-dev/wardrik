@@ -13,19 +13,22 @@ defmodule TarsTUI.Markdown do
 
   Two constructs span lines. A fenced code block, so the buffer carries whether
   it is inside one. A table, whose rows are held back until the line after it
-  arrives and then rendered together with their columns aligned. `tail/1` is
-  the unfinished line, for a surface that wants to show what is arriving
-  before it is a line.
+  arrives and then returned together as one `TarsTUI.Table`, which the
+  transcript lays out at its own width. `tail/1` is the unfinished line, for a
+  surface that wants to show what is arriving before it is a line.
 
-  Nothing here wraps. Lines are written once and never redrawn, so the terminal
-  soft-wraps them itself and a window resize reflows them correctly — which is
-  not true of anything a renderer wrapped in advance.
+  Nothing here wraps. Lines are written once and never redrawn, so the
+  transcript wraps them at its width and a window resize reflows them.
   """
+
+  alias TarsTUI.Table
+  alias TarsTUI.Text
 
   @typedoc "Text not yet a complete line, whether it sits inside a fence, and the table rows held back."
   @type t() :: %__MODULE__{pending: String.t(), fenced?: boolean(), table: [String.t()]}
 
-  alias TarsTUI.Text
+  @typedoc "What one complete line renders to: styled text, or a table."
+  @type line() :: Text.t() | Table.t()
 
   defstruct pending: "", fenced?: false, table: []
 
@@ -56,7 +59,7 @@ defmodule TarsTUI.Markdown do
 
   Lines come back rendered, in order, without their newlines.
   """
-  @spec push(t(), String.t()) :: {[Text.t()], t()}
+  @spec push(t(), String.t()) :: {[line()], t()}
   def push(%__MODULE__{} = buffer, text) when is_binary(text) do
     case String.split(buffer.pending <> text, "\n") do
       [pending] ->
@@ -71,7 +74,7 @@ defmodule TarsTUI.Markdown do
   end
 
   @doc "Renders whatever is left, for the end of a stream."
-  @spec flush(t()) :: {[Text.t()], t()}
+  @spec flush(t()) :: {[line()], t()}
   def flush(%__MODULE__{pending: "", table: []} = buffer), do: {[], buffer}
 
   def flush(%__MODULE__{pending: ""} = buffer) do
@@ -164,23 +167,15 @@ defmodule TarsTUI.Markdown do
     [Text.tag("│ ", :cyan), Text.tag(inline(text), @faint)]
   end
 
-  # Rows held back in reverse order. The first row is the header when a rule
-  # follows it; rule rows are dropped and drawn as one line under the header.
+  # Rows held back in reverse order. The first row is the header; a rule row
+  # after it sets the column alignments, and any other rule row is dropped.
   defp table([]), do: []
 
   defp table(rows) do
     rows = rows |> Enum.reverse() |> Enum.map(&cells/1)
-    {header, body} = split_header(rows)
-    body = Enum.reject(body, &rule?/1)
-    columns = Enum.max(Enum.map([header | body], &length/1))
-    rows = Enum.map([header | body], &(&1 ++ List.duplicate([], columns - length(&1))))
+    {header, alignments, body} = split_header(rows)
 
-    widths =
-      Enum.zip_with(rows, fn column -> column |> Enum.map(&Text.length/1) |> Enum.max() end)
-
-    [header | body] = rows
-
-    [row(header, widths, :bright), rule(widths)] ++ Enum.map(body, &row(&1, widths, nil))
+    [Table.new(header, Enum.reject(body, &rule?/1), alignments)]
   end
 
   defp cells(text) do
@@ -193,30 +188,16 @@ defmodule TarsTUI.Markdown do
   end
 
   defp split_header([header, second | rest]) do
-    if rule?(second), do: {header, rest}, else: {header, [second | rest]}
+    if rule?(second) do
+      {header, Enum.map(second, &Table.alignment(Text.plain(&1))), rest}
+    else
+      {header, [], [second | rest]}
+    end
   end
 
-  defp split_header([header]), do: {header, []}
+  defp split_header([header]), do: {header, [], []}
 
   defp rule?(cells), do: Enum.all?(cells, &Regex.match?(~r/^:?-{2,}:?$/, Text.plain(&1)))
-
-  defp row(cells, widths, emphasis) do
-    [cells, widths]
-    |> Enum.zip_with(fn [cell, width] -> pad(cell, width, emphasis) end)
-    |> Enum.intersperse(Text.tag(" │ ", @faint))
-  end
-
-  defp pad(cell, width, emphasis) do
-    filler = String.duplicate(" ", max(width - Text.length(cell), 0))
-    if emphasis, do: [Text.tag(cell, emphasis), filler], else: [cell, filler]
-  end
-
-  defp rule(widths) do
-    widths
-    |> Enum.map(&String.duplicate("─", &1))
-    |> Enum.intersperse("─┼─")
-    |> then(&Text.tag(&1, @faint))
-  end
 
   defp inline(text) do
     @inline

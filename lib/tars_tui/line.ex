@@ -103,28 +103,68 @@ defmodule TarsTUI.Line do
   Breaks one line into rows no wider than `width`, on spaces where possible.
 
   Rows after the first hang under the line's leading whitespace and bullet,
-  so a wrapped list item or tree entry keeps its shape.
+  so a wrapped list item or tree entry keeps its shape. A line that opens with
+  a bar, as a block quote or a reasoning line does, repeats the bar on every
+  row instead. Trailing spaces are dropped from the line and from each row.
   """
   @spec wrap(t(), pos_integer()) :: [t()]
-  def wrap([], _width), do: [[]]
-
   def wrap(segments, width) when is_integer(width) and width > 0 do
     chars =
       for {text, style} <- segments, grapheme <- String.graphemes(text), do: {grapheme, style}
 
-    hang = hanging(text(segments), width)
-    indent = for _ <- 1..hang//1, do: {" ", %{}}
+    chars = trim_chars(chars)
+    {hang, prefix} = hanging(text(segments), chars, width)
     {first, rest} = take(chars, width)
 
-    Enum.map([first | Enum.map(rows(rest, width - hang, []), &(indent ++ &1))], &merge/1)
+    continuation =
+      rest
+      |> rows(width - hang, [])
+      |> Enum.map(&trim_chars/1)
+      |> Enum.reject(&(&1 == []))
+      |> Enum.map(&(prefix ++ &1))
+
+    Enum.map([trim_chars(first) | continuation], &merge/1)
   end
 
-  @bullet ~r/^(\s*)(?:[⏺•·✓✗⇢›»┊■-]\s+|\d+[.)]\s+)?/u
+  @doc "The line without its trailing spaces."
+  @spec trim_trailing(t()) :: t()
+  def trim_trailing(segments) do
+    segments |> Enum.reverse() |> trim_reversed() |> Enum.reverse()
+  end
 
-  defp hanging(text, width) do
-    [match | _groups] = Regex.run(@bullet, text)
-    hang = String.length(match)
-    if hang < width - 8, do: hang, else: 0
+  defp trim_reversed([{text, style} | rest]) do
+    case String.trim_trailing(text, " ") do
+      "" -> trim_reversed(rest)
+      trimmed -> [{trimmed, style} | rest]
+    end
+  end
+
+  defp trim_reversed([]), do: []
+
+  @bar ~r/^\s*[│┊]\s/u
+  @bullet ~r/^(\s*)(?:[⏺•·✓✗⇢›»■-]\s+|\d+[.)]\s+)?/u
+
+  # The columns continuation rows hang by, and what fills them: the bar the
+  # line opened with, or spaces under a bullet.
+  defp hanging(text, chars, width) do
+    {hang, bar?} =
+      case Regex.run(@bar, text) do
+        [match] -> {String.length(match), true}
+        nil -> {text |> then(&Regex.run(@bullet, &1)) |> hd() |> String.length(), false}
+      end
+
+    cond do
+      hang >= width - 8 -> {0, []}
+      bar? -> {hang, Enum.take(chars, hang)}
+      true -> {hang, for(_ <- 1..hang//1, do: {" ", %{}})}
+    end
+  end
+
+  defp trim_chars(chars) do
+    chars
+    |> Enum.reverse()
+    |> Enum.drop_while(fn {grapheme, _style} -> grapheme == " " end)
+    |> Enum.reverse()
   end
 
   defp rows([], _width, acc), do: Enum.reverse(acc)

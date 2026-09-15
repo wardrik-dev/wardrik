@@ -104,23 +104,24 @@ defmodule TarsTUI.Usage do
   def empty?(%__MODULE__{}), do: false
 
   @doc """
-  One line of totals: tokens in and out, reasoning, cache reads, cost, requests.
+  One line of totals: the token counts as one group, then cost, then requests.
   Empty before the first request.
   """
   @spec summary(t()) :: String.t()
   def summary(%__MODULE__{requests: 0}), do: ""
 
   def summary(%__MODULE__{} = usage) do
-    [
-      "↑ #{count(usage.input)} in",
-      "↓ #{count(usage.output)} out",
-      if(usage.reasoning > 0, do: "∿ #{count(usage.reasoning)} reasoning"),
-      if(usage.cached > 0, do: "≡ #{count(usage.cached)} cached"),
-      dollars(usage.cost),
-      "#{usage.requests} req"
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" · ")
+    tokens =
+      [
+        "↑ #{count(usage.input)} in",
+        "↓ #{count(usage.output)} out",
+        if(usage.reasoning > 0, do: "∿ #{count(usage.reasoning)} reasoning"),
+        if(usage.cached > 0, do: "≡ #{count(usage.cached)} cached")
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("  ")
+
+    Enum.join([tokens, dollars(usage.cost), "#{usage.requests} req"], " · ")
   end
 
   @doc "A token count, abbreviated."

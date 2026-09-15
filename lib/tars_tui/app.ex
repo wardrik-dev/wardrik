@@ -11,7 +11,8 @@ defmodule TarsTUI.App do
     1. **header**: the model, the agent, and whether tracing is on
     2. **transcript**: the answer rendered as markdown a line at a time, each
        span the turn opens and closes as an indented tree line, and each tool
-       call with its arguments; pinned to the newest row until scrolled up
+       call with its arguments; pinned to the newest row until scrolled up,
+       with one blank row kept under it
     3. **activity**: a spinner, the innermost work in flight and what it is
        doing, with the newest words of the model's reasoning while it
        reasons, on the left; streamed characters and elapsed time on the
@@ -37,6 +38,7 @@ defmodule TarsTUI.App do
   alias TarsTUI.Activity
   alias TarsTUI.Markdown
   alias TarsTUI.Render
+  alias TarsTUI.Table
   alias TarsTUI.Text
   alias TarsTUI.Transcript
   alias TarsTUI.Usage
@@ -45,7 +47,8 @@ defmodule TarsTUI.App do
   @tick 100
   @frame_after 50
   @thinking_tail 240
-  @chrome_rows 3
+  # Header, the spacer under the transcript, activity, and meta.
+  @chrome_rows 4
   @max_prompt_rows 8
   @faint [:faint, :light_black]
 
@@ -162,6 +165,8 @@ defmodule TarsTUI.App do
       >
         {@source}
       </box>
+      <box class="block w-full h-1 overflow-hidden">
+      </box>
       <box class="block w-full h-1 overflow-hidden">{@status}</box>
       <.textarea
         id="prompt"
@@ -221,9 +226,7 @@ defmodule TarsTUI.App do
 
   # The newest words of the reasoning, in the room left on the row.
   defp doing(%{doing: "thinking"}, thinking, room) when thinking != "" do
-    over = String.length(thinking) - max(room, 8)
-    tail = if over > 0, do: String.slice(thinking, over, room), else: thinking
-    Text.tag([" · ", Text.tag(tail, :italic)], @faint)
+    Text.tag([" · ", Text.tag(newest(thinking, max(room, 8)), :italic)], @faint)
   end
 
   defp doing(%{doing: doing}, _thinking, _room) when is_binary(doing) do
@@ -231,6 +234,23 @@ defmodule TarsTUI.App do
   end
 
   defp doing(_span, _thinking, _room), do: []
+
+  # The last `room` columns of `text`, cut at a word and marked as a cut.
+  defp newest(text, room) do
+    text = Render.squash(text)
+    over = String.length(text) - room
+
+    if over > 0 do
+      tail = String.slice(text, over + 1, room - 1)
+
+      case String.split(tail, " ", parts: 2) do
+        [_partial, words] -> "…" <> words
+        [_whole] -> "…" <> tail
+      end
+    else
+      text
+    end
+  end
 
   defp chars(0), do: ""
   defp chars(n), do: "#{Usage.count(n)} chars · "
@@ -486,16 +506,23 @@ defmodule TarsTUI.App do
   defp prompt(glyph), do: Text.tag(glyph <> " ", [:bright, :cyan])
 
   # The answer is one block: a blank line, a bullet on its first line, and the
-  # rest indented under it.
+  # rest indented under it. A table takes its indent as a table, and one that
+  # opens the answer takes the bullet's row for itself.
   defp answer_lines(term, []), do: term
 
   defp answer_lines(%{assigns: %{answering?: false}} = term, [first | rest]) do
     term
     |> assign(answering?: true)
-    |> append_lines(["", [Text.tag("⏺ ", :green), first] | Enum.map(rest, &["  ", &1])])
+    |> append_lines(["" | lead(first) ++ Enum.map(rest, &indented/1)])
   end
 
-  defp answer_lines(term, lines), do: append_lines(term, Enum.map(lines, &["  ", &1]))
+  defp answer_lines(term, lines), do: append_lines(term, Enum.map(lines, &indented/1))
+
+  defp lead(%Table{} = table), do: [Text.tag("⏺", :green), indented(table)]
+  defp lead(line), do: [[Text.tag("⏺ ", :green), line]]
+
+  defp indented(%Table{} = table), do: %{table | indent: 2}
+  defp indented(line), do: ["  ", line]
 
   defp append(term, data) do
     assign(term, transcript: Transcript.append(term.assigns.transcript, data))
@@ -505,8 +532,9 @@ defmodule TarsTUI.App do
     assign(term, transcript: Transcript.append_all(term.assigns.transcript, lines))
   end
 
+  # Kept as it arrived, so a chunk ending in a space still separates words;
+  # `newest/2` squashes it for the row.
   defp tail(text) do
-    text = Render.squash(text)
     over = String.length(text) - @thinking_tail
     if over > 0, do: String.slice(text, over, @thinking_tail), else: text
   end

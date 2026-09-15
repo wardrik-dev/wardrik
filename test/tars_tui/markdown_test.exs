@@ -202,31 +202,44 @@ defmodule TarsTUI.MarkdownTest do
   end
 
   describe "tables" do
-    test "rows are held back until the table ends, then aligned" do
+    alias TarsTUI.Table
+
+    defp cells(row), do: Enum.map(row, &plain/1)
+
+    test "rows are held back until the table ends, then returned as one table" do
       {lines, buffer} =
         Markdown.push(
           Markdown.new(),
-          "| Name | Price |\n|---|---|\n| **Breadtopia** | $18 |\n| King Arthur | $9.95 |\n"
+          "| Name | Price |\n|---|--:|\n| **Breadtopia** | $18 |\n| King Arthur | $9.95 |\n"
         )
 
       assert lines == []
 
-      {lines, _buffer} = Markdown.push(buffer, "after\n")
+      {[%Table{} = table, after_it], _buffer} = Markdown.push(buffer, "after\n")
 
-      assert Enum.map(lines, &plain/1) == [
-               "Name        │ Price",
-               "────────────┼──────",
-               "Breadtopia  │ $18  ",
-               "King Arthur │ $9.95",
-               "after"
-             ]
+      assert cells(table.header) == ["Name", "Price"]
+      assert Enum.map(table.rows, &cells/1) == [["Breadtopia", "$18"], ["King Arthur", "$9.95"]]
+      assert table.alignments == [:left, :right]
+      assert plain(after_it) == "after"
+    end
+
+    test "cells keep their inline styles" do
+      {[%Table{rows: [[name, _price]]}], _buffer} =
+        Markdown.new()
+        |> Markdown.push("| a | b |\n|---|---|\n| **Bold** | 1 |\n")
+        |> elem(1)
+        |> Markdown.flush()
+
+      assert sequences(name) |> Enum.member?(:bright)
     end
 
     test "a table still pending at the end of the stream is flushed" do
       {[], buffer} = Markdown.push(Markdown.new(), "| a | b |\n| c | dd |")
-      {lines, _buffer} = Markdown.flush(buffer)
+      {[%Table{} = table], _buffer} = Markdown.flush(buffer)
 
-      assert Enum.map(lines, &plain/1) == ["a │ b ", "──┼───", "c │ dd"]
+      assert cells(table.header) == ["a", "b"]
+      assert Enum.map(table.rows, &cells/1) == [["c", "dd"]]
+      assert table.alignments == [:left, :left]
     end
 
     test "a table inside a fence is code" do

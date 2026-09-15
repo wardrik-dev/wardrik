@@ -5,7 +5,7 @@ defmodule TarsTUI.ScrollTest do
   alias Tars.Event.Source
   alias TarsTUI.App
 
-  # Forty lines of transcript in a pane that shows eight rows.
+  # Forty lines of transcript in a pane that shows seven rows.
   setup do
     agent_id = make_ref()
 
@@ -46,18 +46,18 @@ defmodule TarsTUI.ScrollTest do
 
   test "ArrowUp and ArrowDown move one row", %{session: session} do
     Breeze.Test.input(session, "ArrowUp")
-    assert first_line(session) == "line 32"
+    assert first_line(session) == "line 33"
 
     Breeze.Test.input(session, "ArrowDown")
-    assert first_line(session) == "line 33"
+    assert first_line(session) == "line 34"
   end
 
   test "PageUp and PageDown move a page", %{session: session} do
     Breeze.Test.input(session, "PageUp")
-    assert first_line(session) == "line 26"
+    assert first_line(session) == "line 28"
 
     Breeze.Test.input(session, "PageDown")
-    assert first_line(session) == "line 33"
+    assert first_line(session) == "line 34"
   end
 
   test "Home and End go to either end", %{session: session} do
@@ -70,14 +70,14 @@ defmodule TarsTUI.ScrollTest do
 
   test "the wheel moves three rows per notch, times the repeat", %{session: session} do
     Breeze.Test.wheel(session, "log", :up)
-    assert first_line(session) == "line 30"
+    assert first_line(session) == "line 31"
 
     Breeze.Test.wheel(session, "log", :up, repeat: 2)
 
-    assert first_line(session) == "line 24"
+    assert first_line(session) == "line 25"
 
     Breeze.Test.wheel(session, "log", :down)
-    assert first_line(session) == "line 27"
+    assert first_line(session) == "line 28"
   end
 
   test "keys that mean nothing here leave the view alone", %{session: session} do
