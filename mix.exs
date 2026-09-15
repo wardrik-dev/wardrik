@@ -18,7 +18,7 @@ defmodule Tars.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :os_mon],
       mod: {Tars.Application, []}
     ]
   end
@@ -26,22 +26,19 @@ defmodule Tars.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
-  # Thin shells over things that only exist at a real terminal, plus test
-  # support. Excluded because covering them would mean asserting on mocks of
-  # Owl and Mix rather than on any behaviour of ours.
+  # A thin shell over a real terminal. Excluded because covering it would mean
+  # asserting on mocks of Mix rather than on any behaviour of ours.
   defp ignored_modules do
-    [
-      Mix.Tasks.Tars,
-      Tars.TUI.Screen.Terminal,
-      Tars.Test.RecordingScreen
-    ]
+    [Mix.Tasks.Tars]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:req_llm, "~> 1.21"},
-      {:owl, "~> 0.13.1"},
+
+      # Used by lib/tars_tui, not by core. Pinned: pre-1.0.
+      {:breeze, "0.5.1"},
 
       # Used by the bolt-on tool packages under lib/tars_brave, not by core.
       {:req, "~> 0.7"},

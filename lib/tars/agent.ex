@@ -16,7 +16,7 @@ defmodule Tars.Agent do
 
   Stream and tool events do not pass through this process at all. The turn
   publishes them through its scope, and any number of listeners can subscribe
-  with `Tars.Event.Bus.subscribe/1`. See `Tars.TUI` for a terminal one.
+  with `Tars.Event.Bus.subscribe/1`. See `TarsTUI.App` for a terminal one.
 
   A message arriving while a turn is running joins that turn rather than
   waiting for it: the turn is asked to stop at its next boundary, and the

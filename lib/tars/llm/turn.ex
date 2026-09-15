@@ -26,6 +26,13 @@ defmodule Tars.LLM.Turn do
   Neither can land between a tool call and its result. A tool already running
   is not stopped — the mailbox is not read again until it returns — so a caller
   that must guarantee a stop needs to kill the process as well.
+
+  ## The iteration cap
+
+  `max_iterations` on the config bounds the rounds of tool use. When the last
+  round has run, the turn makes one more request with no tools and a closing
+  note added to the system prompt, so it ends with an answer drawn from what
+  it found rather than with a tool exchange nobody read.
   """
   require Logger
 
@@ -36,6 +43,8 @@ defmodule Tars.LLM.Turn do
   alias Tars.Trace
 
   @streamed :tars_streamed_text
+
+  @closing "You have used every tool call available for this turn. Answer now from what you have, and say plainly what you could not verify."
 
   @spec run(Scope.t(), Context.t()) :: {:ok, [ReqLLM.Message.t()]} | {:error, any()}
   def run(%Scope{} = scope, %Context{} = context) do
@@ -57,10 +66,7 @@ defmodule Tars.LLM.Turn do
   end
 
   # `acc` holds this turn's messages in reverse order.
-  defp loop(_scope, _context, acc, 0) do
-    Logger.warning("Turn hit its iteration cap, stopping")
-    {:ok, Enum.reverse(acc)}
-  end
+  defp loop(scope, context, acc, 0), do: wrap_up(scope, context, acc)
 
   defp loop(scope, context, acc, remaining) do
     case request(scope, context) do
@@ -78,6 +84,29 @@ defmodule Tars.LLM.Turn do
 
   defp partial(""), do: []
   defp partial(text), do: [Context.assistant(text)]
+
+  # One last request without tools. Any tool call the model asks for anyway
+  # is dropped, so the conversation never ends on an unanswered call.
+  defp wrap_up(scope, context, acc) do
+    Logger.warning("Turn hit its iteration cap, answering without tools")
+    config = %{scope.config | tools: [], system: closing(scope.config.system)}
+
+    case request(%{scope | config: config}, context) do
+      {:ok, response} ->
+        %{text: text} = ReqLLM.Response.classify(response)
+        {:ok, Enum.reverse(acc, partial(text))}
+
+      {:interrupted, text} ->
+        {:ok, Enum.reverse(acc, partial(text))}
+
+      {:error, reason} ->
+        Logger.warning("Error streaming text: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp closing(nil), do: @closing
+  defp closing(system), do: system <> "\n\n" <> @closing
 
   defp advance(scope, context, acc, remaining, response) do
     case handle_response(scope, context, response) do

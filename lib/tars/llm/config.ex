@@ -37,11 +37,12 @@ defmodule Tars.LLM.Config do
   Which of those a model honours is the provider's business; `:tools` and
   `:system` are set from their own fields and cannot be overridden here.
 
-  `:max_iterations` bounds how many times a turn may answer its own tool calls
-  before giving up. It is a backstop against an unattended agent spending
-  without limit, not a budget — a turn that needs more rounds should get them,
-  and a person watching one can stop it. Set `:infinity` where something else
-  is doing the stopping.
+  `:max_iterations` bounds how many rounds of tool calls a turn may make,
+  thirty by default. A turn that reaches it is asked to answer with what it
+  has, so it still ends with an answer. It is a backstop against an unattended
+  agent spending without limit, not a budget — a turn that needs more rounds
+  should be given them, and a person watching one can stop it. Set `:infinity`
+  where something else is doing the stopping.
 
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
@@ -56,7 +57,7 @@ defmodule Tars.LLM.Config do
             tools: [],
             tool_timeouts: %{},
             generation: [],
-            max_iterations: 250
+            max_iterations: 30
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},

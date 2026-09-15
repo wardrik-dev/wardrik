@@ -1,0 +1,98 @@
+defmodule TarsTUI.Transcript do
+  @moduledoc """
+  The append-only transcript, kept as terminal rows.
+
+  Lines arrive as `TarsTUI.Text` and are wrapped to the transcript's width as they
+  are appended. `source/1` presents the rows to Breeze as a lazy
+  `BackBreeze.VirtualText`, which fetches only the rows it draws. `rewrap/2`
+  rebuilds the rows for a new width.
+  """
+
+  alias BackBreeze.VirtualText
+  alias TarsTUI.Line
+  alias TarsTUI.Text
+
+  @type t() :: %__MODULE__{
+          width: pos_integer(),
+          lines: [Line.t()],
+          rows: :array.array(),
+          version: non_neg_integer()
+        }
+
+  defstruct width: 100, lines: [], rows: nil, version: 0
+
+  @doc "An empty transcript wrapped at `width` columns."
+  @spec new(pos_integer()) :: t()
+  def new(width) when is_integer(width) and width > 0 do
+    %__MODULE__{width: width, rows: :array.new()}
+  end
+
+  @doc """
+  Appends one line of `TarsTUI.Text`. Data containing newlines is appended as
+  several lines.
+  """
+  @spec append(t(), Text.t()) :: t()
+  def append(%__MODULE__{} = transcript, data) do
+    data
+    |> Line.segments()
+    |> Line.lines()
+    |> Enum.reduce(transcript, &append_line(&2, &1))
+  end
+
+  @doc "Appends each of `lines` in order."
+  @spec append_all(t(), [Text.t()]) :: t()
+  def append_all(%__MODULE__{} = transcript, lines) when is_list(lines) do
+    Enum.reduce(lines, transcript, &append(&2, &1))
+  end
+
+  defp append_line(transcript, line) do
+    rows =
+      line
+      |> Line.wrap(transcript.width)
+      |> Enum.reduce(transcript.rows, fn row, rows -> :array.set(:array.size(rows), row, rows) end)
+
+    %{transcript | lines: [line | transcript.lines], rows: rows, version: transcript.version + 1}
+  end
+
+  @doc "Wraps every line again at `width`. A no-op when the width is unchanged."
+  @spec rewrap(t(), pos_integer()) :: t()
+  def rewrap(%__MODULE__{width: width} = transcript, width), do: transcript
+
+  def rewrap(%__MODULE__{} = transcript, width) when is_integer(width) and width > 0 do
+    transcript.lines
+    |> Enum.reverse()
+    |> Enum.reduce(%{new(width) | version: transcript.version}, &append_line(&2, &1))
+  end
+
+  @doc "How many terminal rows the transcript occupies."
+  @spec rows(t()) :: non_neg_integer()
+  def rows(%__MODULE__{rows: rows}), do: :array.size(rows)
+
+  @doc "The rows in order, as plain text."
+  @spec to_list(t()) :: [String.t()]
+  def to_list(%__MODULE__{rows: rows}), do: rows |> :array.to_list() |> Enum.map(&Line.text/1)
+
+  @doc """
+  The transcript as a lazy virtual text for a Breeze `scroll` block.
+
+  Breeze only calls `slice_fn` for the rows it is about to draw.
+  """
+  @spec source(t()) :: struct()
+  def source(%__MODULE__{rows: rows, version: version, width: width}) do
+    count = :array.size(rows)
+
+    VirtualText.lazy(
+      cache_key: {__MODULE__, version, width},
+      cache?: false,
+      intrinsic_width: 1,
+      line_count_fn: fn _width -> count end,
+      slice_fn: fn start, wanted, _width -> slice(rows, count, start, wanted) end
+    )
+  end
+
+  defp slice(_rows, count, start, wanted) when wanted <= 0 or start >= count, do: []
+
+  defp slice(rows, count, start, wanted) do
+    for i <- start..(min(start + wanted, count) - 1)//1, do: :array.get(i, rows)
+  end
+end

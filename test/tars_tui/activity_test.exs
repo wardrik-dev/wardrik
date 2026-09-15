@@ -1,9 +1,9 @@
-defmodule Tars.TUI.ActivityTest do
+defmodule TarsTUI.ActivityTest do
   use ExUnit.Case, async: true
 
   alias Tars.Event
   alias Tars.Event.Source
-  alias Tars.TUI.Activity
+  alias TarsTUI.Activity
 
   defp event(source, payload), do: Event.new(source, payload)
 

@@ -1,14 +1,14 @@
-defmodule Tars.TUI.Activity do
+defmodule TarsTUI.Activity do
   @moduledoc """
   The span tree of one turn, folded from its events.
 
   Every event carries the span it happened on and that span's parent, so a
   subscriber can rebuild the tree without being told its shape:
 
-      activity = Enum.reduce(events, Tars.TUI.Activity.new(), &Tars.TUI.Activity.fold(&2, &1))
+      activity = Enum.reduce(events, TarsTUI.Activity.new(), &TarsTUI.Activity.fold(&2, &1))
 
-      Tars.TUI.Activity.depth(activity, span_id)
-      Tars.TUI.Activity.running(activity)
+      TarsTUI.Activity.depth(activity, span_id)
+      TarsTUI.Activity.running(activity)
 
   A span opens on `{:span_started, name}` and closes on `{:span_finished,
   outcome, ms}`; a turn opens and closes on its own events. Anything else

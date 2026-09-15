@@ -1,14 +1,15 @@
-defmodule Tars.TUI.ViewTest do
+defmodule TarsTUI.ViewTest do
   use ExUnit.Case, async: true
 
   alias Tars.Event
   alias Tars.Event.Source
-  alias Tars.TUI.Activity
-  alias Tars.TUI.View
+  alias TarsTUI.Activity
+  alias TarsTUI.Text
+  alias TarsTUI.View
 
-  defp plain(data), do: data |> Owl.Data.untag() |> to_string()
+  defp plain(data), do: Text.plain(data)
 
-  defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
+  defp sequences(%Text{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
@@ -16,40 +17,9 @@ defmodule Tars.TUI.ViewTest do
     Activity.fold(activity, Event.new(source, payload), now: now)
   end
 
-  defp status(activity, opts) do
-    state = %{
-      frame: 0,
-      activity: activity,
-      thinking: Keyword.get(opts, :thinking, ""),
-      chars: Keyword.get(opts, :chars, 0),
-      now: Keyword.get(opts, :now, 0)
-    }
-
-    View.status(state, Keyword.get(opts, :width, 80))
-  end
-
   setup do
     turn = Source.root(:assistant, name: "turn")
     {:ok, turn: turn, tool: Source.child(turn, name: "web_search")}
-  end
-
-  test "prompt/0 is renderable Owl data" do
-    assert View.prompt() |> plain() =~ "›"
-  end
-
-  describe "banner/2" do
-    test "names the model and how to quit" do
-      out = View.banner("some-model") |> plain()
-
-      assert out =~ "tars"
-      assert out =~ "some-model"
-      assert out =~ "/quit"
-    end
-
-    test "flags verbose mode" do
-      refute View.banner("m", false) |> plain() =~ "verbose"
-      assert View.banner("m", true) |> plain() =~ "verbose"
-    end
   end
 
   test "spinner/1 cycles through frames" do
@@ -59,11 +29,7 @@ defmodule Tars.TUI.ViewTest do
     assert View.spinner(0) == View.spinner(10)
   end
 
-  describe "answer/1 and reasoning/1" do
-    test "an answer line is written as it came, with its row ended" do
-      assert View.answer("Pong!") |> plain() == "Pong!\n"
-    end
-
+  describe "reasoning/1" do
     test "reasoning is marked and dimmed, so it cannot be read as the answer" do
       out = View.reasoning("pondering")
 
@@ -141,121 +107,6 @@ defmodule Tars.TUI.ViewTest do
       [span] = Activity.spans(activity)
 
       assert View.span(span, 1, 0) |> plain() == "  · ?\n"
-    end
-  end
-
-  describe "status/2" do
-    test "says it is working when nothing has been seen yet" do
-      assert Activity.new() |> status([]) |> plain() =~ "working"
-    end
-
-    test "names the innermost running span", %{turn: turn, tool: tool} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(tool, {:span_started, "web_search"})
-
-      assert status(activity, now: 3_000) |> plain() =~ "web_search"
-    end
-
-    test "counts the elapsed time of that span, not the turn", %{turn: turn, tool: tool} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]}, 0)
-        |> fold(tool, {:span_started, "web_search"}, 9_000)
-
-      assert status(activity, now: 11_000) |> plain() =~ "2.0s"
-    end
-
-    test "reports what the span is doing", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:model_started, :m})
-
-      assert status(activity, []) |> plain() =~ "waiting on the model"
-    end
-
-    test "shows the reasoning tail while the model is thinking", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:thinking, "comparing the two proposals"})
-
-      assert status(activity, thinking: "comparing the two proposals") |> plain() =~
-               "comparing the two proposals"
-    end
-
-    test "shows the newest reasoning, not the oldest, once it runs long", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:thinking, "x"})
-
-      thinking = "the beginning of a long thought " <> String.duplicate("z", 200) <> " the end"
-      out = status(activity, thinking: thinking, width: 60) |> plain()
-
-      assert out =~ "the end"
-      refute out =~ "the beginning"
-    end
-
-    test "falls back to a plain label when reasoning has produced no line yet", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:thinking, "\n"})
-
-      assert status(activity, thinking: "") |> plain() =~ "thinking"
-    end
-
-    test "appends the character count once there is one", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
-
-      refute status(activity, chars: 0) |> plain() =~ "chars"
-      assert status(activity, chars: 1_400) |> plain() =~ "1.4k chars"
-    end
-
-    test "is led by a spinner frame", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
-
-      assert status(activity, []) |> plain() =~ View.spinner(0)
-    end
-
-    # Strictly under, not equal: a line that reaches the right margin wraps,
-    # and a wrapped status line scrolls rather than being overwritten.
-    test "never reaches the right margin, whatever it is given", %{turn: turn} do
-      activity =
-        Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:thinking, "x"})
-
-      for width <- [20, 40, 80, 100, 200] do
-        line =
-          status(activity,
-            thinking: String.duplicate("y", 500),
-            chars: 999_999,
-            now: 3_600_000,
-            width: width
-          )
-
-        assert line |> plain() |> String.length() < width
-      end
-    end
-  end
-
-  describe "steer/2" do
-    test "marks a line the user typed mid-turn" do
-      out = View.steer("focus on pricing")
-
-      assert plain(out) =~ "focus on pricing"
-      assert plain(out) =~ "»"
-      assert plain(out) |> String.ends_with?("\n")
-    end
-
-    test "is clipped like every other structured row" do
-      line = View.steer(String.duplicate("z", 500), 40) |> plain() |> String.trim_trailing("\n")
-
-      assert String.length(line) < 40
     end
   end
 

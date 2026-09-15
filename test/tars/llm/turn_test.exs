@@ -213,14 +213,62 @@ defmodule Tars.LLM.TurnTest do
              capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
   end
 
-  test "the iteration cap stops a model that never stops calling tools", %{agent_id: agent_id} do
+  test "the iteration cap ends a model that never stops calling tools with an answer", %{
+    agent_id: agent_id
+  } do
+    test_pid = self()
+
+    LLMStub.answering(fn asked ->
+      send(test_pid, {:asked, asked})
+
+      if asked.tools == [],
+        do: {:ok, LLMStub.final_answer("what I have so far")},
+        else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
+    end)
+
+    assert {:ok, messages} =
+             capture(fn -> LLM.Turn.run(looping_scope(agent_id, 3), Context.new()) end)
+
+    # Three rounds, each an assistant message and its tool result, then the answer.
+    assert Enum.count(messages) == 7
+    assert text(List.last(messages)) == "what I have so far"
+
+    # The closing request carries no tools and says so.
+    asked = for {:asked, asked} <- flush(), do: asked
+    assert Enum.map(asked, &(&1.tools == [])) == [false, false, false, true]
+    assert List.last(asked).system =~ "Answer now from what you have"
+  end
+
+  test "the closing request keeps the persona it adds to", %{agent_id: agent_id} do
+    test_pid = self()
+
+    LLMStub.answering(fn asked ->
+      send(test_pid, {:asked, asked})
+
+      if asked.tools == [],
+        do: {:ok, LLMStub.final_answer("done")},
+        else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
+    end)
+
+    scope = looping_scope(agent_id, 1)
+    scope = %{scope | config: %{scope.config | system: "You are terse."}}
+
+    assert {:ok, _messages} = capture(fn -> LLM.Turn.run(scope, Context.new()) end)
+
+    asked = for {:asked, asked} <- flush(), do: asked
+    assert List.last(asked).system =~ "You are terse."
+    assert List.last(asked).system =~ "Answer now from what you have"
+  end
+
+  test "a closing answer that asks for tools anyway is kept as text only", %{agent_id: agent_id} do
     LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 30))
 
     assert {:ok, messages} =
              capture(fn -> LLM.Turn.run(looping_scope(agent_id, 3), Context.new()) end)
 
-    # Three iterations, each appending an assistant message and its tool result.
+    # Three rounds of tools; the closing call had nothing to say.
     assert Enum.count(messages) == 6
+    refute Enum.any?(messages, &(&1.role == :tool and false))
   end
 
   test "the cap is a backstop a deployment can lift", %{agent_id: agent_id} do
@@ -341,6 +389,14 @@ defmodule Tars.LLM.TurnTest do
     message.content
     |> Enum.filter(&(&1.type == :text))
     |> Enum.map_join(& &1.text)
+  end
+
+  defp flush do
+    receive do
+      message -> [message | flush()]
+    after
+      0 -> []
+    end
   end
 
   defp looping_scope(agent_id, max_iterations) do

@@ -47,7 +47,9 @@ defmodule TarsResearch.Deep do
 
   Angles are independent, so an angle that fails, crashes, or runs over time
   is reported as a gap and the rest are still synthesised. Only a sweep where
-  every angle failed is an error.
+  every angle failed is an error. An angle has eight minutes and its
+  researcher twelve model calls unless the tool is built with `:timeout` or
+  `:max_iterations`.
 
   ## Extracting this package
 
@@ -73,9 +75,14 @@ defmodule TarsResearch.Deep do
   @typedoc "One angle to research, and optionally what makes it different."
   @type angle() :: %{required(:angle) => String.t(), optional(:prompt) => String.t()}
 
-  # Long enough for a full sweep: branches are capped at five minutes each by
-  # `Tars.Workflow.fan_out/4`, and synthesis runs a turn of its own after them.
-  @timeout :timer.minutes(10)
+  # One angle may run for `@branch_timeout`; the sweep as a whole, including
+  # the synthesis turn that follows the angles, may run for `@timeout`.
+  @timeout :timer.minutes(15)
+  @branch_timeout :timer.minutes(8)
+
+  # Model calls one researcher may make. Each call can ask for several
+  # searches at once.
+  @researcher_iterations 12
 
   @impl Tars.Tool
   def tool, do: tool([])
@@ -84,11 +91,19 @@ defmodule TarsResearch.Deep do
   def timeout, do: @timeout
 
   @doc """
-  Builds the tool with angles, or a branch limit, of your own.
+  Builds the tool with angles, or limits, of your own.
 
-  Options are `:angles` and `:max_concurrency`. Angles are checked here, so a
-  malformed one raises at `Tars.LLM.Config.new/1` rather than part way through
-  a sweep.
+  Options:
+
+    * `:angles` - the angles to research, as `t:angle/0` maps
+    * `:max_concurrency` - how many angles run at once, five by default
+    * `:timeout` - how long one angle may take, #{div(@branch_timeout, 60_000)}
+      minutes by default; an angle that runs over is reported as a gap
+    * `:max_iterations` - how many model calls one researcher may make,
+      #{@researcher_iterations} by default
+
+  Angles are checked here, so a malformed one raises at
+  `Tars.LLM.Config.new/1` rather than part way through a sweep.
   """
   @spec tool(keyword()) :: ReqLLM.Tool.t()
   def tool(opts) when is_list(opts) do
@@ -119,7 +134,7 @@ defmodule TarsResearch.Deep do
   @doc """
   Researches `topic` across its angles and returns the report.
 
-  Options are `:angles` and `:max_concurrency`, which defaults to five.
+  Options are those of `tool/1`.
   """
   @impl Tars.Workflow.Step
   def run(%{topic: topic} = args, scope, opts) do
@@ -127,15 +142,22 @@ defmodule TarsResearch.Deep do
     |> Workflow.fan_out(
       briefs(args, opts),
       fn brief, branch ->
-        Subagent.run(branch, "Topic: #{topic}\nYour angle: #{brief.angle}",
+        Subagent.run(capped(branch, opts), "Topic: #{topic}\nYour angle: #{brief.angle}",
           system: persona(brief),
           except_tools: ["deep_research"]
         )
       end,
       name: & &1.angle,
-      max_concurrency: Keyword.get(opts, :max_concurrency, 5)
+      max_concurrency: Keyword.get(opts, :max_concurrency, 5),
+      timeout: Keyword.get(opts, :timeout, @branch_timeout)
     )
     |> synthesise(topic, scope)
+  end
+
+  # A researcher runs under the caller's config with its own iteration cap.
+  defp capped(branch, opts) do
+    iterations = Keyword.get(opts, :max_iterations, @researcher_iterations)
+    %{branch | config: %{branch.config | max_iterations: iterations}}
   end
 
   defp synthesise(outcomes, topic, scope) do

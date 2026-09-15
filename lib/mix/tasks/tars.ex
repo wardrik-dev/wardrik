@@ -4,7 +4,7 @@ defmodule Mix.Tasks.Tars do
   @default_tools [TarsBrave.WebSearch, TarsResearch.Deep]
 
   @moduledoc """
-  Starts an agent and attaches `Tars.TUI` to it.
+  Starts an agent and attaches the full-screen `TarsTUI.App` to it.
 
       mix tars
       mix tars --verbose
@@ -20,11 +20,12 @@ defmodule Mix.Tasks.Tars do
 
   `--verbose` adds a trace line for the lower-level events — model requests,
   tool calls, metadata — and commits the model's reasoning to the transcript.
+  `Ctrl-T` toggles the same thing while running.
 
-  Console logging is removed before the app starts: the TUI rewrites a status
-  line in place, and any `Logger` write to the same device lands in the middle
-  of it. Pass `--log FILE` (or set `TARS_LOG`) to keep the messages — without
-  it, `Logger.error("Turn crashed: …")` goes nowhere.
+  Console logging is removed before the app starts: the client draws frames on
+  the terminal, and any `Logger` write to the same device lands in the middle
+  of one. Pass `--log FILE` (or set `TARS_LOG`) to keep the messages —
+  without it, `Logger.error("Turn crashed: …")` goes nowhere.
   """
 
   use Mix.Task
@@ -35,7 +36,13 @@ defmodule Mix.Tasks.Tars do
   def run(argv) do
     {opts, _argv} =
       OptionParser.parse!(argv,
-        strict: [model: :string, log: :string, verbose: :boolean, tool: :keep, tools: :boolean]
+        strict: [
+          model: :string,
+          log: :string,
+          verbose: :boolean,
+          tool: :keep,
+          tools: :boolean
+        ]
       )
 
     Mix.Task.run("app.start")
@@ -49,18 +56,20 @@ defmodule Mix.Tasks.Tars do
     config = config(opts)
     {:ok, _agent} = Tars.Agent.Supervisor.start(agent_id, config: config)
 
-    # The agent is named, so its event id is that name rather than its pid.
-    {:ok, tui} =
-      Tars.TUI.start_link(
-        agent: agent_id,
-        agent_id: agent_id,
-        model: config.model_spec,
-        verbose: opts[:verbose] || false,
-        width: Owl.IO.columns() || 100,
-        rows: Owl.IO.rows()
+    :ok =
+      Breeze.Server.run(
+        view: TarsTUI.App,
+        start_opts: [
+          agent: agent_id,
+          agent_id: agent_id,
+          model: config.model_spec,
+          verbose: opts[:verbose] || false
+        ],
+        global_keybindings: TarsTUI.App.keybindings(),
+        mouse: true,
+        logger: false,
+        inspector: false
       )
-
-    await(tui)
   end
 
   defp silence_console_logging, do: :logger.remove_handler(:default)
@@ -90,12 +99,4 @@ defmodule Mix.Tasks.Tars do
 
   defp named([]), do: @default_tools
   defp named(names), do: Enum.map(names, &Module.safe_concat([&1]))
-
-  defp await(tui) do
-    ref = Process.monitor(tui)
-
-    receive do
-      {:DOWN, ^ref, :process, ^tui, _reason} -> :ok
-    end
-  end
 end

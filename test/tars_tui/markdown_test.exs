@@ -1,11 +1,12 @@
-defmodule Tars.TUI.MarkdownTest do
+defmodule TarsTUI.MarkdownTest do
   use ExUnit.Case, async: true
 
-  alias Tars.TUI.Markdown
+  alias TarsTUI.Markdown
+  alias TarsTUI.Text
 
-  defp plain(data), do: data |> Owl.Data.untag() |> to_string()
+  defp plain(data), do: Text.plain(data)
 
-  defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
+  defp sequences(%Text{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
@@ -198,5 +199,40 @@ defmodule Tars.TUI.MarkdownTest do
              "  def run, do: :ok",
              ""
            ]
+  end
+
+  describe "tables" do
+    test "rows are held back until the table ends, then aligned" do
+      {lines, buffer} =
+        Markdown.push(
+          Markdown.new(),
+          "| Name | Price |\n|---|---|\n| **Breadtopia** | $18 |\n| King Arthur | $9.95 |\n"
+        )
+
+      assert lines == []
+
+      {lines, _buffer} = Markdown.push(buffer, "after\n")
+
+      assert Enum.map(lines, &plain/1) == [
+               "Name        │ Price",
+               "────────────┼──────",
+               "Breadtopia  │ $18  ",
+               "King Arthur │ $9.95",
+               "after"
+             ]
+    end
+
+    test "a table still pending at the end of the stream is flushed" do
+      {[], buffer} = Markdown.push(Markdown.new(), "| a | b |\n| c | dd |")
+      {lines, _buffer} = Markdown.flush(buffer)
+
+      assert Enum.map(lines, &plain/1) == ["a │ b ", "──┼───", "c │ dd"]
+    end
+
+    test "a table inside a fence is code" do
+      {lines, _buffer} = Markdown.push(Markdown.new(), "```\n| a | b |\n```\n")
+
+      assert Enum.map(lines, &plain/1) == ["", "  | a | b |", ""]
+    end
   end
 end

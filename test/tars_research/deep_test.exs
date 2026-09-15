@@ -259,6 +259,63 @@ defmodule TarsResearch.DeepTest do
       refute prompt =~ "## rivals"
     end
 
+    test "an angle that runs over its time is a gap, and the rest are still synthesised", %{
+      scope: scope
+    } do
+      LLMStub.answering(fn asked ->
+        # The rivals researcher never answers; the fan-out has to give up on it.
+        if asked.prompt =~ "rivals", do: receive(do: (:never -> :ok))
+
+        if asked.prompt =~ "Your angle:",
+          do: {:ok, LLMStub.final_answer("what I found")},
+          else: {:ok, LLMStub.final_answer("the combined report")}
+      end)
+
+      assert {:ok, result} =
+               quietly(fn ->
+                 Deep.run(%{topic: "widgets", angles: ["pricing", "rivals"]}, scope, timeout: 100)
+               end)
+
+      assert result["report"] == "the combined report"
+      assert [%{"angle" => "rivals", "reason" => ":timeout"}] = result["gaps"]
+    end
+
+    test "a researcher that keeps asking for tools is stopped at its iteration cap", %{
+      scope: scope
+    } do
+      test_pid = self()
+
+      LLMStub.answering(fn asked ->
+        cond do
+          asked.prompt =~ "Your angle:" and asked.tools == [] ->
+            send(test_pid, {:turn, :research, asked})
+            {:ok, LLMStub.final_answer("what I found before the cap")}
+
+          asked.prompt =~ "Your angle:" ->
+            send(test_pid, {:turn, :research, asked})
+            id = "call_#{System.unique_integer([:positive])}"
+            {:ok, LLMStub.tool_call(id, "web_search", %{query: "one more"})}
+
+          true ->
+            send(test_pid, {:turn, :synthesis, asked})
+            {:ok, LLMStub.final_answer("the combined report")}
+        end
+      end)
+
+      assert {:ok, result} =
+               quietly(fn ->
+                 Deep.run(%{topic: "widgets", angles: ["pricing"]}, scope, max_iterations: 3)
+               end)
+
+      # Three rounds of searching, then one closing call without tools.
+      all = turns()
+      assert [_first, _second, _third, closing] = for({:research, asked} <- all, do: asked)
+      assert closing.tools == []
+      assert [synthesis] = for({:synthesis, asked} <- all, do: asked)
+      assert synthesis.prompt =~ "what I found before the cap"
+      assert result["report"] == "the combined report"
+    end
+
     test "losing every angle is an error, because there is nothing to synthesise", %{scope: scope} do
       stub_llm(["pricing", "rivals"])
 
