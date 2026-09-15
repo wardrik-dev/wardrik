@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.Tars do
   @shortdoc "Boot the Tars TUI"
 
+  @default_tools [TarsBrave.WebSearch, TarsResearch.Deep]
+
   @moduledoc """
   Starts an agent and attaches `Tars.TUI` to it.
 
@@ -8,14 +10,20 @@ defmodule Mix.Tasks.Tars do
       mix tars --verbose
       mix tars --model anthropic:claude-sonnet-5
       mix tars --log /tmp/tars.log
+      mix tars --tool TarsBrave.WebSearch --tool TarsResearch.Deep
+      mix tars --no-tools
 
-  `--verbose` prints every event the turn loop publishes as its own line —
-  chunks, tool calls, turn boundaries — instead of rendering the answer as
-  chat. Useful for seeing what the agent is actually doing.
+  The agent boots with the tool packages this repo ships —
+  `#{Enum.map_join(@default_tools, "`, `", &inspect/1)}` — because a turn with
+  no tools exercises none of the tree. `--tool` names a different set, and
+  `--no-tools` boots without any.
 
-  Console logging is removed before the app starts, because `Owl.LiveScreen`
-  repaints on a timer and any `Logger` write to the same device tears the
-  frame. Pass `--log FILE` (or set `TARS_LOG`) to keep the messages — without
+  `--verbose` adds a trace line for the lower-level events — model requests,
+  tool calls, metadata — and commits the model's reasoning to the transcript.
+
+  Console logging is removed before the app starts: the TUI rewrites a status
+  line in place, and any `Logger` write to the same device lands in the middle
+  of it. Pass `--log FILE` (or set `TARS_LOG`) to keep the messages — without
   it, `Logger.error("Turn crashed: …")` goes nowhere.
   """
 
@@ -26,7 +34,9 @@ defmodule Mix.Tasks.Tars do
   @impl Mix.Task
   def run(argv) do
     {opts, _argv} =
-      OptionParser.parse!(argv, strict: [model: :string, log: :string, verbose: :boolean])
+      OptionParser.parse!(argv,
+        strict: [model: :string, log: :string, verbose: :boolean, tool: :keep, tools: :boolean]
+      )
 
     Mix.Task.run("app.start")
 
@@ -36,7 +46,7 @@ defmodule Mix.Tasks.Tars do
     redirect_logging(opts[:log] || System.get_env("TARS_LOG"))
 
     agent_id = :tars_tui
-    config = config(opts[:model])
+    config = config(opts)
     {:ok, _agent} = Tars.Agent.Supervisor.start(agent_id, config: config)
 
     # The agent is named, so its event id is that name rather than its pid.
@@ -46,7 +56,8 @@ defmodule Mix.Tasks.Tars do
         agent_id: agent_id,
         model: config.model_spec,
         verbose: opts[:verbose] || false,
-        width: Owl.IO.columns() || 100
+        width: Owl.IO.columns() || 100,
+        rows: Owl.IO.rows()
       )
 
     await(tui)
@@ -65,8 +76,20 @@ defmodule Mix.Tasks.Tars do
     })
   end
 
-  defp config(nil), do: LLM.Config.new()
-  defp config(model), do: LLM.Config.new(model_spec: model)
+  defp config(opts) do
+    opts
+    |> Keyword.take([:model])
+    |> Enum.map(fn {:model, spec} -> {:model_spec, spec} end)
+    |> Keyword.put(:tools, tools(opts))
+    |> LLM.Config.new()
+  end
+
+  defp tools(opts) do
+    if Keyword.get(opts, :tools, true), do: named(Keyword.get_values(opts, :tool)), else: []
+  end
+
+  defp named([]), do: @default_tools
+  defp named(names), do: Enum.map(names, &Module.safe_concat([&1]))
 
   defp await(tui) do
     ref = Process.monitor(tui)

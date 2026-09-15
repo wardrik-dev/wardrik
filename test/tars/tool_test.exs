@@ -45,4 +45,36 @@ defmodule Tars.ToolTest do
       Tool.resolve!(["web_search"])
     end
   end
+
+  describe "timeouts/2" do
+    defmodule Patient do
+      @behaviour Tars.Tool
+
+      @impl true
+      def tool do
+        ReqLLM.Tool.new!(name: "patient", description: "slow", callback: fn _ -> {:ok, %{}} end)
+      end
+
+      @impl true
+      def timeout, do: :timer.minutes(10)
+    end
+
+    test "reads what a module declares, by tool name" do
+      specs = [Patient]
+
+      assert Tool.timeouts(specs, Tool.resolve!(specs)) == %{"patient" => :timer.minutes(10)}
+    end
+
+    test "a module that declares none contributes none" do
+      specs = [Tars.Test.EchoTool]
+
+      assert Tool.timeouts(specs, Tool.resolve!(specs)) == %{}
+    end
+
+    test "an inline tool contributes none" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.timeouts([tool], [tool]) == %{}
+    end
+  end
 end

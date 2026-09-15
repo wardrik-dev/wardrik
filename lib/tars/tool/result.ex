@@ -25,6 +25,17 @@ defmodule Tars.Tool.Result do
   @typedoc "A tool result carrying whether the call itself succeeded."
   @type t() :: {:ok, map()}
 
+  @doc """
+  Whether a result reports a call that actually did its job.
+
+  A failure reported through `error/1` is a successful *tool*, so a surface
+  watching the run needs this to tell a search that found nothing from one that
+  never ran.
+  """
+  @spec ok?(term()) :: boolean()
+  def ok?({:ok, %{"ok" => false}}), do: false
+  def ok?(_result), do: true
+
   @doc "Reports a successful call."
   @spec ok(term()) :: t()
   def ok(result), do: {:ok, %{"ok" => true, "result" => result}}

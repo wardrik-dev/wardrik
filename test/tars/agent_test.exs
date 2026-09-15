@@ -286,4 +286,151 @@ defmodule Tars.AgentTest do
       assert Process.alive?(agent)
     end
   end
+
+  describe "a message arriving mid-turn" do
+    # Yields the moment it is asked to, so a test never guesses at timing.
+    defp yielding_runner(test_pid) do
+      fn _scope, _context ->
+        send(test_pid, {:running, self()})
+
+        receive do
+          :yield -> send(test_pid, :yielded)
+        after
+          1_000 -> send(test_pid, :never_yielded)
+        end
+
+        {:ok, [Context.assistant("partial")]}
+      end
+    end
+
+    test "asks the running turn to stop at its next boundary" do
+      {:ok, agent} = Agent.start_link(runner: yielding_runner(self()))
+
+      Agent.ask(agent, "one")
+      assert_receive {:running, _pid}
+
+      Agent.ask(agent, "two")
+
+      assert_receive :yielded
+    end
+
+    test "starts the next turn against what the yielded one left behind" do
+      test_pid = self()
+      {:ok, agent} = Agent.start_link(runner: yielding_runner(test_pid))
+
+      Agent.ask(agent, "one")
+      assert_receive {:running, _pid}
+      Agent.ask(agent, "two")
+      assert_receive :yielded
+      assert_receive {:running, _pid}
+
+      # The second turn sees the first question, the partial answer it produced,
+      # and the message that interrupted it — in that order.
+      assert %{state: :running} = Agent.status(agent)
+
+      context = Agent.get_context(agent)
+      assert Enum.map(context.messages, & &1.role) == [:user, :assistant, :user]
+    end
+
+    test "nothing is nudged when nothing is running" do
+      {:ok, agent} = Agent.start_link(runner: runner(self()))
+
+      Agent.ask(agent, "one")
+
+      assert_receive {:turn, _snapshot}
+    end
+  end
+
+  describe "interrupt/1" do
+    # Streams until interrupted, so a test never guesses at timing.
+    defp streaming_runner(test_pid) do
+      fn _scope, _context ->
+        send(test_pid, {:running, self()})
+
+        receive do
+          :interrupt -> {:ok, [Context.assistant("half a th")]}
+        after
+          1_000 -> {:ok, [Context.assistant("never interrupted")]}
+        end
+      end
+    end
+
+    test "stops the running turn and keeps what it produced" do
+      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
+      :ok = Event.Bus.subscribe(agent)
+
+      Agent.ask(agent, "tell me a long story")
+      assert_receive {:running, _pid}
+
+      Agent.interrupt(agent)
+
+      assert_receive %Event{payload: {:turn_interrupted, stats}}
+      assert stats.resolution == :stopped
+      assert stats.kept == 1
+
+      context = Agent.get_context(agent)
+      assert Enum.map(context.messages, & &1.role) == [:user, :assistant]
+    end
+
+    test "drops what was queued and says how much" do
+      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
+      :ok = Event.Bus.subscribe(agent)
+
+      Agent.ask(agent, "one")
+      assert_receive {:running, _pid}
+      Agent.ask(agent, "two")
+      Agent.ask(agent, "three")
+
+      Agent.interrupt(agent)
+
+      assert_receive %Event{payload: {:turn_interrupted, %{dropped: 2}}}
+      assert %{state: :idle, pending: 0} = Agent.status(agent)
+    end
+
+    test "reports an interrupt with nothing running rather than staying silent" do
+      {:ok, agent} = Agent.start_link(runner: runner(self()))
+      :ok = Event.Bus.subscribe(agent)
+
+      Agent.interrupt(agent)
+
+      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :idle}}}
+    end
+
+    test "kills a turn that will not stop, and still settles idle" do
+      test_pid = self()
+
+      # Deaf on purpose: :interrupt lands in its mailbox and is never read,
+      # which is what a turn stuck inside a tool call looks like.
+      deaf = fn _scope, _context ->
+        send(test_pid, {:running, self()})
+        receive do: (:never -> :ok)
+      end
+
+      {:ok, agent} = Agent.start_link(runner: deaf)
+      :ok = Event.Bus.subscribe(agent)
+
+      Agent.ask(agent, "one")
+      assert_receive {:running, _pid}
+
+      Agent.interrupt(agent)
+
+      assert_receive %Event{payload: {:turn_interrupted, stats}}, 5_000
+      assert stats.resolution == :killed
+      assert %{state: :idle} = Agent.status(agent)
+    end
+
+    test "leaves the agent able to take the next question" do
+      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
+      :ok = Event.Bus.subscribe(agent)
+
+      Agent.ask(agent, "one")
+      assert_receive {:running, _pid}
+      Agent.interrupt(agent)
+      assert_receive %Event{payload: {:turn_interrupted, _stats}}
+
+      Agent.ask(agent, "two")
+
+      assert_receive {:running, _pid}
+    end
+  end
 end

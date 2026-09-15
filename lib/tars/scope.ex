@@ -120,12 +120,14 @@ defmodule Tars.Scope do
   @doc """
   Runs `fun` in a span already opened by `open/2` and closes it.
 
-  Outcomes are derived as in `span/3`.
+  `outcome` reads the span's outcome from what `fun` returned. It defaults to
+  the rule `span/3` uses; pass one where a return value says more about how the
+  work went than its tag does.
   """
-  @spec closing(t(), (t() -> result)) :: result when result: term()
-  def closing(%__MODULE__{} = branch, fun) when is_function(fun, 1) do
+  @spec closing(t(), (t() -> result), (result -> outcome())) :: result when result: term()
+  def closing(%__MODULE__{} = branch, fun, outcome \\ &outcome/1) when is_function(fun, 1) do
     result = fun.(branch)
-    close(branch, outcome(result))
+    close(branch, outcome.(result))
     result
   catch
     kind, reason ->

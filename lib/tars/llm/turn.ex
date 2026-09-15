@@ -10,6 +10,22 @@ defmodule Tars.LLM.Turn do
 
   Pure orchestration: it holds no state of its own, so tests can drive `run/2`
   directly after subscribing to the scope's agent id.
+
+  ## Stopping early
+
+  Two messages stop a turn, both read from its own mailbox:
+
+    * `:yield` is read at an iteration boundary. The current model response and
+      any tools it asked for run to completion; the turn returns rather than
+      asking again.
+
+    * `:interrupt` is read at a boundary *and* on every stream chunk, so it
+      also stops a response that is still arriving. Whatever text had streamed
+      is returned as the assistant's message, verbatim.
+
+  Neither can land between a tool call and its result. A tool already running
+  is not stopped — the mailbox is not read again until it returns — so a caller
+  that must guarantee a stop needs to kill the process as well.
   """
   require Logger
 
@@ -19,34 +35,40 @@ defmodule Tars.LLM.Turn do
   alias Tars.Scope
   alias Tars.Trace
 
-  # A model that never stops calling tools would otherwise loop against a paid
-  # API forever. Generous, but bounded.
-  @max_iterations 25
+  @streamed :tars_streamed_text
 
   @spec run(Scope.t(), Context.t()) :: {:ok, [ReqLLM.Message.t()]} | {:error, any()}
   def run(%Scope{} = scope, %Context{} = context) do
-    loop(scope, context, [], @max_iterations)
+    loop(scope, context, [], scope.config.max_iterations)
+  end
+
+  @doc "Asks the process running a turn to stop iterating once it reaches a boundary."
+  @spec yield(pid()) :: :ok
+  def yield(pid) when is_pid(pid) do
+    send(pid, :yield)
+    :ok
+  end
+
+  @doc "Asks the process running a turn to stop as soon as it can, mid-response if need be."
+  @spec interrupt(pid()) :: :ok
+  def interrupt(pid) when is_pid(pid) do
+    send(pid, :interrupt)
+    :ok
   end
 
   # `acc` holds this turn's messages in reverse order.
   defp loop(_scope, _context, acc, 0) do
-    Logger.warning("Turn hit the #{@max_iterations} iteration cap, stopping")
+    Logger.warning("Turn hit its iteration cap, stopping")
     {:ok, Enum.reverse(acc)}
   end
 
   defp loop(scope, context, acc, remaining) do
     case request(scope, context) do
       {:ok, response} ->
-        case handle_response(scope, context, response) do
-          {:done, messages} ->
-            {:ok, Enum.reverse(acc, messages)}
+        advance(scope, context, acc, remaining, response)
 
-          {:cont, context, messages} ->
-            loop(scope, context, Enum.reverse(messages, acc), remaining - 1)
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+      {:interrupted, text} ->
+        {:ok, Enum.reverse(acc, partial(text))}
 
       {:error, reason} ->
         Logger.warning("Error streaming text: #{inspect(reason)}")
@@ -54,13 +76,58 @@ defmodule Tars.LLM.Turn do
     end
   end
 
+  defp partial(""), do: []
+  defp partial(text), do: [Context.assistant(text)]
+
+  defp advance(scope, context, acc, remaining, response) do
+    case handle_response(scope, context, response) do
+      {:done, messages} -> {:ok, Enum.reverse(acc, messages)}
+      {:cont, context, messages} -> continue(scope, context, messages, acc, remaining)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp continue(scope, context, messages, acc, remaining) do
+    acc = Enum.reverse(messages, acc)
+
+    if stop_requested?(),
+      do: {:ok, Enum.reverse(acc)},
+      else: loop(scope, context, acc, countdown(remaining))
+  end
+
+  defp stop_requested? do
+    receive do
+      :yield -> true
+      :interrupt -> true
+    after
+      0 -> false
+    end
+  end
+
+  defp interrupted? do
+    receive do
+      :interrupt -> true
+    after
+      0 -> false
+    end
+  end
+
+  defp countdown(:infinity), do: :infinity
+  defp countdown(remaining), do: remaining - 1
+
   defp request(%Scope{source: source, config: config} = scope, context) do
     started_at = System.monotonic_time()
     Event.emit(source, {:model_started, config.model_spec})
+    Process.put(@streamed, [])
 
     result =
-      with {:ok, streamed} <- ReqLLM.stream_text(config.model_spec, context, stream_opts(config)) do
-        process_stream(streamed, scope)
+      try do
+        with {:ok, streamed} <-
+               ReqLLM.stream_text(config.model_spec, context, stream_opts(config)) do
+          process_stream(streamed, scope)
+        end
+      catch
+        :interrupt -> {:interrupted, streamed_text()}
       end
 
     Event.emit(source, {:model_finished, outcome(result), Trace.elapsed_ms(started_at)})
@@ -69,12 +136,19 @@ defmodule Tars.LLM.Turn do
   end
 
   defp outcome({:error, reason}), do: {:error, reason}
+  defp outcome({:interrupted, _text}), do: {:error, :interrupted}
   defp outcome(_result), do: :ok
 
-  defp stream_opts(%LLM.Config{system: nil} = config), do: [tools: config.tools]
+  defp streamed_text, do: @streamed |> Process.get([]) |> Enum.reverse() |> IO.iodata_to_binary()
 
-  defp stream_opts(%LLM.Config{} = config),
-    do: [tools: config.tools, system_prompt: config.system]
+  defp stream_opts(%LLM.Config{} = config) do
+    config.generation
+    |> Keyword.put(:tools, config.tools)
+    |> put_system(config.system)
+  end
+
+  defp put_system(opts, nil), do: opts
+  defp put_system(opts, system), do: Keyword.put(opts, :system_prompt, system)
 
   defp handle_response(scope, context, %ReqLLM.Response{} = response) do
     case ReqLLM.Response.classify(response) do
@@ -111,12 +185,21 @@ defmodule Tars.LLM.Turn do
     end
   end
 
+  # The callbacks run in this process, so `:interrupt` is read from the same
+  # mailbox the boundary reads. A throw escapes `process_stream/2`, which
+  # catches only exits, leaving what streamed so far recoverable.
   defp process_stream(streamed, %Scope{source: source}) do
     streamed
     |> ReqLLM.StreamResponse.process_stream(
-      on_chunk: &Event.emit(source, {:chunk, &1}),
+      on_chunk: fn chunk ->
+        Event.emit(source, {:chunk, chunk})
+        if interrupted?(), do: throw(:interrupt)
+      end,
       on_meta: &Event.emit(source, {:meta, &1}),
-      on_result: &Event.emit(source, {:result, &1}),
+      on_result: fn text ->
+        Process.put(@streamed, [text | Process.get(@streamed, [])])
+        Event.emit(source, {:result, text})
+      end,
       on_thinking: &Event.emit(source, {:thinking, &1}),
       on_tool_call: &Event.emit(source, {:tool_call, &1})
     )

@@ -18,7 +18,8 @@ defmodule Tars.Subagent do
   | `:except_tools` | drop these tools, by name, from the ones inherited |
   | `:tools` | replace the tool set entirely, given as `t:Tars.Tool.spec/0` values |
   | `:model` | replace the model |
-  | `:config` | replace the whole config, ignoring the four above |
+  | `:generation` | replace the generation options, such as a reasoning budget |
+  | `:config` | replace the whole config, ignoring the five above |
 
       Tars.Subagent.run(scope, prompt, system: "You are a researcher.", except_tools: ["x"])
       Tars.Subagent.run(scope, prompt, name: "synthesis", tools: [])
@@ -57,8 +58,11 @@ defmodule Tars.Subagent do
 
   defp config(config, opts) do
     case Keyword.fetch(opts, :config) do
-      {:ok, %LLM.Config{} = config} -> config
-      :error -> config |> put_tools(opts) |> put_model(opts) |> put_system(opts)
+      {:ok, %LLM.Config{} = config} ->
+        config
+
+      :error ->
+        config |> put_tools(opts) |> put_model(opts) |> put_system(opts) |> put_generation(opts)
     end
   end
 
@@ -77,6 +81,13 @@ defmodule Tars.Subagent do
   defp put_system(config, opts) do
     case Keyword.fetch(opts, :system) do
       {:ok, system} -> %{config | system: system}
+      :error -> config
+    end
+  end
+
+  defp put_generation(config, opts) do
+    case Keyword.fetch(opts, :generation) do
+      {:ok, generation} -> %{config | generation: generation}
       :error -> config
     end
   end

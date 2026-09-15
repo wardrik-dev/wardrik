@@ -5,26 +5,34 @@ defmodule Tars.TUI do
   It is an ordinary `Tars.Event.Bus` subscriber. It holds no conversation
   state and never talks to the turn loop, so several can watch the same agent.
 
-  Two modes over the same event stream. By default it reads as a chat: the
-  answer streams out as plain text, with progress on a single status line that
-  is erased before any real output.
+  The transcript is append-only. The answer is rendered a line at a time as it
+  streams, and every span the turn opens prints one line when it starts and one
+  when it ends, indented by its depth — so a fan-out reads as a tree in
+  scrollback without anything being repainted.
 
-  With `verbose: true` the structural events — turn boundaries, tool calls,
-  metadata — each get a trace line, while token-level events are accumulated
-  into the status line's counters. A turn emits hundreds of `:result`
-  messages, so printing them is what makes a trace unreadable.
+  One line is live: a status line on the terminal's bottom row, naming the
+  innermost work in flight and how long it has been going. It is drawn where
+  nothing else can reach, so it never overwrites a line being typed.
 
-  Reading input blocks, so it happens in a separate reader process, and the
-  reader only prompts while the agent is idle. Typing during a turn is not
-  possible yet, that lands with interruption.
+  `/stop` reaches `Tars.Agent.interrupt/1`, which is a control path rather than
+  a message: it never enters the conversation, so stopping does not depend on a
+  model reading the word.
 
-  Only the turn's own events are rendered. Events from work a turn spawns
-  carry a child span and are ignored here.
+  `verbose: true` adds a trace line for the lower-level events — model
+  requests, tool calls, metadata — and commits the model's reasoning to the
+  transcript rather than leaving it on the status line.
+
+  Reading input blocks, so it happens in a separate reader process. That reader
+  never stops reading: a line typed while a turn is running is handed to the
+  agent like any other, and the agent decides whether it starts a turn or joins
+  the one in flight.
   """
   use GenServer
 
   alias Tars.Agent
   alias Tars.Event
+  alias Tars.TUI.Activity
+  alias Tars.TUI.Markdown
   alias Tars.TUI.View
 
   @tick 100
@@ -35,9 +43,11 @@ defmodule Tars.TUI do
     :screen,
     :reader,
     :width,
+    :rows,
     :verbose?,
-    thinking: "",
-    tools: [],
+    activity: nil,
+    answer: nil,
+    reasoning: nil,
     frame: 0,
     chars: 0,
     ticking?: false
@@ -49,7 +59,7 @@ defmodule Tars.TUI do
   end
 
   @typedoc "How a line typed at the prompt is interpreted."
-  @type command() :: :blank | :quit | {:ask, String.t()}
+  @type command() :: :blank | :quit | :stop | {:ask, String.t()}
 
   @doc """
   Interpret one line of input.
@@ -61,6 +71,7 @@ defmodule Tars.TUI do
     case String.trim(line) do
       "" -> :blank
       slash when slash in ["/quit", "/exit"] -> :quit
+      "/stop" -> :stop
       text -> {:ask, text}
     end
   end
@@ -76,26 +87,37 @@ defmodule Tars.TUI do
     # as a message rather than taking the TUI down with it.
     Process.flag(:trap_exit, true)
     :ok = Event.Bus.subscribe(agent_id)
+    :ok = screen.open(Keyword.get(opts, :rows))
 
     state = %__MODULE__{
       agent: agent,
       agent_id: agent_id,
       screen: screen,
       width: Keyword.get(opts, :width, 100),
+      rows: Keyword.get(opts, :rows),
       verbose?: Keyword.get(opts, :verbose, false),
       reader: reader(opts)
     }
 
-    screen.write(View.banner(Keyword.get(opts, :model, ""), state.verbose?))
+    screen.write(View.banner(Keyword.get(opts, :model, ""), state.verbose?, geometry(state)))
 
-    {:ok, prompt(state)}
+    {:ok, prompt(clear(state))}
   end
+
+  defp geometry(%{width: width, rows: nil}), do: "#{width}x?"
+  defp geometry(%{width: width, rows: rows}), do: "#{width}x#{rows}"
 
   # -- input -----------------------------------------------------------------
 
   @impl true
   def handle_info({:input, text}, state) do
-    Agent.ask(state.agent, text)
+    :ok = Agent.ask(state.agent, text)
+
+    {:noreply, echo(state, text)}
+  end
+
+  def handle_info(:stop, state) do
+    :ok = Agent.interrupt(state.agent)
     {:noreply, state}
   end
 
@@ -103,8 +125,9 @@ defmodule Tars.TUI do
 
   # -- published events ------------------------------------------------------
 
+  # Every event is folded, whatever span it came from: the tree is the point.
   def handle_info(%Event{} = event, state) do
-    if Event.root?(event), do: handle_event(event.payload, state), else: {:noreply, state}
+    handle_event(event, fold(state, event))
   end
 
   def handle_info(:tick, %{ticking?: true} = state) do
@@ -119,109 +142,167 @@ defmodule Tars.TUI do
   @impl true
   def terminate(_reason, state) do
     if is_pid(state.reader), do: Process.exit(state.reader, :kill)
+    state.screen.close(state.rows)
     :ok
   end
 
   # -- turn lifecycle --------------------------------------------------------
 
-  defp handle_event({:turn_started, _questions} = event, state) do
-    state = %{state | thinking: "", tools: [], chars: 0}
+  defp handle_event(%Event{payload: {:turn_started, _questions}} = event, state) do
     trace(state, event)
     {:noreply, start_ticking(state)}
   end
 
-  defp handle_event({:turn_finished, _messages} = event, state) do
-    state = finish_stream(state)
+  defp handle_event(%Event{payload: {:turn_finished, _messages}} = event, state) do
+    state = state |> settle() |> stop_ticking()
     trace(state, event)
-    unless state.verbose?, do: state.screen.write("\n")
+    state.screen.write("\n")
     {:noreply, prompt(state)}
   end
 
-  defp handle_event({:turn_failed, reason} = event, state) do
-    state = finish_stream(state)
+  defp handle_event(%Event{payload: {:turn_interrupted, stats}} = event, state) do
+    state = state |> settle() |> stop_ticking()
     trace(state, event)
-    unless state.verbose?, do: state.screen.write(View.error(reason))
+    state.screen.write(View.interrupted(stats))
+
     {:noreply, prompt(state)}
+  end
+
+  defp handle_event(%Event{payload: {:turn_failed, reason}} = event, state) do
+    state = state |> settle() |> stop_ticking()
+    trace(state, event)
+    state.screen.write(View.error(reason))
+    {:noreply, prompt(state)}
+  end
+
+  # -- the tree --------------------------------------------------------------
+
+  defp handle_event(%Event{payload: {:span_started, _name}} = event, state) do
+    {:noreply, write_span(state, event)}
+  end
+
+  defp handle_event(%Event{payload: {:span_finished, _outcome, _ms}} = event, state) do
+    {:noreply, write_span(state, event)}
   end
 
   # -- streaming -------------------------------------------------------------
 
-  defp handle_event({:thinking, text} = event, state) do
-    state = %{state | thinking: state.thinking <> text}
-    trace(state, event)
+  defp handle_event(%Event{payload: {:result, text}}, state) do
+    {lines, answer} = Markdown.push(state.answer, text)
+    state = %{state | answer: answer, chars: state.chars + String.length(text)}
+
+    write_lines(state, lines, &View.answer/1)
+
     {:noreply, refresh_status(state)}
   end
 
-  # In chat mode the answer arriving is itself the progress indicator, so the
-  # status line steps aside for good once text starts. In verbose mode nothing
-  # else is being written per token, so the counters keep ticking instead.
-  defp handle_event({:result, text} = event, state) do
-    state = %{state | chars: state.chars + String.length(text)}
-    trace(state, event)
+  defp handle_event(%Event{payload: {:thinking, text}}, state) do
+    {lines, reasoning} = Markdown.push(state.reasoning, text)
+    state = %{state | reasoning: reasoning}
 
-    if state.verbose? do
-      {:noreply, state}
-    else
-      state = stop_ticking(state)
-      state.screen.write(View.answer(text))
-      {:noreply, state}
-    end
-  end
+    if state.verbose?, do: write_lines(state, lines, &View.reasoning/1)
 
-  # -- tools -----------------------------------------------------------------
-
-  defp handle_event({:tool_started, _id, name} = event, state) do
-    state = %{state | tools: [{name, :running} | state.tools]}
-    trace(state, event)
     {:noreply, refresh_status(state)}
   end
 
-  defp handle_event({:tool_finished, _id, name, result} = event, state) do
-    resolution = if match?({:ok, _}, result), do: :ok, else: :error
-    state = %{state | tools: List.keyreplace(state.tools, name, 0, {name, resolution})}
+  # -- everything else, only interesting when tracing -------------------------
+
+  defp handle_event(%Event{} = event, state) do
     trace(state, event)
     {:noreply, refresh_status(state)}
   end
-
-  # -- low-level events, only interesting when tracing ------------------------
-
-  defp handle_event({kind, _payload} = event, state) when kind in [:meta, :tool_call] do
-    trace(state, event)
-    {:noreply, state}
-  end
-
-  defp handle_event(_payload, state), do: {:noreply, state}
 
   # -- output ----------------------------------------------------------------
 
-  # Verbose prints the structural events as trace lines; token-level events are
-  # left to the status line counters, and chat mode prints nothing here at all.
-  defp trace(%{verbose?: true} = state, event) do
-    if View.structural?(event) do
-      state.screen.clear_status()
-      state.screen.write(View.event(event, state.width))
-    end
+  # A turn starts a fresh tree: the previous turn's spans are history.
+  defp fold(state, %Event{payload: {:turn_started, _questions}} = event) do
+    state = clear(state)
+    %{state | activity: Activity.fold(state.activity, event, now: now())}
+  end
 
-    :ok
+  defp fold(state, event) do
+    %{state | activity: Activity.fold(state.activity, event, now: now())}
+  end
+
+  defp write_span(state, %Event{source: source}) do
+    span = Activity.fetch(state.activity, source.trace.span_id)
+    depth = Activity.depth(state.activity, source.trace.span_id)
+
+    state.screen.clear_status(state.rows)
+    state.screen.write(View.span(span, depth, now(), state.width))
+
+    refresh_status(state)
+  end
+
+  # Only while a turn is running. Idle input is echoed by the terminal itself
+  # and answered immediately; a steering line is not, and would otherwise
+  # vanish into the turn with nothing to show it was taken.
+  defp echo(%{ticking?: false} = state, _text), do: state
+
+  defp echo(state, text) do
+    state.screen.clear_status(state.rows)
+    state.screen.write(View.steer(text, state.width))
+
+    refresh_status(state)
+  end
+
+  defp write_lines(_state, [], _render), do: :ok
+
+  defp write_lines(state, lines, render) do
+    state.screen.clear_status(state.rows)
+    state.screen.write(Enum.map(lines, render))
+  end
+
+  defp trace(%{verbose?: true} = state, %Event{payload: payload}) do
+    case View.trace(payload) do
+      nil ->
+        :ok
+
+      line ->
+        state.screen.clear_status(state.rows)
+        state.screen.write(line)
+    end
   end
 
   defp trace(_state, _event), do: :ok
 
-  # Collapse a whole stream into one line before the turn's closing event.
-  defp finish_stream(state) do
-    state = stop_ticking(state)
-    if state.verbose?, do: state.screen.write(View.summary(status_state(state)))
+  # Whatever never got its newline still belongs on the screen.
+  defp settle(state) do
+    {answer, _buffer} = Markdown.flush(state.answer)
+    {reasoning, _buffer} = Markdown.flush(state.reasoning)
+
+    if state.verbose?, do: write_lines(state, reasoning, &View.reasoning/1)
+    write_lines(state, answer, &View.answer/1)
+
     state
+  end
+
+  defp clear(state) do
+    %{
+      state
+      | activity: Activity.new(),
+        answer: Markdown.new(),
+        reasoning: Markdown.new(),
+        chars: 0
+    }
   end
 
   defp refresh_status(%{ticking?: false} = state), do: state
 
   defp refresh_status(state) do
-    state.screen.status(View.status(status_state(state), state.width))
+    state.screen.status(View.status(status_state(state), state.width), state.rows)
     state
   end
 
-  defp status_state(state), do: Map.take(state, [:frame, :thinking, :tools, :chars])
+  defp status_state(state) do
+    %{
+      frame: state.frame,
+      activity: state.activity,
+      thinking: Markdown.tail(state.reasoning),
+      chars: state.chars,
+      now: now()
+    }
+  end
 
   defp start_ticking(state) do
     state = %{state | ticking?: true, frame: 0}
@@ -231,7 +312,7 @@ defmodule Tars.TUI do
   defp stop_ticking(%{ticking?: false} = state), do: state
 
   defp stop_ticking(state) do
-    state.screen.clear_status()
+    state.screen.clear_status(state.rows)
     %{state | ticking?: false}
   end
 
@@ -242,11 +323,12 @@ defmodule Tars.TUI do
 
   defp prompt(%{reader: reader} = state) when is_pid(reader) do
     state.screen.write(View.prompt())
-    send(reader, :prompt)
     state
   end
 
   defp prompt(state), do: state
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   # -- input reader ----------------------------------------------------------
 
@@ -265,21 +347,16 @@ defmodule Tars.TUI do
   end
 
   defp reader_loop(tui) do
-    receive do
-      :prompt -> read(tui)
+    case IO.gets("") do
+      line when is_binary(line) -> dispatch(tui, command(line))
+      _eof_or_error -> send(tui, :quit)
     end
 
     reader_loop(tui)
   end
 
-  defp read(tui) do
-    case IO.gets("") do
-      line when is_binary(line) -> dispatch(tui, command(line))
-      _eof_or_error -> send(tui, :quit)
-    end
-  end
-
-  defp dispatch(tui, :blank), do: read(tui)
+  defp dispatch(_tui, :blank), do: :ok
   defp dispatch(tui, :quit), do: send(tui, :quit)
+  defp dispatch(tui, :stop), do: send(tui, :stop)
   defp dispatch(tui, {:ask, text}), do: send(tui, {:input, text})
 end

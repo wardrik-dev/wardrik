@@ -2,16 +2,21 @@ defmodule Tars.TUI.View do
   @moduledoc """
   Pure rendering for `Tars.TUI`.
 
-  Deliberately flat: answers stream out as ordinary text and the only thing
-  that ever redraws is a single status line. Nothing here positions anything,
-  so a layout problem is a problem with one string rather than with cursor
-  arithmetic.
+  Prose is written once and never redrawn, and nothing wraps it: the terminal
+  soft-wraps it and a resize reflows it correctly.
 
-  The verbose trace prints one line per *structural* event — turn boundaries,
-  tool calls, metadata. Token-level events (`:result`, `:thinking`) arrive
-  hundreds of times per turn and are accumulated into the status line's
-  counters instead, so the trace stays readable at any response length.
+  Structured rows are clipped instead. A span line is a label rather than
+  prose, and the tree only reads as a tree while each node occupies one row —
+  a fan-out branch named after a paragraph would otherwise take five. The
+  status line is clipped for a harder reason: it is overwritten in place, and
+  one that reaches the right margin wraps and then scrolls.
+
+  The span tree is indentation rather than a drawn block. A span prints one
+  line when it opens and one when it closes, each indented by its depth, so the
+  shape of a turn is legible in scrollback without anything being repainted.
   """
+
+  alias Tars.TUI.Activity
 
   @default_width 100
   @faint [:faint, :light_black]
@@ -20,158 +25,224 @@ defmodule Tars.TUI.View do
   @typedoc "What the status line is drawn from."
   @type status_state() :: %{
           frame: non_neg_integer(),
+          activity: Activity.t(),
           thinking: String.t(),
-          tools: [{String.t(), :running | :ok | :error}],
-          chars: non_neg_integer()
+          chars: non_neg_integer(),
+          now: integer()
         }
 
   @doc "The input prompt. Written through the screen, not by `IO.gets/1`."
   @spec prompt() :: Owl.Data.t()
   def prompt, do: ["\n", Owl.Data.tag("› ", [:bright, :cyan])]
 
-  @spec banner(term(), boolean()) :: Owl.Data.t()
-  def banner(model, verbose? \\ false) do
+  @spec banner(term(), boolean(), String.t()) :: Owl.Data.t()
+  def banner(model, verbose? \\ false, geometry \\ "") do
     [
       Owl.Data.tag("tars", [:bright, :cyan]),
       Owl.Data.tag(" #{inspect(model)}", @faint),
+      Owl.Data.tag(" #{geometry}", @faint),
       if(verbose?, do: Owl.Data.tag("  [verbose]", :yellow), else: ""),
       Owl.Data.tag("\n/quit or ctrl-d to exit\n", @faint)
     ]
   end
-
-  @doc "A streamed piece of the answer — passed through as plain text."
-  @spec answer(String.t()) :: Owl.Data.t()
-  def answer(text), do: text
 
   @doc "The spinner frame for a tick count."
   @spec spinner(non_neg_integer()) :: String.t()
   def spinner(frame), do: Enum.at(@frames, rem(frame, length(@frames)))
 
   @doc """
-  The single live line: what the agent is doing right now.
-
-  Tools take precedence over reasoning, and stream volume is appended as
-  counters. Everything is clipped to one line, so it can never grow.
+  One line of the answer, already rendered by `Tars.TUI.Markdown`.
   """
-  @spec status(status_state(), pos_integer()) :: Owl.Data.t()
-  def status(state, width \\ @default_width) do
-    # Two columns go to the spinner and its trailing space.
-    parts =
-      [detail(state, width - 2), counters(state)]
-      |> Enum.reject(&(&1 == []))
-      |> Enum.intersperse(Owl.Data.tag("  ·  ", @faint))
-
-    [Owl.Data.tag(spinner(state.frame), :cyan), " ", parts]
-  end
+  @spec answer(Owl.Data.t()) :: Owl.Data.t()
+  def answer(line), do: [line, "\n"]
 
   @doc """
-  One line standing in for a whole stream, once it has finished.
+  A line typed while a turn was running, echoed so it is visibly accepted.
 
-  This is what replaces the hundreds of `result` lines a naive trace would
-  print.
+  Nothing else marks a steering message: it joins the turn in flight rather
+  than starting one, so without this the transcript shows no sign of it until
+  the turn it changed comes back.
   """
-  @spec summary(status_state()) :: Owl.Data.t()
-  def summary(%{chars: 0}), do: []
+  @spec steer(String.t(), pos_integer()) :: Owl.Data.t()
+  def steer(text, width \\ @default_width) do
+    row = [Owl.Data.tag("» ", [:bright, :cyan]), text]
 
-  def summary(state) do
+    [Owl.Data.truncate(row, room(width)), "\n"]
+  end
+
+  @doc "One line of the model's reasoning, for a transcript that wants it."
+  @spec reasoning(Owl.Data.t()) :: Owl.Data.t()
+  def reasoning(line), do: [Owl.Data.tag(["┊ ", line], @faint), "\n"]
+
+  @doc """
+  One span as a line of the tree, indented by `depth`.
+
+  A running span shows no time; a settled one shows what it took and how it
+  went. Clipped to one row, whatever it was named.
+  """
+  @spec span(Activity.span(), non_neg_integer(), integer(), pos_integer()) :: Owl.Data.t()
+  def span(span, depth, now, width \\ @default_width) do
+    indent = String.duplicate("  ", depth)
+
+    row = [
+      Owl.Data.tag([glyph(span), " ", span.name || "?"], colour(span)),
+      cause(span),
+      took(span, now)
+    ]
+
+    [indent, Owl.Data.truncate(row, room(width - String.length(indent))), "\n"]
+  end
+
+  @doc "A low-level event as a trace line, or `nil` when it is not worth one."
+  @spec trace(tuple()) :: Owl.Data.t() | nil
+  def trace({:model_started, model_spec}),
+    do: line("model", inspect(model_spec), :cyan)
+
+  def trace({:model_finished, :ok, ms}),
+    do: line("model", "ok #{seconds(ms)}", :cyan)
+
+  def trace({:model_finished, {:error, reason}, ms}),
+    do: line("model", "#{inspect(reason)} #{seconds(ms)}", :red)
+
+  def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
+  def trace({:tool_started, id, name}), do: line("tool", "#{name} #{id}", :yellow)
+
+  def trace({:tool_finished, id, name, {:ok, _output}}),
+    do: line("tool", "#{name} #{id} ok", :yellow)
+
+  def trace({:tool_finished, id, name, {:error, why}}),
+    do: line("tool", "#{name} #{id} #{inspect(why)}", :red)
+
+  def trace({:turn_started, questions}), do: line("turn", Enum.join(questions, " | "), :cyan)
+  def trace({:turn_finished, messages}), do: line("turn", "#{length(messages)} message(s)", :cyan)
+
+  def trace({:turn_interrupted, stats}),
+    do: line("turn", "interrupted #{inspect(stats)}", :yellow)
+
+  def trace(_payload), do: nil
+
+  @doc "What an interrupt stopped, so a kill switch is never silent."
+  @spec interrupted(map()) :: Owl.Data.t()
+  def interrupted(stats) do
+    [Owl.Data.tag(["\n■ stopped", detail(stats), "\n"], :yellow)]
+  end
+
+  defp detail(%{resolution: :idle}), do: " · nothing was running"
+
+  defp detail(stats) do
     [
-      Owl.Data.tag(String.pad_trailing("stream", 14), :green),
-      Owl.Data.tag(counter_text(state), @faint),
-      "\n"
+      " · ",
+      seconds(stats.elapsed_ms),
+      if(stats.resolution == :killed, do: " · killed", else: ""),
+      dropped(stats.dropped)
     ]
   end
+
+  defp dropped(0), do: ""
+  defp dropped(1), do: " · 1 queued message dropped"
+  defp dropped(n), do: " · #{n} queued messages dropped"
 
   @spec error(term()) :: Owl.Data.t()
   def error(reason), do: Owl.Data.tag("\n✗ #{inspect(reason)}\n", :red)
 
   @doc """
-  One structural event payload as a trace line.
+  The single live line: what the agent is doing right now.
 
-  Clipped to the terminal width so a large payload cannot wrap into a wall of
-  text — the point is the sequence of events, not their full contents.
+  Clipped, never wrapped. Names the innermost running span, because the deepest
+  work in flight is the most specific answer to "what is it doing".
   """
-  @spec event(tuple(), pos_integer()) :: Owl.Data.t()
-  def event(event, width \\ @default_width) do
-    kind = elem(event, 0)
+  @spec status(status_state(), pos_integer()) :: Owl.Data.t()
+  def status(state, width \\ @default_width) do
+    parts =
+      [doing(state, width), counters(state)]
+      |> Enum.reject(&(&1 == []))
+      |> Enum.intersperse(Owl.Data.tag("  ·  ", @faint))
 
+    [Owl.Data.tag(spinner(state.frame), :cyan), " ", Owl.Data.truncate(parts, room(width))]
+  end
+
+  defp doing(%{activity: activity} = state, width) do
+    case Activity.innermost(activity) do
+      nil ->
+        Owl.Data.tag("working", @faint)
+
+      span ->
+        label = label(span)
+        elapsed = Owl.Data.tag(" #{elapsed(span, state)}", @faint)
+
+        room =
+          width - 2 - Owl.Data.length(label) - Owl.Data.length(elapsed) - counters_room(state)
+
+        [label, detail(span, state, room), elapsed]
+    end
+  end
+
+  # Two columns go to the spinner and its trailing space, and one is left
+  # spare: a line that reaches the right margin wraps, and a wrapped status
+  # line scrolls instead of being overwritten.
+  defp room(width), do: max(width - 3, 1)
+
+  defp counters_room(state) do
+    case counters(state) do
+      [] -> 0
+      data -> Owl.Data.length(data) + Owl.Data.length("  ·  ")
+    end
+  end
+
+  defp label(%{name: nil}), do: Owl.Data.tag("working", @faint)
+  defp label(%{name: name}), do: Owl.Data.tag(name, :cyan)
+
+  defp detail(%{doing: nil}, _state, _room), do: []
+  defp detail(%{doing: "thinking"}, state, room), do: thinking(state.thinking, room)
+  defp detail(%{doing: doing}, _state, _room), do: Owl.Data.tag(" · #{doing}", @faint)
+
+  defp thinking("", _room), do: Owl.Data.tag(" · thinking", @faint)
+
+  defp thinking(text, room) do
+    Owl.Data.tag(" · #{tail(text, max(room - 3, 8))}", @faint)
+  end
+
+  # The newest words, not the oldest: reasoning runs to hundreds of characters
+  # with no newline in it, and clipping the far end freezes the line on the
+  # first few words while the thought moves on.
+  defp tail(text, width) do
+    case String.length(text) - width do
+      over when over > 0 -> String.slice(text, over, width)
+      _fits -> text
+    end
+  end
+
+  defp elapsed(span, %{now: now}), do: seconds(Activity.elapsed_ms(span, now))
+
+  defp counters(%{chars: 0}), do: []
+  defp counters(%{chars: chars}), do: Owl.Data.tag("#{count(chars)} chars", @faint)
+
+  defp line(kind, detail, tag) do
     [
-      Owl.Data.tag(String.pad_trailing(to_string(kind), 14), tag_for_event(kind)),
-      Owl.Data.tag(clip(payload(event), width - 16), @faint),
+      Owl.Data.tag(String.pad_trailing(kind, 6), tag),
+      Owl.Data.tag(detail, @faint),
       "\n"
     ]
   end
 
-  @doc """
-  Whether an event is worth its own trace line.
+  defp glyph(%{status: :running}), do: "·"
+  defp glyph(%{status: :ok}), do: "✓"
+  defp glyph(%{status: :error}), do: "✗"
 
-  Token-level events are not: they are counted into the status line instead.
-  """
-  @spec structural?(tuple()) :: boolean()
-  def structural?(event), do: elem(event, 0) not in [:chunk, :result, :thinking]
+  defp colour(%{status: :running}), do: @faint
+  defp colour(%{status: :ok}), do: :green
+  defp colour(%{status: :error}), do: :red
 
-  defp payload({:turn_started, questions}), do: Enum.join(questions, " | ")
-  defp payload({:turn_finished, messages}), do: "#{Enum.count(messages)} message(s)"
-  defp payload({:turn_failed, reason}), do: inspect(reason)
-  defp payload({:tool_started, id, name}), do: "#{name} #{id}"
-  defp payload({:tool_finished, id, name, {:ok, _output}}), do: "#{name} #{id} ok"
-  defp payload({:tool_finished, id, name, {:error, why}}), do: "#{name} #{id} #{inspect(why)}"
-  defp payload({_kind, text}) when is_binary(text), do: inspect(text)
-  defp payload({_kind, term}), do: inspect(term)
-  defp payload(other), do: inspect(other)
+  defp cause(%{error: nil}), do: []
+  defp cause(%{error: reason}), do: Owl.Data.tag(" · #{inspect(reason)}", :red)
 
-  defp counters(%{chars: 0}), do: []
-  defp counters(state), do: Owl.Data.tag(counter_text(state), @faint)
+  defp took(%{status: :running}, _now), do: []
+  defp took(span, now), do: Owl.Data.tag(" · #{seconds(Activity.elapsed_ms(span, now))}", @faint)
 
-  defp counter_text(state), do: "#{count(state.chars)} chars"
+  defp seconds(ms) when ms < 1_000, do: "#{ms}ms"
+  defp seconds(ms), do: "#{Float.round(ms / 1_000, 1)}s"
 
   defp count(n) when n < 1_000, do: Integer.to_string(n)
   defp count(n) when n < 1_000_000, do: "#{Float.round(n / 1_000, 1)}k"
   defp count(n), do: "#{Float.round(n / 1_000_000, 1)}M"
-
-  defp detail(%{tools: []} = state, width), do: thinking_line(state.thinking, width)
-
-  defp detail(%{tools: tools}, _width) do
-    tools
-    |> Enum.reverse()
-    |> Enum.map(fn {name, status} -> Owl.Data.tag("#{icon(status)} #{name}", tag_for(status)) end)
-    |> Enum.intersperse("  ")
-  end
-
-  defp thinking_line("", _width), do: Owl.Data.tag("thinking…", @faint)
-
-  defp thinking_line(thinking, width) do
-    thinking
-    |> last_line()
-    |> clip(width)
-    |> Owl.Data.tag(@faint)
-  end
-
-  # Reasoning is shown one line at a time rather than accumulated, which is
-  # what stops it from filling the screen.
-  defp last_line(text) do
-    text
-    |> String.split("\n", trim: true)
-    |> List.last()
-    |> Kernel.||("thinking…")
-  end
-
-  defp clip(text, width) when width > 0 do
-    if String.length(text) > width, do: String.slice(text, 0, width - 1) <> "…", else: text
-  end
-
-  defp clip(text, _width), do: text
-
-  defp icon(:running), do: "•"
-  defp icon(:ok), do: "✓"
-  defp icon(:error), do: "✗"
-
-  defp tag_for(:running), do: @faint
-  defp tag_for(:ok), do: :green
-  defp tag_for(:error), do: :red
-
-  defp tag_for_event(kind) when kind in [:turn_started, :turn_finished], do: :cyan
-  defp tag_for_event(:turn_failed), do: :red
-  defp tag_for_event(kind) when kind in [:tool_started, :tool_finished], do: :yellow
-  defp tag_for_event(:result), do: :green
-  defp tag_for_event(_kind), do: @faint
 end

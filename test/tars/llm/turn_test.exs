@@ -116,6 +116,56 @@ defmodule Tars.LLM.TurnTest do
     assert_receive %Event{payload: {:model_finished, {:error, :rate_limited}, _ms}}
   end
 
+  test "generation options reach the provider", %{agent_id: agent_id} do
+    test_pid = self()
+
+    Mimic.stub(ReqLLM, :stream_text, fn _model, _context, opts ->
+      send(test_pid, {:opts, opts})
+      {:ok, :streamed}
+    end)
+
+    Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, _opts ->
+      {:ok, LLMStub.final_answer("hi")}
+    end)
+
+    config =
+      LLM.Config.new(
+        generation: [max_tokens: 8_000, provider_options: [thinking: %{type: "disabled"}]]
+      )
+
+    LLM.Turn.run(Scope.root(config, agent_id, name: "turn"), Context.new())
+
+    assert_receive {:opts, opts}
+    assert opts[:max_tokens] == 8_000
+    assert opts[:provider_options] == [thinking: %{type: "disabled"}]
+  end
+
+  test "tools and the persona are not overridable through generation", %{agent_id: agent_id} do
+    test_pid = self()
+
+    Mimic.stub(ReqLLM, :stream_text, fn _model, _context, opts ->
+      send(test_pid, {:opts, opts})
+      {:ok, :streamed}
+    end)
+
+    Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, _opts ->
+      {:ok, LLMStub.final_answer("hi")}
+    end)
+
+    config =
+      LLM.Config.new(
+        system: "the real persona",
+        tools: [Tars.Test.EchoTool],
+        generation: [tools: [], system_prompt: "an impostor"]
+      )
+
+    LLM.Turn.run(Scope.root(config, agent_id, name: "turn"), Context.new())
+
+    assert_receive {:opts, opts}
+    assert opts[:system_prompt] == "the real persona"
+    assert Enum.map(opts[:tools], & &1.name) == ["echo"]
+  end
+
   test "stream events are not published to other agents", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
@@ -164,15 +214,141 @@ defmodule Tars.LLM.TurnTest do
   end
 
   test "the iteration cap stops a model that never stops calling tools", %{agent_id: agent_id} do
-    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
-
     LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 30))
 
     assert {:ok, messages} =
-             capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
+             capture(fn -> LLM.Turn.run(looping_scope(agent_id, 3), Context.new()) end)
 
-    # 25 iterations, each appending an assistant message and its tool result.
-    assert Enum.count_until(messages, 51) == 50
+    # Three iterations, each appending an assistant message and its tool result.
+    assert Enum.count(messages) == 6
+  end
+
+  test "the cap is a backstop a deployment can lift", %{agent_id: agent_id} do
+    LLMStub.stream(
+      List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 4) ++
+        [LLMStub.final_answer("done")]
+    )
+
+    assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+
+    # Four rounds of tools, then the answer — none of it cut short.
+    assert Enum.count(messages) == 9
+  end
+
+  describe "yield" do
+    test "stops the turn at the next boundary, keeping what it has", %{agent_id: agent_id} do
+      LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 5))
+
+      :ok = LLM.Turn.yield(self())
+
+      assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+
+      # One round only: the assistant's tool call and its result.
+      assert Enum.count(messages) == 2
+    end
+
+    test "never lands between a tool call and its result", %{agent_id: agent_id} do
+      LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 5))
+
+      :ok = LLM.Turn.yield(self())
+
+      {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+
+      assert Enum.map(messages, & &1.role) == [:assistant, :tool]
+    end
+
+    test "a turn that finishes first is unaffected", %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.final_answer("done")])
+
+      :ok = LLM.Turn.yield(self())
+
+      assert {:ok, [_message]} = LLM.Turn.run(scope(agent_id), Context.new())
+
+      # Unread, so it is still here for whoever looks next.
+      assert_received :yield
+    end
+  end
+
+  describe "interrupt" do
+    test "stops a response that is still arriving and keeps what streamed", %{
+      agent_id: agent_id
+    } do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_result].("half a th")
+        opts[:on_chunk].(%{type: :content})
+        opts[:on_result].("ought that never lands")
+        opts[:on_chunk].(%{type: :content})
+
+        {:ok, LLMStub.final_answer("the whole thing")}
+      end)
+
+      :ok = LLM.Turn.interrupt(self())
+
+      assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
+
+      assert text(message) == "half a th"
+      refute text(message) =~ "never lands"
+    end
+
+    test "an interrupt with nothing streamed yet appends nothing", %{agent_id: agent_id} do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_chunk].(%{type: :content})
+        {:ok, LLMStub.final_answer("unreachable")}
+      end)
+
+      :ok = LLM.Turn.interrupt(self())
+
+      assert {:ok, []} = LLM.Turn.run(scope(agent_id), Context.new())
+    end
+
+    test "the model request is reported as having failed", %{agent_id: agent_id} do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_chunk].(%{type: :content})
+        {:ok, LLMStub.final_answer("unreachable")}
+      end)
+
+      :ok = LLM.Turn.interrupt(self())
+      LLM.Turn.run(scope(agent_id), Context.new())
+
+      assert_receive %Event{payload: {:model_finished, {:error, :interrupted}, _ms}}
+    end
+
+    # A provider that reports no chunks gives the stream no chance to notice, so
+    # the interrupt is read at the boundary instead — the same place `:yield`
+    # is read.
+    test "also stops at an iteration boundary, like a yield", %{agent_id: agent_id} do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, _opts ->
+        {:ok, LLMStub.tool_call("call_1", "echo", %{})}
+      end)
+
+      :ok = LLM.Turn.interrupt(self())
+
+      assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+
+      assert Enum.map(messages, & &1.role) == [:assistant, :tool]
+    end
+  end
+
+  defp text(message) do
+    message.content
+    |> Enum.filter(&(&1.type == :text))
+    |> Enum.map_join(& &1.text)
+  end
+
+  defp looping_scope(agent_id, max_iterations) do
+    tool = ReqLLM.Tool.new!(name: "echo", description: "echo", callback: fn i -> {:ok, i} end)
+
+    [tools: [tool], max_iterations: max_iterations]
+    |> LLM.Config.new()
+    |> Scope.root(agent_id, name: "turn")
   end
 
   defp capture(fun) do

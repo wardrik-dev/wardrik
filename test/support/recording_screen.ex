@@ -27,11 +27,17 @@ defmodule Tars.Test.RecordingScreen do
   end
 
   @impl true
+  def open(rows), do: record({:open, rows})
+
+  @impl true
+  def close(rows), do: record({:close, rows})
+
+  @impl true
   def write(data), do: record({:write, data})
 
   @impl true
-  def status(data), do: record({:status, data})
+  def status(data, _rows), do: record({:status, data})
 
   @impl true
-  def clear_status, do: record(:clear_status)
+  def clear_status(_rows), do: record(:clear_status)
 end

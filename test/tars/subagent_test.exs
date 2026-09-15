@@ -141,6 +141,15 @@ defmodule Tars.SubagentTest do
       assert asked.tools == ["echo", "web_search"]
     end
 
+    test "generation options can be set for the delegate alone", %{scope: scope} do
+      stub_llm()
+
+      {:ok, _text} =
+        Subagent.run(scope, "pricing?", generation: [reasoning_token_budget: 500])
+
+      assert scope.config.generation == []
+    end
+
     test "config replaces the lot", %{scope: scope} do
       stub_llm()
       researcher = Config.new(model_spec: {:test, model: "m"}, tools: [SearchTool])

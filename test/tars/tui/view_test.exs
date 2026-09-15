@@ -1,6 +1,9 @@
 defmodule Tars.TUI.ViewTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Event
+  alias Tars.Event.Source
+  alias Tars.TUI.Activity
   alias Tars.TUI.View
 
   defp plain(data), do: data |> Owl.Data.untag() |> to_string()
@@ -9,8 +12,25 @@ defmodule Tars.TUI.ViewTest do
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
-  test "answer/1 passes text through untouched — no box, no framing" do
-    assert View.answer("Pong!") == "Pong!"
+  defp fold(activity, source, payload, now \\ 0) do
+    Activity.fold(activity, Event.new(source, payload), now: now)
+  end
+
+  defp status(activity, opts) do
+    state = %{
+      frame: 0,
+      activity: activity,
+      thinking: Keyword.get(opts, :thinking, ""),
+      chars: Keyword.get(opts, :chars, 0),
+      now: Keyword.get(opts, :now, 0)
+    }
+
+    View.status(state, Keyword.get(opts, :width, 80))
+  end
+
+  setup do
+    turn = Source.root(:assistant, name: "turn")
+    {:ok, turn: turn, tool: Source.child(turn, name: "web_search")}
   end
 
   test "prompt/0 is renderable Owl data" do
@@ -39,118 +59,286 @@ defmodule Tars.TUI.ViewTest do
     assert View.spinner(0) == View.spinner(10)
   end
 
+  describe "answer/1 and reasoning/1" do
+    test "an answer line is written as it came, with its row ended" do
+      assert View.answer("Pong!") |> plain() == "Pong!\n"
+    end
+
+    test "reasoning is marked and dimmed, so it cannot be read as the answer" do
+      out = View.reasoning("pondering")
+
+      assert plain(out) =~ "pondering"
+      assert plain(out) =~ "┊"
+      assert sequences(out) |> Enum.member?(:faint)
+    end
+  end
+
+  describe "span/3" do
+    setup %{turn: turn, tool: tool} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(tool, {:span_started, "web_search"})
+
+      {:ok, activity: activity}
+    end
+
+    test "a running span names itself and shows no time", %{activity: activity, tool: tool} do
+      line = View.span(Activity.fetch(activity, tool.trace.span_id), 1, 5_000)
+
+      assert plain(line) == "  · web_search\n"
+    end
+
+    test "indents by depth, so the tree is legible in scrollback", %{
+      activity: activity,
+      tool: tool
+    } do
+      span = Activity.fetch(activity, tool.trace.span_id)
+
+      assert View.span(span, 0, 0) |> plain() == "· web_search\n"
+      assert View.span(span, 2, 0) |> plain() == "    · web_search\n"
+    end
+
+    test "a finished span shows what it took", %{activity: activity, tool: tool} do
+      activity = fold(activity, tool, {:span_finished, :ok, 1_250})
+      line = View.span(Activity.fetch(activity, tool.trace.span_id), 1, 0)
+
+      assert plain(line) == "  ✓ web_search · 1.3s\n"
+      assert sequences(line) |> Enum.member?(:green)
+    end
+
+    test "a sub-second span is reported in milliseconds", %{activity: activity, tool: tool} do
+      activity = fold(activity, tool, {:span_finished, :ok, 42})
+
+      assert Activity.fetch(activity, tool.trace.span_id)
+             |> View.span(1, 0)
+             |> plain() =~ "42ms"
+    end
+
+    test "a failed span carries its reason", %{activity: activity, tool: tool} do
+      activity = fold(activity, tool, {:span_finished, {:error, :timeout}, 20_000})
+      line = View.span(Activity.fetch(activity, tool.trace.span_id), 1, 0)
+
+      assert plain(line) == "  ✗ web_search · :timeout · 20.0s\n"
+      assert sequences(line) |> Enum.member?(:red)
+    end
+
+    test "a span named after a paragraph is still one row", %{activity: activity, tool: tool} do
+      long = String.duplicate("a long angle name ", 30)
+      activity = fold(activity, tool, {:span_started, long})
+      span = Activity.fetch(activity, tool.trace.span_id)
+
+      for {depth, width} <- [{0, 80}, {1, 80}, {4, 80}, {1, 40}] do
+        line = View.span(span, depth, 0, width) |> plain() |> String.trim_trailing("\n")
+
+        refute line =~ "\n"
+        assert String.length(line) < width
+      end
+    end
+
+    test "a span nobody named still gets a line", %{turn: turn} do
+      activity = Activity.new() |> fold(Source.child(turn), {:result, "hi"})
+      [span] = Activity.spans(activity)
+
+      assert View.span(span, 1, 0) |> plain() == "  · ?\n"
+    end
+  end
+
   describe "status/2" do
-    test "falls back to a thinking label with no reasoning or tools" do
-      assert View.status(%{frame: 0, thinking: "", tools: [], chars: 0}, 80) |> plain() =~
-               "thinking…"
+    test "says it is working when nothing has been seen yet" do
+      assert Activity.new() |> status([]) |> plain() =~ "working"
     end
 
-    test "shows only the last line of reasoning, so it cannot grow" do
-      thinking = Enum.map_join(1..50, "\n", &"line #{&1}")
+    test "names the innermost running span", %{turn: turn, tool: tool} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(tool, {:span_started, "web_search"})
 
-      out =
-        View.status(%{frame: 0, thinking: thinking, tools: [], chars: 0}, 80)
-        |> plain()
-
-      assert out =~ "line 50"
-      refute out =~ "line 49"
+      assert status(activity, now: 3_000) |> plain() =~ "web_search"
     end
 
-    test "clips a long reasoning line to the width" do
-      out =
-        View.status(
-          %{frame: 0, thinking: String.duplicate("y", 500), tools: [], chars: 0},
-          40
-        )
-        |> plain()
+    test "counts the elapsed time of that span, not the turn", %{turn: turn, tool: tool} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]}, 0)
+        |> fold(tool, {:span_started, "web_search"}, 9_000)
 
-      assert String.length(out) <= 40
-      assert out =~ "…"
+      assert status(activity, now: 11_000) |> plain() =~ "2.0s"
     end
 
-    test "is faded, and led by a spinner frame" do
-      # ANSI is stripped when there is no tty, so assert on the tag itself.
-      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chars: 0}, 80)
-             |> sequences()
-             |> Enum.member?(:faint)
+    test "reports what the span is doing", %{turn: turn} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:model_started, :m})
 
-      assert View.status(%{frame: 0, thinking: "hmm", tools: [], chars: 0}, 80)
-             |> plain() =~ View.spinner(0)
+      assert status(activity, []) |> plain() =~ "waiting on the model"
     end
 
-    test "tools take precedence over reasoning, oldest first" do
-      out =
-        View.status(
-          %{
-            frame: 0,
-            thinking: "ignored",
-            tools: [{"second", :running}, {"first", :ok}],
-            chars: 0
-          },
-          80
-        )
-        |> plain()
+    test "shows the reasoning tail while the model is thinking", %{turn: turn} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:thinking, "comparing the two proposals"})
 
-      refute out =~ "ignored"
-      assert out =~ "✓ first"
-      assert out =~ "• second"
-      assert :binary.match(out, "first") < :binary.match(out, "second")
+      assert status(activity, thinking: "comparing the two proposals") |> plain() =~
+               "comparing the two proposals"
     end
 
-    test "marks tool failures" do
-      assert View.status(
-               %{frame: 0, thinking: "", tools: [{"boom", :error}], chars: 0},
-               80
-             )
-             |> plain() =~ "✗ boom"
+    test "shows the newest reasoning, not the oldest, once it runs long", %{turn: turn} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:thinking, "x"})
+
+      thinking = "the beginning of a long thought " <> String.duplicate("z", 200) <> " the end"
+      out = status(activity, thinking: thinking, width: 60) |> plain()
+
+      assert out =~ "the end"
+      refute out =~ "the beginning"
+    end
+
+    test "falls back to a plain label when reasoning has produced no line yet", %{turn: turn} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:thinking, "\n"})
+
+      assert status(activity, thinking: "") |> plain() =~ "thinking"
+    end
+
+    test "appends the character count once there is one", %{turn: turn} do
+      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
+
+      refute status(activity, chars: 0) |> plain() =~ "chars"
+      assert status(activity, chars: 1_400) |> plain() =~ "1.4k chars"
+    end
+
+    test "is led by a spinner frame", %{turn: turn} do
+      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
+
+      assert status(activity, []) |> plain() =~ View.spinner(0)
+    end
+
+    # Strictly under, not equal: a line that reaches the right margin wraps,
+    # and a wrapped status line scrolls rather than being overwritten.
+    test "never reaches the right margin, whatever it is given", %{turn: turn} do
+      activity =
+        Activity.new()
+        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:thinking, "x"})
+
+      for width <- [20, 40, 80, 100, 200] do
+        line =
+          status(activity,
+            thinking: String.duplicate("y", 500),
+            chars: 999_999,
+            now: 3_600_000,
+            width: width
+          )
+
+        assert line |> plain() |> String.length() < width
+      end
     end
   end
 
-  test "error/1 renders the reason in red on its own line" do
-    out = View.error(:rate_limited)
+  describe "steer/2" do
+    test "marks a line the user typed mid-turn" do
+      out = View.steer("focus on pricing")
 
-    assert plain(out) =~ "✗ :rate_limited"
-    assert sequences(out) |> Enum.member?(:red)
+      assert plain(out) =~ "focus on pricing"
+      assert plain(out) =~ "»"
+      assert plain(out) |> String.ends_with?("\n")
+    end
+
+    test "is clipped like every other structured row" do
+      line = View.steer(String.duplicate("z", 500), 40) |> plain() |> String.trim_trailing("\n")
+
+      assert String.length(line) < 40
+    end
   end
 
-  describe "event/2" do
-    test "names the event kind and summarises its payload" do
-      assert View.event({:turn_started, ["hello"]}, 80) |> plain() =~ "turn_started"
-      assert View.event({:turn_started, ["hello"]}, 80) |> plain() =~ "hello"
+  describe "trace/1" do
+    test "names the model request and how it went" do
+      assert View.trace({:model_started, :m}) |> plain() =~ "model"
+      assert View.trace({:model_finished, :ok, 1_200}) |> plain() =~ "ok 1.2s"
+
+      failed = View.trace({:model_finished, {:error, :rate_limited}, 40})
+
+      assert plain(failed) =~ ":rate_limited"
+      assert sequences(failed) |> Enum.member?(:red)
+    end
+
+    test "summarises tool calls by outcome" do
+      assert View.trace({:tool_started, "c1", "echo"}) |> plain() =~ "echo c1"
+      assert View.trace({:tool_finished, "c1", "echo", {:ok, :x}}) |> plain() =~ "echo c1 ok"
+
+      failed = View.trace({:tool_finished, "c1", "boom", {:error, :nope}})
+
+      assert plain(failed) =~ ":nope"
+      assert sequences(failed) |> Enum.member?(:red)
     end
 
     test "counts messages on a finished turn rather than dumping them" do
-      out = View.event({:turn_finished, [:a, :b]}, 80) |> plain()
-
-      assert out =~ "turn_finished"
-      assert out =~ "2 message(s)"
+      assert View.trace({:turn_finished, [1, 2, 3]}) |> plain() =~ "3 message(s)"
     end
 
-    test "summarises tool results by outcome" do
-      assert View.event({:tool_started, "c1", "echo"}, 80) |> plain() =~ "echo c1"
-      assert View.event({:tool_finished, "c1", "echo", {:ok, :x}}, 80) |> plain() =~ "echo c1 ok"
-      assert View.event({:tool_finished, "c1", "b", {:error, :no}}, 80) |> plain() =~ ":no"
+    test "ends each line so traces stack one per row" do
+      assert View.trace({:meta, %{}}) |> plain() |> String.ends_with?("\n")
     end
 
-    test "clips a large payload rather than wrapping it" do
-      out = View.event({:chunk, String.duplicate("x", 5_000)}, 80) |> plain()
-
-      assert String.length(out) <= 81
-      assert out =~ "…"
+    test "says nothing about events that have their own rendering" do
+      assert View.trace({:result, "hi"}) == nil
+      assert View.trace({:thinking, "hmm"}) == nil
+      assert View.trace({:span_started, "echo"}) == nil
+      assert View.trace({:span_finished, :ok, 1}) == nil
     end
 
-    test "ends each line so events stack one per row" do
-      assert View.event({:meta, %{}}, 80) |> plain() |> String.ends_with?("\n")
+    test "says nothing about an event shape it has never seen" do
+      assert View.trace({:something_new, :whatever}) == nil
+    end
+  end
+
+  describe "interrupted/1" do
+    test "says how long it ran and what was dropped" do
+      out =
+        View.interrupted(%{dropped: 3, kept: 2, resolution: :stopped, elapsed_ms: 4_200})
+
+      assert plain(out) =~ "stopped"
+      assert plain(out) =~ "4.2s"
+      assert plain(out) =~ "3 queued messages dropped"
     end
 
-    test "colours turn boundaries and failures differently" do
-      assert View.event({:turn_started, []}, 80) |> sequences() |> Enum.member?(:cyan)
-      assert View.event({:turn_failed, :x}, 80) |> sequences() |> Enum.member?(:red)
-      assert View.event({:tool_started, "c", "n"}, 80) |> sequences() |> Enum.member?(:yellow)
+    test "a single dropped message is not pluralised" do
+      out = View.interrupted(%{dropped: 1, kept: 0, resolution: :stopped, elapsed_ms: 10})
+
+      assert plain(out) =~ "1 queued message dropped"
     end
 
-    test "handles an unknown event shape" do
-      assert View.event({:surprise, 1, 2, 3}, 80) |> plain() =~ "surprise"
+    test "says nothing about a queue that was empty" do
+      out = View.interrupted(%{dropped: 0, kept: 1, resolution: :stopped, elapsed_ms: 10})
+
+      refute plain(out) =~ "dropped"
     end
+
+    test "marks a turn that had to be killed" do
+      out = View.interrupted(%{dropped: 0, kept: 0, resolution: :killed, elapsed_ms: 2_000})
+
+      assert plain(out) =~ "killed"
+    end
+
+    test "an interrupt with nothing running says so" do
+      out = View.interrupted(%{dropped: 0, kept: 0, resolution: :idle, elapsed_ms: 0})
+
+      assert plain(out) =~ "nothing was running"
+    end
+  end
+
+  test "error/1 stands out" do
+    out = View.error(:rate_limited)
+
+    assert plain(out) =~ ":rate_limited"
+    assert sequences(out) |> Enum.member?(:red)
   end
 end

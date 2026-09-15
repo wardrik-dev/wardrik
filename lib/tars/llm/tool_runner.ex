@@ -15,12 +15,17 @@ defmodule Tars.LLM.ToolRunner do
   Spans are opened by the caller and closed inside the task; a call killed at
   the timeout is closed by the caller instead.
 
+  A batch runs under the longest timeout any tool in it declares, so a workflow
+  that fans out across subagents is not killed part way through by a limit
+  meant for a request. See `c:Tars.Tool.timeout/0`.
+
   Tool calls are expected in the normalized shape produced by
   `ReqLLM.Response.classify/1`: `%{id: String.t(), name: String.t(), arguments: map()}`.
   """
   alias ReqLLM.Context
   alias Tars.Event
   alias Tars.Scope
+  alias Tars.Tool.Result
 
   @tool_timeout :timer.seconds(60)
   @max_concurrency 8
@@ -35,7 +40,7 @@ defmodule Tars.LLM.ToolRunner do
       fn {call, span} -> in_span(call, span) end,
       ordered: true,
       max_concurrency: @max_concurrency,
-      timeout: @tool_timeout,
+      timeout: timeout(tool_calls, scope),
       on_timeout: :kill_task,
       zip_input_on_exit: true
     )
@@ -45,6 +50,14 @@ defmodule Tars.LLM.ToolRunner do
     end)
   end
 
+  @doc "The longest any of `tool_calls` may take."
+  @spec timeout([tool_call()], Scope.t()) :: timeout()
+  def timeout(tool_calls, %Scope{config: config}) do
+    tool_calls
+    |> Enum.map(&Map.get(config.tool_timeouts, &1.name, @tool_timeout))
+    |> Enum.max(fn -> @tool_timeout end)
+  end
+
   @spec execute(tool_call(), Scope.t()) :: ReqLLM.Message.t()
   def execute(%{name: name} = call, %Scope{} = scope) do
     in_span(call, Scope.open(scope, name))
@@ -52,9 +65,20 @@ defmodule Tars.LLM.ToolRunner do
 
   defp in_span(%{id: id, name: name} = call, span) do
     span
-    |> Scope.closing(&invoke(call, &1))
+    |> Scope.closing(&invoke(call, &1), &outcome/1)
     |> to_message(name, id)
   end
+
+  # A tool that reports its own failure answers the model successfully and the
+  # span unsuccessfully: the model gets to correct itself, and a surface gets
+  # to say the call did not do its job.
+  defp outcome({:error, reason}), do: {:error, reason}
+
+  defp outcome({:ok, %{"error" => error}} = result) do
+    if Result.ok?(result), do: :ok, else: {:error, error}
+  end
+
+  defp outcome(_result), do: :ok
 
   defp invoke(%{id: id, name: name, arguments: args}, scope) do
     :ok = Scope.Context.put(scope)
@@ -84,5 +108,12 @@ defmodule Tars.LLM.ToolRunner do
     Context.tool_result_message(name, id, %{error: reason}, %{is_error: true})
   end
 
-  defp error_result(name, id, reason), do: error_result(name, id, inspect(reason))
+  defp error_result(name, id, reason), do: error_result(name, id, message(reason))
+
+  # What the model is told is the sentence, not the struct around it. A schema
+  # violation already says which argument was wrong and what was expected;
+  # inspecting the error buries that under a stacktrace.
+  defp message(%{reason: reason}) when is_binary(reason), do: reason
+  defp message(%{__exception__: true} = error), do: Exception.message(error)
+  defp message(reason), do: inspect(reason)
 end

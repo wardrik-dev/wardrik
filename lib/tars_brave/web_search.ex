@@ -20,6 +20,11 @@ defmodule TarsBrave.WebSearch do
   @default_count 10
   @default_max_tokens 4_096
 
+  @count 1..50
+  @max_tokens 1_024..32_768
+  @freshness ~w(pd pw pm py)
+  @between ~r/^\d{4}-\d{2}-\d{2}to\d{4}-\d{2}-\d{2}$/
+
   @description """
   Search the web and get back the relevant passages from the pages found, ready to read, not a list of links.
 
@@ -40,33 +45,71 @@ defmodule TarsBrave.WebSearch do
           doc: "What you want to know, phrased as a search query"
         ],
         count: [
-          type: :integer,
+          type: {:in, @count},
           doc:
-            "How many results to consider, 1-50. Defaults to 10. Use 5 for a simple fact, 20+ for research."
+            "How many results to consider. Defaults to #{@default_count}. Use 5 for a simple fact, 20+ for research."
         ],
         freshness: [
-          type: :string,
+          type: {:in, @freshness},
           doc:
-            ~s(Restrict to recent pages: "pd" past day, "pw" past week, "pm" past month, "py" past year, or "YYYY-MM-DDtoYYYY-MM-DD".)
+            ~s("pd" past day, "pw" past week, "pm" past month, "py" past year. Leave it out to search pages of any age. For an exact window use published_between instead.)
+        ],
+        published_between: [
+          type: {:custom, __MODULE__, :validate_between, []},
+          doc:
+            ~s(Restrict to pages published in an exact window, as "YYYY-MM-DDtoYYYY-MM-DD" — for example "2025-01-01to2025-06-30". Prefer freshness unless the dates matter.)
         ],
         max_tokens: [
-          type: :integer,
+          type: {:in, @max_tokens},
           doc:
-            "Approximate token budget for the whole result, 1024-32768. Defaults to 4096. Raise it only for research."
+            "Approximate token budget for the whole result. Defaults to #{@default_max_tokens}. Raise it only for research."
         ]
       ],
       callback: {__MODULE__, :run}
     )
   end
 
+  @doc """
+  Checks a `published_between` window.
+
+  A `t:NimbleOptions.type/0` callback, so a malformed window is refused with a
+  sentence naming the format rather than becoming a rejected request.
+  """
+  @spec validate_between(term()) :: {:ok, String.t()} | {:error, String.t()}
+  def validate_between(value) when is_binary(value) do
+    if Regex.match?(@between, value) do
+      {:ok, value}
+    else
+      {:error,
+       ~s(expected "YYYY-MM-DDtoYYYY-MM-DD", for example "2025-01-01to2025-06-30", got: #{inspect(value)})}
+    end
+  end
+
+  def validate_between(value), do: {:error, "expected a string, got: #{inspect(value)}"}
+
   @doc "Runs one search and reports the outcome to the model."
   @spec run(map() | keyword()) :: Result.t()
   def run(params) do
+    case window(Map.new(params)) do
+      {:ok, _window} -> search(params)
+      {:error, message} -> Result.error(:conflicting_dates, message)
+    end
+  end
+
+  defp search(params) do
     case Client.search(Config.new(), body(params)) do
       {:ok, result} -> Result.ok(result)
       {:error, reason} -> Result.error(reason)
     end
   end
+
+  # Brave takes one field, so the two ways of asking for it are exclusive.
+  defp window(%{freshness: _, published_between: _}) do
+    {:error, "give either freshness or published_between, not both"}
+  end
+
+  defp window(params),
+    do: {:ok, Map.get(params, :freshness) || Map.get(params, :published_between)}
 
   @doc """
   Maps the tool's arguments onto the API's.
@@ -81,7 +124,7 @@ defmodule TarsBrave.WebSearch do
       "q" => Map.get(params, :query),
       "count" => Map.get(params, :count) || @default_count,
       "maximum_number_of_tokens" => Map.get(params, :max_tokens) || @default_max_tokens,
-      "freshness" => Map.get(params, :freshness)
+      "freshness" => Map.get(params, :freshness) || Map.get(params, :published_between)
     }
     |> Map.reject(fn {_key, value} -> is_nil(value) end)
   end

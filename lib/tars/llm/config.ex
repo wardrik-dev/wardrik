@@ -21,6 +21,28 @@ defmodule Tars.LLM.Config do
 
       Tars.LLM.Config.new(tools: [MyApp.Tools.Ping])
 
+  `:tool_timeouts` caps how long one call to a named tool may take, overriding
+  what the tool itself declares through `c:Tars.Tool.timeout/0`.
+
+      Tars.LLM.Config.new(tools: [...], tool_timeouts: %{"deep_research" => :timer.minutes(20)})
+
+  `:generation` is passed to `ReqLLM.stream_text/3` as it stands, so anything
+  the provider takes can be set here — how long an answer may run, and how much
+  of it the model may spend on reasoning.
+
+      Tars.LLM.Config.new(generation: [max_tokens: 8_000])
+      Tars.LLM.Config.new(generation: [reasoning_token_budget: 2_000])
+      Tars.LLM.Config.new(generation: [provider_options: [thinking: %{type: "disabled"}]])
+
+  Which of those a model honours is the provider's business; `:tools` and
+  `:system` are set from their own fields and cannot be overridden here.
+
+  `:max_iterations` bounds how many times a turn may answer its own tool calls
+  before giving up. It is a backstop against an unattended agent spending
+  without limit, not a budget — a turn that needs more rounds should get them,
+  and a person watching one can stop it. Set `:infinity` where something else
+  is doing the stopping.
+
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
   does not travel: prefer `{module, function}` over an anonymous function for
@@ -31,12 +53,18 @@ defmodule Tars.LLM.Config do
 
   defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
             system: nil,
-            tools: []
+            tools: [],
+            tool_timeouts: %{},
+            generation: [],
+            max_iterations: 250
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
-          tools: list(ReqLLM.Tool.t())
+          tools: list(ReqLLM.Tool.t()),
+          tool_timeouts: %{String.t() => timeout()},
+          generation: keyword(),
+          max_iterations: pos_integer() | :infinity
         }
 
   @doc """
@@ -49,7 +77,13 @@ defmodule Tars.LLM.Config do
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     config = struct(__MODULE__, opts)
-    %{config | tools: Tool.resolve!(config.tools)}
+    tools = Tool.resolve!(config.tools)
+
+    %{
+      config
+      | tools: tools,
+        tool_timeouts: Map.merge(Tool.timeouts(config.tools, tools), config.tool_timeouts)
+    }
   end
 
   @spec add_tool(t(), Tool.spec()) :: t()

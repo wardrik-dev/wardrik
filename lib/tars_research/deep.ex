@@ -73,8 +73,15 @@ defmodule TarsResearch.Deep do
   @typedoc "One angle to research, and optionally what makes it different."
   @type angle() :: %{required(:angle) => String.t(), optional(:prompt) => String.t()}
 
+  # Long enough for a full sweep: branches are capped at five minutes each by
+  # `Tars.Workflow.fan_out/4`, and synthesis runs a turn of its own after them.
+  @timeout :timer.minutes(10)
+
   @impl Tars.Tool
   def tool, do: tool([])
+
+  @impl Tars.Tool
+  def timeout, do: @timeout
 
   @doc """
   Builds the tool with angles, or a branch limit, of your own.

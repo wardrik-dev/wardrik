@@ -121,8 +121,12 @@ defmodule Tars.Event.BusTest do
       :telemetry.attach(
         handler_id,
         [:tars, :agent, :tool_started],
+        # Filtered: the handler is global, and another async test emitting the
+        # same event would otherwise win the race to this mailbox.
         fn name, measurements, metadata, _config ->
-          send(test_pid, {:telemetry, name, measurements, metadata})
+          if metadata.agent_id == agent_id do
+            send(test_pid, {:telemetry, name, measurements, metadata})
+          end
         end,
         nil
       )

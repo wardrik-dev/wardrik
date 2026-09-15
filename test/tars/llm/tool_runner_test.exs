@@ -81,6 +81,30 @@ defmodule Tars.LLM.ToolRunnerTest do
       assert message.metadata.is_error
     end
 
+    test "a schema violation tells the model what was expected", %{agent_id: agent_id} do
+      tools = [
+        ReqLLM.Tool.new!(
+          name: "pick",
+          description: "test tool",
+          parameter_schema: [colour: [type: {:in, ["red", "blue"]}]],
+          callback: fn input -> {:ok, input} end
+        )
+      ]
+
+      [message] =
+        ToolRunner.execute_many_async(
+          [call("call_1", "pick", %{"colour" => "green"})],
+          scope(agent_id, tools)
+        )
+
+      [part] = message.content
+      %{"error" => error} = JSON.decode!(part.text)
+
+      assert message.metadata.is_error
+      assert error =~ ~s(expected one of ["red", "blue"])
+      refute error =~ "stacktrace"
+    end
+
     test "a non-string error reason is inspected into the result", %{agent_id: agent_id} do
       tools = [tool!("boom", fn _ -> {:error, %RuntimeError{message: "nope"}} end)]
 
@@ -146,6 +170,43 @@ defmodule Tars.LLM.ToolRunnerTest do
     end
   end
 
+  describe "timeout/2" do
+    test "defaults when no tool declares one", %{agent_id: agent_id} do
+      scope = scope(agent_id, [tool!("echo", fn i -> {:ok, i} end)])
+
+      assert ToolRunner.timeout([call("c1", "echo", %{})], scope) == :timer.seconds(60)
+    end
+
+    test "takes what the config declares for a named tool", %{agent_id: agent_id} do
+      config =
+        Config.new(
+          tools: [tool!("slow", fn i -> {:ok, i} end)],
+          tool_timeouts: %{"slow" => :timer.minutes(10)}
+        )
+
+      scope = Scope.root(config, agent_id, name: "turn")
+
+      assert ToolRunner.timeout([call("c1", "slow", %{})], scope) == :timer.minutes(10)
+    end
+
+    test "a batch runs under the longest of its calls", %{agent_id: agent_id} do
+      config =
+        Config.new(
+          tools: [tool!("slow", fn i -> {:ok, i} end), tool!("echo", fn i -> {:ok, i} end)],
+          tool_timeouts: %{"slow" => :timer.minutes(10)}
+        )
+
+      scope = Scope.root(config, agent_id, name: "turn")
+      calls = [call("c1", "echo", %{}), call("c2", "slow", %{})]
+
+      assert ToolRunner.timeout(calls, scope) == :timer.minutes(10)
+    end
+
+    test "an empty batch still has one", %{agent_id: agent_id} do
+      assert ToolRunner.timeout([], scope(agent_id, [])) == :timer.seconds(60)
+    end
+  end
+
   describe "spans" do
     test "each call runs on its own child span of the turn", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
@@ -198,6 +259,27 @@ defmodule Tars.LLM.ToolRunnerTest do
       ToolRunner.execute(call("call_1", "boom", %{}), scope(agent_id, tools))
 
       assert_receive %Event{payload: {:span_finished, {:error, :nope}, _ms}}
+    end
+
+    test "a tool that reports its own failure closes its span as a failure", %{
+      agent_id: agent_id
+    } do
+      tools = [tool!("search", fn _input -> Tars.Tool.Result.error(:missing_api_key) end)]
+
+      message = ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+
+      assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
+
+      # The model still gets a successful tool result saying the call failed.
+      refute message.metadata[:is_error]
+    end
+
+    test "a tool that succeeds closes its span as a success", %{agent_id: agent_id} do
+      tools = [tool!("search", fn input -> Tars.Tool.Result.ok(input) end)]
+
+      ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
     end
 
     test "a crashing call still closes its span", %{agent_id: agent_id} do

@@ -40,6 +40,17 @@ defmodule Tars.Tool do
   @callback tool() :: ReqLLM.Tool.t()
 
   @doc """
+  How long one call may take, in milliseconds.
+
+  Optional; `Tars.LLM.ToolRunner` has a default. Declare one for work that
+  legitimately runs longer than a request — a workflow that fans out across
+  subagents takes minutes, and is killed part way through otherwise.
+  """
+  @callback timeout() :: timeout()
+
+  @optional_callbacks timeout: 0
+
+  @doc """
   Builds every tool in a list of specs.
 
   Raises when a spec names a module that cannot be loaded or does not implement
@@ -47,6 +58,27 @@ defmodule Tars.Tool do
   """
   @spec resolve!([spec()]) :: [ReqLLM.Tool.t()]
   def resolve!(specs) when is_list(specs), do: Enum.map(specs, &resolve_one!/1)
+
+  @doc """
+  The timeouts the given specs declare, by tool name.
+
+  Takes the specs alongside what `resolve!/1` built from them, so a tool is
+  only built once.
+  """
+  @spec timeouts([spec()], [ReqLLM.Tool.t()]) :: %{String.t() => timeout()}
+  def timeouts(specs, tools) when is_list(specs) and is_list(tools) do
+    specs
+    |> Enum.zip(tools)
+    |> Enum.flat_map(fn
+      {module, tool} when is_atom(module) -> declared(module, tool)
+      {_inline, _tool} -> []
+    end)
+    |> Map.new()
+  end
+
+  defp declared(module, tool) do
+    if function_exported?(module, :timeout, 0), do: [{tool.name, module.timeout()}], else: []
+  end
 
   defp resolve_one!(%ReqLLM.Tool{} = tool), do: tool
 
