@@ -192,4 +192,39 @@ defmodule TarsTUI.ViewTest do
     assert plain(out) =~ ":rate_limited"
     assert sequences(out) |> Enum.member?(:red)
   end
+
+  describe "tool results in the trace" do
+    test "a successful call shows what it actually returned" do
+      line =
+        View.trace(
+          {:tool_finished, "call_1", "list_services", {:ok, %{"services" => ["billing"]}}}
+        )
+        |> plain()
+
+      assert line =~ "list_services"
+      assert line =~ ~s({"services":["billing"]})
+    end
+
+    test "a string result is shown as it stands rather than re-encoded" do
+      line =
+        View.trace({:tool_finished, "call_1", "echo", {:ok, "plain text"}}) |> plain()
+
+      assert line =~ "plain text"
+    end
+
+    test "a long result is truncated to keep a trace line a line" do
+      output = %{"blob" => String.duplicate("x", 2_000)}
+      line = View.trace({:tool_finished, "call_1", "dump", {:ok, output}}) |> plain()
+
+      assert String.length(line) < 600
+    end
+
+    test "newlines are folded so one result stays one row" do
+      line =
+        View.trace({:tool_finished, "call_1", "read", {:ok, "one\ntwo\nthree"}})
+        |> plain()
+
+      refute line |> String.trim_trailing("\n") |> String.contains?("\n")
+    end
+  end
 end

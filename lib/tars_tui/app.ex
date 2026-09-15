@@ -53,16 +53,47 @@ defmodule TarsTUI.App do
   @faint [:faint, :light_black]
 
   @typedoc "How a line typed at the prompt is interpreted."
-  @type command() :: :blank | :quit | :stop | {:ask, String.t()}
+  @type command() ::
+          :blank | :quit | :stop | :approve | {:deny, String.t() | nil} | {:ask, String.t()}
 
-  @doc "Interprets one line of input. Pure, so the vocabulary is testable alone."
-  @spec command(String.t()) :: command()
-  def command(line) do
+  @default_denial "Denied by the person watching."
+
+  @doc """
+  Interprets one line of input. Pure, so the vocabulary is testable alone.
+
+  While a turn is parked the vocabulary grows: a bare `y` or `n` answers the
+  question, and `n` followed by anything denies with that as the reason. Only a
+  bare word counts, so a question that happens to start with "no" is still a
+  question.
+  """
+  @spec command(String.t(), boolean()) :: command()
+  def command(line, parked? \\ false) do
     case String.trim(line) do
       "" -> :blank
       slash when slash in ["/quit", "/exit"] -> :quit
       "/stop" -> :stop
-      text -> {:ask, text}
+      slash when slash in ["/approve", "/y"] -> :approve
+      slash when slash in ["/deny", "/n"] -> {:deny, nil}
+      "/deny " <> reason -> {:deny, String.trim(reason)}
+      "/n " <> reason -> {:deny, String.trim(reason)}
+      text -> answer(text, parked?)
+    end
+  end
+
+  defp answer(text, false), do: {:ask, text}
+
+  defp answer(text, true) do
+    case String.split(text, " ", parts: 2) do
+      [word] -> bare(word, nil, text)
+      [word, rest] -> bare(word, String.trim(rest), text)
+    end
+  end
+
+  defp bare(word, rest, text) do
+    case {String.downcase(word), rest} do
+      {yes, nil} when yes in ["y", "yes"] -> :approve
+      {no, rest} when no in ["n", "no"] -> {:deny, rest}
+      _other -> {:ask, text}
     end
   end
 
@@ -74,6 +105,8 @@ defmodule TarsTUI.App do
   def keybindings do
     [
       {"Escape", "Stop", &__MODULE__.stop_turn/2},
+      {"^y", "Approve", &__MODULE__.approve/2},
+      {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
       {"^d", "Quit", &__MODULE__.quit/2}
     ]
@@ -81,6 +114,12 @@ defmodule TarsTUI.App do
 
   @doc false
   def stop_turn(_event, term), do: {:noreply, interrupt(term)}
+
+  @doc false
+  def approve(_event, term), do: {:noreply, decide(term, :approve)}
+
+  @doc false
+  def deny(_event, term), do: {:noreply, decide(term, {:deny, @default_denial})}
 
   @doc false
   def toggle_trace(_event, term),
@@ -113,6 +152,7 @@ defmodule TarsTUI.App do
         thinking: "",
         usage: Usage.new(model),
         running?: false,
+        parked: [],
         frame: 0,
         frame_due?: false,
         started_at: nil,
@@ -203,6 +243,13 @@ defmodule TarsTUI.App do
     |> Enum.join()
   end
 
+  defp status(%{running?: false, parked: [_ | _] = parked}, width) do
+    names = Enum.map_join(parked, ", ", fn {call, _prompt} -> call.name end)
+    left = Text.tag(" ? waiting on #{names} · y approve · n deny", [:bright, :yellow])
+    right = Text.tag("Esc abandon · Ctrl-T trace · Ctrl-D quit ", @faint)
+    Render.line(Render.justify(left, right, width))
+  end
+
   defp status(%{running?: false}, width) do
     left = Text.tag(" idle · type a prompt and press Enter", @faint)
     right = Text.tag("Esc stop · Ctrl-T trace · Tab scroll · Ctrl-D quit ", @faint)
@@ -279,15 +326,35 @@ defmodule TarsTUI.App do
   def handle_event("ask", %{value: value}, term) do
     term = term |> assign(draft: "") |> reset("prompt")
 
-    case command(value) do
+    case command(value, term.assigns.parked != []) do
       :blank -> {:noreply, term}
       :quit -> {:stop, term}
       :stop -> {:noreply, interrupt(term)}
+      :approve -> {:noreply, decide(term, :approve)}
+      {:deny, reason} -> {:noreply, decide(term, {:deny, reason || @default_denial})}
       {:ask, text} -> {:noreply, ask(term, text)}
     end
   end
 
   def handle_event(_name, _event, term), do: {:noreply, term}
+
+  # Every parked call takes the same answer. One question at a time is what a
+  # terminal can ask clearly; a surface that needs them separately has
+  # `Tars.Agent.resume/2`, which takes a decision per call.
+  defp decide(%{assigns: %{parked: []}} = term, _decision),
+    do: append(term, View.nothing_to_answer())
+
+  defp decide(term, decision) do
+    calls = term.assigns.parked
+    :ok = Agent.resume(term.assigns.agent, decisions(calls, decision))
+
+    term
+    |> assign(parked: [])
+    |> append(View.decided(calls, decision))
+  end
+
+  defp decisions(calls, decision),
+    do: Map.new(calls, fn {call, _prompt} -> {call.id, decision} end)
 
   defp ask(term, text) do
     :ok = Agent.ask(term.assigns.agent, text)
@@ -363,12 +430,12 @@ defmodule TarsTUI.App do
     schedule_tick()
 
     term
-    |> assign(running?: true, frame: 0, started_at: now(), queued: 0)
+    |> assign(running?: true, parked: [], frame: 0, started_at: now(), queued: 0)
     |> trace(event)
   end
 
   defp handle(%Event{payload: {:turn_finished, _messages}} = event, term) do
-    term |> settle() |> trace(event) |> assign(running?: false)
+    term |> settle() |> trace(event) |> assign(running?: false, parked: [])
   end
 
   defp handle(%Event{payload: {:turn_interrupted, stats}} = event, term) do
@@ -376,7 +443,15 @@ defmodule TarsTUI.App do
     |> settle()
     |> trace(event)
     |> append(View.interrupted(stats))
-    |> assign(running?: false)
+    |> assign(running?: false, parked: [])
+  end
+
+  defp handle(%Event{payload: {:turn_parked, calls}} = event, term) do
+    term
+    |> settle()
+    |> trace(event)
+    |> append(View.parked(calls))
+    |> assign(running?: false, parked: calls)
   end
 
   defp handle(%Event{payload: {:turn_failed, reason}} = event, term) do
@@ -384,7 +459,7 @@ defmodule TarsTUI.App do
     |> settle()
     |> trace(event)
     |> append(View.error(reason))
-    |> assign(running?: false)
+    |> assign(running?: false, parked: [])
   end
 
   # -- the tree

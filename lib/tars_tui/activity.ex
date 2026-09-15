@@ -25,7 +25,7 @@ defmodule TarsTUI.Activity do
   alias Tars.Event
 
   @typedoc "Whether a span is still going, and how it went if not."
-  @type status() :: :running | :ok | :error
+  @type status() :: :running | :ok | :error | :parked
 
   @typedoc "One span, and what it is doing."
   @type span() :: %{
@@ -178,6 +178,10 @@ defmodule TarsTUI.Activity do
   end
 
   defp resolution(:ok), do: {:ok, nil}
+
+  # A parked call did not fail; it is waiting on a person, and colouring it
+  # like a failure would tell an operator to go looking for a bug.
+  defp resolution({:error, :parked}), do: {:parked, nil}
   defp resolution({:error, reason}), do: {:error, reason}
 
   defp since(activity, span_id, now) do

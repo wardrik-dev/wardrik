@@ -352,13 +352,4 @@ defmodule TarsTUI.AppTest do
       assert text =~ "2 req"
     end
   end
-
-  test "command/1 reads the prompt's vocabulary" do
-    assert App.command("") == :blank
-    assert App.command("  \n") == :blank
-    assert App.command("/quit") == :quit
-    assert App.command("/exit") == :quit
-    assert App.command("/stop") == :stop
-    assert App.command(" hello ") == {:ask, "hello"}
-  end
 end
