@@ -9,6 +9,7 @@ defmodule Tars.Application do
   def start(_type, _args) do
     children = [
       Tars.Event.Bus,
+      Tars.LLM.ToolRunner,
       {Task.Supervisor, name: Tars.TaskSupervisor},
       {Tars.Agent.Supervisor, []}
     ]

@@ -2,22 +2,50 @@ defmodule Tars.Scope do
   @moduledoc """
   Everything one run needs that nobody configures.
 
-  `Tars.LLM.Config` is supplied by the caller; a scope is what the system
-  builds around it to actually run a turn. Today that is the event source.
-  Deadlines, cancellation, and store handles belong here too as they arrive,
-  which keeps them out of the configuration a caller writes.
+  `Tars.LLM.Config` is supplied by the caller and says what an agent is;
+  a scope is what the system builds around it to actually run a turn, and says
+  what this particular run may do. The split is the point: a config can be
+  written down, shared and reused, while a scope belongs to one run and carries
+  the things that change per run.
 
-      scope = Tars.Scope.root(config, :assistant, name: "turn")
+      scope = Tars.Scope.root(config, :assistant, name: "turn", user: user, org: org)
       Tars.Event.emit(scope.source, {:turn_started, ["hello"]})
 
   Work the turn spawns takes a child scope, so its events land in the same
-  stream under a child span:
+  stream under a child span and it inherits the same authority:
 
       branch = Tars.Scope.child(scope, name: "web_search")
 
   Work that should run under a different model or tool set takes that config
   where it is used, such as `Tars.Subagent.run/3`, rather than carrying it on
   a scope of its own.
+
+  ## What a scope carries
+
+  | Field | What it decides |
+  | --- | --- |
+  | `:config` | which model, and what it can call |
+  | `:source` | where events go, and which span they belong to |
+  | `:user`, `:org` | who the work is being done for |
+  | `:deadline` | when the work must stop |
+  | `:policy` | whether a tool call may run |
+  | `:dispatch` | what a model call actually is, and who pays for it |
+
+  The last four are the seams a host reaches through. Each defaults to
+  something inert, so a deployment that needs none of them configures none of
+  them and no branch in the runtime has to handle their absence.
+
+  ## Deadlines
+
+  A deadline is an instant, not a duration, so it survives being passed down
+  through however many layers of delegation without anyone recomputing it.
+  Give one as a duration and it is resolved once:
+
+      scope = Tars.Scope.root(config, :assistant, timeout: :timer.minutes(10))
+      Tars.Scope.remaining_ms(scope)
+
+  `with_timeout/2` only ever narrows. Work cannot award itself more time than
+  it was given, which is what makes a deadline worth setting at the top.
 
   ## Spans
 
@@ -55,10 +83,18 @@ defmodule Tars.Scope do
   alias Tars.Trace
 
   @enforce_keys [:config, :source]
-  defstruct [:config, :source]
+  defstruct [:config, :source, :user, :org, :deadline, :policy, :dispatch]
 
-  @typedoc "The config a run was given, and where its events go."
-  @type t() :: %__MODULE__{config: Config.t(), source: Source.t()}
+  @typedoc "The config a run was given, where its events go, and what it may do."
+  @type t() :: %__MODULE__{
+          config: Config.t(),
+          source: Source.t(),
+          user: term(),
+          org: term(),
+          deadline: integer() | nil,
+          policy: module() | nil,
+          dispatch: module() | nil
+        }
 
   @typedoc "How a span ended."
   @type outcome() :: :ok | {:error, term()}
@@ -66,24 +102,100 @@ defmodule Tars.Scope do
   @doc """
   A scope at the root of a new trace.
 
-  Options are passed to `Tars.Event.Source.root/2`.
+  Options:
+
+    * `:name` - what to call the span, passed to `Tars.Event.Source.root/2`
+    * `:user` - who the work is for, as the host's own value
+    * `:org` - which tenant it belongs to, as the host's own value
+    * `:timeout` - how long the whole run may take, resolved to a deadline
+    * `:deadline` - the same thing as a monotonic instant, for a caller that
+      already holds one
+    * `:policy` - a `Tars.Policy` module, or `nil` to allow everything
+    * `:dispatch` - a `Tars.LLM.Dispatch` module, or `nil` to call the provider
+      as configured
   """
   @spec root(Config.t(), Bus.agent_id(), keyword()) :: t()
   def root(%Config{} = config, agent_id, opts \\ []) do
-    %__MODULE__{config: config, source: Source.root(agent_id, opts)}
+    %__MODULE__{
+      config: config,
+      source: Source.root(agent_id, opts),
+      user: Keyword.get(opts, :user),
+      org: Keyword.get(opts, :org),
+      policy: Keyword.get(opts, :policy),
+      dispatch: Keyword.get(opts, :dispatch),
+      deadline: Keyword.get(opts, :deadline)
+    }
+    |> with_timeout(Keyword.get(opts, :timeout, :infinity))
   end
 
   @doc """
-  A scope for work that `scope` spawned: same config and topic, a child span.
+  A scope for work that `scope` spawned: same authority and topic, a child span.
 
   Mints the span without announcing it; `span/3` is what announces one.
 
-  Options are passed to `Tars.Event.Source.child/2`.
+  Options are passed to `Tars.Event.Source.child/2`, and `:timeout` narrows the
+  deadline for this branch alone.
   """
   @spec child(t(), keyword()) :: t()
   def child(%__MODULE__{} = scope, opts \\ []) do
     %{scope | source: Source.child(scope.source, opts)}
+    |> with_timeout(Keyword.get(opts, :timeout, :infinity))
   end
+
+  @doc """
+  Puts the user this scope acts for.
+
+  Takes the host's own value, so a caller hands over the struct it already has
+  rather than translating it into something this library invented.
+
+      scope |> Tars.Scope.put_user(current_user) |> Tars.Scope.put_org(org)
+  """
+  @spec put_user(t(), term()) :: t()
+  def put_user(%__MODULE__{} = scope, user), do: %{scope | user: user}
+
+  @doc "Puts the organisation this scope acts for, the same way as `put_user/2`."
+  @spec put_org(t(), term()) :: t()
+  def put_org(%__MODULE__{} = scope, org), do: %{scope | org: org}
+
+  @doc """
+  Narrows this scope's deadline to at most `ms` from now.
+
+  Never widens one: work handed a deadline cannot give itself more time, so a
+  caller can hand a scope to code it did not write and still know when it ends.
+  """
+  @spec with_timeout(t(), timeout()) :: t()
+  def with_timeout(%__MODULE__{} = scope, :infinity), do: scope
+
+  def with_timeout(%__MODULE__{} = scope, ms) when is_integer(ms) and ms >= 0 do
+    %{scope | deadline: earliest(scope.deadline, instant(ms))}
+  end
+
+  defp earliest(nil, proposed), do: proposed
+  defp earliest(current, proposed), do: min(current, proposed)
+
+  defp instant(ms) do
+    System.monotonic_time() + System.convert_time_unit(ms, :millisecond, :native)
+  end
+
+  @doc """
+  How long this scope has left, or `:infinity` when it has no deadline.
+
+  Zero once the deadline has passed, so a caller can pass it straight to
+  anything taking a timeout without checking for a negative.
+  """
+  @spec remaining_ms(t()) :: timeout()
+  def remaining_ms(%__MODULE__{deadline: nil}), do: :infinity
+
+  def remaining_ms(%__MODULE__{deadline: deadline}) do
+    deadline
+    |> Kernel.-(System.monotonic_time())
+    |> System.convert_time_unit(:native, :millisecond)
+    |> max(0)
+  end
+
+  @doc "Whether this scope's deadline has passed."
+  @spec expired?(t()) :: boolean()
+  def expired?(%__MODULE__{} = scope), do: remaining_ms(scope) == 0
 
   @doc """
   Runs `fun` in a child span named `name`, announcing both ends.

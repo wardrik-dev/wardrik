@@ -118,6 +118,61 @@ After extraction that becomes `config :tars_brave, api_key: ...`. Each package
 documents its own extraction in its moduledoc. Nothing in `Tars` changes
 either way, because core names no tool and no workflow.
 
+## Seams
+
+Core runs agents. Everything that decides *who* an agent is working for, *what*
+it may do, and *who pays for it* is a seam a host reaches through, so a
+deployment that needs none of them configures none of them.
+
+```elixir
+Tars.Agent.Supervisor.start(:assistant,
+  config: config,
+  user: current_user,        # whatever your app's user is
+  org: current_org,
+  policy: MyApp.Policy,      # may this tool call run?
+  dispatch: MyApp.Gateway,   # which model, whose key, what did it cost?
+  timeout: :timer.minutes(10)
+)
+```
+
+| | |
+| --- | --- |
+| **`:user`, `:org`** | carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own structs; core never reads inside them and never puts them in an event. |
+| **`:policy`** | a `Tars.Policy`. Asked about every tool call before it runs, and answers `:allow`, `{:deny, reason}` or `{:ask, prompt}`. |
+| **`:dispatch`** | a `Tars.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
+| **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |
+
+A policy that asks **parks** the turn: nothing runs, nothing is appended to the
+conversation, and the agent waits.
+
+```elixir
+Tars.Agent.parked(:assistant)
+#=> [{%{id: "call_1", name: "deploy", arguments: %{}}, "This ships to production."}]
+
+Tars.Agent.resume(:assistant, %{"call_1" => :approve})
+```
+
+Approval, a credential that needs connecting, and a call a person has to run
+elsewhere are all the same shape, so there is one mechanism rather than three.
+
+### Stopping things
+
+```elixir
+Tars.Agent.interrupt(:assistant)                      # the whole turn
+Tars.LLM.ToolRunner.kill_call(:assistant, "call_1")   # one tool call
+Tars.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
+```
+
+A killed call is answered with an error result, so the model is never left with
+a call nobody answered.
+
+### Failures
+
+`Tars.Failure.classify/1` sorts a turn's error into `:transient`, `:ceiling` or
+`:bug`, so a caller knows whether trying again is worth anything. Anything
+unrecognised is a `:bug` — a retry loop that assumes otherwise spends real
+money finding out.
+
 ## Installation
 
 ```elixir

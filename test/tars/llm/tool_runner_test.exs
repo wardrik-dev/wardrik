@@ -38,7 +38,8 @@ defmodule Tars.LLM.ToolRunnerTest do
         call("call_2", "reverse", %{"input" => "World"})
       ]
 
-      messages = ToolRunner.execute_many_async(calls, scope(agent_id, tools))
+      messages =
+        calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
 
@@ -59,7 +60,10 @@ defmodule Tars.LLM.ToolRunnerTest do
     } do
       calls = [call("call_1", "nope", %{})]
 
-      assert [message] = ToolRunner.execute_many_async(calls, scope(agent_id, []))
+      assert [message] =
+               calls
+               |> ToolRunner.execute_many_async(scope(agent_id, []))
+               |> ToolRunner.messages()
 
       assert_receive %Event{
         payload: {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}}
@@ -74,7 +78,9 @@ defmodule Tars.LLM.ToolRunnerTest do
       calls = [call("call_1", "boom", %{})]
 
       {[message], _log} =
-        with_log(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
+        with_log(fn ->
+          calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
+        end)
 
       assert message.tool_call_id == "call_1"
       assert message.name == "boom"
@@ -92,10 +98,9 @@ defmodule Tars.LLM.ToolRunnerTest do
       ]
 
       [message] =
-        ToolRunner.execute_many_async(
-          [call("call_1", "pick", %{"colour" => "green"})],
-          scope(agent_id, tools)
-        )
+        [call("call_1", "pick", %{"colour" => "green"})]
+        |> ToolRunner.execute_many_async(scope(agent_id, tools))
+        |> ToolRunner.messages()
 
       [part] = message.content
       %{"error" => error} = JSON.decode!(part.text)
@@ -109,10 +114,9 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("boom", fn _ -> {:error, %RuntimeError{message: "nope"}} end)]
 
       assert [message] =
-               ToolRunner.execute_many_async(
-                 [call("call_1", "boom", %{})],
-                 scope(agent_id, tools)
-               )
+               [call("call_1", "boom", %{})]
+               |> ToolRunner.execute_many_async(scope(agent_id, tools))
+               |> ToolRunner.messages()
 
       assert message.tool_call_id == "call_1"
       assert message.metadata.is_error
@@ -136,7 +140,10 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       calls = [call("call_1", "waiter", %{}), call("call_2", "runner", %{})]
 
-      task = Task.async(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
+      task =
+        Task.async(fn ->
+          calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
+        end)
 
       # call_2's tool completes first; call_1's is still blocked. Any ordering
       # by completion rather than by call would put call_2 first.
@@ -266,7 +273,8 @@ defmodule Tars.LLM.ToolRunnerTest do
     } do
       tools = [tool!("search", fn _input -> Tars.Tool.Result.error(:missing_api_key) end)]
 
-      message = ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+      {:settled, _call, message} =
+        ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
 
       assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
 
@@ -286,7 +294,9 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("boom", fn _input -> exit(:kaboom) end)]
 
       with_log(fn ->
-        ToolRunner.execute_many_async([call("call_1", "boom", %{})], scope(agent_id, tools))
+        [call("call_1", "boom", %{})]
+        |> ToolRunner.execute_many_async(scope(agent_id, tools))
+        |> ToolRunner.messages()
       end)
 
       assert_receive %Event{payload: {:span_started, "boom"}} = started
@@ -300,13 +310,214 @@ defmodule Tars.LLM.ToolRunnerTest do
     test "returns a canonical tool-result message", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
-      message = ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), scope(agent_id, tools))
+      {:settled, _call, message} =
+        ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), scope(agent_id, tools))
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
       assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}}}
       assert message.role == :tool
       assert message.tool_call_id == "call_1"
       assert message.name == "echo"
+    end
+  end
+
+  defmodule AskingPolicy do
+    @behaviour Tars.Policy
+    @impl true
+    def authorize(%{name: "deploy"}, _scope), do: {:ask, "This ships to production."}
+    def authorize(%{name: "drop"}, _scope), do: {:deny, "Never."}
+    def authorize(_call, _scope), do: :allow
+  end
+
+  defp governed(agent_id, tools) do
+    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", policy: AskingPolicy)
+  end
+
+  describe "governance" do
+    test "an allowed call runs as though no policy were there", %{agent_id: agent_id} do
+      tools = [tool!("echo", fn input -> {:ok, input} end)]
+      calls = [call("call_1", "echo", %{"a" => 1})]
+
+      assert [{:settled, _call, message}] =
+               ToolRunner.execute_many_async(calls, governed(agent_id, tools))
+
+      assert message.tool_call_id == "call_1"
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+    end
+
+    test "a denied call never runs and the model is told why", %{agent_id: agent_id} do
+      test_pid = self()
+      tools = [tool!("drop", fn _ -> send(test_pid, :ran) && {:ok, %{}} end)]
+      calls = [call("call_1", "drop", %{})]
+
+      assert [{:settled, _call, message}] =
+               ToolRunner.execute_many_async(calls, governed(agent_id, tools))
+
+      refute_receive :ran
+      assert_receive %Event{payload: {:tool_denied, "call_1", "drop", "Never."}}
+
+      [part] = message.content
+      assert %{"ok" => false, "error" => %{"message" => "Never."}} = JSON.decode!(part.text)
+    end
+
+    test "a denial closes its span as a failure so a surface can see it", %{agent_id: agent_id} do
+      tools = [tool!("drop", fn _ -> {:ok, %{}} end)]
+
+      ToolRunner.execute_many_async([call("call_1", "drop", %{})], governed(agent_id, tools))
+
+      assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
+    end
+
+    test "an asked call parks instead of running", %{agent_id: agent_id} do
+      test_pid = self()
+      tools = [tool!("deploy", fn _ -> send(test_pid, :ran) && {:ok, %{}} end)]
+      calls = [call("call_1", "deploy", %{})]
+
+      assert [{:parked, parked_call, "This ships to production."}] =
+               ToolRunner.execute_many_async(calls, governed(agent_id, tools))
+
+      refute_receive :ran
+      assert parked_call.id == "call_1"
+      assert_receive %Event{payload: {:tool_parked, "call_1", "deploy", _prompt}}
+    end
+
+    test "a batch reports each call's own outcome", %{agent_id: agent_id} do
+      tools = [
+        tool!("echo", fn input -> {:ok, input} end),
+        tool!("deploy", fn _ -> {:ok, %{}} end),
+        tool!("drop", fn _ -> {:ok, %{}} end)
+      ]
+
+      calls = [
+        call("call_1", "echo", %{"a" => 1}),
+        call("call_2", "deploy", %{}),
+        call("call_3", "drop", %{})
+      ]
+
+      outcomes = ToolRunner.execute_many_async(calls, governed(agent_id, tools))
+
+      assert [{:settled, _, _}, {:parked, _, _}, {:settled, _, _}] = outcomes
+      assert [{%{id: "call_2"}, "This ships to production."}] = ToolRunner.parked(outcomes)
+    end
+
+    test "messages/1 refuses to invent a result for a parked call", %{agent_id: agent_id} do
+      tools = [tool!("deploy", fn _ -> {:ok, %{}} end)]
+
+      outcomes =
+        ToolRunner.execute_many_async([call("call_1", "deploy", %{})], governed(agent_id, tools))
+
+      assert_raise ArgumentError, ~r/call_1.*parked/, fn -> ToolRunner.messages(outcomes) end
+    end
+
+    test "execute/3 can skip the policy, which is how a resumed call runs", %{agent_id: agent_id} do
+      tools = [tool!("deploy", fn input -> {:ok, input} end)]
+
+      assert {:parked, _call, _prompt} =
+               ToolRunner.execute(call("call_1", "deploy", %{}), governed(agent_id, tools))
+
+      assert {:settled, _call, message} =
+               ToolRunner.execute(call("call_1", "deploy", %{}), governed(agent_id, tools),
+                 authorize: false
+               )
+
+      assert message.tool_call_id == "call_1"
+    end
+  end
+
+  describe "refuse/3" do
+    test "answers the model the way a policy denial does", %{agent_id: agent_id} do
+      scope = scope(agent_id, [])
+
+      assert {:settled, _call, message} =
+               ToolRunner.refuse(call("call_1", "deploy", %{}), scope, "Not this quarter.")
+
+      assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Not this quarter."}}
+      assert message.tool_call_id == "call_1"
+
+      [part] = message.content
+
+      assert %{"ok" => false, "error" => %{"message" => "Not this quarter."}} =
+               JSON.decode!(part.text)
+    end
+  end
+
+  describe "stopping one call" do
+    test "kill_call/2 ends a running call and still answers the model", %{agent_id: agent_id} do
+      test_pid = self()
+
+      tools = [
+        tool!("hang", fn _ ->
+          send(test_pid, :started)
+          receive do: (:never -> {:ok, %{}})
+        end),
+        tool!("echo", fn input -> {:ok, input} end)
+      ]
+
+      calls = [call("call_1", "hang", %{}), call("call_2", "echo", %{"a" => 1})]
+      task = Task.async(fn -> ToolRunner.execute_many_async(calls, scope(agent_id, tools)) end)
+
+      assert_receive :started, 1_000
+      assert ToolRunner.kill_call(agent_id, "call_1") == :ok
+
+      assert [{:settled, _, killed}, {:settled, _, echoed}] = Task.await(task, 5_000)
+      assert killed.metadata.is_error
+      assert killed.tool_call_id == "call_1"
+      refute echoed.metadata[:is_error]
+    end
+
+    test "a call nobody is running cannot be killed", %{agent_id: agent_id} do
+      assert ToolRunner.kill_call(agent_id, "call_nope") == {:error, :not_found}
+    end
+
+    test "in_flight/1 lists what could be stopped, and only for this agent", %{agent_id: agent_id} do
+      test_pid = self()
+
+      tools = [
+        tool!("hang", fn _ ->
+          send(test_pid, :started)
+          receive do: (:never -> {:ok, %{}})
+        end)
+      ]
+
+      task =
+        Task.async(fn ->
+          ToolRunner.execute_many_async([call("call_1", "hang", %{})], scope(agent_id, tools))
+        end)
+
+      assert_receive :started, 1_000
+
+      assert [%{call_id: "call_1", name: "hang", pid: pid}] = ToolRunner.in_flight(agent_id)
+      assert is_pid(pid)
+      assert ToolRunner.in_flight(make_ref()) == []
+
+      Task.shutdown(task, :brutal_kill)
+    end
+
+    test "nothing is in flight once a batch has settled", %{agent_id: agent_id} do
+      tools = [tool!("echo", fn input -> {:ok, input} end)]
+
+      ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
+
+      assert ToolRunner.in_flight(agent_id) == []
+    end
+  end
+
+  describe "timeout/2 against a deadline" do
+    test "never gives a batch longer than its scope has left", %{agent_id: agent_id} do
+      calls = [call("call_1", "echo", %{})]
+
+      scope =
+        Config.new(tools: [], tool_timeouts: %{"echo" => :timer.minutes(10)})
+        |> Scope.root(agent_id, name: "turn", timeout: 1_000)
+
+      assert ToolRunner.timeout(calls, scope) <= 1_000
+    end
+
+    test "a batch admitted with nothing left still gets a moment to answer", %{agent_id: agent_id} do
+      calls = [call("call_1", "echo", %{})]
+      scope = Config.new() |> Scope.root(agent_id, name: "turn", timeout: 0)
+
+      assert ToolRunner.timeout(calls, scope) == 1
     end
   end
 end

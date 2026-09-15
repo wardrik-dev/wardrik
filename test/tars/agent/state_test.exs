@@ -1,0 +1,251 @@
+defmodule Tars.Agent.StateTest do
+  use ExUnit.Case, async: true
+
+  alias ReqLLM.Context
+  alias Tars.Agent.State
+  alias Tars.Agent.State.Running
+  alias Tars.Agent.State.Waiting
+  alias Tars.LLM.Config
+  alias Tars.LLM.Turn.Parked
+  alias Tars.Scope
+
+  defp state, do: State.new([config: Config.new()], :assistant)
+
+  defp scope, do: Scope.root(Config.new(), :assistant, name: "turn")
+
+  # A task nobody runs. The state never touches the process, only its ref.
+  defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
+
+  defp running(state \\ state()) do
+    State.started(state, task(), scope(), Context.new(), System.monotonic_time())
+  end
+
+  defp parked_turn do
+    call = %{id: "call_1", name: "deploy", arguments: %{}}
+
+    Parked.new(
+      Context.new(),
+      %ReqLLM.Response{id: "r", model: "m", context: Context.new(), finish_reason: :tool_calls},
+      [{:parked, call, "Really?"}],
+      [],
+      5
+    )
+  end
+
+  defp waiting do
+    {state, _effects} = running() |> State.parked(parked_turn())
+    state
+  end
+
+  defp stopping do
+    {state, _effects} = State.interrupt(running())
+    State.arm(state, make_ref(), make_ref(), 0)
+  end
+
+  describe "the mode" do
+    test "a fresh agent is idle with nothing queued" do
+      assert State.status(state()) == %{state: :idle, pending: 0}
+    end
+
+    test "each mode reports itself" do
+      assert State.status(running()).state == :running
+      assert State.status(waiting()).state == :parked
+    end
+
+    test "starting a turn replaces idle rather than sitting beside it" do
+      assert %State{mode: %Running{}} = running()
+    end
+
+    test "parking replaces the running turn, so neither outlives the other" do
+      assert %State{mode: %Waiting{}} = waiting()
+    end
+
+    test "settling anything returns to idle" do
+      {settled, _effects} = State.settled(running(), [])
+      {failed, _effects} = State.failed(running(), :nope)
+      {abandoned, _effects} = State.interrupt(waiting())
+
+      assert settled.mode == :idle
+      assert failed.mode == :idle
+      assert abandoned.mode == :idle
+    end
+
+    test "stopping lives inside the running turn, so it cannot outlive one" do
+      assert %State{mode: %Running{stopping: %State.Stopping{dropped: 0}}} = stopping()
+    end
+  end
+
+  describe "queueing" do
+    test "a message arriving while idle waits for nobody" do
+      {state, effects} = State.queue(state(), "hello")
+
+      assert effects == []
+      assert State.status(state).pending == 1
+    end
+
+    test "a message arriving mid-turn asks that turn to wrap up" do
+      {_state, effects} = State.queue(running(), "and another thing")
+
+      assert [{:ask_to_stop, pid}] = effects
+      assert pid == self()
+    end
+
+    test "take/1 drains the queue only when there is nothing else happening" do
+      {idle, _} = State.queue(state(), "hello")
+      {running, _} = State.queue(running(), "hello")
+      {waiting, _} = State.queue(waiting(), "hello")
+
+      assert {:run, ["hello"], drained} = State.take(idle)
+      assert State.status(drained).pending == 0
+      assert State.take(running) == :none
+      assert State.take(waiting) == :none
+    end
+
+    test "nothing queued is nothing to run" do
+      assert State.take(state()) == :none
+    end
+  end
+
+  describe "interrupting" do
+    test "a running turn is told to stop now and has a kill armed behind it" do
+      {state, effects} = State.interrupt(running())
+
+      assert [{:stop_now, _pid}, {:arm_kill, 2_000, 0}] = effects
+      assert State.status(state).state == :running
+    end
+
+    test "what was queued is dropped and counted" do
+      {queued, _} = State.queue(running(), "one")
+      {queued, _} = State.queue(queued, "two")
+
+      {state, effects} = State.interrupt(queued)
+
+      assert {:arm_kill, _ms, 2} = List.last(effects)
+      assert State.status(state).pending == 0
+    end
+
+    test "interrupting twice keeps the kill that is already armed" do
+      armed = stopping()
+
+      assert {^armed, []} = State.interrupt(armed)
+    end
+
+    test "a waiting turn is abandoned outright" do
+      {state, effects} = State.interrupt(waiting())
+
+      assert [{:emit, _source, {:turn_interrupted, stats}}] = effects
+      assert stats.resolution == :abandoned
+      assert state.mode == :idle
+    end
+
+    test "an idle agent says there was nothing to stop" do
+      {_state, [{:emit, _source, {:turn_interrupted, stats}}]} = State.interrupt(state())
+
+      assert stats.resolution == :idle
+      assert stats.elapsed_ms == 0
+    end
+  end
+
+  describe "the kill" do
+    test "fires only for the tag that armed it" do
+      tag = make_ref()
+      {state, _} = State.interrupt(running())
+      state = State.arm(state, tag, make_ref(), 3)
+
+      assert {:kill, idle, effects} = State.kill(state, tag)
+      assert idle.mode == :idle
+      assert [{:shutdown, _task}, {:emit, _source, {:turn_interrupted, stats}}] = effects
+      assert stats.resolution == :killed
+      assert stats.dropped == 3
+    end
+
+    test "a timer from an earlier interrupt is refused" do
+      assert State.kill(stopping(), make_ref()) == :stale
+    end
+
+    test "a timer that fired after the turn answered is refused" do
+      {settled, _effects} = State.settled(stopping(), [])
+
+      assert State.kill(settled, make_ref()) == :stale
+    end
+
+    test "an idle agent cannot be killed" do
+      assert State.kill(state(), make_ref()) == :stale
+    end
+  end
+
+  describe "settling" do
+    test "a turn that answered normally reports what it produced" do
+      messages = [Context.assistant("done")]
+      {state, [{:emit, _source, event}]} = State.settled(running(), messages)
+
+      assert event == {:turn_finished, messages}
+      assert Context.to_list(state.context) |> length() == 1
+    end
+
+    test "a turn that answered while stopping reports what the interrupt kept" do
+      messages = [Context.assistant("partial")]
+      {_state, effects} = State.settled(stopping(), messages)
+
+      assert [{:emit, _source, {:turn_interrupted, stats}}, {:cancel_kill, _timer}] = effects
+      assert stats.resolution == :stopped
+      assert stats.kept == 1
+    end
+
+    test "answering before the kill was needed cancels it" do
+      {_state, effects} = State.settled(stopping(), [])
+
+      assert Enum.any?(effects, &match?({:cancel_kill, _timer}, &1))
+    end
+
+    test "a turn that never armed a kill has none to cancel" do
+      {_state, effects} = State.settled(running(), [])
+
+      refute Enum.any?(effects, &match?({:cancel_kill, _timer}, &1))
+    end
+
+    test "parking announces the calls a person has to answer" do
+      {state, [{:emit, _source, {:turn_parked, calls}} | _rest]} =
+        State.parked(running(), parked_turn())
+
+      assert [{%{id: "call_1"}, "Really?"}] = calls
+      assert State.waiting_on(state) == calls
+    end
+
+    test "an agent that is not waiting is waiting on nothing" do
+      assert State.waiting_on(state()) == []
+      assert State.waiting_on(running()) == []
+    end
+  end
+
+  describe "resuming" do
+    test "a waiting agent hands back the turn it parked, under the same scope" do
+      state = waiting()
+
+      assert {:resume, scope, turn, started_at} = State.resume(state, %{"call_1" => :approve})
+      assert scope.source.agent_id == :assistant
+      assert %Parked{} = turn
+      assert is_integer(started_at)
+    end
+
+    test "answering an agent that is not asking does nothing" do
+      assert State.resume(state(), %{}) == :none
+      assert State.resume(running(), %{}) == :none
+    end
+  end
+
+  describe "whose result is whose" do
+    test "only the turn in flight is recognised" do
+      state = running()
+      %Running{task: task} = state.mode
+
+      assert State.running?(state, task.ref)
+      refute State.running?(state, make_ref())
+    end
+
+    test "a result arriving after the agent settled belongs to nobody" do
+      refute State.running?(state(), make_ref())
+      refute State.running?(waiting(), make_ref())
+    end
+  end
+end

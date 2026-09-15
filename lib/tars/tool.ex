@@ -28,6 +28,15 @@ defmodule Tars.Tool do
   """
 
   @typedoc """
+  A call the model asked for, in the shape `ReqLLM.Response.classify/1`
+  produces: a provider-assigned id, the tool's name, and decoded arguments.
+
+  The id is what a host correlates against. A tool reads its own call with
+  `Tars.Scope.Context.current_call/0`.
+  """
+  @type call() :: %{id: String.t(), name: String.t(), arguments: map()}
+
+  @typedoc """
   How a config names a tool: a module implementing this behaviour, or a tool
   built inline.
   """

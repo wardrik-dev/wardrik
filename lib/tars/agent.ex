@@ -1,8 +1,4 @@
 defmodule Tars.Agent do
-  # Long enough for a streaming response to notice, short enough that a kill
-  # switch feels like one. A tool mid-flight will not answer inside it.
-  @grace 2_000
-
   @moduledoc """
   Owns one agent's conversation and serializes turns against it.
 
@@ -27,16 +23,33 @@ defmodule Tars.Agent do
 
   `interrupt/1` is a kill switch, not a hint. It asks the running turn to stop,
   drops everything queued behind it, and if the turn has not returned within
-  `#{@grace}ms` — a tool already running does not read its mailbox — kills it.
+  its grace — a tool already running does not read its mailbox — kills it.
   Either way the agent settles idle and reports what it stopped as
   `{:turn_interrupted, stats}`.
 
   It is an ordinary function, so an operator, a supervisor or another node can
-  reach it without a terminal attached.
+  reach it without a terminal attached. To stop one tool call rather than the
+  whole turn, see `Tars.LLM.ToolRunner.kill_call/2`.
+
+  ## Waiting for a person
+
+  A `Tars.Policy` that answers `{:ask, prompt}` parks the turn. The agent holds
+  what it was doing, reports `:parked`, and does nothing until `resume/2`
+  answers the calls it stopped on. Messages that arrive meanwhile queue behind
+  it rather than starting a turn of their own, because the parked work is still
+  the current work; `interrupt/1` abandons it if that is what you want.
+
+  ## What a host supplies
+
+  Beyond `:config`, an agent takes the seams every scope it roots is built
+  with: `:user` and `:org` say who the work is for, `:policy` decides whether a
+  tool call may run, `:dispatch` decides what a model call is and who pays for
+  it, and `:timeout` bounds the whole turn. Each is optional and inert by
+  default.
 
   The agent adds four events of its own so subscribers can follow its state
   without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`,
-  `{:turn_failed, reason}` and `{:turn_interrupted, stats}`. All three are emitted on the turn's root span,
+  `{:turn_failed, reason}` and `{:turn_interrupted, stats}`. All are emitted on the turn's root span,
   so a subscriber can tell them from events the turn's own work produced. A
   client attaching mid-turn can catch up with `status/1`.
   """
@@ -45,46 +58,34 @@ defmodule Tars.Agent do
   use GenServer
 
   alias ReqLLM.Context
+  alias Tars.Agent.State
   alias Tars.Event
   alias Tars.LLM
   alias Tars.Scope
-  alias Tars.Trace
-
-  defstruct [
-    :agent_id,
-    :config,
-    :context,
-    :runner,
-    :running,
-    :source,
-    :started_at,
-    :stopping,
-    pending: :queue.new()
-  ]
 
   @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
-  @type status() :: %{state: :idle | :running, pending: non_neg_integer()}
+  @type status() :: State.status()
 
-  @typedoc "Runs one turn and returns the messages it appended."
-  @type runner() ::
-          (Scope.t(), Context.t() -> {:ok, [ReqLLM.Message.t()]} | {:error, any()})
+  @typedoc "What an interrupt stopped."
+  @type stats() :: State.stats()
 
-  @type t() :: %__MODULE__{
-          agent_id: Tars.Event.Bus.agent_id(),
-          config: LLM.Config.t(),
-          context: Context.t(),
-          runner: runner(),
-          running: Task.t() | nil,
-          source: Tars.Event.Source.t() | nil,
-          pending: :queue.queue(String.t())
-        }
+  @typedoc "Runs one turn and reports how it ended."
+  @type runner() :: State.runner()
+
+  @typedoc "Finishes a parked turn once its calls have been answered."
+  @type resumer() :: State.resumer()
 
   @doc """
   Start an agent.
 
-  Options: `:name`, `:config`, `:context`, `:runner`. The agent's event id is
-  its `:name` when given, otherwise its pid. Subscribe to it with
-  `Tars.Event.Bus.subscribe/1`.
+  Options: `:name`, `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and
+  the scope options `:user`, `:org`, `:policy`, `:dispatch` and `:timeout`.
+
+  `:grace` is how long an interrupted turn is given to answer before it is
+  killed, #{State.default_grace()}ms by default.
+
+  The agent's event id is its `:name` when given, otherwise its pid. Subscribe
+  to it with `Tars.Event.Bus.subscribe/1`.
   """
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name))
@@ -99,164 +100,166 @@ defmodule Tars.Agent do
   @spec status(GenServer.server()) :: status()
   def status(agent), do: GenServer.call(agent, :status)
 
-  @typedoc "What an interrupt stopped."
-  @type stats() :: %{
-          dropped: non_neg_integer(),
-          kept: non_neg_integer(),
-          resolution: :stopped | :killed | :idle,
-          elapsed_ms: non_neg_integer()
-        }
-
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
 
-  Non-blocking, and safe when the agent is idle.
+  Non-blocking, and safe when the agent is idle. A parked turn is abandoned,
+  which is the only way to get rid of one without answering it.
   """
   @spec interrupt(GenServer.server()) :: :ok
   def interrupt(agent), do: GenServer.cast(agent, :interrupt)
 
+  @doc """
+  Answers the calls a parked turn stopped on and carries it on.
+
+  `decisions` maps a tool call id to `:approve` or `{:deny, reason}`. Calls left
+  out stay parked, so several people can answer one call each. Non-blocking,
+  and a no-op when nothing is parked.
+
+      Tars.Agent.resume(:assistant, %{"call_abc" => :approve})
+      Tars.Agent.resume(:assistant, %{"call_abc" => {:deny, "Not this quarter."}})
+  """
+  @spec resume(GenServer.server(), %{String.t() => LLM.Turn.Parked.decision()}) :: :ok
+  def resume(agent, decisions) when is_map(decisions),
+    do: GenServer.cast(agent, {:resume, decisions})
+
+  @doc """
+  What this agent is waiting on, as `{call, prompt}` pairs, or `[]` when it is
+  not parked.
+  """
+  @spec parked(GenServer.server()) :: [{Tars.Tool.call(), String.t()}]
+  def parked(agent), do: GenServer.call(agent, :parked)
+
   @impl true
   def init(opts) do
-    state = %__MODULE__{
-      agent_id: Keyword.get(opts, :name) || self(),
-      config: Keyword.get(opts, :config, LLM.Config.new()),
-      context: Keyword.get(opts, :context, Context.new()),
-      runner: Keyword.get(opts, :runner, &LLM.Turn.run/2)
-    }
-
-    {:ok, state}
+    {:ok, State.new(opts, Keyword.get(opts, :name) || self())}
   end
 
   @impl true
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
-
-  def handle_call(:status, _from, state) do
-    status = %{
-      state: if(state.running, do: :running, else: :idle),
-      pending: :queue.len(state.pending)
-    }
-
-    {:reply, status, state}
-  end
+  def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
+  def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
 
   @impl true
-  def handle_cast(:interrupt, %{running: %Task{} = task} = state) do
-    LLM.Turn.interrupt(task.pid)
-    Process.send_after(self(), {:kill, task.ref}, @grace)
+  def handle_cast({:ask, question}, state) do
+    {state, effects} = State.queue(state, question)
 
-    {:noreply, %{state | pending: :queue.new(), stopping: :queue.len(state.pending)}}
+    {:noreply, perform(state, effects), {:continue, :maybe_run}}
   end
 
   def handle_cast(:interrupt, state) do
-    dropped = :queue.len(state.pending)
-    Event.emit(Event.Source.root(state.agent_id), {:turn_interrupted, idle_stats(dropped)})
+    {state, effects} = State.interrupt(state)
 
-    {:noreply, %{state | pending: :queue.new()}}
+    {:noreply, perform(state, effects), {:continue, :maybe_run}}
   end
 
-  def handle_cast({:ask, question}, state) do
-    state = %{state | pending: :queue.in(question, state.pending)}
-    yield(state.running)
+  def handle_cast({:resume, decisions}, state) do
+    case State.resume(state, decisions) do
+      {:resume, scope, turn, started_at} ->
+        task = run(fn -> state.resumer.(scope, turn, decisions) end)
 
-    {:noreply, state, {:continue, :maybe_run}}
-  end
+        {:noreply, State.resumed(state, task, scope, started_at)}
 
-  # Advisory: the queue stays authoritative here, so a turn that finishes
-  # without reading it loses nothing.
-  defp yield(%Task{pid: pid}), do: LLM.Turn.yield(pid)
-  defp yield(nil), do: :ok
-
-  @impl true
-  def handle_continue(:maybe_run, %{running: %Task{}} = state), do: {:noreply, state}
-
-  def handle_continue(:maybe_run, state) do
-    case :queue.to_list(state.pending) do
-      [] ->
+      :none ->
         {:noreply, state}
-
-      questions ->
-        context =
-          Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
-
-        %{runner: runner} = state
-        scope = Scope.root(state.config, state.agent_id, name: "turn")
-
-        Event.emit(scope.source, {:turn_started, questions})
-
-        task =
-          Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
-            runner.(scope, context)
-          end)
-
-        {:noreply,
-         %{
-           state
-           | context: context,
-             running: task,
-             source: scope.source,
-             started_at: System.monotonic_time(),
-             pending: :queue.new()
-         }}
     end
   end
 
   @impl true
-  def handle_info({ref, {:ok, messages}}, %{running: %Task{ref: ref}} = state) do
-    Process.demonitor(ref, [:flush])
-
-    Event.emit(state.source, settled(state, messages))
-    state = %{state | context: Context.append(state.context, messages)}
-    {:noreply, idle(state), {:continue, :maybe_run}}
+  def handle_continue(:maybe_run, state) do
+    case State.take(state) do
+      {:run, questions, state} -> {:noreply, start(state, questions)}
+      :none -> {:noreply, state}
+    end
   end
 
-  def handle_info({:kill, ref}, %{running: %Task{ref: ref} = task, stopping: dropped} = state)
-      when is_integer(dropped) do
-    Task.shutdown(task, :brutal_kill)
-    Event.emit(state.source, {:turn_interrupted, stats(state, dropped, 0, :killed)})
+  defp start(state, questions) do
+    context = Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
+    scope = Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
 
-    {:noreply, idle(state), {:continue, :maybe_run}}
+    Event.emit(scope.source, {:turn_started, questions})
+    task = run(fn -> state.runner.(scope, context) end)
+
+    State.started(state, task, scope, context, System.monotonic_time())
   end
 
-  def handle_info({:kill, _ref}, state), do: {:noreply, state}
+  defp run(fun), do: Task.Supervisor.async_nolink(Tars.TaskSupervisor, fun)
 
-  def handle_info({ref, {:error, reason}}, %{running: %Task{ref: ref}} = state) do
-    Process.demonitor(ref, [:flush])
-    Logger.error("Turn failed: #{inspect(reason)}")
-    Event.emit(state.source, {:turn_failed, reason})
-    {:noreply, idle(state), {:continue, :maybe_run}}
+  @impl true
+  def handle_info({ref, result}, state) when is_reference(ref) do
+    if State.running?(state, ref) do
+      Process.demonitor(ref, [:flush])
+      {:noreply, answered(state, result), {:continue, :maybe_run}}
+    else
+      {:noreply, state}
+    end
   end
 
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %{running: %Task{ref: ref}} = state) do
-    Logger.error("Turn crashed: #{inspect(reason)}")
-    Event.emit(state.source, {:turn_failed, reason})
-    {:noreply, idle(state), {:continue, :maybe_run}}
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref) do
+    if State.running?(state, ref) do
+      Logger.error("Turn crashed: #{inspect(reason)}")
+      {:noreply, settle(state, State.failed(state, reason)), {:continue, :maybe_run}}
+    else
+      {:noreply, state}
+    end
   end
 
-  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
+  def handle_info({:kill, tag}, state) do
+    case State.kill(state, tag) do
+      {:kill, state, effects} -> {:noreply, perform(state, effects), {:continue, :maybe_run}}
+      :stale -> {:noreply, state}
+    end
+  end
 
   def handle_info(message, state) do
     Logger.debug("Unhandled message: #{inspect(message)}")
     {:noreply, state}
   end
 
-  defp settled(%{stopping: nil}, messages), do: {:turn_finished, messages}
+  defp answered(state, {:ok, messages}), do: settle(state, State.settled(state, messages))
+  defp answered(state, {:parked, turn}), do: settle(state, State.parked(state, turn))
 
-  defp settled(%{stopping: dropped} = state, messages),
-    do: {:turn_interrupted, stats(state, dropped, length(messages), :stopped)}
-
-  defp stats(state, dropped, kept, resolution) do
-    %{
-      dropped: dropped,
-      kept: kept,
-      resolution: resolution,
-      elapsed_ms: Trace.elapsed_ms(state.started_at)
-    }
+  defp answered(state, {:error, reason}) do
+    Logger.error("Turn failed: #{inspect(reason)}")
+    settle(state, State.failed(state, reason))
   end
 
-  defp idle_stats(dropped) do
-    %{dropped: dropped, kept: 0, resolution: :idle, elapsed_ms: 0}
+  defp settle(_state, {next, effects}), do: perform(next, effects)
+
+  # The one place a state's decisions become things that happen. Each effect is
+  # carried out in the order it was produced, and an effect that has something
+  # to record hands the state back.
+  defp perform(state, effects), do: Enum.reduce(effects, state, &apply_effect/2)
+
+  defp apply_effect({:emit, source, payload}, state) do
+    Event.emit(source, payload)
+    state
   end
 
-  defp idle(state), do: %{state | running: nil, source: nil, started_at: nil, stopping: nil}
+  defp apply_effect({:ask_to_stop, pid}, state) do
+    LLM.Turn.yield(pid)
+    state
+  end
+
+  defp apply_effect({:stop_now, pid}, state) do
+    LLM.Turn.interrupt(pid)
+    state
+  end
+
+  defp apply_effect({:arm_kill, ms, dropped}, state) do
+    tag = make_ref()
+    timer = Process.send_after(self(), {:kill, tag}, ms)
+
+    State.arm(state, tag, timer, dropped)
+  end
+
+  defp apply_effect({:cancel_kill, timer}, state) do
+    Process.cancel_timer(timer)
+    state
+  end
+
+  defp apply_effect({:shutdown, task}, state) do
+    Task.shutdown(task, :brutal_kill)
+    state
+  end
 end

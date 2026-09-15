@@ -406,7 +406,8 @@ defmodule Tars.AgentTest do
         receive do: (:never -> :ok)
       end
 
-      {:ok, agent} = Agent.start_link(runner: deaf)
+      # A short grace: this is the kill path, not a test of how long to wait.
+      {:ok, agent} = Agent.start_link(runner: deaf, grace: 25)
       :ok = Event.Bus.subscribe(agent)
 
       Agent.ask(agent, "one")
@@ -431,6 +432,184 @@ defmodule Tars.AgentTest do
       Agent.ask(agent, "two")
 
       assert_receive {:running, _pid}
+    end
+  end
+
+  defp parked_turn(call_id \\ "call_1") do
+    call = %{id: call_id, name: "deploy", arguments: %{}}
+
+    Tars.LLM.Turn.Parked.new(
+      Context.new(),
+      %ReqLLM.Response{
+        id: "r",
+        model: "test",
+        context: Context.new(),
+        finish_reason: :tool_calls
+      },
+      [{:parked, call, "This ships to production."}],
+      [],
+      5
+    )
+  end
+
+  # Parks on the first turn, then answers normally, so a test can drive the
+  # whole waiting-for-a-person path without a policy or a model.
+  defp parking_runner(test_pid) do
+    parked = parked_turn()
+
+    fn _scope, _context ->
+      send(test_pid, :asked)
+      {:parked, parked}
+    end
+  end
+
+  defp resumer(test_pid, result) do
+    fn _scope, _parked, decisions ->
+      send(test_pid, {:resumed, decisions})
+      result
+    end
+  end
+
+  describe "waiting for a person" do
+    test "an agent whose turn parked reports what it is waiting on" do
+      agent = start_agent(runner: parking_runner(self()))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}
+
+      assert prompt == "This ships to production."
+      assert Agent.status(agent) == %{state: :parked, pending: 0}
+
+      assert [{%{id: "call_1", name: "deploy"}, "This ships to production."}] =
+               Agent.parked(agent)
+    end
+
+    test "an idle agent is waiting on nothing" do
+      agent = start_agent(runner: runner(self()))
+
+      assert Agent.parked(agent) == []
+    end
+
+    test "resume/2 hands the decisions to the turn and appends what comes back" do
+      test_pid = self()
+      answer = {:ok, [Context.assistant("shipped")]}
+
+      agent =
+        start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+
+      Agent.resume(agent, %{"call_1" => :approve})
+
+      assert_receive {:resumed, %{"call_1" => :approve}}
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert roles(agent) == [:user, :assistant]
+      assert Agent.status(agent) == %{state: :idle, pending: 0}
+    end
+
+    test "a turn that parks again stays parked" do
+      test_pid = self()
+      still = {:parked, parked_turn("call_2")}
+
+      agent = start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, still))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _}]}}
+
+      Agent.resume(agent, %{})
+      assert_receive {:resumed, %{}}
+      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_2"}, _}]}}
+
+      assert Agent.status(agent) == %{state: :parked, pending: 0}
+      assert [{%{id: "call_2"}, _prompt}] = Agent.parked(agent)
+    end
+
+    test "resuming an agent that is not parked does nothing" do
+      agent = start_agent(runner: runner(self()))
+
+      Agent.resume(agent, %{"call_1" => :approve})
+
+      assert Agent.status(agent) == %{state: :idle, pending: 0}
+    end
+
+    test "a message arriving while parked queues rather than starting a second turn" do
+      test_pid = self()
+      agent = start_agent(runner: parking_runner(test_pid))
+
+      Agent.ask(agent, "ship it")
+      assert_receive :asked
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+
+      Agent.ask(agent, "and another thing")
+
+      assert Agent.status(agent) == %{state: :parked, pending: 1}
+      refute_receive :asked
+    end
+
+    test "interrupt/1 abandons a parked turn and says what it dropped" do
+      test_pid = self()
+      agent = start_agent(runner: parking_runner(test_pid))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+      Agent.ask(agent, "queued")
+
+      Agent.interrupt(agent)
+
+      assert_receive %Event{payload: {:turn_interrupted, stats}}
+      assert stats.resolution == :abandoned
+      assert stats.dropped == 1
+      assert Agent.status(agent) == %{state: :idle, pending: 0}
+      assert Agent.parked(agent) == []
+    end
+  end
+
+  describe "what a host supplies" do
+    test "the scope every turn runs under carries the seams the agent was started with" do
+      test_pid = self()
+
+      runner = fn scope, _context ->
+        send(test_pid, {:scope, scope})
+        {:ok, [Context.assistant("ok")]}
+      end
+
+      agent =
+        start_agent(
+          runner: runner,
+          user: %{id: 7},
+          org: "acme",
+          policy: SomePolicy,
+          dispatch: SomeGateway,
+          timeout: 60_000
+        )
+
+      Agent.ask(agent, "hi")
+
+      assert_receive {:scope, scope}
+      assert scope.user == %{id: 7}
+      assert scope.org == "acme"
+      assert scope.policy == SomePolicy
+      assert scope.dispatch == SomeGateway
+      assert Tars.Scope.remaining_ms(scope) > 55_000
+    end
+
+    test "an agent started with none of them runs under an inert scope" do
+      test_pid = self()
+
+      runner = fn scope, _context ->
+        send(test_pid, {:scope, scope})
+        {:ok, [Context.assistant("ok")]}
+      end
+
+      agent = start_agent(runner: runner)
+      Agent.ask(agent, "hi")
+
+      assert_receive {:scope, scope}
+      assert scope.user == nil
+      assert scope.policy == nil
+      assert scope.dispatch == nil
+      assert Tars.Scope.remaining_ms(scope) == :infinity
     end
   end
 end
