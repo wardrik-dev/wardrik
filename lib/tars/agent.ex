@@ -3,7 +3,7 @@ defmodule Tars.Agent do
   Owns one agent's conversation and serializes turns against it.
 
   `ask/2` is non-blocking. Messages are queued in `pending` and drained one turn
-  at a time: exactly one turn task runs at once, and this GenServer is the only
+  at a time: exactly one turn task runs at once, and this process is the only
   writer of `context`. Order is therefore a structural property rather than
   something callers have to coordinate.
 
@@ -11,25 +11,36 @@ defmodule Tars.Agent do
   inside `ReqLLM` or a tool cannot take the agent down.
 
   Stream and tool events do not pass through this process at all. The turn
-  publishes them through its scope, and any number of listeners can subscribe
-  with `Tars.Event.Bus.subscribe/1`. See `TarsTUI.App` for a terminal one.
+  publishes them through its scope, and any number of listeners on any node can
+  subscribe with `Tars.Event.Bus.subscribe/1`. See `TarsTUI.App` for a terminal
+  one.
 
   A message arriving while a turn is running joins that turn rather than
   waiting for it: the turn is asked to stop at its next boundary, and the
   messages queued behind it start the next one against the context it left.
   Nothing in that path knows where the message came from.
 
+  ## Durable and keyed
+
+  An agent is a `DurableServer`: one process per key across the cluster, state
+  written to the store on every change that matters, and restarted elsewhere
+  when its node is lost. Start one with `Tars.Fleet.spawn/2`.
+
+  Every function here takes a pid or a fleet key, and a key nothing holds
+  answers `{:error, :not_found}`.
+
+      Tars.Agent.ask("acme/jon/researcher", "What changed this week?")
+
   ## Interrupting
 
-  `interrupt/1` is a kill switch, not a hint. It asks the running turn to stop,
-  drops everything queued behind it, and if the turn has not returned within
-  its grace — a tool already running does not read its mailbox — kills it.
+  `interrupt/1` asks the running turn to stop, drops everything queued behind
+  it, and kills the turn if it has not returned within its grace. A tool
+  already running does not read its mailbox, which is what the grace covers.
   Either way the agent settles idle and reports what it stopped as
   `{:turn_interrupted, stats}`.
 
-  It is an ordinary function, so an operator, a supervisor or another node can
-  reach it without a terminal attached. To stop one tool call rather than the
-  whole turn, see `Tars.LLM.ToolRunner.kill_call/2`.
+  `Tars.Fleet.kill/1` does the same across a prefix.
+  `Tars.LLM.ToolRunner.kill_call/2` stops one tool call rather than the turn.
 
   ## Waiting for a person
 
@@ -38,6 +49,8 @@ defmodule Tars.Agent do
   answers the calls it stopped on. Messages that arrive meanwhile queue behind
   it rather than starting a turn of their own, because the parked work is still
   the current work; `interrupt/1` abandons it if that is what you want.
+
+  A parked turn is written to the store, so it outlives the node it parked on.
 
   ## What a host supplies
 
@@ -49,19 +62,22 @@ defmodule Tars.Agent do
 
   The agent adds four events of its own so subscribers can follow its state
   without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`,
-  `{:turn_failed, reason}` and `{:turn_interrupted, stats}`. All are emitted on the turn's root span,
-  so a subscriber can tell them from events the turn's own work produced. A
-  client attaching mid-turn can catch up with `status/1`.
+  `{:turn_failed, reason}` and `{:turn_interrupted, stats}`. All are emitted on
+  the turn's root span, so a subscriber can tell them from events the turn's
+  own work produced. A client attaching mid-turn can catch up with `status/1`.
   """
   require Logger
 
-  use GenServer
+  use DurableServer, vsn: 1
 
   alias ReqLLM.Context
   alias Tars.Agent.State
   alias Tars.Event
+  alias Tars.Fleet
   alias Tars.LLM
-  alias Tars.Scope
+
+  @typedoc "An agent: the pid of one, or the fleet key it is registered under."
+  @type agent() :: pid() | String.t()
 
   @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
   @type status() :: State.status()
@@ -75,30 +91,30 @@ defmodule Tars.Agent do
   @typedoc "Finishes a parked turn once its calls have been answered."
   @type resumer() :: State.resumer()
 
-  @doc """
-  Start an agent.
+  # Transitions worth keeping sync on their own. This is the backstop.
+  @sync_every_ms 30_000
 
-  Options: `:name`, `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and
-  the scope options `:user`, `:org`, `:policy`, `:dispatch` and `:timeout`.
+  @doc """
+  The state an agent starts life with, for `Tars.Fleet.spawn/2` to hand over.
+
+  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and the
+  scope options `:user`, `:org`, `:policy`, `:dispatch` and `:timeout`.
 
   `:grace` is how long an interrupted turn is given to answer before it is
-  killed, #{State.default_grace()}ms by default.
-
-  The agent's event id is its `:name` when given, otherwise its pid. Subscribe
-  to it with `Tars.Event.Bus.subscribe/1`.
+  killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
+  `{module, function, args}`; see `t:Tars.Agent.State.runner/0`.
   """
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name))
-  end
+  @spec initial_state(keyword(), String.t()) :: State.t()
+  def initial_state(opts, key), do: State.new(opts, key)
 
-  @spec ask(GenServer.server(), String.t()) :: :ok
-  def ask(agent, question), do: GenServer.cast(agent, {:ask, question})
+  @spec ask(agent(), String.t()) :: :ok | {:error, :not_found}
+  def ask(agent, question), do: cast(agent, {:ask, question})
 
-  @spec get_context(GenServer.server()) :: Context.t()
-  def get_context(agent), do: GenServer.call(agent, :get_context)
+  @spec get_context(agent()) :: Context.t() | {:error, :not_found}
+  def get_context(agent), do: call(agent, :get_context)
 
-  @spec status(GenServer.server()) :: status()
-  def status(agent), do: GenServer.call(agent, :status)
+  @spec status(agent()) :: status() | {:error, :not_found}
+  def status(agent), do: call(agent, :status)
 
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
@@ -106,8 +122,8 @@ defmodule Tars.Agent do
   Non-blocking, and safe when the agent is idle. A parked turn is abandoned,
   which is the only way to get rid of one without answering it.
   """
-  @spec interrupt(GenServer.server()) :: :ok
-  def interrupt(agent), do: GenServer.cast(agent, :interrupt)
+  @spec interrupt(agent()) :: :ok | {:error, :not_found}
+  def interrupt(agent), do: cast(agent, :interrupt)
 
   @doc """
   Answers the calls a parked turn stopped on and carries it on.
@@ -116,105 +132,157 @@ defmodule Tars.Agent do
   out stay parked, so several people can answer one call each. Non-blocking,
   and a no-op when nothing is parked.
 
-      Tars.Agent.resume(:assistant, %{"call_abc" => :approve})
-      Tars.Agent.resume(:assistant, %{"call_abc" => {:deny, "Not this quarter."}})
+      Tars.Agent.resume("acme/jon/researcher", %{"call_abc" => :approve})
+      Tars.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
-  @spec resume(GenServer.server(), %{String.t() => LLM.Turn.Parked.decision()}) :: :ok
-  def resume(agent, decisions) when is_map(decisions),
-    do: GenServer.cast(agent, {:resume, decisions})
+  @spec resume(agent(), %{String.t() => LLM.Turn.Parked.decision()}) :: :ok | {:error, :not_found}
+  def resume(agent, decisions) when is_map(decisions), do: cast(agent, {:resume, decisions})
 
   @doc """
   What this agent is waiting on, as `{call, prompt}` pairs, or `[]` when it is
   not parked.
   """
-  @spec parked(GenServer.server()) :: [{Tars.Tool.call(), String.t()}]
-  def parked(agent), do: GenServer.call(agent, :parked)
+  @spec parked(agent()) :: [{Tars.Tool.call(), String.t()}] | {:error, :not_found}
+  def parked(agent), do: call(agent, :parked)
 
-  @impl true
-  def init(opts) do
-    {:ok, State.new(opts, Keyword.get(opts, :name) || self())}
+  defp cast(agent, message) do
+    case resolve(agent) do
+      nil -> {:error, :not_found}
+      pid -> GenServer.cast(pid, message)
+    end
   end
 
-  @impl true
+  defp call(agent, message) do
+    case resolve(agent) do
+      nil -> {:error, :not_found}
+      pid -> GenServer.call(pid, message)
+    end
+  end
+
+  defp resolve(pid) when is_pid(pid), do: pid
+  defp resolve(key) when is_binary(key), do: Fleet.whereis(key)
+
+  # -- durability ------------------------------------------------------------
+
+  # Idempotent: between `load_state/2` and `init/2` the process holds the dump
+  # itself, and DurableServer writes it down again while taking its lock.
+  @impl DurableServer
+  def dump_state(%State{} = state), do: State.dump(state)
+  def dump_state(dumped) when is_map(dumped), do: dumped
+
+  # Returns the dump rather than a state: building one needs the key, which
+  # only `init/2` is given. Concurrent nodes race this, so it has no effects.
+  @impl DurableServer
+  def load_state(_old_vsn, dumped), do: dumped
+
+  @impl DurableServer
+  def init(dumped, info) do
+    state = State.load(dumped, [], info.key)
+
+    # `init` cannot return a continue, so the queue is drained by message.
+    send(self(), :maybe_run)
+
+    {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
+  end
+
+  # -- messages --------------------------------------------------------------
+
+  @impl DurableServer
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
   def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
 
-  @impl true
+  @impl DurableServer
   def handle_cast({:ask, question}, state) do
     {state, effects} = State.queue(state, question)
 
-    {:noreply, perform(state, effects), {:continue, :maybe_run}}
+    state |> perform(effects) |> advance(sync: true)
   end
 
   def handle_cast(:interrupt, state) do
     {state, effects} = State.interrupt(state)
 
-    {:noreply, perform(state, effects), {:continue, :maybe_run}}
+    state |> perform(effects) |> advance(sync: true)
   end
 
   def handle_cast({:resume, decisions}, state) do
     case State.resume(state, decisions) do
       {:resume, scope, turn, started_at} ->
-        task = run(fn -> state.resumer.(scope, turn, decisions) end)
+        task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
-        {:noreply, State.resumed(state, task, scope, started_at)}
+        stay(State.resumed(state, task, scope, started_at))
 
       :none ->
-        {:noreply, state}
+        stay(state)
     end
   end
 
-  @impl true
+  @impl DurableServer
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
-      {:run, questions, state} -> {:noreply, start(state, questions)}
-      :none -> {:noreply, state}
+      {:run, questions, state} -> stay(start(state, questions))
+      :none -> stay(state)
     end
   end
 
-  defp start(state, questions) do
-    context = Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
-    scope = Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
+  @impl DurableServer
+  def handle_info(:maybe_run, state), do: advance(state)
 
-    Event.emit(scope.source, {:turn_started, questions})
-    task = run(fn -> state.runner.(scope, context) end)
-
-    State.started(state, task, scope, context, System.monotonic_time())
-  end
-
-  defp run(fun), do: Task.Supervisor.async_nolink(Tars.TaskSupervisor, fun)
-
-  @impl true
   def handle_info({ref, result}, state) when is_reference(ref) do
     if State.running?(state, ref) do
       Process.demonitor(ref, [:flush])
-      {:noreply, answered(state, result), {:continue, :maybe_run}}
+      state |> answered(result) |> advance(sync: true)
     else
-      {:noreply, state}
+      stay(state)
     end
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref) do
     if State.running?(state, ref) do
       Logger.error("Turn crashed: #{inspect(reason)}")
-      {:noreply, settle(state, State.failed(state, reason)), {:continue, :maybe_run}}
+      state |> settle(State.failed(state, reason)) |> advance(sync: true)
     else
-      {:noreply, state}
+      stay(state)
     end
   end
 
   def handle_info({:kill, tag}, state) do
     case State.kill(state, tag) do
-      {:kill, state, effects} -> {:noreply, perform(state, effects), {:continue, :maybe_run}}
-      :stale -> {:noreply, state}
+      {:kill, state, effects} -> state |> perform(effects) |> advance(sync: true)
+      :stale -> stay(state)
     end
   end
 
   def handle_info(message, state) do
     Logger.debug("Unhandled message: #{inspect(message)}")
-    {:noreply, state}
+    stay(state)
   end
+
+  # -- returns ---------------------------------------------------------------
+
+  # Every return republishes this agent's metadata, which is what `Tars.Fleet`
+  # lists. `sync: true` writes the state to the store before returning.
+  defp advance(state, opts \\ []) do
+    {:noreply, state, {:continue, :maybe_run}, [meta: State.meta(state)] ++ opts}
+  end
+
+  defp stay(state, opts \\ []) do
+    {:noreply, state, [meta: State.meta(state)] ++ opts}
+  end
+
+  # -- turns -----------------------------------------------------------------
+
+  defp start(state, questions) do
+    context = Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
+    scope = State.turn_scope(state)
+
+    Event.emit(scope.source, {:turn_started, questions})
+    task = run(fn -> State.apply_runner(state, scope, context) end)
+
+    State.started(state, task, scope, context, System.monotonic_time())
+  end
+
+  defp run(fun), do: Task.Supervisor.async_nolink(Tars.TaskSupervisor, fun)
 
   defp answered(state, {:ok, messages}), do: settle(state, State.settled(state, messages))
   defp answered(state, {:parked, turn}), do: settle(state, State.parked(state, turn))

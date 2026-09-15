@@ -15,9 +15,11 @@ defmodule Tars.LLM.Config do
 
       Tars.LLM.Config.new(system: "You answer briefly and admit what you do not know.")
 
-  `:tools` is given as `t:Tars.Tool.spec/0` values and held as the tools they
-  build, so a config carries callable tools from the moment it exists and
-  nothing downstream has to resolve anything.
+  `:tools` is given as `t:Tars.Tool.spec/0` values. `new/1` keeps them in
+  `:tool_specs` and puts the tools they build in `:tools`, so a config carries
+  callable tools from the moment it exists and nothing downstream has to
+  resolve anything. `:tools` is derived: set it through `new/1` or
+  `add_tool/2`, never by hand.
 
       Tars.LLM.Config.new(tools: [MyApp.Tools.Ping])
 
@@ -48,13 +50,23 @@ defmodule Tars.LLM.Config do
   to, lives on `Tars.Scope`. Tool callbacks are the one part of a config that
   does not travel: prefer `{module, function}` over an anonymous function for
   any agent that may be started on another node.
+
+  ## Travelling
+
+  `dump/1` writes down the specs a config was built from, and `load/1` resolves
+  them again on whatever node reads it. A tool given inline holds a callback
+  rather than a name, so it cannot be rebuilt: those are dropped, and `load/1`
+  warns with their names.
   """
+
+  require Logger
 
   alias Tars.Tool
 
   defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
             system: nil,
             tools: [],
+            tool_specs: [],
             tool_timeouts: %{},
             generation: [],
             max_iterations: 30
@@ -63,6 +75,18 @@ defmodule Tars.LLM.Config do
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
           tools: list(ReqLLM.Tool.t()),
+          tool_specs: list(Tool.spec()),
+          tool_timeouts: %{String.t() => timeout()},
+          generation: keyword(),
+          max_iterations: pos_integer() | :infinity
+        }
+
+  @typedoc "A config written down: the specs that travel, and the names of what did not."
+  @type dumped() :: %{
+          model_spec: {atom(), keyword()},
+          system: String.t() | nil,
+          tools: [module()],
+          dropped_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity
@@ -78,18 +102,66 @@ defmodule Tars.LLM.Config do
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     config = struct(__MODULE__, opts)
-    tools = Tool.resolve!(config.tools)
+    specs = config.tools
+    tools = Tool.resolve!(specs)
 
     %{
       config
       | tools: tools,
-        tool_timeouts: Map.merge(Tool.timeouts(config.tools, tools), config.tool_timeouts)
+        tool_specs: specs,
+        tool_timeouts: Map.merge(Tool.timeouts(specs, tools), config.tool_timeouts)
     }
   end
 
   @spec add_tool(t(), Tool.spec()) :: t()
-  def add_tool(%__MODULE__{tools: tools} = config, tool) do
-    %{config | tools: Tool.resolve!([tool]) ++ tools}
+  def add_tool(%__MODULE__{} = config, tool) do
+    %{
+      config
+      | tools: Tool.resolve!([tool]) ++ config.tools,
+        tool_specs: [tool | config.tool_specs]
+    }
+  end
+
+  @doc """
+  Writes a config down as data, keeping module-named tools as modules.
+
+  A tool given inline is kept only as its name, under `:dropped_tools`.
+  """
+  @spec dump(t()) :: dumped()
+  def dump(%__MODULE__{} = config) do
+    {modules, inline} = Enum.split_with(config.tool_specs, &is_atom/1)
+
+    %{
+      model_spec: config.model_spec,
+      system: config.system,
+      tools: modules,
+      dropped_tools: Enum.map(inline, & &1.name),
+      tool_timeouts: config.tool_timeouts,
+      generation: config.generation,
+      max_iterations: config.max_iterations
+    }
+  end
+
+  @doc """
+  Rebuilds a config from `dump/1`, resolving its tool modules on this node.
+
+  Tools that could not travel are named in a warning and never stop the config
+  being rebuilt.
+  """
+  @spec load(dumped()) :: t()
+  def load(dumped) when is_map(dumped) do
+    warn_dropped(Map.get(dumped, :dropped_tools, []))
+
+    dumped
+    |> Map.drop([:dropped_tools])
+    |> Keyword.new()
+    |> new()
+  end
+
+  defp warn_dropped([]), do: :ok
+
+  defp warn_dropped(names) do
+    Logger.warning("Tools left behind by a config that travelled: #{Enum.join(names, ", ")}")
   end
 
   # For testing, to be removed eventually

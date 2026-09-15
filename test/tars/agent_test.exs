@@ -6,37 +6,25 @@ defmodule Tars.AgentTest do
   alias ReqLLM.Context
   alias Tars.Agent
   alias Tars.Event
+  alias Tars.Test.AgentRunners
 
-  # Reports the context each turn was handed, then answers immediately.
-  defp runner(test_pid, reply \\ "ok") do
-    fn _scope, context ->
-      send(test_pid, {:turn, snapshot(context)})
-      {:ok, [Context.assistant(reply)]}
-    end
-  end
+  defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
+  defp blocking_runner(test_pid, reply \\ "ok"), do: {AgentRunners, :blocking, [test_pid, reply]}
+  defp yielding_runner(test_pid), do: {AgentRunners, :yielding, [test_pid]}
+  defp streaming_runner(test_pid), do: {AgentRunners, :streaming, [test_pid]}
 
-  # Same, but hands back its own pid and blocks until released, so a test can
-  # hold a turn open for exactly as long as it needs without timing guesses.
-  defp blocking_runner(test_pid, reply \\ "ok") do
-    fn _scope, context ->
-      send(test_pid, {:turn, snapshot(context), self()})
-      receive do: (:release -> :ok)
-      {:ok, [Context.assistant(reply)]}
-    end
-  end
+  defp parking_runner(test_pid, call_id \\ "call_1"),
+    do: {AgentRunners, :parking, [test_pid, call_id]}
 
-  defp snapshot(context), do: Enum.map(context.messages, &{&1.role, text(&1)})
+  defp resumer(test_pid, result), do: {AgentRunners, :resuming, [test_pid, result]}
+  defp reporting_runner(test_pid), do: {AgentRunners, :reporting, [test_pid]}
+  defp deaf_runner(test_pid), do: {AgentRunners, :deaf, [test_pid]}
 
-  defp text(message) do
-    message.content
-    |> Enum.filter(&(&1.type == :text))
-    |> Enum.map_join(& &1.text)
-  end
+  defp parked_turn(call_id), do: AgentRunners.parked_turn(call_id)
 
   defp start_agent(opts) do
-    agent = start_supervised!({Agent, opts})
-    # Unnamed agents use their own pid as the event id.
-    :ok = Event.Bus.subscribe(agent)
+    {key, agent} = Tars.Test.Fleet.start_agent(opts)
+    :ok = Event.Bus.subscribe(key)
     agent
   end
 
@@ -107,13 +95,7 @@ defmodule Tars.AgentTest do
   end
 
   test "a crashing turn does not take the agent down, and the queue drains" do
-    test_pid = self()
-
-    runner = fn _scope, context ->
-      send(test_pid, {:turn, snapshot(context)})
-      if text(List.last(context.messages)) == "boom", do: raise("kaboom")
-      {:ok, [Context.assistant("ok")]}
-    end
+    runner = {AgentRunners, :crashing, [self(), "boom"]}
 
     capture_log(fn ->
       agent = start_agent(runner: runner)
@@ -130,7 +112,7 @@ defmodule Tars.AgentTest do
   end
 
   test "a turn that returns an error leaves context untouched" do
-    runner = fn _scope, _context -> {:error, :rate_limited} end
+    runner = {AgentRunners, :failing, [:rate_limited]}
 
     capture_log(fn ->
       agent = start_agent(runner: runner)
@@ -143,12 +125,7 @@ defmodule Tars.AgentTest do
   end
 
   test "stream events are published to subscribers, not routed through the agent" do
-    runner = fn scope, _context ->
-      Event.emit(scope.source, {:result, "streamed"})
-      {:ok, [Context.assistant("ok")]}
-    end
-
-    agent = start_agent(runner: runner)
+    agent = start_agent(runner: {AgentRunners, :emitting, ["streamed"]})
 
     Agent.ask(agent, "hello")
 
@@ -215,7 +192,7 @@ defmodule Tars.AgentTest do
   end
 
   test "a failing turn closes on the span it opened" do
-    runner = fn _scope, _context -> {:error, :rate_limited} end
+    runner = {AgentRunners, :failing, [:rate_limited]}
 
     capture_log(fn ->
       agent = start_agent(runner: runner)
@@ -230,14 +207,12 @@ defmodule Tars.AgentTest do
   end
 
   test "the turn is handed a scope addressed to the agent" do
-    test_pid = self()
-    runner = fn scope, _context -> send(test_pid, {:scope, scope}) && {:ok, []} end
+    {key, agent} = Tars.Test.Fleet.start_agent(runner: reporting_runner(self()))
 
-    agent = start_agent(runner: runner)
     Agent.ask(agent, "hello")
 
     assert_receive {:scope, scope}
-    assert scope.source.agent_id == agent
+    assert scope.source.agent_id == key
     assert scope.config == Tars.LLM.Config.new()
     assert Tars.Trace.root?(scope.source.trace)
   end
@@ -288,23 +263,8 @@ defmodule Tars.AgentTest do
   end
 
   describe "a message arriving mid-turn" do
-    # Yields the moment it is asked to, so a test never guesses at timing.
-    defp yielding_runner(test_pid) do
-      fn _scope, _context ->
-        send(test_pid, {:running, self()})
-
-        receive do
-          :yield -> send(test_pid, :yielded)
-        after
-          1_000 -> send(test_pid, :never_yielded)
-        end
-
-        {:ok, [Context.assistant("partial")]}
-      end
-    end
-
     test "asks the running turn to stop at its next boundary" do
-      {:ok, agent} = Agent.start_link(runner: yielding_runner(self()))
+      agent = start_agent(runner: yielding_runner(self()))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -316,7 +276,7 @@ defmodule Tars.AgentTest do
 
     test "starts the next turn against what the yielded one left behind" do
       test_pid = self()
-      {:ok, agent} = Agent.start_link(runner: yielding_runner(test_pid))
+      agent = start_agent(runner: yielding_runner(test_pid))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -333,7 +293,7 @@ defmodule Tars.AgentTest do
     end
 
     test "nothing is nudged when nothing is running" do
-      {:ok, agent} = Agent.start_link(runner: runner(self()))
+      agent = start_agent(runner: runner(self()))
 
       Agent.ask(agent, "one")
 
@@ -342,22 +302,8 @@ defmodule Tars.AgentTest do
   end
 
   describe "interrupt/1" do
-    # Streams until interrupted, so a test never guesses at timing.
-    defp streaming_runner(test_pid) do
-      fn _scope, _context ->
-        send(test_pid, {:running, self()})
-
-        receive do
-          :interrupt -> {:ok, [Context.assistant("half a th")]}
-        after
-          1_000 -> {:ok, [Context.assistant("never interrupted")]}
-        end
-      end
-    end
-
     test "stops the running turn and keeps what it produced" do
-      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
-      :ok = Event.Bus.subscribe(agent)
+      agent = start_agent(runner: streaming_runner(self()))
 
       Agent.ask(agent, "tell me a long story")
       assert_receive {:running, _pid}
@@ -373,8 +319,7 @@ defmodule Tars.AgentTest do
     end
 
     test "drops what was queued and says how much" do
-      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
-      :ok = Event.Bus.subscribe(agent)
+      agent = start_agent(runner: streaming_runner(self()))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -388,8 +333,7 @@ defmodule Tars.AgentTest do
     end
 
     test "reports an interrupt with nothing running rather than staying silent" do
-      {:ok, agent} = Agent.start_link(runner: runner(self()))
-      :ok = Event.Bus.subscribe(agent)
+      agent = start_agent(runner: runner(self()))
 
       Agent.interrupt(agent)
 
@@ -400,15 +344,9 @@ defmodule Tars.AgentTest do
       test_pid = self()
 
       # Deaf on purpose: :interrupt lands in its mailbox and is never read,
-      # which is what a turn stuck inside a tool call looks like.
-      deaf = fn _scope, _context ->
-        send(test_pid, {:running, self()})
-        receive do: (:never -> :ok)
-      end
-
-      # A short grace: this is the kill path, not a test of how long to wait.
-      {:ok, agent} = Agent.start_link(runner: deaf, grace: 25)
-      :ok = Event.Bus.subscribe(agent)
+      # which is what a turn stuck inside a tool call looks like. A short
+      # grace: this is the kill path, not a test of how long to wait.
+      agent = start_agent(runner: deaf_runner(test_pid), grace: 25)
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -421,8 +359,7 @@ defmodule Tars.AgentTest do
     end
 
     test "leaves the agent able to take the next question" do
-      {:ok, agent} = Agent.start_link(runner: streaming_runner(self()))
-      :ok = Event.Bus.subscribe(agent)
+      agent = start_agent(runner: streaming_runner(self()))
 
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
@@ -432,41 +369,6 @@ defmodule Tars.AgentTest do
       Agent.ask(agent, "two")
 
       assert_receive {:running, _pid}
-    end
-  end
-
-  defp parked_turn(call_id \\ "call_1") do
-    call = %{id: call_id, name: "deploy", arguments: %{}}
-
-    Tars.LLM.Turn.Parked.new(
-      Context.new(),
-      %ReqLLM.Response{
-        id: "r",
-        model: "test",
-        context: Context.new(),
-        finish_reason: :tool_calls
-      },
-      [{:parked, call, "This ships to production."}],
-      [],
-      5
-    )
-  end
-
-  # Parks on the first turn, then answers normally, so a test can drive the
-  # whole waiting-for-a-person path without a policy or a model.
-  defp parking_runner(test_pid) do
-    parked = parked_turn()
-
-    fn _scope, _context ->
-      send(test_pid, :asked)
-      {:parked, parked}
-    end
-  end
-
-  defp resumer(test_pid, result) do
-    fn _scope, _parked, decisions ->
-      send(test_pid, {:resumed, decisions})
-      result
     end
   end
 
@@ -569,14 +471,9 @@ defmodule Tars.AgentTest do
     test "the scope every turn runs under carries the seams the agent was started with" do
       test_pid = self()
 
-      runner = fn scope, _context ->
-        send(test_pid, {:scope, scope})
-        {:ok, [Context.assistant("ok")]}
-      end
-
       agent =
         start_agent(
-          runner: runner,
+          runner: reporting_runner(test_pid),
           user: %{id: 7},
           org: "acme",
           policy: SomePolicy,
@@ -597,12 +494,7 @@ defmodule Tars.AgentTest do
     test "an agent started with none of them runs under an inert scope" do
       test_pid = self()
 
-      runner = fn scope, _context ->
-        send(test_pid, {:scope, scope})
-        {:ok, [Context.assistant("ok")]}
-      end
-
-      agent = start_agent(runner: runner)
+      agent = start_agent(runner: reporting_runner(test_pid))
       Agent.ask(agent, "hi")
 
       assert_receive {:scope, scope}

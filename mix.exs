@@ -40,6 +40,12 @@ defmodule Tars.MixProject do
     [
       {:req_llm, "~> 1.21"},
 
+      # Durability and fleet: agents that survive a node, and a cluster-wide
+      # view of who is running.
+      {:durable_server, "~> 0.1.5"},
+      {:group, "~> 0.2.1"},
+      {:ekv, "~> 0.4.3"},
+
       # Used by lib/tars_tui, not by core. Pinned: pre-1.0.
       {:breeze, "0.5.1"},
 

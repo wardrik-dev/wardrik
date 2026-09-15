@@ -10,11 +10,12 @@ defmodule Tars.Agent.State do
 
   ## One mode, not four flags
 
-  An agent is idle, running a turn, or waiting on a person. That is a single
-  field holding one of three shapes, each carrying exactly what that shape
-  needs:
+  An agent is idle, owed a turn, running one, or waiting on a person. That is a
+  single field holding one of four shapes, each carrying exactly what that
+  shape needs:
 
       %State{mode: :idle}
+      %State{mode: :owed}
       %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil}}
       %State{mode: %Waiting{turn: parked, scope: scope, started_at: at}}
 
@@ -86,6 +87,8 @@ defmodule Tars.Agent.State do
           }
   end
 
+  @scope_keys [:user, :org, :policy, :dispatch, :timeout]
+
   # Long enough for a streaming response to notice, short enough that a kill
   # switch feels like one. A tool mid-flight will not answer inside it.
   @default_grace 2_000
@@ -107,16 +110,30 @@ defmodule Tars.Agent.State do
   @spec default_grace() :: pos_integer()
   def default_grace, do: @default_grace
 
-  @typedoc "What the agent is doing. Each shape carries its own data and nothing else's."
-  @type mode() :: :idle | Running.t() | Waiting.t()
+  @typedoc """
+  What the agent is doing. Each shape carries its own data and nothing else's.
 
-  @typedoc "Runs one turn and reports how it ended."
-  @type runner() :: (Scope.t(), Context.t() -> LLM.Turn.result())
+  `:owed` is an agent loaded from a dump taken mid-turn: nothing is running,
+  and a turn is due against the context it already holds.
+  """
+  @type mode() :: :idle | :owed | Running.t() | Waiting.t()
 
-  @typedoc "Finishes a parked turn once its calls have been answered."
-  @type resumer() ::
-          (Scope.t(), LLM.Turn.Parked.t(), %{String.t() => LLM.Turn.Parked.decision()} ->
-             LLM.Turn.result())
+  @typedoc """
+  Runs one turn and reports how it ended, as `{module, function, args}`.
+
+  Called with the scope and the context appended to `args`, so a host that
+  needs to carry something of its own into the turn carries it there. It is an
+  MFA rather than a function because an agent's state is written down and read
+  back on another machine, and a closure is code rather than data.
+  """
+  @type runner() :: {module(), atom(), list()}
+
+  @typedoc """
+  Finishes a parked turn once its calls have been answered.
+
+  Called with the scope, the parked turn and the decisions appended to `args`.
+  """
+  @type resumer() :: {module(), atom(), list()}
 
   @type t() :: %__MODULE__{
           agent_id: Event.Bus.agent_id(),
@@ -128,6 +145,18 @@ defmodule Tars.Agent.State do
           grace: pos_integer(),
           mode: mode(),
           pending: [String.t()]
+        }
+
+  @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
+  @type dumped() :: %{
+          config: LLM.Config.dumped(),
+          context: Context.t(),
+          scope_opts: keyword(),
+          grace: pos_integer(),
+          pending: [String.t()],
+          runner: runner(),
+          resumer: resumer(),
+          mode: :idle | :owed | {:waiting, LLM.Turn.Parked.t()}
         }
 
   @typedoc """
@@ -166,11 +195,103 @@ defmodule Tars.Agent.State do
       agent_id: agent_id,
       config: Keyword.get(opts, :config, LLM.Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
-      runner: Keyword.get(opts, :runner, &LLM.Turn.run/2),
-      resumer: Keyword.get(opts, :resumer, &LLM.Turn.resume/3),
-      scope_opts: Keyword.take(opts, [:user, :org, :policy, :dispatch, :timeout]),
+      runner: mfa!(Keyword.get(opts, :runner, {LLM.Turn, :run, []}), :runner),
+      resumer: mfa!(Keyword.get(opts, :resumer, {LLM.Turn, :resume, []}), :resumer),
+      scope_opts: Keyword.take(opts, @scope_keys),
       grace: Keyword.get(opts, :grace, @default_grace)
     }
+  end
+
+  defp mfa!({module, function, args}, _key)
+       when is_atom(module) and is_atom(function) and is_list(args),
+       do: {module, function, args}
+
+  defp mfa!(other, key) do
+    raise ArgumentError,
+          ":#{key} must be {module, function, args}, got: #{inspect(other)}. " <>
+            "An agent's state is written down and read back elsewhere, so a function cannot be one."
+  end
+
+  @doc "Runs a turn with the runner this agent was given."
+  @spec apply_runner(t(), Scope.t(), Context.t()) :: LLM.Turn.result()
+  def apply_runner(%__MODULE__{runner: {module, function, args}}, %Scope{} = scope, context) do
+    apply(module, function, args ++ [scope, context])
+  end
+
+  @doc "Finishes a parked turn with the resumer this agent was given."
+  @spec apply_resumer(t(), Scope.t(), LLM.Turn.Parked.t(), map()) :: LLM.Turn.result()
+  def apply_resumer(
+        %__MODULE__{resumer: {module, function, args}},
+        %Scope{} = scope,
+        turn,
+        decisions
+      ) do
+    apply(module, function, args ++ [scope, turn, decisions])
+  end
+
+  @doc """
+  Writes this agent down as data.
+
+  A turn in flight is recorded as `relaunch`, since its question is already the
+  last thing in the context. See the module docs for the full mapping.
+  """
+  @spec dump(t()) :: dumped()
+  def dump(%__MODULE__{} = state) do
+    %{
+      config: LLM.Config.dump(state.config),
+      context: state.context,
+      scope_opts: state.scope_opts,
+      grace: state.grace,
+      pending: state.pending,
+      runner: state.runner,
+      resumer: state.resumer,
+      mode: at_rest(state.mode)
+    }
+  end
+
+  # A task cannot cross a node, so a turn in flight comes back as one that is
+  # owed. Everything else is written down as it stands.
+  defp at_rest(%Waiting{turn: turn}), do: {:waiting, turn}
+  defp at_rest(%Running{}), do: :owed
+  defp at_rest(mode) when mode in [:idle, :owed], do: mode
+
+  @doc """
+  Rebuilds an agent from `dump/1`, resolving its config's tools on this node.
+
+  Options override what was dumped, and are otherwise those of `new/2`.
+  """
+  @spec load(dumped(), keyword(), Event.Bus.agent_id()) :: t()
+  def load(dumped, opts, agent_id) do
+    config = LLM.Config.load(dumped.config)
+    scope_opts = Keyword.merge(dumped.scope_opts, Keyword.take(opts, @scope_keys))
+
+    opts =
+      opts
+      |> Keyword.put_new(:runner, dumped.runner)
+      |> Keyword.put_new(:resumer, dumped.resumer)
+
+    state = %{
+      new(Keyword.merge(opts, config: config, context: dumped.context), agent_id)
+      | scope_opts: scope_opts,
+        grace: Keyword.get(opts, :grace, dumped.grace),
+        pending: dumped.pending
+    }
+
+    %{state | mode: reopen(dumped.mode, state)}
+  end
+
+  # A new scope, since the dumped one would hold the old node's tools and a
+  # deadline read from its monotonic clock.
+  defp reopen({:waiting, %LLM.Turn.Parked{} = turn}, state) do
+    %Waiting{turn: turn, scope: turn_scope(state), started_at: System.monotonic_time()}
+  end
+
+  defp reopen(mode, _state) when mode in [:idle, :owed], do: mode
+
+  @doc "The scope a turn for this agent runs under."
+  @spec turn_scope(t()) :: Scope.t()
+  def turn_scope(%__MODULE__{} = state) do
+    Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
   end
 
   @doc "What this agent is doing, and how much is queued behind it."
@@ -181,7 +302,23 @@ defmodule Tars.Agent.State do
 
   defp activity(%Running{}), do: :running
   defp activity(%Waiting{}), do: :parked
+  # A turn is due and will start on the next message: running, not idle.
+  defp activity(:owed), do: :running
   defp activity(:idle), do: :idle
+
+  @doc """
+  What `Tars.Fleet` reports about this agent, republished on every transition.
+
+  Replicated to every node, so it holds nothing private.
+  """
+  @spec meta(t()) :: %{status: atom(), pending: non_neg_integer(), waiting_on: [String.t()]}
+  def meta(%__MODULE__{} = state) do
+    %{
+      status: activity(state.mode),
+      pending: length(state.pending),
+      waiting_on: Enum.map(waiting_on(state), fn {call, _prompt} -> call.name end)
+    }
+  end
 
   @doc "The calls a waiting agent needs answered, or `[]` when it is not waiting."
   @spec waiting_on(t()) :: [{Tars.Tool.call(), String.t()}]
@@ -209,8 +346,15 @@ defmodule Tars.Agent.State do
   `:none` when a turn is already in flight, when one is waiting on a person, or
   when nothing is queued. A waiting turn is still the current turn: anything
   behind it waits to be answered or abandoned rather than starting beside it.
+
+  An agent that is `:owed` a turn runs one with no questions at all, against
+  the context that already holds the question it was answering.
   """
   @spec take(t()) :: {:run, [String.t()], t()} | :none
+  def take(%__MODULE__{mode: :owed} = state) do
+    {:run, Enum.reverse(state.pending), %{state | pending: [], mode: :idle}}
+  end
+
   def take(%__MODULE__{mode: :idle} = state) do
     case Enum.reverse(state.pending) do
       [] -> :none
@@ -304,11 +448,11 @@ defmodule Tars.Agent.State do
     {idle(drained), [{:emit, waiting.scope.source, {:turn_interrupted, stats}}]}
   end
 
-  def interrupt(%__MODULE__{mode: :idle} = state) do
+  def interrupt(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
     {drained, dropped} = drain(state)
     stats = stats(nil, dropped, 0, :idle)
 
-    {drained, [{:emit, Event.Source.root(state.agent_id), {:turn_interrupted, stats}}]}
+    {idle(drained), [{:emit, Event.Source.root(state.agent_id), {:turn_interrupted, stats}}]}
   end
 
   defp drain(state), do: {%{state | pending: []}, length(state.pending)}

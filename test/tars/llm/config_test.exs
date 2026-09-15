@@ -71,4 +71,57 @@ defmodule Tars.LLM.ConfigTest do
     assert [%ReqLLM.Tool{name: "echo"}] =
              Config.new() |> Config.add_tool(EchoTool) |> Map.fetch!(:tools)
   end
+
+  describe "dump/1 and load/1" do
+    test "a config built from modules comes back whole" do
+      config = Config.new(model_spec: {:test, model: "m"}, system: "be brief", tools: [EchoTool])
+
+      loaded = config |> Config.dump() |> Config.load()
+
+      assert loaded.model_spec == {:test, model: "m"}
+      assert loaded.system == "be brief"
+      assert [%ReqLLM.Tool{name: "echo"}] = loaded.tools
+      assert loaded.tool_specs == [EchoTool]
+    end
+
+    test "generation and iteration limits travel" do
+      config = Config.new(generation: [max_tokens: 100], max_iterations: 3)
+
+      loaded = config |> Config.dump() |> Config.load()
+
+      assert loaded.generation == [max_tokens: 100]
+      assert loaded.max_iterations == 3
+    end
+
+    test "a tool declaring a timeout keeps it" do
+      config = Config.new(tools: [EchoTool], tool_timeouts: %{"echo" => 1_000})
+
+      assert Config.load(Config.dump(config)).tool_timeouts == %{"echo" => 1_000}
+    end
+
+    test "a tool given inline is dropped by name" do
+      inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn _ -> {:ok, 1} end)
+      config = Config.new(tools: [EchoTool, inline])
+
+      dumped = Config.dump(config)
+
+      assert dumped.tools == [EchoTool]
+      assert dumped.dropped_tools == ["inline"]
+    end
+
+    test "loading warns about the tools that could not travel" do
+      inline = ReqLLM.Tool.new!(name: "inline", description: "d", callback: fn _ -> {:ok, 1} end)
+      dumped = Config.dump(Config.new(tools: [inline]))
+
+      log = ExUnit.CaptureLog.capture_log(fn -> assert %Config{} = Config.load(dumped) end)
+
+      assert log =~ "inline"
+    end
+
+    test "a dump is plain data" do
+      dumped = Config.dump(Config.new(tools: [EchoTool]))
+
+      assert dumped == dumped |> :erlang.term_to_binary() |> :erlang.binary_to_term()
+    end
+  end
 end

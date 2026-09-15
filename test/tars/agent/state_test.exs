@@ -248,4 +248,82 @@ defmodule Tars.Agent.StateTest do
       refute State.running?(waiting(), make_ref())
     end
   end
+
+  describe "being written down" do
+    defp reload(state, opts \\ []) do
+      state |> State.dump() |> State.load(opts, state.agent_id)
+    end
+
+    test "an idle agent comes back idle, with its queue" do
+      {state, _effects} = State.queue(state(), "hello")
+
+      assert %State{mode: :idle, pending: ["hello"]} = reload(state)
+    end
+
+    test "a turn in flight comes back owed, so take/1 runs it again" do
+      state = reload(running())
+
+      assert state.mode == :owed
+      assert {:run, [], _state} = State.take(state)
+    end
+
+    test "an agent still owed a turn stays owed" do
+      assert reload(reload(running())).mode == :owed
+    end
+
+    test "a parked turn comes back parked, with the call it stopped on" do
+      state = reload(waiting())
+
+      assert %State{mode: %Waiting{}} = state
+      assert [{%{id: "call_1", name: "deploy"}, "Really?"}] = State.waiting_on(state)
+    end
+
+    test "a parked turn comes back under a scope built here" do
+      %State{mode: %Waiting{scope: scope}} = reload(waiting())
+
+      assert scope.source.agent_id == :assistant
+      assert scope.config == Config.new()
+    end
+
+    test "the runner and resumer travel" do
+      state = State.new([config: Config.new(), runner: {SomeHost, :run, [:arg]}], :assistant)
+
+      assert reload(state).runner == {SomeHost, :run, [:arg]}
+    end
+
+    test "options given on the way back override what was written down" do
+      state = State.new([config: Config.new(), grace: 10], :assistant)
+
+      assert reload(state, grace: 99).grace == 99
+      assert reload(state).grace == 10
+    end
+
+    test "a dump holds no processes, timers or callbacks" do
+      dumped = State.dump(stopping())
+      terms = dumped |> :erlang.term_to_binary() |> :erlang.binary_to_term()
+
+      assert terms == dumped
+      assert dumped.mode == :owed
+    end
+
+    test "a runner that is not an MFA is refused when the state is built" do
+      assert_raise ArgumentError, ~r/must be \{module, function, args\}/, fn ->
+        State.new([runner: fn _scope, _context -> :ok end], :assistant)
+      end
+    end
+  end
+
+  describe "meta/1" do
+    test "reports what the fleet shows" do
+      assert State.meta(state()) == %{status: :idle, pending: 0, waiting_on: []}
+      assert %{status: :running} = State.meta(running())
+      assert %{status: :parked, waiting_on: ["deploy"]} = State.meta(waiting())
+    end
+
+    test "counts what is queued" do
+      {state, _effects} = State.queue(state(), "hello")
+
+      assert %{pending: 1} = State.meta(state)
+    end
+  end
 end

@@ -14,6 +14,8 @@ defmodule Mix.Tasks.Tars do
       mix tars --no-tools
       mix tars --policy MyApp.Policy --user jon --org acme
       mix tars --timeout 600
+      mix tars --name researcher --org acme
+      mix tars --sname tars_a --cookie tars --connect tars_b@omarchy
 
   The agent boots with the tool packages this repo ships —
   `#{Enum.map_join(@default_tools, "`, `", &inspect/1)}` — because a turn with
@@ -25,9 +27,21 @@ defmodule Mix.Tasks.Tars do
   `{:ask, prompt}` parks the turn; resume it from anywhere that can reach the
   node:
 
-      Tars.Agent.resume(:tars_tui, %{"call_abc" => :approve})
+      Tars.Agent.resume("acme/jon/assistant", %{"call_abc" => :approve})
 
   `--timeout` bounds a whole turn, in seconds.
+
+  ## Clustering
+
+  `--sname` starts distribution before the fleet boots, so the node has a name
+  and a data directory of its own. `--cookie` sets the cookie, and `--connect`
+  takes a node to connect to once the application is up, repeatable.
+
+      mix tars --sname tars_a --cookie tars
+      mix tars --sname tars_b --cookie tars --connect tars_a@$hostname
+
+  Agents started on either node then appear in both, and `/connect` in the
+  client attaches to one wherever it is running.
 
   `--verbose` adds a trace line for the lower-level events — model requests,
   tool calls, metadata — and commits the model's reasoning to the transcript.
@@ -56,22 +70,31 @@ defmodule Mix.Tasks.Tars do
           policy: :string,
           user: :string,
           org: :string,
-          timeout: :integer
+          name: :string,
+          timeout: :integer,
+          sname: :string,
+          cookie: :string,
+          connect: :keep
         ]
       )
 
+    # Before the application, so the fleet's store is named after this node.
+    distribute(opts)
+
     Mix.Task.run("app.start")
+
+    Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
     # After app.start, not before: starting the :logger application installs
     # the default handler, so removing it earlier is undone.
     silence_console_logging()
     redirect_logging(opts[:log] || System.get_env("TARS_LOG"))
 
-    agent_id = :tars_tui
     config = config(opts)
+    scope_opts = scope_opts(opts)
+    agent_id = Tars.Fleet.key(opts[:name] || "assistant", scope_opts)
 
-    {:ok, _agent} =
-      Tars.Agent.Supervisor.start(agent_id, [config: config] ++ scope_opts(opts))
+    {:ok, _agent} = Tars.Fleet.spawn(agent_id, [config: config] ++ scope_opts)
 
     :ok =
       Breeze.Server.run(
@@ -88,6 +111,15 @@ defmodule Mix.Tasks.Tars do
         inspector: false
       )
   end
+
+  defp distribute(opts) do
+    if sname = opts[:sname] do
+      {:ok, _pid} = Node.start(:"#{sname}@#{hostname()}", name_domain: :shortnames)
+      if cookie = opts[:cookie], do: Node.set_cookie(:"#{cookie}")
+    end
+  end
+
+  defp hostname, do: :inet.gethostname() |> elem(1) |> to_string()
 
   defp silence_console_logging, do: :logger.remove_handler(:default)
 
