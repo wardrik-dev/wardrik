@@ -1042,7 +1042,8 @@ defmodule TarsTUI.App do
         side_width: side_width,
         fleet_rows: fleet_rows(assigns, side_width),
         prompt_class:
-          "block w-full h-#{prompt_height} bg-none border-surface focus:border-primary",
+          "block w-full h-#{prompt_height} bg-none border-surface focus:border-primary " <>
+            "placeholder:text-8",
         placeholder: placeholder(assigns),
         header: header(assigns),
         status: status(assigns, width),
