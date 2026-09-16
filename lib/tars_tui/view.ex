@@ -410,6 +410,68 @@ defmodule TarsTUI.View do
   defp meant(names),
     do: [Text.tag(" · did you mean ", @faint), Text.tag(Enum.join(names, ", "), :bright)]
 
+  @doc """
+  The command palette: a title, the query with a cursor, one row per choice
+  with the one under the cursor marked, and a line of keys, as the rows of a
+  box `width` by `height`, borders included.
+
+  Rows beyond the room are left out, keeping the one under the cursor in view.
+  """
+  @spec palette(
+          String.t(),
+          String.t(),
+          [Text.t()],
+          non_neg_integer(),
+          pos_integer(),
+          pos_integer()
+        ) ::
+          String.t()
+  def palette(title, query, rows, cursor, width, height) do
+    inner = max(width - 2, 4)
+    room = max(height - 5, 1)
+    first = max(cursor - room + 1, 0)
+
+    shown =
+      rows
+      |> Enum.with_index()
+      |> Enum.drop(first)
+      |> Enum.take(room)
+      |> Enum.map(fn {row, index} -> choice(row, index == cursor) end)
+
+    [
+      Text.tag(" #{title}", [:bright, :cyan]),
+      [Text.tag(" › ", [:bright, :cyan]), query, Text.tag("▏", @faint)],
+      Text.tag(" ─", @faint)
+    ]
+    |> Kernel.++(if(shown == [], do: [Text.tag("   nothing matches", @faint)], else: shown))
+    |> Enum.map(&Render.line(pad(Text.truncate(&1, inner), inner)))
+    |> Enum.join("\n")
+  end
+
+  defp choice(row, true), do: [Text.tag(" › ", [:bright, :cyan]), Text.tag(row, :bright)]
+  defp choice(row, false), do: ["   ", row]
+
+  defp pad(data, width), do: [data, String.duplicate(" ", max(width - Text.length(data), 0))]
+
+  @doc "One command as a palette row: its label, usage, and key when it has one."
+  @spec palette_command(TarsTUI.Command.t(), boolean()) :: Text.t()
+  def palette_command(command, recent?) do
+    [
+      command.label,
+      Text.tag(["  ", command.usage], @faint),
+      if(command.shortcut, do: Text.tag(["  ", command.shortcut], :yellow), else: []),
+      if(recent?, do: Text.tag("  recent", @faint), else: [])
+    ]
+  end
+
+  @doc "What the palette asks for at a step, as its title."
+  @spec palette_title(TarsTUI.Command.step() | :commands, TarsTUI.Command.t() | nil) :: String.t()
+  def palette_title(:commands, _command), do: "Commands · Ctrl-P"
+  def palette_title(:agent, command), do: "#{command.name} · which agent?"
+  def palette_title(:node, command), do: "#{command.name} · which node?"
+  def palette_title(:call, command), do: "#{command.name} · which call?"
+  def palette_title(:text, command), do: "#{command.usage} · type the rest, then Enter"
+
   @doc "Why the editor left the prompt as it was."
   @spec editor_failed(term()) :: Text.t()
   def editor_failed(:no_editor),
@@ -461,6 +523,8 @@ defmodule TarsTUI.View do
     {"Up, Down",
      "on the prompt's first or last line, an older or newer prompt sent to this agent; with a / typed, an older command"},
     {"Ctrl-G", "edit the prompt in $VISUAL, or $EDITOR; what is saved comes back unsent"},
+    {"Ctrl-P",
+     "the command palette: type to filter, Up/Down choose, Enter runs or asks for the rest, Esc closes"},
     {"Esc",
      "in the prompt, stop the turn or abandon a parked one; elsewhere, back to the prompt"},
     {"Tab, Shift-Tab", "cycle the prompt, the transcript and the fleet panel"},

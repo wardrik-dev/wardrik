@@ -266,6 +266,45 @@ defmodule TarsTUI.App.FleetTest do
     assert Fleet.whereis(other)
   end
 
+  test "the palette picks an agent for /connect, and types the rest of /spawn", ctx do
+    %{session: session, org: org} = ctx
+    other = spawn_and_ask(org, "other", "what is up")
+    ctrl_p = fn -> Breeze.Test.input(session, %{"key" => "p", "ctrlKey" => true}) end
+    type = fn text -> Enum.each(String.graphemes(text), &Breeze.Test.input(session, &1)) end
+
+    ctrl_p.()
+    screen(session)
+    type.("connect")
+    Breeze.Test.input(session, "Enter")
+
+    text = screen(session)
+    assert text =~ "/connect · which agent?"
+    assert text =~ other <> "  idle"
+
+    type.("other")
+    Breeze.Test.input(session, "Enter")
+
+    text = screen(session)
+    assert text =~ "connected to #{other}"
+    assert text =~ "› what is up"
+    assert Breeze.Test.focused(session) == "prompt"
+
+    ctrl_p.()
+    screen(session)
+    type.("spawn")
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "/spawn NAME [node=N] [-- prompt] · type the rest, then Enter"
+
+    type.("helper -- hello there")
+    Breeze.Test.input(session, "Enter")
+
+    text = screen(session)
+    assert text =~ "spawned and connected to #{Fleet.key("helper", org: org)}"
+    assert text =~ "› hello there"
+    assert Fleet.whereis(Fleet.key("helper", org: org))
+    Fleet.forget(Fleet.key("helper", org: org))
+  end
+
   test "a draft is kept per agent across a switch", %{session: session, org: org} do
     _other = spawn_and_ask(org, "other", "what is up")
     Enum.each(String.graphemes("unsent draft"), &Breeze.Test.input(session, &1))

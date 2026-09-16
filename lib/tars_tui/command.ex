@@ -3,10 +3,12 @@ defmodule TarsTUI.Command do
   The slash commands `TarsTUI.App` understands, defined once.
 
   Each command carries its name and aliases, a usage line, a one-line
-  summary and a parser for its argument. `parse/2` reads a whole line typed at
-  the prompt, `help/0` lists every command for `/help`, `complete/1` finishes
-  a partly typed name, and `suggest/1` names the closest commands to a word
-  that is not one.
+  summary and a parser for its argument, and for the palette a label, the
+  arguments it is given step by step, when it is available, and the key that
+  does the same. `parse/2` reads a whole line typed at the prompt, `help/0`
+  lists every command for `/help`, `complete/1` finishes a partly typed name,
+  `suggest/1` names the closest commands to a word that is not one, and
+  `palette/1` lists the commands available in a context.
 
   A line that is not a command is a question for the agent, unless a turn is
   parked: then a bare `y` or `n` answers it, `y 2`, `n 2 reason` and `y all`
@@ -15,8 +17,16 @@ defmodule TarsTUI.Command do
   question.
   """
 
-  @enforce_keys [:name, :usage, :summary, :parse]
-  defstruct name: nil, aliases: [], usage: nil, summary: nil, parse: nil
+  @enforce_keys [:name, :usage, :summary, :parse, :label]
+  defstruct name: nil,
+            aliases: [],
+            usage: nil,
+            summary: nil,
+            parse: nil,
+            label: nil,
+            arguments: [],
+            available: nil,
+            shortcut: nil
 
   @typedoc "One command: how it is named, what it takes, and what it means."
   @type t() :: %__MODULE__{
@@ -24,7 +34,29 @@ defmodule TarsTUI.Command do
           aliases: [String.t()],
           usage: String.t(),
           summary: String.t(),
-          parse: (String.t() | nil -> parsed() | :usage)
+          parse: (String.t() | nil -> parsed() | :usage),
+          label: String.t(),
+          arguments: [step()],
+          available: (context() -> boolean()) | nil,
+          shortcut: String.t() | nil
+        }
+
+  @typedoc """
+  One argument the palette collects: an agent or a node picked from a list, a
+  parked call picked by number, or text typed.
+  """
+  @type step() :: :agent | :node | :call | :text
+
+  @typedoc """
+  What decides availability: whether a turn is running or parked, how many
+  calls are parked, whether a removal waits on `/confirm`, and how many nodes
+  the cluster has.
+  """
+  @type context() :: %{
+          busy?: boolean(),
+          parked: non_neg_integer(),
+          confirm?: boolean(),
+          nodes: pos_integer()
         }
 
   @typedoc "Which parked call a decision is for: the only one, one by number, or every one."
@@ -58,54 +90,74 @@ defmodule TarsTUI.Command do
     [
       %__MODULE__{
         name: "/spawn",
+        label: "Spawn an agent",
+        arguments: [:text],
         usage: "/spawn NAME [node=N] [-- prompt]",
         summary: "start an agent beside this one and attach to it; the prompt is sent as is",
         parse: &spawn_agent/1
       },
       %__MODULE__{
         name: "/connect",
+        label: "Connect to an agent",
+        arguments: [:agent],
         usage: "/connect NAME",
         summary: "attach to an agent and show its conversation",
         parse: &connect/1
       },
       %__MODULE__{
         name: "/move",
+        label: "Move an agent to another node",
+        arguments: [:agent, :node],
+        available: &(&1.nodes > 1),
         usage: "/move NAME node=N",
         summary: "restart an agent on another node, as it was",
         parse: &move/1
       },
       %__MODULE__{
         name: "/stop",
+        label: "Stop the turn",
+        available: & &1.busy?,
+        shortcut: "Esc",
         usage: "/stop [NAME | PREFIX/]",
         summary: "interrupt this agent, another, or every agent under a prefix",
         parse: &stop/1
       },
       %__MODULE__{
         name: "/shutdown",
+        label: "Shut an agent down, keeping its conversation",
+        arguments: [:agent],
         usage: "/shutdown NAME",
         summary: "stop an agent and keep its conversation; /spawn brings it back",
         parse: &shutdown/1
       },
       %__MODULE__{
         name: "/rm",
+        label: "Remove an agent and its conversation",
+        arguments: [:agent],
         usage: "/rm NAME | PREFIX/ [--yes]",
         summary: "delete an agent and its conversation, after showing what goes",
         parse: &rm/1
       },
       %__MODULE__{
         name: "/confirm",
+        label: "Go ahead with the removal shown",
+        available: & &1.confirm?,
         usage: "/confirm",
         summary: "go ahead with the removal shown",
         parse: bare(:confirm)
       },
       %__MODULE__{
         name: "/fleet",
+        label: "List the fleet",
         usage: "/fleet",
         summary: "list every agent in the cluster",
         parse: bare(:fleet)
       },
       %__MODULE__{
         name: "/approve",
+        label: "Approve a parked call",
+        arguments: [:call],
+        available: &(&1.parked > 0),
         aliases: ["/y"],
         usage: "/approve [N | all]",
         summary: "approve the parked call, one by number, or every one; y does too",
@@ -113,6 +165,9 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/deny",
+        label: "Deny a parked call",
+        arguments: [:call],
+        available: &(&1.parked > 0),
         aliases: ["/n"],
         usage: "/deny [N | all] [reason]",
         summary: "deny the parked call, or one by number, saying why; n does too",
@@ -120,6 +175,8 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/quit",
+        label: "Quit",
+        shortcut: "Ctrl-D",
         aliases: ["/exit"],
         usage: "/quit",
         summary: "leave",
@@ -127,6 +184,7 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/help",
+        label: "Every key and command",
         usage: "/help",
         summary: "every key and command",
         parse: bare(:help)
@@ -145,6 +203,15 @@ defmodule TarsTUI.Command do
   @doc "Each command's usage and summary, for `/help`."
   @spec help() :: [{String.t(), String.t()}]
   def help, do: Enum.map(all(), &{&1.usage, &1.summary})
+
+  @doc "The commands available in `context`, in the order `/help` lists them."
+  @spec palette(context()) :: [t()]
+  def palette(context), do: Enum.filter(all(), &available?(&1, context))
+
+  @doc "Whether `command` can be run in `context`."
+  @spec available?(t(), context()) :: boolean()
+  def available?(%__MODULE__{available: nil}, _context), do: true
+  def available?(%__MODULE__{available: available}, context), do: available.(context)
 
   @doc "The command names that begin with `word`."
   @spec complete(String.t()) :: [String.t()]

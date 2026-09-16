@@ -244,6 +244,122 @@ defmodule TarsTUI.AppTest do
     end
   end
 
+  describe "the palette" do
+    test "Ctrl-P opens it over the panes, and Esc closes it with the draft kept", ctx do
+      %{session: session} = ctx
+      session = Breeze.Test.resize(session, {70, 30})
+      type(session, "kept draft")
+      ctrl(session, "p")
+
+      text = screen(session)
+      assert text =~ "Commands · Ctrl-P"
+      assert text =~ "› Spawn an agent  /spawn NAME"
+      assert text =~ "type to filter · Up/Down choose · Enter run · Esc close"
+      assert Breeze.Test.focused(session) == "palette"
+
+      Breeze.Test.input(session, "Escape")
+      text = screen(session)
+      refute text =~ "Commands · Ctrl-P"
+      assert text =~ "│ › kept draft"
+      assert Breeze.Test.focused(session) == "prompt"
+    end
+
+    test "letters narrow the commands, and Enter runs the one chosen", %{session: session} do
+      ctrl(session, "p")
+      screen(session)
+      type(session, "every")
+
+      text = screen(session)
+      assert text =~ "› every▏"
+      assert text =~ "› Every key and command  /help"
+      refute text =~ "Spawn an agent"
+
+      Breeze.Test.input(session, "Enter")
+      text = screen(session)
+      refute text =~ "Commands · Ctrl-P"
+      assert text =~ "/help                             every key and command"
+      assert Breeze.Test.focused(session) == "prompt"
+    end
+
+    test "Down and Up choose, and a command run lately comes first", %{session: session} do
+      ctrl(session, "p")
+      screen(session)
+      Breeze.Test.input(session, "ArrowDown")
+      assert screen(session) =~ "› Connect to an agent"
+      Breeze.Test.input(session, "ArrowUp")
+      assert screen(session) =~ "› Spawn an agent"
+
+      type(session, "fleet")
+      Breeze.Test.input(session, "Enter")
+      assert screen(session) =~ "no agents running"
+
+      ctrl(session, "p")
+      assert screen(session) =~ "› List the fleet  /fleet  recent"
+      Breeze.Test.input(session, "Escape")
+    end
+
+    test "offers what the moment allows: stopping a turn, deciding a parked call", ctx do
+      %{session: session, turn: turn} = ctx
+      ctrl(session, "p")
+      text = screen(session)
+      refute text =~ "Stop the turn"
+      refute text =~ "Approve a parked call"
+      Breeze.Test.input(session, "Escape")
+
+      emit(turn, [{:turn_started, ["hi"]}])
+      ctrl(session, "p")
+      screen(session)
+      type(session, "stop")
+      assert screen(session) =~ "› Stop the turn  /stop [NAME | PREFIX/]  Esc"
+      Breeze.Test.input(session, "Enter")
+      assert_receive {:"$gen_cast", :interrupt}
+
+      emit(turn, [{:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      ctrl(session, "p")
+      screen(session)
+      type(session, "approve")
+      Breeze.Test.input(session, "Enter")
+      assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
+    end
+
+    test "several parked calls are picked by number, and Backspace steps back", ctx do
+      %{session: session, turn: turn} = ctx
+      calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+
+      ctrl(session, "p")
+      screen(session)
+      type(session, "deny")
+      Breeze.Test.input(session, "Enter")
+
+      text = screen(session)
+      assert text =~ "/deny · which call?"
+      assert text =~ "› 1  deploy  Ship it?"
+      assert text =~ "2  drop_table  Drop it?"
+
+      Breeze.Test.input(session, "\x7f")
+      assert screen(session) =~ "Commands · Ctrl-P"
+
+      type(session, "deny")
+      Breeze.Test.input(session, "Enter")
+      screen(session)
+      type(session, "drop")
+      Breeze.Test.input(session, "Enter")
+
+      assert_receive {:"$gen_cast", {:resume, %{"call_drop_table" => {:deny, _reason}}}}
+      assert screen(session) =~ "▌ denied drop_table"
+    end
+
+    test "Ctrl-P from the transcript returns focus there when closed", %{session: session} do
+      Breeze.Test.focus(session, "log")
+      ctrl(session, "p")
+      assert Breeze.Test.focused(session) == "palette"
+
+      ctrl(session, "p")
+      assert Breeze.Test.focused(session) == "log"
+    end
+  end
+
   describe "approvals" do
     test "one parked call takes a bare answer", %{session: session, turn: turn} do
       emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])

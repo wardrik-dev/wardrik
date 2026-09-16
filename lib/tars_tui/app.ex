@@ -94,6 +94,16 @@ defmodule TarsTUI.App do
   and puts what was saved back in the prompt, unsent; an editor that exits
   with any other status, or none that is set, leaves the draft as it was.
 
+  `Ctrl-P` opens the command palette over the panes: every command that can
+  run now, the ones run lately first, narrowed as letters are typed. `Up`,
+  `Down` and `Tab` choose, `Enter` runs the chosen command or asks for what
+  it needs, one step at a time: an agent or a node picked from a list, a
+  parked call picked by number, or text typed after the usage shown.
+  `Backspace` on an empty query goes back a step, and `Esc` closes the palette
+  with the draft and focus as they were. A command run from the palette goes
+  through the same parser as one typed, so `/rm` still previews what goes and
+  waits for `/confirm`.
+
   `Esc` in the prompt, with nothing else to dismiss, stops the turn or
   abandons a parked one, as does `Ctrl-X` then `s` from any pane. `Ctrl-C`
   leaves at once, as Breeze has it, taking any agent this node runs with it.
@@ -117,6 +127,7 @@ defmodule TarsTUI.App do
   alias TarsTUI.Command
   alias TarsTUI.History
   alias TarsTUI.Markdown
+  alias TarsTUI.Palette
   alias TarsTUI.Render
   alias TarsTUI.Table
   alias TarsTUI.Text
@@ -170,8 +181,9 @@ defmodule TarsTUI.App do
   the transcript, the fleet panel and the prompt, `s` stops the turn, and
   `Esc` cancels. `i` in the transcript or the panel focuses the prompt. `Up`
   and `Down` at the prompt's first and last line recall earlier lines, and
-  `Ctrl-G` edits the draft in `$VISUAL` or `$EDITOR`. `Ctrl-C` never reaches
-  these: Breeze leaves on it.
+  `Ctrl-G` edits the draft in `$VISUAL` or `$EDITOR`. `Ctrl-P` opens and
+  closes the command palette. `Ctrl-C` never reaches these: Breeze leaves on
+  it.
   """
   @spec keybindings() :: [{String.t(), String.t(), (map(), Breeze.Term.t() -> term())}]
   def keybindings do
@@ -182,6 +194,7 @@ defmodule TarsTUI.App do
       {"ArrowUp", "Older", &__MODULE__.older/2},
       {"ArrowDown", "Newer", &__MODULE__.newer/2},
       {"^g", "Edit", &__MODULE__.edit/2},
+      {"^p", "Palette", &__MODULE__.palette/2},
       {"^y", "Approve", &__MODULE__.approve/2},
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
@@ -216,6 +229,8 @@ defmodule TarsTUI.App do
   # the draft, where `direction/2` reads it back out. The pane the leader was
   # pressed in is remembered, for the moves and for cancelling.
   @doc false
+  def leader(_event, %{assigns: %{palette: %{}}} = term), do: {:noreply, term}
+
   def leader(_event, term) do
     ref = make_ref()
     Process.send_after(self(), {:leader_timeout, ref}, @leader_after)
@@ -234,6 +249,7 @@ defmodule TarsTUI.App do
   # the prompt, with nothing else to dismiss, it stops the turn, or abandons a
   # parked one; idle, it does nothing.
   @doc false
+  def back(_event, %{assigns: %{palette: %{}}} = term), do: {:noreply, close_palette(term)}
   def back(_event, %{assigns: %{leader: {_ref, _origin}}} = term), do: {:noreply, unlead(term)}
 
   def back(_event, %{focused: "prompt"} = term) do
@@ -342,6 +358,8 @@ defmodule TarsTUI.App do
   # The editor runs in a process of its own and answers with `{:edited, ref,
   # result}`; the agent the draft belongs to is remembered with it.
   @doc false
+  def edit(_event, %{assigns: %{palette: %{}}} = term), do: {:noreply, term}
+
   def edit(_event, %{assigns: %{editing: nil}} = term) do
     %{draft: draft, agent_id: agent_id, editor: editor} = term.assigns
     view = self()
@@ -372,6 +390,164 @@ defmodule TarsTUI.App do
   end
 
   defp edited(term, _agent_id, {:error, reason}), do: append(term, View.editor_failed(reason))
+
+  # -- the palette -----------------------------------------------------------
+
+  # Opens the palette over the panes, remembering where focus came from, or
+  # closes it.
+  @doc false
+  def palette(_event, %{assigns: %{palette: nil}} = term) do
+    palette = %{
+      step: :commands,
+      command: nil,
+      chosen: [],
+      query: "",
+      cursor: 0,
+      origin: term.focused || "prompt"
+    }
+
+    {:noreply,
+     term |> assign(palette: palette, leader: nil) |> refresh_fleet() |> focus("palette")}
+  end
+
+  def palette(_event, term), do: {:noreply, close_palette(term)}
+
+  defp close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
+    do: term |> assign(palette: nil) |> focus_pane(origin)
+
+  defp close_palette(term), do: term
+
+  defp update_palette(%{assigns: %{palette: nil}} = term, _fun), do: term
+  defp update_palette(term, fun), do: assign(term, palette: fun.(term.assigns.palette))
+
+  # Back to choosing a command, with nothing chosen.
+  defp restart_palette(term) do
+    update_palette(term, &%{&1 | step: :commands, command: nil, chosen: [], query: "", cursor: 0})
+  end
+
+  defp step_palette(term, step, command, chosen) do
+    update_palette(
+      term,
+      &%{&1 | step: step, command: command, chosen: chosen, query: "", cursor: 0}
+    )
+  end
+
+  # What the palette offers at its step, narrowed to the query: `{value, row}`
+  # pairs, the value being what the command is given.
+  defp choices(%{palette: %{step: :commands, query: query}} = assigns) do
+    recent = assigns.recent
+
+    {first, rest} =
+      assigns |> context() |> Command.palette() |> Enum.split_with(&(&1.name in recent))
+
+    first
+    |> Enum.sort_by(&Enum.find_index(recent, fn name -> name == &1.name end))
+    |> Kernel.++(rest)
+    |> Enum.map(&{&1, View.palette_command(&1, &1.name in recent)})
+    |> Palette.filter(query, fn {command, _row} -> command.label <> " " <> command.name end)
+  end
+
+  defp choices(%{palette: %{step: :agent, query: query}} = assigns) do
+    assigns.fleet
+    |> Enum.map(&{&1.key, agent_row(&1)})
+    |> Palette.filter(query, &elem(&1, 0))
+  end
+
+  defp choices(%{palette: %{step: :node, query: query}}) do
+    [node() | Node.list()]
+    |> Enum.map(&{Atom.to_string(&1), node_row(&1)})
+    |> Palette.filter(query, &elem(&1, 0))
+  end
+
+  defp choices(%{palette: %{step: :call, query: query}} = assigns) do
+    assigns.parked
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{call, prompt}, index} -> {"#{index}", call_row(call, prompt, index)} end)
+    |> Palette.filter(query, fn {_index, row} -> Text.plain(row) end)
+  end
+
+  defp choices(%{palette: %{step: :text}}), do: []
+
+  defp agent_row(member) do
+    elsewhere = if member.node == node(), do: "", else: " · @#{short_node(member.node)}"
+    [Text.tag(member.key, :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
+  end
+
+  defp node_row(name) do
+    [
+      Text.tag(Atom.to_string(name), :bright),
+      if(name == node(), do: Text.tag("  this node", @faint), else: [])
+    ]
+  end
+
+  defp call_row(call, prompt, index),
+    do: [
+      Text.tag("#{index}  ", @faint),
+      Text.tag(call.name, :bright),
+      Text.tag("  #{prompt}", @faint)
+    ]
+
+  defp short_node(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> hd()
+
+  defp context(assigns) do
+    %{
+      busy?: assigns.running? or assigns.parked != [],
+      parked: length(assigns.parked),
+      confirm?: assigns.confirm != nil,
+      nodes: 1 + length(Node.list())
+    }
+  end
+
+  # Enter on a row: a command starts collecting its arguments, a value chosen
+  # is one of them, and text typed is the last.
+  defp choose(term, %{step: :text, command: command, chosen: chosen, query: query}, _choice),
+    do: run(term, command, chosen ++ [String.trim(query)])
+
+  defp choose(term, _palette, nil), do: {:noreply, term}
+  defp choose(term, %{step: :commands}, {command, _row}), do: advance(term, command, [])
+
+  defp choose(term, %{command: command, chosen: chosen}, {value, _row}),
+    do: advance(term, command, chosen ++ [value])
+
+  # The next argument to collect, or the command run with what was collected.
+  # One parked call needs no choosing.
+  defp advance(term, command, chosen) do
+    case Enum.at(command.arguments, length(chosen)) do
+      nil -> run(term, command, chosen)
+      :call when length(term.assigns.parked) == 1 -> run(term, command, chosen)
+      step -> {:noreply, step_palette(term, step, command, chosen)}
+    end
+  end
+
+  # The command as it would have been typed, run the same way.
+  defp run(term, command, chosen) do
+    words =
+      command.arguments
+      |> Enum.zip(chosen)
+      |> Enum.map(fn
+        {:node, name} -> "node=" <> name
+        {_step, value} -> value
+      end)
+      |> Enum.reject(&(&1 == ""))
+
+    recent = Enum.take([command.name | List.delete(term.assigns.recent, command.name)], 5)
+
+    term
+    |> assign(recent: recent)
+    |> close_palette()
+    |> run_line(Enum.join([command.name | words], " "))
+  end
+
+  # Reads a line as the prompt would, records it, and acts on it.
+  defp run_line(term, line) do
+    command = Command.parse(line, term.assigns.parked != [])
+    term = remember(term, line, command)
+
+    case command do
+      :quit -> {:stop, term}
+      command -> {:noreply, apply_command(command, term)}
+    end
+  end
 
   @doc false
   def connect_highlighted(_event, term) do
@@ -477,6 +653,8 @@ defmodule TarsTUI.App do
         confirm: nil,
         pane: "prompt",
         leader: nil,
+        palette: nil,
+        recent: [],
         editing: nil,
         walking: nil,
         commands: History.new(),
@@ -719,8 +897,13 @@ defmodule TarsTUI.App do
     log_height = max(height - @chrome_rows - prompt_height, 1)
     side_width = sidebar_width(assigns, width)
 
+    choices = if assigns.palette, do: choices(assigns), else: []
+
     assigns =
       assign(assigns,
+        palette_count: length(choices),
+        palette_class: palette_class(choices, width, height),
+        palette_content: palette_content(assigns, choices, width, height),
         source: Transcript.source(assigns.transcript),
         log_height: log_height,
         log_class: log_class(width - side_width, log_height),
@@ -781,8 +964,48 @@ defmodule TarsTUI.App do
         class={@prompt_class}
       />
       <box class="block w-full h-1 overflow-hidden">{@meta}</box>
+      <box
+        :if={@palette != nil}
+        id="palette"
+        focusable
+        br-change="palette"
+        br-submit="palette_run"
+        implicit={TarsTUI.Palette}
+        palette-query={@palette.query}
+        palette-cursor={@palette.cursor}
+        palette-count={@palette_count}
+        class={@palette_class}
+      >
+        {@palette_content}
+      </box>
     </box>
     """
+  end
+
+  # The palette sits centred over the panes, as wide as the terminal allows up
+  # to a limit, and as tall as its rows need: the borders, the title, the query
+  # and a rule, then the rows.
+  @palette_width 72
+  @palette_rows 12
+  @palette_chrome 5
+
+  defp palette_size(choices, width, height) do
+    rows = choices |> length() |> max(1) |> min(@palette_rows)
+    {min(width - 4, @palette_width) |> max(20), min(rows + @palette_chrome, height - 2) |> max(6)}
+  end
+
+  defp palette_class(choices, width, height) do
+    {w, h} = palette_size(choices, width, height)
+
+    "fixed center width-#{w} height-#{h} layer-50 bg border-rounded border-primary overflow-hidden"
+  end
+
+  defp palette_content(%{palette: nil}, _choices, _width, _height), do: ""
+
+  defp palette_content(%{palette: palette}, choices, width, height) do
+    {w, h} = palette_size(choices, width, height)
+    title = View.palette_title(palette.step, palette.command)
+    View.palette(title, palette.query, Enum.map(choices, &elem(&1, 1)), palette.cursor, w, h)
   end
 
   defp log_class(width, height) do
@@ -894,6 +1117,12 @@ defmodule TarsTUI.App do
     Text.tag(["Ctrl-X · ", Enum.join(moves ++ stop ++ ["Esc cancel"], " · "), " "], :yellow)
   end
 
+  defp hints(%{palette: %{step: :text}}),
+    do: Text.tag("type the rest · Enter run · Backspace back · Esc close ", :yellow)
+
+  defp hints(%{palette: %{}}),
+    do: Text.tag("type to filter · Up/Down choose · Enter run · Esc close ", :yellow)
+
   defp hints(%{editing: {_ref, _agent_id, _pid}}),
     do: Text.tag("editing the prompt · the screen returns when the editor closes ", :yellow)
 
@@ -983,15 +1212,28 @@ defmodule TarsTUI.App do
     do:
       {:noreply, assign(term, unread: if(pinned?, do: 0, else: term.assigns.unread), pane: "log")}
 
-  def handle_event("ask", %{value: value}, term) do
-    command = Command.parse(value, term.assigns.parked != [])
-    term = term |> assign(draft: "", leader: nil) |> reset("prompt") |> remember(value, command)
+  def handle_event("ask", %{value: value}, term),
+    do: term |> assign(draft: "", leader: nil) |> reset("prompt") |> run_line(value)
 
-    case command do
-      :quit -> {:stop, term}
-      command -> {:noreply, apply_command(command, term)}
-    end
-  end
+  def handle_event("palette", %{action: :close}, term), do: {:noreply, close_palette(term)}
+
+  def handle_event(
+        "palette",
+        %{action: :back},
+        %{assigns: %{palette: %{step: :commands}}} = term
+      ),
+      do: {:noreply, term}
+
+  def handle_event("palette", %{action: :back}, term), do: {:noreply, restart_palette(term)}
+
+  def handle_event("palette", %{query: query, cursor: cursor}, term),
+    do: {:noreply, update_palette(term, &%{&1 | query: query, cursor: cursor})}
+
+  def handle_event("palette_run", _event, %{assigns: %{palette: nil}} = term),
+    do: {:noreply, term}
+
+  def handle_event("palette_run", %{cursor: cursor}, %{assigns: %{palette: palette}} = term),
+    do: choose(term, palette, Enum.at(choices(term.assigns), cursor))
 
   def handle_event(_name, _event, term), do: {:noreply, term}
 
