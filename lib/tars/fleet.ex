@@ -7,7 +7,8 @@ defmodule Tars.Fleet do
   | --- | --- |
   | `list/1` | which agents are running, and what each is doing |
   | `watch/1` | the same, as messages, whenever it changes |
-  | `kill/1` | stop everything under a prefix |
+  | `kill/1` | interrupt everything under a prefix |
+  | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
   | `move/2` | restart an agent on another node, as it was |
   | `whereis/1` | the pid behind a key, on whatever node holds it |
 
@@ -159,6 +160,18 @@ defmodule Tars.Fleet do
   @spec forget(String.t()) :: :ok | {:error, term()}
   def forget(key) when is_binary(key) do
     DurableServer.Supervisor.terminate_and_delete_child(@name, key)
+  end
+
+  @doc """
+  Forgets every running agent under `prefix`, and returns how many.
+
+  Agents that are stored but not running are left where they are.
+  """
+  @spec forget_under(String.t()) :: non_neg_integer()
+  def forget_under(prefix) when is_binary(prefix) do
+    members = list(prefix)
+    Enum.each(members, &forget(&1.key))
+    length(members)
   end
 
   @doc "The pid behind a key, wherever in the cluster it is, or `nil`."

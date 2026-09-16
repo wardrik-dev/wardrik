@@ -9,23 +9,12 @@ Mimic.copy(ReqLLM.StreamResponse)
 # here makes every reported duration the test's own.
 ReqLLM.model("test:model")
 
-# The fleet writes to a real store, so the suite gets its own and removes it
-# afterwards. Started here rather than in config so the directory is unique per
-# run and two suites can run side by side.
-data_dir =
-  Path.join([
-    System.tmp_dir!(),
-    "tars-test",
-    "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
-  ])
-
-Application.put_env(:tars, Tars.Fleet, data_dir: data_dir)
-{:ok, _apps} = Application.ensure_all_started(:tars)
 :ok = DurableServer.Supervisor.wait_until_ready(Tars.Fleet, timeout: 10_000)
 
+# The store configured for this run, see config/test.exs, is removed with it.
 ExUnit.after_suite(fn _results ->
   Supervisor.stop(Tars.Fleet.Supervisor)
-  File.rm_rf(data_dir)
+  File.rm_rf(Application.fetch_env!(:tars, Tars.Fleet)[:data_dir])
 end)
 
 ExUnit.start()

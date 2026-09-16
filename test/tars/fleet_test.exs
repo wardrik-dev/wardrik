@@ -104,6 +104,18 @@ defmodule Tars.FleetTest do
     end
   end
 
+  describe "forget_under/1" do
+    test "removes every running agent under a prefix and says how many" do
+      org = "org#{System.unique_integer([:positive])}"
+      keys = for name <- ["one", "two"], do: Fleet.key(name, org: org)
+      Enum.each(keys, &start(&1, runner: runner(self())))
+
+      assert Fleet.forget_under("#{org}/") == 2
+      assert Fleet.list("#{org}/") == []
+      assert Fleet.forget_under("#{org}/") == 0
+    end
+  end
+
   describe "move/2" do
     test "restarts an agent on the target node with the conversation it had" do
       key = Tars.Test.Fleet.key()

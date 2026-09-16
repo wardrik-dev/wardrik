@@ -46,13 +46,87 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ "› ○ watched"
   end
 
-  test "ctrl-f puts the panel away and brings it back", %{session: session} do
-    Breeze.Test.input(session, %{"key" => "f", "ctrlKey" => true})
-    refute screen(session) =~ "fleet · 1"
+  test "ctrl-f focuses the panel, and from the panel puts it away", %{session: session} do
+    ctrl_f(session)
+    assert screen(session) =~ "fleet · 1"
+    assert Breeze.Test.focused(session) == "fleet"
 
-    Breeze.Test.input(session, %{"key" => "f", "ctrlKey" => true})
+    ctrl_f(session)
+    refute screen(session) =~ "fleet · 1"
+    assert Breeze.Test.focused(session) == "prompt"
+
+    ctrl_f(session)
     assert screen(session) =~ "fleet · 1"
   end
+
+  test "arrows and enter in the panel connect to the chosen agent", ctx do
+    %{session: session, org: org} = ctx
+    other = spawn_and_ask(org, "other", "what is up")
+
+    ctrl_f(session)
+    # A frame between the focus and the keys, as there always is at a terminal.
+    screen(session)
+    Breeze.Test.input(session, "ArrowUp")
+    Breeze.Test.input(session, "Enter")
+
+    assert screen(session) =~ "connected to #{other}"
+    assert screen(session) =~ "› what is up"
+    assert Breeze.Test.focused(session) == "prompt"
+  end
+
+  test "the panel widens for long names and their node", %{session: session, org: org} do
+    key = Fleet.key("assistant_with_a_long_name", org: org)
+    on_exit(fn -> Fleet.forget(key) end)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+
+    submit(session, "/fleet")
+
+    assert screen(session) =~ "○ assistant_with_a_long_name"
+  end
+
+  @primary "38;5;4"
+
+  test "the focused pane draws its edge in the primary colour", %{session: session} do
+    for {focus, edge} <- [{"prompt", :prompt}, {"log", :transcript}, {"fleet", :fleet}] do
+      Breeze.Test.focus(session, focus)
+      edges = edges(session)
+
+      assert edges[edge] == @primary, "#{focus} focused, but its edge is #{edges[edge]}"
+      refute @primary in Map.values(Map.delete(edges, edge))
+    end
+  end
+
+  test "tab cycles the prompt, the transcript and the panel, and nothing else", ctx do
+    %{session: session} = ctx
+    assert Breeze.Test.focused(session) == "prompt"
+
+    focus_after_tabs =
+      Enum.map(1..3, fn _tab ->
+        Breeze.Test.input(session, "\t")
+        screen(session)
+        Breeze.Test.focused(session)
+      end)
+
+    assert focus_after_tabs == ["log", "fleet", "prompt"]
+  end
+
+  # The colour each pane's edge is drawn in: the prompt's top border, the
+  # rule under the transcript, and the fleet panel's top border.
+  defp edges(session) do
+    lines = session |> Breeze.Test.render!() |> String.split("\n")
+    [rule, _fleet_bottom] = lines |> Enum.find(&String.contains?(&1, "└")) |> String.split("└")
+    [before_fleet, _rest] = lines |> Enum.find(&String.contains?(&1, "┌")) |> String.split("┌")
+
+    %{
+      prompt: lines |> Enum.find(&String.contains?(&1, "╭")) |> colours() |> List.first(),
+      transcript: rule |> colours() |> List.first(),
+      fleet: before_fleet |> colours() |> List.last()
+    }
+  end
+
+  defp colours(line), do: ~r/38;5;\d+/ |> Regex.scan(line) |> List.flatten()
+
+  defp ctrl_f(session), do: Breeze.Test.input(session, %{"key" => "f", "ctrlKey" => true})
 
   test "/spawn starts an agent beside this client's own and attaches to it", %{
     session: session,
@@ -185,20 +259,42 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ agent_id
   end
 
-  test "/kill reports how many it reached", %{session: session, org: org} do
-    submit(session, "/kill #{org}/")
+  test "/kill NAME removes the agent and its store", %{session: session, org: org} do
+    key = Fleet.key("doomed", org: org)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
 
-    assert screen(session) =~ "stopped 1 under #{org}/"
+    submit(session, "/kill doomed")
+
+    assert screen(session) =~ "removed #{key} and its store"
+    assert Fleet.whereis(key) == nil
+    assert {:error, :not_found} = DurableServer.Supervisor.get_server_info(Fleet, key)
   end
 
-  test "/kill NAME interrupts one agent under this client's org", ctx do
-    %{session: session, agent_id: agent_id} = ctx
-    :ok = Bus.subscribe(agent_id)
+  test "/kill never removes the agent this client is attached to", ctx do
+    %{session: session, agent_id: agent_id, org: org} = ctx
 
     submit(session, "/kill watched")
+    assert screen(session) =~ "you are attached to #{agent_id}"
 
-    assert screen(session) =~ "interrupting #{agent_id}"
-    assert_receive %Event{payload: {:turn_interrupted, _stats}}
+    submit(session, "/kill #{org}/")
+    assert screen(session) =~ "you are attached to #{agent_id}"
+    assert Fleet.whereis(agent_id)
+  end
+
+  test "/kill PREFIX/ removes every running agent under it", %{session: session} do
+    org = "doomed#{System.unique_integer([:positive])}"
+    keys = for name <- ["one", "two"], do: Fleet.key(name, org: org)
+
+    for key <- keys do
+      {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+      on_exit(fn -> Fleet.forget(key) end)
+    end
+
+    submit(session, "/kill #{org}/")
+
+    assert screen(session) =~ "removed 2 under #{org}/"
+    assert Enum.all?(keys, &(Fleet.whereis(&1) == nil))
   end
 
   test "/kill NAME says so when nothing holds the key", %{session: session, org: org} do
@@ -210,8 +306,8 @@ defmodule TarsTUI.App.FleetTest do
   test "/help lists the commands", %{session: session} do
     submit(session, "/help")
 
-    assert screen(session) =~ "/fleet"
-    assert screen(session) =~ "/approve · /deny [reason]"
+    assert screen(session) =~ "/quit"
+    assert screen(session) =~ "this list"
   end
 
   test "/kill says so when a prefix matches nothing", %{session: session} do

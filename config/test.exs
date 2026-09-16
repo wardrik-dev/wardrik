@@ -7,6 +7,16 @@ config :tars, TarsBrave,
   base_url: "https://brave.test",
   req_options: [plug: {Req.Test, TarsBrave.Stub}, retry: false]
 
+# The fleet writes to a real store, so the suite gets one of its own, unique
+# per run so two suites can run side by side. test_helper.exs removes it.
+config :tars, Tars.Fleet,
+  data_dir:
+    Path.join([
+      System.tmp_dir!(),
+      "tars-test",
+      "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
+    ])
+
 config :req_llm,
   load_dotenv: false,
   zai_api_key: "test-zai-api-key",

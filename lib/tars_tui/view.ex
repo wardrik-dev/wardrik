@@ -223,20 +223,25 @@ defmodule TarsTUI.View do
   @spec no_such_agent(String.t()) :: Text.t()
   def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
 
-  @doc "That one agent was told to stop."
-  @spec interrupting(String.t()) :: Text.t()
-  def interrupting(key), do: note(["interrupting ", Text.tag(key, :bright)])
-
   @help [
-    {"Enter", "send · Esc stop · Tab scroll the transcript"},
-    {"Ctrl-T", "toggle the trace · Ctrl-F the fleet panel · Ctrl-D quit"},
+    {"Enter", "send what you typed"},
+    {"Esc", "stop the turn"},
+    {"Tab", "move focus between the prompt, the transcript and the fleet"},
+    {"Ctrl-T", "toggle the trace"},
+    {"Ctrl-F", "focus the fleet panel; again to put it away"},
+    {"Up, Down, Enter", "in the fleet panel, choose an agent and connect to it"},
+    {"Ctrl-D", "quit"},
     {"/spawn NAME [node=N] [prompt]", "start an agent beside this one and attach to it"},
     {"/connect NAME", "attach to an agent and show its conversation"},
     {"/move NAME node=N", "restart an agent on another node, as it was"},
-    {"/kill NAME · /kill PREFIX/ · /kill", "interrupt one agent, a prefix, or everything"},
+    {"/kill NAME", "stop an agent and delete its store"},
+    {"/kill PREFIX/", "the same for every running agent under a prefix"},
     {"/fleet", "list every agent in the cluster"},
-    {"/approve · /deny [reason]", "answer a parked turn; y and n do too while it waits"},
-    {"/stop · /quit", "interrupt this agent · leave"}
+    {"/approve", "approve a parked turn; y does too while it waits"},
+    {"/deny [reason]", "deny a parked turn; n does too while it waits"},
+    {"/stop", "interrupt this agent"},
+    {"/quit", "leave"},
+    {"/help", "this list"}
   ]
 
   @doc "Every key and command, one per line."
@@ -249,15 +254,20 @@ defmodule TarsTUI.View do
     end)
   end
 
-  @doc "How many agents a kill reached."
-  @spec killed(String.t(), non_neg_integer()) :: Text.t()
-  def killed(prefix, 0), do: note(["nothing running under ", Text.tag(quoted(prefix), :bright)])
+  @doc "That an agent, or every agent under a prefix, was removed with its store."
+  @spec forgotten(String.t()) :: Text.t()
+  def forgotten(key), do: note(["removed ", Text.tag(key, :bright), " and its store"])
 
-  def killed(prefix, count),
-    do: note(["stopped #{count} under ", Text.tag(quoted(prefix), :bright)])
+  @spec forgotten(String.t(), non_neg_integer()) :: Text.t()
+  def forgotten(prefix, 0), do: note(["nothing running under ", Text.tag(prefix, :bright)])
 
-  defp quoted(""), do: "the whole fleet"
-  defp quoted(prefix), do: prefix
+  def forgotten(prefix, count),
+    do: note(["removed #{count} under ", Text.tag(prefix, :bright), " with their stores"])
+
+  @doc "That a removal would have taken the agent this client is attached to."
+  @spec attached(String.t()) :: Text.t()
+  def attached(key),
+    do: note(["you are attached to ", Text.tag(key, :bright), " · /connect elsewhere first"])
 
   defp note(content), do: ["\n", Text.tag("· ", @faint), content, "\n"]
 

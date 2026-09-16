@@ -28,21 +28,28 @@ defmodule TarsTUI.App do
 
   A fleet panel down the right lists every agent in the cluster, what each is
   doing, and which node it is on. It is driven by `Tars.Fleet.watch/1` rather
-  than polling. `/spawn NAME [node=NODE] [prompt]` starts an agent with the
+  than polling. `Ctrl-F` focuses it; `Up` and `Down` move through the agents
+  and `Enter` connects to the one under the cursor. `Ctrl-F` again puts the
+  panel away. `/spawn NAME [node=NODE] [prompt]` starts an agent with the
   same `:spawn_opts` this client's own agent was given, on the named node if
   one is given, attaches to it, and sends it the prompt. `/connect NAME`
   attaches this client to an agent under its own org and user: the transcript
   is cleared and the agent's conversation played back, so what is on screen is
   that agent's. `/move NAME node=NODE` restarts
-  an agent on another node with the conversation it has. `/kill NAME`
-  interrupts one agent, `/kill PREFIX/` everything under a prefix, and `/kill`
-  the whole fleet. `/help` lists all of this.
+  an agent on another node with the conversation it has. `/kill NAME` stops
+  an agent and deletes its store, and `/kill PREFIX/` does that to every
+  running agent under a prefix. Neither touches the agent this client is
+  attached to. `/help` lists all of this.
 
   Attaching works the same way on start, so an agent named on the command line
   that already has a conversation shows it.
 
+  The focused pane shows it in the primary colour: the prompt's box, the
+  fleet panel's border, or the rule under the transcript. `Tab` cycles the
+  prompt, the transcript and the panel, and nothing else.
+
   Keys: `Enter` sends, `Esc` interrupts, `Ctrl-T` toggles tracing, `Ctrl-F`
-  toggles the fleet panel, `Tab` moves focus to the transcript so
+  focuses the fleet panel, `Tab` moves focus to the transcript so
   `PageUp`/`PageDown`/`Home`/`End` scroll it, `Ctrl-D` quits. `/stop` and
   `/quit` do the same as the keys.
   """
@@ -67,11 +74,10 @@ defmodule TarsTUI.App do
   # The fleet republishes on every transition, so a busy turn would redraw the
   # panel constantly. One refresh per window is enough to read.
   @fleet_after 200
-  @sidebar_width 22
   @min_log_width 40
   @thinking_tail 240
-  # Header, the spacer under the transcript, activity, and meta.
-  @chrome_rows 4
+  # Header, the status row, and meta.
+  @chrome_rows 3
   @max_prompt_rows 8
   @faint [:faint, :light_black]
 
@@ -127,8 +133,7 @@ defmodule TarsTUI.App do
       "/spawn " <> rest -> spawn_command(rest)
       "/move " <> rest -> move_command(rest)
       "/connect " <> name -> {:connect, String.trim(name)}
-      "/kill " <> prefix -> {:kill, String.trim(prefix)}
-      "/kill" -> {:kill, ""}
+      "/kill " <> target -> {:kill, String.trim(target)}
       other -> decision(other)
     end
   end
@@ -196,7 +201,7 @@ defmodule TarsTUI.App do
       {"^y", "Approve", &__MODULE__.approve/2},
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
-      {"^f", "Fleet", &__MODULE__.toggle_fleet/2},
+      {"^f", "Fleet", &__MODULE__.focus_fleet/2},
       {"^d", "Quit", &__MODULE__.quit/2}
     ]
   end
@@ -214,9 +219,19 @@ defmodule TarsTUI.App do
   def toggle_trace(_event, term),
     do: {:noreply, assign(term, verbose?: not term.assigns.verbose?)}
 
+  # Focuses the panel, showing it first if it is away. From the panel, puts it
+  # away and returns to the prompt.
   @doc false
-  def toggle_fleet(_event, term),
-    do: {:noreply, assign(term, sidebar?: not term.assigns.sidebar?)}
+  def focus_fleet(_event, %{focused: "fleet"} = term),
+    do: {:noreply, term |> assign(sidebar?: false) |> focus("prompt")}
+
+  def focus_fleet(_event, term),
+    do: {:noreply, term |> assign(sidebar?: true) |> refresh_fleet() |> focus("fleet")}
+
+  @doc false
+  def connect_highlighted(_event, term) do
+    {:noreply, term |> connect_key(term.assigns.highlighted) |> focus("prompt")}
+  end
 
   @doc false
   def quit(_event, term), do: {:stop, term}
@@ -226,6 +241,9 @@ defmodule TarsTUI.App do
     agent = Keyword.fetch!(opts, :agent)
     model = Keyword.get(opts, :model, "")
 
+    # Breeze applies a block's attribute defaults only when the module that
+    # defines it is already loaded when the template first renders.
+    {:module, Breeze.Blocks} = Code.ensure_loaded(Breeze.Blocks)
     :ok = Fleet.watch()
 
     term =
@@ -245,6 +263,7 @@ defmodule TarsTUI.App do
       )
       |> attach(agent, Keyword.get(opts, :agent_id, agent))
       |> append_lines(banner())
+      |> put_focus_keybindings("fleet", [{"Enter", "Connect", &__MODULE__.connect_highlighted/2}])
       |> focus("prompt")
 
     {:ok, term}
@@ -263,6 +282,7 @@ defmodule TarsTUI.App do
     |> assign(
       agent: agent,
       agent_id: agent_id,
+      highlighted: agent_id,
       transcript: Transcript.new(width(term)),
       activity: Activity.new(),
       answer: Markdown.new(),
@@ -322,17 +342,18 @@ defmodule TarsTUI.App do
       assign(assigns,
         source: Transcript.source(assigns.transcript),
         log_height: log_height,
-        log_width: width - side_width,
+        log_class: log_class(width - side_width, log_height),
         side_width: side_width,
-        sidebar: sidebar(assigns, side_width, log_height),
-        prompt_class: "block w-full h-#{prompt_height} bg-none border-primary",
+        fleet_rows: fleet_rows(assigns, side_width),
+        prompt_class:
+          "block w-full h-#{prompt_height} bg-none border-surface focus:border-primary",
         header: header(assigns),
         status: status(assigns, width),
         meta: meta(assigns, width)
       )
 
     ~H"""
-    <box class="block w-screen h-screen overflow-hidden">
+    <box id="app" focus-scope="trap" class="block w-screen h-screen overflow-hidden">
       <box class="block w-full h-1 overflow-hidden">{@header}</box>
       <box class={"inline w-full overflow-hidden h-#{@log_height}"}>
         <box
@@ -340,13 +361,30 @@ defmodule TarsTUI.App do
           focusable
           implicit={TarsTUI.Scroll}
           scroll-autoscroll="bottom"
-          class={"inline overflow-scroll scrollbar-arrows w-#{@log_width} h-#{@log_height}"}
+          class={@log_class}
         >
           {@source}
         </box>
-        <box class={"inline overflow-hidden w-#{@side_width} h-#{@log_height}"}>{@sidebar}</box>
-      </box>
-      <box class="block w-full h-1 overflow-hidden">
+        <box
+          :if={@side_width > 0}
+          class={"block overflow-hidden padding-left-1 w-#{@side_width} h-#{@log_height}"}
+        >
+          <box class="block w-full h-1 overflow-hidden">
+            {TarsTUI.Fleet.heading(@fleet, @side_width)}
+          </box>
+          <box class={"block w-full h-#{@log_height - 1} overflow-hidden "}>
+            <.list
+              id="fleet"
+              br-change="highlight"
+              list-selected={@highlighted}
+              selected-indicator=" "
+              class="height-full scrollbar-mute-100"
+              item_class="selected:bg-surface selected:text-muted"
+            >
+              <:item :for={{key, row} <- @fleet_rows} value={key}>{row}</:item>
+            </.list>
+          </box>
+        </box>
       </box>
       <box class="block w-full h-1 overflow-hidden">{@status}</box>
       <.textarea
@@ -364,17 +402,26 @@ defmodule TarsTUI.App do
     """
   end
 
-  # The panel is dropped rather than squeezed on a narrow terminal.
-  defp sidebar_width(%{sidebar?: false}, _width), do: 0
-
-  defp sidebar_width(_assigns, width) do
-    if width - @sidebar_width >= @min_log_width, do: @sidebar_width, else: 0
+  defp log_class(width, height) do
+    "inline overflow-scroll scrollbar-mute-100 w-#{width} h-#{height} " <>
+      "border-b border-surface focus:border-primary"
   end
 
-  defp sidebar(_assigns, 0, _height), do: ""
+  # One list item per agent, as `{key, row}`, clipped to the space inside the
+  # panel's gutter, the list's border and its selection column.
+  defp fleet_rows(_assigns, 0), do: []
 
-  defp sidebar(assigns, width, height) do
-    TarsTUI.Fleet.panel(assigns.fleet, assigns.agent_id, width, height)
+  defp fleet_rows(assigns, side_width) do
+    Enum.map(assigns.fleet, &{&1.key, TarsTUI.Fleet.row(&1, assigns.agent_id, side_width - 4)})
+  end
+
+  # The panel takes what its rows need, and is dropped rather than squeezed on
+  # a narrow terminal.
+  defp sidebar_width(%{sidebar?: false}, _width), do: 0
+
+  defp sidebar_width(assigns, width) do
+    side = TarsTUI.Fleet.width(assigns.fleet)
+    if width - side >= @min_log_width, do: side, else: 0
   end
 
   # Rows the draft occupies inside the box: one per line, more when a line
@@ -406,7 +453,7 @@ defmodule TarsTUI.App do
 
   defp status(%{running?: false}, width) do
     left = Text.tag(" idle · type a prompt and press Enter", @faint)
-    right = Text.tag("Esc stop · Ctrl-T trace · Tab scroll · Ctrl-D quit ", @faint)
+    right = Text.tag("Esc stop · Ctrl-T trace · Ctrl-F fleet · Ctrl-D quit ", @faint)
     Render.line(Render.justify(left, right, width))
   end
 
@@ -476,6 +523,9 @@ defmodule TarsTUI.App do
 
   @impl Breeze.View
   def handle_event("draft", %{value: value}, term), do: {:noreply, assign(term, draft: value)}
+
+  def handle_event("highlight", %{value: key}, term),
+    do: {:noreply, assign(term, highlighted: key)}
 
   def handle_event("ask", %{value: value}, term) do
     term = term |> assign(draft: "") |> reset("prompt")
@@ -554,9 +604,9 @@ defmodule TarsTUI.App do
 
   defp host(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> List.last()
 
-  defp connect(term, name) do
-    key = key(term, name)
+  defp connect(term, name), do: connect_key(term, key(term, name))
 
+  defp connect_key(term, key) do
     case Fleet.whereis(key) do
       nil ->
         append(term, View.no_such_agent(key))
@@ -580,19 +630,32 @@ defmodule TarsTUI.App do
   defp key(term, name), do: Fleet.key(name, term.assigns.spawn_opts)
 
   # A prefix ends in `/`; anything else names an agent under this client's org
-  # and user.
-  defp kill(term, ""), do: append(term, View.killed("", Fleet.kill()))
-
+  # and user. The agent this client is attached to is never removed.
   defp kill(term, target) do
-    if String.ends_with?(target, "/") do
-      append(term, View.killed(target, Fleet.kill(target)))
-    else
-      key = key(term, target)
+    attached = term.assigns.agent_id
 
-      case Agent.interrupt(key) do
-        :ok -> append(term, View.interrupting(key))
-        {:error, :not_found} -> append(term, View.no_such_agent(key))
-      end
+    cond do
+      String.ends_with?(target, "/") and String.starts_with?(attached, target) ->
+        append(term, View.attached(attached))
+
+      String.ends_with?(target, "/") ->
+        term |> refresh_fleet() |> append(View.forgotten(target, Fleet.forget_under(target)))
+
+      key(term, target) == attached ->
+        append(term, View.attached(attached))
+
+      true ->
+        forget(term, key(term, target))
+    end
+  end
+
+  defp forget(term, key) do
+    with pid when is_pid(pid) <- Fleet.whereis(key),
+         :ok <- Fleet.forget(key) do
+      term |> refresh_fleet() |> append(View.forgotten(key))
+    else
+      nil -> append(term, View.no_such_agent(key))
+      {:error, reason} -> append(term, View.error(reason))
     end
   end
 

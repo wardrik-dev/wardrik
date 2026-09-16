@@ -67,7 +67,7 @@ defmodule TarsTUI.App.CommandTest do
 
     assert App.command("/connect researcher") == {:connect, "researcher"}
     assert App.command("/kill acme/") == {:kill, "acme/"}
-    assert App.command("/kill") == {:kill, ""}
+    assert App.command("/kill helper") == {:kill, "helper"}
   end
 
   test "the fleet vocabulary works while a turn is parked" do
