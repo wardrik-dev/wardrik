@@ -49,14 +49,15 @@ defmodule TarsTUI.Command do
 
   @typedoc """
   What decides availability: whether a turn is running or parked, how many
-  calls are parked, whether a removal waits on `/confirm`, and how many nodes
-  the cluster has.
+  calls are parked, whether a removal waits on `/confirm`, how many nodes the
+  cluster has, and how many agents need attention.
   """
   @type context() :: %{
           busy?: boolean(),
           parked: non_neg_integer(),
           confirm?: boolean(),
-          nodes: pos_integer()
+          nodes: pos_integer(),
+          attention: non_neg_integer()
         }
 
   @typedoc "Which parked call a decision is for: the only one, one by number, or every one."
@@ -80,6 +81,8 @@ defmodule TarsTUI.Command do
           | {:spawn, String.t(), options(), String.t() | nil}
           | {:move, String.t(), options()}
           | {:connect, String.t()}
+          | {:filter, String.t() | nil}
+          | :next
           | {:ask, String.t()}
           | {:usage, String.t()}
           | {:unknown, String.t()}
@@ -152,6 +155,23 @@ defmodule TarsTUI.Command do
         usage: "/fleet",
         summary: "list every agent in the cluster",
         parse: bare(:fleet)
+      },
+      %__MODULE__{
+        name: "/filter",
+        label: "Filter the fleet panel",
+        arguments: [:text],
+        usage: "/filter [QUERY]",
+        summary:
+          "show only agents matching QUERY: text, name:, org:, user:, node:, status:, attention; alone, show all",
+        parse: &filter/1
+      },
+      %__MODULE__{
+        name: "/next",
+        label: "Connect to the next agent needing attention",
+        available: &(&1.attention > 0),
+        usage: "/next",
+        summary: "connect to the next agent waiting on a person or holding a result not yet seen",
+        parse: bare(:next)
       },
       %__MODULE__{
         name: "/approve",
@@ -265,6 +285,7 @@ defmodule TarsTUI.Command do
   defp bare(parsed), do: fn argument -> if(argument == nil, do: parsed, else: :usage) end
 
   defp connect(argument), do: one_word(argument, &{:connect, &1})
+  defp filter(argument), do: {:filter, argument}
   defp shutdown(argument), do: one_word(argument, &{:shutdown, &1})
 
   defp stop(nil), do: {:stop, nil}

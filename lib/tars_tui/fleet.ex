@@ -5,10 +5,15 @@ defmodule TarsTUI.Fleet do
   The panel is a Breeze list with one row per agent: a glyph for what it is
   doing, its name, how many delegations its turn has going and has started,
   what is queued behind it, and the node it is running on when that is not
-  this one. An idle agent whose last turn failed says so. An agent under the
-  same org and user as the one the client is attached to is named alone; any
-  other shows its whole key, with the scope faint. The agent the client is
-  attached to is marked.
+  this one. An idle agent whose last turn failed says so, and one that
+  finished a turn while the client was elsewhere says it has a new result. An
+  agent under the same org and user as the one the client is attached to is
+  named alone, unless another agent shares its name; any other shows its whole
+  key, with the scope faint. The agent the client is attached to is marked.
+
+  An agent needs attention when it is waiting on a person, or when it has a
+  result or a failure the client has not looked at. `attention?/2` decides,
+  and the heading counts.
 
   An expanded agent is followed by one row per delegation of its current
   turn, as a tree: a glyph for how it is going, its name, and how long it has
@@ -28,45 +33,58 @@ defmodule TarsTUI.Fleet do
   @delegation_glyphs %{running: "◐", ok: "✓", error: "✗"}
   @delegation_colours %{running: :cyan, ok: :green, error: :red}
 
-  # The gutter before the panel, the list's border and selection column, and
-  # a space on the right.
-  @chrome 5
-  @min_width 22
-  @max_width 40
+  @doc """
+  The heading above the list, clipped to `width`: how many agents are shown of
+  how many there are, how many need attention, and the filter in force.
+  """
+  @spec heading(
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer(),
+          String.t(),
+          pos_integer()
+        ) ::
+          String.t()
+  def heading(shown, total, attention, filter, width) do
+    count = if shown == total, do: "#{total}", else: "#{shown}/#{total}"
 
-  @doc "The heading above the list, clipped to `width`."
-  @spec heading([Member.t()], pos_integer()) :: String.t()
-  def heading(members, width) do
-    Render.line(Text.truncate(Text.tag(" fleet · #{length(members)}", @faint), width))
+    text = [
+      Text.tag(" fleet · #{count}", @faint),
+      if(attention > 0, do: Text.tag(" · #{attention} need attention", :yellow), else: []),
+      if(filter == "", do: [], else: Text.tag(" · #{filter}", :cyan))
+    ]
+
+    Render.line(Text.truncate(text, width))
+  end
+
+  @doc """
+  Whether an agent needs a person: it is waiting on a call, or `unseen` holds
+  how a turn ended while the client was elsewhere.
+  """
+  @spec attention?(Member.t(), %{String.t() => term()}) :: boolean()
+  def attention?(%Member{status: :parked}, _unseen), do: true
+  def attention?(%Member{key: key}, unseen), do: Map.has_key?(unseen, key)
+
+  @doc "The names more than one agent goes by."
+  @spec ambiguous([Member.t()]) :: MapSet.t(String.t())
+  def ambiguous(members) do
+    members
+    |> Enum.frequencies_by(& &1.name)
+    |> Enum.filter(fn {_name, count} -> count > 1 end)
+    |> MapSet.new(fn {name, _count} -> name end)
   end
 
   @doc """
   One agent's row, clipped to `width`.
 
   `attached` is the key of the agent the client is watching, which is marked
-  rather than listed differently.
+  rather than listed differently. Options: `:ambiguous`, the names shared by
+  several agents, which are shown as whole keys; `:unseen`, how the agent's
+  last turn ended if the client has not looked, `:ok` or `:failed`.
   """
-  @spec row(Member.t(), String.t(), pos_integer()) :: String.t()
-  def row(%Member{} = member, attached, width) do
-    Render.line(Text.truncate(text(member, attached), width))
-  end
-
-  @doc """
-  The width the panel needs to show every row whole, between
-  #{@min_width} and #{@max_width} columns. `attached` decides which rows are
-  named alone, and `extra` is any other row the panel shows, such as
-  `delegation/4` builds.
-  """
-  @spec width([Member.t()], String.t(), [Text.t()]) :: pos_integer()
-  def width(members, attached \\ "", extra \\ []) do
-    members
-    |> Enum.map(&text(&1, attached))
-    |> Kernel.++(extra)
-    |> Enum.map(&(&1 |> Text.plain() |> String.length()))
-    |> Enum.max(fn -> 0 end)
-    |> Kernel.+(@chrome)
-    |> max(@min_width)
-    |> min(@max_width)
+  @spec row(Member.t(), String.t(), pos_integer(), keyword()) :: String.t()
+  def row(%Member{} = member, attached, width, opts \\ []) do
+    Render.line(Text.truncate(text(member, attached, opts), width))
   end
 
   @doc """
@@ -103,24 +121,35 @@ defmodule TarsTUI.Fleet do
   defp seconds(ms) when ms < 1_000, do: "#{ms}ms"
   defp seconds(ms), do: "#{Float.round(ms / 1_000, 1)}s"
 
-  defp text(%Member{} = member, attached) do
-    marker = if member.key == attached, do: Text.tag("›", [:bright, :cyan]), else: " "
+  defp text(%Member{} = member, attached, opts) do
+    unseen = Keyword.get(opts, :unseen)
+
+    marker =
+      cond do
+        member.key == attached -> Text.tag("›", [:bright, :cyan])
+        member.status == :parked or unseen != nil -> Text.tag("!", [:bright, :yellow])
+        true -> " "
+      end
 
     [
       marker,
       " ",
       Text.tag(@glyphs[member.status], @colours[member.status]),
       " ",
-      label(member, attached),
-      suffix(member)
+      label(member, attached, Keyword.get(opts, :ambiguous, MapSet.new())),
+      suffix(member),
+      new_result(unseen)
     ]
   end
 
+  defp new_result(:ok), do: Text.tag(" new result", :green)
+  defp new_result(_other), do: []
+
   # The name alone inside the attached agent's org and user; the whole key
-  # anywhere else, so two agents called the same thing are told apart.
-  defp label(%Member{org: org, user: user, name: name} = member, attached) do
+  # anywhere else, and wherever two agents go by the same name.
+  defp label(%Member{org: org, user: user, name: name} = member, attached, ambiguous) do
     case scope(attached) do
-      {^org, ^user} ->
+      {^org, ^user} when not is_map_key(ambiguous.map, name) ->
         Text.tag(name, name_colour(member, attached))
 
       _elsewhere ->

@@ -33,7 +33,7 @@ defmodule TarsTUI.PaletteTest do
   end
 
   describe "Command.palette/1" do
-    @idle %{busy?: false, parked: 0, confirm?: false, nodes: 1}
+    @idle %{busy?: false, parked: 0, confirm?: false, nodes: 1, attention: 0}
 
     test "leaves out what cannot run now" do
       names = @idle |> Command.palette() |> Enum.map(& &1.name)
@@ -45,6 +45,7 @@ defmodule TarsTUI.PaletteTest do
       refute "/deny" in names
       refute "/confirm" in names
       refute "/move" in names
+      refute "/next" in names
     end
 
     test "offers each command when its moment comes" do
@@ -54,6 +55,7 @@ defmodule TarsTUI.PaletteTest do
       assert "/approve" in names.(%{@idle | parked: 2})
       assert "/confirm" in names.(%{@idle | confirm?: true})
       assert "/move" in names.(%{@idle | nodes: 2})
+      assert "/next" in names.(%{@idle | attention: 1})
     end
 
     test "every command has a label and steps the palette knows" do

@@ -2,6 +2,8 @@ defmodule TarsTUI.App do
   # Events are folded as they arrive; the frame is redrawn at most this often
   # while they do.
   @frame_after 20
+  # The fleet panel's width in columns, unless started with `:sidebar_width`.
+  @sidebar_width 30
 
   @moduledoc """
   A full-screen terminal client for one agent.
@@ -49,6 +51,23 @@ defmodule TarsTUI.App do
   asked, the work under it, and what it answered or why it failed; `Esc`
   closes it. An agent's row also counts its delegations, going and started,
   and says when its last turn failed.
+
+  An agent needs attention when it is waiting on a person, or when it
+  finished a turn while this client was watching another: its row is marked
+  `!`, says `new result` or `failed`, and the heading counts them. `/next`
+  connects to the next one after the attached agent, and connecting is what
+  clears the mark. In the panel `n` moves to the next one and `a` shows only
+  them. `/filter QUERY` narrows the panel by text, `name:`, `org:`, `user:`,
+  `node:`, `status:` and `attention`, as `TarsTUI.Fleet.Filter` reads it,
+  and `/filter` alone shows every agent again. Rows keep their order, by key,
+  whatever changes. Two agents going by one name are both shown by their
+  whole key.
+
+  The panel is `#{@sidebar_width}` columns wide unless started with
+  `:sidebar_width`, and does not change with its rows. On a terminal too
+  narrow to hold it beside the transcript it is shown over the panes instead,
+  while it is focused: `Ctrl-F`, `Tab` or `Ctrl-X` then `l` bring it up and
+  `Esc` or `i` put it away.
 
   `/spawn NAME [node=NODE] [prompt]` starts an agent with the same
   `:spawn_opts` this client's own agent was given, on the named node if one is
@@ -136,6 +155,7 @@ defmodule TarsTUI.App do
   alias Tars.LLM
   alias TarsTUI.Activity
   alias TarsTUI.Command
+  alias TarsTUI.Fleet.Filter
   alias TarsTUI.History
   alias TarsTUI.Markdown
   alias TarsTUI.Palette
@@ -185,6 +205,10 @@ defmodule TarsTUI.App do
   # How long the leader waits for a direction.
   @leader_after 1_500
 
+  @doc "The fleet panel's width in columns, unless started with `:sidebar_width`."
+  @spec default_sidebar_width() :: pos_integer()
+  def default_sidebar_width, do: @sidebar_width
+
   @doc """
   Keybindings that work wherever focus is. Pass them as `:global_keybindings`
   when starting the session.
@@ -226,15 +250,34 @@ defmodule TarsTUI.App do
     do: {:noreply, assign(term, verbose?: not term.assigns.verbose?)}
 
   # Shows or hides the panel. Hiding it while it is focused returns to the
-  # prompt.
+  # prompt. On a terminal too narrow for the panel beside the transcript, it
+  # is brought up over the panes and put away instead.
   @doc false
   def toggle_fleet(_event, %{assigns: %{sidebar?: true}} = term) do
-    term = assign(term, sidebar?: false)
-    {:noreply, if(term.focused == "fleet", do: focus_pane(term, "prompt"), else: sync_pane(term))}
+    cond do
+      narrow?(term) and term.focused == "fleet" ->
+        {:noreply, focus_pane(term, "prompt")}
+
+      narrow?(term) ->
+        {:noreply, focus_pane(term, "fleet")}
+
+      term.focused == "fleet" ->
+        {:noreply, term |> assign(sidebar?: false) |> focus_pane("prompt")}
+
+      true ->
+        {:noreply, term |> assign(sidebar?: false) |> sync_pane()}
+    end
   end
 
   def toggle_fleet(_event, term),
     do: {:noreply, term |> assign(sidebar?: true) |> refresh_fleet() |> sync_pane()}
+
+  # Whether the panel has no room beside the transcript.
+  defp narrow?(%{assigns: %{sidebar_width: side}} = term),
+    do: terminal_width(term) - side < @min_log_width
+
+  defp terminal_width(%{terminal: %{size: %{width: width}}}) when is_integer(width), do: width
+  defp terminal_width(_term), do: 100
 
   # A letter goes to the focused pane before any binding sees it, so while the
   # leader waits the prompt is focused and the letter arrives as a change to
@@ -510,7 +553,8 @@ defmodule TarsTUI.App do
       busy?: assigns.running? or assigns.parked != [],
       parked: length(assigns.parked),
       confirm?: assigns.confirm != nil,
-      nodes: 1 + length(Node.list())
+      nodes: 1 + length(Node.list()),
+      attention: length(attention(assigns))
     }
   end
 
@@ -769,6 +813,9 @@ defmodule TarsTUI.App do
         fleet: [],
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),
+        sidebar_width: Keyword.get(opts, :sidebar_width, @sidebar_width),
+        unseen: %{},
+        filter: Filter.none(),
         model: Keyword.get(opts, :model, ""),
         verbose?: Keyword.get(opts, :verbose, false),
         editor: Keyword.get(opts, :editor, &TarsTUI.Editor.edit/2),
@@ -859,7 +906,11 @@ defmodule TarsTUI.App do
       {_deleted, views} ->
         term |> assign(views: views) |> fresh(messages) |> parked_notice(parked)
     end
-    |> assign(parked: parked, delegations: Map.get(snapshot, :delegations, Delegation.new()))
+    |> assign(
+      parked: parked,
+      delegations: Map.get(snapshot, :delegations, Delegation.new()),
+      unseen: Map.delete(term.assigns.unseen, agent_id)
+    )
   end
 
   defp fresh(term, messages) do
@@ -1025,6 +1076,10 @@ defmodule TarsTUI.App do
     prompt_height = prompt_rows(assigns.draft, width) + 2
     log_height = max(height - @chrome_rows - prompt_height, 1)
     side_width = sidebar_width(assigns, width)
+    overlay? = assigns.sidebar? and side_width == 0 and assigns.pane == "fleet"
+    panel_width = if overlay?, do: assigns.sidebar_width, else: side_width
+    shown = shown(assigns)
+    fleet_rows = fleet_rows(assigns, shown, panel_width)
 
     choices = if assigns.palette, do: choices(assigns), else: []
     {inspector_source, inspector_class} = inspector(assigns, width, height)
@@ -1040,7 +1095,10 @@ defmodule TarsTUI.App do
         log_height: log_height,
         log_class: log_class(width - side_width, log_height),
         side_width: side_width,
-        fleet_rows: fleet_rows(assigns, side_width),
+        fleet_overlay?: overlay?,
+        fleet_overlay_class: overlay_class(fleet_rows, panel_width, height),
+        fleet_rows: fleet_rows,
+        heading: heading(assigns, shown, panel_width),
         prompt_class:
           "block w-full h-#{prompt_height} bg-none border-surface focus:border-primary " <>
             "placeholder:text-8",
@@ -1068,22 +1126,21 @@ defmodule TarsTUI.App do
           :if={@side_width > 0}
           class={"block overflow-hidden padding-left-1 w-#{@side_width} h-#{@log_height}"}
         >
-          <box class="block w-full h-1 overflow-hidden">
-            {TarsTUI.Fleet.heading(@fleet, @side_width)}
-          </box>
-          <box class={"block w-full h-#{@log_height - 1} overflow-hidden "}>
-            <.list
-              id="fleet"
-              br-change="highlight"
-              list-selected={@highlighted}
-              selected-indicator=" "
-              class="height-full scrollbar-mute-100 border-line border-surface focus:border-primary"
-              item_class="selected:bg-surface selected:text-muted"
-            >
-              <:item :for={{key, row} <- @fleet_rows} value={key}>{row}</:item>
-            </.list>
-          </box>
+          <.fleet_panel
+            heading={@heading}
+            rows_height={@log_height - 1}
+            highlighted={@highlighted}
+            fleet_rows={@fleet_rows}
+          />
         </box>
+      </box>
+      <box :if={@fleet_overlay?} class={@fleet_overlay_class}>
+        <.fleet_panel
+          heading={@heading}
+          rows_height={length(@fleet_rows) + 2}
+          highlighted={@highlighted}
+          fleet_rows={@fleet_rows}
+        />
       </box>
       <box class="block w-full h-1 overflow-hidden">{@status}</box>
       <.textarea
@@ -1150,26 +1207,69 @@ defmodule TarsTUI.App do
     View.palette(title, palette.query, Enum.map(choices, &elem(&1, 1)), palette.cursor, w, h)
   end
 
+  # The fleet panel: its heading and the list of rows, wherever it is placed.
+  defp fleet_panel(assigns) do
+    ~H"""
+    <box class="block w-full h-1 overflow-hidden">{@heading}</box>
+    <box class={"block w-full h-#{@rows_height} overflow-hidden"}>
+      <.list
+        id="fleet"
+        br-change="highlight"
+        list-selected={@highlighted}
+        selected-indicator=" "
+        class="height-full scrollbar-mute-100 border-line border-surface focus:border-primary"
+        item_class="selected:bg-surface selected:text-muted"
+      >
+        <:item :for={{key, row} <- @fleet_rows} value={key}>{row}</:item>
+      </.list>
+    </box>
+    """
+  end
+
+  # Over the panes, at the right, as tall as its rows need.
+  defp overlay_class(rows, width, height) do
+    rows_height = min(length(rows) + 2, max(height - 5, 3))
+
+    "fixed right-1 top-1 width-#{width} height-#{rows_height + 1} layer-40 bg " <>
+      "overflow-hidden padding-left-1"
+  end
+
+  defp heading(_assigns, _shown, 0), do: ""
+
+  defp heading(assigns, shown, width) do
+    TarsTUI.Fleet.heading(
+      length(shown),
+      length(assigns.fleet),
+      length(attention(assigns)),
+      Filter.describe(assigns.filter),
+      width
+    )
+  end
+
   defp log_class(width, height) do
     "inline overflow-scroll scrollbar-mute-100 w-#{width} h-#{height} " <>
       "border-b border-surface focus:border-primary"
   end
 
-  # One list item per agent, as `{key, row}`, and under an expanded agent one
-  # per delegation, as `{"key\tspan_id", row}`; each clipped to the space
-  # inside the panel's gutter, the list's border and its selection column.
-  defp fleet_rows(_assigns, 0), do: []
+  # One list item per agent shown, as `{key, row}`, and under an expanded
+  # agent one per delegation, as `{"key\tspan_id", row}`; each clipped to the
+  # space inside the panel's gutter, the list's border and its selection
+  # column.
+  defp fleet_rows(_assigns, _shown, 0), do: []
 
-  defp fleet_rows(assigns, side_width) do
+  defp fleet_rows(assigns, shown, panel_width) do
     now = System.system_time(:millisecond)
+    ambiguous = TarsTUI.Fleet.ambiguous(assigns.fleet)
+    width = panel_width - 4
 
-    Enum.flat_map(assigns.fleet, fn member ->
+    Enum.flat_map(shown, fn member ->
       rows =
         Enum.map(delegation_texts(assigns, member.key, now), fn {value, text} ->
-          {value, Render.line(Text.truncate(text, side_width - 4))}
+          {value, Render.line(Text.truncate(text, width))}
         end)
 
-      [{member.key, TarsTUI.Fleet.row(member, assigns.agent_id, side_width - 4)} | rows]
+      opts = [ambiguous: ambiguous, unseen: Map.get(assigns.unseen, member.key)]
+      [{member.key, TarsTUI.Fleet.row(member, assigns.agent_id, width, opts)} | rows]
     end)
   end
 
@@ -1194,21 +1294,12 @@ defmodule TarsTUI.App do
     end
   end
 
-  # The panel takes what its rows need, and is dropped rather than squeezed on
-  # a narrow terminal.
+  # The panel is as wide as it was configured, whatever its rows say, and is
+  # left out beside the transcript on a terminal too narrow for both.
   defp sidebar_width(%{sidebar?: false}, _width), do: 0
 
-  defp sidebar_width(assigns, width) do
-    now = System.system_time(:millisecond)
-
-    extra =
-      assigns.fleet
-      |> Enum.flat_map(&delegation_texts(assigns, &1.key, now))
-      |> Enum.map(&elem(&1, 1))
-
-    side = TarsTUI.Fleet.width(assigns.fleet, assigns.agent_id, extra)
-    if width - side >= @min_log_width, do: side, else: 0
-  end
+  defp sidebar_width(%{sidebar_width: side}, width),
+    do: if(width - side >= @min_log_width, do: side, else: 0)
 
   # The inspector sits centred over the panes, as tall as its lines need.
   @inspector_width 80
@@ -1339,7 +1430,7 @@ defmodule TarsTUI.App do
 
   defp hints(%{pane: "fleet"}),
     do:
-      Text.tag("j/k move · l/h expand · Enter connect or inspect · i prompt · Esc back ", @faint)
+      Text.tag("j/k · l/h expand · n/a attention · Enter connect · i prompt · Esc back ", @faint)
 
   defp hints(%{pane: "inspector"}), do: Text.tag("j/k scroll · i prompt · Esc back ", @faint)
 
@@ -1452,6 +1543,12 @@ defmodule TarsTUI.App do
   def handle_event(:input, %{"key" => "h"}, %{focused: "fleet"} = term),
     do: {:noreply, collapse(term, agent_of(term.assigns.highlighted))}
 
+  def handle_event(:input, %{"key" => "n"}, %{focused: "fleet"} = term),
+    do: {:noreply, highlight_next(term)}
+
+  def handle_event(:input, %{"key" => "a"}, %{focused: "fleet"} = term),
+    do: {:noreply, toggle_attention(term)}
+
   def handle_event(_name, _event, term), do: {:noreply, term}
 
   defp apply_command(:blank, term), do: term
@@ -1478,6 +1575,8 @@ defmodule TarsTUI.App do
 
   defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
   defp apply_command({:connect, name}, term), do: connect(term, name)
+  defp apply_command({:filter, query}, term), do: filter(term, query)
+  defp apply_command(:next, term), do: next_attention(term)
   defp apply_command({:ask, text}, term), do: ask(term, text)
   defp apply_command({:usage, name}, term), do: append(term, View.usage(Command.find(name)))
 
@@ -1806,7 +1905,81 @@ defmodule TarsTUI.App do
 
   defp refresh_fleet(term) do
     fleet = Fleet.list()
-    term |> assign(fleet: fleet, fleet_due?: false) |> follow(fleet)
+
+    term
+    |> assign(fleet: fleet, fleet_due?: false, unseen: unseen(term, fleet))
+    |> follow(fleet)
+  end
+
+  # An agent other than the attached one that was running or waiting and is
+  # idle now finished a turn this client did not watch; how it ended is kept
+  # until the client connects to it. An agent gone from the fleet is dropped.
+  defp unseen(%{assigns: %{fleet: previous, unseen: unseen, agent_id: attached}}, fleet) do
+    before = Map.new(previous, &{&1.key, &1.status})
+
+    fleet
+    |> Enum.reduce(unseen, fn member, unseen ->
+      if member.key != attached and member.status == :idle and
+           Map.get(before, member.key) in [:running, :parked],
+         do: Map.put(unseen, member.key, member.outcome || :ok),
+         else: unseen
+    end)
+    |> Map.take(Enum.map(fleet, & &1.key))
+  end
+
+  # -- attention and filtering ------------------------------------------------
+
+  defp attention(%{fleet: fleet, unseen: unseen}),
+    do: Enum.filter(fleet, &TarsTUI.Fleet.attention?(&1, unseen))
+
+  # The agents the panel shows: those passing the filter, in key order.
+  defp shown(%{fleet: fleet, unseen: unseen, filter: filter}) do
+    Enum.filter(fleet, &Filter.match?(filter, &1, TarsTUI.Fleet.attention?(&1, unseen)))
+  end
+
+  # The agent needing attention after `key`, round the list, or `nil`.
+  defp next_needing(assigns, key) do
+    case attention(assigns) do
+      [] -> nil
+      needing -> Enum.find(needing, hd(needing), &(&1.key > key))
+    end
+  end
+
+  defp next_attention(term) do
+    case next_needing(term.assigns, term.assigns.agent_id) do
+      nil -> append(term, View.nothing_needs_attention())
+      member -> connect_key(term, member.key)
+    end
+  end
+
+  defp highlight_next(term) do
+    case next_needing(term.assigns, agent_of(term.assigns.highlighted) || "") do
+      nil -> term
+      member -> assign(term, highlighted: member.key)
+    end
+  end
+
+  defp filter(term, nil), do: term |> assign(filter: Filter.none()) |> append(View.unfiltered())
+
+  defp filter(term, query) do
+    case Filter.parse(query) do
+      {:ok, filter} ->
+        term = assign(term, filter: filter)
+        shown = length(shown(term.assigns))
+        append(term, View.filtered(Filter.describe(filter), shown, length(term.assigns.fleet)))
+
+      {:error, word} ->
+        append(term, View.bad_filter(word))
+    end
+  end
+
+  # `a` in the panel: only the agents needing attention, or every agent again.
+  defp toggle_attention(%{assigns: %{filter: %Filter{query: "attention"}}} = term),
+    do: assign(term, filter: Filter.none())
+
+  defp toggle_attention(term) do
+    {:ok, filter} = Filter.parse("attention")
+    assign(term, filter: filter)
   end
 
   # The attached agent as the fleet has it now. A new process under the same

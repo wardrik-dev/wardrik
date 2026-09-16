@@ -16,6 +16,7 @@ defmodule Mix.Tasks.Tars do
       mix tars --timeout 600
       mix tars --name researcher --org acme
       mix tars --sname tars_a --cookie tars --connect tars_b@omarchy
+      mix tars --fleet-width 36
 
   The agent boots with the tool packages this repo ships —
   `#{Enum.map_join(@default_tools, "`, `", &inspect/1)}` — because a turn with
@@ -52,6 +53,10 @@ defmodule Mix.Tasks.Tars do
   attaches to one wherever it is running. `dev/cluster.sh` brings up three
   nodes in tmux.
 
+  `--fleet-width` is the fleet panel's width in columns, #{TarsTUI.App.default_sidebar_width()}
+  by default. The panel is dropped to an overlay on a terminal too narrow to
+  hold it beside the transcript.
+
   `--verbose` adds a trace line for the lower-level events — model requests,
   tool calls, metadata — and commits the model's reasoning to the transcript.
   `Ctrl-T` toggles the same thing while running.
@@ -83,7 +88,8 @@ defmodule Mix.Tasks.Tars do
           timeout: :integer,
           sname: :string,
           cookie: :string,
-          connect: :keep
+          connect: :keep,
+          fleet_width: :integer
         ]
       )
 
@@ -108,18 +114,26 @@ defmodule Mix.Tasks.Tars do
     :ok =
       Breeze.Server.run(
         view: TarsTUI.App,
-        start_opts: [
-          agent: agent_id,
-          agent_id: agent_id,
-          spawn_opts: spawn_opts,
-          model: config.model_spec,
-          verbose: opts[:verbose] || false
-        ],
+        start_opts:
+          [
+            agent: agent_id,
+            agent_id: agent_id,
+            spawn_opts: spawn_opts,
+            model: config.model_spec,
+            verbose: opts[:verbose] || false
+          ] ++ sidebar_width(opts),
         global_keybindings: TarsTUI.App.keybindings(),
         mouse: true,
         logger: false,
         inspector: false
       )
+  end
+
+  defp sidebar_width(opts) do
+    case opts[:fleet_width] do
+      nil -> []
+      width -> [sidebar_width: width]
+    end
   end
 
   defp distribute(opts) do

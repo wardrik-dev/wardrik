@@ -319,6 +319,28 @@ defmodule TarsTUI.View do
   def away(1), do: note("1 message arrived while this client was elsewhere · replayed below")
   def away(n), do: note("#{n} messages arrived while this client was elsewhere · replayed below")
 
+  @doc "That the fleet panel now shows only the agents matching a query."
+  @spec filtered(String.t(), non_neg_integer(), non_neg_integer()) :: Text.t()
+  def filtered(query, shown, total),
+    do: note(["the panel shows #{shown} of #{total} agents matching ", Text.tag(query, :cyan)])
+
+  @doc "That the fleet panel shows every agent again."
+  @spec unfiltered() :: Text.t()
+  def unfiltered, do: note("the panel shows every agent")
+
+  @doc "That a word of a filter query is not one the panel understands."
+  @spec bad_filter(String.t()) :: Text.t()
+  def bad_filter(word) do
+    [
+      Text.tag("\n✗ #{word} is not a filter · ", :red),
+      Text.tag("text, name:, org:, user:, node:, status:idle|running|parked, attention\n", @faint)
+    ]
+  end
+
+  @doc "Said when `/next` finds no agent needing attention."
+  @spec nothing_needs_attention() :: Text.t()
+  def nothing_needs_attention, do: note("no agent needs attention")
+
   @doc "That an agent was asked to stop what it is doing."
   @spec stopped(String.t()) :: Text.t()
   def stopped(key), do: note(["asked ", Text.tag(key, :bright), " to stop"])
@@ -597,6 +619,7 @@ defmodule TarsTUI.View do
     {"j/k, Ctrl-U/D, PageUp/Down", "in the transcript, scroll a row, half a page, a page"},
     {"Up, Down, Enter", "in the fleet panel, choose an agent and connect to it"},
     {"l, h", "in the fleet panel, show or hide an agent's delegations; Enter on one inspects it"},
+    {"n, a", "in the fleet panel, move to the next agent needing attention, and show only those"},
     {"Ctrl-F", "show or hide the fleet panel"},
     {"Ctrl-T", "toggle the trace"},
     {"Ctrl-D", "quit, from the prompt with nothing typed"}

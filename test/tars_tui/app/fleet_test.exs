@@ -24,7 +24,8 @@ defmodule TarsTUI.App.FleetTest do
           agent: agent_id,
           agent_id: agent_id,
           spawn_opts: spawn_opts,
-          model: "test:model"
+          model: "test:model",
+          sidebar_width: 24
         ],
         global_keybindings: App.keybindings()
       )
@@ -77,7 +78,7 @@ defmodule TarsTUI.App.FleetTest do
     assert Breeze.Test.focused(session) == "fleet"
 
     assert screen(session) =~
-             "j/k move · l/h expand · Enter connect or inspect · i prompt · Esc back"
+             "j/k · l/h expand · n/a attention · Enter connect · i prompt · Esc back"
 
     Breeze.Test.input(session, %{"key" => "x", "ctrlKey" => true})
     assert screen(session) =~ "Ctrl-X · h transcript · j prompt · Esc cancel"
@@ -100,14 +101,17 @@ defmodule TarsTUI.App.FleetTest do
     assert Breeze.Test.focused(session) == "prompt"
   end
 
-  test "the panel widens for long names and their node", %{session: session, org: org} do
+  test "the panel keeps its width, clipping a long name rather than widening", ctx do
+    %{session: session, org: org} = ctx
     key = Fleet.key("assistant_with_a_long_name", org: org)
     on_exit(fn -> Fleet.forget(key) end)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
 
     submit(session, "/fleet")
 
-    assert screen(session) =~ "○ assistant_with_a_long_name"
+    text = screen(session)
+    assert text =~ "○ assistant_with_…│"
+    assert text =~ "○ #{key} idle on"
   end
 
   @primary "38;5;4"
@@ -367,6 +371,118 @@ defmodule TarsTUI.App.FleetTest do
       tries == 0 -> false
       true -> Process.sleep(20) && eventually(check, tries - 1)
     end
+  end
+
+  test "an agent that finished while unwatched needs attention until connected to", ctx do
+    %{session: session, org: org} = ctx
+    other = Fleet.key("other", org: org)
+    {:ok, pid} = Fleet.spawn(other, runner: {AgentRunners, :blocking, [self(), "found it"]})
+    on_exit(fn -> Fleet.forget(other) end)
+
+    Agent.ask(pid, "go")
+    assert_receive {:turn, _context, turn}
+    assert eventually(fn -> screen(session) =~ "◐ other" end)
+
+    send(turn, :release)
+    assert eventually(fn -> screen(session) =~ "! ○ other new result" end)
+    assert screen(session) =~ "fleet · 2 · 1 need"
+
+    submit(session, "/next")
+    text = screen(session)
+    assert text =~ "connected to #{other}"
+    assert text =~ "› ○ other"
+    refute text =~ "new result"
+    refute text =~ "need attention"
+
+    submit(session, "/next")
+    assert screen(session) =~ "no agent needs attention"
+  end
+
+  test "a parked agent needs attention, and n in the panel moves to it", ctx do
+    %{session: session, org: org} = ctx
+    parker = Fleet.key("parker", org: org)
+    {:ok, pid} = Fleet.spawn(parker, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    on_exit(fn -> Fleet.forget(parker) end)
+
+    Agent.ask(pid, "deploy")
+    assert_receive :asked
+    assert eventually(fn -> screen(session) =~ "! ? parker deploy" end)
+    assert screen(session) =~ "fleet · 2 · 1 need"
+
+    focus_fleet(session)
+    Breeze.Test.input(session, "n")
+    assert :sys.get_state(session.pid).assigns.highlighted == parker
+
+    Breeze.Test.input(session, "a")
+    text = screen(session)
+    assert text =~ "fleet · 1/2 · 1 need"
+    refute text =~ "○ watched"
+
+    Breeze.Test.input(session, "a")
+    assert screen(session) =~ "› ○ watched"
+  end
+
+  test "/filter narrows the panel, and alone shows every agent again", ctx do
+    %{session: session, org: org} = ctx
+    alpha = Fleet.key("alpha", org: org)
+    busy = Fleet.key("busy", org: org)
+    {:ok, _pid} = Fleet.spawn(alpha, runner: {AgentRunners, :echo, [self(), "ok"]})
+    {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
+    on_exit(fn -> Enum.each([alpha, busy], &Fleet.forget/1) end)
+
+    Agent.ask(pid, "go")
+    assert_receive {:turn, _context, turn}
+    assert eventually(fn -> screen(session) =~ "◐ busy" end)
+
+    submit(session, "/filter status:running")
+    text = screen(session)
+    assert text =~ "the panel shows 1 of 3 agents matching status:running"
+    assert text =~ "fleet · 1/3 ·"
+    assert text =~ "◐ busy"
+    refute text =~ "○ alpha"
+
+    submit(session, "/filter size:large")
+    assert screen(session) =~ "size:large is not a filter"
+
+    submit(session, "/filter")
+    text = screen(session)
+    assert text =~ "the panel shows every agent"
+    assert text =~ "○ alpha"
+
+    send(turn, :release)
+  end
+
+  test "two agents going by one name are both shown by their whole key", ctx do
+    %{session: session, org: org, agent_id: agent_id} = ctx
+    twin = Fleet.key("watched", org: org <> "b")
+    {:ok, _pid} = Fleet.spawn(twin, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(twin) end)
+
+    assert eventually(fn -> screen(session) =~ "○ #{org}b/_/" end)
+    assert screen(session) =~ "› ○ #{org}/_/"
+
+    assert String.starts_with?(twin, org <> "b/_/") and
+             String.starts_with?(agent_id, org <> "/_/")
+  end
+
+  test "on a narrow terminal the panel is an overlay while it is focused", %{session: session} do
+    session = Breeze.Test.resize(session, {60, 20})
+    refute screen(session) =~ "fleet · 1"
+
+    ctrl_f(session)
+    text = screen(session)
+    assert text =~ "fleet · 1"
+    assert text =~ "› ○ watched"
+    assert Breeze.Test.focused(session) == "fleet"
+
+    Breeze.Test.input(session, "Escape")
+    refute screen(session) =~ "fleet · 1"
+    assert Breeze.Test.focused(session) == "prompt"
+
+    ctrl_f(session)
+    assert screen(session) =~ "fleet · 1"
+    ctrl_f(session)
+    refute screen(session) =~ "fleet · 1"
   end
 
   test "a draft is kept per agent across a switch", %{session: session, org: org} do

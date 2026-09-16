@@ -40,12 +40,31 @@ defmodule TarsTUI.FleetTest do
 
   # Attached, by default, to an agent in the same org and user as `member/1`
   # builds, so rows are named alone unless a test says otherwise.
-  defp row(member, attached \\ "acme/jon/mine", width \\ 30),
-    do: Fleet.row(member, attached, width)
+  defp row(member, attached \\ "acme/jon/mine", width \\ 30, opts \\ []),
+    do: Fleet.row(member, attached, width, opts)
 
-  describe "heading/2" do
-    test "says how many agents there are" do
-      assert plain(Fleet.heading([member([]), member(key: "acme/jon/other")], 22)) =~ "fleet · 2"
+  describe "heading/5" do
+    test "says how many agents there are, and how many are shown" do
+      assert plain(Fleet.heading(2, 2, 0, "", 30)) == " fleet · 2"
+      assert plain(Fleet.heading(1, 3, 0, "status:idle", 40)) == " fleet · 1/3 · status:idle"
+    end
+
+    test "counts the agents needing attention" do
+      assert plain(Fleet.heading(3, 3, 2, "", 40)) == " fleet · 3 · 2 need attention"
+    end
+  end
+
+  describe "attention?/2 and ambiguous/1" do
+    test "a parked agent, or one with an unseen outcome, needs attention" do
+      assert Fleet.attention?(member(status: :parked), %{})
+      assert Fleet.attention?(member([]), %{"acme/jon/researcher" => :ok})
+      refute Fleet.attention?(member(status: :running), %{})
+    end
+
+    test "names shared by several agents are ambiguous" do
+      members = [member(key: "acme/jon/x"), member(key: "acme/ann/x"), member(key: "acme/jon/y")]
+
+      assert Fleet.ambiguous(members) == MapSet.new(["x"])
     end
   end
 
@@ -68,6 +87,26 @@ defmodule TarsTUI.FleetTest do
                "○ acme/ann/assistant"
 
       assert plain(row(member(key: "_/_/mine"), "_/_/mine")) =~ "› ○ mine"
+    end
+
+    test "shows the whole key when another agent shares the name" do
+      shared = MapSet.new(["researcher"])
+
+      assert plain(row(member([]), "acme/jon/mine", 40, ambiguous: shared)) =~
+               "○ acme/jon/researcher"
+    end
+
+    test "marks an agent needing attention, and a result not yet seen" do
+      assert plain(row(member(status: :parked, waiting_on: ["deploy"]))) =~
+               "! ? researcher deploy"
+
+      assert plain(row(member([]), "acme/jon/mine", 40, unseen: :ok)) =~
+               "! ○ researcher new result"
+
+      assert plain(row(member(outcome: :failed), "acme/jon/mine", 40, unseen: :failed)) =~
+               "! ○ researcher failed"
+
+      refute plain(row(member([]))) =~ "!"
     end
 
     test "marks the agent this client is watching" do
@@ -126,40 +165,6 @@ defmodule TarsTUI.FleetTest do
 
     test "clips to the width it was given" do
       assert String.length(plain(Fleet.delegation_row(delegation([]), 0, true, 0, 10))) <= 10
-    end
-  end
-
-  describe "width/1" do
-    test "is never narrower than the minimum, even with nothing to show" do
-      assert Fleet.width([]) == 22
-      assert Fleet.width([member(key: "a/b/x")]) == 22
-    end
-
-    test "grows to fit the longest row and its node" do
-      wide = member(key: "acme/jon/assistant_number_four", node: :tars_b@somewhere)
-
-      assert Fleet.width([wide], "acme/jon/mine") ==
-               String.length(plain(row(wide, "acme/jon/mine", 80))) + 5
-    end
-
-    test "counts the scope only for rows that show it" do
-      other = member(key: "acme/jon/researcher-two")
-
-      assert Fleet.width([other], "acme/jon/mine") ==
-               String.length(plain(row(other, "acme/jon/mine", 80))) + 5
-
-      assert Fleet.width([other], "_/_/mine") > Fleet.width([other], "acme/jon/mine")
-    end
-
-    test "makes room for the delegation rows it is given" do
-      long = Fleet.delegation(delegation(name: "a-longer-name"), 2, true, 0)
-
-      assert Fleet.width([member(key: "a/b/x")], "a/b/mine", [long]) ==
-               String.length(plain(long)) + 5
-    end
-
-    test "stops at the maximum" do
-      assert Fleet.width([member(key: "a/b/#{String.duplicate("x", 60)}")]) == 40
     end
   end
 
