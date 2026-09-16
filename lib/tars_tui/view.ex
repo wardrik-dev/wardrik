@@ -410,6 +410,17 @@ defmodule TarsTUI.View do
   defp meant(names),
     do: [Text.tag(" · did you mean ", @faint), Text.tag(Enum.join(names, ", "), :bright)]
 
+  @doc "Why the editor left the prompt as it was."
+  @spec editor_failed(term()) :: Text.t()
+  def editor_failed(:no_editor),
+    do: [Text.tag("\n✗ no editor · set $VISUAL or $EDITOR to edit the prompt\n", :red)]
+
+  def editor_failed({:exit, status}),
+    do: note(["the editor exited with status #{status} · the prompt is as it was"])
+
+  def editor_failed(reason),
+    do: [Text.tag("\n✗ the editor failed · #{inspect(reason)} · the prompt is as it was\n", :red)]
+
   @doc "That nothing was sent, because the agent is not running."
   @spec unavailable(String.t()) :: Text.t()
   def unavailable(key), do: [Text.tag("\n✗ #{key} is not running · nothing was sent\n", :red)]
@@ -447,6 +458,9 @@ defmodule TarsTUI.View do
   @keys [
     {"Enter", "send what you typed; during a turn it steers the turn at its next boundary"},
     {"Shift-Enter", "a new line in the prompt"},
+    {"Up, Down",
+     "on the prompt's first or last line, an older or newer prompt sent to this agent; with a / typed, an older command"},
+    {"Ctrl-G", "edit the prompt in $VISUAL, or $EDITOR; what is saved comes back unsent"},
     {"Esc",
      "in the prompt, stop the turn or abandon a parked one; elsewhere, back to the prompt"},
     {"Tab, Shift-Tab", "cycle the prompt, the transcript and the fleet panel"},

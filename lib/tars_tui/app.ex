@@ -85,11 +85,19 @@ defmodule TarsTUI.App do
   prompt from either other pane and cancels a pending leader; in the prompt it
   does nothing. `i` in the transcript or the panel focuses the prompt.
 
-  `Enter` sends. `Esc` in the prompt, with nothing else to dismiss, stops
-  the turn or abandons a parked one, as does `Ctrl-X` then `s` from any pane.
-  `Ctrl-C` leaves at once, as Breeze has it, taking any agent this node runs
-  with it. `Ctrl-D` quits from the prompt when nothing is typed; in the
-  transcript it
+  `Enter` sends. `Up` on the prompt's first line and `Down` on its last walk
+  what was entered before: with the draft starting with `/`, the commands
+  typed in this client, whichever agent was attached; otherwise the prompts
+  sent to the attached agent, kept with its view. Nothing recalled is sent
+  until `Enter`, and `Down` past the newest line brings the unfinished draft
+  back. `Ctrl-G` opens the draft in the editor `$VISUAL` names, or `$EDITOR`,
+  and puts what was saved back in the prompt, unsent; an editor that exits
+  with any other status, or none that is set, leaves the draft as it was.
+
+  `Esc` in the prompt, with nothing else to dismiss, stops the turn or
+  abandons a parked one, as does `Ctrl-X` then `s` from any pane. `Ctrl-C`
+  leaves at once, as Breeze has it, taking any agent this node runs with it.
+  `Ctrl-D` quits from the prompt when nothing is typed; in the transcript it
   scrolls half a page down, as `Ctrl-U` scrolls up, alongside `j`, `k`,
   `PageUp`, `PageDown`, `Home` and `End`. `Ctrl-F` shows and hides the
   panel. `Ctrl-T` toggles tracing. `/stop` and `/quit` do the same as the
@@ -107,6 +115,7 @@ defmodule TarsTUI.App do
   alias Tars.LLM
   alias TarsTUI.Activity
   alias TarsTUI.Command
+  alias TarsTUI.History
   alias TarsTUI.Markdown
   alias TarsTUI.Render
   alias TarsTUI.Table
@@ -141,6 +150,7 @@ defmodule TarsTUI.App do
     :answering?,
     :usage,
     :draft,
+    :history,
     :seen,
     :parked,
     :started_at,
@@ -158,8 +168,10 @@ defmodule TarsTUI.App do
 
   `Ctrl-X` is the leader: the next `h`, `j`, `k` or `l` moves focus between
   the transcript, the fleet panel and the prompt, `s` stops the turn, and
-  `Esc` cancels. `i` in the transcript or the panel focuses the prompt.
-  `Ctrl-C` never reaches these: Breeze leaves on it.
+  `Esc` cancels. `i` in the transcript or the panel focuses the prompt. `Up`
+  and `Down` at the prompt's first and last line recall earlier lines, and
+  `Ctrl-G` edits the draft in `$VISUAL` or `$EDITOR`. `Ctrl-C` never reaches
+  these: Breeze leaves on it.
   """
   @spec keybindings() :: [{String.t(), String.t(), (map(), Breeze.Term.t() -> term())}]
   def keybindings do
@@ -167,6 +179,9 @@ defmodule TarsTUI.App do
       {"^x", "Leader", &__MODULE__.leader/2},
       {"Escape", "Back", &__MODULE__.back/2},
       {"i", "Prompt", &__MODULE__.to_prompt/2},
+      {"ArrowUp", "Older", &__MODULE__.older/2},
+      {"ArrowDown", "Newer", &__MODULE__.newer/2},
+      {"^g", "Edit", &__MODULE__.edit/2},
       {"^y", "Approve", &__MODULE__.approve/2},
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
@@ -229,6 +244,134 @@ defmodule TarsTUI.App do
   def back(_event, term), do: {:noreply, focus_pane(term, "prompt")}
 
   defp busy?(%{assigns: %{running?: running?, parked: parked}}), do: running? or parked != []
+
+  # Recalls an older line when the cursor is on the prompt's first line, and
+  # leaves the key to the prompt otherwise, where it moves the cursor up.
+  @doc false
+  def older(_event, %{focused: "prompt", assigns: %{leader: nil}} = term) do
+    %{value: value, cursor: cursor} = prompt(term)
+
+    if first_line?(value, cursor), do: {:noreply, recall(term, :back)}, else: :continue
+  end
+
+  def older(_event, _term), do: :continue
+
+  # Recalls a newer line when the cursor is on the prompt's last line.
+  @doc false
+  def newer(_event, %{focused: "prompt", assigns: %{leader: nil}} = term) do
+    %{value: value, cursor: cursor} = prompt(term)
+
+    if last_line?(value, cursor), do: {:noreply, recall(term, :forward)}, else: :continue
+  end
+
+  def newer(_event, _term), do: :continue
+
+  defp prompt(term) do
+    draft = term.assigns.draft
+    Map.merge(%{value: draft, cursor: String.length(draft)}, implicit_state(term, "prompt"))
+  end
+
+  defp first_line?(value, cursor), do: not String.contains?(String.slice(value, 0, cursor), "\n")
+
+  defp last_line?(value, cursor),
+    do: not String.contains?(String.slice(value, cursor, String.length(value)), "\n")
+
+  # The list walked is the one entered: the commands when the draft starts
+  # with a slash, otherwise the attached agent's prompts.
+  defp recall(term, direction) do
+    which = term.assigns.walking || which(term.assigns.draft)
+    history = term.assigns[which]
+
+    step =
+      case direction do
+        :back -> History.back(history, term.assigns.draft)
+        :forward -> History.forward(history)
+      end
+
+    case step do
+      :none ->
+        term
+
+      {line, history} ->
+        term
+        |> assign([{which, history}, {:walking, if(History.browsing?(history), do: which)}])
+        |> put_draft(line)
+    end
+  end
+
+  defp which("/" <> _rest), do: :commands
+  defp which(_draft), do: :history
+
+  # The draft as the prompt shows it, with the cursor at its end.
+  defp put_draft(term, line) do
+    at = String.length(line)
+
+    term
+    |> assign(draft: line)
+    |> update_implicit("prompt", fn {_module, state} ->
+      %{state | value: line, cursor: at, preferred_column: nil}
+    end)
+  end
+
+  # Records a line entered: a question in the attached agent's history, a
+  # slash command in the client's; an answer to a parked call in neither.
+  defp remember(term, value, command) do
+    term = leave(term)
+
+    case {command, String.trim(value)} do
+      {{:ask, text}, _line} ->
+        assign(term, history: History.push(term.assigns.history, text))
+
+      {_other, "/" <> _rest = line} ->
+        assign(term, commands: History.push(term.assigns.commands, line))
+
+      _answer ->
+        term
+    end
+  end
+
+  defp leave(term) do
+    assign(term,
+      walking: nil,
+      history: History.leave(term.assigns.history),
+      commands: History.leave(term.assigns.commands)
+    )
+  end
+
+  # Opens the draft in the editor, from any pane, unless one is open already.
+  # The editor runs in a process of its own and answers with `{:edited, ref,
+  # result}`; the agent the draft belongs to is remembered with it.
+  @doc false
+  def edit(_event, %{assigns: %{editing: nil}} = term) do
+    %{draft: draft, agent_id: agent_id, editor: editor} = term.assigns
+    view = self()
+    ref = make_ref()
+    context = %{terminal: term.terminal, server: term.server}
+    {pid, _monitor} = spawn_monitor(fn -> send(view, {:edited, ref, editor.(draft, context)}) end)
+
+    {:noreply, term |> assign(editing: {ref, agent_id, pid}) |> focus_pane("prompt")}
+  end
+
+  def edit(_event, term), do: {:noreply, sync_pane(term)}
+
+  # What the editor saved becomes the draft of the agent it was opened for:
+  # the prompt when that agent is still attached, its kept view otherwise. An
+  # editor that failed leaves the draft as it was and says why.
+  defp edited(%{assigns: %{agent_id: agent_id}} = term, agent_id, {:ok, text}),
+    do: put_draft(term, text)
+
+  defp edited(term, agent_id, {:ok, text}) do
+    case term.assigns.views do
+      %{^agent_id => kept} ->
+        kept = %{kept | draft: text, prompt: %{}}
+        assign(term, views: Map.put(term.assigns.views, agent_id, kept))
+
+      _views ->
+        term
+    end
+  end
+
+  defp edited(term, _agent_id, {:error, reason}), do: append(term, View.editor_failed(reason))
 
   @doc false
   def connect_highlighted(_event, term) do
@@ -328,11 +471,16 @@ defmodule TarsTUI.App do
         sidebar?: Keyword.get(opts, :sidebar, true),
         model: Keyword.get(opts, :model, ""),
         verbose?: Keyword.get(opts, :verbose, false),
+        editor: Keyword.get(opts, :editor, &TarsTUI.Editor.edit/2),
         views: %{},
         available?: true,
         confirm: nil,
         pane: "prompt",
         leader: nil,
+        editing: nil,
+        walking: nil,
+        commands: History.new(),
+        history: History.new(),
         frame: 0,
         frame_due?: false,
         started_at: nil,
@@ -420,6 +568,7 @@ defmodule TarsTUI.App do
       usage: Usage.new(term.assigns.model),
       unread: 0,
       draft: "",
+      history: History.new(),
       started_at: nil,
       frame: 0,
       seen: length(messages)
@@ -745,6 +894,9 @@ defmodule TarsTUI.App do
     Text.tag(["Ctrl-X · ", Enum.join(moves ++ stop ++ ["Esc cancel"], " · "), " "], :yellow)
   end
 
+  defp hints(%{editing: {_ref, _agent_id, _pid}}),
+    do: Text.tag("editing the prompt · the screen returns when the editor closes ", :yellow)
+
   defp hints(%{pane: "log"}),
     do: Text.tag("j/k scroll · Ctrl-U/D half page · i prompt · Esc back ", @faint)
 
@@ -822,7 +974,7 @@ defmodule TarsTUI.App do
     do: {:noreply, direction(term, value)}
 
   def handle_event("draft", %{value: value}, term),
-    do: {:noreply, assign(term, draft: value, pane: "prompt")}
+    do: {:noreply, term |> assign(draft: value, pane: "prompt") |> leave()}
 
   def handle_event("highlight", %{value: key}, term),
     do: {:noreply, assign(term, highlighted: key, pane: "fleet")}
@@ -832,9 +984,10 @@ defmodule TarsTUI.App do
       {:noreply, assign(term, unread: if(pinned?, do: 0, else: term.assigns.unread), pane: "log")}
 
   def handle_event("ask", %{value: value}, term) do
-    term = term |> assign(draft: "", leader: nil) |> reset("prompt")
+    command = Command.parse(value, term.assigns.parked != [])
+    term = term |> assign(draft: "", leader: nil) |> reset("prompt") |> remember(value, command)
 
-    case Command.parse(value, term.assigns.parked != []) do
+    case command do
       :quit -> {:stop, term}
       command -> {:noreply, apply_command(command, term)}
     end
@@ -1140,6 +1293,18 @@ defmodule TarsTUI.App do
     do: {:noreply, unlead(term)}
 
   def handle_info({:leader_timeout, _stale}, term), do: {:noreply, term, invalidate: false}
+
+  def handle_info({:edited, ref, result}, %{assigns: %{editing: {ref, agent_id, _pid}}} = term),
+    do: {:noreply, term |> assign(editing: nil) |> sync_pane() |> edited(agent_id, result)}
+
+  def handle_info({:edited, _stale, _result}, term), do: {:noreply, term, invalidate: false}
+
+  def handle_info(
+        {:DOWN, _ref, :process, pid, reason},
+        %{assigns: %{editing: {_edit, _id, pid}}} = term
+      )
+      when reason != :normal,
+      do: {:noreply, term |> assign(editing: nil) |> append(View.editor_failed(reason))}
 
   # A group event says something in the fleet changed; the refresh behind it
   # reads the whole list once, however many events arrived.

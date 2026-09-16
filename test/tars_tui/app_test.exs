@@ -147,6 +147,103 @@ defmodule TarsTUI.AppTest do
     end
   end
 
+  describe "history" do
+    defp up(session), do: Breeze.Test.input(session, "ArrowUp")
+    defp down(session), do: Breeze.Test.input(session, "ArrowDown")
+
+    test "Up recalls what was sent, and Down comes back to the unfinished draft", ctx do
+      %{session: session} = ctx
+      submit(session, "first question")
+      submit(session, "second question")
+      assert_receive {:"$gen_cast", {:ask, "first question"}}
+      assert_receive {:"$gen_cast", {:ask, "second question"}}
+      screen(session)
+      type(session, "unfinished")
+
+      up(session)
+      assert screen(session) =~ "› second question"
+      up(session)
+      assert screen(session) =~ "› first question"
+      up(session)
+      assert screen(session) =~ "› first question"
+
+      down(session)
+      assert screen(session) =~ "› second question"
+      down(session)
+      assert screen(session) =~ "› unfinished"
+
+      refute_receive {:"$gen_cast", {:ask, _recalled}}
+    end
+
+    test "a recalled line is sent with Enter, and edited before that", %{session: session} do
+      submit(session, "hello")
+      screen(session)
+
+      up(session)
+      type(session, " again")
+      Breeze.Test.input(session, "Enter")
+
+      assert_receive {:"$gen_cast", {:ask, "hello again"}}
+      assert screen(session) =~ "› hello again"
+    end
+
+    test "Up moves within a multi-line draft before reaching history", %{session: session} do
+      submit(session, "sent before")
+      screen(session)
+
+      type(session, "one")
+      Breeze.Test.input(session, %{"key" => "Enter", "shiftKey" => true})
+      type(session, "two")
+
+      up(session)
+      text = screen(session)
+      assert text =~ "│ › one"
+      assert text =~ "│   two"
+
+      up(session)
+      text = screen(session)
+      assert text =~ "│ › sent before"
+      refute text =~ "│   two"
+
+      down(session)
+      text = screen(session)
+      assert text =~ "│ › one"
+      assert text =~ "│   two"
+    end
+
+    test "a draft starting with a slash walks the commands, kept apart", %{session: session} do
+      submit(session, "a question")
+      submit(session, "/help")
+      submit(session, "/spwan helper")
+
+      up(session)
+      assert screen(session) =~ "│ › a question"
+      down(session)
+      screen(session)
+
+      type(session, "/")
+      up(session)
+      assert screen(session) =~ "│ › /spwan helper"
+      up(session)
+      assert screen(session) =~ "│ › /help"
+      up(session)
+      assert screen(session) =~ "│ › /help"
+      down(session)
+      down(session)
+      assert screen(session) =~ ~r/│ › \/\s+│/
+    end
+
+    test "an answer to a parked call is not history", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      submit(session, "y")
+      assert_receive {:"$gen_cast", {:resume, _decisions}}
+      emit(turn, [{:turn_finished, []}])
+
+      up(session)
+      refute screen(session) =~ "› y"
+    end
+  end
+
   describe "approvals" do
     test "one parked call takes a bare answer", %{session: session, turn: turn} do
       emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
