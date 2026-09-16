@@ -109,6 +109,7 @@ defmodule Tars.Agent.State do
 
   @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts]
   defstruct [
+    :generation,
     :agent_id,
     :config,
     :context,
@@ -150,6 +151,7 @@ defmodule Tars.Agent.State do
   @type resumer() :: {module(), atom(), list()}
 
   @type t() :: %__MODULE__{
+          generation: String.t(),
           agent_id: Event.Bus.agent_id(),
           config: LLM.Config.t(),
           context: Context.t(),
@@ -163,6 +165,7 @@ defmodule Tars.Agent.State do
 
   @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
   @type dumped() :: %{
+          generation: String.t(),
           agent_id: Event.Bus.agent_id(),
           config: LLM.Config.dumped(),
           context: Context.t(),
@@ -201,7 +204,11 @@ defmodule Tars.Agent.State do
         }
 
   @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
-  @type status() :: %{state: :idle | :running | :parked, pending: non_neg_integer()}
+  @type status() :: %{
+          state: :idle | :running | :parked,
+          pending: non_neg_integer(),
+          model: term()
+        }
 
   @typedoc "What the fleet shows for an agent."
   @type meta() :: %{
@@ -221,6 +228,7 @@ defmodule Tars.Agent.State do
     {org, user, _name} = Fleet.parse(agent_id)
 
     %__MODULE__{
+      generation: generation(),
       agent_id: agent_id,
       config: Keyword.get(opts, :config, LLM.Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
@@ -274,8 +282,27 @@ defmodule Tars.Agent.State do
   @doc "Reads an agent back from `dump/1`, with the tools this node can build."
   @spec load(dumped()) :: t()
   def load(%{config: config, mode: mode} = dumped) do
+    dumped = Map.put_new_lazy(dumped, :generation, &generation/0)
     struct!(__MODULE__, %{dumped | config: LLM.Config.load(config), mode: reopen(mode)})
   end
+
+  defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+
+  @doc "An atomic attachment snapshot; generation survives restarts but not deletion."
+  @spec snapshot(t()) :: map()
+  def snapshot(state) do
+    %{
+      generation: state.generation,
+      status: status(state),
+      context: state.context,
+      parked: waiting_on(state),
+      trace_id: trace_id(state.mode)
+    }
+  end
+
+  defp trace_id(%Running{scope: scope}), do: scope.source.trace.trace_id
+  defp trace_id(%Waiting{source: source}), do: source.trace.trace_id
+  defp trace_id(_mode), do: nil
 
   defp reopen({:waiting, turn, source}) do
     %Waiting{turn: turn, source: source, started_at: System.monotonic_time()}
@@ -289,10 +316,14 @@ defmodule Tars.Agent.State do
     Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
   end
 
-  @doc "What this agent is doing, and how much is queued behind it."
+  @doc "What this agent is doing, how much is queued behind it, and the model it runs."
   @spec status(t()) :: status()
   def status(%__MODULE__{} = state) do
-    %{state: activity(state.mode), pending: length(state.pending)}
+    %{
+      state: activity(state.mode),
+      pending: length(state.pending),
+      model: state.config.model_spec
+    }
   end
 
   defp activity(%Running{}), do: :running

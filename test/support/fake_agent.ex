@@ -15,9 +15,27 @@ defmodule Tars.Test.FakeAgent do
   def init(owner), do: {:ok, owner}
 
   @impl true
-  def handle_call(:status, _from, owner), do: {:reply, %{state: :idle, pending: 0}, owner}
+  def handle_call(:status, _from, owner),
+    do: {:reply, %{state: :idle, pending: 0, model: "test:model"}, owner}
+
   def handle_call(:parked, _from, owner), do: {:reply, [], owner}
   def handle_call(:get_context, _from, owner), do: {:reply, ReqLLM.Context.new(), owner}
+
+  def handle_call(:snapshot, _from, owner) do
+    {:reply,
+     %{
+       status: %{state: :idle, pending: 0, model: "test:model"},
+       context: ReqLLM.Context.new(),
+       parked: [],
+       generation: inspect(self()),
+       trace_id: nil
+     }, owner}
+  end
+
+  def handle_call({:decide, decisions}, _from, owner) do
+    send(owner, {:"$gen_cast", {:resume, decisions}})
+    {:reply, :ok, owner}
+  end
 
   @impl true
   def handle_cast(message, owner) do

@@ -65,11 +65,13 @@ defmodule Tars.Agent do
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
 
-  The agent adds four events of its own so subscribers can follow its state
+  The agent adds five events of its own so subscribers can follow its state
   without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`,
-  `{:turn_failed, reason}` and `{:turn_interrupted, stats}`. All are emitted on
-  the turn's root span, so a subscriber can tell them from events the turn's
-  own work produced. A client attaching mid-turn can catch up with `status/1`.
+  `{:turn_failed, reason}`, `{:turn_interrupted, stats}` and
+  `{:turn_resumed, decisions}`, the last carrying the decisions a parked turn
+  was answered with. All are emitted on the turn's root span, so a subscriber
+  can tell them from events the turn's own work produced. A client attaching
+  mid-turn can catch up with `status/1`.
   """
   require Logger
 
@@ -84,7 +86,7 @@ defmodule Tars.Agent do
   @typedoc "An agent: the pid of one, or the fleet key it is registered under."
   @type agent() :: pid() | String.t()
 
-  @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
+  @typedoc "Whether a turn is in flight, how many messages wait behind it, and the model."
   @type status() :: State.status()
 
   @typedoc "What an interrupt stopped."
@@ -120,6 +122,14 @@ defmodule Tars.Agent do
 
   @spec status(agent()) :: status() | {:error, :not_found}
   def status(agent), do: call(agent, :status)
+
+  @doc "Reads conversation, lifecycle state, and durable identity in one call."
+  @spec snapshot(agent()) :: map() | {:error, :not_found}
+  def snapshot(agent), do: call(agent, :snapshot)
+
+  @doc "Accepts decisions only while their calls are parked, acknowledging acceptance before returning."
+  @spec decide(agent(), map()) :: :ok | {:error, :not_found | :not_parked | :stale_decision}
+  def decide(agent, decisions) when is_map(decisions), do: call(agent, {:decide, decisions})
 
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
@@ -189,6 +199,23 @@ defmodule Tars.Agent do
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
   def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
+  def handle_call(:snapshot, _from, state), do: {:reply, State.snapshot(state), state}
+
+  def handle_call({:decide, decisions}, _from, state) do
+    ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
+
+    cond do
+      ids == [] ->
+        {:reply, {:error, :not_parked}, state}
+
+      map_size(decisions) == 0 or not Enum.all?(Map.keys(decisions), &(&1 in ids)) ->
+        {:reply, {:error, :stale_decision}, state}
+
+      true ->
+        next = resume_turn(state, decisions)
+        {:reply, :ok, next, meta: State.meta(next), sync: true}
+    end
+  end
 
   @impl DurableServer
   def handle_cast({:ask, question}, state) do
@@ -204,14 +231,19 @@ defmodule Tars.Agent do
   end
 
   def handle_cast({:resume, decisions}, state) do
+    stay(resume_turn(state, decisions), sync: true)
+  end
+
+  defp resume_turn(state, decisions) do
     case State.resume(state) do
       {:resume, scope, turn, started_at} ->
+        Event.emit(scope.source, {:turn_resumed, decisions})
         task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
-        stay(State.resumed(state, task, scope, turn, started_at), sync: true)
+        State.resumed(state, task, scope, turn, started_at)
 
       :none ->
-        stay(state)
+        state
     end
   end
 

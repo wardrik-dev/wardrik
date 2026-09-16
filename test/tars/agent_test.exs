@@ -136,7 +136,7 @@ defmodule Tars.AgentTest do
     test "reports idle with nothing pending" do
       agent = start_agent(runner: runner(self()))
 
-      assert Agent.status(agent) == %{state: :idle, pending: 0}
+      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
 
     test "reports running, and counts what is queued behind the turn" do
@@ -380,7 +380,7 @@ defmodule Tars.AgentTest do
       assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}
 
       assert prompt == "This ships to production."
-      assert Agent.status(agent) == %{state: :parked, pending: 0}
+      assert %{state: :parked, pending: 0} = Agent.status(agent)
 
       assert [{%{id: "call_1", name: "deploy"}, "This ships to production."}] =
                Agent.parked(agent)
@@ -404,10 +404,11 @@ defmodule Tars.AgentTest do
 
       Agent.resume(agent, %{"call_1" => :approve})
 
+      assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
       assert_receive %Event{payload: {:turn_finished, _messages}}
       assert roles(agent) == [:user, :assistant]
-      assert Agent.status(agent) == %{state: :idle, pending: 0}
+      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
 
     test "a turn that parks again stays parked" do
@@ -423,7 +424,7 @@ defmodule Tars.AgentTest do
       assert_receive {:resumed, %{}}
       assert_receive %Event{payload: {:turn_parked, [{%{id: "call_2"}, _}]}}
 
-      assert Agent.status(agent) == %{state: :parked, pending: 0}
+      assert %{state: :parked, pending: 0} = Agent.status(agent)
       assert [{%{id: "call_2"}, _prompt}] = Agent.parked(agent)
     end
 
@@ -432,7 +433,7 @@ defmodule Tars.AgentTest do
 
       Agent.resume(agent, %{"call_1" => :approve})
 
-      assert Agent.status(agent) == %{state: :idle, pending: 0}
+      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
 
     test "a message arriving while parked queues rather than starting a second turn" do
@@ -445,7 +446,7 @@ defmodule Tars.AgentTest do
 
       Agent.ask(agent, "and another thing")
 
-      assert Agent.status(agent) == %{state: :parked, pending: 1}
+      assert %{state: :parked, pending: 1} = Agent.status(agent)
       refute_receive :asked
     end
 
@@ -462,7 +463,7 @@ defmodule Tars.AgentTest do
       assert_receive %Event{payload: {:turn_interrupted, stats}}
       assert stats.resolution == :abandoned
       assert stats.dropped == 1
-      assert Agent.status(agent) == %{state: :idle, pending: 0}
+      assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
       assert Agent.parked(agent) == []
     end
   end

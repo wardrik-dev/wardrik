@@ -150,10 +150,15 @@ defmodule Tars.Fleet do
   defp started({:ok, {pid, _meta}}), do: {:ok, pid}
   defp started({:error, reason}), do: {:error, reason}
 
-  @doc "Stops an agent, syncing its state first so `spawn/2` brings it back as it was."
+  @doc """
+  Stops an agent, syncing its state first so `spawn/2` brings it back as it was.
+
+  The agent stays stopped until something spawns it again: a graceful stop
+  would leave a permanent agent eligible for the supervisor's own restart.
+  """
   @spec stop(String.t()) :: :ok | {:error, term()}
   def stop(key) when is_binary(key) do
-    DurableServer.Supervisor.terminate_child(@name, key)
+    DurableServer.Supervisor.terminate_child_permanent(@name, key)
   end
 
   @doc "Stops an agent and deletes everything it had, permanently."

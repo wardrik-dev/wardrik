@@ -44,7 +44,7 @@ defmodule Tars.Agent.StateTest do
 
   describe "the mode" do
     test "a fresh agent is idle with nothing queued" do
-      assert State.status(state()) == %{state: :idle, pending: 0}
+      assert %{state: :idle, pending: 0} = State.status(state())
     end
 
     test "each mode reports itself" do
