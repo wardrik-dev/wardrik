@@ -59,7 +59,7 @@ defmodule Tars.LLM.Config do
 
   alias Tars.Tool
 
-  defstruct model_spec: {:zai_coding_plan, model: "glm-5-turbo"},
+  defstruct model_spec: {:zai_coding_plan, model: "glm-5.3-flash"},
             system: nil,
             tools: [],
             tool_timeouts: %{},
