@@ -376,9 +376,14 @@ defmodule TarsTUI.View do
   @spec cancelled() :: Text.t()
   def cancelled, do: note("removal cancelled")
 
-  @doc "That a slash word names no command, so nothing was sent to the model."
-  @spec unknown_command(String.t()) :: Text.t()
-  def unknown_command("/kill") do
+  @doc """
+  That a slash word names no command, so nothing was sent to the model, with
+  the commands it most resembles.
+  """
+  @spec unknown_command(String.t(), [String.t()]) :: Text.t()
+  def unknown_command(word, suggestions \\ [])
+
+  def unknown_command("/kill", _suggestions) do
     [
       Text.tag("\n✗ /kill is gone · ", :red),
       Text.tag("/stop", :bright),
@@ -390,13 +395,20 @@ defmodule TarsTUI.View do
     ]
   end
 
-  def unknown_command(word) do
+  def unknown_command(word, suggestions) do
     [
-      Text.tag("\n✗ #{word} is not a command, or is missing what it needs · ", :red),
+      Text.tag("\n✗ #{word} is not a command · nothing was sent", :red),
+      meant(suggestions),
+      Text.tag(" · ", @faint),
       Text.tag("/help", :bright),
-      Text.tag(" lists them · nothing was sent\n", @faint)
+      Text.tag(" lists them\n", @faint)
     ]
   end
+
+  defp meant([]), do: []
+
+  defp meant(names),
+    do: [Text.tag(" · did you mean ", @faint), Text.tag(Enum.join(names, ", "), :bright)]
 
   @doc "That nothing was sent, because the agent is not running."
   @spec unavailable(String.t()) :: Text.t()
@@ -432,37 +444,41 @@ defmodule TarsTUI.View do
   @spec no_such_agent(String.t()) :: Text.t()
   def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
 
-  @help [
+  @keys [
     {"Enter", "send what you typed; during a turn it steers the turn at its next boundary"},
     {"Shift-Enter", "a new line in the prompt"},
-    {"Esc", "stop the turn"},
-    {"Tab", "move focus between the prompt, the transcript and the fleet"},
-    {"Ctrl-T", "toggle the trace"},
-    {"Ctrl-F", "focus the fleet panel; again to put it away"},
+    {"Esc",
+     "in the prompt, stop the turn or abandon a parked one; elsewhere, back to the prompt"},
+    {"Tab, Shift-Tab", "cycle the prompt, the transcript and the fleet panel"},
+    {"Ctrl-X then h/j/k/l", "move focus in that direction; then s stops the turn, Esc cancels"},
+    {"Ctrl-C", "leave at once, without asking"},
+    {"i", "in the transcript or the panel, back to the prompt"},
+    {"j/k, Ctrl-U/D, PageUp/Down", "in the transcript, scroll a row, half a page, a page"},
     {"Up, Down, Enter", "in the fleet panel, choose an agent and connect to it"},
-    {"Ctrl-D", "quit"},
-    {"/spawn NAME [node=N] [prompt]", "start an agent beside this one and attach to it"},
-    {"/connect NAME", "attach to an agent and show its conversation"},
-    {"/move NAME node=N", "restart an agent on another node, as it was"},
-    {"/stop [NAME | PREFIX/]", "interrupt this agent, another, or every agent under a prefix"},
-    {"/shutdown NAME", "stop an agent and keep its conversation; /spawn brings it back"},
-    {"/rm NAME | PREFIX/", "delete an agent and its conversation, after showing what goes"},
-    {"/confirm", "go ahead with the removal shown"},
-    {"/fleet", "list every agent in the cluster"},
-    {"/approve [N | all]", "approve the parked call, one by number, or every one; y does too"},
-    {"/deny [N] [reason]", "deny the parked call, or one by number, saying why; n does too"},
-    {"/quit", "leave"},
-    {"/help", "this list"}
+    {"Ctrl-F", "show or hide the fleet panel"},
+    {"Ctrl-T", "toggle the trace"},
+    {"Ctrl-D", "quit, from the prompt with nothing typed"}
   ]
 
-  @doc "Every key and command, one per line."
+  @doc "Every key, then every command, one per line."
   @spec help() :: [Text.t()]
   def help do
-    width = @help |> Enum.map(fn {what, _does} -> String.length(what) end) |> Enum.max()
+    rows = @keys ++ TarsTUI.Command.help()
+    width = rows |> Enum.map(fn {what, _does} -> String.length(what) end) |> Enum.max()
 
-    Enum.map(@help, fn {what, does} ->
+    Enum.map(rows, fn {what, does} ->
       ["  ", Text.tag(String.pad_trailing(what, width), :bright), Text.tag("  #{does}", @faint)]
     end)
+  end
+
+  @doc "How a command is used, when it was given something else."
+  @spec usage(TarsTUI.Command.t()) :: Text.t()
+  def usage(command) do
+    [
+      Text.tag("\n✗ usage: ", :red),
+      Text.tag(command.usage, :bright),
+      Text.tag(" · #{command.summary}\n", @faint)
+    ]
   end
 
   @doc "That the agents named were removed with their stores."

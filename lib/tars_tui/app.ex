@@ -37,9 +37,8 @@ defmodule TarsTUI.App do
 
   A fleet panel down the right lists every agent in the cluster, what each is
   doing, and which node it is on. It is driven by `Tars.Fleet.watch/1` rather
-  than polling. `Ctrl-F` focuses it; `Up` and `Down` move through the agents
-  and `Enter` connects to the one under the cursor. `Ctrl-F` again puts the
-  panel away.
+  than polling. With the panel focused, `Up`, `Down`, `j` and `k` move
+  through the agents and `Enter` connects to the one under the cursor.
 
   `/spawn NAME [node=NODE] [prompt]` starts an agent with the same
   `:spawn_opts` this client's own agent was given, on the named node if one is
@@ -73,14 +72,31 @@ defmodule TarsTUI.App do
   one, and `/approve all` answers every one at once; a bare `y` or `n` asks
   which. Calls left unanswered stay parked.
 
-  The focused pane shows it in the primary colour: the prompt's box, the
-  fleet panel's border, or the rule under the transcript. `Tab` cycles the
-  prompt, the transcript and the panel, and nothing else.
+  ## Keys
 
-  Keys: `Enter` sends, `Esc` interrupts, `Ctrl-T` toggles tracing, `Ctrl-F`
-  focuses the fleet panel, `Tab` moves focus to the transcript so
-  `PageUp`/`PageDown`/`Home`/`End` scroll it, `Ctrl-D` quits. `/stop` and
-  `/quit` do the same as the keys.
+  The focused pane shows it in the primary colour: the prompt's box, the
+  fleet panel's border, or the rule under the transcript. The status row
+  names the keys that matter in the focused pane.
+
+  `Tab` and `Shift-Tab` cycle the prompt, the transcript and the panel.
+  `Ctrl-X` is the leader: followed by `h`, `j`, `k` or `l` it moves focus in
+  that direction, with the transcript above the prompt and left of the panel,
+  and the status row shows the moves while it waits. `Esc` returns to the
+  prompt from either other pane and cancels a pending leader; in the prompt it
+  does nothing. `i` in the transcript or the panel focuses the prompt.
+
+  `Enter` sends. `Esc` in the prompt, with nothing else to dismiss, stops
+  the turn or abandons a parked one, as does `Ctrl-X` then `s` from any pane.
+  `Ctrl-C` leaves at once, as Breeze has it, taking any agent this node runs
+  with it. `Ctrl-D` quits from the prompt when nothing is typed; in the
+  transcript it
+  scrolls half a page down, as `Ctrl-U` scrolls up, alongside `j`, `k`,
+  `PageUp`, `PageDown`, `Home` and `End`. `Ctrl-F` shows and hides the
+  panel. `Ctrl-T` toggles tracing. `/stop` and `/quit` do the same as the
+  keys.
+
+  The commands are defined in `TarsTUI.Command`, which is also what `/help`
+  reads.
   """
   use Breeze.View
   import Breeze.Blocks
@@ -90,6 +106,7 @@ defmodule TarsTUI.App do
   alias Tars.Fleet
   alias Tars.LLM
   alias TarsTUI.Activity
+  alias TarsTUI.Command
   alias TarsTUI.Markdown
   alias TarsTUI.Render
   alias TarsTUI.Table
@@ -130,174 +147,33 @@ defmodule TarsTUI.App do
     :frame
   ]
 
-  @typedoc "Which parked call a decision is for: the only one, one by number, or every one."
-  @type selector() :: nil | :all | String.t()
-
-  @typedoc "How a line typed at the prompt is interpreted."
-  @type command() ::
-          :blank
-          | :quit
-          | :fleet
-          | :help
-          | :confirm
-          | {:stop, String.t() | nil}
-          | {:shutdown, String.t()}
-          | {:rm, String.t(), boolean()}
-          | {:approve, selector()}
-          | {:deny, selector(), String.t() | nil}
-          | {:spawn, String.t(), options(), String.t() | nil}
-          | {:move, String.t(), options()}
-          | {:connect, String.t()}
-          | {:ask, String.t()}
-          | {:unknown, String.t()}
-
-  @typedoc "The `key=value` words a command was given."
-  @type options() :: %{String.t() => String.t()}
-
   @default_denial "Denied by the person watching."
 
-  @doc """
-  Interprets one line of input. Pure, so the vocabulary is testable alone.
-
-  While a turn is parked the vocabulary grows: a bare `y` or `n` answers the
-  question, and `n` followed by anything denies with that as the reason. Only a
-  bare word counts, so a question that happens to start with "no" is still a
-  question. `y 2`, `n 2 reason` and `y all` pick among several parked calls the
-  way `/approve` and `/deny` do.
-
-  A slash word that names no command is reported rather than sent to the
-  model.
-  """
-  @spec command(String.t(), boolean()) :: command()
-  def command(line, parked? \\ false) do
-    case String.trim(line) do
-      "" -> :blank
-      "/" <> _rest = slash -> slash(slash)
-      text -> answer(text, parked?)
-    end
-  end
-
-  defp slash(line) do
-    [word | rest] = String.split(line, " ", parts: 2)
-    slash(word, rest |> List.first("") |> String.trim() |> presence())
-  end
-
-  defp slash(quit, nil) when quit in ["/quit", "/exit"], do: :quit
-  defp slash("/help", nil), do: :help
-  defp slash("/fleet", nil), do: :fleet
-  defp slash("/confirm", nil), do: :confirm
-  defp slash("/stop", target), do: {:stop, target}
-  defp slash("/shutdown", name) when is_binary(name), do: {:shutdown, single(name)}
-  defp slash("/rm", target) when is_binary(target), do: removal(target)
-  defp slash(approve, selector) when approve in ["/approve", "/y"], do: approval(selector)
-  defp slash(deny, argument) when deny in ["/deny", "/n"], do: denial(argument)
-  defp slash("/spawn", rest) when is_binary(rest), do: spawn_command(rest)
-  defp slash("/move", rest) when is_binary(rest), do: move_command(rest)
-  defp slash("/connect", name) when is_binary(name), do: {:connect, single(name)}
-  defp slash(word, _argument), do: {:unknown, word}
-
-  defp single(argument), do: argument |> String.split() |> hd()
-
-  defp removal(target) do
-    case String.split(target) do
-      [target, "--yes"] -> {:rm, target, true}
-      [target] -> {:rm, target, false}
-      _other -> {:unknown, "/rm"}
-    end
-  end
-
-  defp approval(nil), do: {:approve, nil}
-
-  defp approval(argument) do
-    case selector(argument) do
-      nil -> {:unknown, "/approve"}
-      selector -> {:approve, selector}
-    end
-  end
-
-  # `/deny 2 too risky` denies the second call; `/deny too risky` denies the
-  # only one. A number or `all` is a selector, and anything else is a reason.
-  defp denial(nil), do: {:deny, nil, nil}
-
-  defp denial(argument) do
-    case String.split(argument, " ", parts: 2) do
-      [word] -> deny_with(selector(word), if(selector(word), do: nil, else: word))
-      [word, rest] -> deny_with(selector(word), if(selector(word), do: rest, else: argument))
-    end
-  end
-
-  defp deny_with(selector, reason), do: {:deny, selector, reason && String.trim(reason)}
-
-  defp selector("all"), do: :all
-  defp selector(word), do: if(word =~ ~r/^\d+$/, do: word, else: nil)
-
-  defp spawn_command(rest) do
-    {name, options, prompt} = arguments(rest)
-    {:spawn, name, options, prompt}
-  end
-
-  defp move_command(rest) do
-    {name, options, _prompt} = arguments(rest)
-    {:move, name, options}
-  end
-
-  # A name, then `key=value` words as options; the first word without `=`
-  # starts the free text.
-  defp arguments(rest) do
-    [name | words] = String.split(rest)
-    {options, text} = Enum.split_while(words, &String.contains?(&1, "="))
-
-    {name, Map.new(options, &option/1), presence(Enum.join(text, " "))}
-  end
-
-  defp option(word), do: word |> String.split("=", parts: 2) |> List.to_tuple()
-
-  defp presence(""), do: nil
-  defp presence(text), do: text
-
-  defp answer(text, false), do: {:ask, text}
-
-  defp answer(text, true) do
-    case String.split(text, " ", parts: 2) do
-      [word] -> bare(word, nil, text)
-      [word, rest] -> bare(word, String.trim(rest), text)
-    end
-  end
-
-  defp bare(word, rest, text) do
-    case {String.downcase(word), rest} do
-      {yes, nil} when yes in ["y", "yes"] ->
-        {:approve, nil}
-
-      {yes, rest} when yes in ["y", "yes"] ->
-        if(selector(rest), do: {:approve, selector(rest)}, else: {:ask, text})
-
-      {no, rest} when no in ["n", "no"] ->
-        denial(rest)
-
-      _other ->
-        {:ask, text}
-    end
-  end
+  # How long the leader waits for a direction.
+  @leader_after 1_500
 
   @doc """
   Keybindings that work wherever focus is. Pass them as `:global_keybindings`
   when starting the session.
+
+  `Ctrl-X` is the leader: the next `h`, `j`, `k` or `l` moves focus between
+  the transcript, the fleet panel and the prompt, `s` stops the turn, and
+  `Esc` cancels. `i` in the transcript or the panel focuses the prompt.
+  `Ctrl-C` never reaches these: Breeze leaves on it.
   """
   @spec keybindings() :: [{String.t(), String.t(), (map(), Breeze.Term.t() -> term())}]
   def keybindings do
     [
-      {"Escape", "Stop", &__MODULE__.stop_turn/2},
+      {"^x", "Leader", &__MODULE__.leader/2},
+      {"Escape", "Back", &__MODULE__.back/2},
+      {"i", "Prompt", &__MODULE__.to_prompt/2},
       {"^y", "Approve", &__MODULE__.approve/2},
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
-      {"^f", "Fleet", &__MODULE__.focus_fleet/2},
+      {"^f", "Fleet", &__MODULE__.toggle_fleet/2},
       {"^d", "Quit", &__MODULE__.quit/2}
     ]
   end
-
-  @doc false
-  def stop_turn(_event, term), do: {:noreply, interrupt(term)}
 
   @doc false
   def approve(_event, term), do: {:noreply, decide(term, nil, :approve)}
@@ -309,22 +185,130 @@ defmodule TarsTUI.App do
   def toggle_trace(_event, term),
     do: {:noreply, assign(term, verbose?: not term.assigns.verbose?)}
 
-  # Focuses the panel, showing it first if it is away. From the panel, puts it
-  # away and returns to the prompt.
+  # Shows or hides the panel. Hiding it while it is focused returns to the
+  # prompt.
   @doc false
-  def focus_fleet(_event, %{focused: "fleet"} = term),
-    do: {:noreply, term |> assign(sidebar?: false) |> focus("prompt")}
+  def toggle_fleet(_event, %{assigns: %{sidebar?: true}} = term) do
+    term = assign(term, sidebar?: false)
+    {:noreply, if(term.focused == "fleet", do: focus_pane(term, "prompt"), else: sync_pane(term))}
+  end
 
-  def focus_fleet(_event, term),
-    do: {:noreply, term |> assign(sidebar?: true) |> refresh_fleet() |> focus("fleet")}
+  def toggle_fleet(_event, term),
+    do: {:noreply, term |> assign(sidebar?: true) |> refresh_fleet() |> sync_pane()}
 
+  # A letter goes to the focused pane before any binding sees it, so while the
+  # leader waits the prompt is focused and the letter arrives as a change to
+  # the draft, where `direction/2` reads it back out. The pane the leader was
+  # pressed in is remembered, for the moves and for cancelling.
   @doc false
-  def connect_highlighted(_event, term) do
-    {:noreply, term |> connect_key(term.assigns.highlighted) |> focus("prompt")}
+  def leader(_event, term) do
+    ref = make_ref()
+    Process.send_after(self(), {:leader_timeout, ref}, @leader_after)
+    origin = term.focused || "prompt"
+
+    {:noreply, term |> assign(leader: {ref, origin}, pane: origin) |> focus("prompt")}
   end
 
   @doc false
-  def quit(_event, term), do: {:stop, term}
+  def to_prompt(_event, %{focused: focused} = term) when focused in ["log", "fleet"],
+    do: {:noreply, focus_pane(term, "prompt")}
+
+  def to_prompt(_event, _term), do: :continue
+
+  # Cancels a pending leader, or returns to the prompt from another pane. In
+  # the prompt, with nothing else to dismiss, it stops the turn, or abandons a
+  # parked one; idle, it does nothing.
+  @doc false
+  def back(_event, %{assigns: %{leader: {_ref, _origin}}} = term), do: {:noreply, unlead(term)}
+
+  def back(_event, %{focused: "prompt"} = term) do
+    term = sync_pane(term)
+    if busy?(term), do: {:noreply, interrupt(term)}, else: {:noreply, term}
+  end
+
+  def back(_event, term), do: {:noreply, focus_pane(term, "prompt")}
+
+  defp busy?(%{assigns: %{running?: running?, parked: parked}}), do: running? or parked != []
+
+  @doc false
+  def connect_highlighted(_event, term) do
+    {:noreply, term |> connect_key(term.assigns.highlighted) |> focus_pane("prompt")}
+  end
+
+  # Leaves from the prompt with nothing typed. In the transcript the same key
+  # scrolls half a page; anywhere else it does nothing.
+  @doc false
+  def quit(_event, %{focused: "log"}), do: :continue
+  def quit(_event, %{focused: "prompt", assigns: %{draft: ""}} = term), do: {:stop, term}
+  def quit(_event, term), do: {:noreply, sync_pane(term)}
+
+  # The transcript sits above the prompt and left of the panel.
+  defp neighbour("prompt", key, _fleet?) when key in ["k", "h"], do: "log"
+  defp neighbour("prompt", "l", true), do: "fleet"
+  defp neighbour("prompt", "l", false), do: "log"
+  defp neighbour("log", "l", true), do: "fleet"
+  defp neighbour("log", "j", _fleet?), do: "prompt"
+  defp neighbour("fleet", "h", _fleet?), do: "log"
+  defp neighbour("fleet", "j", _fleet?), do: "prompt"
+  defp neighbour(pane, _key, _fleet?), do: pane
+
+  # Focusing the panel refreshes it first, so the rows are current before the
+  # cursor moves through them.
+  defp focus_pane(term, "fleet"),
+    do: term |> refresh_fleet() |> focus("fleet") |> assign(pane: "fleet")
+
+  defp focus_pane(term, id), do: term |> focus(id) |> assign(pane: id)
+
+  # Drops a pending leader and puts focus back where it came from.
+  defp unlead(%{assigns: %{leader: {_ref, origin}}} = term),
+    do: term |> assign(leader: nil) |> focus_pane(origin)
+
+  # The one letter the leader was followed by, taken back out of the draft
+  # and acted on: a direction moves focus, `i` is the prompt, `s` stops the
+  # turn. Anything else ends the wait and stays typed.
+  defp direction(%{assigns: %{leader: {_ref, origin}, draft: previous}} = term, value) do
+    case inserted(previous, value) do
+      {letter, at} when letter in ["h", "j", "k", "l", "i", "s"] ->
+        term
+        |> assign(leader: nil, draft: previous)
+        |> update_implicit("prompt", fn {_module, state} ->
+          %{state | value: previous, cursor: at}
+        end)
+        |> led(letter, origin)
+
+      _other ->
+        assign(term, leader: nil, draft: value, pane: "prompt")
+    end
+  end
+
+  defp led(term, "i", _origin), do: focus_pane(term, "prompt")
+
+  defp led(term, "s", origin) do
+    term = focus_pane(term, origin)
+    if busy?(term), do: interrupt(term), else: term
+  end
+
+  defp led(term, key, origin), do: focus_pane(term, neighbour(origin, key, term.assigns.sidebar?))
+
+  # The grapheme `value` has that `previous` lacks, and where, when that is
+  # the only difference.
+  defp inserted(previous, value) do
+    before = String.graphemes(previous)
+    after_ = String.graphemes(value)
+
+    with true <- length(after_) == length(before) + 1,
+         at when is_integer(at) <-
+           Enum.find_index(Enum.zip(before ++ [nil], after_), fn {a, b} -> a != b end),
+         true <- List.delete_at(after_, at) == before do
+      {Enum.at(after_, at), at}
+    else
+      _other -> nil
+    end
+  end
+
+  # Focus moves without this view hearing of it, on `Tab` for one, so the pane
+  # the hints describe is read back whenever the view handles anything.
+  defp sync_pane(term), do: assign(term, pane: term.focused || "prompt")
 
   @impl Breeze.View
   def mount(opts, term) do
@@ -347,6 +331,8 @@ defmodule TarsTUI.App do
         views: %{},
         available?: true,
         confirm: nil,
+        pane: "prompt",
+        leader: nil,
         frame: 0,
         frame_due?: false,
         started_at: nil,
@@ -356,7 +342,7 @@ defmodule TarsTUI.App do
       |> refresh_fleet()
       |> append_lines(banner())
       |> put_focus_keybindings("fleet", [{"Enter", "Connect", &__MODULE__.connect_highlighted/2}])
-      |> focus("prompt")
+      |> focus_pane("prompt")
 
     {:ok, term}
   end
@@ -562,7 +548,12 @@ defmodule TarsTUI.App do
   defp question(term, text), do: append_lines(term, ["", View.question(text)])
 
   defp banner,
-    do: [Text.tag("Enter sends · Esc stops · Ctrl-D quits · /help for the rest", @faint)]
+    do: [
+      Text.tag(
+        "Enter sends · Esc stops · Ctrl-X then h/j/k/l moves · /help for the rest",
+        @faint
+      )
+    ]
 
   # -- render ----------------------------------------------------------------
 
@@ -680,7 +671,9 @@ defmodule TarsTUI.App do
 
   # What Enter will do with the line, said where the line is typed.
   defp placeholder(%{available?: false}), do: "not running · nothing typed here is sent"
-  defp placeholder(%{running?: true}), do: "Enter steers the running turn at its next boundary"
+
+  defp placeholder(%{running?: true}),
+    do: "Enter steers the turn at its next boundary · Esc stops it"
 
   defp placeholder(%{parked: [_only]}),
     do: "Enter queues behind the parked turn · y approve · n deny"
@@ -699,7 +692,7 @@ defmodule TarsTUI.App do
     |> Enum.join()
   end
 
-  defp status(%{available?: false, agent_id: key}, width) do
+  defp status(%{available?: false, agent_id: key} = assigns, width) do
     {_org, _user, name} = Fleet.parse(key)
 
     left =
@@ -708,21 +701,24 @@ defmodule TarsTUI.App do
         :yellow
       )
 
-    right = Text.tag("Ctrl-F fleet · Ctrl-D quit ", @faint)
-    Render.line(Render.justify(left, right, width))
+    Render.line(Render.justify(left, hints(assigns), width))
   end
 
-  defp status(%{running?: false, parked: [_ | _] = parked}, width) do
+  defp status(%{running?: false, parked: [_ | _] = parked} = assigns, width) do
     names = Enum.map_join(parked, ", ", fn {call, _prompt} -> call.name end)
     left = Text.tag(" ? waiting on #{names} · #{decision_keys(parked)}", [:bright, :yellow])
-    right = Text.tag("Esc abandon · Ctrl-T trace · Ctrl-D quit ", @faint)
-    Render.line(Render.justify(left, right, width))
+    Render.line(Render.justify(left, hints(assigns), width))
   end
 
-  defp status(%{running?: false}, width) do
+  defp status(%{running?: false} = assigns, width) do
     left = Text.tag(" idle · type a prompt and press Enter", @faint)
-    right = Text.tag("Esc stop · Ctrl-T trace · Ctrl-F fleet · Ctrl-D quit ", @faint)
-    Render.line(Render.justify(left, right, width))
+    Render.line(Render.justify(left, hints(assigns), width))
+  end
+
+  defp status(%{leader: {_ref, _origin}} = assigns, width) do
+    span = Activity.innermost(assigns.activity)
+    head = [" ", Text.tag(View.spinner(assigns.frame), :cyan), " ", label(span)]
+    Render.line(Render.justify(head, hints(assigns), width))
   end
 
   defp status(assigns, width) do
@@ -735,6 +731,31 @@ defmodule TarsTUI.App do
 
     Render.line(Render.justify(left, right, width))
   end
+
+  # The keys that matter where focus is, or the directions the leader takes.
+  defp hints(%{leader: {_ref, origin}} = assigns) do
+    moves =
+      case origin do
+        "prompt" -> ["k transcript" | if(assigns.sidebar?, do: ["l fleet"], else: [])]
+        "log" -> if(assigns.sidebar?, do: ["l fleet"], else: []) ++ ["j prompt"]
+        _fleet -> ["h transcript", "j prompt"]
+      end
+
+    stop = if busy?(%{assigns: assigns}), do: ["s stop"], else: []
+    Text.tag(["Ctrl-X · ", Enum.join(moves ++ stop ++ ["Esc cancel"], " · "), " "], :yellow)
+  end
+
+  defp hints(%{pane: "log"}),
+    do: Text.tag("j/k scroll · Ctrl-U/D half page · i prompt · Esc back ", @faint)
+
+  defp hints(%{pane: "fleet"}),
+    do: Text.tag("j/k move · Enter connect · i prompt · Esc back ", @faint)
+
+  defp hints(%{available?: false}),
+    do: Text.tag("Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
+
+  defp hints(%{parked: [_ | _]}), do: Text.tag("Esc abandon · Ctrl-D quit ", @faint)
+  defp hints(_assigns), do: Text.tag("Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
 
   defp decision_keys([_only]), do: "y approve · n deny"
   defp decision_keys(_several), do: "/approve N · /deny N · /approve all"
@@ -797,18 +818,23 @@ defmodule TarsTUI.App do
   # -- input -----------------------------------------------------------------
 
   @impl Breeze.View
-  def handle_event("draft", %{value: value}, term), do: {:noreply, assign(term, draft: value)}
+  def handle_event("draft", %{value: value}, %{assigns: %{leader: {_ref, _origin}}} = term),
+    do: {:noreply, direction(term, value)}
+
+  def handle_event("draft", %{value: value}, term),
+    do: {:noreply, assign(term, draft: value, pane: "prompt")}
 
   def handle_event("highlight", %{value: key}, term),
-    do: {:noreply, assign(term, highlighted: key)}
+    do: {:noreply, assign(term, highlighted: key, pane: "fleet")}
 
-  def handle_event("scroll", %{pinned_bottom: true}, term),
-    do: {:noreply, assign(term, unread: 0)}
+  def handle_event("scroll", %{pinned_bottom: pinned?}, term),
+    do:
+      {:noreply, assign(term, unread: if(pinned?, do: 0, else: term.assigns.unread), pane: "log")}
 
   def handle_event("ask", %{value: value}, term) do
-    term = term |> assign(draft: "") |> reset("prompt")
+    term = term |> assign(draft: "", leader: nil) |> reset("prompt")
 
-    case command(value, term.assigns.parked != []) do
+    case Command.parse(value, term.assigns.parked != []) do
       :quit -> {:stop, term}
       command -> {:noreply, apply_command(command, term)}
     end
@@ -841,7 +867,10 @@ defmodule TarsTUI.App do
   defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
   defp apply_command({:connect, name}, term), do: connect(term, name)
   defp apply_command({:ask, text}, term), do: ask(term, text)
-  defp apply_command({:unknown, word}, term), do: append(term, View.unknown_command(word))
+  defp apply_command({:usage, name}, term), do: append(term, View.usage(Command.find(name)))
+
+  defp apply_command({:unknown, word}, term),
+    do: append(term, View.unknown_command(word, Command.suggest(word)))
 
   defp list_fleet(term) do
     term
@@ -1105,7 +1134,12 @@ defmodule TarsTUI.App do
 
   def handle_info(%Event{}, term), do: {:noreply, term, invalidate: false}
 
-  def handle_info(:frame, term), do: {:noreply, assign(term, frame_due?: false)}
+  def handle_info(:frame, term), do: {:noreply, term |> sync_pane() |> assign(frame_due?: false)}
+
+  def handle_info({:leader_timeout, ref}, %{assigns: %{leader: {ref, _origin}}} = term),
+    do: {:noreply, unlead(term)}
+
+  def handle_info({:leader_timeout, _stale}, term), do: {:noreply, term, invalidate: false}
 
   # A group event says something in the fleet changed; the refresh behind it
   # reads the whole list once, however many events arrived.
@@ -1118,11 +1152,11 @@ defmodule TarsTUI.App do
     end
   end
 
-  def handle_info(:refresh_fleet, term), do: {:noreply, refresh_fleet(term)}
+  def handle_info(:refresh_fleet, term), do: {:noreply, term |> sync_pane() |> refresh_fleet()}
 
   def handle_info(:tick, %{assigns: %{running?: true}} = term) do
     schedule_tick()
-    {:noreply, assign(term, frame: term.assigns.frame + 1)}
+    {:noreply, term |> sync_pane() |> assign(frame: term.assigns.frame + 1)}
   end
 
   def handle_info(:tick, term), do: {:noreply, term}

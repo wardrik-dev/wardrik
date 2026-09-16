@@ -51,10 +51,9 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ "› ○ watched"
   end
 
-  test "ctrl-f focuses the panel, and from the panel puts it away", %{session: session} do
-    ctrl_f(session)
+  test "ctrl-f hides the panel and shows it again, leaving focus where it was", ctx do
+    %{session: session} = ctx
     assert screen(session) =~ "fleet · 1"
-    assert Breeze.Test.focused(session) == "fleet"
 
     ctrl_f(session)
     refute screen(session) =~ "fleet · 1"
@@ -62,13 +61,33 @@ defmodule TarsTUI.App.FleetTest do
 
     ctrl_f(session)
     assert screen(session) =~ "fleet · 1"
+    assert Breeze.Test.focused(session) == "prompt"
+  end
+
+  test "hiding the panel while it is focused returns to the prompt", %{session: session} do
+    focus_fleet(session)
+    assert Breeze.Test.focused(session) == "fleet"
+
+    ctrl_f(session)
+    assert Breeze.Test.focused(session) == "prompt"
+  end
+
+  test "Ctrl-X then l reaches the panel, and h comes back", %{session: session} do
+    focus_fleet(session)
+    assert Breeze.Test.focused(session) == "fleet"
+    assert screen(session) =~ "j/k move · Enter connect · i prompt · Esc back"
+
+    Breeze.Test.input(session, %{"key" => "x", "ctrlKey" => true})
+    assert screen(session) =~ "Ctrl-X · h transcript · j prompt · Esc cancel"
+    Breeze.Test.input(session, "h")
+    assert Breeze.Test.focused(session) == "log"
   end
 
   test "arrows and enter in the panel connect to the chosen agent", ctx do
     %{session: session, org: org} = ctx
     other = spawn_and_ask(org, "other", "what is up")
 
-    ctrl_f(session)
+    focus_fleet(session)
     # A frame between the focus and the keys, as there always is at a terminal.
     screen(session)
     Breeze.Test.input(session, "ArrowUp")
@@ -132,6 +151,13 @@ defmodule TarsTUI.App.FleetTest do
   defp colours(line), do: ~r/38;5;\d+/ |> Regex.scan(line) |> List.flatten()
 
   defp ctrl_f(session), do: Breeze.Test.input(session, %{"key" => "f", "ctrlKey" => true})
+
+  # The leader, then right: from the prompt that is the panel.
+  defp focus_fleet(session) do
+    Breeze.Test.input(session, %{"key" => "x", "ctrlKey" => true})
+    Breeze.Test.input(session, "l")
+    session
+  end
 
   test "/spawn starts an agent beside this client's own and attaches to it", %{
     session: session,
@@ -245,14 +271,14 @@ defmodule TarsTUI.App.FleetTest do
     Enum.each(String.graphemes("unsent draft"), &Breeze.Test.input(session, &1))
     assert screen(session) =~ "› unsent draft"
 
-    ctrl_f(session)
+    focus_fleet(session)
     screen(session)
     Breeze.Test.input(session, "ArrowUp")
     Breeze.Test.input(session, "Enter")
     assert screen(session) =~ "connected to"
     refute screen(session) =~ "unsent draft"
 
-    ctrl_f(session)
+    focus_fleet(session)
     screen(session)
     Breeze.Test.input(session, "ArrowDown")
     Breeze.Test.input(session, "Enter")
@@ -575,9 +601,12 @@ defmodule TarsTUI.App.FleetTest do
   end
 
   test "/help lists the commands", %{session: session} do
+    session = Breeze.Test.resize(session, {90, 60})
     submit(session, "/help")
 
-    assert screen(session) =~ "/quit"
-    assert screen(session) =~ "this list"
+    text = screen(session)
+    assert text =~ "/quit"
+    assert text =~ "every key and command"
+    assert text =~ "Ctrl-X then h/j/k/l"
   end
 end

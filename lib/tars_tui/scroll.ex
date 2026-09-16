@@ -2,8 +2,8 @@ defmodule TarsTUI.Scroll do
   @moduledoc """
   A `Breeze.Implicit` for a vertically scrolling transcript.
 
-  Keys: `ArrowUp`/`ArrowDown` move one row, `PageUp`/`PageDown` a page,
-  `Home`/`End` to either end. A mouse wheel notch moves `#{3}` rows, times
+  Keys: `ArrowUp`/`ArrowDown` and `k`/`j` move one row, `Ctrl-U`/`Ctrl-D`
+  half a page, `PageUp`/`PageDown` a page, `Home`/`End` to either end. A mouse wheel notch moves `#{3}` rows, times
   the repeat count Breeze attaches to a burst of notches.
 
   With `scroll-autoscroll="bottom"` on the element, the view stays pinned to
@@ -49,6 +49,8 @@ defmodule TarsTUI.Scroll do
 
   defp target(%{"key" => key}, _viewport, offset) when key in ["ArrowDown", "j"], do: offset + 1
   defp target(%{"key" => key}, _viewport, offset) when key in ["ArrowUp", "k"], do: offset - 1
+  defp target(%{"key" => "d", "ctrlKey" => true}, viewport, offset), do: offset + half(viewport)
+  defp target(%{"key" => "u", "ctrlKey" => true}, viewport, offset), do: offset - half(viewport)
   defp target(%{"key" => "PageDown"}, viewport, offset), do: offset + page(viewport)
   defp target(%{"key" => "PageUp"}, viewport, offset), do: offset - page(viewport)
   defp target(%{"key" => "Home"}, _viewport, _offset), do: 0
@@ -72,6 +74,7 @@ defmodule TarsTUI.Scroll do
   def handle_modifiers(:child, _flags, _state), do: []
 
   defp page(%Viewport{viewport_height: height}), do: max(height - 1, 1)
+  defp half(%Viewport{viewport_height: height}), do: max(div(height, 2), 1)
 
   defp offset_y(state, nil), do: Map.get(state, :offset_y, 0)
 

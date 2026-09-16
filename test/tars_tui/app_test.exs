@@ -77,7 +77,7 @@ defmodule TarsTUI.AppTest do
       turn: turn
     } do
       emit(turn, [{:turn_started, ["first"]}])
-      assert screen(session) =~ "Enter steers the running turn at its next boundary"
+      assert screen(session) =~ "Enter steers the turn at its next boundary"
       submit(session, "second thought")
 
       assert_receive {:"$gen_cast", {:ask, "second thought"}}
@@ -98,11 +98,21 @@ defmodule TarsTUI.AppTest do
       assert text =~ "1 message queued behind the parked turn"
     end
 
-    test "a mistyped command is reported and never sent", %{session: session} do
+    test "a mistyped command is reported with the nearest ones, and never sent", ctx do
+      %{session: session} = ctx
       submit(session, "/spwan helper")
 
       refute_receive {:"$gen_cast", {:ask, _text}}
-      assert screen(session) =~ "/spwan is not a command"
+      text = screen(session)
+      assert text =~ "/spwan is not a command"
+      assert text =~ "did you mean /spawn"
+    end
+
+    test "a command given the wrong thing shows its usage", %{session: session} do
+      submit(session, "/connect")
+
+      refute_receive {:"$gen_cast", {:ask, _text}}
+      assert screen(session) =~ "usage: /connect NAME"
     end
 
     test "/stop interrupts and /quit stops", %{session: session} do
@@ -197,7 +207,7 @@ defmodule TarsTUI.AppTest do
       text = screen(session)
       refute text =~ "idle"
       refute text =~ "waiting on"
-      assert text =~ "Enter steers the running turn"
+      assert text =~ "Enter steers the turn"
 
       # The other call is still parked, and the turn says so again.
       emit(turn, [{:turn_parked, [{call("drop_table"), "Drop it?"}]}])
@@ -230,11 +240,101 @@ defmodule TarsTUI.AppTest do
     end
   end
 
+  defp ctrl(session, letter),
+    do: Breeze.Test.input(session, %{"key" => letter, "ctrlKey" => true})
+
   describe "keys" do
-    test "Escape interrupts the turn", %{session: session} do
+    test "Escape in the prompt stops a running turn, and nothing when idle", ctx do
+      %{session: session, turn: turn} = ctx
+      Breeze.Test.input(session, "Escape")
+      refute_receive {:"$gen_cast", :interrupt}
+
+      emit(turn, [{:turn_started, ["hi"]}])
+      assert screen(session) =~ "Esc stops it"
+      Breeze.Test.input(session, "Escape")
+      assert_receive {:"$gen_cast", :interrupt}
+    end
+
+    test "Escape from another pane only returns to the prompt", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}])
+      Breeze.Test.focus(session, "log")
       Breeze.Test.input(session, "Escape")
 
+      assert Breeze.Test.focused(session) == "prompt"
+      refute_receive {:"$gen_cast", :interrupt}
+    end
+
+    test "Ctrl-X then s stops the turn from any pane", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}])
+      Breeze.Test.focus(session, "log")
+      ctrl(session, "x")
+      assert screen(session) =~ "s stop · Esc cancel"
+      Breeze.Test.input(session, "s")
+
       assert_receive {:"$gen_cast", :interrupt}
+      assert Breeze.Test.focused(session) == "log"
+      refute screen(session) =~ "› s"
+    end
+
+    test "Ctrl-X then a direction moves focus, and the status row shows the moves", ctx do
+      %{session: session} = ctx
+      ctrl(session, "x")
+      assert screen(session) =~ "Ctrl-X · k transcript · Esc cancel"
+
+      Breeze.Test.input(session, "k")
+      assert Breeze.Test.focused(session) == "log"
+      assert screen(session) =~ "j/k scroll · Ctrl-U/D half page · i prompt · Esc back"
+
+      ctrl(session, "x")
+      Breeze.Test.input(session, "j")
+      assert Breeze.Test.focused(session) == "prompt"
+      assert screen(session) =~ "Ctrl-X pane · Ctrl-F fleet"
+    end
+
+    test "Escape cancels a pending Ctrl-X, and letters then reach the prompt", ctx do
+      %{session: session} = ctx
+      ctrl(session, "x")
+      Breeze.Test.input(session, "Escape")
+      type(session, "hjkl")
+
+      assert Breeze.Test.focused(session) == "prompt"
+      assert screen(session) =~ "› hjkl"
+    end
+
+    test "i returns to the prompt from the transcript, and types there otherwise", ctx do
+      %{session: session} = ctx
+      Breeze.Test.focus(session, "log")
+      Breeze.Test.input(session, "i")
+      assert Breeze.Test.focused(session) == "prompt"
+
+      type(session, "in")
+      assert screen(session) =~ "› in"
+    end
+
+    test "Ctrl-D quits only from a prompt with nothing typed", %{session: session, turn: turn} do
+      type(session, "unsent")
+      ctrl(session, "d")
+      assert screen(session) =~ "› unsent"
+
+      # In the transcript the same key scrolls half a page.
+      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, for(i <- 1..40, do: {:result, "line #{i}\n"}))
+      Breeze.Test.focus(session, "log")
+      ctrl(session, "u")
+      text = screen(session)
+      refute text =~ "line 40"
+      ctrl(session, "d")
+      assert screen(session) =~ "line 40"
+    end
+
+    test "Ctrl-F hides and shows the panel without moving focus", %{session: session} do
+      # The session starts without a panel; Ctrl-F brings it in.
+      ctrl(session, "f")
+      assert screen(session) =~ "┌"
+      assert Breeze.Test.focused(session) == "prompt"
+
+      ctrl(session, "f")
+      refute screen(session) =~ "┌"
     end
 
     test "Ctrl-T toggles tracing", %{session: session, turn: turn} do
