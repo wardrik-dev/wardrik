@@ -8,17 +8,25 @@ defmodule TarsTUI.App.CommandTest do
   # proves nothing.
 
   test "the decision vocabulary only exists while a turn is parked" do
-    assert App.command("y", true) == :approve
-    assert App.command("Yes", true) == :approve
-    assert App.command("n", true) == {:deny, nil}
-    assert App.command("no", true) == {:deny, nil}
-    assert App.command("n not during the freeze", true) == {:deny, "not during the freeze"}
-    assert App.command("no not this quarter", true) == {:deny, "not this quarter"}
+    assert App.command("y", true) == {:approve, nil}
+    assert App.command("Yes", true) == {:approve, nil}
+    assert App.command("n", true) == {:deny, nil, nil}
+    assert App.command("no", true) == {:deny, nil, nil}
+    assert App.command("n not during the freeze", true) == {:deny, nil, "not during the freeze"}
+    assert App.command("no not this quarter", true) == {:deny, nil, "not this quarter"}
 
     # The same words are ordinary questions when nothing is waiting.
     assert App.command("y") == {:ask, "y"}
     assert App.command("no") == {:ask, "no"}
     assert App.command("n not during the freeze") == {:ask, "n not during the freeze"}
+  end
+
+  test "a bare answer can pick one of several parked calls, or all of them" do
+    assert App.command("y 2", true) == {:approve, "2"}
+    assert App.command("y all", true) == {:approve, :all}
+    assert App.command("n 2", true) == {:deny, "2", nil}
+    assert App.command("n 2 too risky", true) == {:deny, "2", "too risky"}
+    assert App.command("n all not today", true) == {:deny, :all, "not today"}
   end
 
   test "only a bare word decides, so a question is never mistaken for one" do
@@ -30,13 +38,22 @@ defmodule TarsTUI.App.CommandTest do
 
   test "a decision can always be spelled out, parked or not" do
     for parked? <- [true, false] do
-      assert App.command("/approve", parked?) == :approve
-      assert App.command("/y", parked?) == :approve
-      assert App.command("/deny", parked?) == {:deny, nil}
-      assert App.command("/n", parked?) == {:deny, nil}
-      assert App.command("/deny too risky", parked?) == {:deny, "too risky"}
-      assert App.command("/n too risky", parked?) == {:deny, "too risky"}
+      assert App.command("/approve", parked?) == {:approve, nil}
+      assert App.command("/y", parked?) == {:approve, nil}
+      assert App.command("/approve 1", parked?) == {:approve, "1"}
+      assert App.command("/approve all", parked?) == {:approve, :all}
+      assert App.command("/deny", parked?) == {:deny, nil, nil}
+      assert App.command("/n", parked?) == {:deny, nil, nil}
+      assert App.command("/deny too risky", parked?) == {:deny, nil, "too risky"}
+      assert App.command("/n too risky", parked?) == {:deny, nil, "too risky"}
+      assert App.command("/deny 2 too risky", parked?) == {:deny, "2", "too risky"}
+      assert App.command("/deny all", parked?) == {:deny, :all, nil}
     end
+  end
+
+  test "a selector is a number or `all`, so a reason is never mistaken for one" do
+    assert App.command("/approve deploy") == {:unknown, "/approve"}
+    assert App.command("/deny deploy is wrong") == {:deny, nil, "deploy is wrong"}
   end
 
   test "command/1 reads the prompt's vocabulary" do
@@ -44,9 +61,19 @@ defmodule TarsTUI.App.CommandTest do
     assert App.command("  \n") == :blank
     assert App.command("/quit") == :quit
     assert App.command("/exit") == :quit
-    assert App.command("/stop") == :stop
+    assert App.command("/stop") == {:stop, nil}
     assert App.command("/help") == :help
+    assert App.command("/confirm") == :confirm
     assert App.command(" hello ") == {:ask, "hello"}
+  end
+
+  test "a slash word that names nothing is reported rather than asked" do
+    assert App.command("/spwan helper") == {:unknown, "/spwan"}
+    assert App.command("/kill helper") == {:unknown, "/kill"}
+    assert App.command("/connect") == {:unknown, "/connect"}
+    assert App.command("/shutdown") == {:unknown, "/shutdown"}
+    assert App.command("/rm") == {:unknown, "/rm"}
+    assert App.command("/rm a b c") == {:unknown, "/rm"}
   end
 
   test "the fleet has its own vocabulary" do
@@ -66,8 +93,15 @@ defmodule TarsTUI.App.CommandTest do
              {:move, "researcher", %{"node" => "tars_b"}}
 
     assert App.command("/connect researcher") == {:connect, "researcher"}
-    assert App.command("/kill acme/") == {:kill, "acme/"}
-    assert App.command("/kill helper") == {:kill, "helper"}
+  end
+
+  test "interrupting, shutting down and removing are three different words" do
+    assert App.command("/stop helper") == {:stop, "helper"}
+    assert App.command("/stop acme/") == {:stop, "acme/"}
+    assert App.command("/shutdown helper") == {:shutdown, "helper"}
+    assert App.command("/rm helper") == {:rm, "helper", false}
+    assert App.command("/rm acme/") == {:rm, "acme/", false}
+    assert App.command("/rm acme/ --yes") == {:rm, "acme/", true}
   end
 
   test "the fleet vocabulary works while a turn is parked" do

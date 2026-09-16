@@ -1,10 +1,14 @@
 defmodule TarsTUI.App do
+  # Events are folded as they arrive; the frame is redrawn at most this often
+  # while they do.
+  @frame_after 20
+
   @moduledoc """
   A full-screen terminal client for one agent.
 
   A `Tars.Event.Bus` subscriber holding no conversation state, so several can
   watch the same agent. Events are folded as they arrive and the frame is
-  redrawn at most every #{50} milliseconds while they do, so the frame rate
+  redrawn at most every #{@frame_after} milliseconds while they do, so the frame rate
   does not follow the token rate and keys are handled promptly. Five rows,
   top to bottom:
 
@@ -18,31 +22,56 @@ defmodule TarsTUI.App do
        reasons, on the left; streamed characters and elapsed time on the
        right
     4. **prompt**: accepts text at any time and grows with its draft, up to
-       eight rows; a line entered while a turn runs is queued by `Tars.Agent`
-       and echoed as such
+       eight rows; a line entered while a turn runs steers it, asking it to
+       stop at its next boundary and start again with the line appended, and
+       is echoed as such; a line entered while a turn is parked queues behind
+       the decision it waits for
     5. **meta**: tokens in and out, reasoning tokens, cost and requests on the
-       left; prompts queued behind the running turn on the right
+       left, counted for the attached agent while this client watches it;
+       messages steering or queued behind the current turn on the right
 
   Only text on the turn's root span is rendered as prose. Text streamed by
   delegated work appears as the tree of spans and tool calls.
+
+  ## The fleet
 
   A fleet panel down the right lists every agent in the cluster, what each is
   doing, and which node it is on. It is driven by `Tars.Fleet.watch/1` rather
   than polling. `Ctrl-F` focuses it; `Up` and `Down` move through the agents
   and `Enter` connects to the one under the cursor. `Ctrl-F` again puts the
-  panel away. `/spawn NAME [node=NODE] [prompt]` starts an agent with the
-  same `:spawn_opts` this client's own agent was given, on the named node if
-  one is given, attaches to it, and sends it the prompt. `/connect NAME`
-  attaches this client to an agent under its own org and user: the transcript
-  is cleared and the agent's conversation played back, so what is on screen is
-  that agent's. `/move NAME node=NODE` restarts
-  an agent on another node with the conversation it has. `/kill NAME` stops
-  an agent and deletes its store, and `/kill PREFIX/` does that to every
-  running agent under a prefix. Neither touches the agent this client is
-  attached to. `/help` lists all of this.
+  panel away.
 
-  Attaching works the same way on start, so an agent named on the command line
-  that already has a conversation shows it.
+  `/spawn NAME [node=NODE] [prompt]` starts an agent with the same
+  `:spawn_opts` this client's own agent was given, on the named node if one is
+  given, attaches to it, and sends it the prompt. `/connect NAME` attaches to
+  an agent already running, wherever it is. Attaching replays the
+  conversation so far: what was asked, what was answered, and each tool call
+  with what it returned. Attaching on start works the same way.
+
+  Each agent this client has watched keeps its transcript, scroll position,
+  draft and usage, so connecting back restores the place it was left at, and
+  messages that arrived meanwhile are replayed under a note. Events are only
+  folded for the agent attached now, so a switch mid-stream leaves nothing of
+  the previous agent behind.
+
+  When the attached agent comes back under another process, after a move or a
+  restart on another node, this client follows it and says so. While it is
+  not running at all, the status row says so and nothing typed is sent.
+
+  `/move NAME node=NODE` restarts an agent on another node with the state it
+  had. `/stop` interrupts this agent; `/stop NAME` another, and `/stop PREFIX/`
+  every agent under a prefix. `/shutdown NAME` stops an agent and keeps its
+  conversation for `/spawn` to bring back. `/rm NAME` and `/rm PREFIX/`
+  delete agents and their conversations: the first shows exactly what would
+  go, and `/confirm` does it. The agent this client is attached to is never
+  removed. `/help` lists all of this.
+
+  ## Approvals
+
+  A parked turn shows each call it is waiting on, numbered. With one call,
+  `y` and `n` answer it. With several, `/approve N` and `/deny N reason` answer
+  one, and `/approve all` answers every one at once; a bare `y` or `n` asks
+  which. Calls left unanswered stay parked.
 
   The focused pane shows it in the primary colour: the prompt's box, the
   fleet panel's border, or the rule under the transcript. `Tab` cycles the
@@ -70,7 +99,6 @@ defmodule TarsTUI.App do
   alias TarsTUI.View
 
   @tick 100
-  @frame_after 50
   # The fleet republishes on every transition, so a busy turn would redraw the
   # panel constantly. One refresh per window is enough to read.
   @fleet_after 200
@@ -81,20 +109,47 @@ defmodule TarsTUI.App do
   @max_prompt_rows 8
   @faint [:faint, :light_black]
 
+  # What is kept for an agent when this client connects elsewhere, and put
+  # back when it connects again.
+  @kept [
+    :generation,
+    :trace_id,
+    :activity,
+    :unread,
+    :transcript,
+    :answer,
+    :reasoning,
+    :thinking,
+    :chars,
+    :answering?,
+    :usage,
+    :draft,
+    :seen,
+    :parked,
+    :started_at,
+    :frame
+  ]
+
+  @typedoc "Which parked call a decision is for: the only one, one by number, or every one."
+  @type selector() :: nil | :all | String.t()
+
   @typedoc "How a line typed at the prompt is interpreted."
   @type command() ::
           :blank
           | :quit
-          | :stop
-          | :approve
           | :fleet
           | :help
-          | {:deny, String.t() | nil}
+          | :confirm
+          | {:stop, String.t() | nil}
+          | {:shutdown, String.t()}
+          | {:rm, String.t(), boolean()}
+          | {:approve, selector()}
+          | {:deny, selector(), String.t() | nil}
           | {:spawn, String.t(), options(), String.t() | nil}
           | {:move, String.t(), options()}
           | {:connect, String.t()}
-          | {:kill, String.t()}
           | {:ask, String.t()}
+          | {:unknown, String.t()}
 
   @typedoc "The `key=value` words a command was given."
   @type options() :: %{String.t() => String.t()}
@@ -107,7 +162,11 @@ defmodule TarsTUI.App do
   While a turn is parked the vocabulary grows: a bare `y` or `n` answers the
   question, and `n` followed by anything denies with that as the reason. Only a
   bare word counts, so a question that happens to start with "no" is still a
-  question.
+  question. `y 2`, `n 2 reason` and `y all` pick among several parked calls the
+  way `/approve` and `/deny` do.
+
+  A slash word that names no command is reported rather than sent to the
+  model.
   """
   @spec command(String.t(), boolean()) :: command()
   def command(line, parked? \\ false) do
@@ -119,35 +178,58 @@ defmodule TarsTUI.App do
   end
 
   defp slash(line) do
-    case line do
-      slash when slash in ["/quit", "/exit"] -> :quit
-      "/stop" -> :stop
-      "/help" -> :help
-      other -> fleet_command(other)
+    [word | rest] = String.split(line, " ", parts: 2)
+    slash(word, rest |> List.first("") |> String.trim() |> presence())
+  end
+
+  defp slash(quit, nil) when quit in ["/quit", "/exit"], do: :quit
+  defp slash("/help", nil), do: :help
+  defp slash("/fleet", nil), do: :fleet
+  defp slash("/confirm", nil), do: :confirm
+  defp slash("/stop", target), do: {:stop, target}
+  defp slash("/shutdown", name) when is_binary(name), do: {:shutdown, single(name)}
+  defp slash("/rm", target) when is_binary(target), do: removal(target)
+  defp slash(approve, selector) when approve in ["/approve", "/y"], do: approval(selector)
+  defp slash(deny, argument) when deny in ["/deny", "/n"], do: denial(argument)
+  defp slash("/spawn", rest) when is_binary(rest), do: spawn_command(rest)
+  defp slash("/move", rest) when is_binary(rest), do: move_command(rest)
+  defp slash("/connect", name) when is_binary(name), do: {:connect, single(name)}
+  defp slash(word, _argument), do: {:unknown, word}
+
+  defp single(argument), do: argument |> String.split() |> hd()
+
+  defp removal(target) do
+    case String.split(target) do
+      [target, "--yes"] -> {:rm, target, true}
+      [target] -> {:rm, target, false}
+      _other -> {:unknown, "/rm"}
     end
   end
 
-  defp fleet_command(line) do
-    case line do
-      "/fleet" -> :fleet
-      "/spawn " <> rest -> spawn_command(rest)
-      "/move " <> rest -> move_command(rest)
-      "/connect " <> name -> {:connect, String.trim(name)}
-      "/kill " <> target -> {:kill, String.trim(target)}
-      other -> decision(other)
+  defp approval(nil), do: {:approve, nil}
+
+  defp approval(argument) do
+    case selector(argument) do
+      nil -> {:unknown, "/approve"}
+      selector -> {:approve, selector}
     end
   end
 
-  # An unrecognised slash is a question that happens to start with one.
-  defp decision(line) do
-    case line do
-      slash when slash in ["/approve", "/y"] -> :approve
-      slash when slash in ["/deny", "/n"] -> {:deny, nil}
-      "/deny " <> reason -> {:deny, String.trim(reason)}
-      "/n " <> reason -> {:deny, String.trim(reason)}
-      text -> {:ask, text}
+  # `/deny 2 too risky` denies the second call; `/deny too risky` denies the
+  # only one. A number or `all` is a selector, and anything else is a reason.
+  defp denial(nil), do: {:deny, nil, nil}
+
+  defp denial(argument) do
+    case String.split(argument, " ", parts: 2) do
+      [word] -> deny_with(selector(word), if(selector(word), do: nil, else: word))
+      [word, rest] -> deny_with(selector(word), if(selector(word), do: rest, else: argument))
     end
   end
+
+  defp deny_with(selector, reason), do: {:deny, selector, reason && String.trim(reason)}
+
+  defp selector("all"), do: :all
+  defp selector(word), do: if(word =~ ~r/^\d+$/, do: word, else: nil)
 
   defp spawn_command(rest) do
     {name, options, prompt} = arguments(rest)
@@ -184,9 +266,17 @@ defmodule TarsTUI.App do
 
   defp bare(word, rest, text) do
     case {String.downcase(word), rest} do
-      {yes, nil} when yes in ["y", "yes"] -> :approve
-      {no, rest} when no in ["n", "no"] -> {:deny, rest}
-      _other -> {:ask, text}
+      {yes, nil} when yes in ["y", "yes"] ->
+        {:approve, nil}
+
+      {yes, rest} when yes in ["y", "yes"] ->
+        if(selector(rest), do: {:approve, selector(rest)}, else: {:ask, text})
+
+      {no, rest} when no in ["n", "no"] ->
+        denial(rest)
+
+      _other ->
+        {:ask, text}
     end
   end
 
@@ -210,10 +300,10 @@ defmodule TarsTUI.App do
   def stop_turn(_event, term), do: {:noreply, interrupt(term)}
 
   @doc false
-  def approve(_event, term), do: {:noreply, decide(term, :approve)}
+  def approve(_event, term), do: {:noreply, decide(term, nil, :approve)}
 
   @doc false
-  def deny(_event, term), do: {:noreply, decide(term, {:deny, @default_denial})}
+  def deny(_event, term), do: {:noreply, decide(term, nil, {:deny, @default_denial})}
 
   @doc false
   def toggle_trace(_event, term),
@@ -239,7 +329,6 @@ defmodule TarsTUI.App do
   @impl Breeze.View
   def mount(opts, term) do
     agent = Keyword.fetch!(opts, :agent)
-    model = Keyword.get(opts, :model, "")
 
     # Breeze applies a block's attribute defaults only when the module that
     # defines it is already loaded when the template first renders.
@@ -250,18 +339,21 @@ defmodule TarsTUI.App do
       term
       |> assign(
         spawn_opts: Keyword.get(opts, :spawn_opts, []),
-        fleet: Fleet.list(),
+        fleet: [],
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),
-        model: model,
+        model: Keyword.get(opts, :model, ""),
         verbose?: Keyword.get(opts, :verbose, false),
-        usage: Usage.new(model),
+        views: %{},
+        available?: true,
+        confirm: nil,
         frame: 0,
         frame_due?: false,
         started_at: nil,
         draft: ""
       )
       |> attach(agent, Keyword.get(opts, :agent_id, agent))
+      |> refresh_fleet()
       |> append_lines(banner())
       |> put_focus_keybindings("fleet", [{"Enter", "Connect", &__MODULE__.connect_highlighted/2}])
       |> focus("prompt")
@@ -269,51 +361,200 @@ defmodule TarsTUI.App do
     {:ok, term}
   end
 
-  # Subscribes to `agent`'s events, and starts the transcript over with its
-  # conversation and what it is doing now. `agent_id` is what the events are
+  # Subscribes to `agent`'s events and shows its conversation: the transcript
+  # kept from the last time this client watched it, brought up to date, or a
+  # replay of the whole conversation. `agent_id` is what the events are
   # published under.
   defp attach(term, agent, agent_id) do
     # `:raw` delivers `{:tool_call, chunk}` with its arguments.
     :ok = Event.Bus.subscribe(agent_id, level: :raw)
-    %{state: state, pending: pending} = Agent.status(agent)
-    parked = Agent.parked(agent)
 
+    case snapshot(agent) do
+      {:ok, snapshot} -> attach_snapshot(term, agent, agent_id, snapshot)
+      {:error, _reason} -> assign(term, available?: false)
+    end
+  end
+
+  defp snapshot(agent) do
+    case Agent.snapshot(agent) do
+      {:error, reason} -> {:error, reason}
+      snapshot -> {:ok, snapshot}
+    end
+  catch
+    :exit, reason -> {:error, reason}
+  end
+
+  defp attach_snapshot(term, agent, agent_id, snapshot) do
+    %{
+      status: %{state: state, pending: pending, model: model},
+      context: %{messages: messages},
+      parked: parked,
+      generation: generation,
+      trace_id: trace_id
+    } = snapshot
+
+    term =
+      term
+      |> assign(
+        agent: agent,
+        agent_id: agent_id,
+        highlighted: agent_id,
+        model: model,
+        generation: generation,
+        trace_id: trace_id,
+        activity: Activity.new(),
+        running?: state == :running,
+        queued: pending,
+        available?: true,
+        confirm: nil
+      )
+
+    case Map.pop(term.assigns.views, agent_id) do
+      {nil, _views} ->
+        term |> fresh(messages) |> parked_notice(parked)
+
+      {%{generation: ^generation} = kept, views} ->
+        term |> assign(views: views) |> restore(kept, messages, parked)
+
+      {_deleted, views} ->
+        term |> assign(views: views) |> fresh(messages) |> parked_notice(parked)
+    end
+    |> assign(parked: parked)
+  end
+
+  defp fresh(term, messages) do
     term
     |> assign(
-      agent: agent,
-      agent_id: agent_id,
-      highlighted: agent_id,
       transcript: Transcript.new(width(term)),
-      activity: Activity.new(),
       answer: Markdown.new(),
       reasoning: Markdown.new(),
       thinking: "",
-      running?: state == :running,
-      parked: parked,
-      queued: pending,
       chars: 0,
-      answering?: false
+      answering?: false,
+      usage: Usage.new(term.assigns.model),
+      unread: 0,
+      draft: "",
+      started_at: nil,
+      frame: 0,
+      seen: length(messages)
     )
-    |> playback(Agent.get_context(agent))
-    |> parked_notice(parked)
+    |> reset("prompt")
+    |> reset("log")
+    |> playback(messages)
   end
 
-  # The conversation so far, as the transcript would have shown it: what the
-  # person asked, and what the agent answered. Tool exchanges are left out.
-  defp playback(term, %ReqLLM.Context{messages: messages}) do
-    Enum.reduce(messages, term, &play/2)
+  # What was kept comes back as it was, and the messages the conversation
+  # gained meanwhile are replayed under a note. A park that happened while
+  # away is announced as it would have been live.
+  defp restore(term, kept, messages, parked) do
+    unseen = Enum.drop(messages, kept.seen)
+    same_turn? = term.assigns.trace_id == kept.trace_id
+    activity = if same_turn?, do: kept.activity, else: Activity.new()
+    restored = Map.drop(kept, [:generation, :trace_id, :activity])
+
+    term
+    |> assign(restored |> Map.take(@kept) |> Map.put(:seen, length(messages)) |> Enum.to_list())
+    |> assign(activity: activity)
+    |> restore_prompt(kept.prompt)
+    |> put_implicit("log", TarsTUI.Scroll, kept.scroll)
+    |> away(unseen)
+    |> parked_notice(if(kept.parked != parked, do: parked, else: []))
   end
+
+  defp restore_prompt(term, prompt) when map_size(prompt) == 0, do: reset(term, "prompt")
+
+  defp restore_prompt(term, prompt),
+    do: put_implicit(term, "prompt", Breeze.Implicit.Textarea, prompt)
+
+  defp away(term, []), do: term
+
+  defp away(term, messages) do
+    unread =
+      if Map.get(implicit_state(term, "log"), :pinned_bottom, true),
+        do: 0,
+        else: term.assigns.unread + length(messages)
+
+    term
+    |> assign(unread: unread)
+    |> append(View.away(length(messages)))
+    |> playback(messages)
+  end
+
+  # Keeps the view of the attached agent for the next time it is connected to.
+  defp keep(term) do
+    term = settle(term)
+    seen = seen(term)
+
+    kept =
+      term.assigns
+      |> Map.take(@kept)
+      |> Map.merge(%{
+        seen: seen,
+        scroll: implicit_state(term, "log"),
+        prompt: implicit_state(term, "prompt")
+      })
+
+    assign(term, views: Map.put(term.assigns.views, term.assigns.agent_id, kept))
+  end
+
+  # How many messages the conversation holds now, or the count last known when
+  # the agent cannot be asked.
+  defp seen(%{assigns: %{agent: agent, seen: seen}}) do
+    case Agent.get_context(agent) do
+      %ReqLLM.Context{messages: messages} -> length(messages)
+      {:error, :not_found} -> seen
+    end
+  catch
+    :exit, _reason -> seen
+  end
+
+  defp implicit_state(%{implicit_state: states}, id) do
+    case Map.get(states, id) do
+      {_module, state} -> state
+      nil -> %{}
+    end
+  end
+
+  # The conversation as the transcript would have shown it: what the person
+  # asked, what the agent answered, and each tool call with what it returned.
+  defp playback(term, messages), do: Enum.reduce(messages, term, &play/2)
 
   defp play(%{role: :user} = message, term), do: question(term, LLM.Context.text(message))
 
   defp play(%{role: :assistant} = message, term) do
-    {streamed, answer} = Markdown.push(Markdown.new(), LLM.Context.text(message))
+    term |> say(LLM.Context.text(message)) |> calls(message.tool_calls || [])
+  end
+
+  defp play(%{role: :tool} = message, term) do
+    output = LLM.Context.text(message)
+    append(term, View.tool_result(message.name || "tool", output, tool_ok?(message, output)))
+  end
+
+  defp play(_system_message, term), do: term
+
+  defp say(term, ""), do: term
+
+  defp say(term, text) do
+    {streamed, answer} = Markdown.push(Markdown.new(), text)
     {rest, _answer} = Markdown.flush(answer)
 
     term |> assign(answering?: false) |> answer_lines(streamed ++ rest)
   end
 
-  defp play(_tool_message, term), do: term
+  defp calls(term, tool_calls) do
+    Enum.reduce(tool_calls, term, fn call, term ->
+      %{name: name, arguments: arguments} = ReqLLM.ToolCall.from_map(call)
+      append(term, View.tool_call(name, arguments))
+    end)
+  end
+
+  # A result is a failure when the runner marked it so, or when the tool
+  # itself reported one through `Tars.Tool.Result.error/1`.
+  defp tool_ok?(%{metadata: %{is_error: true}}, _output), do: false
+
+  defp tool_ok?(_message, output) do
+    not match?({:ok, %{"ok" => false}}, JSON.decode(output))
+  end
 
   defp parked_notice(term, []), do: term
   defp parked_notice(term, calls), do: append(term, View.parked(calls))
@@ -347,6 +588,7 @@ defmodule TarsTUI.App do
         fleet_rows: fleet_rows(assigns, side_width),
         prompt_class:
           "block w-full h-#{prompt_height} bg-none border-surface focus:border-primary",
+        placeholder: placeholder(assigns),
         header: header(assigns),
         status: status(assigns, width),
         meta: meta(assigns, width)
@@ -359,6 +601,7 @@ defmodule TarsTUI.App do
         <box
           id="log"
           focusable
+          br-change="scroll"
           implicit={TarsTUI.Scroll}
           scroll-autoscroll="bottom"
           class={@log_class}
@@ -378,7 +621,7 @@ defmodule TarsTUI.App do
               br-change="highlight"
               list-selected={@highlighted}
               selected-indicator=" "
-              class="height-full scrollbar-mute-100"
+              class="height-full scrollbar-mute-100 border-line border-surface focus:border-primary"
               item_class="selected:bg-surface selected:text-muted"
             >
               <:item :for={{key, row} <- @fleet_rows} value={key}>{row}</:item>
@@ -392,7 +635,7 @@ defmodule TarsTUI.App do
         br-change="draft"
         br-submit="ask"
         textarea-value={@draft}
-        textarea-placeholder="Ask anything · /help"
+        textarea-placeholder={@placeholder}
         textarea-prefix="› "
         textarea-submit-on-enter={true}
         class={@prompt_class}
@@ -420,7 +663,7 @@ defmodule TarsTUI.App do
   defp sidebar_width(%{sidebar?: false}, _width), do: 0
 
   defp sidebar_width(assigns, width) do
-    side = TarsTUI.Fleet.width(assigns.fleet)
+    side = TarsTUI.Fleet.width(assigns.fleet, assigns.agent_id)
     if width - side >= @min_log_width, do: side, else: 0
   end
 
@@ -435,6 +678,18 @@ defmodule TarsTUI.App do
     |> min(@max_prompt_rows)
   end
 
+  # What Enter will do with the line, said where the line is typed.
+  defp placeholder(%{available?: false}), do: "not running · nothing typed here is sent"
+  defp placeholder(%{running?: true}), do: "Enter steers the running turn at its next boundary"
+
+  defp placeholder(%{parked: [_only]}),
+    do: "Enter queues behind the parked turn · y approve · n deny"
+
+  defp placeholder(%{parked: [_ | _]}),
+    do: "Enter queues behind the parked turn · /approve N · /deny N · /approve all"
+
+  defp placeholder(_assigns), do: "Ask anything · /help"
+
   defp header(assigns) do
     [
       Render.tag(" tars", [:bright, :cyan]),
@@ -444,9 +699,22 @@ defmodule TarsTUI.App do
     |> Enum.join()
   end
 
+  defp status(%{available?: false, agent_id: key}, width) do
+    {_org, _user, name} = Fleet.parse(key)
+
+    left =
+      Text.tag(
+        " ⏻ #{key} is not running · the fleet restarts it if it can · /spawn #{name} brings it back",
+        :yellow
+      )
+
+    right = Text.tag("Ctrl-F fleet · Ctrl-D quit ", @faint)
+    Render.line(Render.justify(left, right, width))
+  end
+
   defp status(%{running?: false, parked: [_ | _] = parked}, width) do
     names = Enum.map_join(parked, ", ", fn {call, _prompt} -> call.name end)
-    left = Text.tag(" ? waiting on #{names} · y approve · n deny", [:bright, :yellow])
+    left = Text.tag(" ? waiting on #{names} · #{decision_keys(parked)}", [:bright, :yellow])
     right = Text.tag("Esc abandon · Ctrl-T trace · Ctrl-D quit ", @faint)
     Render.line(Render.justify(left, right, width))
   end
@@ -467,6 +735,9 @@ defmodule TarsTUI.App do
 
     Render.line(Render.justify(left, right, width))
   end
+
+  defp decision_keys([_only]), do: "y approve · n deny"
+  defp decision_keys(_several), do: "/approve N · /deny N · /approve all"
 
   defp label(nil), do: Text.tag("working", @faint)
   defp label(%{name: nil}), do: Text.tag("working", @faint)
@@ -504,8 +775,10 @@ defmodule TarsTUI.App do
   defp chars(n), do: "#{Usage.count(n)} chars · "
 
   defp meta(assigns, width) do
-    left = Text.tag(" " <> Usage.summary(assigns.usage), @faint)
-    right = Text.tag(queued(assigns.queued), @faint)
+    usage = Usage.summary(assigns.usage)
+    left = Text.tag(if(usage == "", do: "", else: " observed here · " <> usage), @faint)
+    unread = if assigns.unread > 0, do: "#{assigns.unread} unread · End to follow · ", else: ""
+    right = Text.tag(unread <> queued(assigns), @faint)
     Render.line(Render.justify(left, right, width))
   end
 
@@ -515,9 +788,11 @@ defmodule TarsTUI.App do
 
   defp elapsed(_assigns), do: ""
 
-  defp queued(0), do: ""
-  defp queued(1), do: "1 prompt queued "
-  defp queued(n), do: "#{n} prompts queued "
+  defp queued(%{queued: 0}), do: ""
+  defp queued(%{queued: 1, running?: true}), do: "1 message steering the turn "
+  defp queued(%{queued: n, running?: true}), do: "#{n} messages steering the turn "
+  defp queued(%{queued: 1}), do: "1 message queued behind the parked turn "
+  defp queued(%{queued: n}), do: "#{n} messages queued behind the parked turn "
 
   # -- input -----------------------------------------------------------------
 
@@ -526,6 +801,9 @@ defmodule TarsTUI.App do
 
   def handle_event("highlight", %{value: key}, term),
     do: {:noreply, assign(term, highlighted: key)}
+
+  def handle_event("scroll", %{pinned_bottom: true}, term),
+    do: {:noreply, assign(term, unread: 0)}
 
   def handle_event("ask", %{value: value}, term) do
     term = term |> assign(draft: "") |> reset("prompt")
@@ -539,19 +817,31 @@ defmodule TarsTUI.App do
   def handle_event(_name, _event, term), do: {:noreply, term}
 
   defp apply_command(:blank, term), do: term
-  defp apply_command(:stop, term), do: interrupt(term)
-  defp apply_command(:approve, term), do: decide(term, :approve)
+  defp apply_command(:confirm, term), do: confirm(term)
+
+  # Anything but `/confirm` drops a removal that was waiting on it.
+  defp apply_command(command, %{assigns: %{confirm: pending}} = term) when pending != nil do
+    apply_command(command, term |> assign(confirm: nil) |> append(View.cancelled()))
+  end
+
+  defp apply_command({:stop, nil}, term), do: interrupt(term)
+  defp apply_command({:stop, target}, term), do: stop(term, target)
+  defp apply_command({:shutdown, name}, term), do: shutdown(term, name)
+  defp apply_command({:rm, target, confirmed?}, term), do: remove(term, target, confirmed?)
+  defp apply_command({:approve, selector}, term), do: decide(term, selector, :approve)
   defp apply_command(:fleet, term), do: list_fleet(term)
   defp apply_command(:help, term), do: append_lines(term, [""] ++ View.help())
-  defp apply_command({:deny, reason}, term), do: decide(term, {:deny, reason || @default_denial})
+
+  defp apply_command({:deny, selector, reason}, term),
+    do: decide(term, selector, {:deny, reason || @default_denial})
 
   defp apply_command({:spawn, name, options, prompt}, term),
     do: spawn_agent(term, name, options, prompt)
 
   defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
   defp apply_command({:connect, name}, term), do: connect(term, name)
-  defp apply_command({:kill, prefix}, term), do: kill(term, prefix)
   defp apply_command({:ask, text}, term), do: ask(term, text)
+  defp apply_command({:unknown, word}, term), do: append(term, View.unknown_command(word))
 
   defp list_fleet(term) do
     term
@@ -577,13 +867,17 @@ defmodule TarsTUI.App do
     key = key(term, name)
 
     with {:ok, [node: node]} <- placement(options),
-         {:ok, _pid} <- Fleet.move(key, node) do
-      term |> refresh_fleet() |> append(View.moved(key, node))
+         {:ok, pid} <- Fleet.move(key, node) do
+      term |> adopt(key, pid) |> refresh_fleet() |> append(View.moved(key, node))
     else
       {:ok, []} -> append(term, View.error(:node_required))
       {:error, reason} -> append(term, View.error(reason))
     end
   end
+
+  # The attached agent is addressed by its new process from here on.
+  defp adopt(%{assigns: %{agent_id: key}} = term, key, pid), do: reconnect(term, pid)
+  defp adopt(term, _key, _pid), do: term
 
   defp placement(%{"node" => name} = options) when map_size(options) == 1 do
     case node_named(name) do
@@ -606,6 +900,9 @@ defmodule TarsTUI.App do
 
   defp connect(term, name), do: connect_key(term, key(term, name))
 
+  defp connect_key(%{assigns: %{agent_id: key}} = term, key),
+    do: append(term, View.connected(key))
+
   defp connect_key(term, key) do
     case Fleet.whereis(key) do
       nil ->
@@ -617,94 +914,196 @@ defmodule TarsTUI.App do
   end
 
   # Leaves the agent this client is attached to for `pid`, registered under
-  # `key`. The agent is addressed by pid from here on: the registry is
-  # eventually consistent, so a key may not yet resolve on this node for an
-  # agent that just started on another.
+  # `key`, keeping the view of the one it leaves. The agent is addressed by pid
+  # from here on: the registry is eventually consistent, so a key may not yet
+  # resolve on this node for an agent that just started on another.
   defp switch(term, pid, key) do
     Event.Bus.unsubscribe(term.assigns.agent_id)
 
-    term |> attach(pid, key) |> refresh_fleet()
+    term |> keep() |> attach(pid, key) |> refresh_fleet()
   end
 
-  # Agents this client names live beside its own, under the same org and user.
-  defp key(term, name), do: Fleet.key(name, term.assigns.spawn_opts)
-
-  # A prefix ends in `/`; anything else names an agent under this client's org
-  # and user. The agent this client is attached to is never removed.
-  defp kill(term, target) do
-    attached = term.assigns.agent_id
-
-    cond do
-      String.ends_with?(target, "/") and String.starts_with?(attached, target) ->
-        append(term, View.attached(attached))
-
-      String.ends_with?(target, "/") ->
-        term |> refresh_fleet() |> append(View.forgotten(target, Fleet.forget_under(target)))
-
-      key(term, target) == attached ->
-        append(term, View.attached(attached))
-
-      true ->
-        forget(term, key(term, target))
+  # A bare name is an agent beside this client's own, under the same org and
+  # user; `org/user/name` is any agent in the fleet. A leading slash is
+  # tolerated, as is a key nothing holds, which the lookup then reports.
+  defp key(term, target) do
+    case target |> String.trim_leading("/") |> String.split("/") do
+      [name] -> Fleet.key(name, term.assigns.spawn_opts)
+      parts -> Enum.join(parts, "/")
     end
   end
 
-  defp forget(term, key) do
-    with pid when is_pid(pid) <- Fleet.whereis(key),
-         :ok <- Fleet.forget(key) do
-      term |> refresh_fleet() |> append(View.forgotten(key))
+  # `/stop NAME` interrupts one agent, and `/stop PREFIX/` every agent under a
+  # prefix. Both leave the agents running.
+  defp stop(term, target) do
+    target = String.trim_leading(target, "/")
+
+    if String.ends_with?(target, "/") do
+      append(term, View.stopped_under(target, Fleet.kill(target)))
     else
-      nil -> append(term, View.no_such_agent(key))
+      key = key(term, target)
+
+      case Agent.interrupt(key) do
+        :ok -> append(term, View.stopped(key))
+        {:error, :not_found} -> append(term, View.no_such_agent(key))
+      end
+    end
+  end
+
+  # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
+  # The attached agent may be shut down; the status row then says so.
+  defp shutdown(term, name) do
+    key = key(term, name)
+
+    case Fleet.stop(key) do
+      :ok -> term |> refresh_fleet() |> append(View.shut_down(key, name))
+      {:error, :noproc} -> append(term, View.no_such_agent(key))
       {:error, reason} -> append(term, View.error(reason))
     end
   end
 
-  # Every parked call takes the same answer. One question at a time is what a
-  # terminal can ask clearly; a surface that needs them separately has
-  # `Tars.Agent.resume/2`, which takes a decision per call.
-  defp decide(%{assigns: %{parked: []}} = term, _decision),
+  # Prefix removal always previews exact targets. A single named agent may
+  # be removed at once with `--yes`. The attached agent is left out and named.
+  defp remove(term, target, confirmed?) do
+    target = String.trim_leading(target, "/")
+    prefix? = String.ends_with?(target, "/")
+
+    case targets(term, target, prefix?) do
+      {[], nil} when prefix? -> append(term, View.nothing_under(target))
+      {[], nil} -> append(term, View.no_such_agent(key(term, target)))
+      {[], attached} -> append(term, View.attached(attached))
+      {keys, _skipped} when confirmed? and not prefix? -> forget_all(term, keys)
+      {keys, skipped} -> preview(term, target, keys, skipped)
+    end
+  end
+
+  defp targets(%{assigns: %{agent_id: attached}}, prefix, true) do
+    keys = prefix |> Fleet.list() |> Enum.map(& &1.key)
+    {List.delete(keys, attached), if(attached in keys, do: attached)}
+  end
+
+  defp targets(%{assigns: %{agent_id: attached}} = term, name, false) do
+    key = key(term, name)
+
+    cond do
+      key == attached -> {[], attached}
+      Fleet.whereis(key) -> {[key], nil}
+      true -> {[], nil}
+    end
+  end
+
+  defp preview(term, target, keys, skipped) do
+    term
+    |> assign(confirm: {:rm, keys})
+    |> append(View.removal_preview(target, keys, skipped))
+  end
+
+  defp confirm(%{assigns: %{confirm: {:rm, keys}}} = term) do
+    term |> assign(confirm: nil) |> forget_all(keys)
+  end
+
+  defp confirm(term), do: append(term, View.nothing_to_confirm())
+
+  defp forget_all(term, keys) do
+    {removed, failed} = Enum.split_with(keys, &(Fleet.forget(&1) == :ok))
+    term = assign(term, views: Map.drop(term.assigns.views, removed))
+
+    case failed do
+      [] -> term |> refresh_fleet() |> append(View.forgotten(keys))
+      failed -> term |> refresh_fleet() |> append(View.error({:not_removed, failed}))
+    end
+  end
+
+  # Each call is answered on its own. With one call waiting, a decision with no
+  # selector is for it; with several, it has to say which, or `all`.
+  defp decide(%{assigns: %{parked: []}} = term, _selector, _decision),
     do: append(term, View.nothing_to_answer())
 
-  defp decide(term, decision) do
-    calls = term.assigns.parked
-    :ok = Agent.resume(term.assigns.agent, decisions(calls, decision))
+  defp decide(%{assigns: %{running?: true}} = term, _selector, _decision),
+    do: append(term, View.decision_pending())
 
-    term
-    |> assign(parked: [])
-    |> append(View.decided(calls, decision))
+  defp decide(term, selector, decision) do
+    calls = term.assigns.parked
+
+    case chosen(calls, selector) do
+      {:ok, chosen} ->
+        accept_decision(term, chosen, decision)
+
+      :ambiguous ->
+        append(term, View.choose(calls))
+
+      :none ->
+        append(term, View.no_such_call(selector))
+    end
+  end
+
+  defp accept_decision(term, chosen, decision) do
+    case Agent.decide(term.assigns.agent, decisions(chosen, decision)) do
+      :ok ->
+        remaining = term.assigns.parked -- chosen
+
+        term
+        |> assign(parked: remaining, running?: true)
+        |> append(View.decided(chosen, decision, length(remaining)))
+
+      {:error, _reason} ->
+        append(term, View.decision_pending())
+    end
+  catch
+    :exit, _reason ->
+      term |> assign(available?: false) |> append(View.unavailable(term.assigns.agent_id))
+  end
+
+  defp chosen([only], nil), do: {:ok, [only]}
+  defp chosen(_calls, nil), do: :ambiguous
+  defp chosen(calls, :all), do: {:ok, calls}
+
+  defp chosen(calls, number) do
+    case Integer.parse(number) do
+      {n, ""} when n >= 1 and n <= length(calls) -> {:ok, [Enum.at(calls, n - 1)]}
+      _other -> :none
+    end
   end
 
   defp decisions(calls, decision),
     do: Map.new(calls, fn {call, _prompt} -> {call.id, decision} end)
 
+  defp ask(%{assigns: %{available?: false, agent_id: key}} = term, _text),
+    do: append(term, View.unavailable(key))
+
   defp ask(term, text) do
     :ok = Agent.ask(term.assigns.agent, text)
 
-    if term.assigns.running? do
-      term
-      |> assign(queued: term.assigns.queued + 1)
-      |> append_lines([
-        "",
-        [View.prompt("»"), Text.tag(text, :bright), Text.tag("  · queued", @faint)]
-      ])
-    else
-      question(term, text)
+    cond do
+      term.assigns.running? -> steer(term, text, :running)
+      term.assigns.parked != [] -> steer(term, text, :parked)
+      true -> question(term, text)
     end
   end
 
+  defp steer(term, text, how) do
+    term
+    |> assign(queued: term.assigns.queued + 1)
+    |> append_lines(["", View.steered(text, how)])
+  end
+
   defp interrupt(term) do
-    :ok = Agent.interrupt(term.assigns.agent)
+    Agent.interrupt(term.assigns.agent)
     term
   end
 
   # -- events ----------------------------------------------------------------
 
-  # An event changes state without redrawing; the frame due after it does.
+  # An event from the attached agent changes state without redrawing; the frame
+  # due after it does. One from any other agent, left in the mailbox by a
+  # subscription since dropped, changes nothing.
   @impl Breeze.View
-  def handle_info(%Event{} = event, term) do
+  def handle_info(%Event{source: %{agent_id: id}} = event, %{assigns: %{agent_id: id}} = term) do
     term = handle(event, fold(term, event))
     {:noreply, frame_due(term), invalidate: false}
   end
+
+  def handle_info(%Event{}, term), do: {:noreply, term, invalidate: false}
 
   def handle_info(:frame, term), do: {:noreply, assign(term, frame_due?: false)}
 
@@ -734,7 +1133,39 @@ defmodule TarsTUI.App do
 
   def handle_info(_message, term), do: {:noreply, term}
 
-  defp refresh_fleet(term), do: assign(term, fleet: Fleet.list(), fleet_due?: false)
+  defp refresh_fleet(term) do
+    fleet = Fleet.list()
+    term |> assign(fleet: fleet, fleet_due?: false) |> follow(fleet)
+  end
+
+  # The attached agent as the fleet has it now. A new process under the same
+  # key, after a move or a restart, is adopted; a key the fleet no longer holds
+  # means the agent is not running, unless it is a local process that was never
+  # in the fleet.
+  defp follow(term, fleet) do
+    %{agent: agent, agent_id: key} = term.assigns
+
+    case Enum.find(fleet, &(&1.key == key)) do
+      nil ->
+        assign(term, available?: alive?(agent))
+
+      %{pid: pid} when pid == agent ->
+        if term.assigns.available?, do: term, else: reconnect(term, pid)
+
+      %{pid: pid} when is_pid(agent) ->
+        term |> reconnect(pid) |> followed(pid)
+
+      %{pid: pid} ->
+        assign(term, agent: pid, available?: true)
+    end
+  end
+
+  defp reconnect(term, pid), do: term |> keep() |> attach(pid, term.assigns.agent_id)
+
+  defp followed(term, pid), do: append(term, View.followed(term.assigns.agent_id, node(pid)))
+
+  defp alive?(pid) when is_pid(pid) and node(pid) == node(), do: Process.alive?(pid)
+  defp alive?(_agent), do: false
 
   defp frame_due(%{assigns: %{frame_due?: true}} = term), do: term
 
@@ -748,6 +1179,7 @@ defmodule TarsTUI.App do
     term
     |> assign(
       activity: Activity.fold(Activity.new(), event, now: now()),
+      trace_id: event.source.trace.trace_id,
       answer: Markdown.new(),
       reasoning: Markdown.new(),
       thinking: "",
@@ -767,6 +1199,19 @@ defmodule TarsTUI.App do
 
     term
     |> assign(running?: true, parked: [], frame: 0, started_at: now(), queued: 0)
+    |> trace(event)
+  end
+
+  # Answered calls leave the parked list, and the turn is running again; what
+  # is still parked comes back with the next `:turn_parked`.
+  defp handle(%Event{payload: {:turn_resumed, decisions}} = event, term) do
+    schedule_tick()
+
+    parked =
+      Enum.reject(term.assigns.parked, fn {call, _prompt} -> Map.has_key?(decisions, call.id) end)
+
+    term
+    |> assign(running?: true, parked: parked, frame: 0, started_at: now())
     |> trace(event)
   end
 
@@ -882,7 +1327,7 @@ defmodule TarsTUI.App do
   # One line per complete call; a chunk without arguments is partial.
   defp tool_call(%{name: name, arguments: arguments})
        when is_binary(name) and is_map(arguments) and map_size(arguments) > 0 do
-    Text.tag("  ⇢ #{name} #{Render.squash(JSON.encode!(arguments))}", @faint)
+    View.tool_call(name, arguments)
   end
 
   defp tool_call(_call), do: nil
@@ -902,7 +1347,9 @@ defmodule TarsTUI.App do
     term =
       if term.assigns.verbose?, do: append_lines(term, reasoning_lines(reasoning)), else: term
 
-    answer_lines(term, answer)
+    term
+    |> answer_lines(answer)
+    |> assign(answer: Markdown.new(), reasoning: Markdown.new())
   end
 
   defp trace(%{assigns: %{verbose?: true}} = term, %Event{payload: payload}) do

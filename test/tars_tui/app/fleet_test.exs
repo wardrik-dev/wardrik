@@ -1,9 +1,11 @@
 defmodule TarsTUI.App.FleetTest do
   use ExUnit.Case, async: false
 
+  alias ReqLLM.Context
   alias Tars.Agent
   alias Tars.Event
   alias Tars.Event.Bus
+  alias Tars.Event.Source
   alias Tars.Fleet
   alias Tars.Test.AgentRunners
   alias TarsTUI.App
@@ -35,7 +37,10 @@ defmodule TarsTUI.App.FleetTest do
 
   defp screen(session), do: Breeze.Test.render_text!(session)
 
+  # A frame before the keys, as there always is at a terminal: the prompt is
+  # reset when a line is sent and only exists again once a frame has drawn it.
   defp submit(session, text) do
+    screen(session)
     Enum.each(String.graphemes(text), &Breeze.Test.input(session, &1))
     Breeze.Test.input(session, "Enter")
     session
@@ -175,6 +180,115 @@ defmodule TarsTUI.App.FleetTest do
     assert Fleet.whereis(other)
   end
 
+  test "attaching replays each tool call and what it returned", %{session: session, org: org} do
+    key = Fleet.key("tooled", org: org)
+    on_exit(fn -> Fleet.forget(key) end)
+
+    context =
+      Context.new([
+        Context.user("how many hits?"),
+        Context.assistant("Let me look.",
+          tool_calls: [ReqLLM.ToolCall.new("call_1", "web_search", ~s({"query":"lemonade"}))]
+        ),
+        Context.tool_result_message("web_search", "call_1", %{"ok" => true, "hits" => 3}),
+        Context.assistant("",
+          tool_calls: [ReqLLM.ToolCall.new("call_2", "deep_research", "{}")]
+        ),
+        Context.tool_result_message("deep_research", "call_2", %{error: "boom"}, %{is_error: true}),
+        Context.assistant("Three, and the second search broke.")
+      ])
+
+    {:ok, _pid} =
+      Fleet.spawn(key, context: context, runner: {AgentRunners, :echo, [self(), "ok"]})
+
+    session = Breeze.Test.resize(session, {90, 30})
+    submit(session, "/connect tooled")
+
+    text = screen(session)
+    assert text =~ "› how many hits?"
+    assert text =~ "⏺ Let me look."
+    assert text =~ ~s(⇢ web_search {"query":"lemonade"})
+    assert text =~ ~s(✓ web_search · {"hits":3,"ok":true})
+    assert text =~ "⇢ deep_research"
+    assert text =~ ~s(✗ deep_research · {"error":"boom"})
+    assert text =~ "⏺ Three, and the second search broke."
+  end
+
+  test "connecting back restores the transcript and replays what arrived meanwhile", ctx do
+    %{session: session, org: org, agent_id: agent_id} = ctx
+    session = Breeze.Test.resize(session, {90, 30})
+    other = spawn_and_ask(org, "other", "what is up")
+    :ok = Bus.subscribe(agent_id)
+    submit(session, "hello from here")
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+
+    submit(session, "/connect other")
+    refute screen(session) =~ "hello from here"
+
+    # The first agent carries on without this client watching.
+    Agent.ask(agent_id, "while you were out")
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+    :ok = Bus.unsubscribe(agent_id)
+
+    submit(session, "/connect watched")
+
+    text = screen(session)
+    assert text =~ "› hello from here"
+    assert text =~ "⏺ ok"
+    assert text =~ "2 messages arrived while this client was elsewhere"
+    assert text =~ "› while you were out"
+    assert Fleet.whereis(other)
+  end
+
+  test "a draft is kept per agent across a switch", %{session: session, org: org} do
+    _other = spawn_and_ask(org, "other", "what is up")
+    Enum.each(String.graphemes("unsent draft"), &Breeze.Test.input(session, &1))
+    assert screen(session) =~ "› unsent draft"
+
+    ctrl_f(session)
+    screen(session)
+    Breeze.Test.input(session, "ArrowUp")
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "connected to"
+    refute screen(session) =~ "unsent draft"
+
+    ctrl_f(session)
+    screen(session)
+    Breeze.Test.input(session, "ArrowDown")
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "› unsent draft"
+  end
+
+  test "the header shows the attached agent's model and usage starts over", ctx do
+    %{session: session, org: org} = ctx
+    key = Fleet.key("sonnet", org: org)
+    config = Tars.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
+    {:ok, _pid} = Fleet.spawn(key, config: config, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
+
+    assert screen(session) =~ "glm-5.3-flash"
+
+    submit(session, "/connect sonnet")
+
+    text = screen(session)
+    assert text =~ "claude-sonnet-5"
+    refute text =~ "glm-5.3-flash"
+  end
+
+  test "an event left behind by a previous attachment changes nothing", ctx do
+    %{session: session, org: org, agent_id: agent_id} = ctx
+    _other = spawn_and_ask(org, "other", "what is up")
+    submit(session, "/connect other")
+
+    stale = Source.root(agent_id, name: "turn")
+    Breeze.Test.info(session, Event.new(stale, {:turn_started, ["stale"]}))
+    Breeze.Test.info(session, Event.new(stale, {:result, "stale words\n"}))
+
+    text = screen(session)
+    refute text =~ "stale words"
+    assert text =~ "idle"
+  end
+
   test "attaching on start shows the conversation so far", %{org: org} do
     key = spawn_and_ask(org, "resumed", "where were we")
 
@@ -224,6 +338,29 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ "moved #{agent_id} to #{node()}"
     assert Fleet.whereis(agent_id) != before
     assert screen(session) =~ "› ○ watched"
+
+    # The client follows the agent to its new process.
+    submit(session, "still there?")
+    assert_receive {:turn, [{:user, "still there?"}]}
+  end
+
+  test "a restart under the same key is followed and announced", ctx do
+    %{session: session, agent_id: agent_id} = ctx
+    before = Fleet.whereis(agent_id)
+
+    # The same watch the client holds, so the test knows when the registry
+    # has the new process and can ask the client to refresh right then.
+    :ok = Fleet.watch()
+    :ok = Fleet.stop(agent_id)
+    {:ok, restarted} = Fleet.spawn(agent_id, runner: {AgentRunners, :echo, [self(), "back"]})
+    assert restarted != before
+    assert_receive {:group, _events, _info}, 2_000
+    Breeze.Test.info(session, :refresh_fleet)
+
+    assert screen(session) =~ "reconnected to #{agent_id} on #{node()}"
+
+    submit(session, "hello again")
+    assert_receive {:turn, [{:user, "hello again"}]}, 2_000
   end
 
   test "/move needs a node", %{session: session} do
@@ -259,31 +396,64 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ agent_id
   end
 
-  test "/kill NAME removes the agent and its store", %{session: session, org: org} do
+  test "/rm NAME shows what would go and removes it on /confirm", %{session: session, org: org} do
     key = Fleet.key("doomed", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
-    submit(session, "/kill doomed")
+    submit(session, "/rm doomed")
+
+    text = screen(session)
+    assert text =~ "/rm doomed removes 1 agent, and what they said, for good:"
+    assert text =~ key
+    assert text =~ "/confirm goes ahead"
+    assert Fleet.whereis(key)
+
+    submit(session, "/confirm")
 
     assert screen(session) =~ "removed #{key} and its store"
     assert Fleet.whereis(key) == nil
     assert {:error, :not_found} = DurableServer.Supervisor.get_server_info(Fleet, key)
   end
 
-  test "/kill never removes the agent this client is attached to", ctx do
+  test "anything but /confirm cancels a removal", %{session: session, org: org} do
+    key = Fleet.key("spared", org: org)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
+
+    submit(session, "/rm spared")
+    submit(session, "/fleet")
+    assert screen(session) =~ "removal cancelled"
+
+    submit(session, "/confirm")
+    assert screen(session) =~ "nothing is waiting to be confirmed"
+    assert Fleet.whereis(key)
+  end
+
+  test "/rm NAME --yes skips the preview", %{session: session, org: org} do
+    key = Fleet.key("sure", org: org)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
+
+    submit(session, "/rm sure --yes")
+
+    assert screen(session) =~ "removed #{key} and its store"
+    assert Fleet.whereis(key) == nil
+  end
+
+  test "/rm never removes the agent this client is attached to, and says so", ctx do
     %{session: session, agent_id: agent_id, org: org} = ctx
 
-    submit(session, "/kill watched")
+    submit(session, "/rm watched")
     assert screen(session) =~ "you are attached to #{agent_id}"
 
-    submit(session, "/kill #{org}/")
+    submit(session, "/rm #{org}/")
     assert screen(session) =~ "you are attached to #{agent_id}"
     assert Fleet.whereis(agent_id)
   end
 
-  test "/kill PREFIX/ removes every running agent under it", %{session: session} do
-    org = "doomed#{System.unique_integer([:positive])}"
+  test "/rm PREFIX/ lists every agent under it and skips the attached one", ctx do
+    %{session: session, agent_id: agent_id, org: org} = ctx
     keys = for name <- ["one", "two"], do: Fleet.key(name, org: org)
 
     for key <- keys do
@@ -291,16 +461,117 @@ defmodule TarsTUI.App.FleetTest do
       on_exit(fn -> Fleet.forget(key) end)
     end
 
-    submit(session, "/kill #{org}/")
+    submit(session, "/rm #{org}/")
 
-    assert screen(session) =~ "removed 2 under #{org}/"
+    text = screen(session)
+    assert text =~ "removes 2 agents"
+    assert Enum.all?(keys, &(text =~ &1))
+    assert text =~ "skipping #{agent_id} · you are attached to it"
+
+    submit(session, "/confirm")
+
+    text = screen(session)
+    assert text =~ "removed 2 agents and their stores"
     assert Enum.all?(keys, &(Fleet.whereis(&1) == nil))
+    assert Fleet.whereis(agent_id)
   end
 
-  test "/kill NAME says so when nothing holds the key", %{session: session, org: org} do
-    submit(session, "/kill nobody")
+  test "a target may be a full key, with or without a leading slash", ctx do
+    %{session: session, org: org} = ctx
+    other = spawn_and_ask(org, "other", "what is up")
+    key = Fleet.key("doomed", org: org)
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
+
+    submit(session, "/connect #{other}")
+    assert screen(session) =~ "connected to #{other}"
+
+    submit(session, "/rm /#{key}")
+    assert screen(session) =~ "/rm #{key} removes 1 agent"
+
+    submit(session, "/confirm")
+    assert screen(session) =~ "removed #{key} and its store"
+    assert Fleet.whereis(key) == nil
+
+    submit(session, "/rm some/odd/shape/of/key")
+    assert screen(session) =~ "no agent at some/odd/shape/of/key"
+  end
+
+  test "/rm NAME says so when nothing holds the key", %{session: session, org: org} do
+    submit(session, "/rm nobody")
 
     assert screen(session) =~ "no agent at #{org}/_/nobody"
+  end
+
+  test "/rm says so when a prefix matches nothing", %{session: session} do
+    submit(session, "/rm nothing/here/")
+
+    assert screen(session) =~ "nothing running under nothing/here/"
+  end
+
+  test "/kill is gone, and says where its jobs went", %{session: session} do
+    submit(session, "/kill watched")
+
+    text = screen(session)
+    assert text =~ "/kill is gone"
+    assert text =~ "/stop interrupts"
+    refute_receive {:turn, _}
+  end
+
+  test "/stop NAME interrupts another agent and leaves it running", %{session: session, org: org} do
+    key = Fleet.key("busy", org: org)
+    {:ok, pid} = Fleet.spawn(key, runner: {AgentRunners, :blocking, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(key) end)
+    :ok = Bus.subscribe(key)
+    Agent.ask(pid, "take your time")
+    assert_receive {:turn, _messages, _turn_pid}
+
+    submit(session, "/stop busy")
+
+    assert screen(session) =~ "asked #{key} to stop"
+    assert_receive %Event{payload: {:turn_interrupted, _stats}}, 5_000
+    assert Fleet.whereis(key)
+  end
+
+  test "/stop PREFIX/ interrupts every agent under it", %{session: session, org: org} do
+    submit(session, "/stop #{org}/")
+
+    assert screen(session) =~ "asked 1 under #{org}/ to stop"
+  end
+
+  test "/shutdown NAME stops an agent and keeps its conversation for /spawn", ctx do
+    %{session: session, org: org} = ctx
+    key = spawn_and_ask(org, "sleeper", "remember this")
+
+    submit(session, "/shutdown sleeper")
+
+    text = screen(session)
+    assert text =~ "shut down #{key}"
+    assert text =~ "its conversation is kept"
+    assert Fleet.whereis(key) == nil
+
+    submit(session, "/spawn sleeper")
+
+    assert screen(session) =~ "› remember this"
+    assert Fleet.whereis(key)
+  end
+
+  test "shutting down the attached agent leaves the client waiting, sending nothing", ctx do
+    %{session: session, agent_id: agent_id} = ctx
+
+    submit(session, "/shutdown watched")
+
+    text = screen(session)
+    assert text =~ "#{agent_id} is not running"
+    assert text =~ "nothing typed here is sent"
+
+    submit(session, "hello?")
+    assert screen(session) =~ "is not running · nothing was sent"
+    refute_receive {:turn, _}
+
+    submit(session, "/spawn watched")
+    submit(session, "hello again")
+    assert_receive {:turn, [{:user, "hello again"}]}, 2_000
   end
 
   test "/help lists the commands", %{session: session} do
@@ -308,11 +579,5 @@ defmodule TarsTUI.App.FleetTest do
 
     assert screen(session) =~ "/quit"
     assert screen(session) =~ "this list"
-  end
-
-  test "/kill says so when a prefix matches nothing", %{session: session} do
-    submit(session, "/kill nothing/here/")
-
-    assert screen(session) =~ "nothing running under nothing/here/"
   end
 end

@@ -22,7 +22,10 @@ defmodule TarsTUI.FleetTest do
     }
   end
 
-  defp row(member, attached \\ "", width \\ 30), do: Fleet.row(member, attached, width)
+  # Attached, by default, to an agent in the same org and user as `member/1`
+  # builds, so rows are named alone unless a test says otherwise.
+  defp row(member, attached \\ "acme/jon/mine", width \\ 30),
+    do: Fleet.row(member, attached, width)
 
   describe "heading/2" do
     test "says how many agents there are" do
@@ -32,11 +35,23 @@ defmodule TarsTUI.FleetTest do
 
   describe "row/3" do
     test "names the agent and what it is doing" do
-      assert plain(row(member(key: "a/b/one"))) =~ "○ one"
-      assert plain(row(member(key: "a/b/two", status: :running))) =~ "◐ two"
+      assert plain(row(member(key: "acme/jon/one"))) =~ "○ one"
+      assert plain(row(member(key: "acme/jon/two", status: :running))) =~ "◐ two"
 
-      assert plain(row(member(key: "a/b/three", status: :parked, waiting_on: ["deploy"]))) =~
+      assert plain(row(member(key: "acme/jon/three", status: :parked, waiting_on: ["deploy"]))) =~
                "? three deploy"
+    end
+
+    test "names an agent alone inside the attached agent's scope, and by key elsewhere" do
+      assert plain(row(member(key: "acme/jon/other"), "acme/jon/mine")) =~ "○ other"
+      refute plain(row(member(key: "acme/jon/other"), "acme/jon/mine")) =~ "acme"
+
+      assert plain(row(member(key: "_/_/assistant"), "acme/jon/assistant")) =~ "○ _/_/assistant"
+
+      assert plain(row(member(key: "acme/ann/assistant"), "acme/jon/assistant")) =~
+               "○ acme/ann/assistant"
+
+      assert plain(row(member(key: "_/_/mine"), "_/_/mine")) =~ "› ○ mine"
     end
 
     test "marks the agent this client is watching" do
@@ -67,9 +82,19 @@ defmodule TarsTUI.FleetTest do
     end
 
     test "grows to fit the longest row and its node" do
-      wide = member(key: "a/b/assistant_number_four", node: :tars_b@somewhere)
+      wide = member(key: "acme/jon/assistant_number_four", node: :tars_b@somewhere)
 
-      assert Fleet.width([wide]) == String.length(plain(row(wide, "", 80))) + 5
+      assert Fleet.width([wide], "acme/jon/mine") ==
+               String.length(plain(row(wide, "acme/jon/mine", 80))) + 5
+    end
+
+    test "counts the scope only for rows that show it" do
+      other = member(key: "acme/jon/researcher-two")
+
+      assert Fleet.width([other], "acme/jon/mine") ==
+               String.length(plain(row(other, "acme/jon/mine", 80))) + 5
+
+      assert Fleet.width([other], "_/_/mine") > Fleet.width([other], "acme/jon/mine")
     end
 
     test "stops at the maximum" do

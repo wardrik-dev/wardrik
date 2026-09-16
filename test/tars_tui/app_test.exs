@@ -33,7 +33,10 @@ defmodule TarsTUI.AppTest do
     session
   end
 
+  # A frame before the keys, as there always is at a terminal: the prompt is
+  # reset when a line is sent and only exists again once a frame has drawn it.
   defp submit(session, text) do
+    screen(session)
     session |> type(text) |> Breeze.Test.input("Enter")
     session
   end
@@ -42,6 +45,8 @@ defmodule TarsTUI.AppTest do
     do: Enum.each(payloads, &Event.emit(source, &1))
 
   defp meta(usage), do: %ReqLLM.StreamChunk{type: :meta, metadata: %{usage: usage}}
+
+  defp call(name), do: %{id: "call_#{name}", name: name, arguments: %{}}
 
   defp tool_call(name, arguments) do
     %ReqLLM.StreamChunk{type: :tool_call, name: name, arguments: arguments, metadata: %{}}
@@ -67,15 +72,37 @@ defmodule TarsTUI.AppTest do
       assert screen(session) =~ "Ask anything"
     end
 
-    test "a line sent during a turn is queued, not blocked", %{session: session, turn: turn} do
+    test "a line sent during a turn steers it, and is not blocked", %{
+      session: session,
+      turn: turn
+    } do
       emit(turn, [{:turn_started, ["first"]}])
+      assert screen(session) =~ "Enter steers the running turn at its next boundary"
       submit(session, "second thought")
 
       assert_receive {:"$gen_cast", {:ask, "second thought"}}
       text = screen(session)
-      assert text =~ "» second thought"
-      assert text =~ "queued"
-      assert text =~ "1 prompt queued"
+      assert text =~ "» second thought  · steers the turn at its next boundary"
+      assert text =~ "1 message steering the turn"
+    end
+
+    test "a line sent while parked queues behind the decision", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["first"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      assert screen(session) =~ "Enter queues behind the parked turn"
+
+      submit(session, "also this")
+
+      assert_receive {:"$gen_cast", {:ask, "also this"}}
+      text = screen(session)
+      assert text =~ "» also this  · queued behind the parked turn"
+      assert text =~ "1 message queued behind the parked turn"
+    end
+
+    test "a mistyped command is reported and never sent", %{session: session} do
+      submit(session, "/spwan helper")
+
+      refute_receive {:"$gen_cast", {:ask, _text}}
+      assert screen(session) =~ "/spwan is not a command"
     end
 
     test "/stop interrupts and /quit stops", %{session: session} do
@@ -107,6 +134,99 @@ defmodule TarsTUI.AppTest do
       Breeze.Test.input(session, "Enter")
 
       refute_receive {:"$gen_cast", _}
+    end
+  end
+
+  describe "approvals" do
+    test "one parked call takes a bare answer", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+
+      text = screen(session)
+      assert text =~ "APPROVAL NEEDED"
+      assert text =~ "1  deploy"
+      assert text =~ "y approve · n deny"
+
+      submit(session, "y")
+
+      assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
+      assert screen(session) =~ "▌ approved deploy"
+    end
+
+    test "several parked calls are decided one at a time, or all at once", ctx do
+      %{session: session, turn: turn} = ctx
+      calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
+      session = Breeze.Test.resize(session, {70, 30})
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+
+      text = screen(session)
+      assert text =~ "2 calls, each decided on its own"
+      assert text =~ "Enter queues behind the parked turn · /approve N"
+      assert text =~ "1  deploy"
+      assert text =~ "2  drop_table"
+      assert text =~ "/approve N approve one"
+
+      submit(session, "y")
+      refute_receive {:"$gen_cast", {:resume, _decisions}}
+      assert screen(session) =~ "2 calls are waiting · say which"
+
+      submit(session, "/approve 1")
+      assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve} = one}}
+      assert map_size(one) == 1
+      assert screen(session) =~ "▌ approved deploy · 1 call still waiting"
+
+      submit(session, "n 1 not that one")
+      refute_receive {:"$gen_cast", {:resume, _decisions}}
+      assert screen(session) =~ "no decision sent"
+      emit(turn, [{:turn_parked, [{call("drop_table"), "Drop it?"}]}])
+
+      submit(session, "n 1 not that one")
+      assert_receive {:"$gen_cast", {:resume, %{"call_drop_table" => {:deny, "not that one"}}}}
+      assert screen(session) =~ "▌ denied drop_table · not that one"
+
+      submit(session, "/approve 1")
+      assert screen(session) =~ "nothing is waiting for a decision"
+    end
+
+    test "a resumed turn is running again, whoever answered it", %{session: session, turn: turn} do
+      calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+      assert screen(session) =~ "waiting on deploy, drop"
+
+      emit(turn, [{:turn_resumed, %{"call_deploy" => :approve}}])
+
+      text = screen(session)
+      refute text =~ "idle"
+      refute text =~ "waiting on"
+      assert text =~ "Enter steers the running turn"
+
+      # The other call is still parked, and the turn says so again.
+      emit(turn, [{:turn_parked, [{call("drop_table"), "Drop it?"}]}])
+      assert screen(session) =~ "waiting on drop_table"
+    end
+
+    test "all answers every parked call", %{session: session, turn: turn} do
+      calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+
+      submit(session, "/deny all not today")
+
+      assert_receive {:"$gen_cast", {:resume, decisions}}
+
+      assert decisions == %{
+               "call_deploy" => {:deny, "not today"},
+               "call_drop_table" => {:deny, "not today"}
+             }
+
+      assert screen(session) =~ "▌ denied deploy, drop_table · not today"
+    end
+
+    test "a number that picks nothing is said so", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+
+      submit(session, "/approve 4")
+
+      refute_receive {:"$gen_cast", {:resume, _decisions}}
+      assert screen(session) =~ "nothing waiting is numbered 4"
     end
   end
 

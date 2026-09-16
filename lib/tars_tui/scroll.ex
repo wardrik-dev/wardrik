@@ -40,7 +40,8 @@ defmodule TarsTUI.Scroll do
         {:noreply, state}
 
       offset_y ->
-        {:noreply, put_offset(state, Viewport.clamp_scroll_y(offset_y, viewport), viewport)}
+        next = put_offset(state, Viewport.clamp_scroll_y(offset_y, viewport), viewport)
+        {{:change, %{pinned_bottom: next.pinned_bottom}}, next}
     end
   end
 

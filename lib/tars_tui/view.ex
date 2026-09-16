@@ -15,6 +15,7 @@ defmodule TarsTUI.View do
   """
 
   alias TarsTUI.Activity
+  alias TarsTUI.Render
   alias TarsTUI.Text
 
   @default_width 100
@@ -82,6 +83,9 @@ defmodule TarsTUI.View do
         :yellow
       )
 
+  def trace({:turn_resumed, decisions}),
+    do: line("turn", "resumed · #{map_size(decisions)} call(s) answered", :cyan)
+
   def trace({:deadline_reached, count}),
     do: line("turn", "deadline reached after #{count} message(s)", :yellow)
 
@@ -132,27 +136,51 @@ defmodule TarsTUI.View do
   def parked(calls) do
     [
       "\n",
-      bar([Text.tag("APPROVAL NEEDED", [:bright, :yellow])]),
-      Enum.map(calls, &asked/1),
-      bar([
-        Text.tag("y", [:bright, :yellow]),
-        Text.tag(" approve · ", @faint),
-        Text.tag("n", [:bright, :yellow]),
-        Text.tag(" deny · ", @faint),
-        Text.tag("n <reason>", [:bright, :yellow]),
-        Text.tag(" deny and say why · ", @faint),
-        Text.tag("Esc", [:bright, :yellow]),
-        Text.tag(" abandon", @faint)
-      ]),
+      bar([Text.tag("APPROVAL NEEDED", [:bright, :yellow]), several(calls)]),
+      calls |> Enum.with_index(1) |> Enum.map(&asked/1),
+      bar(answers(calls)),
       "\n"
     ]
   end
 
-  defp asked({call, prompt}) do
+  defp several([_only]), do: []
+  defp several(calls), do: Text.tag(" · #{length(calls)} calls, each decided on its own", @faint)
+
+  defp asked({{call, prompt}, index}) do
     [
-      bar([Text.tag(call.name, [:bright, :yellow]), Text.tag(["  ", args(call)], @faint)]),
-      bar([Text.tag(prompt, :yellow)]),
-      bar([Text.tag(call.id, @faint)])
+      bar([
+        Text.tag("#{index}  ", @faint),
+        Text.tag(call.name, [:bright, :yellow]),
+        Text.tag(["  ", args(call)], @faint)
+      ]),
+      bar([Text.tag(["   ", prompt], :yellow)]),
+      bar([Text.tag(["   ", call.id], @faint)])
+    ]
+  end
+
+  defp answers([_only]) do
+    [
+      Text.tag("y", [:bright, :yellow]),
+      Text.tag(" approve · ", @faint),
+      Text.tag("n", [:bright, :yellow]),
+      Text.tag(" deny · ", @faint),
+      Text.tag("n <reason>", [:bright, :yellow]),
+      Text.tag(" deny and say why · ", @faint),
+      Text.tag("Esc", [:bright, :yellow]),
+      Text.tag(" abandon", @faint)
+    ]
+  end
+
+  defp answers(_calls) do
+    [
+      Text.tag("/approve N", [:bright, :yellow]),
+      Text.tag(" approve one · ", @faint),
+      Text.tag("/deny N <reason>", [:bright, :yellow]),
+      Text.tag(" deny one · ", @faint),
+      Text.tag("/approve all", [:bright, :yellow]),
+      Text.tag(" approve every one · ", @faint),
+      Text.tag("Esc", [:bright, :yellow]),
+      Text.tag(" abandon", @faint)
     ]
   end
 
@@ -183,20 +211,76 @@ defmodule TarsTUI.View do
   defp args(%{arguments: args}) when map_size(args) == 0, do: ""
   defp args(%{arguments: args}), do: Enum.map_join(args, "  ", fn {k, v} -> "#{k}=#{v}" end)
 
-  @doc "What a person decided, echoed so the transcript records who chose what."
-  @spec decided([{Tars.Tool.call(), String.t()}], :approve | {:deny, String.t()}) :: Text.t()
-  def decided(calls, decision) do
+  @doc """
+  What a person decided, echoed so the transcript records who chose what, and
+  how many calls are still waiting.
+  """
+  @spec decided(
+          [{Tars.Tool.call(), String.t()}],
+          :approve | {:deny, String.t()},
+          non_neg_integer()
+        ) ::
+          Text.t()
+  def decided(calls, decision, remaining \\ 0) do
     names = Enum.map_join(calls, ", ", fn {call, _prompt} -> call.name end)
 
-    case decision do
-      :approve -> [Text.tag(["  ▌ approved ", names, "\n\n"], :green)]
-      {:deny, reason} -> [Text.tag(["  ▌ denied ", names, " · ", reason, "\n\n"], :red)]
-    end
+    line =
+      case decision do
+        :approve -> Text.tag(["  ▌ approved ", names], :green)
+        {:deny, reason} -> Text.tag(["  ▌ denied ", names, " · ", reason], :red)
+      end
+
+    [line, waiting(remaining), "\n\n"]
   end
+
+  defp waiting(0), do: []
+  defp waiting(1), do: Text.tag(" · 1 call still waiting", @faint)
+  defp waiting(n), do: Text.tag(" · #{n} calls still waiting", @faint)
+
+  @doc "Said when several calls wait and a decision names none of them."
+  @spec choose([{Tars.Tool.call(), String.t()}]) :: Text.t()
+  def choose(calls) do
+    [
+      Text.tag(
+        "  ▌ #{length(calls)} calls are waiting · say which: /approve 1, /deny 2 <reason>, or /approve all\n\n",
+        :yellow
+      )
+    ]
+  end
+
+  @doc "Said when a decision names a call that is not waiting."
+  @spec no_such_call(String.t()) :: Text.t()
+  def no_such_call(selector),
+    do: [Text.tag("  ▌ nothing waiting is numbered #{selector}\n\n", @faint)]
 
   @doc "Said when a decision is offered with nothing waiting on one."
   @spec nothing_to_answer() :: Text.t()
   def nothing_to_answer, do: [Text.tag("  ▌ nothing is waiting for a decision\n\n", @faint)]
+
+  @doc "No decision was accepted while an earlier decision is executing or the call changed."
+  @spec decision_pending() :: Text.t()
+  def decision_pending do
+    Text.tag(
+      "  ▌ no decision sent · wait for the refreshed approval list before answering again\n\n",
+      :yellow
+    )
+  end
+
+  @doc "One tool call and its arguments, as the transcript shows it live or replayed."
+  @spec tool_call(String.t(), map()) :: Text.t()
+  def tool_call(name, arguments) when map_size(arguments) == 0,
+    do: Text.tag("  ⇢ #{name}", @faint)
+
+  def tool_call(name, arguments),
+    do: Text.tag("  ⇢ #{name} #{Render.squash(JSON.encode!(arguments))}", @faint)
+
+  @doc "A replayed tool result: what the tool returned, or the error it reported."
+  @spec tool_result(String.t(), String.t(), boolean()) :: Text.t()
+  def tool_result(name, output, true),
+    do: Text.tag(["  ✓ ", name, " · ", payload(output)], @faint)
+
+  def tool_result(name, output, false),
+    do: [Text.tag("  ✗ #{name}", :red), Text.tag([" · ", payload(output)], @faint)]
 
   @doc "That an agent was started in the fleet, and this client attached to it."
   @spec spawned(String.t()) :: Text.t()
@@ -211,9 +295,134 @@ defmodule TarsTUI.View do
   @spec connected(String.t()) :: Text.t()
   def connected(key), do: note(["connected to ", Text.tag(key, [:bright, :cyan])])
 
+  @doc "That the attached agent came back under a new process, and this client followed it."
+  @spec followed(String.t(), node()) :: Text.t()
+  def followed(key, node),
+    do:
+      note([
+        "reconnected to ",
+        Text.tag(key, :bright),
+        " on ",
+        Text.tag(Atom.to_string(node), :bright)
+      ])
+
+  @doc "That the conversation grew while this client was watching another agent."
+  @spec away(pos_integer()) :: Text.t()
+  def away(1), do: note("1 message arrived while this client was elsewhere · replayed below")
+  def away(n), do: note("#{n} messages arrived while this client was elsewhere · replayed below")
+
+  @doc "That an agent was asked to stop what it is doing."
+  @spec stopped(String.t()) :: Text.t()
+  def stopped(key), do: note(["asked ", Text.tag(key, :bright), " to stop"])
+
+  @doc "That every agent under a prefix was asked to stop."
+  @spec stopped_under(String.t(), non_neg_integer()) :: Text.t()
+  def stopped_under(prefix, 0), do: note(["nothing running under ", Text.tag(prefix, :bright)])
+
+  def stopped_under(prefix, n),
+    do: note(["asked #{n} under ", Text.tag(prefix, :bright), " to stop"])
+
+  @doc "That an agent was shut down with its conversation kept."
+  @spec shut_down(String.t(), String.t()) :: Text.t()
+  def shut_down(key, name) do
+    note([
+      "shut down ",
+      Text.tag(key, :bright),
+      " · its conversation is kept · ",
+      Text.tag("/spawn #{name}", :bright),
+      " brings it back"
+    ])
+  end
+
+  @doc """
+  What `/rm` is about to remove, so nothing permanent happens on one line.
+  """
+  @spec removal_preview(String.t(), [String.t()], String.t() | nil) :: Text.t()
+  def removal_preview(target, keys, skipped) do
+    [
+      "\n",
+      rm_bar([
+        Text.tag("/rm #{target}", [:bright, :red]),
+        Text.tag(
+          " removes #{count(keys, "agent")}, and what they said, for good:",
+          @faint
+        )
+      ]),
+      Enum.map(keys, &rm_bar([Text.tag(["   ", &1], :bright)])),
+      skipped_bar(skipped),
+      rm_bar([
+        Text.tag("/confirm", [:bright, :red]),
+        Text.tag(" goes ahead · anything else cancels", @faint)
+      ]),
+      "\n"
+    ]
+  end
+
+  defp skipped_bar(nil), do: []
+
+  defp skipped_bar(key),
+    do: rm_bar([Text.tag(["   skipping ", key, " · you are attached to it"], :yellow)])
+
+  defp rm_bar(content), do: [Text.tag("  ▌ ", :red), content, "\n"]
+
+  defp count([_one], noun), do: "1 #{noun}"
+  defp count(many, noun), do: "#{length(many)} #{noun}s"
+
+  @doc "Said when `/confirm` arrives with nothing waiting on it."
+  @spec nothing_to_confirm() :: Text.t()
+  def nothing_to_confirm, do: [Text.tag("  ▌ nothing is waiting to be confirmed\n\n", @faint)]
+
+  @doc "That a pending removal was dropped because something else was typed."
+  @spec cancelled() :: Text.t()
+  def cancelled, do: note("removal cancelled")
+
+  @doc "That a slash word names no command, so nothing was sent to the model."
+  @spec unknown_command(String.t()) :: Text.t()
+  def unknown_command("/kill") do
+    [
+      Text.tag("\n✗ /kill is gone · ", :red),
+      Text.tag("/stop", :bright),
+      Text.tag(" interrupts · ", @faint),
+      Text.tag("/shutdown", :bright),
+      Text.tag(" keeps the conversation · ", @faint),
+      Text.tag("/rm", :bright),
+      Text.tag(" deletes it\n", @faint)
+    ]
+  end
+
+  def unknown_command(word) do
+    [
+      Text.tag("\n✗ #{word} is not a command, or is missing what it needs · ", :red),
+      Text.tag("/help", :bright),
+      Text.tag(" lists them · nothing was sent\n", @faint)
+    ]
+  end
+
+  @doc "That nothing was sent, because the agent is not running."
+  @spec unavailable(String.t()) :: Text.t()
+  def unavailable(key), do: [Text.tag("\n✗ #{key} is not running · nothing was sent\n", :red)]
+
   @doc "The glyph in front of what a person typed: `›` sent, `»` queued behind a turn."
   @spec prompt(String.t()) :: Text.t()
   def prompt(glyph), do: Text.tag(glyph <> " ", [:bright, :cyan])
+
+  @doc """
+  A message sent while a turn runs or waits. A running turn is asked to stop at
+  its next boundary and the message joins it; one that is parked keeps it
+  behind the answer it is waiting for.
+  """
+  @spec steered(String.t(), :running | :parked) :: Text.t()
+  def steered(text, :running) do
+    [
+      prompt("»"),
+      Text.tag(text, :bright),
+      Text.tag("  · steers the turn at its next boundary", @faint)
+    ]
+  end
+
+  def steered(text, :parked) do
+    [prompt("»"), Text.tag(text, :bright), Text.tag("  · queued behind the parked turn", @faint)]
+  end
 
   @doc "A message a person sent, as the transcript shows it."
   @spec question(String.t()) :: Text.t()
@@ -224,7 +433,8 @@ defmodule TarsTUI.View do
   def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
 
   @help [
-    {"Enter", "send what you typed"},
+    {"Enter", "send what you typed; during a turn it steers the turn at its next boundary"},
+    {"Shift-Enter", "a new line in the prompt"},
     {"Esc", "stop the turn"},
     {"Tab", "move focus between the prompt, the transcript and the fleet"},
     {"Ctrl-T", "toggle the trace"},
@@ -234,12 +444,13 @@ defmodule TarsTUI.View do
     {"/spawn NAME [node=N] [prompt]", "start an agent beside this one and attach to it"},
     {"/connect NAME", "attach to an agent and show its conversation"},
     {"/move NAME node=N", "restart an agent on another node, as it was"},
-    {"/kill NAME", "stop an agent and delete its store"},
-    {"/kill PREFIX/", "the same for every running agent under a prefix"},
+    {"/stop [NAME | PREFIX/]", "interrupt this agent, another, or every agent under a prefix"},
+    {"/shutdown NAME", "stop an agent and keep its conversation; /spawn brings it back"},
+    {"/rm NAME | PREFIX/", "delete an agent and its conversation, after showing what goes"},
+    {"/confirm", "go ahead with the removal shown"},
     {"/fleet", "list every agent in the cluster"},
-    {"/approve", "approve a parked turn; y does too while it waits"},
-    {"/deny [reason]", "deny a parked turn; n does too while it waits"},
-    {"/stop", "interrupt this agent"},
+    {"/approve [N | all]", "approve the parked call, one by number, or every one; y does too"},
+    {"/deny [N] [reason]", "deny the parked call, or one by number, saying why; n does too"},
     {"/quit", "leave"},
     {"/help", "this list"}
   ]
@@ -254,15 +465,20 @@ defmodule TarsTUI.View do
     end)
   end
 
-  @doc "That an agent, or every agent under a prefix, was removed with its store."
-  @spec forgotten(String.t()) :: Text.t()
-  def forgotten(key), do: note(["removed ", Text.tag(key, :bright), " and its store"])
+  @doc "That the agents named were removed with their stores."
+  @spec forgotten([String.t()]) :: Text.t()
+  def forgotten([key]), do: note(["removed ", Text.tag(key, :bright), " and its store"])
 
-  @spec forgotten(String.t(), non_neg_integer()) :: Text.t()
-  def forgotten(prefix, 0), do: note(["nothing running under ", Text.tag(prefix, :bright)])
+  def forgotten(keys) do
+    note([
+      "removed #{length(keys)} agents and their stores: ",
+      Text.tag(Enum.join(keys, ", "), :bright)
+    ])
+  end
 
-  def forgotten(prefix, count),
-    do: note(["removed #{count} under ", Text.tag(prefix, :bright), " with their stores"])
+  @doc "That a prefix matched nothing running."
+  @spec nothing_under(String.t()) :: Text.t()
+  def nothing_under(prefix), do: note(["nothing running under ", Text.tag(prefix, :bright)])
 
   @doc "That a removal would have taken the agent this client is attached to."
   @spec attached(String.t()) :: Text.t()

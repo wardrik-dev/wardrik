@@ -111,6 +111,19 @@ defmodule TarsTUI.ViewTest do
   end
 
   describe "trace/1" do
+    test "approval traces distinguish waiting, rejection, and accepted decisions" do
+      call = %{id: "deploy-1", name: "deploy", arguments: %{}}
+      assert View.trace({:turn_parked, [{call, "Ship?"}]}) |> plain() =~ "waiting on deploy"
+
+      assert View.trace({:turn_resumed, %{call.id => :approve}}) |> plain() =~
+               "1 call(s) answered"
+
+      assert View.trace({:tool_parked, call.id, call.name, "Ship?"}) |> plain() =~ "Ship?"
+      denied = View.trace({:tool_denied, call.id, call.name, "Not today"})
+      assert plain(denied) =~ "Not today"
+      assert :red in sequences(denied)
+    end
+
     test "names the model request and how it went" do
       assert View.trace({:model_started, :m}) |> plain() =~ "model"
       assert View.trace({:model_finished, :ok, 1_200}) |> plain() =~ "ok 1.2s"

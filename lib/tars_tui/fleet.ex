@@ -4,7 +4,9 @@ defmodule TarsTUI.Fleet do
 
   The panel is a Breeze list with one row per agent: a glyph for what it is
   doing, its name, and the node it is running on when that is not this one.
-  The agent the client is attached to is marked.
+  An agent under the same org and user as the one the client is attached to
+  is named alone; any other shows its whole key, with the scope faint. The
+  agent the client is attached to is marked.
   """
 
   alias Tars.Fleet.Member
@@ -41,12 +43,13 @@ defmodule TarsTUI.Fleet do
 
   @doc """
   The width the panel needs to show every row whole, between
-  #{@min_width} and #{@max_width} columns.
+  #{@min_width} and #{@max_width} columns. `attached` decides which rows are
+  named alone.
   """
-  @spec width([Member.t()]) :: pos_integer()
-  def width(members) do
+  @spec width([Member.t()], String.t()) :: pos_integer()
+  def width(members, attached \\ "") do
     members
-    |> Enum.map(&(&1 |> text("") |> Text.plain() |> String.length()))
+    |> Enum.map(&(&1 |> text(attached) |> Text.plain() |> String.length()))
     |> Enum.max(fn -> 0 end)
     |> Kernel.+(@chrome)
     |> max(@min_width)
@@ -61,9 +64,35 @@ defmodule TarsTUI.Fleet do
       " ",
       Text.tag(@glyphs[member.status], @colours[member.status]),
       " ",
-      Text.tag(member.name, name_colour(member, attached)),
+      label(member, attached),
       suffix(member)
     ]
+  end
+
+  # The name alone inside the attached agent's org and user; the whole key
+  # anywhere else, so two agents called the same thing are told apart.
+  defp label(%Member{org: org, user: user, name: name} = member, attached) do
+    case scope(attached) do
+      {^org, ^user} ->
+        Text.tag(name, name_colour(member, attached))
+
+      _elsewhere ->
+        [Text.tag(prefix(member), @faint), Text.tag(name, name_colour(member, attached))]
+    end
+  end
+
+  defp scope(key) do
+    case String.split(key, "/") do
+      [org, user, _name] -> {identity(org), identity(user)}
+      _other -> nil
+    end
+  end
+
+  defp identity("_"), do: nil
+  defp identity(segment), do: segment
+
+  defp prefix(%Member{key: key, name: name}) do
+    String.slice(key, 0, String.length(key) - String.length(name))
   end
 
   defp name_colour(%Member{key: key}, key), do: [:bright]
