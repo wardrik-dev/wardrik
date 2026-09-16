@@ -9,11 +9,14 @@ defmodule TarsTUI.Usage do
 
   Cost is the provider's `total_cost` when present, otherwise what
   `ReqLLM.Usage.Cost` computes from the model's pricing, and zero for a model
-  without pricing.
+  without pricing. The model is looked up in `ReqLLM` when the first request
+  settles, not when the totals are created.
   """
 
   @type t() :: %__MODULE__{
+          spec: term(),
           model: struct() | nil,
+          priced?: boolean(),
           input: non_neg_integer(),
           output: non_neg_integer(),
           reasoning: non_neg_integer(),
@@ -23,7 +26,9 @@ defmodule TarsTUI.Usage do
           open: %{String.t() => map()}
         }
 
-  defstruct model: nil,
+  defstruct spec: nil,
+            model: nil,
+            priced?: false,
             input: 0,
             output: 0,
             reasoning: 0,
@@ -33,17 +38,19 @@ defmodule TarsTUI.Usage do
             open: %{}
 
   @doc """
-  Totals at zero, pricing `model_spec` if `ReqLLM` knows it.
+  Totals at zero, to be priced as `model_spec` once a request settles.
   """
   @spec new(term()) :: t()
-  def new(model_spec \\ nil), do: %__MODULE__{model: model(model_spec)}
+  def new(model_spec \\ nil), do: %__MODULE__{spec: model_spec}
 
-  defp model(nil), do: nil
+  # The model behind the spec, looked up once.
+  defp price(%__MODULE__{priced?: true} = usage), do: usage
+  defp price(%__MODULE__{spec: nil} = usage), do: %{usage | priced?: true}
 
-  defp model(spec) do
+  defp price(%__MODULE__{spec: spec} = usage) do
     case ReqLLM.model(spec) do
-      {:ok, model} -> model
-      _unknown -> nil
+      {:ok, model} -> %{usage | model: model, priced?: true}
+      _unknown -> %{usage | priced?: true}
     end
   end
 
@@ -68,6 +75,8 @@ defmodule TarsTUI.Usage do
         usage
 
       {seen, open} ->
+        usage = price(usage)
+
         %{
           usage
           | open: open,

@@ -43,6 +43,30 @@ defmodule TarsTUI.UsageTest do
     assert usage.cost == 0.25
   end
 
+  test "the model is priced from the catalog when the first request settles" do
+    usage = Usage.new({:anthropic, model: "claude-sonnet-5"})
+    assert usage.model == nil
+
+    usage =
+      usage
+      |> Usage.observe("a", meta(%{input_tokens: 1_000_000, output_tokens: 0}))
+      |> Usage.settle("a")
+
+    assert %{model: "claude-sonnet-5"} = usage.model
+    assert usage.cost == 2.0
+  end
+
+  test "a model the catalog does not know costs nothing" do
+    usage =
+      Usage.new("test:model")
+      |> Usage.observe("a", meta(%{input_tokens: 1_000, output_tokens: 10}))
+      |> Usage.settle("a")
+
+    assert usage.model == nil
+    assert usage.cost == 0.0
+    assert usage.requests == 1
+  end
+
   test "metadata without usage, and a span that never reported, are ignored" do
     usage =
       Usage.new()

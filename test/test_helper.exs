@@ -1,12 +1,11 @@
 Mimic.copy(ReqLLM)
 Mimic.copy(ReqLLM.StreamResponse)
 
-# The first `ReqLLM.model/1` anywhere loads the model database, which measures
-# at about 1.3s; every lookup after it is instant. `TarsTUI.Usage.new/1` does
-# one for the model an agent is running, so left to happen lazily this lands on
-# whichever `TarsTUI.AppTest` case runs first, reads as a one-second test with
-# nothing slow in it, and moves to a different case on the next seed. Paying it
-# here makes every reported duration the test's own.
+# `Tars.LLM.Catalog` loads the model database in the background as the
+# application starts, which takes about 1.3s. A lookup made before it finishes
+# waits for it, so left alone that wait lands on whichever test first prices a
+# request and moves to a different case on the next seed. Waiting here makes
+# every reported duration the test's own.
 ReqLLM.model("test:model")
 
 :ok = DurableServer.Supervisor.wait_until_ready(Tars.Fleet, timeout: 10_000)

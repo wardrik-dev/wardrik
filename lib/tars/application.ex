@@ -6,6 +6,7 @@ defmodule Tars.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      Tars.LLM.Catalog,
       Tars.Event.Bus,
       Tars.LLM.ToolRunner,
       {Task.Supervisor, name: Tars.TaskSupervisor},
