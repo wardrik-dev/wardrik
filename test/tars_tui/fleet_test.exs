@@ -18,7 +18,23 @@ defmodule TarsTUI.FleetTest do
       name: name,
       status: Keyword.get(opts, :status, :idle),
       pending: Keyword.get(opts, :pending, 0),
-      waiting_on: Keyword.get(opts, :waiting_on, [])
+      waiting_on: Keyword.get(opts, :waiting_on, []),
+      delegations: Keyword.get(opts, :delegations, %{active: 0, total: 0}),
+      outcome: Keyword.get(opts, :outcome)
+    }
+  end
+
+  defp delegation(opts) do
+    %{
+      span_id: "s1",
+      parent_span_id: "root",
+      name: Keyword.get(opts, :name, "pricing"),
+      task: "look into pricing",
+      status: Keyword.get(opts, :status, :running),
+      output: nil,
+      error: nil,
+      started_at: 1_000,
+      duration_ms: Keyword.get(opts, :duration_ms)
     }
   end
 
@@ -63,6 +79,17 @@ defmodule TarsTUI.FleetTest do
       assert plain(row(member(pending: 3))) =~ "+3"
     end
 
+    test "counts the delegations of the current turn, and says when the last turn failed" do
+      assert plain(row(member(status: :running, delegations: %{active: 2, total: 4}))) =~
+               "◐ researcher sub 2/4"
+
+      assert plain(row(member(delegations: %{active: 0, total: 3}))) =~ "○ researcher sub 0/3"
+      refute plain(row(member([]))) =~ "sub"
+
+      assert plain(row(member(outcome: :failed))) =~ "○ researcher failed"
+      refute plain(row(member(status: :running, outcome: :failed))) =~ "failed"
+    end
+
     test "names the node an agent is on when it is not this one" do
       assert plain(row(member(node: :tars_b@somewhere))) =~ "@tars_b"
       refute plain(row(member([]))) =~ "@"
@@ -72,6 +99,33 @@ defmodule TarsTUI.FleetTest do
       row = row(member(key: "a/b/an-extremely-long-agent-name-here"), "", 14)
 
       assert String.length(plain(row)) <= 14
+    end
+  end
+
+  describe "delegation_row/5" do
+    test "draws a delegation as a branch of the tree, with how it is going" do
+      assert plain(Fleet.delegation_row(delegation([]), 0, false, 3_500, 40)) ==
+               "  ├ ◐ pricing 2.5s"
+
+      assert plain(
+               Fleet.delegation_row(delegation(status: :ok, duration_ms: 900), 0, true, 0, 40)
+             ) ==
+               "  └ ✓ pricing 900ms"
+
+      assert plain(
+               Fleet.delegation_row(
+                 delegation(status: :error, duration_ms: 5_000),
+                 1,
+                 true,
+                 0,
+                 40
+               )
+             ) ==
+               "    └ ✗ pricing 5.0s"
+    end
+
+    test "clips to the width it was given" do
+      assert String.length(plain(Fleet.delegation_row(delegation([]), 0, true, 0, 10))) <= 10
     end
   end
 
@@ -95,6 +149,13 @@ defmodule TarsTUI.FleetTest do
                String.length(plain(row(other, "acme/jon/mine", 80))) + 5
 
       assert Fleet.width([other], "_/_/mine") > Fleet.width([other], "acme/jon/mine")
+    end
+
+    test "makes room for the delegation rows it is given" do
+      long = Fleet.delegation(delegation(name: "a-longer-name"), 2, true, 0)
+
+      assert Fleet.width([member(key: "a/b/x")], "a/b/mine", [long]) ==
+               String.length(plain(long)) + 5
     end
 
     test "stops at the maximum" do

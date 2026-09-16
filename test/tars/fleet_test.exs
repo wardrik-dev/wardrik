@@ -3,6 +3,7 @@ defmodule Tars.FleetTest do
 
   alias ReqLLM.Context
   alias Tars.Agent
+  alias Tars.Delegation
   alias Tars.Event
   alias Tars.Fleet
   alias Tars.Test.AgentRunners
@@ -158,6 +159,54 @@ defmodule Tars.FleetTest do
       assert [{_call, _prompt}] = Agent.parked(pid)
 
       assert %{status: :parked, waiting_on: ["deploy"]} = Fleet.lookup(key)
+    end
+  end
+
+  describe "delegations" do
+    test "an agent counts its turn's delegations, then how the turn ended" do
+      key = Tars.Test.Fleet.key()
+      pid = start(key, runner: {Tars.Test.AgentRunners, :delegating, [self(), "pricing"]})
+      Event.Bus.subscribe(key, level: :lifecycle)
+
+      assert %{delegations: %{active: 0, total: 0}, outcome: nil} = Fleet.lookup(key)
+
+      Agent.ask(pid, "go")
+      assert_receive {:delegating, branch}
+      assert_receive %Event{payload: {:delegation_started, "look into pricing"}}
+
+      assert eventually(fn -> Fleet.lookup(key).delegations == %{active: 1, total: 1} end)
+
+      assert [%{name: "pricing", status: :running}] =
+               Delegation.list(Agent.snapshot(pid).delegations)
+
+      send(branch, :release)
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+
+      assert eventually(fn ->
+               match?(%{delegations: %{active: 0, total: 1}, outcome: :ok}, Fleet.lookup(key))
+             end)
+
+      assert [%{status: :ok, output: "found pricing"}] =
+               Delegation.list(Agent.snapshot(pid).delegations)
+    end
+
+    test "a failed turn is reported as the last outcome" do
+      key = Tars.Test.Fleet.key()
+      pid = start(key, runner: {Tars.Test.AgentRunners, :failing, [:boom]})
+      Event.Bus.subscribe(key, level: :lifecycle)
+
+      Agent.ask(pid, "go")
+      assert_receive %Event{payload: {:turn_failed, :boom}}
+
+      assert eventually(fn -> Fleet.lookup(key).outcome == :failed end)
+    end
+  end
+
+  defp eventually(check, tries \\ 50) do
+    cond do
+      check.() -> true
+      tries == 0 -> false
+      true -> Process.sleep(20) && eventually(check, tries - 1)
     end
   end
 

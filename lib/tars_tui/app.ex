@@ -40,6 +40,16 @@ defmodule TarsTUI.App do
   than polling. With the panel focused, `Up`, `Down`, `j` and `k` move
   through the agents and `Enter` connects to the one under the cursor.
 
+  `l` on an agent in the panel expands it: one row per delegation its current
+  turn has started through `Tars.Subagent.run/3`, as a tree, each with how it
+  is going and how long it has taken. The rows come from the agent's
+  `Tars.Agent.snapshot/1` and then follow its `:lifecycle` events, which is
+  the shape of its work without its token stream. `h` collapses it again.
+  `Enter` on a delegation opens an inspector over the panes: what it was
+  asked, the work under it, and what it answered or why it failed; `Esc`
+  closes it. An agent's row also counts its delegations, going and started,
+  and says when its last turn failed.
+
   `/spawn NAME [node=NODE] [prompt]` starts an agent with the same
   `:spawn_opts` this client's own agent was given, on the named node if one is
   given, attaches to it, and sends it the prompt. `/connect NAME` attaches to
@@ -120,6 +130,7 @@ defmodule TarsTUI.App do
   import Breeze.Blocks
 
   alias Tars.Agent
+  alias Tars.Delegation
   alias Tars.Event
   alias Tars.Fleet
   alias Tars.LLM
@@ -162,6 +173,7 @@ defmodule TarsTUI.App do
     :usage,
     :draft,
     :history,
+    :delegations,
     :seen,
     :parked,
     :started_at,
@@ -240,6 +252,9 @@ defmodule TarsTUI.App do
   end
 
   @doc false
+  def to_prompt(_event, %{assigns: %{inspecting: %{}}} = term),
+    do: {:noreply, term |> close_inspector() |> focus_pane("prompt")}
+
   def to_prompt(_event, %{focused: focused} = term) when focused in ["log", "fleet"],
     do: {:noreply, focus_pane(term, "prompt")}
 
@@ -250,6 +265,7 @@ defmodule TarsTUI.App do
   # parked one; idle, it does nothing.
   @doc false
   def back(_event, %{assigns: %{palette: %{}}} = term), do: {:noreply, close_palette(term)}
+  def back(_event, %{assigns: %{inspecting: %{}}} = term), do: {:noreply, close_inspector(term)}
   def back(_event, %{assigns: %{leader: {_ref, _origin}}} = term), do: {:noreply, unlead(term)}
 
   def back(_event, %{focused: "prompt"} = term) do
@@ -549,9 +565,117 @@ defmodule TarsTUI.App do
     end
   end
 
+  # Enter in the panel: on an agent, connects; on a delegation, inspects it.
   @doc false
   def connect_highlighted(_event, term) do
-    {:noreply, term |> connect_key(term.assigns.highlighted) |> focus_pane("prompt")}
+    case String.split(term.assigns.highlighted || "", "\t", parts: 2) do
+      [key, span_id] -> {:noreply, inspect_delegation(term, key, span_id)}
+      [key] -> {:noreply, term |> connect_key(key) |> focus_pane("prompt")}
+    end
+  end
+
+  # -- delegations -----------------------------------------------------------
+
+  # The agent a panel row belongs to: its own key, or the key before the
+  # delegation's span.
+  defp agent_of(nil), do: nil
+  defp agent_of(value), do: value |> String.split("\t", parts: 2) |> hd()
+
+  # Shows an agent's delegations under its row. Another agent's come from its
+  # snapshot and then its lifecycle events; the attached agent's are folded
+  # here already.
+  defp expand(term, nil), do: term
+
+  defp expand(%{assigns: %{expanded: expanded, agent_id: agent_id}} = term, key) do
+    cond do
+      Map.has_key?(expanded, key) ->
+        term
+
+      key == agent_id ->
+        term |> assign(expanded: Map.put(expanded, key, nil)) |> tick()
+
+      true ->
+        case Enum.find(term.assigns.fleet, &(&1.key == key)) do
+          nil ->
+            term
+
+          member ->
+            :ok = Event.Bus.subscribe(key, level: :lifecycle)
+            term |> assign(expanded: Map.put(expanded, key, followed(member.pid))) |> tick()
+        end
+    end
+  end
+
+  defp followed(pid) do
+    case Agent.snapshot(pid) do
+      %{delegations: %Delegation{} = delegations} -> delegations
+      _other -> Delegation.new()
+    end
+  catch
+    :exit, _reason -> Delegation.new()
+  end
+
+  # Hides an agent's delegations, and stops following an agent that is not the
+  # attached one. The cursor lands on the agent.
+  defp collapse(term, nil), do: term
+
+  defp collapse(%{assigns: %{expanded: expanded, agent_id: agent_id}} = term, key) do
+    if Map.has_key?(expanded, key) do
+      if key != agent_id, do: Event.Bus.unsubscribe(key)
+      assign(term, expanded: Map.delete(expanded, key), highlighted: key)
+    else
+      term
+    end
+  end
+
+  # An expanded agent's delegations, or `nil` when it is not expanded.
+  defp delegations(%{expanded: expanded, agent_id: agent_id} = assigns, key) do
+    cond do
+      not Map.has_key?(expanded, key) -> nil
+      key == agent_id -> assigns.delegations
+      true -> Map.fetch!(expanded, key)
+    end
+  end
+
+  # An agent this client was attached to stays followed if it is expanded,
+  # and one it attaches to is followed through its own subscription instead.
+  defp refollow(term, old, key) do
+    expanded = term.assigns.expanded
+
+    if Map.has_key?(expanded, old) and old != key do
+      :ok = Event.Bus.subscribe(old, level: :lifecycle)
+      kept = term.assigns.views |> Map.get(old, %{}) |> Map.get(:delegations, Delegation.new())
+      assign(term, expanded: Map.put(expanded, old, kept))
+    else
+      term
+    end
+  end
+
+  defp inspect_delegation(term, key, span_id) do
+    term
+    |> assign(inspecting: %{key: key, span_id: span_id})
+    |> focus("inspector")
+    |> assign(pane: "inspector")
+  end
+
+  defp close_inspector(term), do: term |> assign(inspecting: nil) |> focus_pane("fleet")
+
+  # Whether the frame should keep ticking: for the elapsed times of a running
+  # turn, or of delegations still going under an expanded agent.
+  defp ticking?(%{assigns: %{running?: true}}), do: true
+
+  defp ticking?(%{assigns: %{expanded: expanded}}) do
+    Enum.any?(expanded, fn
+      {_key, %Delegation{} = delegations} -> Delegation.summary(delegations).active > 0
+      {_key, nil} -> false
+    end)
+  end
+
+  defp tick(%{assigns: %{tick_due?: true}} = term), do: term
+
+  defp tick(term) do
+    Process.send_after(self(), :tick, @tick)
+    assign(term, tick_due?: true)
   end
 
   # Leaves from the prompt with nothing typed. In the transcript the same key
@@ -655,12 +779,16 @@ defmodule TarsTUI.App do
         leader: nil,
         palette: nil,
         recent: [],
+        expanded: %{},
+        inspecting: nil,
+        delegations: Delegation.new(),
         editing: nil,
         walking: nil,
         commands: History.new(),
         history: History.new(),
         frame: 0,
         frame_due?: false,
+        tick_due?: false,
         started_at: nil,
         draft: ""
       )
@@ -731,7 +859,7 @@ defmodule TarsTUI.App do
       {_deleted, views} ->
         term |> assign(views: views) |> fresh(messages) |> parked_notice(parked)
     end
-    |> assign(parked: parked)
+    |> assign(parked: parked, delegations: Map.get(snapshot, :delegations, Delegation.new()))
   end
 
   defp fresh(term, messages) do
@@ -747,6 +875,7 @@ defmodule TarsTUI.App do
       unread: 0,
       draft: "",
       history: History.new(),
+      delegations: Delegation.new(),
       started_at: nil,
       frame: 0,
       seen: length(messages)
@@ -898,9 +1027,12 @@ defmodule TarsTUI.App do
     side_width = sidebar_width(assigns, width)
 
     choices = if assigns.palette, do: choices(assigns), else: []
+    {inspector_source, inspector_class} = inspector(assigns, width, height)
 
     assigns =
       assign(assigns,
+        inspector_source: inspector_source,
+        inspector_class: inspector_class,
         palette_count: length(choices),
         palette_class: palette_class(choices, width, height),
         palette_content: palette_content(assigns, choices, width, height),
@@ -965,6 +1097,15 @@ defmodule TarsTUI.App do
       />
       <box class="block w-full h-1 overflow-hidden">{@meta}</box>
       <box
+        :if={@inspecting != nil}
+        id="inspector"
+        focusable
+        implicit={TarsTUI.Scroll}
+        class={@inspector_class}
+      >
+        {@inspector_source}
+      </box>
+      <box
         :if={@palette != nil}
         id="palette"
         focusable
@@ -1013,12 +1154,43 @@ defmodule TarsTUI.App do
       "border-b border-surface focus:border-primary"
   end
 
-  # One list item per agent, as `{key, row}`, clipped to the space inside the
-  # panel's gutter, the list's border and its selection column.
+  # One list item per agent, as `{key, row}`, and under an expanded agent one
+  # per delegation, as `{"key\tspan_id", row}`; each clipped to the space
+  # inside the panel's gutter, the list's border and its selection column.
   defp fleet_rows(_assigns, 0), do: []
 
   defp fleet_rows(assigns, side_width) do
-    Enum.map(assigns.fleet, &{&1.key, TarsTUI.Fleet.row(&1, assigns.agent_id, side_width - 4)})
+    now = System.system_time(:millisecond)
+
+    Enum.flat_map(assigns.fleet, fn member ->
+      rows =
+        Enum.map(delegation_texts(assigns, member.key, now), fn {value, text} ->
+          {value, Render.line(Text.truncate(text, side_width - 4))}
+        end)
+
+      [{member.key, TarsTUI.Fleet.row(member, assigns.agent_id, side_width - 4)} | rows]
+    end)
+  end
+
+  # The delegation rows under one agent, unclipped, as `{value, text}`.
+  defp delegation_texts(assigns, key, now) do
+    case delegations(assigns, key) do
+      nil ->
+        []
+
+      delegations ->
+        records = Delegation.list(delegations)
+        count = length(records)
+
+        records
+        |> Enum.with_index(1)
+        |> Enum.map(fn {record, index} ->
+          depth = Delegation.depth(delegations, record.span_id)
+
+          {key <> "\t" <> record.span_id,
+           TarsTUI.Fleet.delegation(record, depth, index == count, now)}
+        end)
+    end
   end
 
   # The panel takes what its rows need, and is dropped rather than squeezed on
@@ -1026,8 +1198,43 @@ defmodule TarsTUI.App do
   defp sidebar_width(%{sidebar?: false}, _width), do: 0
 
   defp sidebar_width(assigns, width) do
-    side = TarsTUI.Fleet.width(assigns.fleet, assigns.agent_id)
+    now = System.system_time(:millisecond)
+
+    extra =
+      assigns.fleet
+      |> Enum.flat_map(&delegation_texts(assigns, &1.key, now))
+      |> Enum.map(&elem(&1, 1))
+
+    side = TarsTUI.Fleet.width(assigns.fleet, assigns.agent_id, extra)
     if width - side >= @min_log_width, do: side, else: 0
+  end
+
+  # The inspector sits centred over the panes, as tall as its lines need.
+  @inspector_width 80
+
+  defp inspector_size(rows, width, height) do
+    {min(width - 6, @inspector_width) |> max(20), min(rows + 2, height - 2) |> max(5)}
+  end
+
+  defp inspector(%{inspecting: nil}, _width, _height), do: {"", ""}
+
+  defp inspector(%{inspecting: %{key: key, span_id: span_id}} = assigns, width, height) do
+    {w, _h} = inspector_size(1, width, height)
+    now = System.system_time(:millisecond)
+    delegations = delegations(assigns, key) || Delegation.new()
+
+    lines =
+      case Delegation.fetch(delegations, span_id) do
+        nil -> [Text.tag("this delegation is no longer shown · Esc closes", @faint)]
+        record -> View.inspector(record, Delegation.activity(delegations, span_id), key, now)
+      end
+
+    transcript = Transcript.append_all(Transcript.new(w - 4), lines)
+    {_w, h} = inspector_size(Transcript.rows(transcript), width, height)
+
+    {Transcript.source(transcript),
+     "fixed center width-#{w} height-#{h} layer-50 bg border-rounded border-primary " <>
+       "overflow-scroll scrollbar-mute-100 padding-left-1"}
   end
 
   # Rows the draft occupies inside the box: one per line, more when a line
@@ -1130,7 +1337,10 @@ defmodule TarsTUI.App do
     do: Text.tag("j/k scroll · Ctrl-U/D half page · i prompt · Esc back ", @faint)
 
   defp hints(%{pane: "fleet"}),
-    do: Text.tag("j/k move · Enter connect · i prompt · Esc back ", @faint)
+    do:
+      Text.tag("j/k move · l/h expand · Enter connect or inspect · i prompt · Esc back ", @faint)
+
+  defp hints(%{pane: "inspector"}), do: Text.tag("j/k scroll · i prompt · Esc back ", @faint)
 
   defp hints(%{available?: false}),
     do: Text.tag("Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
@@ -1234,6 +1444,12 @@ defmodule TarsTUI.App do
 
   def handle_event("palette_run", %{cursor: cursor}, %{assigns: %{palette: palette}} = term),
     do: choose(term, palette, Enum.at(choices(term.assigns), cursor))
+
+  def handle_event(:input, %{"key" => "l"}, %{focused: "fleet"} = term),
+    do: {:noreply, expand(term, agent_of(term.assigns.highlighted))}
+
+  def handle_event(:input, %{"key" => "h"}, %{focused: "fleet"} = term),
+    do: {:noreply, collapse(term, agent_of(term.assigns.highlighted))}
 
   def handle_event(_name, _event, term), do: {:noreply, term}
 
@@ -1342,9 +1558,11 @@ defmodule TarsTUI.App do
   # from here on: the registry is eventually consistent, so a key may not yet
   # resolve on this node for an agent that just started on another.
   defp switch(term, pid, key) do
-    Event.Bus.unsubscribe(term.assigns.agent_id)
+    old = term.assigns.agent_id
+    Event.Bus.unsubscribe(old)
+    if Map.has_key?(term.assigns.expanded, key), do: Event.Bus.unsubscribe(key)
 
-    term |> keep() |> attach(pid, key) |> refresh_fleet()
+    term |> keep() |> attach(pid, key) |> refresh_fleet() |> refollow(old, key)
   end
 
   # A bare name is an agent beside this client's own, under the same org and
@@ -1527,7 +1745,17 @@ defmodule TarsTUI.App do
     {:noreply, frame_due(term), invalidate: false}
   end
 
-  def handle_info(%Event{}, term), do: {:noreply, term, invalidate: false}
+  # A lifecycle event from an agent expanded in the panel.
+  def handle_info(%Event{source: %{agent_id: id}} = event, term) do
+    case term.assigns.expanded do
+      %{^id => %Delegation{} = delegations} ->
+        expanded = Map.put(term.assigns.expanded, id, Delegation.fold(delegations, event))
+        {:noreply, term |> assign(expanded: expanded) |> frame_due(), invalidate: false}
+
+      _other ->
+        {:noreply, term, invalidate: false}
+    end
+  end
 
   def handle_info(:frame, term), do: {:noreply, term |> sync_pane() |> assign(frame_due?: false)}
 
@@ -1561,12 +1789,13 @@ defmodule TarsTUI.App do
 
   def handle_info(:refresh_fleet, term), do: {:noreply, term |> sync_pane() |> refresh_fleet()}
 
-  def handle_info(:tick, %{assigns: %{running?: true}} = term) do
-    schedule_tick()
-    {:noreply, term |> sync_pane() |> assign(frame: term.assigns.frame + 1)}
-  end
+  def handle_info(:tick, term) do
+    term = assign(term, tick_due?: false)
 
-  def handle_info(:tick, term), do: {:noreply, term}
+    if ticking?(term),
+      do: {:noreply, term |> tick() |> sync_pane() |> assign(frame: term.assigns.frame + 1)},
+      else: {:noreply, term}
+  end
 
   def handle_info({:rewrap, width}, term) do
     {:noreply, assign(term, transcript: Transcript.rewrap(term.assigns.transcript, width))}
@@ -1619,6 +1848,7 @@ defmodule TarsTUI.App do
   defp fold(term, %Event{payload: {:turn_started, _questions}} = event) do
     term
     |> assign(
+      delegations: Delegation.fold(term.assigns.delegations, event),
       activity: Activity.fold(Activity.new(), event, now: now()),
       trace_id: event.source.trace.trace_id,
       answer: Markdown.new(),
@@ -1630,29 +1860,30 @@ defmodule TarsTUI.App do
   end
 
   defp fold(term, event) do
-    assign(term, activity: Activity.fold(term.assigns.activity, event, now: now()))
+    assign(term,
+      activity: Activity.fold(term.assigns.activity, event, now: now()),
+      delegations: Delegation.fold(term.assigns.delegations, event)
+    )
   end
 
   # -- turn lifecycle
 
   defp handle(%Event{payload: {:turn_started, _questions}} = event, term) do
-    schedule_tick()
-
     term
     |> assign(running?: true, parked: [], frame: 0, started_at: now(), queued: 0)
+    |> tick()
     |> trace(event)
   end
 
   # Answered calls leave the parked list, and the turn is running again; what
   # is still parked comes back with the next `:turn_parked`.
   defp handle(%Event{payload: {:turn_resumed, decisions}} = event, term) do
-    schedule_tick()
-
     parked =
       Enum.reject(term.assigns.parked, fn {call, _prompt} -> Map.has_key?(decisions, call.id) end)
 
     term
     |> assign(running?: true, parked: parked, frame: 0, started_at: now())
+    |> tick()
     |> trace(event)
   end
 
@@ -1841,8 +2072,6 @@ defmodule TarsTUI.App do
 
   # The scroll block keeps one column for its scrollbar and clips inside it.
   defp wrap_width(width), do: max(width - 4, 10)
-
-  defp schedule_tick, do: Process.send_after(self(), :tick, @tick)
 
   defp now, do: System.monotonic_time(:millisecond)
 end

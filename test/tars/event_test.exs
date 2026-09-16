@@ -53,8 +53,22 @@ defmodule Tars.EventTest do
       assert Event.level(:tool_call) == :raw
     end
 
+    test "the shape of the work is lifecycle" do
+      for type <- [
+            :turn_started,
+            :turn_finished,
+            :turn_parked,
+            :span_started,
+            :span_finished,
+            :delegation_started,
+            :delegation_finished
+          ] do
+        assert Event.level(type) == :lifecycle
+      end
+    end
+
     test "everything else is activity" do
-      for type <- [:turn_started, :span_started, :model_started, :tool_started, :result, :meta] do
+      for type <- [:model_started, :tool_started, :result, :thinking, :meta] do
         assert Event.level(type) == :activity
       end
     end
@@ -64,6 +78,10 @@ defmodule Tars.EventTest do
     end
 
     test "a level takes its own events and everything below it" do
+      assert Event.delivers?(:lifecycle, :turn_started)
+      refute Event.delivers?(:lifecycle, :result)
+
+      assert Event.delivers?(:activity, :turn_started)
       assert Event.delivers?(:activity, :result)
       refute Event.delivers?(:activity, :chunk)
 
@@ -72,7 +90,7 @@ defmodule Tars.EventTest do
     end
 
     test "levels run from least to most" do
-      assert Event.levels() == [:activity, :raw]
+      assert Event.levels() == [:lifecycle, :activity, :raw]
     end
   end
 end

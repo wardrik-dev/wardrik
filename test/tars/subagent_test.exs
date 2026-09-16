@@ -61,6 +61,34 @@ defmodule Tars.SubagentTest do
     assert Event.root?(event)
   end
 
+  describe "events" do
+    test "a named delegation announces itself on its own span", %{scope: scope} do
+      stub_llm("about $20")
+
+      {:ok, _text} = Subagent.run(scope, "pricing?", name: "pricing")
+
+      assert_receive %Event{payload: {:span_started, "pricing"}} = opened
+      assert_receive %Event{payload: {:delegation_started, "pricing?"}} = started
+      assert_receive %Event{payload: {:delegation_finished, {:ok, "about $20"}, ms}} = finished
+      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+
+      assert started.source.trace.span_id == opened.source.trace.span_id
+      assert finished.source.trace.span_id == opened.source.trace.span_id
+      assert is_integer(ms) and ms >= 0
+      assert Event.level(:delegation_started) == :lifecycle
+    end
+
+    test "an unnamed delegation announces itself on the span it was given", %{scope: scope} do
+      stub_llm()
+
+      {:ok, _text} = Subagent.run(scope, "pricing?")
+
+      assert_receive %Event{payload: {:delegation_started, "pricing?"}} = started
+      assert started.source.trace.span_id == scope.source.trace.span_id
+      refute_receive %Event{payload: {:span_started, _name}}
+    end
+  end
+
   describe "with a config of its own" do
     test "inherits the caller's model and tools by default", %{scope: scope} do
       stub_llm()

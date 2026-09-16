@@ -338,7 +338,14 @@ defmodule Tars.Agent.StateTest do
 
   describe "meta/1" do
     test "reports what the fleet shows" do
-      assert State.meta(state()) == %{status: :idle, pending: 0, waiting_on: []}
+      assert State.meta(state()) == %{
+               status: :idle,
+               pending: 0,
+               waiting_on: [],
+               delegations: %{active: 0, total: 0},
+               outcome: nil
+             }
+
       assert %{status: :running} = State.meta(running())
       assert %{status: :parked, waiting_on: ["deploy"]} = State.meta(waiting())
     end

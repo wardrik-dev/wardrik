@@ -43,13 +43,28 @@ defmodule Tars.Event do
   @typedoc """
   How much of an agent's stream to take.
 
-    * `:activity` - what the agent is doing: turns, spans, model requests, tool
-      calls, answer text and reasoning
+    * `:lifecycle` - the shape of the work: turns starting and ending, spans
+      opening and closing, and delegations starting and ending
+    * `:activity` - what the agent is doing inside that shape: model requests,
+      tool calls, answer text and reasoning
     * `:raw` - everything, including the provider's own stream records
   """
-  @type level() :: :activity | :raw
+  @type level() :: :lifecycle | :activity | :raw
 
-  @levels [:activity, :raw]
+  @levels [:lifecycle, :activity, :raw]
+
+  @lifecycle [
+    :turn_started,
+    :turn_finished,
+    :turn_failed,
+    :turn_interrupted,
+    :turn_parked,
+    :turn_resumed,
+    :span_started,
+    :span_finished,
+    :delegation_started,
+    :delegation_finished
+  ]
 
   @raw [:chunk, :tool_call]
 
@@ -65,6 +80,7 @@ defmodule Tars.Event do
   reports with the call resolved. A type nobody has classified is activity.
   """
   @spec level(atom()) :: level()
+  def level(type) when type in @lifecycle, do: :lifecycle
   def level(type) when type in @raw, do: :raw
   def level(_type), do: :activity
 

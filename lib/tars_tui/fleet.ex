@@ -3,12 +3,19 @@ defmodule TarsTUI.Fleet do
   Pure rendering for the fleet panel in `TarsTUI.App`.
 
   The panel is a Breeze list with one row per agent: a glyph for what it is
-  doing, its name, and the node it is running on when that is not this one.
-  An agent under the same org and user as the one the client is attached to
-  is named alone; any other shows its whole key, with the scope faint. The
-  agent the client is attached to is marked.
+  doing, its name, how many delegations its turn has going and has started,
+  what is queued behind it, and the node it is running on when that is not
+  this one. An idle agent whose last turn failed says so. An agent under the
+  same org and user as the one the client is attached to is named alone; any
+  other shows its whole key, with the scope faint. The agent the client is
+  attached to is marked.
+
+  An expanded agent is followed by one row per delegation of its current
+  turn, as a tree: a glyph for how it is going, its name, and how long it has
+  taken.
   """
 
+  alias Tars.Delegation
   alias Tars.Fleet.Member
   alias TarsTUI.Render
   alias TarsTUI.Text
@@ -17,6 +24,9 @@ defmodule TarsTUI.Fleet do
 
   @glyphs %{idle: "○", running: "◐", parked: "?"}
   @colours %{idle: @faint, running: :cyan, parked: :yellow}
+
+  @delegation_glyphs %{running: "◐", ok: "✓", error: "✗"}
+  @delegation_colours %{running: :cyan, ok: :green, error: :red}
 
   # The gutter before the panel, the list's border and selection column, and
   # a space on the right.
@@ -44,17 +54,54 @@ defmodule TarsTUI.Fleet do
   @doc """
   The width the panel needs to show every row whole, between
   #{@min_width} and #{@max_width} columns. `attached` decides which rows are
-  named alone.
+  named alone, and `extra` is any other row the panel shows, such as
+  `delegation/4` builds.
   """
-  @spec width([Member.t()], String.t()) :: pos_integer()
-  def width(members, attached \\ "") do
+  @spec width([Member.t()], String.t(), [Text.t()]) :: pos_integer()
+  def width(members, attached \\ "", extra \\ []) do
     members
-    |> Enum.map(&(&1 |> text(attached) |> Text.plain() |> String.length()))
+    |> Enum.map(&text(&1, attached))
+    |> Kernel.++(extra)
+    |> Enum.map(&(&1 |> Text.plain() |> String.length()))
     |> Enum.max(fn -> 0 end)
     |> Kernel.+(@chrome)
     |> max(@min_width)
     |> min(@max_width)
   end
+
+  @doc """
+  One delegation as a row of the tree under its agent, indented by `depth`
+  delegations above it, and clipped to `width`. `last?` closes the branch.
+  `now` is the system time in milliseconds.
+  """
+  @spec delegation_row(
+          Delegation.delegation(),
+          non_neg_integer(),
+          boolean(),
+          integer(),
+          pos_integer()
+        ) ::
+          String.t()
+  def delegation_row(record, depth, last?, now, width) do
+    Render.line(Text.truncate(delegation(record, depth, last?, now), width))
+  end
+
+  @doc "The text of `delegation_row/5`, unclipped."
+  @spec delegation(Delegation.delegation(), non_neg_integer(), boolean(), integer()) :: Text.t()
+  def delegation(record, depth, last?, now) do
+    [
+      "  ",
+      String.duplicate("  ", depth),
+      Text.tag(if(last?, do: "└ ", else: "├ "), @faint),
+      Text.tag(@delegation_glyphs[record.status], @delegation_colours[record.status]),
+      " ",
+      Text.tag(record.name || "delegate", if(record.status == :running, do: [], else: @faint)),
+      Text.tag(" #{seconds(Delegation.elapsed_ms(record, now))}", @faint)
+    ]
+  end
+
+  defp seconds(ms) when ms < 1_000, do: "#{ms}ms"
+  defp seconds(ms), do: "#{Float.round(ms / 1_000, 1)}s"
 
   defp text(%Member{} = member, attached) do
     marker = if member.key == attached, do: Text.tag("›", [:bright, :cyan]), else: " "
@@ -98,17 +145,28 @@ defmodule TarsTUI.Fleet do
   defp name_colour(%Member{key: key}, key), do: [:bright]
   defp name_colour(_member, _attached), do: []
 
-  # What distinguishes one row from another: how much is queued, what it is
-  # waiting on, and which node it is on when that is not this one.
-  defp suffix(%Member{status: :parked, waiting_on: [_ | _] = names}) do
-    Text.tag([" ", Enum.join(names, ",")], :yellow)
+  # What distinguishes one row from another: what it is waiting on, its
+  # delegations, how much is queued, how its last turn went, and which node it
+  # is on when that is not this one.
+  defp suffix(%Member{status: :parked, waiting_on: [_ | _] = names} = member) do
+    [Text.tag([" ", Enum.join(names, ",")], :yellow), delegations(member), elsewhere(member.node)]
   end
 
-  defp suffix(%Member{pending: pending, node: node}) when pending > 0 do
-    [Text.tag(" +#{pending}", @faint), elsewhere(node)]
+  defp suffix(%Member{} = member) do
+    [delegations(member), queued(member), failed(member), elsewhere(member.node)]
   end
 
-  defp suffix(%Member{node: node}), do: elsewhere(node)
+  defp delegations(%Member{delegations: %{total: 0}}), do: []
+
+  defp delegations(%Member{delegations: %{active: active, total: total}}) do
+    Text.tag(" sub #{active}/#{total}", if(active > 0, do: :cyan, else: @faint))
+  end
+
+  defp queued(%Member{pending: 0}), do: []
+  defp queued(%Member{pending: pending}), do: Text.tag(" +#{pending}", @faint)
+
+  defp failed(%Member{status: :idle, outcome: :failed}), do: Text.tag(" failed", :red)
+  defp failed(_member), do: []
 
   defp elsewhere(node) do
     if node == node(), do: [], else: Text.tag(" @#{short(node)}", @faint)

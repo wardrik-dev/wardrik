@@ -54,6 +54,7 @@ defmodule Tars.Agent.State do
   """
 
   alias ReqLLM.Context
+  alias Tars.Delegation
   alias Tars.Event
   alias Tars.Fleet
   alias Tars.LLM
@@ -118,7 +119,9 @@ defmodule Tars.Agent.State do
     :scope_opts,
     grace: @default_grace,
     mode: :idle,
-    pending: []
+    pending: [],
+    outcome: nil,
+    delegations: %Delegation{}
   ]
 
   @doc "How long an interrupted turn is given to answer before it is killed."
@@ -160,8 +163,13 @@ defmodule Tars.Agent.State do
           scope_opts: keyword(),
           grace: pos_integer(),
           mode: mode(),
-          pending: [String.t()]
+          pending: [String.t()],
+          outcome: outcome(),
+          delegations: Delegation.t()
         }
+
+  @typedoc "How the last turn ended, or `nil` before the first."
+  @type outcome() :: nil | :ok | :failed | :interrupted
 
   @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
   @type dumped() :: %{
@@ -174,6 +182,7 @@ defmodule Tars.Agent.State do
           pending: [String.t()],
           runner: runner(),
           resumer: resumer(),
+          outcome: outcome(),
           mode: :idle | :owed | {:waiting, LLM.Turn.Parked.t(), Event.Source.t()}
         }
 
@@ -210,11 +219,17 @@ defmodule Tars.Agent.State do
           model: term()
         }
 
-  @typedoc "What the fleet shows for an agent."
+  @typedoc """
+  What the fleet shows for an agent: what it is doing, how much waits behind
+  it, the calls it is waiting on, how many delegations the current turn has
+  started and still has going, and how the last turn ended.
+  """
   @type meta() :: %{
           status: :idle | :running | :parked,
           pending: non_neg_integer(),
-          waiting_on: [String.t()]
+          waiting_on: [String.t()],
+          delegations: %{active: non_neg_integer(), total: non_neg_integer()},
+          outcome: outcome()
         }
 
   @doc """
@@ -271,6 +286,7 @@ defmodule Tars.Agent.State do
   def dump(%__MODULE__{} = state) do
     state
     |> Map.from_struct()
+    |> Map.delete(:delegations)
     |> Map.merge(%{config: LLM.Config.dump(state.config), mode: at_rest(state.mode)})
   end
 
@@ -288,7 +304,11 @@ defmodule Tars.Agent.State do
 
   defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
 
-  @doc "An atomic attachment snapshot; generation survives restarts but not deletion."
+  @doc """
+  An atomic attachment snapshot; generation survives restarts but not
+  deletion. Carries the current turn's delegations, so a client attaching
+  mid-turn sees the work already under way.
+  """
   @spec snapshot(t()) :: map()
   def snapshot(state) do
     %{
@@ -296,7 +316,9 @@ defmodule Tars.Agent.State do
       status: status(state),
       context: state.context,
       parked: waiting_on(state),
-      trace_id: trace_id(state.mode)
+      trace_id: trace_id(state.mode),
+      delegations: state.delegations,
+      outcome: state.outcome
     }
   end
 
@@ -344,8 +366,19 @@ defmodule Tars.Agent.State do
     %{
       status: activity,
       pending: pending,
-      waiting_on: Enum.map(waiting_on(state), fn {call, _prompt} -> call.name end)
+      waiting_on: Enum.map(waiting_on(state), fn {call, _prompt} -> call.name end),
+      delegations: Delegation.summary(state.delegations),
+      outcome: state.outcome
     }
+  end
+
+  @doc """
+  Folds one of this agent's own `:lifecycle` events into what it knows of the
+  current turn's delegations.
+  """
+  @spec observe(t(), Event.t()) :: t()
+  def observe(%__MODULE__{} = state, %Event{} = event) do
+    %{state | delegations: Delegation.fold(state.delegations, event)}
   end
 
   @doc "The calls a waiting agent needs answered, or `[]` when it is not waiting."
@@ -420,8 +453,10 @@ defmodule Tars.Agent.State do
   """
   @spec settled(t(), [ReqLLM.Message.t()]) :: {t(), [effect()]}
   def settled(%__MODULE__{mode: %Running{} = running} = state, messages) do
-    {idle(%{state | context: Context.append(state.context, messages)}),
-     [{:emit, running.scope.source, finish(running, messages)} | disarm(running)]}
+    outcome = if running.stopping, do: :interrupted, else: :ok
+    state = %{state | context: Context.append(state.context, messages), outcome: outcome}
+
+    {idle(state), [{:emit, running.scope.source, finish(running, messages)} | disarm(running)]}
   end
 
   defp finish(%Running{stopping: nil}, messages), do: {:turn_finished, messages}
@@ -442,7 +477,8 @@ defmodule Tars.Agent.State do
   @doc "Settles a turn that failed or crashed."
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
-    {idle(state), [{:emit, running.scope.source, {:turn_failed, reason}} | disarm(running)]}
+    {idle(%{state | outcome: :failed}),
+     [{:emit, running.scope.source, {:turn_failed, reason}} | disarm(running)]}
   end
 
   # A turn that answered before its kill was needed leaves the timer behind; it
@@ -473,7 +509,8 @@ defmodule Tars.Agent.State do
     {drained, dropped} = drain(state)
     stats = stats(waiting.started_at, dropped, 0, :abandoned)
 
-    {idle(drained), [{:emit, waiting.source, {:turn_interrupted, stats}}]}
+    {idle(%{drained | outcome: :interrupted}),
+     [{:emit, waiting.source, {:turn_interrupted, stats}}]}
   end
 
   def interrupt(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
@@ -508,7 +545,7 @@ defmodule Tars.Agent.State do
   def kill(%__MODULE__{mode: %Running{stopping: %Stopping{tag: tag}} = running} = state, tag) do
     stats = stats(running.started_at, running.stopping.dropped, 0, :killed)
 
-    {:kill, idle(state),
+    {:kill, idle(%{state | outcome: :interrupted}),
      [{:shutdown, running.task}, {:emit, running.scope.source, {:turn_interrupted, stats}}]}
   end
 

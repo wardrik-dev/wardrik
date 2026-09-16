@@ -71,7 +71,15 @@ defmodule Tars.Agent do
   `{:turn_resumed, decisions}`, the last carrying the decisions a parked turn
   was answered with. All are emitted on the turn's root span, so a subscriber
   can tell them from events the turn's own work produced. A client attaching
-  mid-turn can catch up with `status/1`.
+  mid-turn can catch up with `status/1` or `snapshot/1`.
+
+  ## Delegations
+
+  The agent follows its own `:lifecycle` events, so it knows which
+  delegations the current turn has started through `Tars.Subagent.run/3` and
+  how each went. The fleet shows the count as part of the agent's metadata,
+  and `snapshot/1` carries the whole `Tars.Delegation` for a client that
+  wants to list or inspect them.
   """
   require Logger
 
@@ -189,6 +197,7 @@ defmodule Tars.Agent do
   def init(%State{} = state) do
     # `init` cannot return a continue, so the queue is drained by message.
     send(self(), :maybe_run)
+    :ok = Event.Bus.subscribe(state.agent_id, level: :lifecycle)
 
     {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
@@ -282,6 +291,16 @@ defmodule Tars.Agent do
       :stale -> stay(state)
     end
   end
+
+  # The agent's own lifecycle events, which is how it follows the delegations
+  # its turn starts. The fleet hears of them only when the summary changes.
+  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
+    next = State.observe(state, event)
+
+    if State.meta(next) == State.meta(state), do: {:noreply, next}, else: stay(next)
+  end
+
+  def handle_info(%Event{}, state), do: {:noreply, state}
 
   def handle_info(message, state) do
     Logger.debug("Unhandled message: #{inspect(message)}")

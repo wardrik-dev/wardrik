@@ -59,6 +59,22 @@ defmodule Tars.Test.AgentRunners do
     {:ok, [Context.assistant("ok")]}
   end
 
+  @doc """
+  Delegates one task named `name`, announcing it as `Tars.Subagent` would,
+  and holds it until released; then answers.
+  """
+  def delegating(test_pid, name, scope, _context) do
+    Tars.Scope.span(scope, name, fn branch ->
+      Tars.Event.emit(branch.source, {:delegation_started, "look into #{name}"})
+      send(test_pid, {:delegating, self()})
+      receive do: (:release -> :ok)
+      Tars.Event.emit(branch.source, {:delegation_finished, {:ok, "found #{name}"}, 5})
+      :ok
+    end)
+
+    {:ok, [Context.assistant("done")]}
+  end
+
   @doc "Fails every turn with `reason`."
   def failing(reason, _scope, _context), do: {:error, reason}
 

@@ -75,7 +75,9 @@ defmodule TarsTUI.App.FleetTest do
   test "Ctrl-X then l reaches the panel, and h comes back", %{session: session} do
     focus_fleet(session)
     assert Breeze.Test.focused(session) == "fleet"
-    assert screen(session) =~ "j/k move · Enter connect · i prompt · Esc back"
+
+    assert screen(session) =~
+             "j/k move · l/h expand · Enter connect or inspect · i prompt · Esc back"
 
     Breeze.Test.input(session, %{"key" => "x", "ctrlKey" => true})
     assert screen(session) =~ "Ctrl-X · h transcript · j prompt · Esc cancel"
@@ -303,6 +305,68 @@ defmodule TarsTUI.App.FleetTest do
     assert text =~ "› hello there"
     assert Fleet.whereis(Fleet.key("helper", org: org))
     Fleet.forget(Fleet.key("helper", org: org))
+  end
+
+  test "l shows an agent's delegations, Enter inspects one, and h hides them", ctx do
+    %{session: session, org: org} = ctx
+    session = Breeze.Test.resize(session, {90, 30})
+    other = Fleet.key("other", org: org)
+    runner = {AgentRunners, :delegating, [self(), "pricing"]}
+    {:ok, pid} = Fleet.spawn(other, runner: runner)
+    on_exit(fn -> Fleet.forget(other) end)
+    :ok = Bus.subscribe(other, level: :lifecycle)
+
+    Agent.ask(pid, "go")
+    assert_receive {:delegating, branch}
+    assert_receive %Event{payload: {:delegation_started, _task}}
+    assert eventually(fn -> screen(session) =~ "◐ other sub 1/1" end)
+
+    # The panel lists other above watched; the cursor starts on watched.
+    focus_fleet(session)
+    Breeze.Test.input(session, "k")
+    Breeze.Test.input(session, "l")
+
+    text = screen(session)
+    assert text =~ "└ ◐ pricing"
+    assert Breeze.Test.focused(session) == "fleet"
+
+    Breeze.Test.input(session, "j")
+    Breeze.Test.input(session, "Enter")
+
+    text = screen(session)
+    assert Breeze.Test.focused(session) == "inspector"
+    assert text =~ "pricing · #{other}"
+    assert text =~ "◐ running"
+    assert text =~ "look into pricing"
+    assert text =~ "j/k scroll · i prompt · Esc back"
+
+    send(branch, :release)
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert eventually(fn -> screen(session) =~ "✓ done" end)
+    assert screen(session) =~ "found pricing"
+
+    Breeze.Test.input(session, "Escape")
+    assert Breeze.Test.focused(session) == "fleet"
+    text = screen(session)
+    refute text =~ "look into pricing"
+    assert text =~ "└ ✓ pricing"
+    assert eventually(fn -> screen(session) =~ "○ other sub 0/1" end)
+
+    assert session.pid in Bus.subscribers(other)
+
+    Breeze.Test.input(session, "h")
+    text = screen(session)
+    refute text =~ "└ ✓ pricing"
+    assert text =~ "○ other sub 0/1"
+    refute session.pid in Bus.subscribers(other)
+  end
+
+  defp eventually(check, tries \\ 50) do
+    cond do
+      check.() -> true
+      tries == 0 -> false
+      true -> Process.sleep(20) && eventually(check, tries - 1)
+    end
   end
 
   test "a draft is kept per agent across a switch", %{session: session, org: org} do

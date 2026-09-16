@@ -59,7 +59,8 @@ defmodule Tars.Event.Bus do
 
   Options:
 
-    * `:level` - a `t:Tars.Event.level/0`, `:activity` by default.
+    * `:level` - a `t:Tars.Event.level/0`, `:activity` by default. `:lifecycle`
+      is the shape of the work alone, cheap enough to hold for many agents.
   """
   @spec subscribe(agent_id(), keyword()) :: :ok
   def subscribe(agent_id, opts \\ []) do
@@ -116,10 +117,11 @@ defmodule Tars.Event.Bus do
     Group.dispatch(@group, topic(source.agent_id, Event.level(type)), event)
   end
 
-  # A `:raw` subscriber holds both topics, so an activity event dispatched to
-  # the activity topic reaches every subscriber exactly once.
-  defp topics(:activity), do: [:activity]
-  defp topics(:raw), do: [:activity, :raw]
+  # A subscriber holds the topic of its level and every level below, so an
+  # event dispatched to its own level's topic reaches every subscriber once.
+  defp topics(level) do
+    Enum.take_while(Event.levels(), &(&1 != level)) ++ [level]
+  end
 
   defp topic(agent_id, level), do: "#{agent_id}/#{level}"
 end

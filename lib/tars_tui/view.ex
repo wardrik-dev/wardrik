@@ -75,6 +75,14 @@ defmodule TarsTUI.View do
   def trace({:tool_parked, id, name, prompt}),
     do: line("ask", "#{name} #{id} #{prompt}", :yellow)
 
+  def trace({:delegation_started, task}), do: line("deleg", Render.squash(task), :magenta)
+
+  def trace({:delegation_finished, {:ok, _text}, ms}),
+    do: line("deleg", "ok #{seconds(ms)}", :magenta)
+
+  def trace({:delegation_finished, {:error, reason}, ms}),
+    do: line("deleg", "#{inspect(reason)} #{seconds(ms)}", :red)
+
   def trace({:turn_parked, calls}),
     do:
       line(
@@ -472,6 +480,61 @@ defmodule TarsTUI.View do
   def palette_title(:call, command), do: "#{command.name} · which call?"
   def palette_title(:text, command), do: "#{command.usage} · type the rest, then Enter"
 
+  @doc """
+  One delegation in full, as transcript lines: what it was asked, the work
+  under it, and what it answered or why it failed. `now` is the system time in
+  milliseconds.
+  """
+  @spec inspector(Tars.Delegation.delegation(), [Tars.Delegation.span()], String.t(), integer()) ::
+          [Text.t()]
+  def inspector(record, activity, key, now) do
+    [
+      [Text.tag(record.name || "delegate", [:bright, :cyan]), Text.tag(" · #{key}", @faint)],
+      state(record, now),
+      "",
+      Text.tag("task", :bright),
+      ["  ", record.task],
+      ""
+    ] ++
+      work(activity, now) ++ answer(record)
+  end
+
+  defp state(%{status: :running} = record, now),
+    do: Text.tag("◐ running · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :cyan)
+
+  defp state(%{status: :ok} = record, now),
+    do: Text.tag("✓ done · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :green)
+
+  defp state(%{status: :error} = record, now),
+    do: Text.tag("✗ failed · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :red)
+
+  defp work([], _now), do: [Text.tag("activity", :bright), Text.tag("  nothing yet", @faint), ""]
+
+  defp work(spans, now) do
+    [Text.tag("activity", :bright)] ++
+      Enum.map(spans, fn span ->
+        [
+          "  ",
+          Text.tag(glyph(span), colour(span)),
+          " ",
+          span.name || "?",
+          Text.tag(" · #{seconds(Tars.Delegation.elapsed_ms(span, now))}", @faint)
+        ]
+      end) ++ [""]
+  end
+
+  defp answer(%{status: :ok, output: output}),
+    do: [Text.tag("output", :bright), ["  ", presence(output, "nothing was said")]]
+
+  defp answer(%{status: :error, error: reason}),
+    do: [Text.tag("error", :red), ["  ", Render.squash(inspect(reason))]]
+
+  defp answer(_running), do: []
+
+  defp presence(nil, fallback), do: Text.tag(fallback, @faint)
+  defp presence("", fallback), do: Text.tag(fallback, @faint)
+  defp presence(text, _fallback), do: text
+
   @doc "Why the editor left the prompt as it was."
   @spec editor_failed(term()) :: Text.t()
   def editor_failed(:no_editor),
@@ -533,6 +596,7 @@ defmodule TarsTUI.View do
     {"i", "in the transcript or the panel, back to the prompt"},
     {"j/k, Ctrl-U/D, PageUp/Down", "in the transcript, scroll a row, half a page, a page"},
     {"Up, Down, Enter", "in the fleet panel, choose an agent and connect to it"},
+    {"l, h", "in the fleet panel, show or hide an agent's delegations; Enter on one inspects it"},
     {"Ctrl-F", "show or hide the fleet panel"},
     {"Ctrl-T", "toggle the trace"},
     {"Ctrl-D", "quit, from the prompt with nothing typed"}

@@ -32,12 +32,22 @@ defmodule Tars.Subagent do
 
   Returns the delegate's final assistant text. For work that should outlive the
   call and hold a conversation, start a `Tars.Agent` instead.
+
+  ## Events
+
+  A delegation announces itself on the span it runs in, its own or the one it
+  was given: `{:delegation_started, prompt}` before the turn and
+  `{:delegation_finished, outcome, ms}` after it, where `outcome` is what the
+  call returns. Both are `:lifecycle` events, so `Tars.Delegation` can follow
+  a turn's delegations without its token stream.
   """
 
   alias ReqLLM.Context
+  alias Tars.Event
   alias Tars.LLM
   alias Tars.Scope
   alias Tars.Tool
+  alias Tars.Trace
 
   @doc "Runs `prompt` as one turn under `scope`."
   @spec run(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -45,9 +55,17 @@ defmodule Tars.Subagent do
     config = config(scope.config, opts)
 
     case Keyword.get(opts, :name) do
-      nil -> answer(%{scope | config: config}, prompt)
-      name -> Scope.span(scope, name, &answer(%{&1 | config: config}, prompt))
+      nil -> delegate(%{scope | config: config}, prompt)
+      name -> Scope.span(scope, name, &delegate(%{&1 | config: config}, prompt))
     end
+  end
+
+  defp delegate(delegate, prompt) do
+    started_at = System.monotonic_time()
+    Event.emit(delegate.source, {:delegation_started, prompt})
+    outcome = answer(delegate, prompt)
+    Event.emit(delegate.source, {:delegation_finished, outcome, Trace.elapsed_ms(started_at)})
+    outcome
   end
 
   defp answer(delegate, prompt) do
