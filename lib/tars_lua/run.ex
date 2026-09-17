@@ -33,6 +33,8 @@ defmodule TarsLua.Run do
 
   Write a chunk that ends in `return`, and nothing comes back otherwise. A table returns as an object, or as an array when its keys are 1..n. `string`, `table`, `math`, `utf8`, `os.time` and `os.date` are available.
 
+  Return JSON-compatible data: strings must be valid UTF-8, and functions and cyclic tables cannot be returned. Object keys must be strings, numbers or booleans; they become strings and must remain unique after conversion.
+
   use `os.time` and `os.date` to get the current data/time if needed.
 
   The VM is sealed: no files, no network, no environment, no `require`, and no access to anything else this agent has. Give it only work that is self-contained, with the data it needs written into the snippet.

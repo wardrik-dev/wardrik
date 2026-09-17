@@ -46,6 +46,41 @@ defmodule TarsLua.RunTest do
       refute Result.ok?({:ok, answer})
       assert answer["error"]["message"] =~ "sandboxed"
     end
+
+    test "reports values JSON cannot represent as serializable failures" do
+      for code <- [
+            "return string.char(255)",
+            "return function() end",
+            "return math.abs",
+            "return {nested = {function() end}}",
+            "local t = {} t.self = t return t",
+            "return {[{}] = 1}",
+            "return {[string.char(255)] = 1}"
+          ] do
+        assert {:ok, answer} = call(code)
+        assert answer["ok"] == false, code
+        assert answer["error"]["code"] == "lua_failed"
+        assert %ReqLLM.Message{} = ReqLLM.Context.tool_result_message("run_lua", "id", answer)
+      end
+    end
+
+    test "refuses JSON key collisions even in nested tables" do
+      for code <- [
+            ~s(return {[1] = 10, ["1"] = 20}),
+            ~s(return {nested = {[true] = 10, ["true"] = 20}})
+          ] do
+        assert {:ok, answer} = call(code)
+        assert answer["error"]["code"] == "lua_failed"
+        assert answer["error"]["message"] =~ "collide"
+        assert %ReqLLM.Message{} = ReqLLM.Context.tool_result_message("run_lua", "id", answer)
+      end
+    end
+
+    test "preserves supported table entries through JSON" do
+      assert {:ok, answer} = call("return {[2] = 'two', [false] = {1, 2}, name = 'ok'}")
+      assert answer["result"]["value"] == %{"2" => "two", "false" => [1, 2], "name" => "ok"}
+      assert answer |> Jason.encode!() |> Jason.decode!() == answer
+    end
   end
 
   describe "tool/1" do

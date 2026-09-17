@@ -8,13 +8,12 @@ defmodule TarsLua.SandboxTest do
   defp evaluate(code, opts \\ []), do: Tars.Sandbox.run(Sandbox, code, Limits.new(opts))
 
   describe "check/1" do
-    test "admits a chunk that parses" do
+    test "admits source within the size limit" do
       assert Sandbox.check("return 1 + 1") == :ok
     end
 
-    test "refuses a chunk that does not, naming what it expected" do
-      assert {:error, message} = Sandbox.check("return ++")
-      assert message =~ "Expected expression"
+    test "leaves compilation to the bounded evaluation" do
+      assert Sandbox.check("return ++") == :ok
     end
 
     test "refuses more source than it will take" do
@@ -91,6 +90,15 @@ defmodule TarsLua.SandboxTest do
   end
 
   describe "limits" do
+    test "bounds compilation by the deadline too" do
+      code = "return " <> Enum.join(List.duplicate("1", 10_000), "+")
+      task = Task.async(fn -> evaluate(code, timeout_ms: 10) end)
+      result = Task.yield(task, 1_000) || Task.shutdown(task, :brutal_kill)
+
+      assert {:ok, {:error, message}} = result
+      assert message =~ "longer than 10ms"
+    end
+
     test "stops code that spends its step budget" do
       assert {:error, message} = evaluate("while true do end", max_steps: 10_000)
       assert message =~ "instruction budget exceeded"
