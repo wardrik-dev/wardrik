@@ -124,6 +124,23 @@ defmodule Tars.DelegationTest do
              %{active: 0, total: 0}
   end
 
+  test "a failed ancestor closes nested delegations even if their tasks cannot emit an end" do
+    branch = Source.child(turn(), name: "branch")
+    delegate = Source.child(branch, name: "delegate")
+    nested = Source.child(delegate, name: "nested")
+
+    delegations =
+      fold([
+        at(branch, {:span_started, "branch"}, 0),
+        at(delegate, {:delegation_started, "first"}, 1),
+        at(nested, {:delegation_started, "nested"}, 2),
+        at(branch, {:span_finished, {:error, :timeout}, 100}, 100)
+      ])
+
+    assert Delegation.summary(delegations) == %{active: 0, total: 2}
+    assert Enum.all?(Delegation.list(delegations), &(&1.error == :timeout))
+  end
+
   test "events that are not about delegations change nothing" do
     turn = turn()
 

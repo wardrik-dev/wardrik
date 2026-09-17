@@ -59,16 +59,15 @@ defmodule TarsTUI.EditorTest do
       assert Editor.edit("draft", @no_terminal) == {:error, {:exit, 3}}
     end
 
-    test "removes the file it wrote" do
-      System.put_env("VISUAL", ~s|sh -c 'cp "$0" "$0.copy"'|)
-      before = File.ls!(System.tmp_dir!())
+    test "keeps drafts private and removes the directory including editor backups" do
+      System.put_env(
+        "VISUAL",
+        ~s|sh -c 'test "$(stat -c %a "$0")" = 600 && test "$(stat -c %a "$(dirname "$0")")" = 700 && cp "$0" "$0.bak" && printf "%s" "$0" > "$0"'|
+      )
 
-      assert {:ok, "draft"} = Editor.edit("draft", @no_terminal)
-
-      copies = File.ls!(System.tmp_dir!()) -- before
-      assert [copy] = Enum.filter(copies, &String.ends_with?(&1, ".copy"))
-      refute File.exists?(Path.join(System.tmp_dir!(), String.trim_trailing(copy, ".copy")))
-      File.rm(Path.join(System.tmp_dir!(), copy))
+      assert {:ok, path} = Editor.edit("private draft", @no_terminal)
+      refute File.exists?(path)
+      refute File.exists?(Path.dirname(path))
     end
   end
 end

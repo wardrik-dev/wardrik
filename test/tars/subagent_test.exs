@@ -51,14 +51,14 @@ defmodule Tars.SubagentTest do
     assert asked().prompt == "pricing?"
   end
 
-  test "runs in the scope it is given rather than a span of its own", %{scope: scope} do
+  test "runs under its own child span", %{scope: scope} do
     stub_llm()
 
     {:ok, _text} = Subagent.run(scope, "pricing?")
 
     assert_receive %Event{payload: {:result, _text}} = event
-    assert event.source.trace.span_id == scope.source.trace.span_id
-    assert Event.root?(event)
+    assert event.source.trace.parent_span_id == scope.source.trace.span_id
+    refute Event.root?(event)
   end
 
   describe "events" do
@@ -78,15 +78,40 @@ defmodule Tars.SubagentTest do
       assert Event.level(:delegation_started) == :lifecycle
     end
 
-    test "an unnamed delegation announces itself on the span it was given", %{scope: scope} do
+    test "repeated unnamed delegations have distinct identities", %{scope: scope} do
       stub_llm()
 
       {:ok, _text} = Subagent.run(scope, "pricing?")
+      {:ok, _text} = Subagent.run(scope, "competitors?")
 
       assert_receive %Event{payload: {:delegation_started, "pricing?"}} = started
-      assert started.source.trace.span_id == scope.source.trace.span_id
-      refute_receive %Event{payload: {:span_started, _name}}
+      assert_receive %Event{payload: {:delegation_started, "competitors?"}} = second
+      assert started.source.trace.parent_span_id == scope.source.trace.span_id
+      refute started.source.trace.span_id == second.source.trace.span_id
     end
+  end
+
+  defmodule AskPolicy do
+    @behaviour Tars.Policy
+    def authorize(_call, _scope), do: {:ask, "approval needed"}
+  end
+
+  test "a parked delegation reports an error that observers can fold", %{scope: scope} do
+    LLMStub.stream([LLMStub.tool_call("blocked", "echo", %{"text" => "hello"})])
+
+    assert Subagent.run(%{scope | policy: AskPolicy}, "echo") == {:error, :approval_required}
+
+    assert_receive %Event{payload: {:delegation_started, "echo"}} = started
+
+    assert_receive %Event{payload: {:delegation_finished, {:error, :approval_required}, _}} =
+                     ended
+
+    refute_receive %Event{payload: {:tool_started, "blocked", _}}
+
+    delegations =
+      Tars.Delegation.new() |> Tars.Delegation.fold(started) |> Tars.Delegation.fold(ended)
+
+    assert [%{status: :error, error: :approval_required}] = Tars.Delegation.list(delegations)
   end
 
   describe "with a config of its own" do
@@ -233,12 +258,13 @@ defmodule Tars.SubagentTest do
     end
   end
 
-  test "an unnamed delegation announces no span of its own", %{scope: scope} do
+  test "an unnamed delegation inherits the scope's name on a distinct span", %{scope: scope} do
     stub_llm()
 
     {:ok, _text} = Subagent.run(scope, "pricing?")
 
-    refute_receive %Event{payload: {:span_started, _name}}
+    assert_receive %Event{payload: {:span_started, "turn"}} = event
+    refute event.source.trace.span_id == scope.source.trace.span_id
   end
 
   test "a failed turn is reported to the caller", %{scope: scope} do

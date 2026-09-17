@@ -14,6 +14,8 @@ ReqLLM.model("test:model")
 ExUnit.after_suite(fn _results ->
   Supervisor.stop(Tars.Fleet.Supervisor)
   File.rm_rf(Application.fetch_env!(:tars, Tars.Fleet)[:data_dir])
+  # Let the OS monitor close its native helper before the VM tears down ports.
+  Application.stop(:os_mon)
 end)
 
 ExUnit.start()

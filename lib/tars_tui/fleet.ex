@@ -114,12 +114,9 @@ defmodule TarsTUI.Fleet do
       Text.tag(@delegation_glyphs[record.status], @delegation_colours[record.status]),
       " ",
       Text.tag(record.name || "delegate", if(record.status == :running, do: [], else: @faint)),
-      Text.tag(" #{seconds(Delegation.elapsed_ms(record, now))}", @faint)
+      Text.tag(" #{Text.duration(Delegation.elapsed_ms(record, now))}", @faint)
     ]
   end
-
-  defp seconds(ms) when ms < 1_000, do: "#{ms}ms"
-  defp seconds(ms), do: "#{Float.round(ms / 1_000, 1)}s"
 
   defp text(%Member{} = member, attached, opts) do
     unseen = Keyword.get(opts, :unseen)

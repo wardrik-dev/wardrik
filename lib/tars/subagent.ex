@@ -26,17 +26,17 @@ defmodule Tars.Subagent do
 
   `:tools` and `:except_tools` compose: the set is replaced, then narrowed.
 
-  Without `:name` the turn runs in the scope it was given, so work already
-  fanned out by `Tars.Workflow.fan_out/4` lands on its branch's span rather
-  than a redundant one below it.
+  Each call gets its own span, inheriting the scope's name unless `:name` is
+  supplied.
+  This keeps repeated and concurrent delegations on the same scope distinct.
 
   Returns the delegate's final assistant text. For work that should outlive the
   call and hold a conversation, start a `Tars.Agent` instead.
 
   ## Events
 
-  A delegation announces itself on the span it runs in, its own or the one it
-  was given: `{:delegation_started, prompt}` before the turn and
+  A delegation announces itself on its own span:
+  `{:delegation_started, prompt}` before the turn and
   `{:delegation_finished, outcome, ms}` after it, where `outcome` is what the
   call returns. Both are `:lifecycle` events, so `Tars.Delegation` can follow
   a turn's delegations without its token stream.
@@ -54,10 +54,8 @@ defmodule Tars.Subagent do
   def run(%Scope{} = scope, prompt, opts \\ []) when is_binary(prompt) do
     config = config(scope.config, opts)
 
-    case Keyword.get(opts, :name) do
-      nil -> delegate(%{scope | config: config}, prompt)
-      name -> Scope.span(scope, name, &delegate(%{&1 | config: config}, prompt))
-    end
+    name = Keyword.get(opts, :name) || scope.source.trace.name || "delegate"
+    Scope.span(scope, name, &delegate(%{&1 | config: config}, prompt))
   end
 
   defp delegate(delegate, prompt) do
@@ -69,8 +67,12 @@ defmodule Tars.Subagent do
   end
 
   defp answer(delegate, prompt) do
-    with {:ok, messages} <- LLM.Turn.run(delegate, Context.new([Context.user(prompt)])) do
-      {:ok, final_text(messages)}
+    case LLM.Turn.run(delegate, Context.new([Context.user(prompt)])) do
+      {:ok, messages} -> {:ok, final_text(messages)}
+      # A bounded delegation has no agent process to retain and resume a park.
+      # Report the blocked work without executing the unapproved tool.
+      {:parked, _turn} -> {:error, :approval_required}
+      {:error, _reason} = error -> error
     end
   end
 

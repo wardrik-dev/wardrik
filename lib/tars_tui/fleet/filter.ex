@@ -18,8 +18,6 @@ defmodule TarsTUI.Fleet.Filter do
 
   alias Tars.Fleet.Member
 
-  @statuses ~w(idle running parked)
-
   @typedoc "One word of a query."
   @type term_() ::
           {:key, String.t()}
@@ -66,7 +64,9 @@ defmodule TarsTUI.Fleet.Filter do
   defp term("org:" <> text) when text != "", do: {:org, text}
   defp term("user:" <> text) when text != "", do: {:user, text}
   defp term("node:" <> text) when text != "", do: {:node, text}
-  defp term("status:" <> status) when status in @statuses, do: {:status, String.to_atom(status)}
+  defp term("status:idle"), do: {:status, :idle}
+  defp term("status:running"), do: {:status, :running}
+  defp term("status:parked"), do: {:status, :parked}
   defp term("status:" <> _other = word), do: {:error, word}
 
   defp term(word) when word != "",

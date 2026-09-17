@@ -163,6 +163,11 @@ defmodule Tars.FleetTest do
   end
 
   describe "delegations" do
+    setup do
+      :ok = Fleet.watch()
+      :ok
+    end
+
     test "an agent counts its turn's delegations, then how the turn ended" do
       key = Tars.Test.Fleet.key()
       pid = start(key, runner: {Tars.Test.AgentRunners, :delegating, [self(), "pricing"]})
@@ -174,7 +179,9 @@ defmodule Tars.FleetTest do
       assert_receive {:delegating, branch}
       assert_receive %Event{payload: {:delegation_started, "look into pricing"}}
 
-      assert eventually(fn -> Fleet.lookup(key).delegations == %{active: 1, total: 1} end)
+      assert Tars.Test.Fleet.await_update(fn ->
+               Fleet.lookup(key).delegations == %{active: 1, total: 1}
+             end)
 
       assert [%{name: "pricing", status: :running}] =
                Delegation.list(Agent.snapshot(pid).delegations)
@@ -182,7 +189,7 @@ defmodule Tars.FleetTest do
       send(branch, :release)
       assert_receive %Event{payload: {:turn_finished, _messages}}
 
-      assert eventually(fn ->
+      assert Tars.Test.Fleet.await_update(fn ->
                match?(%{delegations: %{active: 0, total: 1}, outcome: :ok}, Fleet.lookup(key))
              end)
 
@@ -190,6 +197,7 @@ defmodule Tars.FleetTest do
                Delegation.list(Agent.snapshot(pid).delegations)
     end
 
+    @tag capture_log: true
     test "a failed turn is reported as the last outcome" do
       key = Tars.Test.Fleet.key()
       pid = start(key, runner: {Tars.Test.AgentRunners, :failing, [:boom]})
@@ -198,15 +206,7 @@ defmodule Tars.FleetTest do
       Agent.ask(pid, "go")
       assert_receive %Event{payload: {:turn_failed, :boom}}
 
-      assert eventually(fn -> Fleet.lookup(key).outcome == :failed end)
-    end
-  end
-
-  defp eventually(check, tries \\ 50) do
-    cond do
-      check.() -> true
-      tries == 0 -> false
-      true -> Process.sleep(20) && eventually(check, tries - 1)
+      assert Tars.Test.Fleet.await_update(fn -> Fleet.lookup(key).outcome == :failed end)
     end
   end
 

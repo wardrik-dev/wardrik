@@ -2,8 +2,8 @@ defmodule Tars.Delegation do
   @moduledoc """
   The delegations of one turn, folded from its `:lifecycle` events.
 
-  A delegation is one `Tars.Subagent.run/3`: it is identified by the span it
-  ran on, its own or the one it was given, and it is known from the
+  A delegation is one `Tars.Subagent.run/3`: it is identified by its own span
+  and it is known from the
   `{:delegation_started, task}` and `{:delegation_finished, outcome, ms}`
   events the subagent emits there. Spans are followed too, so a delegation's
   depth under other delegations and the work under it are known.
@@ -67,9 +67,11 @@ defmodule Tars.Delegation do
   def fold(%__MODULE__{}, %Event{payload: {:turn_started, _questions}}), do: new()
 
   def fold(%__MODULE__{} = delegations, %Event{source: source, payload: payload, at: at}) do
+    now = div(at, 1_000)
+
     delegations
-    |> see(source.trace, div(at, 1_000))
-    |> absorb(source.trace.span_id, payload, div(at, 1_000))
+    |> see(source.trace, now)
+    |> absorb(source.trace.span_id, payload, now)
   end
 
   @doc "Every delegation, oldest first."
@@ -163,10 +165,16 @@ defmodule Tars.Delegation do
     update_span(delegations, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(delegations, span_id, {:span_finished, outcome, ms}, _now) do
-    delegations
-    |> update_span(span_id, &close(&1, outcome, ms))
-    |> update_record(span_id, &close(&1, outcome, ms))
+  defp absorb(delegations, span_id, {:span_finished, outcome, ms}, now) do
+    closed =
+      delegations
+      |> update_span(span_id, &close(&1, outcome, ms))
+      |> update_record(span_id, &close(&1, outcome, ms))
+
+    case outcome do
+      {:error, _reason} -> close_descendants(closed, span_id, outcome, now)
+      :ok -> closed
+    end
   end
 
   defp absorb(delegations, span_id, {:delegation_started, task}, now) do
@@ -229,6 +237,31 @@ defmodule Tars.Delegation do
   end
 
   defp absorb(delegations, _span_id, _payload, _now), do: delegations
+
+  defp close_descendants(delegations, ancestor, outcome, now) do
+    Enum.reduce(Map.keys(delegations.spans), delegations, fn id, acc ->
+      if descendant?(acc, id, ancestor) do
+        acc
+        |> update_span(id, &close(&1, outcome, max(now - &1.started_at, 0)))
+        |> update_record(id, &close(&1, outcome, max(now - &1.started_at, 0)))
+      else
+        acc
+      end
+    end)
+  end
+
+  defp descendant?(delegations, id, ancestor) do
+    case Map.get(delegations.spans, id) do
+      %{parent_span_id: ^ancestor} ->
+        true
+
+      %{parent_span_id: parent} when is_binary(parent) ->
+        descendant?(delegations, parent, ancestor)
+
+      _other ->
+        false
+    end
+  end
 
   defp close(%{status: :running} = item, outcome, ms) do
     case outcome do

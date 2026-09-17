@@ -11,6 +11,7 @@ defmodule TarsTUI.App.FleetTest do
   alias TarsTUI.App
 
   setup do
+    :ok = Fleet.watch()
     org = "tui#{System.unique_integer([:positive])}"
     spawn_opts = [org: org, runner: {AgentRunners, :echo, [self(), "ok"]}]
     agent_id = Fleet.key("watched", spawn_opts)
@@ -324,7 +325,7 @@ defmodule TarsTUI.App.FleetTest do
     Agent.ask(pid, "go")
     assert_receive {:delegating, branch}
     assert_receive %Event{payload: {:delegation_started, _task}}
-    assert eventually(fn -> screen(session) =~ "◐ other sub 1/1" end)
+    assert eventually(session, fn -> screen(session) =~ "◐ other sub 1/1" end)
     assert screen(session) =~ "└ ◐ pricing"
     assert session.pid in Bus.subscribers(other)
 
@@ -343,7 +344,7 @@ defmodule TarsTUI.App.FleetTest do
 
     send(branch, :release)
     assert_receive %Event{payload: {:turn_finished, _messages}}
-    assert eventually(fn -> screen(session) =~ "✓ done" end)
+    assert eventually(session, fn -> screen(session) =~ "✓ done" end)
     assert screen(session) =~ "found pricing"
 
     Breeze.Test.input(session, "Escape")
@@ -351,7 +352,7 @@ defmodule TarsTUI.App.FleetTest do
     text = screen(session)
     refute text =~ "look into pricing"
     assert text =~ "└ ✓ pricing"
-    assert eventually(fn -> screen(session) =~ "○ other sub 0/1" end)
+    assert eventually(session, fn -> screen(session) =~ "○ other sub 0/1" end)
 
     Breeze.Test.input(session, "h")
     text = screen(session)
@@ -366,12 +367,11 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ "└ ✓ pricing"
   end
 
-  defp eventually(check, tries \\ 50) do
-    cond do
-      check.() -> true
-      tries == 0 -> false
-      true -> Process.sleep(20) && eventually(check, tries - 1)
-    end
+  defp eventually(session, check) do
+    Tars.Test.Fleet.await_update(fn ->
+      Breeze.Test.info(session, :refresh_fleet)
+      check.()
+    end)
   end
 
   test "an agent that finished while unwatched needs attention until connected to", ctx do
@@ -382,10 +382,10 @@ defmodule TarsTUI.App.FleetTest do
 
     Agent.ask(pid, "go")
     assert_receive {:turn, _context, turn}
-    assert eventually(fn -> screen(session) =~ "◐ other" end)
+    assert eventually(session, fn -> screen(session) =~ "◐ other" end)
 
     send(turn, :release)
-    assert eventually(fn -> screen(session) =~ "! ○ other new result" end)
+    assert eventually(session, fn -> screen(session) =~ "! ○ other new result" end)
     assert screen(session) =~ "fleet · 2 · 1 need"
 
     submit(session, "/next")
@@ -407,7 +407,7 @@ defmodule TarsTUI.App.FleetTest do
 
     Agent.ask(pid, "deploy")
     assert_receive :asked
-    assert eventually(fn -> screen(session) =~ "! ? parker deploy" end)
+    assert eventually(session, fn -> screen(session) =~ "! ? parker deploy" end)
     assert screen(session) =~ "fleet · 2 · 1 need"
 
     focus_fleet(session)
@@ -433,7 +433,7 @@ defmodule TarsTUI.App.FleetTest do
 
     Agent.ask(pid, "go")
     assert_receive {:turn, _context, turn}
-    assert eventually(fn -> screen(session) =~ "◐ busy" end)
+    assert eventually(session, fn -> screen(session) =~ "◐ busy" end)
 
     submit(session, "/filter status:running")
     text = screen(session)
@@ -459,7 +459,7 @@ defmodule TarsTUI.App.FleetTest do
     {:ok, _pid} = Fleet.spawn(twin, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(twin) end)
 
-    assert eventually(fn -> screen(session) =~ "○ #{org}b/_/" end)
+    assert eventually(session, fn -> screen(session) =~ "○ #{org}b/_/" end)
     assert screen(session) =~ "› ○ #{org}/_/"
 
     assert String.starts_with?(twin, org <> "b/_/") and
@@ -766,11 +766,11 @@ defmodule TarsTUI.App.FleetTest do
 
   test "/stop NAME interrupts another agent and leaves it running", %{session: session, org: org} do
     key = Fleet.key("busy", org: org)
-    {:ok, pid} = Fleet.spawn(key, runner: {AgentRunners, :blocking, [self(), "ok"]})
+    {:ok, pid} = Fleet.spawn(key, runner: {AgentRunners, :streaming, [self()]})
     on_exit(fn -> Fleet.forget(key) end)
     :ok = Bus.subscribe(key)
     Agent.ask(pid, "take your time")
-    assert_receive {:turn, _messages, _turn_pid}
+    assert_receive {:running, _turn_pid}
 
     submit(session, "/stop busy")
 

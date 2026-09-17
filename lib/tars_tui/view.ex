@@ -55,10 +55,10 @@ defmodule TarsTUI.View do
     do: line("model", inspect(model_spec), :cyan)
 
   def trace({:model_finished, :ok, ms}),
-    do: line("model", "ok #{seconds(ms)}", :cyan)
+    do: line("model", "ok #{Text.duration(ms)}", :cyan)
 
   def trace({:model_finished, {:error, reason}, ms}),
-    do: line("model", "#{inspect(reason)} #{seconds(ms)}", :red)
+    do: line("model", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
   def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
   def trace({:tool_started, id, name}), do: line("tool", "#{name} #{id}", :yellow)
@@ -78,10 +78,10 @@ defmodule TarsTUI.View do
   def trace({:delegation_started, task}), do: line("deleg", Render.squash(task), :magenta)
 
   def trace({:delegation_finished, {:ok, _text}, ms}),
-    do: line("deleg", "ok #{seconds(ms)}", :magenta)
+    do: line("deleg", "ok #{Text.duration(ms)}", :magenta)
 
   def trace({:delegation_finished, {:error, reason}, ms}),
-    do: line("deleg", "#{inspect(reason)} #{seconds(ms)}", :red)
+    do: line("deleg", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
   def trace({:turn_parked, calls}),
     do:
@@ -114,12 +114,16 @@ defmodule TarsTUI.View do
   defp detail(%{resolution: :idle}), do: " · nothing was running"
 
   defp detail(%{resolution: :abandoned} = stats),
-    do: [" · the approval was abandoned · ", seconds(stats.elapsed_ms), dropped(stats.dropped)]
+    do: [
+      " · the approval was abandoned · ",
+      Text.duration(stats.elapsed_ms),
+      dropped(stats.dropped)
+    ]
 
   defp detail(stats) do
     [
       " · ",
-      seconds(stats.elapsed_ms),
+      Text.duration(stats.elapsed_ms),
       if(stats.resolution == :killed, do: " · killed", else: ""),
       dropped(stats.dropped)
     ]
@@ -474,8 +478,7 @@ defmodule TarsTUI.View do
       Text.tag(" ─", @faint)
     ]
     |> Kernel.++(if(shown == [], do: [Text.tag("   nothing matches", @faint)], else: shown))
-    |> Enum.map(&Render.line(pad(Text.truncate(&1, inner), inner)))
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &Render.line(pad(Text.truncate(&1, inner), inner)))
   end
 
   defp choice(row, true), do: [Text.tag(" › ", [:bright, :cyan]), Text.tag(row, :bright)]
@@ -522,13 +525,13 @@ defmodule TarsTUI.View do
   end
 
   defp state(%{status: :running} = record, now),
-    do: Text.tag("◐ running · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :cyan)
+    do: Text.tag("◐ running · #{Text.duration(Tars.Delegation.elapsed_ms(record, now))}", :cyan)
 
   defp state(%{status: :ok} = record, now),
-    do: Text.tag("✓ done · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :green)
+    do: Text.tag("✓ done · #{Text.duration(Tars.Delegation.elapsed_ms(record, now))}", :green)
 
   defp state(%{status: :error} = record, now),
-    do: Text.tag("✗ failed · #{seconds(Tars.Delegation.elapsed_ms(record, now))}", :red)
+    do: Text.tag("✗ failed · #{Text.duration(Tars.Delegation.elapsed_ms(record, now))}", :red)
 
   defp work([], _now), do: [Text.tag("activity", :bright), Text.tag("  nothing yet", @faint), ""]
 
@@ -540,7 +543,7 @@ defmodule TarsTUI.View do
           Text.tag(glyph(span), colour(span)),
           " ",
           span.name || "?",
-          Text.tag(" · #{seconds(Tars.Delegation.elapsed_ms(span, now))}", @faint)
+          Text.tag(" · #{Text.duration(Tars.Delegation.elapsed_ms(span, now))}", @faint)
         ]
       end) ++ [""]
   end
@@ -694,8 +697,7 @@ defmodule TarsTUI.View do
   defp cause(%{error: reason}), do: Text.tag(" · #{inspect(reason)}", :red)
 
   defp took(%{status: :running}, _now), do: []
-  defp took(span, now), do: Text.tag(" · #{seconds(Activity.elapsed_ms(span, now))}", @faint)
 
-  defp seconds(ms) when ms < 1_000, do: "#{ms}ms"
-  defp seconds(ms), do: "#{Float.round(ms / 1_000, 1)}s"
+  defp took(span, now),
+    do: Text.tag(" · #{Text.duration(Activity.elapsed_ms(span, now))}", @faint)
 end

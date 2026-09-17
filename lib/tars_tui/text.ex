@@ -20,6 +20,11 @@ defmodule TarsTUI.Text do
 
   defstruct sequences: [], data: []
 
+  @doc "An elapsed duration in milliseconds or fractional seconds."
+  @spec duration(non_neg_integer()) :: String.t()
+  def duration(ms) when ms < 1_000, do: "#{ms}ms"
+  def duration(ms), do: "#{Float.round(ms / 1_000, 1)}s"
+
   @doc "Wraps `data` in one sequence or a list of them."
   @spec tag(t(), atom() | tuple() | [atom() | tuple()]) :: tag()
   def tag(data, sequences), do: %__MODULE__{sequences: List.wrap(sequences), data: data}

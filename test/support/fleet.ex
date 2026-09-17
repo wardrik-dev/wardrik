@@ -6,6 +6,25 @@ defmodule Tars.Test.Fleet do
 
   alias Tars.Fleet
 
+  @doc "Waits for watched registry changes until the condition holds, without polling."
+  def await_update(check) do
+    await_update(check, System.monotonic_time(:millisecond) + 2_000)
+  end
+
+  defp await_update(check, deadline) do
+    if check.() do
+      true
+    else
+      remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+      receive do
+        {:group, _events, _info} -> await_update(check, deadline)
+      after
+        remaining -> false
+      end
+    end
+  end
+
   @doc "Starts an agent under `key` and returns the key and pid."
   @spec start_agent(keyword(), String.t()) :: {String.t(), pid()}
   def start_agent(opts \\ [], key \\ key()) do

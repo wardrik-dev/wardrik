@@ -4,7 +4,7 @@ defmodule TarsTUI.Fleet.FilterTest do
   alias Tars.Fleet.Member
   alias TarsTUI.Fleet.Filter
 
-  defp member(key, opts \\ []) do
+  defp member(key, opts) do
     {org, user, name} = Tars.Fleet.parse(key)
 
     %Member{

@@ -576,10 +576,10 @@ defmodule TarsTUI.App do
   # The next argument to collect, or the command run with what was collected.
   # One parked call needs no choosing.
   defp advance(term, command, chosen) do
-    case Enum.at(command.arguments, length(chosen)) do
-      nil -> run(term, command, chosen)
-      :call when length(term.assigns.parked) == 1 -> run(term, command, chosen)
-      step -> {:noreply, step_palette(term, step, command, chosen)}
+    case {Enum.at(command.arguments, length(chosen)), term.assigns.parked} do
+      {nil, _calls} -> run(term, command, chosen)
+      {:call, [_only]} -> run(term, command, chosen)
+      {step, _calls} -> {:noreply, step_palette(term, step, command, chosen)}
     end
   end
 

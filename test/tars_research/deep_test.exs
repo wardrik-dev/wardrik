@@ -329,7 +329,7 @@ defmodule TarsResearch.DeepTest do
   end
 
   describe "spans" do
-    test "each angle is a child of the caller, named for itself", %{scope: scope} do
+    test "each angle has a distinct delegation span under its branch", %{scope: scope} do
       stub_llm()
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing", "rivals"]}, scope, [])
@@ -340,8 +340,15 @@ defmodule TarsResearch.DeepTest do
 
       for span <- spans do
         assert span.trace_id == scope.source.trace.trace_id
-        assert span.parent_span_id == scope.source.trace.span_id
+
+        if span.name == "synthesis" do
+          assert span.parent_span_id == scope.source.trace.span_id
+        else
+          refute span.parent_span_id == scope.source.trace.span_id
+        end
       end
+
+      assert MapSet.size(MapSet.new(spans, & &1.span_id)) == 3
     end
 
     test "every event stays on the calling agent's topic", %{scope: scope, agent_id: agent_id} do

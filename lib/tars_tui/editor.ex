@@ -21,7 +21,7 @@ defmodule TarsTUI.Editor do
   alias Termite.Screen
 
   @typedoc "What the handoff needs: the terminal the view draws on, and the Breeze server."
-  @type context() :: %{terminal: Termite.Terminal.t() | nil, server: pid() | nil}
+  @type context() :: %{terminal: %Termite.Terminal{} | nil, server: pid() | nil}
 
   @typedoc "What `edit/2` answers."
   @type result() :: {:ok, String.t()} | {:error, term()}
@@ -40,11 +40,11 @@ defmodule TarsTUI.Editor do
   @spec edit(String.t(), context()) :: result()
   def edit(draft, context) do
     with {:ok, command} <- command_or_error(),
-         {:ok, path} <- write(draft) do
+         {:ok, directory, path} <- write(draft) do
       try do
         hand_over(context, fn -> run(command, path) end)
       after
-        File.rm(path)
+        File.rm_rf(directory)
       end
     end
   end
@@ -57,11 +57,26 @@ defmodule TarsTUI.Editor do
   end
 
   defp write(draft) do
-    path = Path.join(System.tmp_dir!(), "tars-prompt-#{System.unique_integer([:positive])}.md")
+    token = Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
+    directory = Path.join(System.tmp_dir!(), "tars-prompt-#{token}")
 
-    case File.write(path, draft) do
-      :ok -> {:ok, path}
+    case File.mkdir(directory) do
+      :ok -> write_private(directory, draft)
       {:error, reason} -> {:error, {:write, reason}}
+    end
+  end
+
+  defp write_private(directory, draft) do
+    path = Path.join(directory, "prompt.md")
+
+    with :ok <- File.chmod(directory, 0o700),
+         :ok <- File.write(path, draft, [:exclusive]),
+         :ok <- File.chmod(path, 0o600) do
+      {:ok, directory, path}
+    else
+      {:error, reason} ->
+        File.rm_rf(directory)
+        {:error, {:write, reason}}
     end
   end
 
