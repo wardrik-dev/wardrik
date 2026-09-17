@@ -1452,7 +1452,7 @@ defmodule TarsTUI.App do
   defp palette_class(palette, choices, width, height) do
     {w, h} = palette_size(palette, choices, width, height)
 
-    "fixed center width-#{w} height-#{h} layer-50 bg border-rounded border-primary overflow-hidden"
+    "fixed center width-#{w} height-#{h} layer-50 bg-panel border-rounded border-primary overflow-hidden"
   end
 
   defp palette_content(%{palette: nil}, _choices, _width, _height), do: ""
@@ -1486,7 +1486,7 @@ defmodule TarsTUI.App do
   defp overlay_class(rows, width, height) do
     rows_height = min(length(rows) + 2, max(height - 5, 3))
 
-    "fixed right-1 top-1 width-#{width} height-#{rows_height + 1} layer-40 bg " <>
+    "fixed right-1 top-1 width-#{width} height-#{rows_height + 1} layer-40 bg-panel " <>
       "overflow-hidden padding-left-1"
   end
 
@@ -1596,7 +1596,7 @@ defmodule TarsTUI.App do
     {_w, h} = inspector_size(Transcript.rows(transcript), width, height)
 
     {Transcript.source(transcript),
-     "fixed center width-#{w} height-#{h} layer-50 bg border-rounded border-primary " <>
+     "fixed center width-#{w} height-#{h} layer-50 bg-panel border-rounded border-primary " <>
        "overflow-scroll scrollbar-mute-100 padding-left-1"}
   end
 
