@@ -311,7 +311,8 @@ defmodule TarsTUI.App.FleetTest do
     Fleet.forget(Fleet.key("helper", org: org))
   end
 
-  test "l shows an agent's delegations, Enter inspects one, and h hides them", ctx do
+  test "an agent's delegations show by themselves, Enter inspects one, h hides them and l shows them",
+       ctx do
     %{session: session, org: org} = ctx
     session = Breeze.Test.resize(session, {90, 30})
     other = Fleet.key("other", org: org)
@@ -324,17 +325,13 @@ defmodule TarsTUI.App.FleetTest do
     assert_receive {:delegating, branch}
     assert_receive %Event{payload: {:delegation_started, _task}}
     assert eventually(fn -> screen(session) =~ "◐ other sub 1/1" end)
+    assert screen(session) =~ "└ ◐ pricing"
+    assert session.pid in Bus.subscribers(other)
 
-    # The panel lists other above watched; the cursor starts on watched.
+    # The panel lists other, its delegation, then watched; the cursor starts
+    # on watched.
     focus_fleet(session)
     Breeze.Test.input(session, "k")
-    Breeze.Test.input(session, "l")
-
-    text = screen(session)
-    assert text =~ "└ ◐ pricing"
-    assert Breeze.Test.focused(session) == "fleet"
-
-    Breeze.Test.input(session, "j")
     Breeze.Test.input(session, "Enter")
 
     text = screen(session)
@@ -356,13 +353,17 @@ defmodule TarsTUI.App.FleetTest do
     assert text =~ "└ ✓ pricing"
     assert eventually(fn -> screen(session) =~ "○ other sub 0/1" end)
 
-    assert session.pid in Bus.subscribers(other)
-
     Breeze.Test.input(session, "h")
     text = screen(session)
     refute text =~ "└ ✓ pricing"
     assert text =~ "○ other sub 0/1"
     refute session.pid in Bus.subscribers(other)
+
+    # A refresh leaves a collapsed agent collapsed; l expands it again.
+    Breeze.Test.info(session, :refresh_fleet)
+    refute screen(session) =~ "└ ✓ pricing"
+    Breeze.Test.input(session, "l")
+    assert screen(session) =~ "└ ✓ pricing"
   end
 
   defp eventually(check, tries \\ 50) do

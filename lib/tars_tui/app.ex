@@ -42,15 +42,16 @@ defmodule TarsTUI.App do
   than polling. With the panel focused, `Up`, `Down`, `j` and `k` move
   through the agents and `Enter` connects to the one under the cursor.
 
-  `l` on an agent in the panel expands it: one row per delegation its current
-  turn has started through `Tars.Subagent.run/3`, as a tree, each with how it
-  is going and how long it has taken. The rows come from the agent's
+  Under each agent the panel shows one row per delegation its current turn
+  has started through `Tars.Subagent.run/3`, as a tree, each with how it is
+  going and how long it has taken. The rows come from the agent's
   `Tars.Agent.snapshot/1` and then follow its `:lifecycle` events, which is
-  the shape of its work without its token stream. `h` collapses it again.
-  `Enter` on a delegation opens an inspector over the panes: what it was
-  asked, the work under it, and what it answered or why it failed; `Esc`
-  closes it. An agent's row also counts its delegations, going and started,
-  and says when its last turn failed.
+  the shape of its work without its token stream. `h` on an agent collapses
+  its rows, and stays collapsed until `l` expands them again. `Enter` on a
+  delegation opens an inspector over the panes: what it was asked, the work
+  under it, and what it answered or why it failed; `Esc` closes it. An
+  agent's row also counts its delegations, going and started, and says when
+  its last turn failed.
 
   An agent needs attention when it is waiting on a person, or when it
   finished a turn while this client was watching another: its row is marked
@@ -659,17 +660,39 @@ defmodule TarsTUI.App do
     :exit, _reason -> Delegation.new()
   end
 
-  # Hides an agent's delegations, and stops following an agent that is not the
-  # attached one. The cursor lands on the agent.
+  # Hides an agent's delegations until `l`, and stops following an agent that
+  # is not the attached one. The cursor lands on the agent.
   defp collapse(term, nil), do: term
 
   defp collapse(%{assigns: %{expanded: expanded, agent_id: agent_id}} = term, key) do
+    term = assign(term, collapsed: MapSet.put(term.assigns.collapsed, key))
+
     if Map.has_key?(expanded, key) do
       if key != agent_id, do: Event.Bus.unsubscribe(key)
       assign(term, expanded: Map.delete(expanded, key), highlighted: key)
     else
       term
     end
+  end
+
+  # Every agent in the fleet is expanded unless it was collapsed; one gone
+  # from the fleet is no longer followed.
+  defp expand_all(term, fleet) do
+    keys = Enum.map(fleet, & &1.key)
+    gone = Map.keys(term.assigns.expanded) -- keys
+    Enum.each(gone, &if(&1 != term.assigns.agent_id, do: Event.Bus.unsubscribe(&1)))
+
+    term =
+      assign(term,
+        expanded: Map.drop(term.assigns.expanded, gone),
+        collapsed: MapSet.intersection(term.assigns.collapsed, MapSet.new(keys))
+      )
+
+    Enum.reduce(fleet, term, fn member, term ->
+      if MapSet.member?(term.assigns.collapsed, member.key),
+        do: term,
+        else: expand(term, member.key)
+    end)
   end
 
   # An expanded agent's delegations, or `nil` when it is not expanded.
@@ -827,6 +850,7 @@ defmodule TarsTUI.App do
         palette: nil,
         recent: [],
         expanded: %{},
+        collapsed: MapSet.new(),
         inspecting: nil,
         delegations: Delegation.new(),
         editing: nil,
@@ -1537,8 +1561,11 @@ defmodule TarsTUI.App do
   def handle_event("palette_run", %{cursor: cursor}, %{assigns: %{palette: palette}} = term),
     do: choose(term, palette, Enum.at(choices(term.assigns), cursor))
 
-  def handle_event(:input, %{"key" => "l"}, %{focused: "fleet"} = term),
-    do: {:noreply, expand(term, agent_of(term.assigns.highlighted))}
+  def handle_event(:input, %{"key" => "l"}, %{focused: "fleet"} = term) do
+    key = agent_of(term.assigns.highlighted)
+    collapsed = MapSet.delete(term.assigns.collapsed, key)
+    {:noreply, term |> assign(collapsed: collapsed) |> expand(key)}
+  end
 
   def handle_event(:input, %{"key" => "h"}, %{focused: "fleet"} = term),
     do: {:noreply, collapse(term, agent_of(term.assigns.highlighted))}
@@ -1909,6 +1936,7 @@ defmodule TarsTUI.App do
     term
     |> assign(fleet: fleet, fleet_due?: false, unseen: unseen(term, fleet))
     |> follow(fleet)
+    |> expand_all(fleet)
   end
 
   # An agent other than the attached one that was running or waiting and is
