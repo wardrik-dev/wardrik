@@ -23,6 +23,17 @@ defmodule TarsTUI.TranscriptTest do
     assert Transcript.to_list(transcript) == ["a", "b", "c", ""]
   end
 
+  test "two transcripts never share a source key, however alike they are" do
+    one = Transcript.append(Transcript.new(40), "same")
+    two = Transcript.append(Transcript.new(40), "same")
+
+    assert Transcript.source(one).cache_key != Transcript.source(two).cache_key
+    assert Transcript.source(one).cache_key == Transcript.source(one).cache_key
+
+    refute Transcript.source(one).cache_key ==
+             Transcript.source(Transcript.rewrap(one, 30)).cache_key
+  end
+
   test "find/2 lists the rows holding the text, ignoring case, and nothing for no text" do
     transcript =
       Transcript.append_all(Transcript.new(40), ["Lemonade stand", "tea", "more LEMONADE"])

@@ -5,8 +5,10 @@ defmodule TarsTUI.Transcript do
   Lines arrive as `TarsTUI.Text` and are wrapped to the transcript's width as they
   are appended. A `TarsTUI.Table` arrives as one line and is laid out to the
   width the same way. `source/1` presents the rows to Breeze as a lazy
-  `BackBreeze.VirtualText`, which fetches only the rows it draws. `rewrap/2`
-  rebuilds the rows for a new width.
+  `BackBreeze.VirtualText`, which fetches only the rows it draws, under a key
+  naming this transcript, its version and its width, so the renderer never
+  reuses rows of another transcript at the same version. `rewrap/2` rebuilds
+  the rows for a new width.
   """
 
   alias BackBreeze.VirtualText
@@ -18,15 +20,16 @@ defmodule TarsTUI.Transcript do
           width: pos_integer(),
           lines: [Line.t() | Table.t()],
           rows: :array.array(),
-          version: non_neg_integer()
+          version: non_neg_integer(),
+          ref: reference()
         }
 
-  defstruct width: 100, lines: [], rows: nil, version: 0
+  defstruct width: 100, lines: [], rows: nil, version: 0, ref: nil
 
   @doc "An empty transcript wrapped at `width` columns."
   @spec new(pos_integer()) :: t()
   def new(width) when is_integer(width) and width > 0 do
-    %__MODULE__{width: width, rows: :array.new()}
+    %__MODULE__{width: width, rows: :array.new(), ref: make_ref()}
   end
 
   @doc """
@@ -108,11 +111,11 @@ defmodule TarsTUI.Transcript do
   Breeze only calls `slice_fn` for the rows it is about to draw.
   """
   @spec source(t()) :: struct()
-  def source(%__MODULE__{rows: rows, version: version, width: width}) do
+  def source(%__MODULE__{rows: rows, version: version, width: width, ref: ref}) do
     count = :array.size(rows)
 
     VirtualText.lazy(
-      cache_key: {__MODULE__, version, width},
+      cache_key: {__MODULE__, ref, version, width},
       cache?: false,
       intrinsic_width: 1,
       line_count_fn: fn _width -> count end,
