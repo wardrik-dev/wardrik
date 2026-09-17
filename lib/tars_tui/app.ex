@@ -1,7 +1,9 @@
 defmodule TarsTUI.App do
   # Events are folded as they arrive; the frame is redrawn at most this often
-  # while they do.
-  @frame_after 20
+  # while they do, and half as often each time a redraw falls behind, up to
+  # the limit.
+  @frame_after 50
+  @frame_after_most 400
   # The fleet panel's width in columns, unless started with `:sidebar_width`.
   @sidebar_width 30
 
@@ -9,10 +11,11 @@ defmodule TarsTUI.App do
   A full-screen terminal client for one agent.
 
   A `Tars.Event.Bus` subscriber holding no conversation state, so several can
-  watch the same agent. Events are folded as they arrive and the frame is
-  redrawn at most every #{@frame_after} milliseconds while they do, so the frame rate
-  does not follow the token rate and keys are handled promptly. Five rows,
-  top to bottom:
+  watch the same agent. Events are folded as they arrive, and the frame is
+  redrawn at most every #{@frame_after} milliseconds while they do, less
+  often when a redraw itself falls behind, so the frame rate follows neither
+  the token rate nor the size of the terminal and keys are handled promptly.
+  A key is drawn at once. Five rows, top to bottom:
 
     1. **header**: the model, the agent, and whether tracing is on
     2. **transcript**: the answer rendered as markdown a line at a time, each
@@ -859,6 +862,8 @@ defmodule TarsTUI.App do
         history: History.new(),
         frame: 0,
         frame_due?: false,
+        frame_after: @frame_after,
+        frame_at: nil,
         tick_due?: false,
         started_at: nil,
         draft: ""
@@ -1884,7 +1889,19 @@ defmodule TarsTUI.App do
     end
   end
 
-  def handle_info(:frame, term), do: {:noreply, term |> sync_pane() |> assign(frame_due?: false)}
+  # The one redraw for everything but a key. A frame that arrives late says
+  # the last redraw took longer than the interval, so the interval doubles;
+  # one on time halves it back towards the base.
+  def handle_info(:frame, term) do
+    late = now() - (term.assigns.frame_at || now())
+
+    frame_after =
+      if late > div(term.assigns.frame_after, 2),
+        do: min(term.assigns.frame_after * 2, @frame_after_most),
+        else: max(div(term.assigns.frame_after, 2), @frame_after)
+
+    {:noreply, term |> sync_pane() |> assign(frame_due?: false, frame_after: frame_after)}
+  end
 
   def handle_info({:leader_timeout, ref}, %{assigns: %{leader: {ref, _origin}}} = term),
     do: {:noreply, unlead(term)}
@@ -1914,14 +1931,18 @@ defmodule TarsTUI.App do
     end
   end
 
-  def handle_info(:refresh_fleet, term), do: {:noreply, term |> sync_pane() |> refresh_fleet()}
+  def handle_info(:refresh_fleet, term),
+    do: {:noreply, term |> sync_pane() |> refresh_fleet() |> frame_due(), invalidate: false}
 
   def handle_info(:tick, term) do
     term = assign(term, tick_due?: false)
 
-    if ticking?(term),
-      do: {:noreply, term |> tick() |> sync_pane() |> assign(frame: term.assigns.frame + 1)},
-      else: {:noreply, term}
+    if ticking?(term) do
+      term = term |> tick() |> sync_pane() |> assign(frame: term.assigns.frame + 1)
+      {:noreply, frame_due(term), invalidate: false}
+    else
+      {:noreply, term, invalidate: false}
+    end
   end
 
   def handle_info({:rewrap, width}, term) do
@@ -2041,9 +2062,9 @@ defmodule TarsTUI.App do
 
   defp frame_due(%{assigns: %{frame_due?: true}} = term), do: term
 
-  defp frame_due(term) do
-    Process.send_after(self(), :frame, @frame_after)
-    assign(term, frame_due?: true)
+  defp frame_due(%{assigns: %{frame_after: after_ms}} = term) do
+    Process.send_after(self(), :frame, after_ms)
+    assign(term, frame_due?: true, frame_at: now() + after_ms)
   end
 
   # A turn starts a fresh tree.
