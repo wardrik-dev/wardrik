@@ -84,7 +84,18 @@ defmodule TarsTUI.Fleet do
   """
   @spec row(Member.t(), String.t(), pos_integer(), keyword()) :: String.t()
   def row(%Member{} = member, attached, width, opts \\ []) do
-    Render.line(Text.truncate(text(member, attached, opts), width))
+    row = Text.truncate(text(member, attached, opts), width)
+    Render.line(if(Keyword.get(opts, :pad?, false), do: fill(row, width), else: row))
+  end
+
+  @doc """
+  `text` filled to `width` with faint spaces, for a row drawn over other
+  content: the compositor keeps a styled space where it would let an unstyled
+  gap show what lies beneath.
+  """
+  @spec fill(Text.t(), pos_integer()) :: Text.t()
+  def fill(text, width) do
+    [text, Text.tag(String.duplicate(" ", max(width - Text.length(text), 0)), @faint)]
   end
 
   @doc """

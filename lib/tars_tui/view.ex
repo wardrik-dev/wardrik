@@ -646,7 +646,10 @@ defmodule TarsTUI.View do
   defp choice(row, true), do: [Text.tag(" › ", [:bright, :cyan]), Text.tag(row, :bright)]
   defp choice(row, false), do: ["   ", row]
 
-  defp pad(data, width), do: [data, String.duplicate(" ", max(width - Text.length(data), 0))]
+  # The padding carries a style: the compositor lets an unstyled space show
+  # what lies under it, and an overlay row must cover the row beneath.
+  defp pad(data, width),
+    do: [data, Text.tag(String.duplicate(" ", max(width - Text.length(data), 0)), @faint)]
 
   @doc "One command as a palette row: its label, usage, and key when it has one."
   @spec palette_command(TarsTUI.Command.t(), boolean()) :: Text.t()

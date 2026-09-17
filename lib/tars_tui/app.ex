@@ -1329,7 +1329,7 @@ defmodule TarsTUI.App do
     overlay? = assigns.sidebar? and side_width == 0 and assigns.pane == "fleet"
     panel_width = if overlay?, do: assigns.sidebar_width, else: side_width
     shown = shown(assigns)
-    fleet_rows = fleet_rows(assigns, shown, panel_width)
+    fleet_rows = fleet_rows(assigns, shown, panel_width, overlay?)
 
     choices = if assigns.palette, do: choices(assigns), else: []
     {inspector_source, inspector_class} = inspector(assigns, width, height)
@@ -1511,9 +1511,9 @@ defmodule TarsTUI.App do
   # agent one per delegation, as `{"key\tspan_id", row}`; each clipped to the
   # space inside the panel's gutter, the list's border and its selection
   # column.
-  defp fleet_rows(_assigns, _shown, 0), do: []
+  defp fleet_rows(_assigns, _shown, 0, _overlay?), do: []
 
-  defp fleet_rows(assigns, shown, panel_width) do
+  defp fleet_rows(assigns, shown, panel_width, overlay?) do
     now = System.system_time(:millisecond)
     ambiguous = TarsTUI.Fleet.ambiguous(assigns.fleet)
     width = panel_width - 4
@@ -1521,10 +1521,11 @@ defmodule TarsTUI.App do
     Enum.flat_map(shown, fn member ->
       rows =
         Enum.map(delegation_texts(assigns, member.key, now), fn {value, text} ->
-          {value, Render.line(Text.truncate(text, width))}
+          text = Text.truncate(text, width)
+          {value, Render.line(if(overlay?, do: TarsTUI.Fleet.fill(text, width), else: text))}
         end)
 
-      opts = [ambiguous: ambiguous, unseen: Map.get(assigns.unseen, member.key)]
+      opts = [ambiguous: ambiguous, unseen: Map.get(assigns.unseen, member.key), pad?: overlay?]
       [{member.key, TarsTUI.Fleet.row(member, assigns.agent_id, width, opts)} | rows]
     end)
   end
@@ -1592,7 +1593,7 @@ defmodule TarsTUI.App do
   # The lines laid out in a box centred over the panes, as tall as they need.
   defp inspector_box(lines, width, height) do
     {w, _h} = inspector_size(1, width, height)
-    transcript = Transcript.append_all(Transcript.new(w - 4), lines)
+    transcript = Transcript.append_all(Transcript.new(w - 4, pad?: true), lines)
     {_w, h} = inspector_size(Transcript.rows(transcript), width, height)
 
     {Transcript.source(transcript),

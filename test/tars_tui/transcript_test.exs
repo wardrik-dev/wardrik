@@ -23,6 +23,15 @@ defmodule TarsTUI.TranscriptTest do
     assert Transcript.to_list(transcript) == ["a", "b", "c", ""]
   end
 
+  test "a padded transcript fills each row to its width, and keeps that when rewrapped" do
+    transcript =
+      Transcript.new(10, pad?: true) |> Transcript.append("ab") |> Transcript.append("")
+
+    assert Transcript.to_list(transcript) == ["ab        ", "          "]
+    assert Transcript.to_list(Transcript.rewrap(transcript, 6)) == ["ab    ", "      "]
+    assert Transcript.to_list(Transcript.append(Transcript.new(4), "ab")) == ["ab"]
+  end
+
   test "two transcripts never share a source key, however alike they are" do
     one = Transcript.append(Transcript.new(40), "same")
     two = Transcript.append(Transcript.new(40), "same")

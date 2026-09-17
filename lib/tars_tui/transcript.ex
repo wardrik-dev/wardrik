@@ -9,6 +9,10 @@ defmodule TarsTUI.Transcript do
   naming this transcript, its version and its width, so the renderer never
   reuses rows of another transcript at the same version. `rewrap/2` rebuilds
   the rows for a new width.
+
+  A transcript drawn over other content is made with `pad?: true`: each row is
+  filled to the width with faint spaces, which the compositor keeps where it
+  would let an unstyled gap show what lies beneath.
   """
 
   alias BackBreeze.VirtualText
@@ -21,15 +25,21 @@ defmodule TarsTUI.Transcript do
           lines: [Line.t() | Table.t()],
           rows: :array.array(),
           version: non_neg_integer(),
-          ref: reference()
+          ref: reference(),
+          pad?: boolean()
         }
 
-  defstruct width: 100, lines: [], rows: nil, version: 0, ref: nil
+  defstruct width: 100, lines: [], rows: nil, version: 0, ref: nil, pad?: false
 
-  @doc "An empty transcript wrapped at `width` columns."
-  @spec new(pos_integer()) :: t()
-  def new(width) when is_integer(width) and width > 0 do
-    %__MODULE__{width: width, rows: :array.new(), ref: make_ref()}
+  @doc "An empty transcript wrapped at `width` columns. Option `:pad?` fills each row."
+  @spec new(pos_integer(), keyword()) :: t()
+  def new(width, opts \\ []) when is_integer(width) and width > 0 do
+    %__MODULE__{
+      width: width,
+      rows: :array.new(),
+      ref: make_ref(),
+      pad?: Keyword.get(opts, :pad?, false)
+    }
   end
 
   @doc """
@@ -56,6 +66,7 @@ defmodule TarsTUI.Transcript do
     rows =
       line
       |> layout(transcript.width)
+      |> Enum.map(&fill(&1, transcript))
       |> Enum.reduce(transcript.rows, fn row, rows -> :array.set(:array.size(rows), row, rows) end)
 
     %{transcript | lines: [line | transcript.lines], rows: rows, version: transcript.version + 1}
@@ -64,6 +75,15 @@ defmodule TarsTUI.Transcript do
   defp layout(%Table{} = table, width), do: Table.rows(table, width)
   defp layout(line, width), do: Line.wrap(line, width)
 
+  defp fill(row, %__MODULE__{pad?: false}), do: row
+
+  defp fill(row, %__MODULE__{width: width}) do
+    case width - Line.width(row) do
+      short when short > 0 -> row ++ Line.segments(Text.tag(String.duplicate(" ", short), :faint))
+      _fits -> row
+    end
+  end
+
   @doc "Wraps every line again at `width`. A no-op when the width is unchanged."
   @spec rewrap(t(), pos_integer()) :: t()
   def rewrap(%__MODULE__{width: width} = transcript, width), do: transcript
@@ -71,7 +91,10 @@ defmodule TarsTUI.Transcript do
   def rewrap(%__MODULE__{} = transcript, width) when is_integer(width) and width > 0 do
     transcript.lines
     |> Enum.reverse()
-    |> Enum.reduce(%{new(width) | version: transcript.version}, &append_line(&2, &1))
+    |> Enum.reduce(
+      %{new(width, pad?: transcript.pad?) | version: transcript.version},
+      &append_line(&2, &1)
+    )
   end
 
   @doc "How many terminal rows the transcript occupies."
