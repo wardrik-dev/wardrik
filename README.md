@@ -7,6 +7,12 @@ subscribe to and watch.
 Core has no dependencies you did not ask for and ships no tools and no
 workflows. What it ships is the contracts and the machinery that runs them.
 
+## Terminal client
+
+Run `mix tars` for the terminal client. See the [TUI guide](docs/tui.md) for
+commands, navigation, and agent switching, and the
+[maintainer notes](docs/tui-architecture.md) for its module boundaries.
+
 ## Packages
 
 Anything that reaches the outside world, or that encodes work specific to one

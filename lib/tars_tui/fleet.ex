@@ -33,6 +33,15 @@ defmodule TarsTUI.Fleet do
   @delegation_glyphs %{running: "◐", ok: "✓", error: "✗"}
   @delegation_colours %{running: :cyan, ok: :green, error: :red}
 
+  @doc "An expanded agent's delegations, or `nil` when it is collapsed."
+  def expanded_delegations(%{expanded: expanded, agent_id: agent_id} = assigns, key) do
+    cond do
+      not Map.has_key?(expanded, key) -> nil
+      key == agent_id -> assigns.delegations
+      true -> Map.fetch!(expanded, key)
+    end
+  end
+
   @doc """
   The heading above the list, clipped to `width`: how many agents are shown of
   how many there are, how many need attention, and the filter in force.
