@@ -73,7 +73,6 @@ defmodule TarsTUI.CommandTest do
   end
 
   test "a command given the wrong thing reports its usage rather than guessing" do
-    assert Command.parse("/connect") == {:usage, "/connect"}
     assert Command.parse("/connect one two") == {:usage, "/connect"}
     assert Command.parse("/shutdown") == {:usage, "/shutdown"}
     assert Command.parse("/rm") == {:usage, "/rm"}
@@ -81,20 +80,33 @@ defmodule TarsTUI.CommandTest do
     assert Command.parse("/quit now") == {:usage, "/quit"}
     assert Command.parse("/move researcher") == {:move, "researcher", %{}}
     assert Command.parse("/move researcher node=tars_b please") == {:usage, "/move"}
+    assert Command.parse("/move researcher --bg") == {:usage, "/move"}
+  end
+
+  test "a command missing what it needs asks for it rather than failing" do
+    assert Command.parse("/connect") == {:connect, nil}
+    assert Command.parse("/move") == {:move, nil, %{}}
+    assert Command.parse("/move researcher") == {:move, "researcher", %{}}
+  end
+
+  test "a line starting with two slashes is sent as text, one slash taken off" do
+    assert Command.parse("//spawn is a word") == {:ask, "/spawn is a word"}
+    assert Command.parse("  //etc/hosts  ") == {:ask, "/etc/hosts"}
+    assert Command.parse("//", true) == {:ask, "/"}
   end
 
   test "the fleet has its own vocabulary" do
     assert Command.parse("/fleet") == :fleet
-    assert Command.parse("/spawn researcher") == {:spawn, "researcher", %{}, nil}
+    assert Command.parse("/spawn researcher") == {:spawn, "researcher", %{}, nil, :attach}
 
     assert Command.parse("/spawn researcher look into it") ==
-             {:spawn, "researcher", %{}, "look into it"}
+             {:spawn, "researcher", %{}, "look into it", :attach}
 
     assert Command.parse("/spawn researcher node=tars_b look into it") ==
-             {:spawn, "researcher", %{"node" => "tars_b"}, "look into it"}
+             {:spawn, "researcher", %{"node" => "tars_b"}, "look into it", :attach}
 
     assert Command.parse("/spawn researcher node=tars_b") ==
-             {:spawn, "researcher", %{"node" => "tars_b"}, nil}
+             {:spawn, "researcher", %{"node" => "tars_b"}, nil, :attach}
 
     assert Command.parse("/move researcher node=tars_b") ==
              {:move, "researcher", %{"node" => "tars_b"}}
@@ -104,16 +116,29 @@ defmodule TarsTUI.CommandTest do
 
   test "a prompt is kept as typed, and `--` keeps even an option-shaped word in it" do
     assert Command.parse("/spawn researcher look  into   x=y please") ==
-             {:spawn, "researcher", %{}, "look  into   x=y please"}
+             {:spawn, "researcher", %{}, "look  into   x=y please", :attach}
 
     assert Command.parse("/spawn researcher node=tars_b -- Investigate x=y") ==
-             {:spawn, "researcher", %{"node" => "tars_b"}, "Investigate x=y"}
+             {:spawn, "researcher", %{"node" => "tars_b"}, "Investigate x=y", :attach}
 
     assert Command.parse("/spawn researcher -- node=tars_b is not an option here") ==
-             {:spawn, "researcher", %{}, "node=tars_b is not an option here"}
+             {:spawn, "researcher", %{}, "node=tars_b is not an option here", :attach}
 
-    assert Command.parse("/spawn researcher --") == {:spawn, "researcher", %{}, nil}
+    assert Command.parse("/spawn researcher --") == {:spawn, "researcher", %{}, nil, :attach}
     assert Command.parse("/spawn researcher stray -- prompt") == {:usage, "/spawn"}
+  end
+
+  test "`--bg` spawns in the background, wherever it sits among the options" do
+    assert Command.parse("/spawn researcher --bg") ==
+             {:spawn, "researcher", %{}, nil, :background}
+
+    assert Command.parse("/spawn researcher --bg node=tars_b look into it") ==
+             {:spawn, "researcher", %{"node" => "tars_b"}, "look into it", :background}
+
+    assert Command.parse("/spawn researcher node=tars_b --bg -- look --bg into it") ==
+             {:spawn, "researcher", %{"node" => "tars_b"}, "look --bg into it", :background}
+
+    assert Command.parse("/spawn --bg") == {:usage, "/spawn"}
   end
 
   test "interrupting, shutting down and removing are three different words" do
@@ -143,7 +168,7 @@ defmodule TarsTUI.CommandTest do
   test "help lists every command with its usage" do
     usages = Command.help() |> Enum.map(&elem(&1, 0))
 
-    assert "/spawn NAME [node=N] [-- prompt]" in usages
+    assert "/spawn NAME [node=N] [--bg] [-- prompt]" in usages
     assert "/rm NAME | PREFIX/ [--yes]" in usages
     assert length(usages) == length(Command.all())
   end

@@ -73,12 +73,18 @@ defmodule TarsTUI.App do
   while it is focused: `Ctrl-F`, `Tab` or `Ctrl-X` then `l` bring it up and
   `Esc` or `i` put it away.
 
-  `/spawn NAME [node=NODE] [prompt]` starts an agent with the same
+  `/spawn NAME [node=NODE] [--bg] [-- prompt]` starts an agent with the same
   `:spawn_opts` this client's own agent was given, on the named node if one is
-  given, attaches to it, and sends it the prompt. `/connect NAME` attaches to
-  an agent already running, wherever it is. Attaching replays the
-  conversation so far: what was asked, what was answered, and each tool call
-  with what it returned. Attaching on start works the same way.
+  given, attaches to it, and sends it the prompt; with `--bg` it stays here,
+  and the prompt goes to the new agent where it is. A name already running is
+  connected to rather than started again, and said to be. `/connect NAME`
+  attaches to an agent already running, wherever it is: a name in this
+  client's scope, a whole key, or part of one, which is completed when one
+  agent holds it and offered as a choice when several do. `/connect` alone
+  opens that choice. Attaching replays the conversation so far: what was
+  asked, what was answered, and each tool call with what it returned.
+  Attaching on start works the same way. `/fleet` shows the panel and moves
+  into it.
 
   Each agent this client has watched keeps its transcript, scroll position,
   draft and usage, so connecting back restores the place it was left at, and
@@ -91,12 +97,21 @@ defmodule TarsTUI.App do
   not running at all, the status row says so and nothing typed is sent.
 
   `/move NAME node=NODE` restarts an agent on another node with the state it
-  had. `/stop` interrupts this agent; `/stop NAME` another, and `/stop PREFIX/`
-  every agent under a prefix. `/shutdown NAME` stops an agent and keeps its
-  conversation for `/spawn` to bring back. `/rm NAME` and `/rm PREFIX/`
-  delete agents and their conversations: the first shows exactly what would
-  go, and `/confirm` does it. The agent this client is attached to is never
-  removed. `/help` lists all of this.
+  had; without a node, or a name, it asks for them. An agent whose turn is
+  running or waiting is not moved until `/confirm`, after what the move would
+  interrupt has been shown. `/stop` interrupts this agent; `/stop NAME`
+  another, and `/stop PREFIX/` every agent under a prefix. `/shutdown NAME`
+  stops an agent and keeps its conversation for `/spawn` to bring back. `/rm
+  NAME` and `/rm PREFIX/` delete agents and their conversations: the first
+  shows exactly what would go, and `/confirm` does it. The agent this client
+  is attached to is never removed.
+
+  A slash word that is no command is reported with the commands it resembles,
+  and nothing is sent; a command given the wrong thing shows its usage. Either
+  way the line stays in the prompt to be corrected. A line starting with `//`
+  is sent as typed, with one slash taken off. `/help` opens every key and
+  command over the panes, the keys of the pane focus came from first, narrowed
+  as letters are typed; `Enter` on a command runs it and `Esc` closes.
 
   ## Approvals
 
@@ -378,6 +393,7 @@ defmodule TarsTUI.App do
     end
   end
 
+  defp which("//" <> _rest), do: :history
   defp which("/" <> _rest), do: :commands
   defp which(_draft), do: :history
 
@@ -398,8 +414,8 @@ defmodule TarsTUI.App do
     term = leave(term)
 
     case {command, String.trim(value)} do
-      {{:ask, text}, _line} ->
-        assign(term, history: History.push(term.assigns.history, text))
+      {{:ask, _text}, line} ->
+        assign(term, history: History.push(term.assigns.history, line))
 
       {_other, "/" <> _rest = line} ->
         assign(term, commands: History.push(term.assigns.commands, line))
@@ -475,6 +491,38 @@ defmodule TarsTUI.App do
 
   def palette(_event, term), do: {:noreply, close_palette(term)}
 
+  # Opens the palette at the next argument `command` needs after `chosen`,
+  # with `query` already typed, as a command missing an argument does.
+  defp pick(term, name, chosen, query \\ "") do
+    command = Command.find(name)
+
+    palette = %{
+      step: Enum.at(command.arguments, length(chosen)),
+      command: command,
+      chosen: chosen,
+      query: query,
+      cursor: 0,
+      origin: "prompt"
+    }
+
+    term |> assign(palette: palette, leader: nil) |> refresh_fleet() |> focus("palette")
+  end
+
+  # Every key and command over the panes, searched like the palette; Enter on
+  # a command runs it.
+  defp open_help(term) do
+    palette = %{
+      step: :help,
+      command: nil,
+      chosen: [],
+      query: "",
+      cursor: 0,
+      origin: term.focused || "prompt"
+    }
+
+    term |> assign(palette: palette, leader: nil) |> focus("palette")
+  end
+
   defp close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
     do: term |> assign(palette: nil) |> focus_pane(origin)
 
@@ -488,7 +536,10 @@ defmodule TarsTUI.App do
     update_palette(term, &%{&1 | step: :commands, command: nil, chosen: [], query: "", cursor: 0})
   end
 
+  # The agents offered are the fleet as it is now.
   defp step_palette(term, step, command, chosen) do
+    term = if step == :agent, do: refresh_fleet(term), else: term
+
     update_palette(
       term,
       &%{&1 | step: step, command: command, chosen: chosen, query: "", cursor: 0}
@@ -531,6 +582,21 @@ defmodule TarsTUI.App do
 
   defp choices(%{palette: %{step: :text}}), do: []
 
+  # With nothing typed the keys come first; with a query, the commands do.
+  defp choices(%{palette: %{step: :help, query: query, origin: origin}} = assigns) do
+    context = context(assigns)
+    keys = Enum.map(View.help_keys(origin), &{:key, &1})
+
+    commands =
+      Enum.map(
+        Command.all(),
+        &{{:command, &1}, View.help_command(&1, Command.available?(&1, context))}
+      )
+
+    rows = if query == "", do: keys ++ commands, else: commands ++ keys
+    Palette.filter(rows, query, fn {_value, row} -> Text.plain(row) end)
+  end
+
   defp agent_row(member) do
     elsewhere = if member.node == node(), do: "", else: " · @#{short_node(member.node)}"
     [Text.tag(member.key, :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
@@ -569,6 +635,8 @@ defmodule TarsTUI.App do
 
   defp choose(term, _palette, nil), do: {:noreply, term}
   defp choose(term, %{step: :commands}, {command, _row}), do: advance(term, command, [])
+  defp choose(term, %{step: :help}, {{:command, command}, _row}), do: advance(term, command, [])
+  defp choose(term, %{step: :help}, {:key, _row}), do: {:noreply, term}
 
   defp choose(term, %{command: command, chosen: chosen}, {value, _row}),
     do: advance(term, command, chosen ++ [value])
@@ -602,14 +670,21 @@ defmodule TarsTUI.App do
     |> run_line(Enum.join([command.name | words], " "))
   end
 
-  # Reads a line as the prompt would, records it, and acts on it.
+  # Reads a line as the prompt would, records it, and acts on it. A line that
+  # named no command, or gave one the wrong thing, is put back for correction.
   defp run_line(term, line) do
     command = Command.parse(line, term.assigns.parked != [])
     term = remember(term, line, command)
 
     case command do
-      :quit -> {:stop, term}
-      command -> {:noreply, apply_command(command, term)}
+      :quit ->
+        {:stop, term}
+
+      {mistake, _word} when mistake in [:unknown, :usage] ->
+        {:noreply, command |> apply_command(term) |> put_draft(String.trim(line))}
+
+      command ->
+        {:noreply, apply_command(command, term)}
     end
   end
 
@@ -1118,7 +1193,7 @@ defmodule TarsTUI.App do
         inspector_source: inspector_source,
         inspector_class: inspector_class,
         palette_count: length(choices),
-        palette_class: palette_class(choices, width, height),
+        palette_class: palette_class(assigns.palette, choices, width, height),
         palette_content: palette_content(assigns, choices, width, height),
         source: Transcript.source(assigns.transcript),
         log_height: log_height,
@@ -1217,13 +1292,19 @@ defmodule TarsTUI.App do
   @palette_rows 12
   @palette_chrome 5
 
-  defp palette_size(choices, width, height) do
+  # Help takes the room it can get; the palette keeps to a few rows.
+  defp palette_size(%{step: :help}, choices, width, height) do
+    rows = choices |> length() |> max(1) |> min(max(height - @palette_chrome - 2, 1))
+    {max(width - 4, 20), min(rows + @palette_chrome, height - 2) |> max(6)}
+  end
+
+  defp palette_size(_palette, choices, width, height) do
     rows = choices |> length() |> max(1) |> min(@palette_rows)
     {min(width - 4, @palette_width) |> max(20), min(rows + @palette_chrome, height - 2) |> max(6)}
   end
 
-  defp palette_class(choices, width, height) do
-    {w, h} = palette_size(choices, width, height)
+  defp palette_class(palette, choices, width, height) do
+    {w, h} = palette_size(palette, choices, width, height)
 
     "fixed center width-#{w} height-#{h} layer-50 bg border-rounded border-primary overflow-hidden"
   end
@@ -1231,7 +1312,7 @@ defmodule TarsTUI.App do
   defp palette_content(%{palette: nil}, _choices, _width, _height), do: ""
 
   defp palette_content(%{palette: palette}, choices, width, height) do
-    {w, h} = palette_size(choices, width, height)
+    {w, h} = palette_size(palette, choices, width, height)
     title = View.palette_title(palette.step, palette.command)
     View.palette(title, palette.query, Enum.map(choices, &elem(&1, 1)), palette.cursor, w, h)
   end
@@ -1448,6 +1529,9 @@ defmodule TarsTUI.App do
   defp hints(%{palette: %{step: :text}}),
     do: Text.tag("type the rest · Enter run · Backspace back · Esc close ", :yellow)
 
+  defp hints(%{palette: %{step: :help}}),
+    do: Text.tag("type to search · Up/Down scroll · Enter run a command · Esc close ", :yellow)
+
   defp hints(%{palette: %{}}),
     do: Text.tag("type to filter · Up/Down choose · Enter run · Esc close ", :yellow)
 
@@ -1548,11 +1632,8 @@ defmodule TarsTUI.App do
 
   def handle_event("palette", %{action: :close}, term), do: {:noreply, close_palette(term)}
 
-  def handle_event(
-        "palette",
-        %{action: :back},
-        %{assigns: %{palette: %{step: :commands}}} = term
-      ),
+  def handle_event("palette", %{action: :back}, %{assigns: %{palette: %{step: step}}} = term)
+      when step in [:commands, :help],
       do: {:noreply, term}
 
   def handle_event("palette", %{action: :back}, term), do: {:noreply, restart_palette(term)}
@@ -1586,9 +1667,10 @@ defmodule TarsTUI.App do
   defp apply_command(:blank, term), do: term
   defp apply_command(:confirm, term), do: confirm(term)
 
-  # Anything but `/confirm` drops a removal that was waiting on it.
+  # Anything but `/confirm` drops a removal or a move that was waiting on it.
   defp apply_command(command, %{assigns: %{confirm: pending}} = term) when pending != nil do
-    apply_command(command, term |> assign(confirm: nil) |> append(View.cancelled()))
+    cancelled = View.cancelled(elem(pending, 0))
+    apply_command(command, term |> assign(confirm: nil) |> append(cancelled))
   end
 
   defp apply_command({:stop, nil}, term), do: interrupt(term)
@@ -1596,16 +1678,25 @@ defmodule TarsTUI.App do
   defp apply_command({:shutdown, name}, term), do: shutdown(term, name)
   defp apply_command({:rm, target, confirmed?}, term), do: remove(term, target, confirmed?)
   defp apply_command({:approve, selector}, term), do: decide(term, selector, :approve)
-  defp apply_command(:fleet, term), do: list_fleet(term)
-  defp apply_command(:help, term), do: append_lines(term, [""] ++ View.help())
+  defp apply_command(:fleet, term), do: show_fleet(term)
+  defp apply_command(:help, term), do: open_help(term)
 
   defp apply_command({:deny, selector, reason}, term),
     do: decide(term, selector, {:deny, reason || @default_denial})
 
-  defp apply_command({:spawn, name, options, prompt}, term),
-    do: spawn_agent(term, name, options, prompt)
+  defp apply_command({:spawn, name, options, prompt, mode}, term),
+    do: spawn_agent(term, name, options, prompt, mode)
+
+  defp apply_command({:move, nil, _options}, term), do: pick(term, "/move", [])
+
+  defp apply_command({:move, name, options}, term) when map_size(options) == 0 do
+    if Node.list() == [],
+      do: append(term, View.only_node()),
+      else: pick(term, "/move", [key(term, name)])
+  end
 
   defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
+  defp apply_command({:connect, nil}, term), do: pick(term, "/connect", [])
   defp apply_command({:connect, name}, term), do: connect(term, name)
   defp apply_command({:filter, query}, term), do: filter(term, query)
   defp apply_command(:next, term), do: next_attention(term)
@@ -1615,37 +1706,114 @@ defmodule TarsTUI.App do
   defp apply_command({:unknown, word}, term),
     do: append(term, View.unknown_command(word, Command.suggest(word)))
 
-  defp list_fleet(term) do
-    term
-    |> refresh_fleet()
-    |> append_lines([""] ++ TarsTUI.Fleet.listing(Fleet.list()))
-  end
+  # The panel, shown if it was hidden, with the cursor in it; on a narrow
+  # terminal that is the overlay.
+  defp show_fleet(term), do: term |> assign(sidebar?: true) |> focus_pane("fleet")
 
-  defp spawn_agent(term, name, options, prompt) do
+  # An agent already running under the key is connected to rather than
+  # started again, or, in the background, left alone and named.
+  defp spawn_agent(term, name, options, prompt, mode) do
     key = key(term, name)
 
-    with {:ok, placement} <- placement(options),
-         {:ok, pid} <- Fleet.spawn(key, term.assigns.spawn_opts ++ placement) do
-      term |> switch(pid, key) |> append(View.spawned(key)) |> ask_if(prompt)
-    else
-      {:error, reason} -> append(term, View.error(reason))
+    case placement(options) do
+      {:ok, placement} ->
+        case Fleet.whereis(key) do
+          nil -> start_agent(term, key, name, placement, prompt, mode)
+          pid -> existing_agent(term, key, name, pid, prompt, mode)
+        end
+
+      {:error, reason} ->
+        append(term, placement_error(reason, "/spawn"))
     end
   end
+
+  defp start_agent(term, key, name, placement, prompt, mode) do
+    case Fleet.spawn(key, term.assigns.spawn_opts ++ placement) do
+      {:ok, pid} when mode == :attach ->
+        term |> switch(pid, key) |> append(View.spawned(key)) |> ask_if(prompt)
+
+      {:ok, pid} ->
+        term
+        |> refresh_fleet()
+        |> append(View.spawned_background(key, name))
+        |> ask_elsewhere(pid, key, prompt)
+
+      {:error, reason} ->
+        append(term, fleet_error(reason, placement[:node]))
+    end
+  end
+
+  defp existing_agent(%{assigns: %{agent_id: key}} = term, key, name, _pid, prompt, mode),
+    do: term |> append(View.already_running(key, name, mode)) |> ask_if(prompt)
+
+  defp existing_agent(term, key, name, pid, prompt, :attach),
+    do:
+      term
+      |> switch(pid, key)
+      |> append(View.already_running(key, name, :attach))
+      |> ask_if(prompt)
+
+  defp existing_agent(term, key, name, pid, prompt, :background),
+    do:
+      term
+      |> append(View.already_running(key, name, :background))
+      |> ask_elsewhere(pid, key, prompt)
 
   defp ask_if(term, nil), do: term
   defp ask_if(term, prompt), do: ask(term, prompt)
 
+  # A prompt for an agent this client is not attached to.
+  defp ask_elsewhere(term, _pid, _key, nil), do: term
+
+  defp ask_elsewhere(term, pid, key, prompt) do
+    case Agent.ask(pid, prompt) do
+      :ok -> append(term, View.sent_to(key, prompt))
+      {:error, :not_found} -> append(term, View.no_such_agent(key))
+    end
+  catch
+    :exit, _reason -> append(term, View.unavailable(key))
+  end
+
+  # An agent whose turn is running or waiting is not moved until `/confirm`,
+  # after what the move would interrupt has been shown.
   defp move_agent(term, name, options) do
     key = key(term, name)
 
-    with {:ok, [node: node]} <- placement(options),
-         {:ok, pid} <- Fleet.move(key, node) do
-      term |> adopt(key, pid) |> refresh_fleet() |> append(View.moved(key, node))
-    else
-      {:ok, []} -> append(term, View.error(:node_required))
-      {:error, reason} -> append(term, View.error(reason))
+    case placement(options) do
+      {:ok, [node: node]} ->
+        case Fleet.lookup(key) do
+          nil ->
+            append(term, View.no_such_agent(key))
+
+          %{status: status} when status in [:running, :parked] ->
+            term
+            |> assign(confirm: {:move, key, node})
+            |> append(View.move_preview(key, node, status))
+
+          _idle ->
+            move_now(term, key, node)
+        end
+
+      {:error, reason} ->
+        append(term, placement_error(reason, "/move"))
     end
   end
+
+  defp move_now(term, key, node) do
+    case Fleet.move(key, node) do
+      {:ok, pid} -> term |> adopt(key, pid) |> refresh_fleet() |> append(View.moved(key, node))
+      {:error, reason} -> append(term, fleet_error(reason, node))
+    end
+  end
+
+  defp placement_error({:no_such_node, name}, _command),
+    do: View.no_such_node(name, [node() | Node.list()])
+
+  defp placement_error({:unknown_options, keys}, command),
+    do: View.unknown_options(keys, Command.find(command))
+
+  defp fleet_error({:erpc, reason}, node), do: View.unreachable(node, reason)
+  defp fleet_error(reason, _node), do: View.error(reason)
 
   # The attached agent is addressed by its new process from here on.
   defp adopt(%{assigns: %{agent_id: key}} = term, key, pid), do: reconnect(term, pid)
@@ -1670,7 +1838,29 @@ defmodule TarsTUI.App do
 
   defp host(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> List.last()
 
-  defp connect(term, name), do: connect_key(term, key(term, name))
+  # A name that is an agent's, in this client's scope or as a whole key, is
+  # connected to. Otherwise the fleet is searched for it: one agent whose key
+  # holds it is the one meant; several are offered to pick from.
+  defp connect(term, name) do
+    key = key(term, name)
+
+    cond do
+      key == term.assigns.agent_id or Fleet.whereis(key) != nil ->
+        connect_key(term, key)
+
+      true ->
+        case matching(name) do
+          [] -> append(term, View.no_such_agent(key))
+          [member] -> connect_key(term, member.key)
+          _several -> pick(term, "/connect", [], String.trim_leading(name, "/"))
+        end
+    end
+  end
+
+  defp matching(name) do
+    text = name |> String.trim_leading("/") |> String.downcase()
+    Enum.filter(Fleet.list(), &String.contains?(String.downcase(&1.key), text))
+  end
 
   defp connect_key(%{assigns: %{agent_id: key}} = term, key),
     do: append(term, View.connected(key))
@@ -1776,6 +1966,10 @@ defmodule TarsTUI.App do
     term |> assign(confirm: nil) |> forget_all(keys)
   end
 
+  defp confirm(%{assigns: %{confirm: {:move, key, node}}} = term) do
+    term |> assign(confirm: nil) |> move_now(key, node)
+  end
+
   defp confirm(term), do: append(term, View.nothing_to_confirm())
 
   defp forget_all(term, keys) do
@@ -1784,7 +1978,7 @@ defmodule TarsTUI.App do
 
     case failed do
       [] -> term |> refresh_fleet() |> append(View.forgotten(keys))
-      failed -> term |> refresh_fleet() |> append(View.error({:not_removed, failed}))
+      failed -> term |> refresh_fleet() |> append(View.not_removed(failed))
     end
   end
 

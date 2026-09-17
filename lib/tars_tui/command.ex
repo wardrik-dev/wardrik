@@ -14,7 +14,11 @@ defmodule TarsTUI.Command do
   parked: then a bare `y` or `n` answers it, `y 2`, `n 2 reason` and `y all`
   pick among several parked calls the way `/approve` and `/deny` do, and only
   a bare word counts, so a question that happens to start with "no" is still a
-  question.
+  question. A line starting with `//` is a question too, with one slash taken
+  off, which is how text that begins with a slash is sent as typed.
+
+  `/connect` and `/move` with nothing after them, and `/move NAME` without a
+  node, parse as such: the app then asks for what is missing.
   """
 
   @enforce_keys [:name, :usage, :summary, :parse, :label]
@@ -78,9 +82,9 @@ defmodule TarsTUI.Command do
           | {:rm, String.t(), boolean()}
           | {:approve, selector()}
           | {:deny, selector(), String.t() | nil}
-          | {:spawn, String.t(), options(), String.t() | nil}
-          | {:move, String.t(), options()}
-          | {:connect, String.t()}
+          | {:spawn, String.t(), options(), String.t() | nil, :attach | :background}
+          | {:move, String.t() | nil, options()}
+          | {:connect, String.t() | nil}
           | {:filter, String.t() | nil}
           | :next
           | {:ask, String.t()}
@@ -95,16 +99,16 @@ defmodule TarsTUI.Command do
         name: "/spawn",
         label: "Spawn an agent",
         arguments: [:text],
-        usage: "/spawn NAME [node=N] [-- prompt]",
-        summary: "start an agent beside this one and attach to it; the prompt is sent as is",
+        usage: "/spawn NAME [node=N] [--bg] [-- prompt]",
+        summary: "start an agent and attach to it; --bg stays here; the prompt is sent as is",
         parse: &spawn_agent/1
       },
       %__MODULE__{
         name: "/connect",
         label: "Connect to an agent",
         arguments: [:agent],
-        usage: "/connect NAME",
-        summary: "attach to an agent and show its conversation",
+        usage: "/connect [NAME]",
+        summary: "attach to an agent; alone, or given part of a name, pick from a list",
         parse: &connect/1
       },
       %__MODULE__{
@@ -112,8 +116,8 @@ defmodule TarsTUI.Command do
         label: "Move an agent to another node",
         arguments: [:agent, :node],
         available: &(&1.nodes > 1),
-        usage: "/move NAME node=N",
-        summary: "restart an agent on another node, as it was",
+        usage: "/move [NAME [node=N]]",
+        summary: "restart an agent on another node, as it was; asks first mid-turn",
         parse: &move/1
       },
       %__MODULE__{
@@ -151,9 +155,9 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/fleet",
-        label: "List the fleet",
+        label: "Show the fleet panel",
         usage: "/fleet",
-        summary: "list every agent in the cluster",
+        summary: "show the fleet panel and move into it",
         parse: bare(:fleet)
       },
       %__MODULE__{
@@ -161,8 +165,7 @@ defmodule TarsTUI.Command do
         label: "Filter the fleet panel",
         arguments: [:text],
         usage: "/filter [QUERY]",
-        summary:
-          "show only agents matching QUERY: text, name:, org:, user:, node:, status:, attention; alone, show all",
+        summary: "narrow the panel by text, name:, org:, user:, node:, status: or attention",
         parse: &filter/1
       },
       %__MODULE__{
@@ -170,7 +173,7 @@ defmodule TarsTUI.Command do
         label: "Connect to the next agent needing attention",
         available: &(&1.attention > 0),
         usage: "/next",
-        summary: "connect to the next agent waiting on a person or holding a result not yet seen",
+        summary: "connect to the next agent needing attention",
         parse: bare(:next)
       },
       %__MODULE__{
@@ -180,7 +183,7 @@ defmodule TarsTUI.Command do
         available: &(&1.parked > 0),
         aliases: ["/y"],
         usage: "/approve [N | all]",
-        summary: "approve the parked call, one by number, or every one; y does too",
+        summary: "approve the parked call, one by number, or all; y does too",
         parse: &approve/1
       },
       %__MODULE__{
@@ -190,7 +193,7 @@ defmodule TarsTUI.Command do
         available: &(&1.parked > 0),
         aliases: ["/n"],
         usage: "/deny [N | all] [reason]",
-        summary: "deny the parked call, or one by number, saying why; n does too",
+        summary: "deny the parked call, or one by number, saying why; n too",
         parse: &deny/1
       },
       %__MODULE__{
@@ -206,7 +209,7 @@ defmodule TarsTUI.Command do
         name: "/help",
         label: "Every key and command",
         usage: "/help",
-        summary: "every key and command",
+        summary: "every key and command, searchable; Enter there runs a command",
         parse: bare(:help)
       }
     ]
@@ -259,6 +262,7 @@ defmodule TarsTUI.Command do
   def parse(line, parked? \\ false) do
     case String.trim(line) do
       "" -> :blank
+      "//" <> rest -> {:ask, "/" <> rest}
       "/" <> _rest = slash -> slash(slash)
       text -> answer(text, parked?)
     end
@@ -284,6 +288,7 @@ defmodule TarsTUI.Command do
 
   defp bare(parsed), do: fn argument -> if(argument == nil, do: parsed, else: :usage) end
 
+  defp connect(nil), do: {:connect, nil}
   defp connect(argument), do: one_word(argument, &{:connect, &1})
   defp filter(argument), do: {:filter, argument}
   defp shutdown(argument), do: one_word(argument, &{:shutdown, &1})
@@ -335,21 +340,17 @@ defmodule TarsTUI.Command do
   defp selector("all"), do: :all
   defp selector(word), do: if(word =~ ~r/^\d+$/, do: word, else: nil)
 
-  # A name, then `key=value` options. The prompt is everything after ` -- `,
-  # kept as typed; without the delimiter it starts at the first word that is
-  # not an option, also kept as typed.
+  # A name, then `key=value` options and `--bg`. The prompt is everything
+  # after ` -- `, kept as typed; without the delimiter it starts at the first
+  # word that is neither, also kept as typed.
+  @background "--bg"
+
   defp spawn_agent(nil), do: :usage
 
   defp spawn_agent(argument) do
     case String.split(argument, ~r/\s--(\s|$)/, parts: 2) do
-      [head, prompt] ->
-        with(
-          {:ok, name, options} <- named(head),
-          do: {:spawn, name, options, presence(String.trim(prompt))}
-        )
-
-      [head] ->
-        spawn_unmarked(head)
+      [head, prompt] -> spawn_named(head, presence(String.trim(prompt)))
+      [head] -> spawn_unmarked(head)
     end
   end
 
@@ -358,30 +359,41 @@ defmodule TarsTUI.Command do
     [{_start, _length} = _name | words] = tokens
 
     case Enum.find_index(words, fn {start, length} ->
-           not option?(binary_part(argument, start, length))
+           word = binary_part(argument, start, length)
+           not option?(word) and word != @background
          end) do
       nil ->
-        with {:ok, name, options} <- named(argument), do: {:spawn, name, options, nil}
+        spawn_named(argument, nil)
 
       index ->
         {start, _length} = Enum.at(words, index)
         head = binary_part(argument, 0, start)
         prompt = argument |> binary_part(start, byte_size(argument) - start) |> String.trim()
-        with {:ok, name, options} <- named(head), do: {:spawn, name, options, prompt}
+        spawn_named(head, prompt)
+    end
+  end
+
+  defp spawn_named(head, prompt) do
+    with {:ok, name, options, flags} <- named(head, [@background]) do
+      {:spawn, name, options, prompt, if(@background in flags, do: :background, else: :attach)}
     end
   end
 
   # A name and options only; anything else is a mistake rather than a prompt.
-  defp move(nil), do: :usage
+  # Without a name, or a node, the app asks for it.
+  defp move(nil), do: {:move, nil, %{}}
 
   defp move(argument),
-    do: with({:ok, name, options} <- named(argument), do: {:move, name, options})
+    do: with({:ok, name, options, []} <- named(argument), do: {:move, name, options})
 
-  defp named(text) do
+  # A name, then `key=value` options and any of `flags`, in any order.
+  defp named(text, flags \\ []) do
     case String.split(text) do
       [name | words] ->
-        if Enum.all?(words, &option?/1),
-          do: {:ok, name, Map.new(words, &option/1)},
+        {given, rest} = Enum.split_with(words, &(&1 in flags))
+
+        if name not in flags and Enum.all?(rest, &option?/1),
+          do: {:ok, name, Map.new(rest, &option/1), Enum.uniq(given)},
           else: :usage
 
       [] ->

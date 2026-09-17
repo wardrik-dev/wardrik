@@ -9,9 +9,11 @@
 # Then, in the client:
 #
 #   /spawn researcher      start an agent; watch it appear in the panel
+#   /spawn analyst --bg    start another without leaving this one
 #   /connect researcher    attach this client to it, wherever it landed
-#   /fleet                 list every agent in the cluster
-#   /kill acme/            interrupt everything under a prefix
+#   /move researcher       pick a node to restart it on
+#   /fleet                 move into the fleet panel
+#   /stop acme/            interrupt everything under a prefix
 #
 # And from either iex pane, to see the same fleet from another node:
 #

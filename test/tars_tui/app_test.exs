@@ -33,6 +33,12 @@ defmodule TarsTUI.AppTest do
     session
   end
 
+  # Takes `text` back out of the prompt, one Backspace per character.
+  defp erase(session, text) do
+    Enum.each(String.graphemes(text), fn _grapheme -> Breeze.Test.input(session, "\x7f") end)
+    session
+  end
+
   # A frame before the keys, as there always is at a terminal: the prompt is
   # reset when a line is sent and only exists again once a frame has drawn it.
   defp submit(session, text) do
@@ -106,13 +112,30 @@ defmodule TarsTUI.AppTest do
       text = screen(session)
       assert text =~ "/spwan is not a command"
       assert text =~ "did you mean /spawn"
+      assert text =~ "start with // to send the line as typed"
+    end
+
+    test "a line that went wrong stays in the prompt for correction", %{session: session} do
+      submit(session, "/spwan helper")
+      assert screen(session) =~ "│ › /spwan helper"
+
+      erase(session, "/spwan helper")
+      submit(session, "/connect one two")
+      assert screen(session) =~ "│ › /connect one two"
+    end
+
+    test "two slashes send text that begins with one", %{session: session} do
+      submit(session, "//spawn is a word here")
+
+      assert_receive {:"$gen_cast", {:ask, "/spawn is a word here"}}
+      assert screen(session) =~ "› /spawn is a word here"
     end
 
     test "a command given the wrong thing shows its usage", %{session: session} do
-      submit(session, "/connect")
+      submit(session, "/connect one two")
 
       refute_receive {:"$gen_cast", {:ask, _text}}
-      assert screen(session) =~ "usage: /connect NAME"
+      assert screen(session) =~ "usage: /connect [NAME]"
     end
 
     test "/stop interrupts and /quit stops", %{session: session} do
@@ -214,7 +237,10 @@ defmodule TarsTUI.AppTest do
     test "a draft starting with a slash walks the commands, kept apart", %{session: session} do
       submit(session, "a question")
       submit(session, "/help")
+      Breeze.Test.input(session, "Escape")
       submit(session, "/spwan helper")
+      screen(session)
+      erase(session, "/spwan helper")
 
       up(session)
       assert screen(session) =~ "│ › a question"
@@ -277,7 +303,10 @@ defmodule TarsTUI.AppTest do
       Breeze.Test.input(session, "Enter")
       text = screen(session)
       refute text =~ "Commands · Ctrl-P"
-      assert text =~ "/help                             every key and command"
+      assert text =~ "Help · every key and command"
+      assert Breeze.Test.focused(session) == "palette"
+
+      Breeze.Test.input(session, "Escape")
       assert Breeze.Test.focused(session) == "prompt"
     end
 
@@ -291,10 +320,11 @@ defmodule TarsTUI.AppTest do
 
       type(session, "fleet")
       Breeze.Test.input(session, "Enter")
-      assert screen(session) =~ "no agents running"
+      assert screen(session) =~ "fleet · 0"
+      assert Breeze.Test.focused(session) == "fleet"
 
       ctrl(session, "p")
-      assert screen(session) =~ "› List the fleet  /fleet  recent"
+      assert screen(session) =~ "› Show the fleet panel  /fleet  recent"
       Breeze.Test.input(session, "Escape")
     end
 

@@ -298,10 +298,135 @@ defmodule TarsTUI.View do
   @spec spawned(String.t()) :: Text.t()
   def spawned(key), do: note(["spawned and connected to ", Text.tag(key, [:bright, :cyan])])
 
+  @doc "That an agent was started in the fleet and left to work, this client staying where it is."
+  @spec spawned_background(String.t(), String.t()) :: Text.t()
+  def spawned_background(key, name) do
+    note([
+      "spawned ",
+      Text.tag(key, [:bright, :cyan]),
+      " in the background · ",
+      Text.tag("/connect #{name}", :bright),
+      " attaches"
+    ])
+  end
+
+  @doc """
+  That `/spawn` named an agent already running, so nothing was started: this
+  client connected to it, or, in the background, left it alone.
+  """
+  @spec already_running(String.t(), String.t(), :attach | :background) :: Text.t()
+  def already_running(key, _name, :attach),
+    do: note([Text.tag(key, [:bright, :cyan]), " was already running · connected to it"])
+
+  def already_running(key, name, :background) do
+    note([
+      Text.tag(key, :bright),
+      " is already running · nothing was started · ",
+      Text.tag("/connect #{name}", :bright),
+      " attaches"
+    ])
+  end
+
+  @doc "That a prompt was sent to an agent this client is not attached to."
+  @spec sent_to(String.t(), String.t()) :: Text.t()
+  def sent_to(key, text),
+    do: note(["sent to ", Text.tag(key, :bright), ": ", Text.tag(text, :bright)])
+
   @doc "That an agent was restarted on another node."
   @spec moved(String.t(), node()) :: Text.t()
-  def moved(key, node),
-    do: note(["moved ", Text.tag(key, :bright), " to ", Text.tag(Atom.to_string(node), :bright)])
+  def moved(key, node) do
+    note([
+      "moved ",
+      Text.tag(key, :bright),
+      " to ",
+      Text.tag(Atom.to_string(node), :bright),
+      " · restarted there with its conversation"
+    ])
+  end
+
+  @doc """
+  What `/move` would do to an agent whose turn is running or waiting, so the
+  interruption is chosen rather than stumbled into.
+  """
+  @spec move_preview(String.t(), node(), :running | :parked) :: Text.t()
+  def move_preview(key, node, status) do
+    doing =
+      case status do
+        :running ->
+          "its turn is running and would be interrupted · what it has said so far is kept"
+
+        :parked ->
+          "its turn is waiting on a decision, which would be abandoned"
+      end
+
+    [
+      "\n",
+      move_bar([
+        Text.tag("/move #{key}", [:bright, :yellow]),
+        Text.tag(" restarts it on ", @faint),
+        Text.tag(Atom.to_string(node), :bright)
+      ]),
+      move_bar([Text.tag(["   ", doing], :yellow)]),
+      move_bar([
+        Text.tag("/confirm", [:bright, :yellow]),
+        Text.tag(" goes ahead · anything else cancels", @faint)
+      ]),
+      "\n"
+    ]
+  end
+
+  defp move_bar(content), do: [Text.tag("  ▌ ", :yellow), content, "\n"]
+
+  @doc "Said when `/move` has nowhere to go: this is the only node."
+  @spec only_node() :: Text.t()
+  def only_node,
+    do: note(["#{node()} is the only node · there is nowhere to move an agent to"])
+
+  @doc "That a node name matches none in the cluster, and which there are."
+  @spec no_such_node(String.t(), [node()]) :: Text.t()
+  def no_such_node(name, nodes) do
+    [
+      Text.tag("\n✗ no node named #{name} · ", :red),
+      Text.tag("the cluster has ", @faint),
+      Text.tag(Enum.map_join(nodes, ", ", &Atom.to_string/1), :bright),
+      Text.tag(" · node=N takes the whole name or the part before the @\n", @faint)
+    ]
+  end
+
+  @doc "That a command was given options it does not take."
+  @spec unknown_options([String.t()], TarsTUI.Command.t()) :: Text.t()
+  def unknown_options(keys, command) do
+    [
+      Text.tag(
+        "\n✗ #{Enum.map_join(keys, ", ", &(&1 <> "="))} is not an option of #{command.name} · ",
+        :red
+      ),
+      Text.tag("usage: ", @faint),
+      Text.tag(command.usage, :bright),
+      "\n"
+    ]
+  end
+
+  @doc "That a node could not be reached for a spawn or a move."
+  @spec unreachable(node(), term()) :: Text.t()
+  def unreachable(node, reason) do
+    [
+      Text.tag("\n✗ #{node} could not be reached · ", :red),
+      Text.tag("#{Render.squash(inspect(reason))} · /fleet shows what is running where\n", @faint)
+    ]
+  end
+
+  @doc "That some agents were not removed, and what to do about it."
+  @spec not_removed([String.t()]) :: Text.t()
+  def not_removed(keys) do
+    [
+      Text.tag("\n✗ not removed: #{Enum.join(keys, ", ")} · ", :red),
+      Text.tag(
+        "each may be restarting on another node · /fleet shows where, then /rm again\n",
+        @faint
+      )
+    ]
+  end
 
   @doc "That this client is now watching a different agent."
   @spec connected(String.t()) :: Text.t()
@@ -406,9 +531,10 @@ defmodule TarsTUI.View do
   @spec nothing_to_confirm() :: Text.t()
   def nothing_to_confirm, do: [Text.tag("  ▌ nothing is waiting to be confirmed\n\n", @faint)]
 
-  @doc "That a pending removal was dropped because something else was typed."
-  @spec cancelled() :: Text.t()
-  def cancelled, do: note("removal cancelled")
+  @doc "That a pending removal or move was dropped because something else was typed."
+  @spec cancelled(:rm | :move) :: Text.t()
+  def cancelled(:rm), do: note("removal cancelled · nothing was removed")
+  def cancelled(:move), do: note("move cancelled · the agent stays where it is")
 
   @doc """
   That a slash word names no command, so nothing was sent to the model, with
@@ -435,7 +561,9 @@ defmodule TarsTUI.View do
       meant(suggestions),
       Text.tag(" · ", @faint),
       Text.tag("/help", :bright),
-      Text.tag(" lists them\n", @faint)
+      Text.tag(" lists them · start with ", @faint),
+      Text.tag("//", :bright),
+      Text.tag(" to send the line as typed\n", @faint)
     ]
   end
 
@@ -504,6 +632,7 @@ defmodule TarsTUI.View do
   def palette_title(:node, command), do: "#{command.name} · which node?"
   def palette_title(:call, command), do: "#{command.name} · which call?"
   def palette_title(:text, command), do: "#{command.usage} · type the rest, then Enter"
+  def palette_title(:help, _command), do: "Help · every key and command · Enter runs a command"
 
   @doc """
   One delegation in full, as transcript lines: what it was asked, the work
@@ -605,39 +734,80 @@ defmodule TarsTUI.View do
   @spec no_such_agent(String.t()) :: Text.t()
   def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
 
+  # Each key, where it works, and what it does. `"prompt"`, `"log"` and
+  # `"fleet"` are the panes; `nil` is anywhere.
   @keys [
-    {"Enter", "send what you typed; during a turn it steers the turn at its next boundary"},
-    {"Shift-Enter", "a new line in the prompt"},
-    {"Up, Down",
-     "on the prompt's first or last line, an older or newer prompt sent to this agent; with a / typed, an older command"},
-    {"Ctrl-G", "edit the prompt in $VISUAL, or $EDITOR; what is saved comes back unsent"},
-    {"Ctrl-P",
-     "the command palette: type to filter, Up/Down choose, Enter runs or asks for the rest, Esc closes"},
-    {"Esc",
-     "in the prompt, stop the turn or abandon a parked one; elsewhere, back to the prompt"},
-    {"Tab, Shift-Tab", "cycle the prompt, the transcript and the fleet panel"},
-    {"Ctrl-X then h/j/k/l", "move focus in that direction; then s stops the turn, Esc cancels"},
-    {"Ctrl-C", "leave at once, without asking"},
-    {"i", "in the transcript or the panel, back to the prompt"},
-    {"j/k, Ctrl-U/D, PageUp/Down", "in the transcript, scroll a row, half a page, a page"},
-    {"Up, Down, Enter", "in the fleet panel, choose an agent and connect to it"},
-    {"h, l",
-     "in the fleet panel, hide an agent's delegations, and show them again; Enter on one inspects it"},
-    {"n, a", "in the fleet panel, move to the next agent needing attention, and show only those"},
-    {"Ctrl-F", "show or hide the fleet panel"},
-    {"Ctrl-T", "toggle the trace"},
-    {"Ctrl-D", "quit, from the prompt with nothing typed"}
+    {"prompt", "Enter", "send what you typed; during a turn, steer it at its next boundary"},
+    {"prompt", "Shift-Enter", "a new line in the prompt"},
+    {"prompt", "Up, Down",
+     "on the first or last line, recall an older or newer prompt; with / typed, a command"},
+    {"prompt", "Esc", "stop the turn, or abandon a parked one"},
+    {"prompt", "Ctrl-D", "quit, with nothing typed"},
+    {"log", "j/k, Ctrl-U/D, PageUp/Down", "scroll a row, half a page, a page"},
+    {"log", "End", "follow the newest output again"},
+    {"fleet", "Up, Down, Enter", "choose an agent and connect to it"},
+    {"fleet", "h, l", "hide or show an agent's delegations; Enter on one inspects it"},
+    {"fleet", "n, a", "move to the next agent needing attention, and show only those"},
+    {"log", "i, Esc", "back to the prompt"},
+    {"fleet", "i, Esc", "back to the prompt"},
+    {nil, "Ctrl-G", "edit the prompt in $VISUAL or $EDITOR; what is saved comes back unsent"},
+    {nil, "Ctrl-P", "command palette: type to filter, Up/Down choose, Enter runs, Esc closes"},
+    {nil, "Tab, Shift-Tab", "cycle the prompt, the transcript and the fleet panel"},
+    {nil, "Ctrl-X then h/j/k/l",
+     "move focus in that direction; then s stops the turn, Esc cancels"},
+    {nil, "Ctrl-F", "show or hide the fleet panel"},
+    {nil, "Ctrl-T", "toggle the trace"},
+    {nil, "Ctrl-C", "leave at once, without asking"}
   ]
 
-  @doc "Every key, then every command, one per line."
-  @spec help() :: [Text.t()]
-  def help do
-    rows = @keys ++ TarsTUI.Command.help()
-    width = rows |> Enum.map(fn {what, _does} -> String.length(what) end) |> Enum.max()
+  @pane_names %{"prompt" => "prompt", "log" => "transcript", "fleet" => "fleet"}
 
-    Enum.map(rows, fn {what, does} ->
-      ["  ", Text.tag(String.pad_trailing(what, width), :bright), Text.tag("  #{does}", @faint)]
+  @doc """
+  Every key as a help row: the keys of `pane` first, marked here, then the
+  keys that work anywhere, then the other panes' keys, each naming its pane.
+  Keys and commands share one first column, so `help_command/2` lines up.
+  """
+  @spec help_keys(String.t()) :: [Text.t()]
+  def help_keys(pane) do
+    @keys
+    |> Enum.sort_by(fn
+      {^pane, _key, _does} -> 0
+      {nil, _key, _does} -> 1
+      {_other, _key, _does} -> 2
     end)
+    |> Enum.map(fn {where, key, does} ->
+      help_row(Text.tag(key, :bright), where_tag(where, pane), does)
+    end)
+  end
+
+  defp where_tag(nil, _pane), do: []
+  defp where_tag(pane, pane), do: Text.tag("here · ", :cyan)
+  defp where_tag(where, _pane), do: Text.tag("#{Map.fetch!(@pane_names, where)} · ", @faint)
+
+  @doc """
+  One command as a help row: its usage, then what it does, led by the key that
+  does the same or by `not now` when it cannot run.
+  """
+  @spec help_command(TarsTUI.Command.t(), boolean()) :: Text.t()
+  def help_command(command, available?) do
+    help_row(
+      Text.tag(command.usage, if(available?, do: :bright, else: @faint)),
+      availability(command, available?),
+      command.summary
+    )
+  end
+
+  defp availability(_command, false), do: Text.tag("not now · ", @faint)
+  defp availability(%{shortcut: nil}, true), do: []
+  defp availability(%{shortcut: key}, true), do: Text.tag("#{key} · ", :yellow)
+
+  # The first column is as wide as the longest key or usage.
+  defp help_row(first, lead, does) do
+    keys = Enum.map(@keys, fn {_pane, key, _does} -> String.length(key) end)
+    usages = Enum.map(TarsTUI.Command.all(), &String.length(&1.usage))
+    width = Enum.max(keys ++ usages)
+
+    [first, String.duplicate(" ", width - Text.length(first)), "  ", lead, Text.tag(does, @faint)]
   end
 
   @doc "How a command is used, when it was given something else."

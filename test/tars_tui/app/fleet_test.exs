@@ -112,7 +112,7 @@ defmodule TarsTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "○ assistant_with_…│"
-    assert text =~ "○ #{key} idle on"
+    assert Breeze.Test.focused(session) == "fleet"
   end
 
   @primary "38;5;4"
@@ -300,7 +300,9 @@ defmodule TarsTUI.App.FleetTest do
     screen(session)
     type.("spawn")
     Breeze.Test.input(session, "Enter")
-    assert screen(session) =~ "/spawn NAME [node=N] [-- prompt] · type the rest, then Enter"
+
+    assert screen(session) =~
+             "/spawn NAME [node=N] [--bg] [-- prompt] · type the rest, then Enter"
 
     type.("helper -- hello there")
     Breeze.Test.input(session, "Enter")
@@ -565,13 +567,53 @@ defmodule TarsTUI.App.FleetTest do
   test "/spawn says so when the node is not there", %{session: session} do
     submit(session, "/spawn nowhere node=elsewhere")
 
-    assert screen(session) =~ ~s(no_such_node, "elsewhere")
+    text = screen(session)
+    assert text =~ "no node named elsewhere"
+    assert text =~ "the cluster has #{node()}"
   end
 
   test "/spawn refuses an option it does not know", %{session: session} do
     submit(session, "/spawn odd colour=red")
 
-    assert screen(session) =~ ~s(unknown_options, ["colour"])
+    text = screen(session)
+    assert text =~ "colour= is not an option of /spawn"
+    assert text =~ "usage: /spawn NAME"
+  end
+
+  test "/spawn NAME --bg starts an agent and stays here", ctx do
+    %{session: session, org: org, agent_id: agent_id} = ctx
+    key = Fleet.key("worker", org: org)
+    on_exit(fn -> Fleet.forget(key) end)
+
+    submit(session, "/spawn worker --bg look into it")
+
+    text = screen(session)
+    assert text =~ "spawned #{key} in the background"
+    assert text =~ "attaches"
+    assert text =~ "sent to #{key}: look into it"
+    assert text =~ inspect(agent_id)
+    assert text =~ "› ○ watched"
+    assert Fleet.whereis(key)
+    assert_receive {:turn, [{:user, "look into it"}]}
+  end
+
+  test "/spawn of an agent already running connects rather than starting one", ctx do
+    %{session: session, org: org} = ctx
+    other = spawn_and_ask(org, "other", "what is up")
+    pid = Fleet.whereis(other)
+
+    submit(session, "/spawn other")
+
+    text = screen(session)
+    assert text =~ "#{other} was already running · connected to it"
+    assert text =~ "› what is up"
+    assert Fleet.whereis(other) == pid
+
+    submit(session, "/spawn watched --bg")
+
+    text = screen(session)
+    assert text =~ "watched is already running · nothing was started"
+    assert text =~ "/connect watched attaches"
   end
 
   test "/move restarts an agent on the node it is given", ctx do
@@ -609,10 +651,62 @@ defmodule TarsTUI.App.FleetTest do
     assert_receive {:turn, [{:user, "hello again"}]}, 2_000
   end
 
-  test "/move needs a node", %{session: session} do
+  test "/move NAME without a node says so when there is nowhere to go", %{session: session} do
     submit(session, "/move watched")
 
-    assert screen(session) =~ ":node_required"
+    assert screen(session) =~ "#{node()} is the only node"
+  end
+
+  test "/move alone asks which agent", %{session: session, agent_id: agent_id} do
+    submit(session, "/move")
+
+    text = screen(session)
+    assert text =~ "/move · which agent?"
+    assert text =~ agent_id <> "  idle"
+    Breeze.Test.input(session, "Escape")
+    assert Breeze.Test.focused(session) == "prompt"
+  end
+
+  test "/move of a busy agent shows what it would interrupt, and /confirm goes ahead", ctx do
+    %{session: session, org: org} = ctx
+    busy = Fleet.key("busy", org: org)
+    {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(busy) end)
+    [short | _host] = node() |> Atom.to_string() |> String.split("@")
+
+    Agent.ask(pid, "go")
+    assert_receive {:turn, _context, turn}
+    assert eventually(session, fn -> screen(session) =~ "◐ busy" end)
+
+    submit(session, "/move busy node=#{short}")
+    text = screen(session)
+    assert text =~ "/move #{busy} restarts it on #{node()}"
+    assert text =~ "its turn is running and would be interrupted"
+    assert text =~ "/confirm goes ahead"
+    assert Fleet.whereis(busy) == pid
+
+    submit(session, "/confirm")
+    assert eventually(session, fn -> screen(session) =~ "moved #{busy} to #{node()}" end)
+    assert Fleet.whereis(busy) != pid
+    send(turn, :release)
+  end
+
+  test "anything but /confirm cancels a move", ctx do
+    %{session: session, org: org} = ctx
+    busy = Fleet.key("stays", org: org)
+    {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
+    on_exit(fn -> Fleet.forget(busy) end)
+    [short | _host] = node() |> Atom.to_string() |> String.split("@")
+
+    Agent.ask(pid, "go")
+    assert_receive {:turn, _context, turn}
+    assert eventually(session, fn -> screen(session) =~ "◐ stays" end)
+
+    submit(session, "/move stays node=#{short}")
+    submit(session, "/filter")
+    assert screen(session) =~ "move cancelled · the agent stays where it is"
+    assert Fleet.whereis(busy) == pid
+    send(turn, :release)
   end
 
   # An agent under `org` that has already answered one question.
@@ -636,10 +730,58 @@ defmodule TarsTUI.App.FleetTest do
     assert screen(session) =~ "no agent at #{org}/_/nobody"
   end
 
-  test "/fleet lists the agents in the transcript", %{session: session, agent_id: agent_id} do
+  test "/connect alone asks which agent", %{session: session, org: org} do
+    other = spawn_and_ask(org, "other", "what is up")
+
+    submit(session, "/connect")
+    text = screen(session)
+    assert text =~ "/connect · which agent?"
+    assert text =~ other <> "  idle"
+
+    Enum.each(String.graphemes("other"), &Breeze.Test.input(session, &1))
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "connected to #{other}"
+  end
+
+  test "/connect completes part of a name when one agent holds it", %{session: session, org: org} do
+    other = spawn_and_ask(org, "researcher", "what is up")
+
+    submit(session, "/connect resea")
+
+    text = screen(session)
+    assert text =~ "connected to #{other}"
+    assert text =~ "› what is up"
+  end
+
+  test "/connect offers a choice when several agents hold part of a name", ctx do
+    %{session: session, org: org} = ctx
+    one = spawn_and_ask(org, "alpha_one", "one")
+    two = spawn_and_ask(org, "alpha_two", "two")
+
+    submit(session, "/connect alpha")
+
+    text = screen(session)
+    assert text =~ "/connect · which agent?"
+    assert text =~ "› alpha▏"
+    assert text =~ one
+    assert text =~ two
+    refute text =~ "watched  idle"
+
+    Breeze.Test.input(session, "ArrowDown")
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "connected to #{two}"
+  end
+
+  test "/fleet shows the panel and moves into it", %{session: session, agent_id: agent_id} do
+    ctrl_f(session)
+    refute screen(session) =~ "fleet · 1"
+
     submit(session, "/fleet")
 
-    assert screen(session) =~ agent_id
+    text = screen(session)
+    assert text =~ "fleet · 1"
+    assert text =~ agent_id |> String.split("/") |> List.last()
+    assert Breeze.Test.focused(session) == "fleet"
   end
 
   test "/rm NAME shows what would go and removes it on /confirm", %{session: session, org: org} do
@@ -668,7 +810,7 @@ defmodule TarsTUI.App.FleetTest do
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/rm spared")
-    submit(session, "/fleet")
+    submit(session, "/filter")
     assert screen(session) =~ "removal cancelled"
 
     submit(session, "/confirm")
@@ -820,13 +962,48 @@ defmodule TarsTUI.App.FleetTest do
     assert_receive {:turn, [{:user, "hello again"}]}, 2_000
   end
 
-  test "/help lists the commands", %{session: session} do
-    session = Breeze.Test.resize(session, {90, 60})
+  test "/help opens searchable help, the keys of this pane first, and Enter runs a command",
+       ctx do
+    %{session: session, org: org} = ctx
+    other = spawn_and_ask(org, "other", "what is up")
+    session = Breeze.Test.resize(session, {100, 60})
     submit(session, "/help")
 
     text = screen(session)
-    assert text =~ "/quit"
-    assert text =~ "every key and command"
+    assert text =~ "Help · every key and command · Enter runs a command"
+    assert text =~ ~r/Enter\s+here · send what you typed/
     assert text =~ "Ctrl-X then h/j/k/l"
+    assert text =~ ~r/\/quit\s+Ctrl-D · leave/
+    assert text =~ ~r/\/stop \[NAME \| PREFIX\/\]\s+not now · interrupt/
+    assert text =~ ~r/j\/k, Ctrl-U\/D, PageUp\/Down\s+transcript · scroll/
+    assert Breeze.Test.focused(session) == "palette"
+
+    Enum.each(String.graphemes("conn"), &Breeze.Test.input(session, &1))
+    text = screen(session)
+    assert text =~ "› /connect [NAME]"
+    assert text =~ ~r/Up, Down, Enter\s+fleet · choose an agent and connect/
+    refute text =~ "/quit"
+
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "/connect · which agent?"
+
+    Enum.each(String.graphemes("other"), &Breeze.Test.input(session, &1))
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "connected to #{other}"
+    assert Breeze.Test.focused(session) == "prompt"
+  end
+
+  test "Esc closes help with focus where it was", %{session: session} do
+    focus_fleet(session)
+    Breeze.Test.input(session, %{"key" => "p", "ctrlKey" => true})
+    screen(session)
+    Enum.each(String.graphemes("every key"), &Breeze.Test.input(session, &1))
+    Breeze.Test.input(session, "Enter")
+    assert screen(session) =~ "Help · every key and command"
+    assert screen(session) =~ ~r/Up, Down, Enter\s+here · choose an agent and connect to it/
+
+    Breeze.Test.input(session, "Escape")
+    refute screen(session) =~ "Help · every key"
+    assert Breeze.Test.focused(session) == "fleet"
   end
 end
