@@ -87,6 +87,9 @@ defmodule TarsTUI.Command do
           | {:connect, String.t() | nil}
           | {:filter, String.t() | nil}
           | :next
+          | {:find, String.t() | nil}
+          | :tools
+          | {:copy, :answer | :code}
           | {:ask, String.t()}
           | {:usage, String.t()}
           | {:unknown, String.t()}
@@ -167,6 +170,27 @@ defmodule TarsTUI.Command do
         usage: "/filter [QUERY]",
         summary: "narrow the panel by text, name:, org:, user:, node:, status: or attention",
         parse: &filter/1
+      },
+      %__MODULE__{
+        name: "/find",
+        label: "Search the transcript",
+        usage: "/find [TEXT]",
+        summary: "search the transcript for text; / in the transcript does too",
+        parse: &search/1
+      },
+      %__MODULE__{
+        name: "/tools",
+        label: "Inspect a tool call",
+        usage: "/tools",
+        summary: "pick a tool call of this conversation and see its arguments and output in full",
+        parse: bare(:tools)
+      },
+      %__MODULE__{
+        name: "/copy",
+        label: "Copy the last answer",
+        usage: "/copy [code]",
+        summary: "copy the last answer to the clipboard, or its last code block",
+        parse: &copy/1
       },
       %__MODULE__{
         name: "/next",
@@ -287,6 +311,12 @@ defmodule TarsTUI.Command do
   # -- each command's argument ------------------------------------------------
 
   defp bare(parsed), do: fn argument -> if(argument == nil, do: parsed, else: :usage) end
+
+  defp search(argument), do: {:find, argument}
+
+  defp copy(nil), do: {:copy, :answer}
+  defp copy("code"), do: {:copy, :code}
+  defp copy(_argument), do: :usage
 
   defp connect(nil), do: {:connect, nil}
   defp connect(argument), do: one_word(argument, &{:connect, &1})

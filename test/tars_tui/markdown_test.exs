@@ -14,6 +14,15 @@ defmodule TarsTUI.MarkdownTest do
 
   defp push(text), do: Markdown.push(Markdown.new(), text)
 
+  describe "code_blocks/1" do
+    test "returns the body of each fenced block, in order, and nothing without one" do
+      text = "Here:\n```elixir\nIO.puts(1)\n```\nand\n~~~\necho hi\necho there\n~~~\ndone"
+
+      assert Markdown.code_blocks(text) == ["IO.puts(1)", "echo hi\necho there"]
+      assert Markdown.code_blocks("no code here") == []
+    end
+  end
+
   describe "push/2" do
     test "returns nothing until a line is complete" do
       assert {[], buffer} = push("some pro")

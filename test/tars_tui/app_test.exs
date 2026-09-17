@@ -10,11 +10,21 @@ defmodule TarsTUI.AppTest do
   setup do
     agent_id = Tars.Test.Fleet.key()
     {:ok, agent} = Tars.Test.FakeAgent.start_link(self())
+    test = self()
 
     session =
       Breeze.Test.start!(App,
         size: {70, 14},
-        start_opts: [agent: agent, agent_id: agent_id, model: "test:model", sidebar: false],
+        start_opts: [
+          agent: agent,
+          agent_id: agent_id,
+          model: "test:model",
+          sidebar: false,
+          clipboard: fn text ->
+            send(test, {:copied, text})
+            :ok
+          end
+        ],
         global_keybindings: App.keybindings()
       )
 
@@ -526,7 +536,7 @@ defmodule TarsTUI.AppTest do
 
       Breeze.Test.input(session, "k")
       assert Breeze.Test.focused(session) == "log"
-      assert screen(session) =~ "j/k scroll · Ctrl-U/D half page · i prompt · Esc back"
+      assert screen(session) =~ "transcript · j/k scroll · Ctrl-U/D half page · / find"
 
       ctrl(session, "x")
       Breeze.Test.input(session, "j")
@@ -733,6 +743,198 @@ defmodule TarsTUI.AppTest do
 
       emit(turn, [{:turn_started, ["again"]}, {:turn_failed, :boom}])
       assert screen(session) =~ "✗ :boom"
+    end
+  end
+
+  describe "inspection" do
+    # The status row: under the transcript's rule, above the prompt's box.
+    defp status_row(session) do
+      rows = session |> screen() |> String.split("\n")
+      Enum.at(rows, length(rows) - 5)
+    end
+
+    defp lines(turn, range), do: emit(turn, for(i <- range, do: {:result, "line #{i}\n"}))
+
+    test "/ in the transcript searches it, Enter goes to the match, n and N step", ctx do
+      %{session: session, turn: turn} = ctx
+      session = Breeze.Test.resize(session, {70, 30})
+      emit(turn, [{:turn_started, ["hi"]}])
+      lines(turn, 1..40)
+      emit(turn, [{:turn_finished, []}])
+
+      Breeze.Test.focus(session, "log")
+      screen(session)
+      Breeze.Test.input(session, "/")
+      text = screen(session)
+      assert text =~ "Search the transcript · Enter goes to the match"
+      assert text =~ "type to search · Up/Down choose · Enter go there"
+
+      type(session, "line 3")
+      text = screen(session)
+      assert text =~ ~r/›\s+\d+  line 3\s/
+      assert text =~ ~r/\d+  line 30/
+
+      Breeze.Test.input(session, "Enter")
+      text = screen(session)
+      assert Breeze.Test.focused(session) == "log"
+      assert status_row(session) =~ "match 1 of 11 for line 3 · n next · N previous"
+      [_header, first | _rest] = String.split(text, "\n")
+      assert first =~ "line 3"
+
+      Breeze.Test.input(session, "n")
+      assert status_row(session) =~ "match 2 of 11"
+      assert screen(session) =~ "line 30"
+
+      Breeze.Test.input(session, "N")
+      Breeze.Test.input(session, "N")
+      assert status_row(session) =~ "match 11 of 11"
+    end
+
+    test "/find searches too, and n before any search says so", %{session: session, turn: turn} do
+      session = Breeze.Test.resize(session, {70, 30})
+      Breeze.Test.focus(session, "log")
+      Breeze.Test.input(session, "n")
+      assert status_row(session) =~ "nothing searched for yet · / searches"
+
+      emit(turn, [{:turn_started, ["hi"]}, {:result, "the lemonade stand\n"}])
+      Breeze.Test.focus(session, "prompt")
+      submit(session, "/find lemonade")
+
+      text = screen(session)
+      assert text =~ "Search the transcript"
+      assert text =~ "› lemonade▏"
+      assert text =~ "the lemonade stand"
+
+      Breeze.Test.input(session, "Enter")
+      assert status_row(session) =~ "match 1 of 1 for lemonade"
+
+      Breeze.Test.input(session, "/")
+      type(session, "zzz")
+      assert screen(session) =~ "nothing matches"
+      Breeze.Test.input(session, "Escape")
+      assert Breeze.Test.focused(session) == "log"
+    end
+
+    test "new output while scrolled up is announced until End follows it", ctx do
+      %{session: session, turn: turn} = ctx
+      emit(turn, [{:turn_started, ["hi"]}])
+      lines(turn, 1..30)
+      Breeze.Test.focus(session, "log")
+      screen(session)
+      Breeze.Test.input(session, "Home")
+      refute screen(session) =~ "new output below"
+
+      lines(turn, 31..32)
+      assert screen(session) =~ "↓ new output below · End to follow"
+
+      Breeze.Test.input(session, "End")
+      refute screen(session) =~ "new output below"
+    end
+
+    test "y copies the answer, and /copy code its last code block", %{
+      session: session,
+      turn: turn
+    } do
+      answer = "Run this:\n```sh\necho one\n```\nthen\n```sh\necho two\n```\n"
+      emit(turn, [{:turn_started, ["hi"]}, {:result, answer}, {:turn_finished, []}])
+
+      Breeze.Test.focus(session, "log")
+      screen(session)
+      Breeze.Test.input(session, "y")
+      assert_receive {:copied, ^answer}
+      assert status_row(session) =~ "copied the answer · #{String.length(answer)} characters"
+
+      Breeze.Test.focus(session, "prompt")
+      submit(session, "/copy code")
+      assert_receive {:copied, "echo two"}
+      assert status_row(session) =~ "copied the last code block · 8 characters"
+    end
+
+    test "nothing to copy is said, not sent", %{session: session, turn: turn} do
+      submit(session, "/copy")
+      assert status_row(session) =~ "nothing to copy · no answer yet"
+
+      emit(turn, [{:turn_started, ["hi"]}, {:result, "prose only"}, {:turn_finished, []}])
+      submit(session, "/copy code")
+      assert status_row(session) =~ "nothing to copy · the answer has no code block"
+      refute_receive {:copied, _text}
+    end
+
+    test "t lists the tool calls, and Enter shows one in full", %{session: session, turn: turn} do
+      session = Breeze.Test.resize(session, {80, 24})
+
+      emit(turn, [
+        {:turn_started, ["hi"]},
+        {:tool_call, tool_call("web_search", %{"query" => "lemonade"})},
+        {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}},
+        {:tool_call, tool_call("deep_research", %{"topic" => "citrus"})},
+        {:turn_finished, []}
+      ])
+
+      Breeze.Test.focus(session, "log")
+      screen(session)
+      Breeze.Test.input(session, "t")
+
+      text = screen(session)
+      assert text =~ "Tool calls · Enter shows one in full"
+      assert text =~ "› 1  ✓ web_search  query=lemonade"
+      assert text =~ "2  ◐ deep_research  topic=citrus"
+
+      Breeze.Test.input(session, "Enter")
+      text = screen(session)
+      assert Breeze.Test.focused(session) == "inspector"
+      assert text =~ "1  ✓ web_search  ok"
+      assert text =~ ~s("query": "lemonade")
+      assert text =~ ~s("hits": 3)
+      assert text =~ ~s("top": "stand")
+      assert text =~ "inspector · j/k scroll"
+
+      Breeze.Test.input(session, "Escape")
+      refute screen(session) =~ ~s("hits": 3)
+      assert Breeze.Test.focused(session) == "log"
+
+      emit(turn, [{:tool_denied, "call_2", "deep_research", "not during the freeze"}])
+      Breeze.Test.focus(session, "prompt")
+      submit(session, "/tools")
+      assert screen(session) =~ "2  ✗ deep_research"
+      Breeze.Test.input(session, "ArrowDown")
+      Breeze.Test.input(session, "Enter")
+      text = screen(session)
+      assert text =~ "deep_research  failed"
+      assert text =~ "not during the freeze"
+      Breeze.Test.input(session, "Escape")
+      assert Breeze.Test.focused(session) == "prompt"
+    end
+
+    test "/tools with none says so on the status row", %{session: session} do
+      submit(session, "/tools")
+
+      assert status_row(session) =~ "no tool calls in this conversation yet"
+      refute screen(session) =~ "Tool calls ·"
+    end
+
+    test "local notices sit on the status row and leave the transcript alone", ctx do
+      %{session: session} = ctx
+      submit(session, "/filter attention")
+      assert status_row(session) =~ "the panel shows 0 of 0 agents matching attention"
+
+      submit(session, "/next")
+      assert status_row(session) =~ "no agent needs attention"
+      refute screen(session) =~ "the panel shows"
+
+      submit(session, "/confirm")
+      assert status_row(session) =~ "nothing is waiting to be confirmed"
+
+      # The transcript above holds only the banner and the commands' echoes.
+      transcript = session |> screen() |> String.split("\n") |> Enum.slice(1..7)
+      refute Enum.join(transcript, "\n") =~ "no agent needs attention"
+    end
+
+    test "the status row names the focused pane", %{session: session} do
+      assert status_row(session) =~ "prompt · Ctrl-X pane"
+      Breeze.Test.focus(session, "log")
+      Breeze.Test.input(session, "j")
+      assert status_row(session) =~ "transcript · j/k scroll"
     end
   end
 

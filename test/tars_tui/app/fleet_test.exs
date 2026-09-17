@@ -245,6 +245,17 @@ defmodule TarsTUI.App.FleetTest do
     assert text =~ "⇢ deep_research"
     assert text =~ ~s(✗ deep_research · {"error":"boom"})
     assert text =~ "⏺ Three, and the second search broke."
+
+    submit(session, "/tools")
+    text = screen(session)
+    assert text =~ "› 1  ✓ web_search  query=lemonade"
+    assert text =~ "2  ✗ deep_research"
+
+    Breeze.Test.input(session, "Enter")
+    text = screen(session)
+    assert text =~ ~s("hits": 3)
+    assert text =~ ~s("ok": true)
+    Breeze.Test.input(session, "Escape")
   end
 
   test "connecting back restores the transcript and replays what arrived meanwhile", ctx do

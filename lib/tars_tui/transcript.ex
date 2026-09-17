@@ -80,6 +80,29 @@ defmodule TarsTUI.Transcript do
   def to_list(%__MODULE__{rows: rows}), do: rows |> :array.to_list() |> Enum.map(&Line.text/1)
 
   @doc """
+  The rows whose text contains `query`, ignoring case, as `{row, text}` in
+  order. An empty query matches nothing.
+  """
+  @spec find(t(), String.t()) :: [{non_neg_integer(), String.t()}]
+  def find(%__MODULE__{}, ""), do: []
+
+  def find(%__MODULE__{rows: rows}, query) when is_binary(query) do
+    needle = String.downcase(query)
+
+    :array.foldr(
+      fn index, row, found ->
+        text = Line.text(row)
+
+        if String.contains?(String.downcase(text), needle),
+          do: [{index, text} | found],
+          else: found
+      end,
+      [],
+      rows
+    )
+  end
+
+  @doc """
   The transcript as a lazy virtual text for a Breeze `scroll` block.
 
   Breeze only calls `slice_fn` for the rows it is about to draw.

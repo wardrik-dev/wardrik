@@ -124,11 +124,11 @@ defmodule TarsTUI.App.ContextTest do
     assert_receive %Event{payload: {:turn_finished, _}}, 2000
     connect_sidebar(s, a)
     assert screen(s) =~ "message 1"
-    assert screen(s) =~ "2 unread · End to follow"
+    assert screen(s) =~ "↓ new output below · End to follow"
     Breeze.Test.focus(s, "log")
     Breeze.Test.input(s, "End")
     assert screen(s) =~ "new answer"
-    refute screen(s) =~ "unread"
+    refute screen(s) =~ "new output below"
   end
 
   test "prefix deletion still previews its exact targets with --yes" do

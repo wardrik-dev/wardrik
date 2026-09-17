@@ -23,6 +23,15 @@ defmodule TarsTUI.TranscriptTest do
     assert Transcript.to_list(transcript) == ["a", "b", "c", ""]
   end
 
+  test "find/2 lists the rows holding the text, ignoring case, and nothing for no text" do
+    transcript =
+      Transcript.append_all(Transcript.new(40), ["Lemonade stand", "tea", "more LEMONADE"])
+
+    assert Transcript.find(transcript, "lemon") == [{0, "Lemonade stand"}, {2, "more LEMONADE"}]
+    assert Transcript.find(transcript, "coffee") == []
+    assert Transcript.find(transcript, "") == []
+  end
+
   test "an empty line is a row" do
     assert Transcript.to_list(Transcript.append(Transcript.new(40), "")) == [""]
   end

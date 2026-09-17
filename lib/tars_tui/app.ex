@@ -106,6 +106,23 @@ defmodule TarsTUI.App do
   shows exactly what would go, and `/confirm` does it. The agent this client
   is attached to is never removed.
 
+  ## Inspecting the transcript
+
+  In the transcript `/` searches it: the rows holding the text typed are
+  listed over the panes, `Enter` scrolls to the one chosen, and `n` and `N`
+  step through the matches after that. `/find TEXT` does the same from the
+  prompt. `t`, or `/tools`, lists every tool call of the conversation, and
+  `Enter` on one opens it in the inspector: its arguments and what it
+  returned, in full. `y`, or `/copy`, puts the last answer on the clipboard
+  through `TarsTUI.Clipboard`, and `/copy code` its last code block.
+
+  While the transcript is scrolled up, output arriving below it is announced
+  on the status row until `End` follows it again. Notices about the client
+  itself, a filter applied, a search landed, text copied, show on the status
+  row for a moment rather than in the transcript; what changes the fleet or
+  the conversation is written to the transcript. The status row names the
+  focused pane before its keys, so focus reads without colour.
+
   A slash word that is no command is reported with the commands it resembles,
   and nothing is sent; a command given the wrong thing shows its usage. Either
   way the line stays in the prompt to be corrected. A line starting with `//`
@@ -174,11 +191,13 @@ defmodule TarsTUI.App do
   alias Tars.LLM
   alias TarsTUI.Activity
   alias TarsTUI.Command
+  alias TarsTUI.Exchange
   alias TarsTUI.Fleet.Filter
   alias TarsTUI.History
   alias TarsTUI.Markdown
   alias TarsTUI.Palette
   alias TarsTUI.Render
+  alias TarsTUI.Search
   alias TarsTUI.Table
   alias TarsTUI.Text
   alias TarsTUI.Transcript
@@ -216,8 +235,14 @@ defmodule TarsTUI.App do
     :seen,
     :parked,
     :started_at,
-    :frame
+    :frame,
+    :tools,
+    :answer_text,
+    :search
   ]
+
+  # How long a brief notice stays on the status row.
+  @notice_after 4_000
 
   @default_denial "Denied by the person watching."
 
@@ -254,12 +279,42 @@ defmodule TarsTUI.App do
       {"^n", "Deny", &__MODULE__.deny/2},
       {"^t", "Trace", &__MODULE__.toggle_trace/2},
       {"^f", "Fleet", &__MODULE__.toggle_fleet/2},
-      {"^d", "Quit", &__MODULE__.quit/2}
+      {"^d", "Quit", &__MODULE__.quit/2},
+      {"/", "Search", &__MODULE__.search/2},
+      {"n", "Next match", &__MODULE__.next_match/2},
+      {"N", "Previous match", &__MODULE__.previous_match/2},
+      {"t", "Tools", &__MODULE__.tools/2},
+      {"y", "Copy", &__MODULE__.copy/2}
     ]
   end
 
   @doc false
   def approve(_event, term), do: {:noreply, decide(term, nil, :approve)}
+
+  # In the transcript, `/` searches it, `n` and `N` step through the matches,
+  # `t` picks a tool call to see in full and `y` copies the answer. Anywhere
+  # else the letters are typed.
+  @doc false
+  def search(_event, %{focused: "log"} = term), do: {:noreply, open_search(term, "")}
+  def search(_event, _term), do: :continue
+
+  @doc false
+  def next_match(_event, %{focused: "log"} = term), do: {:noreply, step_match(term, :next)}
+  def next_match(_event, _term), do: :continue
+
+  @doc false
+  def previous_match(_event, %{focused: "log"} = term),
+    do: {:noreply, step_match(term, :previous)}
+
+  def previous_match(_event, _term), do: :continue
+
+  @doc false
+  def tools(_event, %{focused: "log"} = term), do: {:noreply, open_tools(term)}
+  def tools(_event, _term), do: :continue
+
+  @doc false
+  def copy(_event, %{focused: "log"} = term), do: {:noreply, copy_text(term, :answer)}
+  def copy(_event, _term), do: :continue
 
   @doc false
   def deny(_event, term), do: {:noreply, decide(term, nil, {:deny, @default_denial})}
@@ -314,7 +369,7 @@ defmodule TarsTUI.App do
   end
 
   @doc false
-  def to_prompt(_event, %{assigns: %{inspecting: %{}}} = term),
+  def to_prompt(_event, %{assigns: %{inspecting: {_kind, _what, _where}}} = term),
     do: {:noreply, term |> close_inspector() |> focus_pane("prompt")}
 
   def to_prompt(_event, %{focused: focused} = term) when focused in ["log", "fleet"],
@@ -327,7 +382,10 @@ defmodule TarsTUI.App do
   # parked one; idle, it does nothing.
   @doc false
   def back(_event, %{assigns: %{palette: %{}}} = term), do: {:noreply, close_palette(term)}
-  def back(_event, %{assigns: %{inspecting: %{}}} = term), do: {:noreply, close_inspector(term)}
+
+  def back(_event, %{assigns: %{inspecting: {_kind, _what, _where}}} = term),
+    do: {:noreply, close_inspector(term)}
+
   def back(_event, %{assigns: %{leader: {_ref, _origin}}} = term), do: {:noreply, unlead(term)}
 
   def back(_event, %{focused: "prompt"} = term) do
@@ -468,6 +526,9 @@ defmodule TarsTUI.App do
     end
   end
 
+  defp edited(term, _agent_id, {:error, {:exit, _status} = reason}),
+    do: flash(term, View.editor_failed(reason))
+
   defp edited(term, _agent_id, {:error, reason}), do: append(term, View.editor_failed(reason))
 
   # -- the palette -----------------------------------------------------------
@@ -499,6 +560,18 @@ defmodule TarsTUI.App do
 
   defp open_palette(term, %Palette{} = palette),
     do: term |> assign(palette: palette, leader: nil) |> focus("palette")
+
+  # The transcript's matching rows, narrowed as letters are typed; Enter goes
+  # to one.
+  defp open_search(term, query),
+    do:
+      open_palette(term, %Palette{step: :search, query: query, origin: term.focused || "prompt"})
+
+  # The conversation's tool calls; Enter opens one in the inspector.
+  defp open_tools(%{assigns: %{tools: []}} = term), do: flash(term, View.no_tools())
+
+  defp open_tools(term),
+    do: open_palette(term, %Palette{step: :tool, origin: term.focused || "prompt"})
 
   defp close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
     do: term |> assign(palette: nil) |> focus_pane(origin)
@@ -559,6 +632,19 @@ defmodule TarsTUI.App do
 
   defp choices(%{palette: %{step: :text}}), do: []
 
+  defp choices(%{palette: %{step: :search, query: query}} = assigns) do
+    assigns.transcript
+    |> Transcript.find(query)
+    |> Enum.map(fn {row, text} -> {row, View.search_row(row, text)} end)
+  end
+
+  defp choices(%{palette: %{step: :tool, query: query}} = assigns) do
+    assigns.tools
+    |> Enum.with_index(1)
+    |> Enum.map(fn {exchange, index} -> {index, View.tool_row(exchange, index)} end)
+    |> Palette.filter(query, fn {_index, row} -> Text.plain(row) end)
+  end
+
   # With nothing typed the keys come first; with a query, the commands do.
   defp choices(%{palette: %{step: :help, query: query, origin: origin}} = assigns) do
     context = context(assigns)
@@ -614,6 +700,21 @@ defmodule TarsTUI.App do
   defp choose(term, %{step: :commands}, {command, _row}), do: advance(term, command, [])
   defp choose(term, %{step: :help}, {{:command, command}, _row}), do: advance(term, command, [])
   defp choose(term, %{step: :help}, {:key, _row}), do: {:noreply, term}
+
+  defp choose(term, %{step: :search, query: query}, {row, _text}) do
+    search = Search.new(query, term.assigns.transcript, row)
+    count = length(Search.rows(term.assigns.transcript, query))
+
+    {:noreply,
+     term
+     |> close_palette()
+     |> assign(search: search)
+     |> go_to_row(row)
+     |> flash(View.match(query, search.at + 1, count))}
+  end
+
+  defp choose(term, %{step: :tool, origin: origin}, {index, _row}),
+    do: {:noreply, term |> close_palette() |> inspect_tool(index, origin)}
 
   defp choose(term, %{command: command, chosen: chosen}, {value, _row}),
     do: advance(term, command, chosen ++ [value])
@@ -773,14 +874,74 @@ defmodule TarsTUI.App do
     end
   end
 
-  defp inspect_delegation(term, key, span_id) do
-    term
-    |> assign(inspecting: %{key: key, span_id: span_id})
-    |> focus("inspector")
-    |> assign(pane: "inspector")
-  end
+  defp inspect_delegation(term, key, span_id),
+    do: open_inspector(term, {:delegation, key, span_id})
+
+  defp inspect_tool(term, index, origin), do: open_inspector(term, {:tool, index, origin})
+
+  defp open_inspector(term, inspecting),
+    do: term |> assign(inspecting: inspecting, pane: "inspector") |> focus("inspector")
+
+  # A delegation was opened from the panel; a tool call from wherever `t` or
+  # `/tools` was.
+  defp close_inspector(%{assigns: %{inspecting: {:tool, _index, origin}}} = term),
+    do: term |> assign(inspecting: nil) |> focus_pane(origin)
 
   defp close_inspector(term), do: term |> assign(inspecting: nil) |> focus_pane("fleet")
+
+  # The transcript scrolled so `row` is the top one shown, and focused.
+  defp go_to_row(term, row) do
+    term
+    |> put_implicit("log", TarsTUI.Scroll, %{
+      offset_y: row,
+      autoscroll: "bottom",
+      pinned_bottom: false
+    })
+    |> focus_pane("log")
+  end
+
+  defp step_match(%{assigns: %{search: nil}} = term, _direction),
+    do: flash(term, View.nothing_searched())
+
+  defp step_match(%{assigns: %{search: search}} = term, direction) do
+    case Search.step(search, term.assigns.transcript, direction) do
+      :none ->
+        flash(term, View.no_match(search.query))
+
+      {search, row, count} ->
+        term
+        |> assign(search: search)
+        |> go_to_row(row)
+        |> flash(View.match(search.query, search.at + 1, count))
+    end
+  end
+
+  # The last answer, or its last code block, on the clipboard.
+  defp copy_text(term, what) do
+    with {:ok, text} <- to_copy(term.assigns.answer_text, what),
+         :ok <- term.assigns.clipboard.(text) do
+      flash(term, View.copied(what, String.length(text)))
+    else
+      {:error, why} -> flash(term, View.not_copied(why))
+    end
+  end
+
+  defp to_copy("", _what), do: {:error, :no_answer}
+  defp to_copy(text, :answer), do: {:ok, text}
+
+  defp to_copy(text, :code) do
+    case List.last(Markdown.code_blocks(text)) do
+      nil -> {:error, :no_code}
+      code -> {:ok, code}
+    end
+  end
+
+  # A notice on the status row for a moment, in place of the transcript.
+  defp flash(term, text) do
+    ref = make_ref()
+    Process.send_after(self(), {:notice_timeout, ref}, @notice_after)
+    assign(term, notice: {ref, text})
+  end
 
   # Whether the frame should keep ticking: for the elapsed times of a running
   # turn, or of delegations still going under an expanded agent.
@@ -897,6 +1058,11 @@ defmodule TarsTUI.App do
         model: Keyword.get(opts, :model, ""),
         verbose?: Keyword.get(opts, :verbose, false),
         editor: Keyword.get(opts, :editor, &TarsTUI.Editor.edit/2),
+        clipboard: Keyword.get(opts, :clipboard, &TarsTUI.Clipboard.copy/1),
+        notice: nil,
+        tools: [],
+        answer_text: "",
+        search: nil,
         views: %{},
         available?: true,
         confirm: nil,
@@ -1008,6 +1174,9 @@ defmodule TarsTUI.App do
       draft: "",
       history: History.new(),
       delegations: Delegation.new(),
+      tools: [],
+      answer_text: "",
+      search: nil,
       started_at: nil,
       frame: 0,
       seen: length(messages)
@@ -1043,15 +1212,7 @@ defmodule TarsTUI.App do
   defp away(term, []), do: term
 
   defp away(term, messages) do
-    unread =
-      if Map.get(implicit_state(term, "log"), :pinned_bottom, true),
-        do: 0,
-        else: term.assigns.unread + length(messages)
-
-    term
-    |> assign(unread: unread)
-    |> append(View.away(length(messages)))
-    |> playback(messages)
+    term |> append(View.away(length(messages))) |> playback(messages)
   end
 
   # Keeps the view of the attached agent for the next time it is connected to.
@@ -1101,7 +1262,12 @@ defmodule TarsTUI.App do
 
   defp play(%{role: :tool} = message, term) do
     output = LLM.Context.text(message)
-    append(term, View.tool_result(message.name || "tool", output, tool_ok?(message, output)))
+    ok? = tool_ok?(message, output)
+    name = message.name || "tool"
+
+    term
+    |> append(View.tool_result(name, output, ok?))
+    |> assign(tools: Exchange.finish(term.assigns.tools, message.tool_call_id, name, output, ok?))
   end
 
   defp play(_system_message, term), do: term
@@ -1112,13 +1278,16 @@ defmodule TarsTUI.App do
     {streamed, answer} = Markdown.push(Markdown.new(), text)
     {rest, _answer} = Markdown.flush(answer)
 
-    term |> assign(answering?: false) |> answer_lines(streamed ++ rest)
+    term |> assign(answering?: false, answer_text: text) |> answer_lines(streamed ++ rest)
   end
 
   defp calls(term, tool_calls) do
     Enum.reduce(tool_calls, term, fn call, term ->
-      %{name: name, arguments: arguments} = ReqLLM.ToolCall.from_map(call)
-      append(term, View.tool_call(name, arguments))
+      %{id: id, name: name, arguments: arguments} = ReqLLM.ToolCall.from_map(call)
+
+      term
+      |> append(View.tool_call(name, arguments))
+      |> assign(tools: Exchange.call(term.assigns.tools, id, name, arguments))
     end)
   end
 
@@ -1397,8 +1566,7 @@ defmodule TarsTUI.App do
 
   defp inspector(%{inspecting: nil}, _width, _height), do: {"", ""}
 
-  defp inspector(%{inspecting: %{key: key, span_id: span_id}} = assigns, width, height) do
-    {w, _h} = inspector_size(1, width, height)
+  defp inspector(%{inspecting: {:delegation, key, span_id}} = assigns, width, height) do
     now = System.system_time(:millisecond)
     delegations = delegations(assigns, key) || Delegation.new()
 
@@ -1408,6 +1576,22 @@ defmodule TarsTUI.App do
         record -> View.inspector(record, Delegation.activity(delegations, span_id), key, now)
       end
 
+    inspector_box(lines, width, height)
+  end
+
+  defp inspector(%{inspecting: {:tool, index, _origin}} = assigns, width, height) do
+    lines =
+      case Enum.at(assigns.tools, index - 1) do
+        nil -> [Text.tag("this tool call is no longer shown · Esc closes", @faint)]
+        exchange -> View.tool_inspector(exchange, index)
+      end
+
+    inspector_box(lines, width, height)
+  end
+
+  # The lines laid out in a box centred over the panes, as tall as they need.
+  defp inspector_box(lines, width, height) do
+    {w, _h} = inspector_size(1, width, height)
     transcript = Transcript.append_all(Transcript.new(w - 4), lines)
     {_w, h} = inspector_size(Transcript.rows(transcript), width, height)
 
@@ -1450,6 +1634,10 @@ defmodule TarsTUI.App do
     |> Enum.join()
   end
 
+  # A brief notice takes the row while it shows.
+  defp status(%{notice: {_ref, text}}, width),
+    do: Render.line(Render.justify([" ", text], "", width))
+
   defp status(%{available?: false, agent_id: key} = assigns, width) do
     {_org, _user, name} = Fleet.parse(key)
 
@@ -1459,29 +1647,29 @@ defmodule TarsTUI.App do
         :yellow
       )
 
-    Render.line(Render.justify(left, hints(assigns), width))
+    Render.line(Render.justify(left, right(assigns), width))
   end
 
   defp status(%{running?: false, parked: [_ | _] = parked} = assigns, width) do
     names = Enum.map_join(parked, ", ", fn {call, _prompt} -> call.name end)
     left = Text.tag(" ? waiting on #{names} · #{decision_keys(parked)}", [:bright, :yellow])
-    Render.line(Render.justify(left, hints(assigns), width))
+    Render.line(Render.justify(left, right(assigns), width))
   end
 
   defp status(%{running?: false} = assigns, width) do
     left = Text.tag(" idle · type a prompt and press Enter", @faint)
-    Render.line(Render.justify(left, hints(assigns), width))
+    Render.line(Render.justify(left, right(assigns), width))
   end
 
   defp status(%{leader: {_ref, _origin}} = assigns, width) do
     span = Activity.innermost(assigns.activity)
     head = [" ", Text.tag(View.spinner(assigns.frame), :cyan), " ", label(span)]
-    Render.line(Render.justify(head, hints(assigns), width))
+    Render.line(Render.justify(head, right(assigns), width))
   end
 
   defp status(assigns, width) do
     span = Activity.innermost(assigns.activity)
-    right = Text.tag([chars(assigns.chars), elapsed(assigns), " "], @faint)
+    right = [below(assigns), Text.tag([chars(assigns.chars), elapsed(assigns), " "], @faint)]
     label = Text.truncate(label(span), max(div(width, 3), 20))
     head = [" ", Text.tag(View.spinner(assigns.frame), :cyan), " ", label]
     room = width - Text.length(right) - Text.length(head) - 4
@@ -1490,7 +1678,15 @@ defmodule TarsTUI.App do
     Render.line(Render.justify(left, right, width))
   end
 
-  # The keys that matter where focus is, or the directions the leader takes.
+  # The keys that matter where focus is, with word of output below the rows
+  # shown when there is some.
+  defp right(assigns), do: [below(assigns), hints(assigns)]
+
+  defp below(%{unread: unread}) when unread > 0, do: View.new_below()
+  defp below(_assigns), do: []
+
+  # The keys that matter where focus is, named after the pane, or the
+  # directions the leader takes.
   defp hints(%{leader: {_ref, origin}} = assigns) do
     moves =
       case origin do
@@ -1509,6 +1705,12 @@ defmodule TarsTUI.App do
   defp hints(%{palette: %{step: :help}}),
     do: Text.tag("type to search · Up/Down scroll · Enter run a command · Esc close ", :yellow)
 
+  defp hints(%{palette: %{step: :search}}),
+    do: Text.tag("type to search · Up/Down choose · Enter go there · Esc close ", :yellow)
+
+  defp hints(%{palette: %{step: :tool}}),
+    do: Text.tag("type to filter · Up/Down choose · Enter see it in full · Esc close ", :yellow)
+
   defp hints(%{palette: %{}}),
     do: Text.tag("type to filter · Up/Down choose · Enter run · Esc close ", :yellow)
 
@@ -1516,19 +1718,27 @@ defmodule TarsTUI.App do
     do: Text.tag("editing the prompt · the screen returns when the editor closes ", :yellow)
 
   defp hints(%{pane: "log"}),
-    do: Text.tag("j/k scroll · Ctrl-U/D half page · i prompt · Esc back ", @faint)
+    do:
+      Text.tag(
+        "transcript · j/k scroll · Ctrl-U/D half page · / find · t tools · y copy · i prompt · Esc back ",
+        @faint
+      )
 
   defp hints(%{pane: "fleet"}),
     do:
-      Text.tag("j/k · l/h expand · n/a attention · Enter connect · i prompt · Esc back ", @faint)
+      Text.tag(
+        "fleet · j/k · l/h expand · n/a attention · Enter connect · i prompt · Esc back ",
+        @faint
+      )
 
-  defp hints(%{pane: "inspector"}), do: Text.tag("j/k scroll · i prompt · Esc back ", @faint)
+  defp hints(%{pane: "inspector"}),
+    do: Text.tag("inspector · j/k scroll · i prompt · Esc back ", @faint)
 
   defp hints(%{available?: false}),
-    do: Text.tag("Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
+    do: Text.tag("prompt · Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
 
-  defp hints(%{parked: [_ | _]}), do: Text.tag("Esc abandon · Ctrl-D quit ", @faint)
-  defp hints(_assigns), do: Text.tag("Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
+  defp hints(%{parked: [_ | _]}), do: Text.tag("prompt · Esc abandon · Ctrl-D quit ", @faint)
+  defp hints(_assigns), do: Text.tag("prompt · Ctrl-X pane · Ctrl-F fleet · Ctrl-D quit ", @faint)
 
   defp decision_keys([_only]), do: "y approve · n deny"
   defp decision_keys(_several), do: "/approve N · /deny N · /approve all"
@@ -1571,9 +1781,7 @@ defmodule TarsTUI.App do
   defp meta(assigns, width) do
     usage = Usage.summary(assigns.usage)
     left = Text.tag(if(usage == "", do: "", else: " observed here · " <> usage), @faint)
-    unread = if assigns.unread > 0, do: "#{assigns.unread} unread · End to follow · ", else: ""
-    right = Text.tag(unread <> queued(assigns), @faint)
-    Render.line(Render.justify(left, right, width))
+    Render.line(Render.justify(left, Text.tag(queued(assigns), @faint), width))
   end
 
   defp elapsed(%{started_at: started_at}) when is_integer(started_at) do
@@ -1610,7 +1818,7 @@ defmodule TarsTUI.App do
   def handle_event("palette", %{action: :close}, term), do: {:noreply, close_palette(term)}
 
   def handle_event("palette", %{action: :back}, %{assigns: %{palette: %{step: step}}} = term)
-      when step in [:commands, :help],
+      when step in [:commands, :help, :search, :tool],
       do: {:noreply, term}
 
   def handle_event("palette", %{action: :back}, term), do: {:noreply, restart_palette(term)}
@@ -1668,7 +1876,7 @@ defmodule TarsTUI.App do
 
   defp apply_command({:move, name, options}, term) when map_size(options) == 0 do
     if Node.list() == [],
-      do: append(term, View.only_node()),
+      do: flash(term, View.only_node()),
       else: pick(term, "/move", [key(term, name)])
   end
 
@@ -1677,6 +1885,9 @@ defmodule TarsTUI.App do
   defp apply_command({:connect, name}, term), do: connect(term, name)
   defp apply_command({:filter, query}, term), do: filter(term, query)
   defp apply_command(:next, term), do: next_attention(term)
+  defp apply_command({:find, query}, term), do: open_search(term, query || "")
+  defp apply_command(:tools, term), do: open_tools(term)
+  defp apply_command({:copy, what}, term), do: copy_text(term, what)
   defp apply_command({:ask, text}, term), do: ask(term, text)
   defp apply_command({:usage, name}, term), do: append(term, View.usage(Command.find(name)))
 
@@ -1946,7 +2157,7 @@ defmodule TarsTUI.App do
     term |> assign(confirm: nil) |> move_now(key, node)
   end
 
-  defp confirm(term), do: append(term, View.nothing_to_confirm())
+  defp confirm(term), do: flash(term, View.nothing_to_confirm())
 
   defp forget_all(term, keys) do
     {removed, failed} = Enum.split_with(keys, &(Fleet.forget(&1) == :ok))
@@ -2073,6 +2284,11 @@ defmodule TarsTUI.App do
     {:noreply, term |> sync_pane() |> assign(frame_due?: false, frame_after: frame_after)}
   end
 
+  def handle_info({:notice_timeout, ref}, %{assigns: %{notice: {ref, _text}}} = term),
+    do: {:noreply, assign(term, notice: nil)}
+
+  def handle_info({:notice_timeout, _stale}, term), do: {:noreply, term, invalidate: false}
+
   def handle_info({:leader_timeout, ref}, %{assigns: %{leader: {ref, _origin}}} = term),
     do: {:noreply, unlead(term)}
 
@@ -2166,7 +2382,7 @@ defmodule TarsTUI.App do
 
   defp next_attention(term) do
     case next_needing(term.assigns, term.assigns.agent_id) do
-      nil -> append(term, View.nothing_needs_attention())
+      nil -> flash(term, View.nothing_needs_attention())
       member -> connect_key(term, member.key)
     end
   end
@@ -2178,17 +2394,17 @@ defmodule TarsTUI.App do
     end
   end
 
-  defp filter(term, nil), do: term |> assign(filter: Filter.none()) |> append(View.unfiltered())
+  defp filter(term, nil), do: term |> assign(filter: Filter.none()) |> flash(View.unfiltered())
 
   defp filter(term, query) do
     case Filter.parse(query) do
       {:ok, filter} ->
         term = assign(term, filter: filter)
         shown = length(shown(term.assigns))
-        append(term, View.filtered(Filter.describe(filter), shown, length(term.assigns.fleet)))
+        flash(term, View.filtered(Filter.describe(filter), shown, length(term.assigns.fleet)))
 
       {:error, word} ->
-        append(term, View.bad_filter(word))
+        flash(term, View.bad_filter(word))
     end
   end
 
@@ -2248,7 +2464,8 @@ defmodule TarsTUI.App do
       reasoning: Markdown.new(),
       thinking: "",
       chars: 0,
-      answering?: false
+      answering?: false,
+      answer_text: ""
     )
   end
 
@@ -2323,8 +2540,30 @@ defmodule TarsTUI.App do
       line ->
         indent = indent(term, event)
         room = term.assigns.transcript.width - String.length(indent)
-        append(term, [indent, Text.truncate(line, max(room, 8))])
+        id = call.metadata[:id]
+
+        term
+        |> append([indent, Text.truncate(line, max(room, 8))])
+        |> assign(tools: Exchange.call(term.assigns.tools, id, call.name, call.arguments))
     end
+  end
+
+  defp handle(%Event{payload: {:tool_finished, id, name, result}} = event, term) do
+    {output, ok?} =
+      case result do
+        {:ok, output} -> {output_text(output), true}
+        {:error, why} -> {Render.squash(inspect(why)), false}
+      end
+
+    term
+    |> assign(tools: Exchange.finish(term.assigns.tools, id, name, output, ok?))
+    |> trace(event)
+  end
+
+  defp handle(%Event{payload: {:tool_denied, id, name, reason}} = event, term) do
+    term
+    |> assign(tools: Exchange.finish(term.assigns.tools, id, name, reason, false))
+    |> trace(event)
   end
 
   # -- streaming, root span only
@@ -2334,7 +2573,11 @@ defmodule TarsTUI.App do
       {lines, answer} = Markdown.push(term.assigns.answer, text)
 
       term
-      |> assign(answer: answer, chars: term.assigns.chars + String.length(text))
+      |> assign(
+        answer: answer,
+        chars: term.assigns.chars + String.length(text),
+        answer_text: term.assigns.answer_text <> text
+      )
       |> answer_lines(lines)
     else
       term
@@ -2445,13 +2688,32 @@ defmodule TarsTUI.App do
   defp indented(%Table{} = table), do: %{table | indent: 2}
   defp indented(line), do: ["  ", line]
 
-  defp append(term, data) do
-    assign(term, transcript: Transcript.append(term.assigns.transcript, data))
+  # A tool's result as the inspector shows it: text as it is, anything else as
+  # JSON, or as Elixir when it does not encode.
+  defp output_text(output) when is_binary(output), do: output
+
+  defp output_text(output) do
+    JSON.encode!(output)
+  rescue
+    _error in [Protocol.UndefinedError, ArgumentError] -> inspect(output)
   end
 
-  defp append_lines(term, lines) do
-    assign(term, transcript: Transcript.append_all(term.assigns.transcript, lines))
+  # Rows added while the transcript is scrolled up are counted as unread.
+  defp append(term, data), do: grow(term, &Transcript.append(&1, data))
+  defp append_lines(term, lines), do: grow(term, &Transcript.append_all(&1, lines))
+
+  defp grow(term, fun) do
+    before = Transcript.rows(term.assigns.transcript)
+    transcript = fun.(term.assigns.transcript)
+    added = Transcript.rows(transcript) - before
+
+    unread =
+      if pinned?(term) or added == 0, do: term.assigns.unread, else: term.assigns.unread + added
+
+    assign(term, transcript: transcript, unread: unread)
   end
+
+  defp pinned?(term), do: Map.get(implicit_state(term, "log"), :pinned_bottom, true)
 
   # Kept as it arrived, so a chunk ending in a space still separates words;
   # `newest/2` squashes it for the row.

@@ -377,10 +377,9 @@ defmodule TarsTUI.View do
 
   defp move_bar(content), do: [Text.tag("  ▌ ", :yellow), content, "\n"]
 
-  @doc "Said when `/move` has nowhere to go: this is the only node."
+  @doc "Said when `/move` has nowhere to go: this is the only node. A brief notice."
   @spec only_node() :: Text.t()
-  def only_node,
-    do: note(["#{node()} is the only node · there is nowhere to move an agent to"])
+  def only_node, do: brief("#{node()} is the only node · there is nowhere to move an agent to")
 
   @doc "That a node name matches none in the cluster, and which there are."
   @spec no_such_node(String.t(), [node()]) :: Text.t()
@@ -448,27 +447,62 @@ defmodule TarsTUI.View do
   def away(1), do: note("1 message arrived while this client was elsewhere · replayed below")
   def away(n), do: note("#{n} messages arrived while this client was elsewhere · replayed below")
 
-  @doc "That the fleet panel now shows only the agents matching a query."
+  @doc "That the fleet panel now shows only the agents matching a query. A brief notice."
   @spec filtered(String.t(), non_neg_integer(), non_neg_integer()) :: Text.t()
   def filtered(query, shown, total),
-    do: note(["the panel shows #{shown} of #{total} agents matching ", Text.tag(query, :cyan)])
+    do: brief(["the panel shows #{shown} of #{total} agents matching ", Text.tag(query, :cyan)])
 
-  @doc "That the fleet panel shows every agent again."
+  @doc "That the fleet panel shows every agent again. A brief notice."
   @spec unfiltered() :: Text.t()
-  def unfiltered, do: note("the panel shows every agent")
+  def unfiltered, do: brief("the panel shows every agent")
 
-  @doc "That a word of a filter query is not one the panel understands."
+  @doc "That a word of a filter query is not one the panel understands. A brief notice."
   @spec bad_filter(String.t()) :: Text.t()
   def bad_filter(word) do
     [
-      Text.tag("\n✗ #{word} is not a filter · ", :red),
-      Text.tag("text, name:, org:, user:, node:, status:idle|running|parked, attention\n", @faint)
+      Text.tag("✗ #{word} is not a filter · ", :red),
+      Text.tag("text, name:, org:, user:, node:, status:idle|running|parked, attention", @faint)
     ]
   end
 
-  @doc "Said when `/next` finds no agent needing attention."
+  @doc "Said when `/next` finds no agent needing attention. A brief notice."
   @spec nothing_needs_attention() :: Text.t()
-  def nothing_needs_attention, do: note("no agent needs attention")
+  def nothing_needs_attention, do: brief("no agent needs attention")
+
+  @doc "That the transcript was searched and where it landed. A brief notice."
+  @spec match(String.t(), pos_integer(), pos_integer()) :: Text.t()
+  def match(query, index, count),
+    do:
+      brief(["match #{index} of #{count} for ", Text.tag(query, :cyan), " · n next · N previous"])
+
+  @doc "That nothing in the transcript matches. A brief notice."
+  @spec no_match(String.t()) :: Text.t()
+  def no_match(query), do: brief(["nothing in the transcript matches ", Text.tag(query, :cyan)])
+
+  @doc "Said when `n` or `N` is pressed with nothing searched for. A brief notice."
+  @spec nothing_searched() :: Text.t()
+  def nothing_searched,
+    do: brief(["nothing searched for yet · ", Text.tag("/", :bright), " searches"])
+
+  @doc "That the conversation holds no tool call to inspect. A brief notice."
+  @spec no_tools() :: Text.t()
+  def no_tools, do: brief("no tool calls in this conversation yet")
+
+  @doc "That text went to the clipboard. A brief notice."
+  @spec copied(:answer | :code, non_neg_integer()) :: Text.t()
+  def copied(:answer, chars), do: brief("copied the answer · #{chars} characters")
+  def copied(:code, chars), do: brief("copied the last code block · #{chars} characters")
+
+  @doc "Why nothing was copied. A brief notice."
+  @spec not_copied(:no_answer | :no_code | :no_clipboard | {:exit, non_neg_integer()}) :: Text.t()
+  def not_copied(:no_answer), do: brief("nothing to copy · no answer yet")
+  def not_copied(:no_code), do: brief("nothing to copy · the answer has no code block")
+
+  def not_copied(:no_clipboard),
+    do: Text.tag("✗ no clipboard tool · install wl-copy, xclip, xsel or pbcopy", :red)
+
+  def not_copied({:exit, status}),
+    do: Text.tag("✗ the clipboard tool exited with status #{status} · nothing was copied", :red)
 
   @doc "That an agent was asked to stop what it is doing."
   @spec stopped(String.t()) :: Text.t()
@@ -527,9 +561,9 @@ defmodule TarsTUI.View do
   defp count([_one], noun), do: "1 #{noun}"
   defp count(many, noun), do: "#{length(many)} #{noun}s"
 
-  @doc "Said when `/confirm` arrives with nothing waiting on it."
+  @doc "Said when `/confirm` arrives with nothing waiting on it. A brief notice."
   @spec nothing_to_confirm() :: Text.t()
-  def nothing_to_confirm, do: [Text.tag("  ▌ nothing is waiting to be confirmed\n\n", @faint)]
+  def nothing_to_confirm, do: brief("nothing is waiting to be confirmed")
 
   @doc "That a pending removal or move was dropped because something else was typed."
   @spec cancelled(:rm | :move) :: Text.t()
@@ -633,6 +667,114 @@ defmodule TarsTUI.View do
   def palette_title(:call, command), do: "#{command.name} · which call?"
   def palette_title(:text, command), do: "#{command.usage} · type the rest, then Enter"
   def palette_title(:help, _command), do: "Help · every key and command · Enter runs a command"
+  def palette_title(:search, _command), do: "Search the transcript · Enter goes to the match"
+  def palette_title(:tool, _command), do: "Tool calls · Enter shows one in full"
+
+  @doc "One matching transcript row as a search result: its number and text."
+  @spec search_row(non_neg_integer(), String.t()) :: Text.t()
+  def search_row(row, text),
+    do: [Text.tag(String.pad_leading("#{row + 1}", 5), @faint), "  ", String.trim(text)]
+
+  @doc "One tool call as a palette row: its number, how it went, its name and arguments."
+  @spec tool_row(TarsTUI.Exchange.t(), pos_integer()) :: Text.t()
+  def tool_row(exchange, index) do
+    [
+      Text.tag("#{index}  ", @faint),
+      exchange_glyph(exchange),
+      " ",
+      Text.tag(exchange.name, :bright),
+      Text.tag(["  ", args(exchange)], @faint)
+    ]
+  end
+
+  defp exchange_glyph(%{ok?: nil}), do: Text.tag("◐", :cyan)
+  defp exchange_glyph(%{ok?: true}), do: Text.tag("✓", :green)
+  defp exchange_glyph(%{ok?: false}), do: Text.tag("✗", :red)
+
+  @doc """
+  One tool call in full, as transcript lines: its name and how it went, its
+  arguments, and what it returned, each laid out over as many lines as it
+  takes, up to a limit.
+  """
+  @spec tool_inspector(TarsTUI.Exchange.t(), pos_integer()) :: [Text.t()]
+  def tool_inspector(exchange, index) do
+    [
+      [
+        Text.tag("#{index}  ", @faint),
+        exchange_glyph(exchange),
+        " ",
+        Text.tag(exchange.name, [:bright, :cyan]),
+        Text.tag(exchange_state(exchange), @faint),
+        Text.tag("  · Esc closes", @faint)
+      ],
+      "",
+      Text.tag("arguments", :bright)
+    ] ++
+      indented_lines(pretty(exchange.arguments)) ++
+      ["", Text.tag("output", :bright)] ++
+      indented_lines(output_text(exchange))
+  end
+
+  defp exchange_state(%{ok?: nil}), do: "  running"
+  defp exchange_state(%{ok?: true}), do: "  ok"
+  defp exchange_state(%{ok?: false}), do: "  failed"
+
+  @inspector_chars 20_000
+
+  defp output_text(%{output: nil}), do: Text.tag("nothing yet", @faint)
+
+  defp output_text(%{output: output}) do
+    text =
+      case JSON.decode(output) do
+        {:ok, decoded} when is_map(decoded) or is_list(decoded) -> pretty(decoded)
+        _other -> output
+      end
+
+    if String.length(text) > @inspector_chars,
+      do:
+        String.slice(text, 0, @inspector_chars) <>
+          "\n… #{String.length(text) - @inspector_chars} more characters",
+      else: text
+  end
+
+  defp pretty(value) when is_map(value) and map_size(value) == 0, do: "none"
+
+  defp pretty(value),
+    do: value |> JSON.encode_to_iodata!() |> IO.iodata_to_binary() |> pretty_json()
+
+  # One key or element per line, nested by indentation.
+  defp pretty_json(json) do
+    case JSON.decode(json) do
+      {:ok, decoded} -> decoded |> format(0) |> IO.iodata_to_binary()
+      _other -> json
+    end
+  end
+
+  defp format(map, depth) when is_map(map) do
+    pad = String.duplicate("  ", depth + 1)
+
+    entries =
+      map
+      |> Enum.sort_by(fn {key, _value} -> to_string(key) end)
+      |> Enum.map(fn {key, value} ->
+        [pad, JSON.encode!(to_string(key)), ": ", format(value, depth + 1)]
+      end)
+
+    ["{\n", Enum.intersperse(entries, ",\n"), "\n", String.duplicate("  ", depth), "}"]
+  end
+
+  defp format(list, depth) when is_list(list) do
+    pad = String.duplicate("  ", depth + 1)
+    entries = Enum.map(list, &[pad, format(&1, depth + 1)])
+    ["[\n", Enum.intersperse(entries, ",\n"), "\n", String.duplicate("  ", depth), "]"]
+  end
+
+  defp format(value, _depth), do: JSON.encode!(value)
+
+  defp indented_lines(%Text{} = text), do: [["  ", text]]
+
+  defp indented_lines(text) when is_binary(text),
+    do: text |> String.split("\n") |> Enum.map(&["  ", &1])
 
   @doc """
   One delegation in full, as transcript lines: what it was asked, the work
@@ -695,7 +837,7 @@ defmodule TarsTUI.View do
     do: [Text.tag("\n✗ no editor · set $VISUAL or $EDITOR to edit the prompt\n", :red)]
 
   def editor_failed({:exit, status}),
-    do: note(["the editor exited with status #{status} · the prompt is as it was"])
+    do: brief("the editor exited with status #{status} · the prompt is as it was")
 
   def editor_failed(reason),
     do: [Text.tag("\n✗ the editor failed · #{inspect(reason)} · the prompt is as it was\n", :red)]
@@ -745,6 +887,9 @@ defmodule TarsTUI.View do
     {"prompt", "Ctrl-D", "quit, with nothing typed"},
     {"log", "j/k, Ctrl-U/D, PageUp/Down", "scroll a row, half a page, a page"},
     {"log", "End", "follow the newest output again"},
+    {"log", "/", "search the transcript; then n and N step through the matches"},
+    {"log", "t", "pick a tool call and see its arguments and output in full"},
+    {"log", "y", "copy the last answer to the clipboard"},
     {"fleet", "Up, Down, Enter", "choose an agent and connect to it"},
     {"fleet", "h, l", "hide or show an agent's delegations; Enter on one inspects it"},
     {"fleet", "n, a", "move to the next agent needing attention, and show only those"},
@@ -841,6 +986,13 @@ defmodule TarsTUI.View do
     do: note(["you are attached to ", Text.tag(key, :bright), " · /connect elsewhere first"])
 
   defp note(content), do: ["\n", Text.tag("· ", @faint), content, "\n"]
+
+  # One row for the status bar, shown for a moment.
+  defp brief(content), do: [Text.tag("· ", @faint), content]
+
+  @doc "That the transcript has rows below the ones shown, for the status row."
+  @spec new_below() :: Text.t()
+  def new_below, do: Text.tag("↓ new output below · End to follow · ", :yellow)
 
   # Two columns go to the glyph and its trailing space, and one is left spare.
   defp room(width), do: max(width - 3, 1)

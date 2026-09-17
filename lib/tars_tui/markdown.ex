@@ -112,6 +112,17 @@ defmodule TarsTUI.Markdown do
     {[rendered], %{buffer | fenced?: fenced?}}
   end
 
+  @doc """
+  The contents of each fenced code block in `text`, in order, without the
+  fences or a trailing newline.
+  """
+  @spec code_blocks(String.t()) :: [String.t()]
+  def code_blocks(text) when is_binary(text) do
+    ~r/^[ \t]*(`{3,}|~{3,})[^\n]*\n(.*?)\n[ \t]*\1[ \t]*$/ms
+    |> Regex.scan(text, capture: :all_but_first)
+    |> Enum.map(fn [_fence, body] -> body end)
+  end
+
   @doc "The unfinished line, as plain text."
   @spec tail(t()) :: String.t()
   def tail(%__MODULE__{pending: pending}), do: pending
