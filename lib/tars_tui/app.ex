@@ -476,17 +476,8 @@ defmodule TarsTUI.App do
   # closes it.
   @doc false
   def palette(_event, %{assigns: %{palette: nil}} = term) do
-    palette = %{
-      step: :commands,
-      command: nil,
-      chosen: [],
-      query: "",
-      cursor: 0,
-      origin: term.focused || "prompt"
-    }
-
-    {:noreply,
-     term |> assign(palette: palette, leader: nil) |> refresh_fleet() |> focus("palette")}
+    palette = %Palette{step: :commands, origin: term.focused || "prompt"}
+    {:noreply, term |> open_palette(palette) |> refresh_fleet()}
   end
 
   def palette(_event, term), do: {:noreply, close_palette(term)}
@@ -495,33 +486,19 @@ defmodule TarsTUI.App do
   # with `query` already typed, as a command missing an argument does.
   defp pick(term, name, chosen, query \\ "") do
     command = Command.find(name)
+    step = Enum.at(command.arguments, length(chosen))
+    palette = %Palette{step: step, command: command, chosen: chosen, query: query}
 
-    palette = %{
-      step: Enum.at(command.arguments, length(chosen)),
-      command: command,
-      chosen: chosen,
-      query: query,
-      cursor: 0,
-      origin: "prompt"
-    }
-
-    term |> assign(palette: palette, leader: nil) |> refresh_fleet() |> focus("palette")
+    term |> open_palette(palette) |> refresh_fleet()
   end
 
   # Every key and command over the panes, searched like the palette; Enter on
   # a command runs it.
-  defp open_help(term) do
-    palette = %{
-      step: :help,
-      command: nil,
-      chosen: [],
-      query: "",
-      cursor: 0,
-      origin: term.focused || "prompt"
-    }
+  defp open_help(term),
+    do: open_palette(term, %Palette{step: :help, origin: term.focused || "prompt"})
 
-    term |> assign(palette: palette, leader: nil) |> focus("palette")
-  end
+  defp open_palette(term, %Palette{} = palette),
+    do: term |> assign(palette: palette, leader: nil) |> focus("palette")
 
   defp close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
     do: term |> assign(palette: nil) |> focus_pane(origin)
@@ -1729,18 +1706,19 @@ defmodule TarsTUI.App do
 
   defp start_agent(term, key, name, placement, prompt, mode) do
     case Fleet.spawn(key, term.assigns.spawn_opts ++ placement) do
-      {:ok, pid} when mode == :attach ->
-        term |> switch(pid, key) |> append(View.spawned(key)) |> ask_if(prompt)
-
-      {:ok, pid} ->
-        term
-        |> refresh_fleet()
-        |> append(View.spawned_background(key, name))
-        |> ask_elsewhere(pid, key, prompt)
-
-      {:error, reason} ->
-        append(term, fleet_error(reason, placement[:node]))
+      {:ok, pid} -> started(term, key, name, pid, prompt, mode)
+      {:error, reason} -> append(term, fleet_error(reason, placement[:node]))
     end
+  end
+
+  defp started(term, key, _name, pid, prompt, :attach),
+    do: term |> switch(pid, key) |> append(View.spawned(key)) |> ask_if(prompt)
+
+  defp started(term, key, name, pid, prompt, :background) do
+    term
+    |> refresh_fleet()
+    |> append(View.spawned_background(key, name))
+    |> ask_elsewhere(pid, key, prompt)
   end
 
   defp existing_agent(%{assigns: %{agent_id: key}} = term, key, name, _pid, prompt, mode),

@@ -1,7 +1,14 @@
 defmodule TarsTUI.Palette do
   @moduledoc """
-  A `Breeze.Implicit` for the command palette: a query line over a list of
-  rows, and `filter/3` for narrowing the rows to the query.
+  The command palette: what `TarsTUI.App` keeps of one while it is open, a
+  `Breeze.Implicit` for the query line over its rows, and `filter/3` for
+  narrowing the rows to the query.
+
+  The struct is the palette as the app has it: `step`, what it is choosing,
+  `:commands`, an argument step of `TarsTUI.Command`, or `:help`; `command`
+  and `chosen`, the command collecting arguments and those collected so far;
+  `query` and `cursor`, what is typed and the row under the cursor; and
+  `origin`, the pane focus returns to when it closes.
 
   The element takes the query, the row under the cursor and how many rows
   there are as `palette-query`, `palette-cursor` and `palette-count`. Typing
@@ -16,6 +23,18 @@ defmodule TarsTUI.Palette do
   @behaviour Breeze.Implicit
 
   alias Breeze.InputCapture
+  alias TarsTUI.Command
+
+  defstruct step: :commands, command: nil, chosen: [], query: "", cursor: 0, origin: "prompt"
+
+  @type t() :: %__MODULE__{
+          step: :commands | :help | Command.step(),
+          command: Command.t() | nil,
+          chosen: [String.t()],
+          query: String.t(),
+          cursor: non_neg_integer(),
+          origin: String.t()
+        }
 
   @impl Breeze.Implicit
   def init(_children, root_attrs, last_state) do
