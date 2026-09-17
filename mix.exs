@@ -40,6 +40,10 @@ defmodule Tars.MixProject do
     [
       {:req_llm, "~> 1.21"},
 
+      # Used by lib/tars_lua, not by core. A Lua 5.3 VM in pure Elixir: no
+      # NIFs, so it ships anywhere the release does.
+      {:lua, "~> 1.0"},
+
       # Durability and fleet: agents that survive a node, and a cluster-wide
       # view of who is running.
       {:durable_server, "~> 0.1.5"},

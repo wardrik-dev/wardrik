@@ -110,6 +110,26 @@ persona never leaks into the caller's history.
 Prefer an MFA callback over an anonymous function for anything a config holds,
 so it survives being named by a config that crosses a node boundary.
 
+### Sandboxes
+
+Code an agent writes runs in a `Tars.Sandbox`. Core ships the contract and no
+sandbox. `TarsLua` implements it over a Lua 5.3 VM written in Elixir, and
+hands an agent the `run_lua` tool:
+
+```elixir
+Tars.LLM.Config.new(tools: [TarsLua.Run])
+```
+
+The VM reaches nothing outside itself — no files, no network, no environment,
+and nothing else the agent has. A sandbox implements a language and nothing
+else: `Tars.Sandbox.run/3` checks the code, then evaluates it in a task of its
+own under `Tars.Sandbox.Limits` — a deadline, a memory budget, a step budget
+and a call depth, each of which can be lifted with `:infinity`.
+
+```elixir
+TarsLua.Run.tool(limits: Tars.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
+```
+
 ### Living in this repo
 
 Packages start here, under `lib/<package>/` with tests mirrored at
