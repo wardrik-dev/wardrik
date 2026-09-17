@@ -1844,16 +1844,14 @@ defmodule TarsTUI.App do
   defp connect(term, name) do
     key = key(term, name)
 
-    cond do
-      key == term.assigns.agent_id or Fleet.whereis(key) != nil ->
-        connect_key(term, key)
-
-      true ->
-        case matching(name) do
-          [] -> append(term, View.no_such_agent(key))
-          [member] -> connect_key(term, member.key)
-          _several -> pick(term, "/connect", [], String.trim_leading(name, "/"))
-        end
+    if key == term.assigns.agent_id or Fleet.whereis(key) != nil do
+      connect_key(term, key)
+    else
+      case matching(name) do
+        [] -> append(term, View.no_such_agent(key))
+        [member] -> connect_key(term, member.key)
+        _several -> pick(term, "/connect", [], String.trim_leading(name, "/"))
+      end
     end
   end
 
