@@ -132,23 +132,30 @@ defmodule TarsTUI.Transcript do
   The transcript as a lazy virtual text for a Breeze `scroll` block.
 
   Breeze only calls `slice_fn` for the rows it is about to draw.
+
+  `tail` are rows drawn after the transcript's own and held by nobody: text
+  arriving that is not yet a line. They are not part of the transcript, so they
+  do not count towards `rows/1`, are not searched, and are replaced whole on
+  every call.
   """
-  @spec source(t()) :: struct()
-  def source(%__MODULE__{rows: rows, version: version, width: width, ref: ref}) do
+  @spec source(t(), [Line.t()]) :: struct()
+  def source(%__MODULE__{rows: rows, version: version, width: width, ref: ref}, tail \\ []) do
     count = :array.size(rows)
+    total = count + length(tail)
 
     VirtualText.lazy(
-      cache_key: {__MODULE__, ref, version, width},
+      cache_key: {__MODULE__, ref, version, width, tail},
       cache?: false,
       intrinsic_width: 1,
-      line_count_fn: fn _width -> count end,
-      slice_fn: fn start, wanted, _width -> slice(rows, count, start, wanted) end
+      line_count_fn: fn _width -> total end,
+      slice_fn: fn start, wanted, _width -> slice(rows, count, tail, start, wanted) end
     )
   end
 
-  defp slice(_rows, count, start, wanted) when wanted <= 0 or start >= count, do: []
+  defp slice(_rows, _count, _tail, _start, wanted) when wanted <= 0, do: []
 
-  defp slice(rows, count, start, wanted) do
-    for i <- start..(min(start + wanted, count) - 1)//1, do: :array.get(i, rows)
+  defp slice(rows, count, tail, start, wanted) do
+    taken = for i <- start..(min(start + wanted, count) - 1)//1, do: :array.get(i, rows)
+    taken ++ Enum.slice(tail, max(start - count, 0), wanted - length(taken))
   end
 end

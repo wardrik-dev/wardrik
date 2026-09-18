@@ -5,6 +5,11 @@ defmodule TarsTUI.Components.Chrome do
   alias TarsTUI.{Activity, Render, Text, Usage, View}
   @faint [:faint, :light_black]
 
+  # The gutter before the spinner, and the spinner's own column.
+  @spinner_columns 2
+  # The elapsed count, right-aligned, with a column of margin after it.
+  @elapsed_columns 7
+
   attr :model, :any, default: nil
   attr :agent_id, :any, required: true
   attr :verbose, :boolean, default: false
@@ -17,10 +22,58 @@ defmodule TarsTUI.Components.Chrome do
   attr :state, :map, required: true
   attr :width, :integer, required: true
 
+  @doc """
+  The activity row.
+
+  While a turn runs the row opens with `TarsTUI.Spinner` and closes with
+  `TarsTUI.Elapsed`. Breeze animates both as decorations: the glyph and the
+  count are patched into the frame already drawn, rather than redrawn by this
+  view.
+  """
   def status(assigns) do
-    assigns = assign(assigns, text: status_text(assigns.state, assigns.width))
-    ~H'<box class="block w-full h-1 overflow-hidden">{@text}</box>'
+    spinning? = spinning?(assigns.state)
+    since = if spinning?, do: assigns.state.started_at
+    room = assigns.width - if(spinning?, do: @spinner_columns + @elapsed_columns, else: 0)
+
+    assigns =
+      assign(assigns,
+        spinning?: spinning?,
+        since: since,
+        elapsed_columns: @elapsed_columns,
+        gutter_class: "inline h-1 w-#{@spinner_columns - 1}",
+        elapsed_class: "inline h-1 w-#{@elapsed_columns} overflow-hidden text-8",
+        text: status_text(assigns.state, room)
+      )
+
+    ~H"""
+    <box class="inline w-full h-1 overflow-hidden">
+      <box :if={@spinning?} class={@gutter_class}>
+      </box>
+      <box
+        :if={@spinning?}
+        id="activity"
+        implicit={TarsTUI.Spinner}
+        spinner-active={true}
+        class="inline w-1 h-1 overflow-hidden text-secondary"
+      >
+      </box>
+      <box class="inline h-1 overflow-hidden">{@text}</box>
+      <box
+        :if={@spinning?}
+        id="elapsed"
+        implicit={TarsTUI.Elapsed}
+        elapsed-since={@since}
+        elapsed-width={@elapsed_columns}
+        class={@elapsed_class}
+      >
+      </box>
+    </box>
+    """
   end
+
+  # The row spins while a turn is running and nothing has taken the row from it.
+  defp spinning?(%{notice: nil, available?: true, running?: true}), do: true
+  defp spinning?(_state), do: false
 
   attr :usage, :any, required: true
   attr :queued, :integer, required: true
@@ -92,15 +145,15 @@ defmodule TarsTUI.Components.Chrome do
 
   defp status_text(%{leader: {_ref, _origin}} = assigns, width) do
     span = Activity.innermost(assigns.activity)
-    head = [" ", Text.tag(View.spinner(assigns.frame), :cyan), " ", label(span)]
+    head = [" ", label(span)]
     Render.line(Render.justify(head, right(assigns), width))
   end
 
   defp status_text(assigns, width) do
     span = Activity.innermost(assigns.activity)
-    right = [below(assigns), Text.tag([chars(assigns.chars), elapsed(assigns), " "], @faint)]
+    right = [below(assigns), Text.tag(chars(assigns.chars), @faint)]
     label = Text.truncate(label(span), max(div(width, 3), 20))
-    head = [" ", Text.tag(View.spinner(assigns.frame), :cyan), " ", label]
+    head = [" ", label]
     room = width - Text.length(right) - Text.length(head) - 4
     left = [head, doing(span, assigns.thinking, room)]
 
@@ -205,19 +258,13 @@ defmodule TarsTUI.Components.Chrome do
   end
 
   defp chars(0), do: ""
-  defp chars(n), do: "#{Usage.count(n)} chars · "
+  defp chars(n), do: "#{Usage.count(n)} chars"
 
   defp meta_text(assigns, width) do
     usage = Usage.summary(assigns.usage)
     left = Text.tag(if(usage == "", do: "", else: " observed here · " <> usage), @faint)
     Render.line(Render.justify(left, Text.tag(queued(assigns), @faint), width))
   end
-
-  defp elapsed(%{started_at: started_at}) when is_integer(started_at) do
-    "#{div(System.monotonic_time(:millisecond) - started_at, 1_000)}s"
-  end
-
-  defp elapsed(_assigns), do: ""
 
   defp queued(%{queued: 0}), do: ""
   defp queued(%{queued: 1, running?: true}), do: "1 message steering the turn "

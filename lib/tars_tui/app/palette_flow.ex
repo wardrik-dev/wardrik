@@ -1,7 +1,12 @@
 defmodule TarsTUI.App.PaletteFlow do
   @moduledoc """
   Choice lists and command argument collection for the palette.
+
+  The rows live in the `choices` assign. `refresh/1` fills it from the palette
+  and from what its step chooses from; every change to either goes through it,
+  and a closed palette leaves it empty.
   """
+  import Breeze.View, only: [assign: 2]
 
   alias TarsTUI.Command
   alias TarsTUI.Palette
@@ -9,6 +14,18 @@ defmodule TarsTUI.App.PaletteFlow do
   alias TarsTUI.Transcript
   alias TarsTUI.View
   @faint [:faint, :light_black]
+
+  @doc "The rows for the palette as it stands now, in the `choices` assign."
+  def refresh(%{assigns: %{palette: nil}} = term), do: assign(term, choices: [])
+
+  def refresh(term), do: assign(term, choices: choices(term.assigns.palette, snapshot(term)))
+
+  # What the steps choose from, as the view has it now.
+  defp snapshot(%{assigns: assigns}) do
+    assigns
+    |> Map.take([:recent, :fleet, :unseen, :running?, :parked, :confirm, :transcript, :tools])
+    |> Map.put(:nodes, [node() | Node.list()])
+  end
 
   @doc "Rows for the current step, using an explicit snapshot of available choices."
   def choices(%Palette{} = palette, context),

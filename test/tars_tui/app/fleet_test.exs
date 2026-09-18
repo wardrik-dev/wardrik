@@ -325,6 +325,31 @@ defmodule TarsTUI.App.FleetTest do
     Fleet.forget(Fleet.key("helper", org: org))
   end
 
+  test "a tick redraws a running delegation's elapsed time, and stops once it ends", ctx do
+    %{session: session, org: org} = ctx
+    session = Breeze.Test.resize(session, {90, 30})
+    other = Fleet.key("other", org: org)
+    {:ok, pid} = Fleet.spawn(other, runner: {AgentRunners, :delegating, [self(), "pricing"]})
+    on_exit(fn -> Fleet.forget(other) end)
+    :ok = Bus.subscribe(other, level: :lifecycle)
+
+    Agent.ask(pid, "go")
+    assert_receive {:delegating, branch}
+    assert eventually(session, fn -> screen(session) =~ "└ ◐ pricing" end)
+
+    # While a delegation runs the tick keeps coming, so its duration advances.
+    Breeze.Test.info(session, :tick)
+    assert screen(session) =~ "└ ◐ pricing"
+
+    send(branch, :release)
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert eventually(session, fn -> screen(session) =~ "└ ✓ pricing" end)
+
+    # Nothing is still going, so the tick asks for no more.
+    Breeze.Test.info(session, :tick)
+    assert screen(session) =~ "└ ✓ pricing"
+  end
+
   test "an agent's delegations show by themselves, Enter inspects one, h hides them and l shows them",
        ctx do
     %{session: session, org: org} = ctx

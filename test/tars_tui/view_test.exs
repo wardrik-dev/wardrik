@@ -22,13 +22,6 @@ defmodule TarsTUI.ViewTest do
     {:ok, turn: turn, tool: Source.child(turn, name: "web_search")}
   end
 
-  test "spinner/1 cycles through frames" do
-    frames = Enum.map(0..20, &View.spinner/1)
-
-    assert Enum.uniq(frames) |> Enum.count() > 1
-    assert View.spinner(0) == View.spinner(10)
-  end
-
   describe "reasoning/1" do
     test "reasoning is marked and dimmed, so it cannot be read as the answer" do
       out = View.reasoning("pondering")

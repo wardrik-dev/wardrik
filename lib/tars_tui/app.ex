@@ -210,7 +210,7 @@ defmodule TarsTUI.App do
   @doc false
   def palette(_event, %{assigns: %{palette: nil}} = term) do
     palette = %Palette{step: :commands, origin: term.focused || "prompt"}
-    {:noreply, term |> Interaction.open_palette(palette) |> Connection.refresh_fleet()}
+    {:noreply, term |> Connection.refresh_fleet() |> Interaction.open_palette(palette)}
   end
 
   def palette(_event, term), do: {:noreply, Interaction.close_palette(term)}
@@ -244,15 +244,6 @@ defmodule TarsTUI.App do
   defp palette_action({:inspect_tool, index, origin}, term),
     do: {:noreply, term |> Interaction.close_palette() |> Interaction.inspect_tool(index, origin)}
 
-  defp palette_choices(assigns) do
-    context =
-      assigns
-      |> Map.take([:recent, :fleet, :unseen, :running?, :parked, :confirm, :transcript, :tools])
-      |> Map.put(:nodes, [node() | Node.list()])
-
-    PaletteFlow.choices(assigns.palette, context)
-  end
-
   # Enter in the panel: on an agent, connects; on a delegation, inspects it.
   @doc false
   def connect_highlighted(_event, term) do
@@ -262,10 +253,9 @@ defmodule TarsTUI.App do
     end
   end
 
-  # Whether the frame should keep ticking: for the elapsed times of a running
-  # turn, or of delegations still going under an expanded agent.
-  defp ticking?(%{assigns: %{running?: true}}), do: true
-
+  # Whether the frame should keep ticking: for the elapsed times of delegations
+  # still going under an expanded agent. The running turn's own count is drawn
+  # by `TarsTUI.Elapsed` and needs no frame.
   defp ticking?(%{assigns: %{expanded: expanded}}) do
     Enum.any?(expanded, fn
       {_key, %Delegation{} = delegations} -> Delegation.summary(delegations).active > 0
@@ -383,6 +373,7 @@ defmodule TarsTUI.App do
         notice: nil,
         tools: [],
         answer_text: "",
+        tail: [],
         search: nil,
         views: %{},
         available?: true,
@@ -390,6 +381,7 @@ defmodule TarsTUI.App do
         pane: "prompt",
         leader: nil,
         palette: nil,
+        choices: [],
         recent: [],
         expanded: %{},
         collapsed: MapSet.new(),
@@ -399,7 +391,6 @@ defmodule TarsTUI.App do
         walking: nil,
         commands: History.new(),
         history: History.new(),
-        frame: 0,
         frame_due?: false,
         frame_after: @frame_after,
         frame_at: nil,
@@ -440,15 +431,12 @@ defmodule TarsTUI.App do
     panel_width = if overlay?, do: assigns.sidebar_width, else: side_width
     shown = Connection.shown(assigns)
 
-    choices = if assigns.palette, do: palette_choices(assigns), else: []
-
     assigns =
       assign(assigns,
         width: width,
         height: height,
         shown: shown,
         panel_width: panel_width,
-        choices: choices,
         status_state:
           Map.take(assigns, [
             :notice,
@@ -458,7 +446,6 @@ defmodule TarsTUI.App do
             :parked,
             :leader,
             :activity,
-            :frame,
             :unread,
             :chars,
             :started_at,
@@ -469,7 +456,7 @@ defmodule TarsTUI.App do
             :pane
           ]),
         inspector_delegations: inspector_delegations(assigns),
-        source: Transcript.source(assigns.transcript),
+        source: Transcript.source(assigns.transcript, assigns.tail),
         log_height: log_height,
         log_class: log_class(width - side_width, log_height),
         side_width: side_width,
@@ -616,7 +603,7 @@ defmodule TarsTUI.App do
     do: {:noreply, term}
 
   def handle_event("palette_run", %{cursor: cursor}, %{assigns: %{palette: palette}} = term),
-    do: choose(term, palette, Enum.at(palette_choices(term.assigns), cursor))
+    do: choose(term, palette, Enum.at(term.assigns.choices, cursor))
 
   def handle_event(:input, %{"key" => "l"}, %{focused: "fleet"} = term) do
     key = Connection.agent_of(term.assigns.highlighted)
@@ -637,14 +624,7 @@ defmodule TarsTUI.App do
 
   @impl Breeze.View
   def handle_info(%Event{source: %{agent_id: id}} = event, %{assigns: %{agent_id: id}} = term) do
-    term = Display.apply_event(term, event)
-
-    term =
-      if match?({:turn_started, _}, event.payload) or match?({:turn_resumed, _}, event.payload),
-        do: Frames.tick(term),
-        else: term
-
-    {:noreply, Frames.frame_due(term), invalidate: false}
+    {:noreply, term |> Display.apply_event(event) |> Frames.frame_due(), invalidate: false}
   end
 
   # A lifecycle event from an agent expanded in the panel.
@@ -673,7 +653,10 @@ defmodule TarsTUI.App do
         else: max(div(term.assigns.frame_after, 2), @frame_after)
 
     {:noreply,
-     term |> Interaction.sync_pane() |> assign(frame_due?: false, frame_after: frame_after)}
+     term
+     |> Interaction.sync_pane()
+     |> PaletteFlow.refresh()
+     |> assign(frame_due?: false, frame_after: frame_after)}
   end
 
   def handle_info({:notice_timeout, ref}, %{assigns: %{notice: {ref, _text}}} = term),
@@ -722,7 +705,7 @@ defmodule TarsTUI.App do
 
     if ticking?(term) do
       term =
-        term |> Frames.tick() |> Interaction.sync_pane() |> assign(frame: term.assigns.frame + 1)
+        term |> Frames.tick() |> Interaction.sync_pane()
 
       {:noreply, Frames.frame_due(term), invalidate: false}
     else
