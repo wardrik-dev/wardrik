@@ -13,7 +13,7 @@ defmodule TarsTUI.Spinner do
 
   # Eight-dot braille, which fills the cell rather than riding its top edge.
   @frames ~w(⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷)
-  @every 200
+  @every 80
   @resting "·"
 
   @impl Breeze.Implicit
