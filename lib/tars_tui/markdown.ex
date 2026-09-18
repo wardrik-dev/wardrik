@@ -123,9 +123,18 @@ defmodule TarsTUI.Markdown do
     |> Enum.map(fn [_fence, body] -> body end)
   end
 
-  @doc "The unfinished line, as plain text."
-  @spec tail(t()) :: String.t()
-  def tail(%__MODULE__{pending: pending}), do: pending
+  @doc """
+  The unfinished line, rendered as it would be if the stream ended here, or
+  `nil` when nothing is pending.
+
+  What comes back is provisional: the same text is rendered again, as a line,
+  once its newline arrives.
+  """
+  @spec tail(t()) :: Text.t() | nil
+  def tail(%__MODULE__{pending: ""}), do: nil
+
+  def tail(%__MODULE__{pending: pending, fenced?: fenced?}),
+    do: pending |> line(fenced?) |> elem(0)
 
   @doc "Renders one complete line of markdown, outside any fence."
   @spec line(String.t()) :: Text.t()

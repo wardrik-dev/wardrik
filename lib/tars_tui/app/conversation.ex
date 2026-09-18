@@ -17,6 +17,7 @@ defmodule TarsTUI.App.Conversation do
   alias TarsTUI.Activity
   alias TarsTUI.Exchange
   alias TarsTUI.History
+  alias TarsTUI.Line
   alias TarsTUI.Markdown
   alias TarsTUI.Render
   alias TarsTUI.Table
@@ -46,7 +47,7 @@ defmodule TarsTUI.App.Conversation do
     :seen,
     :parked,
     :started_at,
-    :frame,
+    :tail,
     :tools,
     :answer_text,
     :search
@@ -74,6 +75,7 @@ defmodule TarsTUI.App.Conversation do
       thinking: "",
       chars: 0,
       answering?: false,
+      tail: [],
       usage: Usage.new(model),
       unread: 0,
       draft: "",
@@ -81,7 +83,6 @@ defmodule TarsTUI.App.Conversation do
       delegations: Delegation.new(),
       tools: [],
       answer_text: "",
-      frame: 0,
       seen: 0,
       parked: [],
       running?: false,
@@ -142,8 +143,24 @@ defmodule TarsTUI.App.Conversation do
       pinned?: Keyword.fetch!(opts, :pinned?)
     }
 
-    fun.(projection).state
+    projection |> fun.() |> Map.fetch!(:state) |> tailed()
   end
+
+  # The answer's unfinished line, wrapped as the rows the transcript draws
+  # under its own, so text shows as it arrives rather than when its line ends.
+  # It leads with the answer marker until a line has taken it.
+  defp tailed(%__MODULE__{} = state) do
+    %{state | tail: state.answer |> Markdown.tail() |> tail_rows(state)}
+  end
+
+  defp tail_rows(nil, _state), do: []
+
+  defp tail_rows(line, %{answering?: false, transcript: transcript}),
+    do: [[] | wrapped([Text.tag("⏺ ", :green), line], transcript)]
+
+  defp tail_rows(line, %{transcript: transcript}), do: wrapped(["  ", line], transcript)
+
+  defp wrapped(data, transcript), do: data |> Line.segments() |> Line.wrap(transcript.width)
 
   defp assign(projection, values),
     do: %{projection | state: struct!(projection.state, values)}
@@ -235,7 +252,7 @@ defmodule TarsTUI.App.Conversation do
 
   defp handle_projection(%Event{payload: {:turn_started, _questions}} = event, projection) do
     projection
-    |> assign(running?: true, parked: [], frame: 0, started_at: projection.now, queued: 0)
+    |> assign(running?: true, parked: [], started_at: projection.now, queued: 0)
     |> trace(event)
   end
 
@@ -248,7 +265,7 @@ defmodule TarsTUI.App.Conversation do
       end)
 
     projection
-    |> assign(running?: true, parked: parked, frame: 0, started_at: projection.now)
+    |> assign(running?: true, parked: parked, started_at: projection.now)
     |> trace(event)
   end
 

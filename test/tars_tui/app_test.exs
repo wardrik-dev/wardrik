@@ -615,7 +615,32 @@ defmodule TarsTUI.AppTest do
       assert text =~ "• a bold point"
       refute text =~ "##"
       refute text =~ "**"
-      refute text =~ "unfinished"
+    end
+
+    test "shows the line still arriving, and renders it once for good", ctx do
+      %{session: session, turn: turn} = ctx
+      emit(turn, [{:turn_started, ["hi"]}, {:result, "a **bold**"}])
+      assert screen(session) =~ "⏺ a bold"
+
+      emit(turn, [{:result, " claim"}])
+      assert screen(session) =~ "⏺ a bold claim"
+
+      emit(turn, [{:result, "\nand the next line"}])
+      text = screen(session)
+      assert text =~ "⏺ a bold claim"
+      assert text =~ "  and the next line"
+      refute text =~ "a bold claim\n  a bold claim"
+    end
+
+    test "the line still arriving leaves once its own line takes over", ctx do
+      %{session: session, turn: turn} = ctx
+      emit(turn, [{:turn_started, ["hi"]}, {:result, "half"}])
+      assert screen(session) =~ "⏺ half"
+
+      emit(turn, [{:turn_finished, []}])
+      text = screen(session)
+      assert text =~ "⏺ half"
+      refute text =~ "half\n  half"
     end
 
     test "the answer is a bullet block set off by a blank line", %{session: session, turn: turn} do
@@ -941,6 +966,35 @@ defmodule TarsTUI.AppTest do
   describe "the activity row" do
     test "is idle between turns", %{session: session} do
       assert screen(session) =~ "idle"
+    end
+
+    test "carries a spinner only while a turn runs", %{session: session, turn: turn} do
+      screen(session)
+
+      assert Breeze.Test.element(session, "activity") ==
+               {:error, {:element_not_found, "activity"}}
+
+      emit(turn, [{:turn_started, ["hi"]}])
+      screen(session)
+      assert {:ok, %Breeze.Viewport{}} = Breeze.Test.element(session, "activity")
+
+      emit(turn, [{:turn_finished, []}])
+      screen(session)
+
+      assert Breeze.Test.element(session, "activity") ==
+               {:error, {:element_not_found, "activity"}}
+    end
+
+    test "a notice takes the row from the spinner while it shows", %{session: session, turn: turn} do
+      emit(turn, [{:turn_started, ["hi"]}])
+      screen(session)
+
+      Breeze.Test.focus(session, "log")
+      Breeze.Test.input(session, "y")
+      assert screen(session) =~ "nothing to copy"
+
+      assert Breeze.Test.element(session, "activity") ==
+               {:error, {:element_not_found, "activity"}}
     end
 
     test "names the innermost work and the newest reasoning", %{

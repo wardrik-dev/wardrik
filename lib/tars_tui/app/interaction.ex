@@ -5,6 +5,7 @@ defmodule TarsTUI.App.Interaction do
   import Breeze.View, only: [assign: 2, focus: 2, put_implicit: 4]
 
   alias TarsTUI.App.Connection
+  alias TarsTUI.App.PaletteFlow
   alias TarsTUI.Command
   alias TarsTUI.Fleet.Filter
   alias TarsTUI.Markdown
@@ -20,7 +21,7 @@ defmodule TarsTUI.App.Interaction do
     step = Enum.at(command.arguments, length(chosen))
     palette = %Palette{step: step, command: command, chosen: chosen, query: query}
 
-    term |> open_palette(palette) |> Connection.refresh_fleet()
+    term |> Connection.refresh_fleet() |> open_palette(palette)
   end
 
   # Every key and command over the panes, searched like the palette; Enter on
@@ -29,7 +30,7 @@ defmodule TarsTUI.App.Interaction do
     do: open_palette(term, %Palette{step: :help, origin: term.focused || "prompt"})
 
   def open_palette(term, %Palette{} = palette),
-    do: term |> assign(palette: palette, leader: nil) |> focus("palette")
+    do: term |> assign(palette: palette, leader: nil) |> PaletteFlow.refresh() |> focus("palette")
 
   # The transcript's matching rows, narrowed as letters are typed; Enter goes
   # to one.
@@ -44,13 +45,14 @@ defmodule TarsTUI.App.Interaction do
     do: open_palette(term, %Palette{step: :tool, origin: term.focused || "prompt"})
 
   def close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
-    do: term |> assign(palette: nil) |> focus_pane(origin)
+    do: term |> assign(palette: nil, choices: []) |> focus_pane(origin)
 
   def close_palette(term), do: term
 
   def update_palette(%{assigns: %{palette: nil}} = term, _fun), do: term
 
-  def update_palette(term, fun), do: assign(term, palette: fun.(term.assigns.palette))
+  def update_palette(term, fun),
+    do: term |> assign(palette: fun.(term.assigns.palette)) |> PaletteFlow.refresh()
 
   # Back to choosing a command, with nothing chosen.
   def restart_palette(term) do

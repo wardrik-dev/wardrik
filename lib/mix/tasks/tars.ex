@@ -3,6 +3,11 @@ defmodule Mix.Tasks.Tars do
 
   @default_tools [TarsBrave.WebSearch, TarsResearch.Deep]
 
+  # A frame's compositor cells are a large, short-lived allocation. The view
+  # process starts with room for them, rather than growing its heap on the way
+  # through each one.
+  @view_heap_words 2_000_000
+
   @moduledoc """
   Starts an agent and attaches the full-screen `TarsTUI.App` to it.
 
@@ -125,7 +130,8 @@ defmodule Mix.Tasks.Tars do
         global_keybindings: TarsTUI.App.keybindings(),
         mouse: true,
         logger: false,
-        inspector: false
+        inspector: false,
+        internal: [child_process_flags: [min_heap_size: @view_heap_words]]
       )
   end
 

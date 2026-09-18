@@ -20,12 +20,6 @@ defmodule TarsTUI.View do
 
   @default_width 100
   @faint [:faint, :light_black]
-  @frames ~w(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
-
-  @doc "The spinner frame for a tick count."
-  @spec spinner(non_neg_integer()) :: String.t()
-  def spinner(frame), do: Enum.at(@frames, rem(frame, length(@frames)))
-
   @doc "One line of the model's reasoning, for a transcript that wants it."
   @spec reasoning(Text.t()) :: Text.t()
   def reasoning(line), do: [Text.tag(["┊ ", line], @faint), "\n"]

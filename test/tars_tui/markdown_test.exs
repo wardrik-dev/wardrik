@@ -26,7 +26,7 @@ defmodule TarsTUI.MarkdownTest do
   describe "push/2" do
     test "returns nothing until a line is complete" do
       assert {[], buffer} = push("some pro")
-      assert Markdown.tail(buffer) == "some pro"
+      assert plain(Markdown.tail(buffer)) == "some pro"
     end
 
     test "returns each line as it completes" do
@@ -34,7 +34,7 @@ defmodule TarsTUI.MarkdownTest do
 
       assert plain(one) == "first"
       assert plain(two) == "second"
-      assert Markdown.tail(buffer) == "thi"
+      assert plain(Markdown.tail(buffer)) == "thi"
     end
 
     test "picks up where it left off across calls" do
@@ -42,12 +42,12 @@ defmodule TarsTUI.MarkdownTest do
       {lines, buffer} = Markdown.push(buffer, "prose\n")
 
       assert Enum.map(lines, &plain/1) == ["some prose"]
-      assert Markdown.tail(buffer) == ""
+      assert Markdown.tail(buffer) == nil
     end
 
     test "a trailing newline leaves nothing pending" do
       assert {[_line], buffer} = push("done\n")
-      assert Markdown.tail(buffer) == ""
+      assert Markdown.tail(buffer) == nil
     end
 
     test "blank lines survive as blank lines" do
@@ -63,7 +63,7 @@ defmodule TarsTUI.MarkdownTest do
       {lines, buffer} = Markdown.flush(buffer)
 
       assert Enum.map(lines, &plain/1) == ["the last word"]
-      assert Markdown.tail(buffer) == ""
+      assert Markdown.tail(buffer) == nil
     end
 
     test "an empty buffer flushes nothing" do
