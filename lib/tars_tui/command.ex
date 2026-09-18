@@ -134,7 +134,7 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/shutdown",
-        label: "Shut an agent down, keeping its conversation",
+        label: "Shut an agent down",
         arguments: [:agent],
         usage: "/shutdown NAME",
         summary: "stop an agent and keep its conversation; /spawn brings it back",
@@ -194,7 +194,7 @@ defmodule TarsTUI.Command do
       },
       %__MODULE__{
         name: "/next",
-        label: "Connect to the next agent needing attention",
+        label: "Next agent needing attention",
         available: &(&1.attention > 0),
         usage: "/next",
         summary: "connect to the next agent needing attention",

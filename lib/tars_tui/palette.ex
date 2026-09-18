@@ -10,14 +10,16 @@ defmodule TarsTUI.Palette do
   `query` and `cursor`, what is typed and the row under the cursor; and
   `origin`, the pane focus returns to when it closes.
 
-  The element takes the query, the row under the cursor and how many rows
-  there are as `palette-query`, `palette-cursor` and `palette-count`. Typing
-  and `Backspace` change the query and put the cursor on the first row;
-  `Ctrl-W` clears the query. `Up`, `Down`, `Tab`, `Shift-Tab`, `Home` and
-  `End` move the cursor. Each of these sends `%{query: query, cursor: cursor}`
-  through `br-change`. `Enter` sends `%{cursor: cursor}` through `br-submit`.
-  `Esc` sends `%{action: :close}`, and `Backspace` on an empty query
-  `%{action: :back}`, both through `br-change`.
+  The element takes the query, the row under the cursor, how many rows there
+  are and which of them are section headings as `palette-query`,
+  `palette-cursor`, `palette-count` and `palette-skip`, the last a list of row
+  numbers written with commas. Typing and `Backspace` change the query and put
+  the cursor on the first row; `Ctrl-W` clears the query. `Up`, `Down`, `Tab`,
+  `Shift-Tab`, `Home` and `End` move the cursor, stepping over the headings.
+  Each of these sends `%{query: query, cursor: cursor}` through `br-change`.
+  `Enter` sends `%{cursor: cursor}` through `br-submit`. `Esc` sends
+  `%{action: :close}`, and `Backspace` on an empty query `%{action: :back}`,
+  both through `br-change`.
   """
 
   @behaviour Breeze.Implicit
@@ -41,7 +43,8 @@ defmodule TarsTUI.Palette do
     state = %{
       query: Map.get(root_attrs, :"palette-query", ""),
       cursor: integer(Map.get(root_attrs, :"palette-cursor", 0)),
-      count: integer(Map.get(root_attrs, :"palette-count", 0))
+      count: integer(Map.get(root_attrs, :"palette-count", 0)),
+      skip: skip(Map.get(root_attrs, :"palette-skip", ""))
     }
 
     {:ok, Map.merge(last_state, state),
@@ -54,6 +57,12 @@ defmodule TarsTUI.Palette do
   defp integer(value) when is_integer(value), do: value
   defp integer(value) when is_binary(value), do: String.to_integer(value)
   defp integer(_value), do: 0
+
+  defp skip(rows) when is_binary(rows),
+    do: rows |> String.split(",", trim: true) |> Enum.map(&String.to_integer/1) |> MapSet.new()
+
+  defp skip(rows) when is_list(rows), do: MapSet.new(rows)
+  defp skip(_rows), do: MapSet.new()
 
   @impl Breeze.Implicit
   def handle_event(_type, %{"key" => "Escape"}, state), do: {{:change, %{action: :close}}, state}
@@ -72,13 +81,13 @@ defmodule TarsTUI.Palette do
       do: query(state, "")
 
   def handle_event(_type, %{"key" => key}, state) when key in ["ArrowUp", "ShiftTab"],
-    do: move(state, state.cursor - 1)
+    do: move(state, state.cursor - 1, -1)
 
   def handle_event(_type, %{"key" => key}, state) when key in ["ArrowDown", "Tab", "\t"],
-    do: move(state, state.cursor + 1)
+    do: move(state, state.cursor + 1, 1)
 
-  def handle_event(_type, %{"key" => "Home"}, state), do: move(state, 0)
-  def handle_event(_type, %{"key" => "End"}, state), do: move(state, state.count - 1)
+  def handle_event(_type, %{"key" => "Home"}, state), do: move(state, 0, 1)
+  def handle_event(_type, %{"key" => "End"}, state), do: move(state, state.count - 1, -1)
 
   def handle_event(_type, %{"key" => key} = event, state) do
     if InputCapture.printable_key?(event),
@@ -98,9 +107,24 @@ defmodule TarsTUI.Palette do
     {{:change, %{query: query, cursor: 0}}, state}
   end
 
-  defp move(state, cursor) do
-    state = %{state | cursor: cursor |> max(0) |> min(max(state.count - 1, 0))}
+  defp move(state, cursor, step) do
+    cursor = cursor |> max(0) |> min(max(state.count - 1, 0))
+    state = %{state | cursor: land(state, cursor, step) || state.cursor}
     {{:change, %{query: state.query, cursor: state.cursor}}, state}
+  end
+
+  # The first row that can be chosen from `cursor`, looking the way the cursor
+  # was moving, then back the other way when that runs off the end.
+  defp land(state, cursor, step), do: walk(state, cursor, step) || walk(state, cursor, -step)
+
+  defp walk(_state, cursor, _step) when cursor < 0, do: nil
+
+  defp walk(state, cursor, step) do
+    cond do
+      cursor >= state.count -> nil
+      MapSet.member?(state.skip, cursor) -> walk(state, cursor + step, step)
+      true -> cursor
+    end
   end
 
   @impl Breeze.Implicit

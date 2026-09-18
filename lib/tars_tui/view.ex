@@ -605,12 +605,14 @@ defmodule TarsTUI.View do
   with the one under the cursor marked, and a line of keys, as the rows of a
   box `width` by `height`, borders included.
 
-  Rows beyond the room are left out, keeping the one under the cursor in view.
+  Each row is `{:row, text}`, `{:header, text}`, a heading standing over the
+  section it names, or `{:blank, text}`, a row of air. Rows beyond the room
+  are left out, keeping the one under the cursor in view.
   """
   @spec palette(
           String.t(),
           String.t(),
-          [Text.t()],
+          [{:row | :header | :blank, Text.t()}],
           non_neg_integer(),
           pos_integer(),
           pos_integer()
@@ -626,35 +628,65 @@ defmodule TarsTUI.View do
       |> Enum.with_index()
       |> Enum.drop(first)
       |> Enum.take(room)
-      |> Enum.map(fn {row, index} -> choice(row, index == cursor) end)
+      |> Enum.map(fn {row, index} -> choice(row, index == cursor, inner) end)
 
     [
       Text.tag(" #{title}", [:bright, :cyan]),
       [Text.tag(" › ", [:bright, :cyan]), query, Text.tag("▏", @faint)],
-      Text.tag(" ─", @faint)
+      rule(first, length(shown), length(rows), inner)
     ]
     |> Kernel.++(if(shown == [], do: [Text.tag("   nothing matches", @faint)], else: shown))
     |> Enum.map_join("\n", &Render.line(pad(Text.truncate(&1, inner), inner)))
   end
 
-  defp choice(row, true), do: [Text.tag(" › ", [:bright, :cyan]), Text.tag(row, :bright)]
-  defp choice(row, false), do: ["   ", row]
+  # The rule says which part of the list is in view, when not all of it is.
+  defp rule(first, shown, total, inner) when shown < total do
+    counter = "#{first + 1}-#{first + shown} of #{total} "
+    gap = String.duplicate(" ", max(inner - 2 - String.length(counter), 0))
+    Text.tag([" ─", gap, counter], @faint)
+  end
+
+  defp rule(_first, _shown, _total, _inner), do: Text.tag(" ─", @faint)
+
+  # A heading sits a column out from its rows, with a rule running off it.
+  defp choice({:header, row}, _cursor?, inner) do
+    gap = max(inner - Text.length(row) - 3, 0)
+    [" ", row, Text.tag([" ", String.duplicate("─", gap)], @faint)]
+  end
+
+  defp choice({:row, row}, true, _inner),
+    do: [Text.tag(" › ", [:bright, :cyan]), Text.tag(row, :bright)]
+
+  defp choice({:row, row}, false, _inner), do: ["   ", row]
+  defp choice({:blank, _row}, _cursor?, _inner), do: []
 
   # The padding carries a style: the compositor lets an unstyled space show
   # what lies under it, and an overlay row must cover the row beneath.
   defp pad(data, width),
     do: [data, Text.tag(String.duplicate(" ", max(width - Text.length(data), 0)), @faint)]
 
-  @doc "One command as a palette row: its label, usage, and key when it has one."
+  @doc """
+  One command as a palette row: what it does, what it is called, and the key
+  that does the same or that it was reached for recently, each in a column.
+
+  The arguments a command takes are left to the step that asks for them, and
+  to `help_command/2`.
+  """
   @spec palette_command(TarsTUI.Command.t(), boolean()) :: Text.t()
   def palette_command(command, recent?) do
     [
-      command.label,
-      Text.tag(["  ", command.usage], @faint),
-      if(command.shortcut, do: Text.tag(["  ", command.shortcut], :yellow), else: []),
-      if(recent?, do: Text.tag("  recent", @faint), else: [])
+      pad(command.label, label_width() + 2),
+      pad(Text.tag(command.name, @faint), name_width() + 2),
+      mark(command.shortcut, recent?)
     ]
   end
+
+  defp mark(nil, false), do: []
+  defp mark(nil, true), do: Text.tag("recent", @faint)
+  defp mark(shortcut, _recent?), do: Text.tag(shortcut, :yellow)
+
+  defp label_width, do: TarsTUI.Command.all() |> Enum.map(&String.length(&1.label)) |> Enum.max()
+  defp name_width, do: TarsTUI.Command.all() |> Enum.map(&String.length(&1.name)) |> Enum.max()
 
   @doc "What the palette asks for at a step, as its title."
   @spec palette_title(TarsTUI.Command.step() | :commands, TarsTUI.Command.t() | nil) :: String.t()
@@ -904,53 +936,62 @@ defmodule TarsTUI.View do
 
   @pane_names %{"prompt" => "prompt", "log" => "transcript", "fleet" => "fleet"}
 
+  @key_width @keys |> Enum.map(fn {_pane, key, _does} -> String.length(key) end) |> Enum.max()
+
   @doc """
-  Every key as a help row: the keys of `pane` first, marked here, then the
-  keys that work anywhere, then the other panes' keys, each naming its pane.
-  Keys and commands share one first column, so `help_command/2` lines up.
+  The keys that work in `where` as help rows, `nil` being the keys that work
+  anywhere. The section they sit under says where that is, so no row names it.
   """
-  @spec help_keys(String.t()) :: [Text.t()]
-  def help_keys(pane) do
+  @spec help_keys(String.t() | nil) :: [Text.t()]
+  def help_keys(where) do
     @keys
-    |> Enum.sort_by(fn
-      {^pane, _key, _does} -> 0
-      {nil, _key, _does} -> 1
-      {_other, _key, _does} -> 2
-    end)
-    |> Enum.map(fn {where, key, does} ->
-      help_row(Text.tag(key, :bright), where_tag(where, pane), does)
-    end)
+    |> Enum.filter(fn {pane, _key, _does} -> pane == where end)
+    |> Enum.map(fn {_pane, key, does} -> help_row(Text.tag(key, :bright), [], does) end)
   end
 
-  defp where_tag(nil, _pane), do: []
-  defp where_tag(pane, pane), do: Text.tag("here · ", :cyan)
-  defp where_tag(where, _pane), do: Text.tag("#{Map.fetch!(@pane_names, where)} · ", @faint)
+  @doc "The panes with keys of their own, the one in focus first."
+  @spec help_panes(String.t()) :: [String.t()]
+  def help_panes(pane) do
+    @pane_names |> Map.keys() |> Enum.sort_by(&if(&1 == pane, do: 0, else: 1))
+  end
+
+  @doc "What a section of keys or commands is called, `pane` being the one in focus."
+  @spec help_section(String.t(), String.t()) :: Text.t()
+  def help_section(where, pane) do
+    [
+      Text.tag(Map.get(@pane_names, where, where), [:bright, :cyan]),
+      if(where == pane, do: Text.tag(" · here", :cyan), else: [])
+    ]
+  end
 
   @doc """
   One command as a help row: its usage, then what it does, led by the key that
-  does the same or by `not now` when it cannot run.
+  does the same. A command that cannot run now is faint, and belongs under a
+  section that says so.
   """
   @spec help_command(TarsTUI.Command.t(), boolean()) :: Text.t()
   def help_command(command, available?) do
     help_row(
       Text.tag(command.usage, if(available?, do: :bright, else: @faint)),
-      availability(command, available?),
+      shortcut_tag(command.shortcut, available?),
       command.summary
     )
   end
 
-  defp availability(_command, false), do: Text.tag("not now · ", @faint)
-  defp availability(%{shortcut: nil}, true), do: []
-  defp availability(%{shortcut: key}, true), do: Text.tag("#{key} · ", :yellow)
+  # A key that does the same is only worth naming while the command can run.
+  defp shortcut_tag(nil, _available?), do: []
+  defp shortcut_tag(_key, false), do: []
+  defp shortcut_tag(key, true), do: Text.tag("#{key} · ", :yellow)
 
-  # The first column is as wide as the longest key or usage.
+  # Keys and commands share one first column, so what they do runs down the
+  # list in a line.
   defp help_row(first, lead, does) do
-    keys = Enum.map(@keys, fn {_pane, key, _does} -> String.length(key) end)
-    usages = Enum.map(TarsTUI.Command.all(), &String.length(&1.usage))
-    width = Enum.max(keys ++ usages)
-
-    [first, String.duplicate(" ", width - Text.length(first)), "  ", lead, Text.tag(does, @faint)]
+    [pad(first, help_width() + 2), lead, Text.tag(does, @faint)]
   end
+
+  defp help_width, do: max(@key_width, usage_width())
+
+  defp usage_width, do: TarsTUI.Command.all() |> Enum.map(&String.length(&1.usage)) |> Enum.max()
 
   @doc "How a command is used, when it was given something else."
   @spec usage(TarsTUI.Command.t()) :: Text.t()

@@ -289,7 +289,7 @@ defmodule TarsTUI.AppTest do
 
       text = screen(session)
       assert text =~ "Commands · Ctrl-P"
-      assert text =~ "› Spawn an agent  /spawn NAME"
+      assert text =~ ~r/› Spawn an agent\s+\/spawn/
       assert text =~ "type to filter · Up/Down choose · Enter run · Esc close"
       assert Breeze.Test.focused(session) == "palette"
 
@@ -307,7 +307,7 @@ defmodule TarsTUI.AppTest do
 
       text = screen(session)
       assert text =~ "› every▏"
-      assert text =~ "› Every key and command  /help"
+      assert text =~ ~r/› Every key and command\s+\/help/
       refute text =~ "Spawn an agent"
 
       Breeze.Test.input(session, "Enter")
@@ -334,7 +334,7 @@ defmodule TarsTUI.AppTest do
       assert Breeze.Test.focused(session) == "fleet"
 
       ctrl(session, "p")
-      assert screen(session) =~ "› Show the fleet panel  /fleet  recent"
+      assert screen(session) =~ ~r/› Show the fleet panel\s+\/fleet\s+recent/
       Breeze.Test.input(session, "Escape")
     end
 
@@ -350,7 +350,7 @@ defmodule TarsTUI.AppTest do
       ctrl(session, "p")
       screen(session)
       type(session, "stop")
-      assert screen(session) =~ "› Stop the turn  /stop [NAME | PREFIX/]  Esc"
+      assert screen(session) =~ ~r/› Stop the turn\s+\/stop\s+Esc/
       Breeze.Test.input(session, "Enter")
       assert_receive {:"$gen_cast", :interrupt}
 

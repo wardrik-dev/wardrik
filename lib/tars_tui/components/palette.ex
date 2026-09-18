@@ -1,6 +1,7 @@
 defmodule TarsTUI.Components.Palette do
   @moduledoc "Presentation of command, help, search, and tool choices."
   use Breeze.Component
+  alias TarsTUI.App.PaletteFlow
   alias TarsTUI.View
 
   # The palette sits centred over the panes, as wide as the terminal allows up
@@ -8,11 +9,13 @@ defmodule TarsTUI.Components.Palette do
   # and a rule, then the rows.
   @palette_width 72
   @palette_rows 12
+  @help_rows 28
   @palette_chrome 5
 
-  # Help takes the room it can get; the palette keeps to a few rows.
+  # Help takes more room than the palette, and scrolls past what it is given.
   defp palette_size(%{step: :help}, choices, width, height) do
-    rows = choices |> length() |> max(1) |> min(max(height - @palette_chrome - 2, 1))
+    room = min(@help_rows, max(height - @palette_chrome - 2, 1))
+    rows = choices |> length() |> max(1) |> min(room)
     {max(width - 4, 20), min(rows + @palette_chrome, height - 2) |> max(6)}
   end
 
@@ -32,8 +35,11 @@ defmodule TarsTUI.Components.Palette do
   defp palette_content(%{palette: palette}, choices, width, height) do
     {w, h} = palette_size(palette, choices, width, height)
     title = View.palette_title(palette.step, palette.command)
-    View.palette(title, palette.query, Enum.map(choices, &elem(&1, 1)), palette.cursor, w, h)
+    View.palette(title, palette.query, Enum.map(choices, &row/1), palette.cursor, w, h)
   end
+
+  defp row({kind, text}) when kind in [:header, :blank], do: {kind, text}
+  defp row({_value, text}), do: {:row, text}
 
   attr :palette, :map, required: true
   attr :choices, :list, required: true
@@ -44,6 +50,7 @@ defmodule TarsTUI.Components.Palette do
     assigns =
       assign(assigns,
         count: length(assigns.choices),
+        skip: assigns.choices |> PaletteFlow.skipped() |> Enum.join(","),
         class: palette_class(assigns.palette, assigns.choices, assigns.width, assigns.height),
         content: palette_content(assigns, assigns.choices, assigns.width, assigns.height)
       )
@@ -58,6 +65,7 @@ defmodule TarsTUI.Components.Palette do
       palette-query={@palette.query}
       palette-cursor={@palette.cursor}
       palette-count={@count}
+      palette-skip={@skip}
       class={@class}
     >
       {@content}

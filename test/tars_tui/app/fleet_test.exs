@@ -1007,17 +1007,27 @@ defmodule TarsTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "Help · every key and command · Enter runs a command"
-    assert text =~ ~r/Enter\s+here · send what you typed/
+    assert text =~ ~r/prompt · here ─+/
+    assert text =~ ~r/Enter\s+send what you typed/
     assert text =~ "Ctrl-X then h/j/k/l"
-    assert text =~ ~r/\/quit\s+Ctrl-D · leave/
-    assert text =~ ~r/\/stop \[NAME \| PREFIX\/\]\s+not now · interrupt/
-    assert text =~ ~r/j\/k, Ctrl-U\/D, PageUp\/Down\s+transcript · scroll/
+    assert text =~ ~r/commands ─+/
+    assert text =~ "1-28 of 56"
     assert Breeze.Test.focused(session) == "palette"
+
+    # The rest of the list, the other panes' keys and what cannot run now
+    # among it, is below the fold.
+    Breeze.Test.input(session, "End")
+    text = screen(session)
+    assert text =~ ~r/\/quit\s+Ctrl-D · leave/
+    assert text =~ ~r/transcript ─+/
+    assert text =~ ~r/j\/k, Ctrl-U\/D, PageUp\/Down\s+scroll a row/
+    assert text =~ ~r/not right now ─+/
+    assert text =~ ~r/\/stop \[NAME \| PREFIX\/\]\s+interrupt/
 
     Enum.each(String.graphemes("conn"), &Breeze.Test.input(session, &1))
     text = screen(session)
     assert text =~ "› /connect [NAME]"
-    assert text =~ ~r/Up, Down, Enter\s+fleet · choose an agent and connect/
+    assert text =~ ~r/Up, Down, Enter\s+choose an agent and connect/
     refute text =~ "/quit"
 
     Breeze.Test.input(session, "Enter")
@@ -1029,6 +1039,30 @@ defmodule TarsTUI.App.FleetTest do
     assert Breeze.Test.focused(session) == "prompt"
   end
 
+  test "the cursor steps over the section headings", %{session: session} do
+    submit(session, "/help")
+    screen(session)
+
+    # The cursor opens on the first key under the first heading, not on it.
+    assert screen(session) =~ ~r/› Enter\s+send what you typed/
+
+    # Down through the last key of this pane, then over the heading below it.
+    Enum.each(1..4, fn _ -> Breeze.Test.input(session, "ArrowDown") end)
+    assert screen(session) =~ ~r/› Ctrl-D\s+quit, with nothing typed/
+    Breeze.Test.input(session, "ArrowDown")
+    assert screen(session) =~ ~r/› Ctrl-G\s+edit the prompt/
+
+    # And back over it the other way.
+    Breeze.Test.input(session, "ArrowUp")
+    assert screen(session) =~ ~r/› Ctrl-D\s+quit, with nothing typed/
+
+    # Home and End land on a row that can be chosen, not on a heading.
+    Breeze.Test.input(session, "Home")
+    assert screen(session) =~ ~r/› Enter\s+send what you typed/
+    Breeze.Test.input(session, "End")
+    refute screen(session) =~ ~r/› \w+ ─+/
+  end
+
   test "Esc closes help with focus where it was", %{session: session} do
     focus_fleet(session)
     Breeze.Test.input(session, %{"key" => "p", "ctrlKey" => true})
@@ -1036,7 +1070,8 @@ defmodule TarsTUI.App.FleetTest do
     Enum.each(String.graphemes("every key"), &Breeze.Test.input(session, &1))
     Breeze.Test.input(session, "Enter")
     assert screen(session) =~ "Help · every key and command"
-    assert screen(session) =~ ~r/Up, Down, Enter\s+here · choose an agent and connect to it/
+    assert screen(session) =~ ~r/fleet · here ─+/
+    assert screen(session) =~ ~r/Up, Down, Enter\s+choose an agent and connect to it/
 
     Breeze.Test.input(session, "Escape")
     refute screen(session) =~ "Help · every key"
