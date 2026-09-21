@@ -26,6 +26,66 @@ defmodule Tars.LLM.ToolRunnerTest do
   # already decoded, with string ids.
   defp call(id, name, arguments), do: %{id: id, name: name, arguments: arguments}
 
+  describe "a tool that parks" do
+    test "stops the turn instead of answering it", %{agent_id: agent_id} do
+      tools = [tool!("connect", fn _input -> {:park, "Authorize at https://example.com"} end)]
+      scope = scope(agent_id, tools)
+
+      assert {:parked, _call, "Authorize at https://example.com"} =
+               ToolRunner.execute(call("call_1", "connect", %{}), scope)
+    end
+
+    test "is announced as parked, not as finished", %{agent_id: agent_id} do
+      tools = [tool!("connect", fn _input -> {:park, "Authorize first"} end)]
+
+      ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
+
+      assert_receive %Event{payload: {:tool_started, "call_1", "connect"}}
+      assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Authorize first"}}
+      refute_receive %Event{payload: {:tool_finished, "call_1", "connect", _result}}
+    end
+
+    test "runs again when the call is approved", %{agent_id: agent_id} do
+      test = self()
+
+      callback = fn _input ->
+        if Process.get(:connected) do
+          {:ok, %{"done" => true}}
+        else
+          send(test, :parked_once)
+          Process.put(:connected, true)
+          {:park, "Authorize first"}
+        end
+      end
+
+      scope = scope(agent_id, [tool!("connect", callback)])
+      call = call("call_1", "connect", %{})
+
+      assert {:parked, ^call, _prompt} = ToolRunner.execute(call, scope)
+      assert_receive :parked_once
+    end
+
+    test "a park from a tool ignores the policy the second time", %{agent_id: agent_id} do
+      tools = [tool!("connect", fn _input -> {:ok, %{"done" => true}} end)]
+      scope = scope(agent_id, tools)
+
+      assert {:settled, _call, _message} =
+               ToolRunner.execute(call("call_1", "connect", %{}), scope, authorize: false)
+    end
+
+    test "a park without a prompt is a bug in the tool, and the model is told", %{
+      agent_id: agent_id
+    } do
+      tools = [tool!("odd", fn _input -> {:park, :not_a_prompt} end)]
+
+      assert {:settled, _call, message} =
+               ToolRunner.execute(call("call_1", "odd", %{}), scope(agent_id, tools))
+
+      [part] = message.content
+      assert part.text =~ "Tool answered with"
+    end
+  end
+
   describe "execute_many_async/2" do
     test "executes multiple known tools and publishes progress", %{agent_id: agent_id} do
       tools = [

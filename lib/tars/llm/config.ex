@@ -16,7 +16,8 @@ defmodule Tars.LLM.Config do
       Tars.LLM.Config.new(system: "You answer briefly and admit what you do not know.")
 
   `:tools` is given as `t:Tars.Tool.spec/0` values and held as given. The
-  tools they name are built where a turn needs them, through `tools/1`.
+  tools they name are built where a turn needs them, through `tools/1`. One
+  spec may name many tools: see `c:Tars.Tool.tools/1`.
   `new/1` builds each one once to check that it can be.
 
       Tars.LLM.Config.new(tools: [MyApp.Tools.Ping])
@@ -79,7 +80,7 @@ defmodule Tars.LLM.Config do
   @type dumped() :: %{
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
-          tools: [module()],
+          tools: [module() | {module(), term()}],
           dropped_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
@@ -119,19 +120,19 @@ defmodule Tars.LLM.Config do
   end
 
   defp declared(config, name) do
-    config.tools
-    |> Enum.zip(tools(config))
-    |> Enum.find_value(fn {spec, tool} -> tool.name == name and Tool.timeout(spec) end)
+    Enum.find_value(config.tools, fn spec ->
+      name in Tool.names(spec) and Tool.timeout(spec)
+    end)
   end
 
   @doc "Writes a config down as data. Tools given inline are kept only by name."
   @spec dump(t()) :: dumped()
   def dump(%__MODULE__{} = config) do
-    {modules, inline} = Enum.split_with(config.tools, &is_atom/1)
+    {travelling, inline} = Enum.split_with(config.tools, &Tool.travels?/1)
 
     config
     |> Map.from_struct()
-    |> Map.merge(%{tools: modules, dropped_tools: Enum.map(inline, & &1.name)})
+    |> Map.merge(%{tools: travelling, dropped_tools: Enum.map(inline, & &1.name)})
   end
 
   @doc """
@@ -141,8 +142,8 @@ defmodule Tars.LLM.Config do
   in a warning and never stop the config being read.
   """
   @spec load(dumped()) :: t()
-  def load(%{tools: modules, dropped_tools: dropped} = dumped) do
-    {here, missing} = Enum.split_with(modules, &Tool.available?/1)
+  def load(%{tools: specs, dropped_tools: dropped} = dumped) do
+    {here, missing} = Enum.split_with(specs, &Tool.available?/1)
     warn_dropped(dropped ++ Enum.map(missing, &inspect/1))
 
     struct!(__MODULE__, dumped |> Map.delete(:dropped_tools) |> Map.put(:tools, here))

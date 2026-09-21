@@ -56,6 +56,13 @@ defmodule Tars.MixProject do
       # Used by the bolt-on tool packages under lib/tars_brave, not by core.
       {:req, "~> 0.7"},
 
+      # Used by lib/tars_mcp, not by core. The MCP client: transports, the
+      # protocol, and the callbacks a server calls back through. Its HTTP
+      # transport expects a Finch pool that it does not start, so we name it
+      # here and `TarsMCP.Supervisor` starts it.
+      {:anubis_mcp, "~> 2.0"},
+      {:finch, "~> 0.23"},
+
       # Test and dev
       # Dev deps
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -1,11 +1,18 @@
 defmodule Tars.ToolTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Test.CountingSource
   alias Tars.Test.EchoTool
   alias Tars.Tool
 
   defmodule NotATool do
     @moduledoc false
+  end
+
+  defmodule BadSource do
+    @moduledoc false
+
+    def tools(_argument), do: :not_a_list
   end
 
   test "resolve!/1 builds a tool from a module" do
@@ -26,6 +33,32 @@ defmodule Tars.ToolTest do
 
   test "resolve!/1 of nothing is nothing" do
     assert Tool.resolve!([]) == []
+  end
+
+  test "resolve!/1 expands a source into every tool it gives" do
+    assert Tool.resolve!([{CountingSource, 3}]) |> Enum.map(& &1.name) ==
+             ~w(counted_1 counted_2 counted_3)
+  end
+
+  test "resolve!/1 keeps a source's tools in place among the others" do
+    assert Tool.resolve!([EchoTool, {CountingSource, 2}]) |> Enum.map(& &1.name) ==
+             ~w(echo counted_1 counted_2)
+  end
+
+  test "resolve!/1 of a source with nothing to give is nothing" do
+    assert Tool.resolve!([{CountingSource, []}]) == []
+  end
+
+  test "resolve!/1 rejects a source that cannot be loaded" do
+    assert_raise ArgumentError, ~r/does not implement Tars.Tool tools\/1/, fn ->
+      Tool.resolve!([{NotATool, :anything}])
+    end
+  end
+
+  test "resolve!/1 rejects a source that gives something other than tools" do
+    assert_raise ArgumentError, ~r/not a list of tools/, fn ->
+      Tool.resolve!([{BadSource, :anything}])
+    end
   end
 
   test "resolve!/1 rejects a module that does not implement the behaviour" do
@@ -63,6 +96,10 @@ defmodule Tars.ToolTest do
       assert Tool.timeout(Patient) == :timer.minutes(10)
     end
 
+    test "a source declares one timeout for every tool it gives" do
+      assert Tool.timeout({CountingSource, 3}) == :timer.seconds(90)
+    end
+
     test "a module that declares none, or an inline tool, declares none" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
 
@@ -82,6 +119,29 @@ defmodule Tars.ToolTest do
     test "a module that is missing or does not implement it is not" do
       refute Tool.available?(No.Such.Module)
       refute Tool.available?(Enum)
+    end
+
+    test "a source is available when its module gives tools" do
+      assert Tool.available?({CountingSource, 3})
+      refute Tool.available?({EchoTool, 3})
+      refute Tool.available?({No.Such.Module, 3})
+    end
+  end
+
+  describe "travels?/1" do
+    test "a module and a source travel, an inline tool does not" do
+      inline = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.travels?(EchoTool)
+      assert Tool.travels?({CountingSource, 3})
+      refute Tool.travels?(inline)
+    end
+  end
+
+  describe "names/1" do
+    test "names every tool a spec builds" do
+      assert Tool.names(EchoTool) == ["echo"]
+      assert Tool.names({CountingSource, 2}) == ~w(counted_1 counted_2)
     end
   end
 end

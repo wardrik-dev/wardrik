@@ -227,6 +227,11 @@ defmodule Tars.LLM.ToolRunner do
   defp settle({:ok, output}, call), do: {:settled, call, result_message(call, output)}
   defp settle({:error, reason}, call), do: {:settled, call, error_message(call, reason)}
 
+  # A tool that answers with none of those is a bug in the tool, and the model
+  # is told so rather than the call crashing around it.
+  defp settle(other, call),
+    do: {:settled, call, error_message(call, "Tool answered with #{inspect(other)}")}
+
   defp run(call, scope, opts) do
     :ok = Scope.Context.put(scope, call)
     register(scope, call)
@@ -258,15 +263,29 @@ defmodule Tars.LLM.ToolRunner do
     _kind, _reason -> :ok
   end
 
-  defp invoke(%{id: id, name: name, arguments: args}, scope) do
+  defp invoke(%{id: id, name: name, arguments: args} = call, scope) do
     Event.emit(scope.source, {:tool_started, id, name})
 
-    result =
-      case Enum.find(Config.tools(scope.config), &(&1.name == name)) do
-        nil -> {:error, "Unknown tool: #{name}"}
-        tool -> ReqLLM.Tool.execute(tool, args)
-      end
+    case Enum.find(Config.tools(scope.config), &(&1.name == name)) do
+      nil -> finished(call, scope, {:error, "Unknown tool: #{name}"})
+      tool -> tool |> answer(args) |> answered(call, scope)
+    end
+  end
 
+  # ReqLLM's spec for a callback's answer is narrower than what a callback may
+  # actually return, and a tool of ours may also ask to park.
+  @dialyzer {:nowarn_function, answered: 3}
+
+  defp answer(tool, arguments), do: ReqLLM.Tool.execute(tool, arguments)
+
+  # A tool asking to park has not answered the model, so it is reported as a
+  # pause rather than as a result.
+  defp answered({:park, prompt}, call, scope) when is_binary(prompt),
+    do: park(call, scope, prompt)
+
+  defp answered(result, call, scope), do: finished(call, scope, result)
+
+  defp finished(%{id: id, name: name}, scope, result) do
     Event.emit(scope.source, {:tool_finished, id, name, result})
 
     result

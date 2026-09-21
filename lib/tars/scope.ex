@@ -30,8 +30,9 @@ defmodule Tars.Scope do
   | `:deadline` | when the work must stop |
   | `:policy` | whether a tool call may run |
   | `:dispatch` | what a model call actually is, and who pays for it |
+  | `:credentials` | where a secret a tool names comes from |
 
-  The last four are the seams a host reaches through. Each defaults to
+  The last five are the seams a host reaches through. Each defaults to
   something inert, so a deployment that needs none of them configures none of
   them and no branch in the runtime has to handle their absence.
 
@@ -83,11 +84,11 @@ defmodule Tars.Scope do
   alias Tars.Trace
 
   @enforce_keys [:config, :source]
-  defstruct [:config, :source, :user, :org, :deadline, :policy, :dispatch]
+  defstruct [:config, :source, :user, :org, :deadline, :policy, :dispatch, :credentials]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:policy, :dispatch, :timeout]
+  @seams [:policy, :dispatch, :credentials, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -97,7 +98,8 @@ defmodule Tars.Scope do
           org: term(),
           deadline: integer() | nil,
           policy: module() | nil,
-          dispatch: module() | nil
+          dispatch: module() | nil,
+          credentials: module() | nil
         }
 
   @typedoc "How a span ended."
@@ -125,6 +127,7 @@ defmodule Tars.Scope do
     * `:policy` - a `Tars.Policy` module, or `nil` to allow everything
     * `:dispatch` - a `Tars.LLM.Dispatch` module, or `nil` to call the provider
       as configured
+    * `:credentials` - a `Tars.Credential` module, or `nil` to resolve none
   """
   @spec root(Config.t(), Bus.agent_id(), keyword()) :: t()
   def root(%Config{} = config, agent_id, opts \\ []) do
@@ -135,6 +138,7 @@ defmodule Tars.Scope do
       org: Keyword.get(opts, :org),
       policy: Keyword.get(opts, :policy),
       dispatch: Keyword.get(opts, :dispatch),
+      credentials: Keyword.get(opts, :credentials),
       deadline: Keyword.get(opts, :deadline)
     }
     |> with_timeout(Keyword.get(opts, :timeout, :infinity))

@@ -130,6 +130,99 @@ and a call depth, each of which can be lifted with `:infinity`.
 TarsLua.Run.tool(limits: Tars.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
 ```
 
+### MCP servers
+
+An MCP server's tools are named in a config the way any other tool is, through
+`TarsMCP` as a *source*: one spec standing for however many tools that server
+offers.
+
+```elixir
+config :tars, TarsMCP,
+  servers: [
+    github: [
+      transport:
+        {:stdio,
+         command: "github-mcp-server",
+         env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
+      only: ~w(search_issues create_issue)
+    ]
+  ]
+
+Tars.LLM.Config.new(tools: [{TarsMCP, :github}])
+```
+
+The host starts `TarsMCP.Supervisor`; `mix tars --mcp github` does it for the
+TUI. Connections keep to themselves, so a server that is down offers no tools
+and stops nothing else. Tools arrive as `github__search_issues`, carrying the
+server's own JSON Schema.
+
+A stopped tool call is cancelled on the server too: the connection watches
+whoever is calling, and tells the server to drop the request when that caller
+dies of anything but its own success. A server's progress notifications reach
+the turn's event stream as `{:tool_progress, call_id, name, progress, total}`,
+under the span of the call they belong to.
+
+### Credentials, and authorizing a user
+
+A tool names the secret it needs rather than holding one, and the scope
+resolves it:
+
+```elixir
+case Tars.Credential.resolve(scope, {:user, "github"}) do
+  {:ok, credential} -> call(Tars.Credential.reveal(credential))
+  {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
+end
+```
+
+`:credentials` is a scope seam beside `:policy` and `:dispatch`. Two resolvers
+ship with the binary. `TarsVault` seals secrets with AES-256-GCM into the store
+the fleet already runs on — no database, no broker, and no plaintext fallback
+without a key:
+
+```elixir
+config :tars, TarsVault, keys: [System.fetch_env!("TARS_VAULT_KEY")]
+
+TarsVault.put({:user, "github"}, "jon", "ghp_xxx")
+```
+
+`TarsOAuth` gets them by asking the user instead. It discovers the
+authorization server from the resource, presents whichever client identity the
+server will accept — one registered by hand, its own metadata document, or a
+dynamic registration — and runs authorization code with PKCE. A user who has
+not authorized yet parks the turn on a link; following it and answering `y`
+runs the call again with the token, which is then sealed by `TarsVault` and
+refreshed without asking again.
+
+```elixir
+config :tars, TarsOAuth,
+  client: [name: "Tars", document_url: "https://tars.dev/oauth/client"],
+  providers: [
+    github: [
+      resource: "https://api.githubcopilot.com/mcp/",
+      client_id: System.get_env("GITHUB_CLIENT_ID"),
+      client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+      scopes: ~w(repo)
+    ]
+  ]
+```
+
+An MCP server reached as the user names the reference to resolve, and each user
+gets a connection of their own:
+
+```elixir
+config :tars, TarsMCP,
+  servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: {:user, "github"}]]
+```
+
+A credential fixed for the whole deployment is part of the transport — `:env`
+for a command, `:headers` for HTTP:
+
+```elixir
+transport: {:streamable_http,
+  base_url: "https://mcp.example.com/mcp",
+  headers: %{"authorization" => "Bearer " <> token}}
+```
+
 ### Living in this repo
 
 Packages start here, under `lib/<package>/` with tests mirrored at

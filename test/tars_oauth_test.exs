@@ -1,0 +1,238 @@
+defmodule TarsOAuthTest do
+  use TarsOAuth.Case, async: false
+
+  alias Tars.Credential
+  alias Tars.LLM.Config
+  alias Tars.Scope
+
+  setup do
+    start_supervised!({TarsOAuth.Supervisor, loopback: false})
+
+    :ok
+  end
+
+  defp scope(owner),
+    do: Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: TarsOAuth)
+
+  defp connect(owner, opts \\ []) do
+    stub_server(Keyword.merge([cimd: true], opts))
+    configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+
+    {:error, {:authorization_required, url}} =
+      Credential.resolve(scope(owner), {:user, "github"})
+
+    url
+  end
+
+  describe "a user who has not authorized" do
+    test "is sent somewhere, and the turn can park on it", %{owner: owner} do
+      url = connect(owner)
+
+      assert String.starts_with?(url, "https://auth.example.com/authorize?")
+      assert params_of(url)["client_id"] == "https://tars.dev/oauth/client"
+    end
+
+    test "is offered the same link while the flow is still under way", %{owner: owner} do
+      url = connect(owner)
+
+      assert {:error, {:authorization_required, ^url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+    end
+
+    test "gets a link of their own, not somebody else's", %{owner: owner} do
+      mine = connect(owner)
+
+      {:error, {:authorization_required, theirs}} =
+        Credential.resolve(scope("someone-else"), {:user, "github"})
+
+      refute state_of(mine) == state_of(theirs)
+    end
+  end
+
+  describe "finishing the flow" do
+    test "writes the token down, and the next call resolves it", %{owner: owner} do
+      url = connect(owner)
+
+      assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert Credential.reveal(credential) == "at_first"
+      assert TarsOAuth.connected?("github", owner)
+    end
+
+    test "the credential says when it stops being good", %{owner: owner} do
+      url = connect(owner)
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+
+      assert credential.expires_at > System.system_time(:second)
+      assert Credential.remaining_ms(credential) > 0
+    end
+
+    test "the token is sealed in the vault, not written in the clear", %{owner: owner} do
+      url = connect(owner)
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      {:ok, path} = TarsVault.path({:user, "github"}, owner)
+      {sealed, _vsn} = EKV.lookup(Tars.Fleet.Supervisor.store(), path)
+
+      refute inspect(sealed) =~ "at_first"
+    end
+
+    test "a callback nobody started is refused", %{owner: _owner} do
+      configure(providers: [github: [resource: resource()]])
+
+      assert {:error, :no_such_flow} = TarsOAuth.finish("made-up", "the-code")
+    end
+
+    test "a state can only be claimed once", %{owner: owner} do
+      url = connect(owner)
+      state = state_of(url)
+
+      assert {:ok, "github"} = TarsOAuth.finish(state, "the-code")
+      assert {:error, :no_such_flow} = TarsOAuth.finish(state, "the-code")
+    end
+  end
+
+  describe "a token that has expired" do
+    setup %{owner: owner} do
+      url =
+        connect(owner,
+          token: %{"access_token" => "at_first", "refresh_token" => "rt_first", "expires_in" => 1}
+        )
+
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+      flush()
+
+      :ok
+    end
+
+    test "is renewed without asking the user again", %{owner: owner} do
+      stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
+
+      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert Credential.reveal(credential) == "at_second"
+
+      assert_receive {:oauth, "POST", "/token", body}
+      assert URI.decode_query(body)["grant_type"] == "refresh_token"
+    end
+
+    test "the renewed token is what is stored from then on", %{owner: owner} do
+      stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
+      {:ok, _credential} = Credential.resolve(scope(owner), {:user, "github"})
+
+      stub_server(cimd: true, token: %{"error" => "server_is_down"})
+
+      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert Credential.reveal(credential) == "at_second"
+    end
+
+    test "sends the user back where it cannot be renewed", %{owner: owner} do
+      stub_server(cimd: true, token: %{"error" => "invalid_grant"})
+
+      assert {:error, {:authorization_required, _url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+    end
+  end
+
+  describe "opening the link" do
+    test "is left to the deployment where the callback answers elsewhere", %{owner: owner} do
+      # The case configures a redirect URI of its own, so this is not loopback.
+      connect(owner)
+
+      refute_receive {:browser, _url}
+    end
+
+    test "is off when the deployment says so", %{owner: owner} do
+      stub_server(cimd: true)
+
+      configure(
+        providers: [github: [resource: resource(), scopes: ~w(repo)]],
+        redirect: [open: false]
+      )
+
+      assert {:error, {:authorization_required, _url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+    end
+
+    test "opens the link where the callback comes back to this machine", %{owner: owner} do
+      stub_server(cimd: true)
+
+      configure(
+        providers: [github: [resource: resource(), scopes: ~w(repo)]],
+        redirect: [port: 4599, opener: "true"]
+      )
+
+      assert {:error, {:authorization_required, url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+
+      assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4599/callback"
+    end
+
+    test "a machine with nothing to open a link with says so, and the flow stands" do
+      Application.put_env(:tars, TarsOAuth, redirect: [opener: "no-such-browser-command"])
+
+      assert {:error, :no_browser} = TarsOAuth.Browser.open("https://example.com")
+    end
+  end
+
+  describe "a token nothing can read" do
+    test "sends the user back to authorize, and forgets what it could not read", %{owner: owner} do
+      url = connect(owner)
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      # The key it was sealed with, rotated away without it.
+      Application.put_env(:tars, TarsVault, keys: [TarsVault.generate_key()])
+
+      assert {:error, {:authorization_required, _url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+
+      refute TarsOAuth.connected?("github", owner)
+    end
+
+    test "so does something that is not a token at all", %{owner: owner} do
+      configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+      stub_server(cimd: true)
+      :ok = TarsVault.put({:user, "github"}, owner, "not json")
+
+      assert {:error, {:authorization_required, _url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+    end
+  end
+
+  describe "the rest of the resolver" do
+    test "a provider nobody configured is not a crash", %{owner: owner} do
+      configure(providers: [])
+
+      assert {:error, {:no_such_provider, "unknown"}} =
+               Credential.resolve(scope(owner), {:user, "unknown"})
+    end
+
+    test "a scope with no user cannot authorize anyone" do
+      configure(providers: [github: [resource: resource()]])
+      scope = Config.new() |> Scope.root("acme/a", credentials: TarsOAuth)
+
+      assert {:error, :no_user} = Credential.resolve(scope, {:user, "github"})
+    end
+
+    test "disconnecting means the next call asks again", %{owner: owner} do
+      url = connect(owner)
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert :ok = TarsOAuth.disconnect("github", owner)
+      refute TarsOAuth.connected?("github", owner)
+
+      assert {:error, {:authorization_required, _url}} =
+               Credential.resolve(scope(owner), {:user, "github"})
+    end
+
+    test "connections/1 says what a user could authorize and what they have", %{owner: owner} do
+      url = connect(owner)
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert TarsOAuth.connections(owner) == [%{provider: "github", connected?: true}]
+      assert TarsOAuth.connections("nobody") == [%{provider: "github", connected?: false}]
+    end
+  end
+end

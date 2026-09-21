@@ -2,6 +2,7 @@ defmodule Tars.LLM.ConfigTest do
   use ExUnit.Case, async: true
 
   alias Tars.LLM.Config
+  alias Tars.Test.CountingSource
   alias Tars.Test.EchoTool
 
   defp tool!(name) do
@@ -65,6 +66,12 @@ defmodule Tars.LLM.ConfigTest do
       config = Config.new(tools: [Patient], tool_timeouts: %{"patient" => 5})
 
       assert Config.tool_timeout(config, "patient") == 5
+    end
+
+    test "a tool from a source reads the timeout its source declares" do
+      config = Config.new(tools: [{CountingSource, 2}])
+
+      assert Config.tool_timeout(config, "counted_2") == :timer.seconds(90)
     end
 
     test "nil for a tool declaring none, or one the config does not have" do
@@ -164,6 +171,27 @@ defmodule Tars.LLM.ConfigTest do
       dumped = Config.dump(Config.new(tools: [EchoTool]))
 
       assert dumped == dumped |> :erlang.term_to_binary() |> :erlang.binary_to_term()
+    end
+
+    test "a source travels with its argument, and builds its tools again" do
+      config = Config.new(tools: [{CountingSource, 2}])
+
+      loaded = config |> Config.dump() |> Config.load()
+
+      assert loaded.tools == [{CountingSource, 2}]
+      assert Enum.map(Config.tools(loaded), & &1.name) == ~w(counted_1 counted_2)
+    end
+
+    test "a source this node cannot build is dropped, with a warning" do
+      dumped = Config.dump(Config.new(tools: [{CountingSource, 1}]))
+      dumped = %{dumped | tools: [{No.Such.Source, 1}]}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert Config.load(dumped).tools == []
+        end)
+
+      assert log =~ "No.Such.Source"
     end
   end
 end
