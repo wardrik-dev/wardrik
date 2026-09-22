@@ -29,13 +29,16 @@ defmodule Mix.Tasks.Tars do
   no tools exercises none of the tree. `--tool` names a different set, and
   `--no-tools` boots without any.
 
-  `--mcp` names a server from `config :tars, TarsMCP`, repeatable, and adds
-  every tool it offers to the agent. What a server writes to its own stderr
-  goes to `--log`, or nowhere: it would otherwise land on the frame this client
-  is drawing. The servers start with the node, so a
-  server that is slow to answer costs the agent only the tools it has not
-  listed yet. See `TarsMCP` for the configuration, including how a token
-  reaches a server.
+  Unnamed, the agent takes every MCP server connected on the node, as they
+  stand each turn: one that connects, reconnects, or says its tools changed
+  while the agent runs is picked up without restarting it. `--mcp` narrows that
+  to the servers it names, from `config :tars, TarsMCP`, and is repeatable.
+
+  What a server writes to its own stderr goes to `--log`, or nowhere: it would
+  otherwise land on the frame this client is drawing. The servers start with
+  the node, so a server that is slow to answer costs the agent only the tools
+  it has not listed yet. See `TarsMCP` for the configuration, including how a
+  token reaches a server.
 
   `--credentials` names a `Tars.Credential` module. Unnamed, the agent gets
   `TarsOAuth` where providers are configured, `TarsVault` where the vault has a
@@ -216,10 +219,14 @@ defmodule Mix.Tasks.Tars do
   defp named([]), do: @default_tools
   defp named(names), do: Enum.map(names, &Module.safe_concat([&1]))
 
+  # Unnamed, the agent takes whatever is connected, read again every turn.
   defp mcp_sources(opts) do
     configured = Keyword.keys(configured_servers())
 
-    for name <- Keyword.get_values(opts, :mcp), do: {TarsMCP, configured!(configured, name)}
+    case Keyword.get_values(opts, :mcp) do
+      [] -> [{TarsMCP, :*}]
+      names -> for name <- names, do: {TarsMCP, configured!(configured, name)}
+    end
   end
 
   defp configured!(configured, name) do

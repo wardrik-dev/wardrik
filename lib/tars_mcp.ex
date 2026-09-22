@@ -12,6 +12,14 @@ defmodule TarsMCP do
   the same tools again there. A server that is not connected offers none, and
   the config is still valid.
 
+  `{TarsMCP, :*}` names every server connected on the node running the agent,
+  rather than one:
+
+      Tars.LLM.Config.new(tools: [{TarsMCP, :*}])
+
+  Both are read again for every turn, so a config outlives the servers it was
+  built alongside.
+
   Tool names are the server's ref, then the remote name: `github__create_issue`.
 
   ## Configuration
@@ -62,9 +70,15 @@ defmodule TarsMCP do
   Reads what the connection has already listed, so building a turn's tools
   costs no request. A server that is not connected, or has nothing left after
   `:only` and `:except`, offers none.
+
+  `:*` is every connected server at once, in the order `servers/0` gives them.
+  A source named that way is not tied to the servers that existed when it was
+  named, so an agent built before a server connected offers its tools on the
+  next turn, and one that disconnects takes its own away.
   """
   @impl Tars.Tool
   @spec tools(atom()) :: [ReqLLM.Tool.t()]
+  def tools(:*), do: Enum.flat_map(servers(), &Connection.tools/1)
   def tools(ref) when is_atom(ref), do: Connection.tools(ref)
 
   @doc "How long one MCP call may take, unless the server says otherwise."

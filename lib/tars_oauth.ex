@@ -106,6 +106,9 @@ defmodule TarsOAuth do
 
   `TarsOAuth.Loopback` calls this; a deployment serving its own redirect URI
   calls it from there instead.
+
+  The token is written before the call parked on it is answered, so the turn
+  that carries on finds the credential it asked for.
   """
   @spec finish(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def finish(state, code) when is_binary(state) and is_binary(code) do
@@ -113,6 +116,7 @@ defmodule TarsOAuth do
          {:ok, token} <- exchange(flight, code),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
+      resume(flight)
 
       {:ok, flight.provider.name}
     end
@@ -166,7 +170,7 @@ defmodule TarsOAuth do
   # A flow already under way is offered again rather than restarted: an agent
   # retrying a parked call should keep showing the same link.
   defp begin(%Provider{} = provider, owner) do
-    case Pending.under_way(provider.name, owner) do
+    case Pending.under_way(provider.name, owner, Credential.continuation()) do
       {:ok, %Flight{url: url}} -> {:error, {:authorization_required, url}}
       :error -> open(provider, owner)
     end
@@ -194,11 +198,31 @@ defmodule TarsOAuth do
           registered: registered,
           verifier: verifier,
           url: url,
-          started_at: System.monotonic_time(:millisecond)
+          started_at: System.monotonic_time(:millisecond),
+          resumes: List.wrap(Credential.continuation())
         })
 
       {:error, {:authorization_required, url}}
     end
+  end
+
+  # A flow started outside a parked call has nothing to answer, and a turn
+  # answered already says so rather than failing the callback.
+  defp resume(%Flight{} = flight), do: Enum.each(flight.resumes, &answer(&1, flight))
+
+  defp answer({module, function, args}, %Flight{} = flight) do
+    case apply(module, function, args) do
+      :ok -> :ok
+      {:error, reason} -> Logger.info("#{flight.provider.name}: nothing parked (#{reason})")
+    end
+  catch
+    kind, reason ->
+      Logger.warning(
+        "#{flight.provider.name} was authorized, but a call waiting on it could not be " <>
+          "answered: #{Exception.format(kind, reason, __STACKTRACE__)}"
+      )
+
+      :ok
   end
 
   # A flow whose callback comes back to this machine has a browser on it. One

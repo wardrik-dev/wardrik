@@ -44,7 +44,7 @@ defmodule TarsMCP.Supervisor do
     servers = servers(opts)
 
     children =
-      [{Registry, keys: :unique, name: @registry}] ++
+      [{Registry, keys: :unique, name: @registry}, TarsMCP.Notifications] ++
         pool(servers) ++
         [
           {DynamicSupervisor, name: @principals, strategy: :one_for_one},

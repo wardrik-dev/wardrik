@@ -123,6 +123,8 @@ defmodule TarsMCP.Connection do
       [{_pid, %Offer{} = offer}] -> offer
       [] -> nil
     end
+  rescue
+    ArgumentError -> nil
   end
 
   @doc "The tools a server last reported."
@@ -134,12 +136,27 @@ defmodule TarsMCP.Connection do
     end
   end
 
-  @doc "The refs of every server a connection is running for."
+  @doc """
+  The refs of every server a connection is running for.
+
+  Empty on a host that started no registry, which is one running no MCP
+  servers at all.
+  """
   @spec refs() :: [atom()]
   def refs do
     @registry
     |> Registry.select([{{{:offer, :"$1"}, :_, :_}, [], [:"$1"]}])
     |> Enum.sort()
+  rescue
+    ArgumentError -> []
+  end
+
+  @doc "The refs a principal has a connection to, as the registry holds them."
+  @spec refs_for(pid()) :: [{atom(), term()}]
+  def refs_for(client) when is_pid(client) do
+    for {:client, ref, principal} <- Registry.keys(@registry, client), do: {ref, principal}
+  rescue
+    ArgumentError -> []
   end
 
   @doc "The `Anubis.Client` name for a ref and principal, whether or not it is running."
@@ -151,9 +168,15 @@ defmodule TarsMCP.Connection do
   @spec running?(atom(), term()) :: boolean()
   def running?(ref, principal), do: not is_nil(GenServer.whereis(name(ref, principal)))
 
-  @doc "Asks a server for its tools again."
-  @spec refresh(atom()) :: :ok
-  def refresh(ref), do: GenServer.cast(name(ref, :deployment), :list_tools)
+  @doc """
+  Asks a server for its tools again.
+
+  A connection that is not running is not asked, and the tools it last
+  reported stand until it is.
+  """
+  @spec refresh(atom(), term()) :: :ok
+  def refresh(ref, principal \\ :deployment),
+    do: GenServer.cast(name(ref, principal), :list_tools)
 
   @doc """
   Waits until a server has reported its tools, and hands them back.

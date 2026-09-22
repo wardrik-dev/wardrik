@@ -49,6 +49,11 @@ defmodule Tars.Credential do
   `{:error, {:authorization_required, url}}` is a resolver saying the user
   could have this credential but has not connected yet. A tool answering with
   `{:park, prompt}` stops the turn until they do; see `c:Tars.Tool.tool/0`.
+
+  A resolver that sends the user somewhere else to authorize keeps
+  `continuation/0` alongside whatever it started, and applies it when the
+  credential becomes resolvable. The parked call is answered where the user
+  finished, rather than waiting to be told a second time.
   """
 
   alias Tars.Scope
@@ -71,6 +76,9 @@ defmodule Tars.Credential do
           | {:error, {:authorization_required, String.t()}}
           | {:error, term()}
 
+  @typedoc "How to answer the call that a credential is being resolved for."
+  @type continuation() :: mfa()
+
   @doc """
   Resolves one reference for the principal a scope names.
 
@@ -78,6 +86,23 @@ defmodule Tars.Credential do
   resolver that caches is free to; core asks every time.
   """
   @callback resolve(ref(), Scope.t()) :: outcome()
+
+  @doc """
+  Approves the call this credential is being resolved for, as an MFA to apply
+  later, or `nil` when nothing is waiting on one.
+
+  Read by a resolver in `c:resolve/2` and applied once the credential can be
+  resolved. Applying it is a no-op on a turn that has already been answered.
+  """
+  @spec continuation() :: continuation() | nil
+  def continuation do
+    with %Scope{source: %{agent_id: agent_id}} <- Scope.Context.current(),
+         %{id: call_id} <- Scope.Context.current_call() do
+      {Tars.Agent, :decide, [agent_id, %{call_id => :approve}]}
+    else
+      _outside_a_call -> nil
+    end
+  end
 
   @doc """
   A credential holding the real value.

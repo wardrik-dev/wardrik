@@ -6,7 +6,10 @@ defmodule TarsMCPTest do
 
   defp offered(ref),
     do:
-      Enum.map(~w(echo boom secret slow noisy refuses_once noise cancellations), &"#{ref}__#{&1}")
+      Enum.map(
+        ~w(echo boom secret slow noisy refuses_once noise cancellations grow),
+        &"#{ref}__#{&1}"
+      )
 
   describe "tools/1" do
     test "offers every tool the server listed, under the server's name", %{ref: ref} do

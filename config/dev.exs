@@ -27,6 +27,11 @@ config :tars, TarsMCP,
       transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
       credential: {:user, "github"},
       only: ~w(search_issues get_issue)
+    ],
+    slack: [
+      transport: {:streamable_http, base_url: "https://mcp.slack.com/mcp"},
+      credential: {:user, "slack"},
+      only: ~w(slack_send_message slack_search_channels slack_read_channel)
     ]
   ]
 
@@ -37,6 +42,12 @@ config :tars, TarsOAuth,
       client_id: System.get_env("GITHUB_CLIENT_ID"),
       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
       scopes: ~w(repo read:org)
+    ],
+    slack: [
+      resource: "https://mcp.slack.com",
+      client_id: System.get_env("SLACK_CLIENT_ID"),
+      client_secret: System.get_env("SLACK_CLIENT_SECRET"),
+      scopes: ~w(channels:read chat:write users:read)
     ]
   ]
 

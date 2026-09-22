@@ -62,10 +62,21 @@ defmodule StubServer do
       "name" => "cancellations",
       "description" => "How many cancellations this server has been sent.",
       "inputSchema" => %{"type" => "object", "properties" => %{}}
+    },
+    %{
+      "name" => "grow",
+      "description" => "Gains a tool, and says its list changed.",
+      "inputSchema" => %{"type" => "object", "properties" => %{}}
     }
   ]
 
-  def run(state \\ %{cancelled: 0}) do
+  @grown %{
+    "name" => "grown",
+    "description" => "The tool `grow` added.",
+    "inputSchema" => %{"type" => "object", "properties" => %{}}
+  }
+
+  def run(state \\ %{cancelled: 0, grown: false}) do
     case IO.read(:stdio, :line) do
       :eof -> :ok
       {:error, reason} -> IO.puts(:stderr, "stub: #{inspect(reason)}")
@@ -89,7 +100,7 @@ defmodule StubServer do
   defp respond(%{"method" => "initialize", "id" => id, "params" => params}, state) do
     reply(id, %{
       "protocolVersion" => params["protocolVersion"] || @protocol,
-      "capabilities" => %{"tools" => %{}},
+      "capabilities" => %{"tools" => %{"listChanged" => true}},
       "serverInfo" => %{"name" => "stub", "version" => "1.0.0"}
     })
 
@@ -104,9 +115,11 @@ defmodule StubServer do
   # With STUB_REQUIRE_TOKEN set and no token in the environment, it refuses to
   # list anything, which is what a server reached as a user does.
   defp respond(%{"method" => "tools/list", "id" => id}, state) do
+    listed = if state.grown, do: @tools ++ [@grown], else: @tools
+
     if System.get_env("STUB_REQUIRE_TOKEN") && is_nil(System.get_env("DEMO_TOKEN")),
       do: error(id, -32_001, "missing required Authorization header"),
-      else: reply(id, %{"tools" => @tools})
+      else: reply(id, %{"tools" => listed})
 
     state
   end
@@ -192,6 +205,18 @@ defmodule StubServer do
   defp called("cancellations", _arguments, _token, id, state) do
     text(id, to_string(state.cancelled))
     state
+  end
+
+  defp called("grow", _arguments, _token, id, state) do
+    text(id, "grown")
+
+    send_message(%{
+      "jsonrpc" => "2.0",
+      "method" => "notifications/tools/list_changed",
+      "params" => %{}
+    })
+
+    %{state | grown: true}
   end
 
   defp called("noisy", arguments, token, id, state) do

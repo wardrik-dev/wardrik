@@ -3,9 +3,10 @@ defmodule TarsOAuth.Pending do
   The authorizations that have been started and not yet come back.
 
   One entry per `state` value: what was being authorized, for whom, the PKCE
-  verifier the callback needs, and where to send the token when it arrives.
-  Entries expire, because a user who never finishes should not leave a verifier
-  lying around, and a second attempt should start clean.
+  verifier the callback needs, where to send the token when it arrives, and
+  the calls parked waiting for it. Entries expire, because a user who
+  never finishes should not leave a verifier lying around, and a second
+  attempt should start clean.
 
   A flow already under way for the same user and provider is handed back
   rather than started again, so an agent that retries a parked call keeps
@@ -34,7 +35,17 @@ defmodule TarsOAuth.Pending do
       :url,
       :started_at
     ]
-    defstruct [:state, :provider, :owner, :metadata, :registered, :verifier, :url, :started_at]
+    defstruct [
+      :state,
+      :provider,
+      :owner,
+      :metadata,
+      :registered,
+      :verifier,
+      :url,
+      :started_at,
+      resumes: []
+    ]
 
     @type t() :: %__MODULE__{
             state: String.t(),
@@ -44,7 +55,8 @@ defmodule TarsOAuth.Pending do
             registered: Flow.registered(),
             verifier: String.t(),
             url: String.t(),
-            started_at: integer()
+            started_at: integer(),
+            resumes: [Tars.Credential.continuation()]
           }
   end
 
@@ -55,9 +67,16 @@ defmodule TarsOAuth.Pending do
   @spec start(Flight.t()) :: {:ok, String.t()}
   def start(%Flight{} = flight), do: GenServer.call(__MODULE__, {:start, flight})
 
-  @doc "The flow under way for this provider and owner, if any."
-  @spec under_way(String.t(), term()) :: {:ok, Flight.t()} | :error
-  def under_way(provider, owner), do: GenServer.call(__MODULE__, {:under_way, provider, owner})
+  @doc """
+  The flow under way for this provider and owner, if any.
+
+  A continuation is added to the flow it finds, so every call that parks while
+  one authorization runs is answered by the callback that ends it.
+  """
+  @spec under_way(String.t(), term(), Tars.Credential.continuation() | nil) ::
+          {:ok, Flight.t()} | :error
+  def under_way(provider, owner, resume \\ nil),
+    do: GenServer.call(__MODULE__, {:under_way, provider, owner, resume})
 
   @doc "Takes the flow a callback belongs to, which can only be claimed once."
   @spec claim(String.t()) :: {:ok, Flight.t()} | :error
@@ -79,7 +98,7 @@ defmodule TarsOAuth.Pending do
     {:reply, {:ok, flight.url}, Map.put(flights, flight.state, flight)}
   end
 
-  def handle_call({:under_way, provider, owner}, _from, flights) do
+  def handle_call({:under_way, provider, owner, resume}, _from, flights) do
     found =
       Enum.find_value(flights, :error, fn {_state, flight} ->
         if flight.provider.name == provider and flight.owner == owner and
@@ -87,7 +106,15 @@ defmodule TarsOAuth.Pending do
            do: {:ok, flight}
       end)
 
-    {:reply, found, flights}
+    case found do
+      {:ok, flight} ->
+        waiting = %{flight | resumes: add(flight.resumes, resume)}
+
+        {:reply, {:ok, waiting}, Map.put(flights, waiting.state, waiting)}
+
+      :error ->
+        {:reply, :error, flights}
+    end
   end
 
   def handle_call({:claim, state}, _from, flights) do
@@ -106,6 +133,9 @@ defmodule TarsOAuth.Pending do
 
     {:noreply, Map.reject(flights, fn {_state, flight} -> expired?(flight) end)}
   end
+
+  defp add(resumes, nil), do: resumes
+  defp add(resumes, resume), do: if(resume in resumes, do: resumes, else: resumes ++ [resume])
 
   defp expired?(%Flight{started_at: started_at}) do
     System.monotonic_time(:millisecond) - started_at > @expire_after
