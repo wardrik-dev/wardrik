@@ -42,7 +42,7 @@ defmodule TarsMCP.AmbientTest do
   end
 
   defp connect_another do
-    ref = :"stub_#{System.unique_integer([:positive])}"
+    ref = fresh_ref()
     {:ok, _pid} = TarsMCP.connect(ref, stub_options())
     await_tools(ref)
 

@@ -47,7 +47,7 @@ config :tars, TarsOAuth,
       resource: "https://mcp.slack.com",
       client_id: System.get_env("SLACK_CLIENT_ID"),
       client_secret: System.get_env("SLACK_CLIENT_SECRET"),
-      scopes: ~w(channels:read chat:write users:read)
+      scopes: ~w(channels:read channels:history groups:history chat:write users:read)
     ]
   ]
 

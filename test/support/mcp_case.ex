@@ -24,7 +24,7 @@ defmodule Tars.Test.MCPCase do
   end
 
   setup context do
-    ref = :"stub_#{System.unique_integer([:positive])}"
+    ref = fresh_ref()
     opts = Map.get(context, :server_opts, [])
 
     start_supervised!({TarsMCP.Supervisor, servers: [{ref, stub_options(opts)}]})
@@ -32,6 +32,10 @@ defmodule Tars.Test.MCPCase do
 
     %{ref: ref}
   end
+
+  @doc "A ref no other test is using, so servers started in one test do not reach another."
+  @spec fresh_ref() :: atom()
+  def fresh_ref, do: :"stub_#{System.unique_integer([:positive])}"
 
   @doc "The options for a server that runs the stub, with `opts` merged in."
   @spec stub_options(keyword()) :: keyword()

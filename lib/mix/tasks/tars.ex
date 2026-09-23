@@ -32,7 +32,9 @@ defmodule Mix.Tasks.Tars do
   Unnamed, the agent takes every MCP server connected on the node, as they
   stand each turn: one that connects, reconnects, or says its tools changed
   while the agent runs is picked up without restarting it. `--mcp` narrows that
-  to the servers it names, from `config :tars, TarsMCP`, and is repeatable.
+  to the servers it names, from `config :tars, TarsMCP`, and is repeatable. An
+  agent given `--tool` takes only what it names, so the servers an agent with a
+  tool set of its own reaches are the ones `--mcp` names beside it.
 
   What a server writes to its own stderr goes to `--log`, or nowhere: it would
   otherwise land on the frame this client is drawing. The servers start with
@@ -224,10 +226,14 @@ defmodule Mix.Tasks.Tars do
     configured = Keyword.keys(configured_servers())
 
     case Keyword.get_values(opts, :mcp) do
-      [] -> [{TarsMCP, :*}]
+      [] -> ambient(opts)
       names -> for name <- names, do: {TarsMCP, configured!(configured, name)}
     end
   end
+
+  # `--tool` is a tool set, not an addition to one: an agent given it reaches
+  # the servers named beside it and no others.
+  defp ambient(opts), do: if(Keyword.has_key?(opts, :tool), do: [], else: [{TarsMCP, :*}])
 
   defp configured!(configured, name) do
     Enum.find(configured, fn ref -> to_string(ref) == name end) ||

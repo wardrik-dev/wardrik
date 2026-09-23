@@ -10,6 +10,7 @@ defmodule TarsMCP.BootstrapTest do
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
   alias Tars.Scope
+  alias TarsMCP.Connection
 
   defmodule Vault do
     @moduledoc false
@@ -61,6 +62,21 @@ defmodule TarsMCP.BootstrapTest do
     %{ref: ref, connect: connect} = context
 
     assert {:settled, _call, _message} = call(ref, "connected", "connect")
+
+    names = Enum.map(TarsMCP.tools(ref), & &1.name)
+
+    assert "#{ref}__echo" in names
+    refute connect in names
+  end
+
+  test "and a later listing by the deployment leaves those tools alone", context do
+    %{ref: ref, connect: connect} = context
+    {:settled, _call, _message} = call(ref, "connected", "connect")
+
+    # What a server saying its tools changed drives, without the wait that
+    # collapses a burst of them. The deployment is still refused.
+    send(Connection.whereis(ref), :refresh)
+    {:ok, _listed} = Connection.await(ref)
 
     names = Enum.map(TarsMCP.tools(ref), & &1.name)
 

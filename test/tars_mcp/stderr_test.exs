@@ -1,7 +1,7 @@
 defmodule TarsMCP.StderrTest do
   use ExUnit.Case, async: false
 
-  import Tars.Test.MCPCase, only: [stub_options: 1, await_tools: 1]
+  import Tars.Test.MCPCase, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
 
   alias TarsMCP.Server
 
@@ -14,7 +14,7 @@ defmodule TarsMCP.StderrTest do
     path = Path.join(System.tmp_dir!(), "tars-mcp-#{System.unique_integer([:positive])}.log")
     on_exit(fn -> File.rm(path) end)
 
-    ref = :"stub_#{System.unique_integer([:positive])}"
+    ref = fresh_ref()
     start(ref, stderr: {:file, path})
 
     assert {:ok, %{"ok" => true}} = TarsMCP.call(ref, "noise", %{"line" => "npm notice hello"})
@@ -25,7 +25,7 @@ defmodule TarsMCP.StderrTest do
   end
 
   test "a server whose output is discarded still answers" do
-    ref = :"stub_#{System.unique_integer([:positive])}"
+    ref = fresh_ref()
     start(ref, stderr: :discard)
 
     assert {:ok, %{"result" => %{"content" => "noise made"}}} =

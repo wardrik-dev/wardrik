@@ -108,17 +108,30 @@ defmodule TarsOAuth do
   calls it from there instead.
 
   The token is written before the call parked on it is answered, so the turn
-  that carries on finds the credential it asked for.
+  that carries on finds the credential it asked for. A callback that cannot be
+  turned into a token leaves the flow where it was, so the same link still
+  works and the calls parked on it are still answered when one does.
   """
   @spec finish(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def finish(state, code) when is_binary(state) and is_binary(code) do
-    with {:ok, %Flight{} = flight} <- claim(state),
-         {:ok, token} <- exchange(flight, code),
+    with {:ok, %Flight{} = flight} <- claim(state), do: complete(flight, code)
+  end
+
+  # The flow is claimed before the token is asked for, and the calls parked on
+  # it travel with it, so a flow that gets no token goes back rather than
+  # taking them with it.
+  defp complete(%Flight{} = flight, code) do
+    with {:ok, token} <- exchange(flight, code),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
       resume(flight)
 
       {:ok, flight.provider.name}
+    else
+      trouble ->
+        {:ok, _url} = Pending.start(flight)
+
+        trouble
     end
   end
 
@@ -170,13 +183,15 @@ defmodule TarsOAuth do
   # A flow already under way is offered again rather than restarted: an agent
   # retrying a parked call should keep showing the same link.
   defp begin(%Provider{} = provider, owner) do
-    case Pending.under_way(provider.name, owner, Credential.continuation()) do
+    resume = Credential.continuation()
+
+    case Pending.under_way(provider.name, owner, resume) do
       {:ok, %Flight{url: url}} -> {:error, {:authorization_required, url}}
-      :error -> open(provider, owner)
+      :error -> open(provider, owner, resume)
     end
   end
 
-  defp open(%Provider{} = provider, owner) do
+  defp open(%Provider{} = provider, owner, resume) do
     with {:ok, metadata, registered} <- prepare(provider) do
       {verifier, challenge} = Flow.pkce()
       state = Flow.state()
@@ -199,7 +214,7 @@ defmodule TarsOAuth do
           verifier: verifier,
           url: url,
           started_at: System.monotonic_time(:millisecond),
-          resumes: List.wrap(Credential.continuation())
+          resumes: List.wrap(resume)
         })
 
       {:error, {:authorization_required, url}}
@@ -212,8 +227,17 @@ defmodule TarsOAuth do
 
   defp answer({module, function, args}, %Flight{} = flight) do
     case apply(module, function, args) do
-      :ok -> :ok
-      {:error, reason} -> Logger.info("#{flight.provider.name}: nothing parked (#{reason})")
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        Logger.warning(
+          "#{flight.provider.name} was authorized, but the agent waiting on it is not running " <>
+            "here; its call is still parked"
+        )
+
+      {:error, reason} ->
+        Logger.info("#{flight.provider.name}: nothing parked (#{reason})")
     end
   catch
     kind, reason ->

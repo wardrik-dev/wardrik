@@ -49,7 +49,11 @@ defmodule TarsMCP.Connection do
   @list_timeout :timer.seconds(30)
   @ready_timeout :timer.seconds(30)
   @watch_timeout :timer.seconds(5)
+  @offer_timeout :timer.seconds(30)
   @idle_after :timer.minutes(15)
+  # Milliseconds. A server that registers its tools one at a time says so once
+  # per tool, and the listing that answers waits, so a burst costs one call.
+  @refresh_after 250
   # A connection torn down as its credential expires, rather than after, so no
   # call goes out with a token the server has already stopped taking.
   @expiry_margin_ms :timer.seconds(30)
@@ -66,6 +70,8 @@ defmodule TarsMCP.Connection do
       :retry_ms,
       :used_at,
       listed?: false,
+      refreshing?: false,
+      idling?: false,
       waiting: [],
       watching: %{}
     ]
@@ -78,6 +84,8 @@ defmodule TarsMCP.Connection do
             retry_ms: pos_integer() | nil,
             used_at: integer() | nil,
             listed?: boolean(),
+            refreshing?: boolean(),
+            idling?: boolean(),
             waiting: [GenServer.from()],
             watching: %{reference() => pid()}
           }
@@ -164,15 +172,20 @@ defmodule TarsMCP.Connection do
   def client(ref, principal \\ :deployment),
     do: {:via, Registry, {@registry, {:client, ref, principal}}}
 
+  @doc "The connection running for this server and principal, or `nil`."
+  @spec whereis(atom(), term()) :: pid() | nil
+  def whereis(ref, principal \\ :deployment), do: GenServer.whereis(name(ref, principal))
+
   @doc "Whether a connection is running for this server and principal."
   @spec running?(atom(), term()) :: boolean()
-  def running?(ref, principal), do: not is_nil(GenServer.whereis(name(ref, principal)))
+  def running?(ref, principal), do: not is_nil(whereis(ref, principal))
 
   @doc """
   Asks a server for its tools again.
 
   A connection that is not running is not asked, and the tools it last
-  reported stand until it is.
+  reported stand until it is. Asking again while a listing is already due
+  costs nothing: the one already due answers both.
   """
   @spec refresh(atom(), term()) :: :ok
   def refresh(ref, principal \\ :deployment),
@@ -256,6 +269,12 @@ defmodule TarsMCP.Connection do
     {:noreply, %{state | waiting: [from | state.waiting]}}
   end
 
+  def handle_call({:offer, tools}, _from, %State{server: server} = state) do
+    offer(server, tools)
+
+    {:reply, :ok, state}
+  end
+
   def handle_call({:watch, caller}, _from, %State{} = state) do
     monitor = Process.monitor(caller)
     watching = Map.put(state.watching, monitor, caller)
@@ -264,16 +283,28 @@ defmodule TarsMCP.Connection do
   end
 
   @impl GenServer
-  def handle_cast(:list_tools, %State{client: nil} = state), do: {:noreply, state}
-  def handle_cast(:list_tools, %State{} = state), do: {:noreply, list_tools(state)}
-
   def handle_cast({:offer, tools}, %State{server: server} = state) do
     offer(server, tools)
 
     {:noreply, state}
   end
 
+  def handle_cast(:list_tools, %State{client: nil} = state), do: {:noreply, state}
+  def handle_cast(:list_tools, %State{refreshing?: true} = state), do: {:noreply, state}
+
+  def handle_cast(:list_tools, %State{} = state) do
+    Process.send_after(self(), :refresh, @refresh_after)
+
+    {:noreply, %{state | refreshing?: true}}
+  end
+
   @impl GenServer
+  def handle_info(:refresh, %State{client: nil} = state),
+    do: {:noreply, %{state | refreshing?: false}}
+
+  def handle_info(:refresh, %State{} = state),
+    do: {:noreply, list_tools(%{state | refreshing?: false})}
+
   def handle_info(:retry, %State{client: nil} = state),
     do: {:noreply, state, {:continue, :connect}}
 
@@ -305,7 +336,7 @@ defmodule TarsMCP.Connection do
     if idle_for(state) >= @idle_after and state.watching == %{} do
       {:stop, :normal, state}
     else
-      {:noreply, schedule_idle_check(state)}
+      {:noreply, schedule_idle_check(%{state | idling?: false})}
     end
   end
 
@@ -352,9 +383,24 @@ defmodule TarsMCP.Connection do
   end
 
   defp publish(%State{server: server}, listed) do
-    GenServer.cast(name(server.ref, :deployment), {:offer, built(server, listed)})
+    hand_over(server, built(server, listed))
 
     Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed as a user")
+  end
+
+  # The hand-over is waited on: a caller told a user's connection is ready
+  # reads the offer next, and the tools it was told about are in it. A
+  # deployment's connection too busy to answer is told rather than asked, so a
+  # listing is late rather than lost.
+  defp hand_over(%Server{} = server, tools) do
+    GenServer.call(name(server.ref, :deployment), {:offer, tools}, @offer_timeout)
+  catch
+    :exit, reason ->
+      Logger.warning(
+        "MCP server #{server.ref}: a user's tools wait to be published: #{inspect(reason)}"
+      )
+
+      GenServer.cast(name(server.ref, :deployment), {:offer, tools})
   end
 
   defp built(%Server{} = server, listed) do
@@ -445,11 +491,14 @@ defmodule TarsMCP.Connection do
   end
 
   defp schedule_idle_check(%State{principal: :deployment} = state), do: state
+  defp schedule_idle_check(%State{idling?: true} = state), do: state
 
+  # One check runs at a time: a connection listed again on every notification
+  # would otherwise carry a timer per listing for as long as it lives.
   defp schedule_idle_check(%State{} = state) do
     Process.send_after(self(), :idle_check, @idle_after)
 
-    state
+    %{state | idling?: true}
   end
 
   defp idle_for(%State{used_at: used_at}),
@@ -457,10 +506,12 @@ defmodule TarsMCP.Connection do
 
   # A server reached as a user, refusing the deployment: there is nothing to
   # retry with, so it offers the tool that authorizes and waits to be told.
+  # Where a user's connection has already published the server's own tools,
+  # those stand: the deployment is refused whatever the tools are.
   defp retry(%State{principal: :deployment, server: %Server{credential: credential}} = state, why)
        when credential != nil do
     Logger.info("MCP server #{state.server.ref} #{why}; offering to authorize instead")
-    offer(state.server, [Tool.connect(state.server)])
+    if tools(state.server.ref) == [], do: offer(state.server, [Tool.connect(state.server)])
 
     answer_waiting(%{state | listed?: true})
   end

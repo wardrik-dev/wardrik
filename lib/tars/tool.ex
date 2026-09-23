@@ -115,7 +115,7 @@ defmodule Tars.Tool do
   def timeout({module, _argument}) when is_atom(module), do: timeout(module)
 
   def timeout(module) when is_atom(module) do
-    if function_exported?(module, :timeout, 0), do: module.timeout(), else: nil
+    if exports?(module, :timeout, 0), do: module.timeout(), else: nil
   end
 
   def timeout(%ReqLLM.Tool{}), do: nil
