@@ -13,7 +13,7 @@ defmodule TarsTUI.App.Conversation do
 
   alias Tars.Delegation
   alias Tars.Event
-  alias Tars.LLM
+  alias Tars.LLM.Message
   alias TarsTUI.Activity
   alias TarsTUI.Exchange
   alias TarsTUI.History
@@ -170,14 +170,14 @@ defmodule TarsTUI.App.Conversation do
   defp playback_projection(projection, messages), do: Enum.reduce(messages, projection, &play/2)
 
   defp play(%{role: :user} = message, projection),
-    do: question_projection(projection, LLM.Context.text(message))
+    do: question_projection(projection, Message.text(message))
 
   defp play(%{role: :assistant} = message, projection) do
-    projection |> say(LLM.Context.text(message)) |> calls(message.tool_calls || [])
+    projection |> say(Message.text(message)) |> calls(message.tool_calls || [])
   end
 
   defp play(%{role: :tool} = message, projection) do
-    output = LLM.Context.text(message)
+    output = Message.text(message)
     ok? = tool_ok?(message, output)
     name = message.name || "tool"
 

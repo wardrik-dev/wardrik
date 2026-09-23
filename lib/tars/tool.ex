@@ -55,7 +55,7 @@ defmodule Tars.Tool do
   A module that implements `c:tools/1` is a source: one spec, however many
   tools it has to give. It is named with an argument, and both travel as data:
 
-      Tars.LLM.Config.new(tools: [{TarsMCP.Server, :github}])
+      Tars.LLM.Config.new(tools: [{MyPack.Servers, :github}])
 
   A source is asked for its tools every time a turn is built, so `c:tools/1`
   reads what this node already holds and never goes out to fetch it.
@@ -142,6 +142,42 @@ defmodule Tars.Tool do
   @doc "The names of the tools a spec builds."
   @spec names(spec()) :: [String.t()]
   def names(spec), do: Enum.map(resolve!([spec]), & &1.name)
+
+  @doc """
+  Reports how far the call in progress has got, on the turn's event stream.
+
+  Emits `{:tool_progress, call_id, name, progress, total}` under the span of
+  the call, where `total` is `nil` for work with no known end. Does nothing
+  outside a tool call.
+
+      Tars.Tool.progress(3, 10)
+  """
+  @spec progress(number(), number() | nil) :: :ok
+  def progress(progress, total \\ nil) do
+    case progress_reporter() do
+      nil -> :ok
+      report -> report.(progress, total)
+    end
+  end
+
+  @doc """
+  A function that reports progress for the call in progress, bound to it, or
+  `nil` outside a tool call.
+
+  For a callback another process runs, such as a client library's progress
+  hook, which cannot read the call from its own process.
+  """
+  @spec progress_reporter() :: (number(), number() | nil -> :ok) | nil
+  def progress_reporter do
+    with %Tars.Scope{source: source} <- Tars.Scope.Context.current(),
+         %{id: id, name: name} <- Tars.Scope.Context.current_call() do
+      fn progress, total ->
+        Tars.Event.emit(source, {:tool_progress, id, name, progress, total})
+      end
+    else
+      _outside_a_call -> nil
+    end
+  end
 
   defp resolve_one!(%ReqLLM.Tool{} = tool), do: [tool]
 

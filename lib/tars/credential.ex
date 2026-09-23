@@ -57,6 +57,7 @@ defmodule Tars.Credential do
   """
 
   alias Tars.Scope
+  alias Tars.Scope.Context
 
   @enforce_keys [:kind, :value]
   defstruct [:kind, :value, :expires_at]
@@ -96,8 +97,8 @@ defmodule Tars.Credential do
   """
   @spec continuation() :: continuation() | nil
   def continuation do
-    with %Scope{source: %{agent_id: agent_id}} <- Scope.Context.current(),
-         %{id: call_id} <- Scope.Context.current_call() do
+    with %Scope{source: %{agent_id: agent_id}} <- Context.current(),
+         %{id: call_id} <- Context.current_call() do
       {Tars.Agent, :decide, [agent_id, %{call_id => :approve}]}
     else
       _outside_a_call -> nil

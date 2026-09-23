@@ -94,7 +94,7 @@ defmodule Mix.Tasks.Tars do
 
   use Mix.Task
 
-  alias Tars.LLM
+  alias Tars.LLM.Config
 
   @impl Mix.Task
   def run(argv) do
@@ -194,7 +194,7 @@ defmodule Mix.Tasks.Tars do
     |> Keyword.take([:model])
     |> Enum.map(fn {:model, spec} -> {:model_spec, spec} end)
     |> Keyword.put(:tools, tools(opts))
-    |> LLM.Config.new()
+    |> Config.new()
   end
 
   # Only what was actually given: an agent started with no policy and no
@@ -223,7 +223,7 @@ defmodule Mix.Tasks.Tars do
 
   # Unnamed, the agent takes whatever is connected, read again every turn.
   defp mcp_sources(opts) do
-    configured = Keyword.keys(configured_servers())
+    configured = TarsMCP.Config.refs()
 
     case Keyword.get_values(opts, :mcp) do
       [] -> ambient(opts)
@@ -246,7 +246,7 @@ defmodule Mix.Tasks.Tars do
   # The MCP servers are the host's to run, not core's, and an agent naming one
   # is valid whether or not it is up.
   defp start_mcp(opts) do
-    if Keyword.has_key?(opts, :mcp) or configured_servers() != [] do
+    if Keyword.has_key?(opts, :mcp) or TarsMCP.configured?() do
       {:ok, _pid} = TarsMCP.Supervisor.start_link(stderr: server_stderr(opts))
     end
   end
@@ -260,16 +260,8 @@ defmodule Mix.Tasks.Tars do
     end
   end
 
-  defp configured_servers do
-    :tars |> Application.get_env(TarsMCP, []) |> Keyword.get(:servers, [])
-  end
-
   defp start_oauth do
-    if configured_providers() != [], do: {:ok, _pid} = TarsOAuth.Supervisor.start_link()
-  end
-
-  defp configured_providers do
-    :tars |> Application.get_env(TarsOAuth, []) |> Keyword.get(:providers, [])
+    if TarsOAuth.Config.configured?(), do: {:ok, _pid} = TarsOAuth.Supervisor.start_link()
   end
 
   # Whichever resolver this build can actually use, so a deployment that
@@ -277,7 +269,7 @@ defmodule Mix.Tasks.Tars do
   defp credentials(opts) do
     cond do
       opts[:credentials] -> Module.safe_concat([opts[:credentials]])
-      configured_providers() != [] -> TarsOAuth
+      TarsOAuth.Config.configured?() -> TarsOAuth
       TarsVault.ready?() -> TarsVault
       true -> nil
     end

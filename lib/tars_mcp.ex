@@ -57,8 +57,9 @@ defmodule TarsMCP do
   @behaviour Tars.Tool
 
   alias Tars.Credential
-  alias Tars.Event
   alias Tars.Scope
+  alias Tars.Scope.Context
+  alias Tars.Tool
   alias Tars.Tool.Result
   alias TarsMCP.Connection
   alias TarsMCP.Offer
@@ -174,12 +175,12 @@ defmodule TarsMCP do
   @spec servers() :: [atom()]
   def servers, do: Connection.refs()
 
-  defp request(client, server, name, arguments) do
   @doc "Whether this deployment configured any server. See `TarsMCP.Config`."
   @spec configured?() :: boolean()
   def configured?, do: TarsMCP.Config.configured?()
 
-    opts = [timeout: server.timeout] ++ reporting(server, name)
+  defp request(client, server, name, arguments) do
+    opts = [timeout: server.timeout] ++ reporting()
 
     Anubis.Client.call_tool(client, name, arguments, opts)
   catch
@@ -196,7 +197,7 @@ defmodule TarsMCP do
   defp connected(%Server{credential: nil}), do: {:ok, :deployment}
 
   defp connected(%Server{} = server) do
-    case Scope.Context.current() do
+    case Context.current() do
       %Scope{} = scope -> connected(server, scope)
       nil -> {:error, "#{server.ref} is reached as a user, and this call has none"}
     end
@@ -231,23 +232,20 @@ defmodule TarsMCP do
     end
   end
 
-  # Progress is only worth reporting where there is a turn to report it to, and
-  # the call it belongs to is the token the server echoes back.
-  defp reporting(%Server{} = server, name) do
-    with %Scope{} = scope <- Scope.Context.current(),
-         %{id: call_id} <- Scope.Context.current_call() do
-      local = Server.local_name(server, name)
-
-      [
-        progress: [
-          token: call_id,
-          callback: fn _token, progress, total ->
-            Event.emit(scope.source, {:tool_progress, call_id, local, progress, total})
-          end
+  # The call in progress is the token the server echoes back, and the reporter
+  # is bound here because the callback runs in the client's process.
+  defp reporting do
+    case {Tool.progress_reporter(), Context.current_call_id()} do
+      {report, call_id} when is_function(report, 2) and is_binary(call_id) ->
+        [
+          progress: [
+            token: call_id,
+            callback: fn _token, progress, total -> report.(progress, total) end
+          ]
         ]
-      ]
-    else
-      _no_turn -> []
+
+      _no_turn ->
+        []
     end
   end
 

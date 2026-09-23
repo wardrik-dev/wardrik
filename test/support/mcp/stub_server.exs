@@ -78,7 +78,7 @@ defmodule StubServer do
 
   def run(state \\ %{cancelled: 0, grown: false}) do
     case IO.read(:stdio, :line) do
-      :eof -> :ok
+      :eof -> System.halt(0)
       {:error, reason} -> IO.puts(:stderr, "stub: #{inspect(reason)}")
       line -> line |> String.trim() |> handle(state) |> run()
     end
@@ -259,7 +259,13 @@ defmodule StubServer do
     })
   end
 
-  defp send_message(message), do: IO.puts(JSON.encode!(message))
+  # A client that has gone leaves stdout closed; the server has nobody left to
+  # answer and stops quietly.
+  defp send_message(message) do
+    IO.puts(JSON.encode!(message))
+  rescue
+    ErlangError -> System.halt(0)
+  end
 end
 
 StubServer.run()

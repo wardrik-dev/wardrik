@@ -6,7 +6,7 @@ defmodule TarsTUI.App.Connection do
 
   alias Tars.Agent
   alias Tars.Delegation
-  alias Tars.Event
+  alias Tars.Event.Bus
   alias Tars.Fleet
   alias TarsTUI.Activity
   alias TarsTUI.App.Conversation
@@ -43,7 +43,7 @@ defmodule TarsTUI.App.Connection do
             term
 
           member ->
-            :ok = Event.Bus.subscribe(key, level: :lifecycle)
+            :ok = Bus.subscribe(key, level: :lifecycle)
 
             term
             |> assign(expanded: Map.put(expanded, key, followed(member.pid)))
@@ -69,7 +69,7 @@ defmodule TarsTUI.App.Connection do
     term = assign(term, collapsed: MapSet.put(term.assigns.collapsed, key))
 
     if Map.has_key?(expanded, key) do
-      if key != agent_id, do: Event.Bus.unsubscribe(key)
+      if key != agent_id, do: Bus.unsubscribe(key)
       assign(term, expanded: Map.delete(expanded, key), highlighted: key)
     else
       term
@@ -81,7 +81,7 @@ defmodule TarsTUI.App.Connection do
   defp expand_all(term, fleet) do
     keys = Enum.map(fleet, & &1.key)
     gone = Map.keys(term.assigns.expanded) -- keys
-    Enum.each(gone, &if(&1 != term.assigns.agent_id, do: Event.Bus.unsubscribe(&1)))
+    Enum.each(gone, &if(&1 != term.assigns.agent_id, do: Bus.unsubscribe(&1)))
 
     term =
       assign(term,
@@ -102,7 +102,7 @@ defmodule TarsTUI.App.Connection do
     expanded = term.assigns.expanded
 
     if Map.has_key?(expanded, old) and old != key do
-      :ok = Event.Bus.subscribe(old, level: :lifecycle)
+      :ok = Bus.subscribe(old, level: :lifecycle)
       kept = term.assigns.views |> Map.get(old, %{}) |> Map.get(:delegations, Delegation.new())
       assign(term, expanded: Map.put(expanded, old, kept))
     else
@@ -116,7 +116,7 @@ defmodule TarsTUI.App.Connection do
   # published under.
   def attach(term, agent, agent_id) do
     # `:raw` delivers `{:tool_call, chunk}` with its arguments.
-    :ok = Event.Bus.subscribe(agent_id, level: :raw)
+    :ok = Bus.subscribe(agent_id, level: :raw)
 
     case snapshot(agent) do
       {:ok, snapshot} -> attach_snapshot(term, agent, agent_id, snapshot)
@@ -261,8 +261,8 @@ defmodule TarsTUI.App.Connection do
   # resolve on this node for an agent that just started on another.
   def switch(term, pid, key) do
     old = term.assigns.agent_id
-    Event.Bus.unsubscribe(old)
-    if Map.has_key?(term.assigns.expanded, key), do: Event.Bus.unsubscribe(key)
+    Bus.unsubscribe(old)
+    if Map.has_key?(term.assigns.expanded, key), do: Bus.unsubscribe(key)
 
     term |> keep() |> attach(pid, key) |> refresh_fleet() |> refollow(old, key)
   end

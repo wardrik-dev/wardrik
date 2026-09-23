@@ -18,8 +18,59 @@ defmodule Tars.Event do
   @enforce_keys [:source, :payload, :at]
   defstruct [:source, :payload, :at]
 
-  @typedoc "An event payload. Its first element names the event."
-  @type payload() :: tuple()
+  @typedoc """
+  An event payload. Its first element names the event.
+
+  Every payload core emits is listed here. A package emits these and no
+  others; `Tars.Tool.progress/2` is how a tool reports `:tool_progress`.
+
+  Agent lifecycle, on the turn's root span:
+
+    * `{:turn_started, questions}`, `{:turn_finished, messages}`,
+      `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
+      `{:turn_parked, calls}`, `{:turn_resumed, decisions}`
+
+  Spans and delegations, on their own span:
+
+    * `{:span_started, name}`, `{:span_finished, outcome, duration_ms}`
+    * `{:delegation_started, prompt}`, `{:delegation_finished, outcome, duration_ms}`
+
+  Model calls:
+
+    * `{:model_started, model_spec}`, `{:model_finished, outcome, duration_ms}`
+    * `{:result, text}`, `{:thinking, text}`, `{:meta, chunk}`, `{:chunk, chunk}`,
+      `{:tool_call, call}`, `{:deadline_reached, message_count}`
+
+  Tool calls, on the call's span:
+
+    * `{:tool_started, call_id, name}`, `{:tool_finished, call_id, name, result}`
+    * `{:tool_denied, call_id, name, reason}`, `{:tool_parked, call_id, name, prompt}`
+    * `{:tool_progress, call_id, name, progress, total}`
+  """
+  @type payload() ::
+          {:turn_started, [String.t()]}
+          | {:turn_finished, [ReqLLM.Message.t()]}
+          | {:turn_failed, term()}
+          | {:turn_interrupted, Tars.Agent.State.stats()}
+          | {:turn_parked, [{Tars.Tool.call(), String.t()}]}
+          | {:turn_resumed, %{String.t() => term()}}
+          | {:span_started, String.t()}
+          | {:span_finished, Tars.Scope.outcome(), non_neg_integer()}
+          | {:delegation_started, String.t()}
+          | {:delegation_finished, {:ok, String.t()} | {:error, term()}, non_neg_integer()}
+          | {:model_started, term()}
+          | {:model_finished, :ok | {:error, term()}, non_neg_integer()}
+          | {:result, String.t()}
+          | {:thinking, String.t()}
+          | {:meta, term()}
+          | {:chunk, term()}
+          | {:tool_call, term()}
+          | {:deadline_reached, non_neg_integer()}
+          | {:tool_started, String.t(), String.t()}
+          | {:tool_finished, String.t(), String.t(), term()}
+          | {:tool_denied, String.t(), String.t(), String.t()}
+          | {:tool_parked, String.t(), String.t(), String.t()}
+          | {:tool_progress, String.t(), String.t(), number(), number() | nil}
 
   @typedoc "A payload, who emitted it, and when."
   @type t() :: %__MODULE__{source: Source.t(), payload: payload(), at: integer()}

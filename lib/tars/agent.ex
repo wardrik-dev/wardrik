@@ -86,10 +86,12 @@ defmodule Tars.Agent do
   use DurableServer, vsn: 1
 
   alias ReqLLM.Context
+  alias Tars.Agent.Snapshot
   alias Tars.Agent.State
   alias Tars.Event
+  alias Tars.Event.Bus
   alias Tars.Fleet
-  alias Tars.LLM
+  alias Tars.LLM.Turn
 
   @typedoc "An agent: the pid of one, or the fleet key it is registered under."
   @type agent() :: pid() | String.t()
@@ -132,7 +134,7 @@ defmodule Tars.Agent do
   def status(agent), do: call(agent, :status)
 
   @doc "Reads conversation, lifecycle state, and durable identity in one call."
-  @spec snapshot(agent()) :: map() | {:error, :not_found}
+  @spec snapshot(agent()) :: Snapshot.t() | {:error, :not_found}
   def snapshot(agent), do: call(agent, :snapshot)
 
   @doc "Accepts decisions only while their calls are parked, acknowledging acceptance before returning."
@@ -158,7 +160,7 @@ defmodule Tars.Agent do
       Tars.Agent.resume("acme/jon/researcher", %{"call_abc" => :approve})
       Tars.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
-  @spec resume(agent(), %{String.t() => LLM.Turn.Parked.decision()}) :: :ok | {:error, :not_found}
+  @spec resume(agent(), %{String.t() => Turn.Parked.decision()}) :: :ok | {:error, :not_found}
   def resume(agent, decisions) when is_map(decisions), do: cast(agent, {:resume, decisions})
 
   @doc """
@@ -197,7 +199,7 @@ defmodule Tars.Agent do
   def init(%State{} = state) do
     # `init` cannot return a continue, so the queue is drained by message.
     send(self(), :maybe_run)
-    :ok = Event.Bus.subscribe(state.agent_id, level: :lifecycle)
+    :ok = Bus.subscribe(state.agent_id, level: :lifecycle)
 
     {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
@@ -322,7 +324,7 @@ defmodule Tars.Agent do
   # -- turns -----------------------------------------------------------------
 
   defp start(state, questions) do
-    context = Enum.reduce(questions, state.context, &LLM.Context.append_user_message(&2, &1))
+    context = Enum.reduce(questions, state.context, &Context.append(&2, Context.user(&1)))
     scope = State.turn_scope(state)
 
     Event.emit(scope.source, {:turn_started, questions})
@@ -354,12 +356,12 @@ defmodule Tars.Agent do
   end
 
   defp apply_effect({:ask_to_stop, pid}, state) do
-    LLM.Turn.yield(pid)
+    Turn.yield(pid)
     state
   end
 
   defp apply_effect({:stop_now, pid}, state) do
-    LLM.Turn.interrupt(pid)
+    Turn.interrupt(pid)
     state
   end
 

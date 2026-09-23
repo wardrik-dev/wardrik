@@ -1,11 +1,11 @@
-defmodule Tars.ConsoleTest do
+defmodule TarsConsoleTest do
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
 
-  alias Tars.Console
   alias Tars.Test.Events
   alias Tars.Test.Fleet
+  alias TarsConsole, as: Console
 
   # The console inherits the group leader of whoever starts it, so it has to be
   # started inside the capture block. `:sys.get_state/1` then flushes its

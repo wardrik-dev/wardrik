@@ -7,6 +7,7 @@ defmodule Tars.Test.AgentRunners do
   """
 
   alias ReqLLM.Context
+  alias Tars.LLM.Message
   alias Tars.LLM.Turn.Parked
 
   @doc "Reports the context it was handed, then answers immediately."
@@ -55,7 +56,7 @@ defmodule Tars.Test.AgentRunners do
   @doc "Raises when the last message is `trigger`, and otherwise answers."
   def crashing(test_pid, trigger, _scope, context) do
     send(test_pid, {:turn, snapshot(context)})
-    if text(List.last(context.messages)) == trigger, do: raise("kaboom")
+    if Message.text(List.last(context.messages)) == trigger, do: raise("kaboom")
     {:ok, [Context.assistant("ok")]}
   end
 
@@ -122,7 +123,5 @@ defmodule Tars.Test.AgentRunners do
   end
 
   @doc "The roles and text of a context, for asserting on what a turn was handed."
-  def snapshot(context), do: Enum.map(context.messages, &{&1.role, text(&1)})
-
-  defp text(message), do: Tars.LLM.Context.text(message)
+  def snapshot(context), do: Enum.map(context.messages, &{&1.role, Message.text(&1)})
 end

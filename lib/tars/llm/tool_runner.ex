@@ -233,7 +233,7 @@ defmodule Tars.LLM.ToolRunner do
     do: {:settled, call, error_message(call, "Tool answered with #{inspect(other)}")}
 
   defp run(call, scope, opts) do
-    :ok = Scope.Context.put(scope, call)
+    :ok = Tars.Scope.Context.put(scope, call)
     register(scope, call)
 
     try do

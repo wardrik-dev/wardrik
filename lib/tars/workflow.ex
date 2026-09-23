@@ -51,6 +51,7 @@ defmodule Tars.Workflow do
   """
 
   alias Tars.Scope
+  alias Tars.Scope.Context
   alias Tars.Tool.Result
   alias Tars.Workflow.Step
 
@@ -96,7 +97,7 @@ defmodule Tars.Workflow do
   """
   @spec call(Step.t(), map() | keyword()) :: Result.t() | {:error, String.t()}
   def call(step, args) do
-    case Scope.Context.current() do
+    case Context.current() do
       nil ->
         {:error, "#{inspect(step)} was called outside a tool call"}
 

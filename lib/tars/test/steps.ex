@@ -39,6 +39,7 @@ defmodule Tars.Test.Steps do
 
     @behaviour Tars.Workflow.Step
 
+    @dialyzer {:nowarn_function, run: 3}
     @impl true
     def run(_input, _scope, _opts), do: :whatever
   end

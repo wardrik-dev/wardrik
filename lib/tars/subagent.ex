@@ -44,7 +44,9 @@ defmodule Tars.Subagent do
 
   alias ReqLLM.Context
   alias Tars.Event
-  alias Tars.LLM
+  alias Tars.LLM.Config
+  alias Tars.LLM.Message
+  alias Tars.LLM.Turn
   alias Tars.Scope
   alias Tars.Tool
   alias Tars.Trace
@@ -67,7 +69,7 @@ defmodule Tars.Subagent do
   end
 
   defp answer(delegate, prompt) do
-    case LLM.Turn.run(delegate, Context.new([Context.user(prompt)])) do
+    case Turn.run(delegate, Context.new([Context.user(prompt)])) do
       {:ok, messages} -> {:ok, final_text(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
@@ -78,7 +80,7 @@ defmodule Tars.Subagent do
 
   defp config(config, opts) do
     case Keyword.fetch(opts, :config) do
-      {:ok, %LLM.Config{} = config} ->
+      {:ok, %Config{} = config} ->
         config
 
       :error ->
@@ -90,7 +92,7 @@ defmodule Tars.Subagent do
     tools =
       case Keyword.fetch(opts, :tools) do
         {:ok, tools} -> Tool.resolve!(tools)
-        :error -> LLM.Config.tools(config)
+        :error -> Config.tools(config)
       end
 
     except = Keyword.get(opts, :except_tools, [])
@@ -126,7 +128,7 @@ defmodule Tars.Subagent do
     messages
     |> Enum.reverse()
     |> Enum.find_value("", fn
-      %{role: :assistant} = message -> presence(LLM.Context.text(message))
+      %{role: :assistant} = message -> presence(Message.text(message))
       _message -> nil
     end)
   end

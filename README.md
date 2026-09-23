@@ -9,9 +9,7 @@ workflows. What it ships is the contracts and the machinery that runs them.
 
 ## Terminal client
 
-Run `mix tars` for the terminal client. See the [TUI guide](docs/tui.md) for
-commands, navigation, and agent switching, and the
-[maintainer notes](docs/tui-architecture.md) for its module boundaries.
+Run `mix tars` for the terminal client; `mix help tars` lists its options.
 
 ## Packages
 
@@ -175,9 +173,9 @@ end
 ```
 
 `:credentials` is a scope seam beside `:policy` and `:dispatch`. Two resolvers
-ship with the binary. `TarsVault` seals secrets with AES-256-GCM into the store
-the fleet already runs on — no database, no broker, and no plaintext fallback
-without a key:
+ship with the binary. `TarsVault` seals secrets with AES-256-GCM into
+`Tars.Store`, the store the fleet already runs on — no broker, and no plaintext
+fallback without a key:
 
 ```elixir
 config :tars, TarsVault, keys: [System.fetch_env!("TARS_VAULT_KEY")]
@@ -244,10 +242,10 @@ it may do, and *who pays for it* is a seam a host reaches through, so a
 deployment that needs none of them configures none of them.
 
 ```elixir
-Tars.Agent.Supervisor.start(:assistant,
+key = Tars.Fleet.key("assistant", user: current_user, org: current_org)
+
+Tars.Fleet.spawn(key,
   config: config,
-  user: current_user,        # whatever your app's user is
-  org: current_org,
   policy: MyApp.Policy,      # may this tool call run?
   dispatch: MyApp.Gateway,   # which model, whose key, what did it cost?
   timeout: :timer.minutes(10)
@@ -256,7 +254,7 @@ Tars.Agent.Supervisor.start(:assistant,
 
 | | |
 | --- | --- |
-| **`:user`, `:org`** | carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own structs; core never reads inside them and never puts them in an event. |
+| **`:user`, `:org`** | written into the agent's key through `Tars.Fleet.Segment` and carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
 | **`:policy`** | a `Tars.Policy`. Asked about every tool call before it runs, and answers `:allow`, `{:deny, reason}` or `{:ask, prompt}`. |
 | **`:dispatch`** | a `Tars.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
 | **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |

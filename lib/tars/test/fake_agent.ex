@@ -15,20 +15,21 @@ defmodule Tars.Test.FakeAgent do
   def init(owner), do: {:ok, owner}
 
   @impl true
-  def handle_call(:status, _from, owner),
-    do: {:reply, %{state: :idle, pending: 0, model: "test:model"}, owner}
+  def handle_call(:status, _from, owner), do: {:reply, status(), owner}
 
   def handle_call(:parked, _from, owner), do: {:reply, [], owner}
   def handle_call(:get_context, _from, owner), do: {:reply, ReqLLM.Context.new(), owner}
 
   def handle_call(:snapshot, _from, owner) do
     {:reply,
-     %{
-       status: %{state: :idle, pending: 0, model: "test:model"},
+     %Tars.Agent.Snapshot{
+       status: status(),
        context: ReqLLM.Context.new(),
        parked: [],
        generation: inspect(self()),
-       trace_id: nil
+       trace_id: nil,
+       delegations: Tars.Delegation.new(),
+       outcome: nil
      }, owner}
   end
 
@@ -42,4 +43,6 @@ defmodule Tars.Test.FakeAgent do
     send(owner, {:"$gen_cast", message})
     {:noreply, owner}
   end
+
+  defp status, do: %{state: :idle, pending: 0, model: "test:model"}
 end

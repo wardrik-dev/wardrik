@@ -8,7 +8,7 @@ defmodule Tars.MixProject do
       elixir: "~> 1.20",
       aliases: aliases(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_add_apps: [:mix]],
+      dialyzer: [plt_add_apps: [:mix, :ex_unit]],
       test_coverage: [ignore_modules: ignored_modules()],
       start_permanent: Mix.env() == :prod,
       deps: deps()

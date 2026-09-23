@@ -54,10 +54,14 @@ defmodule Tars.Agent.State do
   """
 
   alias ReqLLM.Context
+  alias Tars.Agent.Snapshot
   alias Tars.Delegation
   alias Tars.Event
+  alias Tars.Event.Source
   alias Tars.Fleet
-  alias Tars.LLM
+  alias Tars.LLM.Config
+  alias Tars.LLM.Turn
+  alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Trace
 
@@ -86,7 +90,7 @@ defmodule Tars.Agent.State do
             scope: Tars.Scope.t(),
             started_at: integer(),
             stopping: Tars.Agent.State.Stopping.t() | nil,
-            parked: Tars.LLM.Turn.Parked.t() | nil
+            parked: Parked.t() | nil
           }
   end
 
@@ -98,8 +102,8 @@ defmodule Tars.Agent.State do
 
     @typedoc "The parked turn, where its events go, and when it began."
     @type t() :: %__MODULE__{
-            turn: Tars.LLM.Turn.Parked.t(),
-            source: Tars.Event.Source.t(),
+            turn: Parked.t(),
+            source: Source.t(),
             started_at: integer()
           }
   end
@@ -156,7 +160,7 @@ defmodule Tars.Agent.State do
   @type t() :: %__MODULE__{
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
-          config: LLM.Config.t(),
+          config: Config.t(),
           context: Context.t(),
           runner: runner(),
           resumer: resumer(),
@@ -175,7 +179,7 @@ defmodule Tars.Agent.State do
   @type dumped() :: %{
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
-          config: LLM.Config.dumped(),
+          config: Config.dumped(),
           context: Context.t(),
           scope_opts: keyword(),
           grace: pos_integer(),
@@ -183,7 +187,7 @@ defmodule Tars.Agent.State do
           runner: runner(),
           resumer: resumer(),
           outcome: outcome(),
-          mode: :idle | :owed | {:waiting, LLM.Turn.Parked.t(), Event.Source.t()}
+          mode: :idle | :owed | {:waiting, Parked.t(), Source.t()}
         }
 
   @typedoc """
@@ -197,7 +201,7 @@ defmodule Tars.Agent.State do
     * `{:shutdown, task}` - the kill fired; end the task now
   """
   @type effect() ::
-          {:emit, Event.Source.t(), tuple()}
+          {:emit, Source.t(), tuple()}
           | {:ask_to_stop, pid()}
           | {:stop_now, pid()}
           | {:arm_kill, pos_integer(), non_neg_integer()}
@@ -245,10 +249,10 @@ defmodule Tars.Agent.State do
     %__MODULE__{
       generation: generation(),
       agent_id: agent_id,
-      config: Keyword.get(opts, :config, LLM.Config.new()),
+      config: Keyword.get(opts, :config, Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
-      runner: mfa!(Keyword.get(opts, :runner, {LLM.Turn, :run, []}), :runner),
-      resumer: mfa!(Keyword.get(opts, :resumer, {LLM.Turn, :resume, []}), :resumer),
+      runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
+      resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       scope_opts: [user: user, org: org] ++ Keyword.take(opts, Scope.seams()),
       grace: Keyword.get(opts, :grace, @default_grace)
     }
@@ -265,13 +269,13 @@ defmodule Tars.Agent.State do
   end
 
   @doc "Runs a turn with the runner this agent was given."
-  @spec apply_runner(t(), Scope.t(), Context.t()) :: LLM.Turn.result()
+  @spec apply_runner(t(), Scope.t(), Context.t()) :: Turn.result()
   def apply_runner(%__MODULE__{runner: {module, function, args}}, %Scope{} = scope, context) do
     apply(module, function, args ++ [scope, context])
   end
 
   @doc "Finishes a parked turn with the resumer this agent was given."
-  @spec apply_resumer(t(), Scope.t(), LLM.Turn.Parked.t(), map()) :: LLM.Turn.result()
+  @spec apply_resumer(t(), Scope.t(), Parked.t(), map()) :: Turn.result()
   def apply_resumer(
         %__MODULE__{resumer: {module, function, args}},
         %Scope{} = scope,
@@ -287,7 +291,7 @@ defmodule Tars.Agent.State do
     state
     |> Map.from_struct()
     |> Map.delete(:delegations)
-    |> Map.merge(%{config: LLM.Config.dump(state.config), mode: at_rest(state.mode)})
+    |> Map.merge(%{config: Config.dump(state.config), mode: at_rest(state.mode)})
   end
 
   defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
@@ -299,7 +303,7 @@ defmodule Tars.Agent.State do
   @spec load(dumped()) :: t()
   def load(%{config: config, mode: mode} = dumped) do
     dumped = Map.put_new_lazy(dumped, :generation, &generation/0)
-    struct!(__MODULE__, %{dumped | config: LLM.Config.load(config), mode: reopen(mode)})
+    struct!(__MODULE__, %{dumped | config: Config.load(config), mode: reopen(mode)})
   end
 
   defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
@@ -309,9 +313,9 @@ defmodule Tars.Agent.State do
   deletion. Carries the current turn's delegations, so a client attaching
   mid-turn sees the work already under way.
   """
-  @spec snapshot(t()) :: map()
+  @spec snapshot(t()) :: Snapshot.t()
   def snapshot(state) do
-    %{
+    %Snapshot{
       generation: state.generation,
       status: status(state),
       context: state.context,
@@ -383,7 +387,7 @@ defmodule Tars.Agent.State do
 
   @doc "The calls a waiting agent needs answered, or `[]` when it is not waiting."
   @spec waiting_on(t()) :: [{Tars.Tool.call(), String.t()}]
-  def waiting_on(%__MODULE__{mode: %Waiting{turn: turn}}), do: LLM.Turn.Parked.calls(turn)
+  def waiting_on(%__MODULE__{mode: %Waiting{turn: turn}}), do: Parked.calls(turn)
   def waiting_on(%__MODULE__{}), do: []
 
   @doc """
@@ -466,10 +470,10 @@ defmodule Tars.Agent.State do
       {:turn_interrupted, stats(running.started_at, stopping.dropped, length(messages), :stopped)}
 
   @doc "Holds a turn that stopped to ask, and announces that it can be resumed."
-  @spec parked(t(), LLM.Turn.Parked.t()) :: {t(), [effect()]}
+  @spec parked(t(), Parked.t()) :: {t(), [effect()]}
   def parked(%__MODULE__{mode: %Running{} = running} = state, turn) do
     waiting = %Waiting{turn: turn, source: running.scope.source, started_at: running.started_at}
-    announcement = {:emit, running.scope.source, {:turn_parked, LLM.Turn.Parked.calls(turn)}}
+    announcement = {:emit, running.scope.source, {:turn_parked, Parked.calls(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
   end
@@ -517,7 +521,7 @@ defmodule Tars.Agent.State do
     {drained, dropped} = drain(state)
     stats = stats(nil, dropped, 0, :idle)
 
-    {idle(drained), [{:emit, Event.Source.root(state.agent_id), {:turn_interrupted, stats}}]}
+    {idle(drained), [{:emit, Source.root(state.agent_id), {:turn_interrupted, stats}}]}
   end
 
   defp drain(state), do: {%{state | pending: []}, length(state.pending)}
@@ -557,7 +561,7 @@ defmodule Tars.Agent.State do
 
   `:none` when nothing is waiting.
   """
-  @spec resume(t()) :: {:resume, Scope.t(), LLM.Turn.Parked.t(), integer()} | :none
+  @spec resume(t()) :: {:resume, Scope.t(), Parked.t(), integer()} | :none
   def resume(%__MODULE__{mode: %Waiting{} = waiting} = state) do
     scope = %{turn_scope(state) | source: waiting.source}
 
@@ -567,7 +571,7 @@ defmodule Tars.Agent.State do
   def resume(%__MODULE__{}), do: :none
 
   @doc "Records the turn a `resume/1` led to, and the park it came from."
-  @spec resumed(t(), Task.t(), Scope.t(), LLM.Turn.Parked.t(), integer()) :: t()
+  @spec resumed(t(), Task.t(), Scope.t(), Parked.t(), integer()) :: t()
   def resumed(%__MODULE__{} = state, task, %Scope{} = scope, turn, started_at) do
     %{state | mode: %Running{task: task, scope: scope, started_at: started_at, parked: turn}}
   end
