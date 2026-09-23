@@ -27,6 +27,78 @@ defmodule TarsMCP.ServerTest do
     end
   end
 
+  describe "what a command sees of the node's environment" do
+    setup do
+      name = "TARS_SERVER_TEST_#{System.unique_integer([:positive])}"
+      System.put_env(name, "secret")
+      on_exit(fn -> System.delete_env(name) end)
+      %{name: name}
+    end
+
+    defp unset(%Server{transport: {:stdio, opts}}) do
+      opts[:args]
+      |> Enum.chunk_every(2)
+      |> Enum.flat_map(fn
+        ["-u", name] -> [name]
+        _ -> []
+      end)
+    end
+
+    test "runs the command under env, dropping what it does not keep", %{name: name} do
+      server = server(transport: {:stdio, command: "npx", args: ["-y", "x"]})
+      {:stdio, opts} = server.transport
+
+      assert Path.basename(opts[:command]) == "env"
+      assert Enum.take(opts[:args], -3) == ["npx", "-y", "x"]
+      assert name in unset(server)
+      refute "PATH" in unset(server)
+      refute "HOME" in unset(server)
+    end
+
+    test "keeps what the transport sets and the credential variable", %{name: name} do
+      server =
+        server(
+          transport: {:stdio, command: "npx", env: %{name => "given"}},
+          credential_env: "GITHUB_TOKEN"
+        )
+
+      refute name in unset(server)
+      refute "GITHUB_TOKEN" in unset(server)
+    end
+
+    test "keeps what :inherit_env names", %{name: name} do
+      refute name in unset(server(inherit_env: [name]))
+    end
+
+    test "keeps PATH without the VM's own directories" do
+      {:stdio, opts} = server().transport
+      root = to_string(:code.root_dir())
+      path = String.split(opts[:env]["PATH"], ":")
+
+      refute Enum.any?(path, &String.starts_with?(Path.expand(&1), root))
+      assert System.find_executable("sh") |> Path.dirname() |> then(&(&1 in path))
+    end
+
+    test "a PATH the transport sets is its own" do
+      {:stdio, opts} =
+        server(transport: {:stdio, command: "true", env: %{"PATH" => "/opt/x"}}).transport
+
+      assert opts[:env]["PATH"] == "/opt/x"
+    end
+
+    test "is left alone under :inherit_env :all" do
+      assert {:stdio, opts} = server(inherit_env: :all).transport
+      assert opts[:command] == "true"
+    end
+
+    test "the variables it drops are not set in the command", %{name: name} do
+      server = server(transport: {:stdio, command: "sh", args: ["-c", "echo ${#{name}:-unset}"]})
+      {:stdio, opts} = server.transport
+
+      assert {"unset\n", 0} = System.cmd(opts[:command], opts[:args])
+    end
+  end
+
   describe "an HTTP server's URL" do
     defp http(url, opts \\ []) do
       Server.new(:linear, transport: {:streamable_http, [base_url: url] ++ opts})

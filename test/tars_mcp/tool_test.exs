@@ -156,7 +156,7 @@ defmodule TarsMCP.ToolTest do
       assert {:ok, {:stdio, opts}} =
                Server.with_credential(server, Tars.Credential.secret("tok"))
 
-      assert opts[:env] == %{"TOKEN" => "tok"}
+      assert opts[:env]["TOKEN"] == "tok"
     end
 
     test "a command with nowhere to put a token says so" do

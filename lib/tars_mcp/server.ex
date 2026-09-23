@@ -20,6 +20,7 @@ defmodule TarsMCP.Server do
   | `:credential_header` | `authorization` | the header a resolved credential is sent in |
   | `:credential_env` | none | the variable a resolved credential is given to a command in |
   | `:stderr` | `:inherit` | where a command's own output goes: `:inherit`, `:discard`, or `{:file, path}` |
+  | `:inherit_env` | `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR`, `USER` | the variables a command keeps from the node's own environment, or `:all` |
 
   An HTTP transport takes the server's whole URL as `:base_url`: the path is
   split off into `:mcp_path` rather than appended to, so the URL a vendor
@@ -31,6 +32,17 @@ defmodule TarsMCP.Server do
       transport: {:streamable_http,
         base_url: "https://mcp.example.com",
         headers: %{"authorization" => "Bearer " <> token}}
+
+  ## What a command sees of the node's environment
+
+  A command keeps only the `:inherit_env` variables of the node's own
+  environment, beside the `:env` its transport sets and its `:credential_env`.
+  The rest are unset before it starts, so a cookie, a vault key or a provider
+  key the node was started with reaches no server that was not given it.
+
+  `PATH` is kept without the directories under the running VM's own root,
+  which the VM puts first: a command that runs `erl` or `elixir` gets the one
+  the host installed, not this node's.
 
   ## What a command writes to stderr
 
@@ -65,6 +77,7 @@ defmodule TarsMCP.Server do
     :credential_env,
     except: [],
     stderr: :inherit,
+    inherit_env: ~w(HOME LANG LC_ALL LC_CTYPE LOGNAME PATH SHELL TERM TMPDIR USER),
     credential_header: "authorization",
     credential_scheme: "Bearer",
     timeout: :timer.seconds(60),
@@ -86,6 +99,7 @@ defmodule TarsMCP.Server do
           credential_scheme: String.t(),
           credential_env: String.t() | nil,
           stderr: :inherit | :discard | {:file, Path.t()},
+          inherit_env: [String.t()] | :all,
           timeout: timeout(),
           max_result_bytes: pos_integer() | :infinity
         }
@@ -103,6 +117,7 @@ defmodule TarsMCP.Server do
     %{server | prefix: server.prefix || to_string(ref)}
     |> validate_transport!()
     |> split_url()
+    |> scrub_env()
     |> redirect_stderr()
   end
 
@@ -190,6 +205,56 @@ defmodule TarsMCP.Server do
   end
 
   defp split_url(%__MODULE__{} = server), do: server
+
+  # `env -u` names the variables to drop rather than restating the ones to
+  # keep, so no value lands in the command's arguments, where `ps` would show
+  # it. What the transport sets and the credential variable are kept: the port
+  # sets them on this process before `env` runs.
+  defp scrub_env(%__MODULE__{inherit_env: :all} = server), do: server
+
+  defp scrub_env(%__MODULE__{transport: {:stdio, opts}} = server) do
+    case System.find_executable("env") do
+      nil ->
+        server
+
+      env ->
+        given = opts[:env] || %{}
+        keep = server.inherit_env ++ Map.keys(given) ++ List.wrap(server.credential_env)
+        unset = for {name, _value} <- System.get_env(), name not in keep, do: ["-u", name]
+        args = List.flatten(unset) ++ [opts[:command] | opts[:args] || []]
+
+        opts =
+          opts
+          |> Keyword.put(:command, env)
+          |> Keyword.put(:args, args)
+          |> Keyword.put(:env, host_path(given, "PATH" in server.inherit_env))
+
+        %{server | transport: {:stdio, opts}}
+    end
+  end
+
+  defp scrub_env(%__MODULE__{} = server), do: server
+
+  defp host_path(%{"PATH" => _path} = given, _kept), do: given
+  defp host_path(given, false), do: given
+
+  defp host_path(given, true) do
+    case System.get_env("PATH") do
+      nil ->
+        given
+
+      path ->
+        root = to_string(:code.root_dir())
+
+        host =
+          path
+          |> String.split(":")
+          |> Enum.reject(&String.starts_with?(Path.expand(&1), root))
+          |> Enum.join(":")
+
+        Map.put(given, "PATH", host)
+    end
+  end
 
   # The command runs under a shell so its stderr can be pointed away from the
   # terminal Tars was started in. `exec` keeps it the same process, so the port

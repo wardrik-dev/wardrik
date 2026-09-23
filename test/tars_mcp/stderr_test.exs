@@ -36,7 +36,10 @@ defmodule TarsMCP.StderrTest do
     defp server(opts) do
       Server.new(
         :stub,
-        Keyword.merge([transport: {:stdio, command: "npx", args: ["-y", "x"]}], opts)
+        Keyword.merge(
+          [transport: {:stdio, command: "npx", args: ["-y", "x"]}, inherit_env: :all],
+          opts
+        )
       )
     end
 
