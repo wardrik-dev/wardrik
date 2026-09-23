@@ -5,9 +5,9 @@ defmodule TarsDaemon.ConfigTest do
 
   @moduletag :tmp_dir
 
-  defp read(toml, %{tmp_dir: dir}) do
-    file = Path.join(dir, "config.toml")
-    File.write!(file, toml)
+  defp read(yaml, %{tmp_dir: dir}) do
+    file = Path.join(dir, "config.yaml")
+    File.write!(file, yaml)
     Config.read(file)
   end
 
@@ -20,19 +20,25 @@ defmodule TarsDaemon.ConfigTest do
 
   describe "read/1" do
     test "a missing file configures nothing", %{tmp_dir: dir} do
-      assert {:ok, []} = Config.read(Path.join(dir, "config.toml"))
+      assert {:ok, []} = Config.read(Path.join(dir, "config.yaml"))
+    end
+
+    test "an empty file configures nothing", context do
+      assert {:ok, []} = read("", context)
     end
 
     test "a server with a command is started as one", context do
       assert {:ok, [{TarsMCP, servers: [notes: server]}]} =
                read(
                  """
-                 [mcp.notes]
-                 command = "npx"
-                 args = ["-y", "server-filesystem"]
-                 env = { ROOT = "/srv/notes" }
-                 only = ["read_file"]
-                 timeout = 30
+                 mcp:
+                   notes:
+                     command: npx
+                     args: [-y, server-filesystem]
+                     env:
+                       ROOT: /srv/notes
+                     only: [read_file]
+                     timeout: 30
                  """,
                  context
                )
@@ -49,10 +55,12 @@ defmodule TarsDaemon.ConfigTest do
       assert {:ok, [{TarsMCP, servers: [github: server]}]} =
                read(
                  """
-                 [mcp.github]
-                 url = "https://api.githubcopilot.com/mcp/"
-                 headers = { "x-team" = "core" }
-                 credential = "user:github"
+                 mcp:
+                   github:
+                     url: https://api.githubcopilot.com/mcp/
+                     headers:
+                       x-team: core
+                     credential: user:github
                  """,
                  context
                )
@@ -70,9 +78,11 @@ defmodule TarsDaemon.ConfigTest do
       assert {:ok, [{TarsMCP, servers: [linear: server]}]} =
                read(
                  """
-                 [mcp.linear]
-                 url = "https://mcp.linear.app/mcp"
-                 headers = { authorization = "Bearer ${#{name}}" }
+                 mcp:
+                   linear:
+                     url: https://mcp.linear.app/mcp
+                     headers:
+                       authorization: Bearer ${#{name}}
                  """,
                  context
                )
@@ -87,16 +97,16 @@ defmodule TarsDaemon.ConfigTest do
       assert {:ok, settings} =
                read(
                  """
-                 [oauth.client]
-                 name = "Acme agents"
-
-                 [oauth.providers.github]
-                 resource = "https://api.githubcopilot.com/mcp/"
-                 client_id = "abc"
-                 scopes = ["repo"]
-
-                 [vault]
-                 keys = ["${#{key}}"]
+                 oauth:
+                   client:
+                     name: Acme agents
+                   providers:
+                     github:
+                       resource: https://api.githubcopilot.com/mcp/
+                       client_id: abc
+                       scopes: [repo]
+                 vault:
+                   keys: ["${#{key}}"]
                  """,
                  context
                )
@@ -109,54 +119,46 @@ defmodule TarsDaemon.ConfigTest do
 
     test "a variable that is not set says which value names it", context do
       assert {:error, message} =
-               read(
-                 """
-                 [vault]
-                 keys = ["${TARS_CONFIG_TEST_UNSET}"]
-                 """,
-                 context
-               )
+               read(~s(vault:\n  keys: ["${TARS_CONFIG_TEST_UNSET}"]\n), context)
 
       assert message =~ "vault.keys.0 names ${TARS_CONFIG_TEST_UNSET}, which is not set"
     end
 
     test "a key nothing takes is refused", context do
       assert {:error, message} =
-               read(
-                 """
-                 [mcp.notes]
-                 command = "npx"
-                 comand = "typo"
-                 """,
-                 context
-               )
+               read("mcp:\n  notes:\n    command: npx\n    comand: typo\n", context)
 
       assert message =~ "mcp.notes.comand is not a setting"
     end
 
     test "a server is a command or a url, not both and not neither", context do
-      assert {:error, both} = read(~s([mcp.a]\ncommand = "x"\nurl = "https://x"\n), context)
+      assert {:error, both} = read("mcp:\n  a:\n    command: x\n    url: https://x\n", context)
       assert both =~ "mcp.a has both command and url"
 
-      assert {:error, neither} = read(~s([mcp.b]\nonly = ["x"]\n), context)
+      assert {:error, neither} = read("mcp:\n  b:\n    only: [x]\n", context)
       assert neither =~ "mcp.b needs a command or a url"
     end
 
     test "a credential is user:, org: or named:", context do
       assert {:error, message} =
-               read(~s([mcp.a]\nurl = "https://x"\ncredential = "github"\n), context)
+               read("mcp:\n  a:\n    url: https://x\n    credential: github\n", context)
 
       assert message =~ "mcp.a.credential is user:NAME, org:NAME or named:NAME"
     end
 
     test "an unknown section is refused", context do
-      assert {:error, message} = read("[agents]\nx = 1\n", context)
+      assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"
     end
 
-    test "a file that is not TOML says so", context do
-      assert {:error, message} = read("[mcp\n", context)
-      assert message =~ "config.toml: "
+    test "a file that is not a set of sections says so", context do
+      assert {:error, message} = read("- a\n- b\n", context)
+      assert message =~ "the file is a set of sections"
+    end
+
+    test "a file that is not YAML says so", context do
+      assert {:error, message} = read("mcp: [a\n", context)
+      assert message =~ "config.yaml: is not YAML"
     end
   end
 

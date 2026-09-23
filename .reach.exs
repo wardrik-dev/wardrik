@@ -29,7 +29,7 @@
       vault: [:core],
       oauth: [:core, :vault],
       tui: [:core],
-      daemon: [:core, :mcp, :oauth],
+      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua],
       console: [:core],
       demo: [:core],
       launcher: [:core, :tui, :mcp, :oauth, :vault, :brave, :research]

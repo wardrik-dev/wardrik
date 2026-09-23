@@ -7,15 +7,16 @@ defmodule TarsDaemon do
 
       config :tars, :children, [TarsDaemon]
 
-  Starting, it reads `config.toml` from the config directory into the settings
+  Starting, it reads `config.yaml` from the config directory into the settings
   each package reads (see `TarsDaemon.Config`), then starts what those
   settings call for:
 
     * `TarsMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
     * `TarsOAuth.Supervisor`, when a provider is configured.
+    * `TarsDaemon.Agents`, which runs the agents `agents/` declares.
 
-  A `config.toml` that does not read stops the boot, with the reason logged.
+  A `config.yaml` that does not read stops the boot, with the reason logged.
 
   `:config_dir` and `:state_dir` override `TarsDaemon.Config.config_dir/0`
   and `TarsDaemon.Config.state_dir/0`.
@@ -27,6 +28,7 @@ defmodule TarsDaemon do
       tars serve     # in the foreground, logging to the terminal
       tars start     # in the background, logging to the state directory
       tars status    # what is running
+      tars reload    # read agents/ again
       tars remote    # an IEx shell on the node
       tars logs      # follow the log
       tars stop
@@ -44,10 +46,10 @@ defmodule TarsDaemon do
     config_dir = Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0)
     state_dir = Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0)
 
-    case Config.read(Path.join(config_dir, "config.toml")) do
+    case Config.read(Path.join(config_dir, "config.yaml")) do
       {:ok, settings} ->
         :ok = Config.apply(settings)
-        Supervisor.start_link(__MODULE__, state_dir, name: __MODULE__)
+        Supervisor.start_link(__MODULE__, {config_dir, state_dir}, name: __MODULE__)
 
       {:error, message} ->
         Logger.error(message)
@@ -56,10 +58,11 @@ defmodule TarsDaemon do
   end
 
   @impl true
-  def init(state_dir) do
+  def init({config_dir, state_dir}) do
     children =
       mcp(Path.join([state_dir, "log", "mcp.log"])) ++
-        oauth()
+        oauth() ++
+        [{TarsDaemon.Agents, dir: Path.join(config_dir, "agents")}]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -79,7 +82,8 @@ defmodule TarsDaemon do
 
   @doc """
   What this node is running, as `tars status` prints it: the node, how long
-  it has been up, and each agent in the fleet with what it is doing.
+  it has been up, each agent in the fleet with what it is doing, and each agent
+  file that does not read.
   """
   @spec status() :: String.t()
   def status do
@@ -93,8 +97,20 @@ defmodule TarsDaemon do
 
     rows = for member <- members, do: "  #{member.key}  #{member.status}  #{member.node}"
 
-    Enum.join(header ++ rows, "\n")
+    broken =
+      for {_path, {:error, message}} <- agent_files(),
+          do: "  #{message}"
+
+    Enum.join(header ++ rows ++ problems(broken), "\n")
   end
+
+  defp agent_files do
+    if Process.whereis(TarsDaemon.Agents), do: TarsDaemon.Agents.files(), else: []
+  end
+
+  defp problems([]), do: []
+  defp problems([_one] = broken), do: ["", "1 agent file does not read:" | broken]
+  defp problems(broken), do: ["", "#{length(broken)} agent files do not read:" | broken]
 
   defp agents([_member]), do: "agent"
   defp agents(_members), do: "agents"

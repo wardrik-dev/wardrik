@@ -27,11 +27,13 @@ Usage: tars COMMAND
   start     run the daemon in the background, logging to $log
   stop      stop the daemon
   status    what the daemon is running
+  reload    read the agent files again
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
   version   print the version
 
-The daemon reads its configuration from $config_dir/config.toml.
+The daemon reads its configuration from $config_dir/config.yaml, and
+runs the agents $config_dir/agents declares.
 USAGE
 }
 
@@ -51,7 +53,8 @@ case "${1:-}" in
       "$node" rpc 'true = is_pid(Process.whereis(TarsDaemon))' > /dev/null 2>&1 && exit 0
       running || break
     done
-    echo "tars did not start; see $log" >&2
+    echo "tars did not start. The end of $log:" >&2
+    tail -n 20 "$log" >&2 2>/dev/null || true
     exit 1
     ;;
   stop)
@@ -61,6 +64,10 @@ case "${1:-}" in
   status)
     if ! running; then echo "tars is not running"; exit 3; fi
     exec "$node" rpc 'IO.puts(TarsDaemon.status())'
+    ;;
+  reload)
+    if ! running; then echo "tars is not running" >&2; exit 1; fi
+    exec "$node" rpc 'TarsDaemon.Agents.reload(); IO.puts(TarsDaemon.status())'
     ;;
   remote)
     exec "$node" remote

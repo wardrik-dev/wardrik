@@ -115,6 +115,14 @@ jobs:
             exit 1
           fi
 
+      - name: Show the daemon's logs
+        if: failure()
+        run: |
+          for log in /tmp/tmp.*/.local/state/tars/log/*.log /tmp/tmp.*/.local/state/tars/tmp/log/erlang.log.*; do
+            [ -f "$log" ] && { echo "== $log"; tail -n 80 "$log"; }
+          done
+          true
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.tarball.outputs.name }}

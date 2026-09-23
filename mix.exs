@@ -94,8 +94,9 @@ defmodule Tars.MixProject do
       {:anubis_mcp, "~> 2.0"},
       {:finch, "~> 0.23"},
 
-      # Used by lib/tars_daemon, not by core: the daemon's config.toml.
-      {:toml, "~> 0.7"},
+      # Used by lib/tars_daemon, not by core: the daemon's config.yaml, and the
+      # frontmatter of its agent files. yamerl underneath is pure Erlang.
+      {:yaml_elixir, "~> 2.12"},
 
       # Test and dev
       # Dev deps

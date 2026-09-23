@@ -310,6 +310,7 @@ attaches it to the GitHub release for a `v*` tag.
 MIX_ENV=prod mix release
 _build/prod/rel/tarsd/bin/tars start     # in the background
 _build/prod/rel/tarsd/bin/tars status    # what it is running
+_build/prod/rel/tarsd/bin/tars reload    # read the agent files again
 _build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
 _build/prod/rel/tarsd/bin/tars logs      # follow its log
 _build/prod/rel/tarsd/bin/tars stop
@@ -324,7 +325,8 @@ what a person writes and can live in a dotfiles repository:
 
 | | |
 | --- | --- |
-| **`~/.config/tars/config.toml`** | MCP servers, OAuth providers and vault keys. See `TarsDaemon.Config` |
+| **`~/.config/tars/config.yaml`** | MCP servers, OAuth providers and vault keys. See `TarsDaemon.Config` |
+| **`~/.config/tars/agents/*.md`** | the agents it runs, one per file. See `TarsDaemon.AgentFile` |
 | **`~/.local/share/tars/store/`** | the store |
 | **`~/.local/share/tars/cookie`** | the node's cookie, created on first boot and readable by its owner only |
 | **`~/.local/state/tars/log/`** | `tars.log`, and `mcp.log` for what MCP commands write to stderr |
@@ -332,15 +334,37 @@ what a person writes and can live in a dotfiles repository:
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` move them, as they
 move any other tool's.
 
-```toml
-[mcp.linear]
-url = "https://mcp.linear.app/mcp"
-headers = { authorization = "Bearer ${LINEAR_TOKEN}" }
+```yaml
+mcp:
+  linear:
+    url: https://mcp.linear.app/mcp
+    headers:
+      authorization: Bearer ${LINEAR_TOKEN}
 ```
 
 `${NAME}` is read from the environment when the daemon boots, and so are
 provider keys such as `ZAI_API_KEY`. A key that is absent is reported by the
-tool that needs it; a `config.toml` that does not read stops the boot.
+tool that needs it; a `config.yaml` that does not read stops the boot.
+
+An agent is a Markdown file with YAML frontmatter, the shape Claude Code and
+GitHub Copilot read theirs in, and the body is its system prompt:
+
+```markdown
+---
+description: Watches the incident queue and says what needs an engineer.
+model: anthropic:claude-sonnet-5
+tools: [web_search, linear/*]
+org: acme
+---
+You watch the incident queue. Summarise anything new, and say which issues
+need an engineer.
+```
+
+The daemon starts one agent per file when it boots, and `tars reload` gives
+each running agent what its file says now without losing what it has said.
+An agent has only the tools its file lists; `linear/*` is every tool of the
+server `config.yaml` calls `linear`, and `*` is everything. A file that does
+not read is listed by `tars status`, and the others run regardless.
 
 An MCP command sees only a few of the daemon's environment variables
 (`HOME`, `PATH`, `USER` and the like) beside the ones its server sets, so the

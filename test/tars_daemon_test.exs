@@ -13,21 +13,21 @@ defmodule TarsDaemonTest do
     end)
   end
 
-  test "starts with no config.toml at all", %{tmp_dir: dir} do
+  test "starts with no config.yaml at all, running only the agent files", %{tmp_dir: dir} do
     assert {:ok, pid} = start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
-    assert Supervisor.which_children(pid) == []
+    assert [{TarsDaemon.Agents, _pid, :worker, _modules}] = Supervisor.which_children(pid)
   end
 
-  test "puts config.toml's settings where each package reads them", %{tmp_dir: dir} do
+  test "puts config.yaml's settings where each package reads them", %{tmp_dir: dir} do
     key = TarsVault.generate_key()
-    File.write!(Path.join(dir, "config.toml"), "[vault]\nkeys = [\"#{key}\"]\n")
+    File.write!(Path.join(dir, "config.yaml"), "vault:\n  keys: [\"#{key}\"]\n")
 
     assert {:ok, _pid} = start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
     assert Application.get_env(:tars, TarsVault)[:keys] == [key]
   end
 
-  test "a config.toml that does not read stops it, and says why", %{tmp_dir: dir} do
-    File.write!(Path.join(dir, "config.toml"), "[nope]\n")
+  test "a config.yaml that does not read stops it, and says why", %{tmp_dir: dir} do
+    File.write!(Path.join(dir, "config.yaml"), "nope: {}\n")
 
     assert {:error, {{:config, message}, _child}} =
              start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})

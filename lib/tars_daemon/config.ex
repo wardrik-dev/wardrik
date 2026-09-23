@@ -1,40 +1,44 @@
 defmodule TarsDaemon.Config do
   @moduledoc """
-  Where the daemon keeps things, and what `config.toml` configures.
+  Where the daemon keeps things, and what `config.yaml` configures.
 
   The daemon follows the XDG base directories, so what a person writes stays
   apart from what the daemon writes:
 
   | Directory | Default | What it holds |
   | --- | --- | --- |
-  | `TARS_CONFIG_DIR` | `$XDG_CONFIG_HOME/tars`, `~/.config/tars` | `config.toml` |
+  | `TARS_CONFIG_DIR` | `$XDG_CONFIG_HOME/tars`, `~/.config/tars` | `config.yaml`, and `agents/`; see `TarsDaemon.AgentFile` |
   | `TARS_DATA_DIR` | `$XDG_DATA_HOME/tars/store`, `~/.local/share/tars/store` | the store |
   | `TARS_COOKIE_FILE` | `$XDG_DATA_HOME/tars/cookie`, `~/.local/share/tars/cookie` | the node's distribution cookie |
   | `TARS_STATE_DIR` | `$XDG_STATE_HOME/tars`, `~/.local/state/tars` | `log/tars.log`, and `log/mcp.log` for what MCP commands write to stderr |
 
-  ## config.toml
+  ## config.yaml
 
-      [mcp.linear]
-      url = "https://mcp.linear.app/mcp"
-      headers = { authorization = "Bearer ${LINEAR_TOKEN}" }
+      mcp:
+        linear:
+          url: https://mcp.linear.app/mcp
+          headers:
+            authorization: Bearer ${LINEAR_TOKEN}
+        notes:
+          command: npx
+          args: [-y, "@modelcontextprotocol/server-filesystem", /srv/notes]
+          only: [read_file, list_directory]
+        github:
+          url: https://api.githubcopilot.com/mcp/
+          credential: user:github
 
-      [mcp.notes]
-      command = "npx"
-      args = ["-y", "@modelcontextprotocol/server-filesystem", "/srv/notes"]
-      only = ["read_file", "list_directory"]
+      oauth:
+        providers:
+          github:
+            resource: https://api.githubcopilot.com/mcp/
+            client_id: ${GITHUB_CLIENT_ID}
+            client_secret: ${GITHUB_CLIENT_SECRET}
+            scopes: [repo]
 
-      [mcp.github]
-      url = "https://api.githubcopilot.com/mcp/"
-      credential = "user:github"
+      vault:
+        keys: ["${TARS_VAULT_KEY}"]
 
-      [oauth.providers.github]
-      resource = "https://api.githubcopilot.com/mcp/"
-      client_id = "${GITHUB_CLIENT_ID}"
-      client_secret = "${GITHUB_CLIENT_SECRET}"
-      scopes = ["repo"]
-
-      [vault]
-      keys = ["${TARS_VAULT_KEY}"]
+  It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
   `${NAME}` in any string is replaced with that environment variable, so the
   file itself need hold no secret.
@@ -46,8 +50,8 @@ defmodule TarsDaemon.Config do
   `credential_header`, `credential_scheme` and `credential_env`. See
   `TarsMCP.Server`.
 
-  `[oauth]` takes `client`, `redirect` and `providers`, as `TarsOAuth.Config`
-  describes them. `[vault]` takes `keys`, as `TarsVault` does.
+  `oauth` takes `client`, `redirect` and `providers`, as `TarsOAuth.Config`
+  describes them. `vault` takes `keys`, as `TarsVault` does.
 
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
   or a server that is neither a command nor a URL, and says where.
@@ -79,7 +83,7 @@ defmodule TarsDaemon.Config do
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
 
-  @doc "Where `config.toml` is read from: `TARS_CONFIG_DIR`, or `tars` under the XDG config home."
+  @doc "Where `config.yaml` is read from: `TARS_CONFIG_DIR`, or `tars` under the XDG config home."
   @spec config_dir() :: Path.t()
   def config_dir, do: dir("TARS_CONFIG_DIR", "XDG_CONFIG_HOME", "~/.config")
 
@@ -114,9 +118,10 @@ defmodule TarsDaemon.Config do
   end
 
   defp decode(text, file) do
-    case Toml.decode(text) do
-      {:ok, document} -> {:ok, document |> interpolate([]) |> settings()}
-      {:error, reason} -> {:error, "#{file}: #{Toml.Error.exception({:error, reason}).message}"}
+    case YamlElixir.read_from_string(text) do
+      {:ok, nil} -> {:ok, []}
+      {:ok, document} -> {:ok, document |> table!([]) |> interpolate([]) |> settings()}
+      {:error, error} -> {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
     end
   catch
     {:invalid, path, message} -> {:error, "#{file}: #{Enum.join(path, ".")} #{message}"}
@@ -216,11 +221,13 @@ defmodule TarsDaemon.Config do
 
   defp setting(key), do: Map.fetch!(@settings, key)
 
-  # reach:disable-next-line unsafe_atom_creation -- config.toml's own server and provider names
+  # reach:disable-next-line unsafe_atom_creation -- config.yaml's own server and provider names
   defp name(name), do: String.to_atom(name)
 
   defp table!(value, _path) when is_map(value), do: value
-  defp table!(_value, path), do: invalid!(path, "is a table")
+  defp table!(nil, _path), do: %{}
+  defp table!(_value, []), do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault")
+  defp table!(_value, path), do: invalid!(path, "is a set of keys")
 
   defp known!(table, keys, path) do
     case Map.keys(table) -- keys do
