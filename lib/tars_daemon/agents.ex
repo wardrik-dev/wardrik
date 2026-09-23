@@ -1,28 +1,31 @@
 defmodule TarsDaemon.Agents do
   @moduledoc """
   Runs the agents `agents/` in the config directory declares, one per `*.md`
-  file. See `TarsDaemon.AgentFile` for what a file says.
+  file, under the policies `policies/` declares, one per `*.yaml` file. See
+  `TarsDaemon.AgentFile` and `TarsDaemon.PolicyFile` for what each says.
 
-  It reads every file when it starts and again on `reload/0`, and brings each
-  agent in the fleet to what its file says: started where it is not running,
-  and given the file's config and seams with `Tars.Agent.configure/2` where it
-  is. An agent keeps its conversation either way.
+  It reads every file when it starts and again on `reload/0`, policies first,
+  and puts each agent's `Tars.Agent.Spec` to the fleet with `Tars.Fleet.put/1`:
+  an agent that is not running is started, and one that is takes what its file
+  says now. An agent keeps its conversation either way.
 
-  A file that does not read is reported by `files/0`, and by `tars status`,
-  and an agent already running for it is left as it was. Removing a file stops
-  nothing; `Tars.Fleet.forget/1` removes an agent and what it said.
+  A file that does not read is reported by `files/0`, and by `tars status`. An
+  agent already running for it is left as it was, and an agent naming a policy
+  that does not read does not read either. Removing a file stops nothing;
+  `Tars.Fleet.forget/1` removes an agent and what it said.
   """
 
   use GenServer
 
   require Logger
 
-  alias Tars.Agent
+  alias Tars.Agent.Spec
   alias Tars.Fleet
   alias TarsDaemon.AgentFile
+  alias TarsDaemon.PolicyFile
 
-  @typedoc "What became of one file: the agent it runs, or why it runs none."
-  @type file() :: {Path.t(), {:ok, AgentFile.t()} | {:error, String.t()}}
+  @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
+  @type file() :: {Path.t(), {:ok, Spec.t() | TarsPolicy.t()} | {:error, String.t()}}
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -33,7 +36,10 @@ defmodule TarsDaemon.Agents do
   @spec reload() :: [file()]
   def reload, do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
 
-  @doc "What became of each file the last time they were read, in the order of their names."
+  @doc """
+  What became of each file the last time they were read: the policies, then
+  the agents, each in the order of their names.
+  """
   @spec files() :: [file()]
   def files, do: GenServer.call(__MODULE__, :files)
 
@@ -52,26 +58,27 @@ defmodule TarsDaemon.Agents do
   def handle_call(:files, _from, state), do: {:reply, state.files, state}
 
   defp load(%{dir: dir} = state) do
-    files =
-      dir
-      |> Path.join("*.md")
-      |> Path.wildcard()
-      |> Enum.sort()
-      |> Enum.map(&{&1, run(AgentFile.read(&1))})
+    policy_files = read(dir, "policies/*.yaml", &PolicyFile.read/1)
+    policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
 
+    agent_files = read(dir, "agents/*.md", &(&1 |> AgentFile.read(policies) |> put()))
+
+    files = policy_files ++ agent_files
     for {_path, {:error, message}} <- files, do: Logger.error(message)
 
     %{state | files: files}
   end
 
-  defp run({:ok, %AgentFile{key: key, opts: opts} = file}) do
-    with {:ok, pid} <- Fleet.spawn(key, opts),
-         :ok <- Agent.configure(pid, opts) do
-      {:ok, file}
-    else
-      {:error, reason} -> {:error, "#{file.path}: #{key} did not start: #{inspect(reason)}"}
+  defp read(dir, pattern, read) do
+    dir |> Path.join(pattern) |> Path.wildcard() |> Enum.sort() |> Enum.map(&{&1, read.(&1)})
+  end
+
+  defp put({:ok, spec}) do
+    case Fleet.put(spec) do
+      {:ok, _pid} -> {:ok, spec}
+      {:error, reason} -> {:error, "#{Spec.key(spec)} did not start: #{inspect(reason)}"}
     end
   end
 
-  defp run({:error, _message} = error), do: error
+  defp put({:error, _message} = error), do: error
 end

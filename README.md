@@ -252,12 +252,24 @@ Tars.Fleet.spawn(key,
 )
 ```
 
+The same agent written down is a `Tars.Agent.Spec`, which holds no process
+and no function. `Tars.Fleet.put/1` starts the agent a spec describes, or gives
+the one already running what the spec says now:
+
+```elixir
+spec = Tars.Agent.Spec.new(name: "assistant", org: current_org, config: config, policy: MyApp.Policy)
+{:ok, pid} = Tars.Fleet.put(spec)
+```
+
 | | |
 | --- | --- |
 | **`:user`, `:org`** | written into the agent's key through `Tars.Fleet.Segment` and carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
 | **`:policy`** | a `Tars.Policy`. Asked about every tool call before it runs, and answers `:allow`, `{:deny, reason}` or `{:ask, prompt}`. |
 | **`:dispatch`** | a `Tars.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
 | **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |
+
+A policy is a module, or a module and the value it reads, as
+`{TarsPolicy, policy}`: a policy written as data travels with the agent.
 
 A policy that asks **parks** the turn: nothing runs, nothing is appended to the
 conversation, and the agent waits.
@@ -310,7 +322,9 @@ attaches it to the GitHub release for a `v*` tag.
 MIX_ENV=prod mix release
 _build/prod/rel/tarsd/bin/tars start     # in the background
 _build/prod/rel/tarsd/bin/tars status    # what it is running
-_build/prod/rel/tarsd/bin/tars reload    # read the agent files again
+_build/prod/rel/tarsd/bin/tars reload    # read the agent and policy files again
+_build/prod/rel/tarsd/bin/tars parked    # what is waiting on a person
+_build/prod/rel/tarsd/bin/tars approve acme/_/triage call_1
 _build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
 _build/prod/rel/tarsd/bin/tars logs      # follow its log
 _build/prod/rel/tarsd/bin/tars stop
@@ -327,6 +341,7 @@ what a person writes and can live in a dotfiles repository:
 | --- | --- |
 | **`~/.config/tars/config.yaml`** | MCP servers, OAuth providers and vault keys. See `TarsDaemon.Config` |
 | **`~/.config/tars/agents/*.md`** | the agents it runs, one per file. See `TarsDaemon.AgentFile` |
+| **`~/.config/tars/policies/*.yaml`** | the policies agents name. See `TarsPolicy` |
 | **`~/.local/share/tars/store/`** | the store |
 | **`~/.local/share/tars/cookie`** | the node's cookie, created on first boot and readable by its owner only |
 | **`~/.local/state/tars/log/`** | `tars.log`, and `mcp.log` for what MCP commands write to stderr |
@@ -365,6 +380,33 @@ each running agent what its file says now without losing what it has said.
 An agent has only the tools its file lists; `linear/*` is every tool of the
 server `config.yaml` calls `linear`, and `*` is everything. A file that does
 not read is listed by `tars status`, and the others run regardless.
+
+A policy decides what an agent's tools may do. It is a file in `policies/`,
+named by the agents it governs as `policy: careful`, or written in place in an
+agent file:
+
+```yaml
+# ~/.config/tars/policies/careful.yaml
+allow: [web_search, linear/*]
+ask:
+  github/create_*: This opens an issue on GitHub.
+deny: [run_lua]
+default: allow
+```
+
+The strictest rule naming a call decides it. A call a policy asks about parks
+the agent until a person answers, from the TUI or from a shell:
+
+```sh
+tars parked
+tars approve acme/_/triage call_1
+tars deny acme/_/triage call_1 Not on a Friday.
+```
+
+A file is read into a value, not kept as one: an agent file into a
+`Tars.Agent.Spec`, a policy file into a `TarsPolicy`. The agent carries its
+policy, so it is written to the store with the agent and decides the same way
+on whichever node holds it next.
 
 An MCP command sees only a few of the daemon's environment variables
 (`HOME`, `PATH`, `USER` and the like) beside the ones its server sets, so the

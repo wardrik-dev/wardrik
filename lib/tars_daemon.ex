@@ -28,7 +28,10 @@ defmodule TarsDaemon do
       tars serve     # in the foreground, logging to the terminal
       tars start     # in the background, logging to the state directory
       tars status    # what is running
-      tars reload    # read agents/ again
+      tars reload    # read agents/ and policies/ again
+      tars parked    # what is waiting on a person
+      tars approve KEY CALL
+      tars deny KEY CALL [REASON]
       tars remote    # an IEx shell on the node
       tars logs      # follow the log
       tars stop
@@ -62,7 +65,7 @@ defmodule TarsDaemon do
     children =
       mcp(Path.join([state_dir, "log", "mcp.log"])) ++
         oauth() ++
-        [{TarsDaemon.Agents, dir: Path.join(config_dir, "agents")}]
+        [{TarsDaemon.Agents, dir: config_dir}]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -83,7 +86,7 @@ defmodule TarsDaemon do
   @doc """
   What this node is running, as `tars status` prints it: the node, how long
   it has been up, each agent in the fleet with what it is doing, and each agent
-  file that does not read.
+  or policy file that does not read.
   """
   @spec status() :: String.t()
   def status do
@@ -109,8 +112,8 @@ defmodule TarsDaemon do
   end
 
   defp problems([]), do: []
-  defp problems([_one] = broken), do: ["", "1 agent file does not read:" | broken]
-  defp problems(broken), do: ["", "#{length(broken)} agent files do not read:" | broken]
+  defp problems([_one] = broken), do: ["", "1 file does not read:" | broken]
+  defp problems(broken), do: ["", "#{length(broken)} files do not read:" | broken]
 
   defp agents([_member]), do: "agent"
   defp agents(_members), do: "agents"

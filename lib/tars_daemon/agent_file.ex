@@ -1,6 +1,7 @@
 defmodule TarsDaemon.AgentFile do
   @moduledoc """
-  One agent, written as a file in `agents/` under the config directory.
+  Reads an agent file, one in `agents/` under the config directory, into the
+  `Tars.Agent.Spec` it writes.
 
       ---
       name: triage
@@ -26,7 +27,7 @@ defmodule TarsDaemon.AgentFile do
   | `model` | the model, as `provider:model`. `Tars.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
   | `org`, `user` | who it works for |
-  | `policy` | a module implementing `Tars.Policy` |
+  | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
 
@@ -41,35 +42,45 @@ defmodule TarsDaemon.AgentFile do
     * `*`, every tool the daemon ships and every MCP server connected
     * a module implementing `Tars.Tool`
 
+  ## Policy
+
+  `policy` is one of
+
+    * the name of a policy in `policies/` under the config directory:
+      `policy: careful` for `policies/careful.yaml`
+    * rules written in place, as a policy file writes them:
+
+          policy:
+            ask: [github/*]
+            deny: [run_lua]
+
+    * a module implementing `Tars.Policy`
+
+  and without one every call the agent's tools allow may run. Rules, named or
+  written in place, are a `TarsPolicy`, and the agent carries them: they are
+  written to the store with it and decide its calls on any node.
+
   The agent is given the credentials `TarsOAuth` holds where a provider is
   configured, and `TarsVault`'s where the vault has a key.
   """
 
-  alias Tars.Fleet
+  alias Tars.Agent.Spec
   alias Tars.LLM.Config
-
-  @enforce_keys [:name, :key, :path, :opts]
-  defstruct [:name, :key, :path, :opts, :description]
-
-  @typedoc "An agent file read: its agent's name, key and description, and what `Tars.Fleet.spawn/2` takes."
-  @type t() :: %__MODULE__{
-          name: String.t(),
-          key: String.t(),
-          path: Path.t(),
-          opts: keyword(),
-          description: String.t() | nil
-        }
+  alias TarsPolicy.Pattern
 
   @shipped [TarsBrave.WebSearch, TarsResearch.Deep, TarsLua.Run]
   @keys ~w(name description model tools org user policy timeout max_iterations)
 
-  @doc "Reads the agent `path` declares."
-  @spec read(Path.t()) :: {:ok, t()} | {:error, String.t()}
-  def read(path) do
+  @doc """
+  Reads the spec of the agent `path` declares, with `policies` the policies in
+  `policies/`, by name.
+  """
+  @spec read(Path.t(), %{String.t() => TarsPolicy.t()}) :: {:ok, Spec.t()} | {:error, String.t()}
+  def read(path, policies \\ %{}) do
     with {:ok, text} <- File.read(path),
          {:ok, front, body} <- split(text),
          {:ok, fields} <- frontmatter(front) do
-      build(path, fields, String.trim(body))
+      build(path, fields, String.trim(body), policies)
     else
       {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
       {:error, message} -> {:error, "#{path}: #{message}"}
@@ -96,7 +107,7 @@ defmodule TarsDaemon.AgentFile do
     end
   end
 
-  defp build(path, fields, body) do
+  defp build(path, fields, body, policies) do
     case Map.keys(fields) -- @keys do
       [] -> :ok
       [key | _] -> invalid!("#{key} is not a setting; expected one of #{Enum.join(@keys, ", ")}")
@@ -108,28 +119,18 @@ defmodule TarsDaemon.AgentFile do
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> Config.new()
 
-    opts =
-      [config: config]
-      |> put(:policy, fields["policy"], &policy!/1)
-      |> put(:timeout, fields["timeout"], &seconds!/1)
-      |> put(:credentials, credentials(), & &1)
-
-    name = optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname()
-
-    key =
-      Fleet.key(name,
-        org: optional_string!(fields["org"], "org"),
-        user: optional_string!(fields["user"], "user")
-      )
-
     {:ok,
-     %__MODULE__{
-       name: name,
-       key: key,
-       path: path,
-       opts: opts,
-       description: optional_string!(fields["description"], "description")
-     }}
+     Spec.new(
+       name:
+         optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
+       org: optional_string!(fields["org"], "org"),
+       user: optional_string!(fields["user"], "user"),
+       description: optional_string!(fields["description"], "description"),
+       config: config,
+       policy: policy(fields["policy"], policies),
+       timeout: fields["timeout"] && seconds!(fields["timeout"]),
+       credentials: credentials()
+     )}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   end
@@ -148,17 +149,21 @@ defmodule TarsDaemon.AgentFile do
   defp tool!("*"), do: @shipped ++ [{TarsMCP, :*}]
 
   defp tool!(name) when is_binary(name) do
-    case String.split(name, "/", parts: 2) do
-      [server, "*"] ->
+    pattern = Pattern.parse!(name)
+
+    cond do
+      server = Pattern.server(pattern) ->
         [server!(server)]
 
-      [server, tool] ->
+      String.contains?(name, "/") ->
+        [server, tool] = String.split(name, "/", parts: 2)
+
         invalid!(
           "tools names #{name}; name the whole server as #{server}/*, and list #{tool} " <>
             "in its only in config.yaml"
         )
 
-      [name] ->
+      true ->
         [shipped!(name)]
     end
   end
@@ -168,7 +173,7 @@ defmodule TarsDaemon.AgentFile do
   defp shipped!(name) do
     case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do
       {:ok, module} -> module
-      :error -> module!(name, :tool, 0, "a tool")
+      :error -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
     end
   end
 
@@ -196,18 +201,33 @@ defmodule TarsDaemon.AgentFile do
 
   # -- scalars ---------------------------------------------------------------
 
-  defp policy!(name) when is_binary(name), do: module!(name, :authorize, 2, "a policy")
-  defp policy!(_name), do: invalid!("policy is a module name")
+  defp policy(nil, _policies), do: nil
 
-  defp module!(name, function, arity, what) do
+  defp policy(name, policies) when is_binary(name) do
+    case Map.fetch(policies, name) do
+      {:ok, policy} -> {TarsPolicy, policy}
+      :error -> module!(name, :authorize, 2, "a policy", "a policy in policies/")
+    end
+  end
+
+  defp policy(fields, _policies) when is_map(fields) do
+    case TarsPolicy.decode(fields) do
+      {:ok, policy} -> {TarsPolicy, policy}
+      {:error, message} -> invalid!("policy " <> message)
+    end
+  end
+
+  defp policy(_value, _policies),
+    do: invalid!("policy is the name of a policy, rules, or a module")
+
+  defp module!(name, function, arity, what, known) do
     module = Module.safe_concat([name])
 
     if Code.ensure_loaded?(module) and function_exported?(module, function, arity),
       do: module,
       else: invalid!("#{name} is not #{what}")
   rescue
-    ArgumentError ->
-      invalid!("names #{name}, which is neither a module nor #{what} the daemon ships")
+    ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
 
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)

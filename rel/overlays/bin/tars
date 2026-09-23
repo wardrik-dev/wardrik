@@ -27,7 +27,10 @@ Usage: tars COMMAND
   start     run the daemon in the background, logging to $log
   stop      stop the daemon
   status    what the daemon is running
-  reload    read the agent files again
+  reload    read the agent and policy files again
+  parked    the tool calls agents are waiting on a person for
+  approve KEY CALL           run a parked call
+  deny KEY CALL [REASON]     refuse a parked call
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
   version   print the version
@@ -39,6 +42,17 @@ USAGE
 
 running () {
   "$node" pid > /dev/null 2>&1
+}
+
+# Runs TarsDaemon.CLI.main/1 on the node. Each argument travels base64
+# encoded, so nothing a person types is read as part of the expression.
+cli () {
+  if ! running; then echo "tars is not running" >&2; exit 1; fi
+  args=""
+  for arg in "$@"; do
+    args="$args, Base.decode64!(\"$(printf %s "$arg" | base64 | tr -d '\n')\")"
+  done
+  exec "$node" rpc "TarsDaemon.CLI.main([${args#, }])"
 }
 
 # This install's VM, whether or not it answers yet: it runs this release's
@@ -69,11 +83,18 @@ case "${1:-}" in
     ;;
   status)
     if ! running; then echo "tars is not running"; exit 3; fi
-    exec "$node" rpc 'IO.puts(TarsDaemon.status())'
+    cli status
     ;;
-  reload)
-    if ! running; then echo "tars is not running" >&2; exit 1; fi
-    exec "$node" rpc 'TarsDaemon.Agents.reload(); IO.puts(TarsDaemon.status())'
+  reload|parked)
+    cli "$1"
+    ;;
+  approve)
+    [ $# -eq 3 ] || { echo "Usage: tars approve KEY CALL" >&2; exit 1; }
+    cli "$@"
+    ;;
+  deny)
+    [ $# -ge 3 ] || { echo "Usage: tars deny KEY CALL [REASON]" >&2; exit 1; }
+    cli "$@"
     ;;
   remote)
     exec "$node" remote

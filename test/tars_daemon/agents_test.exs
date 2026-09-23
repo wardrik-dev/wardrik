@@ -14,7 +14,17 @@ defmodule TarsDaemon.AgentsTest do
   end
 
   defp write(%{dir: dir, org: org}, name, front) do
-    File.write!(Path.join(dir, "#{name}.md"), "---\norg: #{org}\n#{front}---\nYou help.\n")
+    File.mkdir_p!(Path.join(dir, "agents"))
+
+    File.write!(
+      Path.join([dir, "agents", "#{name}.md"]),
+      "---\norg: #{org}\n#{front}---\nYou help.\n"
+    )
+  end
+
+  defp write_policy(%{dir: dir}, name, yaml) do
+    File.mkdir_p!(Path.join(dir, "policies"))
+    File.write!(Path.join([dir, "policies", "#{name}.yaml"]), yaml)
   end
 
   test "runs an agent for each file", %{org: org} = context do
@@ -55,6 +65,31 @@ defmodule TarsDaemon.AgentsTest do
     assert message =~ "names nope"
     assert %{} = Agent.status("#{org}/_/alpha")
     assert {:error, :not_found} = Agent.status("#{org}/_/broken")
+  end
+
+  test "a policy in policies/ governs the agents that name it", %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    write(context, "alpha", "policy: careful\n")
+
+    start_supervised!({Agents, dir: context.dir})
+
+    assert [{_policy, {:ok, %TarsPolicy{name: "careful"} = careful}}, {_alpha, {:ok, spec}}] =
+             Agents.files()
+
+    assert spec.policy == {TarsPolicy, careful}
+    assert %{} = Agent.status("#{org}/_/alpha")
+  end
+
+  test "an agent naming a policy that does not read does not run", %{org: org} = context do
+    write_policy(context, "careful", "deny: run_lua\n")
+    write(context, "alpha", "policy: careful\n")
+
+    start_supervised!({Agents, dir: context.dir})
+
+    assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] = Agents.files()
+    assert policy_error =~ "careful.yaml: deny is a list"
+    assert agent_error =~ "names careful"
+    assert {:error, :not_found} = Agent.status("#{org}/_/alpha")
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
