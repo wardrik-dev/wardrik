@@ -52,11 +52,13 @@ defmodule Tars.MixProject do
     ]
   end
 
-  # One release, `tars`, carrying its own ERTS. `rel/env.sh.eex` gives each
-  # install a cookie of its own and keeps distribution on loopback.
+  # One release carrying its own ERTS. `bin/tarsd` is the node's own script
+  # and `bin/tars`, from rel/overlays, the command a person runs.
+  # `rel/env.sh.eex` gives each install a cookie of its own and keeps
+  # distribution on loopback.
   defp releases do
     [
-      tars: [
+      tarsd: [
         include_executables_for: [:unix],
         applications: [tars: :permanent],
         steps: [:assemble, :tar]
@@ -91,6 +93,9 @@ defmodule Tars.MixProject do
       # here and `TarsMCP.Supervisor` starts it.
       {:anubis_mcp, "~> 2.0"},
       {:finch, "~> 0.23"},
+
+      # Used by lib/tars_daemon, not by core: the daemon's config.toml.
+      {:toml, "~> 0.7"},
 
       # Test and dev
       # Dev deps

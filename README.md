@@ -300,29 +300,67 @@ def deps do
 end
 ```
 
-## Running a release
+## Running the daemon
 
-`mix release` builds `tars`, a self-contained node with its own ERTS, and a
-tarball of it. CI builds one for Linux x86_64 on every push to `main` and
+`mix release` builds the daemon: a self-contained node with its own ERTS, and
+a tarball of it. CI builds one for Linux x86_64 on every push to `main` and
 attaches it to the GitHub release for a `v*` tag.
 
 ```sh
 MIX_ENV=prod mix release
-_build/prod/rel/tars/bin/tars daemon    # start in the background
-_build/prod/rel/tars/bin/tars remote    # an IEx shell on the running node
-_build/prod/rel/tars/bin/tars stop
+_build/prod/rel/tarsd/bin/tars start     # in the background
+_build/prod/rel/tarsd/bin/tars status    # what it is running
+_build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
+_build/prod/rel/tarsd/bin/tars logs      # follow its log
+_build/prod/rel/tarsd/bin/tars stop
 ```
 
-Provider keys are read when the node boots, not when it is built, and a key
-that is absent is reported by the tool that needs it.
+`tars serve` runs it in the foreground, logging to the terminal, for a
+service manager to supervise. `bin/tarsd` is the node's own release script
+underneath.
+
+The daemon follows the XDG base directories, so `~/.config/tars` holds only
+what a person writes and can live in a dotfiles repository:
 
 | | |
 | --- | --- |
-| **`TARS_DATA_DIR`** | where the store writes |
-| **`TARS_COOKIE_FILE`** | the node's cookie, created on first boot and readable by its owner only. Defaults to `~/.tars/cookie`; `RELEASE_COOKIE` overrides it |
-| **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tars@localhost`; `any` listens everywhere |
+| **`~/.config/tars/config.toml`** | MCP servers, OAuth providers and vault keys. See `TarsDaemon.Config` |
+| **`~/.local/share/tars/store/`** | the store |
+| **`~/.local/share/tars/cookie`** | the node's cookie, created on first boot and readable by its owner only |
+| **`~/.local/state/tars/log/`** | `tars.log`, and `mcp.log` for what MCP commands write to stderr |
+
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` move them, as they
+move any other tool's.
+
+```toml
+[mcp.linear]
+url = "https://mcp.linear.app/mcp"
+headers = { authorization = "Bearer ${LINEAR_TOKEN}" }
+```
+
+`${NAME}` is read from the environment when the daemon boots, and so are
+provider keys such as `ZAI_API_KEY`. A key that is absent is reported by the
+tool that needs it; a `config.toml` that does not read stops the boot.
+
+An MCP command sees only a few of the daemon's environment variables
+(`HOME`, `PATH`, `USER` and the like) beside the ones its server sets, so the
+cookie and every key the daemon holds stay with the daemon.
+`TarsMCP.Server`'s `:inherit_env` names others.
+
+The daemon is `TarsDaemon`, started as one of core's `:children`. A host of
+its own adds to the tree the same way:
+
+```elixir
+config :tars, :children, [MyApp.Host]
+```
+
+| | |
+| --- | --- |
+| **`TARS_CONFIG_DIR`**, **`TARS_STATE_DIR`** | the config and state directories, when not the XDG ones |
+| **`TARS_DATA_DIR`**, **`TARS_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
+| **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tarsd@localhost`; `any` listens everywhere |
+| **`TARS_LOG`** | the log file, or `-` for the terminal |
 | **`TARS_CLUSTER_SIZE`** | the store's voting members |
-| **`ZAI_API_KEY`**, **`BRAVE_API_KEY`**, **`TARS_VAULT_KEY`** | provider, search and vault keys |
 
 Anyone who can reach the distribution port with the cookie can run code on the
 node. Listen beyond loopback only on a network you trust.

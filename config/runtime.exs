@@ -12,3 +12,24 @@ if config_env() == :prod do
     config :tars, TarsVault, keys: [key]
   end
 end
+
+# A release is the daemon: it starts TarsDaemon beside core and logs to
+# TARS_STATE_DIR/log/tars.log, or to the terminal where TARS_LOG is "-".
+if System.get_env("RELEASE_NAME") do
+  config :tars, :children, [TarsDaemon]
+
+  state =
+    System.get_env("TARS_STATE_DIR") ||
+      Path.join(System.get_env("XDG_STATE_HOME") || Path.expand("~/.local/state"), "tars")
+
+  case System.get_env("TARS_LOG") || Path.join([state, "log", "tars.log"]) do
+    "-" ->
+      :ok
+
+    file ->
+      config :logger, :default_handler,
+        config: [file: String.to_charlist(file), max_no_bytes: 10_000_000, max_no_files: 5]
+
+      config :logger, :default_formatter, colors: [enabled: false]
+  end
+end

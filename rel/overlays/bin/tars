@@ -1,0 +1,81 @@
+#!/bin/sh
+# The command a person runs. Each subcommand is one of bin/tarsd's, the node's
+# own script, with the daemon's defaults around it.
+set -e
+
+readlink_f () {
+  cd "$(dirname "$1")" > /dev/null
+  filename="$(basename "$1")"
+  if [ -h "$filename" ]; then
+    readlink_f "$(readlink "$filename")"
+  else
+    echo "$(pwd -P)/$filename"
+  fi
+}
+
+root="$(CDPATH='' cd "$(dirname "$(readlink_f "$0")")/.." && pwd -P)"
+node="$root/bin/tarsd"
+config_dir="${TARS_CONFIG_DIR:-"${XDG_CONFIG_HOME:-"$HOME/.config"}/tars"}"
+state_dir="${TARS_STATE_DIR:-"${XDG_STATE_HOME:-"$HOME/.local/state"}/tars"}"
+log="${TARS_LOG:-"$state_dir/log/tars.log"}"
+
+usage () {
+  cat <<USAGE
+Usage: tars COMMAND
+
+  serve     run the daemon in the foreground, logging to the terminal
+  start     run the daemon in the background, logging to $log
+  stop      stop the daemon
+  status    what the daemon is running
+  remote    an IEx shell on the daemon
+  logs      follow the daemon's log
+  version   print the version
+
+The daemon reads its configuration from $config_dir/config.toml.
+USAGE
+}
+
+running () {
+  "$node" pid > /dev/null 2>&1
+}
+
+case "${1:-}" in
+  serve)
+    TARS_LOG="${TARS_LOG:--}" exec "$node" start
+    ;;
+  start)
+    if running; then echo "tars is already running" >&2; exit 1; fi
+    "$node" daemon
+    for _ in $(seq 30); do
+      sleep 1
+      "$node" rpc 'true = is_pid(Process.whereis(TarsDaemon))' > /dev/null 2>&1 && exit 0
+      running || break
+    done
+    echo "tars did not start; see $log" >&2
+    exit 1
+    ;;
+  stop)
+    if ! running; then echo "tars is not running" >&2; exit 1; fi
+    exec "$node" stop
+    ;;
+  status)
+    if ! running; then echo "tars is not running"; exit 3; fi
+    exec "$node" rpc 'IO.puts(TarsDaemon.status())'
+    ;;
+  remote)
+    exec "$node" remote
+    ;;
+  logs)
+    exec tail -F "$log"
+    ;;
+  version)
+    echo "tars $(cut -d' ' -f2 "$root/releases/start_erl.data")"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

@@ -73,7 +73,7 @@ jobs:
         run: |
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
           name="tars-$version-linux-x86_64.tar.gz"
-          mv "_build/prod/tars-$version.tar.gz" "$name"
+          mv "_build/prod/tarsd-$version.tar.gz" "$name"
           rm -rf _build/prod/rel
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
@@ -94,24 +94,21 @@ jobs:
           root=$(mktemp -d)
           tar -xzf "${{ steps.tarball.outputs.name }}" -C "$root"
           HOME=$(mktemp -d)
-          TARS_DATA_DIR=$(mktemp -d)
-          export HOME TARS_DATA_DIR
+          export HOME
 
-          "$root/bin/tars" daemon
+          "$root/bin/tars" start
           trap '"$root/bin/tars" stop || true' EXIT
 
-          for _ in $(seq 30); do
-            "$root/bin/tars" pid >/dev/null 2>&1 && break
-            sleep 1
-          done
-
-          "$root/bin/tars" rpc '
+          "$root/bin/tarsd" rpc '
             {:ok, _pid} = Tars.Fleet.spawn(Tars.Fleet.key("smoke"))
             ["_/_/smoke"] = Enum.map(Tars.Fleet.list(), & &1.key)
-            IO.puts("smoke: #{node()} spawned _/_/smoke")
           '
 
-          test "$(stat -c %a "$HOME/.tars/cookie")" = 600
+          "$root/bin/tars" status | tee status.txt
+          grep -q "_/_/smoke" status.txt
+
+          test "$(stat -c %a "$HOME/.local/share/tars/cookie")" = 600
+          test -s "$HOME/.local/state/tars/log/tars.log"
 
           if ss -Hltnp | grep beam | grep -v '127.0.0.1'; then
             echo "distribution is listening beyond loopback" >&2
