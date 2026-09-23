@@ -124,6 +124,15 @@ defmodule Tars.Agent do
   @spec initial_state(keyword(), String.t()) :: State.t()
   def initial_state(opts, key), do: State.new(opts, key)
 
+  @doc """
+  Gives the agent a new `:config` and new seams for the turns it starts from
+  now on, and writes them to the store. See `Tars.Agent.State.configure/2`.
+
+      Tars.Agent.configure("acme/jon/researcher", config: config, policy: MyApp.Policy)
+  """
+  @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
+  def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
+
   @spec ask(agent(), String.t()) :: :ok | {:error, :not_found}
   def ask(agent, question), do: cast(agent, {:ask, question})
 
@@ -207,6 +216,11 @@ defmodule Tars.Agent do
   # -- messages --------------------------------------------------------------
 
   @impl DurableServer
+  def handle_call({:configure, opts}, _from, state) do
+    next = State.configure(state, opts)
+    {:reply, :ok, next, meta: State.meta(next), sync: true}
+  end
+
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
   def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}

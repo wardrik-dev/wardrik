@@ -493,6 +493,32 @@ defmodule Tars.AgentTest do
       assert Tars.Scope.remaining_ms(scope) > 55_000
     end
 
+    test "configure/2 gives the turns after it a new config and new seams" do
+      test_pid = self()
+
+      agent =
+        start_agent(
+          [runner: reporting_runner(test_pid), policy: SomePolicy, dispatch: SomeGateway],
+          Tars.Fleet.key("configure-#{System.unique_integer([:positive])}", org: "acme", user: 7)
+        )
+
+      config = Tars.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5", system: "New here.")
+      assert :ok = Agent.configure(agent, config: config, policy: OtherPolicy)
+
+      Agent.ask(agent, "hi")
+
+      assert_receive {:scope, scope}
+      assert scope.policy == OtherPolicy
+      assert scope.dispatch == nil
+      assert scope.org == "acme"
+      assert scope.user == "7"
+      assert Agent.status(agent).model == "anthropic:claude-sonnet-5"
+    end
+
+    test "configure/2 on a key nothing holds says so" do
+      assert {:error, :not_found} = Agent.configure("nobody/_/here", [])
+    end
+
     test "an agent started with none of them runs under an inert scope" do
       test_pid = self()
 

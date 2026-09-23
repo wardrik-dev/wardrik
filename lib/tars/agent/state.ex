@@ -258,6 +258,26 @@ defmodule Tars.Agent.State do
     }
   end
 
+  @doc """
+  The same agent with the config and seams in `opts`, for the turns it starts
+  from now on. A turn already running, or parked, keeps the scope it began
+  under.
+
+  `:config` replaces the config when given. The seams in `opts`, of
+  `Tars.Scope.seams/0`, replace every seam the agent had, so one left out is
+  one the agent no longer has. Who the work is for stays with the key.
+  """
+  @spec configure(t(), keyword()) :: t()
+  def configure(%__MODULE__{} = state, opts) do
+    who = Keyword.take(state.scope_opts, [:user, :org])
+
+    %{
+      state
+      | config: Keyword.get(opts, :config, state.config),
+        scope_opts: who ++ Keyword.take(opts, Scope.seams())
+    }
+  end
+
   defp mfa!({module, function, args}, _key)
        when is_atom(module) and is_atom(function) and is_list(args),
        do: {module, function, args}
