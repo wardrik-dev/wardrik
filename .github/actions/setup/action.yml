@@ -1,13 +1,21 @@
 name: Set up Elixir
-description: Installs the Erlang and Elixir named in mise.toml, restores the build cache, and fetches deps.
+description: >
+  Installs the Erlang and Elixir named in mise.toml, restores this job's build
+  cache, and fetches deps. The job saves the cache itself, under the `key`
+  output, with actions/cache/save.
 
 inputs:
   cache-key:
-    description: What the cached build is for, so jobs building different environments keep separate caches.
+    description: The job's cache, one per job, since each builds its own environment.
     required: true
-  cache-paths:
-    description: Paths to cache beside deps.
-    required: true
+
+outputs:
+  key:
+    description: The key to save the cache under.
+    value: ${{ steps.key.outputs.key }}
+  cache-hit:
+    description: Whether the cache was restored from an exact match.
+    value: ${{ steps.restore.outputs.cache-hit }}
 
 runs:
   using: composite
@@ -24,14 +32,31 @@ runs:
         elixir-version: ${{ steps.versions.outputs.elixir }}
         version-type: strict
 
-    - uses: actions/cache@v4
+    # On main the key ends in the commit, so every run saves a fresh entry and
+    # restores the newest by prefix. Elsewhere it ends in the lockfile, so a
+    # branch's first run saves and its later runs hit it exactly.
+    - id: key
+      shell: bash
+      env:
+        PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}
+        LOCK: ${{ hashFiles('mix.lock') }}
+        SUFFIX: ${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+      run: |
+        echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+        echo "lock=$PREFIX-$LOCK" >> "$GITHUB_OUTPUT"
+        echo "key=$PREFIX-$LOCK$SUFFIX" >> "$GITHUB_OUTPUT"
+
+    - id: restore
+      uses: actions/cache/restore@v6
       with:
         path: |
           deps
-          ${{ inputs.cache-paths }}
-        key: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}-${{ hashFiles('mix.lock') }}
+          _build
+          priv/plts
+        key: ${{ steps.key.outputs.key }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}-
+          ${{ steps.key.outputs.lock }}-
+          ${{ steps.key.outputs.prefix }}-
 
     - shell: bash
       run: mix deps.get

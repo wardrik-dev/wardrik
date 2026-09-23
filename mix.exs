@@ -106,18 +106,26 @@ defmodule Tars.MixProject do
     ]
   end
 
-  @precommit_steps [
-    ["deps.unlock", "--unused"],
-    ["format"],
-    ["test", "--warnings-as-errors", "--cover", "--export-coverage", "default"],
-    # `--export-coverage` only writes the data; test.coverage is what applies the
-    # threshold, and crap reads the same exported coverdata.
-    ["test.coverage"],
-    ["crap", "--verbose"],
-    ["credo", "--strict"],
-    ["dialyzer"],
-    ["ex_dna", "--max-clones", "0"],
-    ["reach.check", "--arch", "--smells", "--strict"]
+  # Grouped so CI can run each group on a runner of its own; locally they run
+  # in this order.
+  @precommit_groups [
+    lint: [
+      ["deps.unlock", "--unused"],
+      ["format"],
+      ["credo", "--strict"],
+      ["ex_dna", "--max-clones", "0"],
+      ["reach.check", "--arch", "--smells", "--strict"]
+    ],
+    test: [
+      ["test", "--warnings-as-errors", "--cover", "--export-coverage", "default"],
+      # `--export-coverage` only writes the data; test.coverage is what applies
+      # the threshold, and crap reads the same exported coverdata.
+      ["test.coverage"],
+      ["crap", "--verbose"]
+    ],
+    dialyzer: [
+      ["dialyzer"]
+    ]
   ]
 
   defp aliases do
@@ -127,19 +135,23 @@ defmodule Tars.MixProject do
   end
 
   # `--check` verifies instead of rewriting: the steps that fix files in place
-  # fail on what they would have fixed. CI runs it that way.
+  # fail on what they would have fixed. `--only` runs one group. CI runs each
+  # group as `mix precommit --check --only <group>`.
   @check_steps %{
     ["deps.unlock", "--unused"] => ["deps.unlock", "--check-unused"],
     ["format"] => ["format", "--check-formatted"]
   }
 
   defp precommit(args) do
+    {opts, rest} = OptionParser.parse!(args, strict: [check: :boolean, only: :string])
+
+    if rest != [], do: Mix.raise("usage: mix precommit [--check] [--only GROUP]")
+
     steps =
-      case args do
-        ["--check"] -> Enum.map(@precommit_steps, &Map.get(@check_steps, &1, &1))
-        [] -> @precommit_steps
-        _other -> Mix.raise("usage: mix precommit [--check]")
-      end
+      opts[:only]
+      |> precommit_groups()
+      |> Enum.flat_map(fn {_group, steps} -> steps end)
+      |> Enum.map(&if(opts[:check], do: Map.get(@check_steps, &1, &1), else: &1))
 
     case Enum.filter(steps, &(not run_step(&1))) do
       [] ->
@@ -149,6 +161,17 @@ defmodule Tars.MixProject do
         Mix.raise("precommit failed: #{Enum.map_join(steps, ", ", &hd/1)}")
     end
   end
+
+  defp precommit_groups(nil), do: @precommit_groups
+
+  defp precommit_groups(only) do
+    case Enum.filter(@precommit_groups, fn {group, _steps} -> Atom.to_string(group) == only end) do
+      [] -> Mix.raise("no precommit group #{only}, expected one of #{group_names()}")
+      groups -> groups
+    end
+  end
+
+  defp group_names, do: Enum.map_join(@precommit_groups, ", ", fn {group, _} -> group end)
 
   # Each step runs in its own OS process so a halting or raising task cannot
   # take the remaining steps down with it.

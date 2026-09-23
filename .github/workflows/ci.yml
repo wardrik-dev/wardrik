@@ -8,42 +8,62 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
-jobs:
-  check:
-    name: precommit
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
+env:
+  # Compiles deps in two OS processes, matching the 2-vCPU runner a private
+  # repo gets.
+  MIX_OS_DEPS_COMPILE_PARTITION_COUNT: "2"
 
-      - uses: ./.github/actions/setup
+jobs:
+  # One leg per `mix precommit` group, each with a cache of its own. The
+  # groups are listed in mix.exs.
+  check:
+    name: ${{ matrix.group }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [lint, test, dialyzer]
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: setup
+        uses: ./.github/actions/setup
         with:
-          cache-key: check
-          cache-paths: |
+          cache-key: ${{ matrix.group }}
+
+      - run: mix precommit --check --only ${{ matrix.group }}
+
+      # Saved from a failed leg too, since the compile it paid for is still
+      # good; not from a cancelled one, which may have left _build half-written.
+      - if: ${{ !cancelled() && steps.setup.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
             _build
             priv/plts
-
-      - run: mix precommit --check
+          key: ${{ steps.setup.outputs.key }}
 
   release:
     name: release (linux-x86_64)
-    needs: check
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     env:
       MIX_ENV: prod
+    outputs:
+      version: ${{ steps.tarball.outputs.version }}
+      name: ${{ steps.tarball.outputs.name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: ./.github/actions/setup
+      - id: setup
+        uses: ./.github/actions/setup
         with:
           cache-key: release
-          cache-paths: _build/prod
 
       - name: Build
         run: mix release --overwrite
@@ -54,8 +74,18 @@ jobs:
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
           name="tars-$version-linux-x86_64.tar.gz"
           mv "_build/prod/tars-$version.tar.gz" "$name"
+          rm -rf _build/prod/rel
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - if: ${{ !cancelled() && steps.setup.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
+            _build
+            priv/plts
+          key: ${{ steps.setup.outputs.key }}
 
       # Unpacked somewhere new and started with no keys and no home of its own,
       # the way a first install is.
@@ -63,7 +93,9 @@ jobs:
         run: |
           root=$(mktemp -d)
           tar -xzf "${{ steps.tarball.outputs.name }}" -C "$root"
-          export HOME=$(mktemp -d) TARS_DATA_DIR=$(mktemp -d)
+          HOME=$(mktemp -d)
+          TARS_DATA_DIR=$(mktemp -d)
+          export HOME TARS_DATA_DIR
 
           "$root/bin/tars" daemon
           trap '"$root/bin/tars" stop || true' EXIT
@@ -86,19 +118,33 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.tarball.outputs.name }}
           path: ${{ steps.tarball.outputs.name }}
           if-no-files-found: error
 
-      - name: Publish
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
+  # A v* tag publishes the tarball the release job booted, once every check
+  # has passed.
+  publish:
+    name: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release.outputs.name }}
+
+      - env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+          TARBALL: ${{ needs.release.outputs.name }}
         run: |
-          if [ "$GITHUB_REF_NAME" != "v${{ steps.tarball.outputs.version }}" ]; then
-            echo "tag $GITHUB_REF_NAME does not match mix.exs version ${{ steps.tarball.outputs.version }}" >&2
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" "${{ steps.tarball.outputs.name }}" --generate-notes
+          gh release create "$GITHUB_REF_NAME" "$TARBALL" --repo "$GITHUB_REPOSITORY" --generate-notes
