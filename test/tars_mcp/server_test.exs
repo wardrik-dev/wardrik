@@ -1,5 +1,5 @@
 defmodule TarsMCP.ServerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias TarsMCP.Server
 
@@ -70,13 +70,32 @@ defmodule TarsMCP.ServerTest do
       refute name in unset(server(inherit_env: [name]))
     end
 
-    test "keeps PATH without the VM's own directories" do
-      {:stdio, opts} = server().transport
-      root = to_string(:code.root_dir())
-      path = String.split(opts[:env]["PATH"], ":")
+    test "keeps PATH without a release's own directories" do
+      release = Path.join(System.tmp_dir!(), "release-#{System.unique_integer([:positive])}")
+      path = System.get_env("PATH")
+      System.put_env("RELEASE_ROOT", release)
 
-      refute Enum.any?(path, &String.starts_with?(Path.expand(&1), root))
-      assert System.find_executable("sh") |> Path.dirname() |> then(&(&1 in path))
+      System.put_env(
+        "PATH",
+        "#{release}/erts-16/bin:#{release}/bin:/usr/bin:#{release}-other/bin"
+      )
+
+      on_exit(fn ->
+        System.delete_env("RELEASE_ROOT")
+        System.put_env("PATH", path)
+      end)
+
+      {:stdio, opts} = server().transport
+
+      assert opts[:env]["PATH"] == "/usr/bin:#{release}-other/bin"
+    end
+
+    test "leaves PATH to the port where the node is not a release" do
+      refute System.get_env("RELEASE_ROOT")
+
+      {:stdio, opts} = server().transport
+
+      refute Map.has_key?(opts[:env], "PATH")
     end
 
     test "a PATH the transport sets is its own" do

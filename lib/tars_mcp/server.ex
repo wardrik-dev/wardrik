@@ -40,9 +40,9 @@ defmodule TarsMCP.Server do
   The rest are unset before it starts, so a cookie, a vault key or a provider
   key the node was started with reaches no server that was not given it.
 
-  `PATH` is kept without the directories under the running VM's own root,
-  which the VM puts first: a command that runs `erl` or `elixir` gets the one
-  the host installed, not this node's.
+  On a node started from a release, `PATH` is kept without the release's own
+  directories, which the release puts first: a command that runs `erl` or
+  `elixir` gets the one the host installed, not the release's.
 
   ## What a command writes to stderr
 
@@ -239,20 +239,21 @@ defmodule TarsMCP.Server do
   defp host_path(given, false), do: given
 
   defp host_path(given, true) do
-    case System.get_env("PATH") do
-      nil ->
-        given
+    with path when is_binary(path) <- System.get_env("PATH"),
+         release when is_binary(release) <- System.get_env("RELEASE_ROOT") do
+      root = Path.expand(release)
 
-      path ->
-        root = to_string(:code.root_dir())
+      host =
+        path
+        |> String.split(":")
+        |> Enum.reject(
+          &(Path.expand(&1) == root or String.starts_with?(Path.expand(&1), root <> "/"))
+        )
+        |> Enum.join(":")
 
-        host =
-          path
-          |> String.split(":")
-          |> Enum.reject(&String.starts_with?(Path.expand(&1), root))
-          |> Enum.join(":")
-
-        Map.put(given, "PATH", host)
+      Map.put(given, "PATH", host)
+    else
+      nil -> given
     end
   end
 
