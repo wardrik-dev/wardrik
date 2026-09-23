@@ -124,11 +124,16 @@ defmodule TarsMCP.Connection do
     )
   end
 
-  @doc "What a server is offering, or `nil` when nothing is connected under that ref."
+  @doc """
+  What a server is offering, or `nil` when nothing is connected under that ref.
+
+  A connection that has stopped offers nothing from the moment it stops, before
+  the registry has dropped its entry.
+  """
   @spec offer(atom()) :: Offer.t() | nil
   def offer(ref) do
     case Registry.lookup(@registry, {:offer, ref}) do
-      [{_pid, %Offer{} = offer}] -> offer
+      [{pid, %Offer{} = offer}] -> if Process.alive?(pid), do: offer
       [] -> nil
     end
   rescue
@@ -145,7 +150,8 @@ defmodule TarsMCP.Connection do
   end
 
   @doc """
-  The refs of every server a connection is running for.
+  The refs of every server a connection is running for, leaving out one that
+  has stopped and is still to leave the registry.
 
   Empty on a host that started no registry, which is one running no MCP
   servers at all.
@@ -153,7 +159,8 @@ defmodule TarsMCP.Connection do
   @spec refs() :: [atom()]
   def refs do
     @registry
-    |> Registry.select([{{{:offer, :"$1"}, :_, :_}, [], [:"$1"]}])
+    |> Registry.select([{{{:offer, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.flat_map(fn {ref, pid} -> if Process.alive?(pid), do: [ref], else: [] end)
     |> Enum.sort()
   rescue
     ArgumentError -> []
