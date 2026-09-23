@@ -41,6 +41,12 @@ running () {
   "$node" pid > /dev/null 2>&1
 }
 
+# This install's VM, whether or not it answers yet: it runs this release's
+# own ERTS.
+alive () {
+  pgrep -f "$root/erts-" > /dev/null 2>&1
+}
+
 case "${1:-}" in
   serve)
     TARS_LOG="${TARS_LOG:--}" exec "$node" start
@@ -48,10 +54,10 @@ case "${1:-}" in
   start)
     if running; then echo "tars is already running" >&2; exit 1; fi
     "$node" daemon
-    for _ in $(seq 30); do
+    for _ in $(seq 60); do
       sleep 1
       "$node" rpc 'true = is_pid(Process.whereis(TarsDaemon))' > /dev/null 2>&1 && exit 0
-      running || break
+      alive || break
     done
     echo "tars did not start. The end of $log:" >&2
     tail -n 20 "$log" >&2 2>/dev/null || true
