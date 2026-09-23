@@ -97,7 +97,7 @@ defmodule Tars.Scope do
           user: term(),
           org: term(),
           deadline: integer() | nil,
-          policy: module() | nil,
+          policy: Tars.Policy.t() | nil,
           dispatch: module() | nil,
           credentials: module() | nil
         }
@@ -124,7 +124,8 @@ defmodule Tars.Scope do
     * `:timeout` - how long the whole run may take, resolved to a deadline
     * `:deadline` - the same thing as a monotonic instant, for a caller that
       already holds one
-    * `:policy` - a `Tars.Policy` module, or `nil` to allow everything
+    * `:policy` - a `Tars.Policy`, a module or `{module, value}`, or `nil` to
+      allow everything
     * `:dispatch` - a `Tars.LLM.Dispatch` module, or `nil` to call the provider
       as configured
     * `:credentials` - a `Tars.Credential` module, or `nil` to resolve none

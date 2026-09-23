@@ -27,6 +27,16 @@ defmodule Tars.Policy do
         def authorize(_call, _scope), do: :allow
       end
 
+  ## A policy that is a value
+
+  A policy written as data rather than code is named with the module that
+  reads it, as `{module, value}`, the way a `Tars.Tool` source is. The module
+  implements `c:authorize/3`, and the value travels with the agent: it is
+  written to the store with the rest of the agent's seams and read back on
+  whichever node holds the agent next. It holds no function and no reference.
+
+      Tars.Fleet.spawn("assistant", config: config, policy: {TarsPolicy, policy})
+
   ## The three answers
 
     * `:allow` - run it.
@@ -47,6 +57,9 @@ defmodule Tars.Policy do
   branch anywhere has to handle a missing one.
   """
 
+  @typedoc "A policy as a scope holds it: a module, or a module and the value it reads."
+  @type t() :: module() | {module(), term()}
+
   @typedoc "What a policy says about one call."
   @type decision() :: :allow | {:deny, String.t()} | {:ask, String.t()}
 
@@ -59,6 +72,12 @@ defmodule Tars.Policy do
   """
   @callback authorize(call :: Tars.Tool.call(), scope :: Tars.Scope.t()) :: decision()
 
+  @doc "Decides whether `call` may run under `scope`, for a policy named as `{module, value}`."
+  @callback authorize(call :: Tars.Tool.call(), scope :: Tars.Scope.t(), value :: term()) ::
+              decision()
+
+  @optional_callbacks authorize: 2, authorize: 3
+
   @doc """
   Asks `policy` about `call`, answering `:allow` when there is no policy.
 
@@ -66,17 +85,25 @@ defmodule Tars.Policy do
   that fails open is not governance, and a broken policy module is a
   deployment error worth seeing in the conversation.
   """
-  @spec authorize(module() | nil, Tars.Tool.call(), Tars.Scope.t()) :: decision()
+  @spec authorize(t() | nil, Tars.Tool.call(), Tars.Scope.t()) :: decision()
   def authorize(nil, _call, _scope), do: :allow
 
-  def authorize(policy, call, scope) when is_atom(policy) do
-    case policy.authorize(call, scope) do
+  def authorize(policy, call, scope) when is_atom(policy) or is_tuple(policy) do
+    case decide(policy, call, scope) do
       :allow -> :allow
       {:deny, reason} when is_binary(reason) -> {:deny, reason}
       {:ask, prompt} when is_binary(prompt) -> {:ask, prompt}
-      other -> {:deny, "Policy #{inspect(policy)} returned #{inspect(other)}"}
+      other -> {:deny, "Policy #{name(policy)} returned #{inspect(other)}"}
     end
   catch
-    kind, reason -> {:deny, "Policy #{inspect(policy)} failed: #{Exception.format(kind, reason)}"}
+    kind, reason -> {:deny, "Policy #{name(policy)} failed: #{Exception.format(kind, reason)}"}
   end
+
+  defp decide({module, value}, call, scope) when is_atom(module),
+    do: module.authorize(call, scope, value)
+
+  defp decide(module, call, scope) when is_atom(module), do: module.authorize(call, scope)
+
+  defp name({module, _value}), do: inspect(module)
+  defp name(module), do: inspect(module)
 end

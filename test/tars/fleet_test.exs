@@ -3,9 +3,11 @@ defmodule Tars.FleetTest do
 
   alias ReqLLM.Context
   alias Tars.Agent
+  alias Tars.Agent.Spec
   alias Tars.Delegation
   alias Tars.Event
   alias Tars.Fleet
+  alias Tars.LLM.Config
   alias Tars.Test.AgentRunners
 
   defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
@@ -306,7 +308,7 @@ defmodule Tars.FleetTest do
 
     test "a config's tools are rebuilt on the node that loads it" do
       key = Tars.Test.Fleet.key()
-      config = Tars.LLM.Config.new(tools: [Tars.Test.EchoTool])
+      config = Config.new(tools: [Tars.Test.EchoTool])
       pid = start(key, config: config, runner: runner(self()))
 
       :ok = Fleet.stop(key)
@@ -328,5 +330,27 @@ defmodule Tars.FleetTest do
 
   defp roles(agent) do
     agent |> Agent.get_context() |> Context.to_list() |> Enum.map(& &1.role)
+  end
+
+  describe "put/1" do
+    test "starts the agent a spec describes, then gives it what the spec says now" do
+      spec =
+        Spec.new(
+          name: "put-#{System.unique_integer([:positive])}",
+          org: "test",
+          config: Config.new(model_spec: "anthropic:claude-sonnet-5")
+        )
+
+      key = Spec.key(spec)
+      on_exit(fn -> Fleet.forget(key) end)
+
+      assert {:ok, pid} = Fleet.put(spec)
+      assert Agent.status(key).model == "anthropic:claude-sonnet-5"
+
+      assert {:ok, ^pid} =
+               Fleet.put(%{spec | config: Config.new(model_spec: "openai:gpt-5")})
+
+      assert Agent.status(key).model == "openai:gpt-5"
+    end
   end
 end

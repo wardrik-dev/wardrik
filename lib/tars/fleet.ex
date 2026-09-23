@@ -5,6 +5,7 @@ defmodule Tars.Fleet do
 
   | Function | Answers |
   | --- | --- |
+  | `put/1` | start an agent from its `Tars.Agent.Spec`, or bring a running one to it |
   | `list/1` | which agents are running, and what each is doing |
   | `watch/1` | the same, as messages, whenever it changes |
   | `kill/1` | interrupt everything under a prefix |
@@ -49,6 +50,7 @@ defmodule Tars.Fleet do
   """
 
   alias Tars.Agent
+  alias Tars.Agent.Spec
   alias Tars.Fleet.Member
   alias Tars.Fleet.Segment
 
@@ -122,6 +124,23 @@ defmodule Tars.Fleet do
     {node, opts} = Keyword.pop(opts, :node)
 
     child(key, opts) |> start(node) |> started()
+  end
+
+  @doc """
+  Makes the fleet match `spec`: starts the agent it describes where none runs
+  under its key, and gives the one that does the spec's config and seams with
+  `Tars.Agent.configure/2`. The agent keeps its conversation either way.
+
+      {:ok, pid} = Tars.Fleet.put(Tars.Agent.Spec.new(name: "triage", org: "acme"))
+  """
+  @spec put(Spec.t()) :: {:ok, pid()} | {:error, term()}
+  def put(%Spec{} = spec) do
+    options = Spec.options(spec)
+
+    with {:ok, pid} <- spawn(Spec.key(spec), options),
+         :ok <- Agent.configure(pid, options) do
+      {:ok, pid}
+    end
   end
 
   @doc """
