@@ -14,6 +14,7 @@
     vault: ["TarsVault", "TarsVault.*"],
     tui: ["TarsTUI", "TarsTUI.*"],
     daemon: ["TarsDaemon", "TarsDaemon.*"],
+    policy: ["TarsPolicy", "TarsPolicy.*"],
     console: "TarsConsole",
     launcher: "Mix.Tasks.Tars",
     demo: ["TarsDemo", "TarsDemo.*"]
@@ -29,7 +30,8 @@
       vault: [:core],
       oauth: [:core, :vault],
       tui: [:core],
-      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua],
+      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua, :policy],
+      policy: [:core],
       console: [:core],
       demo: [:core],
       launcher: [:core, :tui, :mcp, :oauth, :vault, :brave, :research]
