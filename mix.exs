@@ -88,7 +88,7 @@ defmodule Tars.MixProject do
     ["credo", "--strict"],
     ["dialyzer"],
     ["ex_dna", "--max-clones", "0"],
-    ["reach.check", "--smells", "--strict"]
+    ["reach.check", "--arch", "--smells", "--strict"]
   ]
 
   defp aliases do

@@ -41,7 +41,11 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [".credo/checks/no_sleepy_tests.ex"],
+      requires: [
+        ".credo/checks/no_sleepy_tests.ex",
+        ".credo/checks/qualified_project_calls.ex",
+        ".credo/checks/no_core_process_names.ex"
+      ],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
@@ -171,7 +175,10 @@
             #
             ## Project Checks
             #
-            {Tars.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}}
+            {Tars.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Tars.Credo.Check.QualifiedProjectCalls, files: %{included: ["lib/", "dev/"]}},
+            {Tars.Credo.Check.NoCoreProcessNames,
+             files: %{included: ["lib/", "dev/"], excluded: ["lib/tars/", "lib/tars.ex"]}}
           ] ++ Enum.map(ExSlop.recommended_checks(), &{&1, []}),
         disabled: [
           #
