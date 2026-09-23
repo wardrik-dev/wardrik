@@ -34,12 +34,7 @@ defmodule TarsOAuth.Loopback do
 
   @doc "The port it listens on."
   @spec port() :: :inet.port_number()
-  def port do
-    :tars
-    |> Application.get_env(TarsOAuth, [])
-    |> Keyword.get(:redirect, [])
-    |> Keyword.get(:port, @default_port)
-  end
+  def port, do: Keyword.get(TarsOAuth.Config.redirect(), :port, @default_port)
 
   @impl GenServer
   def init(opts) do

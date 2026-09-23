@@ -175,6 +175,10 @@ defmodule TarsMCP do
   def servers, do: Connection.refs()
 
   defp request(client, server, name, arguments) do
+  @doc "Whether this deployment configured any server. See `TarsMCP.Config`."
+  @spec configured?() :: boolean()
+  def configured?, do: TarsMCP.Config.configured?()
+
     opts = [timeout: server.timeout] ++ reporting(server, name)
 
     Anubis.Client.call_tool(client, name, arguments, opts)

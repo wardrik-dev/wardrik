@@ -1,5 +1,5 @@
 defmodule TarsMCPTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   alias Tars.LLM.Config
   alias Tars.Tool

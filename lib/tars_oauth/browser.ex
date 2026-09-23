@@ -36,13 +36,7 @@ defmodule TarsOAuth.Browser do
   end
 
   defp opener do
-    configured =
-      :tars
-      |> Application.get_env(TarsOAuth, [])
-      |> Keyword.get(:redirect, [])
-      |> Keyword.get(:opener)
-
-    case configured do
+    case Keyword.get(TarsOAuth.Config.redirect(), :opener) do
       nil -> Enum.find_value(@openers, &System.find_executable/1)
       named -> System.find_executable(named)
     end

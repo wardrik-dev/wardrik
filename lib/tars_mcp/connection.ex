@@ -417,7 +417,7 @@ defmodule TarsMCP.Connection do
   # process answers every tool build, so it does not wait for it here.
   defp cancel_for(%State{} = state, caller) do
     client = client_of(state)
-    Task.Supervisor.start_child(Tars.TaskSupervisor, fn -> cancel(client, caller) end)
+    Task.Supervisor.start_child(TarsMCP.TaskSupervisor, fn -> cancel(client, caller) end)
 
     :ok
   end

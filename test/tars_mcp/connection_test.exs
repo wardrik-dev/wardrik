@@ -1,5 +1,5 @@
 defmodule TarsMCP.ConnectionTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   describe "a server that filters its tools" do
     @describetag server_opts: [only: ~w(echo)]

@@ -88,7 +88,5 @@ defmodule TarsOAuth.Client do
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
 
-  defp configured do
-    :tars |> Application.get_env(TarsOAuth, []) |> Keyword.get(:client, [])
-  end
+  defp configured, do: TarsOAuth.Config.client()
 end

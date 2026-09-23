@@ -60,7 +60,5 @@ defmodule TarsOAuth.Provider do
   @spec all() :: [t()]
   def all, do: Enum.map(configured(), fn {name, opts} -> new(name, opts) end)
 
-  defp configured do
-    :tars |> Application.get_env(TarsOAuth, []) |> Keyword.get(:providers, [])
-  end
+  defp configured, do: TarsOAuth.Config.providers()
 end

@@ -1,5 +1,5 @@
 defmodule TarsMCP.RobustnessTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   alias Tars.Event
   alias Tars.LLM.Config

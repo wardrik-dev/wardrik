@@ -1,5 +1,5 @@
 defmodule TarsMCP.NotificationsTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   describe "a server that says its tools changed" do
     test "is listed again without anyone asking", %{ref: ref} do

@@ -1,5 +1,5 @@
 defmodule TarsMCP.SupervisorTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   alias TarsMCP.Server
 

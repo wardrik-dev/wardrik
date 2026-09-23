@@ -1,5 +1,5 @@
 defmodule TarsMCP.ExpiryTest do
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   alias Tars.Credential
   alias Tars.LLM.Config

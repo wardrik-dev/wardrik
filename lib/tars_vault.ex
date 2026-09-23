@@ -206,12 +206,7 @@ defmodule TarsVault do
     end
   end
 
-  defp configured_keys do
-    :tars
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:keys, [])
-    |> List.wrap()
-  end
+  defp configured_keys, do: TarsVault.Config.keys()
 
   defp decode_key(key) when is_binary(key) do
     case Base.decode64(key) do

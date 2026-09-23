@@ -32,6 +32,7 @@ defmodule TarsMCP.Supervisor do
   @registry TarsMCP.Registry
   @connections TarsMCP.Connections
   @principals TarsMCP.Principals
+  @tasks TarsMCP.TaskSupervisor
 
   @doc "Starts the registry and a connection for each configured server."
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -44,11 +45,15 @@ defmodule TarsMCP.Supervisor do
     servers = servers(opts)
 
     children =
-      [{Registry, keys: :unique, name: @registry}, TarsMCP.Notifications] ++
+      [
+        {Registry, keys: :unique, name: @registry},
+        {Task.Supervisor, name: @tasks},
+        TarsMCP.Notifications
+      ] ++
         pool(servers) ++
         [
-          {DynamicSupervisor, name: @principals, strategy: :one_for_one},
-          connections(Enum.map(servers, &{Connection, &1}))
+          connections(Enum.map(servers, &{Connection, &1})),
+          {DynamicSupervisor, name: @principals, strategy: :one_for_one}
         ]
 
     Supervisor.init(children, strategy: :rest_for_one)
@@ -62,7 +67,9 @@ defmodule TarsMCP.Supervisor do
 
   # The connections sit under one supervisor of their own so that a connection
   # that crashes restarts alone, while a registry that crashes takes every
-  # connection with it: their registrations went with it.
+  # connection with it: their registrations went with it. Per-user connections
+  # come after, so they stop before the deployment connections they publish
+  # through.
   defp connections(children) do
     %{
       id: @connections,
@@ -132,9 +139,7 @@ defmodule TarsMCP.Supervisor do
     defaults = Keyword.take(opts, [:stderr])
 
     opts
-    |> Keyword.get_lazy(:servers, fn ->
-      :tars |> Application.get_env(TarsMCP, []) |> Keyword.get(:servers, [])
-    end)
+    |> Keyword.get_lazy(:servers, &TarsMCP.Config.servers/0)
     |> Enum.map(fn {ref, server_opts} ->
       Server.new(ref, Keyword.merge(defaults, server_opts))
     end)

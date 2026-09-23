@@ -1,7 +1,7 @@
 defmodule TarsMCP.StderrTest do
   use ExUnit.Case, async: false
 
-  import Tars.Test.MCPCase, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
+  import TarsMCP.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
 
   alias TarsMCP.Server
 

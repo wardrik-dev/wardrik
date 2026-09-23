@@ -1,9 +1,9 @@
-defmodule Tars.Test.MCPCase do
+defmodule TarsMCP.Case do
   @moduledoc """
   A `TarsMCP.Supervisor` running against `test/support/mcp/stub_server.exs`, a
   real MCP server over stdio.
 
-      use Tars.Test.MCPCase
+      use TarsMCP.Case
 
       test "the stub offers its tools", %{ref: ref} do
         assert "stub__echo" in Enum.map(TarsMCP.tools(ref), & &1.name)
@@ -19,7 +19,7 @@ defmodule Tars.Test.MCPCase do
 
   using do
     quote do
-      import Tars.Test.MCPCase
+      import TarsMCP.Case
     end
   end
 

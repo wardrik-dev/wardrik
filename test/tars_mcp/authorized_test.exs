@@ -5,7 +5,7 @@ defmodule TarsMCP.AuthorizedTest do
   person follows it, and approving the parked call runs it with the token.
   """
 
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
   use TarsOAuth.Case, async: false
 
   alias Tars.LLM.Config

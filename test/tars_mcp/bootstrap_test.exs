@@ -4,7 +4,7 @@ defmodule TarsMCP.BootstrapTest do
   which is what GitHub's does — has to offer some way to get one.
   """
 
-  use Tars.Test.MCPCase, async: false
+  use TarsMCP.Case, async: false
 
   alias Tars.Credential
   alias Tars.LLM.Config
