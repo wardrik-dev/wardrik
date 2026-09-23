@@ -60,12 +60,37 @@ defmodule TarsTUI.Text do
 
   defp take([], _room, _used, acc), do: acc
 
-  @doc "The text with its styles as ANSI escape sequences, rendered by `Termite.Style`."
+  @doc """
+  The text with its styles as ANSI escape sequences, opened by `Termite.Style`.
+
+  Each run is closed by resetting only what it set, so the background of the
+  box it is drawn in carries on after it.
+  """
   @spec to_ansi(t()) :: String.t()
   def to_ansi(data) do
     data
     |> Line.segments()
-    |> Enum.map_join(fn {text, style} -> Termite.Style.render_to_string(termite(style), text) end)
+    |> Enum.map(fn {text, style} -> ansi(text, style) end)
+    |> IO.iodata_to_binary()
+  end
+
+  defp ansi(text, style) do
+    case close(style) do
+      [] ->
+        text
+
+      codes ->
+        [Termite.Style.open_code(termite(style)), text, "\e[", Enum.intersperse(codes, ";"), "m"]
+    end
+  end
+
+  defp close(style) do
+    Enum.flat_map(style, fn
+      {:bold, true} -> ["22"]
+      {:italic, true} -> ["23"]
+      {:foreground_color, _colour} -> ["39"]
+      _other -> []
+    end)
   end
 
   defp termite(style) do
