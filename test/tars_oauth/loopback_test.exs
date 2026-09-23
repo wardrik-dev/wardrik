@@ -77,20 +77,8 @@ defmodule TarsOAuth.LoopbackTest do
   end
 
   test "it listens on loopback only", %{port: port} do
-    assert {:error, _refused} =
-             :gen_tcp.connect(local_address(), port, [:binary, active: false], 1_000)
-  end
+    %{socket: socket} = :sys.get_state(TarsOAuth.Loopback)
 
-  # A non-loopback address of this machine, or loopback again where there is
-  # none, in which case the assertion above is vacuous rather than wrong.
-  defp local_address do
-    {:ok, addresses} = :inet.getifaddrs()
-
-    Enum.find_value(addresses, {127, 0, 0, 1}, fn {_name, options} ->
-      case Keyword.get_values(options, :addr) do
-        [{a, b, c, d}] when {a, b, c, d} != {127, 0, 0, 1} -> {a, b, c, d}
-        _other -> nil
-      end
-    end)
+    assert :inet.sockname(socket) == {:ok, {{127, 0, 0, 1}, port}}
   end
 end

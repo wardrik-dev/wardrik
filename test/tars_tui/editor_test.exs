@@ -62,10 +62,11 @@ defmodule TarsTUI.EditorTest do
     test "keeps drafts private and removes the directory including editor backups" do
       System.put_env(
         "VISUAL",
-        ~s|sh -c 'test "$(stat -c %a "$0")" = 600 && test "$(stat -c %a "$(dirname "$0")")" = 700 && cp "$0" "$0.bak" && printf "%s" "$0" > "$0"'|
+        ~s|sh -c 'cp "$0" "$0.bak" && printf "%s\\n%s\\n%s" "$0" "$(ls -ld "$0" \| cut -c1-10)" "$(ls -ld "$(dirname "$0")" \| cut -c1-10)" > "$0"'|
       )
 
-      assert {:ok, path} = Editor.edit("private draft", @no_terminal)
+      assert {:ok, saved} = Editor.edit("private draft", @no_terminal)
+      assert [path, "-rw-------", "drwx------"] = String.split(saved, "\n")
       refute File.exists?(path)
       refute File.exists?(Path.dirname(path))
     end
