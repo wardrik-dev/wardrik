@@ -23,3 +23,6 @@ erl_crash.dump
 tars-*.tar
 .env
 *.log
+
+# Dialyzer PLTs, cached by CI.
+/priv/plts/

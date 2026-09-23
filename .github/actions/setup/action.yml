@@ -1,0 +1,37 @@
+name: Set up Elixir
+description: Installs the Erlang and Elixir named in mise.toml, restores the build cache, and fetches deps.
+
+inputs:
+  cache-key:
+    description: What the cached build is for, so jobs building different environments keep separate caches.
+    required: true
+  cache-paths:
+    description: Paths to cache beside deps.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: versions
+      shell: bash
+      run: |
+        echo "otp=$(sed -n 's/^erlang = "\(.*\)"/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+        echo "elixir=$(sed -n 's/^elixir = "\([^"-]*\).*"/\1/p' mise.toml)" >> "$GITHUB_OUTPUT"
+
+    - uses: erlef/setup-beam@v1
+      with:
+        otp-version: ${{ steps.versions.outputs.otp }}
+        elixir-version: ${{ steps.versions.outputs.elixir }}
+        version-type: strict
+
+    - uses: actions/cache@v4
+      with:
+        path: |
+          deps
+          ${{ inputs.cache-paths }}
+        key: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}-${{ hashFiles('mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}-
+
+    - shell: bash
+      run: mix deps.get

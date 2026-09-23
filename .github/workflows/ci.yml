@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: precommit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: check
+          cache-paths: |
+            _build
+            priv/plts
+
+      - run: mix precommit --check
+
+  release:
+    name: release (linux-x86_64)
+    needs: check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      MIX_ENV: prod
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: release
+          cache-paths: _build/prod
+
+      - name: Build
+        run: mix release --overwrite
+
+      - name: Name the tarball
+        id: tarball
+        run: |
+          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
+          name="tars-$version-linux-x86_64.tar.gz"
+          mv "_build/prod/tars-$version.tar.gz" "$name"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      # Unpacked somewhere new and started with no keys and no home of its own,
+      # the way a first install is.
+      - name: Boot it
+        run: |
+          root=$(mktemp -d)
+          tar -xzf "${{ steps.tarball.outputs.name }}" -C "$root"
+          export HOME=$(mktemp -d) TARS_DATA_DIR=$(mktemp -d)
+
+          "$root/bin/tars" daemon
+          trap '"$root/bin/tars" stop || true' EXIT
+
+          for _ in $(seq 30); do
+            "$root/bin/tars" pid >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          "$root/bin/tars" rpc '
+            {:ok, _pid} = Tars.Fleet.spawn(Tars.Fleet.key("smoke"))
+            ["_/_/smoke"] = Enum.map(Tars.Fleet.list(), & &1.key)
+            IO.puts("smoke: #{node()} spawned _/_/smoke")
+          '
+
+          test "$(stat -c %a "$HOME/.tars/cookie")" = 600
+
+          if ss -Hltnp | grep beam | grep -v '127.0.0.1'; then
+            echo "distribution is listening beyond loopback" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tarball.outputs.name }}
+          path: ${{ steps.tarball.outputs.name }}
+          if-no-files-found: error
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "v${{ steps.tarball.outputs.version }}" ]; then
+            echo "tag $GITHUB_REF_NAME does not match mix.exs version ${{ steps.tarball.outputs.version }}" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" "${{ steps.tarball.outputs.name }}" --generate-notes

@@ -299,3 +299,34 @@ def deps do
   ]
 end
 ```
+
+## Running a release
+
+`mix release` builds `tars`, a self-contained node with its own ERTS, and a
+tarball of it. CI builds one for Linux x86_64 on every push to `main` and
+attaches it to the GitHub release for a `v*` tag.
+
+```sh
+MIX_ENV=prod mix release
+_build/prod/rel/tars/bin/tars daemon    # start in the background
+_build/prod/rel/tars/bin/tars remote    # an IEx shell on the running node
+_build/prod/rel/tars/bin/tars stop
+```
+
+Provider keys are read when the node boots, not when it is built, and a key
+that is absent is reported by the tool that needs it.
+
+| | |
+| --- | --- |
+| **`TARS_DATA_DIR`** | where the store writes |
+| **`TARS_COOKIE_FILE`** | the node's cookie, created on first boot and readable by its owner only. Defaults to `~/.tars/cookie`; `RELEASE_COOKIE` overrides it |
+| **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tars@localhost`; `any` listens everywhere |
+| **`TARS_CLUSTER_SIZE`** | the store's voting members |
+| **`ZAI_API_KEY`**, **`BRAVE_API_KEY`**, **`TARS_VAULT_KEY`** | provider, search and vault keys |
+
+Anyone who can reach the distribution port with the cookie can run code on the
+node. Listen beyond loopback only on a network you trust.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

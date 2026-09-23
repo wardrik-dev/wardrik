@@ -1,14 +1,24 @@
 defmodule Tars.MixProject do
   use Mix.Project
 
+  @source_url "https://github.com/jonlunsford/tars"
+
   def project do
     [
       app: :tars,
       version: "0.1.0",
       elixir: "~> 1.20",
+      description: "An agent runtime built on OTP.",
+      source_url: @source_url,
+      package: package(),
+      releases: releases(),
       aliases: aliases(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_add_apps: [:mix, :ex_unit]],
+      dialyzer: [
+        plt_add_apps: [:mix, :ex_unit],
+        plt_core_path: "priv/plts",
+        plt_local_path: "priv/plts"
+      ],
       test_coverage: [ignore_modules: ignored_modules()],
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -33,6 +43,25 @@ defmodule Tars.MixProject do
   # asserting on mocks of Mix rather than on any behaviour of ours.
   defp ignored_modules do
     [Mix.Tasks.Tars]
+  end
+
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url}
+    ]
+  end
+
+  # One release, `tars`, carrying its own ERTS. `rel/env.sh.eex` gives each
+  # install a cookie of its own and keeps distribution on loopback.
+  defp releases do
+    [
+      tars: [
+        include_executables_for: [:unix],
+        applications: [tars: :permanent],
+        steps: [:assemble, :tar]
+      ]
+    ]
   end
 
   # Run "mix help deps" to learn about dependencies.
@@ -97,8 +126,22 @@ defmodule Tars.MixProject do
     ]
   end
 
-  defp precommit(_args) do
-    case Enum.filter(@precommit_steps, &(not run_step(&1))) do
+  # `--check` verifies instead of rewriting: the steps that fix files in place
+  # fail on what they would have fixed. CI runs it that way.
+  @check_steps %{
+    ["deps.unlock", "--unused"] => ["deps.unlock", "--check-unused"],
+    ["format"] => ["format", "--check-formatted"]
+  }
+
+  defp precommit(args) do
+    steps =
+      case args do
+        ["--check"] -> Enum.map(@precommit_steps, &Map.get(@check_steps, &1, &1))
+        [] -> @precommit_steps
+        _other -> Mix.raise("usage: mix precommit [--check]")
+      end
+
+    case Enum.filter(steps, &(not run_step(&1))) do
       [] ->
         Mix.shell().info([:green, "\nprecommit: all steps passed", :reset])
 
