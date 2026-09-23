@@ -18,4 +18,4 @@ ExUnit.after_suite(fn _results ->
   Application.stop(:os_mon)
 end)
 
-ExUnit.start()
+ExUnit.start(capture_log: true)

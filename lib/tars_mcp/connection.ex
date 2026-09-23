@@ -376,16 +376,28 @@ defmodule TarsMCP.Connection do
 
   # The offer belongs to the deployment's connection, and a registry value is
   # the owner's to change, so a user's connection hands its list over.
-  defp publish(%State{principal: :deployment, server: server}, listed) do
+  defp publish(%State{principal: :deployment, server: server} = state, listed) do
     offer(server, built(server, listed))
+    listed(state, listed)
 
     Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed")
   end
 
-  defp publish(%State{server: server}, listed) do
+  defp publish(%State{server: server} = state, listed) do
     hand_over(server, built(server, listed))
+    listed(state, listed)
 
     Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed as a user")
+  end
+
+  # `[:tars_mcp, :connection, :listed]` says a server's tools were published,
+  # with the ref and principal in its metadata.
+  defp listed(%State{server: server, principal: principal}, listed) do
+    :telemetry.execute(
+      [:tars_mcp, :connection, :listed],
+      %{count: length(listed)},
+      %{ref: server.ref, principal: principal}
+    )
   end
 
   # The hand-over is waited on: a caller told a user's connection is ready
@@ -516,12 +528,20 @@ defmodule TarsMCP.Connection do
     answer_waiting(%{state | listed?: true})
   end
 
+  # `[:tars_mcp, :connection, :retrying]` says a server could not be listed
+  # and will be asked again, with the ref, principal and trouble in its metadata.
   defp retry(%State{} = state, trouble) do
     delay = min((state.retry_ms || @first_retry_ms) * 2, @max_retry_ms)
 
     Logger.warning("MCP server #{state.server.ref} #{trouble}; asking again in #{delay}ms")
     if state.principal == :deployment, do: offer(state.server, [])
     Process.send_after(self(), :retry, delay)
+
+    :telemetry.execute(
+      [:tars_mcp, :connection, :retrying],
+      %{delay_ms: delay},
+      %{ref: state.server.ref, principal: state.principal, trouble: trouble}
+    )
 
     %{state | retry_ms: delay}
   end
