@@ -64,7 +64,7 @@ defmodule TarsVaultTest do
       :ok = TarsVault.put({:user, "github"}, user, "ghp_secret")
       {:ok, path} = TarsVault.path({:user, "github"}, user)
 
-      {%Sealed{} = sealed, _vsn} = EKV.lookup(Tars.Fleet.Supervisor.store(), path)
+      {%Sealed{} = sealed, _vsn} = Tars.Store.lookup(TarsVault.namespace(), path)
 
       refute inspect(sealed) =~ "ghp_secret"
       refute sealed.ciphertext =~ "ghp_secret"
@@ -76,8 +76,8 @@ defmodule TarsVaultTest do
       {:ok, mine} = TarsVault.path({:user, "github"}, user)
       {:ok, theirs} = TarsVault.path({:user, "github"}, "thief")
 
-      {sealed, _vsn} = EKV.lookup(Tars.Fleet.Supervisor.store(), mine)
-      EKV.put(Tars.Fleet.Supervisor.store(), theirs, sealed)
+      {sealed, _vsn} = Tars.Store.lookup(TarsVault.namespace(), mine)
+      {:ok, _vsn} = Tars.Store.put(TarsVault.namespace(), theirs, sealed)
 
       assert {:error, :undecipherable} = TarsVault.fetch({:user, "github"}, "thief")
     end

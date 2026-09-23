@@ -9,7 +9,8 @@ config :tars, TarsBrave,
 
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
-config :tars, Tars.Fleet,
+config :tars, Tars.Store,
+  adapter: Tars.Store.EKV,
   data_dir:
     Path.join([
       System.tmp_dir!(),

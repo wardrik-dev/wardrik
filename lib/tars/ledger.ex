@@ -14,12 +14,12 @@ defmodule Tars.Ledger do
   nothing here to hold and nothing to wait on. An entry is written once and
   read on replay.
 
-  `Tars.Ledger.EKV` writes to the store the fleet already runs on. A deployment
+  `Tars.Ledger.Store` writes to the store the fleet already runs on. A deployment
   that keeps its own system of record implements this behaviour instead.
 
       key = {"acme/jon/assistant", call.id}
 
-      case Tars.Ledger.claim(Tars.Ledger.EKV, key, call) do
+      case Tars.Ledger.claim(Tars.Ledger.Store, key, call) do
         :ok -> run(call)
         {:settled, result} -> result
         {:pending, entry} -> park(entry)

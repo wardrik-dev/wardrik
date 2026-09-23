@@ -38,53 +38,53 @@ defmodule Tars.LedgerTest do
     {:ok, key: key, call: %{id: elem(key, 1), name: "deploy", arguments: %{"env" => "prod"}}}
   end
 
-  describe "claim/3 through EKV" do
+  describe "claim/3 through the store" do
     test "a call nothing has run is the caller's to run", %{key: key, call: call} do
-      assert :ok = Ledger.claim(Ledger.EKV, key, call)
+      assert :ok = Ledger.claim(Ledger.Store, key, call)
     end
 
     test "a second claim reports the first as pending", %{key: key, call: call} do
-      assert :ok = Ledger.claim(Ledger.EKV, key, call)
+      assert :ok = Ledger.claim(Ledger.Store, key, call)
 
       assert {:pending, %Entry{call: ^call, result: nil, settled_at: nil}} =
-               Ledger.claim(Ledger.EKV, key, call)
+               Ledger.claim(Ledger.Store, key, call)
     end
 
     test "a claim on a settled call reports the result", %{key: key, call: call} do
       result = Result.ok(%{"deployed" => true})
 
-      assert :ok = Ledger.claim(Ledger.EKV, key, call)
-      assert :ok = Ledger.settle(Ledger.EKV, key, result)
-      assert {:settled, ^result} = Ledger.claim(Ledger.EKV, key, call)
+      assert :ok = Ledger.claim(Ledger.Store, key, call)
+      assert :ok = Ledger.settle(Ledger.Store, key, result)
+      assert {:settled, ^result} = Ledger.claim(Ledger.Store, key, call)
     end
 
     test "claims under different call ids do not collide", %{key: {agent, _id}, call: call} do
-      assert :ok = Ledger.claim(Ledger.EKV, {agent, "call_a"}, call)
-      assert :ok = Ledger.claim(Ledger.EKV, {agent, "call_b"}, call)
+      assert :ok = Ledger.claim(Ledger.Store, {agent, "call_a"}, call)
+      assert :ok = Ledger.claim(Ledger.Store, {agent, "call_b"}, call)
     end
   end
 
-  describe "settle/3 through EKV" do
+  describe "settle/3 through the store" do
     test "records what the call returned", %{key: key, call: call} do
       result = Result.error(:rate_limited)
 
-      assert :ok = Ledger.claim(Ledger.EKV, key, call)
-      assert :ok = Ledger.settle(Ledger.EKV, key, result)
+      assert :ok = Ledger.claim(Ledger.Store, key, call)
+      assert :ok = Ledger.settle(Ledger.Store, key, result)
 
       assert {:ok, %Entry{result: ^result, settled_at: settled_at}} =
-               Ledger.fetch(Ledger.EKV, key)
+               Ledger.fetch(Ledger.Store, key)
 
       assert is_integer(settled_at)
     end
 
     test "refuses a key nothing claimed", %{key: key} do
-      assert {:error, :not_claimed} = Ledger.settle(Ledger.EKV, key, Result.ok(%{}))
+      assert {:error, :not_claimed} = Ledger.settle(Ledger.Store, key, Result.ok(%{}))
     end
   end
 
-  describe "fetch/2 through EKV" do
+  describe "fetch/2 through the store" do
     test "answers :error for a key holding nothing", %{key: key} do
-      assert :error = Ledger.fetch(Ledger.EKV, key)
+      assert :error = Ledger.fetch(Ledger.Store, key)
     end
   end
 

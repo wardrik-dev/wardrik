@@ -1,7 +1,7 @@
 defmodule TarsVault do
   @moduledoc """
-  A `Tars.Credential` resolver that keeps secrets in the store the fleet
-  already runs on, sealed with a key the deployment holds.
+  A `Tars.Credential` resolver that keeps secrets in `Tars.Store`, sealed
+  with a key the deployment holds.
 
       config :tars, TarsVault, keys: [System.fetch_env!("TARS_VAULT_KEY")]
 
@@ -47,11 +47,14 @@ defmodule TarsVault do
   @behaviour Tars.Credential
 
   alias Tars.Credential
-  alias Tars.Fleet
   alias Tars.Scope
+  alias Tars.Store
   alias TarsVault.Sealed
 
-  @prefix "tars/vault/"
+  @ns :vault
+  # The additional data a value is sealed with: the key, under the prefix the
+  # vault has always written.
+  @aad_prefix "tars/vault/"
   @version 1
   @key_bytes 32
   @nonce_bytes 12
@@ -97,14 +100,7 @@ defmodule TarsVault do
   @doc "Removes a secret. Removing one that is not there is still `:ok`."
   @spec forget(Credential.ref(), owner()) :: :ok | {:error, term()}
   def forget(ref, owner) do
-    with {:ok, path} <- path(ref, owner) do
-      case EKV.delete(Fleet.Supervisor.store(), path) do
-        {:ok, _vsn} -> :ok
-        :ok -> :ok
-        {:error, :not_found} -> :ok
-        {:error, reason} -> {:error, reason}
-      end
-    end
+    with {:ok, path} <- path(ref, owner), do: Store.delete(@ns, path)
   end
 
   @doc """
@@ -114,10 +110,10 @@ defmodule TarsVault do
   """
   @spec names(:user | :org | :named, owner()) :: [Credential.ref()]
   def names(kind, owner) do
-    prefix = @prefix <> "#{kind}/" <> segment(owner) <> "/"
+    prefix = "#{kind}/" <> segment(owner) <> "/"
 
-    for entry <- EKV.keys(Fleet.Supervisor.store(), prefix),
-        name = entry |> written_key() |> String.replace_prefix(prefix, ""),
+    for key <- Store.keys(@ns, prefix),
+        name = String.replace_prefix(key, prefix, ""),
         name != "",
         do: {kind, name}
   end
@@ -130,10 +126,14 @@ defmodule TarsVault do
   @spec ready?() :: boolean()
   def ready?, do: match?({:ok, _key}, sealing_key())
 
-  @doc "The key a reference and owner are written under."
+  @doc "The namespace secrets are written under in `Tars.Store`."
+  @spec namespace() :: Store.ns()
+  def namespace, do: @ns
+
+  @doc "The key a reference and owner are written under, within `namespace/0`."
   @spec path(Credential.ref(), owner()) :: {:ok, String.t()} | {:error, term()}
   def path({kind, name}, owner) when kind in [:user, :org, :named] and is_binary(name) do
-    {:ok, @prefix <> "#{kind}/" <> segment(owner) <> "/" <> segment(name)}
+    {:ok, "#{kind}/" <> segment(owner) <> "/" <> segment(name)}
   end
 
   def path(ref, _owner), do: {:error, {:unknown_reference, ref}}
@@ -146,15 +146,14 @@ defmodule TarsVault do
   defp owner(ref, %Scope{}), do: {:error, {:unknown_reference, ref}}
 
   defp write(path, %Sealed{} = sealed) do
-    case EKV.put(Fleet.Supervisor.store(), path, sealed) do
+    case Store.put(@ns, path, sealed) do
       {:ok, _vsn} -> :ok
-      :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp read(path) do
-    case EKV.lookup(Fleet.Supervisor.store(), path) do
+    case Store.lookup(@ns, path) do
       {%Sealed{} = sealed, _vsn} -> {:ok, sealed}
       nil -> {:error, :not_found}
       {other, _vsn} -> {:error, {:unreadable, other}}
@@ -167,19 +166,21 @@ defmodule TarsVault do
     nonce = :crypto.strong_rand_bytes(@nonce_bytes)
 
     {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, secret, path, true)
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, secret, @aad_prefix <> path, true)
 
     %Sealed{version: @version, nonce: nonce, ciphertext: ciphertext, tag: tag}
   end
 
   defp unseal(keys, path, %Sealed{version: @version} = sealed) do
+    aad = @aad_prefix <> path
+
     Enum.reduce_while(keys, {:error, :undecipherable}, fn key, answer ->
       case :crypto.crypto_one_time_aead(
              :aes_256_gcm,
              key,
              sealed.nonce,
              sealed.ciphertext,
-             path,
+             aad,
              sealed.tag,
              false
            ) do
@@ -220,9 +221,6 @@ defmodule TarsVault do
   end
 
   defp decode_key(_key), do: []
-
-  defp written_key({key, _vsn}) when is_binary(key), do: key
-  defp written_key(key) when is_binary(key), do: key
 
   defp segment(nil), do: "_"
 

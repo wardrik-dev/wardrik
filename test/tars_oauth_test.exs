@@ -75,7 +75,7 @@ defmodule TarsOAuthTest do
       {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
       {:ok, path} = TarsVault.path({:user, "github"}, owner)
-      {sealed, _vsn} = EKV.lookup(Tars.Fleet.Supervisor.store(), path)
+      {sealed, _vsn} = Tars.Store.lookup(TarsVault.namespace(), path)
 
       refute inspect(sealed) =~ "at_first"
     end
