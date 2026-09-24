@@ -463,8 +463,10 @@ notify: {to: [ops], on: [parked, failed, finished]}   # or just: notify: ops
 A parked call reaches Slack with its arguments and the policy's question,
 and pressing Approve or Deny answers it as `tars approve` would. The buttons
 arrive over Slack's Socket Mode, a connection the daemon opens out to Slack,
-so it needs no public address and no open port. Without an `app_token` the
-message says which `tars approve` to run instead. See `TarsNotify`.
+so it needs no public address and no open port. Give the daemon a Slack app
+of its own: another service connected with the same app shares its Socket Mode
+envelopes. Without an `app_token` the message says which `tars approve` to run
+instead. See `TarsNotify`.
 
 A policy decides what an agent's tools may do. It is a file in `policies/`,
 named by the agents it governs as `policy: careful`, or written in place in an

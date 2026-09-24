@@ -19,6 +19,11 @@ defmodule TarsNotify.Slack do
   Anyone in the channel may press a button unless `:approvers` lists the
   Slack user ids that may. A press decides the call with
   `Tars.Agent.decide/2`, and the message then says who decided it.
+
+  The app should be Tars's own. Slack spreads an app's Socket Mode envelopes
+  across every connection open for it, and the daemon acknowledges each one
+  it receives, so an app another service also connects with loses envelopes
+  to the daemon, and the daemon's button presses to the service.
   """
 
   @behaviour TarsNotify
