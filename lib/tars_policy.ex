@@ -17,6 +17,20 @@ defmodule TarsPolicy do
   data, so it is written to the store with the agent it governs and decides the
   same way on whichever node holds that agent.
 
+  ## Budgets
+
+  A policy with a `TarsPolicy.Budget` limits what the agent spends on model
+  calls, and is a `Tars.LLM.Dispatch` too, named the same way:
+
+      Tars.Fleet.spawn(key, config: config, policy: {TarsPolicy, policy}, dispatch: {TarsPolicy, policy})
+
+  Each call is checked before it is made against what the agent has spent in
+  the budget's period, as `TarsPolicy.Spend` records it, and what it cost is
+  recorded once it returns. Once the agent has spent its limit, a budget that
+  asks parks it on the next call, and approving that call grants the budget's
+  `grant` more for the period and lets it through. A budget that denies ends
+  the turn instead.
+
   ## Deciding
 
   Every rule whose `TarsPolicy.Pattern` names a call speaks for it, and the
@@ -36,20 +50,31 @@ defmodule TarsPolicy do
       default: allow
 
   `allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
-  to message.
+  to message. `budget` takes what `TarsPolicy.Budget` describes.
   """
 
   @behaviour Tars.Policy
+  @behaviour Tars.LLM.Dispatch
 
+  require Logger
+
+  alias Tars.LLM.Cost
+  alias TarsPolicy.Budget
   alias TarsPolicy.Pattern
   alias TarsPolicy.Rule
+  alias TarsPolicy.Spend
 
-  defstruct name: nil, rules: [], default: :allow
+  defstruct name: nil, rules: [], default: :allow, budget: nil
 
-  @type t() :: %__MODULE__{name: String.t() | nil, rules: [Rule.t()], default: Rule.effect()}
+  @type t() :: %__MODULE__{
+          name: String.t() | nil,
+          rules: [Rule.t()],
+          default: Rule.effect(),
+          budget: Budget.t() | nil
+        }
 
   @effects ~w(allow ask deny)
-  @keys @effects ++ ["default"]
+  @keys @effects ++ ["default", "budget"]
   @strictness %{deny: 2, ask: 1, allow: 0}
 
   @doc "What `policy` says about a call to the tool the agent knows as `name`."
@@ -69,6 +94,112 @@ defmodule TarsPolicy do
   @impl Tars.Policy
   def authorize(call, _scope, %__MODULE__{} = policy), do: decide(policy, call.name)
 
+  # -- budgets ---------------------------------------------------------------
+
+  @impl Tars.LLM.Dispatch
+  def admit(request, _scope, %__MODULE__{budget: nil}), do: {:ok, request}
+
+  def admit(request, scope, %__MODULE__{budget: budget}) do
+    spend = scope |> spend_key(budget) |> Spend.read()
+
+    cond do
+      not exhausted?(budget, spend) -> {:ok, request}
+      budget.on_exhausted == :ask -> {:park, exhausted(budget, spend) <> " " <> more(budget)}
+      true -> {:error, {:policy_denied, exhausted(budget, spend)}}
+    end
+  end
+
+  @impl Tars.LLM.Dispatch
+  def settle(request, {:ok, response}, scope, %__MODULE__{budget: %Budget{} = budget}) do
+    usage = ReqLLM.Response.usage(response) || %{}
+    usd = Cost.of(request.model_spec, usage) || 0.0
+    tokens = count(usage, :input_tokens) + count(usage, :output_tokens)
+
+    with {:error, reason} <- scope |> spend_key(budget) |> Spend.spend(usd, tokens) do
+      Logger.error(
+        "#{scope.source.agent_id} spent #{dollars(usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
+      )
+    end
+
+    :ok
+  end
+
+  def settle(_request, _outcome, _scope, _policy), do: :ok
+
+  @impl Tars.LLM.Dispatch
+  def approved(_request, scope, %__MODULE__{budget: %Budget{} = budget}) do
+    {usd, tokens} = Budget.grant(budget)
+    scope |> spend_key(budget) |> Spend.grant(usd, tokens)
+  end
+
+  def approved(_request, _scope, _policy), do: :ok
+
+  @doc """
+  What an agent has spent in its budget's period now, given the scope of one
+  of its turns, or its key for a budget that is not per turn.
+  """
+  @spec spent(t(), Tars.Scope.t() | String.t()) :: Spend.t() | nil
+  def spent(%__MODULE__{budget: nil}, _scope), do: nil
+  def spent(%__MODULE__{budget: %Budget{per: :turn}}, agent) when is_binary(agent), do: nil
+
+  def spent(%__MODULE__{budget: budget}, agent) when is_binary(agent),
+    do: agent |> Spend.key(Budget.window(budget, "", DateTime.utc_now())) |> Spend.read()
+
+  def spent(%__MODULE__{budget: budget}, scope), do: scope |> spend_key(budget) |> Spend.read()
+
+  @doc """
+  What an agent has spent against its budget, as a phrase: `$1.20 of $5.00 and
+  12000 of 200000 tokens today`.
+  """
+  @spec spending(t(), String.t()) :: String.t() | nil
+  def spending(%__MODULE__{budget: budget} = policy, agent) do
+    case spent(policy, agent) do
+      nil -> nil
+      %Spend{} = spend -> "#{amounts(budget, spend)} #{Budget.period_words(budget)}"
+    end
+  end
+
+  defp spend_key(%Tars.Scope{source: source}, budget) do
+    Spend.key(source.agent_id, Budget.window(budget, source.trace.trace_id, DateTime.utc_now()))
+  end
+
+  defp exhausted?(budget, spend) do
+    (budget.usd != nil and spend.spent >= budget.usd + spend.granted) or
+      (budget.tokens != nil and spend.tokens >= budget.tokens + spend.granted_tokens)
+  end
+
+  defp exhausted(budget, spend),
+    do: "This agent has spent #{amounts(budget, spend)} #{Budget.period_words(budget)}."
+
+  defp amounts(budget, spend) do
+    [
+      budget.usd && "#{dollars(spend.spent)} of #{dollars(budget.usd + spend.granted)}",
+      budget.tokens && "#{spend.tokens} of #{budget.tokens + spend.granted_tokens} tokens"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" and ")
+  end
+
+  defp more(budget) do
+    {usd, tokens} = Budget.grant(budget)
+
+    granted =
+      [budget.usd && dollars(usd), budget.tokens && "#{tokens} tokens"]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" and ")
+
+    "Approve to allow #{granted} more."
+  end
+
+  defp count(usage, key) do
+    case Map.get(usage, key) do
+      n when is_integer(n) and n >= 0 -> n
+      _missing -> 0
+    end
+  end
+
+  defp dollars(usd), do: "$" <> :erlang.float_to_binary(usd / 1, decimals: 2)
+
   defp answer(:allow, _message, _name), do: :allow
 
   defp answer(:ask, message, name),
@@ -87,8 +218,9 @@ defmodule TarsPolicy do
     case Map.keys(fields) -- @keys do
       [] ->
         with {:ok, rules} <- rules(fields),
-             {:ok, default} <- effect(Map.get(fields, "default", "allow"), "default") do
-          {:ok, %__MODULE__{name: name, rules: rules, default: default}}
+             {:ok, default} <- effect(Map.get(fields, "default", "allow"), "default"),
+             {:ok, budget} <- budget(fields["budget"]) do
+          {:ok, %__MODULE__{name: name, rules: rules, default: default, budget: budget}}
         end
 
       [key | _] ->
@@ -117,8 +249,13 @@ defmodule TarsPolicy do
           into: %{},
           do: {Atom.to_string(effect), written(rules)}
 
-    Map.put(by_effect, "default", Atom.to_string(policy.default))
+    by_effect
+    |> Map.put("default", Atom.to_string(policy.default))
+    |> then(&if(policy.budget, do: Map.put(&1, "budget", Budget.encode(policy.budget)), else: &1))
   end
+
+  defp budget(nil), do: {:ok, nil}
+  defp budget(fields), do: Budget.decode(fields)
 
   defp written(rules) do
     if Enum.all?(rules, &is_nil(&1.message)),
