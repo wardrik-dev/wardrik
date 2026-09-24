@@ -143,6 +143,23 @@ defmodule TarsDaemon.AgentFileTest do
     assert message =~ "names careful, which is neither a policy in policies/ nor a module"
   end
 
+  test "compaction is on by default, tuned or turned off by the file", context do
+    assert {:ok, default} = read("---\n---\n", context)
+    assert default.config.compaction == %Tars.Compaction{}
+
+    assert {:ok, tuned} = read("---\ncompaction:\n  at: 0.5\n  window: 32000\n---\n", context)
+    assert tuned.config.compaction == %Tars.Compaction{at: 0.5, keep: 0.25, window: 32_000}
+
+    assert {:ok, off} = read("---\ncompaction: false\n---\n", context)
+    assert off.config.compaction == nil
+
+    assert {:error, message} = read("---\ncompaction:\n  at: 2\n---\n", context)
+    assert message =~ "compaction at is a share of the window"
+
+    assert {:error, message} = read("---\ncompaction:\n  at: 0.3\n  keep: 0.4\n---\n", context)
+    assert message =~ ".md: a compaction keeps less than it waits for"
+  end
+
   test "a policy that is not one is refused", context do
     assert {:error, message} = read("---\npolicy: TarsDaemon.AgentFileTest\n---\n", context)
     assert message =~ "TarsDaemon.AgentFileTest is not a policy"

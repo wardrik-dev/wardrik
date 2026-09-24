@@ -442,6 +442,16 @@ defmodule Tars.LLM.TurnTest do
     def admit(_request, _scope), do: {:error, :over_budget}
   end
 
+  defmodule Recording do
+    @behaviour Tars.LLM.Dispatch
+
+    @impl true
+    def admit(request, _scope), do: {:ok, request}
+
+    @impl true
+    def settle(_request, outcome, scope), do: Tars.Event.emit(scope.source, {:settled, outcome})
+  end
+
   # A dispatch named with a value: the Agent holding whether a person has
   # approved another call yet.
   defmodule Gate do
@@ -495,6 +505,39 @@ defmodule Tars.LLM.TurnTest do
       assert {:ok, _messages} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
 
       assert_receive %Event{payload: {:settled, :ok}}
+    end
+
+    test "a stream that fails once the provider has begun to answer settles with what streamed",
+         %{agent_id: agent_id} do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      Mimic.stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_chunk].(%{type: :content})
+        opts[:on_result].("half an ans")
+        {:error, :closed}
+      end)
+
+      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Recording)
+
+      capture_log(fn ->
+        assert {:error, :closed} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive %Event{payload: {:settled, {:error, :closed, "half an ans"}}}
+    end
+
+    test "a call that fails before the provider answers settles with no text", %{
+      agent_id: agent_id
+    } do
+      Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
+
+      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Recording)
+
+      capture_log(fn ->
+        assert {:error, :rate_limited} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive %Event{payload: {:settled, {:error, :rate_limited}}}
     end
 
     test "a refused call fails the turn without reaching the provider", %{agent_id: agent_id} do

@@ -38,6 +38,10 @@ defmodule Tars.LLM.Config do
   Which of those a model honours is the provider's business; `:tools` and
   `:system` are set from their own fields and cannot be overridden here.
 
+  `:compaction` is when the agent summarises its older history so the rest
+  still fits what the model can read, a `Tars.Compaction`, on by default.
+  `nil` never compacts.
+
   `:max_iterations` bounds how many rounds of tool calls a turn may make,
   thirty by default. A turn that reaches it is asked to answer with what it
   has, so it still ends with an answer. It is a backstop against an unattended
@@ -65,7 +69,8 @@ defmodule Tars.LLM.Config do
             tools: [],
             tool_timeouts: %{},
             generation: [],
-            max_iterations: 30
+            max_iterations: 30,
+            compaction: %Tars.Compaction{}
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
@@ -73,7 +78,8 @@ defmodule Tars.LLM.Config do
           tools: [Tool.spec()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
-          max_iterations: pos_integer() | :infinity
+          max_iterations: pos_integer() | :infinity,
+          compaction: Tars.Compaction.t() | nil
         }
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
@@ -84,7 +90,8 @@ defmodule Tars.LLM.Config do
           dropped_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
-          max_iterations: pos_integer() | :infinity
+          max_iterations: pos_integer() | :infinity,
+          compaction: Tars.Compaction.t() | nil
         }
 
   @doc """

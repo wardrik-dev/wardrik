@@ -26,6 +26,7 @@ defmodule Tars.Scope do
   | --- | --- |
   | `:config` | which model, and what it can call |
   | `:source` | where events go, and which span they belong to |
+  | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
   | `:user`, `:org` | who the work is being done for |
   | `:deadline` | when the work must stop |
   | `:policy` | whether a tool call may run |
@@ -94,7 +95,8 @@ defmodule Tars.Scope do
     :dispatch,
     :credentials,
     :ledger,
-    :journal
+    :journal,
+    :batch
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
@@ -112,7 +114,8 @@ defmodule Tars.Scope do
           dispatch: Tars.LLM.Dispatch.t() | nil,
           credentials: module() | nil,
           ledger: module() | nil,
-          journal: pid() | nil
+          journal: pid() | nil,
+          batch: String.t() | nil
         }
 
   @typedoc "How a span ended."
@@ -181,6 +184,19 @@ defmodule Tars.Scope do
     %{scope | source: Source.child(scope.source, opts), journal: nil}
     |> with_timeout(Keyword.get(opts, :timeout, :infinity))
   end
+
+  @doc """
+  The scope a turn running under `scope` runs its `round`th batch of tool
+  calls under, `0` for the first.
+
+  The batch is named by the turn's own span and the round, and every scope
+  under it keeps that name, so the calls of each round of a turn, and those of
+  each delegation's own turn, are named apart. A turn resumed or replayed
+  keeps its span, and names each batch as it did the first time.
+  """
+  @spec batch(t(), non_neg_integer()) :: t()
+  def batch(%__MODULE__{source: source} = scope, round) when is_integer(round) and round >= 0,
+    do: %{scope | batch: source.trace.span_id <> "/" <> Integer.to_string(round)}
 
   @doc """
   Puts the user this scope acts for.

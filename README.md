@@ -295,6 +295,23 @@ Tars.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
 A killed call is answered with an error result, so the model is never left with
 a call nobody answered.
 
+### A history that grows
+
+An agent that runs for weeks keeps adding to one conversation. Before it
+outgrows what the model can read, the agent summarises the older part with
+its own model and keeps the most recent part word for word. By default it
+compacts at 60% of the model's context window, as the model catalog gives it,
+and keeps the last 25%:
+
+```elixir
+Tars.LLM.Config.new(compaction: Tars.Compaction.new(at: 0.5, keep: 0.2))
+Tars.LLM.Config.new(compaction: nil)   # never
+```
+
+It happens between turns, reported as `{:context_compacted, stats}`, and the
+summary is a model call like any other, so a budget counts it. An agent file
+sets `compaction:` with `at`, `keep` and `window`, or `false`.
+
 ### A turn lost part way
 
 A turn hands its agent each batch of tool calls before running any of them,

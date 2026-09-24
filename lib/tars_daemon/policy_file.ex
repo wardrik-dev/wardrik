@@ -14,8 +14,11 @@ defmodule TarsDaemon.PolicyFile do
         per: day
 
   See `TarsPolicy` for what the rules say, and `TarsPolicy.Budget` for the
-  budget.
+  budget. A file that says nothing is refused: a policy that allows every call
+  says `default: allow`.
   """
+
+  @empty "is empty; a policy that allows every call says default: allow"
 
   @doc "Reads the policy `path` writes."
   @spec read(Path.t()) :: {:ok, TarsPolicy.t()} | {:error, String.t()}
@@ -34,7 +37,7 @@ defmodule TarsDaemon.PolicyFile do
 
   defp yaml(text) do
     case YamlElixir.read_from_string(text) do
-      {:ok, nil} -> {:ok, %{}}
+      {:ok, fields} when fields in [nil, %{}] -> {:error, @empty}
       {:ok, fields} -> {:ok, fields}
       {:error, error} -> {:error, "is not YAML: #{Exception.message(error)}"}
     end

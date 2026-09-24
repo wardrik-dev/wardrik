@@ -15,8 +15,15 @@ defmodule TarsDaemon.PolicyFileTest do
     assert {:ok, %TarsPolicy{name: "careful", default: :deny}} = read("default: deny\n", context)
   end
 
-  test "an empty file is a policy that allows everything", context do
-    assert {:ok, %TarsPolicy{name: "careful", rules: [], default: :allow}} = read("", context)
+  test "a file that says nothing is refused", context do
+    for text <- ["", "# nothing yet\n", "{}\n"] do
+      assert {:error, message} = read(text, context)
+
+      assert message =~
+               "careful.yaml: is empty; a policy that allows every call says default: allow"
+    end
+
+    assert {:ok, %TarsPolicy{rules: [], default: :allow}} = read("default: allow\n", context)
   end
 
   test "a file that is not YAML, or not a policy, says so", context do

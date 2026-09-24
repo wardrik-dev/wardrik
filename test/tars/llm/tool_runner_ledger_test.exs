@@ -82,22 +82,47 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     assert_received {:ran, "refund"}
   end
 
-  test "a call claimed and never settled parks, and runs once a person approves", %{
-    agent_id: agent_id
-  } do
+  test "a call claimed and never settled parks, and runs once a person approves running it again",
+       %{agent_id: agent_id} do
     scope = scope(agent_id, [counted("refund")])
     call = call("call_1", "refund")
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert {:parked, ^call, prompt} = ToolRunner.execute(call, scope)
+    assert {:pending, ^call, prompt} = ToolRunner.execute(call, scope)
     assert prompt =~ "may already have done what it does"
     refute_received {:ran, "refund"}
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope, authorize: false)
+    assert {:settled, ^call, _message} =
+             ToolRunner.execute(call, scope, authorize: false, rerun: true)
+
     assert_received {:ran, "refund"}
 
     assert {:ok, %Ledger.Entry{result: {:ok, _}}} =
              Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "approving what a policy asked runs nothing the ledger holds as begun", %{
+    agent_id: agent_id
+  } do
+    scope = scope(agent_id, [counted("deploy")])
+    call = call("call_1", "deploy")
+    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+
+    assert {:pending, ^call, prompt} = ToolRunner.execute(call, scope, authorize: false)
+    assert prompt =~ "may already have done what it does"
+    refute_received {:ran, "deploy"}
+  end
+
+  test "the same call id in another batch of the turn is another call", %{agent_id: agent_id} do
+    scope = scope(agent_id, [counted("refund")])
+    call = call("call_0", "refund")
+
+    ToolRunner.execute(call, Scope.batch(scope, 0))
+    ToolRunner.execute(call, Scope.batch(scope, 1))
+
+    assert_received {:ran, "refund"}
+    assert_received {:ran, "refund"}
+    refute Ledger.key(Scope.batch(scope, 0), call) == Ledger.key(Scope.batch(scope, 1), call)
   end
 
   test "a tool that stops to ask releases its claim", %{agent_id: agent_id} do

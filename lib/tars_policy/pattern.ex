@@ -6,8 +6,9 @@ defmodule TarsPolicy.Pattern do
       pattern = TarsPolicy.Pattern.parse!("github/create_*")
       TarsPolicy.Pattern.match?(pattern, "github__create_issue")  #=> true
 
-  `*` stands for any run of characters. A tool is matched by the name an agent
-  knows it by, where an MCP server's tool `server__tool` is `server/tool`.
+  `*` stands for any run of characters. A pattern matches a tool by the name
+  an agent knows it by, `github__create_issue` for an MCP server's, or by the
+  name it is shown as, `github/create_issue`.
 
   A pattern is plain data, so it can be written to the store with the agent
   it governs and read back on another node.
@@ -48,15 +49,15 @@ defmodule TarsPolicy.Pattern do
   @spec shown(String.t()) :: String.t()
   def shown(name), do: String.replace(name, "__", "/", global: false)
 
-  @doc "Whether the pattern names the tool the agent knows as `name`."
+  @doc "Whether the pattern names the tool the agent knows as `name`, as it is known or as it is shown."
   @spec match?(t(), String.t()) :: boolean()
-  def match?(%__MODULE__{parts: [whole]}, name), do: shown(name) == whole
+  def match?(%__MODULE__{parts: parts}, name), do: glob?(parts, name) or glob?(parts, shown(name))
 
-  def match?(%__MODULE__{parts: [first | rest]}, name) do
-    shown = shown(name)
+  defp glob?([whole], name), do: name == whole
 
-    String.starts_with?(shown, first) and
-      follows?(rest, binary_slice(shown, byte_size(first)..-1//1))
+  defp glob?([first | rest], name) do
+    String.starts_with?(name, first) and
+      follows?(rest, binary_slice(name, byte_size(first)..-1//1))
   end
 
   defp follows?([last], rest), do: String.ends_with?(rest, last)

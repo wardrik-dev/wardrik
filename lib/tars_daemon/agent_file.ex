@@ -30,6 +30,7 @@ defmodule TarsDaemon.AgentFile do
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
+  | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Tars.Compaction`. `false` never does |
 
   ## Tools
 
@@ -73,7 +74,7 @@ defmodule TarsDaemon.AgentFile do
   alias TarsPolicy.Pattern
 
   @shipped [TarsBrave.WebSearch, TarsResearch.Deep, TarsLua.Run]
-  @keys ~w(name description model tools org user policy timeout max_iterations)
+  @keys ~w(name description model tools org user policy timeout max_iterations compaction)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in
@@ -121,6 +122,7 @@ defmodule TarsDaemon.AgentFile do
       [system: if(body == "", do: nil, else: body), tools: tools(fields)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
+      |> compaction(fields)
       |> Config.new()
 
     policy = policy(fields["policy"], policies)
@@ -140,7 +142,7 @@ defmodule TarsDaemon.AgentFile do
        ledger: Tars.Ledger.Store
      )}
   rescue
-    error in [ArgumentError] -> {:error, Exception.message(error)}
+    error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
   end
 
   defp put(opts, _key, nil, _cast), do: opts
@@ -242,6 +244,42 @@ defmodule TarsDaemon.AgentFile do
   rescue
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
+
+  defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :compaction, nil)
+
+  defp compaction(config, %{"compaction" => %{} = fields}) do
+    case Map.keys(fields) -- ~w(at keep window) do
+      [] ->
+        Keyword.put(
+          config,
+          :compaction,
+          Tars.Compaction.new(
+            at: share!(fields, "at", 0.6),
+            keep: share!(fields, "keep", 0.25),
+            window: window!(fields["window"])
+          )
+        )
+
+      [key | _] ->
+        invalid!("compaction #{key} is not a setting; expected at, keep or window")
+    end
+  end
+
+  defp compaction(_config, %{"compaction" => _other}),
+    do: invalid!("compaction is false, or a set of at, keep and window")
+
+  defp compaction(config, _fields), do: config
+
+  defp share!(fields, key, default) do
+    case Map.get(fields, key, default) do
+      n when is_number(n) and n > 0 and n < 1 -> n / 1
+      _other -> invalid!("compaction #{key} is a share of the window, between 0 and 1")
+    end
+  end
+
+  defp window!(nil), do: nil
+  defp window!(n) when is_integer(n) and n > 0, do: n
+  defp window!(_n), do: invalid!("compaction window is a whole number of tokens")
 
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp seconds!(_seconds), do: invalid!("timeout is a whole number of seconds")

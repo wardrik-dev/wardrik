@@ -17,6 +17,13 @@ defmodule TarsPolicy.PatternTest do
     refute names?("linear/*", "linear_search")
   end
 
+  test "an MCP tool is matched by the name the agent knows it by, too" do
+    assert names?("github__delete_repo", "github__delete_repo")
+    assert names?("github__*", "github__delete_repo")
+    assert names?("*__delete_*", "github__delete_repo")
+    refute names?("github__*", "linear__list_issues")
+  end
+
   test "* stands for any run of characters, anywhere" do
     assert names?("*", "web_search")
     assert names?("*", "github__create_issue")

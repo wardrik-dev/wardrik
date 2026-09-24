@@ -98,7 +98,5 @@ defmodule Tars.LLM.Turn.Parked do
 
   @doc "Whether anything is still waiting."
   @spec waiting?(t()) :: boolean()
-  def waiting?(%__MODULE__{outcomes: outcomes}) do
-    Enum.any?(outcomes, &match?({:parked, _call, _prompt}, &1))
-  end
+  def waiting?(%__MODULE__{outcomes: outcomes}), do: ToolRunner.parked(outcomes) != []
 end

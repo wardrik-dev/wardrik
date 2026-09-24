@@ -99,6 +99,16 @@ defmodule Tars.Agent.State do
           }
   end
 
+  defmodule Compacting do
+    @moduledoc "History being summarised before the next turn, and whether that turn was owed."
+
+    @enforce_keys [:task, :owed, :started_at]
+    defstruct [:task, :owed, :started_at]
+
+    @typedoc "The task summarising, whether a turn was owed when it began, and when."
+    @type t() :: %__MODULE__{task: Task.t(), owed: boolean(), started_at: integer()}
+  end
+
   defmodule Replaying do
     @moduledoc "A turn lost part way through, due to go on from its last checkpoint."
 
@@ -137,6 +147,7 @@ defmodule Tars.Agent.State do
     :resumer,
     :scope_opts,
     replayer: {Turn, :replay, []},
+    compaction_settled: false,
     grace: @default_grace,
     mode: :idle,
     pending: [],
@@ -154,7 +165,7 @@ defmodule Tars.Agent.State do
   `:owed` is an agent loaded from a dump taken mid-turn: nothing is running,
   and a turn is due against the context it already holds.
   """
-  @type mode() :: :idle | :owed | Running.t() | Waiting.t() | Replaying.t()
+  @type mode() :: :idle | :owed | Running.t() | Waiting.t() | Replaying.t() | Compacting.t()
 
   @typedoc """
   Runs one turn and reports how it ended, as `{module, function, args}`.
@@ -342,6 +353,8 @@ defmodule Tars.Agent.State do
   end
 
   defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
+  defp at_rest(%Compacting{owed: true}), do: :owed
+  defp at_rest(%Compacting{owed: false}), do: :idle
 
   defp at_rest(%Replaying{checkpoint: checkpoint, source: source}),
     do: {:replaying, checkpoint, source}
@@ -414,6 +427,7 @@ defmodule Tars.Agent.State do
   defp activity(%Running{}), do: :running
   defp activity(%Waiting{}), do: :parked
   defp activity(%Replaying{}), do: :running
+  defp activity(%Compacting{}), do: :running
   # A turn is due and will start on the next message: running, not idle.
   defp activity(:owed), do: :running
   defp activity(:idle), do: :idle
@@ -476,24 +490,75 @@ defmodule Tars.Agent.State do
   the context that already holds the question it was answering. One replaying
   a turn answers `{:replay, scope, checkpoint, state}`: the turn goes on from
   its checkpoint, under the trace it began on.
-  """
-  @spec take(t()) :: {:run, [String.t()], t()} | {:replay, Scope.t(), Checkpoint.t(), t()} | :none
-  def take(%__MODULE__{mode: :owed} = state) do
-    {:run, Enum.reverse(state.pending), %{state | pending: [], mode: :idle}}
-  end
 
+  Before a turn, a history that has outgrown its config's `Tars.Compaction`
+  answers `{:compact, scope, state}`: the history is summarised first, see
+  `compacting/3` and `compacted/2`, and the turn is taken after. Once a
+  compaction has run, whatever it managed, none runs again before that turn
+  starts, so a summary that leaves the history over its threshold still lets
+  the turn through.
+  """
+
+  @spec take(t()) ::
+          {:run, [String.t()], t()}
+          | {:compact, Scope.t(), t()}
+          | {:replay, Scope.t(), Checkpoint.t(), t()}
+          | :none
   def take(%__MODULE__{mode: %Replaying{checkpoint: checkpoint, source: source}} = state) do
     {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
   end
 
-  def take(%__MODULE__{mode: :idle} = state) do
-    case Enum.reverse(state.pending) do
-      [] -> :none
-      questions -> {:run, questions, %{state | pending: []}}
+  def take(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
+    cond do
+      mode == :idle and state.pending == [] ->
+        :none
+
+      compaction_due?(state) ->
+        {:compact, turn_scope(state), state}
+
+      true ->
+        {:run, Enum.reverse(state.pending),
+         %{state | pending: [], mode: :idle, compaction_settled: false}}
     end
   end
 
   def take(%__MODULE__{}), do: :none
+
+  defp compaction_due?(%__MODULE__{compaction_settled: true}), do: false
+
+  defp compaction_due?(%__MODULE__{config: config, context: context}),
+    do: Tars.Compaction.split(config.compaction, context, config.model_spec) != :keep
+
+  @doc "Records the task summarising this agent's history, which a `{:compact, ...}` from `take/1` led to."
+  @spec compacting(t(), Task.t(), integer()) :: t()
+  def compacting(%__MODULE__{mode: mode} = state, task, started_at) when mode in [:idle, :owed],
+    do: %{state | mode: %Compacting{task: task, owed: mode == :owed, started_at: started_at}}
+
+  @doc "Whether `task_ref` is the compaction this agent is running."
+  @spec compacting?(t(), reference()) :: boolean()
+  def compacting?(%__MODULE__{mode: %Compacting{task: %Task{ref: ref}}}, task_ref),
+    do: ref == task_ref
+
+  def compacting?(%__MODULE__{}, _task_ref), do: false
+
+  @doc """
+  Settles a compaction with what `Tars.Compaction.run/2` answered: the
+  summarised history in place of the old one, or the old one as it was, and
+  the turn that was waiting on it due either way.
+  """
+  @spec compacted(t(), term()) :: {t(), [effect()]}
+  def compacted(%__MODULE__{mode: %Compacting{owed: owed}} = state, result) do
+    mode = if owed, do: :owed, else: :idle
+
+    case result do
+      {:ok, %Context{} = context, stats} ->
+        {%{state | mode: mode, context: context, compaction_settled: true},
+         [{:emit, turn_scope(state).source, {:context_compacted, stats}}]}
+
+      _kept_or_failed ->
+        {%{state | mode: mode, compaction_settled: true}, []}
+    end
+  end
 
   @doc "Records the turn a `take/1` led to, and the context it was given."
   @spec started(t(), Task.t(), Scope.t(), Context.t(), integer()) :: t()
@@ -596,6 +661,14 @@ defmodule Tars.Agent.State do
     {drained, dropped} = drain(state)
 
     {drained, [{:stop_now, running.task.pid}, {:arm_kill, state.grace, dropped}]}
+  end
+
+  def interrupt(%__MODULE__{mode: %Compacting{task: task} = compacting} = state) do
+    {drained, dropped} = drain(state)
+    stats = stats(compacting.started_at, dropped, 0, :stopped)
+
+    {idle(%{drained | outcome: :interrupted, compaction_settled: true}),
+     [{:shutdown, task}, {:emit, turn_scope(state).source, {:turn_interrupted, stats}}]}
   end
 
   def interrupt(%__MODULE__{mode: %Replaying{source: source}} = state) do

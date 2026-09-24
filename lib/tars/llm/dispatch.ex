@@ -66,9 +66,17 @@ defmodule Tars.LLM.Dispatch do
   @typedoc "What `admit/2` answers."
   @type admission() :: {:ok, Request.t()} | {:park, String.t()} | {:error, term()}
 
-  @typedoc "How a model call ended."
+  @typedoc """
+  How a model call ended: with its response, interrupted with the text that
+  had streamed, or failed. A call that failed after the provider began to
+  answer it is `{:error, reason, text}`, with the text that had streamed; one
+  that failed before is `{:error, reason}`.
+  """
   @type outcome() ::
-          {:ok, ReqLLM.Response.t()} | {:interrupted, String.t()} | {:error, term()}
+          {:ok, ReqLLM.Response.t()}
+          | {:interrupted, String.t()}
+          | {:error, term()}
+          | {:error, term(), String.t()}
 
   @doc """
   Decides what a call actually is, immediately before it is made.

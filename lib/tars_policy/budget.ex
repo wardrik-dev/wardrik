@@ -19,15 +19,17 @@ defmodule TarsPolicy.Budget do
 
   A budget sets `usd`, `tokens`, or both, and is spent when either is. A token
   limit governs a model the catalog cannot price, or one a subscription pays
-  for, whose calls cost nothing in dollars.
+  for, whose calls cost nothing in dollars; a budget in dollars refuses a model
+  the catalog cannot price.
 
   Days, weeks and months are UTC calendar periods, and a week starts on
   Monday. A turn's budget covers the model calls of that turn and every
   delegation under it.
 
   The limits are checked before each call, against what the calls before it
-  spent, so the call that crosses one runs and the next is stopped: an agent
-  can overspend by at most one call.
+  spent, so the call that crosses one runs and the next is stopped. Calls
+  admitted side by side, as delegations running at once are, can each cross
+  it.
   """
 
   defstruct [:usd, :tokens, :grant_usd, :grant_tokens, per: :day, on_exhausted: :ask]

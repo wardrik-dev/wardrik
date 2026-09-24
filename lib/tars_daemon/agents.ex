@@ -9,10 +9,11 @@ defmodule TarsDaemon.Agents do
   an agent that is not running is started, and one that is takes what its file
   says now. An agent keeps its conversation either way.
 
-  A file that does not read is reported by `files/0`, and by `tars status`. An
-  agent already running for it is left as it was, and an agent naming a policy
-  that does not read does not read either. Removing a file stops nothing;
-  `Tars.Fleet.forget/1` removes an agent and what it said.
+  A file that does not read, or whose agent does not start, is reported by
+  `files/0`, and by `tars status`, and every other file is read as if it were
+  not there. An agent already running for it is left as it was, and an agent
+  naming a policy that does not read does not read either. Removing a file
+  stops nothing; `Tars.Fleet.forget/1` removes an agent and what it said.
   """
 
   use GenServer
@@ -70,7 +71,18 @@ defmodule TarsDaemon.Agents do
   end
 
   defp read(dir, pattern, read) do
-    dir |> Path.join(pattern) |> Path.wildcard() |> Enum.sort() |> Enum.map(&{&1, read.(&1)})
+    dir
+    |> Path.join(pattern)
+    |> Path.wildcard()
+    |> Enum.sort()
+    |> Enum.map(&{&1, contained(&1, read)})
+  end
+
+  defp contained(path, read) do
+    read.(path)
+  catch
+    kind, reason ->
+      {:error, "#{path}: " <> String.trim_leading(Exception.format_banner(kind, reason), "** ")}
   end
 
   defp put({:ok, spec}) do

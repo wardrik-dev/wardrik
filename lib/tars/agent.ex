@@ -54,6 +54,14 @@ defmodule Tars.Agent do
   turn lost after being resumed comes back parked on the same calls. Resuming
   gives the turn this node's tools and a fresh budget.
 
+  ## A history that grows
+
+  Before a turn, an agent whose history has outgrown its config's
+  `Tars.Compaction` summarises the older part first, with its own model, and
+  reports `{:context_compacted, stats}`. Messages arriving meanwhile queue for
+  the turn that follows. A summary that cannot be made leaves the history as it
+  was, and the turn runs regardless.
+
   ## A turn lost part way
 
   Each turn hands the agent every batch of tool calls before running it, and
@@ -293,6 +301,7 @@ defmodule Tars.Agent do
     case State.take(state) do
       {:run, questions, state} -> stay(start(state, questions))
       {:replay, scope, checkpoint, state} -> stay(replay(state, scope, checkpoint))
+      {:compact, scope, state} -> stay(compact(state, scope))
       :none -> stay(state)
     end
   end
@@ -301,20 +310,26 @@ defmodule Tars.Agent do
   def handle_info(:maybe_run, state), do: advance(state)
 
   def handle_info({ref, result}, state) when is_reference(ref) do
-    if State.running?(state, ref) do
-      Process.demonitor(ref, [:flush])
-      state |> answered(result) |> advance(sync: true)
-    else
-      stay(state)
+    cond do
+      State.running?(state, ref) ->
+        Process.demonitor(ref, [:flush])
+        state |> answered(result) |> advance(sync: true)
+
+      State.compacting?(state, ref) ->
+        Process.demonitor(ref, [:flush])
+        state |> settle(State.compacted(state, result)) |> advance(sync: true)
+
+      true ->
+        stay(state)
     end
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref) do
-    if State.running?(state, ref) do
-      Logger.error("Turn crashed: #{inspect(reason)}")
-      state |> settle(State.failed(state, reason)) |> advance(sync: true)
+    if State.compacting?(state, ref) do
+      Logger.error("Compaction crashed: #{inspect(reason)}")
+      state |> settle(State.compacted(state, {:error, reason})) |> advance(sync: true)
     else
-      stay(state)
+      down(state, ref, reason)
     end
   end
 
@@ -340,6 +355,15 @@ defmodule Tars.Agent do
     stay(state)
   end
 
+  defp down(state, ref, reason) do
+    if State.running?(state, ref) do
+      Logger.error("Turn crashed: #{inspect(reason)}")
+      state |> settle(State.failed(state, reason)) |> advance(sync: true)
+    else
+      stay(state)
+    end
+  end
+
   # -- returns ---------------------------------------------------------------
 
   # Every return republishes this agent's metadata, which is what `Tars.Fleet`
@@ -362,6 +386,11 @@ defmodule Tars.Agent do
     task = run(fn -> State.apply_runner(state, scope, context) end)
 
     State.started(state, task, scope, context, System.monotonic_time())
+  end
+
+  defp compact(state, scope) do
+    task = run(fn -> Tars.Compaction.run(scope, state.context) end)
+    State.compacting(state, task, System.monotonic_time())
   end
 
   defp replay(state, scope, checkpoint) do

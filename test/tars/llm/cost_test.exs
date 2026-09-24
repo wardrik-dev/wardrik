@@ -18,6 +18,12 @@ defmodule Tars.LLM.CostTest do
     assert Cost.of("anthropic:claude-sonnet-5", nil) == nil
   end
 
+  test "priced?/1 says whether the catalog prices a model" do
+    assert Cost.priced?("anthropic:claude-sonnet-5")
+    assert Cost.priced?({:zai_coding_plan, model: "glm-5.3-flash"})
+    refute Cost.priced?("nowhere:no-such-model")
+  end
+
   test "of_response/2 prices a response by its usage" do
     response = %{LLMStub.final_answer("done") | usage: %{total_cost: 0.5}}
     assert Cost.of_response("anthropic:claude-sonnet-5", response) == 0.5

@@ -33,6 +33,13 @@ defmodule TarsPolicy do
   `grant` more for the period and lets it through. A budget that denies ends
   the turn instead.
 
+  A call that ends without the provider reporting what it used, because it was
+  interrupted, failed part way through its answer, or came back with no
+  usage, is counted as `Tars.LLM.Tokens` estimates it from the request and the
+  text that streamed. A call that failed before the provider began to answer
+  costs nothing. A budget in dollars refuses every call to a model the catalog
+  cannot price.
+
   ## Deciding
 
   Every rule whose `TarsPolicy.Pattern` names a call speaks for it, and the
@@ -61,6 +68,7 @@ defmodule TarsPolicy do
   require Logger
 
   alias Tars.LLM.Cost
+  alias Tars.LLM.Tokens
   alias TarsPolicy.Budget
   alias TarsPolicy.Meter
   alias TarsPolicy.Pattern
@@ -79,6 +87,9 @@ defmodule TarsPolicy do
   @effects ~w(allow ask deny)
   @keys @effects ++ ["default", "budget"]
   @strictness %{deny: 2, ask: 1, allow: 0}
+
+  @unpriced "This agent's budget is in dollars, and the catalog has no price for its model, so " <>
+              "what its calls cost cannot be counted. A budget in tokens alone can count them."
 
   @doc "What `policy` says about a call to the tool the agent knows as `name`."
   @spec decide(t(), String.t()) :: Tars.Policy.decision()
@@ -103,6 +114,12 @@ defmodule TarsPolicy do
   def admit(request, _scope, %__MODULE__{budget: nil}), do: {:ok, request}
 
   def admit(request, scope, %__MODULE__{budget: budget}) do
+    if budget.usd != nil and not Cost.priced?(request.model_spec),
+      do: {:error, {:policy_denied, @unpriced}},
+      else: metered(request, scope, budget)
+  end
+
+  defp metered(request, scope, budget) do
     case scope |> spend_key(budget) |> Meter.read() do
       {:ok, spend} ->
         cond do
@@ -119,8 +136,41 @@ defmodule TarsPolicy do
   end
 
   @impl Tars.LLM.Dispatch
-  def settle(request, {:ok, response}, scope, %__MODULE__{budget: %Budget{} = budget}) do
-    usage = ReqLLM.Response.usage(response) || %{}
+  def settle(request, outcome, scope, %__MODULE__{budget: %Budget{} = budget}) do
+    case used(request, outcome) do
+      nil -> :ok
+      usage -> record(request, usage, scope, budget)
+    end
+  end
+
+  def settle(_request, _outcome, _scope, _policy), do: :ok
+
+  # What a call used: what the provider reported, or an estimate from the
+  # request and the text that streamed where it reported nothing. A call that
+  # failed before the provider began to answer used nothing.
+  defp used(request, {:ok, response}) do
+    usage = ReqLLM.Response.usage(response)
+
+    if reported?(usage),
+      do: usage,
+      else: estimate(request, Tokens.messages(List.wrap(response.message)))
+  end
+
+  defp used(request, {:interrupted, text}), do: estimate(request, Tokens.text(text))
+  defp used(request, {:error, _reason, text}), do: estimate(request, Tokens.text(text))
+  defp used(_request, {:error, _reason}), do: nil
+
+  defp reported?(%{} = usage),
+    do:
+      is_number(usage[:total_cost]) or
+        count(usage, :input_tokens) + count(usage, :output_tokens) > 0
+
+  defp reported?(_usage), do: false
+
+  defp estimate(request, output_tokens),
+    do: %{input_tokens: Tokens.request(request), output_tokens: output_tokens}
+
+  defp record(request, usage, scope, budget) do
     micro_usd = Budget.micro(Cost.of(request.model_spec, usage) || 0)
     tokens = count(usage, :input_tokens) + count(usage, :output_tokens)
 
@@ -132,8 +182,6 @@ defmodule TarsPolicy do
 
     :ok
   end
-
-  def settle(_request, _outcome, _scope, _policy), do: :ok
 
   @impl Tars.LLM.Dispatch
   def approved(_request, scope, %__MODULE__{budget: %Budget{} = budget}) do
@@ -239,7 +287,7 @@ defmodule TarsPolicy do
       [] ->
         with {:ok, rules} <- rules(fields),
              {:ok, default} <- effect(Map.get(fields, "default", "allow"), "default"),
-             {:ok, budget} <- budget(fields["budget"]) do
+             {:ok, budget} <- budget(Map.fetch(fields, "budget")) do
           {:ok, %__MODULE__{name: name, rules: rules, default: default, budget: budget}}
         end
 
@@ -274,8 +322,8 @@ defmodule TarsPolicy do
     |> then(&if(policy.budget, do: Map.put(&1, "budget", Budget.encode(policy.budget)), else: &1))
   end
 
-  defp budget(nil), do: {:ok, nil}
-  defp budget(fields), do: Budget.decode(fields)
+  defp budget(:error), do: {:ok, nil}
+  defp budget({:ok, fields}), do: Budget.decode(fields)
 
   defp written(rules) do
     if Enum.all?(rules, &is_nil(&1.message)),

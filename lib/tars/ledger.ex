@@ -66,8 +66,9 @@ defmodule Tars.Ledger do
   alias Tars.Tool
 
   @typedoc """
-  The agent a call belongs to, and the call's id within its turn: the turn's
-  trace id and the id the model gave the call, as `key/2` builds it.
+  The agent a call belongs to, and the call's place within its turn: the
+  turn's trace id, the batch the call was asked for in, and the id the model
+  gave it, as `key/2` builds it.
   """
   @type key() :: {Tars.Event.Bus.agent_id(), call_id :: String.t()}
 
@@ -107,14 +108,20 @@ defmodule Tars.Ledger do
   @optional_callbacks release: 1
 
   @doc """
-  The key `call` is claimed under when it runs under `scope`.
+  The key `call` is claimed under when it runs under `scope`: the agent, then
+  the turn's trace id, the batch of `Tars.Scope.batch/2` the call belongs to,
+  and the id the model gave the call.
 
-  A model may give two calls in different turns the same id, so the key holds
-  the turn's trace id beside it, which a turn replayed from its journal keeps.
+  A model may give calls in two turns, or in two rounds of one turn, the same
+  id, and a delegation's calls are named by its own turn's batches, so no two
+  calls share a key. A turn replayed from its journal keeps its trace and
+  names its batches as before, so a call replayed keeps its key.
   """
   @spec key(Tars.Scope.t(), Tool.call()) :: key()
-  def key(%Tars.Scope{source: source}, %{id: id}),
-    do: {source.agent_id, source.trace.trace_id <> "/" <> id}
+  def key(%Tars.Scope{source: source, batch: batch}, %{id: id}) do
+    path = [source.trace.trace_id, batch, id] |> Enum.reject(&is_nil/1) |> Enum.join("/")
+    {source.agent_id, path}
+  end
 
   @doc """
   A string naming `call` under `scope` that no other call shares, and that the

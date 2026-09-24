@@ -28,7 +28,8 @@ defmodule Tars.Event do
 
     * `{:turn_started, questions}`, `{:turn_finished, messages}`,
       `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
-      `{:turn_parked, calls}`, `{:turn_resumed, decisions}`
+      `{:turn_parked, calls}`, `{:turn_resumed, decisions}`,
+      `{:context_compacted, stats}`
 
   Spans and delegations, on their own span:
 
@@ -56,6 +57,7 @@ defmodule Tars.Event do
           | {:turn_interrupted, Tars.Agent.State.stats()}
           | {:turn_parked, [{Tars.Tool.call(), String.t()}]}
           | {:turn_resumed, %{String.t() => term()}}
+          | {:context_compacted, Tars.Compaction.stats()}
           | {:span_started, String.t()}
           | {:span_finished, Tars.Scope.outcome(), non_neg_integer()}
           | {:delegation_started, String.t()}

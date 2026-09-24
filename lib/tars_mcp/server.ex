@@ -11,7 +11,7 @@ defmodule TarsMCP.Server do
   | --- | --- | --- |
   | `:ref` | required | what this server is called here, and the prefix on its tool names |
   | `:transport` | required | `{:stdio, opts}` or `{:streamable_http, opts}`, as `Anubis.Client` takes them |
-  | `:prefix` | the ref | what every tool name from this server starts with |
+  | `:prefix` | the ref | what every tool name from this server starts with, which may not hold `__` |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
   | `:timeout` | 60s | how long one call to this server may take |
@@ -115,6 +115,7 @@ defmodule TarsMCP.Server do
     server = struct!(__MODULE__, Keyword.put(opts, :ref, ref))
 
     %{server | prefix: server.prefix || to_string(ref)}
+    |> validate_prefix!()
     |> validate_transport!()
     |> split_url()
     |> scrub_env()
@@ -170,8 +171,21 @@ defmodule TarsMCP.Server do
   @spec local_name(t(), String.t()) :: String.t()
   def local_name(%__MODULE__{prefix: prefix}, name) do
     [prefix, name]
-    |> Enum.map_join("__", &String.replace(&1, ~r/[^a-zA-Z0-9_-]/, "_"))
+    |> Enum.map_join("__", &tool_name_part/1)
     |> String.slice(0, 64)
+  end
+
+  defp tool_name_part(part), do: String.replace(part, ~r/[^a-zA-Z0-9_-]/, "_")
+
+  # `__` is what separates the prefix from each tool's own name.
+  defp validate_prefix!(%__MODULE__{prefix: prefix} = server) do
+    if String.contains?(tool_name_part(prefix), "__") do
+      raise ArgumentError,
+            "a server's prefix may not hold \"__\", which comes between it and each tool's " <>
+              "name, got: #{inspect(prefix)}"
+    end
+
+    server
   end
 
   defp validate_transport!(%__MODULE__{transport: {layer, opts}} = server)

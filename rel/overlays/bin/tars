@@ -25,7 +25,7 @@ Usage: tars COMMAND
 
   serve     run the daemon in the foreground, logging to the terminal
   start     run the daemon in the background, logging to $log
-  stop      stop the daemon
+  stop      stop the daemon, and wait until it has
   status    what the daemon is running
   reload    read the agent and policy files again
   ask KEY MESSAGE            send an agent a message
@@ -81,8 +81,14 @@ case "${1:-}" in
     exit 1
     ;;
   stop)
-    if ! running; then echo "tars is not running" >&2; exit 1; fi
-    exec "$node" stop
+    pid="$("$node" pid 2>/dev/null)" || { echo "tars is not running" >&2; exit 1; }
+    "$node" stop > /dev/null
+    for _ in $(seq 60); do
+      kill -0 "$pid" 2>/dev/null || exit 0
+      sleep 1
+    done
+    echo "tars did not stop within a minute" >&2
+    exit 1
     ;;
   status)
     if ! running; then echo "tars is not running"; exit 3; fi

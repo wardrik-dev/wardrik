@@ -41,10 +41,11 @@ defmodule Tars.LLM.ToolRunner do
   callback runs and settled with what it returned, under `Tars.Ledger.key/2`.
   A call already settled is answered with what it returned then, without
   running, and reported as `{:tool_replayed, call_id, name, result}`. A call
-  claimed and never settled may or may not have had its effect, so it parks
-  for a person to decide, and one a person has approved runs. A call whose
-  claim the ledger cannot answer does not run. A tool that stops to ask before
-  doing anything releases its claim.
+  claimed and never settled may or may not have had its effect, so it parks as
+  `{:pending, call, prompt}`, asking a person whether to run it again, and runs
+  once they approve that; approving a call a policy asked about runs nothing
+  the ledger holds as begun. A call whose claim the ledger cannot answer does
+  not run. A tool that stops to ask before doing anything releases its claim.
 
   ## Stopping one call
 
@@ -73,10 +74,15 @@ defmodule Tars.LLM.ToolRunner do
   @tool_timeout :timer.seconds(60)
   @max_concurrency 8
 
-  @typedoc "What one call did: an answer for the model, or a wait for a person."
+  @typedoc """
+  What one call did: an answer for the model, or a wait for a person, who is
+  asked whether it may run, or, `:pending`, whether to run again a call that
+  began and never finished.
+  """
   @type outcome() ::
           {:settled, Tool.call(), ReqLLM.Message.t()}
           | {:parked, Tool.call(), String.t()}
+          | {:pending, Tool.call(), String.t()}
 
   @typedoc "One call in flight, as `in_flight/1` reports it."
   @type running() :: %{
@@ -125,7 +131,7 @@ defmodule Tars.LLM.ToolRunner do
       {:settled, _call, message} ->
         message
 
-      {:parked, call, _prompt} ->
+      {_waiting, call, _prompt} ->
         raise ArgumentError, "tool call #{call.id} (#{call.name}) is parked and has no result"
     end)
   end
@@ -133,7 +139,7 @@ defmodule Tars.LLM.ToolRunner do
   @doc "The calls in a batch that parked, each with the prompt a person is shown."
   @spec parked([outcome()]) :: [{Tool.call(), String.t()}]
   def parked(outcomes) when is_list(outcomes) do
-    for {:parked, call, prompt} <- outcomes, do: {call, prompt}
+    for {waiting, call, prompt} <- outcomes, waiting in [:parked, :pending], do: {call, prompt}
   end
 
   @doc """
@@ -161,8 +167,10 @@ defmodule Tars.LLM.ToolRunner do
 
     * `:authorize` - whether to consult the scope's policy, `true` by default.
       A resumed call passes `false`: the decision has already been made, and
-      asking again would park it forever. A person has decided, so the call
-      also runs where the ledger holds it as pending.
+      asking again would park it forever.
+    * `:rerun` - whether a person has approved running again a call the
+      ledger holds as begun and never finished, `false` by default. A call
+      that parked as `{:pending, call, prompt}` is resumed with it.
   """
   @spec execute(Tool.call(), Scope.t(), keyword()) :: outcome()
   def execute(%{name: name} = call, %Scope{} = scope, opts \\ []) do
@@ -231,6 +239,7 @@ defmodule Tars.LLM.ToolRunner do
   # to say the call did not do its job.
   defp outcome({:error, reason}), do: {:error, reason}
   defp outcome({:parked, _prompt}), do: {:error, :parked}
+  defp outcome({:pending, _prompt}), do: {:error, :parked}
 
   defp outcome({:ok, %{"error" => error}} = result) do
     if Result.ok?(result), do: :ok, else: {:error, error}
@@ -239,6 +248,7 @@ defmodule Tars.LLM.ToolRunner do
   defp outcome(_result), do: :ok
 
   defp settle({:parked, prompt}, call), do: {:parked, call, prompt}
+  defp settle({:pending, prompt}, call), do: {:pending, call, prompt}
   defp settle({:ok, output}, call), do: {:settled, call, result_message(call, output)}
   defp settle({:error, reason}, call), do: {:settled, call, error_message(call, reason)}
 
@@ -253,7 +263,7 @@ defmodule Tars.LLM.ToolRunner do
 
     try do
       case decide(call, scope, opts) do
-        :allow -> recorded(call, scope, approved?(opts))
+        :allow -> recorded(call, scope, Keyword.get(opts, :rerun, false))
         {:deny, reason} -> deny(call, scope, reason)
         {:ask, prompt} -> park(call, scope, prompt)
       end
@@ -271,9 +281,9 @@ defmodule Tars.LLM.ToolRunner do
 
   # A call is claimed before it runs, so a replay knows it began, and settled
   # after, so a replay knows what it returned.
-  defp recorded(call, %Scope{ledger: nil} = scope, _approved?), do: invoke(call, scope)
+  defp recorded(call, %Scope{ledger: nil} = scope, _rerun?), do: invoke(call, scope)
 
-  defp recorded(call, %Scope{ledger: ledger} = scope, approved?) do
+  defp recorded(call, %Scope{ledger: ledger} = scope, rerun?) do
     key = Ledger.key(scope, call)
 
     case Ledger.claim(ledger, key, call) do
@@ -283,11 +293,11 @@ defmodule Tars.LLM.ToolRunner do
       {:settled, result} ->
         replayed(call, scope, result)
 
-      {:pending, _entry} when approved? ->
+      {:pending, _entry} when rerun? ->
         run_claimed(call, scope, ledger, key)
 
       {:pending, _entry} ->
-        park(call, scope, pending_prompt(call))
+        pending(call, scope)
 
       {:error, reason} ->
         deny(
@@ -322,6 +332,11 @@ defmodule Tars.LLM.ToolRunner do
   defp replayed(%{id: id, name: name}, scope, result) do
     Event.emit(scope.source, {:tool_replayed, id, name, result})
     result
+  end
+
+  defp pending(call, scope) do
+    {:parked, prompt} = park(call, scope, pending_prompt(call))
+    {:pending, prompt}
   end
 
   defp pending_prompt(%{name: name}) do

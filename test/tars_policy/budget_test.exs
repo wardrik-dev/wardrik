@@ -4,7 +4,9 @@ defmodule TarsPolicy.BudgetTest do
 
   alias ReqLLM.Context
   alias Tars.LLM.Config
+  alias Tars.LLM.Cost
   alias Tars.LLM.Request
+  alias Tars.LLM.Tokens
   alias Tars.Scope
   alias Tars.Test.LLMStub
   alias TarsPolicy.Budget
@@ -120,12 +122,49 @@ defmodule TarsPolicy.BudgetTest do
                TarsPolicy.admit(request, scope, policy)
     end
 
-    test "a call that failed spends nothing", context do
+    test "a call that failed before it was answered spends nothing", context do
       %{policy: policy, scope: scope, request: request} = context
 
       :ok = TarsPolicy.settle(request, {:error, :timeout}, scope, policy)
 
       assert %Spend{micro_usd: 0, tokens: 0} = TarsPolicy.spent(policy, scope)
+    end
+
+    test "a call that ended without reporting what it used is counted as estimated", context do
+      %{policy: policy, scope: scope} = context
+      model = {:anthropic, model: "claude-sonnet-5"}
+      streamed = String.duplicate("a", 400)
+
+      request =
+        Request.new(
+          Config.new(model_spec: model, system: String.duplicate("s", 400)),
+          Context.new([Context.user(String.duplicate("q", 4000))])
+        )
+
+      input = Tokens.request(request)
+      output = Tokens.text(streamed)
+      each = Budget.micro(Cost.of(model, %{input_tokens: input, output_tokens: output}))
+
+      :ok = TarsPolicy.settle(request, {:interrupted, streamed}, scope, policy)
+      :ok = TarsPolicy.settle(request, {:error, :closed, streamed}, scope, policy)
+      :ok = TarsPolicy.settle(request, {:ok, LLMStub.final_answer(streamed)}, scope, policy)
+
+      assert input == 1100 and output == 100 and each > 0
+      assert %Spend{micro_usd: micro_usd, tokens: tokens} = TarsPolicy.spent(policy, scope)
+      assert tokens == 3 * (input + output)
+      assert micro_usd == 3 * each
+    end
+
+    test "a budget in dollars refuses a model the catalog cannot price", context do
+      %{policy: policy, scope: scope} = context
+
+      request = Request.new(Config.new(model_spec: "nowhere:no-such-model"), Context.new())
+
+      assert {:error, {:policy_denied, "This agent's budget is in dollars" <> _}} =
+               TarsPolicy.admit(request, scope, policy)
+
+      in_tokens = TarsPolicy.decode!(%{"budget" => %{"tokens" => 1000}})
+      assert {:ok, ^request} = TarsPolicy.admit(request, scope, in_tokens)
     end
 
     test "a token limit governs a call that costs nothing in dollars", context do

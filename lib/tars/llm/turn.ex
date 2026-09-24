@@ -79,6 +79,7 @@ defmodule Tars.LLM.Turn do
   alias Tars.Trace
 
   @streamed :tars_streamed_text
+  @answered :tars_answered
 
   @closing "You have used every tool call available for this turn. Answer now from what you have, and say plainly what you could not verify."
 
@@ -95,9 +96,12 @@ defmodule Tars.LLM.Turn do
   Finishes a turn that parked, applying one decision per waiting call.
 
   Approved calls run now, with the policy no longer consulted: the decision has
-  been made, and asking again would park them forever. Denied calls are
-  answered with the reason, which the model reads and can act on. A call with
-  no decision stays parked, so a person can answer them one at a time.
+  been made, and asking again would park them forever. A call that parked
+  because it may already have run runs again once approved; one approved when
+  a policy asked, and found by the ledger to have begun since, parks again to
+  ask that. Denied calls are answered with the reason, which the model reads
+  and can act on. A call with no decision stays parked, so a person can answer
+  them one at a time.
   """
   @spec resume(Scope.t(), Parked.t(), %{String.t() => Parked.decision()}) :: result()
   def resume(%Scope{} = scope, %Parked{response: nil} = parked, decisions)
@@ -121,16 +125,17 @@ defmodule Tars.LLM.Turn do
   end
 
   def resume(%Scope{} = scope, %Parked{} = parked, decisions) when is_map(decisions) do
-    resumed = %{parked | outcomes: Enum.map(parked.outcomes, &decide(&1, decisions, scope))}
+    batch = Scope.batch(scope, rounds(parked.acc))
+    resumed = %{parked | outcomes: Enum.map(parked.outcomes, &decide(&1, decisions, batch))}
 
     if Parked.waiting?(resumed), do: {:parked, resumed}, else: finish(scope, resumed)
   end
 
   defp decide({:settled, _call, _message} = outcome, _decisions, _scope), do: outcome
 
-  defp decide({:parked, call, prompt} = outcome, decisions, scope) do
+  defp decide({waiting, call, prompt} = outcome, decisions, scope) do
     case Map.get(decisions, call.id) do
-      :approve -> ToolRunner.execute(call, scope, authorize: false)
+      :approve -> ToolRunner.execute(call, scope, authorize: false, rerun: waiting == :pending)
       {:deny, reason} -> ToolRunner.refuse(call, scope, reason)
       nil -> outcome
       other -> ToolRunner.refuse(call, scope, "Undecidable answer #{inspect(other)}: #{prompt}")
@@ -267,7 +272,7 @@ defmodule Tars.LLM.Turn do
   end
 
   defp handle(scope, context, acc, remaining, response) do
-    case handle_response(scope, context, response) do
+    case handle_response(Scope.batch(scope, rounds(acc)), context, response) do
       {:done, messages} -> {:ok, Enum.reverse(acc, messages)}
       {:cont, context, messages} -> continue(scope, context, messages, acc, remaining)
       {:waiting, outcomes} -> park(context, response, outcomes, acc, remaining)
@@ -309,6 +314,10 @@ defmodule Tars.LLM.Turn do
   defp countdown(:infinity), do: :infinity
   defp countdown(remaining), do: remaining - 1
 
+  # Each round of tool use adds one assistant message to what the turn has
+  # produced, so their count is the round a batch belongs to.
+  defp rounds(acc), do: Enum.count(acc, &(&1.role == :assistant))
+
   # A call the dispatch parks is never made, so it has no model events.
   defp request(%Scope{} = scope, context) do
     request = Request.new(scope.config, context)
@@ -323,16 +332,25 @@ defmodule Tars.LLM.Turn do
     started_at = System.monotonic_time()
     Event.emit(source, {:model_started, request.model_spec})
     Process.put(@streamed, [])
+    Process.put(@answered, false)
 
     result =
       with {:ok, admitted} <- admission do
-        admitted |> stream(scope) |> tap(&Dispatch.settle(scope, admitted, &1))
+        admitted |> stream(scope) |> tap(&Dispatch.settle(scope, admitted, settled(&1)))
       end
 
     Event.emit(source, {:model_finished, outcome(result), Trace.elapsed_ms(started_at)})
 
     result
   end
+
+  # A stream that failed once the provider had begun to answer settles with
+  # the text that had streamed.
+  defp settled({:error, reason}) do
+    if Process.get(@answered), do: {:error, reason, streamed_text()}, else: {:error, reason}
+  end
+
+  defp settled(result), do: result
 
   defp stream(%Request{} = request, %Scope{} = scope) do
     with {:ok, streamed} <- ReqLLM.stream_text(request.model_spec, request.context, request.opts) do
@@ -364,7 +382,7 @@ defmodule Tars.LLM.Turn do
   defp settle_calls(scope, context, response, calls) do
     outcomes = ToolRunner.execute_many_async(calls, scope)
 
-    if Enum.any?(outcomes, &match?({:parked, _call, _prompt}, &1)) do
+    if ToolRunner.parked(outcomes) != [] do
       {:waiting, outcomes}
     else
       append_tool_exchange(context, response, ToolRunner.messages(outcomes))
@@ -396,6 +414,7 @@ defmodule Tars.LLM.Turn do
     streamed
     |> ReqLLM.StreamResponse.process_stream(
       on_chunk: fn chunk ->
+        Process.put(@answered, true)
         Event.emit(source, {:chunk, chunk})
         if interrupted?(), do: throw(:interrupt)
       end,

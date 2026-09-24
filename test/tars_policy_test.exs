@@ -49,6 +49,13 @@ defmodule TarsPolicyTest do
       assert {:deny, _reason} = TarsPolicy.decide(policy, "github__delete_repo")
     end
 
+    test "a rule written with the name the agent knows a tool by decides it" do
+      policy = TarsPolicy.decode!(%{"deny" => ["github__delete_repo"]})
+
+      assert {:deny, "github/delete_repo is not allowed for this agent."} =
+               TarsPolicy.decide(policy, "github__delete_repo")
+    end
+
     test "allows what nothing names by default" do
       assert TarsPolicy.decide(TarsPolicy.decode!(%{}), "anything") == :allow
     end
@@ -91,6 +98,13 @@ defmodule TarsPolicyTest do
     test "refuse a default that is not an effect" do
       assert {:error, "default is allow, ask or deny"} =
                TarsPolicy.decode(%{"default" => "maybe"})
+    end
+
+    test "refuse a budget that sets nothing" do
+      assert {:error, "budget is a set of settings" <> _rest} =
+               TarsPolicy.decode(%{"budget" => nil})
+
+      assert {:ok, %TarsPolicy{budget: nil}} = TarsPolicy.decode(%{"default" => "allow"})
     end
 
     test "refuse rules that are not patterns" do

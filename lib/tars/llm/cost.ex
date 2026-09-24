@@ -25,6 +25,10 @@ defmodule Tars.LLM.Cost do
     end
   end
 
+  @doc "Whether the catalog prices `model_spec`, so that `of/2` can price a call to it from its tokens."
+  @spec priced?(term()) :: boolean()
+  def priced?(model_spec), do: of(model_spec, %{input_tokens: 1, output_tokens: 1}) != nil
+
   @doc "The cost of the call that answered `response`. See `of/2`."
   @spec of_response(term(), ReqLLM.Response.t()) :: float() | nil
   def of_response(model_spec, %ReqLLM.Response{} = response),

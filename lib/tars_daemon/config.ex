@@ -55,7 +55,8 @@ defmodule TarsDaemon.Config do
   `port` and `ip`, as `TarsDaemon.SSH` does.
 
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
-  or a server that is neither a command nor a URL, and says where.
+  a server that is neither a command nor a URL, or a server whose name or
+  `prefix` holds `__`, and says where.
   """
 
   @typedoc "Settings for one package, as `Application.put_env(:tars, package, settings)` takes them."
@@ -160,12 +161,21 @@ defmodule TarsDaemon.Config do
       path = ["mcp", name]
       server = table!(server, path)
       known!(server, @server_keys, path)
+      prefix!(Map.get(server, "prefix", name), path)
 
       {name(name),
        [transport: transport(server, path)] ++
          Enum.map(Map.drop(server, @transport_keys), &server_option(&1, path))}
     end)
   end
+
+  defp prefix!(prefix, path) when is_binary(prefix) do
+    if String.contains?(prefix, "__"),
+      do: invalid!(path, "names its tools with #{prefix}, and a server's prefix may not hold __")
+  end
+
+  defp prefix!(prefix, path),
+    do: invalid!(path, "names its tools with #{inspect(prefix)}, which is not text")
 
   defp transport(%{"command" => _, "url" => _}, path),
     do: invalid!(path, "has both command and url; a server is one or the other")

@@ -16,6 +16,11 @@ defmodule TarsMCP.ServerTest do
       assert server(prefix: "gh").prefix == "gh"
     end
 
+    test "rejects a prefix holding what comes between it and each tool's name" do
+      assert_raise ArgumentError, ~r/may not hold "__"/, fn -> server(prefix: "my__server") end
+      assert_raise ArgumentError, ~r/may not hold "__"/, fn -> server(prefix: "my..server") end
+    end
+
     test "rejects a transport it cannot start" do
       assert_raise ArgumentError, ~r/expected :transport/, fn ->
         Server.new(:github, transport: "https://example.com")

@@ -52,11 +52,13 @@ defmodule Tars.Agent.Spec do
   @doc """
   A spec from its fields. `:name` is required, and `:config` is
   `Tars.LLM.Config.new/0` unless given. Raises on a field a spec does not
-  have.
+  have, and on a name, org or user that `key/1` cannot write into a key.
   """
   @spec new(keyword()) :: t()
   def new(fields) when is_list(fields) do
-    struct!(__MODULE__, Keyword.put_new_lazy(fields, :config, &Config.new/0))
+    spec = struct!(__MODULE__, Keyword.put_new_lazy(fields, :config, &Config.new/0))
+    _key = key(spec)
+    spec
   end
 
   @doc "The agent's key in the fleet. See `Tars.Fleet.key/2`."

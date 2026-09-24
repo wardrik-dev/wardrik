@@ -1,6 +1,8 @@
 defmodule TarsDaemon.SSHTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias TarsDaemon.SSH
 
   @moduletag :tmp_dir
@@ -24,18 +26,47 @@ defmodule TarsDaemon.SSHTest do
     File.mkdir_p!(Path.join(config, "ssh"))
     File.write!(Path.join([config, "ssh", "authorized_keys"]), "")
 
-    assert [{Termite.SSH, opts}] = SSH.children(config, Path.join(dir, "data"))
+    assert [{SSH, opts}] = SSH.children(config, Path.join(dir, "data"))
     assert opts[:port] == 2222
     assert opts[:ip] == {127, 0, 0, 1}
     assert {:public_key, verifier} = opts[:auth]
     assert is_function(verifier, 2)
 
     host_key = Path.join([dir, "data", "ssh", "ssh_host_rsa_key"])
-    assert File.stat!(host_key).mode |> Bitwise.band(0o777) == 0o600
+    assert mode(host_key) == 0o600
+    assert mode(Path.dirname(host_key)) == 0o700
     written = File.read!(host_key)
 
+    File.chmod!(host_key, 0o644)
+    File.chmod!(Path.dirname(host_key), 0o755)
     SSH.children(config, Path.join(dir, "data"))
+
     assert File.read!(host_key) == written
+    assert mode(host_key) == 0o600
+    assert mode(Path.dirname(host_key)) == 0o700
+  end
+
+  defp mode(path), do: path |> File.stat!() |> Map.fetch!(:mode) |> Bitwise.band(0o777)
+
+  test "a port another process holds leaves SSH unserved, and what runs it running", %{
+    tmp_dir: dir
+  } do
+    config = Path.join(dir, "config")
+    File.mkdir_p!(Path.join(config, "ssh"))
+    File.write!(Path.join([config, "ssh", "authorized_keys"]), "")
+    [{SSH, opts}] = SSH.children(config, Path.join(dir, "data"))
+
+    {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, port} = :inet.port(held)
+    opts = opts |> Keyword.delete(:name) |> Keyword.put(:port, port)
+
+    log =
+      capture_log(fn ->
+        assert {:ok, supervisor} = Supervisor.start_link([{SSH, opts}], strategy: :one_for_one)
+        assert [{SSH, :undefined, :worker, _modules}] = Supervisor.which_children(supervisor)
+      end)
+
+    assert log =~ "SSH is not served: port #{port} on 127.0.0.1 could not be listened on"
   end
 
   test "a key is let in while the file lists it, read at every login", %{tmp_dir: dir} do

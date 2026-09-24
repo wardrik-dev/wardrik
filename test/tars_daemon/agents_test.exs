@@ -1,11 +1,14 @@
 defmodule TarsDaemon.AgentsTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias Tars.Agent
   alias Tars.Fleet
   alias TarsDaemon.Agents
 
   @moduletag :tmp_dir
+
+  setup :set_mimic_global
 
   setup %{tmp_dir: dir} do
     org = "agents-#{System.unique_integer([:positive])}"
@@ -65,6 +68,39 @@ defmodule TarsDaemon.AgentsTest do
     assert message =~ "names nope"
     assert %{} = Agent.status("#{org}/_/alpha")
     assert {:error, :not_found} = Agent.status("#{org}/_/broken")
+  end
+
+  test "a file whose agent cannot be keyed is reported, and the rest still run", %{
+    dir: dir,
+    org: org
+  } do
+    write(%{dir: dir, org: org}, "alpha", "")
+    write(%{dir: dir, org: "#{org}/eu"}, "slashed", "")
+
+    start_supervised!({Agents, dir: dir})
+
+    assert [{_alpha, {:ok, _}}, {slashed, {:error, message}}] = Agents.files()
+    assert Path.basename(slashed) == "slashed.md"
+    assert message =~ "slashed.md: a fleet key segment may not contain \"/\""
+    assert %{} = Agent.status("#{org}/_/alpha")
+  end
+
+  test "a file whose reading fails outright is reported, and the rest still run",
+       %{org: org} = context do
+    write(context, "alpha", "")
+    write(context, "failing", "")
+
+    stub(TarsDaemon.AgentFile, :read, fn path, policies ->
+      if Path.basename(path) == "failing.md",
+        do: exit(:store_timeout),
+        else: call_original(TarsDaemon.AgentFile, :read, [path, policies])
+    end)
+
+    start_supervised!({Agents, dir: context.dir})
+
+    assert [{_alpha, {:ok, _}}, {failing, {:error, message}}] = Agents.files()
+    assert message == "#{failing}: (exit) :store_timeout"
+    assert %{} = Agent.status("#{org}/_/alpha")
   end
 
   test "a policy in policies/ governs the agents that name it", %{org: org} = context do
