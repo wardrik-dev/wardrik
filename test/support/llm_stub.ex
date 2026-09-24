@@ -51,6 +51,35 @@ defmodule Tars.Test.LLMStub do
     end)
   end
 
+  @doc """
+  Answers each request with the response at the index of the assistant
+  messages its context already holds, every tool call in it given an id no
+  earlier request was given, as a provider does.
+
+  A turn replayed from a checkpoint asks nothing, so its calls keep the ids
+  they had; a model asked again gets new ones, so a ledger keyed by call id
+  cannot take the one for the other.
+  """
+  def by_round(responses) when is_list(responses) do
+    stub(ReqLLM, :stream_text, fn _model, context, _opts ->
+      {:ok, {:round, Enum.count(context.messages, &(&1.role == :assistant))}}
+    end)
+
+    stub(ReqLLM.StreamResponse, :process_stream, fn {:round, round}, opts ->
+      opts[:on_result].("result")
+      {:ok, fresh_ids(Enum.at(responses, round, List.last(responses)))}
+    end)
+  end
+
+  defp fresh_ids(%ReqLLM.Response{message: %{tool_calls: [_ | _] = calls} = message} = response) do
+    asked = System.unique_integer([:positive])
+    calls = Enum.map(calls, &%{&1 | id: "#{&1.id}_#{asked}"})
+
+    %{response | message: %{message | tool_calls: calls}}
+  end
+
+  defp fresh_ids(response), do: response
+
   @doc "The text of the last user message in a context."
   def prompt(%ReqLLM.Context{} = context) do
     context.messages

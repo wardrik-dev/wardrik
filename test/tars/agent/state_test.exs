@@ -149,9 +149,10 @@ defmodule Tars.Agent.StateTest do
     test "a waiting turn is abandoned outright" do
       {state, effects} = State.interrupt(waiting())
 
-      assert [{:emit, _source, {:turn_interrupted, stats}}] = effects
+      assert [{:emit, source, {:turn_interrupted, stats}}, {:forget_claims, scope}] = effects
       assert stats.resolution == :abandoned
       assert state.mode == :idle
+      assert scope.source == source
     end
 
     test "an idle agent says there was nothing to stop" do
@@ -170,7 +171,13 @@ defmodule Tars.Agent.StateTest do
 
       assert {:kill, idle, effects} = State.kill(state, tag)
       assert idle.mode == :idle
-      assert [{:shutdown, _task}, {:emit, _source, {:turn_interrupted, stats}}] = effects
+
+      assert [
+               {:shutdown, _task},
+               {:emit, _source, {:turn_interrupted, stats}},
+               {:forget_claims, _scope}
+             ] = effects
+
       assert stats.resolution == :killed
       assert stats.dropped == 3
     end
@@ -193,9 +200,12 @@ defmodule Tars.Agent.StateTest do
   describe "settling" do
     test "a turn that answered normally reports what it produced" do
       messages = [Context.assistant("done")]
-      {state, [{:emit, _source, event}]} = State.settled(running(), messages)
+
+      {state, [{:emit, source, event}, {:forget_claims, scope}]} =
+        State.settled(running(), messages)
 
       assert event == {:turn_finished, messages}
+      assert scope.source == source
       assert Context.to_list(state.context) |> length() == 1
     end
 
@@ -203,7 +213,12 @@ defmodule Tars.Agent.StateTest do
       messages = [Context.assistant("partial")]
       {_state, effects} = State.settled(stopping(), messages)
 
-      assert [{:emit, _source, {:turn_interrupted, stats}}, {:cancel_kill, _timer}] = effects
+      assert [
+               {:emit, _source, {:turn_interrupted, stats}},
+               {:forget_claims, _scope},
+               {:cancel_kill, _timer}
+             ] = effects
+
       assert stats.resolution == :stopped
       assert stats.kept == 1
     end
@@ -359,7 +374,10 @@ defmodule Tars.Agent.StateTest do
       {:ok, state} = State.checkpointed(running(), self(), checkpoint())
 
       assert {%State{mode: :idle, outcome: :interrupted},
-              [{:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}}]} =
+              [
+                {:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}},
+                {:forget_claims, _scope}
+              ]} =
                State.interrupt(reload(state))
     end
 

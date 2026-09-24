@@ -61,6 +61,10 @@ defmodule TarsDaemon.CLITest do
 
     assert command(["approve", key, "call_1"]) == {"Approved call_1 for #{key}.\n", 0}
     assert_receive {:resumed, %{"call_1" => :approve}}
+
+    assert_receive %Event{
+      payload: {:call_decided, "call_1", :approve, %Tars.Principal{type: :shell}}
+    }
   end
 
   test "deny refuses the call with the reason given" do

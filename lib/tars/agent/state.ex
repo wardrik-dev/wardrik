@@ -226,6 +226,8 @@ defmodule Tars.Agent.State do
     * `{:arm_kill, ms, dropped}` - arm a kill after `ms`, then record it with `arm/4`
     * `{:cancel_kill, timer}` - a turn answered before its kill was needed
     * `{:shutdown, task}` - the kill fired; end the task now
+    * `{:forget_claims, scope}` - a turn has ended for good; its ledger claims
+      will never be read again
   """
   @type effect() ::
           {:emit, Source.t(), tuple()}
@@ -234,6 +236,7 @@ defmodule Tars.Agent.State do
           | {:arm_kill, pos_integer(), non_neg_integer()}
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
+          | {:forget_claims, Scope.t()}
 
   @typedoc "What an interrupt stopped."
   @type stats() :: %{
@@ -614,7 +617,9 @@ defmodule Tars.Agent.State do
     outcome = if running.stopping, do: :interrupted, else: :ok
     state = %{state | context: Context.append(state.context, messages), outcome: outcome}
 
-    {idle(state), [{:emit, running.scope.source, finish(running, messages)} | disarm(running)]}
+    {idle(state),
+     [{:emit, running.scope.source, finish(running, messages)}, forget(running.scope)] ++
+       disarm(running)}
   end
 
   defp finish(%Running{stopping: nil}, messages), do: {:turn_finished, messages}
@@ -636,7 +641,8 @@ defmodule Tars.Agent.State do
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
-     [{:emit, running.scope.source, {:turn_failed, reason}} | disarm(running)]}
+     [{:emit, running.scope.source, {:turn_failed, reason}}, forget(running.scope)] ++
+       disarm(running)}
   end
 
   # A turn that answered before its kill was needed leaves the timer behind; it
@@ -675,7 +681,10 @@ defmodule Tars.Agent.State do
     {drained, dropped} = drain(state)
 
     {idle(%{drained | outcome: :interrupted}),
-     [{:emit, source, {:turn_interrupted, stats(nil, dropped, 0, :abandoned)}}]}
+     [
+       {:emit, source, {:turn_interrupted, stats(nil, dropped, 0, :abandoned)}},
+       forget(%{turn_scope(state) | source: source})
+     ]}
   end
 
   def interrupt(%__MODULE__{mode: %Waiting{} = waiting} = state) do
@@ -683,7 +692,10 @@ defmodule Tars.Agent.State do
     stats = stats(waiting.started_at, dropped, 0, :abandoned)
 
     {idle(%{drained | outcome: :interrupted}),
-     [{:emit, waiting.source, {:turn_interrupted, stats}}]}
+     [
+       {:emit, waiting.source, {:turn_interrupted, stats}},
+       forget(%{turn_scope(state) | source: waiting.source})
+     ]}
   end
 
   def interrupt(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
@@ -719,7 +731,11 @@ defmodule Tars.Agent.State do
     stats = stats(running.started_at, running.stopping.dropped, 0, :killed)
 
     {:kill, idle(%{state | outcome: :interrupted}),
-     [{:shutdown, running.task}, {:emit, running.scope.source, {:turn_interrupted, stats}}]}
+     [
+       {:shutdown, running.task},
+       {:emit, running.scope.source, {:turn_interrupted, stats}},
+       forget(running.scope)
+     ]}
   end
 
   def kill(%__MODULE__{}, _tag), do: :stale
@@ -746,6 +762,8 @@ defmodule Tars.Agent.State do
   end
 
   defp idle(state), do: %{state | mode: :idle}
+
+  defp forget(%Scope{} = scope), do: {:forget_claims, scope}
 
   # A turn that never started has no clock to read, so it reports no time.
   defp stats(started_at, dropped, kept, resolution) do

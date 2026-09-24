@@ -29,7 +29,9 @@ defmodule Tars.Event do
     * `{:turn_started, questions}`, `{:turn_finished, messages}`,
       `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
       `{:turn_parked, calls}`, `{:turn_resumed, decisions}`,
-      `{:context_compacted, stats}`, `{:schedule_fired, name, outcome}`
+      `{:call_decided, call_id, decision, by}`, one per call a person
+      answered, with the `Tars.Principal` who did, or `nil` where no caller
+      said, `{:context_compacted, stats}`, `{:schedule_fired, name, outcome}`
 
   Spans and delegations, on their own span:
 
@@ -57,6 +59,7 @@ defmodule Tars.Event do
           | {:turn_interrupted, Tars.Agent.State.stats()}
           | {:turn_parked, [{Tars.Tool.call(), String.t()}]}
           | {:turn_resumed, %{String.t() => term()}}
+          | {:call_decided, String.t(), Tars.LLM.Turn.Parked.decision(), Tars.Principal.t() | nil}
           | {:context_compacted, Tars.Compaction.stats()}
           | {:schedule_fired, String.t(), Tars.Schedule.outcome()}
           | {:span_started, String.t()}
@@ -117,6 +120,7 @@ defmodule Tars.Event do
     :turn_interrupted,
     :turn_parked,
     :turn_resumed,
+    :call_decided,
     :schedule_fired,
     :span_started,
     :span_finished,

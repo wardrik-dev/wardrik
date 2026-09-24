@@ -196,8 +196,12 @@ defmodule TarsDaemon.CLI do
     end
   end
 
+  # `bin/tars` reaches the node with its cookie, which only the account the
+  # node runs as can read, so that account is who decides.
   defp decide(key, call, decision, done) do
-    case Agent.decide(key, %{call => decision}) do
+    by = %Tars.Principal{type: :shell, id: System.get_env("USER") || "unknown"}
+
+    case Agent.decide(key, %{call => decision}, by: by) do
       :ok -> ok("#{done} #{call} for #{key}.")
       {:error, :not_found} -> fail("No agent runs under #{key}.")
       {:error, :not_parked} -> fail("#{key} is not waiting on anything.")

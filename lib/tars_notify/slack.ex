@@ -168,7 +168,9 @@ defmodule TarsNotify.Slack do
         do: :approve,
         else: {:deny, "Denied in Slack by #{user["username"] || user["name"] || user["id"]}."}
 
-    case Tars.Agent.decide(agent, %{call => decision}) do
+    by = %Tars.Principal{type: :slack, id: user["id"], name: user["username"] || user["name"]}
+
+    case Tars.Agent.decide(agent, %{call => decision}, by: by) do
       :ok -> decided(payload, action, user, call, name)
       {:error, :not_found} -> ephemeral("#{agent} is not running.")
       {:error, _not_waiting} -> ephemeral("That was already answered.")

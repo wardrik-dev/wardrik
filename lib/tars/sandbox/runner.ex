@@ -42,27 +42,13 @@ defmodule Tars.Sandbox.Runner do
     |> await(deadline(limits.timeout_ms), limits)
   end
 
+  # An unlinked task outlives its caller, and the deadline is the caller's to
+  # enforce, so a caller killed mid-call would otherwise leave it running.
   defp evaluate(fun, caller, limits) do
-    kill_when_caller_dies(caller)
+    Tars.Tether.to(caller)
     Process.flag(:priority, :low)
     cap_heap(limits.max_heap_bytes)
     fun.()
-  end
-
-  # An unlinked task outlives its caller, and the deadline is the caller's to
-  # enforce, so a caller killed mid-call would otherwise leave it running.
-  defp kill_when_caller_dies(caller) do
-    evaluation = self()
-
-    spawn(fn ->
-      caller_ref = Process.monitor(caller)
-      evaluation_ref = Process.monitor(evaluation)
-
-      receive do
-        {:DOWN, ^caller_ref, :process, _pid, _reason} -> Process.exit(evaluation, :kill)
-        {:DOWN, ^evaluation_ref, :process, _pid, _reason} -> :ok
-      end
-    end)
   end
 
   defp cap_heap(:infinity), do: :ok

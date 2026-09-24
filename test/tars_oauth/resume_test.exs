@@ -21,6 +21,8 @@ defmodule TarsOAuth.ResumeTest do
 
   defp call(id), do: %{id: id, name: "slack__connect", arguments: %{}}
 
+  defp oauth(owner), do: %Tars.Principal{type: :oauth, id: owner}
+
   defp connect(owner, key) do
     stub_server(cimd: true)
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
@@ -52,7 +54,7 @@ defmodule TarsOAuth.ResumeTest do
       :ok = Scope.Context.put(scope("jon", "acme/jon/a"), call("call_1"))
 
       assert Credential.continuation() ==
-               {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}]}
+               {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}, [by: oauth("jon")]]}
     end
   end
 
@@ -64,7 +66,10 @@ defmodule TarsOAuth.ResumeTest do
       connect(owner, key)
 
       assert {:ok, flight} = Pending.under_way("github", owner)
-      assert flight.resumes == [{Agent, :decide, [key, %{"call_1" => :approve}]}]
+
+      assert flight.resumes == [
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]}
+             ]
     end
 
     test "remembers a second call that parks while it runs", %{owner: owner} do
@@ -81,8 +86,8 @@ defmodule TarsOAuth.ResumeTest do
       assert {:ok, flight} = Pending.under_way("github", owner)
 
       assert flight.resumes == [
-               {Agent, :decide, [key, %{"call_1" => :approve}]},
-               {Agent, :decide, [key, %{"call_2" => :approve}]}
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]},
+               {Agent, :decide, [key, %{"call_2" => :approve}, [by: oauth(owner)]]}
              ]
     end
 
@@ -126,7 +131,10 @@ defmodule TarsOAuth.ResumeTest do
       assert {:error, _trouble} = TarsOAuth.finish(state_of(url), "the-code")
 
       assert {:ok, flight} = Pending.under_way("github", owner)
-      assert flight.resumes == [{Agent, :decide, [key, %{"call_1" => :approve}]}]
+
+      assert flight.resumes == [
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]}
+             ]
     end
 
     test "finishes on the same link once the endpoint answers", %{owner: owner} do

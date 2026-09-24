@@ -102,9 +102,10 @@ defmodule Tars.Credential do
   """
   @spec continuation() :: continuation() | nil
   def continuation do
-    with %Scope{source: %{agent_id: agent_id}} <- Context.current(),
+    with %Scope{source: %{agent_id: agent_id}} = scope <- Context.current(),
          %{id: call_id} <- Context.current_call() do
-      {Tars.Agent, :decide, [agent_id, %{call_id => :approve}]}
+      by = %Tars.Principal{type: :oauth, id: to_string(scope.user || "_")}
+      {Tars.Agent, :decide, [agent_id, %{call_id => :approve}, [by: by]]}
     else
       _outside_a_call -> nil
     end

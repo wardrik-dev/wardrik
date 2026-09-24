@@ -105,7 +105,13 @@ defmodule Tars.Ledger do
   """
   @callback release(key()) :: :ok | {:error, term()}
 
-  @optional_callbacks release: 1
+  @doc """
+  Removes every entry a turn made, the calls of its delegations included, once
+  the turn has ended and nothing will replay it.
+  """
+  @callback forget(Tars.Event.Bus.agent_id(), trace_id :: String.t()) :: :ok | {:error, term()}
+
+  @optional_callbacks release: 1, forget: 2
 
   @doc """
   The key `call` is claimed under when it runs under `scope`: the agent, then
@@ -161,7 +167,7 @@ defmodule Tars.Ledger do
 
   A ledger that raises answers `{:error, reason}`. The call has already run by
   now, so a failure here loses the record rather than the work, and the entry
-  stays pending until it expires.
+  stays pending until its turn is forgotten.
   """
   @spec settle(module() | nil, key(), Tool.Result.t()) :: :ok | {:error, term()}
   def settle(nil, _key, _result), do: :ok
@@ -180,7 +186,7 @@ defmodule Tars.Ledger do
   @doc """
   Releases `key` through `ledger`, doing nothing when there is no ledger or it
   keeps no releases. A failure is answered, not raised: the claim stays
-  pending until it expires.
+  pending until its turn is forgotten.
   """
   @spec release(module() | nil, key()) :: :ok | {:error, term()}
   def release(nil, _key), do: :ok
@@ -189,6 +195,35 @@ defmodule Tars.Ledger do
     if Code.ensure_loaded?(ledger) and function_exported?(ledger, :release, 1),
       do: ledger.release(key),
       else: :ok
+  catch
+    kind, reason ->
+      {:error, "Ledger #{inspect(ledger)} failed: #{Exception.format(kind, reason)}"}
+  end
+
+  @doc """
+  Forgets the entries of the turn `trace_id` through `ledger`, doing nothing
+  when there is no ledger or it keeps no such thing. A failure is answered, not
+  raised: the entries stay, and nothing reads them again.
+
+  `[:tars, :ledger, :forgotten]` is emitted once the ledger has answered, with
+  the agent id, the trace id and the answer in its metadata.
+  """
+  @spec forget(module() | nil, Tars.Event.Bus.agent_id(), String.t()) :: :ok | {:error, term()}
+  def forget(nil, _agent_id, _trace_id), do: :ok
+
+  def forget(ledger, agent_id, trace_id) when is_atom(ledger) do
+    answer =
+      if Code.ensure_loaded?(ledger) and function_exported?(ledger, :forget, 2),
+        do: ledger.forget(agent_id, trace_id),
+        else: :ok
+
+    :telemetry.execute([:tars, :ledger, :forgotten], %{}, %{
+      agent_id: agent_id,
+      trace_id: trace_id,
+      answer: answer
+    })
+
+    answer
   catch
     kind, reason ->
       {:error, "Ledger #{inspect(ledger)} failed: #{Exception.format(kind, reason)}"}

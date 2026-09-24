@@ -3,7 +3,8 @@ defmodule Tars.LLM.ToolRunner do
   Executes model-requested tool calls, each isolated in its own supervised task.
 
   A tool crash, exit or hang is contained: it becomes an error tool-result
-  rather than taking down the turn. Every call is answered with exactly one
+  rather than taking down the turn. The reverse does not hold: a turn that is
+  killed takes the calls it has in flight with it. Every call is answered with exactly one
   canonical tool-result message, including calls whose task died, which is
   what `ReqLLM.Context.append_tool_exchange/3` requires.
 
@@ -44,7 +45,8 @@ defmodule Tars.LLM.ToolRunner do
   claimed and never settled may or may not have had its effect, so it parks as
   `{:pending, call, prompt}`, asking a person whether to run it again, and runs
   once they approve that; approving a call a policy asked about runs nothing
-  the ledger holds as begun. A call whose claim the ledger cannot answer does
+  the ledger holds as begun, and refusing one tells the model what the ledger
+  holds, not that it never ran. A call whose claim the ledger cannot answer does
   not run. A tool that stops to ask before doing anything releases its claim.
 
   ## Stopping one call
@@ -103,10 +105,15 @@ defmodule Tars.LLM.ToolRunner do
   """
   @spec execute_many_async([Tool.call()], Scope.t()) :: [outcome()]
   def execute_many_async(tool_calls, %Scope{} = scope) do
+    turn = self()
+
     Tars.TaskSupervisor
     |> Task.Supervisor.async_stream_nolink(
       Enum.map(tool_calls, &{&1, Scope.open(scope, &1.name)}),
-      fn {call, span} -> in_span(call, span, []) end,
+      fn {call, span} ->
+        Tars.Tether.to(turn)
+        in_span(call, span, [])
+      end,
       ordered: true,
       max_concurrency: @max_concurrency,
       timeout: timeout(tool_calls, scope),
@@ -182,13 +189,32 @@ defmodule Tars.LLM.ToolRunner do
 
   What `Tars.LLM.Turn.resume/3` uses for a denied call, so a refusal made by a
   person reaches the model in the same shape as one made by a policy.
+
+  A call the ledger holds is not one that never ran. A settled one is answered
+  with what it returned, as a replay is, and one claimed and never settled is
+  refused with the model told it may already have done what it does.
   """
   @spec refuse(Tool.call(), Scope.t(), String.t()) :: outcome()
   def refuse(%{name: name} = call, %Scope{} = scope, reason) when is_binary(reason) do
     span = Scope.open(scope, name)
-    result = deny(call, span, reason)
+    result = refused(call, span, reason)
     Scope.close(span, outcome(result))
     settle(result, call)
+  end
+
+  defp refused(call, %Scope{ledger: nil} = scope, reason), do: deny(call, scope, reason)
+
+  defp refused(call, %Scope{ledger: ledger} = scope, reason) do
+    case Ledger.fetch(ledger, Ledger.key(scope, call)) do
+      {:ok, %Ledger.Entry{result: nil}} -> deny(call, scope, not_run_again(call, reason))
+      {:ok, %Ledger.Entry{result: result}} -> replayed(call, scope, result)
+      :error -> deny(call, scope, reason)
+    end
+  end
+
+  defp not_run_again(%{name: name}, reason) do
+    "#{name} was not run again, but it began before this agent was interrupted " <>
+      "and may already have done what it does. #{reason}"
   end
 
   @doc """

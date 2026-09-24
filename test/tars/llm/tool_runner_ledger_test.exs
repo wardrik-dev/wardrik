@@ -143,6 +143,56 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     assert reason =~ "could not record this call before running it"
   end
 
+  describe "refusing a call" do
+    test "that nothing began is a plain refusal", %{agent_id: agent_id} do
+      scope = scope(agent_id, [counted("deploy")])
+
+      assert {:settled, _call, _message} =
+               ToolRunner.refuse(call("call_1", "deploy"), scope, "Not today.")
+
+      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", "Not today."}}
+    end
+
+    test "that ran answers with what it returned", %{agent_id: agent_id} do
+      scope = scope(agent_id, [counted("deploy")])
+      call = call("call_1", "deploy")
+      {:settled, ^call, ran} = ToolRunner.execute(call, scope)
+
+      assert {:settled, ^call, ^ran} = ToolRunner.refuse(call, scope, "Not today.")
+      assert_received %Event{payload: {:tool_replayed, "call_1", "deploy", {:ok, _result}}}
+      refute_received %Event{payload: {:tool_denied, "call_1", "deploy", _reason}}
+    end
+
+    test "that began and never finished tells the model it may have run", %{agent_id: agent_id} do
+      scope = scope(agent_id, [counted("deploy")])
+      call = call("call_1", "deploy")
+      :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+
+      ToolRunner.refuse(call, scope, "Not today.")
+
+      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", reason}}
+      assert reason =~ "may already have done what it does"
+      assert reason =~ "Not today."
+      refute_received {:ran, "deploy"}
+    end
+  end
+
+  test "forgetting a turn removes its calls and leaves other turns' alone", %{agent_id: agent_id} do
+    turn = scope(agent_id, [counted("refund")])
+    other = scope(agent_id, [counted("refund")])
+    call = call("call_0", "refund")
+
+    ToolRunner.execute(call, Scope.batch(turn, 0))
+    ToolRunner.execute(call, Scope.batch(turn, 1))
+    ToolRunner.execute(call, other)
+
+    assert :ok = Ledger.Store.forget(agent_id, turn.source.trace.trace_id)
+
+    assert :error = Ledger.fetch(Ledger.Store, Ledger.key(Scope.batch(turn, 0), call))
+    assert :error = Ledger.fetch(Ledger.Store, Ledger.key(Scope.batch(turn, 1), call))
+    assert {:ok, _entry} = Ledger.fetch(Ledger.Store, Ledger.key(other, call))
+  end
+
   test "idempotency_key/2 names one call in one turn", %{agent_id: agent_id} do
     scope = scope(agent_id, [])
     key = Ledger.idempotency_key(scope, call("call_1", "refund"))

@@ -8,10 +8,9 @@ defmodule Tars.Ledger.Store do
 
   ## Retention
 
-  Entries expire, since a claim is only worth holding while the turn that made
-  it can still be replayed. The default is seven days.
-
-      config :tars, Tars.Ledger.Store, ttl_ms: :timer.hours(24)
+  An entry lasts as long as the turn that made it, however long that turn
+  waits on a person, and `forget/2` removes the turn's entries once it has
+  ended.
   """
 
   @behaviour Tars.Ledger
@@ -20,7 +19,6 @@ defmodule Tars.Ledger.Store do
   alias Tars.Store
 
   @ns :claims
-  @default_ttl_ms 7 * 24 * 60 * 60 * 1000
 
   @doc "The key an entry is written under, within the `:claims` namespace."
   @spec key(Tars.Ledger.key()) :: String.t()
@@ -28,7 +26,7 @@ defmodule Tars.Ledger.Store do
 
   @impl Tars.Ledger
   def claim(key, call) do
-    case Store.put(@ns, key(key), Entry.claimed(call), if_vsn: nil, ttl_ms: ttl_ms()) do
+    case Store.put(@ns, key(key), Entry.claimed(call), if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> held(key)
       {:error, reason} -> {:error, reason}
@@ -71,6 +69,23 @@ defmodule Tars.Ledger.Store do
     end
   end
 
+  # Every key a turn claims starts with its agent and its trace id, the calls of
+  # its delegations included, which share the trace.
+  @impl Tars.Ledger
+  def forget(agent_id, trace_id) do
+    @ns
+    |> Store.keys(agent_id <> "/" <> trace_id <> "/")
+    |> Enum.reduce_while(:ok, fn encoded, :ok ->
+      case Store.lookup(@ns, encoded) do
+        {_entry, vsn} -> delete(encoded, vsn) |> continue()
+        nil -> {:cont, :ok}
+      end
+    end)
+  end
+
+  defp continue(:ok), do: {:cont, :ok}
+  defp continue({:error, reason}), do: {:halt, {:error, reason}}
+
   @impl Tars.Ledger
   def fetch(key) do
     case Store.get(@ns, key(key)) do
@@ -80,7 +95,7 @@ defmodule Tars.Ledger.Store do
   end
 
   defp write(encoded, entry, vsn) do
-    case Store.put(@ns, encoded, entry, if_vsn: vsn, ttl_ms: ttl_ms()) do
+    case Store.put(@ns, encoded, entry, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -90,14 +105,8 @@ defmodule Tars.Ledger.Store do
     case Store.get(@ns, key(key), consistent: true) do
       %Entry{result: nil} = entry -> {:pending, entry}
       %Entry{result: result} -> {:settled, result}
-      nil -> {:error, :expired}
+      nil -> {:error, :forgotten}
       other -> {:error, {:unexpected_entry, other}}
     end
-  end
-
-  defp ttl_ms do
-    :tars
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:ttl_ms, @default_ttl_ms)
   end
 end

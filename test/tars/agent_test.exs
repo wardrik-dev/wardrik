@@ -411,6 +411,23 @@ defmodule Tars.AgentTest do
       assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
 
+    test "each decision says who made it" do
+      test_pid = self()
+      answer = {:ok, [Context.assistant("left it")]}
+      by = %Tars.Principal{type: :slack, id: "U1", name: "jon"}
+
+      agent =
+        start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+
+      :ok = Agent.decide(agent, %{"call_1" => {:deny, "Not today."}}, by: by)
+
+      assert_receive %Event{payload: {:call_decided, "call_1", {:deny, "Not today."}, ^by}}
+      assert_receive %Event{payload: {:turn_resumed, _decisions}}
+    end
+
     test "a turn that parks again stays parked" do
       test_pid = self()
       still = {:parked, parked_turn("call_2")}

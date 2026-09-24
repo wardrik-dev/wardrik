@@ -135,6 +135,13 @@ defmodule TarsNotify.SlackTest do
       assert :ok = Slack.answer(press(key, "tars_approve"))
 
       assert_receive {:resumed, %{"call_1" => :approve}}
+
+      assert_receive %Event{
+        payload:
+          {:call_decided, "call_1", :approve,
+           %Tars.Principal{type: :slack, id: "U1", name: "jon"}}
+      }
+
       assert_receive {:slack, "hooks.slack.com", "/actions/r", reply}
       assert reply["replace_original"] == true
       assert [%{"type" => "section"}, %{"type" => "context"} = line] = reply["blocks"]

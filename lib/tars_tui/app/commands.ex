@@ -374,7 +374,7 @@ defmodule TarsTUI.App.Commands do
   end
 
   defp accept_decision(term, chosen, decision) do
-    case Agent.decide(term.assigns.agent, decisions(chosen, decision)) do
+    case Agent.decide(term.assigns.agent, decisions(chosen, decision), by: term.assigns.principal) do
       :ok ->
         remaining = term.assigns.parked -- chosen
 

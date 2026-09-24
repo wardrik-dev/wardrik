@@ -360,6 +360,7 @@ defmodule TarsTUI.AppTest do
       type(session, "approve")
       Breeze.Test.input(session, "Enter")
       assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
+      assert_receive {:decided_by, %Tars.Principal{type: :terminal}}
     end
 
     test "several parked calls are picked by number, and Backspace steps back", ctx do

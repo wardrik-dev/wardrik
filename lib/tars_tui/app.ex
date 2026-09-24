@@ -359,6 +359,9 @@ defmodule TarsTUI.App do
     end
   end
 
+  # Who decides from a TUI started in a terminal here: the account running it.
+  defp terminal, do: %Tars.Principal{type: :terminal, id: System.get_env("USER") || "unknown"}
+
   @impl Breeze.View
   def mount(opts, term) do
     agent = Keyword.fetch!(opts, :agent)
@@ -382,6 +385,7 @@ defmodule TarsTUI.App do
       term
       |> assign(
         spawn_opts: Keyword.get(opts, :spawn_opts, []),
+        principal: Keyword.get_lazy(opts, :principal, &terminal/0),
         fleet: [],
         fleet_due?: false,
         sidebar?: Keyword.get(opts, :sidebar, true),

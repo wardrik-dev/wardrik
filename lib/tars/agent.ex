@@ -46,7 +46,9 @@ defmodule Tars.Agent do
 
   A `Tars.Policy` that answers `{:ask, prompt}` parks the turn. The agent holds
   what it was doing, reports `:parked`, and does nothing until `resume/2`
-  answers the calls it stopped on. Messages that arrive meanwhile queue behind
+  answers the calls it stopped on, and emits `{:call_decided, call_id, decision,
+  by}` for each, with the `Tars.Principal` a caller names as `:by`. Messages
+  that arrive meanwhile queue behind
   it rather than starting a turn of their own, because the parked work is still
   the current work; `interrupt/1` abandons it if that is what you want.
 
@@ -69,6 +71,11 @@ defmodule Tars.Agent do
   after that comes back replaying from its last batch, with the same calls, and
   a `Tars.Ledger` on the scope answers for any that already ran. See
   `Tars.LLM.Turn`.
+
+  A turn is tethered to its agent, and each tool call to its turn, so an agent
+  that stops or moves leaves nothing of its turn running beside the replay.
+  Once a turn has ended for good, finished, failed or abandoned, the ledger
+  forgets its calls.
 
   ## What a host supplies
 
@@ -108,6 +115,7 @@ defmodule Tars.Agent do
   alias Tars.Event.Bus
   alias Tars.Fleet
   alias Tars.LLM.Turn
+  alias Tars.LLM.Turn.Parked
 
   @typedoc "An agent: the pid of one, or the fleet key it is registered under."
   @type agent() :: pid() | String.t()
@@ -162,9 +170,17 @@ defmodule Tars.Agent do
   @spec snapshot(agent()) :: Snapshot.t() | {:error, :not_found}
   def snapshot(agent), do: call(agent, :snapshot)
 
-  @doc "Accepts decisions only while their calls are parked, acknowledging acceptance before returning."
-  @spec decide(agent(), map()) :: :ok | {:error, :not_found | :not_parked | :stale_decision}
-  def decide(agent, decisions) when is_map(decisions), do: call(agent, {:decide, decisions})
+  @doc """
+  Accepts decisions only while their calls are parked, acknowledging acceptance
+  before returning.
+
+  `:by` names the `Tars.Principal` deciding, carried on each
+  `{:call_decided, call_id, decision, by}` event.
+  """
+  @spec decide(agent(), map(), keyword()) ::
+          :ok | {:error, :not_found | :not_parked | :stale_decision}
+  def decide(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
+    do: call(agent, {:decide, decisions, Keyword.get(opts, :by)})
 
   @doc """
   Stops whatever this agent is doing and discards whatever is queued.
@@ -180,13 +196,16 @@ defmodule Tars.Agent do
 
   `decisions` maps a tool call id to `:approve` or `{:deny, reason}`. Calls left
   out stay parked, so several people can answer one call each. Non-blocking,
-  and a no-op when nothing is parked.
+  and a no-op when nothing is parked. `:by` names the `Tars.Principal`
+  deciding, as `decide/3` takes it.
 
       Tars.Agent.resume("acme/jon/researcher", %{"call_abc" => :approve})
       Tars.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
-  @spec resume(agent(), %{String.t() => Turn.Parked.decision()}) :: :ok | {:error, :not_found}
-  def resume(agent, decisions) when is_map(decisions), do: cast(agent, {:resume, decisions})
+  @spec resume(agent(), %{String.t() => Parked.decision()}, keyword()) ::
+          :ok | {:error, :not_found}
+  def resume(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
+    do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)})
 
   @doc """
   What this agent is waiting on, as `{call, prompt}` pairs, or `[]` when it is
@@ -249,7 +268,7 @@ defmodule Tars.Agent do
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
   def handle_call(:snapshot, _from, state), do: {:reply, State.snapshot(state), state}
 
-  def handle_call({:decide, decisions}, _from, state) do
+  def handle_call({:decide, decisions, by}, _from, state) do
     ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
 
     cond do
@@ -260,7 +279,7 @@ defmodule Tars.Agent do
         {:reply, {:error, :stale_decision}, state}
 
       true ->
-        next = resume_turn(state, decisions)
+        next = resume_turn(state, decisions, by)
         {:reply, :ok, next, meta: State.meta(next), sync: true}
     end
   end
@@ -278,14 +297,19 @@ defmodule Tars.Agent do
     state |> perform(effects) |> advance(sync: true)
   end
 
-  def handle_cast({:resume, decisions}, state) do
-    stay(resume_turn(state, decisions), sync: true)
+  def handle_cast({:resume, decisions, by}, state) do
+    stay(resume_turn(state, decisions, by), sync: true)
   end
 
-  defp resume_turn(state, decisions) do
+  defp resume_turn(state, decisions, by) do
     case State.resume(state) do
       {:resume, scope, turn, started_at} ->
         scope = journaled(scope)
+
+        for {call, _prompt} <- Parked.calls(turn),
+            Map.has_key?(decisions, call.id),
+            do: Event.emit(scope.source, {:call_decided, call.id, decisions[call.id], by})
+
         Event.emit(scope.source, {:turn_resumed, decisions})
         task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
@@ -405,7 +429,17 @@ defmodule Tars.Agent do
   # them, which writes them down.
   defp journaled(scope), do: %{scope | journal: self()}
 
-  defp run(fun), do: Task.Supervisor.async_nolink(Tars.TaskSupervisor, fun)
+  # A turn belongs to the agent that started it: one whose agent stopped, or
+  # moved to another node, is killed rather than running a batch its successor
+  # is replaying.
+  defp run(fun) do
+    agent = self()
+
+    Task.Supervisor.async_nolink(Tars.TaskSupervisor, fn ->
+      Tars.Tether.to(agent)
+      fun.()
+    end)
+  end
 
   defp answered(state, {:ok, messages}), do: settle(state, State.settled(state, messages))
   defp answered(state, {:parked, turn}), do: settle(state, State.parked(state, turn))
@@ -451,6 +485,14 @@ defmodule Tars.Agent do
 
   defp apply_effect({:shutdown, task}, state) do
     Task.shutdown(task, :brutal_kill)
+    state
+  end
+
+  defp apply_effect({:forget_claims, scope}, state) do
+    Task.Supervisor.start_child(Tars.TaskSupervisor, fn ->
+      Tars.Ledger.forget(scope.ledger, scope.source.agent_id, scope.source.trace.trace_id)
+    end)
+
     state
   end
 end

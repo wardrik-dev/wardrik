@@ -33,7 +33,8 @@ defmodule Tars.Test.FakeAgent do
      }, owner}
   end
 
-  def handle_call({:decide, decisions}, _from, owner) do
+  def handle_call({:decide, decisions, by}, _from, owner) do
+    send(owner, {:decided_by, by})
     send(owner, {:"$gen_cast", {:resume, decisions}})
     {:reply, :ok, owner}
   end

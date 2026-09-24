@@ -44,6 +44,9 @@ defmodule Tars.AgentLedgerTest do
     def authorize(_call, _scope), do: :allow
   end
 
+  @doc false
+  def forward(_event, _measurements, metadata, test), do: send(test, {:forgotten, metadata})
+
   setup do
     key = Tars.Test.Fleet.key("ledger")
     :ok = Event.Bus.subscribe(key)
@@ -115,5 +118,69 @@ defmodule Tars.AgentLedgerTest do
     assert_receive {:began, "deploy", tool}, 5_000
     send(tool, :finish)
     assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+  end
+
+  test "a turn stopped with its agent stops, with the call it was making", %{key: key} do
+    LLMStub.by_round([
+      LLMStub.tool_call("call_1", "deploy", %{}),
+      LLMStub.final_answer("It may have shipped.")
+    ])
+
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts([]), key)
+    Agent.ask(agent, "ship it")
+    assert_receive %Event{payload: {:tool_started, call_id, "deploy"}}, 5_000
+    assert_receive {:began, "deploy", tool}, 5_000
+    tool_ref = Process.monitor(tool)
+
+    :ok = Tars.Fleet.stop(key)
+    assert_receive {:DOWN, ^tool_ref, :process, ^tool, _reason}, 5_000
+
+    # Replayed from its checkpoint, not asked again: the stub gives a model
+    # asked again new call ids.
+    {:ok, _agent} = Tars.Fleet.spawn(key, opts([]))
+    assert_receive %Event{payload: {:turn_parked, [{%{id: ^call_id}, prompt}]}}, 5_000
+    assert prompt =~ "may already have done what it does"
+  end
+
+  test "a call refused after it was lost part way tells the model it may have run", %{key: key} do
+    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Left it.")])
+
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts(policy: Careful), key)
+    Agent.ask(agent, "ship it")
+    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+
+    Agent.resume(agent, %{"call_1" => :approve})
+    assert_receive {:began, "deploy", tool}, 5_000
+    lose(key, tool)
+
+    {:ok, agent} = Tars.Fleet.spawn(key, opts(policy: Careful))
+    assert [{%{id: "call_1"}, "This ships to production."}] = Agent.parked(agent)
+
+    Agent.resume(agent, %{"call_1" => {:deny, "Not today."}})
+
+    assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason}}, 5_000
+    assert reason =~ "may already have done what it does"
+    assert reason =~ "Not today."
+    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+  end
+
+  test "a turn's claims are forgotten once it ends", %{key: key} do
+    handler = "forgotten-#{key}"
+    :ok = :telemetry.attach(handler, [:tars, :ledger, :forgotten], &__MODULE__.forward/4, self())
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
+
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts([]), key)
+    Agent.ask(agent, "ship it")
+    assert_receive {:began, "deploy", tool}, 5_000
+    assert [_claim] = Tars.Store.keys(:claims, key <> "/")
+    send(tool, :finish)
+
+    assert_receive %Event{payload: {:turn_finished, _}, source: %{trace: %{trace_id: trace_id}}},
+                   5_000
+
+    assert_receive {:forgotten, %{agent_id: ^key, trace_id: ^trace_id, answer: :ok}}, 5_000
+    assert Tars.Store.keys(:claims, key <> "/") == []
   end
 end
