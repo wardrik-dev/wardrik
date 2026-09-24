@@ -18,7 +18,7 @@ config :tars, Tars.Store,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
-# Budgets are kept by ledgers the application starts, as a release does.
+# Budgets are kept by meters the application starts, as a release does.
 config :tars, :children, [TarsPolicy.Supervisor]
 
 # The MCP client library logs every transport failure at error level. The

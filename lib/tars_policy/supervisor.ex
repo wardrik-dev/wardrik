@@ -1,6 +1,6 @@
 defmodule TarsPolicy.Supervisor do
   @moduledoc """
-  Runs the `TarsPolicy.Ledger`s budgets are kept in, over the store the fleet
+  Runs the `TarsPolicy.Meter`s budgets are kept in, over the store the fleet
   runs on. A host that governs agents with budgets starts it once per node,
   after the fleet, as one of core's `:children`:
 
@@ -18,8 +18,8 @@ defmodule TarsPolicy.Supervisor do
   def init(opts) do
     children = [
       {DurableServer.Supervisor,
-       name: TarsPolicy.Ledger.supervisor(),
-       prefix: "tars/budgets/",
+       name: TarsPolicy.Meter.supervisor(),
+       prefix: "tars/meters/",
        backend: Tars.Store.durable_backend(),
        group: [log: Keyword.get(opts, :log, false)]}
     ]

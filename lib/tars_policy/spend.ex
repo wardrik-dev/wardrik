@@ -1,7 +1,7 @@
 defmodule TarsPolicy.Spend do
   @moduledoc """
   What an agent has spent in one budget period, and what people have granted
-  it beyond its limits there. `TarsPolicy.Ledger` holds one per period.
+  it beyond its limits there. `TarsPolicy.Meter` holds one per period.
 
   Money is counted in whole micro-dollars, millionths of a US dollar, so any
   number of spends add up exactly.
@@ -16,7 +16,7 @@ defmodule TarsPolicy.Spend do
           granted_tokens: non_neg_integer()
         }
 
-  @doc "The name of `agent`'s spend in `window`, as a ledger is keyed."
+  @doc "The name of `agent`'s spend in `window`, as a meter is keyed."
   @spec key(String.t(), String.t()) :: String.t()
   def key(agent, window), do: agent <> "|" <> window
 

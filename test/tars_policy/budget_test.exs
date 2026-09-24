@@ -167,9 +167,9 @@ defmodule TarsPolicy.BudgetTest do
       assert %Spend{tokens: 3000, micro_usd: 2_000_000} = TarsPolicy.spent(policy, scope)
     end
 
-    test "a budget whose ledger cannot be read refuses the call", context do
+    test "a budget whose meter cannot be read refuses the call", context do
       %{policy: policy, scope: scope, request: request} = context
-      stub(TarsPolicy.Ledger, :read, fn _key -> {:error, {:ledger_unavailable, :no_capacity}} end)
+      stub(TarsPolicy.Meter, :read, fn _key -> {:error, {:meter_unavailable, :no_capacity}} end)
 
       assert {:error, {:policy_denied, "This agent's budget could not be read" <> _}} =
                TarsPolicy.admit(request, scope, policy)

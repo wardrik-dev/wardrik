@@ -1,27 +1,27 @@
-defmodule TarsPolicy.Ledger do
+defmodule TarsPolicy.Meter do
   @moduledoc """
   One budget period's `TarsPolicy.Spend`, owned by one process across the
   cluster.
 
-  A ledger is a `DurableServer` keyed by `TarsPolicy.Spend.key/2`, started on
+  A meter is a `DurableServer` keyed by `TarsPolicy.Spend.key/2`, started on
   whichever node asks for it first and found there by every node after. Every
   spend and grant for the period is a call to that one process, so they are
   counted in order, however many delegations settle at once, with no lock and
   nothing retried. Each is written to `Tars.Store` before the call returns.
 
-  A ledger nothing has used for #{div(:timer.minutes(10), 60_000)} minutes stops, leaving its spend in
+  A meter nothing has used for #{div(:timer.minutes(10), 60_000)} minutes stops, leaving its spend in
   the store, and the next call starts it again from there, on any node. So a
   period that has ended costs no process, and one whose node is lost carries on
   elsewhere at its next call.
 
-  The host starts `TarsPolicy.Supervisor`, which runs the ledgers.
+  The host starts `TarsPolicy.Supervisor`, which runs the meters.
   """
 
   use DurableServer, vsn: 1
 
   alias TarsPolicy.Spend
 
-  @name TarsPolicy.Ledgers
+  @name TarsPolicy.Meters
   @idle :timer.minutes(10)
   @attempts 3
 
@@ -41,18 +41,18 @@ defmodule TarsPolicy.Ledger do
   @spec grant(String.t(), non_neg_integer(), non_neg_integer()) :: :ok | {:error, term()}
   def grant(key, micro_usd, tokens), do: call(key, {:grant, micro_usd, tokens})
 
-  # A ledger may stop for being idle between being found and being called, so
+  # A meter may stop for being idle between being found and being called, so
   # a call that finds it gone finds it again.
   defp call(key, message, attempt \\ 1) do
     with {:ok, pid} <- ensure(key) do
       GenServer.call(pid, message)
     end
   rescue
-    # The ledgers' supervisor is not running on this node.
-    ArgumentError -> {:error, {:ledger_unavailable, :not_started}}
+    # The meters' supervisor is not running on this node.
+    ArgumentError -> {:error, {:meter_unavailable, :not_started}}
   catch
     :exit, _reason when attempt < @attempts -> call(key, message, attempt + 1)
-    :exit, reason -> {:error, {:ledger_unavailable, reason}}
+    :exit, reason -> {:error, {:meter_unavailable, reason}}
   end
 
   defp ensure(key) do
@@ -60,7 +60,7 @@ defmodule TarsPolicy.Ledger do
 
     case DurableServer.Supervisor.ensure_started_child(@name, child) do
       {:ok, {pid, _meta}} -> {:ok, pid}
-      {:error, reason} -> {:error, {:ledger_unavailable, reason}}
+      {:error, reason} -> {:error, {:meter_unavailable, reason}}
     end
   end
 
@@ -89,7 +89,7 @@ defmodule TarsPolicy.Ledger do
     if Process.get(:touched) == since, do: {:stop, :normal, spend}, else: {:noreply, spend}
   end
 
-  # Only the last message sent after the last use stops the ledger.
+  # Only the last message sent after the last use stops the meter.
   defp touch(spend) do
     now = System.monotonic_time()
     Process.put(:touched, now)

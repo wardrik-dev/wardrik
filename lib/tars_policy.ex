@@ -25,10 +25,10 @@ defmodule TarsPolicy do
       Tars.Fleet.spawn(key, config: config, policy: {TarsPolicy, policy}, dispatch: {TarsPolicy, policy})
 
   Each call is checked before it is made against what the agent has spent in
-  the budget's period, as its `TarsPolicy.Ledger` holds it, and what it cost is
-  recorded there once it returns. A budget whose ledger cannot be read refuses
+  the budget's period, as its `TarsPolicy.Meter` holds it, and what it cost is
+  recorded there once it returns. A budget whose meter cannot be read refuses
   the call rather than letting it run unmetered; the host starts
-  `TarsPolicy.Supervisor` to run the ledgers. Once the agent has spent its limit, a budget that
+  `TarsPolicy.Supervisor` to run the meters. Once the agent has spent its limit, a budget that
   asks parks it on the next call, and approving that call grants the budget's
   `grant` more for the period and lets it through. A budget that denies ends
   the turn instead.
@@ -62,7 +62,7 @@ defmodule TarsPolicy do
 
   alias Tars.LLM.Cost
   alias TarsPolicy.Budget
-  alias TarsPolicy.Ledger
+  alias TarsPolicy.Meter
   alias TarsPolicy.Pattern
   alias TarsPolicy.Rule
   alias TarsPolicy.Spend
@@ -103,7 +103,7 @@ defmodule TarsPolicy do
   def admit(request, _scope, %__MODULE__{budget: nil}), do: {:ok, request}
 
   def admit(request, scope, %__MODULE__{budget: budget}) do
-    case scope |> spend_key(budget) |> Ledger.read() do
+    case scope |> spend_key(budget) |> Meter.read() do
       {:ok, spend} ->
         cond do
           not exhausted?(budget, spend) -> {:ok, request}
@@ -124,7 +124,7 @@ defmodule TarsPolicy do
     micro_usd = Budget.micro(Cost.of(request.model_spec, usage) || 0)
     tokens = count(usage, :input_tokens) + count(usage, :output_tokens)
 
-    with {:error, reason} <- scope |> spend_key(budget) |> Ledger.spend(micro_usd, tokens) do
+    with {:error, reason} <- scope |> spend_key(budget) |> Meter.spend(micro_usd, tokens) do
       Logger.error(
         "#{scope.source.agent_id} spent #{Budget.dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
       )
@@ -139,7 +139,7 @@ defmodule TarsPolicy do
   def approved(_request, scope, %__MODULE__{budget: %Budget{} = budget}) do
     {micro_usd, tokens} = Budget.grant(budget)
 
-    with {:error, reason} <- scope |> spend_key(budget) |> Ledger.grant(micro_usd, tokens) do
+    with {:error, reason} <- scope |> spend_key(budget) |> Meter.grant(micro_usd, tokens) do
       Logger.error(
         "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
       )
@@ -162,7 +162,7 @@ defmodule TarsPolicy do
   def spent(%__MODULE__{budget: budget}, scope), do: scope |> spend_key(budget) |> read()
 
   defp read(key) do
-    case Ledger.read(key) do
+    case Meter.read(key) do
       {:ok, spend} -> spend
       {:error, _reason} -> nil
     end
