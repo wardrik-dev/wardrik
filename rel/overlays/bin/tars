@@ -61,7 +61,7 @@ cli () {
 # This install's VM, whether or not it answers yet: it runs this release's
 # own ERTS.
 alive () {
-  pgrep -f "$root/erts-" > /dev/null 2>&1
+  pgrep -f "$root/erts-[^/]*/bin/beam" > /dev/null 2>&1
 }
 
 case "${1:-}" in
@@ -71,9 +71,11 @@ case "${1:-}" in
   start)
     if running; then echo "tars is already running" >&2; exit 1; fi
     "$node" daemon
+    # Started once the agent files have been read: TarsDaemon.Agents answers
+    # files/0 only after its first load.
     for _ in $(seq 60); do
       sleep 1
-      "$node" rpc 'true = is_pid(Process.whereis(TarsDaemon))' > /dev/null 2>&1 && exit 0
+      "$node" rpc '_ = TarsDaemon.Agents.files()' > /dev/null 2>&1 && exit 0
       alive || break
     done
     echo "tars did not start. The end of $log:" >&2

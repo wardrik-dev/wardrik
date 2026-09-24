@@ -97,6 +97,8 @@ jobs:
           tar -xzf "${{ steps.tarball.outputs.name }}" -C "$root"
           HOME=$(mktemp -d)
           export HOME
+          # The runner's image points these at its own home.
+          unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
 
           mkdir -p "$HOME/.config/tars/agents"
           printf 'You help.\n' > "$HOME/.config/tars/agents/good.md"
@@ -109,7 +111,7 @@ jobs:
             exit 1
           fi
           grep -q "beyond loopback" refused.txt
-          if pgrep -f "$root/erts-"; then
+          if pgrep -f "$root/erts-[^/]*/bin/beam"; then
             echo "a node was left running after tars refused to start" >&2
             exit 1
           fi
@@ -133,7 +135,7 @@ jobs:
           test "$(stat -c %a "$HOME/.local/share/tars/cookie")" = 600
           test "$(stat -c %a "$HOME/.local/state/tars/log/tars.log")" = 600
 
-          if ss -Hltnp | grep -E 'beam|epmd' | grep -v '127.0.0.1'; then
+          if ss -Hltnp | awk '/beam|epmd/ && $4 !~ /^(127\.0\.0\.1|\[::1\]):/ { print; found = 1 } END { exit !found }'; then
             echo "distribution is listening beyond loopback" >&2
             exit 1
           fi
@@ -141,7 +143,7 @@ jobs:
           # A stop returns once the node is gone, so a start straight after
           # begins a node of its own.
           "$root/bin/tars" stop
-          if pgrep -f "$root/erts-"; then
+          if pgrep -f "$root/erts-[^/]*/bin/beam"; then
             echo "the node was still running after tars stop returned" >&2
             exit 1
           fi
