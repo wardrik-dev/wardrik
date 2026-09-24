@@ -39,7 +39,7 @@ Usage: tars COMMAND
   logs      follow the daemon's log
   version   print the version
 
-The daemon reads its configuration from $config_dir/config.yaml, and
+The daemon reads its configuration from $config_dir/config.yaml (or .yml), and
 runs the agents $config_dir/agents declares.
 USAGE
 }

@@ -1,7 +1,8 @@
 defmodule TarsDaemon.Agents do
   @moduledoc """
   Runs the agents `agents/` in the config directory declares, one per `*.md`
-  file, under the policies `policies/` declares, one per `*.yaml` file. See
+  file, under the policies `policies/` declares, one per `*.yaml` or `*.yml`
+  file. See
   `TarsDaemon.AgentFile` and `TarsDaemon.PolicyFile` for what each says.
 
   It reads every file when it starts and again on `reload/0`, policies first,
@@ -60,7 +61,7 @@ defmodule TarsDaemon.Agents do
   def handle_call(:files, _from, state), do: {:reply, state.files, state}
 
   defp load(%{dir: dir} = state) do
-    policy_files = read(dir, "policies/*.yaml", &PolicyFile.read/1)
+    policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
 
     loaded = read(dir, "agents/*.md", &(&1 |> AgentFile.load(policies) |> put()))
@@ -77,6 +78,28 @@ defmodule TarsDaemon.Agents do
     for {_path, {:error, message}} <- files, do: Logger.error(message)
 
     %{state | files: files}
+  end
+
+  # careful.yaml and careful.yml would both be the policy careful; the first by
+  # name is read, and the other reported.
+  defp once_each(files) do
+    {files, _seen} =
+      Enum.map_reduce(files, %{}, fn
+        {path, {:ok, %{name: name}}} = file, seen ->
+          case Map.fetch(seen, name) do
+            {:ok, first} ->
+              {{path, {:error, "#{path}: policy #{name} is already #{Path.basename(first)}"}},
+               seen}
+
+            :error ->
+              {file, Map.put(seen, name, path)}
+          end
+
+        file, seen ->
+          {file, seen}
+      end)
+
+    files
   end
 
   defp spec_only({:ok, spec, _route}), do: {:ok, spec}

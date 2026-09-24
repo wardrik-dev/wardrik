@@ -143,6 +143,27 @@ defmodule TarsDaemon.AgentsTest do
     assert Tars.Schedule.for_agent("#{org}/_/alpha") == []
   end
 
+  test "reads a policy written as .yml, and reports a second file of the same name",
+       %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    File.write!(Path.join([context.dir, "policies", "careful.yml"]), "default: allow\n")
+    File.write!(Path.join([context.dir, "policies", "strict.yml"]), "default: deny\n")
+    write(context, "alpha", "policy: strict\n")
+
+    start_supervised!({Agents, dir: context.dir})
+
+    assert [
+             {careful_yaml, {:ok, %TarsPolicy{name: "careful"}}},
+             {careful_yml, {:error, message}},
+             {_strict, {:ok, %TarsPolicy{name: "strict"}}},
+             {_alpha, {:ok, _spec}}
+           ] = Agents.files()
+
+    assert Path.basename(careful_yaml) == "careful.yaml"
+    assert message == "#{careful_yml}: policy careful is already careful.yaml"
+    assert [_member] = Fleet.list(org <> "/")
+  end
+
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
     start_supervised!({Agents, dir: Path.join(dir, "missing")})
     assert Agents.files() == []

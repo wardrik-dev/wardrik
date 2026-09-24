@@ -1,8 +1,9 @@
 defmodule TarsDaemon.PolicyFile do
   @moduledoc """
   Reads a policy file, one in `policies/` under the config directory, into the
-  `TarsPolicy` it writes. The file's name is the policy's: `policies/careful.yaml`
-  is `careful`, and an agent file names it as `policy: careful`.
+  `TarsPolicy` it writes. The file's name is the policy's: `policies/careful.yaml`,
+  or `policies/careful.yml`, is `careful`, and an agent file names it as
+  `policy: careful`.
 
       allow: [web_search, linear/*]
       ask:

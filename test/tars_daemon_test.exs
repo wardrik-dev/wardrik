@@ -27,6 +27,24 @@ defmodule TarsDaemonTest do
     assert Application.get_env(:tars, TarsVault)[:keys] == [key]
   end
 
+  test "reads config.yml where that is the file there", %{tmp_dir: dir} do
+    key = TarsVault.generate_key()
+    File.write!(Path.join(dir, "config.yml"), "vault:\n  keys: [\"#{key}\"]\n")
+
+    assert {:ok, _pid} = start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
+    assert Application.get_env(:tars, TarsVault)[:keys] == [key]
+  end
+
+  test "refuses a config directory holding both config.yaml and config.yml", %{tmp_dir: dir} do
+    File.write!(Path.join(dir, "config.yaml"), "")
+    File.write!(Path.join(dir, "config.yml"), "")
+
+    assert {:error, {{:config, message}, _child}} =
+             start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
+
+    assert message =~ "holds both config.yaml and config.yml; keep one"
+  end
+
   test "a config.yaml that does not read stops it, and says why", %{tmp_dir: dir} do
     File.write!(Path.join(dir, "config.yaml"), "nope: {}\n")
 

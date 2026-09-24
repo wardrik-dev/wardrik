@@ -377,9 +377,9 @@ what a person writes and can live in a dotfiles repository:
 
 | | |
 | --- | --- |
-| **`~/.config/tars/config.yaml`** | MCP servers, OAuth providers and vault keys. See `TarsDaemon.Config` |
+| **`~/.config/tars/config.yaml`** | MCP servers, OAuth providers, vault keys and notify targets; `config.yml` works too. See `TarsDaemon.Config` |
 | **`~/.config/tars/agents/*.md`** | the agents it runs, one per file. See `TarsDaemon.AgentFile` |
-| **`~/.config/tars/policies/*.yaml`** | the policies agents name. See `TarsPolicy` |
+| **`~/.config/tars/policies/*.yaml`** | the policies agents name, as `.yaml` or `.yml`. See `TarsPolicy` |
 | **`~/.local/share/tars/store/`** | the store |
 | **`~/.local/share/tars/cookie`** | the node's cookie, created on first boot and readable by its owner only |
 | **`~/.local/state/tars/log/`** | `tars.log`, and `mcp.log` for what MCP commands write to stderr |

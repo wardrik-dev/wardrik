@@ -204,6 +204,17 @@ defmodule TarsDaemon.ConfigTest do
       assert message =~ "notify.ops.webhook.colour is not a setting"
     end
 
+    test "file/1 finds config.yaml or config.yml, and refuses both", %{tmp_dir: dir} do
+      assert Config.file(dir) == {:ok, Path.join(dir, "config.yaml")}
+
+      File.write!(Path.join(dir, "config.yml"), "")
+      assert Config.file(dir) == {:ok, Path.join(dir, "config.yml")}
+
+      File.write!(Path.join(dir, "config.yaml"), "")
+      assert {:error, message} = Config.file(dir)
+      assert message =~ "both config.yaml and config.yml"
+    end
+
     test "an unknown section is refused", context do
       assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"

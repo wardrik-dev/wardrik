@@ -7,12 +7,15 @@ defmodule TarsDaemon.Config do
 
   | Directory | Default | What it holds |
   | --- | --- | --- |
-  | `TARS_CONFIG_DIR` | `$XDG_CONFIG_HOME/tars`, `~/.config/tars` | `config.yaml`, and `agents/`; see `TarsDaemon.AgentFile` |
+  | `TARS_CONFIG_DIR` | `$XDG_CONFIG_HOME/tars`, `~/.config/tars` | `config.yaml` or `config.yml`, and `agents/`; see `TarsDaemon.AgentFile` |
   | `TARS_DATA_DIR` | `$XDG_DATA_HOME/tars/store`, `~/.local/share/tars/store` | the store |
   | `TARS_COOKIE_FILE` | `$XDG_DATA_HOME/tars/cookie`, `~/.local/share/tars/cookie` | the node's distribution cookie |
   | `TARS_STATE_DIR` | `$XDG_STATE_HOME/tars`, `~/.local/state/tars` | `log/tars.log`, and `log/mcp.log` for what MCP commands write to stderr |
 
   ## config.yaml
+
+  The file is `config.yaml`, or `config.yml`; a directory holding both is
+  refused, since one of them would go unread.
 
       mcp:
         linear:
@@ -122,6 +125,20 @@ defmodule TarsDaemon.Config do
 
   defp dir(own, xdg, default) do
     System.get_env(own) || Path.join(System.get_env(xdg) || Path.expand(default), "tars")
+  end
+
+  @doc """
+  The config file in `config_dir`: `config.yaml`, or `config.yml` where that
+  is the one there. Where neither is, `config.yaml`, which `read/1` finds
+  empty.
+  """
+  @spec file(Path.t()) :: {:ok, Path.t()} | {:error, String.t()}
+  def file(config_dir) do
+    case Enum.filter(["config.yaml", "config.yml"], &File.exists?(Path.join(config_dir, &1))) do
+      [_yaml, _yml] -> {:error, "#{config_dir} holds both config.yaml and config.yml; keep one"}
+      [name] -> {:ok, Path.join(config_dir, name)}
+      [] -> {:ok, Path.join(config_dir, "config.yaml")}
+    end
   end
 
   @doc "The settings `file` configures, or none where there is no file."

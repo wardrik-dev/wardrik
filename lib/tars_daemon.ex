@@ -8,7 +8,8 @@ defmodule TarsDaemon do
 
       config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
 
-  Starting, it reads `config.yaml` from the config directory into the settings
+  Starting, it reads `config.yaml`, or `config.yml`, from the config directory
+  into the settings
   each package reads (see `TarsDaemon.Config`), then starts what those
   settings call for:
 
@@ -57,11 +58,11 @@ defmodule TarsDaemon do
     state_dir = Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0)
     data_dir = Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
 
-    case Config.read(Path.join(config_dir, "config.yaml")) do
-      {:ok, settings} ->
-        :ok = Config.apply(settings)
-        Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
-
+    with {:ok, file} <- Config.file(config_dir),
+         {:ok, settings} <- Config.read(file) do
+      :ok = Config.apply(settings)
+      Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
+    else
       {:error, message} ->
         Logger.error(message)
         {:error, {:config, message}}
