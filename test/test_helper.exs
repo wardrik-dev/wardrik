@@ -11,6 +11,7 @@ Mimic.copy(TarsDaemon.AgentFile)
 ReqLLM.model("test:model")
 
 :ok = DurableServer.Supervisor.wait_until_ready(Tars.Fleet, timeout: 10_000)
+:ok = DurableServer.Supervisor.wait_until_ready(Tars.Schedule.supervisor(), timeout: 10_000)
 :ok = DurableServer.Supervisor.wait_until_ready(TarsPolicy.Meter.supervisor(), timeout: 10_000)
 
 # The store configured for this run, see config/test.exs, is removed with it.

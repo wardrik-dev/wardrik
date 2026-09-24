@@ -90,10 +90,10 @@ defmodule TarsDaemon.AgentsTest do
     write(context, "alpha", "")
     write(context, "failing", "")
 
-    stub(TarsDaemon.AgentFile, :read, fn path, policies ->
+    stub(TarsDaemon.AgentFile, :load, fn path, policies ->
       if Path.basename(path) == "failing.md",
         do: exit(:store_timeout),
-        else: call_original(TarsDaemon.AgentFile, :read, [path, policies])
+        else: call_original(TarsDaemon.AgentFile, :load, [path, policies])
     end)
 
     start_supervised!({Agents, dir: context.dir})
@@ -126,6 +126,21 @@ defmodule TarsDaemon.AgentsTest do
     assert policy_error =~ "careful.yaml: deny is a list"
     assert agent_error =~ "names careful"
     assert {:error, :not_found} = Agent.status("#{org}/_/alpha")
+  end
+
+  test "runs the schedules a file declares, and stops those it no longer does",
+       %{org: org} = context do
+    write(context, "alpha", "schedule:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
+    start_supervised!({Agents, dir: context.dir})
+    assert [{_alpha, {:ok, _spec}}] = Agents.files()
+
+    assert [%Tars.Schedule.Status{name: "sweep"}] = Tars.Schedule.for_agent("#{org}/_/alpha")
+    assert TarsDaemon.status() =~ ~r"#{org}/_/alpha .*next run in 5\dm"
+
+    write(context, "alpha", "")
+    Agents.reload()
+
+    assert Tars.Schedule.for_agent("#{org}/_/alpha") == []
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do

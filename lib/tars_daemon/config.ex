@@ -38,6 +38,18 @@ defmodule TarsDaemon.Config do
       vault:
         keys: ["${TARS_VAULT_KEY}"]
 
+      notify:
+        ops:
+          slack:
+            channel: "#ops"
+            token: ${SLACK_BOT_TOKEN}
+            app_token: ${SLACK_APP_TOKEN}
+            approvers: [U012ABCDEF]
+        audit:
+          webhook:
+            url: https://hooks.example.com/tars
+            secret: ${TARS_WEBHOOK_SECRET}
+
   It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
   `${NAME}` in any string is replaced with that environment variable, so the
@@ -53,6 +65,11 @@ defmodule TarsDaemon.Config do
   `oauth` takes `client`, `redirect` and `providers`, as `TarsOAuth.Config`
   describes them. `vault` takes `keys`, as `TarsVault` does. `ssh` takes
   `port` and `ip`, as `TarsDaemon.SSH` does.
+
+  `notify` names targets an agent file's `notify` routes to, each one
+  `slack`, with `channel`, `token`, and optionally `app_token` and
+  `approvers`, as `TarsNotify.Slack` takes them; or `webhook`, with `url` and
+  optionally `secret`, as `TarsNotify.Webhook` takes them.
 
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
   a server that is neither a command nor a URL, or a server whose name or
@@ -71,6 +88,10 @@ defmodule TarsDaemon.Config do
   @provider ~w(resource issuer client_id client_secret redirect_uri scopes)a
   @vault ~w(keys)a
   @ssh ~w(port ip)a
+  @notifiers %{
+    "slack" => {TarsNotify.Slack, ~w(channel token app_token approvers), ~w(channel token)},
+    "webhook" => {TarsNotify.Webhook, ~w(url secret), ~w(url)}
+  }
 
   @settings Map.new(
               @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault ++ @ssh,
@@ -149,8 +170,11 @@ defmodule TarsDaemon.Config do
       {"ssh", ssh} ->
         {TarsDaemon.SSH, ssh(table!(ssh, ["ssh"]))}
 
+      {"notify", targets} ->
+        {TarsNotify, targets: targets(table!(targets, ["notify"]))}
+
       {section, _value} ->
-        invalid!([section], "is not a section; expected mcp, oauth, vault or ssh")
+        invalid!([section], "is not a section; expected mcp, oauth, vault, ssh or notify")
     end)
   end
 
@@ -253,6 +277,37 @@ defmodule TarsDaemon.Config do
 
   defp address!(_ip), do: invalid!(["ssh", "ip"], "is an address, such as 127.0.0.1 or 0.0.0.0")
 
+  # -- notify ----------------------------------------------------------------
+
+  defp targets(targets) do
+    Enum.map(targets, fn {name, target} ->
+      path = ["notify", name]
+
+      case Map.to_list(table!(target, path)) do
+        [{kind, options}] -> {name(name), notifier(kind, options, path ++ [kind])}
+        _other -> invalid!(path, "is one of slack or webhook")
+      end
+    end)
+  end
+
+  defp notifier(kind, options, path) do
+    case Map.fetch(@notifiers, kind) do
+      {:ok, {module, keys, required}} ->
+        options = table!(options, path)
+        known!(options, keys, path)
+
+        for key <- required,
+            not Map.has_key?(options, key),
+            do: invalid!(path ++ [key], "is required")
+
+        # reach:disable-next-line unsafe_atom_creation -- keys checked against the notifier's list
+        {module, Enum.map(options, fn {key, value} -> {String.to_atom(key), value} end)}
+
+      :error ->
+        invalid!(Enum.drop(path, -1), "is one of slack or webhook")
+    end
+  end
+
   # -- tables ----------------------------------------------------------------
 
   defp options(table, keys, path) do
@@ -272,7 +327,10 @@ defmodule TarsDaemon.Config do
 
   defp table!(value, _path) when is_map(value), do: value
   defp table!(nil, _path), do: %{}
-  defp table!(_value, []), do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault")
+
+  defp table!(_value, []),
+    do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault, ssh, notify")
+
   defp table!(_value, path), do: invalid!(path, "is a set of keys")
 
   defp known!(table, keys, path) do

@@ -31,6 +31,7 @@ Usage: tars COMMAND
   ask KEY MESSAGE            send an agent a message
   history KEY                what an agent has said
   parked    the calls agents are waiting on a person for
+  schedules [PREFIX]         when each schedule runs next, and how it last ran
   approve KEY CALL           run a parked call
   deny KEY CALL [REASON]     refuse a parked call
   attach [HOST]              the TUI, over SSH to HOST, localhost by default
@@ -98,6 +99,10 @@ case "${1:-}" in
     ;;
   reload|parked)
     cli "$1"
+    ;;
+  schedules)
+    [ $# -le 2 ] || { echo "Usage: tars schedules [PREFIX]" >&2; exit 1; }
+    cli "$@"
     ;;
   ask)
     [ $# -ge 3 ] || { echo "Usage: tars ask KEY MESSAGE" >&2; exit 1; }

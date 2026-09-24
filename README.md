@@ -361,6 +361,7 @@ _build/prod/rel/tarsd/bin/tars reload    # read the agent and policy files again
 _build/prod/rel/tarsd/bin/tars ask acme/_/triage "What changed today?"
 _build/prod/rel/tarsd/bin/tars history acme/_/triage
 _build/prod/rel/tarsd/bin/tars parked    # what is waiting on a person
+_build/prod/rel/tarsd/bin/tars schedules # when each schedule runs next, and how it last ran
 _build/prod/rel/tarsd/bin/tars approve acme/_/triage call_1
 _build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
 _build/prod/rel/tarsd/bin/tars logs      # follow its log
@@ -417,6 +418,53 @@ each running agent what its file says now without losing what it has said.
 An agent has only the tools its file lists; `linear/*` is every tool of the
 server `config.yaml` calls `linear`, and `*` is everything. A file that does
 not read is listed by `tars status`, and the others run regardless.
+
+An agent can be asked something on a clock:
+
+```yaml
+schedule:
+  - name: sweep
+    every: "*/30 * * * *"     # cron, in UTC; or a duration such as 30m or 1d
+    prompt: Check the incident queue.
+```
+
+A schedule runs in the cluster once, whichever node holds it, and carries on
+from the store on another node when its own is lost. A run that finds the
+agent busy or waiting on a person lets it be, unless the schedule says
+`overlap: queue`, and a daemon that was down past a run fires it once when it
+comes back, unless the schedule says `missed: skip`. `tars status` shows when
+each agent is asked next, and `tars schedules` when each schedule runs next
+and when it last ran and what came of it. See `Tars.Schedule`.
+
+An agent nobody is watching can tell someone when it parks on a question,
+fails, or answers. `config.yaml` names the targets, and an agent file routes
+to them:
+
+```yaml
+# ~/.config/tars/config.yaml
+notify:
+  ops:
+    slack:
+      channel: "#ops"
+      token: ${SLACK_BOT_TOKEN}         # a bot token with chat:write
+      app_token: ${SLACK_APP_TOKEN}     # Socket Mode: Approve and Deny buttons
+      approvers: [U012ABCDEF]           # who may press them; anyone in the channel when absent
+  audit:
+    webhook:
+      url: https://hooks.example.com/tars
+      secret: ${TARS_WEBHOOK_SECRET}    # signs each body, as x-tars-signature
+```
+
+```yaml
+# in an agent file
+notify: {to: [ops], on: [parked, failed, finished]}   # or just: notify: ops
+```
+
+A parked call reaches Slack with its arguments and the policy's question,
+and pressing Approve or Deny answers it as `tars approve` would. The buttons
+arrive over Slack's Socket Mode, a connection the daemon opens out to Slack,
+so it needs no public address and no open port. Without an `app_token` the
+message says which `tars approve` to run instead. See `TarsNotify`.
 
 A policy decides what an agent's tools may do. It is a file in `policies/`,
 named by the agents it governs as `policy: careful`, or written in place in an

@@ -2,13 +2,15 @@ defmodule Tars.Fleet.Supervisor do
   @moduledoc """
   Starts the substrate the fleet runs on.
 
-  Two children, in order:
+  Three children, in order:
 
     * `Tars.Store` - the durable store agent state is written to, as the
       deployment configured it.
     * `DurableServer.Supervisor` - keyed processes over that store, named
       `Tars.Fleet`. It starts a `Group` instance under the same name, which is
       the registry `Tars.Fleet` reads.
+    * `DurableServer.Supervisor` - the same for `Tars.Schedule`, named
+      `Tars.Schedules`.
 
   ## Configuration
 
@@ -35,6 +37,11 @@ defmodule Tars.Fleet.Supervisor do
       {DurableServer.Supervisor,
        name: Tars.Fleet,
        prefix: Tars.Fleet.prefix(),
+       backend: Store.durable_backend(),
+       group: [log: Keyword.get(opts, :log, false)]},
+      {DurableServer.Supervisor,
+       name: Tars.Schedule.supervisor(),
+       prefix: Tars.Schedule.prefix(),
        backend: Store.durable_backend(),
        group: [log: Keyword.get(opts, :log, false)]}
     ]

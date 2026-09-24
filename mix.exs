@@ -99,6 +99,8 @@ defmodule Tars.MixProject do
       # Used by lib/tars_daemon, not by core: the daemon's config.yaml, and the
       # frontmatter of its agent files. yamerl underneath is pure Erlang.
       {:yaml_elixir, "~> 2.12"},
+      # Slack's Socket Mode, for TarsNotify.
+      {:websockex, "~> 0.5.1"},
 
       # Test and dev
       # Dev deps

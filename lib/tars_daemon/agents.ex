@@ -7,7 +7,8 @@ defmodule TarsDaemon.Agents do
   It reads every file when it starts and again on `reload/0`, policies first,
   and puts each agent's `Tars.Agent.Spec` to the fleet with `Tars.Fleet.put/1`:
   an agent that is not running is started, and one that is takes what its file
-  says now. An agent keeps its conversation either way.
+  says now. An agent keeps its conversation either way. Each file's `notify`
+  becomes the agent's route with `TarsNotify.put_routes/1`.
 
   A file that does not read, or whose agent does not start, is reported by
   `files/0`, and by `tars status`, and every other file is read as if it were
@@ -62,13 +63,24 @@ defmodule TarsDaemon.Agents do
     policy_files = read(dir, "policies/*.yaml", &PolicyFile.read/1)
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
 
-    agent_files = read(dir, "agents/*.md", &(&1 |> AgentFile.read(policies) |> put()))
+    loaded = read(dir, "agents/*.md", &(&1 |> AgentFile.load(policies) |> put()))
+    agent_files = for {path, result} <- loaded, do: {path, spec_only(result)}
+
+    :ok =
+      TarsNotify.put_routes(
+        for {_path, {:ok, spec, %TarsNotify.Route{} = route}} <- loaded,
+            into: %{},
+            do: {Spec.key(spec), route}
+      )
 
     files = policy_files ++ agent_files
     for {_path, {:error, message}} <- files, do: Logger.error(message)
 
     %{state | files: files}
   end
+
+  defp spec_only({:ok, spec, _route}), do: {:ok, spec}
+  defp spec_only(other), do: other
 
   defp read(dir, pattern, read) do
     dir
@@ -85,9 +97,9 @@ defmodule TarsDaemon.Agents do
       {:error, "#{path}: " <> String.trim_leading(Exception.format_banner(kind, reason), "** ")}
   end
 
-  defp put({:ok, spec}) do
+  defp put({:ok, spec, route}) do
     case Fleet.put(spec) do
-      {:ok, _pid} -> {:ok, spec}
+      {:ok, _pid} -> {:ok, spec, route}
       {:error, reason} -> {:error, "#{Spec.key(spec)} did not start: #{inspect(reason)}"}
     end
   end

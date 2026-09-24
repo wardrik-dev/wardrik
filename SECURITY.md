@@ -54,6 +54,16 @@ applied. Keys are the only way in: there are no passwords, no commands, no
 subsystems and no forwarding. `ssh.ip` in `config.yaml` listens beyond
 loopback.
 
+### Notifications
+
+A Slack target posts a parked call's name, arguments and question to its
+channel. With an `app_token`, anyone in that channel can press Approve or
+Deny, and the press decides the call as `tars approve` would, unless
+`approvers` lists the Slack user ids that may. Slack delivers presses over a
+Socket Mode connection the daemon opens, so no port is opened for them. A
+webhook target posts the same notice to its URL, signed with HMAC-SHA256 when
+it has a `secret`; nothing comes back through a webhook.
+
 ### Credentials
 
 OAuth tokens and named credentials are sealed with AES-256-GCM, under the

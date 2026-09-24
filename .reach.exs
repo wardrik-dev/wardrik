@@ -15,6 +15,7 @@
     tui: ["TarsTUI", "TarsTUI.*"],
     daemon: ["TarsDaemon", "TarsDaemon.*"],
     policy: ["TarsPolicy", "TarsPolicy.*"],
+    notify: ["TarsNotify", "TarsNotify.*"],
     console: "TarsConsole",
     launcher: "Mix.Tasks.Tars",
     demo: ["TarsDemo", "TarsDemo.*"]
@@ -30,8 +31,9 @@
       vault: [:core],
       oauth: [:core, :vault],
       tui: [:core],
-      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua, :policy, :tui],
+      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua, :policy, :tui, :notify],
       policy: [:core],
+      notify: [:core],
       console: [:core],
       demo: [:core],
       launcher: [:core, :tui, :mcp, :oauth, :vault, :brave, :research]
@@ -83,14 +85,16 @@
          "TarsVault",
          "TarsVault.*",
          "TarsTUI",
-         "TarsTUI.*"
+         "TarsTUI.*",
+         "TarsNotify",
+         "TarsNotify.*"
        ],
        [
          "Application.get_env",
          "Application.fetch_env",
          "Application.fetch_env!",
          "Tars.Fleet.Supervisor.store"
-       ], except: ["TarsBrave.Config", "TarsMCP.Config", "TarsOAuth.Config", "TarsVault.Config"]}
+       ], except: ["TarsBrave.Config", "TarsMCP.Config", "TarsOAuth.Config", "TarsVault.Config", "TarsNotify.Config"]}
     ]
   ],
   checks: [

@@ -53,6 +53,7 @@ defmodule Tars.Fleet do
   alias Tars.Agent.Spec
   alias Tars.Fleet.Member
   alias Tars.Fleet.Segment
+  alias Tars.Schedule
 
   @name __MODULE__
   @prefix "tars/agents/"
@@ -138,7 +139,8 @@ defmodule Tars.Fleet do
     options = Spec.options(spec)
 
     with {:ok, pid} <- spawn(Spec.key(spec), options),
-         :ok <- Agent.configure(pid, options) do
+         :ok <- Agent.configure(pid, options),
+         :ok <- Schedule.sync(Spec.key(spec), spec.schedules) do
       {:ok, pid}
     end
   end
@@ -180,10 +182,12 @@ defmodule Tars.Fleet do
     DurableServer.Supervisor.terminate_child_permanent(@name, key)
   end
 
-  @doc "Stops an agent and deletes everything it had, permanently."
+  @doc "Stops an agent and deletes everything it had, its schedules included, permanently."
   @spec forget(String.t()) :: :ok | {:error, term()}
   def forget(key) when is_binary(key) do
-    DurableServer.Supervisor.terminate_and_delete_child(@name, key)
+    with :ok <- Schedule.sync(key, []) do
+      DurableServer.Supervisor.terminate_and_delete_child(@name, key)
+    end
   end
 
   @doc """

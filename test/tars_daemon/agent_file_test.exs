@@ -160,6 +160,123 @@ defmodule TarsDaemon.AgentFileTest do
     assert message =~ ".md: a compaction keeps less than it waits for"
   end
 
+  test "reads one schedule, or a list of them, into the spec", context do
+    assert {:ok, one} =
+             read(
+               "---\nschedule:\n  every: \"*/30 * * * *\"\n  prompt: Check the queue.\n---\n",
+               context
+             )
+
+    assert [%Tars.Schedule{name: "schedule-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
+             one.schedules
+
+    assert {:ok, two} =
+             read(
+               """
+               ---
+               schedule:
+                 - name: sweep
+                   every: 30m
+                   prompt: Check the queue.
+                   jitter: 10
+                 - name: digest
+                   every: "0 17 * * 1-5"
+                   prompt: Write up the day.
+                   overlap: queue
+                   missed: skip
+               ---
+               """,
+               context
+             )
+
+    assert [
+             %Tars.Schedule{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
+             %Tars.Schedule{name: "digest", overlap: :queue, missed: :skip}
+           ] = two.schedules
+
+    assert {:ok, none} = read("---\n---\n", context)
+    assert none.schedules == []
+  end
+
+  test "a schedule that does not read says which and why", context do
+    assert {:error, message} =
+             read("---\nschedule:\n  every: 10s\n  prompt: Look.\n---\n", context)
+
+    assert message =~ "schedule 1: every: \"10s\" is shorter than a minute"
+
+    assert {:error, message} =
+             read("---\nschedule:\n  name: sweep\n  every: 30m\n---\n", context)
+
+    assert message =~ "schedule sweep: prompt is a string"
+
+    assert {:error, message} =
+             read("---\nschedule:\n  every: 30m\n  prompt: Look.\n  when: now\n---\n", context)
+
+    assert message =~ "schedule when is not a setting"
+
+    assert {:error, message} =
+             read(
+               "---\nschedule:\n  every: 30m\n  prompt: Look.\n  overlap: interrupt\n---\n",
+               context
+             )
+
+    assert message =~ "schedule overlap is one of skip, queue"
+
+    assert {:error, message} =
+             read(
+               "---\nschedule:\n  - {name: a, every: 30m, prompt: x}\n  - {name: a, every: 1h, prompt: y}\n---\n",
+               context
+             )
+
+    assert message =~ "schedule names a twice"
+  end
+
+  describe "notify" do
+    setup do
+      previous = Application.get_env(:tars, TarsNotify)
+
+      Application.put_env(
+        :tars,
+        TarsNotify,
+        Keyword.put(previous, :targets,
+          ops: {TarsNotify.Slack, channel: "#ops", token: "x"},
+          audit: {TarsNotify.Webhook, url: "https://hooks.test"}
+        )
+      )
+
+      on_exit(fn -> Application.put_env(:tars, TarsNotify, previous) end)
+    end
+
+    test "routes the agent's notices to the targets it names", %{tmp_dir: dir} = context do
+      path = Path.join(dir, "triage.md")
+
+      File.write!(path, "---\nnotify: ops\n---\n")
+
+      assert {:ok, _spec, %TarsNotify.Route{targets: [:ops], on: [:parked, :failed]}} =
+               AgentFile.load(path)
+
+      File.write!(path, "---\nnotify: {to: [ops, audit], on: [finished]}\n---\n")
+
+      assert {:ok, _spec, %TarsNotify.Route{targets: [:ops, :audit], on: [:finished]}} =
+               AgentFile.load(path)
+
+      File.write!(path, "---\n---\n")
+      assert {:ok, _spec, nil} = AgentFile.load(path)
+
+      assert {:ok, %Spec{}} = read("---\nnotify: ops\n---\n", context)
+    end
+
+    test "refuses a target config.yaml does not name, and a kind that is not one", context do
+      assert {:error, message} = read("---\nnotify: pager\n---\n", context)
+
+      assert message =~
+               "notify names pager, but config.yaml's notify has no target pager; it has ops, audit"
+
+      assert {:error, message} = read("---\nnotify: {to: ops, on: [started]}\n---\n", context)
+      assert message =~ ~s(notify on lists "started")
+    end
+  end
+
   test "a policy that is not one is refused", context do
     assert {:error, message} = read("---\npolicy: TarsDaemon.AgentFileTest\n---\n", context)
     assert message =~ "TarsDaemon.AgentFileTest is not a policy"

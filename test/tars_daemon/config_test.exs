@@ -167,6 +167,43 @@ defmodule TarsDaemon.ConfigTest do
       assert ip =~ "ssh.ip is an address"
     end
 
+    test "notify names targets, each Slack or a webhook", context do
+      yaml = """
+      notify:
+        ops:
+          slack:
+            channel: "#ops"
+            token: xoxb-1
+            app_token: xapp-1
+            approvers: [U1]
+        audit:
+          webhook:
+            url: https://hooks.example.com/tars
+      """
+
+      assert {:ok, [{TarsNotify, notify}]} = read(yaml, context)
+
+      assert Enum.sort(notify[:targets]) == [
+               audit: {TarsNotify.Webhook, [url: "https://hooks.example.com/tars"]},
+               ops:
+                 {TarsNotify.Slack,
+                  [app_token: "xapp-1", approvers: ["U1"], channel: "#ops", token: "xoxb-1"]}
+             ]
+    end
+
+    test "a notify target that does not read says where", context do
+      assert {:error, message} = read("notify:\n  ops:\n    email: {to: a}\n", context)
+      assert message =~ "notify.ops is one of slack or webhook"
+
+      assert {:error, message} = read("notify:\n  ops:\n    slack: {channel: x}\n", context)
+      assert message =~ "notify.ops.slack.token is required"
+
+      assert {:error, message} =
+               read("notify:\n  ops:\n    webhook: {url: x, colour: red}\n", context)
+
+      assert message =~ "notify.ops.webhook.colour is not a setting"
+    end
+
     test "an unknown section is refused", context do
       assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"

@@ -31,6 +31,8 @@ defmodule TarsDaemon.AgentFile do
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Tars.Compaction`. `false` never does |
+  | `schedule` | when it is asked something on a clock; see below |
+  | `notify` | who hears when it parks, fails or answers; see below |
 
   ## Tools
 
@@ -63,6 +65,43 @@ defmodule TarsDaemon.AgentFile do
   a `budget` limits what the agent spends on model calls too, parking it when
   the budget runs out until a person approves more.
 
+  ## Schedule
+
+  `schedule` is one schedule or a list of them, each a `Tars.Schedule`:
+
+      schedule:
+        - name: sweep
+          every: "*/30 * * * *"
+          prompt: Check the incident queue.
+        - name: digest
+          every: "0 17 * * 1-5"
+          prompt: Write up what happened today.
+          overlap: queue
+
+    * `every` - a cron expression in UTC, quoted, since YAML reads a leading
+      `*` as something else; or a duration of at least a minute, as `30m`,
+      `2h` or `1d`
+    * `prompt` - what the agent is asked
+    * `name` - the schedule's name, `schedule-1`, `schedule-2` and so on by
+      its place in the list when absent
+    * `overlap` - `skip`, the default, leaves an agent that is running or
+      waiting on a person be, and `queue` asks it anyway
+    * `missed` - `run_once`, the default, fires once for runs missed while
+      the daemon was down, and `skip` lets them go
+    * `jitter` - up to this many seconds added to each run
+
+  ## Notify
+
+  `notify` routes the agent's notices to targets `config.yaml`'s `notify`
+  section names, as `TarsNotify` describes them:
+
+      notify: ops                      # parked and failed turns, to ops
+      notify: [ops, audit]
+      notify: {to: [ops], on: [parked, failed, finished]}
+
+  `on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
+  answered.
+
   The agent is given the credentials `TarsOAuth` holds where a provider is
   configured, and `TarsVault`'s where the vault has a key, and records every
   tool call in `Tars.Ledger.Store`, so a turn lost part way through runs no
@@ -74,7 +113,8 @@ defmodule TarsDaemon.AgentFile do
   alias TarsPolicy.Pattern
 
   @shipped [TarsBrave.WebSearch, TarsResearch.Deep, TarsLua.Run]
-  @keys ~w(name description model tools org user policy timeout max_iterations compaction)
+  @keys ~w(name description model tools org user policy timeout max_iterations compaction schedule notify)
+  @schedule_keys ~w(name every prompt overlap missed jitter)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in
@@ -82,6 +122,16 @@ defmodule TarsDaemon.AgentFile do
   """
   @spec read(Path.t(), %{String.t() => TarsPolicy.t()}) :: {:ok, Spec.t()} | {:error, String.t()}
   def read(path, policies \\ %{}) do
+    with {:ok, spec, _route} <- load(path, policies), do: {:ok, spec}
+  end
+
+  @doc """
+  `read/2`, with where the agent's notices go: a `TarsNotify.Route`, or `nil`
+  for a file with no `notify`.
+  """
+  @spec load(Path.t(), %{String.t() => TarsPolicy.t()}) ::
+          {:ok, Spec.t(), TarsNotify.Route.t() | nil} | {:error, String.t()}
+  def load(path, policies \\ %{}) do
     with {:ok, text} <- File.read(path),
          {:ok, front, body} <- split(text),
          {:ok, fields} <- frontmatter(front) do
@@ -126,6 +176,7 @@ defmodule TarsDaemon.AgentFile do
       |> Config.new()
 
     policy = policy(fields["policy"], policies)
+    route = route(fields["notify"])
 
     {:ok,
      Spec.new(
@@ -138,9 +189,10 @@ defmodule TarsDaemon.AgentFile do
        policy: policy,
        dispatch: budgeted(policy),
        timeout: fields["timeout"] && seconds!(fields["timeout"]),
+       schedules: schedules(fields["schedule"]),
        credentials: credentials(),
        ledger: Tars.Ledger.Store
-     )}
+     ), route}
   rescue
     error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
   end
@@ -208,6 +260,122 @@ defmodule TarsDaemon.AgentFile do
     do:
       ["; it has ", Enum.map_join(configured, ", ", fn {name, _ref} -> name end)]
       |> IO.iodata_to_binary()
+
+  # -- schedules -------------------------------------------------------------
+
+  defp schedules(nil), do: []
+  defp schedules(%{} = one), do: schedules([one])
+
+  defp schedules(list) when is_list(list) do
+    schedules = list |> Enum.with_index(1) |> Enum.map(&schedule!/1)
+
+    case schedules -- Enum.uniq_by(schedules, & &1.name) do
+      [] -> schedules
+      [twice | _] -> invalid!("schedule names #{twice.name} twice")
+    end
+  end
+
+  defp schedules(_other), do: invalid!("schedule is a schedule, or a list of them")
+
+  defp schedule!({%{} = fields, index}) do
+    case Map.keys(fields) -- @schedule_keys do
+      [] ->
+        :ok
+
+      [key | _] ->
+        invalid!(
+          "schedule #{key} is not a setting; expected one of #{Enum.join(@schedule_keys, ", ")}"
+        )
+    end
+
+    name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
+
+    Tars.Schedule.new(name,
+      every: fields["every"],
+      prompt: fields["prompt"],
+      overlap: choice!(fields, "overlap", :skip, ~w(skip queue)),
+      missed: choice!(fields, "missed", :run_once, ~w(run_once skip)),
+      jitter: jitter!(fields["jitter"])
+    )
+  rescue
+    error in [ArgumentError] ->
+      invalid!("schedule #{fields["name"] || index}: #{Exception.message(error)}")
+  end
+
+  defp schedule!({_other, index}), do: invalid!("schedule #{index} is not a set of keys")
+
+  defp choice!(fields, key, default, allowed) do
+    case Map.get(fields, key) do
+      nil ->
+        default
+
+      value when is_binary(value) ->
+        if value in allowed,
+          do: String.to_existing_atom(value),
+          else: invalid!("schedule #{key} is one of #{Enum.join(allowed, ", ")}")
+
+      _other ->
+        invalid!("schedule #{key} is one of #{Enum.join(allowed, ", ")}")
+    end
+  end
+
+  defp jitter!(nil), do: 0
+  defp jitter!(seconds) when is_integer(seconds) and seconds >= 0, do: :timer.seconds(seconds)
+  defp jitter!(_seconds), do: invalid!("schedule jitter is a whole number of seconds")
+
+  # -- notify ----------------------------------------------------------------
+
+  defp route(nil), do: nil
+  defp route(target) when is_binary(target), do: route(%{"to" => [target]})
+  defp route(targets) when is_list(targets), do: route(%{"to" => targets})
+
+  defp route(%{} = fields) do
+    case Map.keys(fields) -- ~w(to on) do
+      [] -> :ok
+      [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
+    end
+
+    targets = fields |> Map.get("to") |> List.wrap()
+    if targets == [], do: invalid!("notify names no target")
+
+    %TarsNotify.Route{
+      targets: Enum.map(targets, &target!/1),
+      on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
+    }
+  end
+
+  defp route(_other), do: invalid!("notify is a target, a list of them, or to and on")
+
+  defp target!(name) when is_binary(name) do
+    names = Enum.map(TarsNotify.Config.targets(), fn {key, _target} -> key end)
+
+    case Enum.find(names, &(Atom.to_string(&1) == name)) do
+      nil ->
+        invalid!(
+          IO.iodata_to_binary([
+            "notify names #{name}, but config.yaml's notify has no target #{name}",
+            known_targets(names)
+          ])
+        )
+
+      target ->
+        target
+    end
+  end
+
+  defp target!(name), do: invalid!("notify names #{inspect(name)}, which is not a target")
+
+  defp known_targets([]), do: []
+
+  defp known_targets(names),
+    do: ["; it has " | Enum.map_intersperse(names, ", ", &Atom.to_string/1)]
+
+  defp kind!(kind) do
+    case Enum.find(TarsNotify.Route.kinds(), &(Atom.to_string(&1) == kind)) do
+      nil -> invalid!("notify on lists #{inspect(kind)}; expected parked, failed or finished")
+      found -> found
+    end
+  end
 
   # -- scalars ---------------------------------------------------------------
 

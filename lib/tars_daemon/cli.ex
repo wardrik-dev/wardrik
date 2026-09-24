@@ -11,6 +11,7 @@ defmodule TarsDaemon.CLI do
   | `ask KEY MESSAGE` | sends the agent a message, which it answers in a turn of its own |
   | `history KEY` | the agent's conversation, one message a paragraph |
   | `parked` | every call an agent is waiting on a person for |
+  | `schedules [PREFIX]` | every schedule, or those whose key starts with `PREFIX`: when it runs next, and when it last ran and what came of it |
   | `approve KEY CALL` | runs the call, and the agent carries on |
   | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
   """
@@ -43,6 +44,8 @@ defmodule TarsDaemon.CLI do
   end
 
   def main(["parked"]), do: ok(parked())
+  def main(["schedules"]), do: ok(schedules(""))
+  def main(["schedules", prefix]), do: ok(schedules(prefix))
   def main(["approve", key, call]), do: decide(key, call, :approve, "Approved")
 
   def main(["deny", key, call | reason]) do
@@ -84,6 +87,45 @@ defmodule TarsDaemon.CLI do
       rows -> Enum.join(["#{length(rows)} waiting:" | rows], "\n")
     end
   end
+
+  defp schedules(prefix) do
+    now = DateTime.utc_now()
+
+    rows =
+      for schedule <- Tars.Schedule.list(prefix) do
+        next = TarsDaemon.duration(max(DateTime.diff(schedule.next_at, now, :millisecond), 0))
+        "  #{schedule.key}  #{every(schedule.every)}  next in #{next}  #{last(schedule, now)}"
+      end
+
+    case rows do
+      [] -> "Nothing is scheduled#{if prefix != "", do: " under #{prefix}"}."
+      [_row] -> Enum.join(["1 schedule:" | rows], "\n")
+      rows -> Enum.join(["#{length(rows)} schedules:" | rows], "\n")
+    end
+  end
+
+  defp every({:cron, text}), do: text
+  defp every({:interval, ms}), do: "every " <> interval(ms)
+
+  defp interval(ms) when rem(ms, 86_400_000) == 0, do: "#{div(ms, 86_400_000)}d"
+  defp interval(ms) when rem(ms, 3_600_000) == 0, do: "#{div(ms, 3_600_000)}h"
+  defp interval(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}m"
+  defp interval(ms), do: "#{ms}ms"
+
+  defp last(%{last_at: nil, last_outcome: nil}, _now), do: "not run yet"
+  defp last(%{last_at: nil, last_outcome: outcome}, _now), do: "last: " <> outcome(outcome)
+
+  defp last(%{last_at: at, last_outcome: outcome}, now) do
+    ago = TarsDaemon.duration(max(DateTime.diff(now, at, :millisecond), 0))
+    "last run #{ago} ago: " <> outcome(outcome)
+  end
+
+  defp outcome(nil), do: "asking"
+  defp outcome(:asked), do: "asked"
+  defp outcome(:busy), do: "skipped, the agent was busy"
+  defp outcome(:no_agent), do: "no agent runs under the key"
+  defp outcome(:missed), do: "let a missed run go"
+  defp outcome(:failed), do: "failed to ask"
 
   defp waiting(key) do
     case Agent.parked(key) do

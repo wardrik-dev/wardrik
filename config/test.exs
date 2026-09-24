@@ -7,6 +7,8 @@ config :tars, TarsBrave,
   base_url: "https://brave.test",
   req_options: [plug: {Req.Test, TarsBrave.Stub}, retry: false]
 
+config :tars, TarsNotify, req_options: [plug: {Req.Test, TarsNotify.Stub}]
+
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
 config :tars, Tars.Store,

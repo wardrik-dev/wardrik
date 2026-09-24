@@ -18,7 +18,8 @@ defmodule Tars.Agent.Spec do
   A spec holds no process and no function, so it can be written to a file,
   sent to another node, or read back from either. `Tars.Fleet.put/1` makes the
   fleet match it: an agent is started under `key/1` where none runs, and given
-  the spec's config and seams where one does.
+  the spec's config and seams where one does, and its schedules are brought to
+  the spec's.
 
   | Field | What it is |
   | --- | --- |
@@ -26,6 +27,7 @@ defmodule Tars.Agent.Spec do
   | `:org`, `:user` | who it works for, written into its key through `Tars.Fleet.Segment` |
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Tars.LLM.Config` |
+  | `:schedules` | the `Tars.Schedule`s that ask it on a clock, `[]` by default |
   | `:policy`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Tars.Scope.seams/0` |
   """
 
@@ -34,7 +36,7 @@ defmodule Tars.Agent.Spec do
   alias Tars.Scope
 
   @enforce_keys [:name, :config]
-  defstruct [:name, :org, :user, :description, :config] ++ Scope.seams()
+  defstruct [:name, :org, :user, :description, :config, schedules: []] ++ Scope.seams()
 
   @type t() :: %__MODULE__{
           name: String.t(),
@@ -42,6 +44,7 @@ defmodule Tars.Agent.Spec do
           user: term(),
           description: String.t() | nil,
           config: Config.t(),
+          schedules: [Tars.Schedule.t()],
           policy: Tars.Policy.t() | nil,
           dispatch: module() | nil,
           credentials: module() | nil,

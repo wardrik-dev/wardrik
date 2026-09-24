@@ -15,6 +15,7 @@ defmodule TarsDaemon do
     * `TarsMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
     * `TarsOAuth.Supervisor`, when a provider is configured.
+    * `TarsNotify.Supervisor`, when a notify target is configured.
     * `TarsDaemon.Agents`, which runs the agents `agents/` declares.
     * `TarsDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
@@ -34,6 +35,7 @@ defmodule TarsDaemon do
       tars status    # what is running
       tars reload    # read agents/ and policies/ again
       tars parked    # what is waiting on a person
+      tars schedules # when each schedule runs next, and how it last ran
       tars approve KEY CALL
       tars deny KEY CALL [REASON]
       tars attach    # the TUI, over SSH
@@ -71,6 +73,7 @@ defmodule TarsDaemon do
     children =
       mcp(Path.join([state_dir, "log", "mcp.log"])) ++
         oauth() ++
+        notify() ++
         [{TarsDaemon.Agents, dir: config_dir}] ++
         TarsDaemon.SSH.children(config_dir, data_dir)
 
@@ -90,10 +93,14 @@ defmodule TarsDaemon do
     if TarsOAuth.Config.configured?(), do: [TarsOAuth.Supervisor], else: []
   end
 
+  defp notify do
+    if TarsNotify.configured?(), do: [TarsNotify.Supervisor], else: []
+  end
+
   @doc """
   What this node is running, as `tars status` prints it: the node, how long
-  it has been up, each agent in the fleet with what it is doing, and each agent
-  or policy file that does not read.
+  it has been up, each agent in the fleet with what it is doing and when a
+  schedule asks it next, and each agent or policy file that does not read.
   """
   @spec status() :: String.t()
   def status do
@@ -119,7 +126,7 @@ defmodule TarsDaemon do
               [
                 "  #{member.key}",
                 member.status,
-                member.node | spending(specs[member.key], member.key)
+                member.node | spending(specs[member.key], member.key) ++ next_run(member.key)
               ],
               "  "
             )
@@ -140,6 +147,18 @@ defmodule TarsDaemon do
 
   defp spending(_spec, _key), do: []
 
+  defp next_run(key) do
+    case Tars.Schedule.for_agent(key) do
+      [] ->
+        []
+
+      schedules ->
+        next = schedules |> Enum.map(& &1.next_at) |> Enum.min(DateTime)
+        ms = max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
+        ["next run in #{duration(ms)}"]
+    end
+  end
+
   defp agent_files do
     if Process.whereis(TarsDaemon.Agents), do: TarsDaemon.Agents.files(), else: []
   end
@@ -151,7 +170,9 @@ defmodule TarsDaemon do
   defp agents([_member]), do: "agent"
   defp agents(_members), do: "agents"
 
-  defp duration(ms) when ms < 60_000, do: "#{div(ms, 1000)}s"
-  defp duration(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)}m"
-  defp duration(ms), do: "#{div(ms, 3_600_000)}h #{div(rem(ms, 3_600_000), 60_000)}m"
+  @doc false
+  @spec duration(non_neg_integer()) :: String.t()
+  def duration(ms) when ms < 60_000, do: "#{div(ms, 1000)}s"
+  def duration(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)}m"
+  def duration(ms), do: "#{div(ms, 3_600_000)}h #{div(rem(ms, 3_600_000), 60_000)}m"
 end

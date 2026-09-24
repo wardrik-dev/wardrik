@@ -121,6 +121,31 @@ defmodule TarsDaemon.CLITest do
     assert reloaded =~ "on #{node()}"
   end
 
+  test "schedules lists each schedule's next run, and its last and what came of it" do
+    prefix = "cli-#{System.unique_integer([:positive])}/"
+    key = prefix <> "_/pinger"
+    on_exit(fn -> Tars.Schedule.sync(key, []) end)
+
+    assert {output, 0} = command(["schedules", prefix])
+    assert output == "Nothing is scheduled under #{prefix}.\n"
+
+    :ok = Event.Bus.subscribe(key, level: :lifecycle)
+    {:ok, _pid} = Tars.Schedule.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
+    {:ok, _pid} = Tars.Schedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
+    assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
+
+    Tars.Test.Fleet.await_update(fn ->
+      Enum.any?(Tars.Schedule.list(prefix), &(&1.last_outcome == :no_agent))
+    end)
+
+    assert {output, 0} = command(["schedules", prefix])
+    assert output =~ "2 schedules:"
+    assert output =~ ~r"  #{key}/hourly  0 \* \* \* \*  next in \d+m  not run yet"
+
+    assert output =~
+             ~r"  #{key}/tick  every 50ms  next in \d+s  last run \d+s ago: no agent runs under the key"
+  end
+
   test "an unknown command fails" do
     assert {"tars: no command frobnicate\n", 1} = command(["frobnicate"])
   end
