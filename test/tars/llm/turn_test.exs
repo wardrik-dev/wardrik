@@ -442,6 +442,20 @@ defmodule Tars.LLM.TurnTest do
     def admit(_request, _scope), do: {:error, :over_budget}
   end
 
+  # A dispatch named with a value: the Agent holding whether a person has
+  # approved another call yet.
+  defmodule Gate do
+    @behaviour Tars.LLM.Dispatch
+
+    @impl true
+    def admit(request, _scope, gate) do
+      if Agent.get(gate, & &1), do: {:ok, request}, else: {:park, "Spent $5.00 of $5.00 today."}
+    end
+
+    @impl true
+    def approved(_request, _scope, gate), do: Agent.update(gate, fn _approved -> true end)
+  end
+
   defp deploy_tool do
     ReqLLM.Tool.new!(
       name: "deploy",
@@ -495,6 +509,54 @@ defmodule Tars.LLM.TurnTest do
 
       assert log =~ "over_budget"
       assert_receive %Event{payload: {:model_finished, {:error, :over_budget}, _ms}}
+    end
+  end
+
+  describe "a dispatch that parks" do
+    setup %{agent_id: agent_id} do
+      {:ok, gate} = Agent.start_link(fn -> false end)
+      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: {Gate, gate})
+      %{scope: scope}
+    end
+
+    test "stops the turn before the call, with the model call waiting", %{scope: scope} do
+      reject(&ReqLLM.stream_text/3)
+
+      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+
+      assert Parked.model?(parked)
+
+      assert [{%{name: "model", id: "model_" <> _id}, "Spent $5.00 of $5.00 today."}] =
+               Parked.calls(parked)
+
+      refute_received %Event{payload: {:model_started, _spec}}
+    end
+
+    test "approving it tells the dispatch, which admits the call it parked", %{scope: scope} do
+      LLMStub.stream([LLMStub.final_answer("done")])
+
+      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = Parked.calls(parked)
+
+      assert {:ok, [answer]} = LLM.Turn.resume(scope, parked, %{call.id => :approve})
+      assert answer.role == :assistant
+    end
+
+    test "denying it ends the turn as a refusal", %{scope: scope} do
+      reject(&ReqLLM.stream_text/3)
+
+      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = Parked.calls(parked)
+
+      assert {:error, {:policy_denied, "Not today."}} =
+               LLM.Turn.resume(scope, parked, %{call.id => {:deny, "Not today."}})
+
+      assert Tars.Failure.classify({:policy_denied, "Not today."}) == :ceiling
+    end
+
+    test "with no decision for it, stays parked", %{scope: scope} do
+      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      assert {:parked, ^parked} = LLM.Turn.resume(scope, parked, %{"call_other" => :approve})
     end
   end
 

@@ -45,6 +45,11 @@ defmodule Tars.LLM.Turn do
   `resume/3` finishes it once a person has decided. See
   `Tars.LLM.Turn.Parked`.
 
+  A dispatch that answers `{:park, prompt}` parks the turn before the model
+  call the same way. Approving it tells the dispatch, with
+  `Tars.LLM.Dispatch.approved/2`, and the turn asks it again; denying it ends
+  the turn as `{:policy_denied, reason}`.
+
   ## The iteration cap
 
   `max_iterations` on the config bounds the rounds of tool use. When the last
@@ -85,6 +90,26 @@ defmodule Tars.LLM.Turn do
   no decision stays parked, so a person can answer them one at a time.
   """
   @spec resume(Scope.t(), Parked.t(), %{String.t() => Parked.decision()}) :: result()
+  def resume(%Scope{} = scope, %Parked{response: nil} = parked, decisions)
+      when is_map(decisions) do
+    [{:parked, call, _prompt}] = parked.outcomes
+
+    case Map.get(decisions, call.id) do
+      nil ->
+        {:parked, parked}
+
+      :approve ->
+        Dispatch.approved(scope, Request.new(scope.config, parked.context))
+        loop(scope, parked.context, parked.acc, parked.remaining)
+
+      {:deny, reason} ->
+        {:error, {:policy_denied, reason}}
+
+      other ->
+        {:error, {:policy_denied, "Undecidable answer #{inspect(other)}"}}
+    end
+  end
+
   def resume(%Scope{} = scope, %Parked{} = parked, decisions) when is_map(decisions) do
     resumed = %{parked | outcomes: Enum.map(parked.outcomes, &decide(&1, decisions, scope))}
 
@@ -148,6 +173,9 @@ defmodule Tars.LLM.Turn do
       {:ok, response} ->
         advance(scope, context, acc, remaining, response)
 
+      {:park, prompt} ->
+        {:parked, Parked.model(context, scope.config.model_spec, prompt, acc, remaining)}
+
       {:interrupted, text} ->
         {:ok, Enum.reverse(acc, partial(text))}
 
@@ -170,6 +198,9 @@ defmodule Tars.LLM.Turn do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
         {:ok, Enum.reverse(acc, partial(text))}
+
+      {:park, prompt} ->
+        {:parked, Parked.model(context, config.model_spec, prompt, acc, 0)}
 
       {:interrupted, text} ->
         {:ok, Enum.reverse(acc, partial(text))}
@@ -226,14 +257,23 @@ defmodule Tars.LLM.Turn do
   defp countdown(:infinity), do: :infinity
   defp countdown(remaining), do: remaining - 1
 
-  defp request(%Scope{source: source} = scope, context) do
-    started_at = System.monotonic_time()
+  # A call the dispatch parks is never made, so it has no model events.
+  defp request(%Scope{} = scope, context) do
     request = Request.new(scope.config, context)
+
+    case Dispatch.admit(scope, request) do
+      {:park, prompt} -> {:park, prompt}
+      admission -> make(scope, request, admission)
+    end
+  end
+
+  defp make(%Scope{source: source} = scope, request, admission) do
+    started_at = System.monotonic_time()
     Event.emit(source, {:model_started, request.model_spec})
     Process.put(@streamed, [])
 
     result =
-      with {:ok, admitted} <- Dispatch.admit(scope, request) do
+      with {:ok, admitted} <- admission do
         admitted |> stream(scope) |> tap(&Dispatch.settle(scope, admitted, &1))
       end
 

@@ -42,6 +42,26 @@ defmodule Tars.LLM.DispatchTest do
     def admit(_request, _scope), do: raise("gateway is down")
   end
 
+  defmodule Valued do
+    @behaviour Tars.LLM.Dispatch
+
+    @impl true
+    def admit(request, _scope, model), do: {:ok, Request.put_model(request, model)}
+
+    @impl true
+    def settle(_request, outcome, _scope, model),
+      do: send(self(), {:settled_with, model, outcome})
+
+    @impl true
+    def approved(_request, _scope, model), do: send(self(), {:approved_with, model})
+  end
+
+  defmodule Parking do
+    @behaviour Tars.LLM.Dispatch
+    @impl true
+    def admit(_request, _scope), do: {:park, "Over budget."}
+  end
+
   defmodule BrokenSettle do
     @behaviour Tars.LLM.Dispatch
     @impl true
@@ -103,6 +123,31 @@ defmodule Tars.LLM.DispatchTest do
         end)
 
       assert log =~ "ledger is down"
+    end
+  end
+
+  describe "a dispatch that is a value" do
+    test "is handed its value in every callback" do
+      scope = scope({Valued, {:anthropic, model: "claude-sonnet-5"}})
+
+      assert {:ok, admitted} = Dispatch.admit(scope, request())
+      assert admitted.model_spec == {:anthropic, model: "claude-sonnet-5"}
+
+      :ok = Dispatch.settle(scope, admitted, {:error, :boom})
+      assert_received {:settled_with, {:anthropic, model: "claude-sonnet-5"}, {:error, :boom}}
+
+      :ok = Dispatch.approved(scope, admitted)
+      assert_received {:approved_with, {:anthropic, model: "claude-sonnet-5"}}
+    end
+  end
+
+  describe "admit/2 parking" do
+    test "passes a park through with its prompt" do
+      assert {:park, "Over budget."} = Dispatch.admit(scope(Parking), request())
+    end
+
+    test "approved/2 is optional" do
+      assert :ok = Dispatch.approved(scope(Parking), request())
     end
   end
 end

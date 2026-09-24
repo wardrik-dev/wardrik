@@ -98,7 +98,7 @@ defmodule Tars.Scope do
           org: term(),
           deadline: integer() | nil,
           policy: Tars.Policy.t() | nil,
-          dispatch: module() | nil,
+          dispatch: Tars.LLM.Dispatch.t() | nil,
           credentials: module() | nil
         }
 
