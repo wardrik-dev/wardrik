@@ -2,10 +2,11 @@ defmodule TarsDaemon do
   @moduledoc """
   The host a `tars` release runs beside core.
 
-  The release names it in core's `:children`, so it starts once the fleet is
-  up:
+  The release names it in core's `:children`, after `TarsPolicy.Supervisor`,
+  which keeps the budgets its agents' policies set, so both start once the
+  fleet is up:
 
-      config :tars, :children, [TarsDaemon]
+      config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
 
   Starting, it reads `config.yaml` from the config directory into the settings
   each package reads (see `TarsDaemon.Config`), then starts what those

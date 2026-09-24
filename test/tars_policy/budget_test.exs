@@ -1,5 +1,6 @@
 defmodule TarsPolicy.BudgetTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias ReqLLM.Context
   alias Tars.LLM.Config
@@ -13,7 +14,7 @@ defmodule TarsPolicy.BudgetTest do
     test "round-trip, with the defaults filled in" do
       assert {:ok, budget} = Budget.decode(%{"usd" => 5})
       assert budget == %Budget{usd: 5.0, per: :day, on_exhausted: :ask}
-      assert Budget.grant(budget) == {5.0, 0}
+      assert Budget.grant(budget) == {5_000_000, 0}
 
       full = %{
         "usd" => 2.5,
@@ -24,11 +25,11 @@ defmodule TarsPolicy.BudgetTest do
       }
 
       assert {:ok, budget} = Budget.decode(full)
-      assert Budget.grant(budget) == {1.0, 5000}
+      assert Budget.grant(budget) == {1_000_000, 5000}
       assert Budget.decode(Budget.encode(budget)) == {:ok, budget}
 
       assert {:ok, tokens_only} = Budget.decode(%{"tokens" => 1000})
-      assert Budget.grant(tokens_only) == {0.0, 1000}
+      assert Budget.grant(tokens_only) == {0, 1000}
     end
 
     test "refuse what they cannot read" do
@@ -102,7 +103,10 @@ defmodule TarsPolicy.BudgetTest do
       :ok = TarsPolicy.approved(request, scope, policy)
 
       assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
-      assert %Spend{spent: 1.2, granted: 0.5} = TarsPolicy.spent(policy, scope)
+
+      assert %Spend{micro_usd: 1_200_000, granted_micro_usd: 500_000} =
+               TarsPolicy.spent(policy, scope)
+
       assert TarsPolicy.spending(policy, scope.source.agent_id) == "$1.20 of $1.50 today"
     end
 
@@ -121,7 +125,7 @@ defmodule TarsPolicy.BudgetTest do
 
       :ok = TarsPolicy.settle(request, {:error, :timeout}, scope, policy)
 
-      assert %Spend{spent: +0.0, tokens: 0} = TarsPolicy.spent(policy, scope)
+      assert %Spend{micro_usd: 0, tokens: 0} = TarsPolicy.spent(policy, scope)
     end
 
     test "a token limit governs a call that costs nothing in dollars", context do
@@ -150,22 +154,31 @@ defmodule TarsPolicy.BudgetTest do
       assert TarsPolicy.spent(policy, scope) == nil
     end
 
-    test "calls settling at once each count", context do
+    test "calls settling at once each count, with nothing retried", context do
       %{policy: policy, scope: scope, request: request} = context
 
-      1..20
-      |> Task.async_stream(fn _ ->
-        TarsPolicy.settle(request, {:ok, costing(0.01)}, scope, policy)
-      end)
+      1..200
+      |> Task.async_stream(
+        fn _ -> TarsPolicy.settle(request, {:ok, costing(0.01)}, scope, policy) end,
+        max_concurrency: 200
+      )
       |> Stream.run()
 
-      assert_in_delta TarsPolicy.spent(policy, scope).spent, 0.2, 1.0e-9
+      assert %Spend{tokens: 3000, micro_usd: 2_000_000} = TarsPolicy.spent(policy, scope)
+    end
+
+    test "a budget whose ledger cannot be read refuses the call", context do
+      %{policy: policy, scope: scope, request: request} = context
+      stub(TarsPolicy.Ledger, :read, fn _key -> {:error, {:ledger_unavailable, :no_capacity}} end)
+
+      assert {:error, {:policy_denied, "This agent's budget could not be read" <> _}} =
+               TarsPolicy.admit(request, scope, policy)
     end
   end
 
   test "a budget is part of a policy's written form" do
     written = %{
-      "budget" => %{"usd" => 5.0, "per" => "day", "on_exhausted" => "ask"},
+      "budget" => %{"usd" => 5.0, "tokens" => 1000, "per" => "day", "on_exhausted" => "ask"},
       "default" => "allow"
     }
 

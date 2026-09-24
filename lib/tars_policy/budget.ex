@@ -99,11 +99,27 @@ defmodule TarsPolicy.Budget do
     |> drop_nil()
   end
 
-  @doc "How much more a person's approval allows: `{usd, tokens}`, each `0` where the budget sets no such limit."
-  @spec grant(t()) :: {float(), non_neg_integer()}
+  @doc """
+  How much more a person's approval allows, as `{micro_usd, tokens}`, each `0`
+  where the budget sets no such limit.
+  """
+  @spec grant(t()) :: {non_neg_integer(), non_neg_integer()}
   def grant(%__MODULE__{} = budget) do
-    {budget.grant_usd || budget.usd || 0.0, budget.grant_tokens || budget.tokens || 0}
+    {micro(budget.grant_usd || budget.usd || 0), budget.grant_tokens || budget.tokens || 0}
   end
+
+  @doc "The dollar limit in whole micro-dollars, or `nil` where the budget sets none."
+  @spec micro_usd(t()) :: non_neg_integer() | nil
+  def micro_usd(%__MODULE__{usd: nil}), do: nil
+  def micro_usd(%__MODULE__{usd: usd}), do: micro(usd)
+
+  @doc "`usd` dollars in whole micro-dollars, rounded to the nearest."
+  @spec micro(number()) :: non_neg_integer()
+  def micro(usd), do: round(usd * 1_000_000)
+
+  @doc "Whole micro-dollars as dollars and cents: `$1.20`."
+  @spec dollars(non_neg_integer()) :: String.t()
+  def dollars(micro_usd), do: "$" <> :erlang.float_to_binary(micro_usd / 1_000_000, decimals: 2)
 
   @doc """
   The name of the period `now` falls in, for a turn traced as `trace_id`:

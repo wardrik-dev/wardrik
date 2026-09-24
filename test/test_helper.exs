@@ -1,5 +1,6 @@
 Mimic.copy(ReqLLM)
 Mimic.copy(ReqLLM.StreamResponse)
+Mimic.copy(TarsPolicy.Ledger)
 
 # `Tars.LLM.Catalog` loads the model database in the background as the
 # application starts, which takes about 1.3s. A lookup made before it finishes
@@ -9,6 +10,7 @@ Mimic.copy(ReqLLM.StreamResponse)
 ReqLLM.model("test:model")
 
 :ok = DurableServer.Supervisor.wait_until_ready(Tars.Fleet, timeout: 10_000)
+:ok = DurableServer.Supervisor.wait_until_ready(TarsPolicy.Ledger.supervisor(), timeout: 10_000)
 
 # The store configured for this run, see config/test.exs, is removed with it.
 ExUnit.after_suite(fn _results ->

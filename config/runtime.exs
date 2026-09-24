@@ -13,10 +13,11 @@ if config_env() == :prod do
   end
 end
 
-# A release is the daemon: it starts TarsDaemon beside core and logs to
+# A release is the daemon: it starts the budget ledgers and TarsDaemon beside
+# core, and logs to
 # TARS_STATE_DIR/log/tars.log, or to the terminal where TARS_LOG is "-".
 if System.get_env("RELEASE_NAME") do
-  config :tars, :children, [TarsDaemon]
+  config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
 
   state =
     System.get_env("TARS_STATE_DIR") ||

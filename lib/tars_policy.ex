@@ -25,8 +25,10 @@ defmodule TarsPolicy do
       Tars.Fleet.spawn(key, config: config, policy: {TarsPolicy, policy}, dispatch: {TarsPolicy, policy})
 
   Each call is checked before it is made against what the agent has spent in
-  the budget's period, as `TarsPolicy.Spend` records it, and what it cost is
-  recorded once it returns. Once the agent has spent its limit, a budget that
+  the budget's period, as its `TarsPolicy.Ledger` holds it, and what it cost is
+  recorded there once it returns. A budget whose ledger cannot be read refuses
+  the call rather than letting it run unmetered; the host starts
+  `TarsPolicy.Supervisor` to run the ledgers. Once the agent has spent its limit, a budget that
   asks parks it on the next call, and approving that call grants the budget's
   `grant` more for the period and lets it through. A budget that denies ends
   the turn instead.
@@ -60,6 +62,7 @@ defmodule TarsPolicy do
 
   alias Tars.LLM.Cost
   alias TarsPolicy.Budget
+  alias TarsPolicy.Ledger
   alias TarsPolicy.Pattern
   alias TarsPolicy.Rule
   alias TarsPolicy.Spend
@@ -100,24 +103,30 @@ defmodule TarsPolicy do
   def admit(request, _scope, %__MODULE__{budget: nil}), do: {:ok, request}
 
   def admit(request, scope, %__MODULE__{budget: budget}) do
-    spend = scope |> spend_key(budget) |> Spend.read()
+    case scope |> spend_key(budget) |> Ledger.read() do
+      {:ok, spend} ->
+        cond do
+          not exhausted?(budget, spend) -> {:ok, request}
+          budget.on_exhausted == :ask -> {:park, exhausted(budget, spend) <> " " <> more(budget)}
+          true -> {:error, {:policy_denied, exhausted(budget, spend)}}
+        end
 
-    cond do
-      not exhausted?(budget, spend) -> {:ok, request}
-      budget.on_exhausted == :ask -> {:park, exhausted(budget, spend) <> " " <> more(budget)}
-      true -> {:error, {:policy_denied, exhausted(budget, spend)}}
+      {:error, reason} ->
+        {:error,
+         {:policy_denied,
+          "This agent's budget could not be read, so no call it governs may run: #{inspect(reason)}"}}
     end
   end
 
   @impl Tars.LLM.Dispatch
   def settle(request, {:ok, response}, scope, %__MODULE__{budget: %Budget{} = budget}) do
     usage = ReqLLM.Response.usage(response) || %{}
-    usd = Cost.of(request.model_spec, usage) || 0.0
+    micro_usd = Budget.micro(Cost.of(request.model_spec, usage) || 0)
     tokens = count(usage, :input_tokens) + count(usage, :output_tokens)
 
-    with {:error, reason} <- scope |> spend_key(budget) |> Spend.spend(usd, tokens) do
+    with {:error, reason} <- scope |> spend_key(budget) |> Ledger.spend(micro_usd, tokens) do
       Logger.error(
-        "#{scope.source.agent_id} spent #{dollars(usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
+        "#{scope.source.agent_id} spent #{Budget.dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
       )
     end
 
@@ -128,8 +137,13 @@ defmodule TarsPolicy do
 
   @impl Tars.LLM.Dispatch
   def approved(_request, scope, %__MODULE__{budget: %Budget{} = budget}) do
-    {usd, tokens} = Budget.grant(budget)
-    scope |> spend_key(budget) |> Spend.grant(usd, tokens)
+    {micro_usd, tokens} = Budget.grant(budget)
+
+    with {:error, reason} <- scope |> spend_key(budget) |> Ledger.grant(micro_usd, tokens) do
+      Logger.error(
+        "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
+      )
+    end
   end
 
   def approved(_request, _scope, _policy), do: :ok
@@ -143,9 +157,16 @@ defmodule TarsPolicy do
   def spent(%__MODULE__{budget: %Budget{per: :turn}}, agent) when is_binary(agent), do: nil
 
   def spent(%__MODULE__{budget: budget}, agent) when is_binary(agent),
-    do: agent |> Spend.key(Budget.window(budget, "", DateTime.utc_now())) |> Spend.read()
+    do: agent |> Spend.key(Budget.window(budget, "", DateTime.utc_now())) |> read()
 
-  def spent(%__MODULE__{budget: budget}, scope), do: scope |> spend_key(budget) |> Spend.read()
+  def spent(%__MODULE__{budget: budget}, scope), do: scope |> spend_key(budget) |> read()
+
+  defp read(key) do
+    case Ledger.read(key) do
+      {:ok, spend} -> spend
+      {:error, _reason} -> nil
+    end
+  end
 
   @doc """
   What an agent has spent against its budget, as a phrase: `$1.20 of $5.00 and
@@ -164,7 +185,7 @@ defmodule TarsPolicy do
   end
 
   defp exhausted?(budget, spend) do
-    (budget.usd != nil and spend.spent >= budget.usd + spend.granted) or
+    (budget.usd != nil and spend.micro_usd >= Budget.micro_usd(budget) + spend.granted_micro_usd) or
       (budget.tokens != nil and spend.tokens >= budget.tokens + spend.granted_tokens)
   end
 
@@ -173,7 +194,8 @@ defmodule TarsPolicy do
 
   defp amounts(budget, spend) do
     [
-      budget.usd && "#{dollars(spend.spent)} of #{dollars(budget.usd + spend.granted)}",
+      budget.usd &&
+        "#{Budget.dollars(spend.micro_usd)} of #{Budget.dollars(Budget.micro_usd(budget) + spend.granted_micro_usd)}",
       budget.tokens && "#{spend.tokens} of #{budget.tokens + spend.granted_tokens} tokens"
     ]
     |> Enum.reject(&is_nil/1)
@@ -181,10 +203,10 @@ defmodule TarsPolicy do
   end
 
   defp more(budget) do
-    {usd, tokens} = Budget.grant(budget)
+    {micro_usd, tokens} = Budget.grant(budget)
 
     granted =
-      [budget.usd && dollars(usd), budget.tokens && "#{tokens} tokens"]
+      [budget.usd && Budget.dollars(micro_usd), budget.tokens && "#{tokens} tokens"]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" and ")
 
@@ -197,8 +219,6 @@ defmodule TarsPolicy do
       _missing -> 0
     end
   end
-
-  defp dollars(usd), do: "$" <> :erlang.float_to_binary(usd / 1, decimals: 2)
 
   defp answer(:allow, _message, _name), do: :allow
 

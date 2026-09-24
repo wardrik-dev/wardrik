@@ -1,70 +1,37 @@
 defmodule TarsPolicy.Spend do
   @moduledoc """
   What an agent has spent in one budget period, and what people have granted
-  it beyond its limit there, as `Tars.Store` holds them.
+  it beyond its limits there. `TarsPolicy.Ledger` holds one per period.
 
-  Each agent's period is one entry, under the agent's key and the period's name
-  from `TarsPolicy.Budget.window/3`, so it survives a restart and is read the
-  same from whichever node holds the agent. Writes to one entry take a lock
-  across the connected nodes and are conditional on the version they read, so
-  calls settling at once, from delegations running side by side, each count.
+  Money is counted in whole micro-dollars, millionths of a US dollar, so any
+  number of spends add up exactly.
   """
 
-  defstruct spent: 0.0, tokens: 0, granted: 0.0, granted_tokens: 0
+  defstruct micro_usd: 0, tokens: 0, granted_micro_usd: 0, granted_tokens: 0
 
   @type t() :: %__MODULE__{
-          spent: float(),
+          micro_usd: non_neg_integer(),
           tokens: non_neg_integer(),
-          granted: float(),
+          granted_micro_usd: non_neg_integer(),
           granted_tokens: non_neg_integer()
         }
 
-  @ns :budgets
-  @lock_retries 50
-
-  @doc "The entry for `agent` in `window`: its key in the store."
+  @doc "The name of `agent`'s spend in `window`, as a ledger is keyed."
   @spec key(String.t(), String.t()) :: String.t()
   def key(agent, window), do: agent <> "|" <> window
 
-  @doc "What has been spent and granted under `key`, zero where nothing has."
-  @spec read(String.t()) :: t()
-  def read(key) do
-    case Tars.Store.lookup(@ns, key) do
-      {%__MODULE__{} = spend, _vsn} -> spend
-      nil -> %__MODULE__{}
-    end
-  end
+  @doc "The spend with `micro_usd` and `tokens` more spent."
+  @spec spend(t(), non_neg_integer(), non_neg_integer()) :: t()
+  def spend(%__MODULE__{} = spend, micro_usd, tokens),
+    do: %{spend | micro_usd: spend.micro_usd + micro_usd, tokens: spend.tokens + tokens}
 
-  @doc "Adds `usd` and `tokens` to what has been spent under `key`."
-  @spec spend(String.t(), float(), non_neg_integer()) :: :ok | {:error, term()}
-  def spend(key, usd, tokens),
-    do: update(key, &%{&1 | spent: &1.spent + usd, tokens: &1.tokens + tokens})
-
-  @doc "Adds `usd` and `tokens` to what people have granted under `key`."
-  @spec grant(String.t(), float(), non_neg_integer()) :: :ok | {:error, term()}
-  def grant(key, usd, tokens),
-    do:
-      update(key, &%{&1 | granted: &1.granted + usd, granted_tokens: &1.granted_tokens + tokens})
-
-  defp update(key, change) do
-    lock = {{__MODULE__, key}, self()}
-
-    case :global.trans(lock, fn -> write(key, change) end, [node() | Node.list()], @lock_retries) do
-      :aborted -> {:error, :locked}
-      result -> result
-    end
-  end
-
-  defp write(key, change) do
-    {current, vsn} =
-      case Tars.Store.lookup(@ns, key) do
-        {%__MODULE__{} = spend, vsn} -> {spend, vsn}
-        nil -> {%__MODULE__{}, nil}
-      end
-
-    case Tars.Store.put(@ns, key, change.(current), if_vsn: vsn) do
-      {:ok, _vsn} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+  @doc "The spend with `micro_usd` and `tokens` more granted."
+  @spec grant(t(), non_neg_integer(), non_neg_integer()) :: t()
+  def grant(%__MODULE__{} = spend, micro_usd, tokens) do
+    %{
+      spend
+      | granted_micro_usd: spend.granted_micro_usd + micro_usd,
+        granted_tokens: spend.granted_tokens + tokens
+    }
   end
 end

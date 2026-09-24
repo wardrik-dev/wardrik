@@ -15,6 +15,7 @@ defmodule TarsDaemonTest do
 
   test "starts with no config.yaml at all, running only the agent files", %{tmp_dir: dir} do
     assert {:ok, pid} = start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
+
     assert [{TarsDaemon.Agents, _pid, :worker, _modules}] = Supervisor.which_children(pid)
   end
 
