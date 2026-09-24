@@ -26,7 +26,7 @@ defmodule Tars.Agent.Spec do
   | `:org`, `:user` | who it works for, written into its key through `Tars.Fleet.Segment` |
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Tars.LLM.Config` |
-  | `:policy`, `:dispatch`, `:credentials`, `:timeout` | the seams of `Tars.Scope.seams/0` |
+  | `:policy`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Tars.Scope.seams/0` |
   """
 
   alias Tars.Fleet
@@ -45,6 +45,7 @@ defmodule Tars.Agent.Spec do
           policy: Tars.Policy.t() | nil,
           dispatch: module() | nil,
           credentials: module() | nil,
+          ledger: module() | nil,
           timeout: timeout() | nil
         }
 

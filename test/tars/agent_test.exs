@@ -468,6 +468,38 @@ defmodule Tars.AgentTest do
     end
   end
 
+  describe "a turn lost part way" do
+    test "comes back replaying from the batch it handed over, not asking again" do
+      test_pid = self()
+      key = Tars.Test.Fleet.key("replay")
+      answer = {:ok, [Context.assistant("deployed")]}
+
+      opts = [
+        runner: {AgentRunners, :checkpointing, [test_pid]},
+        replayer: {AgentRunners, :replaying, [test_pid, answer]}
+      ]
+
+      agent = start_agent(opts, key)
+      Agent.ask(agent, "deploy it")
+      assert_receive {:checkpointed, _turn}
+
+      :ok = Tars.Fleet.stop(key)
+      {:ok, _agent} = Tars.Fleet.spawn(key, opts)
+
+      assert_receive {:replayed, %Tars.LLM.Turn.Checkpoint{} = checkpoint}, 5_000
+      assert Tars.LLM.Turn.Checkpoint.call_ids(checkpoint) == ["call_1"]
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert roles(key) == [:user, :assistant]
+    end
+
+    test "a checkpoint from anything but the running turn is refused" do
+      agent = start_agent(runner: blocking_runner(self()))
+
+      assert {:error, :not_the_running_turn} =
+               GenServer.call(agent, {:checkpoint, AgentRunners.checkpoint()})
+    end
+  end
+
   describe "what a host supplies" do
     test "the scope every turn runs under carries the seams the agent was started with" do
       test_pid = self()

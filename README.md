@@ -295,6 +295,24 @@ Tars.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
 A killed call is answered with an error result, so the model is never left with
 a call nobody answered.
 
+### A turn lost part way
+
+A turn hands its agent each batch of tool calls before running any of them,
+and the agent writes the batch to the store first. A turn whose node is lost
+comes back replaying from that batch, with the same calls, rather than asking
+the model again. With a `Tars.Ledger` on the scope, every call is claimed
+before it runs and settled after, so the replay answers a call that already
+ran with what it returned, and parks one that began and never finished for a
+person to decide:
+
+```elixir
+Tars.Fleet.spawn(key, config: config, ledger: Tars.Ledger.Store)
+```
+
+A tool with an effect outside Tars passes `Tars.Ledger.idempotency_key/2` on,
+so the system it calls does not repeat the effect either. The daemon gives
+every agent the ledger.
+
 ### Failures
 
 `Tars.Failure.classify/1` sorts a turn's error into `:transient`, `:ceiling` or

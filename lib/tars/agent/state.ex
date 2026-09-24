@@ -27,11 +27,13 @@ defmodule Tars.Agent.State do
   ## Written down
 
   `dump/1` and `load/1` carry an agent between nodes. A turn in flight is
-  written as what it comes back as: a fresh turn is `:owed` and runs again
-  against the context it already holds; a turn resumed from a park comes back
-  parked on the same calls. A waiting turn keeps its source, and the events of
-  its resumption land on the trace that parked. Its budget starts over when it
-  is resumed.
+  written as what it comes back as. A turn that has handed over a batch of
+  tool calls comes back replaying from the last one, under the trace it began
+  on, so the calls keep their ids; a fresh turn that has not is `:owed` and
+  runs again against the context it already holds; a turn resumed from a park,
+  and not checkpointed since, comes back parked on the same calls. A waiting
+  turn keeps its source, and the events of its resumption land on the trace
+  that parked. Its budget starts over when it is resumed.
 
   Who the work is for is read from the agent's key.
 
@@ -61,6 +63,7 @@ defmodule Tars.Agent.State do
   alias Tars.Fleet
   alias Tars.LLM.Config
   alias Tars.LLM.Turn
+  alias Tars.LLM.Turn.Checkpoint
   alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Trace
@@ -79,19 +82,31 @@ defmodule Tars.Agent.State do
     @moduledoc "A turn in flight, and everything that belongs to it."
 
     @enforce_keys [:task, :scope, :started_at]
-    defstruct [:task, :scope, :started_at, :stopping, :parked]
+    defstruct [:task, :scope, :started_at, :stopping, :parked, :checkpoint]
 
     @typedoc """
     The task running the turn, the scope it runs under, whether it is
-    stopping, and the parked turn it resumed, if it did.
+    stopping, the parked turn it resumed, if it did, and the batch of tool
+    calls it last handed over before running them.
     """
     @type t() :: %__MODULE__{
             task: Task.t(),
             scope: Tars.Scope.t(),
             started_at: integer(),
             stopping: Tars.Agent.State.Stopping.t() | nil,
-            parked: Parked.t() | nil
+            parked: Parked.t() | nil,
+            checkpoint: Checkpoint.t() | nil
           }
+  end
+
+  defmodule Replaying do
+    @moduledoc "A turn lost part way through, due to go on from its last checkpoint."
+
+    @enforce_keys [:checkpoint, :source]
+    defstruct [:checkpoint, :source]
+
+    @typedoc "The checkpoint to go on from, and where the turn's events go."
+    @type t() :: %__MODULE__{checkpoint: Checkpoint.t(), source: Source.t()}
   end
 
   defmodule Waiting do
@@ -121,6 +136,7 @@ defmodule Tars.Agent.State do
     :runner,
     :resumer,
     :scope_opts,
+    replayer: {Turn, :replay, []},
     grace: @default_grace,
     mode: :idle,
     pending: [],
@@ -138,7 +154,7 @@ defmodule Tars.Agent.State do
   `:owed` is an agent loaded from a dump taken mid-turn: nothing is running,
   and a turn is due against the context it already holds.
   """
-  @type mode() :: :idle | :owed | Running.t() | Waiting.t()
+  @type mode() :: :idle | :owed | Running.t() | Waiting.t() | Replaying.t()
 
   @typedoc """
   Runs one turn and reports how it ended, as `{module, function, args}`.
@@ -253,6 +269,7 @@ defmodule Tars.Agent.State do
       context: Keyword.get(opts, :context, Context.new()),
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
+      replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
       scope_opts: [user: user, org: org] ++ Keyword.take(opts, Scope.seams()),
       grace: Keyword.get(opts, :grace, @default_grace)
     }
@@ -305,6 +322,16 @@ defmodule Tars.Agent.State do
     apply(module, function, args ++ [scope, turn, decisions])
   end
 
+  @doc "Carries a lost turn on from its checkpoint with the replayer this agent was given."
+  @spec apply_replayer(t(), Scope.t(), Checkpoint.t()) :: Turn.result()
+  def apply_replayer(
+        %__MODULE__{replayer: {module, function, args}},
+        %Scope{} = scope,
+        checkpoint
+      ) do
+    apply(module, function, args ++ [scope, checkpoint])
+  end
+
   @doc "Writes this agent down as data. See the module docs for what a turn in flight becomes."
   @spec dump(t()) :: dumped()
   def dump(%__MODULE__{} = state) do
@@ -315,6 +342,14 @@ defmodule Tars.Agent.State do
   end
 
   defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
+
+  defp at_rest(%Replaying{checkpoint: checkpoint, source: source}),
+    do: {:replaying, checkpoint, source}
+
+  # A checkpoint is the furthest a turn got, past any park it was resumed from.
+  defp at_rest(%Running{checkpoint: %Checkpoint{} = checkpoint, scope: scope}),
+    do: {:replaying, checkpoint, scope.source}
+
   defp at_rest(%Running{parked: nil}), do: :owed
   defp at_rest(%Running{parked: turn, scope: scope}), do: {:waiting, turn, scope.source}
   defp at_rest(mode) when mode in [:idle, :owed], do: mode
@@ -348,11 +383,15 @@ defmodule Tars.Agent.State do
 
   defp trace_id(%Running{scope: scope}), do: scope.source.trace.trace_id
   defp trace_id(%Waiting{source: source}), do: source.trace.trace_id
+  defp trace_id(%Replaying{source: source}), do: source.trace.trace_id
   defp trace_id(_mode), do: nil
 
   defp reopen({:waiting, turn, source}) do
     %Waiting{turn: turn, source: source, started_at: System.monotonic_time()}
   end
+
+  defp reopen({:replaying, checkpoint, source}),
+    do: %Replaying{checkpoint: checkpoint, source: source}
 
   defp reopen(mode) when mode in [:idle, :owed], do: mode
 
@@ -374,6 +413,7 @@ defmodule Tars.Agent.State do
 
   defp activity(%Running{}), do: :running
   defp activity(%Waiting{}), do: :parked
+  defp activity(%Replaying{}), do: :running
   # A turn is due and will start on the next message: running, not idle.
   defp activity(:owed), do: :running
   defp activity(:idle), do: :idle
@@ -433,11 +473,17 @@ defmodule Tars.Agent.State do
   behind it waits to be answered or abandoned rather than starting beside it.
 
   An agent that is `:owed` a turn runs one with no questions at all, against
-  the context that already holds the question it was answering.
+  the context that already holds the question it was answering. One replaying
+  a turn answers `{:replay, scope, checkpoint, state}`: the turn goes on from
+  its checkpoint, under the trace it began on.
   """
-  @spec take(t()) :: {:run, [String.t()], t()} | :none
+  @spec take(t()) :: {:run, [String.t()], t()} | {:replay, Scope.t(), Checkpoint.t(), t()} | :none
   def take(%__MODULE__{mode: :owed} = state) do
     {:run, Enum.reverse(state.pending), %{state | pending: [], mode: :idle}}
+  end
+
+  def take(%__MODULE__{mode: %Replaying{checkpoint: checkpoint, source: source}} = state) do
+    {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
   end
 
   def take(%__MODULE__{mode: :idle} = state) do
@@ -458,6 +504,29 @@ defmodule Tars.Agent.State do
         mode: %Running{task: task, scope: scope, started_at: started_at}
     }
   end
+
+  @doc "Records the turn a `{:replay, ...}` from `take/1` led to."
+  @spec replayed(t(), Task.t(), Scope.t(), Checkpoint.t(), integer()) :: t()
+  def replayed(%__MODULE__{} = state, task, %Scope{} = scope, checkpoint, started_at) do
+    %{
+      state
+      | mode: %Running{task: task, scope: scope, started_at: started_at, checkpoint: checkpoint}
+    }
+  end
+
+  @doc """
+  Records the batch of tool calls the running turn is about to run, so a turn
+  lost from here goes on from it. `:stale` when `pid` is not the running turn.
+  """
+  @spec checkpointed(t(), pid(), Checkpoint.t()) :: {:ok, t()} | :stale
+  def checkpointed(
+        %__MODULE__{mode: %Running{task: %Task{pid: pid}} = running} = state,
+        pid,
+        checkpoint
+      ),
+      do: {:ok, %{state | mode: %{running | checkpoint: checkpoint}}}
+
+  def checkpointed(%__MODULE__{}, _pid, _checkpoint), do: :stale
 
   @doc """
   Whether `task_ref` is the turn this agent is running.
@@ -527,6 +596,13 @@ defmodule Tars.Agent.State do
     {drained, dropped} = drain(state)
 
     {drained, [{:stop_now, running.task.pid}, {:arm_kill, state.grace, dropped}]}
+  end
+
+  def interrupt(%__MODULE__{mode: %Replaying{source: source}} = state) do
+    {drained, dropped} = drain(state)
+
+    {idle(%{drained | outcome: :interrupted}),
+     [{:emit, source, {:turn_interrupted, stats(nil, dropped, 0, :abandoned)}}]}
   end
 
   def interrupt(%__MODULE__{mode: %Waiting{} = waiting} = state) do

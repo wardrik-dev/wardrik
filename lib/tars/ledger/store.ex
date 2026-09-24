@@ -51,6 +51,26 @@ defmodule Tars.Ledger.Store do
     end
   end
 
+  # A claim that was settled since it was read is not the claim being
+  # released, and stays.
+  @impl Tars.Ledger
+  def release(key) do
+    encoded = key(key)
+
+    case Store.lookup(@ns, encoded) do
+      {%Entry{result: nil}, vsn} -> delete(encoded, vsn)
+      _settled_or_gone -> :ok
+    end
+  end
+
+  defp delete(encoded, vsn) do
+    case Store.delete(@ns, encoded, if_vsn: vsn) do
+      :ok -> :ok
+      {:error, :conflict} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @impl Tars.Ledger
   def fetch(key) do
     case Store.get(@ns, key(key)) do

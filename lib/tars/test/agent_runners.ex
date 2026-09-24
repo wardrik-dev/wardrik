@@ -103,6 +103,40 @@ defmodule Tars.Test.AgentRunners do
     result
   end
 
+  @doc "Hands the agent a checkpoint the way a turn does, tells the test, and blocks."
+  def checkpointing(test_pid, scope, context) do
+    :ok = GenServer.call(scope.journal, {:checkpoint, checkpoint(context)})
+    send(test_pid, {:checkpointed, self()})
+
+    receive do
+      :release -> {:ok, []}
+    end
+  end
+
+  @doc "Reports the checkpoint it was asked to replay from, then returns `result`."
+  def replaying(test_pid, result, _scope, checkpoint) do
+    send(test_pid, {:replayed, checkpoint})
+    result
+  end
+
+  @doc "A checkpoint of a batch asking for one call to `deploy`."
+  def checkpoint(context \\ Context.new()) do
+    call = ReqLLM.ToolCall.new("call_1", "deploy", "{}")
+
+    %Tars.LLM.Turn.Checkpoint{
+      context: context,
+      response: %ReqLLM.Response{
+        id: "r",
+        model: "m",
+        context: context,
+        message: Context.assistant("", tool_calls: [call]),
+        finish_reason: :tool_calls
+      },
+      acc: [],
+      remaining: 5
+    }
+  end
+
   @doc "A turn parked on one call to `deploy`."
   @spec parked_turn(String.t()) :: Parked.t()
   def parked_turn(call_id \\ "call_1") do

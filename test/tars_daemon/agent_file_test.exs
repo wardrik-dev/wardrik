@@ -63,6 +63,7 @@ defmodule TarsDaemon.AgentFileTest do
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
     assert spec.policy == Policy
+    assert spec.ledger == Tars.Ledger.Store
   end
 
   test "a file with no frontmatter is all prompt, and names no tools", context do

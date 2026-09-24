@@ -50,6 +50,15 @@ defmodule Tars.LLM.Turn do
   `Tars.LLM.Dispatch.approved/2`, and the turn asks it again; denying it ends
   the turn as `{:policy_denied, reason}`.
 
+  ## Surviving a lost node
+
+  A scope with a journal, as `Tars.Agent` gives each turn it runs, is handed a
+  `Tars.LLM.Turn.Checkpoint` before every batch of tool calls, and the batch
+  runs only once the journal has answered `:ok`. A journal that does not
+  answer ends the turn before anything runs. `replay/2` carries a turn on from
+  its last checkpoint, with the response it had, so the calls it asked for keep
+  their ids and a `Tars.Ledger` can say which already ran.
+
   ## The iteration cap
 
   `max_iterations` on the config bounds the rounds of tool use. When the last
@@ -64,6 +73,7 @@ defmodule Tars.LLM.Turn do
   alias Tars.LLM.Dispatch
   alias Tars.LLM.Request
   alias Tars.LLM.ToolRunner
+  alias Tars.LLM.Turn.Checkpoint
   alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Trace
@@ -137,6 +147,16 @@ defmodule Tars.LLM.Turn do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Carries a turn on from `checkpoint`: the batch it was about to run runs, with
+  the ledger answering for any call that already had, and the turn goes on from
+  there.
+  """
+  @spec replay(Scope.t(), Checkpoint.t()) :: result()
+  def replay(%Scope{} = scope, %Checkpoint{} = checkpoint) do
+    advance(scope, checkpoint.context, checkpoint.acc, checkpoint.remaining, checkpoint.response)
   end
 
   @doc "Asks the process running a turn to stop iterating once it reaches a boundary."
@@ -215,6 +235,38 @@ defmodule Tars.LLM.Turn do
   defp closing(system), do: system <> "\n\n" <> @closing
 
   defp advance(scope, context, acc, remaining, response) do
+    with :ok <- journal(scope, context, acc, remaining, response) do
+      handle(scope, context, acc, remaining, response)
+    end
+  end
+
+  # A batch of tool calls is handed to the journal before any of it runs. A
+  # final answer changes nothing the journal needs, and is not.
+  defp journal(%Scope{journal: nil}, _context, _acc, _remaining, _response), do: :ok
+
+  defp journal(%Scope{journal: journal}, context, acc, remaining, response) do
+    case ReqLLM.Response.classify(response) do
+      %{type: :tool_calls} ->
+        checkpoint = %Checkpoint{
+          context: context,
+          response: response,
+          acc: acc,
+          remaining: remaining
+        }
+
+        case GenServer.call(journal, {:checkpoint, checkpoint}, :timer.seconds(30)) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:checkpoint_failed, reason}}
+        end
+
+      _answer ->
+        :ok
+    end
+  catch
+    :exit, reason -> {:error, {:checkpoint_failed, reason}}
+  end
+
+  defp handle(scope, context, acc, remaining, response) do
     case handle_response(scope, context, response) do
       {:done, messages} -> {:ok, Enum.reverse(acc, messages)}
       {:cont, context, messages} -> continue(scope, context, messages, acc, remaining)

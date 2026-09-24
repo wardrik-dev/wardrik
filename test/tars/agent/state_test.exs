@@ -3,9 +3,11 @@ defmodule Tars.Agent.StateTest do
 
   alias ReqLLM.Context
   alias Tars.Agent.State
+  alias Tars.Agent.State.Replaying
   alias Tars.Agent.State.Running
   alias Tars.Agent.State.Waiting
   alias Tars.LLM.Config
+  alias Tars.LLM.Turn.Checkpoint
   alias Tars.LLM.Turn.Parked
   alias Tars.Scope
 
@@ -30,6 +32,20 @@ defmodule Tars.Agent.StateTest do
       [],
       5
     )
+  end
+
+  defp checkpoint do
+    %Checkpoint{
+      context: Context.new(),
+      response: %ReqLLM.Response{
+        id: "r",
+        model: "m",
+        context: Context.new(),
+        finish_reason: :tool_calls
+      },
+      acc: [],
+      remaining: 5
+    }
   end
 
   defp waiting do
@@ -309,6 +325,44 @@ defmodule Tars.Agent.StateTest do
       assert [{%{id: "call_1"}, "Really?"}] = State.waiting_on(state)
     end
 
+    test "a turn that handed over a batch comes back replaying it, under its own trace" do
+      state = running()
+      source = state.mode.scope.source
+      {:ok, state} = State.checkpointed(state, self(), checkpoint())
+
+      assert %State{mode: %Replaying{checkpoint: %Checkpoint{remaining: 5}, source: ^source}} =
+               reopened = reload(state)
+
+      assert %{state: :running} = State.status(reopened)
+      assert {:replay, scope, %Checkpoint{}, _state} = State.take(reopened)
+      assert scope.source == source
+      assert reload(reopened).mode == reopened.mode
+    end
+
+    test "a checkpoint is the furthest a turn got, past the park it resumed from" do
+      {:ok, state} = State.checkpointed(resumed(), self(), checkpoint())
+      assert %State{mode: %Replaying{}} = reload(state)
+    end
+
+    test "only the running turn may hand over a batch" do
+      assert :stale = State.checkpointed(running(), spawn(fn -> :ok end), checkpoint())
+      assert :stale = State.checkpointed(state(), self(), checkpoint())
+    end
+
+    test "a replay started is running, with the checkpoint it began from" do
+      state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
+      assert %State{mode: %Running{checkpoint: %Checkpoint{}}} = state
+      assert %State{mode: %Replaying{}} = reload(state)
+    end
+
+    test "interrupting a turn due to replay abandons it" do
+      {:ok, state} = State.checkpointed(running(), self(), checkpoint())
+
+      assert {%State{mode: :idle, outcome: :interrupted},
+              [{:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}}]} =
+               State.interrupt(reload(state))
+    end
+
     test "who the work is for is read from the key" do
       assert State.new([], "acme/jon/x").scope_opts == [user: "jon", org: "acme"]
       assert State.new([], "_/_/x").scope_opts == [user: nil, org: nil]
@@ -322,7 +376,9 @@ defmodule Tars.Agent.StateTest do
     end
 
     test "a dump holds no processes, timers or callbacks" do
-      for state <- [stopping(), waiting(), resumed()] do
+      {:ok, checkpointed} = State.checkpointed(running(), self(), checkpoint())
+
+      for state <- [stopping(), waiting(), resumed(), checkpointed] do
         assert runtime_terms(State.dump(state)) == []
       end
 

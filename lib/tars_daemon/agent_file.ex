@@ -63,7 +63,9 @@ defmodule TarsDaemon.AgentFile do
   the budget runs out until a person approves more.
 
   The agent is given the credentials `TarsOAuth` holds where a provider is
-  configured, and `TarsVault`'s where the vault has a key.
+  configured, and `TarsVault`'s where the vault has a key, and records every
+  tool call in `Tars.Ledger.Store`, so a turn lost part way through runs no
+  call twice.
   """
 
   alias Tars.Agent.Spec
@@ -134,7 +136,8 @@ defmodule TarsDaemon.AgentFile do
        policy: policy,
        dispatch: budgeted(policy),
        timeout: fields["timeout"] && seconds!(fields["timeout"]),
-       credentials: credentials()
+       credentials: credentials(),
+       ledger: Tars.Ledger.Store
      )}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}

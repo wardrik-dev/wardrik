@@ -84,11 +84,22 @@ defmodule Tars.Scope do
   alias Tars.Trace
 
   @enforce_keys [:config, :source]
-  defstruct [:config, :source, :user, :org, :deadline, :policy, :dispatch, :credentials]
+  defstruct [
+    :config,
+    :source,
+    :user,
+    :org,
+    :deadline,
+    :policy,
+    :dispatch,
+    :credentials,
+    :ledger,
+    :journal
+  ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:policy, :dispatch, :credentials, :timeout]
+  @seams [:policy, :dispatch, :credentials, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -99,7 +110,9 @@ defmodule Tars.Scope do
           deadline: integer() | nil,
           policy: Tars.Policy.t() | nil,
           dispatch: Tars.LLM.Dispatch.t() | nil,
-          credentials: module() | nil
+          credentials: module() | nil,
+          ledger: module() | nil,
+          journal: pid() | nil
         }
 
   @typedoc "How a span ended."
@@ -129,6 +142,11 @@ defmodule Tars.Scope do
     * `:dispatch` - a `Tars.LLM.Dispatch` module, or `nil` to call the provider
       as configured
     * `:credentials` - a `Tars.Credential` module, or `nil` to resolve none
+    * `:ledger` - a `Tars.Ledger` module, which records each tool call before
+      it runs, or `nil` to record none
+    * `:journal` - the process a turn under this scope hands each batch of
+      tool calls to before running it, so a turn lost part way can be
+      replayed from there. `Tars.Agent` is one. Not inherited by `child/2`
   """
   @spec root(Config.t(), Bus.agent_id(), keyword()) :: t()
   def root(%Config{} = config, agent_id, opts \\ []) do
@@ -140,6 +158,8 @@ defmodule Tars.Scope do
       policy: Keyword.get(opts, :policy),
       dispatch: Keyword.get(opts, :dispatch),
       credentials: Keyword.get(opts, :credentials),
+      ledger: Keyword.get(opts, :ledger),
+      journal: Keyword.get(opts, :journal),
       deadline: Keyword.get(opts, :deadline)
     }
     |> with_timeout(Keyword.get(opts, :timeout, :infinity))
@@ -152,10 +172,13 @@ defmodule Tars.Scope do
 
   Options are passed to `Tars.Event.Source.child/2`, and `:timeout` narrows the
   deadline for this branch alone.
+
+  The child has no journal: work a turn spawns, a delegation's own turns
+  included, is replayed as the one call of that turn it belongs to.
   """
   @spec child(t(), keyword()) :: t()
   def child(%__MODULE__{} = scope, opts \\ []) do
-    %{scope | source: Source.child(scope.source, opts)}
+    %{scope | source: Source.child(scope.source, opts), journal: nil}
     |> with_timeout(Keyword.get(opts, :timeout, :infinity))
   end
 

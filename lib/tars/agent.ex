@@ -54,6 +54,14 @@ defmodule Tars.Agent do
   turn lost after being resumed comes back parked on the same calls. Resuming
   gives the turn this node's tools and a fresh budget.
 
+  ## A turn lost part way
+
+  Each turn hands the agent every batch of tool calls before running it, and
+  the agent writes the batch to the store before the calls run. A turn lost
+  after that comes back replaying from its last batch, with the same calls, and
+  a `Tars.Ledger` on the scope answers for any that already ran. See
+  `Tars.LLM.Turn`.
+
   ## What a host supplies
 
   Beyond `:config`, an agent takes the seams every scope it roots is built
@@ -221,6 +229,13 @@ defmodule Tars.Agent do
     {:reply, :ok, next, meta: State.meta(next), sync: true}
   end
 
+  def handle_call({:checkpoint, checkpoint}, {pid, _tag}, state) do
+    case State.checkpointed(state, pid, checkpoint) do
+      {:ok, next} -> {:reply, :ok, next, meta: State.meta(next), sync: true}
+      :stale -> {:reply, {:error, :not_the_running_turn}, state}
+    end
+  end
+
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
   def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
@@ -262,6 +277,7 @@ defmodule Tars.Agent do
   defp resume_turn(state, decisions) do
     case State.resume(state) do
       {:resume, scope, turn, started_at} ->
+        scope = journaled(scope)
         Event.emit(scope.source, {:turn_resumed, decisions})
         task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
@@ -276,6 +292,7 @@ defmodule Tars.Agent do
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
       {:run, questions, state} -> stay(start(state, questions))
+      {:replay, scope, checkpoint, state} -> stay(replay(state, scope, checkpoint))
       :none -> stay(state)
     end
   end
@@ -339,13 +356,25 @@ defmodule Tars.Agent do
 
   defp start(state, questions) do
     context = Enum.reduce(questions, state.context, &Context.append(&2, Context.user(&1)))
-    scope = State.turn_scope(state)
+    scope = journaled(State.turn_scope(state))
 
     Event.emit(scope.source, {:turn_started, questions})
     task = run(fn -> State.apply_runner(state, scope, context) end)
 
     State.started(state, task, scope, context, System.monotonic_time())
   end
+
+  defp replay(state, scope, checkpoint) do
+    scope = journaled(scope)
+    Event.emit(scope.source, {:turn_started, []})
+    task = run(fn -> State.apply_replayer(state, scope, checkpoint) end)
+
+    State.replayed(state, task, scope, checkpoint, System.monotonic_time())
+  end
+
+  # Each turn hands its batches of tool calls to this process before running
+  # them, which writes them down.
+  defp journaled(scope), do: %{scope | journal: self()}
 
   defp run(fun), do: Task.Supervisor.async_nolink(Tars.TaskSupervisor, fun)
 

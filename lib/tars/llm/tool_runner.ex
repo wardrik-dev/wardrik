@@ -35,6 +35,17 @@ defmodule Tars.LLM.ToolRunner do
       conversation, and the batch reports it so the turn can stop and wait for
       a person. See `Tars.Agent.resume/2`.
 
+  ## Recording what ran
+
+  A scope with a `Tars.Ledger` has every allowed call claimed before its
+  callback runs and settled with what it returned, under `Tars.Ledger.key/2`.
+  A call already settled is answered with what it returned then, without
+  running, and reported as `{:tool_replayed, call_id, name, result}`. A call
+  claimed and never settled may or may not have had its effect, so it parks
+  for a person to decide, and one a person has approved runs. A call whose
+  claim the ledger cannot answer does not run. A tool that stops to ask before
+  doing anything releases its claim.
+
   ## Stopping one call
 
   Every call in flight is registered under its agent and call id, so a single
@@ -46,8 +57,11 @@ defmodule Tars.LLM.ToolRunner do
   the model is never left with an unanswered call. `in_flight/1` lists what
   could be stopped.
   """
+  require Logger
+
   alias ReqLLM.Context
   alias Tars.Event
+  alias Tars.Ledger
   alias Tars.LLM.Config
   alias Tars.Policy
   alias Tars.Scope
@@ -147,7 +161,8 @@ defmodule Tars.LLM.ToolRunner do
 
     * `:authorize` - whether to consult the scope's policy, `true` by default.
       A resumed call passes `false`: the decision has already been made, and
-      asking again would park it forever.
+      asking again would park it forever. A person has decided, so the call
+      also runs where the ledger holds it as pending.
   """
   @spec execute(Tool.call(), Scope.t(), keyword()) :: outcome()
   def execute(%{name: name} = call, %Scope{} = scope, opts \\ []) do
@@ -238,7 +253,7 @@ defmodule Tars.LLM.ToolRunner do
 
     try do
       case decide(call, scope, opts) do
-        :allow -> invoke(call, scope)
+        :allow -> recorded(call, scope, approved?(opts))
         {:deny, reason} -> deny(call, scope, reason)
         {:ask, prompt} -> park(call, scope, prompt)
       end
@@ -248,9 +263,70 @@ defmodule Tars.LLM.ToolRunner do
   end
 
   defp decide(call, scope, opts) do
-    if Keyword.get(opts, :authorize, true),
-      do: Policy.authorize(scope.policy, call, scope),
-      else: :allow
+    if approved?(opts), do: :allow, else: Policy.authorize(scope.policy, call, scope)
+  end
+
+  # A call run with `authorize: false` is one a person has already approved.
+  defp approved?(opts), do: not Keyword.get(opts, :authorize, true)
+
+  # A call is claimed before it runs, so a replay knows it began, and settled
+  # after, so a replay knows what it returned.
+  defp recorded(call, %Scope{ledger: nil} = scope, _approved?), do: invoke(call, scope)
+
+  defp recorded(call, %Scope{ledger: ledger} = scope, approved?) do
+    key = Ledger.key(scope, call)
+
+    case Ledger.claim(ledger, key, call) do
+      :ok ->
+        run_claimed(call, scope, ledger, key)
+
+      {:settled, result} ->
+        replayed(call, scope, result)
+
+      {:pending, _entry} when approved? ->
+        run_claimed(call, scope, ledger, key)
+
+      {:pending, _entry} ->
+        park(call, scope, pending_prompt(call))
+
+      {:error, reason} ->
+        deny(
+          call,
+          scope,
+          "Tars could not record this call before running it, so it did not run: #{inspect(reason)}"
+        )
+    end
+  end
+
+  # A tool may ask to park, which ReqLLM's spec for its answer does not allow
+  # for; see `answered/3`.
+  @dialyzer {:nowarn_function, run_claimed: 4}
+
+  defp run_claimed(call, scope, ledger, key) do
+    case invoke(call, scope) do
+      {:parked, _prompt} = parked ->
+        _ = Ledger.release(ledger, key)
+        parked
+
+      result ->
+        with {:error, reason} <- Ledger.settle(ledger, key, result) do
+          Logger.warning(
+            "#{call.name} ran, but what it returned was not recorded: #{inspect(reason)}"
+          )
+        end
+
+        result
+    end
+  end
+
+  defp replayed(%{id: id, name: name}, scope, result) do
+    Event.emit(scope.source, {:tool_replayed, id, name, result})
+    result
+  end
+
+  defp pending_prompt(%{name: name}) do
+    "#{name} began before this agent was interrupted, and may already have done what it does. " <>
+      "Approve to run it again, or deny to tell the agent it may have run."
   end
 
   # Registration is best-effort bookkeeping for an operator, so a duplicate id

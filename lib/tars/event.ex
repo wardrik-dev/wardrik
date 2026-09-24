@@ -46,6 +46,8 @@ defmodule Tars.Event do
     * `{:tool_started, call_id, name}`, `{:tool_finished, call_id, name, result}`
     * `{:tool_denied, call_id, name, reason}`, `{:tool_parked, call_id, name, prompt}`
     * `{:tool_progress, call_id, name, progress, total}`
+    * `{:tool_replayed, call_id, name, result}`, a call answered from the
+      ledger without running again
   """
   @type payload() ::
           {:turn_started, [String.t()]}
@@ -68,6 +70,7 @@ defmodule Tars.Event do
           | {:deadline_reached, non_neg_integer()}
           | {:tool_started, String.t(), String.t()}
           | {:tool_finished, String.t(), String.t(), term()}
+          | {:tool_replayed, String.t(), String.t(), term()}
           | {:tool_denied, String.t(), String.t(), String.t()}
           | {:tool_parked, String.t(), String.t(), String.t()}
           | {:tool_progress, String.t(), String.t(), number(), number() | nil}
