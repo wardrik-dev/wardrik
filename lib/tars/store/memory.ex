@@ -70,8 +70,15 @@ defmodule Tars.Store.Memory do
   end
 
   @impl Tars.Store
-  def delete(ns, key) do
-    Agent.update(__MODULE__, &Map.delete(&1, {ns, key}))
+  def delete(ns, key, opts) do
+    Agent.get_and_update(__MODULE__, fn state ->
+      current = Map.get(state, {ns, key})
+
+      case Keyword.fetch(opts, :if_vsn) do
+        {:ok, vsn} when current != nil and elem(current, 1) != vsn -> {{:error, :conflict}, state}
+        _unconditional_or_current -> {:ok, Map.delete(state, {ns, key})}
+      end
+    end)
   end
 
   @impl Tars.Store

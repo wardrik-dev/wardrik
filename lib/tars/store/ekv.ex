@@ -52,12 +52,19 @@ defmodule Tars.Store.EKV do
   def lookup(ns, key), do: EKV.lookup(@name, path(ns, key))
 
   @impl Tars.Store
-  def delete(ns, key) do
-    case EKV.delete(@name, path(ns, key)) do
+  def delete(ns, key, opts) do
+    case EKV.delete(@name, path(ns, key), delete_opts(opts)) do
       :ok -> :ok
       {:ok, _vsn} -> :ok
       {:error, :not_found} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp delete_opts(opts) do
+    case Keyword.fetch(opts, :if_vsn) do
+      {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
+      :error -> []
     end
   end
 

@@ -54,6 +54,9 @@ defmodule Tars.Store do
   @typedoc "Options a read takes. `:consistent` reads through consensus where the adapter has one."
   @type get_opts() :: [consistent: boolean()]
 
+  @typedoc "Options a delete takes. `:if_vsn` deletes only the version `lookup/2` reported."
+  @type delete_opts() :: [if_vsn: vsn()]
+
   @doc "The child that runs this adapter, or `nil` for one that runs elsewhere."
   @callback child_spec(keyword()) :: Supervisor.child_spec() | nil
 
@@ -68,7 +71,7 @@ defmodule Tars.Store do
   @callback lookup(ns(), key()) :: {term(), vsn()} | nil
 
   @doc "Removes a key. Removing one that is not there is `:ok`."
-  @callback delete(ns(), key()) :: :ok | {:error, term()}
+  @callback delete(ns(), key(), delete_opts()) :: :ok | {:error, :conflict | term()}
 
   @doc "Every key in a namespace starting with `prefix`."
   @callback keys(ns(), prefix :: String.t()) :: [key()]
@@ -126,8 +129,15 @@ defmodule Tars.Store do
   @spec lookup(ns(), key()) :: {term(), vsn()} | nil
   def lookup(ns, key) when is_atom(ns) and is_binary(key), do: adapter().lookup(ns, key)
 
-  @spec delete(ns(), key()) :: :ok | {:error, term()}
-  def delete(ns, key) when is_atom(ns) and is_binary(key), do: adapter().delete(ns, key)
+  @doc """
+  Removes `key`. With `if_vsn: vsn` it removes only that version, answering
+  `{:error, :conflict}` where the key has been written since. A key written
+  conditionally is deleted conditionally: an adapter may refuse otherwise.
+  Deleting a key nothing holds is `:ok`.
+  """
+  @spec delete(ns(), key(), delete_opts()) :: :ok | {:error, :conflict | term()}
+  def delete(ns, key, opts \\ []) when is_atom(ns) and is_binary(key),
+    do: adapter().delete(ns, key, opts)
 
   @spec keys(ns(), String.t()) :: [key()]
   def keys(ns, prefix \\ "") when is_atom(ns) and is_binary(prefix),

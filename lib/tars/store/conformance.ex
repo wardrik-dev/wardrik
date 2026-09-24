@@ -67,9 +67,22 @@ defmodule Tars.Store.Conformance do
           key = conformance_key(context)
 
           {:ok, _vsn} = @adapter.put(@ns, key, :value, [])
-          assert :ok = @adapter.delete(@ns, key)
+          assert :ok = @adapter.delete(@ns, key, [])
           assert @adapter.get(@ns, key, []) == nil
-          assert :ok = @adapter.delete(@ns, key)
+          assert :ok = @adapter.delete(@ns, key, [])
+        end
+
+        test "a conditional delete removes only the version read", context do
+          key = conformance_key(context)
+
+          {:ok, first} = @adapter.put(@ns, key, :first, if_vsn: nil)
+          {:ok, second} = @adapter.put(@ns, key, :second, if_vsn: first)
+
+          assert {:error, :conflict} = @adapter.delete(@ns, key, if_vsn: first)
+          assert {:second, ^second} = @adapter.lookup(@ns, key)
+
+          assert :ok = @adapter.delete(@ns, key, if_vsn: second)
+          assert @adapter.lookup(@ns, key) == nil
         end
 
         test "lists the keys under a prefix, in the namespace alone", context do
