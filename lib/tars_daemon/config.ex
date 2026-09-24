@@ -51,7 +51,8 @@ defmodule TarsDaemon.Config do
   `TarsMCP.Server`.
 
   `oauth` takes `client`, `redirect` and `providers`, as `TarsOAuth.Config`
-  describes them. `vault` takes `keys`, as `TarsVault` does.
+  describes them. `vault` takes `keys`, as `TarsVault` does. `ssh` takes
+  `port` and `ip`, as `TarsDaemon.SSH` does.
 
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
   or a server that is neither a command nor a URL, and says where.
@@ -68,9 +69,10 @@ defmodule TarsDaemon.Config do
   @redirect ~w(uri port open)a
   @provider ~w(resource issuer client_id client_secret redirect_uri scopes)a
   @vault ~w(keys)a
+  @ssh ~w(port ip)a
 
   @settings Map.new(
-              @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault,
+              @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault ++ @ssh,
               &{Atom.to_string(&1), &1}
             )
 
@@ -81,11 +83,16 @@ defmodule TarsDaemon.Config do
   @redirect_keys Enum.map(@redirect, &Atom.to_string/1)
   @provider_keys Enum.map(@provider, &Atom.to_string/1)
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
+  @ssh_keys Enum.map(@ssh, &Atom.to_string/1)
   @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
 
   @doc "Where `config.yaml` is read from: `TARS_CONFIG_DIR`, or `tars` under the XDG config home."
   @spec config_dir() :: Path.t()
   def config_dir, do: dir("TARS_CONFIG_DIR", "XDG_CONFIG_HOME", "~/.config")
+
+  @doc "Where what the daemon makes for itself is kept: `tars` under the XDG data home."
+  @spec data_dir() :: Path.t()
+  def data_dir, do: dir("TARS_DATA_HOME", "XDG_DATA_HOME", "~/.local/share")
 
   @doc "Where logs are written: `TARS_STATE_DIR`, or `tars` under the XDG state home."
   @spec state_dir() :: Path.t()
@@ -129,10 +136,20 @@ defmodule TarsDaemon.Config do
 
   defp settings(document) do
     Enum.map(document, fn
-      {"mcp", servers} -> {TarsMCP, servers: servers(table!(servers, ["mcp"]))}
-      {"oauth", oauth} -> {TarsOAuth, oauth(table!(oauth, ["oauth"]))}
-      {"vault", vault} -> {TarsVault, vault(table!(vault, ["vault"]))}
-      {section, _value} -> invalid!([section], "is not a section; expected mcp, oauth or vault")
+      {"mcp", servers} ->
+        {TarsMCP, servers: servers(table!(servers, ["mcp"]))}
+
+      {"oauth", oauth} ->
+        {TarsOAuth, oauth(table!(oauth, ["oauth"]))}
+
+      {"vault", vault} ->
+        {TarsVault, vault(table!(vault, ["vault"]))}
+
+      {"ssh", ssh} ->
+        {TarsDaemon.SSH, ssh(table!(ssh, ["ssh"]))}
+
+      {section, _value} ->
+        invalid!([section], "is not a section; expected mcp, oauth, vault or ssh")
     end)
   end
 
@@ -206,6 +223,25 @@ defmodule TarsDaemon.Config do
   end
 
   defp vault(vault), do: options(vault, @vault_keys, ["vault"])
+
+  defp ssh(ssh) do
+    known!(ssh, @ssh_keys, ["ssh"])
+
+    Enum.map(ssh, fn
+      {"port", port} when is_integer(port) and port in 1..65_535 -> {:port, port}
+      {"port", _port} -> invalid!(["ssh", "port"], "is a port number")
+      {"ip", ip} -> {:ip, address!(ip)}
+    end)
+  end
+
+  defp address!(ip) when is_binary(ip) do
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, address} -> address
+      {:error, _reason} -> invalid!(["ssh", "ip"], "is an address, such as 127.0.0.1 or 0.0.0.0")
+    end
+  end
+
+  defp address!(_ip), do: invalid!(["ssh", "ip"], "is an address, such as 127.0.0.1 or 0.0.0.0")
 
   # -- tables ----------------------------------------------------------------
 

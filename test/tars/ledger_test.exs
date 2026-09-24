@@ -128,4 +128,35 @@ defmodule Tars.LedgerTest do
       assert :error = Ledger.fetch(Wrong, key)
     end
   end
+
+  describe "release" do
+    defp claim_key, do: {"release-#{System.unique_integer([:positive])}/_/a", "trace/call_1"}
+    defp a_call, do: %{id: "call_1", name: "connect", arguments: %{}}
+
+    test "removes a claim that never settled, so the call can be claimed again" do
+      key = claim_key()
+      :ok = Tars.Ledger.claim(Tars.Ledger.Store, key, a_call())
+
+      assert :ok = Tars.Ledger.release(Tars.Ledger.Store, key)
+      assert :ok = Tars.Ledger.claim(Tars.Ledger.Store, key, a_call())
+    end
+
+    test "leaves a settled claim, and answers for one that was never made" do
+      key = claim_key()
+      :ok = Tars.Ledger.claim(Tars.Ledger.Store, key, a_call())
+      :ok = Tars.Ledger.settle(Tars.Ledger.Store, key, {:ok, %{"done" => true}})
+
+      assert :ok = Tars.Ledger.release(Tars.Ledger.Store, key)
+
+      assert {:settled, {:ok, %{"done" => true}}} =
+               Tars.Ledger.claim(Tars.Ledger.Store, key, a_call())
+
+      assert :ok = Tars.Ledger.release(Tars.Ledger.Store, claim_key())
+    end
+
+    test "is a no-op without a ledger, or with one that keeps no releases" do
+      assert :ok = Tars.Ledger.release(nil, claim_key())
+      assert :ok = Tars.Ledger.release(Tars.Test.EchoTool, claim_key())
+    end
+  end
 end

@@ -50,6 +50,28 @@ defmodule TarsTUI.App do
   @spec default_sidebar_width() :: pos_integer()
   def default_sidebar_width, do: @sidebar_width
 
+  # A frame's compositor cells are a large, short-lived allocation. The view
+  # process starts with room for them, rather than growing its heap on the way
+  # through each one.
+  @view_heap_words 2_000_000
+
+  @doc """
+  What `Breeze.Server` runs this app with, `start_opts` being what `mount/2`
+  is given. The terminal launcher and every SSH session run it the same way.
+  """
+  @spec server_opts(keyword()) :: keyword()
+  def server_opts(start_opts) do
+    [
+      view: __MODULE__,
+      start_opts: start_opts,
+      global_keybindings: keybindings(),
+      mouse: true,
+      logger: false,
+      inspector: false,
+      internal: [child_process_flags: [min_heap_size: @view_heap_words]]
+    ]
+  end
+
   @doc """
   Keybindings that work wherever focus is. Pass them as `:global_keybindings`
   when starting the session.

@@ -627,7 +627,7 @@ defmodule TarsTUI.App.FleetTest do
     assert text =~ "spawned #{key} in the background"
     assert text =~ "attaches"
     assert text =~ "sent to #{key}: look into it"
-    assert text =~ inspect(agent_id)
+    assert text =~ agent_id
     assert text =~ "› ○ watched"
     assert Fleet.whereis(key)
     assert_receive {:turn, [{:user, "look into it"}]}

@@ -146,6 +146,17 @@ defmodule TarsDaemon.ConfigTest do
       assert message =~ "mcp.a.credential is user:NAME, org:NAME or named:NAME"
     end
 
+    test "ssh moves the listener", context do
+      assert {:ok, [{TarsDaemon.SSH, ssh}]} = read("ssh:\n  port: 2022\n  ip: 0.0.0.0\n", context)
+      assert ssh[:port] == 2022
+      assert ssh[:ip] == {0, 0, 0, 0}
+
+      assert {:error, port} = read("ssh:\n  port: 70000\n", context)
+      assert port =~ "ssh.port is a port number"
+      assert {:error, ip} = read("ssh:\n  ip: nowhere\n", context)
+      assert ip =~ "ssh.ip is an address"
+    end
+
     test "an unknown section is refused", context do
       assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"

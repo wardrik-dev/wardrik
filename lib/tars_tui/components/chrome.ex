@@ -111,10 +111,18 @@ defmodule TarsTUI.Components.Chrome do
     [
       Render.tag(" tars", [:bright, :cyan]),
       if(assigns.verbose, do: Render.tag(" [trace]", :yellow), else: ""),
-      Render.dim(" · #{inspect(assigns.model)} · #{inspect(assigns.agent_id)}")
+      Render.dim(" · #{model_name(assigns.model)} · #{assigns.agent_id}")
     ]
     |> Enum.join()
   end
+
+  # A model as a person names it: `provider:model`.
+  defp model_name(spec) when is_binary(spec), do: spec
+
+  defp model_name({provider, opts}) when is_atom(provider) and is_list(opts),
+    do: "#{provider}:#{opts[:model] || opts[:id]}"
+
+  defp model_name(spec), do: inspect(spec)
 
   # A brief notice takes the row while it shows.
   defp status_text(%{notice: {_ref, text}}, width),

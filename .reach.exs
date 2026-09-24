@@ -30,7 +30,7 @@
       vault: [:core],
       oauth: [:core, :vault],
       tui: [:core],
-      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua, :policy],
+      daemon: [:core, :mcp, :oauth, :vault, :brave, :research, :lua, :policy, :tui],
       policy: [:core],
       console: [:core],
       demo: [:core],

@@ -865,6 +865,12 @@ defmodule TarsTUI.View do
   def editor_failed(:no_editor),
     do: [Text.tag("\n✗ no editor · set $VISUAL or $EDITOR to edit the prompt\n", :red)]
 
+  def editor_failed(:remote),
+    do:
+      brief(
+        "the editor is only offered in a local terminal · over SSH it would run on the server"
+      )
+
   def editor_failed({:exit, status}),
     do: brief("the editor exited with status #{status} · the prompt is as it was")
 

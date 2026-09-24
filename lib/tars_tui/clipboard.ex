@@ -28,6 +28,20 @@ defmodule TarsTUI.Clipboard do
     end)
   end
 
+  @doc """
+  A copy that goes to the clipboard of whoever is at the other end of a
+  terminal, as an OSC 52 escape sequence handed to `write`. What an SSH
+  session copies with: the tools `copy/1` runs would copy on the server. Most
+  terminals honour it; some ask first, and tmux needs `set-clipboard on`.
+  """
+  @spec osc52((String.t() -> term())) :: (String.t() -> result())
+  def osc52(write) when is_function(write, 1) do
+    fn text when is_binary(text) ->
+      write.("\e]52;c;" <> Base.encode64(text) <> "\a")
+      :ok
+    end
+  end
+
   @doc "Copies `text` to the clipboard."
   @spec copy(String.t()) :: result()
   def copy(text) when is_binary(text) do

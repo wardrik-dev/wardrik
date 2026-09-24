@@ -33,6 +33,7 @@ Usage: tars COMMAND
   parked    the calls agents are waiting on a person for
   approve KEY CALL           run a parked call
   deny KEY CALL [REASON]     refuse a parked call
+  attach [HOST]              the TUI, over SSH to HOST, localhost by default
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
   version   print the version
@@ -105,6 +106,9 @@ case "${1:-}" in
   deny)
     [ $# -ge 3 ] || { echo "Usage: tars deny KEY CALL [REASON]" >&2; exit 1; }
     cli "$@"
+    ;;
+  attach)
+    exec ssh -t -p "${TARS_SSH_PORT:-2222}" "${USER}@${2:-localhost}"
     ;;
   remote)
     exec "$node" remote

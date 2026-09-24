@@ -81,8 +81,10 @@ defmodule Tars.MixProject do
       {:group, "~> 0.2.1"},
       {:ekv, "~> 0.4.3"},
 
-      # Used by lib/tars_tui, not by core. Pinned: pre-1.0.
+      # Used by lib/tars_tui, not by core. Pinned: pre-1.0. termite_ssh serves
+      # the TUI over SSH, a session per client.
       {:breeze, "0.5.1"},
+      {:termite_ssh, "~> 0.1.2"},
 
       # Used by the bolt-on tool packages under lib/tars_brave, not by core.
       {:req, "~> 0.7"},

@@ -445,6 +445,21 @@ A file is read into a value, not kept as one: an agent file into a
 policy, so it is written to the store with the agent and decides the same way
 on whichever node holds it next.
 
+The TUI is served over SSH once `~/.config/tars/ssh/authorized_keys` lists a
+key, in OpenSSH's format. The daemon listens on port 2222 on loopback, a
+client holding a listed key connects under any user name, and each connection
+is a session of its own on the fleet:
+
+```sh
+ssh -p 2222 jon@localhost      # or: tars attach
+ssh -L 2222:localhost:2222 box # a daemon on another machine, through a tunnel
+```
+
+The file is read at every login, so a key added or removed counts from the
+next connection. Quitting ends the session and nothing else. `ssh:` in
+`config.yaml` sets `port`, and `ip` to listen beyond loopback. The host key is
+made on first start under `~/.local/share/tars/ssh`.
+
 An MCP command sees only a few of the daemon's environment variables
 (`HOME`, `PATH`, `USER` and the like) beside the ones its server sets, so the
 cookie and every key the daemon holds stay with the daemon.
@@ -460,6 +475,7 @@ config :tars, :children, [MyApp.Host]
 | | |
 | --- | --- |
 | **`TARS_CONFIG_DIR`**, **`TARS_STATE_DIR`** | the config and state directories, when not the XDG ones |
+| **`TARS_DATA_HOME`** | where the daemon keeps what it makes for itself, its host key among them, when not the XDG data home |
 | **`TARS_DATA_DIR`**, **`TARS_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
 | **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tarsd@localhost`; `any` listens everywhere |
 | **`TARS_LOG`** | the log file, or `-` for the terminal |

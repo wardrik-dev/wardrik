@@ -16,11 +16,14 @@ defmodule TarsDaemon do
       goes to `log/mcp.log` in the state directory.
     * `TarsOAuth.Supervisor`, when a provider is configured.
     * `TarsDaemon.Agents`, which runs the agents `agents/` declares.
+    * `TarsDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
+      in the config directory lets anyone in.
 
   A `config.yaml` that does not read stops the boot, with the reason logged.
 
-  `:config_dir` and `:state_dir` override `TarsDaemon.Config.config_dir/0`
-  and `TarsDaemon.Config.state_dir/0`.
+  `:config_dir`, `:state_dir` and `:data_dir` override
+  `TarsDaemon.Config.config_dir/0`, `TarsDaemon.Config.state_dir/0` and
+  `TarsDaemon.Config.data_dir/0`.
 
   ## From a shell
 
@@ -33,6 +36,7 @@ defmodule TarsDaemon do
       tars parked    # what is waiting on a person
       tars approve KEY CALL
       tars deny KEY CALL [REASON]
+      tars attach    # the TUI, over SSH
       tars remote    # an IEx shell on the node
       tars logs      # follow the log
       tars stop
@@ -49,11 +53,12 @@ defmodule TarsDaemon do
   def start_link(opts \\ []) do
     config_dir = Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0)
     state_dir = Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0)
+    data_dir = Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
 
     case Config.read(Path.join(config_dir, "config.yaml")) do
       {:ok, settings} ->
         :ok = Config.apply(settings)
-        Supervisor.start_link(__MODULE__, {config_dir, state_dir}, name: __MODULE__)
+        Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
 
       {:error, message} ->
         Logger.error(message)
@@ -62,11 +67,12 @@ defmodule TarsDaemon do
   end
 
   @impl true
-  def init({config_dir, state_dir}) do
+  def init({config_dir, state_dir, data_dir}) do
     children =
       mcp(Path.join([state_dir, "log", "mcp.log"])) ++
         oauth() ++
-        [{TarsDaemon.Agents, dir: config_dir}]
+        [{TarsDaemon.Agents, dir: config_dir}] ++
+        TarsDaemon.SSH.children(config_dir, data_dir)
 
     Supervisor.init(children, strategy: :one_for_one)
   end

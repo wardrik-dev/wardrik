@@ -3,11 +3,6 @@ defmodule Mix.Tasks.Tars do
 
   @default_tools [TarsBrave.WebSearch, TarsResearch.Deep]
 
-  # A frame's compositor cells are a large, short-lived allocation. The view
-  # process starts with room for them, rather than growing its heap on the way
-  # through each one.
-  @view_heap_words 2_000_000
-
   @moduledoc """
   Starts an agent and attaches the full-screen `TarsTUI.App` to it.
 
@@ -143,20 +138,15 @@ defmodule Mix.Tasks.Tars do
 
     :ok =
       Breeze.Server.run(
-        view: TarsTUI.App,
-        start_opts:
+        TarsTUI.App.server_opts(
           [
             agent: agent_id,
             agent_id: agent_id,
             spawn_opts: spawn_opts,
             model: config.model_spec,
             verbose: opts[:verbose] || false
-          ] ++ sidebar_width(opts),
-        global_keybindings: TarsTUI.App.keybindings(),
-        mouse: true,
-        logger: false,
-        inspector: false,
-        internal: [child_process_flags: [min_heap_size: @view_heap_words]]
+          ] ++ sidebar_width(opts)
+        )
       )
   end
 
