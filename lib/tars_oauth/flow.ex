@@ -17,7 +17,8 @@ defmodule TarsOAuth.Flow do
        registered by hand
     2. the client's own metadata document URL, where the server supports Client
        ID Metadata Documents
-    3. dynamic client registration, where it has an endpoint for it
+    3. dynamic client registration, where it has an endpoint for it, asking for
+     the device grant too where the server offers it
 
   A server offering none of the three cannot be reached without a `:client_id`,
   and says so.
@@ -126,7 +127,11 @@ defmodule TarsOAuth.Flow do
   end
 
   defp dynamic(%Metadata{} = metadata, %Client{} = client, %Provider{} = provider) do
-    body = client |> Client.registration() |> Map.put("scope", Enum.join(provider.scopes, " "))
+    body =
+      client
+      |> Client.registration()
+      |> Map.put("scope", Enum.join(provider.scopes, " "))
+      |> device_grant(metadata)
 
     options =
       Keyword.merge(
@@ -146,6 +151,14 @@ defmodule TarsOAuth.Flow do
       {:error, reason} ->
         {:error, {:registration_unreachable, reason}}
     end
+  end
+
+  # A client registered where the server offers the device grant may use it,
+  # as well as the code flow.
+  defp device_grant(body, %Metadata{} = metadata) do
+    if TarsOAuth.Device.offered?(metadata),
+      do: Map.update!(body, "grant_types", &(&1 ++ [TarsOAuth.Device.grant()])),
+      else: body
   end
 
   defp identity(client_id, %Provider{} = provider, %Client{} = client, how) do

@@ -1,7 +1,8 @@
 defmodule TarsOAuth.Supervisor do
   @moduledoc """
-  What `TarsOAuth` needs running: the flows under way, and the loopback the
-  browser comes back to.
+  What `TarsOAuth` needs running: the flows under way, the tasks that ask
+  whether a user has entered a device code, and the loopback the browser
+  comes back to.
 
       children = [TarsOAuth.Supervisor]
 
@@ -22,7 +23,7 @@ defmodule TarsOAuth.Supervisor do
 
   @impl Supervisor
   def init(opts) do
-    children = [{Pending, opts}] ++ loopback(opts)
+    children = [{Pending, opts}, {Task.Supervisor, name: TarsOAuth.Tasks}] ++ loopback(opts)
 
     Supervisor.init(children, strategy: :one_for_one)
   end

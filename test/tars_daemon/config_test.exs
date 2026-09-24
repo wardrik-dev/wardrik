@@ -215,6 +215,24 @@ defmodule TarsDaemon.ConfigTest do
       assert message =~ "both config.yaml and config.yml"
     end
 
+    test "a provider names how its users authorize", context do
+      assert {:ok, [{TarsOAuth, oauth}]} =
+               read(
+                 "oauth:\n  providers:\n    github:\n      resource: https://x\n      flow: device\n",
+                 context
+               )
+
+      assert oauth[:providers][:github][:flow] == :device
+
+      assert {:error, message} =
+               read(
+                 "oauth:\n  providers:\n    github:\n      resource: https://x\n      flow: phone\n",
+                 context
+               )
+
+      assert message =~ "oauth.providers.github.flow is auto, browser or device"
+    end
+
     test "a cluster of nodes on this machine is found by name, and counted", context do
       assert {:ok, [{TarsDaemon.Cluster, cluster}]} =
                read("cluster:\n  nodes: [a, b, c]\n", context)

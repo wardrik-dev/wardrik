@@ -169,6 +169,7 @@ resolves it:
 case Tars.Credential.resolve(scope, {:user, "github"}) do
   {:ok, credential} -> call(Tars.Credential.reveal(credential))
   {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
+  {:error, {:authorization_required, url, code}} -> {:park, "Enter #{code} at #{url}"}
 end
 ```
 
@@ -184,12 +185,24 @@ TarsVault.put({:user, "github"}, "jon", "ghp_xxx")
 ```
 
 `TarsOAuth` gets them by asking the user instead. It discovers the
-authorization server from the resource, presents whichever client identity the
-server will accept — one registered by hand, its own metadata document, or a
-dynamic registration — and runs authorization code with PKCE. A user who has
-not authorized yet parks the turn on a link; following it and answering `y`
-runs the call again with the token, which is then sealed by `TarsVault` and
-refreshed without asking again.
+authorization server from the resource, and presents whichever client identity
+the server will accept — one registered by hand, its own metadata document, or
+a dynamic registration. A user who has not authorized yet parks the turn, and
+authorizes one of two ways:
+
+- **in a browser**, authorization code with PKCE: a link that comes back to
+  the deployment's redirect URI, the daemon's own loopback by default.
+- **on another device**, the device authorization grant (RFC 8628), for any
+  server that offers it: a code to enter at the server's page, from a phone
+  or any browser anywhere, while the daemon asks the server whether they have.
+  Nothing comes back to the daemon, so one on a server with no browser and no
+  open port can be authorized from Slack.
+
+Either way the parked call runs again by itself once they have, with the
+token, which is then sealed by `TarsVault` and refreshed without asking again.
+A provider's `flow` is `browser`, `device`, or `auto`, the default: on another
+device where the server offers it and the daemon has no browser of its own to
+send the user through, and in a browser otherwise.
 
 ```elixir
 config :tars, TarsOAuth,
@@ -199,7 +212,8 @@ config :tars, TarsOAuth,
       resource: "https://api.githubcopilot.com/mcp/",
       client_id: System.get_env("GITHUB_CLIENT_ID"),
       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-      scopes: ~w(repo)
+      scopes: ~w(repo),
+      flow: :auto
     ]
   ]
 ```

@@ -75,11 +75,18 @@ defmodule TarsOAuth.Case do
     * `:cimd` - advertise Client ID Metadata Document support
     * `:register` - advertise a registration endpoint
     * `:oidc_only` - publish OpenID configuration and no OAuth metadata
+    * `:device` - advertise a device authorization endpoint, answering with
+      `device/1` merged with this map where it is one, and without the keys
+      it sets to `nil`
     * `:token` - the body the token endpoint answers with
+    * `:tokens` - what the token endpoint answers each request with, in turn,
+      as `{status, body}`, and `:token` once they run out
   """
   @spec stub_server(keyword()) :: :ok
   def stub_server(opts \\ []) do
     test = self()
+    {:ok, tokens} = Agent.start_link(fn -> Keyword.get(opts, :tokens, []) end)
+    opts = Keyword.put(opts, :tokens, tokens)
 
     Req.Test.stub(@stub, fn conn ->
       {:ok, body, conn} = read_body(conn)
@@ -108,11 +115,25 @@ defmodule TarsOAuth.Case do
           "client_secret" => "registered-secret"
         })
 
+      {"POST", "/device"} ->
+        Req.Test.json(conn, device(device_overrides(opts[:device])))
+
       {"POST", "/token"} ->
-        Req.Test.json(conn, opts[:token] || token())
+        token_answer(conn, opts)
 
       {_method, _path} ->
         Plug.Conn.resp(conn, 404, "no")
+    end
+  end
+
+  defp device_overrides(overrides) when is_map(overrides), do: overrides
+  defp device_overrides(_advertised), do: %{}
+
+  # The next of the answers a test lined up, and the token once they run out.
+  defp token_answer(conn, opts) do
+    case Agent.get_and_update(opts[:tokens], &Enum.split(&1, 1)) do
+      [{status, body}] -> conn |> Plug.Conn.put_status(status) |> Req.Test.json(body)
+      [] -> Req.Test.json(conn, opts[:token] || token())
     end
   end
 
@@ -132,6 +153,25 @@ defmodule TarsOAuth.Case do
         do: Map.put(&1, "registration_endpoint", "https://auth.example.com/register"),
         else: &1
     )
+    |> then(
+      &if opts[:device],
+        do: Map.put(&1, "device_authorization_endpoint", "https://auth.example.com/device"),
+        else: &1
+    )
+  end
+
+  @doc "A device authorization endpoint's answer, with `overrides` merged in."
+  @spec device(map()) :: map()
+  def device(overrides \\ %{}) do
+    %{
+      "device_code" => "dc_first",
+      "user_code" => "WDJB-MJHT",
+      "verification_uri" => "https://auth.example.com/activate",
+      "expires_in" => 900,
+      "interval" => 0
+    }
+    |> Map.merge(overrides)
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
   end
 
   @doc "A token endpoint's answer, with `overrides` merged in."

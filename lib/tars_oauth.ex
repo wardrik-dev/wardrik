@@ -17,12 +17,30 @@ defmodule TarsOAuth do
 
       Tars.Fleet.spawn("assistant", config: config, credentials: TarsOAuth)
 
-  `{:user, "github"}` then resolves to that user's access token, and a user who
-  has not authorized yet gets `{:error, {:authorization_required, url}}` — a
-  tool parks on that, and approving the parked call runs it again with the
-  token in hand. Where the callback comes back to this machine the link is
-  opened in a browser as the flow starts, since there is one there; see
-  `TarsOAuth.Browser`.
+  `{:user, "github"}` then resolves to that user's access token. A user who
+  has not authorized yet is asked to, a tool parks on the answer, and the
+  parked call runs again with the token in hand once they have, with nobody
+  approving it. They authorize one of two ways, as the provider's `:flow`
+  says; see `TarsOAuth.Provider`:
+
+    * in a browser: `{:error, {:authorization_required, url}}`, a link that
+      comes back to this deployment's redirect URI. Where that is this
+      machine's loopback the link is opened as the flow starts, since there is
+      a browser here; see `TarsOAuth.Browser` and `TarsOAuth.Loopback`.
+    * on another device: `{:error, {:authorization_required, url, code}}`, a
+      code to enter at the server's page, from a phone or any browser at all,
+      while a task here asks the server whether they have; see
+      `TarsOAuth.Device`. Nothing comes back to this machine, so a daemon on a
+      server with no browser and no open port can be authorized from
+      anywhere.
+
+  By default a provider whose server offers the device grant is authorized
+  that way where a browser flow could not finish, on a machine with no
+  browser whose redirect is its own loopback, and in a browser everywhere
+  else.
+
+  `[:tars_oauth, :device, :done]` is emitted as a device flow ends, with the
+  provider, the owner, and `:authorized` or why not as its metadata.
 
   Tokens are kept by a `TarsOAuth.Tokens` module, `TarsOAuth.Tokens.Vault` by
   default: sealed by `TarsVault`, inside the customer's network. Tars is not a
@@ -53,6 +71,7 @@ defmodule TarsOAuth do
   alias TarsOAuth.Browser
   alias TarsOAuth.Client
   alias TarsOAuth.Config
+  alias TarsOAuth.Device
   alias TarsOAuth.Flow
   alias TarsOAuth.Loopback
   alias TarsOAuth.Metadata
@@ -211,43 +230,157 @@ defmodule TarsOAuth do
   end
 
   # A flow already under way is offered again rather than restarted: an agent
-  # retrying a parked call should keep showing the same link.
+  # retrying a parked call should keep showing the same link, or code.
   defp begin(%Provider{} = provider, owner) do
     resume = Credential.continuation()
 
     case Pending.under_way(provider.name, owner, resume) do
-      {:ok, %Flight{url: url}} -> {:error, {:authorization_required, url}}
+      {:ok, %Flight{} = flight} -> {:error, required(flight)}
       :error -> open(provider, owner, resume)
     end
   end
 
-  defp open(%Provider{} = provider, owner, resume) do
-    with {:ok, metadata, registered} <- prepare(provider) do
-      {verifier, challenge} = Flow.pkce()
-      state = Flow.state()
+  defp required(%Flight{user_code: nil, url: url}), do: {:authorization_required, url}
+  defp required(%Flight{user_code: code, url: url}), do: {:authorization_required, url, code}
 
-      url =
-        Flow.authorize_url(metadata, registered, challenge,
-          state: state,
-          scopes: scopes(provider, metadata)
+  defp open(%Provider{} = provider, owner, resume) do
+    with {:ok, metadata, registered} <- prepare(provider),
+         {:ok, flow} <- flow(provider, metadata) do
+      flight = %Flight{
+        state: Flow.state(),
+        provider: provider,
+        owner: owner,
+        metadata: metadata,
+        registered: registered,
+        url: nil,
+        started_at: System.monotonic_time(:millisecond),
+        resumes: List.wrap(resume)
+      }
+
+      open(flow, flight)
+    end
+  end
+
+  defp open(:browser, %Flight{} = flight) do
+    {verifier, challenge} = Flow.pkce()
+
+    url =
+      Flow.authorize_url(flight.metadata, flight.registered, challenge,
+        state: flight.state,
+        scopes: scopes(flight.provider, flight.metadata)
+      )
+
+    opened(url)
+    {:ok, url} = Pending.start(%{flight | verifier: verifier, url: url})
+
+    {:error, {:authorization_required, url}}
+  end
+
+  defp open(:device, %Flight{} = flight) do
+    request =
+      Device.request(flight.metadata, flight.registered,
+        scopes: scopes(flight.provider, flight.metadata),
+        req_options: Config.req_options()
+      )
+
+    with {:ok, %Device{} = device} <- request do
+      url = device.verification_uri_complete || device.verification_uri
+
+      flight = %{
+        flight
+        | user_code: device.user_code,
+          url: url,
+          expires_after: :timer.seconds(device.expires_in)
+      }
+
+      {:ok, _url} = Pending.start(flight)
+
+      {:ok, _poller} =
+        Task.Supervisor.start_child(TarsOAuth.Tasks, fn -> poll(flight, device) end)
+
+      Logger.info(
+        "To connect #{flight.provider.name} for #{inspect(flight.owner)}, " <>
+          "enter #{device.user_code} at #{url}"
+      )
+
+      {:error, {:authorization_required, url, device.user_code}}
+    end
+  end
+
+  # The provider's flow, where `:auto` is the device grant only where the
+  # server offers it and the browser flow could not finish: its redirect
+  # comes back to this machine's loopback, and there is no browser here.
+  defp flow(%Provider{flow: :browser}, %Metadata{}), do: {:ok, :browser}
+
+  defp flow(%Provider{flow: :device}, %Metadata{} = metadata) do
+    if Device.offered?(metadata),
+      do: {:ok, :device},
+      else: {:error, {:no_device_flow, metadata.issuer}}
+  end
+
+  defp flow(%Provider{flow: :auto}, %Metadata{} = metadata) do
+    if Device.offered?(metadata) and loopback?() and not Browser.available?(),
+      do: {:ok, :device},
+      else: {:ok, :browser}
+  end
+
+  # Asks the token endpoint every interval the server named whether the user
+  # has entered the code, until they have, refused, or let it expire. The
+  # token is written down, and the calls parked on it answered, as a
+  # callback's would be.
+  defp poll(%Flight{} = flight, %Device{} = device) do
+    deadline = flight.started_at + flight.expires_after
+    poll(flight, device, :timer.seconds(device.interval), deadline)
+  end
+
+  defp poll(%Flight{} = flight, %Device{} = device, interval, deadline) do
+    wait = min(interval, max(deadline - System.monotonic_time(:millisecond), 0))
+
+    receive do
+    after
+      wait -> :ok
+    end
+
+    polled =
+      if System.monotonic_time(:millisecond) >= deadline,
+        do: {:error, :expired},
+        else:
+          Device.poll(flight.metadata, flight.registered, device,
+            req_options: Config.req_options()
+          )
+
+    case polled do
+      {:ok, %Token{} = token} ->
+        authorized(flight, token)
+        done(flight, :authorized)
+
+      {:error, reason} ->
+        Pending.drop(flight.state)
+
+        Logger.warning(
+          "#{flight.provider.name} was not connected for #{inspect(flight.owner)}: #{inspect(reason)}"
         )
 
-      opened(url)
+        done(flight, reason)
 
-      {:ok, url} =
-        Pending.start(%Flight{
-          state: state,
-          provider: provider,
-          owner: owner,
-          metadata: metadata,
-          registered: registered,
-          verifier: verifier,
-          url: url,
-          started_at: System.monotonic_time(:millisecond),
-          resumes: List.wrap(resume)
-        })
+      waiting ->
+        poll(flight, device, Device.next_interval(waiting, interval), deadline)
+    end
+  end
 
-      {:error, {:authorization_required, url}}
+  defp done(%Flight{} = flight, outcome) do
+    :telemetry.execute([:tars_oauth, :device, :done], %{}, %{
+      provider: flight.provider.name,
+      owner: flight.owner,
+      outcome: outcome
+    })
+  end
+
+  defp authorized(%Flight{} = flight, %Token{} = token) do
+    with {:ok, %Flight{} = flight} <- claim(flight.state),
+         :ok <- store(flight.provider, flight.owner, token) do
+      Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
+      resume(flight)
     end
   end
 

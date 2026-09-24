@@ -222,7 +222,12 @@ defmodule TarsMCP do
       {:ok, principal}
     else
       {:error, {:authorization_required, url}} ->
-        {:park, "Authorize Tars for #{server.ref}, then say so: #{url}"}
+        {:park, "To connect #{server.ref}, open the link. This carries on once you have: #{url}"}
+
+      {:error, {:authorization_required, url, code}} ->
+        {:park,
+         "To connect #{server.ref}, enter #{code} at the link. " <>
+           "This carries on once you have: #{url}"}
 
       {:error, :no_resolver} ->
         {:error, "#{server.ref} needs a credential and this deployment resolves none"}

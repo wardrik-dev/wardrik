@@ -3,10 +3,11 @@ defmodule TarsOAuth.Pending do
   The authorizations that have been started and not yet come back.
 
   One entry per `state` value: what was being authorized, for whom, the PKCE
-  verifier the callback needs, where to send the token when it arrives, and
-  the calls parked waiting for it. Entries expire, because a user who
-  never finishes should not leave a verifier lying around, and a second
-  attempt should start clean.
+  verifier the callback needs, or the code a user enters on another device,
+  where to send the user, and the calls parked waiting for it. Entries expire
+  after fifteen minutes, or when a device code does, because a user who never
+  finishes should not leave a verifier lying around, and a second attempt
+  should start clean.
 
   A flow already under way for the same user and provider is handed back
   rather than started again, so an agent that retries a parked call keeps
@@ -20,21 +21,11 @@ defmodule TarsOAuth.Pending do
   alias TarsOAuth.Provider
 
   @sweep_every :timer.minutes(1)
-  @expire_after :timer.minutes(15)
 
   defmodule Flight do
     @moduledoc false
 
-    @enforce_keys [
-      :state,
-      :provider,
-      :owner,
-      :metadata,
-      :registered,
-      :verifier,
-      :url,
-      :started_at
-    ]
+    @enforce_keys [:state, :provider, :owner, :metadata, :registered, :url, :started_at]
     defstruct [
       :state,
       :provider,
@@ -42,8 +33,10 @@ defmodule TarsOAuth.Pending do
       :metadata,
       :registered,
       :verifier,
+      :user_code,
       :url,
       :started_at,
+      expires_after: :timer.minutes(15),
       resumes: []
     ]
 
@@ -53,9 +46,11 @@ defmodule TarsOAuth.Pending do
             owner: term(),
             metadata: Metadata.t(),
             registered: Flow.registered(),
-            verifier: String.t(),
+            verifier: String.t() | nil,
+            user_code: String.t() | nil,
             url: String.t(),
             started_at: integer(),
+            expires_after: pos_integer(),
             resumes: [Tars.Credential.continuation()]
           }
   end
@@ -137,7 +132,7 @@ defmodule TarsOAuth.Pending do
   defp add(resumes, nil), do: resumes
   defp add(resumes, resume), do: if(resume in resumes, do: resumes, else: resumes ++ [resume])
 
-  defp expired?(%Flight{started_at: started_at}) do
-    System.monotonic_time(:millisecond) - started_at > @expire_after
+  defp expired?(%Flight{started_at: started_at, expires_after: expires_after}) do
+    System.monotonic_time(:millisecond) - started_at > expires_after
   end
 end

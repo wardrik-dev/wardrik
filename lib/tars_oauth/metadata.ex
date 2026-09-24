@@ -15,7 +15,9 @@ defmodule TarsOAuth.Metadata do
   endpoints itself.
 
   `:client_id_metadata_document_supported` is what decides whether this
-  deployment can present a URL as its `client_id` instead of registering.
+  deployment can present a URL as its `client_id` instead of registering, and
+  `:device_authorization_endpoint` whether a user can authorize from another
+  device; see `TarsOAuth.Device`.
   """
 
   @enforce_keys [:issuer, :authorization_endpoint, :token_endpoint]
@@ -24,6 +26,7 @@ defmodule TarsOAuth.Metadata do
     :authorization_endpoint,
     :token_endpoint,
     :registration_endpoint,
+    :device_authorization_endpoint,
     :resource,
     scopes_supported: [],
     code_challenge_methods_supported: [],
@@ -36,6 +39,7 @@ defmodule TarsOAuth.Metadata do
           authorization_endpoint: String.t(),
           token_endpoint: String.t(),
           registration_endpoint: String.t() | nil,
+          device_authorization_endpoint: String.t() | nil,
           resource: String.t() | nil,
           scopes_supported: [String.t()],
           code_challenge_methods_supported: [String.t()],
@@ -109,6 +113,7 @@ defmodule TarsOAuth.Metadata do
        authorization_endpoint: authorize,
        token_endpoint: token,
        registration_endpoint: body["registration_endpoint"],
+       device_authorization_endpoint: body["device_authorization_endpoint"],
        scopes_supported: body["scopes_supported"] || [],
        code_challenge_methods_supported: body["code_challenge_methods_supported"] || [],
        cimd_supported?: body["client_id_metadata_document_supported"] == true

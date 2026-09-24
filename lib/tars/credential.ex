@@ -8,6 +8,7 @@ defmodule Tars.Credential do
       case Tars.Credential.resolve(scope, {:user, "github"}) do
         {:ok, credential} -> Req.get(url, auth: {:bearer, Tars.Credential.reveal(credential)})
         {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
+        {:error, {:authorization_required, url, code}} -> {:park, "Enter " <> code <> " at " <> url}
         {:error, reason} -> Tars.Tool.Result.error(reason)
       end
 
@@ -47,8 +48,11 @@ defmodule Tars.Credential do
   ## Asking for authorization
 
   `{:error, {:authorization_required, url}}` is a resolver saying the user
-  could have this credential but has not connected yet. A tool answering with
-  `{:park, prompt}` stops the turn until they do; see `c:Tars.Tool.tool/0`.
+  could have this credential but has not connected yet, and connects at
+  `url`. `{:error, {:authorization_required, url, code}}` says the same of a
+  user who connects by entering `code` at `url`, on whatever device they have
+  to hand. A tool answering with `{:park, prompt}` stops the turn until they
+  do; see `c:Tars.Tool.tool/0`.
 
   A resolver that sends the user somewhere else to authorize keeps
   `continuation/0` alongside whatever it started, and applies it when the
@@ -75,6 +79,7 @@ defmodule Tars.Credential do
   @type outcome() ::
           {:ok, t()}
           | {:error, {:authorization_required, String.t()}}
+          | {:error, {:authorization_required, String.t(), String.t()}}
           | {:error, term()}
 
   @typedoc "How to answer the call that a credential is being resolved for."

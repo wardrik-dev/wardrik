@@ -95,7 +95,7 @@ defmodule TarsDaemon.Config do
   @oauth ~w(client redirect providers)a
   @client ~w(name document_url client_uri logo_uri policy_uri tos_uri redirect_uri)a
   @redirect ~w(uri port open)a
-  @provider ~w(resource issuer client_id client_secret redirect_uri scopes)a
+  @provider ~w(resource issuer client_id client_secret redirect_uri scopes flow)a
   @vault ~w(keys)a
   @ssh ~w(port ip)a
   @notifiers %{
@@ -282,8 +282,22 @@ defmodule TarsDaemon.Config do
 
   defp providers(providers) do
     Enum.map(providers, fn {name, provider} ->
-      {name(name), options(provider, @provider_keys, ["oauth", "providers", name])}
+      path = ["oauth", "providers", name]
+      {name(name), provider |> options(@provider_keys, path) |> flow(path)}
     end)
+  end
+
+  defp flow(provider, path) do
+    case Keyword.fetch(provider, :flow) do
+      {:ok, flow} when flow in ["auto", "browser", "device"] ->
+        Keyword.put(provider, :flow, TarsOAuth.Provider.flow!(flow))
+
+      {:ok, _flow} ->
+        invalid!(path ++ ["flow"], "is auto, browser or device")
+
+      :error ->
+        provider
+    end
   end
 
   defp vault(vault), do: options(vault, @vault_keys, ["vault"])

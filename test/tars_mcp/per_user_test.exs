@@ -18,6 +18,9 @@ defmodule TarsMCP.PerUserTest do
     def resolve({:user, "stub"}, %Scope{user: "unconnected"}),
       do: {:error, {:authorization_required, "https://example.com/connect"}}
 
+    def resolve({:user, "stub"}, %Scope{user: "elsewhere"}),
+      do: {:error, {:authorization_required, "https://example.com/device", "WDJB-MJHT"}}
+
     def resolve({:user, "stub"}, %Scope{}), do: {:error, :denied}
   end
 
@@ -62,8 +65,16 @@ defmodule TarsMCP.PerUserTest do
   test "a user who has not authorized parks the call, with somewhere to go", %{ref: ref} do
     assert {:parked, _call, prompt} = run(ref, "unconnected", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "https://example.com/connect"
+    assert prompt =~ "To connect #{ref}, open the link"
+    assert String.ends_with?(prompt, ": https://example.com/connect")
     refute Connection.running?(ref, "unconnected")
+  end
+
+  test "a user who authorizes on another device is given the code to enter", %{ref: ref} do
+    assert {:parked, _call, prompt} = run(ref, "elsewhere", "echo", %{"value" => "hello"})
+
+    assert prompt =~ "To connect #{ref}, enter WDJB-MJHT at the link"
+    assert String.ends_with?(prompt, ": https://example.com/device")
   end
 
   test "a user the resolver refuses is told, and the turn carries on", %{ref: ref} do

@@ -20,6 +20,27 @@ defmodule TarsOAuth.Browser do
 
   @openers ~w(xdg-open open wslview)
 
+  @doc """
+  Whether this machine has a browser to open: a command that opens links,
+  and a desktop for it to open them on, as macOS, WSL, and an X or Wayland
+  session have and a server reached over SSH does not.
+  """
+  @spec available?() :: boolean()
+  def available? do
+    case opener() do
+      nil -> false
+      opener -> desktop?(Path.basename(opener))
+    end
+  end
+
+  defp desktop?("wslview"), do: true
+
+  defp desktop?(_opener) do
+    :os.type() == {:unix, :darwin} or present?("DISPLAY") or present?("WAYLAND_DISPLAY")
+  end
+
+  defp present?(variable), do: System.get_env(variable) not in [nil, ""]
+
   @doc "Opens `url`, and says whether anything took it."
   @spec open(String.t()) :: :ok | {:error, :no_browser}
   def open(url) when is_binary(url) do
