@@ -8,7 +8,9 @@ defmodule TarsDaemon.CLI do
   | --- | --- |
   | `status` | the node, its agents, and each file that does not read |
   | `reload` | reads the agent and policy files again, then answers as `status` |
-  | `parked` | every tool call an agent is waiting on a person for |
+  | `ask KEY MESSAGE` | sends the agent a message, which it answers in a turn of its own |
+  | `history KEY` | the agent's conversation, one message a paragraph |
+  | `parked` | every call an agent is waiting on a person for |
   | `approve KEY CALL` | runs the call, and the agent carries on |
   | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
   """
@@ -26,6 +28,20 @@ defmodule TarsDaemon.CLI do
     ok(TarsDaemon.status())
   end
 
+  def main(["ask", key | words]) when words != [] do
+    case Agent.ask(key, Enum.join(words, " ")) do
+      :ok -> ok("Asked #{key}.")
+      {:error, :not_found} -> fail("No agent runs under #{key}.")
+    end
+  end
+
+  def main(["history", key]) do
+    case Agent.get_context(key) do
+      {:error, :not_found} -> fail("No agent runs under #{key}.")
+      context -> ok(history(context))
+    end
+  end
+
   def main(["parked"]), do: ok(parked())
   def main(["approve", key, call]), do: decide(key, call, :approve, "Approved")
 
@@ -35,6 +51,27 @@ defmodule TarsDaemon.CLI do
   end
 
   def main(args), do: fail("tars: no command #{Enum.join(args, " ")}")
+
+  defp history(context) do
+    case ReqLLM.Context.to_list(context) do
+      [] -> "Nothing has been said yet."
+      messages -> Enum.map_join(messages, "\n\n", &message/1)
+    end
+  end
+
+  defp message(%{role: role} = message), do: "#{role}: #{text(message)}"
+
+  defp text(%{content: content}) when is_binary(content), do: content
+
+  defp text(%{content: parts} = message) when is_list(parts) do
+    written = for %{type: :text, text: text} <- parts, do: text
+
+    calls =
+      for call <- Map.get(message, :tool_calls) || [],
+          do: "[calls #{Pattern.shown(ReqLLM.ToolCall.name(call))}]"
+
+    Enum.join(written ++ calls, " ")
+  end
 
   defp parked do
     rows =

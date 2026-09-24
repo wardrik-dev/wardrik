@@ -58,7 +58,9 @@ defmodule TarsDaemon.AgentFile do
 
   and without one every call the agent's tools allow may run. Rules, named or
   written in place, are a `TarsPolicy`, and the agent carries them: they are
-  written to the store with it and decide its calls on any node.
+  written to the store with it and decide its calls on any node. A policy with
+  a `budget` limits what the agent spends on model calls too, parking it when
+  the budget runs out until a person approves more.
 
   The agent is given the credentials `TarsOAuth` holds where a provider is
   configured, and `TarsVault`'s where the vault has a key.
@@ -119,6 +121,8 @@ defmodule TarsDaemon.AgentFile do
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> Config.new()
 
+    policy = policy(fields["policy"], policies)
+
     {:ok,
      Spec.new(
        name:
@@ -127,7 +131,8 @@ defmodule TarsDaemon.AgentFile do
        user: optional_string!(fields["user"], "user"),
        description: optional_string!(fields["description"], "description"),
        config: config,
-       policy: policy(fields["policy"], policies),
+       policy: policy,
+       dispatch: budgeted(policy),
        timeout: fields["timeout"] && seconds!(fields["timeout"]),
        credentials: credentials()
      )}
@@ -200,6 +205,11 @@ defmodule TarsDaemon.AgentFile do
       |> IO.iodata_to_binary()
 
   # -- scalars ---------------------------------------------------------------
+
+  # A policy with a budget is the agent's dispatch as well, so it sees every
+  # model call the agent makes.
+  defp budgeted({TarsPolicy, %TarsPolicy{budget: %TarsPolicy.Budget{}}} = policy), do: policy
+  defp budgeted(_policy), do: nil
 
   defp policy(nil, _policies), do: nil
 

@@ -123,6 +123,15 @@ defmodule TarsDaemon.AgentFileTest do
     assert {:ask, _prompt} = TarsPolicy.decide(policy, "github__create_issue")
   end
 
+  test "a policy with a budget is the agent's dispatch as well", context do
+    assert {:ok, spec} = read("---\npolicy:\n  budget:\n    usd: 5\n---\n", context)
+    assert {TarsPolicy, %TarsPolicy{budget: %TarsPolicy.Budget{usd: 5.0}}} = spec.policy
+    assert spec.dispatch == spec.policy
+
+    assert {:ok, unbudgeted} = read("---\npolicy:\n  deny: [run_lua]\n---\n", context)
+    assert unbudgeted.dispatch == nil
+  end
+
   test "a policy written in place that does not read says why", context do
     assert {:error, message} = read("---\npolicy:\n  allows: [x]\n---\n", context)
     assert message =~ "policy allows is not a setting"

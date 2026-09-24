@@ -79,6 +79,48 @@ defmodule TarsDaemon.CLITest do
              command(["approve", "nobody/_/here", "call_1"])
   end
 
+  test "ask sends the agent a message" do
+    test_pid = self()
+
+    {key, _agent} =
+      Tars.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
+
+    assert command(["ask", key, "hello", "there"]) == {"Asked #{key}.\n", 0}
+    assert_receive {:turn, [{:user, "hello there"}]}
+  end
+
+  test "history prints what has been said, and says when nothing has" do
+    test_pid = self()
+
+    {key, agent} =
+      Tars.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
+
+    assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
+
+    :ok = Event.Bus.subscribe(key)
+    Agent.ask(agent, "hello")
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+
+    assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
+  end
+
+  test "ask and history on a key nothing holds fail" do
+    assert {"No agent runs under nobody/_/here.\n", 1} = command(["ask", "nobody/_/here", "hi"])
+    assert {"No agent runs under nobody/_/here.\n", 1} = command(["history", "nobody/_/here"])
+  end
+
+  test "status and reload answer with the node's state" do
+    start_supervised!(
+      {TarsDaemon.Agents,
+       dir: System.tmp_dir!() |> Path.join("tars-cli-#{System.unique_integer([:positive])}")}
+    )
+
+    assert {status, 0} = command(["status"])
+    assert status =~ "on #{node()}"
+    assert {reloaded, 0} = command(["reload"])
+    assert reloaded =~ "on #{node()}"
+  end
+
   test "an unknown command fails" do
     assert {"tars: no command frobnicate\n", 1} = command(["frobnicate"])
   end

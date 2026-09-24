@@ -98,14 +98,40 @@ defmodule TarsDaemon do
       "#{length(members)} #{agents(members)}"
     ]
 
-    rows = for member <- members, do: "  #{member.key}  #{member.status}  #{member.node}"
+    files = agent_files()
+
+    specs =
+      for {_path, {:ok, %Tars.Agent.Spec{} = spec}} <- files,
+          into: %{},
+          do: {Tars.Agent.Spec.key(spec), spec}
+
+    rows =
+      for member <- members,
+          do:
+            Enum.join(
+              [
+                "  #{member.key}",
+                member.status,
+                member.node | spending(specs[member.key], member.key)
+              ],
+              "  "
+            )
 
     broken =
-      for {_path, {:error, message}} <- agent_files(),
+      for {_path, {:error, message}} <- files,
           do: "  #{message}"
 
     Enum.join(header ++ rows ++ problems(broken), "\n")
   end
+
+  defp spending(%Tars.Agent.Spec{policy: {TarsPolicy, policy}}, key) do
+    case TarsPolicy.spending(policy, key) do
+      nil -> []
+      spent -> [spent]
+    end
+  end
+
+  defp spending(_spec, _key), do: []
 
   defp agent_files do
     if Process.whereis(TarsDaemon.Agents), do: TarsDaemon.Agents.files(), else: []

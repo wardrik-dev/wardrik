@@ -35,6 +35,23 @@ defmodule TarsDaemonTest do
     assert message =~ "nope is not a section"
   end
 
+  test "status/0 shows what a budgeted agent has spent", %{tmp_dir: dir} do
+    org = "status-#{System.unique_integer([:positive])}"
+    on_exit(fn -> Tars.Fleet.forget_under(org <> "/") end)
+
+    File.mkdir_p!(Path.join(dir, "agents"))
+
+    File.write!(
+      Path.join([dir, "agents", "counter.md"]),
+      "---\norg: #{org}\npolicy:\n  budget:\n    tokens: 500\n---\nYou count.\n"
+    )
+
+    start_supervised!({TarsDaemon, config_dir: dir, state_dir: dir})
+
+    Tars.Test.Fleet.await_update(fn -> Enum.any?(Tars.Fleet.list(org <> "/")) end)
+    assert TarsDaemon.status() =~ "#{org}/_/counter  idle  #{node()}  0 of 500 tokens today"
+  end
+
   test "status/0 names the node and counts the fleet" do
     status = TarsDaemon.status()
 

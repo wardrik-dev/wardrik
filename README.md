@@ -323,6 +323,8 @@ MIX_ENV=prod mix release
 _build/prod/rel/tarsd/bin/tars start     # in the background
 _build/prod/rel/tarsd/bin/tars status    # what it is running
 _build/prod/rel/tarsd/bin/tars reload    # read the agent and policy files again
+_build/prod/rel/tarsd/bin/tars ask acme/_/triage "What changed today?"
+_build/prod/rel/tarsd/bin/tars history acme/_/triage
 _build/prod/rel/tarsd/bin/tars parked    # what is waiting on a person
 _build/prod/rel/tarsd/bin/tars approve acme/_/triage call_1
 _build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
@@ -402,6 +404,23 @@ tars parked
 tars approve acme/_/triage call_1
 tars deny acme/_/triage call_1 Not on a Friday.
 ```
+
+A policy may also hold a budget for what the agent spends on model calls, in
+dollars, in tokens, or both:
+
+```yaml
+budget:
+  usd: 5.00
+  tokens: 200000
+  per: day            # turn, day, week, month or total
+  on_exhausted: ask   # or deny
+```
+
+Once the agent has spent either limit it parks on its next model call, and
+`tars parked` shows what it spent. Approving grants another limit's worth for
+the period, or the budget's `grant`, and the agent carries on. `tars status`
+shows each agent's spending. A token limit governs a model the catalog cannot
+price, or one a subscription pays for.
 
 A file is read into a value, not kept as one: an agent file into a
 `Tars.Agent.Spec`, a policy file into a `TarsPolicy`. The agent carries its

@@ -28,7 +28,9 @@ Usage: tars COMMAND
   stop      stop the daemon
   status    what the daemon is running
   reload    read the agent and policy files again
-  parked    the tool calls agents are waiting on a person for
+  ask KEY MESSAGE            send an agent a message
+  history KEY                what an agent has said
+  parked    the calls agents are waiting on a person for
   approve KEY CALL           run a parked call
   deny KEY CALL [REASON]     refuse a parked call
   remote    an IEx shell on the daemon
@@ -87,6 +89,14 @@ case "${1:-}" in
     ;;
   reload|parked)
     cli "$1"
+    ;;
+  ask)
+    [ $# -ge 3 ] || { echo "Usage: tars ask KEY MESSAGE" >&2; exit 1; }
+    cli "$@"
+    ;;
+  history)
+    [ $# -eq 2 ] || { echo "Usage: tars history KEY" >&2; exit 1; }
+    cli "$@"
     ;;
   approve)
     [ $# -eq 3 ] || { echo "Usage: tars approve KEY CALL" >&2; exit 1; }

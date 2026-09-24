@@ -9,8 +9,12 @@ defmodule TarsDaemon.PolicyFile do
         github/create_*: This opens an issue on GitHub.
       deny: [run_lua]
       default: allow
+      budget:
+        usd: 5.00
+        per: day
 
-  See `TarsPolicy` for what the rules say.
+  See `TarsPolicy` for what the rules say, and `TarsPolicy.Budget` for the
+  budget.
   """
 
   @doc "Reads the policy `path` writes."
