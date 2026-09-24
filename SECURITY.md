@@ -20,10 +20,11 @@ node starts it. The CLI (`tars status`, `ask`, `approve` and the rest) and
 
 Distribution checks one thing: the cookie, 48 random characters written to
 `~/.local/share/tars/cookie` on first start, readable by the daemon's user
-only. The release hands the cookie to each Erlang VM on its command line, so
-any account on the host that can list processes can read it, and anything
-that holds the cookie and reaches the port can run any code on the node as
-the daemon's user. What distribution sends between nodes is not encrypted.
+only. The release hands the cookie to each Erlang VM on its command line, and
+`bin/tars` to `erl_call` on its, so any account on the host that can list
+processes can read it, and anything that holds the cookie and reaches the port
+can run any code on the node as the daemon's user. What distribution sends
+between nodes is not encrypted.
 
 `TARS_DIST_INTERFACE` moves distribution beyond loopback, for a cluster that
 spans hosts. It is refused unless `TARS_DIST_EXPOSED=1` is set beside it, and a

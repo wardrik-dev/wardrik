@@ -101,12 +101,13 @@ one_node () {
 any_node () {
   [ -n "${TARS_NODE:-}" ] && return 0
   for name in $(local_nodes); do
-    if TARS_NODE="$name" "$node" pid > /dev/null 2>&1; then
-      TARS_NODE="$name"
+    TARS_NODE="$name"
+    if running; then
       export TARS_NODE
       return 0
     fi
   done
+  unset TARS_NODE
 }
 
 # Where the node TARS_NODE names logs, as rel/env.sh.eex places it.
@@ -117,18 +118,72 @@ node_state_dir () {
   esac
 }
 
+# The name the node TARS_NODE names runs under, as rel/env.sh.eex names it.
+release_node () {
+  case "${TARS_NODE:-}" in
+    "")
+      case "${TARS_DIST_INTERFACE:-"{127,0,0,1}"}" in
+        "{127,0,0,1}") echo "${RELEASE_NODE:-tarsd@localhost}" ;;
+        *) echo "${RELEASE_NODE:-tarsd}" ;;
+      esac
+      ;;
+    *@*) echo "${RELEASE_NODE:-$TARS_NODE}" ;;
+    *) echo "${RELEASE_NODE:-tars_$TARS_NODE@localhost}" ;;
+  esac
+}
+
 # The name the node runs under, where TARS_NODE says, and a pattern matching
 # any of this release's nodes where it does not.
 node_name () {
   case "${TARS_NODE:-}" in
     "") echo "[^ ]*" ;;
-    *@*) echo "$TARS_NODE" ;;
-    *) echo "tars_$TARS_NODE@localhost" ;;
+    *) release_node ;;
+  esac
+}
+
+# Evaluates the Erlang expression $1 on the node with the erl_call in this
+# release's ERTS, and prints what it writes. Returns 0 where the expression
+# comes to ok, 1 where it comes to error or raises, with what it raised on
+# standard error, and 2 where no node answers.
+call () {
+  target="$(release_node)"
+  case "${RELEASE_DISTRIBUTION:-}" in
+    name | sname) mode="$RELEASE_DISTRIBUTION" ;;
+    *)
+      case "${target#*@}" in
+        *.* | *:*) mode=name ;;
+        *) mode=sname ;;
+      esac
+      ;;
+  esac
+  cookie="${RELEASE_COOKIE:-"$(cat "${TARS_COOKIE_FILE:-"$data_home/cookie"}" 2> /dev/null)"}" || return 2
+  [ -n "$cookie" ] || return 2
+  out="$(printf '%s\n' "$1" | "$root"/erts-*/bin/erl_call "-$mode" "$target" -c "$cookie" -fetch_stdout -e 2> /dev/null)" || return 2
+
+  # erl_call ends with the expression's result: {ok, Value}, or {error, Reason}
+  # where it raised.
+  ok='{ok, ok}'
+  failed='{ok, error}'
+  raised='{error, '
+  case "$out" in
+    *"$ok")
+      printf %s "${out%"$ok"}"
+      ;;
+    *"$failed")
+      printf %s "${out%"$failed"}"
+      return 1
+      ;;
+    *)
+      written="${out%"$raised"*}"
+      printf %s "$written"
+      echo "tars: ${out#"$written"}" >&2
+      return 1
+      ;;
   esac
 }
 
 running () {
-  "$node" pid > /dev/null 2>&1
+  call ok. > /dev/null 2>&1
 }
 
 # A node on this machine that never opened its store, such as one started
@@ -143,15 +198,18 @@ forget_unstarted () {
   fi
 }
 
-# Runs TarsDaemon.CLI.main/1 on the node. Each argument travels base64
-# encoded, so nothing a person types is read as part of the expression.
+# Runs TarsDaemon.CLI.main/1 on the node, and exits 1 where the command fails.
+# Each argument travels base64 encoded, so nothing a person types is read as
+# part of the expression.
 cli () {
-  if ! running; then echo "tars is not running" >&2; exit 1; fi
   args=""
   for arg in "$@"; do
-    args="$args, Base.decode64!(\"$(printf %s "$arg" | base64 | tr -d '\n')\")"
+    args="$args, 'Elixir.Base':'decode64!'(<<\"$(printf %s "$arg" | base64 | tr -d '\n')\">>)"
   done
-  exec "$node" rpc "TarsDaemon.CLI.main([${args#, }])"
+  call "try 'Elixir.TarsDaemon.CLI':main([${args#, }]) catch exit:{shutdown, 1} -> error end." || {
+    [ $? -ne 2 ] || echo "tars is not running" >&2
+    exit 1
+  }
 }
 
 # The node's VM, whether or not it answers yet: it runs this release's own
@@ -176,14 +234,15 @@ case "${1:-}" in
     "$node" daemon
     # Started once the agent files have been read, or once the node is up and
     # waiting for enough of its cluster to start them: TarsDaemon.CLI.started/0
-    # says which, and raises before either.
-    for _ in $(seq 60); do
-      sleep 1
-      if waiting="$("$node" rpc 'IO.write(TarsDaemon.CLI.started())' 2>/dev/null)"; then
+    # says which, and raises before either. The VM has a second to appear
+    # before its absence ends the wait.
+    for tick in $(seq 600); do
+      sleep 0.1
+      if waiting="$(call "'Elixir.IO':puts('Elixir.TarsDaemon.CLI':started())." 2>/dev/null)"; then
         [ -z "$waiting" ] || echo "$waiting"
         exit 0
       fi
-      alive || break
+      [ "$tick" -lt 10 ] || alive || break
     done
     echo "tars did not start. The end of $log:" >&2
     tail -n 20 "$log" >&2 2>/dev/null || true
@@ -191,18 +250,18 @@ case "${1:-}" in
     exit 1
     ;;
   stop)
-    pid="$("$node" pid 2>/dev/null)" || { echo "tars is not running" >&2; exit 1; }
+    pid="$(call 'io:format("~s~n", [os:getpid()]).' 2>/dev/null)" || { echo "tars is not running" >&2; exit 1; }
     # A node without its cluster's quorum halts rather than stopping, and says
     # why; see TarsDaemon.CLI.stopping/0.
-    halting="$("$node" rpc 'IO.write(TarsDaemon.CLI.stopping())' 2>/dev/null)" || halting=""
+    halting="$(call "'Elixir.IO':puts('Elixir.TarsDaemon.CLI':stopping())." 2>/dev/null)" || halting=""
     if [ -n "$halting" ]; then
       echo "$halting"
     else
-      "$node" stop > /dev/null
+      call "'Elixir.System':stop()." > /dev/null
     fi
-    for _ in $(seq 60); do
+    for _ in $(seq 600); do
       kill -0 "$pid" 2>/dev/null || exit 0
-      sleep 1
+      sleep 0.1
     done
     echo "tars did not stop within a minute" >&2
     exit 1
@@ -244,7 +303,7 @@ case "${1:-}" in
     exec tail -F "$log"
     ;;
   pid)
-    exec "$node" pid
+    call 'io:format("~s~n", [os:getpid()]).' || { echo "tars is not running" >&2; exit 1; }
     ;;
   version)
     echo "tars $(cut -d' ' -f2 "$root/releases/start_erl.data")"
