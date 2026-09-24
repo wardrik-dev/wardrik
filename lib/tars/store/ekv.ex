@@ -13,6 +13,12 @@ defmodule Tars.Store.EKV do
   `:cluster_size` is the number of voting members EKV does quorum arithmetic
   against, falling back to `TARS_CLUSTER_SIZE` and then to 1.
 
+  Over more than one member, EKV keeps serving for up to `:shutdown_barrier`
+  milliseconds as its node stops, five seconds by default, while other members
+  stopping at the same time write down what they hold, so a cluster stopped
+  all at once keeps its quorum until the last of them has. `false` stops at
+  once.
+
   Keys are written as `tars/<namespace>/<key>`. A conditional write is an EKV
   compare-and-swap, and a namespace written conditionally once stays that way.
   """
@@ -28,7 +34,11 @@ defmodule Tars.Store.EKV do
   @impl Tars.Store
   def child_spec(opts) do
     Supervisor.child_spec(
-      {EKV, name: @name, data_dir: data_dir(opts), cluster_size: cluster_size(opts)},
+      {EKV,
+       name: @name,
+       data_dir: data_dir(opts),
+       cluster_size: cluster_size(opts),
+       shutdown_barrier: shutdown_barrier(opts)},
       id: __MODULE__
     )
   end
@@ -82,6 +92,15 @@ defmodule Tars.Store.EKV do
   @spec cluster_size(keyword()) :: pos_integer()
   def cluster_size(opts \\ []) do
     Keyword.get(opts, :cluster_size) || env_integer("TARS_CLUSTER_SIZE") || 1
+  end
+
+  @doc "How long EKV keeps serving for other members as its node stops. See the module options."
+  @spec shutdown_barrier(keyword()) :: pos_integer() | false
+  def shutdown_barrier(opts \\ []) do
+    case Keyword.fetch(opts, :shutdown_barrier) do
+      {:ok, barrier} -> barrier
+      :error -> if cluster_size(opts) > 1, do: :timer.seconds(5), else: false
+    end
   end
 
   @doc "Where this node's data is written. See the module options."

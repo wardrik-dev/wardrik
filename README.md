@@ -532,6 +532,43 @@ An MCP command sees only a few of the daemon's environment variables
 cookie and every key the daemon holds stay with the daemon.
 `TarsMCP.Server`'s `:inherit_env` names others.
 
+### Several daemons, one cluster
+
+`cluster` in `config.yaml` names the nodes, and each is started as one of
+them. Three on one machine share the install and its config directory:
+
+```yaml
+# ~/.config/tars/config.yaml
+cluster:
+  nodes: [a, b, c]
+```
+
+```sh
+tars start --node a   # a is waiting for 1 more node to reach a quorum of 2 of 3
+tars start --node b
+tars start --node c
+tars status           # cluster of 3: a, b, c up
+kill -9 "$(tars pid --node b)"
+```
+
+Their agents, schedules and store span all three, and the agents of a node
+that is lost carry on on another, parked calls still parked. More than half
+the nodes make a quorum: three carry on with one lost. A node starting waits
+until enough of the others are up, and `tars status` says what it waits for.
+
+`start`, `stop`, `serve`, `remote`, `logs` and `pid` act on one node and take
+`--node` once there are several; every other command asks whichever node
+answers, since each speaks for the whole cluster, and `reload` reads the files
+again on every node. `TARS_NODE` sets the node for every command.
+
+Nodes on several machines are named in full, one to each, and listen on a
+private network; see `TarsDaemon.Cluster` and SECURITY.md:
+
+```yaml
+cluster:
+  nodes: [tars@box1, tars@box2, tars@box3]   # or: dns: tars.internal, with size: 3
+```
+
 The daemon is `TarsDaemon`, started as one of core's `:children`. A host of
 its own adds to the tree the same way:
 
@@ -541,12 +578,13 @@ config :tars, :children, [MyApp.Host]
 
 | | |
 | --- | --- |
+| **`TARS_NODE`** | which of `cluster.nodes` this is, as `--node` sets it: `a` runs as `tars_a@localhost` with a store and state directory of its own, and a full name as itself |
 | **`TARS_CONFIG_DIR`**, **`TARS_STATE_DIR`** | the config and state directories, when not the XDG ones |
 | **`TARS_DATA_HOME`** | where the daemon keeps what it makes for itself, its host key among them, when not the XDG data home |
 | **`TARS_DATA_DIR`**, **`TARS_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
 | **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tarsd@localhost`; `any` listens everywhere |
 | **`TARS_LOG`** | the log file, or `-` for the terminal |
-| **`TARS_CLUSTER_SIZE`** | the store's voting members |
+| **`TARS_CLUSTER_SIZE`** | the store's voting members, where `config.yaml` has no `cluster` |
 
 Anyone who can reach the distribution port with the cookie can run code on the
 node. Listen beyond loopback only on a network you trust.

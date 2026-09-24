@@ -32,11 +32,16 @@ defmodule TarsTUI.SSHTest do
   defp session(test_pid),
     do: %Termite.SSH.Session{username: "jon", channel_pid: channel(test_pid)}
 
-  defp drawn(acc \\ "") do
-    receive do
-      {:written, data} -> drawn(acc <> data)
-    after
-      500 -> acc
+  # What the TUI has written to the channel, as soon as it holds `text`.
+  defp drawn(text, acc \\ "") do
+    if acc =~ text do
+      acc
+    else
+      receive do
+        {:written, data} -> drawn(text, acc <> data)
+      after
+        5_000 -> acc
+      end
     end
   end
 
@@ -52,7 +57,7 @@ defmodule TarsTUI.SSHTest do
     {:ok, pid} = TarsTUI.SSH.start_link(session: session(self()))
     on_exit(fn -> if Process.alive?(pid), do: Breeze.Server.stop(pid) end)
 
-    assert drawn() =~ first.key
+    assert drawn(first.key) =~ first.key
   end
 
   test "choose/2 opens on the first agent by key, or starts one for whoever connected" do

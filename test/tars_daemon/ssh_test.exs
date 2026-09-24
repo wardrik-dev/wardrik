@@ -48,7 +48,7 @@ defmodule TarsDaemon.SSHTest do
 
   defp mode(path), do: path |> File.stat!() |> Map.fetch!(:mode) |> Bitwise.band(0o777)
 
-  test "a port another process holds leaves SSH unserved, and what runs it running", %{
+  test "a port another process holds leaves SSH unserved until it is free, then serves it", %{
     tmp_dir: dir
   } do
     config = Path.join(dir, "config")
@@ -58,12 +58,20 @@ defmodule TarsDaemon.SSHTest do
 
     {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
     {:ok, port} = :inet.port(held)
-    opts = opts |> Keyword.delete(:name) |> Keyword.put(:port, port)
+    opts = opts |> Keyword.delete(:name) |> Keyword.merge(port: port, retry: :timer.hours(1))
 
     log =
       capture_log(fn ->
         assert {:ok, supervisor} = Supervisor.start_link([{SSH, opts}], strategy: :one_for_one)
-        assert [{SSH, :undefined, :worker, _modules}] = Supervisor.which_children(supervisor)
+        assert [{SSH, listener, :worker, _modules}] = Supervisor.which_children(supervisor)
+        assert {:waiting, _opts, _retry} = :sys.get_state(listener)
+
+        :ok = :gen_tcp.close(held)
+        send(listener, :listen)
+
+        assert {:serving, _pid} = :sys.get_state(listener)
+        assert {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [])
+        :gen_tcp.close(socket)
       end)
 
     assert log =~ "SSH is not served: port #{port} on 127.0.0.1 could not be listened on"

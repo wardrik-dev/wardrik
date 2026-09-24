@@ -9,6 +9,10 @@ config :tars, TarsBrave,
 
 config :tars, TarsNotify, req_options: [plug: {Req.Test, TarsNotify.Stub}]
 
+# A connection that retries, or waits out a burst of tool changes, does so in
+# milliseconds rather than a second or a quarter of one.
+config :tars, TarsMCP, first_retry: 10, refresh_after: 10
+
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
 config :tars, Tars.Store,

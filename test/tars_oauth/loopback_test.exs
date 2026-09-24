@@ -76,6 +76,29 @@ defmodule TarsOAuth.LoopbackTest do
     assert get(port, "/") =~ "404 Not Found"
   end
 
+  test "a port another process holds is listened on once it is free" do
+    {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, port} = :inet.port(held)
+
+    {listener, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {:ok, listener} =
+          GenServer.start_link(TarsOAuth.Loopback, port: port, retry: :timer.hours(1))
+
+        listener
+      end)
+
+    assert log =~ "OAuth loopback could not listen on #{port}: :eaddrinuse"
+    assert %{socket: nil} = :sys.get_state(listener)
+
+    :ok = :gen_tcp.close(held)
+    send(listener, :listen)
+
+    assert %{socket: socket} = :sys.get_state(listener)
+    assert :inet.sockname(socket) == {:ok, {{127, 0, 0, 1}, port}}
+    assert get(port, "/") =~ "404 Not Found"
+  end
+
   test "it listens on loopback only", %{port: port} do
     %{socket: socket} = :sys.get_state(TarsOAuth.Loopback)
 

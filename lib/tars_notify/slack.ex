@@ -72,7 +72,11 @@ defmodule TarsNotify.Slack do
   end
 
   def blocks(%Notice{kind: :failed} = notice, _opts) do
-    [section("*#{notice.agent}* failed:\n```#{clip(inspect(notice.reason), @max_text)}```")]
+    [
+      section(
+        "*#{notice.agent}* failed:\n```#{clip(Notice.reason_text(notice.reason), @max_text)}```"
+      )
+    ]
   end
 
   def blocks(%Notice{kind: :finished} = notice, _opts) do

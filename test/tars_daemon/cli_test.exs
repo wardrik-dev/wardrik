@@ -132,15 +132,14 @@ defmodule TarsDaemon.CLITest do
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     {:ok, _pid} = Tars.Schedule.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
     {:ok, _pid} = Tars.Schedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
+    # A schedule announces a firing before it records it, so the second
+    # firing is the first that finds the one before it written down.
     assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
-
-    Tars.Test.Fleet.await_update(fn ->
-      Enum.any?(Tars.Schedule.list(prefix), &(&1.last_outcome == :no_agent))
-    end)
+    assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
 
     assert {output, 0} = command(["schedules", prefix])
     assert output =~ "2 schedules:"
-    assert output =~ ~r"  #{key}/hourly  0 \* \* \* \*  next in \d+m  not run yet"
+    assert output =~ ~r"  #{key}/hourly  0 \* \* \* \*  next in \d+[ms]  not run yet"
 
     assert output =~
              ~r"  #{key}/tick  every 50ms  next in \d+s  last run \d+s ago: no agent runs under the key"

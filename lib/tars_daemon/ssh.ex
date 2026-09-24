@@ -20,9 +20,13 @@ defmodule TarsDaemon.SSH do
         port: 2222
         ip: 0.0.0.0     # every interface; loopback unless set
 
-  A listener that cannot listen, on a port another process holds, logs why and
-  leaves the daemon running without it.
+  A listener that cannot listen, on a port another process holds, logs why,
+  leaves the daemon running without it, and tries again every five seconds.
+  Several nodes of a cluster on one machine share one port this way: the
+  first to start serves it, and when that node stops another takes it over.
   """
+
+  use GenServer
 
   require Logger
 
@@ -54,24 +58,51 @@ defmodule TarsDaemon.SSH do
     end
   end
 
+  @retry :timer.seconds(5)
+
   @doc false
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
 
-  @doc "Starts the listener `Termite.SSH` runs, or `:ignore` where it cannot listen."
-  @spec start_link(keyword()) :: GenServer.on_start() | :ignore
-  def start_link(opts) do
+  @doc """
+  Starts the process that holds the listener `Termite.SSH` runs, listening
+  where it can and trying again every `:retry` milliseconds where it cannot.
+  """
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+
+  @impl true
+  def init(opts) do
+    # A listener that cannot listen exits with why, linked to this process.
+    Process.flag(:trap_exit, true)
+    {retry, opts} = Keyword.pop(opts, :retry, @retry)
+    {:ok, listen({:waiting, opts, retry}, :first)}
+  end
+
+  @impl true
+  def handle_info(:listen, {:waiting, _opts, _retry} = state),
+    do: {:noreply, listen(state, :again)}
+
+  def handle_info(:listen, state), do: {:noreply, state}
+  def handle_info({:EXIT, listener, reason}, {:serving, listener}), do: {:stop, reason, nil}
+  def handle_info({:EXIT, _process, _reason}, state), do: {:noreply, state}
+
+  defp listen({:waiting, opts, retry} = state, attempt) do
     case Termite.SSH.start_link(opts) do
+      {:ok, listener} ->
+        if attempt == :again, do: Logger.info("SSH is served on port #{opts[:port]} now")
+        {:serving, listener}
+
       {:error, reason} ->
-        Logger.error(
-          "SSH is not served: port #{opts[:port]} on #{:inet.ntoa(opts[:ip])} could not be " <>
-            "listened on: #{inspect(reason)}"
-        )
+        if attempt == :first do
+          Logger.warning(
+            "SSH is not served: port #{opts[:port]} on #{:inet.ntoa(opts[:ip])} could not be " <>
+              "listened on: #{inspect(reason)}. It is tried again every #{div(retry, 1000)}s"
+          )
+        end
 
-        :ignore
-
-      started ->
-        started
+        Process.send_after(self(), :listen, retry)
+        state
     end
   end
 

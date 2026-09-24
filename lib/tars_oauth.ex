@@ -112,10 +112,38 @@ defmodule TarsOAuth do
   that carries on finds the credential it asked for. A callback that cannot be
   turned into a token leaves the flow where it was, so the same link still
   works and the calls parked on it are still answered when one does.
+
+  A flow is held by the node that started it. One this node did not start is
+  finished on whichever connected node did, where the calls parked on it
+  wait.
   """
   @spec finish(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def finish(state, code) when is_binary(state) and is_binary(code) do
+    case finish_here(state, code) do
+      {:error, :no_such_flow} -> finish_elsewhere(state, code)
+      finished -> finished
+    end
+  end
+
+  @doc false
+  @spec finish_here(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def finish_here(state, code) do
     with {:ok, %Flight{} = flight} <- claim(state), do: complete(flight, code)
+  end
+
+  defp finish_elsewhere(state, code) do
+    Enum.find_value(Node.list(), {:error, :no_such_flow}, &finish_on(&1, state, code))
+  end
+
+  # A node that does not hold the flow, or cannot be asked, answers nil.
+  defp finish_on(node, state, code) do
+    case :erpc.call(node, __MODULE__, :finish_here, [state, code], :timer.seconds(30)) do
+      {:error, :no_such_flow} -> nil
+      finished -> finished
+    end
+  catch
+    :error, {:erpc, _reason} -> nil
+    :error, {:exception, _reason, _stack} -> nil
   end
 
   # The flow is claimed before the token is asked for, and the calls parked on

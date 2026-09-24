@@ -49,6 +49,13 @@ defmodule Tars.LLM.Config do
   should be given them, and a person watching one can stop it. Set `:infinity`
   where something else is doing the stopping.
 
+  `:retries` is how long a turn waits before asking again when a model call
+  fails before the provider began to answer, for a reason `Tars.Failure` calls
+  transient, one wait for each try: a second after the first failure and five
+  after the second, by default. `[]` never asks again.
+
+      Tars.LLM.Config.new(retries: [2_000, 10_000, 30_000])
+
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Tars.Scope`.
 
@@ -70,6 +77,7 @@ defmodule Tars.LLM.Config do
             tool_timeouts: %{},
             generation: [],
             max_iterations: 30,
+            retries: [1_000, 5_000],
             compaction: %Tars.Compaction{}
 
   @type t :: %__MODULE__{
@@ -79,6 +87,7 @@ defmodule Tars.LLM.Config do
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
+          retries: [non_neg_integer()],
           compaction: Tars.Compaction.t() | nil
         }
 
@@ -91,6 +100,7 @@ defmodule Tars.LLM.Config do
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
+          retries: [non_neg_integer()],
           compaction: Tars.Compaction.t() | nil
         }
 

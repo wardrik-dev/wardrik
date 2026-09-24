@@ -4,8 +4,10 @@ defmodule TarsDaemon do
 
   The release names it in core's `:children`, after `TarsPolicy.Supervisor`,
   which keeps the budgets its agents' policies set, so both start once the
-  fleet is up:
+  fleet is up, and `TarsDaemon.Cluster` in core's `:cluster`, which starts
+  before the fleet:
 
+      config :tars, :cluster, [TarsDaemon.Cluster, TarsDaemon.Cluster.Quorum]
       config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
 
   Starting, it reads `config.yaml`, or `config.yml`, from the config directory
@@ -50,6 +52,7 @@ defmodule TarsDaemon do
   require Logger
 
   alias Tars.Fleet
+  alias TarsDaemon.Cluster
   alias TarsDaemon.Config
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -100,18 +103,20 @@ defmodule TarsDaemon do
 
   @doc """
   What this node is running, as `tars status` prints it: the node, how long
-  it has been up, each agent in the fleet with what it is doing and when a
-  schedule asks it next, and each agent or policy file that does not read.
+  it has been up, which of its cluster's nodes are connected, each agent in
+  the fleet with what it is doing, on which node, and when a schedule asks it
+  next, and each agent or policy file that does not read.
   """
   @spec status() :: String.t()
   def status do
     members = Fleet.list()
     {uptime_ms, _since_last} = :erlang.statistics(:wall_clock)
 
-    header = [
-      "tars #{Application.spec(:tars, :vsn)} on #{node()}, up #{duration(uptime_ms)}",
-      "#{length(members)} #{agents(members)}"
-    ]
+    header =
+      [
+        "tars #{Application.spec(:tars, :vsn)} on #{Cluster.display(node())}, up #{duration(uptime_ms)}"
+        | cluster()
+      ] ++ ["#{length(members)} #{agents(members)}"]
 
     files = agent_files()
 
@@ -127,7 +132,8 @@ defmodule TarsDaemon do
               [
                 "  #{member.key}",
                 member.status,
-                member.node | spending(specs[member.key], member.key) ++ next_run(member.key)
+                Cluster.display(member.node)
+                | spending(specs[member.key], member.key) ++ next_run(member.key)
               ],
               "  "
             )
@@ -163,6 +169,33 @@ defmodule TarsDaemon do
   defp agent_files do
     if Process.whereis(TarsDaemon.Agents), do: TarsDaemon.Agents.files(), else: []
   end
+
+  defp cluster do
+    cond do
+      not Cluster.configured?() ->
+        []
+
+      Cluster.named() == [] ->
+        ["cluster of #{Cluster.size()}, found by DNS: " <> found(Cluster.members())]
+
+      true ->
+        {up, down} = Enum.split_with(Cluster.named(), &(&1 in Cluster.members()))
+
+        [
+          "cluster of #{Cluster.size()}: " <>
+            nodes(up, "up") <> nodes(down, "; ", "not connected")
+        ]
+    end
+  end
+
+  defp found([]), do: "none connected"
+  defp found(nodes), do: Enum.map_join(nodes, ", ", &Cluster.display/1) <> " connected"
+
+  defp nodes(nodes, prefix \\ "", state)
+  defp nodes([], _prefix, _state), do: ""
+
+  defp nodes(nodes, prefix, state),
+    do: prefix <> Enum.map_join(nodes, ", ", &Cluster.display/1) <> " " <> state
 
   defp problems([]), do: []
   defp problems([_one] = broken), do: ["", "1 file does not read:" | broken]

@@ -101,6 +101,16 @@ defmodule Tars.Store do
   end
 
   @doc """
+  How long a `DurableServer.Supervisor` over the store gives its processes to
+  write down their state as it stops: five seconds each, and ten in all. A
+  store that answers takes milliseconds, and one whose node has lost its
+  quorum does not answer however long it is given.
+  """
+  @spec durable_shutdown() :: keyword()
+  def durable_shutdown,
+    do: [graceful_shutdown_timeout_ms: 5_000, graceful_shutdown_total_timeout_ms: 10_000]
+
+  @doc """
   The `DurableServer` backend of the configured adapter.
 
   Raises for an adapter without one, since a fleet cannot run without it.

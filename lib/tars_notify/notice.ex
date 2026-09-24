@@ -70,8 +70,17 @@ defmodule TarsNotify.Notice do
       agent: notice.agent,
       at: DateTime.to_iso8601(notice.at),
       calls: notice.calls,
-      reason: notice.reason && inspect(notice.reason),
+      reason: notice.reason && reason_text(notice.reason),
       text: notice.text
     }
   end
+
+  @doc """
+  What a failed turn's reason says to a person: an exception's message, text
+  as it is, and anything else as Elixir prints it.
+  """
+  @spec reason_text(term()) :: String.t()
+  def reason_text(%{__exception__: true} = error), do: Exception.message(error)
+  def reason_text(reason) when is_binary(reason), do: reason
+  def reason_text(reason), do: inspect(reason)
 end

@@ -10,9 +10,11 @@ defmodule Tars.Application do
         Tars.LLM.Catalog,
         Tars.Event.Bus,
         Tars.LLM.ToolRunner,
-        {Task.Supervisor, name: Tars.TaskSupervisor},
-        {Tars.Fleet.Supervisor, Application.get_env(:tars, Tars.Fleet, [])}
-      ] ++ Application.get_env(:tars, :children, [])
+        {Task.Supervisor, name: Tars.TaskSupervisor}
+      ] ++
+        Application.get_env(:tars, :cluster, []) ++
+        [{Tars.Fleet.Supervisor, Application.get_env(:tars, Tars.Fleet, [])}] ++
+        Application.get_env(:tars, :children, [])
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Tars.Supervisor)
   end

@@ -17,17 +17,44 @@ root="$(CDPATH='' cd "$(dirname "$(readlink_f "$0")")/.." && pwd -P)"
 node="$root/bin/tarsd"
 config_dir="${TARS_CONFIG_DIR:-"${XDG_CONFIG_HOME:-"$HOME/.config"}/tars"}"
 state_dir="${TARS_STATE_DIR:-"${XDG_STATE_HOME:-"$HOME/.local/state"}/tars"}"
-log="${TARS_LOG:-"$state_dir/log/tars.log"}"
+data_home="${TARS_DATA_HOME:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/tars"}"
+
+# --node NAME, anywhere among the arguments, is TARS_NODE for this command:
+# which of the cluster's nodes it starts, stops or asks. Everything else keeps
+# its order.
+count=$#
+while [ "$count" -gt 0 ]; do
+  arg=$1
+  shift
+  count=$((count - 1))
+
+  case "$arg" in
+    --node)
+      [ "$count" -gt 0 ] || { echo "tars: --node needs a node's name" >&2; exit 1; }
+      TARS_NODE=$1
+      export TARS_NODE
+      shift
+      count=$((count - 1))
+      ;;
+    --node=*)
+      TARS_NODE=${arg#--node=}
+      export TARS_NODE
+      ;;
+    *)
+      set -- "$@" "$arg"
+      ;;
+  esac
+done
 
 usage () {
   cat <<USAGE
-Usage: tars COMMAND
+Usage: tars [--node NAME] COMMAND
 
   serve     run the daemon in the foreground, logging to the terminal
-  start     run the daemon in the background, logging to $log
+  start     run the daemon in the background, logging to its state directory
   stop      stop the daemon, and wait until it has
-  status    what the daemon is running
-  reload    read the agent and policy files again
+  status    what the daemon, or its cluster, is running
+  reload    read the agent and policy files again, on every node
   ask KEY MESSAGE            send an agent a message
   history KEY                what an agent has said
   parked    the calls agents are waiting on a person for
@@ -37,15 +64,83 @@ Usage: tars COMMAND
   attach [HOST]              the TUI, over SSH to HOST, localhost by default
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
+  pid       the daemon's process id
   version   print the version
 
 The daemon reads its configuration from $config_dir/config.yaml (or .yml), and
 runs the agents $config_dir/agents declares.
+
+Where config.yaml describes a cluster, --node NAME, or TARS_NODE, is which of
+its nodes a command is for. serve, start, stop, remote, logs and pid need one
+when this install runs several; every other command asks whichever node
+answers, since each speaks for the whole cluster.
 USAGE
+}
+
+# The nodes this install has run on this machine, as cluster.nodes names them:
+# each has a state directory of its own.
+local_nodes () {
+  for dir in "$state_dir"/nodes/*/; do
+    [ -d "$dir" ] && basename "$dir"
+  done
+  return 0
+}
+
+# A command for one node needs to know which, once there is more than one.
+one_node () {
+  [ -n "${TARS_NODE:-}" ] && return 0
+  nodes="$(local_nodes | tr '\n' ' ')"
+  if [ -n "$nodes" ]; then
+    echo "tars: this install runs nodes $(echo $nodes | sed 's/ /, /g'); say which with --node" >&2
+    exit 1
+  fi
+}
+
+# A command for the cluster asks the first of this install's nodes that
+# answers.
+any_node () {
+  [ -n "${TARS_NODE:-}" ] && return 0
+  for name in $(local_nodes); do
+    if TARS_NODE="$name" "$node" pid > /dev/null 2>&1; then
+      TARS_NODE="$name"
+      export TARS_NODE
+      return 0
+    fi
+  done
+}
+
+# Where the node TARS_NODE names logs, as rel/env.sh.eex places it.
+node_state_dir () {
+  case "${TARS_NODE:-}" in
+    "" | *@*) echo "$state_dir" ;;
+    *) echo "$state_dir/nodes/$TARS_NODE" ;;
+  esac
+}
+
+# The name the node runs under, where TARS_NODE says, and a pattern matching
+# any of this release's nodes where it does not.
+node_name () {
+  case "${TARS_NODE:-}" in
+    "") echo "[^ ]*" ;;
+    *@*) echo "$TARS_NODE" ;;
+    *) echo "tars_$TARS_NODE@localhost" ;;
+  esac
 }
 
 running () {
   "$node" pid > /dev/null 2>&1
+}
+
+# A node on this machine that never opened its store, such as one started
+# under a name the cluster does not have, leaves no directories behind.
+forget_unstarted () {
+  case "${TARS_NODE:-}" in
+    "" | *@*) return 0 ;;
+  esac
+  store="$data_home/nodes/$TARS_NODE/store"
+  if [ -d "$store" ] && [ -z "$(ls -A "$store")" ]; then
+    rm -rf "${data_home:?}/nodes/$TARS_NODE" "${state_dir:?}/nodes/$TARS_NODE"
+  fi
 }
 
 # Runs TarsDaemon.CLI.main/1 on the node. Each argument travels base64
@@ -59,11 +154,18 @@ cli () {
   exec "$node" rpc "TarsDaemon.CLI.main([${args#, }])"
 }
 
-# This install's VM, whether or not it answers yet: it runs this release's
-# own ERTS.
+# The node's VM, whether or not it answers yet: it runs this release's own
+# ERTS, under the node's name.
 alive () {
-  pgrep -f "$root/erts-[^/]*/bin/beam" > /dev/null 2>&1
+  pgrep -f "$root/erts-[^/]*/bin/beam.* -s?name $(node_name)( |\$)" > /dev/null 2>&1
 }
+
+case "${1:-}" in
+  serve | start | stop | remote | logs | pid) one_node ;;
+  status | reload | parked | schedules | ask | history | approve | deny) any_node ;;
+esac
+
+log="${TARS_LOG:-"$(node_state_dir)/log/tars.log"}"
 
 case "${1:-}" in
   serve)
@@ -72,20 +174,32 @@ case "${1:-}" in
   start)
     if running; then echo "tars is already running" >&2; exit 1; fi
     "$node" daemon
-    # Started once the agent files have been read: TarsDaemon.Agents answers
-    # files/0 only after its first load.
+    # Started once the agent files have been read, or once the node is up and
+    # waiting for enough of its cluster to start them: TarsDaemon.CLI.started/0
+    # says which, and raises before either.
     for _ in $(seq 60); do
       sleep 1
-      "$node" rpc '_ = TarsDaemon.Agents.files()' > /dev/null 2>&1 && exit 0
+      if waiting="$("$node" rpc 'IO.write(TarsDaemon.CLI.started())' 2>/dev/null)"; then
+        [ -z "$waiting" ] || echo "$waiting"
+        exit 0
+      fi
       alive || break
     done
     echo "tars did not start. The end of $log:" >&2
     tail -n 20 "$log" >&2 2>/dev/null || true
+    forget_unstarted
     exit 1
     ;;
   stop)
     pid="$("$node" pid 2>/dev/null)" || { echo "tars is not running" >&2; exit 1; }
-    "$node" stop > /dev/null
+    # A node without its cluster's quorum halts rather than stopping, and says
+    # why; see TarsDaemon.CLI.stopping/0.
+    halting="$("$node" rpc 'IO.write(TarsDaemon.CLI.stopping())' 2>/dev/null)" || halting=""
+    if [ -n "$halting" ]; then
+      echo "$halting"
+    else
+      "$node" stop > /dev/null
+    fi
     for _ in $(seq 60); do
       kill -0 "$pid" 2>/dev/null || exit 0
       sleep 1
@@ -128,6 +242,9 @@ case "${1:-}" in
     ;;
   logs)
     exec tail -F "$log"
+    ;;
+  pid)
+    exec "$node" pid
     ;;
   version)
     echo "tars $(cut -d' ' -f2 "$root/releases/start_erl.data")"

@@ -45,4 +45,13 @@ defmodule TarsNotify.NoticeTest do
     assert %{event: "turn_failed", agent: "acme/_/triage", reason: ":timeout", calls: []} =
              Notice.to_map(notice)
   end
+
+  test "reason_text/1 says what an error says, rather than what it holds" do
+    stalled =
+      ReqLLM.Error.API.Stream.exception(reason: "Stream failed: :timeout", cause: :timeout)
+
+    assert Notice.reason_text(stalled) == "Stream failed: :timeout"
+    assert Notice.reason_text("A person refused this call.") == "A person refused this call."
+    assert Notice.reason_text({:policy_denied, "No."}) == ~s({:policy_denied, "No."})
+  end
 end

@@ -19,6 +19,15 @@ defmodule Tars.Fleet.Supervisor do
 
   The store's options belong to its adapter; see `Tars.Store.EKV`. `:log` is
   passed to `Group`.
+
+  ## Joining other nodes
+
+  The fleet writes to the store as it starts, and a store counting a quorum
+  over several nodes can write only once enough of them are connected. What
+  connects them is named in `:cluster`, which the application starts before
+  this and keeps running beside it:
+
+      config :tars, :cluster, [TarsDaemon.Cluster, TarsDaemon.Cluster.Quorum]
   """
 
   use Supervisor
@@ -35,15 +44,19 @@ defmodule Tars.Fleet.Supervisor do
     children = [
       Store.child_spec(),
       {DurableServer.Supervisor,
-       name: Tars.Fleet,
-       prefix: Tars.Fleet.prefix(),
-       backend: Store.durable_backend(),
-       group: [log: Keyword.get(opts, :log, false)]},
+       [
+         name: Tars.Fleet,
+         prefix: Tars.Fleet.prefix(),
+         backend: Store.durable_backend(),
+         group: [log: Keyword.get(opts, :log, false)]
+       ] ++ Store.durable_shutdown()},
       {DurableServer.Supervisor,
-       name: Tars.Schedule.supervisor(),
-       prefix: Tars.Schedule.prefix(),
-       backend: Store.durable_backend(),
-       group: [log: Keyword.get(opts, :log, false)]}
+       [
+         name: Tars.Schedule.supervisor(),
+         prefix: Tars.Schedule.prefix(),
+         backend: Store.durable_backend(),
+         group: [log: Keyword.get(opts, :log, false)]
+       ] ++ Store.durable_shutdown()}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)

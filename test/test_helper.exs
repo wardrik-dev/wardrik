@@ -22,4 +22,8 @@ ExUnit.after_suite(fn _results ->
   Application.stop(:os_mon)
 end)
 
-ExUnit.start(capture_log: true)
+# An assert_receive returns as soon as its message arrives, so a generous
+# timeout costs a passing test nothing and keeps a suite running 64 cases at
+# once from failing one whose message was merely late. refute_receive keeps
+# its default, since it always waits the whole of it.
+ExUnit.start(capture_log: true, assert_receive_timeout: 1_000)

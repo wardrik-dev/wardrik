@@ -6,23 +6,57 @@ defmodule Tars.Test.Fleet do
 
   alias Tars.Fleet
 
-  @doc "Waits for watched registry changes until the condition holds, without polling."
+  @doc """
+  Waits until `check` holds, asking it again at each change to the fleet, for
+  up to two seconds. Answers whether it came to hold.
+
+  The fleet is watched by a process of its own for as long as this waits, so
+  the caller need not watch it, and any watch of the caller's keeps its own
+  messages.
+  """
+  @spec await_update((-> as_boolean(term()))) :: boolean()
   def await_update(check) do
-    await_update(check, System.monotonic_time(:millisecond) + 2_000)
+    caller = self()
+    watcher = spawn_link(fn -> watch(caller) end)
+
+    receive do
+      {:watching, ^watcher} -> :ok
+    end
+
+    try do
+      await_update(check, watcher, System.monotonic_time(:millisecond) + 2_000)
+    after
+      Process.unlink(watcher)
+      Process.exit(watcher, :kill)
+    end
   end
 
-  defp await_update(check, deadline) do
+  defp await_update(check, watcher, deadline) do
     if check.() do
       true
     else
       remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
       receive do
-        {:group, _events, _info} -> await_update(check, deadline)
+        {:fleet_changed, ^watcher} -> await_update(check, watcher, deadline)
       after
         remaining -> false
       end
     end
+  end
+
+  defp watch(caller) do
+    :ok = Fleet.watch()
+    send(caller, {:watching, self()})
+    relay(caller)
+  end
+
+  defp relay(caller) do
+    receive do
+      {:group, _events, _info} -> send(caller, {:fleet_changed, self()})
+    end
+
+    relay(caller)
   end
 
   @doc "Starts an agent under `key` and returns the key and pid."

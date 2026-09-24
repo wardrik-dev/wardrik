@@ -43,6 +43,21 @@ defmodule Tars.Store.EKVTest do
     end
   end
 
+  describe "shutdown_barrier/1" do
+    test "keeps a store of several members serving for five seconds as it stops" do
+      assert EKV.shutdown_barrier(cluster_size: 3) == 5_000
+    end
+
+    test "stops a store of one member at once" do
+      assert EKV.shutdown_barrier(cluster_size: 1) == false
+    end
+
+    test "takes what it was configured with" do
+      assert EKV.shutdown_barrier(cluster_size: 3, shutdown_barrier: false) == false
+      assert EKV.shutdown_barrier(shutdown_barrier: 250) == 250
+    end
+  end
+
   test "provides the fleet's DurableServer backend" do
     assert {DurableServer.Backends.EKVStore, name: :tars_store} = EKV.durable_backend([])
   end

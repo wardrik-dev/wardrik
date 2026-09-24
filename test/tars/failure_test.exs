@@ -46,6 +46,17 @@ defmodule Tars.FailureTest do
     test "falls back to the error's own name when it carries no status" do
       assert Failure.classify(%Mint.TransportError{reason: :closed}) == :transient
     end
+
+    test "reads an error by the cause it carries, then by its name" do
+      stream = &ReqLLM.Error.API.Stream.exception(reason: "Stream failed", cause: &1)
+
+      assert Failure.classify(stream.(:timeout)) == :transient
+      assert Failure.classify(stream.(:interrupted)) == :ceiling
+      assert Failure.classify(stream.(:something_new)) == :bug
+
+      assert Failure.classify(%Mint.TransportError{reason: :closed} |> Map.put(:cause, :odd)) ==
+               :transient
+    end
   end
 
   describe "retryable?/1" do

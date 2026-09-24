@@ -59,6 +59,18 @@ defmodule Tars.LLM.Turn do
   its last checkpoint, with the response it had, so the calls it asked for keep
   their ids and a `Tars.Ledger` can say which already ran.
 
+  ## A model call that fails
+
+  A call that fails before the provider has begun to answer, for a reason
+  `Tars.Failure` calls transient, such as a stream that times out before its
+  first chunk, is asked again after each wait the config's `:retries` lists,
+  through the dispatch each time. Each try is its own `{:model_started, _}` and
+  `{:model_finished, _, _}`. A call that fails once the provider has begun to
+  answer is not asked again, since what streamed has already been published;
+  it fails the turn, as a call does once its retries are spent. `:interrupt`
+  stops the wait, and a turn past its deadline fails with the call's reason
+  rather than waiting.
+
   ## The iteration cap
 
   `max_iterations` on the config bounds the rounds of tool use. When the last
@@ -70,6 +82,7 @@ defmodule Tars.LLM.Turn do
 
   alias ReqLLM.Context
   alias Tars.Event
+  alias Tars.Failure
   alias Tars.LLM.Dispatch
   alias Tars.LLM.Request
   alias Tars.LLM.ToolRunner
@@ -319,14 +332,34 @@ defmodule Tars.LLM.Turn do
   defp rounds(acc), do: Enum.count(acc, &(&1.role == :assistant))
 
   # A call the dispatch parks is never made, so it has no model events.
-  defp request(%Scope{} = scope, context) do
+  defp request(%Scope{} = scope, context), do: request(scope, context, scope.config.retries)
+
+  defp request(%Scope{} = scope, context, retries) do
     request = Request.new(scope.config, context)
 
     case Dispatch.admit(scope, request) do
       {:park, prompt} -> {:park, prompt}
-      admission -> make(scope, request, admission)
+      admission -> scope |> make(request, admission) |> retry(scope, context, retries)
     end
   end
+
+  defp retry({:error, reason} = failed, scope, context, [wait | retries]) do
+    if not Process.get(@answered) and Failure.retryable?(reason) and not Scope.expired?(scope) do
+      Logger.warning(
+        "Model call failed before answering, asking again in #{wait}ms: #{inspect(reason)}"
+      )
+
+      receive do
+        :interrupt -> {:interrupted, ""}
+      after
+        wait -> request(scope, context, retries)
+      end
+    else
+      failed
+    end
+  end
+
+  defp retry(result, _scope, _context, _retries), do: result
 
   defp make(%Scope{source: source} = scope, request, admission) do
     started_at = System.monotonic_time()

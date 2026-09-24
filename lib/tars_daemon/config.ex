@@ -69,6 +69,9 @@ defmodule TarsDaemon.Config do
   describes them. `vault` takes `keys`, as `TarsVault` does. `ssh` takes
   `port` and `ip`, as `TarsDaemon.SSH` does.
 
+  `cluster` takes `nodes`, or `dns` and `size`, as `TarsDaemon.Cluster`
+  describes them, and joins this daemon to others.
+
   `notify` names targets an agent file's `notify` routes to, each one
   `slack`, with `channel`, `token`, and optionally `app_token` and
   `approvers`, as `TarsNotify.Slack` takes them; or `webhook`, with `url` and
@@ -78,6 +81,10 @@ defmodule TarsDaemon.Config do
   a server that is neither a command nor a URL, or a server whose name or
   `prefix` holds `__`, and says where.
   """
+
+  alias TarsDaemon.Cluster.DNSPoll
+  alias TarsDaemon.Cluster.Epmd
+  alias TarsDaemon.Cluster.Topology
 
   @typedoc "Settings for one package, as `Application.put_env(:tars, package, settings)` takes them."
   @type settings() :: [{module(), keyword()}]
@@ -190,8 +197,14 @@ defmodule TarsDaemon.Config do
       {"notify", targets} ->
         {TarsNotify, targets: targets(table!(targets, ["notify"]))}
 
+      {"cluster", cluster} ->
+        {TarsDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
+
       {section, _value} ->
-        invalid!([section], "is not a section; expected mcp, oauth, vault, ssh or notify")
+        invalid!(
+          [section],
+          "is not a section; expected mcp, oauth, vault, ssh, notify or cluster"
+        )
     end)
   end
 
@@ -325,6 +338,79 @@ defmodule TarsDaemon.Config do
     end
   end
 
+  # -- cluster ---------------------------------------------------------------
+
+  defp cluster(%{"nodes" => _, "dns" => _}),
+    do: invalid!(["cluster"], "has both nodes and dns; a cluster is found one way")
+
+  defp cluster(%{"nodes" => names} = cluster) do
+    known!(cluster, ["nodes"], ["cluster"])
+    nodes = cluster_nodes(names)
+
+    [
+      nodes: nodes,
+      size: length(nodes),
+      topologies: [
+        %Topology{name: "nodes", strategy: %Epmd{hosts: nodes}, polling_interval: 2_000}
+      ]
+    ]
+  end
+
+  defp cluster(%{"dns" => query} = cluster) do
+    known!(cluster, ["dns", "size"], ["cluster"])
+
+    unless is_binary(query) and query != "",
+      do: invalid!(["cluster", "dns"], "is the DNS name the cluster's nodes resolve to")
+
+    case Map.get(cluster, "size") do
+      size when is_integer(size) and size > 0 ->
+        [size: size, topologies: [%Topology{name: "dns", strategy: %DNSPoll{query: query}}]]
+
+      nil ->
+        invalid!(["cluster", "size"], "is required with dns: how many nodes the cluster has")
+
+      _size ->
+        invalid!(["cluster", "size"], "is a whole number of nodes")
+    end
+  end
+
+  defp cluster(cluster) do
+    known!(cluster, ["nodes", "dns"], ["cluster"])
+    invalid!(["cluster"], "names its nodes, or the dns name they resolve to, with its size")
+  end
+
+  defp cluster_nodes([_ | _] = names) do
+    names = Enum.with_index(names, &{&1, ["cluster", "nodes", "#{&2}"]})
+
+    for {name, path} <- names,
+        not (is_binary(name) and Regex.match?(~r/^[A-Za-z0-9_-]+(@[^@\s]+)?$/, name)),
+        do: invalid!(path, "is #{inspect(name)}, which is not a node name such as a or tars@box1")
+
+    case Enum.split_with(names, fn {name, _path} -> String.contains?(name, "@") end) do
+      {_full, []} ->
+        :ok
+
+      {[], _short} ->
+        :ok
+
+      {_full, _short} ->
+        invalid!(["cluster", "nodes"], "mixes names on this machine with full names")
+    end
+
+    nodes = Enum.map(names, fn {name, _path} -> TarsDaemon.Cluster.node_name(name) end)
+
+    case nodes -- Enum.uniq(nodes) do
+      [] ->
+        nodes
+
+      [twice | _] ->
+        invalid!(["cluster", "nodes"], "names #{TarsDaemon.Cluster.display(twice)} twice")
+    end
+  end
+
+  defp cluster_nodes(_names),
+    do: invalid!(["cluster", "nodes"], "is a list of node names, such as [a, b, c]")
+
   # -- tables ----------------------------------------------------------------
 
   defp options(table, keys, path) do
@@ -346,7 +432,7 @@ defmodule TarsDaemon.Config do
   defp table!(nil, _path), do: %{}
 
   defp table!(_value, []),
-    do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault, ssh, notify")
+    do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault, ssh, notify, cluster")
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")
 

@@ -44,16 +44,12 @@ defmodule TarsMCP.Connection do
   alias TarsMCP.Tool
 
   @registry TarsMCP.Registry
-  @first_retry_ms :timer.seconds(1)
   @max_retry_ms :timer.minutes(1)
   @list_timeout :timer.seconds(30)
   @ready_timeout :timer.seconds(30)
   @watch_timeout :timer.seconds(5)
   @offer_timeout :timer.seconds(30)
   @idle_after :timer.minutes(15)
-  # Milliseconds. A server that registers its tools one at a time says so once
-  # per tool, and the listing that answers waits, so a burst costs one call.
-  @refresh_after 250
   # A connection torn down as its credential expires, rather than after, so no
   # call goes out with a token the server has already stopped taking.
   @expiry_margin_ms :timer.seconds(30)
@@ -300,7 +296,9 @@ defmodule TarsMCP.Connection do
   def handle_cast(:list_tools, %State{refreshing?: true} = state), do: {:noreply, state}
 
   def handle_cast(:list_tools, %State{} = state) do
-    Process.send_after(self(), :refresh, @refresh_after)
+    # A server that registers its tools one at a time says so once per tool,
+    # and the listing that answers waits, so a burst costs one call.
+    Process.send_after(self(), :refresh, TarsMCP.Config.refresh_after())
 
     {:noreply, %{state | refreshing?: true}}
   end
@@ -538,7 +536,7 @@ defmodule TarsMCP.Connection do
   # `[:tars_mcp, :connection, :retrying]` says a server could not be listed
   # and will be asked again, with the ref, principal and trouble in its metadata.
   defp retry(%State{} = state, trouble) do
-    delay = min((state.retry_ms || @first_retry_ms) * 2, @max_retry_ms)
+    delay = min((state.retry_ms || TarsMCP.Config.first_retry()) * 2, @max_retry_ms)
 
     Logger.warning("MCP server #{state.server.ref} #{trouble}; asking again in #{delay}ms")
     if state.principal == :deployment, do: offer(state.server, [])

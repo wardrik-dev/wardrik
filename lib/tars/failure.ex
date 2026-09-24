@@ -80,9 +80,21 @@ defmodule Tars.Failure do
   defp classify_exception(error) do
     case status(error) do
       status when is_integer(status) -> classify_status(status)
-      nil -> classify_module(error.__struct__)
+      nil -> classify_cause(error)
     end
   end
+
+  # An error carrying the reason beneath it, as ReqLLM's stream errors carry
+  # `cause: :timeout`, is classified by that reason, and by its module where
+  # that reason is not recognised.
+  defp classify_cause(%{cause: cause} = error) when not is_nil(cause) do
+    case classify(cause) do
+      :bug -> classify_module(error.__struct__)
+      class -> class
+    end
+  end
+
+  defp classify_cause(error), do: classify_module(error.__struct__)
 
   defp status(%{status: status}) when is_integer(status), do: status
   defp status(%{reason: %{status: status}}) when is_integer(status), do: status

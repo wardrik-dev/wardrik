@@ -215,6 +215,58 @@ defmodule TarsDaemon.ConfigTest do
       assert message =~ "both config.yaml and config.yml"
     end
 
+    test "a cluster of nodes on this machine is found by name, and counted", context do
+      assert {:ok, [{TarsDaemon.Cluster, cluster}]} =
+               read("cluster:\n  nodes: [a, b, c]\n", context)
+
+      nodes = [:tars_a@localhost, :tars_b@localhost, :tars_c@localhost]
+      assert cluster[:nodes] == nodes
+      assert cluster[:size] == 3
+
+      assert [%TarsDaemon.Cluster.Topology{strategy: %TarsDaemon.Cluster.Epmd{hosts: ^nodes}}] =
+               cluster[:topologies]
+    end
+
+    test "a cluster across machines names each node in full", context do
+      assert {:ok, [{TarsDaemon.Cluster, cluster}]} =
+               read("cluster:\n  nodes: [tars@box1, tars@box2.tail.ts.net]\n", context)
+
+      assert cluster[:nodes] == [:tars@box1, :"tars@box2.tail.ts.net"]
+      assert cluster[:size] == 2
+    end
+
+    test "a cluster found by DNS gives its size", context do
+      assert {:ok, [{TarsDaemon.Cluster, cluster}]} =
+               read("cluster:\n  dns: tars.internal\n  size: 3\n", context)
+
+      assert cluster[:size] == 3
+      refute Keyword.has_key?(cluster, :nodes)
+
+      assert [
+               %TarsDaemon.Cluster.Topology{
+                 strategy: %TarsDaemon.Cluster.DNSPoll{query: "tars.internal"}
+               }
+             ] =
+               cluster[:topologies]
+    end
+
+    test "a cluster that does not read says why", context do
+      for {yaml, message} <- [
+            {"cluster:\n  dns: tars.internal\n", "cluster.size is required with dns"},
+            {"cluster:\n  dns: tars.internal\n  size: 0\n", "cluster.size is a whole number"},
+            {"cluster:\n  nodes: [a, b]\n  size: 3\n", "cluster.size is not a setting"},
+            {"cluster:\n  nodes: [a]\n  dns: x\n", "cluster has both nodes and dns"},
+            {"cluster:\n  nodes: []\n", "cluster.nodes is a list of node names"},
+            {"cluster:\n  nodes: [a, tars@box2]\n", "cluster.nodes mixes names on this machine"},
+            {"cluster:\n  nodes: [a, a]\n", "cluster.nodes names a twice"},
+            {"cluster:\n  nodes: [a, b c]\n", ~s(cluster.nodes.1 is "b c")},
+            {"cluster: {}\n", "cluster names its nodes, or the dns name"}
+          ] do
+        assert {:error, error} = read(yaml, context)
+        assert error =~ message
+      end
+    end
+
     test "an unknown section is refused", context do
       assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"

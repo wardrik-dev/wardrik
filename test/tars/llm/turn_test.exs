@@ -119,6 +119,84 @@ defmodule Tars.LLM.TurnTest do
     assert_receive %Event{payload: {:model_finished, {:error, :rate_limited}, _ms}}
   end
 
+  describe "a model call that fails before it answers" do
+    defp retrying(agent_id, retries) do
+      [retries: retries] |> LLM.Config.new() |> Scope.root(agent_id, name: "turn")
+    end
+
+    defp answering do
+      stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_chunk].(%{type: :content})
+        {:ok, LLMStub.final_answer("done")}
+      end)
+    end
+
+    test "is asked again after a wait, and the turn answers", %{agent_id: agent_id} do
+      answering()
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :timeout} end)
+
+      capture_log(fn ->
+        assert {:ok, [%{role: :assistant}]} =
+                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive %Event{payload: {:model_started, _model_spec}}
+      assert_receive %Event{payload: {:model_finished, {:error, :timeout}, _ms}}
+      assert_receive %Event{payload: {:model_started, _model_spec}}
+      assert_receive %Event{payload: {:model_finished, :ok, _ms}}
+    end
+
+    test "fails the turn once its retries are spent", %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 3, fn _model, _context, _opts -> {:error, :timeout} end)
+
+      log =
+        capture_log(fn ->
+          assert {:error, :timeout} =
+                   LLM.Turn.run(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
+        end)
+
+      assert log =~ "asking again in 0ms"
+    end
+
+    test "is not asked again for a reason that would fail the same way", %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :rate_limited} end)
+
+      capture_log(fn ->
+        assert {:error, :rate_limited} =
+                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+      end)
+    end
+
+    test "is not asked again once the provider has begun to answer", %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
+        opts[:on_chunk].(%{type: :content})
+        {:error, :closed}
+      end)
+
+      capture_log(fn ->
+        assert {:error, :closed} =
+                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+      end)
+    end
+
+    test "stops waiting when the turn is interrupted", %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :timeout} end)
+      :ok = LLM.Turn.interrupt(self())
+
+      capture_log(fn ->
+        assert {:ok, []} =
+                 LLM.Turn.run(
+                   retrying(agent_id, [:timer.minutes(10)]),
+                   Context.new([Context.user("hi")])
+                 )
+      end)
+    end
+  end
+
   test "generation options reach the provider", %{agent_id: agent_id} do
     test_pid = self()
 

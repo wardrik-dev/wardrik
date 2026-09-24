@@ -18,10 +18,12 @@ defmodule TarsPolicy.Supervisor do
   def init(opts) do
     children = [
       {DurableServer.Supervisor,
-       name: TarsPolicy.Meter.supervisor(),
-       prefix: "tars/meters/",
-       backend: Tars.Store.durable_backend(),
-       group: [log: Keyword.get(opts, :log, false)]}
+       [
+         name: TarsPolicy.Meter.supervisor(),
+         prefix: "tars/meters/",
+         backend: Tars.Store.durable_backend(),
+         group: [log: Keyword.get(opts, :log, false)]
+       ] ++ Tars.Store.durable_shutdown()}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

@@ -14,6 +14,11 @@ defmodule TarsOAuth.Loopback do
   Anything that is not the callback path gets a 404, and a callback carrying
   no state gets a 400.
 
+  A port another process holds is tried again every five seconds, so of
+  several nodes on one machine the first to start listens, and another takes
+  the port over when that one stops. `TarsOAuth.finish/2` finds a flow any
+  node of the cluster started.
+
   A deployment with a web surface of its own registers that instead and calls
   `TarsOAuth.finish/2` from its own controller; then nothing here runs.
   """
@@ -24,6 +29,7 @@ defmodule TarsOAuth.Loopback do
 
   @default_port 4599
   @path "/callback"
+  @retry :timer.seconds(5)
 
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -39,29 +45,38 @@ defmodule TarsOAuth.Loopback do
   @impl GenServer
   def init(opts) do
     port = Keyword.get(opts, :port, port())
-
-    case :gen_tcp.listen(port, [:binary, ip: {127, 0, 0, 1}, active: false, reuseaddr: true]) do
-      {:ok, socket} ->
-        {:ok, %{socket: socket}, {:continue, :accept}}
-
-      {:error, reason} ->
-        Logger.warning("OAuth loopback could not listen on #{port}: #{inspect(reason)}")
-        :ignore
-    end
+    retry = Keyword.get(opts, :retry, @retry)
+    {:ok, listen(%{port: port, retry: retry, socket: nil}, :first)}
   end
 
   @impl GenServer
-  def handle_continue(:accept, %{socket: socket} = state) do
-    accept(socket)
+  def handle_info(:listen, %{socket: nil} = state), do: {:noreply, listen(state, :again)}
+  def handle_info(:listen, state), do: {:noreply, state}
 
-    {:noreply, state}
-  end
-
-  @impl GenServer
   def handle_info({:answered, _connection}, %{socket: socket} = state) do
     accept(socket)
 
     {:noreply, state}
+  end
+
+  defp listen(%{port: port} = state, attempt) do
+    case :gen_tcp.listen(port, [:binary, ip: {127, 0, 0, 1}, active: false, reuseaddr: true]) do
+      {:ok, socket} ->
+        if attempt == :again, do: Logger.info("OAuth loopback listens on #{port} now")
+        accept(socket)
+        %{state | socket: socket}
+
+      {:error, reason} ->
+        if attempt == :first do
+          Logger.warning(
+            "OAuth loopback could not listen on #{port}: #{inspect(reason)}. " <>
+              "It is tried again every #{div(state.retry, 1000)}s"
+          )
+        end
+
+        Process.send_after(self(), :listen, state.retry)
+        state
+    end
   end
 
   defp accept(socket) do
