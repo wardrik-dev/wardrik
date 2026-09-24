@@ -20,7 +20,10 @@ defmodule TarsMCP.Connection do
   connection offers the one tool that authorizes instead, and stops asking.
   Each user's own connection lists the real tools and hands them to the
   deployment's connection to publish, which is what replaces that one tool with
-  the server's. A per-user connection stops on its own once nothing has called
+  the server's. It also keeps them with `TarsMCP.Listing`, which offers them
+  on every other connected node and to a deployment's connection that starts
+  later, so a node no user has connected through offers the server's tools
+  from the start. A per-user connection stops on its own once nothing has called
   through it for a quarter of an hour, and again when the credential it was
   built around is about to expire: the call after that resolves a fresh one
   and opens a connection carrying it.
@@ -39,6 +42,7 @@ defmodule TarsMCP.Connection do
 
   require Logger
 
+  alias TarsMCP.Listing
   alias TarsMCP.Offer
   alias TarsMCP.Server
   alias TarsMCP.Tool
@@ -195,6 +199,18 @@ defmodule TarsMCP.Connection do
     do: GenServer.cast(name(ref, principal), :list_tools)
 
   @doc """
+  Offers the `tools/list` entries a user's connection on another node got
+  from `ref`, in place of the tool that authorizes.
+
+  What `TarsMCP.Listing.remember/2` runs on every other connected node. A node
+  with no connection to `ref`, or one that reaches it as the deployment, is
+  left as it is.
+  """
+  @spec offer_listing(atom(), [map()]) :: :ok
+  def offer_listing(ref, listed) when is_atom(ref) and is_list(listed),
+    do: GenServer.cast(name(ref, :deployment), {:offer_listing, listed})
+
+  @doc """
   Waits until a server has reported its tools, and hands them back.
 
   Returns `{:error, :timeout}` when it has not answered in time, which a server
@@ -232,7 +248,8 @@ defmodule TarsMCP.Connection do
     Process.flag(:trap_exit, true)
 
     if principal == :deployment do
-      {:ok, _pid} = Registry.register(@registry, {:offer, server.ref}, %Offer{server: server})
+      offer = %Offer{server: server, tools: remembered(server)}
+      {:ok, _pid} = Registry.register(@registry, {:offer, server.ref}, offer)
     end
 
     state = %State{
@@ -288,6 +305,15 @@ defmodule TarsMCP.Connection do
   @impl GenServer
   def handle_cast({:offer, tools}, %State{server: server} = state) do
     offer(server, tools)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:offer_listing, _listed}, %State{server: %Server{credential: nil}} = state),
+    do: {:noreply, state}
+
+  def handle_cast({:offer_listing, listed}, %State{server: server} = state) do
+    offer(server, built(server, listed))
 
     {:noreply, state}
   end
@@ -390,6 +416,7 @@ defmodule TarsMCP.Connection do
 
   defp publish(%State{server: server} = state, listed) do
     hand_over(server, built(server, listed))
+    Listing.remember(server.ref, listed)
     listed(state, listed)
 
     Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed as a user")
@@ -425,6 +452,9 @@ defmodule TarsMCP.Connection do
         Server.offers?(server, name),
         do: Tool.build(server, entry)
   end
+
+  defp remembered(%Server{credential: nil}), do: []
+  defp remembered(%Server{} = server), do: built(server, Listing.recall(server.ref))
 
   defp offer(%Server{} = server, tools) do
     Registry.update_value(@registry, {:offer, server.ref}, &%{&1 | tools: tools})
@@ -523,8 +553,9 @@ defmodule TarsMCP.Connection do
 
   # A server reached as a user, refusing the deployment: there is nothing to
   # retry with, so it offers the tool that authorizes and waits to be told.
-  # Where a user's connection has already published the server's own tools,
-  # those stand: the deployment is refused whatever the tools are.
+  # Where a user's connection has already published the server's own tools, on
+  # this node or another, those stand: the deployment is refused whatever the
+  # tools are.
   defp retry(%State{principal: :deployment, server: %Server{credential: credential}} = state, why)
        when credential != nil do
     Logger.info("MCP server #{state.server.ref} #{why}; offering to authorize instead")

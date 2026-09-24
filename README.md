@@ -226,6 +226,10 @@ config :tars, TarsMCP,
   servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: {:user, "github"}]]
 ```
 
+Until a user has connected, such a server offers only `github__connect`. Once
+one has, its tools are kept in the store and offered on every node, and a call
+from a user who has not connected parks on the link the same way.
+
 A credential fixed for the whole deployment is part of the transport — `:env`
 for a command, `:headers` for HTTP:
 

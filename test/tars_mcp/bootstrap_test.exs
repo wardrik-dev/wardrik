@@ -11,6 +11,7 @@ defmodule TarsMCP.BootstrapTest do
   alias Tars.LLM.ToolRunner
   alias Tars.Scope
   alias TarsMCP.Connection
+  alias TarsMCP.Server
 
   defmodule Vault do
     @moduledoc false
@@ -94,5 +95,58 @@ defmodule TarsMCP.BootstrapTest do
 
     [part] = message.content
     assert part.text =~ "a-token"
+  end
+
+  test "a listing made on another node takes the place of the tool that authorizes", context do
+    %{ref: ref} = context
+
+    Connection.offer_listing(ref, [%{"name" => "echo", "description" => "Hands the value back."}])
+
+    assert {:ok, tools} = Connection.await(ref)
+    assert Enum.map(tools, & &1.name) == ["#{ref}__echo"]
+  end
+
+  describe "a connection started after a user has connected elsewhere" do
+    # What a node that starts later has: the deployment's connection, and no
+    # connection of any user's.
+    setup %{ref: ref, server_opts: opts} do
+      {:settled, _call, _message} = call(ref, "connected", "connect")
+      :ok = Connection.close(ref, "connected")
+      :ok = TarsMCP.disconnect(ref)
+
+      {:ok, _pid} = TarsMCP.Supervisor.connect(Server.new(ref, stub_options(opts)))
+      started_with = Enum.map(TarsMCP.tools(ref), & &1.name)
+      await_tools(ref)
+
+      %{started_with: started_with}
+    end
+
+    test "offers the server's own tools from the start", context do
+      %{ref: ref, connect: connect, started_with: names} = context
+
+      assert "#{ref}__echo" in names
+      refute connect in names
+    end
+
+    test "runs a call as the user who connected, over a connection it opens", context do
+      %{ref: ref} = context
+      refute Connection.running?(ref, "connected")
+
+      secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
+
+      assert {:settled, _call, message} = ToolRunner.execute(secret, scope(ref, "connected"))
+
+      [part] = message.content
+      assert part.text =~ "a-token"
+    end
+
+    test "parks a call from a user who has not connected on the link", context do
+      %{ref: ref} = context
+
+      echo = %{id: "c2", name: "#{ref}__echo", arguments: %{"value" => "hello"}}
+
+      assert {:parked, _call, prompt} = ToolRunner.execute(echo, scope(ref, "someone"))
+      assert prompt =~ "https://example.com/authorize"
+    end
   end
 end
