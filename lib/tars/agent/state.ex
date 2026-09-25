@@ -56,6 +56,7 @@ defmodule Tars.Agent.State do
   """
 
   alias ReqLLM.Context
+  alias Tars.Agent.Message
   alias Tars.Agent.Snapshot
   alias Tars.Delegation
   alias Tars.Event
@@ -137,6 +138,9 @@ defmodule Tars.Agent.State do
   # switch feels like one. A tool mid-flight will not answer inside it.
   @default_grace 2_000
 
+  # How many message ids an agent remembers, so one sent again is taken once.
+  @recent 256
+
   @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts]
   defstruct [
     :generation,
@@ -151,6 +155,7 @@ defmodule Tars.Agent.State do
     grace: @default_grace,
     mode: :idle,
     pending: [],
+    recent: [],
     outcome: nil,
     delegations: %Delegation{}
   ]
@@ -194,7 +199,8 @@ defmodule Tars.Agent.State do
           scope_opts: keyword(),
           grace: pos_integer(),
           mode: mode(),
-          pending: [String.t()],
+          pending: [Message.t()],
+          recent: [String.t()],
           outcome: outcome(),
           delegations: Delegation.t()
         }
@@ -210,7 +216,8 @@ defmodule Tars.Agent.State do
           context: Context.t(),
           scope_opts: keyword(),
           grace: pos_integer(),
-          pending: [String.t()],
+          pending: [Message.t()],
+          recent: [String.t()],
           runner: runner(),
           resumer: resumer(),
           outcome: outcome(),
@@ -373,9 +380,17 @@ defmodule Tars.Agent.State do
   @doc "Reads an agent back from `dump/1`, with the tools this node can build."
   @spec load(dumped()) :: t()
   def load(%{config: config, mode: mode} = dumped) do
-    dumped = Map.put_new_lazy(dumped, :generation, &generation/0)
+    dumped =
+      dumped
+      |> Map.put_new_lazy(:generation, &generation/0)
+      |> Map.update(:pending, [], &Enum.map(&1, fn message -> queued(message) end))
+
     struct!(__MODULE__, %{dumped | config: Config.load(config), mode: reopen(mode)})
   end
+
+  # An agent written down before messages had ids queued their text alone.
+  defp queued(%Message{} = message), do: message
+  defp queued(text) when is_binary(text), do: Message.new(text)
 
   defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
 
@@ -468,22 +483,34 @@ defmodule Tars.Agent.State do
   def waiting_on(%__MODULE__{}), do: []
 
   @doc """
-  Queues a message, and says who to nudge.
+  Queues a message, announces it, and says who to nudge.
 
   A message arriving mid-turn joins that turn rather than waiting for it, so a
   running turn is asked to stop at its next boundary and the queue it leaves
-  behind starts the next one.
+  behind starts the next one. A message whose id was among the last
+  #{@recent} queued is the same message sent again, and changes nothing.
   """
-  @spec queue(t(), String.t()) :: {t(), [effect()]}
-  def queue(%__MODULE__{} = state, question) do
-    {%{state | pending: [question | state.pending]}, nudge(state.mode)}
+  @spec queue(t(), Message.t()) :: {t(), [effect()]}
+  def queue(%__MODULE__{} = state, %Message{id: id} = message) do
+    if id in state.recent do
+      {state, []}
+    else
+      queued = %{
+        state
+        | pending: [message | state.pending],
+          recent: Enum.take([id | state.recent], @recent)
+      }
+
+      {queued,
+       [{:emit, Source.root(state.agent_id), {:message_queued, message}} | nudge(state.mode)]}
+    end
   end
 
   defp nudge(%Running{task: %Task{pid: pid}}), do: [{:ask_to_stop, pid}]
   defp nudge(_mode), do: []
 
   @doc """
-  The questions a new turn should answer, and the state with them taken.
+  The messages a new turn should answer, and the state with them taken.
 
   `:none` when a turn is already in flight, when one is waiting on a person, or
   when nothing is queued. A waiting turn is still the current turn: anything
@@ -503,7 +530,7 @@ defmodule Tars.Agent.State do
   """
 
   @spec take(t()) ::
-          {:run, [String.t()], t()}
+          {:run, [Message.t()], t()}
           | {:compact, Scope.t(), t()}
           | {:replay, Scope.t(), Checkpoint.t(), t()}
           | :none

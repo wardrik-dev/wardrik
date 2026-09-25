@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:interrupt.resolved",
+  "title": "tars.interrupt.resolved",
+  "description": "A person answered an interrupt.",
+  "type": "object",
+  "properties": {
+    "interrupt": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "rejected"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "resolved_by": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "interrupt",
+    "decision"
+  ]
+}

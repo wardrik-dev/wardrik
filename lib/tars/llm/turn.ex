@@ -64,8 +64,8 @@ defmodule Tars.LLM.Turn do
   A call that fails before the provider has begun to answer, for a reason
   `Tars.Failure` calls transient, such as a stream that times out before its
   first chunk, is asked again after each wait the config's `:retries` lists,
-  through the dispatch each time. Each try is its own `{:model_started, _}` and
-  `{:model_finished, _, _}`. A call that fails once the provider has begun to
+  through the dispatch each time. Each try is its own `{:model_started, _, _}`
+  and `{:model_finished, _, _, _, _}`, under the same message id. A call that fails once the provider has begun to
   answer is not asked again, since what streamed has already been published;
   it fails the turn, as a call does once its retries are spent. `:interrupt`
   stops the wait, and a turn past its deadline fails with the call's reason
@@ -207,7 +207,7 @@ defmodule Tars.LLM.Turn do
   end
 
   defp iterate(scope, context, acc, remaining) do
-    case request(scope, context) do
+    case request(scope, context, message_id(scope, acc)) do
       {:ok, response} ->
         advance(scope, context, acc, remaining, response)
 
@@ -232,7 +232,7 @@ defmodule Tars.LLM.Turn do
     Logger.warning("Turn hit its iteration cap, answering without tools")
     config = %{scope.config | tools: [], system: closing(scope.config.system)}
 
-    case request(%{scope | config: config}, context) do
+    case request(%{scope | config: config}, context, message_id(scope, acc)) do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
         {:ok, Enum.reverse(acc, partial(text))}
@@ -331,19 +331,30 @@ defmodule Tars.LLM.Turn do
   # produced, so their count is the round a batch belongs to.
   defp rounds(acc), do: Enum.count(acc, &(&1.role == :assistant))
 
-  # A call the dispatch parks is never made, so it has no model events.
-  defp request(%Scope{} = scope, context), do: request(scope, context, scope.config.retries)
+  # The message a model call answers with is named by where the turn is: its
+  # span and its round, so a turn replayed names it as it did the first time.
+  defp message_id(%Scope{source: source}, acc),
+    do: "#{source.trace.span_id}.m#{rounds(acc)}"
 
-  defp request(%Scope{} = scope, context, retries) do
+  # A call the dispatch parks is never made, so it has no model events.
+  defp request(%Scope{} = scope, context, message_id),
+    do: request(scope, context, message_id, scope.config.retries)
+
+  defp request(%Scope{} = scope, context, message_id, retries) do
     request = Request.new(scope.config, context)
 
     case Dispatch.admit(scope, request) do
-      {:park, prompt} -> {:park, prompt}
-      admission -> scope |> make(request, admission) |> retry(scope, context, retries)
+      {:park, prompt} ->
+        {:park, prompt}
+
+      admission ->
+        scope
+        |> make(request, admission, message_id)
+        |> retry(scope, context, message_id, retries)
     end
   end
 
-  defp retry({:error, reason} = failed, scope, context, [wait | retries]) do
+  defp retry({:error, reason} = failed, scope, context, message_id, [wait | retries]) do
     if not Process.get(@answered) and Failure.retryable?(reason) and not Scope.expired?(scope) do
       Logger.warning(
         "Model call failed before answering, asking again in #{wait}ms: #{inspect(reason)}"
@@ -352,18 +363,18 @@ defmodule Tars.LLM.Turn do
       receive do
         :interrupt -> {:interrupted, ""}
       after
-        wait -> request(scope, context, retries)
+        wait -> request(scope, context, message_id, retries)
       end
     else
       failed
     end
   end
 
-  defp retry(result, _scope, _context, _retries), do: result
+  defp retry(result, _scope, _context, _message_id, _retries), do: result
 
-  defp make(%Scope{source: source} = scope, request, admission) do
+  defp make(%Scope{source: source} = scope, request, admission, message_id) do
     started_at = System.monotonic_time()
-    Event.emit(source, {:model_started, request.model_spec})
+    Event.emit(source, {:model_started, message_id, request.model_spec})
     Process.put(@streamed, [])
     Process.put(@answered, false)
 
@@ -372,10 +383,18 @@ defmodule Tars.LLM.Turn do
         admitted |> stream(scope) |> tap(&Dispatch.settle(scope, admitted, settled(&1)))
       end
 
-    Event.emit(source, {:model_finished, outcome(result), Trace.elapsed_ms(started_at)})
+    Event.emit(
+      source,
+      {:model_finished, message_id, outcome(result), Trace.elapsed_ms(started_at), answer(result)}
+    )
 
     result
   end
+
+  # What the model answered, without the conversation it was answering, which
+  # every subscriber already has.
+  defp answer({:ok, %ReqLLM.Response{} = response}), do: %{response | context: nil, stream: nil}
+  defp answer(_failed), do: nil
 
   # A stream that failed once the provider had begun to answer settles with
   # the text that had streamed.

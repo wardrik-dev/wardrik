@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:tool_call.denied",
+  "title": "tars.tool_call.denied",
+  "description": "A tool call was refused without running.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/tool"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "tool",
+    "reason"
+  ]
+}

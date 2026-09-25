@@ -34,7 +34,7 @@ defmodule TarsConsole do
     {:noreply, state}
   end
 
-  def handle_info(%Event{payload: {:tool_started, _id, name}}, state) do
+  def handle_info(%Event{payload: {:tool_started, _id, name, _arguments, _key}}, state) do
     IO.write("\n  → #{name}\n")
     {:noreply, state}
   end

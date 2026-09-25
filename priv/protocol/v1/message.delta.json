@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:message.delta",
+  "title": "tars.message.delta",
+  "description": "Text of an assistant message as it streams. Live: never stored.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/message_ref"
+    },
+    "delta": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "delta"
+  ]
+}

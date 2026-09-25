@@ -172,7 +172,7 @@ defmodule Tars.AgentTest do
 
     Agent.ask(agent, "hello")
 
-    assert_receive %Event{payload: {:turn_started, ["hello"]}}
+    assert_receive %Event{payload: {:turn_started, [%{text: "hello"}]}}
     assert_receive %Event{payload: {:turn_finished, _}}
   end
 
@@ -180,11 +180,11 @@ defmodule Tars.AgentTest do
     agent = start_agent(runner: runner(self()))
 
     Agent.ask(agent, "one")
-    assert_receive %Event{payload: {:turn_started, ["one"]}} = started
+    assert_receive %Event{payload: {:turn_started, [%{text: "one"}]}} = started
     assert_receive %Event{payload: {:turn_finished, _}} = finished
 
     Agent.ask(agent, "two")
-    assert_receive %Event{payload: {:turn_started, ["two"]}} = next_turn
+    assert_receive %Event{payload: {:turn_started, [%{text: "two"}]}} = next_turn
 
     assert Event.root?(started)
     assert started.source.trace.span_id == finished.source.trace.span_id

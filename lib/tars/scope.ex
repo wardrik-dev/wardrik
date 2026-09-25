@@ -9,7 +9,7 @@ defmodule Tars.Scope do
   the things that change per run.
 
       scope = Tars.Scope.root(config, "acme/jon/assistant", name: "turn", user: user, org: org)
-      Tars.Event.emit(scope.source, {:turn_started, ["hello"]})
+      Tars.Event.emit(scope.source, {:turn_started, [Tars.Agent.Message.new("hello")]})
 
   Work the turn spawns takes a child scope, so its events land in the same
   stream under a child span and it inherits the same authority:

@@ -381,7 +381,7 @@ defmodule Tars.LLM.ToolRunner do
   end
 
   defp invoke(%{id: id, name: name, arguments: args} = call, scope) do
-    Event.emit(scope.source, {:tool_started, id, name})
+    Event.emit(scope.source, {:tool_started, id, name, args, Ledger.idempotency_key(scope, call)})
 
     case Enum.find(Config.tools(scope.config), &(&1.name == name)) do
       nil -> finished(call, scope, {:error, "Unknown tool: #{name}"})

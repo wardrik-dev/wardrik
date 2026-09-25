@@ -379,7 +379,8 @@ defmodule TarsTUI.App.Conversation do
   end
 
   defp handle_projection(
-         %Event{payload: {:model_finished, _outcome, _ms}, source: source} = event,
+         %Event{payload: {:model_finished, _message_id, _outcome, _ms, _response}, source: source} =
+           event,
          projection
        ) do
     projection

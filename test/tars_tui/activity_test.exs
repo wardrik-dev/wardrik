@@ -1,6 +1,7 @@
 defmodule TarsTUI.ActivityTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Agent.Message
   alias Tars.Event
   alias Tars.Event.Source
   alias TarsTUI.Activity
@@ -18,7 +19,7 @@ defmodule TarsTUI.ActivityTest do
 
   describe "opening" do
     test "a turn opens the root span", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
+      activity = Activity.new() |> fold(turn, {:turn_started, [Message.new("hi")]})
 
       assert [span] = Activity.spans(activity)
       assert span.span_id == turn.trace.span_id
@@ -29,7 +30,7 @@ defmodule TarsTUI.ActivityTest do
     test "span_started opens a child", %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(tool, {:span_started, "deep_research"})
 
       assert [_turn, span] = Activity.spans(activity)
@@ -52,7 +53,7 @@ defmodule TarsTUI.ActivityTest do
 
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(one, {:span_started, "one"})
         |> fold(two, {:span_started, "two"})
         |> fold(one, {:result, "still going"})
@@ -65,7 +66,7 @@ defmodule TarsTUI.ActivityTest do
     test "span_finished settles a span with the duration it reported", %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(tool, {:span_started, "deep_research"})
         |> fold(tool, {:span_finished, :ok, 1234})
 
@@ -101,7 +102,7 @@ defmodule TarsTUI.ActivityTest do
     test "a turn closes on its own events", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]}, 100)
+        |> fold(turn, {:turn_started, [Message.new("hi")]}, 100)
         |> fold(turn, {:turn_finished, []}, 350)
 
       span = Activity.fetch(activity, turn.trace.span_id)
@@ -113,7 +114,7 @@ defmodule TarsTUI.ActivityTest do
     test "a failed turn closes as an error", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(turn, {:turn_failed, :rate_limited})
 
       assert Activity.fetch(activity, turn.trace.span_id).status == :error
@@ -122,9 +123,9 @@ defmodule TarsTUI.ActivityTest do
 
   describe "what a span is doing" do
     test "follows the last thing it reported", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]})
+      activity = Activity.new() |> fold(turn, {:turn_started, [Message.new("hi")]})
 
-      assert fold(activity, turn, {:model_started, :m}).spans
+      assert fold(activity, turn, {:model_started, "m0", :m}).spans
              |> Map.fetch!(turn.trace.span_id)
              |> Map.fetch!(:doing) == "waiting on the model"
 
@@ -140,9 +141,9 @@ defmodule TarsTUI.ActivityTest do
     test "a finished model request is no longer doing anything", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
-        |> fold(turn, {:model_started, :m})
-        |> fold(turn, {:model_finished, :ok, 12})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
+        |> fold(turn, {:model_started, "m0", :m})
+        |> fold(turn, {:model_finished, "m0", :ok, 12, nil})
 
       assert Activity.fetch(activity, turn.trace.span_id).doing == nil
     end
@@ -150,7 +151,7 @@ defmodule TarsTUI.ActivityTest do
     test "an unrecognised payload leaves the span alone", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(turn, {:thinking, "hmm"})
         |> fold(turn, {:something_new, :whatever})
 
@@ -164,7 +165,7 @@ defmodule TarsTUI.ActivityTest do
 
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(tool, {:span_started, "deep_research"})
         |> fold(branch, {:span_started, "pricing"})
 
@@ -190,7 +191,7 @@ defmodule TarsTUI.ActivityTest do
 
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(tool, {:span_started, "deep_research"})
         |> fold(branch, {:span_started, "pricing"})
 
@@ -217,7 +218,7 @@ defmodule TarsTUI.ActivityTest do
     test "nothing running has no innermost", %{turn: turn} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(turn, {:turn_finished, []})
 
       assert Activity.running(activity) == []
@@ -227,7 +228,8 @@ defmodule TarsTUI.ActivityTest do
 
   describe "elapsed_ms/2" do
     test "a running span counts from when it started", %{turn: turn} do
-      activity = Activity.new() |> fold(turn, {:turn_started, ["hi"]}, 100)
+      activity =
+        Activity.new() |> fold(turn, {:turn_started, [Message.new("hi")]}, 100)
 
       assert Activity.fetch(activity, turn.trace.span_id) |> Activity.elapsed_ms(450) == 350
     end

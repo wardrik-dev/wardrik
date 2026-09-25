@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:defs",
+  "title": "Shared definitions",
+  "$defs": {
+    "message": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "system, user, assistant or tool."
+        },
+        "name": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:tars:schema:v1:defs#/$defs/part"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "parts"
+      ],
+      "description": "A message in OpenTelemetry's GenAI shape. On message.started and message.delta only its id is given."
+    },
+    "message_ref": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "A message, by its id."
+    },
+    "part": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "text, reasoning, tool_call, tool_call_response, uri, file or blob."
+        },
+        "content": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "description": "Any JSON value. Stored as a flattened field."
+        },
+        "response": {
+          "description": "Any JSON value. Stored as a flattened field."
+        },
+        "modality": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "document"
+          ]
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        },
+        "file_id": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "One part of a message, tagged by type, as OpenTelemetry's GenAI conventions define them."
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "A low-cardinality code, as OpenTelemetry's error.type."
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "message"
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read": {
+          "type": "object",
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "cost_usd": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Token usage, as gen_ai.usage.* without the prefix."
+    },
+    "principal": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "shell, ssh, terminal, slack or oauth."
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "description": "Who decided."
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "message_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "A run, by the W3C trace id it runs under."
+    },
+    "tool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "call": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "arguments": {
+              "description": "Any JSON value. Stored as a flattened field."
+            },
+            "result": {
+              "description": "Any JSON value. Stored as a flattened field."
+            },
+            "idempotency_key": {
+              "type": "string"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "call"
+      ]
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

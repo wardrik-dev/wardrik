@@ -106,7 +106,7 @@ defmodule Tars.SubagentTest do
     assert_receive %Event{payload: {:delegation_finished, {:error, :approval_required}, _}} =
                      ended
 
-    refute_receive %Event{payload: {:tool_started, "blocked", _}}
+    refute_receive %Event{payload: {:tool_started, "blocked", _, _, _}}
 
     delegations =
       Tars.Delegation.new() |> Tars.Delegation.fold(started) |> Tars.Delegation.fold(ended)

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:tool_call.started",
+  "title": "tars.tool_call.started",
+  "description": "A tool call began.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/tool"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "tool"
+  ]
+}

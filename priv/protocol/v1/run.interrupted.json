@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.interrupted",
+  "title": "tars.run.interrupted",
+  "description": "A run stopped to wait on a person, for each interrupt it lists.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    },
+    "interrupts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "tool_approval",
+              "model_approval"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "tool_call_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reason",
+          "message"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "interrupts"
+  ]
+}

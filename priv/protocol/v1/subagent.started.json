@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:subagent.started",
+  "title": "tars.subagent.started",
+  "description": "A subagent was handed a task.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "prompt"
+  ]
+}

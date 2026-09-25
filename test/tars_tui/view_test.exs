@@ -36,7 +36,7 @@ defmodule TarsTUI.ViewTest do
     setup %{turn: turn, tool: tool} do
       activity =
         Activity.new()
-        |> fold(turn, {:turn_started, ["hi"]})
+        |> fold(turn, {:turn_started, [Tars.Agent.Message.new("hi")]})
         |> fold(tool, {:span_started, "web_search"})
 
       {:ok, activity: activity}
@@ -118,17 +118,17 @@ defmodule TarsTUI.ViewTest do
     end
 
     test "names the model request and how it went" do
-      assert View.trace({:model_started, :m}) |> plain() =~ "model"
-      assert View.trace({:model_finished, :ok, 1_200}) |> plain() =~ "ok 1.2s"
+      assert View.trace({:model_started, "m0", :m}) |> plain() =~ "model"
+      assert View.trace({:model_finished, "m0", :ok, 1_200, nil}) |> plain() =~ "ok 1.2s"
 
-      failed = View.trace({:model_finished, {:error, :rate_limited}, 40})
+      failed = View.trace({:model_finished, "m0", {:error, :rate_limited}, 40, nil})
 
       assert plain(failed) =~ ":rate_limited"
       assert sequences(failed) |> Enum.member?(:red)
     end
 
     test "summarises tool calls by outcome" do
-      assert View.trace({:tool_started, "c1", "echo"}) |> plain() =~ "echo c1"
+      assert View.trace({:tool_started, "c1", "echo", %{}, "key"}) |> plain() =~ "echo c1"
       assert View.trace({:tool_finished, "c1", "echo", {:ok, :x}}) |> plain() =~ "echo c1 ok"
 
       failed = View.trace({:tool_finished, "c1", "boom", {:error, :nope}})

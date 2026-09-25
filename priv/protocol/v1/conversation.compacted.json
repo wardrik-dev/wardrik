@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:conversation.compacted",
+  "title": "tars.conversation.compacted",
+  "description": "The older part of the conversation was summarised.",
+  "type": "object",
+  "properties": {
+    "messages_before": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "messages_after": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens_before": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokens_after": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "messages_before",
+    "messages_after",
+    "tokens_before",
+    "tokens_after"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:cloudevent",
+  "title": "A Tars event, as a CloudEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "subject",
+    "time",
+    "datacontenttype",
+    "dataschema",
+    "traceparent",
+    "data"
+  ],
+  "properties": {
+    "specversion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "A UUIDv7."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^tars://[^/]+/agents/.+$"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^tars\\.[a-z_]+\\.[a-z_]+$"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "dataschema": {
+      "type": "string",
+      "pattern": "^urn:tars:schema:v1:[a-z_]+\\.[a-z_]+$"
+    },
+    "sequence": {
+      "type": "string",
+      "pattern": "^[0-9]{12}$",
+      "description": "CloudEvents' sequence extension. Durable events only."
+    },
+    "traceparent": {
+      "type": "string",
+      "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "tracestate": {
+      "type": "string"
+    },
+    "parentspanid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

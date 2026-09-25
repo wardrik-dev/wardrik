@@ -4,6 +4,7 @@ defmodule Tars.AgentCompactionTest do
 
   alias ReqLLM.Context
   alias Tars.Agent
+  alias Tars.Agent.Message
   alias Tars.Agent.State
   alias Tars.Agent.State.Compacting
   alias Tars.Compaction
@@ -82,7 +83,7 @@ defmodule Tars.AgentCompactionTest do
 
     test "take/1 compacts first when the history is due, and not with nothing to do" do
       assert :none = State.take(due())
-      {state, _effects} = State.queue(due(), "next")
+      {state, _effects} = State.queue(due(), Message.new("next"))
       assert {:compact, _scope, ^state} = State.take(state)
     end
 
@@ -97,7 +98,7 @@ defmodule Tars.AgentCompactionTest do
     end
 
     test "no compaction runs twice before the turn, whatever the first managed" do
-      {state, _effects} = State.queue(due(), "next")
+      {state, _effects} = State.queue(due(), Message.new("next"))
 
       for result <- [{:error, :timeout}, {:ok, history(), %{}}] do
         {compacted, _effects} =
@@ -105,7 +106,8 @@ defmodule Tars.AgentCompactionTest do
           |> State.compacting(task(), System.monotonic_time())
           |> State.compacted(result)
 
-        assert {:run, ["next"], %State{compaction_settled: false}} = State.take(compacted)
+        assert {:run, [%Message{text: "next"}], %State{compaction_settled: false}} =
+                 State.take(compacted)
       end
     end
   end

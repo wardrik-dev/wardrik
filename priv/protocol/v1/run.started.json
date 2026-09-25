@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.started",
+  "title": "tars.run.started",
+  "description": "A run began, answering the messages it lists. None for a run carried on after a lost node.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run"
+  ]
+}

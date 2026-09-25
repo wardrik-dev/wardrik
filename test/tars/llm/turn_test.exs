@@ -82,7 +82,7 @@ defmodule Tars.LLM.TurnTest do
     # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
     # pre-existing user message is NOT re-reported: this is a delta.
     assert Enum.map(messages, & &1.role) == [:assistant, :tool, :assistant]
-    assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+    assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
     assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}}}
   end
 
@@ -105,8 +105,8 @@ defmodule Tars.LLM.TurnTest do
 
     assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
 
-    assert_receive %Event{payload: {:model_started, _model_spec}}
-    assert_receive %Event{payload: {:model_finished, :ok, _ms}}
+    assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
+    assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response}}
   end
 
   test "a failed request is announced before the turn gives up", %{agent_id: agent_id} do
@@ -115,8 +115,11 @@ defmodule Tars.LLM.TurnTest do
     {_result, _log} =
       ExUnit.CaptureLog.with_log(fn -> LLM.Turn.run(scope(agent_id), Context.new()) end)
 
-    assert_receive %Event{payload: {:model_started, _model_spec}}
-    assert_receive %Event{payload: {:model_finished, {:error, :rate_limited}, _ms}}
+    assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
+
+    assert_receive %Event{
+      payload: {:model_finished, _message_id, {:error, :rate_limited}, _ms, _response}
+    }
   end
 
   describe "a model call that fails before it answers" do
@@ -142,10 +145,14 @@ defmodule Tars.LLM.TurnTest do
                  LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
 
-      assert_receive %Event{payload: {:model_started, _model_spec}}
-      assert_receive %Event{payload: {:model_finished, {:error, :timeout}, _ms}}
-      assert_receive %Event{payload: {:model_started, _model_spec}}
-      assert_receive %Event{payload: {:model_finished, :ok, _ms}}
+      assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
+
+      assert_receive %Event{
+        payload: {:model_finished, _message_id, {:error, :timeout}, _ms, _response}
+      }
+
+      assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
+      assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response}}
     end
 
     test "fails the turn once its retries are spent", %{agent_id: agent_id} do
@@ -280,7 +287,7 @@ defmodule Tars.LLM.TurnTest do
 
     assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
     assert message.role == :assistant
-    refute_receive %Event{payload: {:tool_started, _, _}}
+    refute_receive %Event{payload: {:tool_started, _, _, _, _}}
   end
 
   test "an unpairable tool exchange aborts rather than looping", %{agent_id: agent_id} do
@@ -445,7 +452,9 @@ defmodule Tars.LLM.TurnTest do
       :ok = LLM.Turn.interrupt(self())
       LLM.Turn.run(scope(agent_id), Context.new())
 
-      assert_receive %Event{payload: {:model_finished, {:error, :interrupted}, _ms}}
+      assert_receive %Event{
+        payload: {:model_finished, _message_id, {:error, :interrupted}, _ms, _response}
+      }
     end
 
     # A provider that reports no chunks gives the stream no chance to notice, so
@@ -629,7 +638,10 @@ defmodule Tars.LLM.TurnTest do
         end)
 
       assert log =~ "over_budget"
-      assert_receive %Event{payload: {:model_finished, {:error, :over_budget}, _ms}}
+
+      assert_receive %Event{
+        payload: {:model_finished, _message_id, {:error, :over_budget}, _ms, _response}
+      }
     end
   end
 
@@ -650,7 +662,7 @@ defmodule Tars.LLM.TurnTest do
       assert [{%{name: "model", id: "model_" <> _id}, "Spent $5.00 of $5.00 today."}] =
                Parked.calls(parked)
 
-      refute_received %Event{payload: {:model_started, _spec}}
+      refute_received %Event{payload: {:model_started, _message_id, _spec}}
     end
 
     test "approving it tells the dispatch, which admits the call it parked", %{scope: scope} do

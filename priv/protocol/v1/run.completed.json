@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.completed",
+  "title": "tars.run.completed",
+  "description": "A run answered.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "messages"
+  ]
+}

@@ -1,6 +1,7 @@
 defmodule TarsTUI.AppTest do
   use ExUnit.Case, async: false
 
+  alias Tars.Agent.Message
   alias Tars.Event
   alias Tars.Event.Source
   alias TarsTUI.App
@@ -78,7 +79,7 @@ defmodule TarsTUI.AppTest do
     test "sends a line to the agent and echoes it", %{session: session} do
       submit(session, "hello agent")
 
-      assert_receive {:"$gen_cast", {:ask, "hello agent"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "hello agent"}}}
       assert screen(session) =~ "› hello agent"
     end
 
@@ -92,23 +93,27 @@ defmodule TarsTUI.AppTest do
       session: session,
       turn: turn
     } do
-      emit(turn, [{:turn_started, ["first"]}])
+      emit(turn, [{:turn_started, [Message.new("first")]}])
       assert screen(session) =~ "Enter steers the turn at its next boundary"
       submit(session, "second thought")
 
-      assert_receive {:"$gen_cast", {:ask, "second thought"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "second thought"}}}
       text = screen(session)
       assert text =~ "» second thought  · steers the turn at its next boundary"
       assert text =~ "1 message steering the turn"
     end
 
     test "a line sent while parked queues behind the decision", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["first"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      emit(turn, [
+        {:turn_started, [Message.new("first")]},
+        {:turn_parked, [{call("deploy"), "Ship it?"}]}
+      ])
+
       assert screen(session) =~ "Enter queues behind the parked turn"
 
       submit(session, "also this")
 
-      assert_receive {:"$gen_cast", {:ask, "also this"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "also this"}}}
       text = screen(session)
       assert text =~ "» also this  · queued behind the parked turn"
       assert text =~ "1 message queued behind the parked turn"
@@ -137,7 +142,7 @@ defmodule TarsTUI.AppTest do
     test "two slashes send text that begins with one", %{session: session} do
       submit(session, "//spawn is a word here")
 
-      assert_receive {:"$gen_cast", {:ask, "/spawn is a word here"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "/spawn is a word here"}}}
       assert screen(session) =~ "› /spawn is a word here"
     end
 
@@ -169,7 +174,7 @@ defmodule TarsTUI.AppTest do
       assert screen(session) =~ "second"
 
       Breeze.Test.input(session, "Enter")
-      assert_receive {:"$gen_cast", {:ask, "first\nsecond"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "first\nsecond"}}}
       assert prompt_rows.() == 1
     end
 
@@ -188,8 +193,8 @@ defmodule TarsTUI.AppTest do
       %{session: session} = ctx
       submit(session, "first question")
       submit(session, "second question")
-      assert_receive {:"$gen_cast", {:ask, "first question"}}
-      assert_receive {:"$gen_cast", {:ask, "second question"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "first question"}}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "second question"}}}
       screen(session)
       type(session, "unfinished")
 
@@ -216,7 +221,7 @@ defmodule TarsTUI.AppTest do
       type(session, " again")
       Breeze.Test.input(session, "Enter")
 
-      assert_receive {:"$gen_cast", {:ask, "hello again"}}
+      assert_receive {:"$gen_cast", {:ask, %Tars.Agent.Message{text: "hello again"}}}
       assert screen(session) =~ "› hello again"
     end
 
@@ -270,7 +275,11 @@ defmodule TarsTUI.AppTest do
     end
 
     test "an answer to a parked call is not history", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:turn_parked, [{call("deploy"), "Ship it?"}]}
+      ])
+
       submit(session, "y")
       assert_receive {:"$gen_cast", {:resume, _decisions}}
       emit(turn, [{:turn_finished, []}])
@@ -346,7 +355,7 @@ defmodule TarsTUI.AppTest do
       refute text =~ "Approve a parked call"
       Breeze.Test.input(session, "Escape")
 
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       ctrl(session, "p")
       screen(session)
       type(session, "stop")
@@ -366,7 +375,7 @@ defmodule TarsTUI.AppTest do
     test "several parked calls are picked by number, and Backspace steps back", ctx do
       %{session: session, turn: turn} = ctx
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:turn_parked, calls}])
 
       ctrl(session, "p")
       screen(session)
@@ -403,7 +412,10 @@ defmodule TarsTUI.AppTest do
 
   describe "approvals" do
     test "one parked call takes a bare answer", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:turn_parked, [{call("deploy"), "Ship it?"}]}
+      ])
 
       text = screen(session)
       assert text =~ "APPROVAL NEEDED"
@@ -420,7 +432,7 @@ defmodule TarsTUI.AppTest do
       %{session: session, turn: turn} = ctx
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
       session = Breeze.Test.resize(session, {70, 30})
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:turn_parked, calls}])
 
       text = screen(session)
       assert text =~ "2 calls, each decided on its own"
@@ -453,7 +465,7 @@ defmodule TarsTUI.AppTest do
 
     test "a resumed turn is running again, whoever answered it", %{session: session, turn: turn} do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:turn_parked, calls}])
       assert screen(session) =~ "waiting on deploy, drop"
 
       emit(turn, [{:turn_resumed, %{"call_deploy" => :approve}}])
@@ -470,7 +482,7 @@ defmodule TarsTUI.AppTest do
 
     test "all answers every parked call", %{session: session, turn: turn} do
       calls = [{call("deploy"), "Ship it?"}, {call("drop_table"), "Drop it?"}]
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, calls}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:turn_parked, calls}])
 
       submit(session, "/deny all not today")
 
@@ -485,7 +497,10 @@ defmodule TarsTUI.AppTest do
     end
 
     test "a number that picks nothing is said so", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:turn_parked, [{call("deploy"), "Ship it?"}]}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:turn_parked, [{call("deploy"), "Ship it?"}]}
+      ])
 
       submit(session, "/approve 4")
 
@@ -503,14 +518,14 @@ defmodule TarsTUI.AppTest do
       Breeze.Test.input(session, "Escape")
       refute_receive {:"$gen_cast", :interrupt}
 
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       assert screen(session) =~ "Esc stops it"
       Breeze.Test.input(session, "Escape")
       assert_receive {:"$gen_cast", :interrupt}
     end
 
     test "Escape from another pane only returns to the prompt", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       Breeze.Test.focus(session, "log")
       Breeze.Test.input(session, "Escape")
 
@@ -519,7 +534,7 @@ defmodule TarsTUI.AppTest do
     end
 
     test "Ctrl-X then s stops the turn from any pane", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       Breeze.Test.focus(session, "log")
       ctrl(session, "x")
       assert screen(session) =~ "s stop · Esc cancel"
@@ -571,7 +586,7 @@ defmodule TarsTUI.AppTest do
       assert screen(session) =~ "› unsent"
 
       # In the transcript the same key scrolls half a page.
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(turn, for(i <- 1..40, do: {:result, "line #{i}\n"}))
       Breeze.Test.focus(session, "log")
       ctrl(session, "u")
@@ -595,7 +610,7 @@ defmodule TarsTUI.AppTest do
       refute screen(session) =~ "[trace]"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       assert screen(session) =~ "[trace]"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
@@ -607,7 +622,7 @@ defmodule TarsTUI.AppTest do
   describe "the transcript" do
     test "renders the answer as markdown, a line at a time", %{session: session, turn: turn} do
       emit(turn, [
-        {:turn_started, ["hi"]},
+        {:turn_started, [Message.new("hi")]},
         {:result, "## Findings\n- a **bold** point\nunfinished"}
       ])
 
@@ -620,7 +635,7 @@ defmodule TarsTUI.AppTest do
 
     test "shows the line still arriving, and renders it once for good", ctx do
       %{session: session, turn: turn} = ctx
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "a **bold**"}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:result, "a **bold**"}])
       assert screen(session) =~ "⏺ a bold"
 
       emit(turn, [{:result, " claim"}])
@@ -635,7 +650,7 @@ defmodule TarsTUI.AppTest do
 
     test "the line still arriving leaves once its own line takes over", ctx do
       %{session: session, turn: turn} = ctx
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "half"}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:result, "half"}])
       assert screen(session) =~ "⏺ half"
 
       emit(turn, [{:turn_finished, []}])
@@ -645,20 +660,27 @@ defmodule TarsTUI.AppTest do
     end
 
     test "the answer is a bullet block set off by a blank line", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "first line\nsecond line\n"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, "first line\nsecond line\n"}
+      ])
 
       assert screen(session) =~ ~r/\n\s*\n⏺ first line\s*\n  second line/
     end
 
     test "the last line lands when the turn ends", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "no newline"}, {:turn_finished, []}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, "no newline"},
+        {:turn_finished, []}
+      ])
 
       assert screen(session) =~ "no newline"
     end
 
     test "text streamed by delegated work stays out of the prose", %{session: session, turn: turn} do
       branch = Source.child(turn, name: "researcher")
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(branch, [{:span_started, "researcher"}, {:result, "private findings\n"}])
 
       text = screen(session)
@@ -670,7 +692,7 @@ defmodule TarsTUI.AppTest do
       tool = Source.child(turn, name: "deep_research")
       angle = Source.child(tool, name: "pricing")
 
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(tool, [{:span_started, "deep_research"}])
       emit(angle, [{:span_started, "pricing"}, {:span_finished, {:error, :timeout}, 5_000}])
       emit(tool, [{:span_finished, :ok, 6_000}])
@@ -689,7 +711,7 @@ defmodule TarsTUI.AppTest do
       reason =
         {:no_findings, Enum.map(1..5, &%{"angle" => "angle number #{&1}", "reason" => ":killed"})}
 
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(tool, [{:span_started, "deep_research"}, {:span_finished, {:error, reason}, 1_000}])
 
       text = screen(session)
@@ -701,7 +723,7 @@ defmodule TarsTUI.AppTest do
       long = String.duplicate("lemonade ", 20)
 
       emit(turn, [
-        {:turn_started, ["hi"]},
+        {:turn_started, [Message.new("hi")]},
         {:tool_call, tool_call("web_search", %{"query" => "lemonade"})}
       ])
 
@@ -714,13 +736,16 @@ defmodule TarsTUI.AppTest do
     end
 
     test "a partial tool call, without arguments, draws nothing", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:tool_call, tool_call("web_search", %{})}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:tool_call, tool_call("web_search", %{})}
+      ])
 
       refute screen(session) =~ "⇢"
     end
 
     test "stays pinned to the newest line as it grows", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(turn, for(i <- 1..40, do: {:result, "line #{i}\n"}))
 
       text = screen(session)
@@ -732,7 +757,7 @@ defmodule TarsTUI.AppTest do
       session: session,
       turn: turn
     } do
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       emit(turn, for(i <- 1..40, do: {:result, "line #{i}\n"}))
       assert screen(session) =~ "line 40"
 
@@ -749,7 +774,11 @@ defmodule TarsTUI.AppTest do
     end
 
     test "rows re-wrap when the terminal is resized", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:result, String.duplicate("word ", 20) <> "\n"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, String.duplicate("word ", 20) <> "\n"}
+      ])
+
       assert screen(session) =~ ~r/^⏺ word word.*\n  (word )+/m
 
       wide = Breeze.Test.resize(session, {130, 14})
@@ -760,14 +789,14 @@ defmodule TarsTUI.AppTest do
 
     test "an interrupt and a failure are both reported", %{session: session, turn: turn} do
       emit(turn, [
-        {:turn_started, ["hi"]},
+        {:turn_started, [Message.new("hi")]},
         {:turn_interrupted, %{resolution: :killed, elapsed_ms: 1_500, dropped: 2, kept: 0}}
       ])
 
       text = screen(session)
       assert text =~ "■ stopped · 1.5s · killed · 2 queued messages dropped"
 
-      emit(turn, [{:turn_started, ["again"]}, {:turn_failed, :boom}])
+      emit(turn, [{:turn_started, [Message.new("again")]}, {:turn_failed, :boom}])
       assert screen(session) =~ "✗ :boom"
     end
   end
@@ -784,7 +813,7 @@ defmodule TarsTUI.AppTest do
     test "/ in the transcript searches it, Enter goes to the match, n and N step", ctx do
       %{session: session, turn: turn} = ctx
       session = Breeze.Test.resize(session, {70, 30})
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       lines(turn, 1..40)
       emit(turn, [{:turn_finished, []}])
 
@@ -822,7 +851,11 @@ defmodule TarsTUI.AppTest do
       Breeze.Test.input(session, "n")
       assert status_row(session) =~ "nothing searched for yet · / searches"
 
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "the lemonade stand\n"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, "the lemonade stand\n"}
+      ])
+
       Breeze.Test.focus(session, "prompt")
       submit(session, "/find lemonade")
 
@@ -843,7 +876,7 @@ defmodule TarsTUI.AppTest do
 
     test "new output while scrolled up is announced until End follows it", ctx do
       %{session: session, turn: turn} = ctx
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       lines(turn, 1..30)
       Breeze.Test.focus(session, "log")
       screen(session)
@@ -862,7 +895,12 @@ defmodule TarsTUI.AppTest do
       turn: turn
     } do
       answer = "Run this:\n```sh\necho one\n```\nthen\n```sh\necho two\n```\n"
-      emit(turn, [{:turn_started, ["hi"]}, {:result, answer}, {:turn_finished, []}])
+
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, answer},
+        {:turn_finished, []}
+      ])
 
       Breeze.Test.focus(session, "log")
       screen(session)
@@ -880,7 +918,12 @@ defmodule TarsTUI.AppTest do
       submit(session, "/copy")
       assert status_row(session) =~ "nothing to copy · no answer yet"
 
-      emit(turn, [{:turn_started, ["hi"]}, {:result, "prose only"}, {:turn_finished, []}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:result, "prose only"},
+        {:turn_finished, []}
+      ])
+
       submit(session, "/copy code")
       assert status_row(session) =~ "nothing to copy · the answer has no code block"
       refute_receive {:copied, _text}
@@ -890,7 +933,7 @@ defmodule TarsTUI.AppTest do
       session = Breeze.Test.resize(session, {80, 24})
 
       emit(turn, [
-        {:turn_started, ["hi"]},
+        {:turn_started, [Message.new("hi")]},
         {:tool_call, tool_call("web_search", %{"query" => "lemonade"})},
         {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}},
         {:tool_call, tool_call("deep_research", %{"topic" => "citrus"})},
@@ -975,7 +1018,7 @@ defmodule TarsTUI.AppTest do
       assert Breeze.Test.element(session, "activity") ==
                {:error, {:element_not_found, "activity"}}
 
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       screen(session)
       assert {:ok, %Breeze.Viewport{}} = Breeze.Test.element(session, "activity")
 
@@ -987,7 +1030,7 @@ defmodule TarsTUI.AppTest do
     end
 
     test "a notice takes the row from the spinner while it shows", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}])
       screen(session)
 
       Breeze.Test.focus(session, "log")
@@ -1004,7 +1047,11 @@ defmodule TarsTUI.AppTest do
     } do
       tool = Source.child(turn, name: "web_search")
 
-      emit(turn, [{:turn_started, ["hi"]}, {:thinking, "I should look this up carefully"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:thinking, "I should look this up carefully"}
+      ])
+
       assert screen(session) =~ "turn · I should look this up carefully"
 
       emit(tool, [{:span_started, "web_search"}])
@@ -1014,13 +1061,17 @@ defmodule TarsTUI.AppTest do
       refute text =~ "look this up"
 
       emit(tool, [{:span_finished, :ok, 10}])
-      emit(turn, [{:model_started, "m"}, {:thinking, " and then decide"}])
+      emit(turn, [{:model_started, "m0", "m"}, {:thinking, " and then decide"}])
 
       assert screen(session) =~ "turn · I should look this up carefully and then decide"
     end
 
     test "a chunk ending in a space still separates words", %{session: session, turn: turn} do
-      emit(turn, [{:turn_started, ["hi"]}, {:thinking, "I should "}, {:thinking, "rank these"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:thinking, "I should "},
+        {:thinking, "rank these"}
+      ])
 
       assert screen(session) =~ "turn · I should rank these"
     end
@@ -1030,7 +1081,7 @@ defmodule TarsTUI.AppTest do
       turn: turn
     } do
       words = Enum.map_join(1..30, " ", &"word#{&1}")
-      emit(turn, [{:turn_started, ["hi"]}, {:thinking, words}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:thinking, words}])
 
       [row] = session |> screen() |> String.split("\n") |> Enum.filter(&(&1 =~ "turn ·"))
 
@@ -1042,7 +1093,7 @@ defmodule TarsTUI.AppTest do
       session: session,
       turn: turn
     } do
-      emit(turn, [{:turn_started, ["hi"]}, {:thinking, "secret plan\n"}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:thinking, "secret plan\n"}])
       refute screen(session) =~ "┊ secret plan"
 
       Breeze.Test.input(session, %{"key" => "t", "ctrlKey" => true})
@@ -1055,15 +1106,15 @@ defmodule TarsTUI.AppTest do
     test "adds up tokens and cost across concurrent requests", %{session: session, turn: turn} do
       branch = Source.child(turn, name: "researcher")
 
-      emit(turn, [{:turn_started, ["hi"]}, {:model_started, "m"}])
-      emit(branch, [{:model_started, "m"}])
+      emit(turn, [{:turn_started, [Message.new("hi")]}, {:model_started, "m0", "m"}])
+      emit(branch, [{:model_started, "m0", "m"}])
       emit(turn, [{:meta, meta(%{input_tokens: 1_000, output_tokens: 100, total_cost: 0.01})}])
       emit(branch, [{:meta, meta(%{input_tokens: 500, output_tokens: 50, total_cost: 0.005})}])
 
       refute screen(session) =~ "req"
 
-      emit(turn, [{:model_finished, :ok, 10}])
-      emit(branch, [{:model_finished, :ok, 10}])
+      emit(turn, [{:model_finished, "m0", :ok, 10, nil}])
+      emit(branch, [{:model_finished, "m0", :ok, 10, nil}])
 
       text = screen(session)
       assert text =~ "↑ 1.5k in"

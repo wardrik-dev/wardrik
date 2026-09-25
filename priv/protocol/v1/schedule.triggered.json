@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:schedule.triggered",
+  "title": "tars.schedule.triggered",
+  "description": "A schedule came due.",
+  "type": "object",
+  "properties": {
+    "schedule": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "asked",
+        "busy",
+        "no_agent",
+        "missed",
+        "failed"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schedule",
+    "status"
+  ]
+}

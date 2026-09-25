@@ -45,17 +45,19 @@ defmodule TarsTUI.View do
 
   @doc "A low-level event as a trace line, or `nil` when it is not worth one."
   @spec trace(tuple()) :: Text.t() | nil
-  def trace({:model_started, model_spec}),
+  def trace({:model_started, _message_id, model_spec}),
     do: line("model", inspect(model_spec), :cyan)
 
-  def trace({:model_finished, :ok, ms}),
+  def trace({:model_finished, _message_id, :ok, ms, _response}),
     do: line("model", "ok #{Text.duration(ms)}", :cyan)
 
-  def trace({:model_finished, {:error, reason}, ms}),
+  def trace({:model_finished, _message_id, {:error, reason}, ms, _response}),
     do: line("model", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
   def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
-  def trace({:tool_started, id, name}), do: line("tool", "#{name} #{id}", :yellow)
+
+  def trace({:tool_started, id, name, _arguments, _key}),
+    do: line("tool", "#{name} #{id}", :yellow)
 
   def trace({:tool_finished, id, name, {:ok, output}}),
     do: line("tool", "#{name} #{id} ok #{payload(output)}", :yellow)
@@ -91,7 +93,9 @@ defmodule TarsTUI.View do
   def trace({:deadline_reached, count}),
     do: line("turn", "deadline reached after #{count} message(s)", :yellow)
 
-  def trace({:turn_started, questions}), do: line("turn", Enum.join(questions, " | "), :cyan)
+  def trace({:turn_started, messages}),
+    do: line("turn", Enum.map_join(messages, " | ", & &1.text), :cyan)
+
   def trace({:turn_finished, messages}), do: line("turn", "#{length(messages)} message(s)", :cyan)
 
   def trace({:turn_interrupted, stats}),

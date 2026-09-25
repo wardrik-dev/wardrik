@@ -88,13 +88,15 @@ defmodule Tars.Agent do
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
 
-  The agent adds five events of its own so subscribers can follow its state
-  without polling: `{:turn_started, questions}`, `{:turn_finished, messages}`,
-  `{:turn_failed, reason}`, `{:turn_interrupted, stats}` and
-  `{:turn_resumed, decisions}`, the last carrying the decisions a parked turn
-  was answered with. All are emitted on the turn's root span, so a subscriber
-  can tell them from events the turn's own work produced. A client attaching
-  mid-turn can catch up with `status/1` or `snapshot/1`.
+  The agent adds events of its own so subscribers can follow its state
+  without polling: `{:turn_started, messages}`, `{:turn_finished, messages}`,
+  `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
+  `{:turn_resumed, decisions}` and `{:call_decided, call_id, decision, by}`
+  on the turn's root span, so a subscriber can tell them from events the
+  turn's own work produced; and `{:message_queued, message}` as a message
+  arrives and `{:agent_started, node, status, generation}` each time the agent is loaded,
+  on the root of a trace of their own. A client attaching mid-turn can catch
+  up with `status/1` or `snapshot/1`.
 
   ## Delegations
 
@@ -109,10 +111,12 @@ defmodule Tars.Agent do
   use DurableServer, vsn: 1
 
   alias ReqLLM.Context
+  alias Tars.Agent.Message
   alias Tars.Agent.Snapshot
   alias Tars.Agent.State
   alias Tars.Event
   alias Tars.Event.Bus
+  alias Tars.Event.Source
   alias Tars.Fleet
   alias Tars.LLM.Turn
   alias Tars.LLM.Turn.Parked
@@ -157,8 +161,16 @@ defmodule Tars.Agent do
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
   def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
 
-  @spec ask(agent(), String.t()) :: :ok | {:error, :not_found}
-  def ask(agent, question), do: cast(agent, {:ask, question})
+  @doc """
+  Queues a message for the agent to answer.
+
+  `:id` names the message, a new UUIDv7 when left out. The agent announces it
+  as `{:message_queued, message}` and takes it once, however many times the
+  same id is sent.
+  """
+  @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
+  def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts),
+    do: cast(agent, {:ask, Message.new(question, Keyword.get(opts, :id))})
 
   @spec get_context(agent()) :: Context.t() | {:error, :not_found}
   def get_context(agent), do: call(agent, :get_context)
@@ -245,6 +257,11 @@ defmodule Tars.Agent do
     send(self(), :maybe_run)
     :ok = Bus.subscribe(state.agent_id, level: :lifecycle)
 
+    Event.emit(
+      Source.root(state.agent_id),
+      {:agent_started, node(), State.status(state).state, state.generation}
+    )
+
     {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
 
@@ -285,8 +302,8 @@ defmodule Tars.Agent do
   end
 
   @impl DurableServer
-  def handle_cast({:ask, question}, state) do
-    {state, effects} = State.queue(state, question)
+  def handle_cast({:ask, %Message{} = message}, state) do
+    {state, effects} = State.queue(state, message)
 
     state |> perform(effects) |> advance(sync: true)
   end
@@ -323,7 +340,7 @@ defmodule Tars.Agent do
   @impl DurableServer
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
-      {:run, questions, state} -> stay(start(state, questions))
+      {:run, messages, state} -> stay(start(state, messages))
       {:replay, scope, checkpoint, state} -> stay(replay(state, scope, checkpoint))
       {:compact, scope, state} -> stay(compact(state, scope))
       :none -> stay(state)
@@ -402,11 +419,11 @@ defmodule Tars.Agent do
 
   # -- turns -----------------------------------------------------------------
 
-  defp start(state, questions) do
-    context = Enum.reduce(questions, state.context, &Context.append(&2, Context.user(&1)))
+  defp start(state, messages) do
+    context = Enum.reduce(messages, state.context, &Context.append(&2, Context.user(&1.text)))
     scope = journaled(State.turn_scope(state))
 
-    Event.emit(scope.source, {:turn_started, questions})
+    Event.emit(scope.source, {:turn_started, messages})
     task = run(fn -> State.apply_runner(state, scope, context) end)
 
     State.started(state, task, scope, context, System.monotonic_time())

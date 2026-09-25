@@ -128,7 +128,7 @@ defmodule Tars.AgentLedgerTest do
 
     {^key, agent} = Tars.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:tool_started, call_id, "deploy"}}, 5_000
+    assert_receive %Event{payload: {:tool_started, call_id, "deploy", _, _}}, 5_000
     assert_receive {:began, "deploy", tool}, 5_000
     tool_ref = Process.monitor(tool)
 

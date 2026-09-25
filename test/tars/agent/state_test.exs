@@ -2,6 +2,7 @@ defmodule Tars.Agent.StateTest do
   use ExUnit.Case, async: true
 
   alias ReqLLM.Context
+  alias Tars.Agent.Message
   alias Tars.Agent.State
   alias Tars.Agent.State.Replaying
   alias Tars.Agent.State.Running
@@ -93,25 +94,33 @@ defmodule Tars.Agent.StateTest do
 
   describe "queueing" do
     test "a message arriving while idle waits for nobody" do
-      {state, effects} = State.queue(state(), "hello")
+      {state, effects} = State.queue(state(), Message.new("hello"))
 
-      assert effects == []
+      assert [{:emit, _source, {:message_queued, %Message{text: "hello"}}}] = effects
       assert State.status(state).pending == 1
     end
 
-    test "a message arriving mid-turn asks that turn to wrap up" do
-      {_state, effects} = State.queue(running(), "and another thing")
+    test "a message sent again under the same id is taken once" do
+      message = Message.new("hello", "m-1")
+      {once, _effects} = State.queue(state(), message)
 
-      assert [{:ask_to_stop, pid}] = effects
+      assert {^once, []} = State.queue(once, message)
+      assert {:run, [^message], _state} = State.take(once)
+    end
+
+    test "a message arriving mid-turn asks that turn to wrap up" do
+      {_state, effects} = State.queue(running(), Message.new("and another thing"))
+
+      assert [{:emit, _source, {:message_queued, _message}}, {:ask_to_stop, pid}] = effects
       assert pid == self()
     end
 
     test "take/1 drains the queue only when there is nothing else happening" do
-      {idle, _} = State.queue(state(), "hello")
-      {running, _} = State.queue(running(), "hello")
-      {waiting, _} = State.queue(waiting(), "hello")
+      {idle, _} = State.queue(state(), Message.new("hello"))
+      {running, _} = State.queue(running(), Message.new("hello"))
+      {waiting, _} = State.queue(waiting(), Message.new("hello"))
 
-      assert {:run, ["hello"], drained} = State.take(idle)
+      assert {:run, [%Message{text: "hello"}], drained} = State.take(idle)
       assert State.status(drained).pending == 0
       assert State.take(running) == :none
       assert State.take(waiting) == :none
@@ -131,8 +140,8 @@ defmodule Tars.Agent.StateTest do
     end
 
     test "what was queued is dropped and counted" do
-      {queued, _} = State.queue(running(), "one")
-      {queued, _} = State.queue(queued, "two")
+      {queued, _} = State.queue(running(), Message.new("one"))
+      {queued, _} = State.queue(queued, Message.new("two"))
 
       {state, effects} = State.interrupt(queued)
 
@@ -304,9 +313,16 @@ defmodule Tars.Agent.StateTest do
     defp runtime_terms(_other), do: []
 
     test "an idle agent comes back idle, with its queue" do
-      {state, _effects} = State.queue(state(), "hello")
+      {state, _effects} = State.queue(state(), Message.new("hello"))
 
-      assert %State{mode: :idle, pending: ["hello"]} = reload(state)
+      assert %State{mode: :idle, pending: [%Message{text: "hello"}]} = reload(state)
+    end
+
+    test "a queue written down before messages had ids comes back with ids" do
+      dumped = %{State.dump(state()) | pending: ["hello"]}
+
+      assert %State{pending: [%Message{id: id, text: "hello"}]} = State.load(dumped)
+      assert is_binary(id)
     end
 
     test "a turn in flight comes back owed, so take/1 runs it again" do
@@ -425,7 +441,7 @@ defmodule Tars.Agent.StateTest do
     end
 
     test "counts what is queued" do
-      {state, _effects} = State.queue(state(), "hello")
+      {state, _effects} = State.queue(state(), Message.new("hello"))
 
       assert %{pending: 1} = State.meta(state)
     end

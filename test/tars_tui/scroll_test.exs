@@ -19,7 +19,7 @@ defmodule TarsTUI.ScrollTest do
     on_exit(fn -> Breeze.Test.stop(session) end)
 
     turn = Source.root(agent_id, name: "turn")
-    Event.emit(turn, {:turn_started, ["hi"]})
+    Event.emit(turn, {:turn_started, [Tars.Agent.Message.new("hi")]})
     Enum.each(1..40, &Event.emit(turn, {:result, "line #{&1}\n"}))
     screen(session)
     Breeze.Test.focus(session, "log")

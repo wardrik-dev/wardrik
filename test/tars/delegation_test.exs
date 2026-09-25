@@ -1,6 +1,7 @@
 defmodule Tars.DelegationTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Agent.Message
   alias Tars.Delegation
   alias Tars.Event
   alias Tars.Event.Source
@@ -21,7 +22,7 @@ defmodule Tars.DelegationTest do
 
     delegations =
       fold([
-        at(turn, {:turn_started, ["go"]}, 0),
+        at(turn, {:turn_started, [Message.new("go")]}, 0),
         at(pricing, {:span_started, "pricing"}, 10),
         at(pricing, {:delegation_started, "what do rivals charge?"}, 11)
       ])
@@ -109,7 +110,7 @@ defmodule Tars.DelegationTest do
 
     delegations =
       fold([
-        at(turn, {:turn_started, ["go"]}, 0),
+        at(turn, {:turn_started, [Message.new("go")]}, 0),
         at(branch, {:span_started, "slow"}, 1),
         at(branch, {:delegation_started, "task"}, 2),
         at(turn, {:turn_interrupted, %{}}, 100)
@@ -119,7 +120,9 @@ defmodule Tars.DelegationTest do
              Delegation.list(delegations)
 
     assert Delegation.summary(
-             fold_more(delegations, [at(turn(), {:turn_started, ["again"]}, 200)])
+             fold_more(delegations, [
+               at(turn(), {:turn_started, [Message.new("again")]}, 200)
+             ])
            ) ==
              %{active: 0, total: 0}
   end
@@ -144,7 +147,7 @@ defmodule Tars.DelegationTest do
   test "events that are not about delegations change nothing" do
     turn = turn()
 
-    delegations = fold([at(turn, {:result, "text"}, 0), at(turn, {:model_started, "m"}, 1)])
+    delegations = fold([at(turn, {:result, "text"}, 0), at(turn, {:model_started, "m0", "m"}, 1)])
 
     assert Delegation.list(delegations) == []
   end

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:message.created",
+  "title": "tars.message.created",
+  "description": "Someone sent the agent a message, which it will answer.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message"
+  ]
+}

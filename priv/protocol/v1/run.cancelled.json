@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.cancelled",
+  "title": "tars.run.cancelled",
+  "description": "A person stopped a run.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "kept": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "resolution": {
+      "type": "string",
+      "enum": [
+        "stopped",
+        "killed",
+        "idle",
+        "abandoned"
+      ]
+    },
+    "duration_ms": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "dropped",
+    "kept",
+    "resolution",
+    "duration_ms"
+  ]
+}

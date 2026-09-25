@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:tool_call.completed",
+  "title": "tars.tool_call.completed",
+  "description": "A tool call answered, or was answered from the ledger when replayed.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/tool"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "error": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+    },
+    "replayed": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "tool",
+    "status",
+    "replayed"
+  ]
+}

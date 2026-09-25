@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.deadline_exceeded",
+  "title": "tars.run.deadline_exceeded",
+  "description": "A run reached its deadline and stops with what it has.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    },
+    "message_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "message_count"
+  ]
+}

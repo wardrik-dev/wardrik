@@ -27,7 +27,7 @@ defmodule TarsConsoleTest do
   test "renders tool lifecycle" do
     output =
       render(Fleet.key(), [
-        {:tool_started, "call_1", "echo"},
+        {:tool_started, "call_1", "echo", %{}, "key"},
         {:tool_finished, "call_1", "echo", {:ok, "done"}},
         {:tool_finished, "call_2", "boom", {:error, :timeout}}
       ])

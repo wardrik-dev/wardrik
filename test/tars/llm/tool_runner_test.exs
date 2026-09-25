@@ -40,7 +40,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "connect"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "connect", _, _}}
       assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Authorize first"}}
       refute_receive %Event{payload: {:tool_finished, "call_1", "connect", _result}}
     end
@@ -101,13 +101,13 @@ defmodule Tars.LLM.ToolRunnerTest do
       messages =
         calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
 
       assert_receive %Event{
         payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}}
       }
 
-      assert_receive %Event{payload: {:tool_started, "call_2", "reverse"}}
+      assert_receive %Event{payload: {:tool_started, "call_2", "reverse", _, _}}
       assert_receive %Event{payload: {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}}}
 
       assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
@@ -223,7 +223,9 @@ defmodule Tars.LLM.ToolRunnerTest do
       spawn_link(fn ->
         Event.Bus.subscribe(agent_id)
         send(test_pid, :ready)
-        receive do: (%Event{payload: {:tool_started, _, _}} = e -> send(test_pid, {:other, e}))
+
+        receive do: (%Event{payload: {:tool_started, _, _, _, _}} = e ->
+                       send(test_pid, {:other, e}))
       end)
 
       assert_receive :ready
@@ -232,8 +234,8 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
       ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
-      assert_receive {:other, %Event{payload: {:tool_started, "call_1", "echo"}}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
+      assert_receive {:other, %Event{payload: {:tool_started, "call_1", "echo", _, _}}}
     end
   end
 
@@ -283,8 +285,8 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       ToolRunner.execute_many_async(calls, turn)
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}} = one
-      assert_receive %Event{payload: {:tool_started, "call_2", "echo"}} = two
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}} = one
+      assert_receive %Event{payload: {:tool_started, "call_2", "echo", _, _}} = two
 
       for event <- [one, two] do
         refute Event.root?(event)
@@ -301,7 +303,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "echo", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}} = started
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}} = started
       assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
@@ -373,7 +375,7 @@ defmodule Tars.LLM.ToolRunnerTest do
       {:settled, _call, message} =
         ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
       assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}}}
       assert message.role == :tool
       assert message.tool_call_id == "call_1"
@@ -402,7 +404,7 @@ defmodule Tars.LLM.ToolRunnerTest do
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
       assert message.tool_call_id == "call_1"
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo"}}
+      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
     end
 
     test "a denied call never runs and the model is told why", %{agent_id: agent_id} do

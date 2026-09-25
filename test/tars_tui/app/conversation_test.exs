@@ -14,7 +14,10 @@ defmodule TarsTUI.App.ConversationTest do
 
     state =
       Conversation.new(60, "test:model")
-      |> Conversation.apply_event(Event.new(root, {:turn_started, ["hello"]}), @options)
+      |> Conversation.apply_event(
+        Event.new(root, {:turn_started, [Tars.Agent.Message.new("hello")]}),
+        @options
+      )
 
     assert state.running?
     assert state.started_at == 123

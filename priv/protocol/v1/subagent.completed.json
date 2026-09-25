@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:subagent.completed",
+  "title": "tars.subagent.completed",
+  "description": "A subagent answered.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+    },
+    "duration_ms": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "duration_ms"
+  ]
+}

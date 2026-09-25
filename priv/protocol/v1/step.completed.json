@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:step.completed",
+  "title": "tars.step.completed",
+  "description": "A named step ended.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error"
+      ]
+    },
+    "duration_ms": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+    },
+    "error": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "duration_ms"
+  ]
+}

@@ -36,7 +36,7 @@ defmodule TarsNotify.NoticeTest do
   end
 
   test "any other event is nobody's business" do
-    assert Notice.from_event(event({:turn_started, ["hi"]})) == :none
+    assert Notice.from_event(event({:turn_started, [Tars.Agent.Message.new("hi")]})) == :none
   end
 
   test "to_map/1 is what a webhook sends" do

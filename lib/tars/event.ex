@@ -16,7 +16,7 @@ defmodule Tars.Event do
   alias Tars.Trace
 
   @enforce_keys [:source, :payload, :at]
-  defstruct [:source, :payload, :at]
+  defstruct [:id, :source, :payload, :at]
 
   @typedoc """
   An event payload. Its first element names the event.
@@ -26,68 +26,96 @@ defmodule Tars.Event do
 
   Agent lifecycle, on the turn's root span:
 
-    * `{:turn_started, questions}`, `{:turn_finished, messages}`,
+    * `{:turn_started, messages}`, the `Tars.Agent.Message`s it answers,
+      `{:turn_finished, messages}`,
       `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
       `{:turn_parked, calls}`, `{:turn_resumed, decisions}`,
       `{:call_decided, call_id, decision, by}`, one per call a person
       answered, with the `Tars.Principal` who did, or `nil` where no caller
       said, `{:context_compacted, stats}`, `{:schedule_fired, name, outcome}`
 
+  Agent lifecycle, each on the root of a trace of its own:
+
+    * `{:message_queued, message}`, a `Tars.Agent.Message` the agent will
+      answer, `{:agent_started, node, status, generation}`, each time the
+      agent is loaded
+
   Spans and delegations, on their own span:
 
     * `{:span_started, name}`, `{:span_finished, outcome, duration_ms}`
     * `{:delegation_started, prompt}`, `{:delegation_finished, outcome, duration_ms}`
 
-  Model calls:
+  Model calls, each answering with the assistant message `message_id` names:
 
-    * `{:model_started, model_spec}`, `{:model_finished, outcome, duration_ms}`
+    * `{:model_started, message_id, model_spec}`,
+      `{:model_finished, message_id, outcome, duration_ms, response}`, where
+      `response` is the `ReqLLM.Response` without its context, or `nil` for a
+      call that did not answer
     * `{:result, text}`, `{:thinking, text}`, `{:meta, chunk}`, `{:chunk, chunk}`,
       `{:tool_call, call}`, `{:deadline_reached, message_count}`
 
   Tool calls, on the call's span:
 
-    * `{:tool_started, call_id, name}`, `{:tool_finished, call_id, name, result}`
+    * `{:tool_started, call_id, name, arguments, idempotency_key}`,
+      `{:tool_finished, call_id, name, result}`
     * `{:tool_denied, call_id, name, reason}`, `{:tool_parked, call_id, name, prompt}`
     * `{:tool_progress, call_id, name, progress, total}`
     * `{:tool_replayed, call_id, name, result}`, a call answered from the
       ledger without running again
   """
   @type payload() ::
-          {:turn_started, [String.t()]}
+          {:turn_started, [Tars.Agent.Message.t()]}
           | {:turn_finished, [ReqLLM.Message.t()]}
           | {:turn_failed, term()}
           | {:turn_interrupted, Tars.Agent.State.stats()}
           | {:turn_parked, [{Tars.Tool.call(), String.t()}]}
           | {:turn_resumed, %{String.t() => term()}}
           | {:call_decided, String.t(), Tars.LLM.Turn.Parked.decision(), Tars.Principal.t() | nil}
+          | {:message_queued, Tars.Agent.Message.t()}
+          | {:agent_started, node(), :idle | :running | :parked, String.t()}
           | {:context_compacted, Tars.Compaction.stats()}
           | {:schedule_fired, String.t(), Tars.Schedule.outcome()}
           | {:span_started, String.t()}
           | {:span_finished, Tars.Scope.outcome(), non_neg_integer()}
           | {:delegation_started, String.t()}
           | {:delegation_finished, {:ok, String.t()} | {:error, term()}, non_neg_integer()}
-          | {:model_started, term()}
-          | {:model_finished, :ok | {:error, term()}, non_neg_integer()}
+          | {:model_started, String.t(), term()}
+          | {:model_finished, String.t(), :ok | {:error, term()}, non_neg_integer(),
+             ReqLLM.Response.t() | nil}
           | {:result, String.t()}
           | {:thinking, String.t()}
           | {:meta, term()}
           | {:chunk, term()}
           | {:tool_call, term()}
           | {:deadline_reached, non_neg_integer()}
-          | {:tool_started, String.t(), String.t()}
+          | {:tool_started, String.t(), String.t(), map(), String.t()}
           | {:tool_finished, String.t(), String.t(), term()}
           | {:tool_replayed, String.t(), String.t(), term()}
           | {:tool_denied, String.t(), String.t(), String.t()}
           | {:tool_parked, String.t(), String.t(), String.t()}
           | {:tool_progress, String.t(), String.t(), number(), number() | nil}
 
-  @typedoc "A payload, who emitted it, and when."
-  @type t() :: %__MODULE__{source: Source.t(), payload: payload(), at: integer()}
+  @typedoc """
+  A payload, who emitted it, and when, under an id of its own: a UUIDv7 that
+  every copy of the event carries, and that `Tars.Event.Codec` sends as the
+  CloudEvent's `id`.
+  """
+  @type t() :: %__MODULE__{
+          id: String.t() | nil,
+          source: Source.t(),
+          payload: payload(),
+          at: integer()
+        }
 
   @doc "Build an event without publishing it."
   @spec new(Source.t(), payload()) :: t()
   def new(%Source{} = source, payload) when is_tuple(payload) do
-    %__MODULE__{source: source, payload: payload, at: System.system_time(:microsecond)}
+    %__MODULE__{
+      id: Tars.UUID.v7(),
+      source: source,
+      payload: payload,
+      at: System.system_time(:microsecond)
+    }
   end
 
   @doc "Build an event and publish it to everyone watching the source's topic."
@@ -121,6 +149,8 @@ defmodule Tars.Event do
     :turn_parked,
     :turn_resumed,
     :call_decided,
+    :message_queued,
+    :agent_started,
     :schedule_fired,
     :span_started,
     :span_finished,

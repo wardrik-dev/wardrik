@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:step.started",
+  "title": "tars.step.started",
+  "description": "A named step began.",
+  "type": "object",
+  "properties": {
+    "step": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "step"
+  ]
+}

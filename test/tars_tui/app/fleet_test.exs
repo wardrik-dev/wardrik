@@ -565,7 +565,12 @@ defmodule TarsTUI.App.FleetTest do
     submit(session, "/connect other")
 
     stale = Source.root(agent_id, name: "turn")
-    Breeze.Test.info(session, Event.new(stale, {:turn_started, ["stale"]}))
+
+    Breeze.Test.info(
+      session,
+      Event.new(stale, {:turn_started, [Tars.Agent.Message.new("stale")]})
+    )
+
     Breeze.Test.info(session, Event.new(stale, {:result, "stale words\n"}))
 
     text = screen(session)

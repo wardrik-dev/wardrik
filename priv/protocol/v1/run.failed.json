@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:run.failed",
+  "title": "tars.run.failed",
+  "description": "A run ended without answering.",
+  "type": "object",
+  "properties": {
+    "run": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+    },
+    "error": {
+      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "run",
+    "error"
+  ]
+}
