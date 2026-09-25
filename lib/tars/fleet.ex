@@ -129,8 +129,9 @@ defmodule Tars.Fleet do
 
   @doc """
   Makes the fleet match `spec`: starts the agent it describes where none runs
-  under its key, and gives the one that does the spec's config and seams with
-  `Tars.Agent.configure/2`. The agent keeps its conversation either way.
+  under its key, gives the one that does the spec's config and seams with
+  `Tars.Agent.configure/2`, and brings its schedules to the spec's, unless the
+  spec's `schedules` is `nil`. The agent keeps its conversation either way.
 
       {:ok, pid} = Tars.Fleet.put(Tars.Agent.Spec.new(name: "triage", org: "acme"))
   """
@@ -140,10 +141,13 @@ defmodule Tars.Fleet do
 
     with {:ok, pid} <- spawn(Spec.key(spec), options),
          :ok <- Agent.configure(pid, options),
-         :ok <- Schedule.sync(Spec.key(spec), spec.schedules) do
+         :ok <- sync(Spec.key(spec), spec.schedules) do
       {:ok, pid}
     end
   end
+
+  defp sync(_key, nil), do: :ok
+  defp sync(key, schedules), do: Schedule.sync(key, schedules)
 
   @doc """
   Stops an agent and starts it again on `node`, with the state it had.

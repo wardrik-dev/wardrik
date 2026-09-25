@@ -59,6 +59,47 @@ defmodule Tars.ScheduleTest do
     end
   end
 
+  describe "decode/2" do
+    test "reads a schedule's fields written as text" do
+      assert {:ok,
+              %Schedule{
+                name: "sweep",
+                every: {:cron, "*/30 * * * *"},
+                prompt: "Look.",
+                overlap: :queue,
+                missed: :skip,
+                jitter: 30_000
+              }} =
+               Schedule.decode("sweep", %{
+                 "every" => "*/30 * * * *",
+                 "prompt" => "Look.",
+                 "overlap" => "queue",
+                 "missed" => "skip",
+                 "jitter" => 30
+               })
+
+      assert {:ok, %Schedule{every: {:interval, 1_800_000}, overlap: :skip, jitter: 0}} =
+               Schedule.decode("sweep", %{"every" => "30m", "prompt" => "Look."})
+    end
+
+    test "says what does not read" do
+      for {fields, message} <- [
+            {%{"when" => "now"},
+             "when is not a setting; expected every, prompt, overlap, missed or jitter"},
+            {%{"prompt" => "Look."}, ~s(every is a cron expression, or a duration such as "30m")},
+            {%{"every" => "30m", "prompt" => "Look.", "overlap" => "interrupt"},
+             "overlap is one of skip, queue"},
+            {%{"every" => "30m", "prompt" => "Look.", "missed" => 1},
+             "missed is one of run_once, skip"},
+            {%{"every" => "30m", "prompt" => "Look.", "jitter" => 1.5},
+             "jitter is a whole number of seconds"},
+            {%{"every" => "30s", "prompt" => "Look."}, ~s(every: "30s" is shorter than a minute)}
+          ] do
+        assert Schedule.decode("sweep", fields) == {:error, message}
+      end
+    end
+  end
+
   describe "firing" do
     test "asks the agent, and says so on its topic", %{key: key} do
       spawn_agent(key, {AgentRunners, :echo, [self(), "done"]})
@@ -121,13 +162,16 @@ defmodule Tars.ScheduleTest do
   end
 
   describe "the fleet" do
-    test "put/1 brings an agent's schedules to its spec, and forget/1 deletes them" do
+    test "put/1 brings an agent's schedules to its spec, or leaves them, and forget/1 deletes them" do
       name = "specced-#{System.unique_integer([:positive])}"
       daily = Schedule.new("sweep", every: "@daily", prompt: "Look.")
       spec = Spec.new(name: name, schedules: [daily])
       key = Spec.key(spec)
 
       {:ok, _pid} = Fleet.put(spec)
+      assert [%{name: "sweep"}] = Schedule.for_agent(key)
+
+      {:ok, _pid} = Fleet.put(%{spec | schedules: nil})
       assert [%{name: "sweep"}] = Schedule.for_agent(key)
 
       {:ok, _pid} = Fleet.put(%{spec | schedules: []})

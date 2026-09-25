@@ -7,6 +7,8 @@ defmodule TarsHTTP.Listener do
   and another takes the port over when that one stops. Options:
 
     * `:port`, `:ip` - over `TarsHTTP.Config.listen/0`; port `0` takes any free one
+    * `:definition` - the `TarsHTTP.Definition` that
+      `PUT /v1/agents/{org}/{user}/{name}` reads a definition with
     * `:retry` - milliseconds between tries, 5000 by default
     * `:name` - the process's name, `TarsHTTP.Listener` by default
   """
@@ -32,7 +34,13 @@ defmodule TarsHTTP.Listener do
     Process.flag(:trap_exit, true)
 
     listen = Keyword.merge(TarsHTTP.Config.listen(), Keyword.take(opts, [:port, :ip]))
-    state = %{listen: listen, retry: Keyword.get(opts, :retry, @retry), server: nil}
+
+    state = %{
+      listen: listen,
+      router: Keyword.take(opts, [:definition]),
+      retry: Keyword.get(opts, :retry, @retry),
+      server: nil
+    }
 
     {:ok, listen(state, :first)}
   end
@@ -56,7 +64,9 @@ defmodule TarsHTTP.Listener do
   def handle_info({:EXIT, _other, _reason}, state), do: {:noreply, state}
 
   defp listen(state, attempt) do
-    case Bandit.start_link([plug: TarsHTTP.Router, startup_log: false] ++ state.listen) do
+    options = [plug: {TarsHTTP.Router, state.router}, startup_log: false] ++ state.listen
+
+    case Bandit.start_link(options) do
       {:ok, server} ->
         Logger.info("The HTTP API listens on #{where(state)}")
         %{state | server: server}

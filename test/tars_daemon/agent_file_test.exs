@@ -220,7 +220,7 @@ defmodule TarsDaemon.AgentFileTest do
                context
              )
 
-    assert message =~ "schedule overlap is one of skip, queue"
+    assert message =~ "schedule 1: overlap is one of skip, queue"
 
     assert {:error, message} =
              read(
@@ -280,6 +280,117 @@ defmodule TarsDaemon.AgentFileTest do
   test "a policy that is not one is refused", context do
     assert {:error, message} = read("---\npolicy: TarsDaemon.AgentFileTest\n---\n", context)
     assert message =~ "TarsDaemon.AgentFileTest is not a policy"
+  end
+
+  describe "the definition schema" do
+    defp schema do
+      :tars
+      |> Application.app_dir("priv/protocol/v1/agent_definition.json")
+      |> File.read!()
+      |> JSON.decode!()
+    end
+
+    # The keys a refusal says are expected.
+    defp expected({:error, message}),
+      do: message |> String.split("expected one of ") |> List.last() |> String.split(", ")
+
+    test "lists the keys a definition takes, and a file takes them too, with its body as instructions",
+         context do
+      properties = Map.keys(schema()["properties"])
+
+      assert Enum.sort(expected(AgentFile.definition("acme/_/triage", %{"?" => 1}))) ==
+               Enum.sort(properties)
+
+      assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
+               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user schedule notify))
+    end
+
+    test "takes its example, which the reader reads" do
+      schema = schema()
+      root = JSV.build!(schema, resolver: Tars.Test.ProtocolResolver)
+
+      for example <- schema["examples"] do
+        assert {:ok, _} = JSV.validate(example, root)
+        assert Enum.sort(Map.keys(example)) == Enum.sort(Map.keys(schema["properties"]))
+        assert {:ok, %Spec{}} = AgentFile.definition("acme/_/triage", example)
+      end
+    end
+  end
+
+  describe "definition/3" do
+    test "reads a definition into the spec of the agent under its key" do
+      assert {:ok, spec} =
+               AgentFile.definition("acme/_/triage", %{
+                 "description" => "Watches the queue.",
+                 "instructions" => "You watch the incident queue.",
+                 "model" => "anthropic:claude-sonnet-5",
+                 "tools" => ["web_search", "linear/*"],
+                 "timeout" => 600
+               })
+
+      assert Spec.key(spec) == "acme/_/triage"
+      assert {spec.org, spec.user, spec.name} == {"acme", nil, "triage"}
+      assert spec.description == "Watches the queue."
+      assert spec.config.system == "You watch the incident queue."
+      assert spec.config.model_spec == "anthropic:claude-sonnet-5"
+      assert spec.config.tools == [TarsBrave.WebSearch, {TarsMCP, :linear}]
+      assert spec.timeout == :timer.seconds(600)
+      assert spec.ledger == Tars.Ledger.Store
+      assert spec.schedules == nil
+    end
+
+    test "an empty definition is an agent with no prompt and no tools" do
+      assert {:ok, spec} = AgentFile.definition("_/_/blank", %{})
+
+      assert spec.config.system == nil
+      assert spec.config.tools == []
+    end
+
+    test "names a policy in policies/, or writes one in place" do
+      careful = TarsPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
+
+      assert {:ok, named} =
+               AgentFile.definition("acme/_/triage", %{"policy" => "careful"}, %{
+                 "careful" => careful
+               })
+
+      assert named.policy == {TarsPolicy, careful}
+
+      assert {:ok, written} =
+               AgentFile.definition("acme/_/triage", %{"policy" => %{"ask" => ["github/*"]}})
+
+      assert {TarsPolicy, %TarsPolicy{}} = written.policy
+    end
+
+    test "never names a module" do
+      assert {:error, message} =
+               AgentFile.definition("acme/_/triage", %{"tools" => ["TarsLua.Run"]})
+
+      assert message == "tools names TarsLua.Run, which is not a tool the daemon ships"
+
+      assert {:error, message} =
+               AgentFile.definition("acme/_/triage", %{
+                 "policy" => "TarsDaemon.AgentFileTest.Policy"
+               })
+
+      assert message ==
+               "policy names TarsDaemon.AgentFileTest.Policy, which is not a policy in policies/"
+    end
+
+    test "takes who the agent is from its key, and its schedules from their own routes" do
+      for key <- ~w(name org user schedule notify) do
+        assert {:error, message} = AgentFile.definition("acme/_/triage", %{key => "x"})
+        assert message =~ "#{key} is not a setting; expected one of description, instructions"
+      end
+    end
+
+    test "a definition that does not read says why" do
+      assert {:error, "timeout is a whole number of seconds"} =
+               AgentFile.definition("acme/_/triage", %{"timeout" => "soon"})
+
+      assert {:error, "instructions is a string"} =
+               AgentFile.definition("acme/_/triage", %{"instructions" => ["a"]})
+    end
   end
 
   test "frontmatter that is never closed, or is not YAML, says so", context do

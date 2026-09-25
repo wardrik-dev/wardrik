@@ -14,7 +14,7 @@ defmodule TarsDaemon.CLI do
   | `schedules [PREFIX]` | every schedule, or those whose key starts with `PREFIX`: when it runs next, and when it last ran and what came of it |
   | `approve KEY CALL` | runs the call, and the agent carries on |
   | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
-  | `token create NAME --scope PREFIX` | a token for the HTTP API that reaches the agents under `PREFIX`, printed once |
+  | `token create NAME --scope PREFIX` | a token for the HTTP API that reaches the agents under `PREFIX`, printed once. `PREFIX` is `org/`, `org/user/`, or a key, `org/user/name` |
   | `token create NAME --all` | a token that reaches every agent |
   | `token list` | every token: its id, name and scope |
   | `token revoke ID` | stops the token working |
@@ -134,19 +134,26 @@ defmodule TarsDaemon.CLI do
   end
 
   defp token(name, scope) do
-    {:ok, secret, token} = Token.create(name, scope)
+    case Token.create(name, scope) do
+      {:ok, secret, token} ->
+        ok(
+          Enum.join(
+            [
+              secret,
+              "",
+              "#{token.name} (#{token.id}) reaches #{reach(token.scope)}. " <>
+                "This is the only time it is shown."
+            ],
+            "\n"
+          )
+        )
 
-    ok(
-      Enum.join(
-        [
-          secret,
-          "",
-          "#{token.name} (#{token.id}) reaches #{reach(token.scope)}. " <>
-            "This is the only time it is shown."
-        ],
-        "\n"
-      )
-    )
+      {:error, message} when is_binary(message) ->
+        fail(message)
+
+      {:error, reason} ->
+        fail("The token was not made: #{inspect(reason)}")
+    end
   end
 
   defp tokens do

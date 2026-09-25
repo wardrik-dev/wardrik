@@ -11,6 +11,9 @@ defmodule TarsHTTP.Resource do
       {"id": "acme/ops/triage", "name": "triage", "status": "parked",
        "pending": 0, "node": "tars@box1", "outcome": "ok"}
 
+  `id` is the agent's key, and its three segments are the agent's path under
+  `/v1/agents/`, each encoded on its own.
+
   ## An agent's snapshot
 
       {"agent": {"id": "acme/ops/triage", "name": "triage"},
@@ -24,6 +27,14 @@ defmodule TarsHTTP.Resource do
 
   `run` is `null` between runs, and `sequence` is the last event the agent's
   log has written: read and follow the log from there.
+
+  ## A schedule
+
+      {"name": "sweep", "every": "*/30 * * * *", "prompt": "Check the queue.",
+       "overlap": "skip", "missed": "run_once", "jitter": 0}
+
+  `every` is a cron expression, or a duration such as `"30m"`, and `jitter`
+  is in seconds.
 
   ## An error
 
@@ -65,6 +76,28 @@ defmodule TarsHTTP.Resource do
       "sequence" => snapshot.sequence
     }
     |> Value.put("provider", provider && %{"name" => provider})
+  end
+
+  @doc "A schedule, as it was put."
+  @spec schedule(Tars.Schedule.t()) :: map()
+  def schedule(%Tars.Schedule{} = schedule) do
+    %{
+      "name" => schedule.name,
+      "every" => every(schedule.every),
+      "prompt" => schedule.prompt,
+      "overlap" => to_string(schedule.overlap),
+      "missed" => to_string(schedule.missed),
+      "jitter" => div(schedule.jitter, 1_000)
+    }
+  end
+
+  @units [{"d", 86_400_000}, {"h", 3_600_000}, {"m", 60_000}, {"s", 1_000}]
+
+  defp every({:cron, text}), do: text
+
+  defp every({:interval, ms}) do
+    {unit, size} = Enum.find(@units, fn {_unit, size} -> rem(ms, size) == 0 end)
+    "#{div(ms, size)}#{unit}"
   end
 
   @doc "An error of `type`, saying what went wrong, with any other fields beside."

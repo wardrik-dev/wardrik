@@ -13,28 +13,68 @@ defmodule TarsHTTP do
   ## Tokens
 
   Every request presents a token, as `Authorization: Bearer tars_…`. A token
-  reaches the agents whose keys start with its scope, and an agent outside it
-  is answered as one that does not exist. See `TarsHTTP.Token`; from a shell:
+  reaches the agents under its scope, a key prefix that ends at a segment, and
+  an agent outside it is answered as one that does not exist. See
+  `TarsHTTP.Token`; from a shell:
 
       tars token create ci --scope acme/
+      tars token create one --scope acme/jon/triage
       tars token create laptop --all
       tars token list
       tars token revoke 3f9a61c0d4e2
 
-  ## Routes
+  ## Keys in paths
 
-  An agent's key, `org/user/name`, is its path under `/v1/agents/`.
+  An agent's key is always three segments, `org/user/name`, with `_` for an
+  org or user it has none of. Each segment is one path segment under
+  `/v1/agents/`, in the same order:
+
+  | Key | Path |
+  | --- | --- |
+  | `_/_/researcher` | `/v1/agents/_/_/researcher` |
+  | `acme/_/triage` | `/v1/agents/acme/_/triage` |
+  | `acme/jon/triage` | `/v1/agents/acme/jon/triage` |
+
+  A segment holds no `/`, so a client percent-encodes each segment on its
+  own and joins them with `/`. A path segment that decodes to a `/`, as
+  `%2F` does, is refused with `400`. The `id` the API answers an agent with is
+  its key.
+
+  ## Routes
 
   | Route | Answers |
   | --- | --- |
   | `GET /v1/agents` | the agents the token reaches |
-  | `GET /v1/agents/:key` | the agent's snapshot, with `sequence`, the last event its log has written |
-  | `GET /v1/agents/:key/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
-  | `POST /v1/agents/:key/messages` | queues a message for the agent to answer, `202` |
-  | `POST /v1/agents/:key/interrupts/:id` | approves or rejects a call the agent is waiting on |
-  | `POST /v1/agents/:key/cancel` | stops what the agent is doing, and drops what is queued, `202` |
+  | `GET /v1/agents/{org}/{user}/{name}` | the agent's snapshot, with `sequence`, the last event its log has written |
+  | `PUT /v1/agents/{org}/{user}/{name}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
+  | `GET /v1/agents/{org}/{user}/{name}/definition` | the definition last put, as it was sent, where the server keeps definitions |
+  | `DELETE /v1/agents/{org}/{user}/{name}` | stops the running agent and deletes everything it had, its schedules included, `204` |
+  | `GET /v1/agents/{org}/{user}/{name}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
+  | `POST /v1/agents/{org}/{user}/{name}/messages` | queues a message for the agent to answer, `202` |
+  | `POST /v1/agents/{org}/{user}/{name}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
+  | `POST /v1/agents/{org}/{user}/{name}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
+  | `PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
+  | `DELETE /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
 
   `TarsHTTP.Resource` shows what each answers.
+
+  ### Agents
+
+      PUT /v1/agents/acme/ops/triage
+      {"description": "Watches the incident queue.",
+       "instructions": "You watch the incident queue.",
+       "model": "anthropic:claude-sonnet-5",
+       "tools": ["web_search"]}
+
+  `priv/protocol/v1/agent_definition.json` is the definition's schema. The
+  host reads it, with the `TarsHTTP.Definition` the listener is given, and
+  decides whether definitions are kept and who owns a key: a key it refuses
+  answers `409`. A daemon reads a definition as an agent file (see
+  `TarsDaemon.AgentFile`), keeps none, so `GET …/definition` answers `501`,
+  and refuses the keys its agent files declare. An agent brought to a new
+  definition keeps its conversation and its schedules. A route whose callback
+  the module lacks, or every one where the listener has no module, answers
+  `501`.
 
   ### Events
 
@@ -62,6 +102,16 @@ defmodule TarsHTTP do
   `decision` is `approve` or `reject`. The decision is recorded as made by
   the token, and answers `409` when the agent is not waiting on that call,
   and `503` when the agent could not record it.
+
+  ### Schedules
+
+      PUT /v1/agents/acme/ops/triage/schedules/sweep
+      {"every": "*/30 * * * *", "prompt": "Check the incident queue."}
+
+  `every` is a cron expression read in UTC, or a duration of at least a
+  minute, as `"30m"`. `overlap` is `skip`, the default, or `queue`; `missed`
+  is `run_once`, the default, or `skip`; `jitter` is up to so many seconds
+  added to each run. See `Tars.Schedule`. The agent has to be running.
 
   ## Every response
 

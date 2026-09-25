@@ -16,7 +16,16 @@ defmodule TarsDaemon.Agents do
   not there. An agent already running for it is left as it was, and an agent
   naming a policy that does not read does not read either. Removing a file
   stops nothing; `Tars.Fleet.forget/1` removes an agent and what it said.
+
+  It is also the daemon's `TarsHTTP.Definition`. `put/2` reads a definition
+  sent to the HTTP API with `TarsDaemon.AgentFile.definition/3`, under the
+  policies it last read, and keeps none; an agent defined that way has no
+  file, so `files/0` and `reload/0` leave it out. A key an agent file
+  declares belongs to the file: `put/2` and `delete/1` refuse it with a
+  conflict.
   """
+
+  @behaviour TarsHTTP.Definition
 
   use GenServer
 
@@ -46,6 +55,34 @@ defmodule TarsDaemon.Agents do
   @spec files() :: [file()]
   def files, do: GenServer.call(__MODULE__, :files)
 
+  @doc """
+  The spec a definition sent to the HTTP API writes for the agent under
+  `key`, or a conflict where an agent file declares it.
+  """
+  @impl TarsHTTP.Definition
+  def put(key, definition) do
+    case GenServer.call(__MODULE__, {:owner, key}) do
+      {:file, path} -> declared(key, path)
+      {:api, policies} -> AgentFile.definition(key, definition, policies)
+    end
+  end
+
+  @doc """
+  Keeps no definitions, so `{:error, :not_found}`, or a conflict where an
+  agent file declares `key`.
+  """
+  @impl TarsHTTP.Definition
+  def delete(key) do
+    case GenServer.call(__MODULE__, {:owner, key}) do
+      {:file, path} -> declared(key, path)
+      {:api, _policies} -> {:error, :not_found}
+    end
+  end
+
+  defp declared(key, path),
+    do:
+      {:error, :conflict, "#{key} is declared by agents/#{Path.basename(path)}; change the file"}
+
   @impl true
   def init(dir), do: {:ok, %{dir: dir, files: []}, {:continue, :load}}
 
@@ -59,6 +96,21 @@ defmodule TarsDaemon.Agents do
   end
 
   def handle_call(:files, _from, state), do: {:reply, state.files, state}
+
+  def handle_call({:owner, key}, _from, state) do
+    file =
+      Enum.find_value(state.files, fn
+        {path, {:ok, %Spec{} = spec}} -> if Spec.key(spec) == key, do: path
+        _other -> nil
+      end)
+
+    policies =
+      for {_path, {:ok, %TarsPolicy{} = policy}} <- state.files,
+          into: %{},
+          do: {policy.name, policy}
+
+    {:reply, if(file, do: {:file, file}, else: {:api, policies}), state}
+  end
 
   defp load(%{dir: dir} = state) do
     policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()

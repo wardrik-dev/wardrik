@@ -116,6 +116,29 @@ defmodule TarsDaemon.AgentsTest do
     assert %{} = Agent.status("#{org}/_/alpha")
   end
 
+  test "reads a definition sent to the HTTP API under the policies it read",
+       %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    start_supervised!({Agents, dir: context.dir})
+
+    assert {:ok, spec} = Agents.put("#{org}/_/defined", %{"policy" => "careful"})
+    assert {TarsPolicy, %TarsPolicy{name: "careful"}} = spec.policy
+
+    assert {:error, message} = Agents.put("#{org}/_/defined", %{"policy" => "lax"})
+    assert message =~ "policy names lax"
+
+    assert Agents.delete("#{org}/_/defined") == {:error, :not_found}
+  end
+
+  test "leaves an agent a file declares to its file", %{org: org} = context do
+    write(context, "alpha", "")
+    start_supervised!({Agents, dir: context.dir})
+    message = "#{org}/_/alpha is declared by agents/alpha.md; change the file"
+
+    assert Agents.put("#{org}/_/alpha", %{}) == {:error, :conflict, message}
+    assert Agents.delete("#{org}/_/alpha") == {:error, :conflict, message}
+  end
+
   test "an agent naming a policy that does not read does not run", %{org: org} = context do
     write_policy(context, "careful", "deny: run_lua\n")
     write(context, "alpha", "policy: careful\n")

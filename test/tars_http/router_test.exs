@@ -3,24 +3,88 @@ defmodule TarsHTTP.RouterTest do
 
   alias ReqLLM.Context
   alias Tars.Agent
+  alias Tars.Agent.Spec
   alias Tars.Event
   alias Tars.Event.Log
+  alias Tars.LLM.Config
+  alias Tars.Schedule
   alias Tars.Test.AgentRunners
   alias Tars.Test.EventLog
   alias Tars.Test.Fleet
   alias TarsHTTP.Listener
   alias TarsHTTP.Token
 
+  defmodule Definition do
+    @moduledoc false
+    @behaviour TarsHTTP.Definition
+
+    @impl true
+    def put(_key, %{"refuse" => message}), do: {:error, message}
+    def put(key, %{"owned" => true}), do: {:error, :conflict, "#{key} belongs to a file."}
+    def put(_key, %{"elsewhere" => true}), do: {:ok, Spec.new(name: "elsewhere", org: "test")}
+
+    def put(key, fields) do
+      {org, user, name} = Tars.Fleet.parse(key)
+      config = Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
+      {:ok, Spec.new(name: name, org: org, user: user, config: config, schedules: nil)}
+    end
+  end
+
+  # Keeps what it is sent in Tars.Store, and refuses to delete a key that
+  # ends in "-owned".
+  defmodule Kept do
+    @moduledoc false
+    @behaviour TarsHTTP.Definition
+
+    @ns :router_test_definitions
+
+    @impl true
+    def put(key, definition) do
+      with {:ok, spec} <- Definition.put(key, definition),
+           {:ok, _vsn} <- Tars.Store.put(@ns, key, definition),
+           do: {:ok, spec}
+    end
+
+    @impl true
+    def get(key) do
+      case Tars.Store.get(@ns, key) do
+        nil -> {:error, :not_found}
+        definition -> {:ok, definition}
+      end
+    end
+
+    @impl true
+    def delete(key) do
+      cond do
+        String.ends_with?(key, "-owned") -> {:error, :conflict, "#{key} belongs to a file."}
+        Tars.Store.get(@ns, key) == nil -> {:error, :not_found}
+        true -> Tars.Store.delete(@ns, key)
+      end
+    end
+  end
+
   setup do
     {:ok, secret, token} = Token.create("router-test", "test/")
     listener = :"router-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0})
+    start_supervised!({Listener, name: listener, port: 0, definition: Definition})
     {:ok, port} = Listener.port(listener)
 
     %{
       api: Req.new(base_url: "http://127.0.0.1:#{port}", auth: {:bearer, secret}, retry: false),
       token: token
     }
+  end
+
+  # Another listener with `options`, and a client for it holding the same token.
+  defp listener(api, options) do
+    name = :"router-#{System.unique_integer([:positive])}"
+
+    start_supervised!(
+      Supervisor.child_spec({Listener, [name: name, port: 0] ++ options}, id: name)
+    )
+
+    {:ok, port} = Listener.port(name)
+    Req.merge(api, base_url: "http://127.0.0.1:#{port}")
   end
 
   defp echo_agent do
@@ -56,6 +120,29 @@ defmodule TarsHTTP.RouterTest do
         assert response.body["error"]["type"] == "unauthorized"
         assert Req.Response.get_header(response, "www-authenticate") == [~s(Bearer realm="tars")]
       end
+    end
+
+    test "a token for one agent lists that agent, and none whose key it begins", %{api: api} do
+      {key, _agent} = Fleet.start_agent([], Fleet.key("scoped"))
+      {longer, _agent} = Fleet.start_agent([], key <> "0")
+      {:ok, secret, _token} = Token.create("one-agent", key)
+      one = Req.merge(api, auth: {:bearer, secret})
+
+      assert {:ok, %{status: 200, body: %{"agents" => [%{"id" => ^key}]}}} =
+               Req.get(one, url: "/v1/agents")
+
+      assert {:ok, %{status: 404}} = Req.get(one, url: "/v1/agents/#{longer}")
+    end
+
+    test "a path segment that holds a / is not a key segment", %{api: api} do
+      {key, _agent} = echo_agent()
+      [org, user, name] = String.split(key, "/")
+
+      assert {:ok, %{status: 400, body: body}} =
+               Req.get(api, url: "/v1/agents/#{org}/#{user}%2F#{name}/x")
+
+      assert body["error"]["message"] ==
+               ~s("#{user}/#{name}" holds a /; a key's org, user and name are a path segment each)
     end
 
     test "an agent outside the token's scope is one that does not exist", %{api: api} do
@@ -231,6 +318,204 @@ defmodule TarsHTTP.RouterTest do
     assert_receive %Event{payload: {:turn_interrupted, _stats}}
 
     assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/_/nobody/cancel")
+  end
+
+  describe "definitions" do
+    defp define(api, key, body), do: Req.put(api, url: "/v1/agents/#{key}", json: body)
+
+    defp defined_key do
+      key = Fleet.key("defined")
+      on_exit(fn -> Tars.Fleet.forget(key) end)
+      key
+    end
+
+    test "start the agent they describe, then bring it to a new one", %{api: api} do
+      key = defined_key()
+
+      assert {:ok, %{status: 201, body: snapshot}} = define(api, key, %{})
+
+      assert %{
+               "agent" => %{"id" => ^key},
+               "status" => "idle",
+               "request" => %{"model" => "claude-sonnet-5"}
+             } = snapshot
+
+      assert {:ok, %{status: 200, body: snapshot}} =
+               define(api, key, %{"model" => "openai:gpt-5"})
+
+      assert snapshot["request"]["model"] == "gpt-5"
+      assert Agent.status(key).model == "openai:gpt-5"
+    end
+
+    test "leave the agent's schedules as they are", %{api: api} do
+      key = defined_key()
+      {:ok, %{status: 201}} = define(api, key, %{})
+      {:ok, _pid} = Schedule.put(key, "sweep", every: "30m", prompt: "Look.")
+
+      assert {:ok, %{status: 200}} = define(api, key, %{"model" => "openai:gpt-5"})
+      assert [%{name: "sweep"}] = Schedule.for_agent(key)
+    end
+
+    test "that do not read, or are not an object, start nothing", %{api: api} do
+      key = defined_key()
+
+      assert {:ok, %{status: 400, body: body}} = define(api, key, %{"refuse" => "model is text"})
+      assert body["error"] == %{"type" => "invalid_request", "message" => "model is text"}
+
+      assert {:ok, %{status: 400, body: body}} = define(api, key, ["model"])
+      assert body["error"]["message"] == "The body is a JSON object"
+
+      assert Tars.Fleet.lookup(key) == nil
+    end
+
+    test "outside the token's scope start nothing", %{api: api} do
+      key = "other/_/defined-#{System.unique_integer([:positive])}"
+
+      assert {:ok, %{status: 404}} = define(api, key, %{})
+      assert Tars.Fleet.lookup(key) == nil
+    end
+
+    test "for one agent never start another", %{api: api} do
+      key = defined_key()
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{status: 500}} = define(api, key, %{"elsewhere" => true})
+        end)
+
+      assert log =~ "wrote a spec for test/_/elsewhere, not #{key}"
+      assert Tars.Fleet.lookup("test/_/elsewhere") == nil
+    end
+
+    test "for a key the module refuses start nothing", %{api: api} do
+      key = defined_key()
+
+      assert {:ok, %{status: 409, body: body}} = define(api, key, %{"owned" => true})
+      assert body["error"] == %{"type" => "conflict", "message" => "#{key} belongs to a file."}
+      assert Tars.Fleet.lookup(key) == nil
+    end
+
+    test "are not taken, kept or deleted by a server with nothing to read them", %{api: api} do
+      bare = listener(api, [])
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 501, body: body}} = define(bare, defined_key(), %{})
+      assert body["error"]["type"] == "not_supported"
+      assert {:ok, %{status: 501}} = Req.get(bare, url: "/v1/agents/#{key}/definition")
+      assert {:ok, %{status: 501}} = Req.delete(bare, url: "/v1/agents/#{key}")
+      assert Tars.Fleet.lookup(key)
+    end
+
+    test "are neither kept nor deleted by a module that only reads them", %{api: api} do
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 501, body: body}} = Req.get(api, url: "/v1/agents/#{key}/definition")
+      assert body["error"]["message"] == "This server does not keep agents' definitions."
+      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}")
+    end
+  end
+
+  describe "a definition module that keeps definitions" do
+    setup %{api: api}, do: %{kept: listener(api, definition: Kept)}
+
+    test "answers one back as it was sent, and forgets it with its agent", %{kept: kept} do
+      key = defined_key()
+      definition = %{"model" => "openai:gpt-5"}
+
+      assert {:ok, %{status: 201}} = define(kept, key, definition)
+
+      assert {:ok, %{status: 200, body: ^definition}} =
+               Req.get(kept, url: "/v1/agents/#{key}/definition")
+
+      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert Tars.Fleet.lookup(key) == nil
+      assert {:ok, %{status: 404}} = Req.get(kept, url: "/v1/agents/#{key}/definition")
+      assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
+    end
+
+    test "forgets an agent it kept no definition for", %{kept: kept} do
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert Tars.Fleet.lookup(key) == nil
+    end
+
+    test "leaves a stopped agent's store be, since none runs", %{kept: kept} do
+      {key, _agent} = echo_agent()
+      conversation = Agent.snapshot(key).generation
+      :ok = Tars.Fleet.stop(key)
+
+      assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
+
+      {:ok, _pid} = Tars.Fleet.spawn(key)
+      assert Agent.snapshot(key).generation == conversation
+    end
+
+    test "may refuse to delete an agent, which is left be", %{kept: kept} do
+      {key, _agent} = Fleet.start_agent([], Fleet.key("kept") <> "-owned")
+
+      assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert Tars.Fleet.lookup(key)
+    end
+  end
+
+  describe "schedules" do
+    defp schedule(api, key, name, body),
+      do: Req.put(api, url: "/v1/agents/#{key}/schedules/#{name}", json: body)
+
+    test "are put on an agent, then changed", %{api: api} do
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 201, body: %{"schedule" => schedule}}} =
+               schedule(api, key, "sweep", %{"every" => "60m", "prompt" => "Look."})
+
+      assert schedule == %{
+               "name" => "sweep",
+               "every" => "1h",
+               "prompt" => "Look.",
+               "overlap" => "skip",
+               "missed" => "run_once",
+               "jitter" => 0
+             }
+
+      assert {:ok, %{status: 200, body: %{"schedule" => schedule}}} =
+               schedule(api, key, "sweep", %{
+                 "every" => "*/30 * * * *",
+                 "prompt" => "Look again.",
+                 "overlap" => "queue",
+                 "jitter" => 5
+               })
+
+      assert %{"every" => "*/30 * * * *", "overlap" => "queue", "jitter" => 5} = schedule
+      assert [%{name: "sweep", every: {:cron, "*/30 * * * *"}}] = Schedule.for_agent(key)
+    end
+
+    test "that do not read, or are for an agent that does not run, are refused", %{api: api} do
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 400, body: body}} =
+               schedule(api, key, "sweep", %{"every" => "30s", "prompt" => "Look."})
+
+      assert body["error"]["message"] == ~s(every: "30s" is shorter than a minute)
+
+      assert {:ok, %{status: 404}} =
+               schedule(api, "test/_/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
+
+      assert Schedule.for_agent(key) == []
+    end
+
+    test "are deleted, and one that is not there is not found", %{api: api} do
+      {key, _agent} = echo_agent()
+      {:ok, %{status: 201}} = schedule(api, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
+
+      assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
+      assert Schedule.for_agent(key) == []
+
+      assert {:ok, %{status: 404, body: body}} =
+               Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
+
+      assert body["error"]["message"] == "#{key} has no schedule sweep."
+    end
   end
 
   describe "events" do

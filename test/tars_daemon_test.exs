@@ -22,6 +22,36 @@ defmodule TarsDaemonTest do
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
   end
 
+  test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
+    File.mkdir_p!(Path.join(dir, "policies"))
+    File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
+    {:ok, secret, _token} = TarsHTTP.Token.create("daemon-test", "daemon/")
+    key = "daemon/_/defined-#{System.unique_integer([:positive])}"
+    on_exit(fn -> Tars.Fleet.forget(key) end)
+
+    start_supervised!({TarsDaemon, config_dir: dir, state_dir: dir})
+    {:ok, port} = TarsHTTP.Listener.port()
+
+    api =
+      Req.new(
+        base_url: "http://127.0.0.1:#{port}/v1/agents/#{key}",
+        auth: {:bearer, secret},
+        retry: false
+      )
+
+    assert {:ok, %{status: 400, body: body}} = Req.put(api, json: %{"policy" => "lax"})
+    assert body["error"]["message"] == "policy names lax, which is not a policy in policies/"
+
+    assert {:ok, %{status: 201}} =
+             Req.put(api, json: %{"policy" => "careful", "instructions" => "You help."})
+
+    assert Tars.Fleet.lookup(key)
+    assert {:ok, %{status: 501}} = Req.get(api, url: "definition")
+
+    assert {:ok, %{status: 204}} = Req.delete(api)
+    assert Tars.Fleet.lookup(key) == nil
+  end
+
   test "puts config.yaml's settings where each package reads them", %{tmp_dir: dir} do
     key = TarsVault.generate_key()
     File.write!(Path.join(dir, "config.yaml"), "vault:\n  keys: [\"#{key}\"]\n")

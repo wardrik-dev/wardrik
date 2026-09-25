@@ -20,8 +20,8 @@ defmodule Tars.Event.SchemaTest do
   defp paths do
     defs = read(Path.join(@schemas, "defs.json"))["$defs"]
 
-    for file <- Path.wildcard(Path.join(@schemas, "*.json")),
-        Path.basename(file, ".json") not in ["defs", "cloudevent"],
+    # An event type's schema is named <noun>.<verb>.json.
+    for file <- Path.wildcard(Path.join(@schemas, "*.*.json")),
         reduce: %{} do
       acc -> walk(read(file), [], acc, defs)
     end

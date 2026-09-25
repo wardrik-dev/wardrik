@@ -23,7 +23,8 @@ defmodule TarsDaemon do
     * `TarsDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `TarsHTTP.Listener`, which serves the HTTP API on loopback, to callers
-      holding a token that `tars token create` made.
+      holding a token that `tars token create` made, and defines agents with
+      `TarsDaemon.Agents`.
 
   A `config.yaml` that does not read stops the boot, with the reason logged.
 
@@ -83,7 +84,7 @@ defmodule TarsDaemon do
         notify() ++
         [{TarsDaemon.Agents, dir: config_dir}] ++
         TarsDaemon.SSH.children(config_dir, data_dir) ++
-        [TarsHTTP.Listener]
+        [{TarsHTTP.Listener, definition: TarsDaemon.Agents}]
 
     Supervisor.init(children, strategy: :one_for_one)
   end

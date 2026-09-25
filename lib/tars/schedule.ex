@@ -149,6 +149,74 @@ defmodule Tars.Schedule do
   defp jitter!(other), do: raise(ArgumentError, "jitter is milliseconds, got #{inspect(other)}")
 
   @doc """
+  A schedule named `name`, from fields written as text, as an agent file or a
+  JSON body writes them:
+
+      Tars.Schedule.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
+
+  `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
+  `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
+  """
+  @spec decode(String.t(), map()) :: {:ok, t()} | {:error, String.t()}
+  def decode(name, fields) when is_map(fields) do
+    with :ok <- known(fields),
+         {:ok, every} <- every(fields["every"]),
+         {:ok, overlap} <- choice(fields, "overlap", :skip, ~w(skip queue)),
+         {:ok, missed} <- choice(fields, "missed", :run_once, ~w(run_once skip)),
+         {:ok, jitter} <- seconds(fields["jitter"]) do
+      {:ok,
+       new(name,
+         every: every,
+         prompt: fields["prompt"],
+         overlap: overlap,
+         missed: missed,
+         jitter: jitter
+       )}
+    end
+  rescue
+    error in [ArgumentError] -> {:error, Exception.message(error)}
+  end
+
+  @fields ~w(every prompt overlap missed jitter)
+
+  defp known(fields) do
+    case Map.keys(fields) -- @fields do
+      [] ->
+        :ok
+
+      [key | _] ->
+        {:error, "#{key} is not a setting; expected every, prompt, overlap, missed or jitter"}
+    end
+  end
+
+  defp every(text) when is_binary(text), do: {:ok, text}
+  defp every(_other), do: {:error, "every is a cron expression, or a duration such as \"30m\""}
+
+  defp choice(fields, key, default, allowed) do
+    case Map.get(fields, key) do
+      nil ->
+        {:ok, default}
+
+      value when is_binary(value) ->
+        if value in allowed,
+          do: {:ok, String.to_existing_atom(value)},
+          else: choices(key, allowed)
+
+      _other ->
+        choices(key, allowed)
+    end
+  end
+
+  defp choices(key, allowed), do: {:error, "#{key} is one of #{Enum.join(allowed, ", ")}"}
+
+  defp seconds(nil), do: {:ok, 0}
+
+  defp seconds(seconds) when is_integer(seconds) and seconds >= 0,
+    do: {:ok, :timer.seconds(seconds)}
+
+  defp seconds(_seconds), do: {:error, "jitter is a whole number of seconds"}
+
+  @doc """
   The first time `schedule` names after `from`, with its jitter added.
   """
   @spec next(t(), DateTime.t()) :: DateTime.t()

@@ -29,6 +29,44 @@ defmodule TarsHTTP.TokenTest do
     assert Token.covers?(%{token | scope: ""}, "globex/_/triage")
   end
 
+  test "a scope ends at a segment, however it was written" do
+    token = %Token{id: "3f9a61c0d4e2", name: "ci", scope: "acme/", created_at: DateTime.utc_now()}
+
+    refute Token.covers?(token, "acmecorp/_/triage")
+
+    one = %{token | scope: "acme/jon/triage"}
+    assert Token.covers?(one, "acme/jon/triage")
+    refute Token.covers?(one, "acme/jon/triage2")
+
+    # A scope stored without its trailing slash is still read as a prefix.
+    bare = %{token | scope: "acme"}
+    assert Token.covers?(bare, "acme/jon/triage")
+    refute Token.covers?(bare, "acmecorp/_/triage")
+  end
+
+  test "create/2 writes a scope as the key prefix it is" do
+    for {given, scope} <- [
+          {"", ""},
+          {"acme", "acme/"},
+          {"acme/", "acme/"},
+          {"acme/jon", "acme/jon/"},
+          {"_/_/", "_/_/"},
+          {"acme/jon/triage", "acme/jon/triage"},
+          {"acme/jon/triage/", "acme/jon/triage"}
+        ] do
+      assert {:ok, _secret, %Token{scope: ^scope}} = Token.create("scoped", given)
+    end
+  end
+
+  test "create/2 refuses a scope that is not a key prefix" do
+    for scope <- ["/", "/acme", "acme//jon", "acme/jon/triage/more"] do
+      assert {:error, message} = Token.create("unscoped", scope)
+
+      assert message ==
+               "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"
+    end
+  end
+
   test "a revoked token stops working, and is listed no more" do
     {:ok, secret, token} = Token.create("revoked", "acme/")
     assert token in Token.list()

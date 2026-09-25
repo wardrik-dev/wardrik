@@ -4,8 +4,20 @@ defmodule TarsHTTP.Token do
 
       {:ok, secret, token} = TarsHTTP.Token.create("ci", "acme/")
 
-  A token reaches the agents whose keys start with its scope: `"acme/"` is one
-  org, `"acme/jon/"` one person's agents, and `""` every agent.
+  A token reaches the agents under its scope, a key prefix that ends at a
+  segment:
+
+  | Scope | Reaches |
+  | --- | --- |
+  | `""` | every agent |
+  | `"acme/"` | the agents of one org |
+  | `"acme/jon/"` | one person's agents |
+  | `"acme/jon/triage"` | one agent |
+
+  `create/2` writes a scope of one or two segments as the prefix it is, so
+  `"acme"` is `"acme/"`, and refuses one with an empty segment or more than
+  three. `covers?/2` matches at segment boundaries: `"acme/"` never reaches
+  `acmecorp/…`, and `"acme/jon/triage"` never reaches `acme/jon/triage2`.
 
   The secret, `tars_` and 32 characters, is answered once and never kept.
   `Tars.Store` holds the token under the SHA-256 of its secret, in `:tokens`,
@@ -30,20 +42,46 @@ defmodule TarsHTTP.Token do
           created_at: DateTime.t()
         }
 
-  @doc "Makes a token named `name` for the agents under `scope`, and answers its secret."
-  @spec create(String.t(), String.t()) :: {:ok, String.t(), t()} | {:error, term()}
+  @doc """
+  Makes a token named `name` for the agents under `scope`, and answers its
+  secret, or a message saying why `scope` is not one.
+  """
+  @spec create(String.t(), String.t()) :: {:ok, String.t(), t()} | {:error, String.t() | term()}
   def create(name, scope) when is_binary(name) and is_binary(scope) do
-    secret = @prefix <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
-    hash = hash(secret)
+    with {:ok, scope} <- scope(scope) do
+      secret = @prefix <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+      hash = hash(secret)
 
-    token = %__MODULE__{
-      id: binary_part(hash, 0, @id_length),
-      name: name,
-      scope: scope,
-      created_at: DateTime.utc_now(:second)
-    }
+      token = %__MODULE__{
+        id: binary_part(hash, 0, @id_length),
+        name: name,
+        scope: scope,
+        created_at: DateTime.utc_now(:second)
+      }
 
-    with {:ok, _vsn} <- Store.put(@ns, hash, token, if_vsn: nil), do: {:ok, secret, token}
+      with {:ok, _vsn} <- Store.put(@ns, hash, token, if_vsn: nil), do: {:ok, secret, token}
+    end
+  end
+
+  defp scope(""), do: {:ok, ""}
+
+  defp scope(scope) do
+    trimmed = String.trim_trailing(scope, "/")
+
+    case String.split(trimmed, "/") do
+      [org] when org != "" ->
+        {:ok, trimmed <> "/"}
+
+      [org, user] when org != "" and user != "" ->
+        {:ok, trimmed <> "/"}
+
+      [org, user, name] when org != "" and user != "" and name != "" ->
+        {:ok, trimmed}
+
+      _other ->
+        {:error,
+         "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"}
+    end
   end
 
   @doc "The token a secret belongs to, or `:error`."
@@ -57,10 +95,15 @@ defmodule TarsHTTP.Token do
 
   def verify(_secret), do: :error
 
-  @doc "Whether a token reaches the agent under `key`."
+  @doc """
+  Whether a token reaches the agent under `key`: its scope is empty, or the
+  key is the scope, or goes on from it at a `/`.
+  """
   @spec covers?(t(), String.t()) :: boolean()
+  def covers?(%__MODULE__{scope: ""}, key) when is_binary(key), do: true
+
   def covers?(%__MODULE__{scope: scope}, key) when is_binary(key),
-    do: String.starts_with?(key, scope)
+    do: String.starts_with?(key <> "/", String.trim_trailing(scope, "/") <> "/")
 
   @doc "Every token, oldest first."
   @spec list() :: [t()]

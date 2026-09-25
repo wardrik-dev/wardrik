@@ -106,6 +106,25 @@ defmodule TarsDaemon.AgentFile do
   configured, and `TarsVault`'s where the vault has a key, and records every
   tool call in `Tars.Ledger.Store`, so a turn lost part way through runs no
   call twice.
+
+  ## Over HTTP
+
+  `definition/3` reads the body of `PUT /v1/agents/{org}/{user}/{name}` into
+  a spec the same way, for `TarsHTTP` through `TarsDaemon.Agents`:
+
+      {"description": "Watches the incident queue.",
+       "instructions": "You watch the incident queue.",
+       "model": "anthropic:claude-sonnet-5",
+       "tools": ["web_search", "linear/*"],
+       "policy": {"ask": ["linear/*"]}}
+
+  `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
+  the system prompt, as a file's body is, and the other keys mean what they
+  mean in a file. The key gives the agent's `name`,
+  `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
+  agent's schedules as they are, and the schedules routes set them. Its
+  `tools` and `policy` name what the daemon ships or configures, and never a
+  module.
   """
 
   alias Tars.Agent.Spec
@@ -114,6 +133,7 @@ defmodule TarsDaemon.AgentFile do
 
   @shipped [TarsBrave.WebSearch, TarsResearch.Deep, TarsLua.Run]
   @keys ~w(name description model tools org user policy timeout max_iterations compaction schedule notify)
+  @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt overlap missed jitter)
 
   @doc """
@@ -144,6 +164,31 @@ defmodule TarsDaemon.AgentFile do
     {:invalid, message} -> {:error, "#{path}: #{message}"}
   end
 
+  @doc """
+  Reads a definition sent to the HTTP API for the agent under `key` into its
+  spec, with `policies` as `read/2` takes them. The spec's `schedules` is
+  `nil`, so `Tars.Fleet.put/1` leaves the agent's schedules as they are.
+  """
+  @spec definition(String.t(), map(), %{String.t() => TarsPolicy.t()}) ::
+          {:ok, Spec.t()} | {:error, String.t()}
+  def definition(key, fields, policies \\ %{}) when is_binary(key) and is_map(fields) do
+    known!(fields, @definition_keys)
+    {org, user, name} = Tars.Fleet.parse(key)
+    instructions = optional_string!(fields["instructions"], "instructions") || ""
+
+    {:ok,
+     spec(fields, instructions, policies, false,
+       name: name,
+       org: org,
+       user: user,
+       schedules: nil
+     )}
+  rescue
+    error in [ArgumentError] -> {:error, Exception.message(error)}
+  catch
+    {:invalid, message} -> {:error, message}
+  end
+
   defp split("---\n" <> rest) do
     case String.split(rest, ~r/^---[ \t]*$\n?/m, parts: 2) do
       [front, body] -> {:ok, front, body}
@@ -163,38 +208,53 @@ defmodule TarsDaemon.AgentFile do
   end
 
   defp build(path, fields, body, policies) do
-    case Map.keys(fields) -- @keys do
-      [] -> :ok
-      [key | _] -> invalid!("#{key} is not a setting; expected one of #{Enum.join(@keys, ", ")}")
-    end
+    known!(fields, @keys)
 
+    spec =
+      spec(fields, body, policies, true,
+        name:
+          optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
+        org: optional_string!(fields["org"], "org"),
+        user: optional_string!(fields["user"], "user"),
+        schedules: schedules(fields["schedule"])
+      )
+
+    {:ok, spec, route(fields["notify"])}
+  rescue
+    error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
+  end
+
+  defp known!(fields, keys) do
+    case Map.keys(fields) -- keys do
+      [] -> :ok
+      [key | _] -> invalid!("#{key} is not a setting; expected one of #{Enum.join(keys, ", ")}")
+    end
+  end
+
+  # Everything a file and a definition say alike, with `identity` the fields
+  # each gives its own way. `modules?` lets `tools` and `policy` name modules.
+  defp spec(fields, system, policies, modules?, identity) do
     config =
-      [system: if(body == "", do: nil, else: body), tools: tools(fields)]
+      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> compaction(fields)
       |> Config.new()
 
-    policy = policy(fields["policy"], policies)
-    route = route(fields["notify"])
+    policy = policy(fields["policy"], policies, modules?)
 
-    {:ok,
-     Spec.new(
-       name:
-         optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
-       org: optional_string!(fields["org"], "org"),
-       user: optional_string!(fields["user"], "user"),
-       description: optional_string!(fields["description"], "description"),
-       config: config,
-       policy: policy,
-       dispatch: budgeted(policy),
-       timeout: fields["timeout"] && seconds!(fields["timeout"]),
-       schedules: schedules(fields["schedule"]),
-       credentials: credentials(),
-       ledger: Tars.Ledger.Store
-     ), route}
-  rescue
-    error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
+    Spec.new(
+      identity ++
+        [
+          description: optional_string!(fields["description"], "description"),
+          config: config,
+          policy: policy,
+          dispatch: budgeted(policy),
+          timeout: fields["timeout"] && seconds!(fields["timeout"]),
+          credentials: credentials(),
+          ledger: Tars.Ledger.Store
+        ]
+    )
   end
 
   defp put(opts, _key, nil, _cast), do: opts
@@ -202,15 +262,15 @@ defmodule TarsDaemon.AgentFile do
 
   # -- tools and servers -----------------------------------------------------
 
-  defp tools(%{"tools" => names}) when is_list(names),
-    do: names |> Enum.flat_map(&tool!/1) |> Enum.uniq()
+  defp tools(%{"tools" => names}, modules?) when is_list(names),
+    do: names |> Enum.flat_map(&tool!(&1, modules?)) |> Enum.uniq()
 
-  defp tools(%{"tools" => _names}), do: invalid!("tools is a list")
-  defp tools(_fields), do: []
+  defp tools(%{"tools" => _names}, _modules?), do: invalid!("tools is a list")
+  defp tools(_fields, _modules?), do: []
 
-  defp tool!("*"), do: @shipped ++ [{TarsMCP, :*}]
+  defp tool!("*", _modules?), do: @shipped ++ [{TarsMCP, :*}]
 
-  defp tool!(name) when is_binary(name) do
+  defp tool!(name, modules?) when is_binary(name) do
     pattern = Pattern.parse!(name)
 
     cond do
@@ -226,16 +286,17 @@ defmodule TarsDaemon.AgentFile do
         )
 
       true ->
-        [shipped!(name)]
+        [shipped!(name, modules?)]
     end
   end
 
-  defp tool!(name), do: invalid!("tools names #{inspect(name)}, which is not a tool")
+  defp tool!(name, _modules?), do: invalid!("tools names #{inspect(name)}, which is not a tool")
 
-  defp shipped!(name) do
+  defp shipped!(name, modules?) do
     case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do
       {:ok, module} -> module
-      :error -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
+      :error when modules? -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
+      :error -> invalid!("tools names #{name}, which is not a tool the daemon ships")
     end
   end
 
@@ -290,38 +351,13 @@ defmodule TarsDaemon.AgentFile do
 
     name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
 
-    Tars.Schedule.new(name,
-      every: fields["every"],
-      prompt: fields["prompt"],
-      overlap: choice!(fields, "overlap", :skip, ~w(skip queue)),
-      missed: choice!(fields, "missed", :run_once, ~w(run_once skip)),
-      jitter: jitter!(fields["jitter"])
-    )
-  rescue
-    error in [ArgumentError] ->
-      invalid!("schedule #{fields["name"] || index}: #{Exception.message(error)}")
-  end
-
-  defp schedule!({_other, index}), do: invalid!("schedule #{index} is not a set of keys")
-
-  defp choice!(fields, key, default, allowed) do
-    case Map.get(fields, key) do
-      nil ->
-        default
-
-      value when is_binary(value) ->
-        if value in allowed,
-          do: String.to_existing_atom(value),
-          else: invalid!("schedule #{key} is one of #{Enum.join(allowed, ", ")}")
-
-      _other ->
-        invalid!("schedule #{key} is one of #{Enum.join(allowed, ", ")}")
+    case Tars.Schedule.decode(name, Map.delete(fields, "name")) do
+      {:ok, schedule} -> schedule
+      {:error, message} -> invalid!("schedule #{fields["name"] || index}: #{message}")
     end
   end
 
-  defp jitter!(nil), do: 0
-  defp jitter!(seconds) when is_integer(seconds) and seconds >= 0, do: :timer.seconds(seconds)
-  defp jitter!(_seconds), do: invalid!("schedule jitter is a whole number of seconds")
+  defp schedule!({_other, index}), do: invalid!("schedule #{index} is not a set of keys")
 
   # -- notify ----------------------------------------------------------------
 
@@ -384,23 +420,24 @@ defmodule TarsDaemon.AgentFile do
   defp budgeted({TarsPolicy, %TarsPolicy{budget: %TarsPolicy.Budget{}}} = policy), do: policy
   defp budgeted(_policy), do: nil
 
-  defp policy(nil, _policies), do: nil
+  defp policy(nil, _policies, _modules?), do: nil
 
-  defp policy(name, policies) when is_binary(name) do
+  defp policy(name, policies, modules?) when is_binary(name) do
     case Map.fetch(policies, name) do
       {:ok, policy} -> {TarsPolicy, policy}
-      :error -> module!(name, :authorize, 2, "a policy", "a policy in policies/")
+      :error when modules? -> module!(name, :authorize, 2, "a policy", "a policy in policies/")
+      :error -> invalid!("policy names #{name}, which is not a policy in policies/")
     end
   end
 
-  defp policy(fields, _policies) when is_map(fields) do
+  defp policy(fields, _policies, _modules?) when is_map(fields) do
     case TarsPolicy.decode(fields) do
       {:ok, policy} -> {TarsPolicy, policy}
       {:error, message} -> invalid!("policy " <> message)
     end
   end
 
-  defp policy(_value, _policies),
+  defp policy(_value, _policies, _modules?),
     do: invalid!("policy is the name of a policy, rules, or a module")
 
   defp module!(name, function, arity, what, known) do

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:agent_definition",
+  "title": "An agent's definition",
+  "description": "The body of PUT /v1/agents/{org}/{user}/{name}, and of GET /v1/agents/{org}/{user}/{name}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "What the agent is for, in words a person reads."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "The system prompt."
+    },
+    "model": {
+      "type": "string",
+      "description": "The model, as provider:model."
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; or * for all of them."
+    },
+    "policy": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "A policy the server holds, by name."
+        },
+        {
+          "type": "object",
+          "description": "Rules, as a policy file writes them."
+        }
+      ]
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many seconds a turn may take."
+    },
+    "max_iterations": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "infinity"
+        }
+      ],
+      "description": "How many rounds of tool calls a turn may make."
+    },
+    "compaction": {
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "keep": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "window": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "description": "When the agent summarises its older history, as shares of the model's window; false never does."
+    }
+  },
+  "examples": [
+    {
+      "description": "Watches the incident queue.",
+      "instructions": "You watch the incident queue.",
+      "model": "anthropic:claude-sonnet-5",
+      "tools": ["web_search", "linear/*"],
+      "policy": {
+        "ask": ["linear/*"]
+      },
+      "timeout": 600,
+      "max_iterations": 12,
+      "compaction": {
+        "at": 0.6,
+        "keep": 0.25
+      }
+    }
+  ]
+}

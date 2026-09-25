@@ -6,14 +6,22 @@ defmodule TarsHTTP.Router do
   one, and the request is logged under it. Every request presents a token
   (`TarsHTTP.Auth`), and an agent outside the token's scope is answered as
   one that does not exist.
+
+  Its options are the `TarsHTTP.Listener`'s `:definition`, assigned to each
+  request as `:options`.
   """
 
-  use Plug.Router
+  use Plug.Router, copy_opts_to_assign: :options
   use Plug.ErrorHandler
 
+  require Logger
+
   alias Tars.Agent
+  alias Tars.Agent.Spec
   alias Tars.Event.Log
   alias Tars.Fleet
+  alias Tars.Fleet.Member
+  alias Tars.Schedule
   alias TarsHTTP.EventStream
   alias TarsHTTP.Resource
   alias TarsHTTP.Token
@@ -29,12 +37,30 @@ defmodule TarsHTTP.Router do
   plug :dispatch
 
   get "/v1/agents" do
-    agents = for member <- Fleet.list(conn.assigns.token.scope), do: Resource.agent(member)
+    token = conn.assigns.token
+
+    agents =
+      for member <- Fleet.list(token.scope),
+          Token.covers?(token, member.key),
+          do: Resource.agent(member)
+
     json(conn, 200, %{"agents" => agents})
   end
 
   get "/v1/agents/:org/:user/:name" do
     within(conn, [org, user, name], &snapshot(conn, &1))
+  end
+
+  put "/v1/agents/:org/:user/:name" do
+    within(conn, [org, user, name], &define(conn, &1))
+  end
+
+  delete "/v1/agents/:org/:user/:name" do
+    within(conn, [org, user, name], &forget(conn, &1))
+  end
+
+  get "/v1/agents/:org/:user/:name/definition" do
+    within(conn, [org, user, name], &definition(conn, &1))
   end
 
   get "/v1/agents/:org/:user/:name/events" do
@@ -53,6 +79,14 @@ defmodule TarsHTTP.Router do
     within(conn, [org, user, name], &cancel(conn, &1))
   end
 
+  put "/v1/agents/:org/:user/:name/schedules/:schedule" do
+    within(conn, [org, user, name], &schedule(conn, &1, schedule))
+  end
+
+  delete "/v1/agents/:org/:user/:name/schedules/:schedule" do
+    within(conn, [org, user, name], &unschedule(conn, &1, schedule))
+  end
+
   match _ do
     json(
       conn,
@@ -68,11 +102,25 @@ defmodule TarsHTTP.Router do
   def handle_errors(conn, _error),
     do: json(conn, conn.status, Resource.error("internal", "Something went wrong."))
 
-  # An agent the token does not reach is one that does not exist, to the caller.
+  # A path segment is one segment of the key: one that decodes to a "/" is
+  # refused. An agent the token does not reach is one that does not exist,
+  # to the caller.
   defp within(conn, segments, fun) do
     key = Enum.join(segments, "/")
 
-    if Token.covers?(conn.assigns.token, key), do: fun.(key), else: not_found(conn, key)
+    cond do
+      segment = Enum.find(segments, &String.contains?(&1, "/")) ->
+        invalid(
+          conn,
+          "#{inspect(segment)} holds a /; a key's org, user and name are a path segment each"
+        )
+
+      Token.covers?(conn.assigns.token, key) ->
+        fun.(key)
+
+      true ->
+        not_found(conn, key)
+    end
   end
 
   defp snapshot(conn, key) do
@@ -81,6 +129,106 @@ defmodule TarsHTTP.Router do
       snapshot -> json(conn, 200, Resource.snapshot(key, snapshot))
     end
   end
+
+  # -- definitions -----------------------------------------------------------
+
+  defp define(conn, key) do
+    with {:ok, module} <- definitions(conn, :put),
+         {:ok, fields} <- object(conn.body_params),
+         {:ok, spec} <- module.put(key, fields) do
+      if Spec.key(spec) == key,
+        do: put_agent(conn, key, spec),
+        else: internal(conn, "#{inspect(module)} wrote a spec for #{Spec.key(spec)}, not #{key}")
+    else
+      :unsupported -> not_supported(conn, "This server does not define agents over HTTP.")
+      {:error, :conflict, message} -> conflict(conn, message)
+      {:error, message} -> invalid(conn, message)
+    end
+  end
+
+  defp put_agent(conn, key, spec) do
+    status = if Fleet.lookup(key), do: 200, else: 201
+
+    case Fleet.put(spec) do
+      {:ok, _pid} -> json(conn, status, Resource.snapshot(key, Agent.snapshot(key)))
+      {:error, reason} -> unavailable(conn, "#{key} did not start", reason)
+    end
+  end
+
+  defp definition(conn, key) do
+    with {:ok, module} <- definitions(conn, :get),
+         {:ok, definition} <- module.get(key) do
+      json(conn, 200, definition)
+    else
+      :unsupported ->
+        not_supported(conn, "This server does not keep agents' definitions.")
+
+      {:error, :not_found} ->
+        json(conn, 404, Resource.error("not_found", "#{key} has no definition kept."))
+    end
+  end
+
+  # The definition module is asked first, and may refuse. An agent is
+  # forgotten only where one runs, as every other route acts on running
+  # agents alone.
+  defp forget(conn, key) do
+    with {:ok, module} <- definitions(conn, :delete),
+         kept when kept in [:ok, {:error, :not_found}] <- module.delete(key) do
+      running = Fleet.lookup(key)
+      if running, do: :ok = Fleet.forget(key)
+
+      if running || kept == :ok, do: send_resp(conn, 204, ""), else: not_found(conn, key)
+    else
+      :unsupported -> not_supported(conn, "This server does not delete agents over HTTP.")
+      {:error, :conflict, message} -> conflict(conn, message)
+    end
+  end
+
+  @callbacks %{put: 2, get: 1, delete: 1}
+
+  # The listener's definition module, where it has `callback`.
+  defp definitions(conn, callback) do
+    with module when module != nil <- conn.assigns.options[:definition],
+         {:module, module} <- Code.ensure_loaded(module),
+         true <- function_exported?(module, callback, Map.fetch!(@callbacks, callback)) do
+      {:ok, module}
+    else
+      _none -> :unsupported
+    end
+  end
+
+  # Plug.Parsers keeps a body that is not an object under "_json".
+  defp object(%{"_json" => _value}), do: {:error, "The body is a JSON object"}
+  defp object(fields), do: {:ok, fields}
+
+  # -- schedules -------------------------------------------------------------
+
+  defp schedule(conn, key, name) do
+    with %Member{} <- Fleet.lookup(key),
+         {:ok, fields} <- object(conn.body_params),
+         {:ok, schedule} <- Schedule.decode(name, fields) do
+      status = if scheduled?(key, name), do: 200, else: 201
+
+      case Schedule.put(key, schedule) do
+        {:ok, _pid} -> json(conn, status, %{"schedule" => Resource.schedule(schedule)})
+        {:error, reason} -> unavailable(conn, "#{key}'s schedule #{name} did not start", reason)
+      end
+    else
+      nil -> not_found(conn, key)
+      {:error, message} -> invalid(conn, message)
+    end
+  end
+
+  defp unschedule(conn, key, name) do
+    if scheduled?(key, name) do
+      :ok = Schedule.delete(key, name)
+      send_resp(conn, 204, "")
+    else
+      json(conn, 404, Resource.error("not_found", "#{key} has no schedule #{name}."))
+    end
+  end
+
+  defp scheduled?(key, name), do: Enum.any?(Schedule.for_agent(key), &(&1.name == name))
 
   # -- events ----------------------------------------------------------------
 
@@ -228,7 +376,21 @@ defmodule TarsHTTP.Router do
     do: json(conn, 404, Resource.error("not_found", "No agent runs under #{key}."))
 
   defp invalid(conn, message), do: json(conn, 400, Resource.error("invalid_request", message))
+
+  defp internal(conn, message) do
+    Logger.error(message)
+    json(conn, 500, Resource.error("internal", "Something went wrong."))
+  end
+
+  defp unavailable(conn, message, reason) do
+    Logger.warning("#{message}: #{inspect(reason)}")
+    json(conn, 503, Resource.error("unavailable", message <> "."))
+  end
+
   defp conflict(conn, message), do: json(conn, 409, Resource.error("conflict", message))
+
+  defp not_supported(conn, message),
+    do: json(conn, 501, Resource.error("not_supported", message))
 
   defp gone(conn, oldest) do
     message =

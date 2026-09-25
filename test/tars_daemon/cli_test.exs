@@ -110,6 +110,15 @@ defmodule TarsDaemon.CLITest do
     assert :error = TarsHTTP.Token.verify(secret)
   end
 
+  test "token create writes a scope as the key prefix it is, and refuses one that is not" do
+    {output, 0} = command(["token", "create", "org", "--scope", "acme"])
+    assert output =~ ") reaches the agents under acme/."
+
+    assert command(["token", "create", "bad", "--scope", "acme//triage"]) ==
+             {~s("acme//triage" is not a scope; a scope is org/, org/user/ or a key, org/user/name\n),
+              1}
+  end
+
   test "token create --all makes a token that reaches every agent" do
     {output, 0} = command(["token", "create", "everywhere", "--all"])
 

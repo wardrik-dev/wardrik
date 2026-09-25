@@ -19,7 +19,7 @@ defmodule Tars.Agent.Spec do
   sent to another node, or read back from either. `Tars.Fleet.put/1` makes the
   fleet match it: an agent is started under `key/1` where none runs, and given
   the spec's config and seams where one does, and its schedules are brought to
-  the spec's.
+  the spec's. A spec whose `:schedules` is `nil` leaves them as they are.
 
   | Field | What it is |
   | --- | --- |
@@ -27,7 +27,7 @@ defmodule Tars.Agent.Spec do
   | `:org`, `:user` | who it works for, written into its key through `Tars.Fleet.Segment` |
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Tars.LLM.Config` |
-  | `:schedules` | the `Tars.Schedule`s that ask it on a clock, `[]` by default |
+  | `:schedules` | the `Tars.Schedule`s that ask it on a clock, `[]` by default; `nil` leaves the agent's own |
   | `:policy`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Tars.Scope.seams/0` |
   """
 
@@ -44,7 +44,7 @@ defmodule Tars.Agent.Spec do
           user: term(),
           description: String.t() | nil,
           config: Config.t(),
-          schedules: [Tars.Schedule.t()],
+          schedules: [Tars.Schedule.t()] | nil,
           policy: Tars.Policy.t() | nil,
           dispatch: module() | nil,
           credentials: module() | nil,
