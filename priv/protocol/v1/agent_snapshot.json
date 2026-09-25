@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:agent_snapshot",
+  "title": "An agent's snapshot",
+  "description": "The body of GET /v1/agents/{org}/{user}/{name}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "conversation",
+    "status",
+    "pending",
+    "request",
+    "run",
+    "interrupts",
+    "messages",
+    "outcome",
+    "sequence"
+  ],
+  "properties": {
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's key, org/user/name."
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The key and generation; it changes when the agent is forgotten and started again."
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "running",
+        "parked"
+      ]
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "run": {
+      "oneOf": [
+        {
+          "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run going on, or null between runs."
+    },
+    "interrupts": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tars:schema:v1:defs#/$defs/interrupt"
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+      }
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "ok",
+            "failed",
+            "interrupted"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "How the last run ended, or null before the first."
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "examples": [
+    {
+      "agent": {
+        "id": "acme/ops/triage",
+        "name": "triage"
+      },
+      "conversation": {
+        "id": "acme/ops/triage/5f1c2a"
+      },
+      "status": "parked",
+      "pending": 0,
+      "request": {
+        "model": "claude-sonnet-5"
+      },
+      "provider": {
+        "name": "anthropic"
+      },
+      "run": {
+        "id": "4bf92f3577b34da6a3ce929d0e0e4736"
+      },
+      "interrupts": [
+        {
+          "id": "toolu_01",
+          "reason": "tool_approval",
+          "message": "Open an issue?",
+          "tool_call_id": "toolu_01"
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "content": "What's on fire?"
+            }
+          ]
+        }
+      ],
+      "outcome": "ok",
+      "sequence": 41
+    }
+  ]
+}

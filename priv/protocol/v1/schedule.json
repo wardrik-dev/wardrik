@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:schedule",
+  "title": "A schedule",
+  "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule} answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "every",
+    "prompt",
+    "overlap",
+    "missed",
+    "jitter"
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "every": {
+      "type": "string",
+      "description": "A cron expression, or a duration such as 30m."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "What the agent is asked each time."
+    },
+    "overlap": {
+      "type": "string",
+      "enum": [
+        "skip",
+        "queue"
+      ],
+      "description": "What a firing does while a run is still going: skip it, or queue its prompt."
+    },
+    "missed": {
+      "type": "string",
+      "enum": [
+        "run_once",
+        "skip"
+      ],
+      "description": "What a schedule does about the firings it missed while down."
+    },
+    "jitter": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Up to this many seconds of delay, chosen at random each time."
+    }
+  },
+  "examples": [
+    {
+      "name": "sweep",
+      "every": "*/30 * * * *",
+      "prompt": "Check the queue.",
+      "overlap": "skip",
+      "missed": "run_once",
+      "jitter": 0
+    }
+  ]
+}

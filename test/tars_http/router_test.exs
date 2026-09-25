@@ -636,4 +636,70 @@ defmodule TarsHTTP.RouterTest do
 
     {fields["id"], JSON.decode!(fields["data"])["type"]}
   end
+
+  describe "the resources' schemas" do
+    @resources ~w(agent agent_snapshot schedule schedule_definition error)
+
+    defp schema(name) do
+      :tars
+      |> Application.app_dir("priv/protocol/v1/#{name}.json")
+      |> File.read!()
+      |> JSON.decode!()
+    end
+
+    defp conforms(value, name) do
+      root = JSV.build!(schema(name), resolver: Tars.Test.ProtocolResolver)
+      assert {:ok, _} = JSV.validate(value, root)
+    end
+
+    test "take their examples" do
+      for name <- @resources, example <- schema(name)["examples"], do: conforms(example, name)
+    end
+
+    test "describe the agents listed, their snapshots idle and parked, and a schedule",
+         %{api: api} do
+      {idle, agent} = echo_agent()
+      Agent.ask(agent, "hi")
+      settled(agent)
+      {parked, _agent} = parked_agent()
+
+      {:ok, %{body: %{"agents" => agents}}} = Req.get(api, url: "/v1/agents")
+      for listed <- agents, do: conforms(listed, "agent")
+
+      for key <- [idle, parked] do
+        {:ok, %{status: 200, body: snapshot}} = Req.get(api, url: "/v1/agents/#{key}")
+        conforms(snapshot, "agent_snapshot")
+      end
+
+      body = %{"every" => "*/30 * * * *", "prompt" => "Look.", "jitter" => 5}
+      conforms(body, "schedule_definition")
+
+      {:ok, %{status: 201, body: %{"schedule" => schedule}}} =
+        Req.put(api, url: "/v1/agents/#{idle}/schedules/sweep", json: body)
+
+      conforms(schedule, "schedule")
+    end
+
+    test "describe every error", %{api: api} do
+      {key, agent} = echo_agent()
+      Agent.ask(agent, "hi")
+      settled(agent)
+      :ok = Log.trim(key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+
+      answers = [
+        Req.get(api, url: "/v1/agents", auth: nil),
+        Req.get(api, url: "/v1/agents/test/_/nobody"),
+        Req.post(api, url: "/v1/agents/#{key}/messages", json: %{}),
+        Req.post(api, url: "/v1/agents/#{key}/interrupts/x", json: %{"decision" => "approve"}),
+        Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0]),
+        Req.get(api, url: "/v1/workers"),
+        Req.get(api, url: "/v1/agents/#{key}/definition")
+      ]
+
+      assert Enum.map(answers, fn {:ok, response} -> response.status end) ==
+               [401, 404, 400, 409, 410, 426, 501]
+
+      for {:ok, response} <- answers, do: conforms(response.body, "error")
+    end
+  end
 end

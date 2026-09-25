@@ -57,7 +57,11 @@ defmodule TarsHTTP do
   | `DELETE /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
-  `TarsHTTP.Resource` shows what each answers.
+  `TarsHTTP.Resource` shows what each answers. Each resource's JSON Schema is
+  in `priv/protocol/v1`, beside the events': `agent.json` for an agent listed,
+  `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
+  `schedule_definition.json` and `error.json`. `sdks/typescript` generates
+  its types from them.
 
   ### Agents
 

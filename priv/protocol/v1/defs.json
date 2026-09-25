@@ -231,6 +231,34 @@
     "duration_ms": {
       "type": "integer",
       "minimum": 0
+    },
+    "interrupt": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "tool_approval",
+            "model_approval"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "reason",
+        "message"
+      ],
+      "description": "A call a run waits on a person for."
     }
   }
 }

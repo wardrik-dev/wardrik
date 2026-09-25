@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:agent",
+  "title": "An agent, listed",
+  "description": "One entry of GET /v1/agents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "status",
+    "pending",
+    "node"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The agent's key, org/user/name."
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "running",
+        "parked"
+      ]
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Messages waiting for the next run."
+    },
+    "node": {
+      "type": "string",
+      "description": "The node the agent runs on."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "failed",
+        "interrupted"
+      ],
+      "description": "How the last run ended. Absent before the first."
+    }
+  },
+  "examples": [
+    {
+      "id": "acme/ops/triage",
+      "name": "triage",
+      "status": "parked",
+      "pending": 0,
+      "node": "tars@box1",
+      "outcome": "ok"
+    }
+  ]
+}

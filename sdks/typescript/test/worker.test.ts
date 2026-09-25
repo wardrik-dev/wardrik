@@ -1,0 +1,240 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterEach, beforeEach, test } from "node:test";
+import { WebSocketServer, type WebSocket } from "ws";
+import { z } from "zod";
+import { Tars, TarsError } from "../src/index.ts";
+
+// Tars's side of a worker's socket: the MCP client, as TarsHTTP.Worker is.
+class Peer {
+  readonly socket: WebSocket;
+  readonly notifications: { method: string; params: unknown }[] = [];
+  #next = 1;
+  #pending = new Map<number, (message: any) => void>();
+  #waiting: (() => void)[] = [];
+
+  constructor(socket: WebSocket) {
+    this.socket = socket;
+    socket.on("message", (data) => {
+      const message = JSON.parse(String(data));
+      if ("id" in message) this.#pending.get(message.id)?.(message);
+      else this.notifications.push(message);
+      this.#waiting.splice(0).forEach((wake) => wake());
+    });
+  }
+
+  /** The id of the request sent last. */
+  get last(): number {
+    return this.#next - 1;
+  }
+
+  request(method: string, params: object = {}): Promise<any> {
+    const id = this.#next++;
+    this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    return new Promise((resolve) => this.#pending.set(id, resolve));
+  }
+
+  notify(method: string, params: object = {}): void {
+    this.socket.send(JSON.stringify({ jsonrpc: "2.0", method, params }));
+  }
+
+  async notified(method: string): Promise<void> {
+    while (!this.notifications.some((n) => n.method === method)) {
+      await new Promise<void>((wake) => this.#waiting.push(wake));
+    }
+  }
+
+  async initialize(): Promise<any[]> {
+    const init = await this.request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "tars", version: "0" },
+    });
+    assert.equal(init.result.protocolVersion, "2025-06-18");
+    this.notify("notifications/initialized");
+    return (await this.request("tools/list")).result.tools;
+  }
+}
+
+let url: string;
+let peers: Peer[];
+let arrived: (peer: Peer) => void;
+let close: () => Promise<void>;
+let stop: AbortController;
+
+const next = () => new Promise<Peer>((resolve) => (arrived = resolve));
+
+beforeEach(async () => {
+  peers = [];
+  stop = new AbortController();
+  const sockets = new WebSocketServer({ noServer: true });
+  const authorized = (header: string | undefined) => header === "Bearer tars_secret";
+
+  const server = createServer((request, response) => {
+    const status = authorized(request.headers.authorization) ? 426 : 401;
+    response.writeHead(status, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { type: status === 426 ? "upgrade_required" : "unauthorized", message: "…" } }));
+  });
+
+  server.on("upgrade", (request, socket, head) => {
+    if (!authorized(request.headers.authorization)) return socket.destroy();
+    sockets.handleUpgrade(request, socket, head, (ws) => {
+      const peer = new Peer(ws);
+      peers.push(peer);
+      arrived?.(peer);
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  close = () =>
+    new Promise((resolve) => {
+      for (const client of sockets.clients) client.terminate();
+      server.closeAllConnections();
+      server.close(() => resolve());
+    });
+});
+
+afterEach(async () => {
+  stop.abort();
+  await close();
+});
+
+test("offers its tools with their hints, and answers a call with the call's idempotency key", async () => {
+  const keys: (string | undefined)[] = [];
+  const tars = new Tars({ url, token: "tars_secret", name: "shop" });
+
+  tars
+    .tool({
+      name: "refund_order",
+      description: "Refund an order in full.",
+      input: z.object({ orderId: z.string() }),
+      idempotent: true,
+      run: ({ orderId }, { idempotencyKey }) => {
+        keys.push(idempotencyKey);
+        return { refund: "re_" + orderId };
+      },
+    })
+    .tool({
+      name: "look",
+      input: z.object({}),
+      readOnly: true,
+      run: () => "Nothing here.",
+    })
+    .tool({
+      name: "fail",
+      input: z.object({}),
+      run: () => {
+        throw new Error("No such order.");
+      },
+    });
+
+  const arriving = next();
+  const working = tars.work({ signal: stop.signal });
+  const peer = await arriving;
+  const tools = await peer.initialize();
+
+  assert.deepEqual(
+    tools.map((tool: any) => [tool.name, tool.annotations ?? {}]),
+    [
+      ["refund_order", { idempotentHint: true }],
+      ["look", { readOnlyHint: true }],
+      ["fail", {}],
+    ],
+  );
+  assert.equal(tools[0].inputSchema.properties.orderId.type, "string");
+
+  const refund = await peer.request("tools/call", {
+    name: "refund_order",
+    arguments: { orderId: "o_42" },
+    _meta: { idempotencyKey: "tars_3f9a" },
+  });
+
+  assert.deepEqual(refund.result.structuredContent, { refund: "re_o_42" });
+  assert.deepEqual(keys, ["tars_3f9a"]);
+
+  const look = await peer.request("tools/call", { name: "look", arguments: {} });
+  assert.deepEqual(look.result.content, [{ type: "text", text: "Nothing here." }]);
+
+  const fail = await peer.request("tools/call", { name: "fail", arguments: {} });
+  assert.equal(fail.result.isError, true);
+  assert.deepEqual(fail.result.content, [{ type: "text", text: "No such order." }]);
+
+  stop.abort();
+  await working;
+});
+
+test("aborts a call Tars stops waiting for", async () => {
+  const tars = new Tars({ url, token: "tars_secret" });
+  let aborted!: () => void;
+  const abort = new Promise<void>((resolve) => (aborted = resolve));
+
+  tars.tool({
+    name: "hang",
+    input: z.object({}),
+    run: (_args, { signal }) =>
+      new Promise((resolve) => signal.addEventListener("abort", () => (aborted(), resolve("stopped")))),
+  });
+
+  const arriving = next();
+  const working = tars.work({ signal: stop.signal });
+  const peer = await arriving;
+  await peer.initialize();
+
+  void peer.request("tools/call", { name: "hang", arguments: {} });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  peer.notify("notifications/cancelled", { requestId: peer.last, reason: "Not answered in time." });
+
+  await abort;
+  stop.abort();
+  await working;
+});
+
+test("tells Tars when a tool is added while it works", async () => {
+  const tars = new Tars({ url, token: "tars_secret" });
+  tars.tool({ name: "look", input: z.object({}), run: () => "…" });
+
+  const arriving = next();
+  const working = tars.work({ signal: stop.signal });
+  const peer = await arriving;
+  await peer.initialize();
+
+  tars.tool({ name: "send", input: z.object({}), run: () => "…" });
+  await peer.notified("notifications/tools/list_changed");
+
+  const tools = (await peer.request("tools/list")).result.tools;
+  assert.deepEqual(tools.map((tool: any) => tool.name), ["look", "send"]);
+
+  stop.abort();
+  await working;
+});
+
+test("opens its socket again after it drops", async () => {
+  const tars = new Tars({ url, token: "tars_secret" });
+  tars.tool({ name: "look", input: z.object({}), run: () => "…" });
+
+  let arriving = next();
+  const working = tars.work({ signal: stop.signal });
+  const first = await arriving;
+  await first.initialize();
+
+  arriving = next();
+  first.socket.terminate();
+  const second = await arriving;
+
+  assert.deepEqual((await second.initialize()).map((tool: any) => tool.name), ["look"]);
+  stop.abort();
+  await working;
+});
+
+test("stops when its token is refused", async () => {
+  const tars = new Tars({ url, token: "tars_wrong" });
+
+  await assert.rejects(tars.work({ signal: stop.signal }), (thrown: unknown) => {
+    assert.ok(thrown instanceof TarsError);
+    assert.equal(thrown.type, "unauthorized");
+    return true;
+  });
+});

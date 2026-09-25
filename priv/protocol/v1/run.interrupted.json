@@ -11,31 +11,7 @@
     "interrupts": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string",
-            "enum": [
-              "tool_approval",
-              "model_approval"
-            ]
-          },
-          "message": {
-            "type": "string"
-          },
-          "tool_call_id": {
-            "type": "string"
-          }
-        },
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "reason",
-          "message"
-        ]
+        "$ref": "urn:tars:schema:v1:defs#/$defs/interrupt"
       }
     }
   },
