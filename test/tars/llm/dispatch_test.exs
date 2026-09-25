@@ -51,15 +51,23 @@ defmodule Tars.LLM.DispatchTest do
     @impl true
     def settle(_request, outcome, _scope, model),
       do: send(self(), {:settled_with, model, outcome})
-
-    @impl true
-    def approved(_request, _scope, model), do: send(self(), {:approved_with, model})
   end
 
-  defmodule Parking do
-    @behaviour Tars.LLM.Dispatch
+  defmodule Asking do
+    @behaviour Tars.Hook
+
+    alias Tars.Call
+
     @impl true
-    def admit(_request, _scope), do: {:park, "Over budget."}
+    def init(answer), do: answer
+
+    @impl true
+    def call(call, :allow), do: call
+    def call(call, {:deny, reason}), do: Call.deny(call, reason)
+    def call(call, {:ask, prompt, memo}), do: Call.ask(call, prompt, memo)
+
+    @impl true
+    def settle(call, _answer), do: send(self(), {:hook_settled, call})
   end
 
   defmodule BrokenSettle do
@@ -135,19 +143,52 @@ defmodule Tars.LLM.DispatchTest do
 
       :ok = Dispatch.settle(scope, admitted, {:error, :boom})
       assert_received {:settled_with, {:anthropic, model: "claude-sonnet-5"}, {:error, :boom}}
-
-      :ok = Dispatch.approved(scope, admitted)
-      assert_received {:approved_with, {:anthropic, model: "claude-sonnet-5"}}
     end
   end
 
-  describe "admit/2 parking" do
-    test "passes a park through with its prompt" do
-      assert {:park, "Over budget."} = Dispatch.admit(scope(Parking), request())
+  describe "hooks" do
+    defp hooked(answer) do
+      %{scope(Routing) | hooks: [Tars.Hook.new("asking", Asking, answer)]}
     end
 
-    test "approved/2 is optional" do
-      assert :ok = Dispatch.approved(scope(Parking), request())
+    test "are asked before the dispatch, which a park never reaches" do
+      assert {:park, %Tars.Call{state: :waiting, scope: nil} = waiting} =
+               Dispatch.admit(hooked({:ask, "Over budget.", :day}), request())
+
+      assert [%Tars.Call.Ask{by: "asking", prompt: "Over budget.", memo: :day}] = waiting.asks
+      assert %Tars.Call.Model{} = waiting.target
+    end
+
+    test "a deny fails the call as a refusal" do
+      assert {:error, {:policy_denied, "No."}} = Dispatch.admit(hooked({:deny, "No."}), request())
+    end
+
+    test "are skipped for a call a person already decided" do
+      assert {:ok, admitted} = Dispatch.admit(hooked({:deny, "No."}), request(), decided: true)
+      assert admitted.opts[:api_key] == "key-for-acme"
+    end
+
+    test "hear what a call used, with the model as it was made" do
+      response = %ReqLLM.Response{
+        id: "r",
+        model: "m",
+        context: Context.new(),
+        usage: %{input_tokens: 3, output_tokens: 4}
+      }
+
+      :ok = Dispatch.settle(hooked(:allow), request(), {:ok, response})
+
+      assert_received {:hook_settled,
+                       %Tars.Call{
+                         state: :done,
+                         result: {:ok, ^response},
+                         target: %Tars.Call.Model{usage: %{input_tokens: 3, output_tokens: 4}}
+                       }}
+    end
+
+    test "hear nothing of a call that failed before it was answered" do
+      :ok = Dispatch.settle(hooked(:allow), request(), {:error, :closed})
+      refute_received {:hook_settled, _call}
     end
   end
 end

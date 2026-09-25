@@ -25,7 +25,7 @@ defmodule TarsMCP.RobustnessTest do
 
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
 
-      assert [{:settled, _call, _message}] = Task.await(batch)
+      assert [%Tars.Call{state: :done}] = Task.await(batch)
       assert await_cancelled(ref) == 1
     end
 
@@ -40,7 +40,7 @@ defmodule TarsMCP.RobustnessTest do
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
 
       assert {:ok, %{"result" => %{"content" => "still here"}}} = Task.await(answering)
-      assert [{:settled, _call, _message}] = Task.await(batch)
+      assert [%Tars.Call{state: :done}] = Task.await(batch)
       assert await_cancelled(ref) == 1
     end
 
@@ -58,7 +58,7 @@ defmodule TarsMCP.RobustnessTest do
       name = "#{ref}__noisy"
       call = %{id: "call_noisy", name: name, arguments: %{"steps" => 3}}
 
-      assert {:settled, _call, _message} = ToolRunner.execute(call, scope)
+      assert %Tars.Call{state: :done} = ToolRunner.execute(call, scope)
 
       assert_receive %Event{payload: {:tool_progress, "call_noisy", ^name, 1, 3}}, 5_000
       assert_receive %Event{payload: {:tool_progress, "call_noisy", ^name, 3, 3}}, 5_000

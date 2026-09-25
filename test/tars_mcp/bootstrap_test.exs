@@ -55,14 +55,16 @@ defmodule TarsMCP.BootstrapTest do
   test "calling it parks on the link", context do
     %{ref: ref} = context
 
-    assert {:parked, _call, prompt} = call(ref, "someone", "connect")
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+             call(ref, "someone", "connect")
+
     assert prompt =~ "https://example.com/authorize"
   end
 
   test "a user who authorizes gets the server's own tools in its place", context do
     %{ref: ref, connect: connect} = context
 
-    assert {:settled, _call, _message} = call(ref, "connected", "connect")
+    assert %Tars.Call{state: :done} = call(ref, "connected", "connect")
 
     names = Enum.map(TarsMCP.tools(ref), & &1.name)
 
@@ -72,7 +74,7 @@ defmodule TarsMCP.BootstrapTest do
 
   test "and a later listing by the deployment leaves those tools alone", context do
     %{ref: ref, connect: connect} = context
-    {:settled, _call, _message} = call(ref, "connected", "connect")
+    %Tars.Call{state: :done} = call(ref, "connected", "connect")
 
     # What a server saying its tools changed drives, without the wait that
     # collapses a burst of them. The deployment is still refused.
@@ -87,11 +89,12 @@ defmodule TarsMCP.BootstrapTest do
 
   test "and those tools then run as that user", context do
     %{ref: ref} = context
-    {:settled, _call, _message} = call(ref, "connected", "connect")
+    %Tars.Call{state: :done} = call(ref, "connected", "connect")
 
     secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 
-    assert {:settled, _call, message} = ToolRunner.execute(secret, scope(ref, "connected"))
+    assert [message] =
+             Tars.LLM.ToolRunner.messages([ToolRunner.execute(secret, scope(ref, "connected"))])
 
     [part] = message.content
     assert part.text =~ "a-token"
@@ -110,7 +113,7 @@ defmodule TarsMCP.BootstrapTest do
     # What a node that starts later has: the deployment's connection, and no
     # connection of any user's.
     setup %{ref: ref, server_opts: opts} do
-      {:settled, _call, _message} = call(ref, "connected", "connect")
+      %Tars.Call{state: :done} = call(ref, "connected", "connect")
       :ok = Connection.close(ref, "connected")
       :ok = TarsMCP.disconnect(ref)
 
@@ -134,7 +137,8 @@ defmodule TarsMCP.BootstrapTest do
 
       secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 
-      assert {:settled, _call, message} = ToolRunner.execute(secret, scope(ref, "connected"))
+      assert [message] =
+               Tars.LLM.ToolRunner.messages([ToolRunner.execute(secret, scope(ref, "connected"))])
 
       [part] = message.content
       assert part.text =~ "a-token"
@@ -145,7 +149,9 @@ defmodule TarsMCP.BootstrapTest do
 
       echo = %{id: "c2", name: "#{ref}__echo", arguments: %{"value" => "hello"}}
 
-      assert {:parked, _call, prompt} = ToolRunner.execute(echo, scope(ref, "someone"))
+      assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+               ToolRunner.execute(echo, scope(ref, "someone"))
+
       assert prompt =~ "https://example.com/authorize"
     end
   end

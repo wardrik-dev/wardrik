@@ -37,12 +37,19 @@ defmodule Tars.AgentLedgerTest do
 
   defmodule Careful do
     @moduledoc false
-    @behaviour Tars.Policy
+    @behaviour Tars.Hook
 
     @impl true
-    def authorize(%{name: "deploy"}, _scope), do: {:ask, "This ships to production."}
-    def authorize(_call, _scope), do: :allow
+    def init(_opts), do: nil
+
+    @impl true
+    def call(%Tars.Call{target: %Tars.Call.Tool{name: "deploy"}} = call, _value),
+      do: Tars.Call.ask(call, "This ships to production.")
+
+    def call(call, _value), do: call
   end
+
+  @careful [%Tars.Hook{name: "careful", module: Careful, value: nil}]
 
   @doc false
   def forward(_event, _measurements, metadata, test), do: send(test, {:forgotten, metadata})
@@ -96,7 +103,7 @@ defmodule Tars.AgentLedgerTest do
   test "a call lost after a person approved it asks again before it runs again", %{key: key} do
     LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
 
-    {^key, agent} = Tars.Test.Fleet.start_agent(opts(policy: Careful), key)
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
     assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
 
@@ -104,7 +111,7 @@ defmodule Tars.AgentLedgerTest do
     assert_receive {:began, "deploy", tool}, 5_000
     lose(key, tool)
 
-    {:ok, agent} = Tars.Fleet.spawn(key, opts(policy: Careful))
+    {:ok, agent} = Tars.Fleet.spawn(key, opts(hooks: @careful))
     assert [{%{id: "call_1"}, "This ships to production."}] = Agent.parked(agent)
 
     Agent.resume(agent, %{"call_1" => :approve})
@@ -114,6 +121,24 @@ defmodule Tars.AgentLedgerTest do
     refute_received {:began, "deploy", _tool}
 
     Agent.resume(agent, %{"call_1" => :approve})
+
+    assert_receive {:began, "deploy", tool}, 5_000
+    send(tool, :finish)
+    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+  end
+
+  test "an agent given hooks that allow the call it waits on carries on", %{key: key} do
+    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Shipped.")])
+
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts(hooks: @careful), key)
+    Agent.ask(agent, "ship it")
+    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+
+    :ok = Agent.configure(agent, opts(hooks: @careful))
+    assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
+    refute_received {:began, "deploy", _tool}
+
+    :ok = Agent.configure(agent, opts([]))
 
     assert_receive {:began, "deploy", tool}, 5_000
     send(tool, :finish)
@@ -145,7 +170,7 @@ defmodule Tars.AgentLedgerTest do
   test "a call refused after it was lost part way tells the model it may have run", %{key: key} do
     LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{}), LLMStub.final_answer("Left it.")])
 
-    {^key, agent} = Tars.Test.Fleet.start_agent(opts(policy: Careful), key)
+    {^key, agent} = Tars.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
     assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
 
@@ -153,7 +178,7 @@ defmodule Tars.AgentLedgerTest do
     assert_receive {:began, "deploy", tool}, 5_000
     lose(key, tool)
 
-    {:ok, agent} = Tars.Fleet.spawn(key, opts(policy: Careful))
+    {:ok, agent} = Tars.Fleet.spawn(key, opts(hooks: @careful))
     assert [{%{id: "call_1"}, "This ships to production."}] = Agent.parked(agent)
 
     Agent.resume(agent, %{"call_1" => {:deny, "Not today."}})

@@ -6,7 +6,9 @@ defmodule TarsTUI.App.ContextTest do
   def park_two(_scope, _context) do
     parked = Tars.Test.AgentRunners.parked_turn("first")
     second = %{id: "second", name: "second", arguments: %{}}
-    {:parked, %{parked | outcomes: parked.outcomes ++ [{:parked, second, "Second?"}]}}
+
+    {:parked,
+     %{parked | outcomes: parked.outcomes ++ [Tars.Test.AgentRunners.waiting(second, "Second?")]}}
   end
 
   def resume_blocked(owner, _scope, parked, decisions) do
@@ -17,7 +19,7 @@ defmodule TarsTUI.App.ContextTest do
      %{
        parked
        | outcomes:
-           Enum.reject(parked.outcomes, fn {:parked, call, _} ->
+           Enum.reject(parked.outcomes, fn call ->
              Map.has_key?(decisions, call.id)
            end)
      }}

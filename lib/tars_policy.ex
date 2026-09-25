@@ -11,34 +11,17 @@ defmodule TarsPolicy do
           "default" => "allow"
         })
 
-      Tars.Fleet.spawn(key, config: config, policy: {TarsPolicy, policy})
+      Tars.Fleet.spawn(key, config: config, hooks: TarsPolicy.hooks(policy))
 
-  A policy is a `Tars.Policy` named as `{TarsPolicy, policy}`. It is plain
-  data, so it is written to the store with the agent it governs and decides the
+  A policy's rules are a `Tars.Hook`, named for the policy. It is plain data,
+  so it is written to the store with the agent it governs and decides the
   same way on whichever node holds that agent.
 
   ## Budgets
 
   A policy with a `TarsPolicy.Budget` limits what the agent spends on model
-  calls, and is a `Tars.LLM.Dispatch` too, named the same way:
-
-      Tars.Fleet.spawn(key, config: config, policy: {TarsPolicy, policy}, dispatch: {TarsPolicy, policy})
-
-  Each call is checked before it is made against what the agent has spent in
-  the budget's period, as its `TarsPolicy.Meter` holds it, and what it cost is
-  recorded there once it returns. A budget whose meter cannot be read refuses
-  the call rather than letting it run unmetered; the host starts
-  `TarsPolicy.Supervisor` to run the meters. Once the agent has spent its limit, a budget that
-  asks parks it on the next call, and approving that call grants the budget's
-  `grant` more for the period and lets it through. A budget that denies ends
-  the turn instead.
-
-  A call that ends without the provider reporting what it used, because it was
-  interrupted, failed part way through its answer, or came back with no
-  usage, is counted as `Tars.LLM.Tokens` estimates it from the request and the
-  text that streamed. A call that failed before the provider began to answer
-  costs nothing. A budget in dollars refuses every call to a model the catalog
-  cannot price.
+  calls. `hooks/1` gives the budget a hook of its own, after the rules, named
+  for the policy with `/budget` added.
 
   ## Deciding
 
@@ -46,6 +29,7 @@ defmodule TarsPolicy do
   strictest of them decides: `:deny` over `:ask` over `:allow`. A call no rule
   names is decided by `:default`, which is `:allow` unless set. A rule's
   message is what a person is asked, or what the model is told it may not do.
+  The rules allow every model call.
 
   ## Written down
 
@@ -62,18 +46,13 @@ defmodule TarsPolicy do
   to message. `budget` takes what `TarsPolicy.Budget` describes.
   """
 
-  @behaviour Tars.Policy
-  @behaviour Tars.LLM.Dispatch
+  @behaviour Tars.Hook
 
-  require Logger
-
-  alias Tars.LLM.Cost
-  alias Tars.LLM.Tokens
+  alias Tars.Call
+  alias Tars.Hook
   alias TarsPolicy.Budget
-  alias TarsPolicy.Meter
   alias TarsPolicy.Pattern
   alias TarsPolicy.Rule
-  alias TarsPolicy.Spend
 
   defstruct name: nil, rules: [], default: :allow, budget: nil
 
@@ -84,15 +63,30 @@ defmodule TarsPolicy do
           budget: Budget.t() | nil
         }
 
+  @typedoc "What a policy says about one tool."
+  @type decision() :: :allow | {:ask, String.t()} | {:deny, String.t()}
+
   @effects ~w(allow ask deny)
   @keys @effects ++ ["default", "budget"]
   @strictness %{deny: 2, ask: 1, allow: 0}
 
-  @unpriced "This agent's budget is in dollars, and the catalog has no price for its model, so " <>
-              "what its calls cost cannot be counted. A budget in tokens alone can count them."
+  @doc """
+  The hooks `policy` is: its rules, named for the policy or `policy` where it
+  has no name, then its budget where it has one.
+  """
+  @spec hooks(t()) :: [Hook.t()]
+  def hooks(%__MODULE__{} = policy) do
+    name = policy.name || "policy"
+    rules = Hook.new(name, __MODULE__, %{policy | budget: nil})
+
+    case policy.budget do
+      nil -> [rules]
+      budget -> [rules, Hook.new(name <> "/budget", Budget, budget)]
+    end
+  end
 
   @doc "What `policy` says about a call to the tool the agent knows as `name`."
-  @spec decide(t(), String.t()) :: Tars.Policy.decision()
+  @spec decide(t(), String.t()) :: decision()
   def decide(%__MODULE__{} = policy, name) when is_binary(name) do
     case Enum.filter(policy.rules, &Rule.match?(&1, name)) do
       [] ->
@@ -105,168 +99,20 @@ defmodule TarsPolicy do
     end
   end
 
-  @impl Tars.Policy
-  def authorize(call, _scope, %__MODULE__{} = policy), do: decide(policy, call.name)
+  @impl Tars.Hook
+  def init(%__MODULE__{} = policy), do: policy
+  def init(%{} = fields), do: decode!(fields)
 
-  # -- budgets ---------------------------------------------------------------
-
-  @impl Tars.LLM.Dispatch
-  def admit(request, _scope, %__MODULE__{budget: nil}), do: {:ok, request}
-
-  def admit(request, scope, %__MODULE__{budget: budget}) do
-    if budget.usd != nil and not Cost.priced?(request.model_spec),
-      do: {:error, {:policy_denied, @unpriced}},
-      else: metered(request, scope, budget)
-  end
-
-  defp metered(request, scope, budget) do
-    case scope |> spend_key(budget) |> Meter.read() do
-      {:ok, spend} ->
-        cond do
-          not exhausted?(budget, spend) -> {:ok, request}
-          budget.on_exhausted == :ask -> {:park, exhausted(budget, spend) <> " " <> more(budget)}
-          true -> {:error, {:policy_denied, exhausted(budget, spend)}}
-        end
-
-      {:error, reason} ->
-        {:error,
-         {:policy_denied,
-          "This agent's budget could not be read, so no call it governs may run: #{inspect(reason)}"}}
+  @impl Tars.Hook
+  def call(%Call{target: %Call.Tool{name: name}} = call, %__MODULE__{} = policy) do
+    case decide(policy, name) do
+      :allow -> call
+      {:ask, prompt} -> Call.ask(call, prompt)
+      {:deny, reason} -> Call.deny(call, reason)
     end
   end
 
-  @impl Tars.LLM.Dispatch
-  def settle(request, outcome, scope, %__MODULE__{budget: %Budget{} = budget}) do
-    case used(request, outcome) do
-      nil -> :ok
-      usage -> record(request, usage, scope, budget)
-    end
-  end
-
-  def settle(_request, _outcome, _scope, _policy), do: :ok
-
-  # What a call used: what the provider reported, or an estimate from the
-  # request and the text that streamed where it reported nothing. A call that
-  # failed before the provider began to answer used nothing.
-  defp used(request, {:ok, response}) do
-    usage = ReqLLM.Response.usage(response)
-
-    if reported?(usage),
-      do: usage,
-      else: estimate(request, Tokens.messages(List.wrap(response.message)))
-  end
-
-  defp used(request, {:interrupted, text}), do: estimate(request, Tokens.text(text))
-  defp used(request, {:error, _reason, text}), do: estimate(request, Tokens.text(text))
-  defp used(_request, {:error, _reason}), do: nil
-
-  defp reported?(%{} = usage),
-    do:
-      is_number(usage[:total_cost]) or
-        count(usage, :input_tokens) + count(usage, :output_tokens) > 0
-
-  defp reported?(_usage), do: false
-
-  defp estimate(request, output_tokens),
-    do: %{input_tokens: Tokens.request(request), output_tokens: output_tokens}
-
-  defp record(request, usage, scope, budget) do
-    micro_usd = Budget.micro(Cost.of(request.model_spec, usage) || 0)
-    tokens = count(usage, :input_tokens) + count(usage, :output_tokens)
-
-    with {:error, reason} <- scope |> spend_key(budget) |> Meter.spend(micro_usd, tokens) do
-      Logger.error(
-        "#{scope.source.agent_id} spent #{Budget.dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
-      )
-    end
-
-    :ok
-  end
-
-  @impl Tars.LLM.Dispatch
-  def approved(_request, scope, %__MODULE__{budget: %Budget{} = budget}) do
-    {micro_usd, tokens} = Budget.grant(budget)
-
-    with {:error, reason} <- scope |> spend_key(budget) |> Meter.grant(micro_usd, tokens) do
-      Logger.error(
-        "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
-      )
-    end
-  end
-
-  def approved(_request, _scope, _policy), do: :ok
-
-  @doc """
-  What an agent has spent in its budget's period now, given the scope of one
-  of its turns, or its key for a budget that is not per turn.
-  """
-  @spec spent(t(), Tars.Scope.t() | String.t()) :: Spend.t() | nil
-  def spent(%__MODULE__{budget: nil}, _scope), do: nil
-  def spent(%__MODULE__{budget: %Budget{per: :turn}}, agent) when is_binary(agent), do: nil
-
-  def spent(%__MODULE__{budget: budget}, agent) when is_binary(agent),
-    do: agent |> Spend.key(Budget.window(budget, "", DateTime.utc_now())) |> read()
-
-  def spent(%__MODULE__{budget: budget}, scope), do: scope |> spend_key(budget) |> read()
-
-  defp read(key) do
-    case Meter.read(key) do
-      {:ok, spend} -> spend
-      {:error, _reason} -> nil
-    end
-  end
-
-  @doc """
-  What an agent has spent against its budget, as a phrase: `$1.20 of $5.00 and
-  12000 of 200000 tokens today`.
-  """
-  @spec spending(t(), String.t()) :: String.t() | nil
-  def spending(%__MODULE__{budget: budget} = policy, agent) do
-    case spent(policy, agent) do
-      nil -> nil
-      %Spend{} = spend -> "#{amounts(budget, spend)} #{Budget.period_words(budget)}"
-    end
-  end
-
-  defp spend_key(%Tars.Scope{source: source}, budget) do
-    Spend.key(source.agent_id, Budget.window(budget, source.trace.trace_id, DateTime.utc_now()))
-  end
-
-  defp exhausted?(budget, spend) do
-    (budget.usd != nil and spend.micro_usd >= Budget.micro_usd(budget) + spend.granted_micro_usd) or
-      (budget.tokens != nil and spend.tokens >= budget.tokens + spend.granted_tokens)
-  end
-
-  defp exhausted(budget, spend),
-    do: "This agent has spent #{amounts(budget, spend)} #{Budget.period_words(budget)}."
-
-  defp amounts(budget, spend) do
-    [
-      budget.usd &&
-        "#{Budget.dollars(spend.micro_usd)} of #{Budget.dollars(Budget.micro_usd(budget) + spend.granted_micro_usd)}",
-      budget.tokens && "#{spend.tokens} of #{budget.tokens + spend.granted_tokens} tokens"
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" and ")
-  end
-
-  defp more(budget) do
-    {micro_usd, tokens} = Budget.grant(budget)
-
-    granted =
-      [budget.usd && Budget.dollars(micro_usd), budget.tokens && "#{tokens} tokens"]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.join(" and ")
-
-    "Approve to allow #{granted} more."
-  end
-
-  defp count(usage, key) do
-    case Map.get(usage, key) do
-      n when is_integer(n) and n >= 0 -> n
-      _missing -> 0
-    end
-  end
+  def call(%Call{} = call, %__MODULE__{}), do: call
 
   defp answer(:allow, _message, _name), do: :allow
 

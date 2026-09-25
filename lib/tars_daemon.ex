@@ -151,11 +151,11 @@ defmodule TarsDaemon do
     Enum.join(header ++ rows ++ problems(broken), "\n")
   end
 
-  defp spending(%Tars.Agent.Spec{policy: {TarsPolicy, policy}}, key) do
-    case TarsPolicy.spending(policy, key) do
-      nil -> []
-      spent -> [spent]
-    end
+  defp spending(%Tars.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
+    for %Tars.Hook{module: TarsPolicy.Budget, value: budget} <- hooks,
+        spent = TarsPolicy.Budget.spending(budget, key),
+        spent != nil,
+        do: spent
   end
 
   defp spending(_spec, _key), do: []

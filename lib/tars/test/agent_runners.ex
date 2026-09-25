@@ -91,7 +91,7 @@ defmodule Tars.Test.AgentRunners do
     {:ok, [Context.assistant("ok")]}
   end
 
-  @doc "Parks on a single call, so the waiting path runs without a policy."
+  @doc "Parks on a single call, so the waiting path runs without a hook."
   def parking(test_pid, call_id, _scope, _context) do
     send(test_pid, :asked)
     {:parked, parked_turn(call_id)}
@@ -142,18 +142,32 @@ defmodule Tars.Test.AgentRunners do
   def parked_turn(call_id \\ "call_1") do
     call = %{id: call_id, name: "deploy", arguments: %{}}
 
-    Parked.new(
-      Context.new(),
-      %ReqLLM.Response{
+    %Parked{
+      context: Context.new(),
+      response: %ReqLLM.Response{
         id: "r",
         model: "test",
         context: Context.new(),
         finish_reason: :tool_calls
       },
-      [{:parked, call, "This ships to production."}],
-      [],
-      5
-    )
+      outcomes: [waiting(call, "This ships to production.")],
+      acc: [],
+      remaining: 5,
+      revision: Tars.Hook.revision([])
+    }
+  end
+
+  @doc """
+  `call` waiting on a person, asked `prompt` by a hook named `careful`, as a
+  turn holds it.
+  """
+  @spec waiting(Tars.Tool.call(), String.t()) :: Tars.Call.t()
+  def waiting(call, prompt) do
+    %{
+      Tars.Call.tool(call)
+      | state: :waiting,
+        asks: [%Tars.Call.Ask{by: "careful", prompt: prompt}]
+    }
   end
 
   @doc "The roles and text of a context, for asserting on what a turn was handed."

@@ -25,8 +25,9 @@ defmodule Tars.Agent.SpecTest do
   end
 
   test "options/1 is the config and every seam the spec sets" do
-    spec = Spec.new(name: "triage", policy: SomePolicy, timeout: 60_000)
+    hooks = [%Tars.Hook{name: "some", module: SomeHook}]
+    spec = Spec.new(name: "triage", hooks: hooks, timeout: 60_000)
 
-    assert Spec.options(spec) == [config: spec.config, policy: SomePolicy, timeout: 60_000]
+    assert Spec.options(spec) == [config: spec.config, hooks: hooks, timeout: 60_000]
   end
 end

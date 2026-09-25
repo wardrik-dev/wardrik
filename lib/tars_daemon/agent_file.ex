@@ -60,10 +60,11 @@ defmodule TarsDaemon.AgentFile do
             ask: [github/*]
             deny: [run_lua]
 
-    * a module implementing `Tars.Policy`
+    * a module implementing `Tars.Hook`
 
   and without one every call the agent's tools allow may run. Rules, named or
-  written in place, are a `TarsPolicy`, and the agent carries them: they are
+  written in place, are a `TarsPolicy`, and the agent carries them as its
+  `Tars.Hook`s: they are
   written to the store with it and decide its calls on any node. A policy with
   a `budget` limits what the agent spends on model calls too, parking it when
   the budget runs out until a person approves more.
@@ -246,15 +247,12 @@ defmodule TarsDaemon.AgentFile do
       |> compaction(fields)
       |> Config.new()
 
-    policy = policy(fields["policy"], policies, modules?)
-
     Spec.new(
       identity ++
         [
           description: optional_string!(fields["description"], "description"),
           config: config,
-          policy: policy,
-          dispatch: budgeted(policy),
+          hooks: policy(fields["policy"], policies, modules?),
           timeout: fields["timeout"] && seconds!(fields["timeout"]),
           credentials: credentials(),
           ledger: Tars.Ledger.Store
@@ -428,24 +426,25 @@ defmodule TarsDaemon.AgentFile do
 
   # -- scalars ---------------------------------------------------------------
 
-  # A policy with a budget is the agent's dispatch as well, so it sees every
-  # model call the agent makes.
-  defp budgeted({TarsPolicy, %TarsPolicy{budget: %TarsPolicy.Budget{}}} = policy), do: policy
-  defp budgeted(_policy), do: nil
-
-  defp policy(nil, _policies, _modules?), do: nil
+  defp policy(nil, _policies, _modules?), do: []
 
   defp policy(name, policies, modules?) when is_binary(name) do
     case Map.fetch(policies, name) do
-      {:ok, policy} -> {TarsPolicy, policy}
-      :error when modules? -> module!(name, :authorize, 2, "a policy", "a policy in policies/")
-      :error -> invalid!("policy names #{name}, which is not a policy in policies/")
+      {:ok, policy} ->
+        TarsPolicy.hooks(policy)
+
+      :error when modules? ->
+        module = module!(name, :call, 2, "a hook", "a policy in policies/")
+        [Tars.Hook.new(name, module)]
+
+      :error ->
+        invalid!("policy names #{name}, which is not a policy in policies/")
     end
   end
 
   defp policy(fields, _policies, _modules?) when is_map(fields) do
     case TarsPolicy.decode(fields) do
-      {:ok, policy} -> {TarsPolicy, policy}
+      {:ok, policy} -> TarsPolicy.hooks(policy)
       {:error, message} -> invalid!("policy " <> message)
     end
   end

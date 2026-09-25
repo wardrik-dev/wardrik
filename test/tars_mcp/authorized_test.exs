@@ -36,13 +36,21 @@ defmodule TarsMCP.AuthorizedTest do
   test "parks on a link, then runs once the user has followed it", context do
     %{ref: ref, scope: scope, owner: owner} = context
 
-    assert {:parked, call, prompt} = call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+             call =
+             call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
+
     assert prompt =~ "https://auth.example.com/authorize"
 
     assert {:ok, "github"} = TarsOAuth.finish(state_in(prompt), "the-code")
     assert TarsOAuth.connected?("github", owner)
 
-    assert {:settled, ^call, message} = ToolRunner.execute(call, scope, authorize: false)
+    [message] =
+      call
+      |> Tars.Call.approve()
+      |> ToolRunner.execute(scope)
+      |> List.wrap()
+      |> ToolRunner.messages()
 
     [part] = message.content
     assert part.text =~ "at_first"
@@ -51,10 +59,17 @@ defmodule TarsMCP.AuthorizedTest do
   test "the token the server sees is the one the flow produced", context do
     %{ref: ref, scope: scope} = context
 
-    {:parked, call, prompt} = call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
+    %Tars.Call{asks: [%{prompt: prompt}]} =
+      call = call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
+
     {:ok, "github"} = TarsOAuth.finish(state_in(prompt), "the-code")
 
-    {:settled, ^call, message} = ToolRunner.execute(call, scope, authorize: false)
+    [message] =
+      call
+      |> Tars.Call.approve()
+      |> ToolRunner.execute(scope)
+      |> List.wrap()
+      |> ToolRunner.messages()
 
     [part] = message.content
     refute part.text =~ "rt_first"

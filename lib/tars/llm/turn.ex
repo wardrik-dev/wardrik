@@ -40,15 +40,14 @@ defmodule Tars.LLM.Turn do
 
   ## Stopping to ask
 
-  A policy that answers `{:ask, prompt}` parks the call. The turn returns
-  `{:parked, parked}` with nothing appended to the conversation, and
-  `resume/3` finishes it once a person has decided. See
+  A `Tars.Hook` that asks a person about a tool call parks the call. The
+  turn returns `{:parked, parked}` with nothing appended to the
+  conversation, and `resume/3` finishes it once a person has decided. See
   `Tars.LLM.Turn.Parked`.
 
-  A dispatch that answers `{:park, prompt}` parks the turn before the model
-  call the same way. Approving it tells the dispatch, with
-  `Tars.LLM.Dispatch.approved/2`, and the turn asks it again; denying it ends
-  the turn as `{:policy_denied, reason}`.
+  A hook that asks about a model call parks the turn before the call the same
+  way. Approving it makes the call; denying it ends the turn as
+  `{:policy_denied, reason}`.
 
   ## Surviving a lost node
 
@@ -81,8 +80,10 @@ defmodule Tars.LLM.Turn do
   require Logger
 
   alias ReqLLM.Context
+  alias Tars.Call
   alias Tars.Event
   alias Tars.Failure
+  alias Tars.Hook
   alias Tars.LLM.Dispatch
   alias Tars.LLM.Request
   alias Tars.LLM.ToolRunner
@@ -108,26 +109,37 @@ defmodule Tars.LLM.Turn do
   @doc """
   Finishes a turn that parked, applying one decision per waiting call.
 
-  Approved calls run now, with the policy no longer consulted: the decision has
-  been made, and asking again would park them forever. A call that parked
-  because it may already have run runs again once approved; one approved when
-  a policy asked, and found by the ledger to have begun since, parks again to
-  ask that. Denied calls are answered with the reason, which the model reads
-  and can act on. A call with no decision stays parked, so a person can answer
-  them one at a time.
+  Approved calls go ahead now, without the hooks being asked again: the
+  decision has been made, and asking again would park them forever. Each hook
+  that asked hears of the approval through `Tars.Hook.approved/1`. A call that
+  parked because it may already have run runs again once approved; one
+  approved when a hook asked, and found by the ledger to have begun since,
+  parks again to ask that. Denied calls are answered with the reason, which
+  the model reads and can act on. A call with no decision stays parked, so a
+  person can answer them one at a time.
+
+  A turn that parked under hooks other than the scope's, by
+  `Tars.Hook.revision/1`, has the scope's hooks asked about every call a hook
+  was waiting on before any decision is applied, and a decision about such a
+  call is set aside: the call goes ahead, is refused, or parks again with what
+  the hooks ask now. A call waiting on its tool or the ledger keeps its
+  decision.
   """
   @spec resume(Scope.t(), Parked.t(), %{String.t() => Parked.decision()}) :: result()
   def resume(%Scope{} = scope, %Parked{response: nil} = parked, decisions)
       when is_map(decisions) do
-    [{:parked, call, _prompt}] = parked.outcomes
+    [%Call{} = call] = parked.outcomes
 
-    case Map.get(decisions, call.id) do
+    case if(stale?(scope, parked), do: :redecide, else: Map.get(decisions, call.id)) do
       nil ->
         {:parked, parked}
 
-      :approve ->
-        Dispatch.approved(scope, Request.new(scope.config, parked.context))
+      :redecide ->
         loop(scope, parked.context, parked.acc, parked.remaining)
+
+      :approve ->
+        call |> Call.approve() |> Call.under(scope) |> Hook.approved()
+        loop(scope, parked.context, parked.acc, parked.remaining, decided: true)
 
       {:deny, reason} ->
         {:error, {:policy_denied, reason}}
@@ -139,21 +151,37 @@ defmodule Tars.LLM.Turn do
 
   def resume(%Scope{} = scope, %Parked{} = parked, decisions) when is_map(decisions) do
     batch = Scope.batch(scope, rounds(parked.acc))
-    resumed = %{parked | outcomes: Enum.map(parked.outcomes, &decide(&1, decisions, batch))}
+    stale? = stale?(scope, parked)
+    outcomes = Enum.map(parked.outcomes, &decide(&1, decisions, batch, stale?))
+    resumed = %{parked | outcomes: outcomes, revision: revision(scope)}
 
     if Parked.waiting?(resumed), do: {:parked, resumed}, else: finish(scope, resumed)
   end
 
-  defp decide({:settled, _call, _message} = outcome, _decisions, _scope), do: outcome
+  defp stale?(scope, %Parked{revision: revision}), do: revision != revision(scope)
 
-  defp decide({waiting, call, prompt} = outcome, decisions, scope) do
-    case Map.get(decisions, call.id) do
-      :approve -> ToolRunner.execute(call, scope, authorize: false, rerun: waiting == :pending)
-      {:deny, reason} -> ToolRunner.refuse(call, scope, reason)
-      nil -> outcome
-      other -> ToolRunner.refuse(call, scope, "Undecidable answer #{inspect(other)}: #{prompt}")
-    end
+  defp revision(%Scope{hooks: hooks}), do: Hook.revision(hooks)
+
+  defp decide(%Call{state: :waiting} = call, decisions, scope, stale?) do
+    if stale? and Call.asked_by_hook?(call),
+      do: call |> Call.reset() |> ToolRunner.execute(scope),
+      else: decided(call, Map.get(decisions, call.id), scope)
   end
+
+  defp decide(%Call{} = call, _decisions, _scope, _stale?), do: call
+
+  defp decided(call, nil, _scope), do: call
+  defp decided(call, {:deny, reason}, scope), do: ToolRunner.refuse(call, scope, reason)
+
+  defp decided(call, :approve, scope) do
+    approved = Call.approve(call)
+    approved |> Call.under(scope) |> Hook.approved()
+    ToolRunner.execute(approved, scope)
+  end
+
+  defp decided(call, other, scope),
+    do:
+      ToolRunner.refuse(call, scope, "Undecidable answer #{inspect(other)}: #{Call.prompt(call)}")
 
   defp finish(scope, %Parked{} = parked) do
     messages = ToolRunner.messages(parked.outcomes)
@@ -191,12 +219,13 @@ defmodule Tars.LLM.Turn do
     :ok
   end
 
-  # `acc` holds this turn's messages in reverse order.
-  defp loop(scope, context, acc, remaining) do
+  # `acc` holds this turn's messages in reverse order. `opts` apply to the
+  # next model call alone.
+  defp loop(scope, context, acc, remaining, opts \\ []) do
     cond do
       Scope.expired?(scope) -> out_of_time(scope, acc)
-      remaining == 0 -> wrap_up(scope, context, acc)
-      true -> iterate(scope, context, acc, remaining)
+      remaining == 0 -> wrap_up(scope, context, acc, opts)
+      true -> iterate(scope, context, acc, remaining, opts)
     end
   end
 
@@ -206,13 +235,13 @@ defmodule Tars.LLM.Turn do
     {:ok, Enum.reverse(acc)}
   end
 
-  defp iterate(scope, context, acc, remaining) do
-    case request(scope, context, message_id(scope, acc)) do
+  defp iterate(scope, context, acc, remaining, opts) do
+    case request(scope, context, message_id(scope, acc), opts) do
       {:ok, response} ->
         advance(scope, context, acc, remaining, response)
 
-      {:park, prompt} ->
-        {:parked, Parked.model(context, scope.config.model_spec, prompt, acc, remaining)}
+      {:park, waiting} ->
+        model_parked(scope, context, waiting, acc, remaining)
 
       {:interrupted, text} ->
         {:ok, Enum.reverse(acc, partial(text))}
@@ -228,17 +257,17 @@ defmodule Tars.LLM.Turn do
 
   # One last request without tools. Any tool call the model asks for anyway
   # is dropped, so the conversation never ends on an unanswered call.
-  defp wrap_up(scope, context, acc) do
+  defp wrap_up(scope, context, acc, opts) do
     Logger.warning("Turn hit its iteration cap, answering without tools")
     config = %{scope.config | tools: [], system: closing(scope.config.system)}
 
-    case request(%{scope | config: config}, context, message_id(scope, acc)) do
+    case request(%{scope | config: config}, context, message_id(scope, acc), opts) do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
         {:ok, Enum.reverse(acc, partial(text))}
 
-      {:park, prompt} ->
-        {:parked, Parked.model(context, config.model_spec, prompt, acc, 0)}
+      {:park, waiting} ->
+        model_parked(scope, context, waiting, acc, 0)
 
       {:interrupted, text} ->
         {:ok, Enum.reverse(acc, partial(text))}
@@ -247,6 +276,18 @@ defmodule Tars.LLM.Turn do
         Logger.warning("Error streaming text: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  defp model_parked(scope, context, waiting, acc, remaining) do
+    parked =
+      Parked.model(waiting,
+        context: context,
+        acc: acc,
+        remaining: remaining,
+        revision: revision(scope)
+      )
+
+    {:parked, parked}
   end
 
   defp closing(nil), do: @closing
@@ -288,15 +329,24 @@ defmodule Tars.LLM.Turn do
     case handle_response(Scope.batch(scope, rounds(acc)), context, response) do
       {:done, messages} -> {:ok, Enum.reverse(acc, messages)}
       {:cont, context, messages} -> continue(scope, context, messages, acc, remaining)
-      {:waiting, outcomes} -> park(context, response, outcomes, acc, remaining)
+      {:waiting, outcomes} -> park(scope, context, response, outcomes, acc, remaining)
       {:error, reason} -> {:error, reason}
     end
   end
 
   # The turn reports that it stopped; the agent holding it is what announces
   # the state change, because only it can say that `resume/2` will now work.
-  defp park(context, response, outcomes, acc, remaining) do
-    {:parked, Parked.new(context, response, outcomes, acc, remaining)}
+  defp park(scope, context, response, outcomes, acc, remaining) do
+    parked = %Parked{
+      context: context,
+      response: response,
+      outcomes: outcomes,
+      acc: acc,
+      remaining: remaining,
+      revision: revision(scope)
+    }
+
+    {:parked, parked}
   end
 
   defp continue(scope, context, messages, acc, remaining) do
@@ -336,25 +386,26 @@ defmodule Tars.LLM.Turn do
   defp message_id(%Scope{source: source}, acc),
     do: "#{source.trace.span_id}.m#{rounds(acc)}"
 
-  # A call the dispatch parks is never made, so it has no model events.
-  defp request(%Scope{} = scope, context, message_id),
-    do: request(scope, context, message_id, scope.config.retries)
+  # A call a hook parks is never made, so it has no model events. `opts` go
+  # to `Tars.LLM.Dispatch.admit/3` on every try.
+  defp request(%Scope{} = scope, context, message_id, opts),
+    do: request(scope, context, message_id, scope.config.retries, opts)
 
-  defp request(%Scope{} = scope, context, message_id, retries) do
+  defp request(%Scope{} = scope, context, message_id, retries, opts) do
     request = Request.new(scope.config, context)
 
-    case Dispatch.admit(scope, request) do
-      {:park, prompt} ->
-        {:park, prompt}
+    case Dispatch.admit(scope, request, opts) do
+      {:park, waiting} ->
+        {:park, waiting}
 
       admission ->
         scope
         |> make(request, admission, message_id)
-        |> retry(scope, context, message_id, retries)
+        |> retry(scope, context, message_id, retries, opts)
     end
   end
 
-  defp retry({:error, reason} = failed, scope, context, message_id, [wait | retries]) do
+  defp retry({:error, reason} = failed, scope, context, message_id, [wait | retries], opts) do
     if not Process.get(@answered) and Failure.retryable?(reason) and not Scope.expired?(scope) do
       Logger.warning(
         "Model call failed before answering, asking again in #{wait}ms: #{inspect(reason)}"
@@ -363,14 +414,14 @@ defmodule Tars.LLM.Turn do
       receive do
         :interrupt -> {:interrupted, ""}
       after
-        wait -> request(scope, context, message_id, retries)
+        wait -> request(scope, context, message_id, retries, opts)
       end
     else
       failed
     end
   end
 
-  defp retry(result, _scope, _context, _message_id, _retries), do: result
+  defp retry(result, _scope, _context, _message_id, _retries, _opts), do: result
 
   defp make(%Scope{source: source} = scope, request, admission, message_id) do
     started_at = System.monotonic_time()

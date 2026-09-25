@@ -91,15 +91,22 @@ defmodule Tars.SubagentTest do
     end
   end
 
-  defmodule AskPolicy do
-    @behaviour Tars.Policy
-    def authorize(_call, _scope), do: {:ask, "approval needed"}
+  defmodule AskHook do
+    @behaviour Tars.Hook
+    @impl true
+    def init(_opts), do: nil
+    @impl true
+    def call(%Tars.Call{target: %Tars.Call.Tool{}} = call, _value),
+      do: Tars.Call.ask(call, "approval needed")
+
+    def call(call, _value), do: call
   end
 
   test "a parked delegation reports an error that observers can fold", %{scope: scope} do
     LLMStub.stream([LLMStub.tool_call("blocked", "echo", %{"text" => "hello"})])
 
-    assert Subagent.run(%{scope | policy: AskPolicy}, "echo") == {:error, :approval_required}
+    assert Subagent.run(%{scope | hooks: [Tars.Hook.new("ask", AskHook)]}, "echo") ==
+             {:error, :approval_required}
 
     assert_receive %Event{payload: {:delegation_started, "echo"}} = started
 

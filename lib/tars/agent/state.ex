@@ -65,6 +65,7 @@ defmodule Tars.Agent.State do
   alias Tars.Event.Log.Writer
   alias Tars.Event.Source
   alias Tars.Fleet
+  alias Tars.Hook
   alias Tars.LLM.Config
   alias Tars.LLM.Turn
   alias Tars.LLM.Turn.Checkpoint
@@ -305,8 +306,8 @@ defmodule Tars.Agent.State do
 
   @doc """
   The same agent with the config and seams in `opts`, for the turns it starts
-  from now on. A turn already running, or parked, keeps the scope it began
-  under.
+  from now on. A turn already running keeps the scope it began under, and a
+  parked one is resumed under the new seams.
 
   `:config` replaces the config when given. The seams in `opts`, of
   `Tars.Scope.seams/0`, replace every seam the agent had, so one left out is
@@ -441,6 +442,16 @@ defmodule Tars.Agent.State do
     do: %Replaying{checkpoint: checkpoint, source: source}
 
   defp reopen(mode) when mode in [:idle, :owed], do: mode
+
+  @doc """
+  Whether the turn this agent waits on parked under hooks other than the ones
+  it has now, by `Tars.Hook.revision/1`.
+  """
+  @spec stale?(t()) :: boolean()
+  def stale?(%__MODULE__{mode: %Waiting{turn: %Parked{revision: revision}}} = state),
+    do: revision != Hook.revision(Keyword.get(state.scope_opts, :hooks) || [])
+
+  def stale?(%__MODULE__{}), do: false
 
   @doc "The scope a turn for this agent runs under."
   @spec turn_scope(t()) :: Scope.t()

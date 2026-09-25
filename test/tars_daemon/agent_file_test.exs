@@ -6,11 +6,14 @@ defmodule TarsDaemon.AgentFileTest do
 
   @moduletag :tmp_dir
 
-  defmodule Policy do
-    @behaviour Tars.Policy
+  defmodule Hook do
+    @behaviour Tars.Hook
 
     @impl true
-    def authorize(_call, _scope), do: :allow
+    def init(_opts), do: nil
+
+    @impl true
+    def call(call, _value), do: call
   end
 
   setup do
@@ -47,7 +50,7 @@ defmodule TarsDaemon.AgentFileTest do
                user: jon
                timeout: 600
                max_iterations: 12
-               policy: TarsDaemon.AgentFileTest.Policy
+               policy: TarsDaemon.AgentFileTest.Hook
                ---
                You watch the incident queue.
                """,
@@ -62,7 +65,7 @@ defmodule TarsDaemon.AgentFileTest do
     assert spec.config.tools == [TarsBrave.WebSearch, {TarsMCP, :linear}]
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
-    assert spec.policy == Policy
+    assert spec.hooks == [%Tars.Hook{name: "TarsDaemon.AgentFileTest.Hook", module: Hook}]
     assert spec.ledger == Tars.Ledger.Store
   end
 
@@ -72,7 +75,7 @@ defmodule TarsDaemon.AgentFileTest do
     assert Spec.key(spec) == "_/_/helper"
     assert spec.config.system == "Answer briefly."
     assert spec.config.tools == []
-    assert spec.policy == nil
+    assert spec.hooks == []
   end
 
   test "name in the frontmatter wins over the file's", context do
@@ -128,28 +131,30 @@ defmodule TarsDaemon.AgentFileTest do
     assert message =~ "mcp is not a setting"
   end
 
-  test "a named policy is the one policies/ holds, carried as a value", context do
+  test "a named policy is the one policies/ holds, carried as hooks", context do
     careful = TarsPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
     assert {:ok, spec} =
              read_with("triage", "---\npolicy: careful\n---\n", context, %{"careful" => careful})
 
-    assert spec.policy == {TarsPolicy, careful}
+    assert spec.hooks == TarsPolicy.hooks(careful)
   end
 
   test "a policy written in place is one too", context do
     assert {:ok, spec} = read("---\npolicy:\n  ask: [github/*]\n---\n", context)
-    assert {TarsPolicy, %TarsPolicy{} = policy} = spec.policy
+    assert [%Tars.Hook{module: TarsPolicy, value: policy}] = spec.hooks
     assert {:ask, _prompt} = TarsPolicy.decide(policy, "github__create_issue")
   end
 
-  test "a policy with a budget is the agent's dispatch as well", context do
+  test "a policy with a budget gives the budget a hook of its own", context do
     assert {:ok, spec} = read("---\npolicy:\n  budget:\n    usd: 5\n---\n", context)
-    assert {TarsPolicy, %TarsPolicy{budget: %TarsPolicy.Budget{usd: 5.0}}} = spec.policy
-    assert spec.dispatch == spec.policy
 
-    assert {:ok, unbudgeted} = read("---\npolicy:\n  deny: [run_lua]\n---\n", context)
-    assert unbudgeted.dispatch == nil
+    assert [
+             %Tars.Hook{module: TarsPolicy},
+             %Tars.Hook{module: TarsPolicy.Budget, value: %TarsPolicy.Budget{usd: 5.0}}
+           ] = spec.hooks
+
+    assert spec.dispatch == nil
   end
 
   test "a policy written in place that does not read says why", context do
@@ -298,7 +303,7 @@ defmodule TarsDaemon.AgentFileTest do
 
   test "a policy that is not one is refused", context do
     assert {:error, message} = read("---\npolicy: TarsDaemon.AgentFileTest\n---\n", context)
-    assert message =~ "TarsDaemon.AgentFileTest is not a policy"
+    assert message =~ "TarsDaemon.AgentFileTest is not a hook"
   end
 
   describe "the definition schema" do
@@ -373,12 +378,12 @@ defmodule TarsDaemon.AgentFileTest do
                  "careful" => careful
                })
 
-      assert named.policy == {TarsPolicy, careful}
+      assert named.hooks == TarsPolicy.hooks(careful)
 
       assert {:ok, written} =
                AgentFile.definition("acme/_/triage", %{"policy" => %{"ask" => ["github/*"]}})
 
-      assert {TarsPolicy, %TarsPolicy{}} = written.policy
+      assert [%Tars.Hook{module: TarsPolicy}] = written.hooks
     end
 
     test "never names a module" do

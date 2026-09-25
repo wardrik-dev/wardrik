@@ -9,7 +9,7 @@ defmodule Tars.Agent.Spec do
           org: "acme",
           description: "Watches the incident queue.",
           config: Tars.LLM.Config.new(system: "You watch the incident queue."),
-          policy: MyApp.Policy,
+          hooks: [Tars.Hook.new("careful", MyApp.Hook)],
           timeout: :timer.minutes(10)
         )
 
@@ -28,7 +28,7 @@ defmodule Tars.Agent.Spec do
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Tars.LLM.Config` |
   | `:schedules` | the `Tars.Schedule`s that ask it on a clock, `[]` by default; `nil` leaves the agent's own |
-  | `:policy`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Tars.Scope.seams/0` |
+  | `:hooks`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Tars.Scope.seams/0` |
   """
 
   alias Tars.Fleet
@@ -45,8 +45,8 @@ defmodule Tars.Agent.Spec do
           description: String.t() | nil,
           config: Config.t(),
           schedules: [Tars.Schedule.t()] | nil,
-          policy: Tars.Policy.t() | nil,
-          dispatch: module() | nil,
+          hooks: [Tars.Hook.t()] | nil,
+          dispatch: Tars.LLM.Dispatch.t() | nil,
           credentials: module() | nil,
           ledger: module() | nil,
           timeout: timeout() | nil

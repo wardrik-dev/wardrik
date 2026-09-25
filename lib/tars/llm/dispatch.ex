@@ -4,14 +4,14 @@ defmodule Tars.LLM.Dispatch do
 
   A turn does not call a provider directly. It builds a `Tars.LLM.Request` and
   asks the dispatch to admit it, makes the call the dispatch hands back, and
-  reports what happened. A host that has to decide what a call may cost, which
-  model it lands on, or which key pays for it does all three here, once, rather
-  than wrapping the runtime.
+  reports what happened. A host that has to decide which model a call lands
+  on, or which key pays for it, does both here, once, rather than wrapping the
+  runtime.
 
       Tars.Fleet.spawn("assistant", config: config, dispatch: MyApp.Gateway)
 
-  `admit/2` is the only place a credential enters a call, and `settle/3` is the
-  only place its usage leaves one. A host that enforces that rule gets a
+  `c:admit/2` is the only place a credential enters a call, and `c:settle/3`
+  is the only place its usage leaves one. A host that enforces that rule gets a
   structural guarantee out of it: a call that skipped the gateway has no key
   and cannot have been made.
 
@@ -20,7 +20,7 @@ defmodule Tars.LLM.Dispatch do
 
         @impl true
         def admit(request, scope) do
-          with {:ok, key, model} <- MyApp.Budget.admit(scope.org, request.model_spec) do
+          with {:ok, key, model} <- MyApp.Keys.for(scope.org, request.model_spec) do
             {:ok, request |> Request.put_model(model) |> Request.put_opts(api_key: key)}
           end
         end
@@ -36,35 +36,39 @@ defmodule Tars.LLM.Dispatch do
   Without a dispatch the request is made as it stands, so a deployment that
   reads its key from the environment configures nothing.
 
-  ## Refusing a call, or asking first
+  ## Hooks first
 
-  An `{:error, reason}` from `admit/2` fails the turn with that reason and the
-  provider is never reached, which is what a disabled model should do. Classify
-  the reason so callers know whether to retry it; see `Tars.Failure`.
+  Before the dispatch sees a request, the scope's `Tars.Hook`s are handed it
+  as a `Tars.Call` to a `Tars.Call.Model`. A deny fails the turn as
+  `{:policy_denied, reason}` and an ask parks it, and in neither case is the
+  dispatch asked. Every hook hears what an admitted call used through
+  `Tars.Hook.settle/1`.
 
-  A `{:park, prompt}` parks the turn before the call instead, the way a policy
-  that asks parks a tool call: the agent waits, and `Tars.Agent.parked/1` lists
-  a call named `model` with the prompt a person is shown. Approving it calls
-  `c:approved/2`, then asks `admit/2` again, so a dispatch that parked because
-  a budget ran out raises the budget there and admits the call it could not
-  before. Denying it ends the turn as `{:policy_denied, reason}`.
+  ## Refusing a call
+
+  An `{:error, reason}` from `c:admit/2` fails the turn with that reason and
+  the provider is never reached, which is what a disabled model should do.
+  Classify the reason so callers know whether to retry it; see `Tars.Failure`.
 
   ## A dispatch that is a value
 
   A dispatch written as data is named with the module that reads it, as
-  `{module, value}`, the way a `Tars.Policy` can be. The module implements
-  each callback with the value as one more argument, `admit/3`, `settle/4` and
-  `approved/3`, and the value is written to the store with the agent.
+  `{module, value}`. The module implements each callback with the value as one
+  more argument, `admit/3` and `settle/4`, and the value is written to the
+  store with the agent.
   """
 
+  alias Tars.Call
+  alias Tars.Hook
   alias Tars.LLM.Request
+  alias Tars.LLM.Usage
   alias Tars.Scope
 
   @typedoc "A dispatch as a scope holds it: a module, or a module and the value it reads."
   @type t() :: module() | {module(), term()}
 
-  @typedoc "What `admit/2` answers."
-  @type admission() :: {:ok, Request.t()} | {:park, String.t()} | {:error, term()}
+  @typedoc "What `admit/3` answers: the request to make, the call waiting on a person, or why not."
+  @type admission() :: {:ok, Request.t()} | {:park, Call.t()} | {:error, term()}
 
   @typedoc """
   How a model call ended: with its response, interrupted with the text that
@@ -82,11 +86,11 @@ defmodule Tars.LLM.Dispatch do
   Decides what a call actually is, immediately before it is made.
 
   Return the request to make, which may be the one given. Returning an error
-  fails the turn without reaching the provider, and `{:park, prompt}` parks it
-  until a person decides.
+  fails the turn without reaching the provider.
   """
-  @callback admit(Request.t(), Scope.t()) :: admission()
-  @callback admit(Request.t(), Scope.t(), value :: term()) :: admission()
+  @callback admit(Request.t(), Scope.t()) :: {:ok, Request.t()} | {:error, term()}
+  @callback admit(Request.t(), Scope.t(), value :: term()) ::
+              {:ok, Request.t()} | {:error, term()}
 
   @doc """
   Reports how a call went, once it has.
@@ -98,27 +102,36 @@ defmodule Tars.LLM.Dispatch do
   @callback settle(Request.t(), outcome(), Scope.t()) :: any()
   @callback settle(Request.t(), outcome(), Scope.t(), value :: term()) :: any()
 
-  @doc """
-  Hears that a person approved a call this dispatch parked, before `admit/2`
-  is asked about it again. Its return value is ignored.
-  """
-  @callback approved(Request.t(), Scope.t()) :: any()
-  @callback approved(Request.t(), Scope.t(), value :: term()) :: any()
-
-  @optional_callbacks admit: 2, admit: 3, settle: 3, settle: 4, approved: 2, approved: 3
+  @optional_callbacks admit: 2, admit: 3, settle: 3, settle: 4
 
   require Logger
 
   @doc """
-  Admits `request` under `scope`, passing it through when there is no dispatch.
-  """
-  @spec admit(Scope.t(), Request.t()) :: admission()
-  def admit(%Scope{dispatch: nil}, %Request{} = request), do: {:ok, request}
+  Admits `request` under `scope`: hands its call to the scope's hooks, then
+  the request to its dispatch, passing the request through where there is
+  none. A call waiting on a person is handed back with no scope, as it is
+  written down.
 
-  def admit(%Scope{dispatch: dispatch} = scope, %Request{} = request) do
+  `decided: true` skips the hooks, for a call a person has already approved.
+  """
+  @spec admit(Scope.t(), Request.t(), keyword()) :: admission()
+  def admit(%Scope{} = scope, %Request{} = request, opts \\ []) do
+    if Keyword.get(opts, :decided, false) do
+      dispatch(scope, request)
+    else
+      case request |> Call.model(scope) |> Hook.check() do
+        %Call{state: :allowed} -> dispatch(scope, request)
+        %Call{state: :denied, denied: denied} -> {:error, {:policy_denied, denied.reason}}
+        %Call{state: :waiting} = waiting -> {:park, Call.under(waiting, nil)}
+      end
+    end
+  end
+
+  defp dispatch(%Scope{dispatch: nil}, request), do: {:ok, request}
+
+  defp dispatch(%Scope{dispatch: dispatch} = scope, request) do
     case call(dispatch, :admit, [request, scope]) do
       {:ok, %Request{} = admitted} -> {:ok, admitted}
-      {:park, prompt} when is_binary(prompt) -> {:park, prompt}
       {:error, reason} -> {:error, reason}
       other -> {:error, {:invalid_admit_result, other}}
     end
@@ -127,28 +140,20 @@ defmodule Tars.LLM.Dispatch do
   end
 
   @doc """
-  Reports `outcome` for `request`, doing nothing when there is no dispatch.
+  Reports `outcome` for `request` to the dispatch and the hooks.
 
   A dispatch that fails here is logged and ignored: the call already happened,
   and losing the answer to a bookkeeping error would be worse than losing the
   book entry.
   """
   @spec settle(Scope.t(), Request.t(), outcome()) :: :ok
-  def settle(%Scope{dispatch: nil}, %Request{}, _outcome), do: :ok
+  def settle(%Scope{} = scope, %Request{} = request, outcome) do
+    if scope.dispatch, do: optional(scope.dispatch, :settle, [request, outcome, scope])
 
-  def settle(%Scope{dispatch: dispatch} = scope, %Request{} = request, outcome) do
-    optional(dispatch, :settle, [request, outcome, scope])
-  end
-
-  @doc """
-  Tells the dispatch a person approved a call it parked. A dispatch that fails
-  here is logged and ignored, and `admit/2` decides the call as it stands.
-  """
-  @spec approved(Scope.t(), Request.t()) :: :ok
-  def approved(%Scope{dispatch: nil}, %Request{}), do: :ok
-
-  def approved(%Scope{dispatch: dispatch} = scope, %Request{} = request) do
-    optional(dispatch, :approved, [request, scope])
+    case Usage.of(request, outcome) do
+      nil -> :ok
+      usage -> request |> Call.model(scope) |> Call.used(outcome, usage) |> Hook.settle()
+    end
   end
 
   defp optional(dispatch, function, args) do

@@ -3,7 +3,7 @@ defmodule TarsDemo do
   A policy and three tools for driving the governance seams by hand.
 
   Compiled in `:dev` only, so nothing here ships. It exists to make the states
-  a `Tars.Policy` can put a turn into reachable from a terminal:
+  a `Tars.Hook` can put a turn into reachable from a terminal:
 
       mix tars --policy TarsDemo.Policy --user jon --org acme \\
         --tool TarsDemo.ListServices --tool TarsDemo.Deploy --tool TarsDemo.DropTable
@@ -21,26 +21,34 @@ defmodule TarsDemo do
     @moduledoc """
     Reads a call and decides, with no access to any credential.
 
-    Three rules, one per answer a policy can give: reading is free, deploying
+    Three rules, one per answer a hook can give: reading is free, deploying
     needs a person, and dropping a table is refused outright.
     """
 
-    @behaviour Tars.Policy
+    @behaviour Tars.Hook
+
+    import Tars.Call
+
+    alias Tars.Call.Tool
 
     @impl true
-    def authorize(%{name: "deploy", arguments: args}, scope) do
-      {:ask, "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(scope)}?"}
+    def init(_opts), do: nil
+
+    @impl true
+    def call(%Tars.Call{target: %Tool{name: "deploy", arguments: args}} = call, _value) do
+      ask(
+        call,
+        "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(call.scope)}?"
+      )
     end
 
-    def authorize(%{name: "drop_table", arguments: args}, _scope) do
-      {:deny, "Dropping #{args["table"]} is not something an agent may do. Ask a DBA."}
-    end
+    def call(%Tars.Call{target: %Tool{name: "drop_table", arguments: args}} = call, _value),
+      do: deny(call, "Dropping #{args["table"]} is not something an agent may do. Ask a DBA.")
 
-    def authorize(%{name: "restart_service", arguments: args}, _scope) do
-      {:deny, "Restarting #{args["service"]} is owned by the platform team. Open a ticket."}
-    end
+    def call(%Tars.Call{target: %Tool{name: "restart_service", arguments: args}} = call, _value),
+      do: deny(call, "Restarting #{args["service"]} is owned by the platform team. Open a ticket.")
 
-    def authorize(_call, _scope), do: :allow
+    def call(call, _value), do: call
 
     defp who(%{user: nil, org: nil}), do: "nobody in particular"
     defp who(%{user: nil, org: org}), do: org
@@ -126,7 +134,7 @@ defmodule TarsDemo do
 
     @doc false
     def run(%{service: service}) do
-      raise "restart_service ran for #{service}, which means the policy did not stop it"
+      raise "restart_service ran for #{service}, which means the hook did not stop it"
     end
   end
 
@@ -147,7 +155,7 @@ defmodule TarsDemo do
 
     @doc false
     def run(%{table: table}) do
-      raise "drop_table ran for #{table}, which means the policy did not stop it"
+      raise "drop_table ran for #{table}, which means the hook did not stop it"
     end
   end
 end

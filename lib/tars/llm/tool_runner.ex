@@ -21,13 +21,16 @@ defmodule Tars.LLM.ToolRunner do
   whatever its scope has left. See `c:Tars.Tool.timeout/0` and
   `Tars.Scope.remaining_ms/1`.
 
-  Tool calls are expected in the normalized shape produced by
-  `ReqLLM.Response.classify/1`; see `t:Tars.Tool.call/0`.
+  Each call is a `Tars.Call` to a `Tars.Call.Tool`, built from the normalized
+  shape `ReqLLM.Response.classify/1` produces (see `t:Tars.Tool.call/0`), and
+  each comes back as one: `:done`, with its `:result`, or `:waiting` on a
+  person. A call that comes back holds no scope, and `messages/1` gives what
+  the model reads of a batch.
 
   ## Governance
 
-  Before a callback runs, the scope's `Tars.Policy` is asked about the call.
-  Three things can happen, and only the first reaches the tool:
+  Before a callback runs, an unchecked call is handed to the scope's
+  `Tars.Hook`s. Three things can happen, and only the first reaches the tool:
 
     * allowed - the callback runs.
     * denied - the callback never runs and the model is told why, as an
@@ -36,19 +39,22 @@ defmodule Tars.LLM.ToolRunner do
       conversation, and the batch reports it so the turn can stop and wait for
       a person. See `Tars.Agent.resume/2`.
 
+  An approved call runs without the hooks being asked again.
+
   ## Recording what ran
 
   A scope with a `Tars.Ledger` has every allowed call claimed before its
   callback runs and settled with what it returned, under `Tars.Ledger.key/2`.
   A call already settled is answered with what it returned then, without
   running, and reported as `{:tool_replayed, call_id, name, result}`. A call
-  claimed and never settled may or may not have had its effect, so it parks as
-  `{:pending, call, prompt}`, asking a person whether to run it again, and runs
-  once they approve that, or at once, under the same key, where its tool
-  declares it may run again (see `c:Tars.Tool.in_doubt/1`); approving a call a policy asked about runs nothing
-  the ledger holds as begun, and refusing one tells the model what the ledger
-  holds, not that it never ran. A call whose claim the ledger cannot answer does
-  not run. A tool that stops to ask before doing anything releases its claim.
+  claimed and never settled may or may not have had its effect, so it waits on
+  `:ledger`, asking a person whether to run it again, and runs once they
+  approve that, or at once, under the same key, where its tool declares it may
+  run again (see `c:Tars.Tool.in_doubt/1`). Approving a call a hook asked
+  about runs nothing the ledger holds as begun, and refusing one tells the
+  model what the ledger holds, not that it never ran. A call whose claim the
+  ledger cannot answer does not run. A tool that stops to ask before doing
+  anything waits on `:tool`, and releases its claim.
 
   ## Stopping one call
 
@@ -64,28 +70,19 @@ defmodule Tars.LLM.ToolRunner do
   require Logger
 
   alias ReqLLM.Context
+  alias Tars.Call
+  alias Tars.Call.Tool
   alias Tars.Event
+  alias Tars.Hook
   alias Tars.Ledger
   alias Tars.LLM.Config
-  alias Tars.Policy
   alias Tars.Scope
-  alias Tars.Tool
   alias Tars.Tool.Result
 
   @registry __MODULE__.Registry
 
   @tool_timeout :timer.seconds(60)
   @max_concurrency 8
-
-  @typedoc """
-  What one call did: an answer for the model, or a wait for a person, who is
-  asked whether it may run, or, `:pending`, whether to run again a call that
-  began and never finished.
-  """
-  @type outcome() ::
-          {:settled, Tool.call(), ReqLLM.Message.t()}
-          | {:parked, Tool.call(), String.t()}
-          | {:pending, Tool.call(), String.t()}
 
   @typedoc "One call in flight, as `in_flight/1` reports it."
   @type running() :: %{
@@ -101,23 +98,24 @@ defmodule Tars.LLM.ToolRunner do
   @doc """
   Runs every call at once and reports what each one did, in call order.
 
-  Returns one `t:outcome/0` per call. Use `messages/1` when nothing can park,
+  Returns one `Tars.Call` per call. Use `messages/1` when nothing can park,
   and `parked/1` to find the calls waiting on a person.
   """
-  @spec execute_many_async([Tool.call()], Scope.t()) :: [outcome()]
+  @spec execute_many_async([Call.t() | Tars.Tool.call()], Scope.t()) :: [Call.t()]
   def execute_many_async(tool_calls, %Scope{} = scope) do
     turn = self()
+    calls = Enum.map(tool_calls, &token/1)
 
     Tars.TaskSupervisor
     |> Task.Supervisor.async_stream_nolink(
-      Enum.map(tool_calls, &{&1, Scope.open(scope, &1.name)}),
+      Enum.map(calls, &{&1, Scope.open(scope, Call.name(&1))}),
       fn {call, span} ->
         Tars.Tether.to(turn)
-        in_span(call, span, [])
+        in_span(call, span)
       end,
       ordered: true,
       max_concurrency: @max_concurrency,
-      timeout: timeout(tool_calls, scope),
+      timeout: timeout(calls, scope),
       on_timeout: :kill_task,
       zip_input_on_exit: true
     )
@@ -128,26 +126,30 @@ defmodule Tars.LLM.ToolRunner do
   end
 
   @doc """
-  The messages in a batch's outcomes, in order.
+  The messages a batch's calls were answered with, in order.
 
-  Raises on a parked call, which has no message and never will until it is
-  resumed. Call it only where a policy cannot have parked anything.
+  Raises on a call waiting on a person, which has no message and never will
+  until it is resumed. Call it only where nothing can have parked.
   """
-  @spec messages([outcome()]) :: [ReqLLM.Message.t()]
-  def messages(outcomes) when is_list(outcomes) do
-    Enum.map(outcomes, fn
-      {:settled, _call, message} ->
-        message
+  @spec messages([Call.t()]) :: [ReqLLM.Message.t()]
+  def messages(calls) when is_list(calls) do
+    Enum.map(calls, fn
+      %Call{state: :done, result: {:ok, output}} = call ->
+        result_message(call, output)
 
-      {_waiting, call, _prompt} ->
-        raise ArgumentError, "tool call #{call.id} (#{call.name}) is parked and has no result"
+      %Call{state: :done, result: {:error, reason}} = call ->
+        error_message(call, reason)
+
+      %Call{} = call ->
+        raise ArgumentError,
+              "tool call #{call.id} (#{Call.name(call)}) is parked and has no result"
     end)
   end
 
-  @doc "The calls in a batch that parked, each with the prompt a person is shown."
-  @spec parked([outcome()]) :: [{Tool.call(), String.t()}]
-  def parked(outcomes) when is_list(outcomes) do
-    for {waiting, call, prompt} <- outcomes, waiting in [:parked, :pending], do: {call, prompt}
+  @doc "The calls in a batch waiting on a person, each with the prompt a person is shown."
+  @spec parked([Call.t()]) :: [{Tars.Tool.call(), String.t()}]
+  def parked(calls) when is_list(calls) do
+    for %Call{state: :waiting} = call <- calls, do: {Call.to_map(call), Call.prompt(call)}
   end
 
   @doc """
@@ -155,10 +157,10 @@ defmodule Tars.LLM.ToolRunner do
 
   The longest timeout any of them declares, never more than the scope has left.
   """
-  @spec timeout([Tool.call()], Scope.t()) :: timeout()
+  @spec timeout([Call.t() | Tars.Tool.call()], Scope.t()) :: timeout()
   def timeout(tool_calls, %Scope{config: config} = scope) do
     tool_calls
-    |> Enum.map(&(Config.tool_timeout(config, &1.name) || @tool_timeout))
+    |> Enum.map(&(Config.tool_timeout(config, tool_name(&1)) || @tool_timeout))
     |> Enum.max(fn -> @tool_timeout end)
     |> within(Scope.remaining_ms(scope))
   end
@@ -168,52 +170,54 @@ defmodule Tars.LLM.ToolRunner do
   defp within(declared, :infinity), do: declared
   defp within(declared, remaining), do: declared |> min(remaining) |> max(1)
 
+  defp tool_name(%Call{} = call), do: Call.name(call)
+  defp tool_name(%{name: name}), do: name
+
   @doc """
   Runs one call and reports what it did.
 
-  Options:
-
-    * `:authorize` - whether to consult the scope's policy, `true` by default.
-      A resumed call passes `false`: the decision has already been made, and
-      asking again would park it forever.
-    * `:rerun` - whether a person has approved running again a call the
-      ledger holds as begun and never finished, `false` by default. A call
-      that parked as `{:pending, call, prompt}` is resumed with it.
+  An unchecked call is handed to the scope's hooks first. An approved one is
+  not, since the decision has been made and asking again would park it
+  forever, and one approved after the ledger asked about it runs again.
   """
-  @spec execute(Tool.call(), Scope.t(), keyword()) :: outcome()
-  def execute(%{name: name} = call, %Scope{} = scope, opts \\ []) do
-    in_span(call, Scope.open(scope, name), opts)
+  @spec execute(Call.t() | Tars.Tool.call(), Scope.t()) :: Call.t()
+  def execute(call, %Scope{} = scope) do
+    call = token(call)
+    in_span(call, Scope.open(scope, Call.name(call)))
   end
 
   @doc """
   Answers a call a person refused, without running it.
 
   What `Tars.LLM.Turn.resume/3` uses for a denied call, so a refusal made by a
-  person reaches the model in the same shape as one made by a policy.
+  person reaches the model in the same shape as one made by a hook.
 
   A call the ledger holds is not one that never ran. A settled one is answered
   with what it returned, as a replay is, and one claimed and never settled is
   refused with the model told it may already have done what it does.
   """
-  @spec refuse(Tool.call(), Scope.t(), String.t()) :: outcome()
-  def refuse(%{name: name} = call, %Scope{} = scope, reason) when is_binary(reason) do
-    span = Scope.open(scope, name)
+  @spec refuse(Call.t() | Tars.Tool.call(), Scope.t(), String.t()) :: Call.t()
+  def refuse(call, %Scope{} = scope, reason) when is_binary(reason) do
+    call = call |> token() |> Call.refuse(reason)
+    span = Scope.open(scope, Call.name(call))
     result = refused(call, span, reason)
     Scope.close(span, outcome(result))
-    settle(result, call)
+    settle({call, result})
   end
 
   defp refused(call, %Scope{ledger: nil} = scope, reason), do: deny(call, scope, reason)
 
   defp refused(call, %Scope{ledger: ledger} = scope, reason) do
-    case Ledger.fetch(ledger, Ledger.key(scope, call)) do
+    case Ledger.fetch(ledger, Ledger.key(scope, Call.to_map(call))) do
       {:ok, %Ledger.Entry{result: nil}} -> deny(call, scope, not_run_again(call, reason))
       {:ok, %Ledger.Entry{result: result}} -> replayed(call, scope, result)
       :error -> deny(call, scope, reason)
     end
   end
 
-  defp not_run_again(%{name: name}, reason) do
+  defp not_run_again(call, reason) do
+    name = Call.name(call)
+
     "#{name} was not run again, but it began before this agent was interrupted " <>
       "and may already have done what it does. #{reason}"
   end
@@ -255,18 +259,20 @@ defmodule Tars.LLM.ToolRunner do
     end)
   end
 
-  defp in_span(call, span, opts) do
+  defp token(%Call{} = call), do: call
+  defp token(%{id: _, name: _, arguments: _} = call), do: Call.tool(call)
+
+  defp in_span(call, span) do
     span
-    |> Scope.closing(&run(call, &1, opts), &outcome/1)
-    |> settle(call)
+    |> Scope.closing(&run(call, &1), fn {_call, result} -> outcome(result) end)
+    |> settle()
   end
 
   # A tool that reports its own failure answers the model successfully and the
   # span unsuccessfully: the model gets to correct itself, and a surface gets
   # to say the call did not do its job.
   defp outcome({:error, reason}), do: {:error, reason}
-  defp outcome({:parked, _prompt}), do: {:error, :parked}
-  defp outcome({:pending, _prompt}), do: {:error, :parked}
+  defp outcome({:waiting, _call}), do: {:error, :parked}
 
   defp outcome({:ok, %{"error" => error}} = result) do
     if Result.ok?(result), do: :ok, else: {:error, error}
@@ -274,46 +280,49 @@ defmodule Tars.LLM.ToolRunner do
 
   defp outcome(_result), do: :ok
 
-  defp settle({:parked, prompt}, call), do: {:parked, call, prompt}
-  defp settle({:pending, prompt}, call), do: {:pending, call, prompt}
-  defp settle({:ok, output}, call), do: {:settled, call, result_message(call, output)}
-  defp settle({:error, reason}, call), do: {:settled, call, error_message(call, reason)}
+  defp settle({_call, {:waiting, %Call{} = waiting}}), do: Call.under(waiting, nil)
+  defp settle({call, {:ok, _output} = result}), do: done(call, result)
+  defp settle({call, {:error, _reason} = result}), do: done(call, result)
 
   # A tool that answers with none of those is a bug in the tool, and the model
   # is told so rather than the call crashing around it.
-  defp settle(other, call),
-    do: {:settled, call, error_message(call, "Tool answered with #{inspect(other)}")}
+  defp settle({call, other}), do: done(call, {:error, "Tool answered with #{inspect(other)}"})
 
-  defp run(call, scope, opts) do
-    :ok = Tars.Scope.Context.put(scope, call)
+  defp done(call, result), do: call |> Call.under(nil) |> Call.answer(result)
+
+  defp run(call, scope) do
+    :ok = Tars.Scope.Context.put(scope, Call.to_map(call))
     register(scope, call)
 
     try do
-      case decide(call, scope, opts) do
-        :allow -> recorded(call, scope, Keyword.get(opts, :rerun, false))
-        {:deny, reason} -> deny(call, scope, reason)
-        {:ask, prompt} -> park(call, scope, prompt)
+      case checked(call, scope) do
+        %Call{state: :denied, denied: denied} = refused ->
+          {refused, deny(call, scope, denied.reason)}
+
+        %Call{state: :waiting} = waiting ->
+          {waiting, park(waiting, scope)}
+
+        going ->
+          {going, recorded(going, scope)}
       end
     after
       Registry.unregister(@registry, {scope.source.agent_id, call.id})
     end
   end
 
-  defp decide(call, scope, opts) do
-    if approved?(opts), do: :allow, else: Policy.authorize(scope.policy, call, scope)
-  end
+  defp checked(%Call{state: :unchecked} = call, scope),
+    do: call |> Call.under(scope) |> Hook.check()
 
-  # A call run with `authorize: false` is one a person has already approved.
-  defp approved?(opts), do: not Keyword.get(opts, :authorize, true)
+  defp checked(%Call{state: :approved} = call, scope), do: Call.under(call, scope)
 
   # A call is claimed before it runs, so a replay knows it began, and settled
   # after, so a replay knows what it returned.
-  defp recorded(call, %Scope{ledger: nil} = scope, _rerun?), do: invoke(call, scope)
+  defp recorded(call, %Scope{ledger: nil} = scope), do: invoke(call, scope)
 
-  defp recorded(call, %Scope{ledger: ledger} = scope, rerun?) do
-    key = Ledger.key(scope, call)
+  defp recorded(call, %Scope{ledger: ledger} = scope) do
+    key = Ledger.key(scope, Call.to_map(call))
 
-    case Ledger.claim(ledger, key, call) do
+    case Ledger.claim(ledger, key, Call.to_map(call)) do
       :ok ->
         run_claimed(call, scope, ledger, key)
 
@@ -321,7 +330,7 @@ defmodule Tars.LLM.ToolRunner do
         replayed(call, scope, result)
 
       {:pending, _entry} ->
-        if rerun? or Config.tool_in_doubt(scope.config, call.name) == :rerun,
+        if rerun?(call) or Config.tool_in_doubt(scope.config, Call.name(call)) == :rerun,
           do: run_claimed(call, scope, ledger, key),
           else: pending(call, scope)
 
@@ -334,20 +343,24 @@ defmodule Tars.LLM.ToolRunner do
     end
   end
 
+  # A person approved running again a call the ledger held as begun.
+  defp rerun?(%Call{state: state} = call),
+    do: state == :approved and Call.asked_by?(call, :ledger)
+
   # A tool may ask to park, which ReqLLM's spec for its answer does not allow
   # for; see `answered/3`.
   @dialyzer {:nowarn_function, run_claimed: 4}
 
   defp run_claimed(call, scope, ledger, key) do
     case invoke(call, scope) do
-      {:parked, _prompt} = parked ->
+      {:waiting, _call} = waiting ->
         _ = Ledger.release(ledger, key)
-        parked
+        waiting
 
       result ->
         with {:error, reason} <- Ledger.settle(ledger, key, result) do
           Logger.warning(
-            "#{call.name} ran, but what it returned was not recorded: #{inspect(reason)}"
+            "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
           )
         end
 
@@ -355,17 +368,15 @@ defmodule Tars.LLM.ToolRunner do
     end
   end
 
-  defp replayed(%{id: id, name: name}, scope, result) do
+  defp replayed(%Call{id: id} = call, scope, result) do
+    name = Call.name(call)
     Event.emit(scope.source, {:tool_replayed, id, name, result})
     result
   end
 
-  defp pending(call, scope) do
-    {:parked, prompt} = park(call, scope, pending_prompt(call))
-    {:pending, prompt}
-  end
+  defp pending(call, scope), do: call |> Call.wait(:ledger, pending_prompt(call)) |> park(scope)
 
-  defp pending_prompt(%{name: name}) do
+  defp pending_prompt(%Call{target: %Tool{name: name}}) do
     "#{name} began before this agent was interrupted, and may already have done what it does. " <>
       "Approve to run it again, or deny to tell the agent it may have run."
   end
@@ -373,15 +384,18 @@ defmodule Tars.LLM.ToolRunner do
   # Registration is best-effort bookkeeping for an operator, so a duplicate id
   # from a provider must not fail the call it belongs to.
   defp register(scope, call) do
-    meta = %{name: call.name, started_at: System.monotonic_time()}
+    meta = %{name: Call.name(call), started_at: System.monotonic_time()}
     Registry.register(@registry, {scope.source.agent_id, call.id}, meta)
     :ok
   catch
     _kind, _reason -> :ok
   end
 
-  defp invoke(%{id: id, name: name, arguments: args} = call, scope) do
-    Event.emit(scope.source, {:tool_started, id, name, args, Ledger.idempotency_key(scope, call)})
+  defp invoke(%Call{id: id, target: %Tool{name: name, arguments: args}} = call, scope) do
+    Event.emit(
+      scope.source,
+      {:tool_started, id, name, args, Ledger.idempotency_key(scope, Call.to_map(call))}
+    )
 
     case Enum.find(Config.tools(scope.config), &(&1.name == name)) do
       nil -> finished(call, scope, {:error, "Unknown tool: #{name}"})
@@ -398,35 +412,35 @@ defmodule Tars.LLM.ToolRunner do
   # A tool asking to park has not answered the model, so it is reported as a
   # pause rather than as a result.
   defp answered({:park, prompt}, call, scope) when is_binary(prompt),
-    do: park(call, scope, prompt)
+    do: call |> Call.wait(:tool, prompt) |> park(scope)
 
   defp answered(result, call, scope), do: finished(call, scope, result)
 
-  defp finished(%{id: id, name: name}, scope, result) do
+  defp finished(%Call{id: id, target: %Tool{name: name}}, scope, result) do
     Event.emit(scope.source, {:tool_finished, id, name, result})
 
     result
   end
 
-  defp deny(%{id: id, name: name}, scope, reason) do
+  defp deny(%Call{id: id, target: %Tool{name: name}}, scope, reason) do
     Event.emit(scope.source, {:tool_denied, id, name, reason})
     Result.error(:denied, reason)
   end
 
-  defp park(%{id: id, name: name}, scope, prompt) do
-    Event.emit(scope.source, {:tool_parked, id, name, prompt})
-    {:parked, prompt}
+  defp park(%Call{id: id, target: %Tool{name: name}} = call, scope) do
+    Event.emit(scope.source, {:tool_parked, id, name, Call.prompt(call)})
+    {:waiting, call}
   end
 
-  defp result_message(%{id: id, name: name}, output),
+  defp result_message(%Call{id: id, target: %Tool{name: name}}, output),
     do: Context.tool_result_message(name, id, output)
 
-  defp reap(%{id: id, name: name} = call, span, reason) do
+  defp reap(call, span, reason) do
     Scope.close(span, {:error, reason})
-    {:settled, call, error_message(%{id: id, name: name}, "Tool crashed: #{inspect(reason)}")}
+    done(call, {:error, "Tool crashed: #{inspect(reason)}"})
   end
 
-  defp error_message(%{id: id, name: name}, reason) when is_binary(reason) do
+  defp error_message(%Call{id: id, target: %Tool{name: name}}, reason) when is_binary(reason) do
     Context.tool_result_message(name, id, %{error: reason}, %{is_error: true})
   end
 

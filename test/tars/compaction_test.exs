@@ -181,7 +181,7 @@ defmodule Tars.CompactionTest do
     test "goes through the dispatch, so a budget that has run out stops it" do
       reject(&ReqLLM.generate_text/3)
       policy = TarsPolicy.decode!(%{"budget" => %{"tokens" => 1}})
-      scope = scope(dispatch: {TarsPolicy, policy})
+      scope = scope(hooks: TarsPolicy.hooks(policy))
 
       :ok =
         TarsPolicy.Meter.spend(

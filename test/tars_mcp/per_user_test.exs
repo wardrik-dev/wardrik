@@ -48,7 +48,10 @@ defmodule TarsMCP.PerUserTest do
   end
 
   test "a connected user calls over a connection carrying their own credential", %{ref: ref} do
-    assert {:settled, _call, message} = run(ref, "connected", "secret", %{"name" => "DEMO_TOKEN"})
+    assert [message] =
+             Tars.LLM.ToolRunner.messages([
+               run(ref, "connected", "secret", %{"name" => "DEMO_TOKEN"})
+             ])
 
     [part] = message.content
     assert part.text =~ "token-for-connected"
@@ -63,7 +66,8 @@ defmodule TarsMCP.PerUserTest do
   end
 
   test "a user who has not authorized parks the call, with somewhere to go", %{ref: ref} do
-    assert {:parked, _call, prompt} = run(ref, "unconnected", "echo", %{"value" => "hello"})
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+             run(ref, "unconnected", "echo", %{"value" => "hello"})
 
     assert prompt =~ "To connect #{ref}, open the link"
     assert String.ends_with?(prompt, ": https://example.com/connect")
@@ -71,14 +75,16 @@ defmodule TarsMCP.PerUserTest do
   end
 
   test "a user who authorizes on another device is given the code to enter", %{ref: ref} do
-    assert {:parked, _call, prompt} = run(ref, "elsewhere", "echo", %{"value" => "hello"})
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+             run(ref, "elsewhere", "echo", %{"value" => "hello"})
 
     assert prompt =~ "To connect #{ref}, enter WDJB-MJHT at the link"
     assert String.ends_with?(prompt, ": https://example.com/device")
   end
 
   test "a user the resolver refuses is told, and the turn carries on", %{ref: ref} do
-    assert {:settled, _call, message} = run(ref, "refused", "echo", %{"value" => "hello"})
+    assert [message] =
+             Tars.LLM.ToolRunner.messages([run(ref, "refused", "echo", %{"value" => "hello"})])
 
     [part] = message.content
     assert part.text =~ "not_authorized"

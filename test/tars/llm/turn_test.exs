@@ -6,6 +6,7 @@ defmodule Tars.LLM.TurnTest do
   import ExUnit.CaptureLog
 
   alias ReqLLM.Context
+  alias Tars.Call
   alias Tars.Event
   alias Tars.LLM
   alias Tars.LLM.Turn.Parked
@@ -502,11 +503,36 @@ defmodule Tars.LLM.TurnTest do
     result
   end
 
-  defmodule AskingPolicy do
-    @behaviour Tars.Policy
+  defmodule AskingHook do
+    @behaviour Tars.Hook
     @impl true
-    def authorize(%{name: "deploy"}, _scope), do: {:ask, "This ships to production."}
-    def authorize(_call, _scope), do: :allow
+    def init(_opts), do: nil
+    @impl true
+    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
+      do: Call.ask(call, "This ships to production.")
+
+    def call(call, _value), do: call
+  end
+
+  defmodule DenyingHook do
+    @behaviour Tars.Hook
+    @impl true
+    def init(_opts), do: nil
+    @impl true
+    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
+      do: Call.deny(call, "Frozen.")
+
+    def call(call, _value), do: call
+  end
+
+  # Asks about every model call, and remembers nothing.
+  defmodule ModelAsker do
+    @behaviour Tars.Hook
+    @impl true
+    def init(_opts), do: nil
+    @impl true
+    def call(%Call{target: %Call.Model{}} = call, _value), do: Call.ask(call, "Use the model?")
+    def call(call, _value), do: call
   end
 
   defmodule Routing do
@@ -539,18 +565,23 @@ defmodule Tars.LLM.TurnTest do
     def settle(_request, outcome, scope), do: Tars.Event.emit(scope.source, {:settled, outcome})
   end
 
-  # A dispatch named with a value: the Agent holding whether a person has
-  # approved another call yet.
+  # A hook named with a value: the Agent holding the memo a person approved,
+  # if one has been.
   defmodule Gate do
-    @behaviour Tars.LLM.Dispatch
+    @behaviour Tars.Hook
 
     @impl true
-    def admit(request, _scope, gate) do
-      if Agent.get(gate, & &1), do: {:ok, request}, else: {:park, "Spent $5.00 of $5.00 today."}
+    def init(gate), do: gate
+
+    @impl true
+    def call(%Call{target: %Call.Model{}} = call, gate) do
+      if Agent.get(gate, & &1),
+        do: call,
+        else: Call.ask(call, "Spent $5.00 of $5.00 today.", :day)
     end
 
     @impl true
-    def approved(_request, _scope, gate), do: Agent.update(gate, fn _approved -> true end)
+    def approved(call, gate), do: Agent.update(gate, fn _ -> Call.memo(call) end)
   end
 
   defp deploy_tool do
@@ -562,8 +593,8 @@ defmodule Tars.LLM.TurnTest do
     )
   end
 
-  defp governed(agent_id, tools) do
-    LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", policy: AskingPolicy)
+  defp governed(agent_id, tools, hooks \\ [Tars.Hook.new("asking", AskingHook)]) do
+    LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", hooks: hooks)
   end
 
   describe "the dispatch seam" do
@@ -645,11 +676,11 @@ defmodule Tars.LLM.TurnTest do
     end
   end
 
-  describe "a dispatch that parks" do
+  describe "a hook that asks about a model call" do
     setup %{agent_id: agent_id} do
-      {:ok, gate} = Agent.start_link(fn -> false end)
-      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: {Gate, gate})
-      %{scope: scope}
+      {:ok, gate} = Agent.start_link(fn -> nil end)
+      hooks = [Tars.Hook.new("gate", Gate, gate)]
+      %{scope: LLM.Config.new() |> Scope.root(agent_id, name: "turn", hooks: hooks), gate: gate}
     end
 
     test "stops the turn before the call, with the model call waiting", %{scope: scope} do
@@ -665,8 +696,24 @@ defmodule Tars.LLM.TurnTest do
       refute_received %Event{payload: {:model_started, _message_id, _spec}}
     end
 
-    test "approving it tells the dispatch, which admits the call it parked", %{scope: scope} do
+    test "approving it makes the call, and tells the hook with its memo", %{
+      scope: scope,
+      gate: gate
+    } do
       LLMStub.stream([LLMStub.final_answer("done")])
+
+      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = Parked.calls(parked)
+
+      assert {:ok, [answer]} = LLM.Turn.resume(scope, parked, %{call.id => :approve})
+      assert answer.role == :assistant
+      assert Agent.get(gate, & &1) == :day
+    end
+
+    test "an approved call is made without the hooks being asked again", %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.final_answer("done")])
+
+      scope = governed(agent_id, [], [Tars.Hook.new("asker", ModelAsker)])
 
       {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
       [{call, _prompt}] = Parked.calls(parked)
@@ -710,7 +757,7 @@ defmodule Tars.LLM.TurnTest do
   end
 
   describe "stopping to ask" do
-    test "a policy that asks parks the turn rather than appending half an exchange", %{
+    test "a hook that asks parks the turn rather than appending half an exchange", %{
       agent_id: agent_id
     } do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{})])
@@ -784,6 +831,76 @@ defmodule Tars.LLM.TurnTest do
 
       assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason}}
       assert reason =~ ":perhaps"
+    end
+  end
+
+  describe "resuming under other hooks" do
+    test "a call the new hooks allow runs, whatever was decided", %{agent_id: agent_id} do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "deploy", %{}),
+        LLMStub.final_answer("shipped")
+      ])
+
+      {:parked, parked} =
+        LLM.Turn.run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+
+      loosened = governed(agent_id, [deploy_tool()], [])
+
+      assert {:ok, _messages} =
+               LLM.Turn.resume(loosened, parked, %{"call_1" => {:deny, "Not now."}})
+
+      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
+    end
+
+    test "a call the new hooks deny is refused, whatever was decided", %{agent_id: agent_id} do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "deploy", %{}),
+        LLMStub.final_answer("understood")
+      ])
+
+      {:parked, parked} =
+        LLM.Turn.run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+
+      frozen =
+        governed(agent_id, [deploy_tool()], [Tars.Hook.new("freeze", DenyingHook)])
+
+      assert {:ok, _messages} = LLM.Turn.resume(frozen, parked, %{"call_1" => :approve})
+
+      assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Frozen."}}
+      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
+    end
+
+    test "a call the new hooks ask about waits again under them", %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{})])
+
+      old = [Tars.Hook.new("asking", AskingHook)]
+      new = [Tars.Hook.new("asking-again", AskingHook)]
+
+      {:parked, parked} =
+        LLM.Turn.run(
+          governed(agent_id, [deploy_tool()], old),
+          Context.new([Context.user("ship")])
+        )
+
+      scope = governed(agent_id, [deploy_tool()], new)
+
+      assert {:parked, again} = LLM.Turn.resume(scope, parked, %{"call_1" => :approve})
+      assert again.revision == Tars.Hook.revision(new)
+      assert [{%{id: "call_1"}, "This ships to production."}] = Parked.calls(again)
+      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
+    end
+
+    test "a model call is asked about again", %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.final_answer("done")])
+
+      asking = governed(agent_id, [], [Tars.Hook.new("asker", ModelAsker)])
+      {:parked, parked} = LLM.Turn.run(asking, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = Parked.calls(parked)
+
+      assert {:ok, [answer]} =
+               LLM.Turn.resume(governed(agent_id, [], []), parked, %{call.id => {:deny, "No."}})
+
+      assert answer.role == :assistant
     end
   end
 end

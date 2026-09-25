@@ -3,6 +3,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
   import ExUnit.CaptureLog
 
+  alias Tars.Call
   alias Tars.Event
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
@@ -26,13 +27,18 @@ defmodule Tars.LLM.ToolRunnerTest do
   # already decoded, with string ids.
   defp call(id, name, arguments), do: %{id: id, name: name, arguments: arguments}
 
+  # What the model reads of an answered call.
+  defp message(%Call{state: :done} = call), do: hd(ToolRunner.messages([call]))
+
   describe "a tool that parks" do
     test "stops the turn instead of answering it", %{agent_id: agent_id} do
       tools = [tool!("connect", fn _input -> {:park, "Authorize at https://example.com"} end)]
       scope = scope(agent_id, tools)
 
-      assert {:parked, _call, "Authorize at https://example.com"} =
-               ToolRunner.execute(call("call_1", "connect", %{}), scope)
+      assert %Call{
+               state: :waiting,
+               asks: [%Call.Ask{by: :tool, prompt: "Authorize at https://example.com"}]
+             } = ToolRunner.execute(call("call_1", "connect", %{}), scope)
     end
 
     test "is announced as parked, not as finished", %{agent_id: agent_id} do
@@ -61,16 +67,11 @@ defmodule Tars.LLM.ToolRunnerTest do
       scope = scope(agent_id, [tool!("connect", callback)])
       call = call("call_1", "connect", %{})
 
-      assert {:parked, ^call, _prompt} = ToolRunner.execute(call, scope)
+      assert %Call{id: "call_1", state: :waiting} = waiting = ToolRunner.execute(call, scope)
       assert_receive :parked_once
-    end
 
-    test "a park from a tool ignores the policy the second time", %{agent_id: agent_id} do
-      tools = [tool!("connect", fn _input -> {:ok, %{"done" => true}} end)]
-      scope = scope(agent_id, tools)
-
-      assert {:settled, _call, _message} =
-               ToolRunner.execute(call("call_1", "connect", %{}), scope, authorize: false)
+      assert %Call{state: :done, result: {:ok, %{"done" => true}}} =
+               waiting |> Call.approve() |> ToolRunner.execute(scope)
     end
 
     test "a park without a prompt is a bug in the tool, and the model is told", %{
@@ -78,10 +79,9 @@ defmodule Tars.LLM.ToolRunnerTest do
     } do
       tools = [tool!("odd", fn _input -> {:park, :not_a_prompt} end)]
 
-      assert {:settled, _call, message} =
-               ToolRunner.execute(call("call_1", "odd", %{}), scope(agent_id, tools))
+      done = ToolRunner.execute(call("call_1", "odd", %{}), scope(agent_id, tools))
 
-      [part] = message.content
+      [part] = message(done).content
       assert part.text =~ "Tool answered with"
     end
   end
@@ -335,13 +335,12 @@ defmodule Tars.LLM.ToolRunnerTest do
     } do
       tools = [tool!("search", fn _input -> Tars.Tool.Result.error(:missing_api_key) end)]
 
-      {:settled, _call, message} =
-        ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
+      done = ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
 
       assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
 
       # The model still gets a successful tool result saying the call failed.
-      refute message.metadata[:is_error]
+      refute message(done).metadata[:is_error]
     end
 
     test "a tool that succeeds closes its span as a success", %{agent_id: agent_id} do
@@ -372,8 +371,10 @@ defmodule Tars.LLM.ToolRunnerTest do
     test "returns a canonical tool-result message", %{agent_id: agent_id} do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
 
-      {:settled, _call, message} =
-        ToolRunner.execute(call("call_1", "echo", %{"a" => 1}), scope(agent_id, tools))
+      message =
+        call("call_1", "echo", %{"a" => 1})
+        |> ToolRunner.execute(scope(agent_id, tools))
+        |> message()
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
       assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}}}
@@ -383,16 +384,25 @@ defmodule Tars.LLM.ToolRunnerTest do
     end
   end
 
-  defmodule AskingPolicy do
-    @behaviour Tars.Policy
+  defmodule AskingHook do
+    @behaviour Tars.Hook
+
     @impl true
-    def authorize(%{name: "deploy"}, _scope), do: {:ask, "This ships to production."}
-    def authorize(%{name: "drop"}, _scope), do: {:deny, "Never."}
-    def authorize(_call, _scope), do: :allow
+    def init(_opts), do: nil
+
+    @impl true
+    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
+      do: Call.ask(call, "This ships to production.")
+
+    def call(%Call{target: %Call.Tool{name: "drop"}} = call, _value),
+      do: Call.deny(call, "Never.")
+
+    def call(call, _value), do: call
   end
 
   defp governed(agent_id, tools) do
-    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", policy: AskingPolicy)
+    Config.new(tools: tools)
+    |> Scope.root(agent_id, name: "turn", hooks: [Tars.Hook.new("asking", AskingHook)])
   end
 
   describe "governance" do
@@ -400,10 +410,10 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
       calls = [call("call_1", "echo", %{"a" => 1})]
 
-      assert [{:settled, _call, message}] =
+      assert [%Call{state: :done} = done] =
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
-      assert message.tool_call_id == "call_1"
+      assert message(done).tool_call_id == "call_1"
       assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _}}
     end
 
@@ -412,13 +422,13 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("drop", fn _ -> send(test_pid, :ran) && {:ok, %{}} end)]
       calls = [call("call_1", "drop", %{})]
 
-      assert [{:settled, _call, message}] =
+      assert [%Call{state: :done, denied: %Call.Denial{by: "asking"}} = done] =
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
       refute_receive :ran
       assert_receive %Event{payload: {:tool_denied, "call_1", "drop", "Never."}}
 
-      [part] = message.content
+      [part] = message(done).content
       assert %{"ok" => false, "error" => %{"message" => "Never."}} = JSON.decode!(part.text)
     end
 
@@ -435,11 +445,12 @@ defmodule Tars.LLM.ToolRunnerTest do
       tools = [tool!("deploy", fn _ -> send(test_pid, :ran) && {:ok, %{}} end)]
       calls = [call("call_1", "deploy", %{})]
 
-      assert [{:parked, parked_call, "This ships to production."}] =
+      assert [%Call{state: :waiting, asks: [%Call.Ask{by: "asking"}]} = parked_call] =
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
       refute_receive :ran
       assert parked_call.id == "call_1"
+      assert parked_call.scope == nil
       assert_receive %Event{payload: {:tool_parked, "call_1", "deploy", _prompt}}
     end
 
@@ -458,7 +469,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
       outcomes = ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
-      assert [{:settled, _, _}, {:parked, _, _}, {:settled, _, _}] = outcomes
+      assert [%Call{state: :done}, %Call{state: :waiting}, %Call{state: :done}] = outcomes
       assert [{%{id: "call_2"}, "This ships to production."}] = ToolRunner.parked(outcomes)
     end
 
@@ -471,18 +482,17 @@ defmodule Tars.LLM.ToolRunnerTest do
       assert_raise ArgumentError, ~r/call_1.*parked/, fn -> ToolRunner.messages(outcomes) end
     end
 
-    test "execute/3 can skip the policy, which is how a resumed call runs", %{agent_id: agent_id} do
+    test "an approved call runs without the hooks being asked again", %{agent_id: agent_id} do
       tools = [tool!("deploy", fn input -> {:ok, input} end)]
 
-      assert {:parked, _call, _prompt} =
+      assert %Call{state: :waiting} =
+               waiting =
                ToolRunner.execute(call("call_1", "deploy", %{}), governed(agent_id, tools))
 
-      assert {:settled, _call, message} =
-               ToolRunner.execute(call("call_1", "deploy", %{}), governed(agent_id, tools),
-                 authorize: false
-               )
+      assert %Call{state: :done} =
+               done = waiting |> Call.approve() |> ToolRunner.execute(governed(agent_id, tools))
 
-      assert message.tool_call_id == "call_1"
+      assert message(done).tool_call_id == "call_1"
     end
   end
 
@@ -490,13 +500,13 @@ defmodule Tars.LLM.ToolRunnerTest do
     test "answers the model the way a policy denial does", %{agent_id: agent_id} do
       scope = scope(agent_id, [])
 
-      assert {:settled, _call, message} =
-               ToolRunner.refuse(call("call_1", "deploy", %{}), scope, "Not this quarter.")
+      assert %Call{state: :done, denied: %Call.Denial{by: :person}} =
+               done = ToolRunner.refuse(call("call_1", "deploy", %{}), scope, "Not this quarter.")
 
       assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Not this quarter."}}
-      assert message.tool_call_id == "call_1"
+      assert message(done).tool_call_id == "call_1"
 
-      [part] = message.content
+      [part] = message(done).content
 
       assert %{"ok" => false, "error" => %{"message" => "Not this quarter."}} =
                JSON.decode!(part.text)
@@ -521,7 +531,7 @@ defmodule Tars.LLM.ToolRunnerTest do
       assert_receive :started, 1_000
       assert ToolRunner.kill_call(agent_id, "call_1") == :ok
 
-      assert [{:settled, _, killed}, {:settled, _, echoed}] = Task.await(task, 5_000)
+      assert [killed, echoed] = task |> Task.await(5_000) |> ToolRunner.messages()
       assert killed.metadata.is_error
       assert killed.tool_call_id == "call_1"
       refute echoed.metadata[:is_error]

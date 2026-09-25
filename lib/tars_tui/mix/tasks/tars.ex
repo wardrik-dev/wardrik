@@ -43,9 +43,9 @@ defmodule Mix.Tasks.Tars do
   authorized parks the turn on a link; open it, then answer `y` to run the call
   again.
 
-  `--policy` names a `Tars.Policy` module, and `--user` and `--org` say who the
-  turn is for, which is what a policy reads to decide. A policy that answers
-  `{:ask, prompt}` parks the turn; resume it from anywhere that can reach the
+  `--policy` names a `Tars.Hook` module, and `--user` and `--org` say who the
+  turn is for, which is what a hook reads to decide. A hook that asks about a call
+  parks the turn; resume it from anywhere that can reach the
   node:
 
       Tars.Agent.resume("acme/jon/assistant", %{"call_abc" => :approve})
@@ -192,7 +192,11 @@ defmodule Mix.Tasks.Tars do
   defp scope_opts(opts) do
     opts
     |> Keyword.take([:user, :org])
-    |> put_new_option(:policy, opts[:policy], &Module.safe_concat([&1]))
+    |> put_new_option(
+      :hooks,
+      opts[:policy],
+      &[Tars.Hook.new(&1, Module.safe_concat([&1]))]
+    )
     |> put_new_option(:credentials, credentials(opts), & &1)
     |> put_new_option(:timeout, opts[:timeout], &:timer.seconds/1)
   end

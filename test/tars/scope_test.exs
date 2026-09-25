@@ -226,16 +226,17 @@ defmodule Tars.ScopeTest do
   end
 
   describe "the seams a host reaches through" do
-    test "policy and dispatch default to nothing and are inherited by children" do
+    test "hooks and dispatch default to nothing and are inherited by children" do
       plain = Scope.root(Config.new(), :assistant)
 
-      assert plain.policy == nil
+      assert plain.hooks == []
       assert plain.dispatch == nil
 
-      wired = Scope.root(Config.new(), :assistant, policy: SomePolicy, dispatch: SomeGateway)
+      hooks = [%Tars.Hook{name: "some", module: SomeHook}]
+      wired = Scope.root(Config.new(), :assistant, hooks: hooks, dispatch: SomeGateway)
       child = Scope.child(wired, name: "branch")
 
-      assert child.policy == SomePolicy
+      assert child.hooks == hooks
       assert child.dispatch == SomeGateway
     end
   end

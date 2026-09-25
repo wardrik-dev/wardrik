@@ -30,7 +30,33 @@ defmodule TarsPolicy.Budget do
   spent, so the call that crosses one runs and the next is stopped. Calls
   admitted side by side, as delegations running at once are, can each cross
   it.
+
+  ## As a hook
+
+  A budget is a `Tars.Hook`, as `TarsPolicy.hooks/1` names it. Each model
+  call is checked before it is made against what the agent has spent in the
+  budget's period, as its `TarsPolicy.Meter` holds it, and what it used is
+  recorded there once it returns. A budget whose meter cannot be read refuses
+  the call rather than letting it run unmetered; the host starts
+  `TarsPolicy.Supervisor` to run the meters. Once the agent has spent its
+  limit, a budget that asks parks it on the next call, and approving that
+  call grants the budget's `grant` more for the period the call was asked
+  in. A budget that denies ends the turn instead. A budget in dollars refuses
+  every call to a model the catalog cannot price.
   """
+
+  @behaviour Tars.Hook
+
+  require Logger
+
+  alias Tars.Call
+  alias Tars.LLM.Cost
+  alias Tars.LLM.Usage
+  alias TarsPolicy.Meter
+  alias TarsPolicy.Spend
+
+  @unpriced "This agent's budget is in dollars, and the catalog has no price for its model, so " <>
+              "what its calls cost cannot be counted. A budget in tokens alone can count them."
 
   defstruct [:usd, :tokens, :grant_usd, :grant_tokens, per: :day, on_exhausted: :ask]
 
@@ -100,6 +126,146 @@ defmodule TarsPolicy.Budget do
     }
     |> drop_nil()
   end
+
+  # -- as a hook ---------------------------------------------------------------
+
+  @impl Tars.Hook
+  def init(%__MODULE__{} = budget), do: budget
+
+  def init(%{} = fields) do
+    case decode(fields) do
+      {:ok, budget} -> budget
+      {:error, message} -> raise ArgumentError, message
+    end
+  end
+
+  @impl Tars.Hook
+  def call(%Call{target: %Call.Model{model_spec: spec}} = call, %__MODULE__{} = budget) do
+    if budget.usd != nil and not Cost.priced?(spec),
+      do: Call.deny(call, @unpriced),
+      else: metered(call, spend_key(call.scope, budget), budget)
+  end
+
+  def call(%Call{} = call, %__MODULE__{}), do: call
+
+  # The memo an ask carries is the meter it read, so an approval grants more
+  # to the period that ran out.
+  defp metered(call, key, budget) do
+    case Meter.read(key) do
+      {:ok, spend} ->
+        cond do
+          not exhausted?(budget, spend) ->
+            call
+
+          budget.on_exhausted == :ask ->
+            Call.ask(call, exhausted(budget, spend) <> " " <> more(budget), key)
+
+          true ->
+            Call.deny(call, exhausted(budget, spend))
+        end
+
+      {:error, reason} ->
+        Call.deny(
+          call,
+          "This agent's budget could not be read, so no call it governs may run: #{inspect(reason)}"
+        )
+    end
+  end
+
+  @impl Tars.Hook
+  def approved(%Call{target: %Call.Model{}, scope: scope} = call, %__MODULE__{} = budget) do
+    {micro_usd, tokens} = grant(budget)
+
+    with key when is_binary(key) <- Call.memo(call),
+         {:error, reason} <- Meter.grant(key, micro_usd, tokens) do
+      Logger.error(
+        "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
+      )
+    end
+  end
+
+  def approved(%Call{}, %__MODULE__{}), do: :ok
+
+  @impl Tars.Hook
+  def settle(%Call{target: %Call.Model{} = model, scope: scope}, %__MODULE__{} = budget) do
+    usage = model.usage
+    micro_usd = micro(Cost.of(model.model_spec, usage) || 0)
+    tokens = Usage.tokens(usage)
+
+    with {:error, reason} <- scope |> spend_key(budget) |> Meter.spend(micro_usd, tokens) do
+      Logger.error(
+        "#{scope.source.agent_id} spent #{dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
+      )
+    end
+
+    :ok
+  end
+
+  @doc """
+  What an agent has spent in `budget`'s period now, given the scope of one of
+  its turns, or its key for a budget that is not per turn.
+  """
+  @spec spent(t(), Tars.Scope.t() | String.t()) :: Spend.t() | nil
+  def spent(%__MODULE__{per: :turn}, agent) when is_binary(agent), do: nil
+
+  def spent(%__MODULE__{} = budget, agent) when is_binary(agent),
+    do: agent |> Spend.key(window(budget, "", DateTime.utc_now())) |> read()
+
+  def spent(%__MODULE__{} = budget, scope), do: scope |> spend_key(budget) |> read()
+
+  defp read(key) do
+    case Meter.read(key) do
+      {:ok, spend} -> spend
+      {:error, _reason} -> nil
+    end
+  end
+
+  @doc """
+  What an agent has spent against `budget`, as a phrase: `$1.20 of $5.00 and
+  12000 of 200000 tokens today`.
+  """
+  @spec spending(t(), String.t()) :: String.t() | nil
+  def spending(%__MODULE__{} = budget, agent) do
+    case spent(budget, agent) do
+      nil -> nil
+      %Spend{} = spend -> "#{amounts(budget, spend)} #{period_words(budget)}"
+    end
+  end
+
+  defp spend_key(%Tars.Scope{source: source}, budget) do
+    Spend.key(source.agent_id, window(budget, source.trace.trace_id, DateTime.utc_now()))
+  end
+
+  defp exhausted?(budget, spend) do
+    (budget.usd != nil and spend.micro_usd >= micro_usd(budget) + spend.granted_micro_usd) or
+      (budget.tokens != nil and spend.tokens >= budget.tokens + spend.granted_tokens)
+  end
+
+  defp exhausted(budget, spend),
+    do: "This agent has spent #{amounts(budget, spend)} #{period_words(budget)}."
+
+  defp amounts(budget, spend) do
+    [
+      budget.usd &&
+        "#{dollars(spend.micro_usd)} of #{dollars(micro_usd(budget) + spend.granted_micro_usd)}",
+      budget.tokens && "#{spend.tokens} of #{budget.tokens + spend.granted_tokens} tokens"
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" and ")
+  end
+
+  defp more(budget) do
+    {micro_usd, tokens} = grant(budget)
+
+    granted =
+      [budget.usd && dollars(micro_usd), budget.tokens && "#{tokens} tokens"]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" and ")
+
+    "Approve to allow #{granted} more."
+  end
+
+  # -- amounts -----------------------------------------------------------------
 
   @doc """
   How much more a person's approval allows, as `{micro_usd, tokens}`, each `0`

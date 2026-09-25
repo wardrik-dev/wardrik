@@ -105,14 +105,14 @@ defmodule Tars.LLM.TurnJournalTest do
     [call] = ReqLLM.Response.classify(response).tool_calls
     :ok = Ledger.claim(Ledger.Store, Ledger.key(Scope.batch(scope, 0), call), call)
 
-    parked =
-      LLM.Turn.Parked.new(
-        Context.new([Context.user("refund it")]),
-        response,
-        [{:parked, call, "This refunds money."}],
-        [],
-        5
-      )
+    parked = %LLM.Turn.Parked{
+      context: Context.new([Context.user("refund it")]),
+      response: response,
+      outcomes: [Tars.Test.AgentRunners.waiting(call, "This refunds money.")],
+      acc: [],
+      remaining: 5,
+      revision: Tars.Hook.revision([])
+    }
 
     assert {:parked, again} = LLM.Turn.resume(scope, parked, %{"call_1" => :approve})
     assert [{%{id: "call_1"}, prompt}] = LLM.Turn.Parked.calls(again)

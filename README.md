@@ -173,7 +173,7 @@ case Tars.Credential.resolve(scope, {:user, "github"}) do
 end
 ```
 
-`:credentials` is a scope seam beside `:policy` and `:dispatch`. Two resolvers
+`:credentials` is a scope seam beside `:hooks` and `:dispatch`. Two resolvers
 ship with the binary. `TarsVault` seals secrets with AES-256-GCM into
 `Tars.Store`, the store the fleet already runs on — no broker, and no plaintext
 fallback without a key:
@@ -264,7 +264,7 @@ key = Tars.Fleet.key("assistant", user: current_user, org: current_org)
 
 Tars.Fleet.spawn(key,
   config: config,
-  policy: MyApp.Policy,      # may this tool call run?
+  hooks: hooks,              # may this call run?
   dispatch: MyApp.Gateway,   # which model, whose key, what did it cost?
   timeout: :timer.minutes(10)
 )
@@ -275,21 +275,43 @@ and no function. `Tars.Fleet.put/1` starts the agent a spec describes, or gives
 the one already running what the spec says now:
 
 ```elixir
-spec = Tars.Agent.Spec.new(name: "assistant", org: current_org, config: config, policy: MyApp.Policy)
+spec = Tars.Agent.Spec.new(name: "assistant", org: current_org, config: config, hooks: hooks)
 {:ok, pid} = Tars.Fleet.put(spec)
 ```
 
 | | |
 | --- | --- |
 | **`:user`, `:org`** | written into the agent's key through `Tars.Fleet.Segment` and carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
-| **`:policy`** | a `Tars.Policy`. Asked about every tool call before it runs, and answers `:allow`, `{:deny, reason}` or `{:ask, prompt}`. |
+| **`:hooks`** | a list of `Tars.Hook`s. Each is handed every tool call and model call, as a `Tars.Call`, before it happens, and may deny it, ask a person about it, or leave it be. The strictest answer decides. |
 | **`:dispatch`** | a `Tars.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
 | **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |
 
-A policy is a module, or a module and the value it reads, as
-`{TarsPolicy, policy}`: a policy written as data travels with the agent.
+A hook is a module with `init/1` and `call/2`, the way a plug is, and a
+`Tars.Call` is its token:
 
-A policy that asks **parks** the turn: nothing runs, nothing is appended to the
+```elixir
+defmodule MyApp.NoFridayDeploys do
+  @behaviour Tars.Hook
+  import Tars.Call
+
+  @impl true
+  def init(opts), do: Map.new(opts)
+
+  @impl true
+  def call(%Tars.Call{target: %Tars.Call.Tool{name: "deploy"}} = call, _value) do
+    if friday?(), do: deny(call, "No deploys on a Friday."), else: call
+  end
+
+  def call(call, _value), do: call
+end
+
+hooks = [Tars.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/London")]
+```
+
+What `init/1` returns is data, so a hook travels with the agent.
+`TarsPolicy.hooks/1` gives the hooks a policy written as data is.
+
+A hook that asks **parks** the turn: nothing runs, nothing is appended to the
 conversation, and the agent waits.
 
 ```elixir
@@ -301,6 +323,10 @@ Tars.Agent.resume(:assistant, %{"call_1" => :approve})
 
 Approval, a credential that needs connecting, and a call a person has to run
 elsewhere are all the same shape, so there is one mechanism rather than three.
+
+An agent given new hooks while it waits has them decide the calls it is
+waiting on: a call they allow goes ahead without a person, one they deny is
+refused, and one they ask about waits on what they ask now.
 
 ### Stopping things
 
@@ -527,8 +553,9 @@ price, or one a subscription pays for.
 
 A file is read into a value, not kept as one: an agent file into a
 `Tars.Agent.Spec`, a policy file into a `TarsPolicy`. The agent carries its
-policy, so it is written to the store with the agent and decides the same way
-on whichever node holds it next.
+policy as `Tars.Hook`s, so it is written to the store with the agent and
+decides the same way on whichever node holds it next. `tars reload` gives a
+waiting agent the policy as it is now, which decides the calls it waits on.
 
 The TUI is served over SSH once `~/.config/tars/ssh/authorized_keys` lists a
 key, in OpenSSH's format. The daemon listens on port 2222 on loopback, a

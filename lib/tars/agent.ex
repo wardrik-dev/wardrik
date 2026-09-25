@@ -44,7 +44,7 @@ defmodule Tars.Agent do
 
   ## Waiting for a person
 
-  A `Tars.Policy` that answers `{:ask, prompt}` parks the turn. The agent holds
+  A `Tars.Hook` that asks a person about a call parks the turn. The agent holds
   what it was doing, reports `:parked`, and does nothing until `resume/2`
   answers the calls it stopped on, and emits `{:call_decided, call_id, decision,
   by}` for each, with the `Tars.Principal` a caller names as `:by`. Messages
@@ -80,10 +80,10 @@ defmodule Tars.Agent do
   ## What a host supplies
 
   Beyond `:config`, an agent takes the seams every scope it roots is built
-  with: `:policy` decides whether a tool call may run, `:dispatch` decides what
-  a model call is and who pays for it, and `:timeout` bounds the whole turn.
-  Each is optional and inert by default. Who the work is for is read from the
-  agent's key.
+  with: `:hooks` decide whether a tool call may run and a model call be made,
+  `:dispatch` decides what a model call is and who pays for it, and `:timeout`
+  bounds the whole turn. Each is optional and inert by default. Who the work is
+  for is read from the agent's key.
 
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
@@ -168,7 +168,11 @@ defmodule Tars.Agent do
   Gives the agent a new `:config` and new seams for the turns it starts from
   now on, and writes them to the store. See `Tars.Agent.State.configure/2`.
 
-      Tars.Agent.configure("acme/jon/researcher", config: config, policy: MyApp.Policy)
+  An agent waiting on a person under hooks other than the ones it is given is
+  resumed with no decisions, so its new hooks decide the calls it waits on:
+  each goes ahead, is refused, or waits again on what the new hooks ask.
+
+      Tars.Agent.configure("acme/jon/researcher", config: config, hooks: hooks)
   """
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
   def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
@@ -287,7 +291,7 @@ defmodule Tars.Agent do
 
   @impl DurableServer
   def handle_call({:configure, opts}, _from, state) do
-    next = State.configure(state, opts)
+    next = state |> State.configure(opts) |> redecide()
     {:reply, :ok, next, meta: State.meta(next), sync: true}
   end
 
@@ -338,6 +342,15 @@ defmodule Tars.Agent do
     case resume_turn(state, decisions, by) do
       {:ok, next} -> stay(next, sync: true)
       {:error, next} -> stay(next)
+    end
+  end
+
+  defp redecide(state) do
+    if State.stale?(state) do
+      {_recorded, state} = resume_turn(state, %{}, nil)
+      state
+    else
+      state
     end
   end
 

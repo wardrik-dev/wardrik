@@ -61,20 +61,24 @@ defmodule TarsPolicyTest do
     end
   end
 
-  describe "as a Tars.Policy" do
-    test "decides through the seam as {TarsPolicy, policy}" do
-      policy = {TarsPolicy, TarsPolicy.decode!(%{"deny" => ["run_lua"]})}
-      scope = Scope.root(Config.new(), "acme/_/triage", policy: policy)
+  describe "as a Tars.Hook" do
+    test "decides tool calls through the seam, and allows every model call" do
+      policy = TarsPolicy.decode!(%{"deny" => ["run_lua"], "ask" => ["deploy"]})
+      scope = Scope.root(Config.new(), "acme/_/triage", hooks: TarsPolicy.hooks(policy))
+      check = &(&1 |> Tars.Call.tool(scope) |> Tars.Hook.check())
+      tool = &%{id: "c1", name: &1, arguments: %{}}
 
-      assert {:deny, _reason} =
-               Tars.Policy.authorize(policy, %{id: "c1", name: "run_lua", arguments: %{}}, scope)
+      assert %Tars.Call{state: :denied, denied: %{by: "policy"}} = check.(tool.("run_lua"))
+      assert %Tars.Call{state: :waiting, asks: [%{by: "policy"}]} = check.(tool.("deploy"))
+      assert %Tars.Call{state: :allowed} = check.(tool.("web_search"))
 
-      assert :allow =
-               Tars.Policy.authorize(
-                 policy,
-                 %{id: "c2", name: "web_search", arguments: %{}},
-                 scope
-               )
+      model = Tars.Call.model(Tars.LLM.Request.new(Config.new(), ReqLLM.Context.new()), scope)
+      assert %Tars.Call{state: :allowed} = Tars.Hook.check(model)
+    end
+
+    test "reads a policy written as data, as its init/1" do
+      assert %TarsPolicy{} = TarsPolicy.init(%{"deny" => ["run_lua"]})
+      assert_raise ArgumentError, fn -> TarsPolicy.init(%{"allows" => []}) end
     end
 
     test "is plain data, so it survives being written down" do

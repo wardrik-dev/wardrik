@@ -29,7 +29,7 @@ defmodule Tars.Scope do
   | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
   | `:user`, `:org` | who the work is being done for |
   | `:deadline` | when the work must stop |
-  | `:policy` | whether a tool call may run |
+  | `:hooks` | whether a tool call may run, and a model call be made |
   | `:dispatch` | what a model call actually is, and who pays for it |
   | `:credentials` | where a secret a tool names comes from |
 
@@ -91,17 +91,17 @@ defmodule Tars.Scope do
     :user,
     :org,
     :deadline,
-    :policy,
     :dispatch,
     :credentials,
     :ledger,
     :journal,
-    :batch
+    :batch,
+    hooks: []
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:policy, :dispatch, :credentials, :ledger, :timeout]
+  @seams [:hooks, :dispatch, :credentials, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -110,7 +110,7 @@ defmodule Tars.Scope do
           user: term(),
           org: term(),
           deadline: integer() | nil,
-          policy: Tars.Policy.t() | nil,
+          hooks: [Tars.Hook.t()],
           dispatch: Tars.LLM.Dispatch.t() | nil,
           credentials: module() | nil,
           ledger: module() | nil,
@@ -140,7 +140,7 @@ defmodule Tars.Scope do
     * `:timeout` - how long the whole run may take, resolved to a deadline
     * `:deadline` - the same thing as a monotonic instant, for a caller that
       already holds one
-    * `:policy` - a `Tars.Policy`, a module or `{module, value}`, or `nil` to
+    * `:hooks` - the `Tars.Hook`s every call is checked against, `[]` to
       allow everything
     * `:dispatch` - a `Tars.LLM.Dispatch` module, or `nil` to call the provider
       as configured
@@ -158,7 +158,7 @@ defmodule Tars.Scope do
       source: Source.root(agent_id, opts),
       user: Keyword.get(opts, :user),
       org: Keyword.get(opts, :org),
-      policy: Keyword.get(opts, :policy),
+      hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),
       credentials: Keyword.get(opts, :credentials),
       ledger: Keyword.get(opts, :ledger),

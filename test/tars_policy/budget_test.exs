@@ -3,8 +3,11 @@ defmodule TarsPolicy.BudgetTest do
   use Mimic
 
   alias ReqLLM.Context
+  alias Tars.Call
+  alias Tars.Hook
   alias Tars.LLM.Config
   alias Tars.LLM.Cost
+  alias Tars.LLM.Dispatch
   alias Tars.LLM.Request
   alias Tars.LLM.Tokens
   alias Tars.Scope
@@ -62,7 +65,7 @@ defmodule TarsPolicy.BudgetTest do
     assert Budget.window(%Budget{usd: 1.0, per: :total}, "t1", now) == "total"
   end
 
-  describe "as a dispatch" do
+  describe "as a hook" do
     setup do
       agent = "budget-#{System.unique_integer([:positive])}/_/triage"
 
@@ -71,8 +74,13 @@ defmodule TarsPolicy.BudgetTest do
       end)
 
       policy = TarsPolicy.decode!(%{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}})
-      scope = Scope.root(Config.new(), agent, dispatch: {TarsPolicy, policy})
-      %{policy: policy, scope: scope, request: Request.new(Config.new(), Context.new())}
+      scope = Scope.root(Config.new(), agent, hooks: TarsPolicy.hooks(policy))
+
+      %{
+        budget: policy.budget,
+        scope: scope,
+        request: Request.new(Config.new(), Context.new())
+      }
     end
 
     defp costing(usd) do
@@ -82,56 +90,82 @@ defmodule TarsPolicy.BudgetTest do
       }
     end
 
-    test "admits calls until the period's spend reaches the limit", context do
-      %{policy: policy, scope: scope, request: request} = context
+    defp under(scope, policy), do: %{scope | hooks: TarsPolicy.hooks(policy)}
 
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
+    defp approve(waiting, scope),
+      do: waiting |> Call.approve() |> Call.under(scope) |> Hook.approved()
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(0.6)}, scope, policy)
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
+    test "is named for its policy, after the policy's rules" do
+      policy = TarsPolicy.decode!(%{"budget" => %{"usd" => 1.0}}, "careful")
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(0.6)}, scope, policy)
+      assert [%Hook{name: "careful", module: TarsPolicy}, %Hook{name: "careful/budget"} = budget] =
+               TarsPolicy.hooks(policy)
 
-      assert {:park, "This agent has spent $1.20 of $1.00 today. Approve to allow $0.50 more."} =
-               TarsPolicy.admit(request, scope, policy)
+      assert budget.module == Budget
+      assert budget.value == policy.budget
+      assert [%Hook{name: "policy"}] = TarsPolicy.hooks(TarsPolicy.decode!(%{}))
     end
 
-    test "approving grants more for the period", context do
-      %{policy: policy, scope: scope, request: request} = context
+    test "admits calls until the period's spend reaches the limit", context do
+      %{scope: scope, request: request} = context
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(1.2)}, scope, policy)
-      assert {:park, _prompt} = TarsPolicy.admit(request, scope, policy)
+      assert {:ok, ^request} = Dispatch.admit(scope, request)
 
-      :ok = TarsPolicy.approved(request, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:ok, costing(0.6)})
+      assert {:ok, ^request} = Dispatch.admit(scope, request)
 
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:ok, costing(0.6)})
+
+      assert {:park, waiting} = Dispatch.admit(scope, request)
+
+      assert [
+               %Call.Ask{
+                 by: "policy/budget",
+                 prompt:
+                   "This agent has spent $1.20 of $1.00 today. Approve to allow $0.50 more.",
+                 memo: "budget-" <> _key
+               }
+             ] = waiting.asks
+    end
+
+    test "approving grants more for the period the call was asked in", context do
+      %{budget: budget, scope: scope, request: request} = context
+
+      :ok = Dispatch.settle(scope, request, {:ok, costing(1.2)})
+      assert {:park, waiting} = Dispatch.admit(scope, request)
+
+      :ok = approve(waiting, scope)
+
+      assert {:ok, ^request} = Dispatch.admit(scope, request)
 
       assert %Spend{micro_usd: 1_200_000, granted_micro_usd: 500_000} =
-               TarsPolicy.spent(policy, scope)
+               Budget.spent(budget, scope)
 
-      assert TarsPolicy.spending(policy, scope.source.agent_id) == "$1.20 of $1.50 today"
+      assert Budget.spending(budget, scope.source.agent_id) == "$1.20 of $1.50 today"
     end
 
     test "a budget that denies ends the turn instead of parking", context do
       %{scope: scope, request: request} = context
-      policy = TarsPolicy.decode!(%{"budget" => %{"usd" => 1.0, "on_exhausted" => "deny"}})
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(1.0)}, scope, policy)
+      scope =
+        under(scope, TarsPolicy.decode!(%{"budget" => %{"usd" => 1.0, "on_exhausted" => "deny"}}))
+
+      :ok = Dispatch.settle(scope, request, {:ok, costing(1.0)})
 
       assert {:error, {:policy_denied, "This agent has spent $1.00 of $1.00 today."}} =
-               TarsPolicy.admit(request, scope, policy)
+               Dispatch.admit(scope, request)
     end
 
     test "a call that failed before it was answered spends nothing", context do
-      %{policy: policy, scope: scope, request: request} = context
+      %{budget: budget, scope: scope, request: request} = context
 
-      :ok = TarsPolicy.settle(request, {:error, :timeout}, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:error, :timeout})
 
-      assert %Spend{micro_usd: 0, tokens: 0} = TarsPolicy.spent(policy, scope)
+      assert %Spend{micro_usd: 0, tokens: 0} = Budget.spent(budget, scope)
     end
 
     test "a call that ended without reporting what it used is counted as estimated", context do
-      %{policy: policy, scope: scope} = context
+      %{budget: budget, scope: scope} = context
       model = {:anthropic, model: "claude-sonnet-5"}
       streamed = String.duplicate("a", 400)
 
@@ -145,73 +179,72 @@ defmodule TarsPolicy.BudgetTest do
       output = Tokens.text(streamed)
       each = Budget.micro(Cost.of(model, %{input_tokens: input, output_tokens: output}))
 
-      :ok = TarsPolicy.settle(request, {:interrupted, streamed}, scope, policy)
-      :ok = TarsPolicy.settle(request, {:error, :closed, streamed}, scope, policy)
-      :ok = TarsPolicy.settle(request, {:ok, LLMStub.final_answer(streamed)}, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:interrupted, streamed})
+      :ok = Dispatch.settle(scope, request, {:error, :closed, streamed})
+      :ok = Dispatch.settle(scope, request, {:ok, LLMStub.final_answer(streamed)})
 
       assert input == 1100 and output == 100 and each > 0
-      assert %Spend{micro_usd: micro_usd, tokens: tokens} = TarsPolicy.spent(policy, scope)
+      assert %Spend{micro_usd: micro_usd, tokens: tokens} = Budget.spent(budget, scope)
       assert tokens == 3 * (input + output)
       assert micro_usd == 3 * each
     end
 
     test "a budget in dollars refuses a model the catalog cannot price", context do
-      %{policy: policy, scope: scope} = context
+      %{scope: scope} = context
 
       request = Request.new(Config.new(model_spec: "nowhere:no-such-model"), Context.new())
 
       assert {:error, {:policy_denied, "This agent's budget is in dollars" <> _}} =
-               TarsPolicy.admit(request, scope, policy)
+               Dispatch.admit(scope, request)
 
-      in_tokens = TarsPolicy.decode!(%{"budget" => %{"tokens" => 1000}})
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, in_tokens)
+      in_tokens = under(scope, TarsPolicy.decode!(%{"budget" => %{"tokens" => 1000}}))
+      assert {:ok, ^request} = Dispatch.admit(in_tokens, request)
     end
 
     test "a token limit governs a call that costs nothing in dollars", context do
       %{scope: scope, request: request} = context
-      policy = TarsPolicy.decode!(%{"budget" => %{"tokens" => 20}})
+      scope = under(scope, TarsPolicy.decode!(%{"budget" => %{"tokens" => 20}}))
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(0.0)}, scope, policy)
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:ok, costing(0.0)})
+      assert {:ok, ^request} = Dispatch.admit(scope, request)
 
-      :ok = TarsPolicy.settle(request, {:ok, costing(0.0)}, scope, policy)
+      :ok = Dispatch.settle(scope, request, {:ok, costing(0.0)})
 
-      assert {:park,
-              "This agent has spent 30 of 20 tokens today. Approve to allow 20 tokens more."} =
-               TarsPolicy.admit(request, scope, policy)
+      assert {:park, waiting} = Dispatch.admit(scope, request)
 
-      :ok = TarsPolicy.approved(request, scope, policy)
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
+      assert Call.prompt(waiting) ==
+               "This agent has spent 30 of 20 tokens today. Approve to allow 20 tokens more."
+
+      :ok = approve(waiting, scope)
+      assert {:ok, ^request} = Dispatch.admit(scope, request)
     end
 
-    test "a policy with no budget admits everything and records nothing", context do
-      %{scope: scope, request: request} = context
-      policy = TarsPolicy.decode!(%{})
+    test "allows every tool call", context do
+      %{scope: scope} = context
+      call = Call.tool(%{id: "call_1", name: "deploy", arguments: %{}}, scope)
 
-      assert {:ok, ^request} = TarsPolicy.admit(request, scope, policy)
-      assert :ok = TarsPolicy.settle(request, {:ok, costing(100.0)}, scope, policy)
-      assert TarsPolicy.spent(policy, scope) == nil
+      assert %Call{state: :allowed} = Hook.check(call)
     end
 
     test "calls settling at once each count, with nothing retried", context do
-      %{policy: policy, scope: scope, request: request} = context
+      %{budget: budget, scope: scope, request: request} = context
 
       1..200
       |> Task.async_stream(
-        fn _ -> TarsPolicy.settle(request, {:ok, costing(0.01)}, scope, policy) end,
+        fn _ -> Dispatch.settle(scope, request, {:ok, costing(0.01)}) end,
         max_concurrency: 200
       )
       |> Stream.run()
 
-      assert %Spend{tokens: 3000, micro_usd: 2_000_000} = TarsPolicy.spent(policy, scope)
+      assert %Spend{tokens: 3000, micro_usd: 2_000_000} = Budget.spent(budget, scope)
     end
 
     test "a budget whose meter cannot be read refuses the call", context do
-      %{policy: policy, scope: scope, request: request} = context
+      %{scope: scope, request: request} = context
       stub(TarsPolicy.Meter, :read, fn _key -> {:error, {:meter_unavailable, :no_capacity}} end)
 
       assert {:error, {:policy_denied, "This agent's budget could not be read" <> _}} =
-               TarsPolicy.admit(request, scope, policy)
+               Dispatch.admit(scope, request)
     end
   end
 

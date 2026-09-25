@@ -1,6 +1,7 @@
 defmodule Tars.LLM.ToolRunnerLedgerTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Call
   alias Tars.Event
   alias Tars.Ledger
   alias Tars.LLM.Config
@@ -73,7 +74,7 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     scope = scope(agent_id, [counted("refund")])
     call = call("call_1", "refund")
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+    assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, scope)
     assert_received {:ran, "refund"}
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"done" => true}}}} =
@@ -84,10 +85,10 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     scope = scope(agent_id, [counted("refund")])
     call = call("call_1", "refund")
 
-    {:settled, ^call, first} = ToolRunner.execute(call, scope)
+    %Call{state: :done, result: first} = ToolRunner.execute(call, scope)
     assert_received {:ran, "refund"}
 
-    assert {:settled, ^call, ^first} = ToolRunner.execute(call, scope)
+    assert %Call{state: :done, result: ^first} = ToolRunner.execute(call, scope)
     refute_received {:ran, "refund"}
 
     assert_received %Event{
@@ -112,12 +113,13 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     call = call("call_1", "refund")
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert {:pending, ^call, prompt} = ToolRunner.execute(call, scope)
+    assert %Call{state: :waiting, asks: [%Call.Ask{by: :ledger, prompt: prompt}]} =
+             waiting = ToolRunner.execute(call, scope)
+
     assert prompt =~ "may already have done what it does"
     refute_received {:ran, "refund"}
 
-    assert {:settled, ^call, _message} =
-             ToolRunner.execute(call, scope, authorize: false, rerun: true)
+    assert %Call{state: :done} = waiting |> Call.approve() |> ToolRunner.execute(scope)
 
     assert_received {:ran, "refund"}
 
@@ -131,7 +133,7 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     call = call("call_1", "refund")
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+    assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, scope)
 
     key = Ledger.idempotency_key(scope, call)
     assert_received {:ran, "refund", ^key}
@@ -140,14 +142,22 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
              Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
   end
 
-  test "approving what a policy asked runs nothing the ledger holds as begun", %{
+  test "approving what a hook asked runs nothing the ledger holds as begun", %{
     agent_id: agent_id
   } do
     scope = scope(agent_id, [counted("deploy")])
     call = call("call_1", "deploy")
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert {:pending, ^call, prompt} = ToolRunner.execute(call, scope, authorize: false)
+    approved = %{
+      Call.tool(call)
+      | state: :approved,
+        asks: [%Call.Ask{by: "careful", prompt: "Deploy?"}]
+    }
+
+    assert %Call{state: :waiting, asks: [%Call.Ask{by: :ledger, prompt: prompt}]} =
+             ToolRunner.execute(approved, scope)
+
     assert prompt =~ "may already have done what it does"
     refute_received {:ran, "deploy"}
   end
@@ -168,7 +178,9 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     scope = scope(agent_id, [counted("connect", {:park, "Connect GitHub first."})])
     call = call("call_1", "connect")
 
-    assert {:parked, ^call, "Connect GitHub first."} = ToolRunner.execute(call, scope)
+    assert %Call{state: :waiting, asks: [%Call.Ask{by: :tool, prompt: "Connect GitHub first."}]} =
+             ToolRunner.execute(call, scope)
+
     assert :error = Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
   end
 
@@ -176,7 +188,7 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     scope = scope(agent_id, [counted("refund")], Unanswering)
     call = call("call_1", "refund")
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+    assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, scope)
     refute_received {:ran, "refund"}
     assert_received %Event{payload: {:tool_denied, "call_1", "refund", reason}}
     assert reason =~ "could not record this call before running it"
@@ -186,7 +198,7 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     test "that nothing began is a plain refusal", %{agent_id: agent_id} do
       scope = scope(agent_id, [counted("deploy")])
 
-      assert {:settled, _call, _message} =
+      assert %Call{state: :done} =
                ToolRunner.refuse(call("call_1", "deploy"), scope, "Not today.")
 
       assert_received %Event{payload: {:tool_denied, "call_1", "deploy", "Not today."}}
@@ -195,9 +207,9 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     test "that ran answers with what it returned", %{agent_id: agent_id} do
       scope = scope(agent_id, [counted("deploy")])
       call = call("call_1", "deploy")
-      {:settled, ^call, ran} = ToolRunner.execute(call, scope)
+      %Call{state: :done, result: ran} = ToolRunner.execute(call, scope)
 
-      assert {:settled, ^call, ^ran} = ToolRunner.refuse(call, scope, "Not today.")
+      assert %Call{state: :done, result: ^ran} = ToolRunner.refuse(call, scope, "Not today.")
       assert_received %Event{payload: {:tool_replayed, "call_1", "deploy", {:ok, _result}}}
       refute_received %Event{payload: {:tool_denied, "call_1", "deploy", _reason}}
     end

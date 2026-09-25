@@ -155,7 +155,7 @@ defmodule TarsHTTP.WorkerTest do
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+    assert %Tars.Call{state: :done} = ToolRunner.execute(call, scope)
 
     key = Ledger.idempotency_key(scope, call)
 
@@ -260,7 +260,7 @@ defmodule TarsHTTP.WorkerTest do
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+    assert %Tars.Call{state: :done} = ToolRunner.execute(call, scope)
 
     key = Ledger.idempotency_key(scope, call)
     assert_receive {:called, %{"_meta" => %{"idempotencyKey" => ^key}}}

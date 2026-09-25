@@ -112,7 +112,7 @@ defmodule TarsDaemon.AgentsTest do
     assert [{_policy, {:ok, %TarsPolicy{name: "careful"} = careful}}, {_alpha, {:ok, spec}}] =
              Agents.files()
 
-    assert spec.policy == {TarsPolicy, careful}
+    assert spec.hooks == TarsPolicy.hooks(careful)
     assert %{} = Agent.status("#{org}/_/alpha")
   end
 
@@ -122,7 +122,7 @@ defmodule TarsDaemon.AgentsTest do
     start_supervised!({Agents, dir: context.dir})
 
     assert {:ok, spec} = Agents.put("#{org}/_/defined", %{"policy" => "careful"})
-    assert {TarsPolicy, %TarsPolicy{name: "careful"}} = spec.policy
+    assert [%Tars.Hook{name: "careful", module: TarsPolicy}] = spec.hooks
 
     assert {:error, message} = Agents.put("#{org}/_/defined", %{"policy" => "lax"})
     assert message =~ "policy names lax"

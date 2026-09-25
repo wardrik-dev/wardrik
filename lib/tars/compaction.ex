@@ -160,10 +160,10 @@ defmodule Tars.Compaction do
   @doc """
   Compacts `context` under `scope`, if its config's compaction says it is due.
 
-  The older part is summarised by the agent's own model, through the scope's
-  `Tars.LLM.Dispatch`, so a budget counts the call like any other. The summary
-  and an acknowledgement take the older part's place, and the recent part
-  follows word for word. `:keep` where nothing is due; `{:error, reason}` where
+  The older part is summarised by the agent's own model, through
+  `Tars.LLM.Dispatch`, so the scope's hooks decide and count the call like any
+  other. The summary and an acknowledgement take the older part's place, and
+  the recent part follows word for word. `:keep` where nothing is due; `{:error, reason}` where
   the summary could not be made, which leaves the context as it was.
 
   An older part that takes more than half the model's window is summarised in
@@ -274,8 +274,8 @@ defmodule Tars.Compaction do
         Dispatch.settle(scope, admitted, result)
         text(result)
 
-      {:park, prompt} ->
-        {:error, {:parked, prompt}}
+      {:park, waiting} ->
+        {:error, {:parked, Tars.Call.prompt(waiting)}}
 
       {:error, reason} ->
         {:error, reason}

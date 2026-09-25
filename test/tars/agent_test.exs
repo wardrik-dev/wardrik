@@ -525,7 +525,7 @@ defmodule Tars.AgentTest do
         start_agent(
           [
             runner: reporting_runner(test_pid),
-            policy: SomePolicy,
+            hooks: [%Tars.Hook{name: "some", module: SomeHook}],
             dispatch: SomeGateway,
             timeout: 60_000
           ],
@@ -537,7 +537,7 @@ defmodule Tars.AgentTest do
       assert_receive {:scope, scope}
       assert scope.user == "7"
       assert scope.org == "acme"
-      assert scope.policy == SomePolicy
+      assert scope.hooks == [%Tars.Hook{name: "some", module: SomeHook}]
       assert scope.dispatch == SomeGateway
       assert Tars.Scope.remaining_ms(scope) > 55_000
     end
@@ -547,17 +547,26 @@ defmodule Tars.AgentTest do
 
       agent =
         start_agent(
-          [runner: reporting_runner(test_pid), policy: SomePolicy, dispatch: SomeGateway],
+          [
+            runner: reporting_runner(test_pid),
+            hooks: [%Tars.Hook{name: "some", module: SomeHook}],
+            dispatch: SomeGateway
+          ],
           Tars.Fleet.key("configure-#{System.unique_integer([:positive])}", org: "acme", user: 7)
         )
 
       config = Tars.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5", system: "New here.")
-      assert :ok = Agent.configure(agent, config: config, policy: OtherPolicy)
+
+      assert :ok =
+               Agent.configure(agent,
+                 config: config,
+                 hooks: [%Tars.Hook{name: "other", module: OtherHook}]
+               )
 
       Agent.ask(agent, "hi")
 
       assert_receive {:scope, scope}
-      assert scope.policy == OtherPolicy
+      assert scope.hooks == [%Tars.Hook{name: "other", module: OtherHook}]
       assert scope.dispatch == nil
       assert scope.org == "acme"
       assert scope.user == "7"
@@ -577,7 +586,7 @@ defmodule Tars.AgentTest do
       assert_receive {:scope, scope}
       assert scope.user == nil
       assert scope.org == "test"
-      assert scope.policy == nil
+      assert scope.hooks == []
       assert scope.dispatch == nil
       assert Tars.Scope.remaining_ms(scope) == :infinity
     end

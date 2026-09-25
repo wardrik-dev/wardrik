@@ -26,13 +26,19 @@ defmodule Tars.Agent.StateTest do
   defp parked_turn do
     call = %{id: "call_1", name: "deploy", arguments: %{}}
 
-    Parked.new(
-      Context.new(),
-      %ReqLLM.Response{id: "r", model: "m", context: Context.new(), finish_reason: :tool_calls},
-      [{:parked, call, "Really?"}],
-      [],
-      5
-    )
+    %Parked{
+      context: Context.new(),
+      response: %ReqLLM.Response{
+        id: "r",
+        model: "m",
+        context: Context.new(),
+        finish_reason: :tool_calls
+      },
+      outcomes: [Tars.Test.AgentRunners.waiting(call, "Really?")],
+      acc: [],
+      remaining: 5,
+      revision: Tars.Hook.revision([])
+    }
   end
 
   defp checkpoint do

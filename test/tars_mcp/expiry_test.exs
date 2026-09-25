@@ -64,7 +64,8 @@ defmodule TarsMCP.ExpiryTest do
     test "is tried once more with a connection built afresh", %{ref: ref} do
       call = %{id: "c1", name: "#{ref}__refuses_once", arguments: %{}}
 
-      assert {:settled, _call, message} = ToolRunner.execute(call, scope(ref, "jon"))
+      assert [message] =
+               Tars.LLM.ToolRunner.messages([ToolRunner.execute(call, scope(ref, "jon"))])
 
       [part] = message.content
       assert part.text =~ "accepted this time"
@@ -79,7 +80,8 @@ defmodule TarsMCP.ExpiryTest do
 
       call = %{id: "c1", name: "#{ref}__refuses_once", arguments: %{}}
 
-      assert {:settled, _call, message} = ToolRunner.execute(call, scope(ref, "jon"))
+      assert [message] =
+               Tars.LLM.ToolRunner.messages([ToolRunner.execute(call, scope(ref, "jon"))])
 
       [part] = message.content
       assert part.text =~ "no longer valid"
