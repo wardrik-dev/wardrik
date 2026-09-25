@@ -181,6 +181,14 @@ defmodule TarsNotify.SlackTest do
       assert text =~ "already answered"
     end
 
+    test "says so when the agent cannot record the answer", %{key: key} do
+      :ok = Tars.Test.EventLog.usurp(key)
+
+      assert :ok = Slack.answer(press(key, "tars_approve"))
+      assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
+      assert text =~ "could not record"
+    end
+
     test "says so when the agent is not running", %{key: key} do
       :ok = Fleet.forget(key)
 

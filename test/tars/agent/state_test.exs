@@ -158,7 +158,7 @@ defmodule Tars.Agent.StateTest do
     test "a waiting turn is abandoned outright" do
       {state, effects} = State.interrupt(waiting())
 
-      assert [{:emit, source, {:turn_interrupted, stats}}, {:forget_claims, scope}] = effects
+      assert [{:emit, source, {:turn_interrupted, stats}}, {:close_turn, scope}] = effects
       assert stats.resolution == :abandoned
       assert state.mode == :idle
       assert scope.source == source
@@ -184,7 +184,7 @@ defmodule Tars.Agent.StateTest do
       assert [
                {:shutdown, _task},
                {:emit, _source, {:turn_interrupted, stats}},
-               {:forget_claims, _scope}
+               {:close_turn, _scope}
              ] = effects
 
       assert stats.resolution == :killed
@@ -210,7 +210,7 @@ defmodule Tars.Agent.StateTest do
     test "a turn that answered normally reports what it produced" do
       messages = [Context.assistant("done")]
 
-      {state, [{:emit, source, event}, {:forget_claims, scope}]} =
+      {state, [{:emit, source, event}, {:close_turn, scope}]} =
         State.settled(running(), messages)
 
       assert event == {:turn_finished, messages}
@@ -224,7 +224,7 @@ defmodule Tars.Agent.StateTest do
 
       assert [
                {:emit, _source, {:turn_interrupted, stats}},
-               {:forget_claims, _scope},
+               {:close_turn, _scope},
                {:cancel_kill, _timer}
              ] = effects
 
@@ -392,7 +392,7 @@ defmodule Tars.Agent.StateTest do
       assert {%State{mode: :idle, outcome: :interrupted},
               [
                 {:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}},
-                {:forget_claims, _scope}
+                {:close_turn, _scope}
               ]} =
                State.interrupt(reload(state))
     end

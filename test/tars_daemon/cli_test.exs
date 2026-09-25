@@ -83,6 +83,14 @@ defmodule TarsDaemon.CLITest do
              command(["approve", "nobody/_/here", "call_1"])
   end
 
+  test "a decision the agent cannot record fails, saying so" do
+    key = parked_agent()
+    :ok = Tars.Test.EventLog.usurp(key)
+
+    assert command(["approve", key, "call_1"]) ==
+             {"#{key} could not record the decision, so it was not taken.\n", 1}
+  end
+
   test "ask sends the agent a message" do
     test_pid = self()
 

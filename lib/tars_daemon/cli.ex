@@ -206,6 +206,7 @@ defmodule TarsDaemon.CLI do
       {:error, :not_found} -> fail("No agent runs under #{key}.")
       {:error, :not_parked} -> fail("#{key} is not waiting on anything.")
       {:error, :stale_decision} -> fail("#{key} is not waiting on #{call}.")
+      {:error, :unrecorded} -> fail("#{key} could not record the decision, so it was not taken.")
     end
   end
 

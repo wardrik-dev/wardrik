@@ -8,14 +8,24 @@ defmodule Tars.Agent.Snapshot do
 
   `generation` changes when an agent is forgotten and started again under the
   same key, and survives a restart. `trace_id` is the current turn's, or `nil`
-  between turns.
+  between turns. `sequence` is the last event its `Tars.Event.Log` has
+  written, for a client to read and follow the log from.
   """
 
   alias Tars.Agent.State
   alias Tars.Delegation
 
-  @enforce_keys [:generation, :status, :context, :parked, :trace_id, :delegations, :outcome]
-  defstruct [:generation, :status, :context, :parked, :trace_id, :delegations, :outcome]
+  @enforce_keys [
+    :generation,
+    :status,
+    :context,
+    :parked,
+    :trace_id,
+    :delegations,
+    :outcome,
+    :sequence
+  ]
+  defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
           generation: String.t(),
@@ -24,6 +34,7 @@ defmodule Tars.Agent.Snapshot do
           parked: [{Tars.Tool.call(), String.t()}],
           trace_id: String.t() | nil,
           delegations: Delegation.t(),
-          outcome: State.outcome()
+          outcome: State.outcome(),
+          sequence: non_neg_integer()
         }
 end

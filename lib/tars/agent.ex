@@ -100,11 +100,21 @@ defmodule Tars.Agent do
 
   ## Delegations
 
-  The agent follows its own `:lifecycle` events, so it knows which
-  delegations the current turn has started through `Tars.Subagent.run/3` and
-  how each went. The fleet shows the count as part of the agent's metadata,
-  and `snapshot/1` carries the whole `Tars.Delegation` for a client that
-  wants to list or inspect them.
+  The agent follows its own events, so it knows which delegations the current
+  turn has started through `Tars.Subagent.run/3` and how each went. The fleet
+  shows the count as part of the agent's metadata, and `snapshot/1` carries
+  the whole `Tars.Delegation` for a client that wants to list or inspect them.
+
+  ## Its log
+
+  The agent is the only writer of its `Tars.Event.Log`. It numbers its events
+  in the order they reach it, writes the durable ones, and passes every one on
+  to the log's subscribers; see `Tars.Event.Log.Writer`. A turn never waits
+  for it.
+
+  A decision is written before it takes effect: `decide/3` answers
+  `{:error, :unrecorded}`, and changes nothing, when it cannot be. After each
+  turn the agent drops the events older than the log keeps.
   """
   require Logger
 
@@ -116,6 +126,8 @@ defmodule Tars.Agent do
   alias Tars.Agent.State
   alias Tars.Event
   alias Tars.Event.Bus
+  alias Tars.Event.Log
+  alias Tars.Event.Log.Writer
   alias Tars.Event.Source
   alias Tars.Fleet
   alias Tars.LLM.Turn
@@ -187,10 +199,12 @@ defmodule Tars.Agent do
   before returning.
 
   `:by` names the `Tars.Principal` deciding, carried on each
-  `{:call_decided, call_id, decision, by}` event.
+  `{:call_decided, call_id, decision, by}` event. `{:error, :unrecorded}`
+  means the decisions could not be written to the agent's log, and were not
+  taken.
   """
   @spec decide(agent(), map(), keyword()) ::
-          :ok | {:error, :not_found | :not_parked | :stale_decision}
+          :ok | {:error, :not_found | :not_parked | :stale_decision | :unrecorded}
   def decide(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
     do: call(agent, {:decide, decisions, Keyword.get(opts, :by)})
 
@@ -255,12 +269,16 @@ defmodule Tars.Agent do
   def init(%State{} = state) do
     # `init` cannot return a continue, so the queue is drained by message.
     send(self(), :maybe_run)
-    :ok = Bus.subscribe(state.agent_id, level: :lifecycle)
+    :ok = Bus.subscribe(state.agent_id)
 
-    Event.emit(
-      Source.root(state.agent_id),
-      {:agent_started, node(), State.status(state).state, state.generation}
-    )
+    started =
+      Event.new(
+        Source.root(state.agent_id),
+        {:agent_started, node(), State.status(state).state, state.generation}
+      )
+
+    state = State.logged(state, Writer.open(state.log, started))
+    :ok = Bus.publish(started)
 
     {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
@@ -296,8 +314,10 @@ defmodule Tars.Agent do
         {:reply, {:error, :stale_decision}, state}
 
       true ->
-        next = resume_turn(state, decisions, by)
-        {:reply, :ok, next, meta: State.meta(next), sync: true}
+        case resume_turn(state, decisions, by) do
+          {:ok, next} -> {:reply, :ok, next, meta: State.meta(next), sync: true}
+          {:error, next} -> {:reply, {:error, :unrecorded}, next}
+        end
     end
   end
 
@@ -315,26 +335,50 @@ defmodule Tars.Agent do
   end
 
   def handle_cast({:resume, decisions, by}, state) do
-    stay(resume_turn(state, decisions, by), sync: true)
+    case resume_turn(state, decisions, by) do
+      {:ok, next} -> stay(next, sync: true)
+      {:error, next} -> stay(next)
+    end
   end
 
   defp resume_turn(state, decisions, by) do
     case State.resume(state) do
       {:resume, scope, turn, started_at} ->
-        scope = journaled(scope)
-
-        for {call, _prompt} <- Parked.calls(turn),
-            Map.has_key?(decisions, call.id),
-            do: Event.emit(scope.source, {:call_decided, call.id, decisions[call.id], by})
-
-        Event.emit(scope.source, {:turn_resumed, decisions})
-        task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
-
-        State.resumed(state, task, scope, turn, started_at)
+        resume_parked(state, journaled(scope), turn, started_at, decisions, by)
 
       :none ->
-        state
+        {:ok, state}
     end
+  end
+
+  defp resume_parked(state, scope, turn, started_at, decisions, by) do
+    decided =
+      for {call, _prompt} <- Parked.calls(turn),
+          Map.has_key?(decisions, call.id),
+          do: Event.new(scope.source, {:call_decided, call.id, decisions[call.id], by})
+
+    with {:ok, state} <- log_ahead(state, decided) do
+      Enum.each(decided, &Bus.publish/1)
+      Event.emit(scope.source, {:turn_resumed, decisions})
+      task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
+
+      {:ok, State.resumed(state, task, scope, turn, started_at)}
+    end
+  end
+
+  # Decisions are written to the log before they take effect, so none takes
+  # effect unrecorded.
+  defp log_ahead(state, events) do
+    Enum.reduce_while(events, {:ok, state}, fn event, {:ok, state} ->
+      case Writer.append_ahead(state.log, event) do
+        {:ok, log} ->
+          {:cont, {:ok, State.logged(state, log)}}
+
+        {:error, reason, log} ->
+          Logger.warning("Decisions for #{state.agent_id} not taken: #{inspect(reason)}")
+          {:halt, {:error, State.logged(state, log)}}
+      end
+    end)
   end
 
   @impl DurableServer
@@ -381,10 +425,11 @@ defmodule Tars.Agent do
     end
   end
 
-  # The agent's own lifecycle events, which is how it follows the delegations
-  # its turn starts. The fleet hears of them only when the summary changes.
+  # The agent's own events, which it writes to its log, and which is how it
+  # follows the delegations its turn starts. The fleet hears of them only when
+  # the summary changes.
   def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
-    next = State.observe(state, event)
+    next = state |> State.observe(event) |> log(event)
 
     if State.meta(next) == State.meta(state), do: {:noreply, next}, else: stay(next)
   end
@@ -394,6 +439,14 @@ defmodule Tars.Agent do
   def handle_info(message, state) do
     Logger.debug("Unhandled message: #{inspect(message)}")
     stay(state)
+  end
+
+  # A write the log could not make is the writer's to report.
+  defp log(state, event) do
+    case Writer.append(state.log, event) do
+      {:ok, log} -> State.logged(state, log)
+      {:error, _reason, log} -> State.logged(state, log)
+    end
   end
 
   defp down(state, ref, reason) do
@@ -505,9 +558,13 @@ defmodule Tars.Agent do
     state
   end
 
-  defp apply_effect({:forget_claims, scope}, state) do
+  defp apply_effect({:close_turn, scope}, state) do
+    %{agent_id: agent_id, log: %{head: through}} = state
+    cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
+
     Task.Supervisor.start_child(Tars.TaskSupervisor, fn ->
-      Tars.Ledger.forget(scope.ledger, scope.source.agent_id, scope.source.trace.trace_id)
+      Tars.Ledger.forget(scope.ledger, agent_id, scope.source.trace.trace_id)
+      Log.trim(agent_id, through, cutoff)
     end)
 
     state

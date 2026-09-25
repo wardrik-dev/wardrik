@@ -173,6 +173,7 @@ defmodule TarsNotify.Slack do
     case Tars.Agent.decide(agent, %{call => decision}, by: by) do
       :ok -> decided(payload, action, user, call, name)
       {:error, :not_found} -> ephemeral("#{agent} is not running.")
+      {:error, :unrecorded} -> ephemeral("#{agent} could not record that, so it was not taken.")
       {:error, _not_waiting} -> ephemeral("That was already answered.")
     end
   end

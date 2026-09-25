@@ -35,7 +35,9 @@ defmodule Tars.Agent.State do
   turn keeps its source, and the events of its resumption land on the trace
   that parked. Its budget starts over when it is resumed.
 
-  Who the work is for is read from the agent's key.
+  Who the work is for is read from the agent's key. How far its
+  `Tars.Event.Log` has got is written down as a sequence number, from which
+  the next owner looks for the head.
 
   Queued messages are held newest-first and reversed when a turn takes them, so
   appending is cheap and the order a caller sees is the order they were asked.
@@ -60,6 +62,7 @@ defmodule Tars.Agent.State do
   alias Tars.Agent.Snapshot
   alias Tars.Delegation
   alias Tars.Event
+  alias Tars.Event.Log.Writer
   alias Tars.Event.Source
   alias Tars.Fleet
   alias Tars.LLM.Config
@@ -141,10 +144,11 @@ defmodule Tars.Agent.State do
   # How many message ids an agent remembers, so one sent again is taken once.
   @recent 256
 
-  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts]
+  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts, :log]
   defstruct [
     :generation,
     :agent_id,
+    :log,
     :config,
     :context,
     :runner,
@@ -192,6 +196,7 @@ defmodule Tars.Agent.State do
   @type t() :: %__MODULE__{
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
+          log: Writer.t(),
           config: Config.t(),
           context: Context.t(),
           runner: runner(),
@@ -212,6 +217,7 @@ defmodule Tars.Agent.State do
   @type dumped() :: %{
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
+          sequence: non_neg_integer(),
           config: Config.dumped(),
           context: Context.t(),
           scope_opts: keyword(),
@@ -233,8 +239,8 @@ defmodule Tars.Agent.State do
     * `{:arm_kill, ms, dropped}` - arm a kill after `ms`, then record it with `arm/4`
     * `{:cancel_kill, timer}` - a turn answered before its kill was needed
     * `{:shutdown, task}` - the kill fired; end the task now
-    * `{:forget_claims, scope}` - a turn has ended for good; its ledger claims
-      will never be read again
+    * `{:close_turn, scope}` - a turn has ended for good: its ledger claims
+      will never be read again, and the log can drop what has aged out
   """
   @type effect() ::
           {:emit, Source.t(), tuple()}
@@ -243,7 +249,7 @@ defmodule Tars.Agent.State do
           | {:arm_kill, pos_integer(), non_neg_integer()}
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
-          | {:forget_claims, Scope.t()}
+          | {:close_turn, Scope.t()}
 
   @typedoc "What an interrupt stopped."
   @type stats() :: %{
@@ -286,6 +292,7 @@ defmodule Tars.Agent.State do
     %__MODULE__{
       generation: generation(),
       agent_id: agent_id,
+      log: Writer.new(agent_id),
       config: Keyword.get(opts, :config, Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
@@ -358,8 +365,12 @@ defmodule Tars.Agent.State do
   def dump(%__MODULE__{} = state) do
     state
     |> Map.from_struct()
-    |> Map.delete(:delegations)
-    |> Map.merge(%{config: Config.dump(state.config), mode: at_rest(state.mode)})
+    |> Map.drop([:delegations, :log])
+    |> Map.merge(%{
+      config: Config.dump(state.config),
+      mode: at_rest(state.mode),
+      sequence: state.log.head
+    })
   end
 
   defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
@@ -379,11 +390,14 @@ defmodule Tars.Agent.State do
 
   @doc "Reads an agent back from `dump/1`, with the tools this node can build."
   @spec load(dumped()) :: t()
-  def load(%{config: config, mode: mode} = dumped) do
+  def load(%{agent_id: agent_id, config: config, mode: mode} = dumped) do
+    {sequence, dumped} = Map.pop(dumped, :sequence, 0)
+
     dumped =
       dumped
       |> Map.put_new_lazy(:generation, &generation/0)
       |> Map.update(:pending, [], &Enum.map(&1, fn message -> queued(message) end))
+      |> Map.put(:log, Writer.new(agent_id, sequence))
 
     struct!(__MODULE__, %{dumped | config: Config.load(config), mode: reopen(mode)})
   end
@@ -397,7 +411,8 @@ defmodule Tars.Agent.State do
   @doc """
   An atomic attachment snapshot; generation survives restarts but not
   deletion. Carries the current turn's delegations, so a client attaching
-  mid-turn sees the work already under way.
+  mid-turn sees the work already under way, and the last sequence its log
+  has written, so the client can follow the log from there.
   """
   @spec snapshot(t()) :: Snapshot.t()
   def snapshot(state) do
@@ -408,7 +423,8 @@ defmodule Tars.Agent.State do
       parked: waiting_on(state),
       trace_id: trace_id(state.mode),
       delegations: state.delegations,
-      outcome: state.outcome
+      outcome: state.outcome,
+      sequence: state.log.head
     }
   end
 
@@ -469,13 +485,19 @@ defmodule Tars.Agent.State do
   end
 
   @doc """
-  Folds one of this agent's own `:lifecycle` events into what it knows of the
-  current turn's delegations.
+  Folds one of this agent's own events into what it knows of the current
+  turn's delegations. Only `:lifecycle` events shape them.
   """
   @spec observe(t(), Event.t()) :: t()
   def observe(%__MODULE__{} = state, %Event{} = event) do
-    %{state | delegations: Delegation.fold(state.delegations, event)}
+    if Event.level(Event.type(event)) == :lifecycle,
+      do: %{state | delegations: Delegation.fold(state.delegations, event)},
+      else: state
   end
+
+  @doc "Records how far this agent's log has got."
+  @spec logged(t(), Writer.t()) :: t()
+  def logged(%__MODULE__{} = state, %Writer{} = log), do: %{state | log: log}
 
   @doc "The calls a waiting agent needs answered, or `[]` when it is not waiting."
   @spec waiting_on(t()) :: [{Tars.Tool.call(), String.t()}]
@@ -645,7 +667,7 @@ defmodule Tars.Agent.State do
     state = %{state | context: Context.append(state.context, messages), outcome: outcome}
 
     {idle(state),
-     [{:emit, running.scope.source, finish(running, messages)}, forget(running.scope)] ++
+     [{:emit, running.scope.source, finish(running, messages)}, close(running.scope)] ++
        disarm(running)}
   end
 
@@ -668,7 +690,7 @@ defmodule Tars.Agent.State do
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
-     [{:emit, running.scope.source, {:turn_failed, reason}}, forget(running.scope)] ++
+     [{:emit, running.scope.source, {:turn_failed, reason}}, close(running.scope)] ++
        disarm(running)}
   end
 
@@ -710,7 +732,7 @@ defmodule Tars.Agent.State do
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, source, {:turn_interrupted, stats(nil, dropped, 0, :abandoned)}},
-       forget(%{turn_scope(state) | source: source})
+       close(%{turn_scope(state) | source: source})
      ]}
   end
 
@@ -721,7 +743,7 @@ defmodule Tars.Agent.State do
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, waiting.source, {:turn_interrupted, stats}},
-       forget(%{turn_scope(state) | source: waiting.source})
+       close(%{turn_scope(state) | source: waiting.source})
      ]}
   end
 
@@ -761,7 +783,7 @@ defmodule Tars.Agent.State do
      [
        {:shutdown, running.task},
        {:emit, running.scope.source, {:turn_interrupted, stats}},
-       forget(running.scope)
+       close(running.scope)
      ]}
   end
 
@@ -790,7 +812,7 @@ defmodule Tars.Agent.State do
 
   defp idle(state), do: %{state | mode: :idle}
 
-  defp forget(%Scope{} = scope), do: {:forget_claims, scope}
+  defp close(%Scope{} = scope), do: {:close_turn, scope}
 
   # A turn that never started has no clock to read, so it reports no time.
   defp stats(started_at, dropped, kept, resolution) do

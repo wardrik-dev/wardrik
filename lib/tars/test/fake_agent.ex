@@ -29,7 +29,8 @@ defmodule Tars.Test.FakeAgent do
        generation: inspect(self()),
        trace_id: nil,
        delegations: Tars.Delegation.new(),
-       outcome: nil
+       outcome: nil,
+       sequence: 0
      }, owner}
   end
 

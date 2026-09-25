@@ -2,6 +2,7 @@ Mimic.copy(ReqLLM)
 Mimic.copy(ReqLLM.StreamResponse)
 Mimic.copy(TarsPolicy.Meter)
 Mimic.copy(TarsDaemon.AgentFile)
+Mimic.copy(Tars.Store)
 
 # `Tars.LLM.Catalog` loads the model database in the background as the
 # application starts, which takes about 1.3s. A lookup made before it finishes

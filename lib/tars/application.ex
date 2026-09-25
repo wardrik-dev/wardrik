@@ -9,6 +9,7 @@ defmodule Tars.Application do
       [
         Tars.LLM.Catalog,
         Tars.Event.Bus,
+        Tars.Event.Log,
         Tars.LLM.ToolRunner,
         {Task.Supervisor, name: Tars.TaskSupervisor}
       ] ++

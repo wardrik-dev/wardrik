@@ -104,7 +104,10 @@ defmodule TarsOAuth.ResumeTest do
 
     test "answers it when the callback comes back", %{owner: owner} do
       {key, _agent} =
-        Fleet.start_agent(runner: {AgentRunners, :parking, [self(), "call_1"]})
+        Fleet.start_agent(
+          runner: {AgentRunners, :parking, [self(), "call_1"]},
+          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+        )
 
       :ok = Event.Bus.subscribe(key)
       :ok = Scope.Context.put(scope(owner, key), call("call_1"))
@@ -117,6 +120,7 @@ defmodule TarsOAuth.ResumeTest do
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
       assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
+      assert_receive {:resumed, %{"call_1" => :approve}}
     end
   end
 
