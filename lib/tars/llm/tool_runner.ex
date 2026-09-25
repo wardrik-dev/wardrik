@@ -44,7 +44,8 @@ defmodule Tars.LLM.ToolRunner do
   running, and reported as `{:tool_replayed, call_id, name, result}`. A call
   claimed and never settled may or may not have had its effect, so it parks as
   `{:pending, call, prompt}`, asking a person whether to run it again, and runs
-  once they approve that; approving a call a policy asked about runs nothing
+  once they approve that, or at once, under the same key, where its tool
+  declares it may run again (see `c:Tars.Tool.in_doubt/1`); approving a call a policy asked about runs nothing
   the ledger holds as begun, and refusing one tells the model what the ledger
   holds, not that it never ran. A call whose claim the ledger cannot answer does
   not run. A tool that stops to ask before doing anything releases its claim.
@@ -319,11 +320,10 @@ defmodule Tars.LLM.ToolRunner do
       {:settled, result} ->
         replayed(call, scope, result)
 
-      {:pending, _entry} when rerun? ->
-        run_claimed(call, scope, ledger, key)
-
       {:pending, _entry} ->
-        pending(call, scope)
+        if rerun? or Config.tool_in_doubt(scope.config, call.name) == :rerun,
+          do: run_claimed(call, scope, ledger, key),
+          else: pending(call, scope)
 
       {:error, reason} ->
         deny(

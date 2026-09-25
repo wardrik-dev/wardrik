@@ -136,6 +136,18 @@ defmodule Tars.LLM.Config do
     Map.get_lazy(config.tool_timeouts, name, fn -> declared(config, name) end)
   end
 
+  @doc """
+  What a call to the named tool does when the ledger holds it as begun and
+  never finished, as the spec that builds it declares: `:rerun`, or `:ask`.
+  See `c:Tars.Tool.in_doubt/1`.
+  """
+  @spec tool_in_doubt(t(), String.t()) :: :ask | :rerun
+  def tool_in_doubt(%__MODULE__{} = config, name) do
+    Enum.find_value(config.tools, :ask, fn spec ->
+      name in Tool.names(spec) and Tool.in_doubt(spec, name)
+    end)
+  end
+
   defp declared(config, name) do
     Enum.find_value(config.tools, fn spec ->
       name in Tool.names(spec) and Tool.timeout(spec)

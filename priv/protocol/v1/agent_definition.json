@@ -23,7 +23,7 @@
       "items": {
         "type": "string"
       },
-      "description": "What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; or * for all of them."
+      "description": "What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them."
     },
     "policy": {
       "oneOf": [

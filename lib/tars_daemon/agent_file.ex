@@ -42,7 +42,10 @@ defmodule TarsDaemon.AgentFile do
     * a tool the daemon ships, by name: #{Enum.map_join(["web_search", "deep_research", "run_lua"], ", ", &"`#{&1}`")}
     * `server/*`, every tool of an MCP server as `config.yaml` names it. A
       server's `only` and `except` narrow what it offers
-    * `*`, every tool the daemon ships and every MCP server connected
+    * `workers/*`, every tool the connected tool workers offer the agent, as
+      `TarsHTTP.Workers` describes them. A policy narrows what it may call
+    * `*`, every tool the daemon ships, every MCP server connected, and every
+      tool worker's tools
     * a module implementing `Tars.Tool`
 
   ## Policy
@@ -234,8 +237,10 @@ defmodule TarsDaemon.AgentFile do
   # Everything a file and a definition say alike, with `identity` the fields
   # each gives its own way. `modules?` lets `tools` and `policy` name modules.
   defp spec(fields, system, policies, modules?, identity) do
+    key = Tars.Fleet.key(identity[:name], org: identity[:org], user: identity[:user])
+
     config =
-      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?)]
+      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, key)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> compaction(fields)
@@ -262,15 +267,22 @@ defmodule TarsDaemon.AgentFile do
 
   # -- tools and servers -----------------------------------------------------
 
-  defp tools(%{"tools" => names}, modules?) when is_list(names),
-    do: names |> Enum.flat_map(&tool!(&1, modules?)) |> Enum.uniq()
+  defp tools(%{"tools" => names}, modules?, key) when is_list(names),
+    do: names |> Enum.flat_map(&tool!(&1, modules?, key)) |> Enum.uniq()
 
-  defp tools(%{"tools" => _names}, _modules?), do: invalid!("tools is a list")
-  defp tools(_fields, _modules?), do: []
+  defp tools(%{"tools" => _names}, _modules?, _key), do: invalid!("tools is a list")
+  defp tools(_fields, _modules?, _key), do: []
 
-  defp tool!("*", _modules?), do: @shipped ++ [{TarsMCP, :*}]
+  defp tool!("*", _modules?, key), do: @shipped ++ [{TarsMCP, :*}, {TarsHTTP.Workers, key}]
+  defp tool!("workers/*", _modules?, key), do: [{TarsHTTP.Workers, key}]
 
-  defp tool!(name, modules?) when is_binary(name) do
+  defp tool!("workers/" <> tool = name, _modules?, _key) do
+    invalid!(
+      "tools names #{name}; name the workers' tools as workers/*, and let a policy deny what is not #{tool}"
+    )
+  end
+
+  defp tool!(name, modules?, _key) when is_binary(name) do
     pattern = Pattern.parse!(name)
 
     cond do
@@ -290,7 +302,8 @@ defmodule TarsDaemon.AgentFile do
     end
   end
 
-  defp tool!(name, _modules?), do: invalid!("tools names #{inspect(name)}, which is not a tool")
+  defp tool!(name, _modules?, _key),
+    do: invalid!("tools names #{inspect(name)}, which is not a tool")
 
   defp shipped!(name, modules?) do
     case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do

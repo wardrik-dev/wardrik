@@ -18,6 +18,30 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     def fetch(_key), do: :error
   end
 
+  # A tool that passes its call's idempotency key on, so it may run again.
+  defmodule Rerunnable do
+    @behaviour Tars.Tool
+
+    @impl true
+    def tool do
+      ReqLLM.Tool.new!(
+        name: "refund",
+        description: "Refunds an order, once per key.",
+        parameter_schema: [],
+        callback: {__MODULE__, :run}
+      )
+    end
+
+    @impl true
+    def in_doubt("refund"), do: :rerun
+
+    def run(_args) do
+      key = Ledger.idempotency_key(Scope.Context.current(), Scope.Context.current_call())
+      send(self(), {:ran, "refund", key})
+      {:ok, %{"refunded" => true}}
+    end
+  end
+
   setup do
     agent_id = Tars.Test.Fleet.key()
     :ok = Event.Bus.subscribe(agent_id)
@@ -98,6 +122,21 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
     assert_received {:ran, "refund"}
 
     assert {:ok, %Ledger.Entry{result: {:ok, _}}} =
+             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "a call claimed and never settled runs again under its key where its tool says it may",
+       %{agent_id: agent_id} do
+    scope = scope(agent_id, [Rerunnable])
+    call = call("call_1", "refund")
+    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+
+    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+
+    key = Ledger.idempotency_key(scope, call)
+    assert_received {:ran, "refund", ^key}
+
+    assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
              Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
   end
 

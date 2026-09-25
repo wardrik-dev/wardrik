@@ -227,6 +227,13 @@ defmodule TarsDaemon.Config do
     end)
   end
 
+  defp prefix!("workers", path),
+    do:
+      invalid!(
+        path,
+        "names its tools with workers, which tool workers' tools are named with; give it another prefix"
+      )
+
   defp prefix!(prefix, path) when is_binary(prefix) do
     if String.contains?(prefix, "__"),
       do: invalid!(path, "names its tools with #{prefix}, and a server's prefix may not hold __")

@@ -1,0 +1,268 @@
+defmodule TarsHTTP.WorkerTest do
+  use ExUnit.Case, async: false
+
+  alias Tars.Ledger
+  alias Tars.LLM.Config
+  alias Tars.LLM.ToolRunner
+  alias Tars.Scope
+  alias TarsHTTP.Listener
+  alias TarsHTTP.Token
+  alias TarsHTTP.Workers
+
+  # A tool worker, as the SDK will be one: it answers Tars's MCP requests, and
+  # tells the test what it was sent.
+  defmodule FakeWorker do
+    @moduledoc false
+    use WebSockex
+
+    def start_link(port, secret, test, tools) do
+      WebSockex.start_link(
+        "ws://127.0.0.1:#{port}/v1/workers",
+        __MODULE__,
+        %{test: test, tools: tools},
+        extra_headers: [{"authorization", "Bearer " <> secret}]
+      )
+    end
+
+    @impl true
+    def handle_frame({:text, text}, state), do: text |> JSON.decode!() |> answer(state)
+
+    @impl true
+    def handle_info({:tools, tools}, state) do
+      notification = %{"jsonrpc" => "2.0", "method" => "notifications/tools/list_changed"}
+      {:reply, {:text, JSON.encode!(notification)}, %{state | tools: tools}}
+    end
+
+    def handle_info({:send, message}, state), do: {:reply, {:text, JSON.encode!(message)}, state}
+
+    defp answer(%{"method" => "initialize", "id" => id}, state) do
+      reply(id, state, %{
+        "protocolVersion" => "2025-06-18",
+        "capabilities" => %{"tools" => %{"listChanged" => true}},
+        "serverInfo" => %{"name" => "fake", "version" => "0"}
+      })
+    end
+
+    defp answer(%{"method" => "tools/list", "id" => id}, state),
+      do: reply(id, state, %{"tools" => state.tools})
+
+    defp answer(%{"method" => "tools/call", "id" => id, "params" => params}, state) do
+      send(state.test, {:called, params})
+
+      case params["name"] do
+        "echo" ->
+          reply(id, state, %{
+            "content" => [%{"type" => "text", "text" => "Echoed."}],
+            "structuredContent" => params["arguments"]
+          })
+
+        "fail" ->
+          reply(id, state, %{
+            "isError" => true,
+            "content" => [%{"type" => "text", "text" => "No such order."}]
+          })
+
+        "hang" ->
+          {:ok, state}
+
+        "leave" ->
+          {:close, state}
+      end
+    end
+
+    defp answer(%{"method" => method} = message, state) do
+      send(state.test, {:notified, method, message["params"]})
+      {:ok, state}
+    end
+
+    defp answer(response, state) do
+      send(state.test, {:answered, response})
+      {:ok, state}
+    end
+
+    defp reply(id, state, result),
+      do:
+        {:reply, {:text, JSON.encode!(%{"jsonrpc" => "2.0", "id" => id, "result" => result})},
+         state}
+  end
+
+  setup do
+    {:ok, secret, _token} = Token.create("worker-test", "test/")
+    listener = :"worker-#{System.unique_integer([:positive])}"
+    start_supervised!({Listener, name: listener, port: 0})
+    {:ok, port} = Listener.port(listener)
+
+    test = self()
+    handler = "worker-test-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler,
+      [:tars, :workers, :listed],
+      fn _event, _measurements, meta, _config ->
+        send(test, {:listed, meta.worker, meta.tools})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    %{port: port, secret: secret, agent: Tars.Test.Fleet.key()}
+  end
+
+  # A worker connected with `secret`, once Tars has offered what it listed.
+  defp connect(%{port: port} = context, tools, secret \\ nil) do
+    worker =
+      start_supervised!(%{
+        id: make_ref(),
+        start: {FakeWorker, :start_link, [port, secret || context.secret, self(), tools]},
+        restart: :temporary
+      })
+
+    assert_receive {:listed, _socket, _names}
+    worker
+  end
+
+  defp tool(name, annotations \\ %{}) do
+    %{
+      "name" => name,
+      "description" => "Does #{name}.",
+      "inputSchema" => %{
+        "type" => "object",
+        "properties" => %{"order" => %{"type" => "string"}}
+      },
+      "annotations" => annotations
+    }
+  end
+
+  defp names(tools), do: Enum.map(tools, & &1.name)
+
+  test "a worker's tools are offered to the agents its token reaches, named for the workers",
+       context do
+    connect(context, [tool("echo"), tool("not a name!")])
+
+    assert names(Workers.tools(context.agent)) == ["workers__echo"]
+    assert Workers.tools("other/_/agent") == []
+  end
+
+  test "a call reaches a worker with its idempotency key, and is answered with what it returned",
+       context do
+    connect(context, [tool("echo")])
+
+    scope =
+      [tools: [{Workers, context.agent}]]
+      |> Config.new()
+      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store)
+
+    call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
+
+    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+
+    key = Ledger.idempotency_key(scope, call)
+
+    assert_receive {:called,
+                    %{
+                      "name" => "echo",
+                      "arguments" => %{"order" => "o_1"},
+                      "_meta" => %{"idempotencyKey" => ^key}
+                    }}
+
+    assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
+             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "a worker's error, and its going away, reach the model as errors", context do
+    connect(context, [tool("fail"), tool("leave")])
+
+    assert Workers.call(context.agent, "fail", %{}) ==
+             {:ok,
+              %{
+                "ok" => false,
+                "error" => %{"code" => "tool_error", "message" => "No such order."}
+              }}
+
+    assert {:ok, %{"ok" => false, "error" => %{"code" => "worker_gone", "message" => message}}} =
+             Workers.call(context.agent, "leave", %{})
+
+    assert message =~ "may already have done what it does"
+  end
+
+  test "a call not answered in time is cancelled", context do
+    previous = Application.get_env(:tars, TarsHTTP, [])
+    Application.put_env(:tars, TarsHTTP, Keyword.put(previous, :worker_timeout, 50))
+    on_exit(fn -> Application.put_env(:tars, TarsHTTP, previous) end)
+
+    connect(context, [tool("hang")])
+
+    assert {:ok, %{"ok" => false, "error" => %{"code" => "timeout"}}} =
+             Workers.call(context.agent, "hang", %{})
+
+    assert_receive {:notified, "notifications/cancelled", %{"requestId" => _id}}
+  end
+
+  test "a call no worker in reach offers does not run", context do
+    connect(context, [tool("echo")], elem(Token.create("elsewhere", "test/only/"), 1))
+
+    assert {:ok, %{"ok" => false, "error" => %{"code" => "no_worker"}}} =
+             Workers.call(context.agent, "echo", %{})
+
+    refute_received {:called, _params}
+  end
+
+  test "a worker is listed again when its tools change", context do
+    worker = connect(context, [tool("echo")])
+
+    send(worker, {:tools, [tool("echo"), tool("refund")]})
+
+    assert_receive {:listed, _socket, ["echo", "refund"]}
+    assert names(Workers.tools(context.agent)) == ["workers__echo", "workers__refund"]
+  end
+
+  test "a tool marked read-only or idempotent may run again, and no other", context do
+    connect(context, [
+      tool("look", %{"readOnlyHint" => true}),
+      tool("refund", %{"idempotentHint" => true}),
+      tool("send")
+    ])
+
+    assert Workers.in_doubt("workers__look") == :rerun
+    assert Workers.in_doubt("workers__refund") == :rerun
+    assert Workers.in_doubt("workers__send") == :ask
+    assert Workers.in_doubt("web_search") == :ask
+  end
+
+  test "a call that began before its agent was lost runs again, under its key, on an idempotent tool",
+       context do
+    connect(context, [tool("echo", %{"idempotentHint" => true})])
+
+    scope =
+      [tools: [{Workers, context.agent}]]
+      |> Config.new()
+      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store)
+
+    call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
+    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+
+    assert {:settled, ^call, _message} = ToolRunner.execute(call, scope)
+
+    key = Ledger.idempotency_key(scope, call)
+    assert_receive {:called, %{"_meta" => %{"idempotencyKey" => ^key}}}
+  end
+
+  test "a worker's ping is answered, and a method Tars does not have is refused", context do
+    worker = connect(context, [tool("echo")])
+
+    send(worker, {:send, %{"jsonrpc" => "2.0", "id" => 7, "method" => "ping"}})
+    assert_receive {:answered, %{"id" => 7, "result" => %{}}}
+
+    send(worker, {:send, %{"jsonrpc" => "2.0", "id" => 8, "method" => "sampling/createMessage"}})
+    assert_receive {:answered, %{"id" => 8, "error" => %{"code" => -32_601}}}
+  end
+
+  test "a request that is not a WebSocket is told to upgrade", %{port: port, secret: secret} do
+    assert {:ok, %{status: 426} = response} =
+             Req.get("http://127.0.0.1:#{port}/v1/workers", auth: {:bearer, secret}, retry: false)
+
+    assert Req.Response.get_header(response, "upgrade") == ["websocket"]
+    assert response.body["error"]["type"] == "upgrade_required"
+  end
+end

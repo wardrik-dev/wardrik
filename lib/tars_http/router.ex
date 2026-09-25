@@ -29,12 +29,30 @@ defmodule TarsHTTP.Router do
   @default_limit 100
   @max_limit 500
 
+  # A worker's socket that carries nothing, not even the pong to a ping, for
+  # this long is closed.
+  @idle :timer.seconds(90)
+
   plug Plug.RequestId, http_header: "request-id"
   plug Plug.Logger
   plug TarsHTTP.Auth
   plug :match
   plug Plug.Parsers, parsers: [:json], json_decoder: JSON, pass: ["*/*"]
   plug :dispatch
+
+  get "/v1/workers" do
+    case WebSockAdapter.UpgradeValidation.validate_upgrade(conn) do
+      :ok ->
+        conn
+        |> WebSockAdapter.upgrade(TarsHTTP.Worker, conn.assigns.token, timeout: @idle)
+        |> halt()
+
+      {:error, _reason} ->
+        conn
+        |> put_resp_header("upgrade", "websocket")
+        |> json(426, Resource.error("upgrade_required", "/v1/workers is a WebSocket."))
+    end
+  end
 
   get "/v1/agents" do
     token = conn.assigns.token

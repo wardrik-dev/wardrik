@@ -27,8 +27,9 @@ config :tars, Tars.Store,
 # A daemon started by a test serves the HTTP API on whatever port is free.
 config :tars, TarsHTTP, port: 0
 
-# Budgets are kept by meters the application starts, as a release does.
-config :tars, :children, [TarsPolicy.Supervisor]
+# Budgets are kept by meters the application starts, as a release does, and
+# tool workers join a group it starts.
+config :tars, :children, [TarsPolicy.Supervisor, TarsHTTP.Workers]
 
 # The MCP client library logs every transport failure at error level. The
 # suite reaches servers that are down on purpose, and the test around each one

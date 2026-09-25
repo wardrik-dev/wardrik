@@ -46,8 +46,9 @@ defmodule Tars.Ledger do
   agent before they run, so a turn lost part way is replayed from that batch
   with the calls it had rather than asking the model again, and the ledger
   answers for each one: a settled call is answered from the ledger without
-  running, and a pending one parks for a person to decide. See
-  `Tars.LLM.Turn`.
+  running, and a pending one parks for a person to decide, or runs again
+  under the same key where its tool declares it may (`c:Tars.Tool.in_doubt/1`).
+  See `Tars.LLM.Turn`.
 
   A tool with an effect outside Tars passes `idempotency_key/2` along to the
   system it calls, so the effect itself is not repeated either:

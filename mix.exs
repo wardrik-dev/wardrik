@@ -104,8 +104,10 @@ defmodule Tars.MixProject do
 
       # Used by lib/tars_http, not by core: Bandit serves the HTTP API and Plug
       # routes it. Req.Test in the suite answers stubs with a %Plug.Conn{} too.
+      # WebSockAdapter upgrades a request to the socket tool workers hold open.
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
+      {:websock_adapter, "~> 0.6.0"},
 
       # Test and dev
       # Dev deps

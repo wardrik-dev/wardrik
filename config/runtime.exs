@@ -13,12 +13,12 @@ if config_env() == :prod do
   end
 end
 
-# A release is the daemon: it starts the budget meters and TarsDaemon beside
-# core, and logs to
+# A release is the daemon: it starts the budget meters, the tool workers'
+# group and TarsDaemon beside core, and logs to
 # TARS_STATE_DIR/log/tars.log, or to the terminal where TARS_LOG is "-".
 if System.get_env("RELEASE_NAME") do
   config :tars, :cluster, [TarsDaemon.Cluster, TarsDaemon.Cluster.Quorum]
-  config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
+  config :tars, :children, [TarsPolicy.Supervisor, TarsHTTP.Workers, TarsDaemon]
 
   # config.yaml's cluster is read here, since what it describes starts before
   # TarsDaemon reads the rest of the file: the topologies that connect this

@@ -80,11 +80,30 @@ defmodule TarsDaemon.AgentFileTest do
     assert Spec.key(spec) == "_/_/triage"
   end
 
-  test "* is every shipped tool and every connected server", context do
+  test "* is every shipped tool, every connected server and the tool workers' tools", context do
     assert {:ok, spec} = read("---\ntools: ['*']\n---\n", context)
 
-    assert spec.config.tools ==
-             [TarsBrave.WebSearch, TarsResearch.Deep, TarsLua.Run, {TarsMCP, :*}]
+    assert spec.config.tools == [
+             TarsBrave.WebSearch,
+             TarsResearch.Deep,
+             TarsLua.Run,
+             {TarsMCP, :*},
+             {TarsHTTP.Workers, "_/_/triage"}
+           ]
+  end
+
+  test "workers/* is every tool the tool workers offer the agent, and * takes them too",
+       context do
+    assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*]\n---\n", context)
+    assert spec.config.tools == [{TarsHTTP.Workers, "acme/_/triage"}]
+
+    assert {:ok, spec} = read("---\ntools: [\"*\"]\n---\n", context)
+    assert {TarsHTTP.Workers, "_/_/triage"} in spec.config.tools
+
+    assert {:error, message} = read("---\ntools: [workers/refund]\n---\n", context)
+
+    assert message =~
+             "name the workers' tools as workers/*, and let a policy deny what is not refund"
   end
 
   test "a tool nothing ships is refused", context do

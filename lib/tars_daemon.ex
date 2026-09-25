@@ -3,12 +3,13 @@ defmodule TarsDaemon do
   The host a `tars` release runs beside core.
 
   The release names it in core's `:children`, after `TarsPolicy.Supervisor`,
-  which keeps the budgets its agents' policies set, so both start once the
+  which keeps the budgets its agents' policies set, and `TarsHTTP.Workers`,
+  the tool workers connected to the cluster, so all three start once the
   fleet is up, and `TarsDaemon.Cluster` in core's `:cluster`, which starts
   before the fleet:
 
       config :tars, :cluster, [TarsDaemon.Cluster, TarsDaemon.Cluster.Quorum]
-      config :tars, :children, [TarsPolicy.Supervisor, TarsDaemon]
+      config :tars, :children, [TarsPolicy.Supervisor, TarsHTTP.Workers, TarsDaemon]
 
   Starting, it reads `config.yaml`, or `config.yml`, from the config directory
   into the settings

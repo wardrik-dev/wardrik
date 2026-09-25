@@ -55,6 +55,7 @@ defmodule TarsHTTP do
   | `POST /v1/agents/{org}/{user}/{name}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
   | `PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
   | `DELETE /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
+  | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
   `TarsHTTP.Resource` shows what each answers.
 
@@ -112,6 +113,16 @@ defmodule TarsHTTP do
   minute, as `"30m"`. `overlap` is `skip`, the default, or `queue`; `missed`
   is `run_once`, the default, or `skip`; `jitter` is up to so many seconds
   added to each run. See `Tars.Schedule`. The agent has to be running.
+
+  ### Tool workers
+
+  A tool worker is an MCP server that dials in: it opens a WebSocket to
+  `/v1/workers` with a token, Tars lists its tools and calls them over it, and
+  it answers each call from its own process. See `TarsHTTP.Worker` for the
+  messages. An agent whose tools include `workers/*` is offered the tools of
+  every worker whose token reaches its key, as `workers__<name>`, and a call
+  carries its idempotency key as `_meta.idempotencyKey`. See
+  `TarsHTTP.Workers`.
 
   ## Every response
 

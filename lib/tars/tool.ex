@@ -99,7 +99,19 @@ defmodule Tars.Tool do
   """
   @callback timeout() :: timeout()
 
-  @optional_callbacks tool: 0, tools: 1, timeout: 0
+  @doc """
+  What a call to the tool `name` does when its turn is replayed and the ledger
+  holds it as begun and never finished, so whether it had its effect is not
+  known: `:ask`, the default, parks it for a person, and `:rerun` runs it
+  again under the same `Tars.Ledger.idempotency_key/2`.
+
+  Optional. Declare `:rerun` for a tool that passes that key on to the system
+  it calls, or that changes nothing, so running it again has no second
+  effect. A source answers for each of its tools by name.
+  """
+  @callback in_doubt(name :: String.t()) :: :ask | :rerun
+
+  @optional_callbacks tool: 0, tools: 1, timeout: 0, in_doubt: 1
 
   @doc """
   Builds every tool in a list of specs, in the order they are named.
@@ -119,6 +131,16 @@ defmodule Tars.Tool do
   end
 
   def timeout(%ReqLLM.Tool{}), do: nil
+
+  @doc "What a spec says a call to its tool `name` does in doubt: `:rerun`, or `:ask`."
+  @spec in_doubt(spec(), String.t()) :: :ask | :rerun
+  def in_doubt({module, _argument}, name) when is_atom(module), do: in_doubt(module, name)
+
+  def in_doubt(module, name) when is_atom(module) do
+    if exports?(module, :in_doubt, 1) and module.in_doubt(name) == :rerun, do: :rerun, else: :ask
+  end
+
+  def in_doubt(%ReqLLM.Tool{}, _name), do: :ask
 
   @doc "Whether this node can build the tools a spec names."
   @spec available?(spec()) :: boolean()

@@ -139,6 +139,18 @@ defmodule TarsDaemon.ConfigTest do
       assert neither =~ "mcp.b needs a command or a url"
     end
 
+    test "a server's tools may not be named for the tool workers", context do
+      assert {:error, named} = read("mcp:\n  workers:\n    command: npx\n", context)
+
+      assert named =~
+               "mcp.workers names its tools with workers, which tool workers' tools are named with"
+
+      assert {:error, prefixed} =
+               read("mcp:\n  notes:\n    command: npx\n    prefix: workers\n", context)
+
+      assert prefixed =~ "mcp.notes names its tools with workers"
+    end
+
     test "a server's name or prefix may not hold __", context do
       assert {:error, named} = read("mcp:\n  my__notes:\n    command: npx\n", context)
       assert named =~ "mcp.my__notes names its tools with my__notes"
