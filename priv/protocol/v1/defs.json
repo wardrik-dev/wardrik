@@ -152,7 +152,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "shell, ssh, terminal, slack or oauth."
+          "description": "shell, ssh, terminal, slack, oauth or token."
         },
         "id": {
           "type": "string"

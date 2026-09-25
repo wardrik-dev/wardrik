@@ -102,6 +102,11 @@ defmodule Tars.MixProject do
       # Slack's Socket Mode, for TarsNotify.
       {:websockex, "~> 0.5.1"},
 
+      # Used by lib/tars_http, not by core: Bandit serves the HTTP API and Plug
+      # routes it. Req.Test in the suite answers stubs with a %Plug.Conn{} too.
+      {:bandit, "~> 1.8"},
+      {:plug, "~> 1.16"},
+
       # Test and dev
       # Dev deps
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -110,9 +115,7 @@ defmodule Tars.MixProject do
       {:ex_crap, "~> 0.1.0", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.8", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:mimic, "~> 1.7", only: :test},
-      # Req.Test answers stubs with a %Plug.Conn{}.
-      {:plug, "~> 1.16", only: :test}
+      {:mimic, "~> 1.7", only: :test}
     ]
   end
 

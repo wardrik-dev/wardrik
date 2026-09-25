@@ -14,6 +14,10 @@ defmodule TarsDaemon.CLI do
   | `schedules [PREFIX]` | every schedule, or those whose key starts with `PREFIX`: when it runs next, and when it last ran and what came of it |
   | `approve KEY CALL` | runs the call, and the agent carries on |
   | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
+  | `token create NAME --scope PREFIX` | a token for the HTTP API that reaches the agents under `PREFIX`, printed once |
+  | `token create NAME --all` | a token that reaches every agent |
+  | `token list` | every token: its id, name and scope |
+  | `token revoke ID` | stops the token working |
 
   A node waiting for a quorum of its cluster answers every command with what
   it is waiting for; see `TarsDaemon.Cluster.waiting/0`.
@@ -22,6 +26,7 @@ defmodule TarsDaemon.CLI do
   alias Tars.Agent
   alias Tars.Fleet
   alias TarsDaemon.Cluster
+  alias TarsHTTP.Token
   alias TarsPolicy.Pattern
 
   @doc """
@@ -108,6 +113,17 @@ defmodule TarsDaemon.CLI do
     decide(key, call, {:deny, reason}, "Denied")
   end
 
+  defp run(["token", "create", name, "--scope", scope]), do: token(name, scope)
+  defp run(["token", "create", name, "--all"]), do: token(name, "")
+  defp run(["token", "list"]), do: ok(tokens())
+
+  defp run(["token", "revoke", id]) do
+    case Token.revoke(id) do
+      :ok -> ok("Revoked #{id}.")
+      {:error, :not_found} -> fail("No token has the id #{id}.")
+    end
+  end
+
   defp run(args), do: fail("tars: no command #{Enum.join(args, " ")}")
 
   # This node and every node connected to it that runs a daemon of its own.
@@ -116,6 +132,37 @@ defmodule TarsDaemon.CLI do
         :erpc.call(daemon, Process, :whereis, [TarsDaemon.Agents]) != nil,
         do: daemon
   end
+
+  defp token(name, scope) do
+    {:ok, secret, token} = Token.create(name, scope)
+
+    ok(
+      Enum.join(
+        [
+          secret,
+          "",
+          "#{token.name} (#{token.id}) reaches #{reach(token.scope)}. " <>
+            "This is the only time it is shown."
+        ],
+        "\n"
+      )
+    )
+  end
+
+  defp tokens do
+    rows =
+      for token <- Token.list(),
+          do: "  #{token.id}  #{token.name}  #{reach(token.scope)}  made #{token.created_at}"
+
+    case rows do
+      [] -> "No tokens. Make one with: tars token create NAME --scope PREFIX"
+      [_row] -> Enum.join(["1 token:" | rows], "\n")
+      rows -> Enum.join(["#{length(rows)} tokens:" | rows], "\n")
+    end
+  end
+
+  defp reach(""), do: "every agent"
+  defp reach(scope), do: "the agents under #{scope}"
 
   defp history(context) do
     case ReqLLM.Context.to_list(context) do

@@ -133,6 +133,36 @@ defmodule Tars.Event.Codec.Value do
   defp count(_key, nil), do: nil
   defp count(key, value), do: %{key => value}
 
+  @doc """
+  A call a run is waiting on a person for, with the prompt it was held with.
+  A model call a dispatch held is not a tool call, and says so.
+  """
+  @spec interrupt({Tars.Tool.call(), String.t()}) :: map()
+  def interrupt({%{id: id, name: "model"}, prompt}),
+    do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
+
+  def interrupt({%{id: id}, prompt}),
+    do: %{"id" => id, "reason" => "tool_approval", "message" => prompt, "tool_call_id" => id}
+
+  @doc """
+  The provider and model a model spec names, however it names them: as
+  `"provider:model"`, a `{provider, options}` pair, or a model struct. The
+  provider is `nil` where the spec does not say.
+  """
+  @spec model(term()) :: {String.t() | nil, String.t()}
+  def model(spec) when is_binary(spec) do
+    case String.split(spec, ":", parts: 2) do
+      [provider, model] -> {provider, model}
+      [model] -> {nil, model}
+    end
+  end
+
+  def model({provider, opts}) when is_atom(provider) and is_list(opts),
+    do: {Atom.to_string(provider), to_string(opts[:model] || opts[:id])}
+
+  def model(%{provider: provider, id: id}), do: {to_string(provider), to_string(id)}
+  def model(spec), do: {nil, inspect(spec)}
+
   @doc "Who decided something."
   @spec principal(Tars.Principal.t() | nil) :: map() | nil
   def principal(nil), do: nil

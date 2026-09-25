@@ -91,6 +91,32 @@ defmodule TarsDaemon.CLITest do
              {"#{key} could not record the decision, so it was not taken.\n", 1}
   end
 
+  test "token create prints a token once; list shows it, and revoke stops it working" do
+    name = "cli-#{System.unique_integer([:positive])}"
+
+    {output, 0} = command(["token", "create", name, "--scope", "acme/"])
+    [secret, "", line, ""] = String.split(output, "\n")
+
+    assert {:ok, token} = TarsHTTP.Token.verify(secret)
+
+    assert line ==
+             "#{name} (#{token.id}) reaches the agents under acme/. This is the only time it is shown."
+
+    {list, 0} = command(["token", "list"])
+    assert list =~ "  #{token.id}  #{name}  the agents under acme/  made #{token.created_at}"
+
+    assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
+    assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
+    assert :error = TarsHTTP.Token.verify(secret)
+  end
+
+  test "token create --all makes a token that reaches every agent" do
+    {output, 0} = command(["token", "create", "everywhere", "--all"])
+
+    assert output =~ "everywhere ("
+    assert output =~ ") reaches every agent."
+  end
+
   test "ask sends the agent a message" do
     test_pid = self()
 

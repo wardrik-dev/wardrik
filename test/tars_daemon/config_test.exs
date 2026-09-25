@@ -167,6 +167,17 @@ defmodule TarsDaemon.ConfigTest do
       assert ip =~ "ssh.ip is an address"
     end
 
+    test "http moves the API", context do
+      assert {:ok, [{TarsHTTP, http}]} = read("http:\n  port: 8080\n  ip: 0.0.0.0\n", context)
+      assert http[:port] == 8080
+      assert http[:ip] == {0, 0, 0, 0}
+
+      assert {:error, ip} = read("http:\n  ip: nowhere\n", context)
+      assert ip =~ "http.ip is an address"
+      assert {:error, key} = read("http:\n  tls: true\n", context)
+      assert key =~ "http.tls is not a setting; expected one of port, ip"
+    end
+
     test "notify names targets, each Slack or a webhook", context do
       yaml = """
       notify:

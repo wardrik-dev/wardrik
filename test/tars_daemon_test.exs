@@ -13,10 +13,13 @@ defmodule TarsDaemonTest do
     end)
   end
 
-  test "starts with no config.yaml at all, running only the agent files", %{tmp_dir: dir} do
+  test "starts with no config.yaml at all, running the agent files and the HTTP API", %{
+    tmp_dir: dir
+  } do
     assert {:ok, pid} = start_supervised({TarsDaemon, config_dir: dir, state_dir: dir})
 
-    assert [{TarsDaemon.Agents, _pid, :worker, _modules}] = Supervisor.which_children(pid)
+    assert [TarsDaemon.Agents, TarsHTTP.Listener] =
+             pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
   end
 
   test "puts config.yaml's settings where each package reads them", %{tmp_dir: dir} do

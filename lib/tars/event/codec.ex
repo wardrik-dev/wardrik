@@ -151,7 +151,10 @@ defmodule Tars.Event.Codec do
   end
 
   defp run({:turn_parked, calls}, event, _opts),
-    do: in_run("run.interrupted", event, %{}, %{"interrupts" => Enum.map(calls, &interrupt/1)})
+    do:
+      in_run("run.interrupted", event, %{}, %{
+        "interrupts" => Enum.map(calls, &Value.interrupt/1)
+      })
 
   defp run({:turn_resumed, _decisions}, event, _opts),
     do: in_run("run.resumed", event, %{}, %{})
@@ -231,7 +234,7 @@ defmodule Tars.Event.Codec do
   # -- assistant messages --------------------------------------------------------
 
   defp message({:model_started, message_id, spec}, _event, _opts) do
-    {provider, model} = model(spec)
+    {provider, model} = Value.model(spec)
 
     data =
       %{"message" => %{"id" => message_id}, "request" => %{"model" => model}}
@@ -289,13 +292,6 @@ defmodule Tars.Event.Codec do
     {type, "runs/" <> trace_id, Map.put(data, "run", Map.put(run, "id", trace_id))}
   end
 
-  # A model call a dispatch parked on is not a tool call, and says so.
-  defp interrupt({%{id: id, name: "model"}, prompt}),
-    do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
-
-  defp interrupt({%{id: id}, prompt}),
-    do: %{"id" => id, "reason" => "tool_approval", "message" => prompt, "tool_call_id" => id}
-
   defp step_subject(event), do: "steps/" <> event.source.trace.span_id
 
   defp subagent(event, data) do
@@ -339,17 +335,4 @@ defmodule Tars.Event.Codec do
 
     {"tool_call.completed", "tool_calls/" <> id, data}
   end
-
-  defp model(spec) when is_binary(spec) do
-    case String.split(spec, ":", parts: 2) do
-      [provider, model] -> {provider, model}
-      [model] -> {nil, model}
-    end
-  end
-
-  defp model({provider, opts}) when is_atom(provider) and is_list(opts),
-    do: {Atom.to_string(provider), to_string(opts[:model] || opts[:id])}
-
-  defp model(%{provider: provider, id: id}), do: {to_string(provider), to_string(id)}
-  defp model(spec), do: {nil, inspect(spec)}
 end

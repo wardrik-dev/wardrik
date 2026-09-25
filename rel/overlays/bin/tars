@@ -61,6 +61,10 @@ Usage: tars [--node NAME] COMMAND
   schedules [PREFIX]         when each schedule runs next, and how it last ran
   approve KEY CALL           run a parked call
   deny KEY CALL [REASON]     refuse a parked call
+  token create NAME (--scope PREFIX | --all)
+                             a token for the HTTP API, printed once
+  token list                 the HTTP API's tokens
+  token revoke ID            stop a token working
   attach [HOST]              the TUI, over SSH to HOST, localhost by default
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
@@ -220,7 +224,7 @@ alive () {
 
 case "${1:-}" in
   serve | start | stop | remote | logs | pid) one_node ;;
-  status | reload | parked | schedules | ask | history | approve | deny) any_node ;;
+  status | reload | parked | schedules | ask | history | approve | deny | token) any_node ;;
 esac
 
 log="${TARS_LOG:-"$(node_state_dir)/log/tars.log"}"
@@ -291,6 +295,10 @@ case "${1:-}" in
     ;;
   deny)
     [ $# -ge 3 ] || { echo "Usage: tars deny KEY CALL [REASON]" >&2; exit 1; }
+    cli "$@"
+    ;;
+  token)
+    [ $# -ge 2 ] || { echo "Usage: tars token create NAME (--scope PREFIX | --all), list, or revoke ID" >&2; exit 1; }
     cli "$@"
     ;;
   attach)

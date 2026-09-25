@@ -67,7 +67,8 @@ defmodule TarsDaemon.Config do
 
   `oauth` takes `client`, `redirect` and `providers`, as `TarsOAuth.Config`
   describes them. `vault` takes `keys`, as `TarsVault` does. `ssh` takes
-  `port` and `ip`, as `TarsDaemon.SSH` does.
+  `port` and `ip`, as `TarsDaemon.SSH` does, and so does `http`, as `TarsHTTP`
+  does.
 
   `cluster` takes `nodes`, or `dns` and `size`, as `TarsDaemon.Cluster`
   describes them, and joins this daemon to others.
@@ -97,14 +98,14 @@ defmodule TarsDaemon.Config do
   @redirect ~w(uri port open)a
   @provider ~w(resource issuer client_id client_secret redirect_uri scopes flow)a
   @vault ~w(keys)a
-  @ssh ~w(port ip)a
+  @listener ~w(port ip)a
   @notifiers %{
     "slack" => {TarsNotify.Slack, ~w(channel token app_token approvers), ~w(channel token)},
     "webhook" => {TarsNotify.Webhook, ~w(url secret), ~w(url)}
   }
 
   @settings Map.new(
-              @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault ++ @ssh,
+              @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault ++ @listener,
               &{Atom.to_string(&1), &1}
             )
 
@@ -115,7 +116,7 @@ defmodule TarsDaemon.Config do
   @redirect_keys Enum.map(@redirect, &Atom.to_string/1)
   @provider_keys Enum.map(@provider, &Atom.to_string/1)
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
-  @ssh_keys Enum.map(@ssh, &Atom.to_string/1)
+  @listener_keys Enum.map(@listener, &Atom.to_string/1)
   @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
 
   @doc "Where `config.yaml` is read from: `TARS_CONFIG_DIR`, or `tars` under the XDG config home."
@@ -192,7 +193,10 @@ defmodule TarsDaemon.Config do
         {TarsVault, vault(table!(vault, ["vault"]))}
 
       {"ssh", ssh} ->
-        {TarsDaemon.SSH, ssh(table!(ssh, ["ssh"]))}
+        {TarsDaemon.SSH, listener(ssh, "ssh")}
+
+      {"http", http} ->
+        {TarsHTTP, listener(http, "http")}
 
       {"notify", targets} ->
         {TarsNotify, targets: targets(table!(targets, ["notify"]))}
@@ -203,7 +207,7 @@ defmodule TarsDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected mcp, oauth, vault, ssh, notify or cluster"
+          "is not a section; expected mcp, oauth, vault, ssh, http, notify or cluster"
         )
     end)
   end
@@ -302,24 +306,27 @@ defmodule TarsDaemon.Config do
 
   defp vault(vault), do: options(vault, @vault_keys, ["vault"])
 
-  defp ssh(ssh) do
-    known!(ssh, @ssh_keys, ["ssh"])
+  # -- listeners -------------------------------------------------------------
 
-    Enum.map(ssh, fn
+  defp listener(listener, section) do
+    listener = table!(listener, [section])
+    known!(listener, @listener_keys, [section])
+
+    Enum.map(listener, fn
       {"port", port} when is_integer(port) and port in 1..65_535 -> {:port, port}
-      {"port", _port} -> invalid!(["ssh", "port"], "is a port number")
-      {"ip", ip} -> {:ip, address!(ip)}
+      {"port", _port} -> invalid!([section, "port"], "is a port number")
+      {"ip", ip} -> {:ip, address!(ip, [section, "ip"])}
     end)
   end
 
-  defp address!(ip) when is_binary(ip) do
+  defp address!(ip, path) when is_binary(ip) do
     case :inet.parse_address(String.to_charlist(ip)) do
       {:ok, address} -> address
-      {:error, _reason} -> invalid!(["ssh", "ip"], "is an address, such as 127.0.0.1 or 0.0.0.0")
+      {:error, _reason} -> invalid!(path, "is an address, such as 127.0.0.1 or 0.0.0.0")
     end
   end
 
-  defp address!(_ip), do: invalid!(["ssh", "ip"], "is an address, such as 127.0.0.1 or 0.0.0.0")
+  defp address!(_ip, path), do: invalid!(path, "is an address, such as 127.0.0.1 or 0.0.0.0")
 
   # -- notify ----------------------------------------------------------------
 
@@ -446,7 +453,11 @@ defmodule TarsDaemon.Config do
   defp table!(nil, _path), do: %{}
 
   defp table!(_value, []),
-    do: invalid!(["the file"], "is a set of sections: mcp, oauth, vault, ssh, notify, cluster")
+    do:
+      invalid!(
+        ["the file"],
+        "is a set of sections: mcp, oauth, vault, ssh, http, notify, cluster"
+      )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")
 

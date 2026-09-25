@@ -12,13 +12,14 @@ defmodule Tars.Principal do
     * `:terminal` - a TUI started in a terminal on the node
     * `:slack` - a Slack user, by their user id
     * `:oauth` - the user an authorization flow finished for
+    * `:token` - a caller of the HTTP API, by the id of the token it presented
   """
 
   @enforce_keys [:type, :id]
   defstruct [:type, :id, :name]
 
   @type t() :: %__MODULE__{
-          type: :shell | :ssh | :terminal | :slack | :oauth | atom(),
+          type: :shell | :ssh | :terminal | :slack | :oauth | :token | atom(),
           id: String.t(),
           name: String.t() | nil
         }

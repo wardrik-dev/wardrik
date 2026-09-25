@@ -24,6 +24,9 @@ config :tars, Tars.Store,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
+# A daemon started by a test serves the HTTP API on whatever port is free.
+config :tars, TarsHTTP, port: 0
+
 # Budgets are kept by meters the application starts, as a release does.
 config :tars, :children, [TarsPolicy.Supervisor]
 
