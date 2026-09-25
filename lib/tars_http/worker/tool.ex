@@ -5,7 +5,7 @@ defmodule TarsHTTP.Worker.Tool do
 
   `in_doubt` is `:rerun` where the worker marks the tool with either of MCP's
   annotations `readOnlyHint` or `idempotentHint`, and `:ask` otherwise; see
-  `c:Tars.Tool.in_doubt/1`.
+  `c:Tars.Tool.in_doubt/2`.
   """
 
   @enforce_keys [:name, :input_schema]

@@ -224,10 +224,28 @@ defmodule TarsHTTP.WorkerTest do
       tool("send")
     ])
 
-    assert Workers.in_doubt("workers__look") == :rerun
-    assert Workers.in_doubt("workers__refund") == :rerun
-    assert Workers.in_doubt("workers__send") == :ask
-    assert Workers.in_doubt("web_search") == :ask
+    assert Workers.in_doubt(context.agent, "workers__look") == :rerun
+    assert Workers.in_doubt(context.agent, "workers__refund") == :rerun
+    assert Workers.in_doubt(context.agent, "workers__send") == :ask
+    assert Workers.in_doubt(context.agent, "workers__absent") == :ask
+    assert Workers.in_doubt(context.agent, "web_search") == :ask
+  end
+
+  test "a worker out of an agent's reach does not decide whether its call runs again", context do
+    {:ok, elsewhere, _token} = Token.create("elsewhere", "other/")
+    connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
+    connect(context, [tool("refund")])
+
+    assert Workers.in_doubt(context.agent, "workers__refund") == :ask
+    assert Workers.in_doubt("other/_/agent", "workers__refund") == :rerun
+  end
+
+  test "a tool runs again only where every worker in reach offering it says it may", context do
+    connect(context, [tool("refund", %{"idempotentHint" => true})])
+    assert Workers.in_doubt(context.agent, "workers__refund") == :rerun
+
+    connect(context, [tool("refund")])
+    assert Workers.in_doubt(context.agent, "workers__refund") == :ask
   end
 
   test "a call that began before its agent was lost runs again, under its key, on an idempotent tool",

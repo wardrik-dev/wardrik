@@ -139,7 +139,7 @@ defmodule Tars.LLM.Config do
   @doc """
   What a call to the named tool does when the ledger holds it as begun and
   never finished, as the spec that builds it declares: `:rerun`, or `:ask`.
-  See `c:Tars.Tool.in_doubt/1`.
+  See `c:Tars.Tool.in_doubt/1` and `c:Tars.Tool.in_doubt/2`.
   """
   @spec tool_in_doubt(t(), String.t()) :: :ask | :rerun
   def tool_in_doubt(%__MODULE__{} = config, name) do

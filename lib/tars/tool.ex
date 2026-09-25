@@ -107,11 +107,17 @@ defmodule Tars.Tool do
 
   Optional. Declare `:rerun` for a tool that passes that key on to the system
   it calls, or that changes nothing, so running it again has no second
-  effect. A source answers for each of its tools by name.
+  effect. A source answers with `c:in_doubt/2` instead.
   """
   @callback in_doubt(name :: String.t()) :: :ask | :rerun
 
-  @optional_callbacks tool: 0, tools: 1, timeout: 0, in_doubt: 1
+  @doc """
+  `c:in_doubt/1` for a source: what a call to its tool `name` does in doubt,
+  asked with the argument the spec named the source with, as `c:tools/1` is.
+  """
+  @callback in_doubt(argument :: term(), name :: String.t()) :: :ask | :rerun
+
+  @optional_callbacks tool: 0, tools: 1, timeout: 0, in_doubt: 1, in_doubt: 2
 
   @doc """
   Builds every tool in a list of specs, in the order they are named.
@@ -134,7 +140,11 @@ defmodule Tars.Tool do
 
   @doc "What a spec says a call to its tool `name` does in doubt: `:rerun`, or `:ask`."
   @spec in_doubt(spec(), String.t()) :: :ask | :rerun
-  def in_doubt({module, _argument}, name) when is_atom(module), do: in_doubt(module, name)
+  def in_doubt({module, argument}, name) when is_atom(module) do
+    if exports?(module, :in_doubt, 2) and module.in_doubt(argument, name) == :rerun,
+      do: :rerun,
+      else: :ask
+  end
 
   def in_doubt(module, name) when is_atom(module) do
     if exports?(module, :in_doubt, 1) and module.in_doubt(name) == :rerun, do: :rerun, else: :ask

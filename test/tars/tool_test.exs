@@ -108,6 +108,48 @@ defmodule Tars.ToolTest do
     end
   end
 
+  describe "in_doubt/2" do
+    defmodule Rerunnable do
+      @behaviour Tars.Tool
+
+      @impl true
+      def tool do
+        ReqLLM.Tool.new!(name: "refund", description: "once", callback: fn _ -> {:ok, %{}} end)
+      end
+
+      @impl true
+      def in_doubt("refund"), do: :rerun
+    end
+
+    defmodule KeyedSource do
+      @behaviour Tars.Tool
+
+      @impl true
+      def tools(_argument), do: []
+
+      @impl true
+      def in_doubt(:mine, "refund"), do: :rerun
+      def in_doubt(_argument, _name), do: :ask
+    end
+
+    test "reads what a module declares for its tool" do
+      assert Tool.in_doubt(Rerunnable, "refund") == :rerun
+    end
+
+    test "asks a source with the argument it was named with" do
+      assert Tool.in_doubt({KeyedSource, :mine}, "refund") == :rerun
+      assert Tool.in_doubt({KeyedSource, :theirs}, "refund") == :ask
+    end
+
+    test "a module or source that declares nothing, or an inline tool, asks" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.in_doubt(EchoTool, "echo") == :ask
+      assert Tool.in_doubt({CountingSource, 3}, "counted_1") == :ask
+      assert Tool.in_doubt(tool, "x") == :ask
+    end
+  end
+
   describe "available?/1" do
     test "a module implementing the behaviour, or an inline tool, is available" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)

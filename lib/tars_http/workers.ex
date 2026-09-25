@@ -19,9 +19,9 @@ defmodule TarsHTTP.Workers do
   `TarsHTTP.Config.worker_timeout/0`. A worker gone before it answers, or one
   that answers late, fails the call, and the model is told it may already
   have done what it does. A call that began before its agent was lost runs
-  again under the same key where the worker marks the tool `readOnlyHint` or
-  `idempotentHint`, and waits for a person otherwise; see
-  `c:Tars.Tool.in_doubt/1`.
+  again under the same key where every worker in the agent's reach that
+  offers the tool marks it `readOnlyHint` or `idempotentHint`, and waits for a
+  person otherwise; see `c:Tars.Tool.in_doubt/2`.
 
   The group of workers is a child the host starts before `TarsHTTP.Listener`:
 
@@ -65,18 +65,19 @@ defmodule TarsHTTP.Workers do
   @impl Tars.Tool
   def timeout, do: TarsHTTP.Config.worker_timeout() + :timer.seconds(5)
 
-  @doc "`:rerun` for a tool a connected worker marks read-only or idempotent, `:ask` otherwise."
+  @doc """
+  `:rerun` for a tool that every worker in reach of the agent under `key`
+  offering it marks read-only or idempotent, `:ask` otherwise.
+  """
   @impl Tars.Tool
-  def in_doubt(@prefix <> name) do
-    rerun? =
-      Enum.any?(Group.members(__MODULE__, @group), fn {_worker, %{tools: tools}} ->
-        Enum.any?(tools, &(&1.name == name and &1.in_doubt == :rerun))
-      end)
-
-    if rerun?, do: :rerun, else: :ask
+  def in_doubt(key, @prefix <> name) when is_binary(key) do
+    case for({_worker, tool} <- offered(key), tool.name == name, do: tool.in_doubt) do
+      [] -> :ask
+      answers -> if Enum.all?(answers, &(&1 == :rerun)), do: :rerun, else: :ask
+    end
   end
 
-  def in_doubt(_name), do: :ask
+  def in_doubt(_key, _name), do: :ask
 
   @doc false
   @spec call(String.t(), String.t(), map()) :: Result.t()
