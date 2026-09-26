@@ -1,4 +1,4 @@
-// A stand-in for a Tars server: it records each request and answers with
+// A stand-in for a Wardrik server: it records each request and answers with
 // what the test gives each route.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -82,12 +82,12 @@ export function event(type: string, data: object, options: { sequence?: number; 
   return {
     specversion: "1.0",
     id: crypto.randomUUID(),
-    source: "tars://test/agents/acme/_/triage",
-    type: `tars.${type}`,
+    source: "wardrik://test/agents/acme/_/triage",
+    type: `wardrik.${type}`,
     subject: "runs/" + run,
     time: new Date().toISOString(),
     datacontenttype: "application/json",
-    dataschema: `urn:tars:schema:v1:${type}`,
+    dataschema: `urn:wardrik:schema:v1:${type}`,
     ...(options.sequence === undefined
       ? {}
       : { sequence: String(options.sequence).padStart(12, "0") }),

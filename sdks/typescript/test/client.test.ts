@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
-import { Tars, TarsError, type TarsEvent } from "../src/index.ts";
+import { Wardrik, WardrikError, type WardrikEvent } from "../src/index.ts";
 import { error, event, fake, json, stream, type Fake } from "./server.ts";
 
 let server: Fake;
-let tars: Tars;
+let wardrik: Wardrik;
 
 const key = "acme/_/triage";
 const path = "/v1/agents/acme/_/triage";
@@ -12,11 +12,11 @@ const snapshot = (sequence: number) => ({ sequence });
 
 beforeEach(async () => {
   server = await fake();
-  tars = new Tars({ url: server.url, token: "tars_secret" });
+  wardrik = new Wardrik({ url: server.url, token: "wardrik_secret" });
 });
 
-const collect = async (events: AsyncIterable<TarsEvent>, count = Infinity) => {
-  const seen: TarsEvent[] = [];
+const collect = async (events: AsyncIterable<WardrikEvent>, count = Infinity) => {
+  const seen: WardrikEvent[] = [];
   for await (const event of events) {
     seen.push(event);
     if (seen.length >= count) break;
@@ -30,14 +30,14 @@ describe("requests", () => {
       json(response, 200, snapshot(3)),
     );
 
-    assert.equal((await tars.agent("acme/a b/tri?age").snapshot()).sequence, 3);
-    assert.equal(server.received[0]!.headers.authorization, "Bearer tars_secret");
+    assert.equal((await wardrik.agent("acme/a b/tri?age").snapshot()).sequence, 3);
+    assert.equal(server.received[0]!.headers.authorization, "Bearer wardrik_secret");
     await server.close();
   });
 
   test("refuse a key that is not three segments", async () => {
-    assert.throws(() => tars.agent("acme/triage"), TypeError);
-    assert.throws(() => tars.agent("acme//triage"), TypeError);
+    assert.throws(() => wardrik.agent("acme/triage"), TypeError);
+    assert.throws(() => wardrik.agent("acme//triage"), TypeError);
     await server.close();
   });
 
@@ -46,8 +46,8 @@ describe("requests", () => {
       json(response, 404, error("not_found", "No agent runs under acme/_/triage.")),
     );
 
-    await assert.rejects(tars.agent(key).snapshot(), (thrown: unknown) => {
-      assert.ok(thrown instanceof TarsError);
+    await assert.rejects(wardrik.agent(key).snapshot(), (thrown: unknown) => {
+      assert.ok(thrown instanceof WardrikError);
       assert.equal(thrown.status, 404);
       assert.equal(thrown.type, "not_found");
       assert.equal(thrown.message, "No agent runs under acme/_/triage.");
@@ -59,22 +59,22 @@ describe("requests", () => {
   });
 
   test("need a token", async () => {
-    const previous = process.env.TARS_TOKEN;
-    delete process.env.TARS_TOKEN;
-    assert.throws(() => new Tars({ url: server.url }), TypeError);
+    const previous = process.env.WARDRIK_TOKEN;
+    delete process.env.WARDRIK_TOKEN;
+    assert.throws(() => new Wardrik({ url: server.url }), TypeError);
 
-    process.env.TARS_TOKEN = "tars_env";
-    assert.doesNotThrow(() => new Tars({ url: server.url }));
+    process.env.WARDRIK_TOKEN = "wardrik_env";
+    assert.doesNotThrow(() => new Wardrik({ url: server.url }));
 
-    if (previous === undefined) delete process.env.TARS_TOKEN;
-    else process.env.TARS_TOKEN = previous;
+    if (previous === undefined) delete process.env.WARDRIK_TOKEN;
+    else process.env.WARDRIK_TOKEN = previous;
     await server.close();
   });
 
   test("put an agent, and answer a handle to it", async () => {
     server.on("PUT", path, (_request, response) => json(response, 201, snapshot(0)));
 
-    const agent = await tars.agents.put(key, { model: "anthropic:claude-sonnet-5" });
+    const agent = await wardrik.agents.put(key, { model: "anthropic:claude-sonnet-5" });
 
     assert.equal(agent.key, key);
     assert.deepEqual(server.received[0]!.body, { model: "anthropic:claude-sonnet-5" });
@@ -96,7 +96,7 @@ describe("requests", () => {
       json(response, 200, { events: [event("run.started", {}, { sequence: 5 })] }),
     );
 
-    const agent = tars.agent(key);
+    const agent = wardrik.agent(key);
 
     assert.deepEqual(await agent.send("hi", { id: "m1" }), { id: "m1" });
     await agent.schedule("sweep", { every: "*/30 * * * *", prompt: "Look." });
@@ -132,12 +132,12 @@ describe("events", () => {
     );
     server.on("GET", path + "/events", stream([event("run.completed", {}, { sequence: 9 })], { end: false }));
 
-    const events = tars.agent(key).events();
+    const events = wardrik.agent(key).events();
     const seen = await collect(events, 3);
 
     assert.deepEqual(
       seen.map((event) => event.type),
-      ["tars.run.started", "tars.message.delta", "tars.run.completed"],
+      ["wardrik.run.started", "wardrik.message.delta", "wardrik.run.completed"],
     );
 
     const cursors = server.received
@@ -154,8 +154,8 @@ describe("events", () => {
       json(response, 410, error("gap", "Events before 3 have been dropped.", { oldest: 3 })),
     );
 
-    await assert.rejects(collect(tars.agent(key).events({ after: 0 })), (thrown: unknown) => {
-      assert.ok(thrown instanceof TarsError);
+    await assert.rejects(collect(wardrik.agent(key).events({ after: 0 })), (thrown: unknown) => {
+      assert.ok(thrown instanceof WardrikError);
       assert.equal(thrown.type, "gap");
       assert.equal(thrown.oldest, 3);
       return true;
@@ -167,7 +167,7 @@ describe("events", () => {
   test("end when their signal aborts", async () => {
     server.on("GET", path + "/events", stream([], { end: false }));
     const stop = new AbortController();
-    const events = tars.agent(key).events({ after: 0, signal: stop.signal });
+    const events = wardrik.agent(key).events({ after: 0, signal: stop.signal });
 
     const done = collect(events);
     await events.opened;
@@ -206,7 +206,7 @@ describe("ask", () => {
       json(response, 202, { message: { id: "m1" } }),
     );
 
-    const seen = await collect(tars.agent(key).ask("hi", { id: "m1" }));
+    const seen = await collect(wardrik.agent(key).ask("hi", { id: "m1" }));
 
     assert.deepEqual(
       server.received.map((request) => `${request.method} ${request.path}`),
@@ -216,13 +216,13 @@ describe("ask", () => {
     assert.deepEqual(
       seen.map((event) => event.type),
       [
-        "tars.message.created",
-        "tars.run.started",
-        "tars.run.interrupted",
-        "tars.agent.started",
-        "tars.run.resumed",
-        "tars.message.delta",
-        "tars.run.completed",
+        "wardrik.message.created",
+        "wardrik.run.started",
+        "wardrik.run.interrupted",
+        "wardrik.agent.started",
+        "wardrik.run.resumed",
+        "wardrik.message.delta",
+        "wardrik.run.completed",
       ],
     );
 
@@ -236,7 +236,7 @@ describe("ask", () => {
       json(response, 400, error("invalid_request", "A message has text to send")),
     );
 
-    await assert.rejects(collect(tars.agent(key).ask("")), TarsError);
+    await assert.rejects(collect(wardrik.agent(key).ask("")), WardrikError);
     await server.close();
   });
 });

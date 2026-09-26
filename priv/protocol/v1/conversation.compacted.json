@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:conversation.compacted",
-  "title": "tars.conversation.compacted",
+  "$id": "urn:wardrik:schema:v1:conversation.compacted",
+  "title": "wardrik.conversation.compacted",
   "description": "The older part of the conversation was summarised.",
   "type": "object",
   "properties": {

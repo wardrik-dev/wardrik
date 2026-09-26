@@ -545,40 +545,40 @@ export interface ToolCallStartedData {
 
 /** Each event type, and the data its events carry. */
 export interface EventData {
-  "tars.agent.started": AgentStartedData;
-  "tars.conversation.compacted": ConversationCompactedData;
-  "tars.interrupt.resolved": InterruptResolvedData;
-  "tars.message.completed": MessageCompletedData;
-  "tars.message.created": MessageCreatedData;
-  "tars.message.delta": MessageDeltaData;
-  "tars.message.started": MessageStartedData;
-  "tars.reasoning.delta": ReasoningDeltaData;
-  "tars.run.cancelled": RunCancelledData;
-  "tars.run.completed": RunCompletedData;
-  "tars.run.deadline_exceeded": RunDeadlineExceededData;
-  "tars.run.failed": RunFailedData;
-  "tars.run.interrupted": RunInterruptedData;
-  "tars.run.resumed": RunResumedData;
-  "tars.run.started": RunStartedData;
-  "tars.schedule.triggered": ScheduleTriggeredData;
-  "tars.step.completed": StepCompletedData;
-  "tars.step.started": StepStartedData;
-  "tars.subagent.completed": SubagentCompletedData;
-  "tars.subagent.failed": SubagentFailedData;
-  "tars.subagent.started": SubagentStartedData;
-  "tars.tool_call.completed": ToolCallCompletedData;
-  "tars.tool_call.denied": ToolCallDeniedData;
-  "tars.tool_call.progress": ToolCallProgressData;
-  "tars.tool_call.started": ToolCallStartedData;
+  "wardrik.agent.started": AgentStartedData;
+  "wardrik.conversation.compacted": ConversationCompactedData;
+  "wardrik.interrupt.resolved": InterruptResolvedData;
+  "wardrik.message.completed": MessageCompletedData;
+  "wardrik.message.created": MessageCreatedData;
+  "wardrik.message.delta": MessageDeltaData;
+  "wardrik.message.started": MessageStartedData;
+  "wardrik.reasoning.delta": ReasoningDeltaData;
+  "wardrik.run.cancelled": RunCancelledData;
+  "wardrik.run.completed": RunCompletedData;
+  "wardrik.run.deadline_exceeded": RunDeadlineExceededData;
+  "wardrik.run.failed": RunFailedData;
+  "wardrik.run.interrupted": RunInterruptedData;
+  "wardrik.run.resumed": RunResumedData;
+  "wardrik.run.started": RunStartedData;
+  "wardrik.schedule.triggered": ScheduleTriggeredData;
+  "wardrik.step.completed": StepCompletedData;
+  "wardrik.step.started": StepStartedData;
+  "wardrik.subagent.completed": SubagentCompletedData;
+  "wardrik.subagent.failed": SubagentFailedData;
+  "wardrik.subagent.started": SubagentStartedData;
+  "wardrik.tool_call.completed": ToolCallCompletedData;
+  "wardrik.tool_call.denied": ToolCallDeniedData;
+  "wardrik.tool_call.progress": ToolCallProgressData;
+  "wardrik.tool_call.started": ToolCallStartedData;
 }
 
 /** An event's type, as its CloudEvent names it. */
 export type EventType = keyof EventData;
 
-/** A Tars event: a CloudEvent whose data is its type's. */
-export type TarsEvent = {
+/** A Wardrik event: a CloudEvent whose data is its type's. */
+export type WardrikEvent = {
   [T in EventType]: Omit<Envelope, "type" | "data"> & { type: T; data: EventData[T] };
 }[EventType];
 
 /** The event of one type. */
-export type EventOf<T extends EventType> = Extract<TarsEvent, { type: T }>;
+export type EventOf<T extends EventType> = Extract<WardrikEvent, { type: T }>;

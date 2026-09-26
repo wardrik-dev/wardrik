@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:tool_call.completed",
-  "title": "tars.tool_call.completed",
+  "$id": "urn:wardrik:schema:v1:tool_call.completed",
+  "title": "wardrik.tool_call.completed",
   "description": "A tool call answered, or was answered from the ledger when replayed.",
   "type": "object",
   "properties": {
     "tool": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/tool"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
     },
     "status": {
       "type": "string",
@@ -16,7 +16,7 @@
       ]
     },
     "error": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
     },
     "replayed": {
       "type": "boolean"

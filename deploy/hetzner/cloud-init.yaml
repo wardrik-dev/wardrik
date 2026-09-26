@@ -1,7 +1,7 @@
 #cloud-config
 #
-# A Hetzner box for rehearsing the demo: three tars nodes, a, b and c, on one
-# machine, each a systemd unit of the tars user's own, sharing one install and
+# A Hetzner box for rehearsing the demo: three wardrik nodes, a, b and c, on one
+# machine, each a systemd unit of the wardrik user's own, sharing one install and
 # one config directory. It holds nothing of anyone's: the SSH key is the one
 # the server is created with, and the Slack channel and every secret come from
 # the env file it is given.
@@ -9,30 +9,30 @@
 # deploy/hetzner/bootstrap.sh does everything below, and teardown.sh undoes it.
 # By hand, create it with SSH open to all and the TUI's port to you alone:
 #
-#   hcloud firewall create --name tars
-#   hcloud firewall add-rule tars --direction in --protocol tcp --port 22 \
+#   hcloud firewall create --name wardrik
+#   hcloud firewall add-rule wardrik --direction in --protocol tcp --port 22 \
 #     --source-ips 0.0.0.0/0 --source-ips ::/0
-#   hcloud firewall add-rule tars --direction in --protocol tcp --port 2222 \
+#   hcloud firewall add-rule wardrik --direction in --protocol tcp --port 2222 \
 #     --source-ips "$(curl -s https://ipv4.icanhazip.com)/32"
 #   hcloud ssh-key create --name me --public-key-from-file ~/.ssh/id_rsa.pub
-#   hcloud server create --name tars-demo --type cx23 --image ubuntu-24.04 \
-#     --ssh-key me --firewall tars --user-data-from-file deploy/hetzner/cloud-init.yaml
+#   hcloud server create --name wardrik-demo --type cx23 --image ubuntu-24.04 \
+#     --ssh-key me --firewall wardrik --user-data-from-file deploy/hetzner/cloud-init.yaml
 #
-# The key the server is created with lets you in as tars, and into the TUI.
+# The key the server is created with lets you in as wardrik, and into the TUI.
 #
 # Then give it the release CI built from main, which is built on Ubuntu 24.04
-# as this box is, and the keys the daemon reads, as ~/.config/tars/env holds
+# as this box is, and the keys the daemon reads, as ~/.config/wardrik/env holds
 # them here, with SLACK_CHANNEL added: the id of a channel the bot is in. The
 # box keeps a vault key of its own, so the env file's goes unused:
 #
 #   run=$(gh run list --repo jonlunsford/tars --branch main --workflow CI --status success \
 #     --limit 1 --json databaseId --jq '.[0].databaseId')
-#   gh run download "$run" --repo jonlunsford/tars -n tars-0.1.0-linux-x86_64.tar.gz
-#   scp tars-0.1.0-linux-x86_64.tar.gz ~/.config/tars/env tars@BOX:
-#   ssh tars@BOX 'tar -xzf tars-*.tar.gz -C ~/tars && install -m 600 env ~/.config/tars/env \
-#     && rm env && systemctl --user enable --now tars@a tars@b tars@c'
+#   gh run download "$run" --repo jonlunsford/tars -n wardrik-0.1.0-linux-x86_64.tar.gz
+#   scp wardrik-0.1.0-linux-x86_64.tar.gz ~/.config/wardrik/env wardrik@BOX:
+#   ssh wardrik@BOX 'tar -xzf wardrik-*.tar.gz -C ~/wardrik && install -m 600 env ~/.config/wardrik/env \
+#     && rm env && systemctl --user enable --now wardrik@a wardrik@b wardrik@c'
 #
-#   ssh tars@BOX tars/bin/tars status   # cluster of 3: a, b, c up
+#   ssh wardrik@BOX wardrik/bin/wardrik status   # cluster of 3: a, b, c up
 #   ssh -p 2222 jon@BOX                 # the TUI, from whichever node serves SSH
 #
 # A daemon elsewhere connected to the same Slack app shares its button
@@ -40,7 +40,7 @@
 
 users:
   - default
-  - name: tars
+  - name: wardrik
     shell: /bin/bash
     lock_passwd: true
 
@@ -53,39 +53,39 @@ write_files:
   # The nodes find one another through epmd. It runs as a unit of its own,
   # listening on loopback, so stopping or killing whichever node started first
   # does not take it, and every other node's name, with it.
-  - path: /home/tars/.config/systemd/user/epmd.service
-    owner: tars:tars
+  - path: /home/wardrik/.config/systemd/user/epmd.service
+    owner: wardrik:wardrik
     defer: true
     content: |
       [Unit]
-      Description=epmd, for the tars nodes
+      Description=epmd, for the wardrik nodes
 
       [Service]
-      ExecStart=/bin/sh -c 'exec %h/tars/erts-*/bin/epmd -address 127.0.0.1'
+      ExecStart=/bin/sh -c 'exec %h/wardrik/erts-*/bin/epmd -address 127.0.0.1'
       Restart=on-failure
 
-  # Each node is tars@NAME: TARS_NODE names it, and it logs where
-  # `tars logs --node NAME` reads. `tars stop` stops it, so a node that has lost
+  # Each node is wardrik@NAME: WARDRIK_NODE names it, and it logs where
+  # `wardrik logs --node NAME` reads. `wardrik stop` stops it, so a node that has lost
   # its quorum halts at once rather than waiting out writes it cannot make. A
   # node that dies is started again.
-  - path: /home/tars/.config/systemd/user/tars@.service
-    owner: tars:tars
+  - path: /home/wardrik/.config/systemd/user/wardrik@.service
+    owner: wardrik:wardrik
     defer: true
     content: |
       [Unit]
-      Description=tars node %i
+      Description=wardrik node %i
       Requires=epmd.service
       After=epmd.service
 
       [Service]
       Type=exec
-      Environment=TARS_NODE=%i LANG=C.UTF-8
-      Environment=TARS_LOG=%h/.local/state/tars/nodes/%i/log/tars.log
+      Environment=WARDRIK_NODE=%i LANG=C.UTF-8
+      Environment=WARDRIK_LOG=%h/.local/state/wardrik/nodes/%i/log/wardrik.log
       Environment="ELIXIR_ERL_OPTIONS=-start_epmd false"
-      EnvironmentFile=%h/.config/tars/env
-      EnvironmentFile=-%h/.config/tars/vault.env
-      ExecStart=%h/tars/bin/tars serve
-      ExecStop=%h/tars/bin/tars stop
+      EnvironmentFile=%h/.config/wardrik/env
+      EnvironmentFile=-%h/.config/wardrik/vault.env
+      ExecStart=%h/wardrik/bin/wardrik serve
+      ExecStop=%h/wardrik/bin/wardrik stop
       TimeoutStopSec=90
       Restart=on-failure
       RestartSec=5
@@ -93,8 +93,8 @@ write_files:
       [Install]
       WantedBy=default.target
 
-  - path: /home/tars/.config/tars/config.yaml
-    owner: tars:tars
+  - path: /home/wardrik/.config/wardrik/config.yaml
+    owner: wardrik:wardrik
     defer: true
     content: |
       cluster:
@@ -127,7 +127,7 @@ write_files:
             scopes: [repo]
 
       vault:
-        keys: ["${TARS_VAULT_KEY}"]
+        keys: ["${WARDRIK_VAULT_KEY}"]
 
       notify:
         demo:
@@ -136,8 +136,8 @@ write_files:
             token: ${SLACK_BOT_TOKEN}
             app_token: ${SLACK_APP_TOKEN}
 
-  - path: /home/tars/.config/tars/agents/triage.md
-    owner: tars:tars
+  - path: /home/wardrik/.config/wardrik/agents/triage.md
+    owner: wardrik:wardrik
     defer: true
     content: |
       ---
@@ -165,30 +165,30 @@ write_files:
       a body saying what the commit said and linking it. Otherwise answer in
       one line. When a person asks you to open an issue, open it.
 
-  - path: /home/tars/.profile
-    owner: tars:tars
+  - path: /home/wardrik/.profile
+    owner: wardrik:wardrik
     defer: true
     append: true
     content: |
-      export PATH="$HOME/tars/bin:$PATH"
+      export PATH="$HOME/wardrik/bin:$PATH"
 
 runcmd:
-  - [chown, -R, "tars:tars", /home/tars]
-  - [install, -d, -o, tars, -g, tars, /home/tars/tars]
-  # The keys the server was created with let a person in as tars, and into the
+  - [chown, -R, "wardrik:wardrik", /home/wardrik]
+  - [install, -d, -o, wardrik, -g, wardrik, /home/wardrik/wardrik]
+  # The keys the server was created with let a person in as wardrik, and into the
   # TUI, which lets in whoever holds a key its authorized_keys lists.
   - |
     keys=$(cloud-init query public_ssh_keys 2>/dev/null \
       | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)))' 2>/dev/null)
     [ -n "$keys" ] || keys=$(cat /root/.ssh/authorized_keys 2>/dev/null)
-    for dir in /home/tars/.ssh /home/tars/.config/tars/ssh; do
-      install -d -m 700 -o tars -g tars "$dir"
+    for dir in /home/wardrik/.ssh /home/wardrik/.config/wardrik/ssh; do
+      install -d -m 700 -o wardrik -g wardrik "$dir"
       printf '%s\n' "$keys" > "$dir/authorized_keys"
-      chown tars:tars "$dir/authorized_keys"
+      chown wardrik:wardrik "$dir/authorized_keys"
       chmod 600 "$dir/authorized_keys"
     done
   # The box's own vault key, which seals the tokens users authorize with here
   # and never leaves it.
-  - su - tars -c 'umask 077 && echo "TARS_VAULT_KEY=$(openssl rand -base64 32)" > ~/.config/tars/vault.env'
-  # The tars user's systemd runs from boot, not only while someone is logged in.
-  - [loginctl, enable-linger, tars]
+  - su - wardrik -c 'umask 077 && echo "WARDRIK_VAULT_KEY=$(openssl rand -base64 32)" > ~/.config/wardrik/vault.env'
+  # The wardrik user's systemd runs from boot, not only while someone is logged in.
+  - [loginctl, enable-linger, wardrik]

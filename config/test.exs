@@ -2,38 +2,38 @@ import Config
 
 config :logger, level: :warning
 
-config :tars, TarsBrave,
+config :wardrik, WardrikBrave,
   api_key: "test-brave-api-key",
   base_url: "https://brave.test",
-  req_options: [plug: {Req.Test, TarsBrave.Stub}, retry: false]
+  req_options: [plug: {Req.Test, WardrikBrave.Stub}, retry: false]
 
-config :tars, TarsNotify, req_options: [plug: {Req.Test, TarsNotify.Stub}]
+config :wardrik, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]
 
 # A connection that retries, or waits out a burst of tool changes, does so in
 # milliseconds rather than a second or a quarter of one.
-config :tars, TarsMCP, first_retry: 10, refresh_after: 10
+config :wardrik, WardrikMCP, first_retry: 10, refresh_after: 10
 
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
-config :tars, Tars.Store,
-  adapter: Tars.Store.EKV,
+config :wardrik, Wardrik.Store,
+  adapter: Wardrik.Store.EKV,
   data_dir:
     Path.join([
       System.tmp_dir!(),
-      "tars-test",
+      "wardrik-test",
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
 # OAuth hosts resolve without DNS, and a device flow polls as often as the
 # test's stub server asks.
-config :tars, TarsOAuth, resolver: TarsOAuth.Case.Resolver, poll_floor: 0
+config :wardrik, WardrikOAuth, resolver: WardrikOAuth.Case.Resolver, poll_floor: 0
 
 # A daemon started by a test serves the HTTP API on whatever port is free.
-config :tars, TarsHTTP, port: 0
+config :wardrik, WardrikHTTP, port: 0
 
 # Budgets are kept by meters the application starts, as a release does, and
 # tool workers join a group it starts.
-config :tars, :children, [TarsPolicy.Supervisor, TarsHTTP.Workers]
+config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers]
 
 # The MCP client library logs every transport failure at error level. The
 # suite reaches servers that are down on purpose, and the test around each one

@@ -7,7 +7,7 @@ import { compile, type JSONSchema } from "json-schema-to-typescript";
 
 const schemas = new URL("../../../priv/protocol/v1/", import.meta.url);
 const target = new URL("../src/protocol.ts", import.meta.url);
-const defsRef = "urn:tars:schema:v1:defs#/$defs/";
+const defsRef = "urn:wardrik:schema:v1:defs#/$defs/";
 
 type Schema = { [key: string]: unknown };
 
@@ -84,7 +84,7 @@ const compiled = await compile(root as JSONSchema, "Protocol", {
 const eventMap = events
   .map((file) => {
     const type = file.replace(/\.json$/, "");
-    return `  "tars.${type}": ${pascal(type)}Data;`;
+    return `  "wardrik.${type}": ${pascal(type)}Data;`;
   })
   .join("\n");
 
@@ -107,13 +107,13 @@ ${eventMap}
 /** An event's type, as its CloudEvent names it. */
 export type EventType = keyof EventData;
 
-/** A Tars event: a CloudEvent whose data is its type's. */
-export type TarsEvent = {
+/** A Wardrik event: a CloudEvent whose data is its type's. */
+export type WardrikEvent = {
   [T in EventType]: Omit<Envelope, "type" | "data"> & { type: T; data: EventData[T] };
 }[EventType];
 
 /** The event of one type. */
-export type EventOf<T extends EventType> = Extract<TarsEvent, { type: T }>;
+export type EventOf<T extends EventType> = Extract<WardrikEvent, { type: T }>;
 `;
 
 if (process.argv.includes("--check")) {

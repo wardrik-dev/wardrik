@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:error",
+  "$id": "urn:wardrik:schema:v1:error",
   "title": "An error",
   "description": "What every answer of 400 and above holds. A 410 adds oldest, the first sequence the log still holds.",
   "type": "object",

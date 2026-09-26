@@ -1,7 +1,7 @@
-# Tars SDK for TypeScript
+# Wardrik SDK for TypeScript
 
-Drives Tars agents over the daemon's HTTP API, and offers them tools that run
-in your own process. `@tars/sdk` is a working name; the package is not
+Drives Wardrik agents over the daemon's HTTP API, and offers them tools that run
+in your own process, as the npm package `@wardrik/sdk`, which is not
 published yet.
 
 Node 22.18 or later, Bun or Deno. `zod` 4 is a peer dependency, for tool
@@ -10,15 +10,15 @@ inputs.
 ## Connecting
 
 ```ts
-import { Tars } from "@tars/sdk";
+import { Wardrik } from "@wardrik/sdk";
 
-const tars = new Tars(); // TARS_URL, else http://127.0.0.1:4747; TARS_TOKEN
+const wardrik = new Wardrik(); // WARDRIK_URL, else http://127.0.0.1:4747; WARDRIK_TOKEN
 ```
 
-A token comes from the daemon: `tars token create NAME --scope acme/`. It
+A token comes from the daemon: `wardrik token create NAME --scope acme/`. It
 reaches the agents whose keys start with its scope, and takes the actions it
 was made with, all of them unless `--can` names fewer. An action it was not
-granted throws a `TarsError` of type `forbidden`, and a revoked token closes
+granted throws a `WardrikError` of type `forbidden`, and a revoked token closes
 its streams and workers.
 
 ## Agents
@@ -26,16 +26,16 @@ its streams and workers.
 An agent's key is `org/user/name`, with `_` for none.
 
 ```ts
-const agent = await tars.agents.put("acme/_/triage", {
+const agent = await wardrik.agents.put("acme/_/triage", {
   model: "anthropic:claude-sonnet-5",
   instructions: "You watch the incident queue.",
   tools: ["linear/*", "workers/*"],
 });
 
 for await (const event of agent.ask("What's on fire?")) {
-  if (event.type === "tars.message.delta") process.stdout.write(event.data.delta);
+  if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
 
-  if (event.type === "tars.run.interrupted") {
+  if (event.type === "wardrik.run.interrupted") {
     for (const interrupt of event.data.interrupts) await agent.approve(interrupt.id);
   }
 }
@@ -46,7 +46,7 @@ await agent.schedule("sweep", { every: "*/30 * * * *", prompt: "Check the queue.
 `ask` sends a message and gives the events of the run that answers it, until
 that run completes, fails or is cancelled. `send` only queues the message.
 `snapshot`, `page`, `reject`, `cancel`, `unschedule` and `delete` are one
-request each, and `tars.agents.list()` lists what the token reaches.
+request each, and `wardrik.agents.list()` lists what the token reaches.
 
 An interrupt with reason `authorization` waits for a person to connect an
 account. No event carries the link: `agent.authorization(interrupt.id)`
@@ -55,8 +55,8 @@ The call carries on by itself once the person has connected.
 
 ## Events
 
-Every event is a CloudEvent whose `type` is `tars.<noun>.<verb>`, and
-`TarsEvent` is a union over `type`, so a check of `event.type` narrows
+Every event is a CloudEvent whose `type` is `wardrik.<noun>.<verb>`, and
+`WardrikEvent` is a union over `type`, so a check of `event.type` narrows
 `event.data`.
 
 ```ts
@@ -71,8 +71,8 @@ A stream reconnects after any drop, a `kill -9` of the node included, and
 resumes after the last durable event it gave, `events.sequence`. Left without
 `after`, it starts after the last event the agent had written. Live events
 (text and reasoning deltas, tool progress) are not sent again after a
-reconnect; `tars.message.completed` carries the whole text. When the log no
-longer holds what comes after the cursor, the stream throws a `TarsError` of
+reconnect; `wardrik.message.completed` carries the whole text. When the log no
+longer holds what comes after the cursor, the stream throws a `WardrikError` of
 type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 
 ## Tools
@@ -80,7 +80,7 @@ type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 ```ts
 import { z } from "zod";
 
-tars.tool({
+wardrik.tool({
   name: "refund_order",
   description: "Refund an order in full.",
   input: z.object({ orderId: z.string() }),
@@ -89,7 +89,7 @@ tars.tool({
     stripe.refunds.create({ payment_intent: orderId }, { idempotencyKey }),
 });
 
-await tars.work();
+await wardrik.work();
 ```
 
 `work` holds a WebSocket to the daemon open and answers calls over it, as an
@@ -110,7 +110,7 @@ daemon stops waiting for the call.
 
 ## Errors
 
-A request the API refuses throws a `TarsError`, with the answer's `status`,
+A request the API refuses throws a `WardrikError`, with the answer's `status`,
 its `type` (`not_found`, `conflict`, `gap` and so on), and its `requestId`.
 
 ## Types

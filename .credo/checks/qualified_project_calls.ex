@@ -1,8 +1,8 @@
-defmodule Tars.Credo.Check.QualifiedProjectCalls do
+defmodule Wardrik.Credo.Check.QualifiedProjectCalls do
   use Credo.Check,
     base_priority: :high,
     category: :design,
-    param_defaults: [namespaces: ["Tars"]],
+    param_defaults: [namespaces: ["Wardrik"]],
     explanations: [
       check: """
       A call into a project module is written with the module fully qualified,
@@ -10,20 +10,20 @@ defmodule Tars.Credo.Check.QualifiedProjectCalls do
       alias of a parent namespace.
 
           # through a parent alias
-          alias Tars.LLM
+          alias Wardrik.LLM
           LLM.Turn.yield(pid)
 
           # the module itself
-          alias Tars.LLM.Turn
+          alias Wardrik.LLM.Turn
           Turn.yield(pid)
 
           # or spelled out
-          Tars.LLM.Turn.yield(pid)
+          Wardrik.LLM.Turn.yield(pid)
 
       The architecture policy in `.reach.exs` is checked against the call graph
       `mix reach.check --arch` builds, and that graph records the target of a
-      call as it is written. `LLM.Turn.yield/1` is not a module under `Tars.*`,
-      so a rule about `Tars.LLM.Turn` never sees the call. Every rule keyed on a
+      call as it is written. `LLM.Turn.yield/1` is not a module under `Wardrik.*`,
+      so a rule about `Wardrik.LLM.Turn` never sees the call. Every rule keyed on a
       callee module has the same gap, and this check closes it at the source.
       """,
       params: [
@@ -45,7 +45,7 @@ defmodule Tars.Credo.Check.QualifiedProjectCalls do
     end
   end
 
-  # alias Tars.LLM, as: L
+  # alias Wardrik.LLM, as: L
   defp collect(
          {:alias, _, [{:__aliases__, _, parts}, [as: {:__aliases__, _, [as]}]]} = ast,
          acc,
@@ -54,12 +54,12 @@ defmodule Tars.Credo.Check.QualifiedProjectCalls do
     {ast, put(acc, as, parts, ns)}
   end
 
-  # alias Tars.LLM
+  # alias Wardrik.LLM
   defp collect({:alias, _, [{:__aliases__, _, parts}]} = ast, acc, ns) do
     {ast, put(acc, List.last(parts), parts, ns)}
   end
 
-  # alias Tars.{Event, LLM.Config}
+  # alias Wardrik.{Event, LLM.Config}
   defp collect(
          {:alias, _, [{{:., _, [{:__aliases__, _, prefix}, :{}]}, _, groups}]} = ast,
          acc,

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:run.resumed",
-  "title": "tars.run.resumed",
+  "$id": "urn:wardrik:schema:v1:run.resumed",
+  "title": "wardrik.run.resumed",
   "description": "An interrupted run carried on.",
   "type": "object",
   "properties": {
     "run": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/run"
     }
   },
   "additionalProperties": false,

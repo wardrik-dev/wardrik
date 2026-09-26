@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:agent_snapshot",
+  "$id": "urn:wardrik:schema:v1:agent_snapshot",
   "title": "An agent's snapshot",
   "description": "The body of GET /v1/agents/{org}/{user}/{name}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
   "type": "object",
@@ -87,7 +87,7 @@
     "run": {
       "oneOf": [
         {
-          "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/run"
         },
         {
           "type": "null"
@@ -98,13 +98,13 @@
     "interrupts": {
       "type": "array",
       "items": {
-        "$ref": "urn:tars:schema:v1:defs#/$defs/interrupt"
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
       }
     },
     "messages": {
       "type": "array",
       "items": {
-        "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
       }
     },
     "outcome": {

@@ -8,26 +8,26 @@ vulnerability", rather than in a public issue.
 ## The model
 
 The daemon runs as one user, and whatever can act as that user can do what
-Tars does: read its store, use its credentials, and run its agents' tools. Run
+Wardrik does: read its store, use its credentials, and run its agents' tools. Run
 it on a host, or in a container, that you do not share with accounts you do
 not trust.
 
 ### Distribution
 
 The node's Erlang distribution listens on loopback, and so does epmd when the
-node starts it. The CLI (`tars status`, `ask`, `approve` and the rest) and
-`tars remote` reach the node that way, as do the other nodes of a cluster.
+node starts it. The CLI (`wardrik status`, `ask`, `approve` and the rest) and
+`wardrik remote` reach the node that way, as do the other nodes of a cluster.
 
 Distribution checks one thing: the cookie, 48 random characters written to
-`~/.local/share/tars/cookie` on first start, readable by the daemon's user
+`~/.local/share/wardrik/cookie` on first start, readable by the daemon's user
 only. The release hands the cookie to each Erlang VM on its command line, and
-`bin/tars` to `erl_call` on its, so any account on the host that can list
+`bin/wardrik` to `erl_call` on its, so any account on the host that can list
 processes can read it, and anything that holds the cookie and reaches the port
 can run any code on the node as the daemon's user. What distribution sends
 between nodes is not encrypted.
 
-`TARS_DIST_INTERFACE` moves distribution beyond loopback, for a cluster that
-spans hosts. It is refused unless `TARS_DIST_EXPOSED=1` is set beside it, and a
+`WARDRIK_DIST_INTERFACE` moves distribution beyond loopback, for a cluster that
+spans hosts. It is refused unless `WARDRIK_DIST_EXPOSED=1` is set beside it, and a
 node started that way says so as it starts. Use it only on a private network
 that authenticates its members and encrypts their traffic, such as Tailscale
 or WireGuard, and never on a public interface.
@@ -36,9 +36,9 @@ or WireGuard, and never on a public interface.
 
 | Directory | What it holds | Who can read it |
 | --- | --- | --- |
-| `~/.config/tars` | `config.yaml`, agent and policy files, `ssh/authorized_keys` | as its owner sets it; `${NAME}` in `config.yaml` reads a value from the environment, so the file need hold no secret |
-| `~/.local/share/tars` | the store, with every agent's conversation, the ledger, budgets and sealed tokens; the cookie; the SSH host key | the daemon's user |
-| `~/.local/state/tars` | logs | the daemon's user |
+| `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys` | as its owner sets it; `${NAME}` in `config.yaml` reads a value from the environment, so the file need hold no secret |
+| `~/.local/share/wardrik` | the store, with every agent's conversation, the ledger, budgets and sealed tokens; the cookie; the SSH host key | the daemon's user |
+| `~/.local/state/wardrik` | logs | the daemon's user |
 
 The release sets umask 077, so what the node and the commands it starts write
 is readable by the daemon's user only, and it makes the data and state
@@ -46,7 +46,7 @@ directories private again on every start.
 
 ### SSH
 
-Once `~/.config/tars/ssh/authorized_keys` exists, the daemon serves the TUI
+Once `~/.config/wardrik/ssh/authorized_keys` exists, the daemon serves the TUI
 over SSH on loopback port 2222. A client holding a key the file lists connects
 under any user name and has the TUI, and through it every agent the daemon
 runs: it can ask them, and approve or deny what they are waiting on. Only the
@@ -58,7 +58,7 @@ loopback.
 ### HTTP API
 
 The API listens on loopback port 4747, and every request presents a bearer
-token that `tars token create` made. A token grants a set of actions (read,
+token that `wardrik token create` made. A token grants a set of actions (read,
 message, decide, define, serve) on the agents under a key prefix. An agent
 outside the prefix is answered as one that does not exist, and an action the
 token was not granted is refused with 403. The store holds each token as the
@@ -75,7 +75,7 @@ closes them. `http.ip` in `config.yaml` listens beyond loopback.
 
 A Slack target posts a parked call's name, arguments and question to its
 channel. With an `app_token`, anyone in that channel can press Approve or
-Deny, and the press decides the call as `tars approve` would, unless
+Deny, and the press decides the call as `wardrik approve` would, unless
 `approvers` lists the Slack user ids that may. Slack delivers presses over a
 Socket Mode connection the daemon opens, so no port is opened for them. A
 webhook target posts the same notice to its URL, signed with HMAC-SHA256 when

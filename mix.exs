@@ -1,11 +1,11 @@
-defmodule Tars.MixProject do
+defmodule Wardrik.MixProject do
   use Mix.Project
 
   @source_url "https://github.com/jonlunsford/tars"
 
   def project do
     [
-      app: :tars,
+      app: :wardrik,
       version: "0.1.0",
       elixir: "~> 1.20",
       description: "An agent runtime built on OTP.",
@@ -29,7 +29,7 @@ defmodule Tars.MixProject do
   def application do
     [
       extra_applications: [:logger, :os_mon],
-      mod: {Tars.Application, []}
+      mod: {Wardrik.Application, []}
     ]
   end
 
@@ -42,7 +42,7 @@ defmodule Tars.MixProject do
   # A thin shell over a real terminal. Excluded because covering it would mean
   # asserting on mocks of Mix rather than on any behaviour of ours.
   defp ignored_modules do
-    [Mix.Tasks.Tars]
+    [Mix.Tasks.Wardrik]
   end
 
   defp package do
@@ -52,15 +52,15 @@ defmodule Tars.MixProject do
     ]
   end
 
-  # One release carrying its own ERTS. `bin/tarsd` is the node's own script
-  # and `bin/tars`, from rel/overlays, the command a person runs.
+  # One release carrying its own ERTS. `bin/wardrikd` is the node's own script
+  # and `bin/wardrik`, from rel/overlays, the command a person runs.
   # `rel/env.sh.eex` gives each install a cookie of its own and keeps
   # distribution on loopback.
   defp releases do
     [
-      tarsd: [
+      wardrikd: [
         include_executables_for: [:unix],
-        applications: [tars: :permanent],
+        applications: [wardrik: :permanent],
         steps: [:assemble, :tar]
       ]
     ]
@@ -71,7 +71,7 @@ defmodule Tars.MixProject do
     [
       {:req_llm, "~> 1.21"},
 
-      # Used by lib/tars_lua, not by core. A Lua 5.3 VM in pure Elixir: no
+      # Used by lib/wardrik_lua, not by core. A Lua 5.3 VM in pure Elixir: no
       # NIFs, so it ships anywhere the release does.
       {:lua, "~> 1.0"},
 
@@ -81,28 +81,28 @@ defmodule Tars.MixProject do
       {:group, "~> 0.2.1"},
       {:ekv, "~> 0.4.3"},
 
-      # Used by lib/tars_tui, not by core. Pinned: pre-1.0. termite_ssh serves
+      # Used by lib/wardrik_tui, not by core. Pinned: pre-1.0. termite_ssh serves
       # the TUI over SSH, a session per client.
       {:breeze, "0.5.1"},
       {:termite_ssh, "~> 0.1.2"},
 
-      # Used by the bolt-on tool packages under lib/tars_brave, not by core.
+      # Used by the bolt-on tool packages under lib/wardrik_brave, not by core.
       {:req, "~> 0.7"},
 
-      # Used by lib/tars_mcp, not by core. The MCP client: transports, the
+      # Used by lib/wardrik_mcp, not by core. The MCP client: transports, the
       # protocol, and the callbacks a server calls back through. Its HTTP
       # transport expects a Finch pool that it does not start, so we name it
-      # here and `TarsMCP.Supervisor` starts it.
+      # here and `WardrikMCP.Supervisor` starts it.
       {:anubis_mcp, "~> 2.0"},
       {:finch, "~> 0.23"},
 
-      # Used by lib/tars_daemon, not by core: the daemon's config.yaml, and the
+      # Used by lib/wardrik_daemon, not by core: the daemon's config.yaml, and the
       # frontmatter of its agent files. yamerl underneath is pure Erlang.
       {:yaml_elixir, "~> 2.12"},
-      # Slack's Socket Mode, for TarsNotify.
+      # Slack's Socket Mode, for WardrikNotify.
       {:websockex, "~> 0.5.1"},
 
-      # Used by lib/tars_http, not by core: Bandit serves the HTTP API and Plug
+      # Used by lib/wardrik_http, not by core: Bandit serves the HTTP API and Plug
       # routes it. Req.Test in the suite answers stubs with a %Plug.Conn{} too.
       # WebSockAdapter upgrades a request to the socket tool workers hold open.
       {:bandit, "~> 1.8"},

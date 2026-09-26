@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:subagent.failed",
-  "title": "tars.subagent.failed",
+  "$id": "urn:wardrik:schema:v1:subagent.failed",
+  "title": "wardrik.subagent.failed",
   "description": "A subagent failed.",
   "type": "object",
   "properties": {
@@ -18,10 +18,10 @@
       "additionalProperties": false
     },
     "error": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
     },
     "duration_ms": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
     }
   },
   "additionalProperties": false,

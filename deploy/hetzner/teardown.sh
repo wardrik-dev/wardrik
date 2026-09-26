@@ -7,13 +7,13 @@
 #   deploy/hetzner/teardown.sh      # asks first
 #   deploy/hetzner/teardown.sh -y   # does not
 #
-# TARS_BOX names the box, tars-demo by default. The GitHub token it was
+# WARDRIK_BOX names the box, wardrik-demo by default. The GitHub token it was
 # authorized with dies with the box's vault key, and GitHub goes on accepting
 # it until the OAuth app is revoked. Issues it opened stay open.
 set -euo pipefail
 
-box=${TARS_BOX:-tars-demo}
-local_tars="$HOME/tars/bin/tars"
+box=${WARDRIK_BOX:-wardrik-demo}
+local_wardrik="$HOME/wardrik/bin/wardrik"
 
 die() { printf 'teardown: %s\n' "$*" >&2; exit 1; }
 
@@ -59,6 +59,6 @@ if hcloud ssh-key describe "$box" >/dev/null 2>&1; then
   echo "Deleted the SSH key $box."
 fi
 
-if [ -x "$local_tars" ]; then
-  echo "Your own daemon can have the Slack app back: $local_tars start"
+if [ -x "$local_wardrik" ]; then
+  echo "Your own daemon can have the Slack app back: $local_wardrik start"
 fi

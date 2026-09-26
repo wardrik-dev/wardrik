@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:tool_call.progress",
-  "title": "tars.tool_call.progress",
+  "$id": "urn:wardrik:schema:v1:tool_call.progress",
+  "title": "wardrik.tool_call.progress",
   "description": "A tool call reported progress. Live: never stored.",
   "type": "object",
   "properties": {
     "tool": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/tool"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
     },
     "progress": {
       "type": "number"

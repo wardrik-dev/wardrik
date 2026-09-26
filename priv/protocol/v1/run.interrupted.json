@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:run.interrupted",
-  "title": "tars.run.interrupted",
+  "$id": "urn:wardrik:schema:v1:run.interrupted",
+  "title": "wardrik.run.interrupted",
   "description": "A run stopped to wait on a person, for each interrupt it lists.",
   "type": "object",
   "properties": {
     "run": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/run"
     },
     "interrupts": {
       "type": "array",
       "items": {
-        "$ref": "urn:tars:schema:v1:defs#/$defs/interrupt"
+        "$ref": "urn:wardrik:schema:v1:defs#/$defs/interrupt"
       }
     }
   },

@@ -175,10 +175,10 @@
             #
             ## Project Checks
             #
-            {Tars.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
-            {Tars.Credo.Check.QualifiedProjectCalls, files: %{included: ["lib/", "dev/"]}},
-            {Tars.Credo.Check.NoCoreProcessNames,
-             files: %{included: ["lib/", "dev/"], excluded: ["lib/tars/", "lib/tars.ex"]}}
+            {Wardrik.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
+            {Wardrik.Credo.Check.QualifiedProjectCalls, files: %{included: ["lib/", "dev/"]}},
+            {Wardrik.Credo.Check.NoCoreProcessNames,
+             files: %{included: ["lib/", "dev/"], excluded: ["lib/wardrik/", "lib/wardrik.ex"]}}
           ] ++ Enum.map(ExSlop.recommended_checks(), &{&1, []}),
         disabled: [
           #

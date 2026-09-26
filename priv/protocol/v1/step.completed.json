@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:step.completed",
-  "title": "tars.step.completed",
+  "$id": "urn:wardrik:schema:v1:step.completed",
+  "title": "wardrik.step.completed",
   "description": "A named step ended.",
   "type": "object",
   "properties": {
@@ -13,10 +13,10 @@
       ]
     },
     "duration_ms": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
     },
     "error": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
     }
   },
   "additionalProperties": false,

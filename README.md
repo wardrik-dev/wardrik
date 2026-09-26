@@ -1,4 +1,4 @@
-# Tars
+# Wardrik
 
 An agent runtime built on OTP. Agents are processes, delegation is a function
 call, and everything one agent does publishes to one event stream you can
@@ -9,22 +9,22 @@ workflows. What it ships is the contracts and the machinery that runs them.
 
 ## Terminal client
 
-Run `mix tars` for the terminal client; `mix help tars` lists its options.
+Run `mix wardrik` for the terminal client; `mix help wardrik` lists its options.
 
 ## Packages
 
 Anything that reaches the outside world, or that encodes work specific to one
 deployment, lives in a package rather than in core. A package is named for its
-subject and never defines modules under `Tars.`:
+subject and never defines modules under `Wardrik.`:
 
 ```elixir
-Tars.LLM.Config.new(tools: [TarsBrave.WebSearch, TarsResearch.Deep])
+Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch, WardrikResearch.Deep])
 ```
 
 | | |
 | --- | --- |
-| **`Tars.*`** | core |
-| **`Tars<Subject>`** | a package, for example `TarsBrave`, `TarsResearch` |
+| **`Wardrik.*`** | core |
+| **`Wardrik<Subject>`** | a package, for example `WardrikBrave`, `WardrikResearch` |
 
 There is one list, `:tools`, because a workflow reaches an agent by being
 callable, which makes it a tool. A workflow the agent cannot call is a
@@ -38,8 +38,8 @@ right there. A tool name is a bare string in a flat namespace the model sees,
 so it carries everything.
 
 ```
-TarsBrave.WebSearch      tool "web_search"       "brave" is ours, not the model's
-TarsResearch.Deep        tool "deep_research"    "research" is the model's, so the tool re-adds it
+WardrikBrave.WebSearch      tool "web_search"       "brave" is ours, not the model's
+WardrikResearch.Deep        tool "deep_research"    "research" is the model's, so the tool re-adds it
 ```
 
 Tool names are flat per config, so two packages shipping the same tool name
@@ -47,11 +47,11 @@ collide. Pick a specific one.
 
 ### Writing one
 
-A tool implements `Tars.Tool`:
+A tool implements `Wardrik.Tool`:
 
 ```elixir
 defmodule MyPack.Ping do
-  @behaviour Tars.Tool
+  @behaviour Wardrik.Tool
 
   @impl true
   def tool do
@@ -63,32 +63,32 @@ defmodule MyPack.Ping do
     )
   end
 
-  def run(%{host: host}), do: Tars.Tool.Result.ok(%{"reachable" => reachable?(host)})
+  def run(%{host: host}), do: Wardrik.Tool.Result.ok(%{"reachable" => reachable?(host)})
 end
 ```
 
-A workflow implements `Tars.Workflow.Step`, and implements `Tars.Tool` as well
+A workflow implements `Wardrik.Workflow.Step`, and implements `Wardrik.Tool` as well
 if an agent should be able to call it:
 
 ```elixir
 defmodule MyPack.Nightly do
-  @behaviour Tars.Tool
-  @behaviour Tars.Workflow.Step
+  @behaviour Wardrik.Tool
+  @behaviour Wardrik.Workflow.Step
 
-  @impl Tars.Tool
+  @impl Wardrik.Tool
   def tool do
-    Tars.Workflow.as_tool(__MODULE__,
+    Wardrik.Workflow.as_tool(__MODULE__,
       name: "nightly",
       description: "Summarise everything that changed since a date.",
       parameter_schema: [since: [type: :string, required: true, doc: "ISO date"]]
     )
   end
 
-  @impl Tars.Workflow.Step
+  @impl Wardrik.Workflow.Step
   def run(%{since: since}, scope, _opts) do
     scope
-    |> Tars.Workflow.fan_out(repos(), fn repo, branch ->
-      Tars.Subagent.run(branch, "What changed in #{repo} since #{since}?", except_tools: ["nightly"])
+    |> Wardrik.Workflow.fan_out(repos(), fn repo, branch ->
+      Wardrik.Subagent.run(branch, "What changed in #{repo} since #{since}?", except_tools: ["nightly"])
     end)
     |> report()
   end
@@ -96,9 +96,9 @@ end
 ```
 
 `as_tool/2` is an ordinary function, so a workflow whose name and schema are
-only known at runtime is built the same way. `Tars.Subagent.run/3` takes
+only known at runtime is built the same way. `Wardrik.Subagent.run/3` takes
 `:name`, `:system`, `:tools`, `:except_tools`, `:model` and `:config`, so a
-workflow never has to reach into a `Tars.Scope` or a `Tars.LLM.Config` to
+workflow never has to reach into a `Wardrik.Scope` or a `Wardrik.LLM.Config` to
 decide who the work it delegates is, or what it can do.
 
 A persona is `:system` on the config, prepended to every turn rather than
@@ -110,32 +110,32 @@ so it survives being named by a config that crosses a node boundary.
 
 ### Sandboxes
 
-Code an agent writes runs in a `Tars.Sandbox`. Core ships the contract and no
-sandbox. `TarsLua` implements it over a Lua 5.3 VM written in Elixir, and
+Code an agent writes runs in a `Wardrik.Sandbox`. Core ships the contract and no
+sandbox. `WardrikLua` implements it over a Lua 5.3 VM written in Elixir, and
 hands an agent the `run_lua` tool:
 
 ```elixir
-Tars.LLM.Config.new(tools: [TarsLua.Run])
+Wardrik.LLM.Config.new(tools: [WardrikLua.Run])
 ```
 
 The VM reaches nothing outside itself — no files, no network, no environment,
 and nothing else the agent has. A sandbox implements a language and nothing
-else: `Tars.Sandbox.run/3` checks the code, then evaluates it in a task of its
-own under `Tars.Sandbox.Limits` — a deadline, a memory budget, a step budget
+else: `Wardrik.Sandbox.run/3` checks the code, then evaluates it in a task of its
+own under `Wardrik.Sandbox.Limits` — a deadline, a memory budget, a step budget
 and a call depth, each of which can be lifted with `:infinity`.
 
 ```elixir
-TarsLua.Run.tool(limits: Tars.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
+WardrikLua.Run.tool(limits: Wardrik.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
 ```
 
 ### MCP servers
 
 An MCP server's tools are named in a config the way any other tool is, through
-`TarsMCP` as a *source*: one spec standing for however many tools that server
+`WardrikMCP` as a *source*: one spec standing for however many tools that server
 offers.
 
 ```elixir
-config :tars, TarsMCP,
+config :wardrik, WardrikMCP,
   servers: [
     github: [
       transport:
@@ -146,10 +146,10 @@ config :tars, TarsMCP,
     ]
   ]
 
-Tars.LLM.Config.new(tools: [{TarsMCP, :github}])
+Wardrik.LLM.Config.new(tools: [{WardrikMCP, :github}])
 ```
 
-The host starts `TarsMCP.Supervisor`; `mix tars --mcp github` does it for the
+The host starts `WardrikMCP.Supervisor`; `mix wardrik --mcp github` does it for the
 TUI. Connections keep to themselves, so a server that is down offers no tools
 and stops nothing else. Tools arrive as `github__search_issues`, carrying the
 server's own JSON Schema.
@@ -163,28 +163,28 @@ under the span of the call they belong to.
 ### Credentials, and authorizing a user
 
 A tool names the secret it needs rather than holding one, and resolves it
-for the `Tars.Call` it was handed (see `Tars.Tool.new!/1`):
+for the `Wardrik.Call` it was handed (see `Wardrik.Tool.new!/1`):
 
 ```elixir
-case Tars.Credential.resolve(call, {:user, "github"}) do
-  {:ok, credential} -> Tars.Call.answer(call, fetch(Tars.Credential.reveal(credential)))
-  {:error, {:authorization_required, url}} -> Tars.Call.park(call, "Connect GitHub: " <> url)
-  {:error, {:authorization_required, url, code}} -> Tars.Call.park(call, "Enter #{code} at #{url}")
+case Wardrik.Credential.resolve(call, {:user, "github"}) do
+  {:ok, credential} -> Wardrik.Call.answer(call, fetch(Wardrik.Credential.reveal(credential)))
+  {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
+  {:error, {:authorization_required, url, code}} -> Wardrik.Call.park(call, "Enter #{code} at #{url}")
 end
 ```
 
 `:credentials` is a scope seam beside `:hooks` and `:dispatch`. Two resolvers
-ship with the binary. `TarsVault` seals secrets with AES-256-GCM into
-`Tars.Store`, the store the fleet already runs on — no broker, and no plaintext
+ship with the binary. `WardrikVault` seals secrets with AES-256-GCM into
+`Wardrik.Store`, the store the fleet already runs on — no broker, and no plaintext
 fallback without a key:
 
 ```elixir
-config :tars, TarsVault, keys: [System.fetch_env!("TARS_VAULT_KEY")]
+config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
 
-TarsVault.put({:user, "github"}, "jon", "ghp_xxx")
+WardrikVault.put({:user, "github"}, "jon", "ghp_xxx")
 ```
 
-`TarsOAuth` gets them by asking the user instead. It discovers the
+`WardrikOAuth` gets them by asking the user instead. It discovers the
 authorization server from the resource, and presents whichever client identity
 the server will accept — one registered by hand, its own metadata document, or
 a dynamic registration. A user who has not authorized yet parks the turn, and
@@ -199,14 +199,14 @@ authorizes one of two ways:
   open port can be authorized from Slack.
 
 Either way the parked call runs again by itself once they have, with the
-token, which is then sealed by `TarsVault` and refreshed without asking again.
+token, which is then sealed by `WardrikVault` and refreshed without asking again.
 A provider's `flow` is `browser`, `device`, or `auto`, the default: on another
 device where the server offers it and the daemon has no browser of its own to
 send the user through, and in a browser otherwise.
 
 ```elixir
-config :tars, TarsOAuth,
-  client: [name: "Tars", document_url: "https://tars.dev/oauth/client"],
+config :wardrik, WardrikOAuth,
+  client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
   providers: [
     github: [
       resource: "https://api.githubcopilot.com/mcp/",
@@ -223,7 +223,7 @@ An MCP server reached as the user names the reference to resolve, and each user
 gets a connection of their own:
 
 ```elixir
-config :tars, TarsMCP,
+config :wardrik, WardrikMCP,
   servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: {:user, "github"}]]
 ```
 
@@ -247,11 +247,11 @@ Packages start here, under `lib/<package>/` with tests mirrored at
 in-repo its settings nest under the application that exists:
 
 ```elixir
-config :tars, TarsBrave, api_key: System.fetch_env!("BRAVE_API_KEY")
+config :wardrik, WardrikBrave, api_key: System.fetch_env!("BRAVE_API_KEY")
 ```
 
-After extraction that becomes `config :tars_brave, api_key: ...`. Each package
-documents its own extraction in its moduledoc. Nothing in `Tars` changes
+After extraction that becomes `config :wardrik_brave, api_key: ...`. Each package
+documents its own extraction in its moduledoc. Nothing in `Wardrik` changes
 either way, because core names no tool and no workflow.
 
 ## Seams
@@ -261,9 +261,9 @@ it may do, and *who pays for it* is a seam a host reaches through, so a
 deployment that needs none of them configures none of them.
 
 ```elixir
-key = Tars.Fleet.key("assistant", user: current_user, org: current_org)
+key = Wardrik.Fleet.key("assistant", user: current_user, org: current_org)
 
-Tars.Fleet.spawn(key,
+Wardrik.Fleet.spawn(key,
   config: config,
   hooks: hooks,              # may this call run?
   dispatch: MyApp.Gateway,   # which model, whose key, what did it cost?
@@ -271,55 +271,55 @@ Tars.Fleet.spawn(key,
 )
 ```
 
-The same agent written down is a `Tars.Agent.Spec`, which holds no process
-and no function. `Tars.Fleet.put/1` starts the agent a spec describes, or gives
+The same agent written down is a `Wardrik.Agent.Spec`, which holds no process
+and no function. `Wardrik.Fleet.put/1` starts the agent a spec describes, or gives
 the one already running what the spec says now:
 
 ```elixir
-spec = Tars.Agent.Spec.new(name: "assistant", org: current_org, config: config, hooks: hooks)
-{:ok, pid} = Tars.Fleet.put(spec)
+spec = Wardrik.Agent.Spec.new(name: "assistant", org: current_org, config: config, hooks: hooks)
+{:ok, pid} = Wardrik.Fleet.put(spec)
 ```
 
 | | |
 | --- | --- |
-| **`:user`, `:org`** | written into the agent's key through `Tars.Fleet.Segment` and carried on `Tars.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
-| **`:hooks`** | a list of `Tars.Hook`s. Each is handed every tool call and model call, as a `Tars.Call`, before it happens, and may deny it, ask a person about it, or leave it be. The strictest answer decides. |
-| **`:dispatch`** | a `Tars.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
+| **`:user`, `:org`** | written into the agent's key through `Wardrik.Fleet.Segment` and carried on `Wardrik.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
+| **`:hooks`** | a list of `Wardrik.Hook`s. Each is handed every tool call and model call, as a `Wardrik.Call`, before it happens, and may deny it, ask a person about it, or leave it be. The strictest answer decides. |
+| **`:dispatch`** | a `Wardrik.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
 | **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |
 
 A hook is a module with `init/1` and `call/2`, the way a plug is, and a
-`Tars.Call` is its token:
+`Wardrik.Call` is its token:
 
 ```elixir
 defmodule MyApp.NoFridayDeploys do
-  @behaviour Tars.Hook
-  import Tars.Call
+  @behaviour Wardrik.Hook
+  import Wardrik.Call
 
   @impl true
   def init(opts), do: Map.new(opts)
 
   @impl true
-  def call(%Tars.Call{target: %Tars.Call.Tool{name: "deploy"}} = call, _value) do
+  def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}} = call, _value) do
     if friday?(), do: deny(call, "No deploys on a Friday."), else: call
   end
 
   def call(call, _value), do: call
 end
 
-hooks = [Tars.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/London")]
+hooks = [Wardrik.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/London")]
 ```
 
 What `init/1` returns is data, so a hook travels with the agent.
-`TarsPolicy.hooks/1` gives the hooks a policy written as data is.
+`WardrikPolicy.hooks/1` gives the hooks a policy written as data is.
 
 A hook that asks **parks** the turn: nothing runs, nothing is appended to the
 conversation, and the agent waits.
 
 ```elixir
-Tars.Agent.parked(:assistant)
+Wardrik.Agent.parked(:assistant)
 #=> [{%{id: "call_1", name: "deploy", arguments: %{}}, "This ships to production."}]
 
-Tars.Agent.resume(:assistant, %{"call_1" => :approve})
+Wardrik.Agent.resume(:assistant, %{"call_1" => :approve})
 ```
 
 Approval, a credential that needs connecting, and a call a person has to run
@@ -332,9 +332,9 @@ refused, and one they ask about waits on what they ask now.
 ### Stopping things
 
 ```elixir
-Tars.Agent.interrupt(:assistant)                      # the whole turn
-Tars.LLM.ToolRunner.kill_call(:assistant, "call_1")   # one tool call
-Tars.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
+Wardrik.Agent.interrupt(:assistant)                      # the whole turn
+Wardrik.LLM.ToolRunner.kill_call(:assistant, "call_1")   # one tool call
+Wardrik.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
 ```
 
 A killed call is answered with an error result, so the model is never left with
@@ -349,8 +349,8 @@ compacts at 60% of the model's context window, as the model catalog gives it,
 and keeps the last 25%:
 
 ```elixir
-Tars.LLM.Config.new(compaction: Tars.Compaction.new(at: 0.5, keep: 0.2))
-Tars.LLM.Config.new(compaction: nil)   # never
+Wardrik.LLM.Config.new(compaction: Wardrik.Compaction.new(at: 0.5, keep: 0.2))
+Wardrik.LLM.Config.new(compaction: nil)   # never
 ```
 
 It happens between turns, reported as `{:context_compacted, stats}`, and the
@@ -362,22 +362,22 @@ sets `compaction:` with `at`, `keep` and `window`, or `false`.
 A turn hands its agent each batch of tool calls before running any of them,
 and the agent writes the batch to the store first. A turn whose node is lost
 comes back replaying from that batch, with the same calls, rather than asking
-the model again. With a `Tars.Ledger` on the scope, every call is claimed
+the model again. With a `Wardrik.Ledger` on the scope, every call is claimed
 before it runs and settled after, so the replay answers a call that already
 ran with what it returned, and parks one that began and never finished for a
 person to decide:
 
 ```elixir
-Tars.Fleet.spawn(key, config: config, ledger: Tars.Ledger.Store)
+Wardrik.Fleet.spawn(key, config: config, ledger: Wardrik.Ledger.Store)
 ```
 
-A tool with an effect outside Tars passes `Tars.Ledger.idempotency_key/2` on,
+A tool with an effect outside Wardrik passes `Wardrik.Ledger.idempotency_key/2` on,
 so the system it calls does not repeat the effect either. The daemon gives
 every agent the ledger.
 
 ### Failures
 
-`Tars.Failure.classify/1` sorts a turn's error into `:transient`, `:ceiling` or
+`Wardrik.Failure.classify/1` sorts a turn's error into `:transient`, `:ceiling` or
 `:bug`, so a caller knows whether trying again is worth anything. Anything
 unrecognised is a `:bug` — a retry loop that assumes otherwise spends real
 money finding out.
@@ -387,7 +387,7 @@ money finding out.
 ```elixir
 def deps do
   [
-    {:tars, "~> 0.1.0"}
+    {:wardrik, "~> 0.1.0"}
   ]
 end
 ```
@@ -400,34 +400,34 @@ attaches it to the GitHub release for a `v*` tag.
 
 ```sh
 MIX_ENV=prod mix release
-_build/prod/rel/tarsd/bin/tars start     # in the background
-_build/prod/rel/tarsd/bin/tars status    # what it is running
-_build/prod/rel/tarsd/bin/tars reload    # read the agent and policy files again
-_build/prod/rel/tarsd/bin/tars ask acme/_/triage "What changed today?"
-_build/prod/rel/tarsd/bin/tars history acme/_/triage
-_build/prod/rel/tarsd/bin/tars parked    # what is waiting on a person
-_build/prod/rel/tarsd/bin/tars schedules # when each schedule runs next, and how it last ran
-_build/prod/rel/tarsd/bin/tars approve acme/_/triage call_1
-_build/prod/rel/tarsd/bin/tars remote    # an IEx shell on it
-_build/prod/rel/tarsd/bin/tars logs      # follow its log
-_build/prod/rel/tarsd/bin/tars stop
+_build/prod/rel/wardrikd/bin/wardrik start     # in the background
+_build/prod/rel/wardrikd/bin/wardrik status    # what it is running
+_build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
+_build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"
+_build/prod/rel/wardrikd/bin/wardrik history acme/_/triage
+_build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
+_build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
+_build/prod/rel/wardrikd/bin/wardrik approve acme/_/triage call_1
+_build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
+_build/prod/rel/wardrikd/bin/wardrik logs      # follow its log
+_build/prod/rel/wardrikd/bin/wardrik stop
 ```
 
-`tars serve` runs it in the foreground, logging to the terminal, for a
-service manager to supervise. `bin/tarsd` is the node's own release script
+`wardrik serve` runs it in the foreground, logging to the terminal, for a
+service manager to supervise. `bin/wardrikd` is the node's own release script
 underneath.
 
-The daemon follows the XDG base directories, so `~/.config/tars` holds only
+The daemon follows the XDG base directories, so `~/.config/wardrik` holds only
 what a person writes and can live in a dotfiles repository:
 
 | | |
 | --- | --- |
-| **`~/.config/tars/config.yaml`** | MCP servers, OAuth providers, vault keys and notify targets; `config.yml` works too. See `TarsDaemon.Config` |
-| **`~/.config/tars/agents/*.md`** | the agents it runs, one per file. See `TarsDaemon.AgentFile` |
-| **`~/.config/tars/policies/*.yaml`** | the policies agents name, as `.yaml` or `.yml`. See `TarsPolicy` |
-| **`~/.local/share/tars/store/`** | the store |
-| **`~/.local/share/tars/cookie`** | the node's cookie, created on first boot and readable by its owner only |
-| **`~/.local/state/tars/log/`** | `tars.log`, and `mcp.log` for what MCP commands write to stderr |
+| **`~/.config/wardrik/config.yaml`** | MCP servers, OAuth providers, vault keys and notify targets; `config.yml` works too. See `WardrikDaemon.Config` |
+| **`~/.config/wardrik/agents/*.md`** | the agents it runs, one per file. See `WardrikDaemon.AgentFile` |
+| **`~/.config/wardrik/policies/*.yaml`** | the policies agents name, as `.yaml` or `.yml`. See `WardrikPolicy` |
+| **`~/.local/share/wardrik/store/`** | the store |
+| **`~/.local/share/wardrik/cookie`** | the node's cookie, created on first boot and readable by its owner only |
+| **`~/.local/state/wardrik/log/`** | `wardrik.log`, and `mcp.log` for what MCP commands write to stderr |
 
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` move them, as they
 move any other tool's.
@@ -458,11 +458,11 @@ You watch the incident queue. Summarise anything new, and say which issues
 need an engineer.
 ```
 
-The daemon starts one agent per file when it boots, and `tars reload` gives
+The daemon starts one agent per file when it boots, and `wardrik reload` gives
 each running agent what its file says now without losing what it has said.
 An agent has only the tools its file lists; `linear/*` is every tool of the
 server `config.yaml` calls `linear`, and `*` is everything. A file that does
-not read is listed by `tars status`, and the others run regardless.
+not read is listed by `wardrik status`, and the others run regardless.
 
 An agent can be asked something on a clock:
 
@@ -477,16 +477,16 @@ A schedule runs in the cluster once, whichever node holds it, and carries on
 from the store on another node when its own is lost. A run that finds the
 agent busy or waiting on a person lets it be, unless the schedule says
 `overlap: queue`, and a daemon that was down past a run fires it once when it
-comes back, unless the schedule says `missed: skip`. `tars status` shows when
-each agent is asked next, and `tars schedules` when each schedule runs next
-and when it last ran and what came of it. See `Tars.Schedule`.
+comes back, unless the schedule says `missed: skip`. `wardrik status` shows when
+each agent is asked next, and `wardrik schedules` when each schedule runs next
+and when it last ran and what came of it. See `Wardrik.Schedule`.
 
 An agent nobody is watching can tell someone when it parks on a question,
 fails, or answers. `config.yaml` names the targets, and an agent file routes
 to them:
 
 ```yaml
-# ~/.config/tars/config.yaml
+# ~/.config/wardrik/config.yaml
 notify:
   ops:
     slack:
@@ -496,8 +496,8 @@ notify:
       approvers: [U012ABCDEF]           # who may press them; anyone in the channel when absent
   audit:
     webhook:
-      url: https://hooks.example.com/tars
-      secret: ${TARS_WEBHOOK_SECRET}    # signs each body, as x-tars-signature
+      url: https://hooks.example.com/wardrik
+      secret: ${WARDRIK_WEBHOOK_SECRET}    # signs each body, as x-wardrik-signature
 ```
 
 ```yaml
@@ -506,19 +506,19 @@ notify: {to: [ops], on: [parked, failed, finished]}   # or just: notify: ops
 ```
 
 A parked call reaches Slack with its arguments and the policy's question,
-and pressing Approve or Deny answers it as `tars approve` would. The buttons
+and pressing Approve or Deny answers it as `wardrik approve` would. The buttons
 arrive over Slack's Socket Mode, a connection the daemon opens out to Slack,
 so it needs no public address and no open port. Give the daemon a Slack app
 of its own: another service connected with the same app shares its Socket Mode
-envelopes. Without an `app_token` the message says which `tars approve` to run
-instead. See `TarsNotify`.
+envelopes. Without an `app_token` the message says which `wardrik approve` to run
+instead. See `WardrikNotify`.
 
 A policy decides what an agent's tools may do. It is a file in `policies/`,
 named by the agents it governs as `policy: careful`, or written in place in an
 agent file:
 
 ```yaml
-# ~/.config/tars/policies/careful.yaml
+# ~/.config/wardrik/policies/careful.yaml
 allow: [web_search, linear/*]
 ask:
   github/create_*: This opens an issue on GitHub.
@@ -530,9 +530,9 @@ The strictest rule naming a call decides it. A call a policy asks about parks
 the agent until a person answers, from the TUI or from a shell:
 
 ```sh
-tars parked
-tars approve acme/_/triage call_1
-tars deny acme/_/triage call_1 Not on a Friday.
+wardrik parked
+wardrik approve acme/_/triage call_1
+wardrik deny acme/_/triage call_1 Not on a Friday.
 ```
 
 A policy may also hold a budget for what the agent spends on model calls, in
@@ -547,36 +547,36 @@ budget:
 ```
 
 Once the agent has spent either limit it parks on its next model call, and
-`tars parked` shows what it spent. Approving grants another limit's worth for
-the period, or the budget's `grant`, and the agent carries on. `tars status`
+`wardrik parked` shows what it spent. Approving grants another limit's worth for
+the period, or the budget's `grant`, and the agent carries on. `wardrik status`
 shows each agent's spending. A token limit governs a model the catalog cannot
 price, or one a subscription pays for.
 
 A file is read into a value, not kept as one: an agent file into a
-`Tars.Agent.Spec`, a policy file into a `TarsPolicy`. The agent carries its
-policy as `Tars.Hook`s, so it is written to the store with the agent and
-decides the same way on whichever node holds it next. `tars reload` gives a
+`Wardrik.Agent.Spec`, a policy file into a `WardrikPolicy`. The agent carries its
+policy as `Wardrik.Hook`s, so it is written to the store with the agent and
+decides the same way on whichever node holds it next. `wardrik reload` gives a
 waiting agent the policy as it is now, which decides the calls it waits on.
 
-The TUI is served over SSH once `~/.config/tars/ssh/authorized_keys` lists a
+The TUI is served over SSH once `~/.config/wardrik/ssh/authorized_keys` lists a
 key, in OpenSSH's format. The daemon listens on port 2222 on loopback, a
 client holding a listed key connects under any user name, and each connection
 is a session of its own on the fleet:
 
 ```sh
-ssh -p 2222 jon@localhost      # or: tars attach
+ssh -p 2222 jon@localhost      # or: wardrik attach
 ssh -L 2222:localhost:2222 box # a daemon on another machine, through a tunnel
 ```
 
 The file is read at every login, so a key added or removed counts from the
 next connection. Quitting ends the session and nothing else. `ssh:` in
 `config.yaml` sets `port`, and `ip` to listen beyond loopback. The host key is
-made on first start under `~/.local/share/tars/ssh`.
+made on first start under `~/.local/share/wardrik/ssh`.
 
 An MCP command sees only a few of the daemon's environment variables
 (`HOME`, `PATH`, `USER` and the like) beside the ones its server sets, so the
 cookie and every key the daemon holds stay with the daemon.
-`TarsMCP.Server`'s `:inherit_env` names others.
+`WardrikMCP.Server`'s `:inherit_env` names others.
 
 ### Several daemons, one cluster
 
@@ -584,53 +584,53 @@ cookie and every key the daemon holds stay with the daemon.
 them. Three on one machine share the install and its config directory:
 
 ```yaml
-# ~/.config/tars/config.yaml
+# ~/.config/wardrik/config.yaml
 cluster:
   nodes: [a, b, c]
 ```
 
 ```sh
-tars start --node a   # a is waiting for 1 more node to reach a quorum of 2 of 3
-tars start --node b
-tars start --node c
-tars status           # cluster of 3: a, b, c up
-kill -9 "$(tars pid --node b)"
+wardrik start --node a   # a is waiting for 1 more node to reach a quorum of 2 of 3
+wardrik start --node b
+wardrik start --node c
+wardrik status           # cluster of 3: a, b, c up
+kill -9 "$(wardrik pid --node b)"
 ```
 
 Their agents, schedules and store span all three, and the agents of a node
 that is lost carry on on another, parked calls still parked. More than half
 the nodes make a quorum: three carry on with one lost. A node starting waits
-until enough of the others are up, and `tars status` says what it waits for.
+until enough of the others are up, and `wardrik status` says what it waits for.
 
 `start`, `stop`, `serve`, `remote`, `logs` and `pid` act on one node and take
 `--node` once there are several; every other command asks whichever node
 answers, since each speaks for the whole cluster, and `reload` reads the files
-again on every node. `TARS_NODE` sets the node for every command.
+again on every node. `WARDRIK_NODE` sets the node for every command.
 
 Nodes on several machines are named in full, one to each, and listen on a
-private network; see `TarsDaemon.Cluster` and SECURITY.md:
+private network; see `WardrikDaemon.Cluster` and SECURITY.md:
 
 ```yaml
 cluster:
-  nodes: [tars@box1, tars@box2, tars@box3]   # or: dns: tars.internal, with size: 3
+  nodes: [wardrik@box1, wardrik@box2, wardrik@box3]   # or: dns: wardrik.internal, with size: 3
 ```
 
-The daemon is `TarsDaemon`, started as one of core's `:children`. A host of
+The daemon is `WardrikDaemon`, started as one of core's `:children`. A host of
 its own adds to the tree the same way:
 
 ```elixir
-config :tars, :children, [MyApp.Host]
+config :wardrik, :children, [MyApp.Host]
 ```
 
 | | |
 | --- | --- |
-| **`TARS_NODE`** | which of `cluster.nodes` this is, as `--node` sets it: `a` runs as `tars_a@localhost` with a store and state directory of its own, and a full name as itself |
-| **`TARS_CONFIG_DIR`**, **`TARS_STATE_DIR`** | the config and state directories, when not the XDG ones |
-| **`TARS_DATA_HOME`** | where the daemon keeps what it makes for itself, its host key among them, when not the XDG data home |
-| **`TARS_DATA_DIR`**, **`TARS_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
-| **`TARS_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `tarsd@localhost`; `any` listens everywhere |
-| **`TARS_LOG`** | the log file, or `-` for the terminal |
-| **`TARS_CLUSTER_SIZE`** | the store's voting members, where `config.yaml` has no `cluster` |
+| **`WARDRIK_NODE`** | which of `cluster.nodes` this is, as `--node` sets it: `a` runs as `wardrik_a@localhost` with a store and state directory of its own, and a full name as itself |
+| **`WARDRIK_CONFIG_DIR`**, **`WARDRIK_STATE_DIR`** | the config and state directories, when not the XDG ones |
+| **`WARDRIK_DATA_HOME`** | where the daemon keeps what it makes for itself, its host key among them, when not the XDG data home |
+| **`WARDRIK_DATA_DIR`**, **`WARDRIK_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
+| **`WARDRIK_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `wardrikd@localhost`; `any` listens everywhere |
+| **`WARDRIK_LOG`** | the log file, or `-` for the terminal |
+| **`WARDRIK_CLUSTER_SIZE`** | the store's voting members, where `config.yaml` has no `cluster` |
 
 Anyone who can reach the distribution port with the cookie can run code on the
 node. Listen beyond loopback only on a network you trust.

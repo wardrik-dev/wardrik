@@ -1,8 +1,8 @@
 {
-  "name": "@tars/sdk",
+  "name": "@wardrik/sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "Drive Tars agents over HTTP, and offer them tools from your own process.",
+  "description": "Drive Wardrik agents over HTTP, and offer them tools from your own process.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { TarsError } from "./errors.ts";
+import { WardrikError } from "./errors.ts";
 import type { Http } from "./http.ts";
-import type { TarsEvent } from "./protocol.ts";
+import type { WardrikEvent } from "./protocol.ts";
 import { messages } from "./sse.ts";
 
 export interface FollowOptions {
@@ -23,13 +23,13 @@ const lastDelay = 10_000;
  *
  * Live events, text and reasoning as it streams and tool progress, carry no
  * sequence, and a reconnect does not send again what was missed of them; the
- * `tars.message.completed` that follows has the whole text.
+ * `wardrik.message.completed` that follows has the whole text.
  *
- * It ends when its signal aborts. It throws a `TarsError` of type `gap` when
+ * It ends when its signal aborts. It throws a `WardrikError` of type `gap` when
  * the log no longer holds what comes after the cursor: read the agent's
  * snapshot, and follow from its sequence.
  */
-export class EventStream implements AsyncIterable<TarsEvent> {
+export class EventStream implements AsyncIterable<WardrikEvent> {
   /** Settles once the stream is first open, or fails to open. */
   readonly opened: Promise<void>;
 
@@ -60,7 +60,7 @@ export class EventStream implements AsyncIterable<TarsEvent> {
     return this.#after;
   }
 
-  async *[Symbol.asyncIterator](): AsyncGenerator<TarsEvent> {
+  async *[Symbol.asyncIterator](): AsyncGenerator<WardrikEvent> {
     const stop = new AbortController();
     const signal = this.#signal ? AbortSignal.any([this.#signal, stop.signal]) : stop.signal;
     let delay = firstDelay;
@@ -78,7 +78,7 @@ export class EventStream implements AsyncIterable<TarsEvent> {
           });
         } catch (error) {
           if (signal.aborted) return;
-          if (error instanceof TarsError && error.status < 500) throw error;
+          if (error instanceof WardrikError && error.status < 500) throw error;
           await sleep(delay, undefined, { signal }).catch(() => {});
           delay = Math.min(delay * 2, lastDelay);
           continue;
@@ -89,7 +89,7 @@ export class EventStream implements AsyncIterable<TarsEvent> {
 
         try {
           for await (const message of messages(response.body!)) {
-            const event = JSON.parse(message.data) as TarsEvent;
+            const event = JSON.parse(message.data) as WardrikEvent;
             if (message.id !== undefined) this.#after = Number(message.id);
             yield event;
           }

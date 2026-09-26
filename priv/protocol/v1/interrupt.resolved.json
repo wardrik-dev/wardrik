@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:interrupt.resolved",
-  "title": "tars.interrupt.resolved",
+  "$id": "urn:wardrik:schema:v1:interrupt.resolved",
+  "title": "wardrik.interrupt.resolved",
   "description": "A person answered an interrupt.",
   "type": "object",
   "properties": {
@@ -28,7 +28,7 @@
       "type": "string"
     },
     "resolved_by": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/principal"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
     }
   },
   "additionalProperties": false,

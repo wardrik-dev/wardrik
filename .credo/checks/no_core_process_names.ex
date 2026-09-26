@@ -1,17 +1,17 @@
-defmodule Tars.Credo.Check.NoCoreProcessNames do
+defmodule Wardrik.Credo.Check.NoCoreProcessNames do
   use Credo.Check,
     base_priority: :high,
     category: :design,
-    param_defaults: [names: ["Tars.TaskSupervisor"]],
+    param_defaults: [names: ["Wardrik.TaskSupervisor"]],
     explanations: [
       check: """
       A package does not name a process that core starts.
 
           # reaching core's supervisor by name
-          Task.Supervisor.start_child(Tars.TaskSupervisor, fun)
+          Task.Supervisor.start_child(Wardrik.TaskSupervisor, fun)
 
           # a supervisor of the package's own
-          Task.Supervisor.start_child(TarsMCP.TaskSupervisor, fun)
+          Task.Supervisor.start_child(WardrikMCP.TaskSupervisor, fun)
 
       A registered name is not a function call, so no dependency rule sees it,
       and a package that holds one only runs where core's supervision tree is

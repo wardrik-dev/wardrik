@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:run.failed",
-  "title": "tars.run.failed",
+  "$id": "urn:wardrik:schema:v1:run.failed",
+  "title": "wardrik.run.failed",
   "description": "A run ended without answering.",
   "type": "object",
   "properties": {
     "run": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/run"
     },
     "error": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
     }
   },
   "additionalProperties": false,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:schedule",
+  "$id": "urn:wardrik:schema:v1:schedule",
   "title": "A schedule",
   "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule} answers.",
   "type": "object",

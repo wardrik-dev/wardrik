@@ -4,41 +4,41 @@ import Config
 # absent is a tool reporting it at call time rather than a node refusing to
 # start.
 if config_env() == :prod do
-  config :tars, TarsBrave, api_key: System.get_env("BRAVE_API_KEY")
+  config :wardrik, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
 
   config :req_llm, zai_api_key: System.get_env("ZAI_API_KEY")
 
-  if key = System.get_env("TARS_VAULT_KEY") do
-    config :tars, TarsVault, keys: [key]
+  if key = System.get_env("WARDRIK_VAULT_KEY") do
+    config :wardrik, WardrikVault, keys: [key]
   end
 end
 
 # A release is the daemon: it starts the budget meters, the tool workers'
-# group and TarsDaemon beside core, and logs to
-# TARS_STATE_DIR/log/tars.log, or to the terminal where TARS_LOG is "-".
+# group and WardrikDaemon beside core, and logs to
+# WARDRIK_STATE_DIR/log/wardrik.log, or to the terminal where WARDRIK_LOG is "-".
 if System.get_env("RELEASE_NAME") do
-  config :tars, :cluster, [TarsDaemon.Cluster, TarsDaemon.Cluster.Quorum]
-  config :tars, :children, [TarsPolicy.Supervisor, TarsHTTP.Workers, TarsDaemon]
+  config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
+  config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers, WardrikDaemon]
 
   # config.yaml's cluster is read here, since what it describes starts before
-  # TarsDaemon reads the rest of the file: the topologies that connect this
+  # WardrikDaemon reads the rest of the file: the topologies that connect this
   # node to the others, and the size the store counts a quorum against. A file
-  # that does not read is left for TarsDaemon to report.
-  with {:ok, file} <- TarsDaemon.Config.file(TarsDaemon.Config.config_dir()),
-       {:ok, settings} <- TarsDaemon.Config.read(file),
-       {:ok, cluster} <- Keyword.fetch(settings, TarsDaemon.Cluster) do
-    config :tars, TarsDaemon.Cluster, cluster
+  # that does not read is left for WardrikDaemon to report.
+  with {:ok, file} <- WardrikDaemon.Config.file(WardrikDaemon.Config.config_dir()),
+       {:ok, settings} <- WardrikDaemon.Config.read(file),
+       {:ok, cluster} <- Keyword.fetch(settings, WardrikDaemon.Cluster) do
+    config :wardrik, WardrikDaemon.Cluster, cluster
 
     if size = cluster[:size] do
-      config :tars, Tars.Store, cluster_size: size
+      config :wardrik, Wardrik.Store, cluster_size: size
     end
   end
 
   state =
-    System.get_env("TARS_STATE_DIR") ||
-      Path.join(System.get_env("XDG_STATE_HOME") || Path.expand("~/.local/state"), "tars")
+    System.get_env("WARDRIK_STATE_DIR") ||
+      Path.join(System.get_env("XDG_STATE_HOME") || Path.expand("~/.local/state"), "wardrik")
 
-  case System.get_env("TARS_LOG") || Path.join([state, "log", "tars.log"]) do
+  case System.get_env("WARDRIK_LOG") || Path.join([state, "log", "wardrik.log"]) do
     "-" ->
       :ok
 

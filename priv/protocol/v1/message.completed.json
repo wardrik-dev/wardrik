@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:message.completed",
-  "title": "tars.message.completed",
+  "$id": "urn:wardrik:schema:v1:message.completed",
+  "title": "wardrik.message.completed",
   "description": "The model answered, failed, or was stopped.",
   "type": "object",
   "properties": {
     "message": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
     },
     "response": {
       "type": "object",
@@ -27,7 +27,7 @@
       "additionalProperties": false
     },
     "usage": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/usage"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/usage"
     },
     "status": {
       "type": "string",
@@ -38,10 +38,10 @@
       ]
     },
     "error": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/error"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/error"
     },
     "duration_ms": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
     }
   },
   "additionalProperties": false,

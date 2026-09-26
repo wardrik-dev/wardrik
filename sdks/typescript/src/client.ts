@@ -6,10 +6,10 @@ import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
 
 export const version = "0.0.0";
 
-export interface TarsOptions {
-  /** The server. `TARS_URL`, else `http://127.0.0.1:4747`, the daemon's own. */
+export interface WardrikOptions {
+  /** The server. `WARDRIK_URL`, else `http://127.0.0.1:4747`, the daemon's own. */
   url?: string;
-  /** A token from `tars token create`. `TARS_TOKEN` where left out. */
+  /** A token from `wardrik token create`. `WARDRIK_TOKEN` where left out. */
   token?: string;
   /** What requests are made with; the global `fetch` where left out. */
   fetch?: typeof fetch;
@@ -21,28 +21,28 @@ const env = (name: string): string | undefined =>
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env[name];
 
 /**
- * A Tars server, as one token reaches it.
+ * A Wardrik server, as one token reaches it.
  *
- *     const tars = new Tars();
- *     const agent = await tars.agents.put("acme/_/triage", { model: "anthropic:claude-sonnet-5" });
+ *     const wardrik = new Wardrik();
+ *     const agent = await wardrik.agents.put("acme/_/triage", { model: "anthropic:claude-sonnet-5" });
  *
  *     for await (const event of agent.ask("What's on fire?")) {
- *       if (event.type === "tars.message.delta") process.stdout.write(event.data.delta);
+ *       if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
  *     }
  */
-export class Tars {
+export class Wardrik {
   readonly agents: Agents;
 
   readonly #http: Http;
   readonly #worker: Worker;
 
-  constructor(options: TarsOptions = {}) {
-    const token = options.token ?? env("TARS_TOKEN");
-    if (!token) throw new TypeError("Tars needs a token: pass token, or set TARS_TOKEN");
+  constructor(options: WardrikOptions = {}) {
+    const token = options.token ?? env("WARDRIK_TOKEN");
+    if (!token) throw new TypeError("Wardrik needs a token: pass token, or set WARDRIK_TOKEN");
 
-    const url = options.url ?? env("TARS_URL") ?? "http://127.0.0.1:4747";
+    const url = options.url ?? env("WARDRIK_URL") ?? "http://127.0.0.1:4747";
     this.#http = new Http(url, token, options.fetch ?? globalThis.fetch);
-    this.#worker = new Worker(options.name ?? "tars-sdk", version);
+    this.#worker = new Worker(options.name ?? "wardrik-sdk", version);
     this.agents = new Agents(this.#http);
   }
 
@@ -56,7 +56,7 @@ export class Tars {
    * once `work` is called. An agent calls it where its definition names
    * `workers/*` among its tools.
    *
-   *     tars.tool({
+   *     wardrik.tool({
    *       name: "refund_order",
    *       description: "Refund an order in full.",
    *       input: z.object({ orderId: z.string() }),
@@ -65,7 +65,7 @@ export class Tars {
    *         stripe.refunds.create({ payment_intent: orderId }, { idempotencyKey }),
    *     });
    *
-   *     await tars.work();
+   *     await wardrik.work();
    */
   tool<Input extends StandardSchemaWithJSON>(definition: ToolDefinition<Input>): this {
     this.#worker.add(definition);

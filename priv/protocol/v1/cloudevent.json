@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:cloudevent",
-  "title": "A Tars event, as a CloudEvent",
+  "$id": "urn:wardrik:schema:v1:cloudevent",
+  "title": "A Wardrik event, as a CloudEvent",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,11 +27,11 @@
     },
     "source": {
       "type": "string",
-      "pattern": "^tars://[^/]+/agents/.+$"
+      "pattern": "^wardrik://[^/]+/agents/.+$"
     },
     "type": {
       "type": "string",
-      "pattern": "^tars\\.[a-z_]+\\.[a-z_]+$"
+      "pattern": "^wardrik\\.[a-z_]+\\.[a-z_]+$"
     },
     "subject": {
       "type": "string"
@@ -45,7 +45,7 @@
     },
     "dataschema": {
       "type": "string",
-      "pattern": "^urn:tars:schema:v1:[a-z_]+\\.[a-z_]+$"
+      "pattern": "^urn:wardrik:schema:v1:[a-z_]+\\.[a-z_]+$"
     },
     "sequence": {
       "type": "string",

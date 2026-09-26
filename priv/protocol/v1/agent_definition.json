@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:agent_definition",
+  "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
   "description": "The body of PUT /v1/agents/{org}/{user}/{name}, and of GET /v1/agents/{org}/{user}/{name}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.",
   "type": "object",

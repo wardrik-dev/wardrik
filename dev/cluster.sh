@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Three connected Tars nodes, for driving the fleet by hand: two agent nodes
+# Three connected Wardrik nodes, for driving the fleet by hand: two agent nodes
 # and a terminal client attached to both. Run from inside tmux and it takes a
 # window in the session already open; run it outside and it makes one.
 #
@@ -17,22 +17,22 @@
 #
 # And from either iex pane, to see the same fleet from another node:
 #
-#   Tars.Fleet.list()
-#   Tars.Fleet.spawn("analyst", org: "acme", user: "jon")
-#   Tars.Fleet.kill("acme/")
+#   Wardrik.Fleet.list()
+#   Wardrik.Fleet.spawn("analyst", org: "acme", user: "jon")
+#   Wardrik.Fleet.kill("acme/")
 #
 # Killing a node, from outside the session, leaves its agents to be restarted
 # on another with the state they had, which takes about twenty seconds:
 #
-#   kill -9 $(pgrep -f "sname tars_a")
+#   kill -9 $(pgrep -f "sname wardrik_a")
 set -euo pipefail
 
 host=$(hostname -s)
-cookie=${TARS_COOKIE:-tars}
-name=${TARS_TMUX:-tars-cluster}
+cookie=${WARDRIK_COOKIE:-wardrik}
+name=${WARDRIK_TMUX:-wardrik-cluster}
 
 # Two of the three nodes are a quorum, which is what lets one be killed.
-run="env TARS_CLUSTER_SIZE=3"
+run="env WARDRIK_CLUSTER_SIZE=3"
 
 # Inside tmux this takes a window in the session already open; outside it, a
 # session of its own to attach to.
@@ -60,11 +60,11 @@ pane_b=$(tmux split-window -h -P -F '#{pane_id}' -t "$pane_a")
 pane_c=$(tmux split-window -v -P -F '#{pane_id}' -t "$pane_b")
 
 tmux send-keys -t "$pane_a" \
-  "$run iex --sname tars_a --cookie $cookie --erl \"$(peers tars_b)\" -S mix" C-m
+  "$run iex --sname wardrik_a --cookie $cookie --erl \"$(peers wardrik_b)\" -S mix" C-m
 tmux send-keys -t "$pane_b" \
-  "$run iex --sname tars_b --cookie $cookie --erl \"$(peers tars_a)\" -S mix" C-m
+  "$run iex --sname wardrik_b --cookie $cookie --erl \"$(peers wardrik_a)\" -S mix" C-m
 tmux send-keys -t "$pane_c" \
-  "$run mix tars --sname tars_c --cookie $cookie --connect tars_a@$host --connect tars_b@$host" C-m
+  "$run mix wardrik --sname wardrik_c --cookie $cookie --connect wardrik_a@$host --connect wardrik_b@$host" C-m
 
 tmux select-layout -t "$window" main-vertical
 tmux select-pane -t "$pane_c"

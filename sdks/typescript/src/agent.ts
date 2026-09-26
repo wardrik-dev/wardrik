@@ -6,7 +6,7 @@ import type {
   Authorization,
   Schedule,
   ScheduleDefinition,
-  TarsEvent,
+  WardrikEvent,
 } from "./protocol.ts";
 
 export interface SendOptions {
@@ -19,10 +19,10 @@ export interface SendOptions {
 }
 
 /** An event that ends a run. */
-const ends = new Set(["tars.run.completed", "tars.run.failed", "tars.run.cancelled"]);
+const ends = new Set(["wardrik.run.completed", "wardrik.run.failed", "wardrik.run.cancelled"]);
 
 /** The run an event belongs to: the trace id of its `traceparent`. */
-const runOf = (event: TarsEvent): string | undefined => event.traceparent.split("-")[1];
+const runOf = (event: WardrikEvent): string | undefined => event.traceparent.split("-")[1];
 
 /**
  * One agent, by its key, `org/user/name`. Every method is one request, and
@@ -74,16 +74,16 @@ export class Agent {
    * `approve` or `reject`, and its events follow.
    *
    *     for await (const event of agent.ask("What's on fire?")) {
-   *       if (event.type === "tars.message.delta") process.stdout.write(event.data.delta);
-   *       if (event.type === "tars.run.interrupted") {
+   *       if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
+   *       if (event.type === "wardrik.run.interrupted") {
    *         for (const interrupt of event.data.interrupts) await agent.approve(interrupt.id);
    *       }
    *     }
    *
-   * The events of other runs are left out, and so is `tars.agent.started`,
+   * The events of other runs are left out, and so is `wardrik.agent.started`,
    * except when the agent moves to another node during this run.
    */
-  async *ask(content: string, options: SendOptions = {}): AsyncGenerator<TarsEvent> {
+  async *ask(content: string, options: SendOptions = {}): AsyncGenerator<WardrikEvent> {
     const id = options.id ?? crypto.randomUUID();
     const done = new AbortController();
     const signal = options.signal ? AbortSignal.any([options.signal, done.signal]) : done.signal;
@@ -101,12 +101,12 @@ export class Agent {
       for (let next = await first; !next.done; next = await events.next()) {
         const event = next.value;
 
-        if (event.type === "tars.message.created" && event.data.message.id === id) {
+        if (event.type === "wardrik.message.created" && event.data.message.id === id) {
           yield event;
-        } else if (event.type === "tars.run.started" && event.data.run.message_ids?.includes(id)) {
+        } else if (event.type === "wardrik.run.started" && event.data.run.message_ids?.includes(id)) {
           run = event.data.run.id;
           yield event;
-        } else if (run !== undefined && (runOf(event) === run || event.type === "tars.agent.started")) {
+        } else if (run !== undefined && (runOf(event) === run || event.type === "wardrik.agent.started")) {
           yield event;
           if (ends.has(event.type)) return;
         }
@@ -127,9 +127,9 @@ export class Agent {
   }
 
   /** A page of the agent's log: up to `limit` durable events after `after`. */
-  async page(options: { after?: number; limit?: number } = {}): Promise<TarsEvent[]> {
+  async page(options: { after?: number; limit?: number } = {}): Promise<WardrikEvent[]> {
     const query = { starting_after: options.after ?? 0, limit: options.limit };
-    const page = await this.#http.json<{ events: TarsEvent[] }>("GET", this.#path + "/events", {
+    const page = await this.#http.json<{ events: WardrikEvent[] }>("GET", this.#path + "/events", {
       query,
     });
 

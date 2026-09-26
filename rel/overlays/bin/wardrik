@@ -1,0 +1,327 @@
+#!/bin/sh
+# The command a person runs. Each subcommand is one of bin/wardrikd's, the node's
+# own script, with the daemon's defaults around it.
+set -e
+
+readlink_f () {
+  cd "$(dirname "$1")" > /dev/null
+  filename="$(basename "$1")"
+  if [ -h "$filename" ]; then
+    readlink_f "$(readlink "$filename")"
+  else
+    echo "$(pwd -P)/$filename"
+  fi
+}
+
+root="$(CDPATH='' cd "$(dirname "$(readlink_f "$0")")/.." && pwd -P)"
+node="$root/bin/wardrikd"
+config_dir="${WARDRIK_CONFIG_DIR:-"${XDG_CONFIG_HOME:-"$HOME/.config"}/wardrik"}"
+state_dir="${WARDRIK_STATE_DIR:-"${XDG_STATE_HOME:-"$HOME/.local/state"}/wardrik"}"
+data_home="${WARDRIK_DATA_HOME:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/wardrik"}"
+
+# --node NAME, anywhere among the arguments, is WARDRIK_NODE for this command:
+# which of the cluster's nodes it starts, stops or asks. Everything else keeps
+# its order.
+count=$#
+while [ "$count" -gt 0 ]; do
+  arg=$1
+  shift
+  count=$((count - 1))
+
+  case "$arg" in
+    --node)
+      [ "$count" -gt 0 ] || { echo "wardrik: --node needs a node's name" >&2; exit 1; }
+      WARDRIK_NODE=$1
+      export WARDRIK_NODE
+      shift
+      count=$((count - 1))
+      ;;
+    --node=*)
+      WARDRIK_NODE=${arg#--node=}
+      export WARDRIK_NODE
+      ;;
+    *)
+      set -- "$@" "$arg"
+      ;;
+  esac
+done
+
+usage () {
+  cat <<USAGE
+Usage: wardrik [--node NAME] COMMAND
+
+  serve     run the daemon in the foreground, logging to the terminal
+  start     run the daemon in the background, logging to its state directory
+  stop      stop the daemon, and wait until it has
+  status    what the daemon, or its cluster, is running
+  reload    read the agent and policy files again, on every node
+  ask KEY MESSAGE            send an agent a message
+  history KEY                what an agent has said
+  parked    the calls agents are waiting on a person for
+  schedules [PREFIX]         when each schedule runs next, and how it last ran
+  approve KEY CALL           run a parked call
+  deny KEY CALL [REASON]     refuse a parked call
+  token create NAME (--scope PREFIX | --all) [--can ACTIONS]
+                             a token for the HTTP API, printed once; ACTIONS
+                             are some of read,message,decide,define,serve
+  token list                 the HTTP API's tokens
+  token revoke ID            stop a token working
+  attach [HOST]              the TUI, over SSH to HOST, localhost by default
+  remote    an IEx shell on the daemon
+  logs      follow the daemon's log
+  pid       the daemon's process id
+  version   print the version
+
+The daemon reads its configuration from $config_dir/config.yaml (or .yml), and
+runs the agents $config_dir/agents declares.
+
+Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which of
+its nodes a command is for. serve, start, stop, remote, logs and pid need one
+when this install runs several; every other command asks whichever node
+answers, since each speaks for the whole cluster.
+USAGE
+}
+
+# The nodes this install has run on this machine, as cluster.nodes names them:
+# each has a state directory of its own.
+local_nodes () {
+  for dir in "$state_dir"/nodes/*/; do
+    [ -d "$dir" ] && basename "$dir"
+  done
+  return 0
+}
+
+# A command for one node needs to know which, once there is more than one.
+one_node () {
+  [ -n "${WARDRIK_NODE:-}" ] && return 0
+  nodes="$(local_nodes | tr '\n' ' ')"
+  if [ -n "$nodes" ]; then
+    echo "wardrik: this install runs nodes $(echo $nodes | sed 's/ /, /g'); say which with --node" >&2
+    exit 1
+  fi
+}
+
+# A command for the cluster asks the first of this install's nodes that
+# answers.
+any_node () {
+  [ -n "${WARDRIK_NODE:-}" ] && return 0
+  for name in $(local_nodes); do
+    WARDRIK_NODE="$name"
+    if running; then
+      export WARDRIK_NODE
+      return 0
+    fi
+  done
+  unset WARDRIK_NODE
+}
+
+# Where the node WARDRIK_NODE names logs, as rel/env.sh.eex places it.
+node_state_dir () {
+  case "${WARDRIK_NODE:-}" in
+    "" | *@*) echo "$state_dir" ;;
+    *) echo "$state_dir/nodes/$WARDRIK_NODE" ;;
+  esac
+}
+
+# The name the node WARDRIK_NODE names runs under, as rel/env.sh.eex names it.
+release_node () {
+  case "${WARDRIK_NODE:-}" in
+    "")
+      case "${WARDRIK_DIST_INTERFACE:-"{127,0,0,1}"}" in
+        "{127,0,0,1}") echo "${RELEASE_NODE:-wardrikd@localhost}" ;;
+        *) echo "${RELEASE_NODE:-wardrikd}" ;;
+      esac
+      ;;
+    *@*) echo "${RELEASE_NODE:-$WARDRIK_NODE}" ;;
+    *) echo "${RELEASE_NODE:-wardrik_$WARDRIK_NODE@localhost}" ;;
+  esac
+}
+
+# The name the node runs under, where WARDRIK_NODE says, and a pattern matching
+# any of this release's nodes where it does not.
+node_name () {
+  case "${WARDRIK_NODE:-}" in
+    "") echo "[^ ]*" ;;
+    *) release_node ;;
+  esac
+}
+
+# Evaluates the Erlang expression $1 on the node with the erl_call in this
+# release's ERTS, and prints what it writes. Returns 0 where the expression
+# comes to ok, 1 where it comes to error or raises, with what it raised on
+# standard error, and 2 where no node answers.
+call () {
+  target="$(release_node)"
+  case "${RELEASE_DISTRIBUTION:-}" in
+    name | sname) mode="$RELEASE_DISTRIBUTION" ;;
+    *)
+      case "${target#*@}" in
+        *.* | *:*) mode=name ;;
+        *) mode=sname ;;
+      esac
+      ;;
+  esac
+  cookie="${RELEASE_COOKIE:-"$(cat "${WARDRIK_COOKIE_FILE:-"$data_home/cookie"}" 2> /dev/null)"}" || return 2
+  [ -n "$cookie" ] || return 2
+  out="$(printf '%s\n' "$1" | "$root"/erts-*/bin/erl_call "-$mode" "$target" -c "$cookie" -fetch_stdout -e 2> /dev/null)" || return 2
+
+  # erl_call ends with the expression's result: {ok, Value}, or {error, Reason}
+  # where it raised.
+  ok='{ok, ok}'
+  failed='{ok, error}'
+  raised='{error, '
+  case "$out" in
+    *"$ok")
+      printf %s "${out%"$ok"}"
+      ;;
+    *"$failed")
+      printf %s "${out%"$failed"}"
+      return 1
+      ;;
+    *)
+      written="${out%"$raised"*}"
+      printf %s "$written"
+      echo "wardrik: ${out#"$written"}" >&2
+      return 1
+      ;;
+  esac
+}
+
+running () {
+  call ok. > /dev/null 2>&1
+}
+
+# A node on this machine that never opened its store, such as one started
+# under a name the cluster does not have, leaves no directories behind.
+forget_unstarted () {
+  case "${WARDRIK_NODE:-}" in
+    "" | *@*) return 0 ;;
+  esac
+  store="$data_home/nodes/$WARDRIK_NODE/store"
+  if [ -d "$store" ] && [ -z "$(ls -A "$store")" ]; then
+    rm -rf "${data_home:?}/nodes/$WARDRIK_NODE" "${state_dir:?}/nodes/$WARDRIK_NODE"
+  fi
+}
+
+# Runs WardrikDaemon.CLI.main/1 on the node, and exits 1 where the command fails.
+# Each argument travels base64 encoded, so nothing a person types is read as
+# part of the expression.
+cli () {
+  args=""
+  for arg in "$@"; do
+    args="$args, 'Elixir.Base':'decode64!'(<<\"$(printf %s "$arg" | base64 | tr -d '\n')\">>)"
+  done
+  call "try 'Elixir.WardrikDaemon.CLI':main([${args#, }]) catch exit:{shutdown, 1} -> error end." || {
+    [ $? -ne 2 ] || echo "wardrik is not running" >&2
+    exit 1
+  }
+}
+
+# The node's VM, whether or not it answers yet: it runs this release's own
+# ERTS, under the node's name.
+alive () {
+  pgrep -f "$root/erts-[^/]*/bin/beam.* -s?name $(node_name)( |\$)" > /dev/null 2>&1
+}
+
+case "${1:-}" in
+  serve | start | stop | remote | logs | pid) one_node ;;
+  status | reload | parked | schedules | ask | history | approve | deny | token) any_node ;;
+esac
+
+log="${WARDRIK_LOG:-"$(node_state_dir)/log/wardrik.log"}"
+
+case "${1:-}" in
+  serve)
+    WARDRIK_LOG="${WARDRIK_LOG:--}" exec "$node" start
+    ;;
+  start)
+    if running; then echo "wardrik is already running" >&2; exit 1; fi
+    "$node" daemon
+    # Started once the agent files have been read, or once the node is up and
+    # waiting for enough of its cluster to start them: WardrikDaemon.CLI.started/0
+    # says which, and raises before either. The VM has a second to appear
+    # before its absence ends the wait.
+    for tick in $(seq 600); do
+      sleep 0.1
+      if waiting="$(call "'Elixir.IO':puts('Elixir.WardrikDaemon.CLI':started())." 2>/dev/null)"; then
+        [ -z "$waiting" ] || echo "$waiting"
+        exit 0
+      fi
+      [ "$tick" -lt 10 ] || alive || break
+    done
+    echo "wardrik did not start. The end of $log:" >&2
+    tail -n 20 "$log" >&2 2>/dev/null || true
+    forget_unstarted
+    exit 1
+    ;;
+  stop)
+    pid="$(call 'io:format("~s~n", [os:getpid()]).' 2>/dev/null)" || { echo "wardrik is not running" >&2; exit 1; }
+    # A node without its cluster's quorum halts rather than stopping, and says
+    # why; see WardrikDaemon.CLI.stopping/0.
+    halting="$(call "'Elixir.IO':puts('Elixir.WardrikDaemon.CLI':stopping())." 2>/dev/null)" || halting=""
+    if [ -n "$halting" ]; then
+      echo "$halting"
+    else
+      call "'Elixir.System':stop()." > /dev/null
+    fi
+    for _ in $(seq 600); do
+      kill -0 "$pid" 2>/dev/null || exit 0
+      sleep 0.1
+    done
+    echo "wardrik did not stop within a minute" >&2
+    exit 1
+    ;;
+  status)
+    if ! running; then echo "wardrik is not running"; exit 3; fi
+    cli status
+    ;;
+  reload|parked)
+    cli "$1"
+    ;;
+  schedules)
+    [ $# -le 2 ] || { echo "Usage: wardrik schedules [PREFIX]" >&2; exit 1; }
+    cli "$@"
+    ;;
+  ask)
+    [ $# -ge 3 ] || { echo "Usage: wardrik ask KEY MESSAGE" >&2; exit 1; }
+    cli "$@"
+    ;;
+  history)
+    [ $# -eq 2 ] || { echo "Usage: wardrik history KEY" >&2; exit 1; }
+    cli "$@"
+    ;;
+  approve)
+    [ $# -eq 3 ] || { echo "Usage: wardrik approve KEY CALL" >&2; exit 1; }
+    cli "$@"
+    ;;
+  deny)
+    [ $# -ge 3 ] || { echo "Usage: wardrik deny KEY CALL [REASON]" >&2; exit 1; }
+    cli "$@"
+    ;;
+  token)
+    [ $# -ge 2 ] || { echo "Usage: wardrik token create NAME (--scope PREFIX | --all), list, or revoke ID" >&2; exit 1; }
+    cli "$@"
+    ;;
+  attach)
+    exec ssh -t -p "${WARDRIK_SSH_PORT:-2222}" "${USER}@${2:-localhost}"
+    ;;
+  remote)
+    exec "$node" remote
+    ;;
+  logs)
+    exec tail -F "$log"
+    ;;
+  pid)
+    call 'io:format("~s~n", [os:getpid()]).' || { echo "wardrik is not running" >&2; exit 1; }
+    ;;
+  version)
+    echo "wardrik $(cut -d' ' -f2 "$root/releases/start_erl.data")"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

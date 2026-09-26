@@ -1,7 +1,7 @@
 import type { ErrorBody } from "./protocol.ts";
 
 /** What went wrong, as the API answered it: its status and error body. */
-export class TarsError extends Error {
+export class WardrikError extends Error {
   /** The HTTP status. */
   readonly status: number;
   /** A low-cardinality code, such as `not_found` or `conflict`. */
@@ -13,11 +13,11 @@ export class TarsError extends Error {
 
   constructor(
     status: number,
-    error: { type: TarsError["type"]; message: string; oldest?: number | undefined },
+    error: { type: WardrikError["type"]; message: string; oldest?: number | undefined },
     requestId?: string | undefined,
   ) {
     super(error.message);
-    this.name = "TarsError";
+    this.name = "WardrikError";
     this.status = status;
     this.type = error.type;
     this.requestId = requestId;
@@ -25,15 +25,15 @@ export class TarsError extends Error {
   }
 
   /** The error an answer of 400 or above holds. */
-  static async from(response: Response): Promise<TarsError> {
+  static async from(response: Response): Promise<WardrikError> {
     const requestId = response.headers.get("request-id") ?? undefined;
 
     try {
       const body = (await response.json()) as ErrorBody;
-      return new TarsError(response.status, body.error, requestId);
+      return new WardrikError(response.status, body.error, requestId);
     } catch {
       const message = `${response.status} ${response.statusText}`.trim();
-      return new TarsError(response.status, { type: "unknown", message }, requestId);
+      return new WardrikError(response.status, { type: "unknown", message }, requestId);
     }
   }
 }

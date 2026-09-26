@@ -1,4 +1,4 @@
-defmodule TarsBrave.Case do
+defmodule WardrikBrave.Case do
   @moduledoc """
   Case template for the Brave client.
 
@@ -15,13 +15,13 @@ defmodule TarsBrave.Case do
 
   using do
     quote do
-      import TarsBrave.Case
+      import WardrikBrave.Case
 
-      alias TarsBrave.Config
+      alias WardrikBrave.Config
     end
   end
 
-  @stub TarsBrave.Stub
+  @stub WardrikBrave.Stub
 
   @doc "Answers every request with `body` as JSON under `status`."
   def stub_json(status, body) do

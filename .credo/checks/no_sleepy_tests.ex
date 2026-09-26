@@ -1,4 +1,4 @@
-defmodule Tars.Credo.Check.NoSleepyTests do
+defmodule Wardrik.Credo.Check.NoSleepyTests do
   use Credo.Check,
     base_priority: :high,
     category: :warning,

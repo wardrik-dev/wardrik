@@ -24,7 +24,7 @@ defmodule Deploy.HetznerTest do
         do:
           System.put_env(
             name,
-            if(name == "TARS_VAULT_KEY", do: TarsVault.generate_key(), else: "x")
+            if(name == "WARDRIK_VAULT_KEY", do: WardrikVault.generate_key(), else: "x")
           )
 
     try do
@@ -36,34 +36,34 @@ defmodule Deploy.HetznerTest do
   end
 
   test "the box's config.yaml, and its triage agent under it, read", %{tmp_dir: dir} do
-    text = written("/home/tars/.config/tars/config.yaml")
+    text = written("/home/wardrik/.config/wardrik/config.yaml")
     config = Path.join(dir, "config.yaml")
     File.write!(config, text)
 
-    assert {:ok, settings} = with_env(text, fn -> TarsDaemon.Config.read(config) end)
+    assert {:ok, settings} = with_env(text, fn -> WardrikDaemon.Config.read(config) end)
 
     github =
       settings
-      |> Keyword.fetch!(TarsOAuth)
+      |> Keyword.fetch!(WardrikOAuth)
       |> Keyword.fetch!(:providers)
       |> Keyword.fetch!(:github)
 
     assert github[:issuer] == "https://github.com/login/oauth"
 
     agent = Path.join(dir, "triage.md")
-    File.write!(agent, written("/home/tars/.config/tars/agents/triage.md"))
+    File.write!(agent, written("/home/wardrik/.config/wardrik/agents/triage.md"))
 
     with_settings(settings, fn ->
-      assert {:ok, %Tars.Agent.Spec{name: "triage"}} = TarsDaemon.AgentFile.read(agent)
+      assert {:ok, %Wardrik.Agent.Spec{name: "triage"}} = WardrikDaemon.AgentFile.read(agent)
     end)
   end
 
   # The settings config.yaml makes, as the daemon applies them, put back after.
   defp with_settings(settings, fun) do
     previous =
-      for {package, _value} <- settings, do: {package, Application.get_env(:tars, package)}
+      for {package, _value} <- settings, do: {package, Application.get_env(:wardrik, package)}
 
-    for {package, value} <- settings, do: Application.put_env(:tars, package, value)
+    for {package, value} <- settings, do: Application.put_env(:wardrik, package, value)
 
     try do
       fun.()
@@ -71,8 +71,8 @@ defmodule Deploy.HetznerTest do
       for {package, value} <- previous,
           do:
             if(value,
-              do: Application.put_env(:tars, package, value),
-              else: Application.delete_env(:tars, package)
+              do: Application.put_env(:wardrik, package, value),
+              else: Application.delete_env(:wardrik, package)
             )
     end
   end

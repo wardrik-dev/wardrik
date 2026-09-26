@@ -1,7 +1,7 @@
-defmodule Tars.Test.EventLog do
-  @moduledoc "Reads and tampers with agents' `Tars.Event.Log`s."
+defmodule Wardrik.Test.EventLog do
+  @moduledoc "Reads and tampers with agents' `Wardrik.Event.Log`s."
 
-  alias Tars.Event.Log
+  alias Wardrik.Event.Log
 
   @doc "The CloudEvent types in an agent's log, oldest first."
   def types(agent_id) do
@@ -16,9 +16,9 @@ defmodule Tars.Test.EventLog do
   def usurp(agent_id), do: usurp(agent_id, Log.oldest(agent_id))
 
   defp usurp(agent_id, sequence) do
-    event = %{"id" => "usurper", "type" => "tars.agent.started"}
+    event = %{"id" => "usurper", "type" => "wardrik.agent.started"}
 
-    case Tars.Store.put(Log.namespace(), Log.key(agent_id, sequence), event, if_vsn: nil) do
+    case Wardrik.Store.put(Log.namespace(), Log.key(agent_id, sequence), event, if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> usurp(agent_id, sequence + 1)
     end

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:schedule_definition",
+  "$id": "urn:wardrik:schema:v1:schedule_definition",
   "title": "A schedule's definition",
   "description": "The body of PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.",
   "type": "object",

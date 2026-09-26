@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:subagent.started",
-  "title": "tars.subagent.started",
+  "$id": "urn:wardrik:schema:v1:subagent.started",
+  "title": "wardrik.subagent.started",
   "description": "A subagent was handed a task.",
   "type": "object",
   "properties": {

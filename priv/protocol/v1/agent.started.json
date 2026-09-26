@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:agent.started",
-  "title": "tars.agent.started",
+  "$id": "urn:wardrik:schema:v1:agent.started",
+  "title": "wardrik.agent.started",
   "description": "The agent was loaded: started, restarted, or moved to another node.",
   "type": "object",
   "properties": {

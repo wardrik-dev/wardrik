@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:step.started",
-  "title": "tars.step.started",
+  "$id": "urn:wardrik:schema:v1:step.started",
+  "title": "wardrik.step.started",
   "description": "A named step began.",
   "type": "object",
   "properties": {

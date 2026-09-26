@@ -4,9 +4,9 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, test } from "node:test";
 import { WebSocketServer, type WebSocket } from "ws";
 import { z } from "zod";
-import { Tars, TarsError } from "../src/index.ts";
+import { Wardrik, WardrikError } from "../src/index.ts";
 
-// Tars's side of a worker's socket: the MCP client, as TarsHTTP.Worker is.
+// Wardrik's side of a worker's socket: the MCP client, as WardrikHTTP.Worker is.
 class Peer {
   readonly socket: WebSocket;
   readonly notifications: { method: string; params: unknown }[] = [];
@@ -49,7 +49,7 @@ class Peer {
     const init = await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: "tars", version: "0" },
+      clientInfo: { name: "wardrik", version: "0" },
     });
     assert.equal(init.result.protocolVersion, "2025-06-18");
     this.notify("notifications/initialized");
@@ -69,7 +69,7 @@ beforeEach(async () => {
   peers = [];
   stop = new AbortController();
   const sockets = new WebSocketServer({ noServer: true });
-  const authorized = (header: string | undefined) => header === "Bearer tars_secret";
+  const authorized = (header: string | undefined) => header === "Bearer wardrik_secret";
 
   const server = createServer((request, response) => {
     const status = authorized(request.headers.authorization) ? 426 : 401;
@@ -104,9 +104,9 @@ afterEach(async () => {
 
 test("offers its tools with their hints, and answers a call with the call's idempotency key", async () => {
   const keys: (string | undefined)[] = [];
-  const tars = new Tars({ url, token: "tars_secret", name: "shop" });
+  const wardrik = new Wardrik({ url, token: "wardrik_secret", name: "shop" });
 
-  tars
+  wardrik
     .tool({
       name: "refund_order",
       description: "Refund an order in full.",
@@ -132,7 +132,7 @@ test("offers its tools with their hints, and answers a call with the call's idem
     });
 
   const arriving = next();
-  const working = tars.work({ signal: stop.signal });
+  const working = wardrik.work({ signal: stop.signal });
   const peer = await arriving;
   const tools = await peer.initialize();
 
@@ -149,11 +149,11 @@ test("offers its tools with their hints, and answers a call with the call's idem
   const refund = await peer.request("tools/call", {
     name: "refund_order",
     arguments: { orderId: "o_42" },
-    _meta: { idempotencyKey: "tars_3f9a" },
+    _meta: { idempotencyKey: "wardrik_3f9a" },
   });
 
   assert.deepEqual(refund.result.structuredContent, { refund: "re_o_42" });
-  assert.deepEqual(keys, ["tars_3f9a"]);
+  assert.deepEqual(keys, ["wardrik_3f9a"]);
 
   const look = await peer.request("tools/call", { name: "look", arguments: {} });
   assert.deepEqual(look.result.content, [{ type: "text", text: "Nothing here." }]);
@@ -166,12 +166,12 @@ test("offers its tools with their hints, and answers a call with the call's idem
   await working;
 });
 
-test("aborts a call Tars stops waiting for", async () => {
-  const tars = new Tars({ url, token: "tars_secret" });
+test("aborts a call Wardrik stops waiting for", async () => {
+  const wardrik = new Wardrik({ url, token: "wardrik_secret" });
   let aborted!: () => void;
   const abort = new Promise<void>((resolve) => (aborted = resolve));
 
-  tars.tool({
+  wardrik.tool({
     name: "hang",
     input: z.object({}),
     run: (_args, { signal }) =>
@@ -179,7 +179,7 @@ test("aborts a call Tars stops waiting for", async () => {
   });
 
   const arriving = next();
-  const working = tars.work({ signal: stop.signal });
+  const working = wardrik.work({ signal: stop.signal });
   const peer = await arriving;
   await peer.initialize();
 
@@ -192,16 +192,16 @@ test("aborts a call Tars stops waiting for", async () => {
   await working;
 });
 
-test("tells Tars when a tool is added while it works", async () => {
-  const tars = new Tars({ url, token: "tars_secret" });
-  tars.tool({ name: "look", input: z.object({}), run: () => "…" });
+test("tells Wardrik when a tool is added while it works", async () => {
+  const wardrik = new Wardrik({ url, token: "wardrik_secret" });
+  wardrik.tool({ name: "look", input: z.object({}), run: () => "…" });
 
   const arriving = next();
-  const working = tars.work({ signal: stop.signal });
+  const working = wardrik.work({ signal: stop.signal });
   const peer = await arriving;
   await peer.initialize();
 
-  tars.tool({ name: "send", input: z.object({}), run: () => "…" });
+  wardrik.tool({ name: "send", input: z.object({}), run: () => "…" });
   await peer.notified("notifications/tools/list_changed");
 
   const tools = (await peer.request("tools/list")).result.tools;
@@ -212,11 +212,11 @@ test("tells Tars when a tool is added while it works", async () => {
 });
 
 test("opens its socket again after it drops", async () => {
-  const tars = new Tars({ url, token: "tars_secret" });
-  tars.tool({ name: "look", input: z.object({}), run: () => "…" });
+  const wardrik = new Wardrik({ url, token: "wardrik_secret" });
+  wardrik.tool({ name: "look", input: z.object({}), run: () => "…" });
 
   let arriving = next();
-  const working = tars.work({ signal: stop.signal });
+  const working = wardrik.work({ signal: stop.signal });
   const first = await arriving;
   await first.initialize();
 
@@ -230,10 +230,10 @@ test("opens its socket again after it drops", async () => {
 });
 
 test("stops when its token is refused", async () => {
-  const tars = new Tars({ url, token: "tars_wrong" });
+  const wardrik = new Wardrik({ url, token: "wardrik_wrong" });
 
-  await assert.rejects(tars.work({ signal: stop.signal }), (thrown: unknown) => {
-    assert.ok(thrown instanceof TarsError);
+  await assert.rejects(wardrik.work({ signal: stop.signal }), (thrown: unknown) => {
+    assert.ok(thrown instanceof WardrikError);
     assert.equal(thrown.type, "unauthorized");
     return true;
   });

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:run.cancelled",
-  "title": "tars.run.cancelled",
+  "$id": "urn:wardrik:schema:v1:run.cancelled",
+  "title": "wardrik.run.cancelled",
   "description": "A person stopped a run.",
   "type": "object",
   "properties": {
     "run": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/run"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/run"
     },
     "dropped": {
       "type": "integer",
@@ -26,7 +26,7 @@
       ]
     },
     "duration_ms": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
     }
   },
   "additionalProperties": false,

@@ -1,4 +1,4 @@
-import { TarsError } from "./errors.ts";
+import { WardrikError } from "./errors.ts";
 
 export interface Request {
   body?: unknown;
@@ -21,7 +21,7 @@ export class Http {
     this.#fetch = fetcher;
   }
 
-  /** The response to `method` on `path`, throwing a `TarsError` for 400 and above. */
+  /** The response to `method` on `path`, throwing a `WardrikError` for 400 and above. */
   async send(method: string, path: string, request: Request = {}): Promise<Response> {
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.token}`,
@@ -42,7 +42,7 @@ export class Http {
     });
 
     if (response.status >= 400 && !request.accept?.includes(response.status)) {
-      throw await TarsError.from(response);
+      throw await WardrikError.from(response);
     }
 
     return response;

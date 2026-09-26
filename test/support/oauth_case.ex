@@ -1,12 +1,12 @@
-defmodule TarsOAuth.Case do
+defmodule WardrikOAuth.Case do
   @moduledoc """
   An authorization server that answers without a socket, and a vault with a key.
 
-  Requests are routed to a `Req.Test` stub through `config :tars, TarsOAuth,
+  Requests are routed to a `Req.Test` stub through `config :wardrik, WardrikOAuth,
   req_options:`, so discovery, registration, exchange and refresh all run their
   real request building against a stub that reports what it was sent.
 
-      use TarsOAuth.Case
+      use WardrikOAuth.Case
 
       test "..." do
         stub_server()
@@ -17,7 +17,7 @@ defmodule TarsOAuth.Case do
 
   use ExUnit.CaseTemplate
 
-  @stub TarsOAuth.Stub
+  @stub WardrikOAuth.Stub
 
   defmodule Resolver do
     @moduledoc """
@@ -35,28 +35,28 @@ defmodule TarsOAuth.Case do
 
   using do
     quote do
-      import TarsOAuth.Case
+      import WardrikOAuth.Case
 
-      alias TarsOAuth.Client
-      alias TarsOAuth.Flow
-      alias TarsOAuth.Metadata
-      alias TarsOAuth.Provider
-      alias TarsOAuth.Token
+      alias WardrikOAuth.Client
+      alias WardrikOAuth.Flow
+      alias WardrikOAuth.Metadata
+      alias WardrikOAuth.Provider
+      alias WardrikOAuth.Token
     end
   end
 
   setup do
     previous = %{
-      oauth: Application.get_env(:tars, TarsOAuth),
-      vault: Application.get_env(:tars, TarsVault)
+      oauth: Application.get_env(:wardrik, WardrikOAuth),
+      vault: Application.get_env(:wardrik, WardrikVault)
     }
 
-    Application.put_env(:tars, TarsVault, keys: [TarsVault.generate_key()])
+    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
     forget_registrations()
 
     on_exit(fn ->
-      put_back(TarsOAuth, previous.oauth)
-      put_back(TarsVault, previous.vault)
+      put_back(WardrikOAuth, previous.oauth)
+      put_back(WardrikVault, previous.vault)
       forget_registrations()
     end)
 
@@ -65,21 +65,22 @@ defmodule TarsOAuth.Case do
 
   # Clients registered dynamically are kept in the store, which outlives a test.
   defp forget_registrations do
-    for key <- Tars.Store.keys(:oauth_clients, ""), do: Tars.Store.delete(:oauth_clients, key)
+    for key <- Wardrik.Store.keys(:oauth_clients, ""),
+        do: Wardrik.Store.delete(:oauth_clients, key)
   end
 
-  @doc "Configures `TarsOAuth` with these options, plus the stub transport."
+  @doc "Configures `WardrikOAuth` with these options, plus the stub transport."
   @spec configure(keyword()) :: :ok
   def configure(opts) do
     defaults = [
       req_options: [plug: {Req.Test, @stub}],
       redirect: [uri: redirect_uri()],
-      client: [name: "Tars", document_url: "https://tars.dev/oauth/client"],
+      client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
       resolver: Resolver,
       poll_floor: 0
     ]
 
-    Application.put_env(:tars, TarsOAuth, Keyword.merge(defaults, opts))
+    Application.put_env(:wardrik, WardrikOAuth, Keyword.merge(defaults, opts))
   end
 
   @doc "The redirect URI the tests register."
@@ -267,6 +268,6 @@ defmodule TarsOAuth.Case do
     end
   end
 
-  defp put_back(key, nil), do: Application.delete_env(:tars, key)
-  defp put_back(key, value), do: Application.put_env(:tars, key, value)
+  defp put_back(key, nil), do: Application.delete_env(:wardrik, key)
+  defp put_back(key, value), do: Application.put_env(:wardrik, key, value)
 end

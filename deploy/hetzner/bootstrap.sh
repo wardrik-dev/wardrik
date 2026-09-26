@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Makes a Hetzner box of three tars nodes from the cloud-init.yaml beside this
+# Makes a Hetzner box of three wardrik nodes from the cloud-init.yaml beside this
 # script, gives it the release CI built from main and the keys the daemon
 # reads, and starts the nodes. Run again, it goes on from what is there, and
 # puts the latest release in place of the one the box has.
@@ -9,15 +9,15 @@
 #
 # SLACK_CHANNEL is the id of a channel the Slack bot is in, where parked calls
 # are posted; the env file may hold it instead. hcloud needs a context (hcloud
-# context create tars) or HCLOUD_TOKEN, and gh a login that can read the
+# context create wardrik) or HCLOUD_TOKEN, and gh a login that can read the
 # repository.
 #
-#   TARS_BOX            the server's name, tars-demo
-#   TARS_BOX_TYPE       cx23; an x86 type, since the release is built for x86_64
-#   TARS_BOX_LOCATION   fsn1
-#   TARS_SSH_KEY        the key that lets you in as tars and into the TUI: the first of
+#   WARDRIK_BOX            the server's name, wardrik-demo
+#   WARDRIK_BOX_TYPE       cx23; an x86 type, since the release is built for x86_64
+#   WARDRIK_BOX_LOCATION   fsn1
+#   WARDRIK_SSH_KEY        the key that lets you in as wardrik and into the TUI: the first of
 #                       ~/.ssh/id_ed25519.pub, id_ecdsa.pub and id_rsa.pub there is
-#   TARS_ENV_FILE       ~/.config/tars/env, the keys the daemon reads
+#   WARDRIK_ENV_FILE       ~/.config/wardrik/env, the keys the daemon reads
 #
 # The firewall lets anyone reach SSH, and only this machine's address reach the
 # TUI. The box shares its Slack app with any daemon of yours, so it is not made
@@ -26,17 +26,17 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd -P)
 repo=jonlunsford/tars
-box=${TARS_BOX:-tars-demo}
-type=${TARS_BOX_TYPE:-cx23}
-location=${TARS_BOX_LOCATION:-fsn1}
-public_key=${TARS_SSH_KEY:-}
+box=${WARDRIK_BOX:-wardrik-demo}
+type=${WARDRIK_BOX_TYPE:-cx23}
+location=${WARDRIK_BOX_LOCATION:-fsn1}
+public_key=${WARDRIK_SSH_KEY:-}
 if [ -z "$public_key" ]; then
   for candidate in id_ed25519 id_ecdsa id_rsa; do
     [ -f "$HOME/.ssh/$candidate.pub" ] && public_key="$HOME/.ssh/$candidate.pub" && break
   done
 fi
-env_file=${TARS_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/tars/env}
-local_tars="$HOME/tars/bin/tars"
+env_file=${WARDRIK_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/wardrik/env}
+local_wardrik="$HOME/wardrik/bin/wardrik"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'bootstrap: %s\n' "$*" >&2; exit 1; }
@@ -46,16 +46,16 @@ for command in hcloud gh ssh scp ssh-keygen curl; do
 done
 
 [ -n "${HCLOUD_TOKEN:-}" ] || [ -n "$(hcloud context active 2>/dev/null)" ] ||
-  die "hcloud has no context; hcloud context create tars, with an API token from the Hetzner console"
+  die "hcloud has no context; hcloud context create wardrik, with an API token from the Hetzner console"
 [ -n "$public_key" ] && [ -f "$public_key" ] ||
-  die "there is no public key at ${public_key:-~/.ssh}; set TARS_SSH_KEY"
-[ -f "$env_file" ] || die "there is no env file at $env_file; set TARS_ENV_FILE"
+  die "there is no public key at ${public_key:-~/.ssh}; set WARDRIK_SSH_KEY"
+[ -f "$env_file" ] || die "there is no env file at $env_file; set WARDRIK_ENV_FILE"
 
 channel=${SLACK_CHANNEL:-$(sed -n 's/^SLACK_CHANNEL=//p' "$env_file" | tail -n 1)}
 [ -n "$channel" ] || die "set SLACK_CHANNEL to the id of a channel the Slack bot is in"
 
-if [ -x "$local_tars" ] && "$local_tars" status >/dev/null 2>&1; then
-  die "a daemon runs here, on the Slack app the box would share; stop it with $local_tars stop"
+if [ -x "$local_wardrik" ] && "$local_wardrik" status >/dev/null 2>&1; then
+  die "a daemon runs here, on the Slack app the box would share; stop it with $local_wardrik stop"
 fi
 
 # -- the box ------------------------------------------------------------------
@@ -119,8 +119,8 @@ case "$code" in
   *) die "cloud-init did not finish; ssh root@$address cat /var/log/cloud-init-output.log" ;;
 esac
 
-remote "tars@$address" true 2>/dev/null ||
-  die "the key did not reach the tars user; ssh root@$address cat /var/log/cloud-init-output.log"
+remote "wardrik@$address" true 2>/dev/null ||
+  die "the key did not reach the wardrik user; ssh root@$address cat /var/log/cloud-init-output.log"
 
 # -- the release and the keys ------------------------------------------------------
 
@@ -132,8 +132,8 @@ run=$(gh run list --repo "$repo" --branch main --workflow CI --status success --
 [ -n "$run" ] || die "no CI run on main has succeeded"
 
 say "Downloading the release CI built in run $run"
-gh run download "$run" --repo "$repo" --pattern 'tars-*-linux-x86_64.tar.gz' --dir "$work"
-tarball=$(find "$work" -type f -name 'tars-*-linux-x86_64.tar.gz' | head -n 1)
+gh run download "$run" --repo "$repo" --pattern 'wardrik-*-linux-x86_64.tar.gz' --dir "$work"
+tarball=$(find "$work" -type f -name 'wardrik-*-linux-x86_64.tar.gz' | head -n 1)
 [ -n "$tarball" ] || die "run $run has no release tarball"
 
 (
@@ -143,20 +143,20 @@ tarball=$(find "$work" -type f -name 'tars-*-linux-x86_64.tar.gz' | head -n 1)
 ) >"$work/env"
 
 say "Installing $(basename "$tarball") and the keys, and starting a, b and c"
-scp -q "${ssh_opts[@]}" "$tarball" "$work/env" "tars@$address:"
-remote "tars@$address" "
+scp -q "${ssh_opts[@]}" "$tarball" "$work/env" "wardrik@$address:"
+remote "wardrik@$address" "
   set -e
-  systemctl --user stop tars@a tars@b tars@c 2>/dev/null || true
-  tar -xzf $(basename "$tarball") -C ~/tars
+  systemctl --user stop wardrik@a wardrik@b wardrik@c 2>/dev/null || true
+  tar -xzf $(basename "$tarball") -C ~/wardrik
   rm $(basename "$tarball")
-  install -m 600 env ~/.config/tars/env
+  install -m 600 env ~/.config/wardrik/env
   rm env
-  systemctl --user enable --now tars@a tars@b tars@c
+  systemctl --user enable --now wardrik@a wardrik@b wardrik@c
 "
 
 say "Waiting for the cluster"
 for _ in $(seq 30); do
-  status=$(remote "tars@$address" tars/bin/tars status 2>&1) || true
+  status=$(remote "wardrik@$address" wardrik/bin/wardrik status 2>&1) || true
   case "$status" in *"cluster of 3: a, b, c up"*) break ;; esac
   sleep 2
 done
@@ -167,9 +167,9 @@ cat <<EOF
 $box is at $address.
 
   ssh -p 2222 jon@$address                            the TUI
-  ssh tars@$address tars/bin/tars parked              what waits on a person
-  ssh tars@$address 'tars/bin/tars ask _/jon/triage "Open an issue titled Rehearsal check."'
-  ssh tars@$address 'journalctl --user -u tars@a -n 40 --no-pager'
+  ssh wardrik@$address wardrik/bin/wardrik parked              what waits on a person
+  ssh wardrik@$address 'wardrik/bin/wardrik ask _/jon/triage "Open an issue titled Rehearsal check."'
+  ssh wardrik@$address 'journalctl --user -u wardrik@a -n 40 --no-pager'
 
 deploy/hetzner/teardown.sh deletes it.
 EOF

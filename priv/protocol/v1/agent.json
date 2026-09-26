@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:agent",
+  "$id": "urn:wardrik:schema:v1:agent",
   "title": "An agent, listed",
   "description": "One entry of GET /v1/agents.",
   "type": "object",
@@ -53,7 +53,7 @@
       "name": "triage",
       "status": "parked",
       "pending": 0,
-      "node": "tars@box1",
+      "node": "wardrik@box1",
       "outcome": "ok"
     }
   ]

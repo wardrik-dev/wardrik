@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:subagent.completed",
-  "title": "tars.subagent.completed",
+  "$id": "urn:wardrik:schema:v1:subagent.completed",
+  "title": "wardrik.subagent.completed",
   "description": "A subagent answered.",
   "type": "object",
   "properties": {
@@ -18,10 +18,10 @@
       "additionalProperties": false
     },
     "message": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/message"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
     },
     "duration_ms": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/duration_ms"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"
     }
   },
   "additionalProperties": false,

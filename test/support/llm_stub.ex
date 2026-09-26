@@ -1,4 +1,4 @@
-defmodule Tars.Test.LLMStub do
+defmodule Wardrik.Test.LLMStub do
   @moduledoc """
   Feeds canned responses to the turn loop.
 

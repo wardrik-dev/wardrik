@@ -7,18 +7,18 @@ import {
   type StandardSchemaWithJSON,
   type Transport,
 } from "@modelcontextprotocol/server";
-import { TarsError } from "./errors.ts";
+import { WardrikError } from "./errors.ts";
 import type { Http } from "./http.ts";
 
 /** What a tool's `run` is given beside its arguments. */
 export interface ToolContext {
   /**
-   * The call's idempotency key, the same each time Tars runs this call.
+   * The call's idempotency key, the same each time Wardrik runs this call.
    * Pass it on to what the tool changes, such as a payment API, so a call
    * run again after a crash has no second effect.
    */
   idempotencyKey: string | undefined;
-  /** Aborts when Tars stops waiting for the call. */
+  /** Aborts when Wardrik stops waiting for the call. */
   signal: AbortSignal;
 }
 
@@ -33,7 +33,7 @@ export interface ToolDefinition<Input extends StandardSchemaWithJSON = StandardS
   input: Input;
   /**
    * Whether running it again with the same idempotency key has no second
-   * effect. A call Tars cannot tell finished, because its agent was lost
+   * effect. A call Wardrik cannot tell finished, because its agent was lost
    * while the call was running, runs again where every worker offering the
    * tool says so, and waits for a person otherwise.
    */
@@ -97,7 +97,7 @@ export class Worker {
   /**
    * Holds a socket to the server open and answers calls over it, until
    * `signal` aborts. A dropped socket is opened again, waiting longer each
-   * time up to 30 seconds. Throws a `TarsError` when the token is refused.
+   * time up to 30 seconds. Throws a `WardrikError` when the token is refused.
    */
   async work(http: Http, options: WorkOptions = {}): Promise<void> {
     const { signal } = options;
@@ -111,7 +111,7 @@ export class Worker {
         await this.#serve(url, http, signal);
         if (Date.now() - opened > lastDelay) delay = firstDelay;
       } catch (error) {
-        if (error instanceof TarsError && error.status < 500) throw error;
+        if (error instanceof WardrikError && error.status < 500) throw error;
         if (signal?.aborted) return;
       }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:schedule.triggered",
-  "title": "tars.schedule.triggered",
+  "$id": "urn:wardrik:schema:v1:schedule.triggered",
+  "title": "wardrik.schedule.triggered",
   "description": "A schedule came due.",
   "type": "object",
   "properties": {

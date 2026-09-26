@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:tars:schema:v1:message.started",
-  "title": "tars.message.started",
+  "$id": "urn:wardrik:schema:v1:message.started",
+  "title": "wardrik.message.started",
   "description": "The model was asked for an assistant message.",
   "type": "object",
   "properties": {
     "message": {
-      "$ref": "urn:tars:schema:v1:defs#/$defs/message_ref"
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/message_ref"
     },
     "request": {
       "type": "object",

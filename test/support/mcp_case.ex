@@ -1,12 +1,12 @@
-defmodule TarsMCP.Case do
+defmodule WardrikMCP.Case do
   @moduledoc """
-  A `TarsMCP.Supervisor` running against `test/support/mcp/stub_server.exs`, a
+  A `WardrikMCP.Supervisor` running against `test/support/mcp/stub_server.exs`, a
   real MCP server over stdio.
 
-      use TarsMCP.Case
+      use WardrikMCP.Case
 
       test "the stub offers its tools", %{ref: ref} do
-        assert "stub__echo" in Enum.map(TarsMCP.tools(ref), & &1.name)
+        assert "stub__echo" in Enum.map(WardrikMCP.tools(ref), & &1.name)
       end
 
   The supervisor is started for the test and stopped with it. `@server_opts`
@@ -19,7 +19,7 @@ defmodule TarsMCP.Case do
 
   using do
     quote do
-      import TarsMCP.Case
+      import WardrikMCP.Case
     end
   end
 
@@ -27,7 +27,7 @@ defmodule TarsMCP.Case do
     ref = fresh_ref()
     opts = Map.get(context, :server_opts, [])
 
-    start_supervised!({TarsMCP.Supervisor, servers: [{ref, stub_options(opts)}]})
+    start_supervised!({WardrikMCP.Supervisor, servers: [{ref, stub_options(opts)}]})
     await_tools(ref)
 
     %{ref: ref}
@@ -48,7 +48,7 @@ defmodule TarsMCP.Case do
   @doc "Waits until a server has reported its tools, or fails the test."
   @spec await_tools(atom(), timeout()) :: [ReqLLM.Tool.t()]
   def await_tools(ref, timeout \\ :timer.seconds(30)) do
-    case TarsMCP.Connection.await(ref, :deployment, timeout) do
+    case WardrikMCP.Connection.await(ref, :deployment, timeout) do
       {:ok, tools} -> tools
       {:error, :timeout} -> raise "MCP server #{ref} reported no tools in time"
     end

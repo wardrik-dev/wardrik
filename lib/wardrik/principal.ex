@@ -1,0 +1,27 @@
+defmodule Wardrik.Principal do
+  @moduledoc """
+  Who did something, and how they were known: the person or system behind a
+  decision.
+
+      %Wardrik.Principal{type: :slack, id: "U024BE7LH", name: "jon"}
+
+  `type` says how they reached Wardrik:
+
+    * `:shell` - an operating system account on the node, through `bin/wardrik`
+    * `:ssh` - an SSH session to the TUI, by the name the client connected as
+    * `:terminal` - a TUI started in a terminal on the node
+    * `:slack` - a Slack user, by their user id
+    * `:oauth` - an authorization flow that finished, by the provider it was
+      for: whoever completed it is not known
+    * `:token` - a caller of the HTTP API, by the id of the token it presented
+  """
+
+  @enforce_keys [:type, :id]
+  defstruct [:type, :id, :name]
+
+  @type t() :: %__MODULE__{
+          type: :shell | :ssh | :terminal | :slack | :oauth | :token | atom(),
+          id: String.t(),
+          name: String.t() | nil
+        }
+end

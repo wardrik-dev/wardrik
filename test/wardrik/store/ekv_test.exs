@@ -1,0 +1,64 @@
+defmodule Wardrik.Store.EKVTest do
+  use ExUnit.Case, async: false
+  use Wardrik.Store.Conformance, adapter: Wardrik.Store.EKV
+
+  alias Wardrik.Store.EKV
+
+  describe "data_dir/1" do
+    test "takes what it was configured with" do
+      assert EKV.data_dir(data_dir: "/var/lib/wardrik") == "/var/lib/wardrik"
+    end
+
+    test "falls back to the environment" do
+      System.put_env("WARDRIK_DATA_DIR", "/from/env")
+      on_exit(fn -> System.delete_env("WARDRIK_DATA_DIR") end)
+
+      assert EKV.data_dir() == "/from/env"
+    end
+
+    test "names the node, so two on one machine are two stores" do
+      assert EKV.data_dir() =~ to_string(node())
+    end
+  end
+
+  describe "cluster_size/1" do
+    test "takes what it was configured with" do
+      assert EKV.cluster_size(cluster_size: 5) == 5
+    end
+
+    test "falls back to the environment, then to one" do
+      assert EKV.cluster_size() == 1
+
+      System.put_env("WARDRIK_CLUSTER_SIZE", "3")
+      on_exit(fn -> System.delete_env("WARDRIK_CLUSTER_SIZE") end)
+
+      assert EKV.cluster_size() == 3
+    end
+
+    test "ignores an environment value that is not a number" do
+      System.put_env("WARDRIK_CLUSTER_SIZE", "three")
+      on_exit(fn -> System.delete_env("WARDRIK_CLUSTER_SIZE") end)
+
+      assert EKV.cluster_size() == 1
+    end
+  end
+
+  describe "shutdown_barrier/1" do
+    test "keeps a store of several members serving for five seconds as it stops" do
+      assert EKV.shutdown_barrier(cluster_size: 3) == 5_000
+    end
+
+    test "stops a store of one member at once" do
+      assert EKV.shutdown_barrier(cluster_size: 1) == false
+    end
+
+    test "takes what it was configured with" do
+      assert EKV.shutdown_barrier(cluster_size: 3, shutdown_barrier: false) == false
+      assert EKV.shutdown_barrier(shutdown_barrier: 250) == 250
+    end
+  end
+
+  test "provides the fleet's DurableServer backend" do
+    assert {DurableServer.Backends.EKVStore, name: :wardrik_store} = EKV.durable_backend([])
+  end
+end

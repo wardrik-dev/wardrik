@@ -93,8 +93,8 @@ jobs:
         id: tarball
         run: |
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
-          name="tars-$version-linux-x86_64.tar.gz"
-          mv "_build/prod/tarsd-$version.tar.gz" "$name"
+          name="wardrik-$version-linux-x86_64.tar.gz"
+          mv "_build/prod/wardrikd-$version.tar.gz" "$name"
           rm -rf _build/prod/rel
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
@@ -121,40 +121,40 @@ jobs:
           # The runner's image points these at its own home.
           unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
 
-          mkdir -p "$HOME/.config/tars/agents"
-          printf 'You help.\n' > "$HOME/.config/tars/agents/good.md"
-          printf -- '---\norg: acme/eu\n---\nYou help.\n' > "$HOME/.config/tars/agents/bad.md"
-          mkdir -p -m 755 "$HOME/.local/share/tars"
+          mkdir -p "$HOME/.config/wardrik/agents"
+          printf 'You help.\n' > "$HOME/.config/wardrik/agents/good.md"
+          printf -- '---\norg: acme/eu\n---\nYou help.\n' > "$HOME/.config/wardrik/agents/bad.md"
+          mkdir -p -m 755 "$HOME/.local/share/wardrik"
 
           # Distribution beyond loopback is refused until someone says so.
-          if TARS_DIST_INTERFACE=any "$root/bin/tars" start 2> refused.txt; then
-            echo "tars started with distribution on every interface" >&2
+          if WARDRIK_DIST_INTERFACE=any "$root/bin/wardrik" start 2> refused.txt; then
+            echo "wardrik started with distribution on every interface" >&2
             exit 1
           fi
           grep -q "beyond loopback" refused.txt
           if pgrep -f "$root/erts-[^/]*/bin/beam"; then
-            echo "a node was left running after tars refused to start" >&2
+            echo "a node was left running after wardrik refused to start" >&2
             exit 1
           fi
 
-          "$root/bin/tars" start
-          trap '"$root/bin/tars" stop || true' EXIT
+          "$root/bin/wardrik" start
+          trap '"$root/bin/wardrik" stop || true' EXIT
 
-          "$root/bin/tarsd" rpc '
-            {:ok, _pid} = Tars.Fleet.spawn(Tars.Fleet.key("smoke"))
-            ["_/_/good", "_/_/smoke"] = Enum.sort(Enum.map(Tars.Fleet.list(), & &1.key))
+          "$root/bin/wardrikd" rpc '
+            {:ok, _pid} = Wardrik.Fleet.spawn(Wardrik.Fleet.key("smoke"))
+            ["_/_/good", "_/_/smoke"] = Enum.sort(Enum.map(Wardrik.Fleet.list(), & &1.key))
           '
 
-          "$root/bin/tars" status | tee status.txt
+          "$root/bin/wardrik" status | tee status.txt
           grep -q "_/_/smoke" status.txt
           grep -q "_/_/good" status.txt
           grep -q "bad.md: a fleet key segment may not contain" status.txt
 
-          for private in "$HOME/.local/share/tars" "$HOME/.local/share/tars/store" "$HOME/.local/state/tars"; do
+          for private in "$HOME/.local/share/wardrik" "$HOME/.local/share/wardrik/store" "$HOME/.local/state/wardrik"; do
             test "$(stat -c %a "$private")" = 700 || { echo "$private is not private" >&2; exit 1; }
           done
-          test "$(stat -c %a "$HOME/.local/share/tars/cookie")" = 600
-          test "$(stat -c %a "$HOME/.local/state/tars/log/tars.log")" = 600
+          test "$(stat -c %a "$HOME/.local/share/wardrik/cookie")" = 600
+          test "$(stat -c %a "$HOME/.local/state/wardrik/log/wardrik.log")" = 600
 
           if ss -Hltnp | awk '/beam|epmd/ && $4 !~ /^(127\.0\.0\.1|\[::1\]):/ { print; found = 1 } END { exit !found }'; then
             echo "distribution is listening beyond loopback" >&2
@@ -163,20 +163,20 @@ jobs:
 
           # A stop returns once the node is gone, so a start straight after
           # begins a node of its own.
-          "$root/bin/tars" stop
+          "$root/bin/wardrik" stop
           if pgrep -f "$root/erts-[^/]*/bin/beam"; then
-            echo "the node was still running after tars stop returned" >&2
+            echo "the node was still running after wardrik stop returned" >&2
             exit 1
           fi
 
-          "$root/bin/tars" start
-          "$root/bin/tars" status | tee status.txt
+          "$root/bin/wardrik" start
+          "$root/bin/wardrik" status | tee status.txt
           grep -q "_/_/good" status.txt
 
       - name: Show the daemon's logs
         if: failure()
         run: |
-          for log in /tmp/tmp.*/.local/state/tars/log/*.log /tmp/tmp.*/.local/state/tars/tmp/log/erlang.log.*; do
+          for log in /tmp/tmp.*/.local/state/wardrik/log/*.log /tmp/tmp.*/.local/state/wardrik/tmp/log/erlang.log.*; do
             [ -f "$log" ] && { echo "== $log"; tail -n 80 "$log"; }
           done
           true

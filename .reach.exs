@@ -1,25 +1,25 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# Core is `Tars.*`. Every other namespace is a package that will one day be its
-# own Mix project depending on `:tars`, so a package may call core and nothing
+# Core is `Wardrik.*`. Every other namespace is a package that will one day be its
+# own Mix project depending on `:wardrik`, so a package may call core and nothing
 # else, and core may call no package.
 [
   layers: [
-    core: ["Tars", "Tars.*"],
-    brave: ["TarsBrave", "TarsBrave.*"],
-    research: ["TarsResearch", "TarsResearch.*"],
-    lua: ["TarsLua", "TarsLua.*"],
-    mcp: ["TarsMCP", "TarsMCP.*"],
-    oauth: ["TarsOAuth", "TarsOAuth.*"],
-    vault: ["TarsVault", "TarsVault.*"],
-    tui: ["TarsTUI", "TarsTUI.*"],
-    daemon: ["TarsDaemon", "TarsDaemon.*"],
-    policy: ["TarsPolicy", "TarsPolicy.*"],
-    notify: ["TarsNotify", "TarsNotify.*"],
-    http: ["TarsHTTP", "TarsHTTP.*"],
-    console: "TarsConsole",
-    launcher: "Mix.Tasks.Tars",
-    demo: ["TarsDemo", "TarsDemo.*"]
+    core: ["Wardrik", "Wardrik.*"],
+    brave: ["WardrikBrave", "WardrikBrave.*"],
+    research: ["WardrikResearch", "WardrikResearch.*"],
+    lua: ["WardrikLua", "WardrikLua.*"],
+    mcp: ["WardrikMCP", "WardrikMCP.*"],
+    oauth: ["WardrikOAuth", "WardrikOAuth.*"],
+    vault: ["WardrikVault", "WardrikVault.*"],
+    tui: ["WardrikTUI", "WardrikTUI.*"],
+    daemon: ["WardrikDaemon", "WardrikDaemon.*"],
+    policy: ["WardrikPolicy", "WardrikPolicy.*"],
+    notify: ["WardrikNotify", "WardrikNotify.*"],
+    http: ["WardrikHTTP", "WardrikHTTP.*"],
+    console: "WardrikConsole",
+    launcher: "Mix.Tasks.Wardrik",
+    demo: ["WardrikDemo", "WardrikDemo.*"]
   ],
   deps: [
     mode: :allowlist,
@@ -55,30 +55,30 @@
   ],
   boundaries: [
     internal: [
-      "Tars.Agent.State",
-      "Tars.Agent.State.*",
-      "Tars.LLM.Turn",
-      "Tars.LLM.Turn.*",
-      "Tars.LLM.ToolRunner",
-      "Tars.LLM.Catalog",
-      "Tars.Sandbox.Runner",
-      "Tars.Fleet.Supervisor",
-      "Tars.Ledger.Store",
-      "Tars.Event.Source",
-      "Tars.Trace"
+      "Wardrik.Agent.State",
+      "Wardrik.Agent.State.*",
+      "Wardrik.LLM.Turn",
+      "Wardrik.LLM.Turn.*",
+      "Wardrik.LLM.ToolRunner",
+      "Wardrik.LLM.Catalog",
+      "Wardrik.Sandbox.Runner",
+      "Wardrik.Fleet.Supervisor",
+      "Wardrik.Ledger.Store",
+      "Wardrik.Event.Source",
+      "Wardrik.Trace"
     ],
     internal_callers: [
-      {"Tars.Agent.State", ["Tars", "Tars.*"]},
-      {"Tars.Agent.State.*", ["Tars", "Tars.*"]},
-      {"Tars.LLM.Turn", ["Tars", "Tars.*"]},
-      {"Tars.LLM.Turn.*", ["Tars", "Tars.*"]},
-      {"Tars.LLM.ToolRunner", ["Tars", "Tars.*"]},
-      {"Tars.LLM.Catalog", ["Tars", "Tars.*"]},
-      {"Tars.Sandbox.Runner", ["Tars", "Tars.*"]},
-      {"Tars.Fleet.Supervisor", ["Tars", "Tars.*"]},
-      {"Tars.Ledger.Store", ["Tars", "Tars.*"]},
-      {"Tars.Event.Source", ["Tars", "Tars.*"]},
-      {"Tars.Trace", ["Tars", "Tars.*"]}
+      {"Wardrik.Agent.State", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Agent.State.*", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.LLM.Turn", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.LLM.Turn.*", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Sandbox.Runner", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Ledger.Store", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
+      {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
   calls: [
@@ -86,38 +86,38 @@
       # A package reads its own settings through one config module, never
       # another package's key, and never core's store or supervisors by name.
       {[
-         "TarsBrave",
-         "TarsBrave.*",
-         "TarsResearch",
-         "TarsResearch.*",
-         "TarsLua",
-         "TarsLua.*",
-         "TarsMCP",
-         "TarsMCP.*",
-         "TarsOAuth",
-         "TarsOAuth.*",
-         "TarsVault",
-         "TarsVault.*",
-         "TarsTUI",
-         "TarsTUI.*",
-         "TarsNotify",
-         "TarsNotify.*",
-         "TarsHTTP",
-         "TarsHTTP.*"
+         "WardrikBrave",
+         "WardrikBrave.*",
+         "WardrikResearch",
+         "WardrikResearch.*",
+         "WardrikLua",
+         "WardrikLua.*",
+         "WardrikMCP",
+         "WardrikMCP.*",
+         "WardrikOAuth",
+         "WardrikOAuth.*",
+         "WardrikVault",
+         "WardrikVault.*",
+         "WardrikTUI",
+         "WardrikTUI.*",
+         "WardrikNotify",
+         "WardrikNotify.*",
+         "WardrikHTTP",
+         "WardrikHTTP.*"
        ],
        [
          "Application.get_env",
          "Application.fetch_env",
          "Application.fetch_env!",
-         "Tars.Fleet.Supervisor.store"
+         "Wardrik.Fleet.Supervisor.store"
        ],
        except: [
-         "TarsBrave.Config",
-         "TarsMCP.Config",
-         "TarsOAuth.Config",
-         "TarsVault.Config",
-         "TarsNotify.Config",
-         "TarsHTTP.Config"
+         "WardrikBrave.Config",
+         "WardrikMCP.Config",
+         "WardrikOAuth.Config",
+         "WardrikVault.Config",
+         "WardrikNotify.Config",
+         "WardrikHTTP.Config"
        ]}
     ]
   ],
@@ -125,7 +125,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Tars.Test.*", "TarsBrave.Case", "TarsOAuth.Case"]
+      ignore: ["Wardrik.Test.*", "WardrikBrave.Case", "WardrikOAuth.Case"]
     ]
   ]
 ]
