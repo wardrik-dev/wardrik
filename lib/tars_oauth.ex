@@ -189,7 +189,7 @@ defmodule TarsOAuth do
   the turn that carries on finds the credential it asked for. A callback that
   cannot be turned into a token leaves the flow where it was, so the same
   link still works. Once one flow for a user and provider finishes, any other
-  under way on this node for them is dropped.
+  under way for them, on any node, is dropped.
 
   A flow is held by the node that started it. One this node did not start is
   finished on whichever connected node did, all of them asked at once.
@@ -243,7 +243,7 @@ defmodule TarsOAuth do
     with {:ok, token} <- exchange(flight, code),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
-      Pending.drop(flight.provider.name, flight.owner)
+      :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
       resume(flight)
 
       {:ok, flight.provider.name}
@@ -374,13 +374,16 @@ defmodule TarsOAuth do
 
   # A flow already under way is offered again rather than restarted: an agent
   # retrying a parked call should keep showing the same link, or code. Flows
-  # begin one at a time for a user and provider, so two calls parking at once
-  # share one.
+  # begin one at a time for a user and provider across the cluster, and one
+  # under way on any node is joined there, so calls parking at once, on any
+  # node, share one.
   defp begin(%Provider{} = provider, owner, resume) do
     single_flight(provider, owner, fn ->
-      case Pending.under_way(provider.name, owner, resume) do
+      with :error <- Pending.under_way(provider.name, owner, resume),
+           :error <- Pending.under_way_on(Node.list(), provider.name, owner, resume) do
+        open(provider, owner, resume)
+      else
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
-        :error -> open(provider, owner, resume)
       end
     end)
   end
@@ -528,7 +531,7 @@ defmodule TarsOAuth do
     with {:ok, %Flight{} = flight} <- claim(flight.state),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
-      Pending.drop(flight.provider.name, flight.owner)
+      :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
       resume(flight)
       :authorized
     else

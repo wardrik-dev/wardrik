@@ -93,6 +93,102 @@ defmodule TarsNotify.SlackTest do
     end
   end
 
+  describe "a call waiting on a person to connect an account" do
+    defp connecting_notice do
+      %Notice{
+        agent: "acme/_/triage",
+        kind: :parked,
+        at: ~U[2026-09-24 09:30:00Z],
+        calls: [
+          %{
+            id: "call_1",
+            name: "github__issues",
+            arguments: %{},
+            prompt: "To connect github, open its authorization link.",
+            authorization: true
+          }
+        ]
+      }
+    end
+
+    test "is posted with Show link and Deny, and no link" do
+      assert :ok = Slack.deliver(connecting_notice(), [target: :ops] ++ @target)
+      assert_receive {:slack, "slack.com", "/api/chat.postMessage", message}
+
+      assert %{"elements" => [show, deny]} =
+               Enum.find(message["blocks"], &(&1["block_id"] == "tars:call_1"))
+
+      assert show["action_id"] == "tars_link"
+      assert deny["action_id"] == "tars_deny"
+      refute JSON.encode!(message) =~ "https://"
+    end
+
+    test "says to find the link with tars parked where there is no app token" do
+      assert :ok = Slack.deliver(connecting_notice(), channel: "#ops", token: "xoxb-test")
+      assert_receive {:slack, _host, _path, message}
+      assert JSON.encode!(message) =~ "Find the link with `tars parked`"
+    end
+  end
+
+  describe "Show link" do
+    setup do
+      key = Fleet.key("slack-link-#{System.unique_integer([:positive])}")
+      link = %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
+
+      {:ok, _pid} =
+        Fleet.spawn(key,
+          runner: {AgentRunners, :connecting, [self(), "call_1", link]},
+          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+        )
+
+      on_exit(fn -> Fleet.forget(key) end)
+      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      :ok = Agent.ask(key, "Open an issue.")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+
+      %{key: key}
+    end
+
+    test "tells the person pressing alone where to connect, and decides nothing", %{key: key} do
+      assert :ok = Slack.answer(press(key, "tars_link"))
+
+      assert_receive {:slack, "hooks.slack.com", _path, reply}
+      assert reply["response_type"] == "ephemeral"
+      assert reply["replace_original"] == false
+      assert reply["text"] == "Enter `WDJB-MJHT` at https://github.com/login/device"
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
+    end
+
+    test "is refused to someone who is not an approver", %{key: key} do
+      Application.put_env(
+        :tars,
+        TarsNotify,
+        Keyword.put(Application.get_env(:tars, TarsNotify), :targets,
+          ops: {Slack, [approvers: ["U2"]] ++ @target}
+        )
+      )
+
+      assert :ok = Slack.answer(press(key, "tars_link", "U1"))
+
+      assert_receive {:slack, _host, _path, %{"text" => text}}
+      assert text =~ "approvers"
+      refute text =~ "WDJB-MJHT"
+    end
+
+    test "says so once nothing waits on a connection", %{key: key} do
+      :ok =
+        Agent.decide(key, %{"call_1" => {:deny, "Not now."}},
+          by: %Tars.Principal{type: :shell, id: "t"}
+        )
+
+      assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}
+      assert :ok = Slack.answer(press(key, "tars_link"))
+
+      assert_receive {:slack, _host, _path, %{"text" => text}}
+      assert text == "That is no longer waiting on anyone to connect."
+    end
+  end
+
   describe "answer/1" do
     setup do
       key = Fleet.key("slack-#{System.unique_integer([:positive])}")

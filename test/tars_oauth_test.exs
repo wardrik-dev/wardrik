@@ -108,6 +108,22 @@ defmodule TarsOAuthTest do
       assert {:ok, _still} = Pending.under_way("github", {nil, owner})
     end
 
+    test "on another node is joined there, and dropped with the rest", %{owner: owner} do
+      url = connect(owner)
+      resume = {Tars.Agent, :decide, ["acme/x/a", %{"call_9" => :approve}, []]}
+
+      # This node stands in for the others: the flow is found by asking.
+      assert {:ok, flight} = Pending.under_way_on([node()], "github", {nil, owner}, resume)
+      assert flight.url == url
+      assert resume in flight.resumes
+
+      assert :error = Pending.under_way_on([node()], "github", {nil, "nobody"}, nil)
+      assert :error = Pending.under_way_on([:nowhere@nohost], "github", {nil, owner}, nil)
+
+      :ok = Pending.drop_on([node()], "github", {nil, owner})
+      assert :error = Pending.under_way("github", {nil, owner})
+    end
+
     test "for a user and provider are dropped together", %{owner: owner} do
       connect(owner)
       :ok = Pending.drop("github", {nil, owner})

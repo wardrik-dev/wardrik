@@ -20,6 +20,12 @@ defmodule TarsNotify.Slack do
   Slack user ids that may. A press decides the call with
   `Tars.Agent.decide/2`, and the message then says who decided it.
 
+  A call waiting on a person to connect an account is posted without where to
+  connect it, with Show link and Deny buttons. Show link answers the person
+  pressing, and no one else, with the link and any code to enter there, read
+  from the agent as they press it; the channel's history never holds it.
+  Without an app token, the message says to find it with `tars parked`.
+
   The app should be Tars's own. Slack spreads an app's Socket Mode envelopes
   across every connection open for it, and the daemon acknowledges each one
   it receives, so an app another service also connects with loses envelopes
@@ -92,24 +98,30 @@ defmodule TarsNotify.Slack do
 
       [
         question,
-        %{
-          type: "actions",
-          block_id: "tars:" <> call.id,
-          elements: [
-            button("Approve", "tars_approve", "primary", value),
-            button("Deny", "tars_deny", "danger", value)
-          ]
-        }
+        %{type: "actions", block_id: "tars:" <> call.id, elements: buttons(call, value)}
       ]
     else
-      [
-        question,
-        context(
-          "Answer with `tars approve #{agent} #{call.id}` or `tars deny #{agent} #{call.id}`."
-        )
-      ]
+      [question, context(from_a_shell(call, agent))]
     end
   end
+
+  defp buttons(%{authorization: true}, value),
+    do: [
+      button("Show link", "tars_link", "primary", value),
+      button("Deny", "tars_deny", "danger", value)
+    ]
+
+  defp buttons(_call, value),
+    do: [
+      button("Approve", "tars_approve", "primary", value),
+      button("Deny", "tars_deny", "danger", value)
+    ]
+
+  defp from_a_shell(%{authorization: true} = call, agent),
+    do: "Find the link with `tars parked`, or refuse with `tars deny #{agent} #{call.id}`."
+
+  defp from_a_shell(call, agent),
+    do: "Answer with `tars approve #{agent} #{call.id}` or `tars deny #{agent} #{call.id}`."
 
   defp section(text), do: %{type: "section", text: %{type: "mrkdwn", text: text}}
   defp context(text), do: %{type: "context", elements: [%{type: "mrkdwn", text: text}]}
@@ -133,19 +145,22 @@ defmodule TarsNotify.Slack do
   @doc """
   Answers a button press, from the `block_actions` payload Slack sends over
   Socket Mode: decides the call, and replaces the message's buttons with who
-  decided it, or tells the person pressing why nothing happened.
+  decided it; or, for Show link, tells the person pressing alone where to
+  connect the account; or tells them why nothing happened.
   """
   @spec answer(map()) :: :ok | :ignored
   def answer(%{"actions" => [%{"action_id" => action, "value" => value} | _]} = payload)
-      when action in ["tars_approve", "tars_deny"] do
+      when action in ["tars_approve", "tars_deny", "tars_link"] do
     user = Map.get(payload, "user", %{})
 
     with {:ok, %{"a" => agent, "c" => call, "n" => name, "t" => target}} <- JSON.decode(value),
          {:ok, {__MODULE__, opts}} <- TarsNotify.Config.target(target) do
       reply =
-        if approver?(user, opts),
-          do: decide(payload, action, user, agent, call, name),
-          else: ephemeral("Only this channel's approvers can answer that.")
+        cond do
+          not approver?(user, opts) -> ephemeral("Only this channel's approvers can answer that.")
+          action == "tars_link" -> ephemeral(link(agent, call))
+          true -> decide(payload, action, user, agent, call, name)
+        end
 
       respond(payload["response_url"], reply)
     else
@@ -161,6 +176,21 @@ defmodule TarsNotify.Slack do
       _anyone -> true
     end
   end
+
+  # Read from the agent as the person presses, so it is never in a message
+  # anyone else can see.
+  defp link(agent, call) do
+    case Tars.Agent.parked(agent) do
+      {:error, :not_found} -> "#{agent} is not running."
+      calls -> calls |> Enum.find(fn {parked, _prompt} -> parked.id == call end) |> link_text()
+    end
+  end
+
+  defp link_text({%{link: %{url: url, code: code}}, _prompt}) when is_binary(code),
+    do: "Enter `#{code}` at #{url}"
+
+  defp link_text({%{link: %{url: url}}, _prompt}), do: "Open #{url}"
+  defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
   defp decide(payload, action, user, agent, call, name) do
     decision =

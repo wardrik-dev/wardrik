@@ -19,7 +19,8 @@ defmodule TarsNotify.NoticeTest do
              id: "call_1",
              name: "deploy",
              arguments: %{"env" => "prod"},
-             prompt: "This ships to production."
+             prompt: "This ships to production.",
+             authorization: false
            }
 
     assert notice.at == DateTime.from_unix!(1_790_000_000_000_000, :microsecond)
@@ -37,6 +38,8 @@ defmodule TarsNotify.NoticeTest do
              Notice.from_event(
                event({:turn_parked, [{call, "To connect github, open its link."}]})
              )
+
+    assert [%{authorization: true}] = notice.calls
 
     encoded = notice |> Notice.to_map() |> JSON.encode!()
     refute encoded =~ "WDJB-MJHT"

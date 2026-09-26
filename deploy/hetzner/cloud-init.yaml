@@ -115,11 +115,13 @@ write_files:
           only: [list_commits, get_commit, list_issues, issue_write]
 
       # This box has no browser, so a user authorizes GitHub by entering a
-      # code from the parked call's Slack message.
+      # code at GitHub's page, which the parked call's Show link button in
+      # Slack gives the person who presses it.
       oauth:
         providers:
           github:
             resource: https://api.githubcopilot.com/mcp/
+            issuer: https://github.com/login/oauth
             client_id: ${GITHUB_CLIENT_ID}
             client_secret: ${GITHUB_CLIENT_SECRET}
             scopes: [repo]

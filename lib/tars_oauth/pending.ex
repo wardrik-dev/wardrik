@@ -94,6 +94,29 @@ defmodule TarsOAuth.Pending do
   @spec drop(String.t(), term()) :: :ok
   def drop(provider, owner), do: GenServer.cast(__MODULE__, {:drop, provider, owner})
 
+  @doc """
+  The flow under way for this provider and owner on any of `nodes`, joined as
+  `under_way/3` joins one here, with `resume` added to it where it is held. A
+  node that cannot be asked, or runs no registry of flows, is passed over.
+  """
+  @spec under_way_on([node()], String.t(), term(), Tars.Credential.continuation() | nil) ::
+          {:ok, Flight.t()} | :error
+  def under_way_on(nodes, provider, owner, resume) do
+    nodes
+    |> :erpc.multicall(__MODULE__, :under_way, [provider, owner, resume], :timer.seconds(5))
+    |> Enum.find_value(:error, fn
+      {:ok, {:ok, %Flight{} = flight}} -> {:ok, flight}
+      _none -> nil
+    end)
+  end
+
+  @doc "Forgets every flow under way for this provider and owner, here and on `nodes`."
+  @spec drop_on([node()], String.t(), term()) :: :ok
+  def drop_on(nodes, provider, owner) do
+    :ok = drop(provider, owner)
+    :erpc.multicast(nodes, __MODULE__, :drop, [provider, owner])
+  end
+
   @impl GenServer
   def init(_opts) do
     Process.send_after(self(), :sweep, @sweep_every)

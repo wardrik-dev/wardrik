@@ -3,7 +3,9 @@ defmodule TarsNotify.Notice do
   One thing a person should hear about, read from an agent's event.
 
     * `:parked` - a turn stopped on `calls`, each with the question a person
-      is asked about it
+      is asked about it, and `authorization: true` for one waiting on a
+      person to connect an account. Where to connect it is never in a
+      notice.
     * `:failed` - a turn failed, for `reason`
     * `:finished` - a turn answered, and `text` is what it said last
   """
@@ -14,7 +16,13 @@ defmodule TarsNotify.Notice do
   defstruct [:agent, :kind, :at, :reason, :text, calls: []]
 
   @typedoc "A call a parked turn is waiting on."
-  @type call() :: %{id: String.t(), name: String.t(), arguments: map(), prompt: String.t()}
+  @type call() :: %{
+          id: String.t(),
+          name: String.t(),
+          arguments: map(),
+          prompt: String.t(),
+          authorization: boolean()
+        }
 
   @type t() :: %__MODULE__{
           agent: String.t(),
@@ -47,7 +55,13 @@ defmodule TarsNotify.Notice do
   end
 
   defp call({call, prompt}) do
-    %{id: call.id, name: call.name, arguments: Map.get(call, :arguments, %{}), prompt: prompt}
+    %{
+      id: call.id,
+      name: call.name,
+      arguments: Map.get(call, :arguments, %{}),
+      prompt: prompt,
+      authorization: Map.has_key?(call, :link)
+    }
   end
 
   defp last_said(messages) do

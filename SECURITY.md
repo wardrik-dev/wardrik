@@ -81,6 +81,13 @@ Socket Mode connection the daemon opens, so no port is opened for them. A
 webhook target posts the same notice to its URL, signed with HMAC-SHA256 when
 it has a `secret`; nothing comes back through a webhook.
 
+A call waiting on a person to connect an account is posted without its link
+or code: whoever completes that link connects their own account in the
+user's place. Its Show link button answers the person pressing, and no one
+else, with the link and code, under the same rule as Approve. Set
+`approvers` wherever not everyone in the channel should connect accounts for
+the agents that post there.
+
 ### Credentials
 
 OAuth tokens and named credentials are sealed with AES-256-GCM, under the
