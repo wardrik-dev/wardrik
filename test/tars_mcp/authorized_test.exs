@@ -36,14 +36,15 @@ defmodule TarsMCP.AuthorizedTest do
   test "parks on a link, then runs once the user has followed it", context do
     %{ref: ref, scope: scope, owner: owner} = context
 
-    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt, link: %{url: url}}]} =
              call =
              call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
 
-    assert prompt =~ "https://auth.example.com/authorize"
+    assert url =~ "https://auth.example.com/authorize"
+    refute prompt =~ "https://"
 
-    assert {:ok, "github"} = TarsOAuth.finish(state_in(prompt), "the-code")
-    assert TarsOAuth.connected?("github", owner)
+    assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+    assert TarsOAuth.connected?("github", {nil, owner})
 
     [message] =
       call
@@ -59,10 +60,10 @@ defmodule TarsMCP.AuthorizedTest do
   test "the token the server sees is the one the flow produced", context do
     %{ref: ref, scope: scope} = context
 
-    %Tars.Call{asks: [%{prompt: prompt}]} =
+    %Tars.Call{asks: [%{link: %{url: url}}]} =
       call = call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
 
-    {:ok, "github"} = TarsOAuth.finish(state_in(prompt), "the-code")
+    {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
     [message] =
       call
@@ -73,9 +74,5 @@ defmodule TarsMCP.AuthorizedTest do
 
     [part] = message.content
     refute part.text =~ "rt_first"
-  end
-
-  defp state_in(prompt) do
-    ~r{https://\S+} |> Regex.run(prompt) |> hd() |> state_of()
   end
 end

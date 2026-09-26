@@ -232,13 +232,21 @@ defmodule TarsDaemon.CLI do
     rows =
       for %{status: :parked, key: key} <- Fleet.list(),
           {call, prompt} <- waiting(key),
-          do: "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}"
+          do: "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}" <> link(call)
 
     case rows do
       [] -> "Nothing is waiting on a person."
       rows -> Enum.join(["#{length(rows)} waiting:" | rows], "\n")
     end
   end
+
+  # Where to authorize, for the operator reading this on the node; no notice
+  # or event carries it.
+  defp link(%{link: %{url: url, code: code}}) when is_binary(code),
+    do: "\n      enter #{code} at #{url}"
+
+  defp link(%{link: %{url: url}}), do: "\n      open #{url}"
+  defp link(_call), do: ""
 
   defp schedules(prefix) do
     now = DateTime.utc_now()

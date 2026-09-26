@@ -103,6 +103,23 @@ defmodule TarsTUI.ViewTest do
     end
   end
 
+  describe "parked/1" do
+    test "shows whoever answers here where to authorize a call" do
+      call = %{
+        id: "call_1",
+        name: "github__issues",
+        arguments: %{},
+        link: %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
+      }
+
+      shown =
+        [{call, "To connect github, open its authorization link."}] |> View.parked() |> plain()
+
+      assert shown =~ "To connect github"
+      assert shown =~ "enter WDJB-MJHT at https://github.com/login/device"
+    end
+  end
+
   describe "trace/1" do
     test "approval traces distinguish waiting, rejection, and accepted decisions" do
       call = %{id: "deploy-1", name: "deploy", arguments: %{}}

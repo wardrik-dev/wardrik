@@ -22,7 +22,8 @@ defmodule TarsOAuth.ResumeTest do
   defp call(id, owner, key),
     do: Tars.Call.tool(%{id: id, name: "slack__connect", arguments: %{}}, scope(owner, key))
 
-  defp oauth(owner), do: %Tars.Principal{type: :oauth, id: owner}
+  # Whoever finishes a flow is recorded as the flow: the provider's authorization.
+  defp oauth, do: %Tars.Principal{type: :oauth, id: "github", name: "github authorization"}
 
   defp connect(owner, key) do
     configured()
@@ -37,7 +38,7 @@ defmodule TarsOAuth.ResumeTest do
   defp connect_unasked(owner) do
     configured()
     [provider] = TarsOAuth.Provider.all()
-    {:error, {:authorization_required, url}} = TarsOAuth.hold(provider, owner)
+    {:error, {:authorization_required, url}} = TarsOAuth.hold(provider, {nil, owner})
     url
   end
 
@@ -52,10 +53,10 @@ defmodule TarsOAuth.ResumeTest do
     end)
   end
 
-  describe "continuation/1" do
-    test "approves the call it is given, as the user it is for" do
-      assert Credential.continuation(call("call_1", "jon", "acme/jon/a")) ==
-               {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}, [by: oauth("jon")]]}
+  describe "continuation/2" do
+    test "approves the call it is given, as the principal it is given" do
+      assert Credential.continuation(call("call_1", "jon", "acme/jon/a"), oauth()) ==
+               {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}, [by: oauth()]]}
     end
   end
 
@@ -64,10 +65,10 @@ defmodule TarsOAuth.ResumeTest do
       key = Fleet.key()
       connect(owner, key)
 
-      assert {:ok, flight} = Pending.under_way("github", owner)
+      assert {:ok, flight} = Pending.under_way("github", {nil, owner})
 
       assert flight.resumes == [
-               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]}
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth()]]}
              ]
     end
 
@@ -78,11 +79,11 @@ defmodule TarsOAuth.ResumeTest do
       assert {:error, {:authorization_required, ^first}} =
                Credential.resolve(call("call_2", owner, key), {:user, "github"})
 
-      assert {:ok, flight} = Pending.under_way("github", owner)
+      assert {:ok, flight} = Pending.under_way("github", {nil, owner})
 
       assert flight.resumes == [
-               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]},
-               {Agent, :decide, [key, %{"call_2" => :approve}, [by: oauth(owner)]]}
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth()]]},
+               {Agent, :decide, [key, %{"call_2" => :approve}, [by: oauth()]]}
              ]
     end
 
@@ -91,7 +92,7 @@ defmodule TarsOAuth.ResumeTest do
       connect(owner, key)
       Credential.resolve(call("call_1", owner, key), {:user, "github"})
 
-      assert {:ok, flight} = Pending.under_way("github", owner)
+      assert {:ok, flight} = Pending.under_way("github", {nil, owner})
       assert [_one] = flight.resumes
     end
 
@@ -123,10 +124,10 @@ defmodule TarsOAuth.ResumeTest do
 
       assert {:error, _trouble} = TarsOAuth.finish(state_of(url), "the-code")
 
-      assert {:ok, flight} = Pending.under_way("github", owner)
+      assert {:ok, flight} = Pending.under_way("github", {nil, owner})
 
       assert flight.resumes == [
-               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth(owner)]]}
+               {Agent, :decide, [key, %{"call_1" => :approve}, [by: oauth()]]}
              ]
     end
 
@@ -139,7 +140,7 @@ defmodule TarsOAuth.ResumeTest do
       stub_server(cimd: true)
 
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "another-code")
-      assert TarsOAuth.connected?("github", owner)
+      assert TarsOAuth.connected?("github", {nil, owner})
     end
   end
 
@@ -147,7 +148,7 @@ defmodule TarsOAuth.ResumeTest do
     test "finishes all the same", %{owner: owner} do
       url = connect_unasked(owner)
 
-      assert {:ok, flight} = Pending.under_way("github", owner)
+      assert {:ok, flight} = Pending.under_way("github", {nil, owner})
       assert flight.resumes == []
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
     end
@@ -156,7 +157,7 @@ defmodule TarsOAuth.ResumeTest do
       url = connect(owner, "test/_/never-started")
 
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
-      assert TarsOAuth.connected?("github", owner)
+      assert TarsOAuth.connected?("github", {nil, owner})
     end
   end
 end

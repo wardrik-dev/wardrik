@@ -56,6 +56,22 @@ defmodule TarsDaemon.CLITest do
     assert output =~ "#{key}  call_1  deploy  This ships to production."
   end
 
+  test "parked shows the operator where to authorize a call" do
+    link = %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
+
+    {key, agent} =
+      Tars.Test.Fleet.start_agent(runner: {AgentRunners, :connecting, [self(), "call_1", link]})
+
+    :ok = Event.Bus.subscribe(key)
+    Agent.ask(agent, "open an issue")
+    assert_receive %Event{payload: {:turn_parked, _calls}}
+
+    {output, 0} = command(["parked"])
+
+    assert output =~ "#{key}  call_1"
+    assert output =~ "enter WDJB-MJHT at https://github.com/login/device"
+  end
+
   test "approve runs the call, and the agent carries on" do
     key = parked_agent()
 

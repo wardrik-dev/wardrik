@@ -36,6 +36,7 @@ defmodule TarsVault do
 
   The key seals the value only. Which user has a secret for which name is
   visible to anyone who can read the store, and the store is the customer's.
+  Two owners, or two names, never share a key: see `path/2`.
 
   ## Extracting this package
 
@@ -59,8 +60,8 @@ defmodule TarsVault do
   @key_bytes 32
   @nonce_bytes 12
 
-  @typedoc "Who a secret belongs to: a user, an organisation, or the deployment."
-  @type owner() :: String.t() | nil
+  @typedoc "Who a secret belongs to: a user, an organisation, any other term the host names, or the deployment, `nil`."
+  @type owner() :: term()
 
   @impl Tars.Credential
   def resolve(ref, %Tars.Call{scope: %Scope{} = scope}) do
@@ -130,7 +131,10 @@ defmodule TarsVault do
   @spec namespace() :: Store.ns()
   def namespace, do: @ns
 
-  @doc "The key a reference and owner are written under, within `namespace/0`."
+  @doc """
+  The key a reference and owner are written under, within `namespace/0`.
+  Distinct references and owners are written under distinct keys.
+  """
   @spec path(Credential.ref(), owner()) :: {:ok, String.t()} | {:error, term()}
   def path({kind, name}, owner) when kind in [:user, :org, :named] and is_binary(name) do
     {:ok, "#{kind}/" <> segment(owner) <> "/" <> segment(name)}
@@ -217,11 +221,17 @@ defmodule TarsVault do
 
   defp decode_key(_key), do: []
 
+  # Distinct owners and names always write distinct keys. Text keeps its
+  # unreserved characters and percent-encodes the rest, `_` and `~` among
+  # them; `_` alone is nobody's; and any other term is `~` and the SHA-256 of
+  # its external form.
   defp segment(nil), do: "_"
 
-  defp segment(value) when is_binary(value) or is_atom(value) do
-    value |> to_string() |> String.replace(~r{[/\s]}, "_")
-  end
+  defp segment(value) when is_binary(value) or is_atom(value),
+    do: value |> to_string() |> URI.encode(&(URI.char_unreserved?(&1) and &1 not in [?_, ?~]))
 
-  defp segment(value), do: "h" <> to_string(:erlang.phash2(value))
+  defp segment(value),
+    do:
+      "~" <>
+        Base.url_encode64(:crypto.hash(:sha256, :erlang.term_to_binary(value)), padding: false)
 end

@@ -102,6 +102,10 @@ defmodule TarsHTTP.Router do
     within(conn, [org, user, name], :decide, &decide(conn, &1, id))
   end
 
+  get "/v1/agents/:org/:user/:name/interrupts/:id/authorization" do
+    within(conn, [org, user, name], :decide, &authorization(conn, &1, id))
+  end
+
   post "/v1/agents/:org/:user/:name/cancel" do
     within(conn, [org, user, name], :message, &cancel(conn, &1))
   end
@@ -384,6 +388,32 @@ defmodule TarsHTTP.Router do
         invalid(conn, message)
     end
   end
+
+  # Where a person authorizes the call an interrupt waits on: only to a token
+  # that may decide it, since the link is kept out of every event.
+  defp authorization(conn, key, id) do
+    case Agent.parked(key) do
+      {:error, :not_found} -> not_found(conn, key)
+      calls -> calls |> link(id) |> authorization_answer(conn, key, id)
+    end
+  end
+
+  defp link(calls, id) do
+    case Enum.find(calls, fn {call, _prompt} -> call.id == id end) do
+      {%{link: %{url: _url} = link}, _prompt} -> {:ok, link}
+      {_call, _prompt} -> :none
+      nil -> :not_waiting
+    end
+  end
+
+  defp authorization_answer({:ok, link}, conn, _key, _id),
+    do: json(conn, 200, Resource.authorization(link))
+
+  defp authorization_answer(:none, conn, _key, id),
+    do: json(conn, 404, Resource.error("not_found", "#{id} waits on no authorization."))
+
+  defp authorization_answer(:not_waiting, conn, key, id),
+    do: json(conn, 404, Resource.error("not_found", "#{key} is not waiting on #{id}."))
 
   defp decision(%{"decision" => "approve"}), do: {:ok, :approve}
 

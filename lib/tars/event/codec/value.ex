@@ -135,11 +135,15 @@ defmodule Tars.Event.Codec.Value do
 
   @doc """
   A call a run is waiting on a person for, with the prompt it was held with.
-  A model call a dispatch held is not a tool call, and says so.
+  A model call a dispatch held is not a tool call, and says so. A call waiting
+  for a person to authorize is `authorization`, and carries no link.
   """
   @spec interrupt({Tars.Tool.call(), String.t()}) :: map()
   def interrupt({%{id: id, name: "model"}, prompt}),
     do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
+
+  def interrupt({%{id: id, link: %{url: _url}}, prompt}),
+    do: %{"id" => id, "reason" => "authorization", "message" => prompt, "tool_call_id" => id}
 
   def interrupt({%{id: id}, prompt}),
     do: %{"id" => id, "reason" => "tool_approval", "message" => prompt, "tool_call_id" => id}

@@ -8,6 +8,13 @@ defmodule TarsOAuth.Flow do
       {verifier, challenge} = TarsOAuth.Flow.pkce()
       url = TarsOAuth.Flow.authorize_url(metadata, registered, challenge, state: state)
       {:ok, token} = TarsOAuth.Flow.exchange(metadata, registered, code, verifier)
+      {:ok, token} = TarsOAuth.Flow.refresh(token)
+
+  Every request goes through `TarsOAuth.Egress`, under the metadata's trust,
+  and a refused one answers `{:token_refused, error, description}` with the
+  server's OAuth error code, or `http_<status>` where it sent none. A token
+  comes back bound to where it came from (`TarsOAuth.Token.bind/3`), and is
+  renewed there.
 
   ## Registering
 
@@ -21,10 +28,13 @@ defmodule TarsOAuth.Flow do
      the device grant too where the server offers it
 
   A server offering none of the three cannot be reached without a `:client_id`,
-  and says so.
+  and says so. A `:client_secret` is sent only to an issuer the deployment
+  named: a provider with one and no `:issuer` is refused. A client registered
+  dynamically is a public one, and keeps no secret the server hands back.
   """
 
   alias TarsOAuth.Client
+  alias TarsOAuth.Egress
   alias TarsOAuth.Metadata
   alias TarsOAuth.Provider
   alias TarsOAuth.Token
@@ -50,16 +60,43 @@ defmodule TarsOAuth.Flow do
   @spec state() :: String.t()
   def state, do: 24 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
 
-  @doc "Finds a client identity this server will accept."
-  @spec register(Metadata.t(), Client.t(), Provider.t()) :: {:ok, registered()} | {:error, term()}
-  def register(%Metadata{} = metadata, %Client{} = client, %Provider{} = provider) do
+  @doc """
+  Finds a client identity this server will accept.
+
+  `:known` is a client registered dynamically before, used where this one
+  would register dynamically again.
+  """
+  @spec register(Metadata.t(), Client.t(), Provider.t(), keyword()) ::
+          {:ok, registered()} | {:error, term()}
+  def register(%Metadata{} = metadata, %Client{} = client, %Provider{} = provider, opts \\ []) do
     cond do
-      provider.client_id -> {:ok, identity(provider.client_id, provider, client, :static)}
-      metadata.cimd_supported? and client.document_url -> cimd(client, provider)
-      metadata.registration_endpoint -> dynamic(metadata, client, provider)
-      true -> {:error, {:no_registration, metadata.issuer}}
+      provider.client_secret && metadata.trust != :operator ->
+        {:error, {:client_secret_needs_issuer, provider.name}}
+
+      provider.client_id ->
+        {:ok, identity(provider.client_id, provider, client, :static)}
+
+      metadata.cimd_supported? and client.document_url ->
+        cimd(client, provider)
+
+      known = Keyword.get(opts, :known) ->
+        {:ok, known}
+
+      metadata.registration_endpoint ->
+        dynamic(metadata, client, provider)
+
+      true ->
+        {:error, {:no_registration, metadata.issuer}}
     end
   end
+
+  @doc """
+  The scopes a flow asks for: the provider's own, else the ones the
+  resource's metadata names, else none, and the server decides.
+  """
+  @spec scopes(Provider.t(), Metadata.t()) :: [String.t()]
+  def scopes(%Provider{scopes: [_ | _] = scopes}, %Metadata{}), do: scopes
+  def scopes(%Provider{}, %Metadata{resource_scopes: scopes}), do: scopes
 
   @doc """
   Where to send the user.
@@ -101,24 +138,41 @@ defmodule TarsOAuth.Flow do
     }
     |> put_present("client_secret", registered.client_secret)
     |> put_present("resource", metadata.resource)
-    |> post(metadata.token_endpoint, opts)
+    |> post(metadata.token_endpoint, metadata.trust, opts)
+    |> case do
+      {:ok, token} -> {:ok, Token.bind(token, metadata, registered)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  @doc "Renews a token without the user."
-  @spec refresh(Metadata.t(), registered(), Token.t(), keyword()) ::
-          {:ok, Token.t()} | {:error, term()}
-  def refresh(%Metadata{} = metadata, registered, %Token{} = token, opts \\ []) do
-    %{
-      "grant_type" => "refresh_token",
-      "refresh_token" => token.refresh_token,
-      "client_id" => registered.client_id
-    }
-    |> put_present("client_secret", registered.client_secret)
-    |> put_present("resource", metadata.resource)
-    |> post(metadata.token_endpoint, opts)
-    |> case do
-      {:ok, fresh} -> {:ok, Token.renewed(token, fresh)}
-      {:error, reason} -> {:error, reason}
+  @doc """
+  Renews a token without the user, at the token endpoint it came from, as
+  the client it was issued to.
+
+  Options:
+
+    * `:trust` - the `TarsOAuth.Egress` trust of the token endpoint,
+      `:discovered` unless given
+    * `:client_secret` - sent where the client has one
+    * `:req_options` - merged into the request
+  """
+  @spec refresh(Token.t(), keyword()) :: {:ok, Token.t()} | {:error, term()}
+  def refresh(%Token{} = token, opts \\ []) do
+    if Token.renewable?(token) do
+      %{
+        "grant_type" => "refresh_token",
+        "refresh_token" => token.refresh_token,
+        "client_id" => token.client_id
+      }
+      |> put_present("client_secret", Keyword.get(opts, :client_secret))
+      |> put_present("resource", token.resource)
+      |> post(token.token_endpoint, Keyword.get(opts, :trust, :discovered), opts)
+      |> case do
+        {:ok, fresh} -> {:ok, Token.renewed(token, fresh)}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :not_renewable}
     end
   end
 
@@ -130,26 +184,27 @@ defmodule TarsOAuth.Flow do
     body =
       client
       |> Client.registration()
-      |> Map.put("scope", Enum.join(provider.scopes, " "))
+      |> put_present("scope", provider |> scopes(metadata) |> Enum.join(" "))
       |> device_grant(metadata)
 
-    options =
-      Keyword.merge(
-        [url: metadata.registration_endpoint, json: body, retry: false],
-        client.req_options
-      )
+    with {:ok, options} <-
+           Egress.options(
+             metadata.registration_endpoint,
+             metadata.trust,
+             [json: body] ++ client.req_options
+           ) do
+      case Req.post(options) do
+        {:ok, %Req.Response{status: status, body: %{"client_id" => id}}}
+        when status in [200, 201] and is_binary(id) ->
+          {:ok, %{identity(id, provider, client, :dynamic) | client_secret: nil}}
 
-    case Req.post(options) do
-      {:ok, %Req.Response{status: status, body: %{"client_id" => id} = answer}}
-      when status in [200, 201] ->
-        {:ok,
-         %{identity(id, provider, client, :dynamic) | client_secret: answer["client_secret"]}}
+        {:ok, %Req.Response{status: status, body: body}} ->
+          {error, description} = Token.refusal(body)
+          {:error, {:registration_refused, error || "http_#{status}", description}}
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:registration_refused, status, body}}
-
-      {:error, reason} ->
-        {:error, {:registration_unreachable, reason}}
+        {:error, reason} ->
+          {:error, {:registration_unreachable, reason}}
+      end
     end
   end
 
@@ -170,17 +225,22 @@ defmodule TarsOAuth.Flow do
     }
   end
 
-  defp post(form, endpoint, opts) do
-    options =
-      Keyword.merge(
-        [url: endpoint, form: form, headers: [accept: "application/json"], retry: false],
-        Keyword.get(opts, :req_options, [])
-      )
+  defp post(form, endpoint, trust, opts) do
+    request =
+      [form: form, headers: [accept: "application/json"]] ++ Keyword.get(opts, :req_options, [])
 
-    case Req.post(options) do
-      {:ok, %Req.Response{status: 200, body: body}} when is_map(body) -> Token.from_response(body)
-      {:ok, %Req.Response{status: status, body: body}} -> {:error, {:token_refused, status, body}}
-      {:error, reason} -> {:error, {:token_unreachable, reason}}
+    with {:ok, options} <- Egress.options(endpoint, trust, request) do
+      case Req.post(options) do
+        {:ok, %Req.Response{status: 200, body: body}} when is_map(body) ->
+          Token.from_response(body)
+
+        {:ok, %Req.Response{status: status, body: body}} ->
+          {error, description} = Token.refusal(body)
+          {:error, {:token_refused, error || "http_#{status}", description}}
+
+        {:error, reason} ->
+          {:error, {:token_unreachable, reason}}
+      end
     end
   end
 

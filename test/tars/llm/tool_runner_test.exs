@@ -46,6 +46,20 @@ defmodule Tars.LLM.ToolRunnerTest do
              } = ToolRunner.execute(call("call_1", "connect", %{}), scope)
     end
 
+    test "keeps where to authorize apart from the prompt", %{agent_id: agent_id} do
+      link = %{url: "https://example.com/device", code: "WDJB-MJHT"}
+      tools = [handed!("connect", &Call.park(&1, "Connect it first", link: link))]
+
+      parked = ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
+
+      assert Call.prompt(parked) == "Connect it first"
+      assert Call.link(parked) == link
+      assert [{%{id: "call_1", link: ^link}, "Connect it first"}] = ToolRunner.parked([parked])
+
+      assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Connect it first"}}
+      assert Call.link(Call.park(Call.tool(call("c", "t", %{})), "No link")) == nil
+    end
+
     test "is announced as parked, not as finished", %{agent_id: agent_id} do
       tools = [handed!("connect", &Call.park(&1, "Authorize first"))]
 

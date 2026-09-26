@@ -175,9 +175,28 @@ defmodule Tars.Call do
   @doc """
   Parks a call a tool was handed: it waits on a person, who is shown `prompt`,
   and the tool is handed it again once they approve.
+
+  `link:` is where the person authorizes, `%{url: url, code: code}`. It is
+  kept apart from the prompt: `prompt/1` never holds it, and it is shown only
+  where the person answering is, never in an event log or a notice.
   """
-  @spec park(t(), String.t()) :: t()
-  def park(%__MODULE__{} = call, prompt) when is_binary(prompt), do: wait(call, :tool, prompt)
+  @spec park(t(), String.t(), link: Ask.link()) :: t()
+  def park(%__MODULE__{} = call, prompt, opts \\ []) when is_binary(prompt) do
+    case Keyword.get(opts, :link) do
+      nil ->
+        wait(call, :tool, prompt)
+
+      %{url: url} = link when is_binary(url) ->
+        %{
+          wait(call, :tool, prompt)
+          | asks: [%Ask{by: :tool, prompt: prompt, link: Map.put_new(link, :code, nil)}]
+        }
+    end
+  end
+
+  @doc "Where the person a waiting call asks authorizes, where its tool said."
+  @spec link(t()) :: Ask.link() | nil
+  def link(%__MODULE__{asks: asks}), do: Enum.find_value(asks, & &1.link)
 
   @doc """
   The call waiting on `by`, `:tool` or `:ledger`, which asks `prompt`. What

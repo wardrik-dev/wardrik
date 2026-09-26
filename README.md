@@ -210,6 +210,7 @@ config :tars, TarsOAuth,
   providers: [
     github: [
       resource: "https://api.githubcopilot.com/mcp/",
+      issuer: "https://github.com/login/oauth",
       client_id: System.get_env("GITHUB_CLIENT_ID"),
       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
       scopes: ~w(repo),

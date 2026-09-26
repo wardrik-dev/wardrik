@@ -32,7 +32,7 @@ defmodule TarsHTTP do
   | --- | --- |
   | `read` | listing agents, snapshots, definitions and events |
   | `message` | messages and cancelling |
-  | `decide` | interrupts |
+  | `decide` | interrupts, and their authorization links |
   | `define` | putting and deleting agents and schedules |
   | `serve` | `/v1/workers` |
 
@@ -65,6 +65,7 @@ defmodule TarsHTTP do
   | `GET /v1/agents/{org}/{user}/{name}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
   | `POST /v1/agents/{org}/{user}/{name}/messages` | queues a message for the agent to answer, `202` |
   | `POST /v1/agents/{org}/{user}/{name}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
+  | `GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
   | `POST /v1/agents/{org}/{user}/{name}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
   | `PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
   | `DELETE /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
@@ -73,7 +74,7 @@ defmodule TarsHTTP do
   `TarsHTTP.Resource` shows what each answers. Each resource's JSON Schema is
   in `priv/protocol/v1`, beside the events': `agent.json` for an agent listed,
   `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
-  `schedule_definition.json` and `error.json`. `sdks/typescript` generates
+  `schedule_definition.json`, `authorization.json` and `error.json`. `sdks/typescript` generates
   its types from them.
 
   ### Agents

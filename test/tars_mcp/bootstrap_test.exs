@@ -55,10 +55,10 @@ defmodule TarsMCP.BootstrapTest do
   test "calling it parks on the link", context do
     %{ref: ref} = context
 
-    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+    assert %Tars.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
              call(ref, "someone", "connect")
 
-    assert prompt =~ "https://example.com/authorize"
+    assert url =~ "https://example.com/authorize"
   end
 
   test "a user who authorizes gets the server's own tools in its place", context do
@@ -149,10 +149,10 @@ defmodule TarsMCP.BootstrapTest do
 
       echo = %{id: "c2", name: "#{ref}__echo", arguments: %{"value" => "hello"}}
 
-      assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+      assert %Tars.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
                ToolRunner.execute(echo, scope(ref, "someone"))
 
-      assert prompt =~ "https://example.com/authorize"
+      assert url =~ "https://example.com/authorize"
     end
   end
 end

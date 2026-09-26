@@ -24,6 +24,18 @@ defmodule Tars.CredentialTest do
       do: raise("the vault is on fire")
 
     def resolve(_ref, %Tars.Call{scope: %Scope{}}), do: {:error, :denied}
+
+    @impl true
+    def refused({:named, "explodes"}, _call), do: raise("the vault is on fire")
+    def refused(ref, %Tars.Call{}), do: send(self(), {:refused, ref}) && :ok
+  end
+
+  defmodule Plain do
+    @moduledoc false
+    @behaviour Tars.Credential
+
+    @impl true
+    def resolve(_ref, _call), do: {:error, :denied}
   end
 
   defp scope(opts \\ []) do
@@ -79,6 +91,28 @@ defmodule Tars.CredentialTest do
     test "a scope with no resolver resolves nothing" do
       assert {:error, :no_resolver} =
                Credential.resolve(Calls.tool("tool", %{}, scope()), {:user, "github"})
+    end
+  end
+
+  describe "refused/2" do
+    test "tells the scope's resolver which reference was refused" do
+      call = Calls.tool("github__read", %{}, scope(user: "jon", credentials: Vault))
+
+      assert :ok = Credential.refused(call, {:user, "github"})
+      assert_received {:refused, {:user, "github"}}
+    end
+
+    test "passes over a resolver without it, one that raises, and a scope with none" do
+      assert :ok =
+               Credential.refused(Calls.tool("t", %{}, scope(credentials: Plain)), {:user, "x"})
+
+      assert :ok =
+               Credential.refused(
+                 Calls.tool("t", %{}, scope(credentials: Vault)),
+                 {:named, "explodes"}
+               )
+
+      assert :ok = Credential.refused(Calls.tool("t", %{}, scope()), {:user, "x"})
     end
   end
 

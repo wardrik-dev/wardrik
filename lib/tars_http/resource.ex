@@ -100,6 +100,15 @@ defmodule TarsHTTP.Resource do
     "#{div(ms, size)}#{unit}"
   end
 
+  @doc "Where a person authorizes a waiting call: the page, and the code to enter where one is needed."
+  @spec authorization(Tars.Call.Ask.link()) :: map()
+  def authorization(%{url: url} = link) do
+    case link[:code] do
+      code when is_binary(code) -> %{"url" => url, "code" => code}
+      _none -> %{"url" => url}
+    end
+  end
+
   @doc "An error of `type`, saying what went wrong, with any other fields beside."
   @spec error(String.t(), String.t(), map()) :: map()
   def error(type, message, fields \\ %{}),

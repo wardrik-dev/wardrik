@@ -58,6 +58,13 @@ defmodule Tars.Credential do
   `continuation/1` alongside whatever it started, and applies it when the
   credential becomes resolvable. The parked call is answered where the user
   finished, rather than waiting to be told a second time.
+
+  ## When a credential is refused
+
+  A tool whose server refuses the credential it was given, with a 401 or a
+  403, says so with `refused/2` before it resolves again. A resolver that
+  implements `c:refused/2` stops handing out what it handed out last for
+  that reference, so the next resolve renews it, or asks the user again.
   """
 
   alias Tars.Call
@@ -93,16 +100,24 @@ defmodule Tars.Credential do
   """
   @callback resolve(ref(), Call.t()) :: outcome()
 
+  @doc "Hears that the credential last resolved for `ref` was refused by the server it was for."
+  @callback refused(ref(), Call.t()) :: :ok
+
+  @optional_callbacks refused: 2
+
   @doc """
   Approves `call`, the call a credential is being resolved for, as an MFA to
-  apply later.
+  apply later, decided by `by`: the principal the resolver knows finished the
+  authorization as.
 
   Kept by a resolver in `c:resolve/2` and applied once the credential can be
   resolved. Applying it is a no-op on a turn that has already been answered.
   """
-  @spec continuation(Call.t()) :: continuation()
-  def continuation(%Call{id: call_id, scope: %Scope{source: %{agent_id: agent_id}} = scope}) do
-    by = %Tars.Principal{type: :oauth, id: to_string(scope.user || "_")}
+  @spec continuation(Call.t(), Tars.Principal.t()) :: continuation()
+  def continuation(
+        %Call{id: call_id, scope: %Scope{source: %{agent_id: agent_id}}},
+        %Tars.Principal{} = by
+      ) do
     {Tars.Agent, :decide, [agent_id, %{call_id => :approve}, [by: by]]}
   end
 
@@ -159,6 +174,24 @@ defmodule Tars.Credential do
   catch
     kind, reason -> {:error, {:resolver_failed, Exception.format(kind, reason)}}
   end
+
+  @doc """
+  Tells the resolver of `call`'s scope that the credential it resolved for
+  `ref` was refused. A resolver without `c:refused/2`, or one that raises, is
+  passed over.
+  """
+  @spec refused(Call.t(), ref()) :: :ok
+  def refused(%Call{scope: %Scope{credentials: resolver}} = call, ref)
+      when is_atom(resolver) and resolver != nil do
+    if Code.ensure_loaded?(resolver) and function_exported?(resolver, :refused, 2),
+      do: resolver.refused(ref, call)
+
+    :ok
+  catch
+    _kind, _reason -> :ok
+  end
+
+  def refused(%Call{}, _ref), do: :ok
 
   defimpl Inspect do
     def inspect(%Tars.Credential{kind: kind}, _opts) do

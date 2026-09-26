@@ -107,6 +107,18 @@ defmodule TarsHTTP.RouterTest do
     {key, agent}
   end
 
+  # An agent waiting on a person to connect an account at `link`.
+  defp connecting_agent(link) do
+    {key, agent} =
+      Fleet.start_agent(runner: {AgentRunners, :connecting, [self(), "call_1", link]})
+
+    :ok = Event.Bus.subscribe(key, level: :lifecycle)
+    Agent.ask(agent, "open an issue")
+    assert_receive %Event{payload: {:turn_parked, _calls}}
+
+    {key, agent}
+  end
+
   # A turn has finished, and the agent has written everything it emitted.
   defp settled(agent) do
     assert_receive %Event{payload: {:turn_finished, _messages}}
@@ -291,6 +303,48 @@ defmodule TarsHTTP.RouterTest do
   end
 
   describe "interrupts" do
+    test "a call waiting on an authorization gives its link only to a token that may decide",
+         %{api: api} do
+      link = %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
+      {key, _agent} = connecting_agent(link)
+
+      assert {:ok, %{status: 200, body: snapshot}} = Req.get(api, url: "/v1/agents/#{key}")
+      assert [%{"reason" => "authorization", "message" => message}] = snapshot["interrupts"]
+      refute message =~ "github.com/login"
+      refute message =~ "WDJB"
+
+      assert {:ok, %{status: 200, body: body}} =
+               Req.get(api, url: "/v1/agents/#{key}/interrupts/call_1/authorization")
+
+      assert body == %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}
+
+      {:ok, secret, _token} = Token.create("reader", "test/", [:read])
+
+      assert {:ok, %{status: 403}} =
+               Req.get(api,
+                 url: "/v1/agents/#{key}/interrupts/call_1/authorization",
+                 auth: {:bearer, secret}
+               )
+
+      {:ok, %{body: %{"events" => events}}} =
+        Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0])
+
+      refute JSON.encode!(events) =~ "WDJB-MJHT"
+      refute JSON.encode!(events) =~ "github.com/login"
+    end
+
+    test "an interrupt with no authorization has no link to give", %{api: api} do
+      {key, _agent} = parked_agent()
+
+      assert {:ok, %{status: 404, body: %{"error" => %{"message" => message}}}} =
+               Req.get(api, url: "/v1/agents/#{key}/interrupts/call_1/authorization")
+
+      assert message == "call_1 waits on no authorization."
+
+      assert {:ok, %{status: 404}} =
+               Req.get(api, url: "/v1/agents/#{key}/interrupts/nope/authorization")
+    end
+
     test "approves a call the agent is waiting on, in the token's name", %{api: api, token: token} do
       {key, _agent} = parked_agent()
 
@@ -695,7 +749,7 @@ defmodule TarsHTTP.RouterTest do
   end
 
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot schedule schedule_definition error)
+    @resources ~w(agent agent_snapshot authorization schedule schedule_definition error)
 
     defp schema(name) do
       :tars

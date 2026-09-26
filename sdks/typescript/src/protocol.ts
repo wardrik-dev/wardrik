@@ -115,7 +115,7 @@ export interface Tool {
  */
 export interface Interrupt {
   id: string;
-  reason: "tool_approval" | "model_approval";
+  reason: "tool_approval" | "model_approval" | "authorization";
   message: string;
   tool_call_id?: string;
 }
@@ -218,6 +218,19 @@ export interface AgentSnapshot {
    */
   outcome: ("ok" | "failed" | "interrupted") | null;
   sequence: number;
+}
+/**
+ * Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.
+ */
+export interface Authorization {
+  /**
+   * The page to open.
+   */
+  url: string;
+  /**
+   * The code to enter at the page, where one is needed.
+   */
+  code?: string;
 }
 export interface Envelope {
   specversion: "1.0";

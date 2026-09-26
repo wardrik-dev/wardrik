@@ -256,6 +256,27 @@ defmodule TarsDaemon.ConfigTest do
       assert message =~ "oauth.providers.github.flow is auto, browser or device"
     end
 
+    test "a provider's client secret goes only to an issuer it names", context do
+      assert {:error, message} =
+               read(
+                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
+                   "      client_id: a\n      client_secret: s\n",
+                 context
+               )
+
+      assert message =~
+               "oauth.providers.github.client_secret is sent only to an issuer the provider names"
+
+      assert {:ok, [{TarsOAuth, oauth}]} =
+               read(
+                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
+                   "      issuer: https://y\n      client_id: a\n      client_secret: s\n",
+                 context
+               )
+
+      assert oauth[:providers][:github][:client_secret] == "s"
+    end
+
     test "a cluster of nodes on this machine is found by name, and counted", context do
       assert {:ok, [{TarsDaemon.Cluster, cluster}]} =
                read("cluster:\n  nodes: [a, b, c]\n", context)

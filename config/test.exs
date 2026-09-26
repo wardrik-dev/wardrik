@@ -24,6 +24,10 @@ config :tars, Tars.Store,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
+# OAuth hosts resolve without DNS, and a device flow polls as often as the
+# test's stub server asks.
+config :tars, TarsOAuth, resolver: TarsOAuth.Case.Resolver, poll_floor: 0
+
 # A daemon started by a test serves the HTTP API on whatever port is free.
 config :tars, TarsHTTP, port: 0
 

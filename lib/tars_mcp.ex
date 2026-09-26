@@ -64,6 +64,8 @@ defmodule TarsMCP do
   alias TarsMCP.Offer
   alias TarsMCP.Server
 
+  @carries_on "This carries on once the account is connected."
+
   @doc """
   The tools a server offers, as it last reported them.
 
@@ -97,10 +99,14 @@ defmodule TarsMCP do
   server answers.
 
   A server with a `:credential` is called over a connection belonging to the
-  call's user. A user who has not authorized it yet has the call parked on the
-  link, which stops the turn until they have. A server that refuses the
+  call's user. A user who has not authorized it yet has the call parked, which
+  stops the turn until they have. The link and any code travel as the call's
+  `link` (`Tars.Call.park/3`), never in its prompt, so they are shown only
+  where the person answering is. A server that refuses the
   credential it was given is tried once more with a freshly resolved one,
-  which covers a token revoked or expired without warning.
+  once the resolver has been told the old one was refused
+  (`Tars.Credential.refused/2`), which covers a token revoked or expired
+  without warning.
   """
   @spec call(atom(), String.t(), Tars.Call.t()) :: Tars.Call.t()
   def call(ref, name, %Tars.Call{} = call), do: call(ref, name, call, :may_retry)
@@ -117,6 +123,7 @@ defmodule TarsMCP do
 
       if retry == :may_retry and refused?(answer) and Server.per_user?(server) do
         Connection.close(ref, principal)
+        :ok = Credential.refused(call, server.credential)
         call(ref, name, call, :tried)
       else
         Tars.Call.answer(call, TarsMCP.Tool.answer(answer, server))
@@ -133,7 +140,8 @@ defmodule TarsMCP do
         Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
       )
 
-  defp unconnected(call, _ref, {:park, prompt}), do: Tars.Call.park(call, prompt)
+  defp unconnected(call, _ref, {:park, prompt, link}),
+    do: Tars.Call.park(call, prompt, link: link)
 
   defp unconnected(call, _ref, {:error, reason}),
     do: Tars.Call.answer(call, Result.error(:not_authorized, reason))
@@ -225,12 +233,13 @@ defmodule TarsMCP do
       {:ok, principal}
     else
       {:error, {:authorization_required, url}} ->
-        {:park, "To connect #{server.ref}, open the link. This carries on once you have: #{url}"}
+        {:park, "To connect #{server.ref}, open its authorization link. " <> @carries_on,
+         %{url: url, code: nil}}
 
       {:error, {:authorization_required, url, code}} ->
         {:park,
-         "To connect #{server.ref}, enter #{code} at the link. " <>
-           "This carries on once you have: #{url}"}
+         "To connect #{server.ref}, enter the code at its authorization link. " <> @carries_on,
+         %{url: url, code: code}}
 
       {:error, :no_resolver} ->
         {:error, "#{server.ref} needs a credential and this deployment resolves none"}

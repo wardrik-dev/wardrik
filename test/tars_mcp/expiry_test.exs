@@ -15,6 +15,12 @@ defmodule TarsMCP.ExpiryTest do
     @impl true
     def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{user: user}}),
       do: {:ok, Credential.secret("token-#{user}")}
+
+    @impl true
+    def refused(ref, %Tars.Call{scope: %Scope{user: user}}) do
+      if pid = Process.whereis(TarsMCP.ExpiryTest), do: send(pid, {:refused, ref, user})
+      :ok
+    end
   end
 
   @flag Path.join(System.tmp_dir!(), "tars-refusal-#{System.unique_integer([:positive])}")
@@ -26,6 +32,7 @@ defmodule TarsMCP.ExpiryTest do
              ]
 
   setup do
+    Process.register(self(), TarsMCP.ExpiryTest)
     on_exit(fn -> File.rm(@flag) end)
 
     :ok
@@ -69,6 +76,7 @@ defmodule TarsMCP.ExpiryTest do
 
       [part] = message.content
       assert part.text =~ "accepted this time"
+      assert_received {:refused, {:user, "stub"}, "jon"}
     end
 
     test "a server that refuses twice is reported rather than retried forever", %{ref: ref} do

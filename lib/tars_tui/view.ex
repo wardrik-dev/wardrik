@@ -163,10 +163,16 @@ defmodule TarsTUI.View do
         Text.tag(call.name, [:bright, :yellow]),
         Text.tag(["  ", args(call)], @faint)
       ]),
-      bar([Text.tag(["   ", prompt], :yellow)]),
-      bar([Text.tag(["   ", call.id], @faint)])
-    ]
+      bar([Text.tag(["   ", prompt], :yellow)])
+    ] ++ link(call) ++ [bar([Text.tag(["   ", call.id], @faint)])]
   end
+
+  # Where to authorize, shown to whoever answers here and in no event.
+  defp link(%{link: %{url: url, code: code}}) when is_binary(code),
+    do: [bar([Text.tag(["   enter ", code, " at ", url], [:bright, :yellow])])]
+
+  defp link(%{link: %{url: url}}), do: [bar([Text.tag(["   open ", url], [:bright, :yellow])])]
+  defp link(_call), do: []
 
   defp answers([_only]) do
     [

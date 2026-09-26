@@ -1,6 +1,10 @@
 defmodule TarsOAuth.FlowTest do
   use TarsOAuth.Case, async: false
 
+  setup do
+    configure(providers: [])
+  end
+
   defp provider(opts \\ []) do
     Provider.new(:github, Keyword.merge([resource: resource(), scopes: ~w(repo)], opts))
   end
@@ -20,11 +24,15 @@ defmodule TarsOAuth.FlowTest do
   end
 
   defp discover(opts \\ []) do
+    {issuer, opts} = Keyword.pop(opts, :issuer)
     stub_server(opts)
     configure(providers: [github: [resource: resource()]])
 
     {:ok, metadata} =
-      Metadata.discover(resource(), req_options: [plug: {Req.Test, TarsOAuth.Stub}])
+      Metadata.discover(resource(),
+        issuer: issuer,
+        req_options: [plug: {Req.Test, TarsOAuth.Stub}]
+      )
 
     metadata
   end
@@ -62,6 +70,65 @@ defmodule TarsOAuth.FlowTest do
       refute_receive {:oauth, "GET", "/.well-known/oauth-protected-resource/mcp", _body}
     end
 
+    test "takes a resource named with or without its trailing slash" do
+      metadata = discover(resource_named: resource() <> "/")
+      assert metadata.issuer == "https://auth.example.com"
+    end
+
+    test "refuses resource metadata that names another resource" do
+      stub_server(resource_named: "https://elsewhere.example.com/mcp")
+
+      assert {:error, {:resource_mismatch, _asked, "https://elsewhere.example.com/mcp"}} =
+               Metadata.discover(resource())
+    end
+
+    test "refuses metadata that names another issuer, or none" do
+      stub_server(issuer_named: "https://evil.example.com")
+
+      assert {:error, {:issuer_mismatch, "https://auth.example.com", "https://evil.example.com"}} =
+               Metadata.discover(resource())
+
+      stub_server(issuer_named: nil)
+
+      assert {:error, {:metadata_incomplete, "https://auth.example.com"}} =
+               Metadata.discover(resource())
+    end
+
+    test "refuses a discovered endpoint that is not https" do
+      stub_server(endpoints: %{"token_endpoint" => "http://auth.example.com/token"})
+
+      assert {:error, {:insecure_url, "http://auth.example.com/token"}} =
+               Metadata.discover(resource())
+    end
+
+    test "refuses an authorization server the resource names on a private address" do
+      stub_server(as: "https://internal.example.com")
+
+      assert {:error, {:private_address, "internal.example.com"}} = Metadata.discover(resource())
+    end
+
+    test "trusts an issuer the deployment named, and its endpoints, wherever they are" do
+      stub_server(as: "https://internal.example.com")
+
+      assert {:ok, metadata} =
+               Metadata.discover(resource(), issuer: "https://internal.example.com")
+
+      assert metadata.trust == :operator
+      assert metadata.token_endpoint == "https://internal.example.com/token"
+    end
+
+    test "follows no redirect" do
+      stub_server(redirect_prm: true)
+
+      assert {:error, {:metadata_unavailable, _url, 302}} = Metadata.discover(resource())
+      refute_receive {:oauth, "GET", "/prm", _body}
+    end
+
+    test "says whether the server takes a SHA-256 PKCE challenge" do
+      assert Metadata.pkce?(discover())
+      refute Metadata.pkce?(discover(no_pkce: true))
+    end
+
     test "reads the metadata URL out of a WWW-Authenticate challenge" do
       header =
         ~s(Bearer realm="mcp", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource")
@@ -80,7 +147,7 @@ defmodule TarsOAuth.FlowTest do
 
   describe "register/3" do
     test "uses a client_id the deployment registered by hand" do
-      metadata = discover(cimd: true, register: true)
+      metadata = discover(cimd: true, register: true, issuer: "https://auth.example.com")
 
       assert {:ok, registered} =
                Flow.register(
@@ -94,6 +161,21 @@ defmodule TarsOAuth.FlowTest do
       assert registered.client_secret == "s"
     end
 
+    test "sends a client secret only to an issuer the deployment named" do
+      metadata = discover(cimd: true, register: true)
+      assert metadata.trust == :discovered
+
+      assert {:error, {:client_secret_needs_issuer, "github"}} =
+               Flow.register(
+                 metadata,
+                 client(),
+                 provider(client_id: "Iv1.hand", client_secret: "s")
+               )
+
+      assert {:ok, %{how: :static, client_secret: nil}} =
+               Flow.register(metadata, client(), provider(client_id: "Iv1.public"))
+    end
+
     test "presents its metadata document where the server takes one" do
       metadata = discover(cimd: true, register: true)
 
@@ -104,18 +186,33 @@ defmodule TarsOAuth.FlowTest do
       refute_receive {:oauth, "POST", "/register", _body}
     end
 
-    test "registers dynamically where the server does not take a document" do
+    test "registers a public client dynamically where the server does not take a document" do
       metadata = discover(register: true)
 
       assert {:ok, registered} = Flow.register(metadata, client(), provider())
 
       assert registered.how == :dynamic
       assert registered.client_id == "registered-id"
-      assert registered.client_secret == "registered-secret"
+      # The stub hands back a secret; a public client keeps none.
+      assert registered.client_secret == nil
 
       assert_receive {:oauth, "POST", "/register", body}
       assert JSON.decode!(body)["client_name"] == "Tars"
       assert JSON.decode!(body)["redirect_uris"] == [redirect_uri()]
+    end
+
+    test "uses a client registered before instead of registering again" do
+      metadata = discover(register: true)
+
+      known = %{
+        client_id: "kept-id",
+        client_secret: nil,
+        redirect_uri: redirect_uri(),
+        how: :dynamic
+      }
+
+      assert {:ok, ^known} = Flow.register(metadata, client(), provider(), known: known)
+      refute_receive {:oauth, "POST", "/register", _body}
     end
 
     test "a server offering no way to register says so" do
@@ -169,6 +266,12 @@ defmodule TarsOAuth.FlowTest do
       assert token.scope == "repo"
       assert token.expires_at > System.system_time(:second)
 
+      # Bound to where it came from.
+      assert token.issuer == "https://auth.example.com"
+      assert token.token_endpoint == "https://auth.example.com/token"
+      assert token.client_id == "https://tars.dev/oauth/client"
+      assert token.resource == resource()
+
       assert_receive {:oauth, "POST", "/token", body}
       sent = URI.decode_query(body)
       assert sent["grant_type"] == "authorization_code"
@@ -182,7 +285,7 @@ defmodule TarsOAuth.FlowTest do
       {:ok, registered} = Flow.register(metadata, client(), provider())
       stub_server(cimd: true, token: %{"error" => "invalid_grant"})
 
-      assert {:error, {:token_refused, _status, _body}} =
+      assert {:error, {:token_refused, "invalid_grant", nil}} =
                Flow.exchange(metadata, registered, "stale", "verifier",
                  req_options: [plug: {Req.Test, TarsOAuth.Stub}]
                )
@@ -192,19 +295,27 @@ defmodule TarsOAuth.FlowTest do
       metadata = discover(cimd: true)
       {:ok, registered} = Flow.register(metadata, client(), provider())
       {:ok, first} = Token.from_response(token())
+      first = Token.bind(first, metadata, registered)
 
       stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
 
-      assert {:ok, renewed} =
-               Flow.refresh(metadata, registered, first,
-                 req_options: [plug: {Req.Test, TarsOAuth.Stub}]
-               )
+      assert {:ok, renewed} = Flow.refresh(first, req_options: [plug: {Req.Test, TarsOAuth.Stub}])
 
       assert renewed.access_token == "at_second"
       assert renewed.refresh_token == "rt_first"
+      assert renewed.token_endpoint == first.token_endpoint
 
       assert_receive {:oauth, "POST", "/token", body}
-      assert URI.decode_query(body)["grant_type"] == "refresh_token"
+      sent = URI.decode_query(body)
+      assert sent["grant_type"] == "refresh_token"
+      assert sent["client_id"] == "https://tars.dev/oauth/client"
+      assert sent["resource"] == resource()
+      refute Map.has_key?(sent, "client_secret")
+    end
+
+    test "a token that does not know where it came from is not renewed" do
+      {:ok, unbound} = Token.from_response(token())
+      assert {:error, :not_renewable} = Flow.refresh(unbound)
     end
   end
 

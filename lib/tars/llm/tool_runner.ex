@@ -163,10 +163,20 @@ defmodule Tars.LLM.ToolRunner do
     end)
   end
 
-  @doc "The calls in a batch waiting on a person, each with the prompt a person is shown."
+  @doc """
+  The calls in a batch waiting on a person, each with the prompt a person is
+  shown. A call whose tool named where to authorize carries it as `:link`.
+  """
   @spec parked([Call.t()]) :: [{Tars.Tool.call(), String.t()}]
   def parked(calls) when is_list(calls) do
-    for %Call{state: :waiting} = call <- calls, do: {Call.to_map(call), Call.prompt(call)}
+    for %Call{state: :waiting} = call <- calls, do: {waiting(call), Call.prompt(call)}
+  end
+
+  defp waiting(%Call{} = call) do
+    case Call.link(call) do
+      nil -> Call.to_map(call)
+      link -> Map.put(Call.to_map(call), :link, link)
+    end
   end
 
   @doc """
@@ -398,7 +408,7 @@ defmodule Tars.LLM.ToolRunner do
   defp took(%Call{state: :done, result: result}, call), do: finished(call, result)
 
   defp took(%Call{state: :waiting} = parked, call),
-    do: call |> Call.park(Call.prompt(parked)) |> announced()
+    do: call |> Call.park(Call.prompt(parked), link: Call.link(parked)) |> announced()
 
   defp took(other, call), do: finished(call, other)
 

@@ -1,26 +1,30 @@
 defmodule TarsOAuth.Loopback do
   @moduledoc """
-  The one page an authorization server redirects back to, served on loopback.
+  The pages an authorization server redirects back to, served on loopback by
+  Bandit.
 
       config :tars, TarsOAuth, redirect: [port: 4599]
 
   A single binary has nowhere on the public internet to send a code, and RFC
   8252 says a native application should not need one: the browser is on the
-  same machine, so `http://127.0.0.1:4599/callback` is the redirect URI to
-  register with a provider.
+  same machine. Each provider has a path of its own, so
+  `http://127.0.0.1:4599/callback/github` is the redirect URI to register for
+  the `github` provider, and a code that comes back to it finishes only a
+  `github` flow.
 
-  It listens on loopback only, answers one request with a page telling the
-  person to go back to their agent, and hands the code to `TarsOAuth.finish/2`.
-  Anything that is not the callback path gets a 404, and a callback carrying
-  no state gets a 400.
+  It listens on loopback only, and hands a callback's code, `state` and `iss`
+  to `TarsOAuth.finish/3`, answering with a page telling the person to go
+  back to their agent. What a server sent that is shown on the page is
+  escaped. Anything that is not a callback gets a 404, and a callback
+  carrying no code a 400.
 
   A port another process holds is tried again every five seconds, so of
   several nodes on one machine the first to start listens, and another takes
-  the port over when that one stops. `TarsOAuth.finish/2` finds a flow any
+  the port over when that one stops. `TarsOAuth.finish/3` finds a flow any
   node of the cluster started.
 
   A deployment with a web surface of its own registers that instead and calls
-  `TarsOAuth.finish/2` from its own controller; then nothing here runs.
+  `TarsOAuth.finish/3` from its own controller; then nothing here runs.
   """
 
   use GenServer
@@ -28,43 +32,68 @@ defmodule TarsOAuth.Loopback do
   require Logger
 
   @default_port 4599
-  @path "/callback"
   @retry :timer.seconds(5)
 
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @doc "The redirect URI this listener answers on."
-  @spec redirect_uri() :: String.t()
-  def redirect_uri, do: "http://127.0.0.1:#{port()}#{@path}"
+  @doc "The redirect URI this listener answers on for `provider`."
+  @spec redirect_uri(String.t()) :: String.t()
+  def redirect_uri(provider) when is_binary(provider),
+    do: "http://127.0.0.1:#{port()}/callback/#{URI.encode(provider, &URI.char_unreserved?/1)}"
 
   @doc "The port it listens on."
   @spec port() :: :inet.port_number()
   def port, do: Keyword.get(TarsOAuth.Config.redirect(), :port, @default_port)
 
+  @doc "Where `listener` listens, or `:error` while it cannot."
+  @spec listening(GenServer.server()) :: {:ok, {:inet.ip_address(), :inet.port_number()}} | :error
+  def listening(listener \\ __MODULE__), do: GenServer.call(listener, :listening)
+
   @impl GenServer
   def init(opts) do
-    port = Keyword.get(opts, :port, port())
-    retry = Keyword.get(opts, :retry, @retry)
-    {:ok, listen(%{port: port, retry: retry, socket: nil}, :first)}
+    # Bandit is linked to this process, and says why when it stops.
+    Process.flag(:trap_exit, true)
+
+    state = %{
+      port: Keyword.get(opts, :port, port()),
+      retry: Keyword.get(opts, :retry, @retry),
+      server: nil
+    }
+
+    {:ok, listen(state, :first)}
   end
 
   @impl GenServer
-  def handle_info(:listen, %{socket: nil} = state), do: {:noreply, listen(state, :again)}
+  def handle_call(:listening, _from, %{server: nil} = state), do: {:reply, :error, state}
+
+  def handle_call(:listening, _from, %{server: server} = state),
+    do: {:reply, ThousandIsland.listener_info(server), state}
+
+  @impl GenServer
+  def handle_info(:listen, %{server: nil} = state), do: {:noreply, listen(state, :again)}
   def handle_info(:listen, state), do: {:noreply, state}
 
-  def handle_info({:answered, _connection}, %{socket: socket} = state) do
-    accept(socket)
-
-    {:noreply, state}
+  def handle_info({:EXIT, server, reason}, %{server: server} = state) do
+    Logger.warning("OAuth loopback stopped listening: #{inspect(reason)}")
+    Process.send_after(self(), :listen, state.retry)
+    {:noreply, %{state | server: nil}}
   end
 
+  def handle_info({:EXIT, _other, _reason}, state), do: {:noreply, state}
+
   defp listen(%{port: port} = state, attempt) do
-    case :gen_tcp.listen(port, [:binary, ip: {127, 0, 0, 1}, active: false, reuseaddr: true]) do
-      {:ok, socket} ->
+    options = [
+      plug: TarsOAuth.Loopback.Page,
+      ip: {127, 0, 0, 1},
+      port: port,
+      startup_log: false
+    ]
+
+    case Bandit.start_link(options) do
+      {:ok, server} ->
         if attempt == :again, do: Logger.info("OAuth loopback listens on #{port} now")
-        accept(socket)
-        %{state | socket: socket}
+        %{state | server: server}
 
       {:error, reason} ->
         if attempt == :first do
@@ -79,78 +108,28 @@ defmodule TarsOAuth.Loopback do
     end
   end
 
-  defp accept(socket) do
-    listener = self()
+  @doc """
+  What a callback for `provider` carrying `params` is answered with: a status
+  and the message shown on the page.
+  """
+  @spec answer(String.t(), map()) :: {pos_integer(), String.t()}
+  def answer(_provider, %{"error" => error} = params),
+    do: {400, "#{error}: #{params["error_description"] || "no reason given"}"}
 
-    spawn_link(fn ->
-      case :gen_tcp.accept(socket) do
-        {:ok, connection} ->
-          send(listener, {:answered, connection})
-          serve(connection)
+  def answer(provider, %{"code" => code, "state" => state} = params)
+      when is_binary(code) and is_binary(state) do
+    case TarsOAuth.finish(state, code, provider: provider, iss: params["iss"]) do
+      {:ok, name} ->
+        {200, "#{name} is connected. Go back to your agent."}
 
-        {:error, reason} ->
-          send(listener, {:answered, reason})
-      end
-    end)
-  end
-
-  defp serve(connection) do
-    with {:ok, request} <- :gen_tcp.recv(connection, 0, :timer.seconds(10)),
-         {:ok, target} <- request_target(request) do
-      target |> answer() |> then(&:gen_tcp.send(connection, &1))
-    else
-      _unreadable -> :gen_tcp.send(connection, response(400, "Tars could not read that request."))
-    end
-
-    :gen_tcp.close(connection)
-  end
-
-  defp request_target(request) do
-    case Regex.run(~r{^GET ([^\s]+) HTTP/1\.[01]}, request) do
-      [_match, target] -> {:ok, target}
-      nil -> :error
+      {:error, reason} ->
+        {400, "That did not work (#{tag(reason)}). Start again from your agent."}
     end
   end
 
-  defp answer(target) do
-    uri = URI.parse(target)
+  def answer(_provider, _params), do: {400, "That callback carried no code."}
 
-    if uri.path == @path,
-      do: (uri.query || "") |> URI.decode_query() |> complete(),
-      else: response(404, "Nothing here.")
-  end
-
-  defp complete(%{"error" => error} = params) do
-    response(400, "#{error}: #{params["error_description"] || "no reason given"}")
-  end
-
-  defp complete(%{"code" => code, "state" => state}) do
-    case TarsOAuth.finish(state, code) do
-      {:ok, provider} -> response(200, "#{provider} is connected. Go back to your agent.")
-      {:error, reason} -> response(400, "That did not work: #{inspect(reason)}")
-    end
-  end
-
-  defp complete(_params), do: response(400, "That callback carried no code.")
-
-  defp response(status, message) do
-    body = """
-    <!doctype html><meta charset="utf-8"><title>Tars</title>
-    <body style="font: 16px system-ui; margin: 4rem auto; max-width: 32rem">
-    <p>#{message}</p>
-    """
-
-    """
-    HTTP/1.1 #{status} #{reason(status)}\r
-    content-type: text/html; charset=utf-8\r
-    content-length: #{byte_size(body)}\r
-    connection: close\r
-    \r
-    #{body}
-    """
-  end
-
-  defp reason(200), do: "OK"
-  defp reason(400), do: "Bad Request"
-  defp reason(404), do: "Not Found"
+  defp tag(reason) when is_atom(reason), do: reason
+  defp tag(reason) when is_tuple(reason), do: elem(reason, 0)
+  defp tag(_reason), do: :failed
 end

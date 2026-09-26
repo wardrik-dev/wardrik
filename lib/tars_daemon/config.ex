@@ -34,6 +34,7 @@ defmodule TarsDaemon.Config do
         providers:
           github:
             resource: https://api.githubcopilot.com/mcp/
+            issuer: https://github.com/login/oauth
             client_id: ${GITHUB_CLIENT_ID}
             client_secret: ${GITHUB_CLIENT_SECRET}
             scopes: [repo]
@@ -294,8 +295,18 @@ defmodule TarsDaemon.Config do
   defp providers(providers) do
     Enum.map(providers, fn {name, provider} ->
       path = ["oauth", "providers", name]
-      {name(name), provider |> options(@provider_keys, path) |> flow(path)}
+      {name(name), provider |> options(@provider_keys, path) |> flow(path) |> secret(path)}
     end)
+  end
+
+  defp secret(provider, path) do
+    if Keyword.has_key?(provider, :client_secret) and not Keyword.has_key?(provider, :issuer),
+      do:
+        invalid!(
+          path ++ ["client_secret"],
+          "is sent only to an issuer the provider names; add issuer"
+        ),
+      else: provider
   end
 
   defp flow(provider, path) do

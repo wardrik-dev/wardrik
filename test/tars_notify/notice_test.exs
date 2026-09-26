@@ -25,6 +25,24 @@ defmodule TarsNotify.NoticeTest do
     assert notice.at == DateTime.from_unix!(1_790_000_000_000_000, :microsecond)
   end
 
+  test "a call waiting on an authorization is named without its link" do
+    call = %{
+      id: "call_1",
+      name: "github__issues",
+      arguments: %{},
+      link: %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
+    }
+
+    assert {:ok, notice} =
+             Notice.from_event(
+               event({:turn_parked, [{call, "To connect github, open its link."}]})
+             )
+
+    encoded = notice |> Notice.to_map() |> JSON.encode!()
+    refute encoded =~ "WDJB-MJHT"
+    refute encoded =~ "github.com/login"
+  end
+
   test "a failed turn keeps its reason, and a finished one what it said last" do
     assert {:ok, %Notice{kind: :failed, reason: :timeout}} =
              Notice.from_event(event({:turn_failed, :timeout}))

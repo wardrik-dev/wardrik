@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tars:schema:v1:authorization",
+  "title": "An authorization",
+  "description": "Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "url"
+  ],
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "The page to open."
+    },
+    "code": {
+      "type": "string",
+      "description": "The code to enter at the page, where one is needed."
+    }
+  },
+  "examples": [
+    {
+      "url": "https://github.com/login/device",
+      "code": "WDJB-MJHT"
+    },
+    {
+      "url": "https://auth.example.com/authorize?client_id=…&state=…"
+    }
+  ]
+}

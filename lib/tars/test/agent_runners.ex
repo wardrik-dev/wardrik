@@ -98,6 +98,18 @@ defmodule Tars.Test.AgentRunners do
   end
 
   @doc """
+  Tells the test it was asked, then comes back waiting on a person to
+  authorize at `link`, as a tool connecting an account parks.
+  """
+  def connecting(test_pid, call_id, link, %Turn{scope: scope}) do
+    send(test_pid, :asked)
+    %Turn{calls: [waiting]} = turn = parked_turn(call_id)
+    prompt = "To connect github, open its authorization link."
+    parked = Tars.Call.park(%{waiting | asks: []}, prompt, link: link)
+    Turn.under(%{turn | calls: [parked]}, scope)
+  end
+
+  @doc """
   Reports the decisions it was answered with, then comes to `result`:
   `{:ok, messages}`, `{:error, reason}`, or `{:parked, turn}` for a turn to
   hand back waiting.

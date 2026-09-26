@@ -242,7 +242,8 @@
           "type": "string",
           "enum": [
             "tool_approval",
-            "model_approval"
+            "model_approval",
+            "authorization"
           ]
         },
         "message": {

@@ -81,7 +81,7 @@ defmodule TarsOAuth.DeviceTest do
     end
 
     test "refuses an answer missing what a user needs" do
-      assert {:error, {:device_unreadable, _body}} =
+      assert {:error, :device_unreadable} =
                Device.request(metadata(device: %{"user_code" => nil}), registered(),
                  req_options: @stubbed
                )
@@ -130,7 +130,7 @@ defmodule TarsOAuth.DeviceTest do
       assert poll(context, [{400, %{"error" => "access_denied"}}]) == {:error, :access_denied}
       assert poll(context, [{400, %{"error" => "expired_token"}}]) == {:error, :expired}
 
-      assert {:error, {:token_refused, 400, %{"error" => "invalid_client"}}} =
+      assert {:error, {:token_refused, "invalid_client", nil}} =
                poll(context, [{400, %{"error" => "invalid_client"}}])
     end
 
@@ -157,7 +157,9 @@ defmodule TarsOAuth.DeviceTest do
                  {:user, "github"}
                )
 
-      assert_receive {:device_done, %{provider: "github", owner: ^owner, outcome: :authorized}}
+      assert_receive {:device_done,
+                      %{provider: "github", owner: {nil, ^owner}, outcome: :authorized}}
+
       assert_received {:oauth, "POST", "/token", _pending}
       assert_received {:oauth, "POST", "/token", _authorized}
 
@@ -197,9 +199,9 @@ defmodule TarsOAuth.DeviceTest do
           assert_receive {:device_done, %{outcome: :access_denied}}
         end)
 
-      assert log =~ "github was not connected for #{inspect(owner)}: :access_denied"
-      assert Pending.under_way("github", owner) == :error
-      refute TarsOAuth.connected?("github", owner)
+      assert log =~ "github was not connected for #{inspect({nil, owner})}: :access_denied"
+      assert Pending.under_way("github", {nil, owner}) == :error
+      refute TarsOAuth.connected?("github", {nil, owner})
     end
 
     test "says a server that offers no device grant cannot be asked for one", %{owner: owner} do

@@ -67,20 +67,22 @@ defmodule TarsMCP.PerUserTest do
   end
 
   test "a user who has not authorized parks the call, with somewhere to go", %{ref: ref} do
-    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(ref, "unconnected", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To connect #{ref}, open the link"
-    assert String.ends_with?(prompt, ": https://example.com/connect")
+    assert prompt =~ "To connect #{ref}, open its authorization link"
+    refute prompt =~ "https://"
+    assert link == %{url: "https://example.com/connect", code: nil}
     refute Connection.running?(ref, "unconnected")
   end
 
   test "a user who authorizes on another device is given the code to enter", %{ref: ref} do
-    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+    assert %Tars.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(ref, "elsewhere", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To connect #{ref}, enter WDJB-MJHT at the link"
-    assert String.ends_with?(prompt, ": https://example.com/device")
+    assert prompt =~ "To connect #{ref}, enter the code at its authorization link"
+    refute prompt =~ "WDJB-MJHT"
+    assert link == %{url: "https://example.com/device", code: "WDJB-MJHT"}
   end
 
   test "a user the resolver refuses is told, and the turn carries on", %{ref: ref} do

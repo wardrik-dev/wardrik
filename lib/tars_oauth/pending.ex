@@ -11,7 +11,9 @@ defmodule TarsOAuth.Pending do
 
   A flow already under way for the same user and provider is handed back
   rather than started again, so an agent that retries a parked call keeps
-  offering the same URL.
+  offering the same URL. A flow that has expired can no longer be claimed.
+  `inspect/1` of a flow shows what it is for, never its verifier, client,
+  URL or code.
   """
 
   use GenServer
@@ -24,6 +26,8 @@ defmodule TarsOAuth.Pending do
 
   defmodule Flight do
     @moduledoc false
+
+    @derive {Inspect, only: [:provider, :owner, :started_at, :expires_after]}
 
     @enforce_keys [:state, :provider, :owner, :metadata, :registered, :url, :started_at]
     defstruct [
@@ -73,13 +77,22 @@ defmodule TarsOAuth.Pending do
   def under_way(provider, owner, resume \\ nil),
     do: GenServer.call(__MODULE__, {:under_way, provider, owner, resume})
 
-  @doc "Takes the flow a callback belongs to, which can only be claimed once."
-  @spec claim(String.t()) :: {:ok, Flight.t()} | :error
-  def claim(state), do: GenServer.call(__MODULE__, {:claim, state})
+  @doc """
+  Takes the flow a callback belongs to, which can only be claimed once, where
+  it has not expired and `accept` takes it. One `accept` refuses is left
+  where it is.
+  """
+  @spec claim(String.t(), (Flight.t() -> boolean())) :: {:ok, Flight.t()} | :error
+  def claim(state, accept \\ fn _flight -> true end),
+    do: GenServer.call(__MODULE__, {:claim, state, accept})
 
   @doc "Forgets a flow that will not be finished."
   @spec drop(String.t()) :: :ok
   def drop(state), do: GenServer.cast(__MODULE__, {:drop, state})
+
+  @doc "Forgets every flow under way for this provider and owner."
+  @spec drop(String.t(), term()) :: :ok
+  def drop(provider, owner), do: GenServer.cast(__MODULE__, {:drop, provider, owner})
 
   @impl GenServer
   def init(_opts) do
@@ -112,15 +125,27 @@ defmodule TarsOAuth.Pending do
     end
   end
 
-  def handle_call({:claim, state}, _from, flights) do
-    case Map.pop(flights, state) do
-      {nil, flights} -> {:reply, :error, flights}
-      {flight, flights} -> {:reply, {:ok, flight}, flights}
+  def handle_call({:claim, state, accept}, _from, flights) do
+    case Map.fetch(flights, state) do
+      {:ok, flight} ->
+        if not expired?(flight) and accept.(flight),
+          do: {:reply, {:ok, flight}, Map.delete(flights, state)},
+          else: {:reply, :error, flights}
+
+      :error ->
+        {:reply, :error, flights}
     end
   end
 
   @impl GenServer
   def handle_cast({:drop, state}, flights), do: {:noreply, Map.delete(flights, state)}
+
+  def handle_cast({:drop, provider, owner}, flights) do
+    {:noreply,
+     Map.reject(flights, fn {_state, flight} ->
+       flight.provider.name == provider and flight.owner == owner
+     end)}
+  end
 
   @impl GenServer
   def handle_info(:sweep, flights) do

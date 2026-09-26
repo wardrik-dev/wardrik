@@ -19,17 +19,24 @@ defmodule TarsOAuth.Device do
 
   `poll/4` answers `:pending` while the user has not finished, `:slow_down`
   where the server asks to be asked less often, which adds five seconds to the
-  interval, and `{:error, :access_denied}` or `{:error, :expired}` where the
+  interval, `{:retry, reason}` where the server could not be reached or
+  failed, and `{:error, :access_denied}` or `{:error, :expired}` where the
   flow is over. A server that answers an error with a 200, as GitHub's does,
-  is read the same as one that answers it with a 400.
+  is read the same as one that answers it with a 400. A token comes back bound
+  to where it came from (`TarsOAuth.Token.bind/3`).
+
+  Requests go through `TarsOAuth.Egress` under the metadata's trust. A code
+  that the server says lasts longer than 30 minutes is treated as lasting 30.
   """
 
+  alias TarsOAuth.Egress
   alias TarsOAuth.Flow
   alias TarsOAuth.Metadata
   alias TarsOAuth.Token
 
   @grant "urn:ietf:params:oauth:grant-type:device_code"
   @default_interval 5
+  @longest :timer.minutes(30) |> div(1000)
 
   @enforce_keys [:device_code, :user_code, :verification_uri, :expires_in, :interval]
   defstruct [
@@ -52,7 +59,7 @@ defmodule TarsOAuth.Device do
         }
 
   @typedoc "What one poll of the token endpoint found."
-  @type poll() :: {:ok, Token.t()} | :pending | :slow_down | {:error, term()}
+  @type poll() :: {:ok, Token.t()} | :pending | :slow_down | {:retry, term()} | {:error, term()}
 
   @doc "The grant type a device flow polls the token endpoint with."
   @spec grant() :: String.t()
@@ -75,11 +82,20 @@ defmodule TarsOAuth.Device do
       |> put_present("client_secret", registered.client_secret)
       |> put_present("scope", opts |> Keyword.get(:scopes, []) |> Enum.join(" "))
       |> put_present("resource", metadata.resource)
-      |> post(metadata.device_authorization_endpoint, opts)
+      |> post(metadata.device_authorization_endpoint, metadata.trust, opts)
       |> case do
-        {:ok, 200, body} -> read(body)
-        {:ok, status, body} -> {:error, {:device_refused, status, body}}
-        {:error, reason} -> {:error, {:device_unreachable, reason}}
+        {:ok, 200, body} ->
+          read(body)
+
+        {:ok, status, body} ->
+          {error, description} = Token.refusal(body)
+          {:error, {:device_refused, error || "http_#{status}", description}}
+
+        {:error, {:token_unreachable, reason}} ->
+          {:error, {:device_unreachable, reason}}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     else
       {:error, {:no_device_flow, metadata.issuer}}
@@ -96,17 +112,36 @@ defmodule TarsOAuth.Device do
     }
     |> put_present("client_secret", registered.client_secret)
     |> put_present("resource", metadata.resource)
-    |> post(metadata.token_endpoint, opts)
-    |> case do
-      {:ok, 200, %{"access_token" => _token} = body} -> Token.from_response(body)
-      {:ok, _status, %{"error" => "authorization_pending"}} -> :pending
-      {:ok, _status, %{"error" => "slow_down"}} -> :slow_down
-      {:ok, _status, %{"error" => "access_denied"}} -> {:error, :access_denied}
-      {:ok, _status, %{"error" => "expired_token"}} -> {:error, :expired}
-      {:ok, status, body} -> {:error, {:token_refused, status, body}}
-      {:error, reason} -> {:error, {:token_unreachable, reason}}
-    end
+    |> post(metadata.token_endpoint, metadata.trust, opts)
+    |> polled(metadata, registered)
   end
+
+  defp polled({:ok, 200, %{"access_token" => _token} = body}, metadata, registered) do
+    with {:ok, token} <- Token.from_response(body),
+         do: {:ok, Token.bind(token, metadata, registered)}
+  end
+
+  defp polled({:ok, _status, %{"error" => error}}, _metadata, _registered)
+       when error in ["authorization_pending", "slow_down", "access_denied", "expired_token"],
+       do: waiting(error)
+
+  defp polled({:ok, status, _body}, _metadata, _registered) when status >= 500,
+    do: {:retry, "http_#{status}"}
+
+  defp polled({:ok, status, body}, _metadata, _registered) do
+    {error, description} = Token.refusal(body)
+    {:error, {:token_refused, error || "http_#{status}", description}}
+  end
+
+  defp polled({:error, {:token_unreachable, reason}}, _metadata, _registered),
+    do: {:retry, reason}
+
+  defp polled({:error, reason}, _metadata, _registered), do: {:error, reason}
+
+  defp waiting("authorization_pending"), do: :pending
+  defp waiting("slow_down"), do: :slow_down
+  defp waiting("access_denied"), do: {:error, :access_denied}
+  defp waiting("expired_token"), do: {:error, :expired}
 
   @doc "How many milliseconds to wait before the next poll, after `poll` found what it found."
   @spec next_interval(poll(), non_neg_integer()) :: non_neg_integer()
@@ -124,31 +159,32 @@ defmodule TarsOAuth.Device do
            user_code: user_code,
            verification_uri: uri,
            verification_uri_complete: body["verification_uri_complete"],
-           expires_in: expires_in,
+           expires_in: min(expires_in, @longest),
            interval: interval(body["interval"])
          }}
 
       _missing ->
-        {:error, {:device_unreadable, body}}
+        {:error, :device_unreadable}
     end
   end
 
-  defp read(body), do: {:error, {:device_unreadable, body}}
+  defp read(_body), do: {:error, :device_unreadable}
 
   defp interval(seconds) when is_integer(seconds) and seconds >= 0, do: seconds
   defp interval(_absent), do: @default_interval
 
-  defp post(form, endpoint, opts) do
-    options =
-      Keyword.merge(
-        [url: endpoint, form: form, headers: [accept: "application/json"], retry: false],
-        Keyword.get(opts, :req_options, [])
-      )
+  # A transport failure is {:token_unreachable, reason}, so poll/4 can tell it
+  # from a URL Egress would not let it ask.
+  defp post(form, endpoint, trust, opts) do
+    request =
+      [form: form, headers: [accept: "application/json"]] ++ Keyword.get(opts, :req_options, [])
 
-    case Req.post(options) do
-      {:ok, %Req.Response{status: status, body: body}} when is_map(body) -> {:ok, status, body}
-      {:ok, %Req.Response{status: status, body: body}} -> {:ok, status, %{"body" => body}}
-      {:error, reason} -> {:error, reason}
+    with {:ok, options} <- Egress.options(endpoint, trust, request) do
+      case Req.post(options) do
+        {:ok, %Req.Response{status: status, body: body}} when is_map(body) -> {:ok, status, body}
+        {:ok, %Req.Response{status: status}} -> {:ok, status, %{}}
+        {:error, reason} -> {:error, {:token_unreachable, reason}}
+      end
     end
   end
 

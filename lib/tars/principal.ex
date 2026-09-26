@@ -11,7 +11,8 @@ defmodule Tars.Principal do
     * `:ssh` - an SSH session to the TUI, by the name the client connected as
     * `:terminal` - a TUI started in a terminal on the node
     * `:slack` - a Slack user, by their user id
-    * `:oauth` - the user an authorization flow finished for
+    * `:oauth` - an authorization flow that finished, by the provider it was
+      for: whoever completed it is not known
     * `:token` - a caller of the HTTP API, by the id of the token it presented
   """
 

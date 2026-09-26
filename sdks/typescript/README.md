@@ -48,6 +48,11 @@ that run completes, fails or is cancelled. `send` only queues the message.
 `snapshot`, `page`, `reject`, `cancel`, `unschedule` and `delete` are one
 request each, and `tars.agents.list()` lists what the token reaches.
 
+An interrupt with reason `authorization` waits for a person to connect an
+account. No event carries the link: `agent.authorization(interrupt.id)`
+answers it, `{ url, code? }`, to a token that may decide the agent's calls.
+The call carries on by itself once the person has connected.
+
 ## Events
 
 Every event is a CloudEvent whose `type` is `tars.<noun>.<verb>`, and

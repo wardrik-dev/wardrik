@@ -43,13 +43,13 @@ defmodule TarsOAuth.TokenTest do
     end
 
     test "anything else is unreadable rather than a crash" do
-      assert {:error, {:token_unreadable, _body}} = Token.from_response(%{"nothing" => true})
+      assert {:error, :token_unreadable} = Token.from_response(%{"nothing" => true})
     end
   end
 
   describe "decode/1" do
     test "refuses something that is not a token" do
-      assert {:error, {:token_unreadable, _other}} = Token.decode(~s({"no":"token"}))
+      assert {:error, :token_unreadable} = Token.decode(~s({"no":"token"}))
     end
 
     test "refuses something that is not JSON" do

@@ -7,6 +7,7 @@ defmodule TarsOAuth.Provider do
         providers: [
           github: [
             resource: "https://api.githubcopilot.com/mcp/",
+            issuer: "https://github.com/login/oauth",
             client_id: System.get_env("GITHUB_CLIENT_ID"),
             client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
             scopes: ~w(repo read:org)
@@ -17,7 +18,10 @@ defmodule TarsOAuth.Provider do
   The name is what a credential reference names: `{:user, "github"}` resolves
   through the `:github` provider. Everything but `:resource` is optional —
   `:client_id` is for a server that will not register a client any other way,
-  and `:issuer` skips discovery for one that publishes no metadata.
+  and `:issuer` names the authorization server rather than taking the one the
+  resource's metadata names, and trusts it and its endpoints as the
+  deployment's own (see `TarsOAuth.Egress`). A `:client_secret` is sent only
+  to a named `:issuer`.
 
   `:flow` is how the user authorizes:
 
@@ -31,6 +35,7 @@ defmodule TarsOAuth.Provider do
       browser otherwise
   """
 
+  @derive {Inspect, except: [:client_secret]}
   @enforce_keys [:name, :resource]
   defstruct [
     :name,

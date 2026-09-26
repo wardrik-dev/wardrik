@@ -19,6 +19,20 @@ defmodule TarsOAuth.Case do
 
   @stub TarsOAuth.Stub
 
+  defmodule Resolver do
+    @moduledoc """
+    Names resolved without DNS: a host under `internal.` or `metadata.` to a
+    private address, `mixed.` to a public and a private one, and every other
+    to a public one.
+    """
+
+    @spec resolve(String.t()) :: {:ok, [:inet.ip_address()]}
+    def resolve("internal." <> _rest), do: {:ok, [{10, 0, 0, 5}]}
+    def resolve("metadata." <> _rest), do: {:ok, [{169, 254, 169, 254}]}
+    def resolve("mixed." <> _rest), do: {:ok, [{93, 184, 215, 14}, {192, 168, 1, 1}]}
+    def resolve(_host), do: {:ok, [{93, 184, 215, 14}]}
+  end
+
   using do
     quote do
       import TarsOAuth.Case
@@ -38,13 +52,20 @@ defmodule TarsOAuth.Case do
     }
 
     Application.put_env(:tars, TarsVault, keys: [TarsVault.generate_key()])
+    forget_registrations()
 
     on_exit(fn ->
       put_back(TarsOAuth, previous.oauth)
       put_back(TarsVault, previous.vault)
+      forget_registrations()
     end)
 
     %{owner: "jon-#{System.unique_integer([:positive])}"}
+  end
+
+  # Clients registered dynamically are kept in the store, which outlives a test.
+  defp forget_registrations do
+    for key <- Tars.Store.keys(:oauth_clients, ""), do: Tars.Store.delete(:oauth_clients, key)
   end
 
   @doc "Configures `TarsOAuth` with these options, plus the stub transport."
@@ -53,7 +74,9 @@ defmodule TarsOAuth.Case do
     defaults = [
       req_options: [plug: {Req.Test, @stub}],
       redirect: [uri: redirect_uri()],
-      client: [name: "Tars", document_url: "https://tars.dev/oauth/client"]
+      client: [name: "Tars", document_url: "https://tars.dev/oauth/client"],
+      resolver: Resolver,
+      poll_floor: 0
     ]
 
     Application.put_env(:tars, TarsOAuth, Keyword.merge(defaults, opts))
@@ -81,6 +104,15 @@ defmodule TarsOAuth.Case do
     * `:token` - the body the token endpoint answers with
     * `:tokens` - what the token endpoint answers each request with, in turn,
       as `{status, body}`, and `:token` once they run out
+    * `:as` - the authorization server the resource names, and whose
+      endpoints the metadata lists, `https://auth.example.com` by default
+    * `:resource_named` - the resource the resource metadata names
+    * `:issuer_named` - the issuer the metadata names, `nil` for none
+    * `:endpoints` - merged over the metadata's endpoints
+    * `:no_pkce` - leave `code_challenge_methods_supported` out
+    * `:redirect_prm` - answer the resource metadata with a redirect
+    * `:iss` - say a callback carries `iss` (RFC 9207)
+    * `:resource_scopes` - the scopes the resource metadata names
   """
   @spec stub_server(keyword()) :: :ok
   def stub_server(opts \\ []) do
@@ -99,7 +131,7 @@ defmodule TarsOAuth.Case do
   defp answer(conn, opts) do
     case {conn.method, conn.request_path} do
       {"GET", "/.well-known/oauth-protected-resource/mcp"} ->
-        Req.Test.json(conn, %{"authorization_servers" => ["https://auth.example.com"]})
+        resource_metadata(conn, opts)
 
       {"GET", "/.well-known/oauth-authorization-server"} ->
         if opts[:oidc_only],
@@ -126,6 +158,21 @@ defmodule TarsOAuth.Case do
     end
   end
 
+  defp resource_metadata(conn, opts) do
+    if opts[:redirect_prm] do
+      conn
+      |> Plug.Conn.put_resp_header("location", "https://elsewhere.example.com/prm")
+      |> Plug.Conn.resp(302, "")
+    else
+      %{
+        "resource" => Keyword.get(opts, :resource_named, resource()),
+        "authorization_servers" => [authorization_server(opts)]
+      }
+      |> then(&if s = opts[:resource_scopes], do: Map.put(&1, "scopes_supported", s), else: &1)
+      |> then(&Req.Test.json(conn, &1))
+    end
+  end
+
   defp device_overrides(overrides) when is_map(overrides), do: overrides
   defp device_overrides(_advertised), do: %{}
 
@@ -137,25 +184,30 @@ defmodule TarsOAuth.Case do
     end
   end
 
+  defp authorization_server(opts), do: Keyword.get(opts, :as, "https://auth.example.com")
+
   defp metadata(opts) do
+    base = authorization_server(opts)
+
     %{
-      "issuer" => "https://auth.example.com",
-      "authorization_endpoint" => "https://auth.example.com/authorize",
-      "token_endpoint" => "https://auth.example.com/token",
+      "issuer" => Keyword.get(opts, :issuer_named, base),
+      "authorization_endpoint" => base <> "/authorize",
+      "token_endpoint" => base <> "/token",
       "scopes_supported" => ["repo", "read:org"],
-      "code_challenge_methods_supported" => ["S256"]
+      "code_challenge_methods_supported" => if(opts[:no_pkce], do: nil, else: ["S256"])
     }
+    |> Map.put("authorization_response_iss_parameter_supported", opts[:iss] == true)
+    |> Map.merge(Keyword.get(opts, :endpoints, %{}))
+    |> Map.reject(fn {_key, value} -> is_nil(value) end)
     |> then(
       &if opts[:cimd], do: Map.put(&1, "client_id_metadata_document_supported", true), else: &1
     )
     |> then(
-      &if opts[:register],
-        do: Map.put(&1, "registration_endpoint", "https://auth.example.com/register"),
-        else: &1
+      &if opts[:register], do: Map.put(&1, "registration_endpoint", base <> "/register"), else: &1
     )
     |> then(
       &if opts[:device],
-        do: Map.put(&1, "device_authorization_endpoint", "https://auth.example.com/device"),
+        do: Map.put(&1, "device_authorization_endpoint", base <> "/device"),
         else: &1
     )
   end

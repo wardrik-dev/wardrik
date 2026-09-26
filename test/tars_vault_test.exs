@@ -24,6 +24,29 @@ defmodule TarsVaultTest do
 
   defp keys(list), do: Application.put_env(:tars, TarsVault, keys: list)
 
+  describe "path/2" do
+    test "writes distinct owners and names under distinct keys" do
+      paths =
+        for {ref, owner} <- [
+              {{:user, "github"}, "jon doe"},
+              {{:user, "github"}, "jon_doe"},
+              {{:user, "github"}, "jon/doe"},
+              {{:user, "github"}, "_"},
+              {{:user, "github"}, nil},
+              {{:user, "github"}, {"acme", "jon"}},
+              {{:user, "github"}, {"globex", "jon"}},
+              {{:user, "git hub"}, "jon"},
+              {{:user, "git_hub"}, "jon"}
+            ] do
+          {:ok, path} = TarsVault.path(ref, owner)
+          path
+        end
+
+      assert length(Enum.uniq(paths)) == length(paths)
+      assert {:ok, "user/jon/github"} = TarsVault.path({:user, "github"}, "jon")
+    end
+  end
+
   describe "put/3 and fetch/2" do
     test "hands back what it was given", %{user: user} do
       assert :ok = TarsVault.put({:user, "github"}, user, "ghp_secret")

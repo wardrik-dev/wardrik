@@ -25,6 +25,134 @@ defmodule TarsOAuthTest do
     url
   end
 
+  describe "who a token belongs to" do
+    defp in_org(org, user),
+      do:
+        Config.new()
+        |> Scope.root("#{org}/#{user}/a", org: org, user: user, credentials: TarsOAuth)
+
+    defp resolve_in(scope, ref), do: Credential.resolve(Calls.tool("tool", %{}, scope), ref)
+
+    test "a user's is kept for their org and them together", %{owner: owner} do
+      stub_server(cimd: true)
+      configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+
+      {:error, {:authorization_required, url}} =
+        resolve_in(in_org("acme", owner), {:user, "github"})
+
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert {:ok, _credential} = resolve_in(in_org("acme", owner), {:user, "github"})
+      assert TarsOAuth.connected?("github", {"acme", owner})
+
+      assert {:error, {:authorization_required, _url}} =
+               resolve_in(in_org("globex", owner), {:user, "github"})
+    end
+
+    test "an org's is its own, shared by everyone in it", %{owner: owner} do
+      stub_server(cimd: true)
+      configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+
+      {:error, {:authorization_required, url}} =
+        resolve_in(in_org("acme", owner), {:org, "github"})
+
+      {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
+
+      assert {:ok, _credential} = resolve_in(in_org("acme", owner <> "-other"), {:org, "github"})
+      assert TarsOAuth.connected?("github", {"acme", nil})
+      refute TarsOAuth.connected?("github", {"acme", owner})
+
+      assert {:error, :no_org} = resolve_in(scope(owner), {:org, "github"})
+    end
+
+    test "calls that park at once share one flow", %{owner: owner} do
+      stub_server(cimd: true)
+      configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+
+      urls =
+        1..4
+        |> Enum.map(fn _n ->
+          Task.async(fn -> resolve_in(scope(owner), {:user, "github"}) end)
+        end)
+        |> Task.await_many()
+        |> Enum.map(fn {:error, {:authorization_required, url}} -> url end)
+        |> Enum.uniq()
+
+      assert [_one] = urls
+    end
+  end
+
+  describe "a flow under way" do
+    alias TarsOAuth.Pending
+
+    test "cannot be finished by a callback once it has expired", %{owner: owner} do
+      url = connect(owner)
+      {:ok, flight} = Pending.under_way("github", {nil, owner})
+      Pending.drop(flight.state)
+      {:ok, _url} = Pending.start(%{flight | started_at: flight.started_at - :timer.hours(1)})
+
+      assert {:error, :no_such_flow} = TarsOAuth.finish(state_of(url), "the-code")
+    end
+
+    test "of the device grant is not finished by a callback", %{owner: owner} do
+      stub_server(cimd: true, device: %{"expires_in" => 900, "interval" => 60})
+
+      configure(providers: [github: [resource: resource(), scopes: ~w(repo), flow: :device]])
+
+      {:error, {:authorization_required, _url, _code}} =
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
+
+      {:ok, flight} = Pending.under_way("github", {nil, owner})
+
+      assert {:error, :no_such_flow} = TarsOAuth.finish(flight.state, "a-code")
+      assert {:ok, _still} = Pending.under_way("github", {nil, owner})
+    end
+
+    test "for a user and provider are dropped together", %{owner: owner} do
+      connect(owner)
+      :ok = Pending.drop("github", {nil, owner})
+      assert :error = Pending.under_way("github", {nil, owner})
+    end
+
+    test "says what it is for, never its verifier or client", %{owner: owner} do
+      connect(owner)
+      {:ok, flight} = Pending.under_way("github", {nil, owner})
+
+      shown = inspect(flight)
+      assert shown =~ owner
+      refute shown =~ flight.verifier
+      refute shown =~ flight.state
+    end
+  end
+
+  test "a provider says what it is, never its client secret" do
+    provider =
+      TarsOAuth.Provider.new(:github, resource: resource(), client_secret: "s3cret-value")
+
+    refute inspect(provider) =~ "s3cret-value"
+  end
+
+  describe "scopes" do
+    test "are the resource's where the provider names none, and none where neither does",
+         %{owner: owner} do
+      stub_server(cimd: true, resource_scopes: ["read", "write"])
+      configure(providers: [github: [resource: resource()]])
+
+      {:error, {:authorization_required, url}} =
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
+
+      assert params_of(url)["scope"] == "read write"
+
+      other = owner <> "-other"
+      stub_server(cimd: true)
+
+      {:error, {:authorization_required, url}} =
+        Credential.resolve(Calls.tool("tool", %{}, scope(other)), {:user, "github"})
+
+      refute Map.has_key?(params_of(url), "scope")
+    end
+  end
+
   describe "a user who has not authorized" do
     test "is sent somewhere, and the turn can park on it", %{owner: owner} do
       url = connect(owner)
@@ -69,7 +197,7 @@ defmodule TarsOAuthTest do
                )
 
       assert Credential.reveal(credential) == "at_first"
-      assert TarsOAuth.connected?("github", owner)
+      assert TarsOAuth.connected?("github", {nil, owner})
     end
 
     test "the credential says when it stops being good", %{owner: owner} do
@@ -90,7 +218,7 @@ defmodule TarsOAuthTest do
       url = connect(owner)
       {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
-      {:ok, path} = TarsVault.path({:user, "github"}, owner)
+      {:ok, path} = TarsVault.path({:user, "github"}, {nil, owner})
       {sealed, _vsn} = Tars.Store.lookup(TarsVault.namespace(), path)
 
       refute inspect(sealed) =~ "at_first"
@@ -204,7 +332,7 @@ defmodule TarsOAuthTest do
                  {:user, "github"}
                )
 
-      assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4599/callback"
+      assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4599/callback/github"
     end
 
     test "a machine with nothing to open a link with says so, and the flow stands" do
@@ -228,13 +356,13 @@ defmodule TarsOAuthTest do
                  {:user, "github"}
                )
 
-      refute TarsOAuth.connected?("github", owner)
+      refute TarsOAuth.connected?("github", {nil, owner})
     end
 
     test "so does something that is not a token at all", %{owner: owner} do
       configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
       stub_server(cimd: true)
-      :ok = TarsVault.put({:user, "github"}, owner, "not json")
+      :ok = TarsVault.put({:user, "github"}, {nil, owner}, "not json")
 
       assert {:error, {:authorization_required, _url}} =
                Credential.resolve(
@@ -267,8 +395,8 @@ defmodule TarsOAuthTest do
       url = connect(owner)
       {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
-      assert :ok = TarsOAuth.disconnect("github", owner)
-      refute TarsOAuth.connected?("github", owner)
+      assert :ok = TarsOAuth.disconnect("github", {nil, owner})
+      refute TarsOAuth.connected?("github", {nil, owner})
 
       assert {:error, {:authorization_required, _url}} =
                Credential.resolve(
@@ -281,7 +409,7 @@ defmodule TarsOAuthTest do
       url = connect(owner)
       {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
-      assert TarsOAuth.connections(owner) == [%{provider: "github", connected?: true}]
+      assert TarsOAuth.connections({nil, owner}) == [%{provider: "github", connected?: true}]
       assert TarsOAuth.connections("nobody") == [%{provider: "github", connected?: false}]
     end
   end

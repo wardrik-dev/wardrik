@@ -3,6 +3,7 @@ import { agentPath, type Http } from "./http.ts";
 import type {
   AgentDefinition,
   AgentSnapshot,
+  Authorization,
   Schedule,
   ScheduleDefinition,
   TarsEvent,
@@ -138,6 +139,19 @@ export class Agent {
   /** Approves a call the agent is waiting on. */
   async approve(interrupt: string): Promise<void> {
     await this.#decide(interrupt, { decision: "approve" });
+  }
+
+  /**
+   * Where a person authorizes a call the agent is waiting on with reason
+   * `authorization`: the page to open, and the code to enter there where one
+   * is needed. No event carries it, and the token must be able to decide the
+   * agent's calls.
+   */
+  async authorization(interrupt: string): Promise<Authorization> {
+    return this.#http.json<Authorization>(
+      "GET",
+      this.#path + "/interrupts/" + encodeURIComponent(interrupt) + "/authorization",
+    );
   }
 
   /** Rejects a call the agent is waiting on; the model is told `reason`. */

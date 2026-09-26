@@ -43,6 +43,7 @@ const resources: Record<string, string> = {
   "agent.json": "AgentSummary",
   "agent_definition.json": "AgentDefinition",
   "agent_snapshot.json": "AgentSnapshot",
+  "authorization.json": "Authorization",
   "cloudevent.json": "Envelope",
   "error.json": "ErrorBody",
   "schedule.json": "Schedule",
