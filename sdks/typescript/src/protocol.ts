@@ -248,6 +248,7 @@ export interface ErrorBody {
     type:
       | "invalid_request"
       | "unauthorized"
+      | "forbidden"
       | "not_found"
       | "conflict"
       | "gap"

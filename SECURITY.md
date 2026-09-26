@@ -55,6 +55,22 @@ applied. Keys are the only way in: there are no passwords, no commands, no
 subsystems and no forwarding. `ssh.ip` in `config.yaml` listens beyond
 loopback.
 
+### HTTP API
+
+The API listens on loopback port 4747, and every request presents a bearer
+token that `tars token create` made. A token grants a set of actions (read,
+message, decide, define, serve) on the agents under a key prefix. An agent
+outside the prefix is answered as one that does not exist, and an action the
+token was not granted is refused with 403. The store holds each token as the
+SHA-256 of its secret, never the secret. A node reads a token through
+consensus and trusts what it read for 15 seconds. Revoking a token refuses
+it, and ends every event stream and worker socket open on it, at once on
+every node the revocation reaches. A node it does not reach, such as one cut
+off from its quorum, stops trusting the token within 15 seconds: it must
+read it through consensus again, cannot, and refuses requests with 503,
+while re-reading the tokens its open connections hold every 15 seconds
+closes them. `http.ip` in `config.yaml` listens beyond loopback.
+
 ### Notifications
 
 A Slack target posts a parked call's name, arguments and question to its

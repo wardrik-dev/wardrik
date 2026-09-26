@@ -13,15 +13,28 @@ defmodule TarsHTTP do
   ## Tokens
 
   Every request presents a token, as `Authorization: Bearer tars_…`. A token
-  reaches the agents under its scope, a key prefix that ends at a segment, and
-  an agent outside it is answered as one that does not exist. See
-  `TarsHTTP.Token`; from a shell:
+  carries a `Tars.Grant`: the agents under its scope, a key prefix that ends
+  at a segment, and the actions it may take on them, every action unless it
+  was made with fewer. An agent outside the scope is answered as one that
+  does not exist, `404`, and an action the token was not granted is refused
+  with `403`. A revoked token is refused, and the streams and worker sockets
+  open on it are closed, at once on every node the revocation reaches and
+  within 15 seconds on one it does not. See `TarsHTTP.Token`; from a shell:
 
       tars token create ci --scope acme/
+      tars token create watcher --scope acme/ops/ --can read
       tars token create one --scope acme/jon/triage
       tars token create laptop --all
       tars token list
       tars token revoke 3f9a61c0d4e2
+
+  | Action | Routes |
+  | --- | --- |
+  | `read` | listing agents, snapshots, definitions and events |
+  | `message` | messages and cancelling |
+  | `decide` | interrupts |
+  | `define` | putting and deleting agents and schedules |
+  | `serve` | `/v1/workers` |
 
   ## Keys in paths
 

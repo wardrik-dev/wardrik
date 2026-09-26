@@ -17,7 +17,8 @@ defmodule TarsHTTP.EventStream do
   entries that follow what it read (`Tars.Event.Log.Entry.follows?/2`), so
   each event reaches the client once, in order. A comment every 15 seconds
   keeps an idle stream open through proxies, and finds a client that has
-  gone.
+  gone. A stream whose process is sent `{:shutdown, :revoked}`, as
+  `Tars.Access` sends the holders of a revoked token, ends there.
   """
 
   import Plug.Conn
@@ -96,6 +97,9 @@ defmodule TarsHTTP.EventStream do
         if Entry.follows?(entry, last),
           do: send_live(conn, frame(entry.event), entry.sequence || last),
           else: follow({:ok, conn, last})
+
+      {:EXIT, _from, {:shutdown, :revoked}} ->
+        conn
     after
       @keepalive -> send_live(conn, ": keepalive\n\n", last)
     end

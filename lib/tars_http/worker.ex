@@ -21,6 +21,10 @@ defmodule TarsHTTP.Worker do
   Tars answers a worker's `ping`, and sends a WebSocket ping every 30 seconds
   so a socket at rest stays open.
 
+  The socket holds its token (`Tars.Access.hold/1`), and closes with `1008`
+  when the token is revoked, or `1013` where the token cannot be read as the
+  socket opens.
+
   `[:tars, :workers, :listed]` is emitted each time a worker's tools are
   offered, with `:count` in its measurements and the socket's pid and the
   tools' names in its metadata.
@@ -49,6 +53,13 @@ defmodule TarsHTTP.Worker do
 
   @impl WebSock
   def init(%Token{} = token) do
+    case Tars.Access.hold(Token.ref(token)) do
+      :ok -> start(token)
+      {:error, reason} -> {:stop, {:shutdown, reason}, close(reason), %__MODULE__{token: token}}
+    end
+  end
+
+  defp start(token) do
     schedule_ping()
 
     {frame, state} =
@@ -100,6 +111,9 @@ defmodule TarsHTTP.Worker do
     schedule_ping()
     {:push, {:ping, ""}, state}
   end
+
+  def handle_info({:EXIT, _from, {:shutdown, :revoked}}, state),
+    do: {:stop, {:shutdown, :revoked}, close(:not_found), state}
 
   def handle_info(_message, state), do: {:ok, state}
 
@@ -189,6 +203,9 @@ defmodule TarsHTTP.Worker do
     do: {:text, JSON.encode!(Map.merge(%{"jsonrpc" => "2.0", "id" => id}, body))}
 
   defp schedule_ping, do: Process.send_after(self(), :ping, @ping)
+
+  defp close(:not_found), do: {1008, "The token was revoked."}
+  defp close(:unavailable), do: {1013, "The token cannot be checked now. Try again."}
 
   defp version, do: :tars |> Application.spec(:vsn) |> to_string()
 end

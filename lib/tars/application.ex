@@ -14,7 +14,7 @@ defmodule Tars.Application do
         {Task.Supervisor, name: Tars.TaskSupervisor}
       ] ++
         Application.get_env(:tars, :cluster, []) ++
-        [{Tars.Fleet.Supervisor, Application.get_env(:tars, Tars.Fleet, [])}] ++
+        [{Tars.Fleet.Supervisor, Application.get_env(:tars, Tars.Fleet, [])}, Tars.Access] ++
         Application.get_env(:tars, :children, [])
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Tars.Supervisor)

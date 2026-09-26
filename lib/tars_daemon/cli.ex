@@ -25,6 +25,7 @@ defmodule TarsDaemon.CLI do
 
   alias Tars.Agent
   alias Tars.Fleet
+  alias Tars.Grant
   alias TarsDaemon.Cluster
   alias TarsHTTP.Token
   alias TarsPolicy.Pattern
@@ -113,8 +114,8 @@ defmodule TarsDaemon.CLI do
     decide(key, call, {:deny, reason}, "Denied")
   end
 
-  defp run(["token", "create", name, "--scope", scope]), do: token(name, scope)
-  defp run(["token", "create", name, "--all"]), do: token(name, "")
+  defp run(["token", "create", name | options]), do: create_token(name, options)
+
   defp run(["token", "list"]), do: ok(tokens())
 
   defp run(["token", "revoke", id]) do
@@ -133,15 +134,38 @@ defmodule TarsDaemon.CLI do
         do: daemon
   end
 
-  defp token(name, scope) do
-    case Token.create(name, scope) do
+  defp create_token(name, options) do
+    case token_options(options, %{}) do
+      {:ok, %{scope: scope} = options} ->
+        token(name, scope, Map.get(options, :can, Grant.actions()))
+
+      _other ->
+        fail("tars: token create NAME (--scope PREFIX | --all) [--can ACTIONS]")
+    end
+  end
+
+  defp token_options([], options), do: {:ok, options}
+
+  defp token_options(["--scope", scope | rest], options),
+    do: token_options(rest, Map.put(options, :scope, scope))
+
+  defp token_options(["--all" | rest], options),
+    do: token_options(rest, Map.put(options, :scope, ""))
+
+  defp token_options(["--can", can | rest], options),
+    do: token_options(rest, Map.put(options, :can, String.split(can, ",", trim: true)))
+
+  defp token_options(_other, _options), do: :error
+
+  defp token(name, scope, can) do
+    case Token.create(name, scope, can) do
       {:ok, secret, token} ->
         ok(
           Enum.join(
             [
               secret,
               "",
-              "#{token.name} (#{token.id}) reaches #{reach(token.scope)}. " <>
+              "#{token.name} (#{token.id}) reaches #{reach(token.grant)}. " <>
                 "This is the only time it is shown."
             ],
             "\n"
@@ -159,7 +183,7 @@ defmodule TarsDaemon.CLI do
   defp tokens do
     rows =
       for token <- Token.list(),
-          do: "  #{token.id}  #{token.name}  #{reach(token.scope)}  made #{token.created_at}"
+          do: "  #{token.id}  #{token.name}  #{reach(token.grant)}  made #{token.created_at}"
 
     case rows do
       [] -> "No tokens. Make one with: tars token create NAME --scope PREFIX"
@@ -168,8 +192,20 @@ defmodule TarsDaemon.CLI do
     end
   end
 
-  defp reach(""), do: "every agent"
-  defp reach(scope), do: "the agents under #{scope}"
+  defp reach(%Grant{scope: scope, can: can}) do
+    agents = if scope == "", do: "every agent", else: "the agents under #{scope}"
+    agents <> actions(can)
+  end
+
+  defp actions(can) do
+    {names, [last]} = can |> Enum.map(&Atom.to_string/1) |> Enum.split(-1)
+
+    cond do
+      can == Grant.actions() -> ", for every action"
+      names == [] -> ", to #{last}"
+      true -> ", to #{Enum.join(names, ", ")} and #{last}"
+    end
+  end
 
   defp history(context) do
     case ReqLLM.Context.to_list(context) do

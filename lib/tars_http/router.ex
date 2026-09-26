@@ -4,8 +4,11 @@ defmodule TarsHTTP.Router do
 
   Every response carries a `Request-Id` header, the caller's own where it sent
   one, and the request is logged under it. Every request presents a token
-  (`TarsHTTP.Auth`), and an agent outside the token's scope is answered as
-  one that does not exist.
+  (`TarsHTTP.Auth`), and each route asks `Tars.Access.authorize/3` for the
+  action it takes: an agent outside the token's scope is answered as one that
+  does not exist, `404`, and one inside it the token may not act on so,
+  `403`. A stream of events, and a worker's socket, hold their token, and end
+  when it is revoked.
 
   Its options are the `TarsHTTP.Listener`'s `:definition`, assigned to each
   request as `:options`.
@@ -16,6 +19,7 @@ defmodule TarsHTTP.Router do
 
   require Logger
 
+  alias Tars.Access
   alias Tars.Agent
   alias Tars.Agent.Spec
   alias Tars.Event.Log
@@ -41,7 +45,12 @@ defmodule TarsHTTP.Router do
   plug :dispatch
 
   get "/v1/workers" do
+    serves? = :serve in conn.assigns.token.grant.can
+
     case WebSockAdapter.UpgradeValidation.validate_upgrade(conn) do
+      :ok when not serves? ->
+        json(conn, 403, Resource.error("forbidden", "This token may not offer tools."))
+
       :ok ->
         conn
         |> WebSockAdapter.upgrade(TarsHTTP.Worker, conn.assigns.token, timeout: @idle)
@@ -58,51 +67,51 @@ defmodule TarsHTTP.Router do
     token = conn.assigns.token
 
     agents =
-      for member <- Fleet.list(token.scope),
-          Token.covers?(token, member.key),
+      for member <- Fleet.list(token.grant.scope),
+          Access.authorize(token.grant, :read, member.key) == :ok,
           do: Resource.agent(member)
 
     json(conn, 200, %{"agents" => agents})
   end
 
   get "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], &snapshot(conn, &1))
+    within(conn, [org, user, name], :read, &snapshot(conn, &1))
   end
 
   put "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], &define(conn, &1))
+    within(conn, [org, user, name], :define, &define(conn, &1))
   end
 
   delete "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], &forget(conn, &1))
+    within(conn, [org, user, name], :define, &forget(conn, &1))
   end
 
   get "/v1/agents/:org/:user/:name/definition" do
-    within(conn, [org, user, name], &definition(conn, &1))
+    within(conn, [org, user, name], :read, &definition(conn, &1))
   end
 
   get "/v1/agents/:org/:user/:name/events" do
-    within(conn, [org, user, name], &events(conn, &1))
+    within(conn, [org, user, name], :read, &events(conn, &1))
   end
 
   post "/v1/agents/:org/:user/:name/messages" do
-    within(conn, [org, user, name], &ask(conn, &1))
+    within(conn, [org, user, name], :message, &ask(conn, &1))
   end
 
   post "/v1/agents/:org/:user/:name/interrupts/:id" do
-    within(conn, [org, user, name], &decide(conn, &1, id))
+    within(conn, [org, user, name], :decide, &decide(conn, &1, id))
   end
 
   post "/v1/agents/:org/:user/:name/cancel" do
-    within(conn, [org, user, name], &cancel(conn, &1))
+    within(conn, [org, user, name], :message, &cancel(conn, &1))
   end
 
   put "/v1/agents/:org/:user/:name/schedules/:schedule" do
-    within(conn, [org, user, name], &schedule(conn, &1, schedule))
+    within(conn, [org, user, name], :define, &schedule(conn, &1, schedule))
   end
 
   delete "/v1/agents/:org/:user/:name/schedules/:schedule" do
-    within(conn, [org, user, name], &unschedule(conn, &1, schedule))
+    within(conn, [org, user, name], :define, &unschedule(conn, &1, schedule))
   end
 
   match _ do
@@ -123,21 +132,22 @@ defmodule TarsHTTP.Router do
   # A path segment is one segment of the key: one that decodes to a "/" is
   # refused. An agent the token does not reach is one that does not exist,
   # to the caller.
-  defp within(conn, segments, fun) do
+  defp within(conn, segments, action, fun) do
     key = Enum.join(segments, "/")
 
-    cond do
-      segment = Enum.find(segments, &String.contains?(&1, "/")) ->
+    case Enum.find(segments, &String.contains?(&1, "/")) do
+      nil ->
+        case Access.authorize(conn.assigns.token.grant, action, key) do
+          :ok -> fun.(key)
+          {:error, :forbidden} -> forbidden(conn, action, key)
+          {:error, :not_found} -> not_found(conn, key)
+        end
+
+      segment ->
         invalid(
           conn,
           "#{inspect(segment)} holds a /; a key's org, user and name are a path segment each"
         )
-
-      Token.covers?(conn.assigns.token, key) ->
-        fun.(key)
-
-      true ->
-        not_found(conn, key)
     end
   end
 
@@ -289,11 +299,25 @@ defmodule TarsHTTP.Router do
   defp stream?(conn),
     do: Enum.any?(get_req_header(conn, "accept"), &String.contains?(&1, "text/event-stream"))
 
+  # The stream holds its token while it runs, so revoking the token ends it.
   defp stream(conn, key, cursor) do
-    case EventStream.serve(conn, key, cursor) do
-      %Plug.Conn{} = conn -> conn
-      {:gap, oldest} -> gone(conn, oldest)
-      :not_found -> not_found(conn, key)
+    Token.ref(conn.assigns.token)
+    |> Access.holding(fn -> EventStream.serve(conn, key, cursor) end)
+    |> case do
+      %Plug.Conn{} = conn ->
+        conn
+
+      {:gap, oldest} ->
+        gone(conn, oldest)
+
+      :not_found ->
+        not_found(conn, key)
+
+      {:error, :not_found} ->
+        json(conn, 401, Resource.error("unauthorized", "The token was revoked."))
+
+      {:error, :unavailable} ->
+        unavailable(conn, "The token cannot be checked now", :unavailable)
     end
   end
 
@@ -392,6 +416,18 @@ defmodule TarsHTTP.Router do
 
   defp not_found(conn, key),
     do: json(conn, 404, Resource.error("not_found", "No agent runs under #{key}."))
+
+  @verbs %{
+    read: "read",
+    message: "send messages to",
+    decide: "decide the calls of",
+    define: "define"
+  }
+
+  defp forbidden(conn, action, key) do
+    message = "This token may not #{Map.fetch!(@verbs, action)} #{key}."
+    json(conn, 403, Resource.error("forbidden", message))
+  end
 
   defp invalid(conn, message), do: json(conn, 400, Resource.error("invalid_request", message))
 

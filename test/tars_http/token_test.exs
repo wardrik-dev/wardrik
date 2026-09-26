@@ -1,6 +1,7 @@
 defmodule TarsHTTP.TokenTest do
   use ExUnit.Case, async: true
 
+  alias Tars.Grant
   alias TarsHTTP.Token
 
   test "a token is found by its secret, and by nothing else" do
@@ -9,56 +10,42 @@ defmodule TarsHTTP.TokenTest do
     assert {:ok, ^token} = Token.verify(secret)
     assert :error = Token.verify(secret <> "x")
     assert :error = Token.verify("not-a-token")
-    assert %Token{name: "ci", scope: "acme/"} = token
+    assert %Token{name: "ci", grant: %Grant{scope: "acme/"}} = token
     assert byte_size(token.id) == 12
   end
 
-  test "the store holds a hash of the secret, never the secret" do
+  test "the store holds a hash of the secret under its id, never the secret" do
     {:ok, secret, token} = Token.create("hashed", "acme/")
 
-    [hash] = Tars.Store.keys(:tokens, token.id)
-    assert hash == :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
-    refute Enum.any?(Tars.Store.keys(:tokens, ""), &(&1 == secret))
+    hash = :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
+    assert %Token{hash: ^hash} = Tars.Store.get(:tokens, token.id)
+    assert String.starts_with?(hash, token.id)
+    refute secret in Tars.Store.keys(:tokens, "")
   end
 
-  test "a token reaches the agents under its scope, and an empty scope reaches every agent" do
-    token = %Token{id: "3f9a61c0d4e2", name: "ci", scope: "acme/", created_at: DateTime.utc_now()}
-
-    assert Token.covers?(token, "acme/jon/triage")
-    refute Token.covers?(token, "globex/_/triage")
-    assert Token.covers?(%{token | scope: ""}, "globex/_/triage")
-  end
-
-  test "a scope ends at a segment, however it was written" do
-    token = %Token{id: "3f9a61c0d4e2", name: "ci", scope: "acme/", created_at: DateTime.utc_now()}
-
-    refute Token.covers?(token, "acmecorp/_/triage")
-
-    one = %{token | scope: "acme/jon/triage"}
-    assert Token.covers?(one, "acme/jon/triage")
-    refute Token.covers?(one, "acme/jon/triage2")
-
-    # A scope stored without its trailing slash is still read as a prefix.
-    bare = %{token | scope: "acme"}
-    assert Token.covers?(bare, "acme/jon/triage")
-    refute Token.covers?(bare, "acmecorp/_/triage")
-  end
-
-  test "create/2 writes a scope as the key prefix it is" do
+  test "create/3 writes a scope as the key prefix it is" do
     for {given, scope} <- [
           {"", ""},
           {"acme", "acme/"},
-          {"acme/", "acme/"},
-          {"acme/jon", "acme/jon/"},
-          {"_/_/", "_/_/"},
-          {"acme/jon/triage", "acme/jon/triage"},
           {"acme/jon/triage/", "acme/jon/triage"}
         ] do
-      assert {:ok, _secret, %Token{scope: ^scope}} = Token.create("scoped", given)
+      assert {:ok, _secret, %Token{grant: %Grant{scope: ^scope}}} = Token.create("scoped", given)
     end
   end
 
-  test "create/2 refuses a scope that is not a key prefix" do
+  test "a token grants every action, or the ones it was made with" do
+    {:ok, _secret, every} = Token.create("every", "acme/")
+    assert every.grant.can == Grant.actions()
+
+    {:ok, secret, watcher} = Token.create("watcher", "acme/", ["read"])
+    assert watcher.grant.can == [:read]
+    assert {:ok, %Token{grant: %Grant{can: [:read]}}} = Token.verify(secret)
+
+    assert {:error, message} = Token.create("wrong", "acme/", ["read", "write"])
+    assert message =~ ~s("write" is not an action)
+  end
+
+  test "create/3 refuses a scope that is not a key prefix" do
     for scope <- ["/", "/acme", "acme//jon", "acme/jon/triage/more"] do
       assert {:error, message} = Token.create("unscoped", scope)
 

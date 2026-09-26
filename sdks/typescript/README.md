@@ -16,7 +16,10 @@ const tars = new Tars(); // TARS_URL, else http://127.0.0.1:4747; TARS_TOKEN
 ```
 
 A token comes from the daemon: `tars token create NAME --scope acme/`. It
-reaches the agents whose keys start with its scope.
+reaches the agents whose keys start with its scope, and takes the actions it
+was made with, all of them unless `--can` names fewer. An action it was not
+granted throws a `TarsError` of type `forbidden`, and a revoked token closes
+its streams and workers.
 
 ## Agents
 

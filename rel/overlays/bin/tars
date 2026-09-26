@@ -61,8 +61,9 @@ Usage: tars [--node NAME] COMMAND
   schedules [PREFIX]         when each schedule runs next, and how it last ran
   approve KEY CALL           run a parked call
   deny KEY CALL [REASON]     refuse a parked call
-  token create NAME (--scope PREFIX | --all)
-                             a token for the HTTP API, printed once
+  token create NAME (--scope PREFIX | --all) [--can ACTIONS]
+                             a token for the HTTP API, printed once; ACTIONS
+                             are some of read,message,decide,define,serve
   token list                 the HTTP API's tokens
   token revoke ID            stop a token working
   attach [HOST]              the TUI, over SSH to HOST, localhost by default

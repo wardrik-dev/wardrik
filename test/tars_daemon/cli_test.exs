@@ -100,10 +100,14 @@ defmodule TarsDaemon.CLITest do
     assert {:ok, token} = TarsHTTP.Token.verify(secret)
 
     assert line ==
-             "#{name} (#{token.id}) reaches the agents under acme/. This is the only time it is shown."
+             "#{name} (#{token.id}) reaches the agents under acme/, for every action. " <>
+               "This is the only time it is shown."
 
     {list, 0} = command(["token", "list"])
-    assert list =~ "  #{token.id}  #{name}  the agents under acme/  made #{token.created_at}"
+
+    assert list =~
+             "  #{token.id}  #{name}  the agents under acme/, for every action  " <>
+               "made #{token.created_at}"
 
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
     assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
@@ -112,7 +116,7 @@ defmodule TarsDaemon.CLITest do
 
   test "token create writes a scope as the key prefix it is, and refuses one that is not" do
     {output, 0} = command(["token", "create", "org", "--scope", "acme"])
-    assert output =~ ") reaches the agents under acme/."
+    assert output =~ ") reaches the agents under acme/, for every action."
 
     assert command(["token", "create", "bad", "--scope", "acme//triage"]) ==
              {~s("acme//triage" is not a scope; a scope is org/, org/user/ or a key, org/user/name\n),
@@ -123,7 +127,23 @@ defmodule TarsDaemon.CLITest do
     {output, 0} = command(["token", "create", "everywhere", "--all"])
 
     assert output =~ "everywhere ("
-    assert output =~ ") reaches every agent."
+    assert output =~ ") reaches every agent, for every action."
+  end
+
+  test "token create --can grants only the actions it names" do
+    {output, 0} = command(["token", "create", "watcher", "--scope", "acme/", "--can", "read"])
+    assert output =~ ") reaches the agents under acme/, to read."
+
+    {output, 0} =
+      command(["token", "create", "triage", "--can", "read,message,decide", "--all"])
+
+    assert output =~ ") reaches every agent, to read, message and decide."
+
+    assert {~s("write" is not an action; the actions are read, message, decide, define, serve\n),
+            1} = command(["token", "create", "bad", "--all", "--can", "read,write"])
+
+    assert command(["token", "create", "nowhere", "--can", "read"]) ==
+             {"tars: token create NAME (--scope PREFIX | --all) [--can ACTIONS]\n", 1}
   end
 
   test "ask sends the agent a message" do

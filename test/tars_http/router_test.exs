@@ -154,6 +154,52 @@ defmodule TarsHTTP.RouterTest do
       {:ok, %{body: %{"agents" => agents}}} = Req.get(api, url: "/v1/agents")
       refute Enum.any?(agents, &(&1["id"] == key))
     end
+
+    test "an action the token was not granted is refused, and an agent out of reach is hidden",
+         %{api: api} do
+      {key, _agent} = echo_agent()
+      {:ok, secret, _token} = Token.create("watcher", "test/", [:read])
+      watcher = Req.merge(api, auth: {:bearer, secret})
+
+      assert {:ok, %{status: 200}} = Req.get(watcher, url: "/v1/agents/#{key}")
+
+      assert {:ok, %{status: 403, body: body}} =
+               Req.post(watcher, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
+
+      assert body["error"] == %{
+               "type" => "forbidden",
+               "message" => "This token may not send messages to #{key}."
+             }
+
+      for {method, path, body} <- [
+            {:post, "/interrupts/x", %{"decision" => "approve"}},
+            {:post, "/cancel", %{}},
+            {:put, "", %{}},
+            {:delete, "", nil},
+            {:put, "/schedules/sweep", %{"every" => "1h", "prompt" => "Look."}}
+          ] do
+        assert {:ok, %{status: 403}} =
+                 Req.request(watcher, method: method, url: "/v1/agents/#{key}#{path}", json: body)
+      end
+
+      assert {:ok, %{status: 404}} =
+               Req.post(watcher,
+                 url: "/v1/agents/other/_/hidden/messages",
+                 json: %{"content" => "hi"}
+               )
+    end
+
+    test "a revoked token is refused, and a stream open on it ends", %{api: api} do
+      {key, _agent} = echo_agent()
+      {:ok, secret, token} = Token.create("revoked", "test/")
+      revoked = Req.merge(api, auth: {:bearer, secret})
+      stream = open(revoked, key, [])
+
+      :ok = Token.revoke(token.id)
+
+      assert ended(stream) == :ended
+      assert {:ok, %{status: 401}} = Req.get(revoked, url: "/v1/agents")
+    end
   end
 
   test "every response carries a Request-Id, the caller's own where it sent one", %{api: api} do
@@ -627,6 +673,17 @@ defmodule TarsHTTP.RouterTest do
     end
   end
 
+  # Waits for the stream to end, passing over anything it sends first.
+  defp ended(stream) do
+    ref = stream.response.body.ref
+    assert_receive {^ref, _part} = message, 2_000
+
+    case Req.parse_message(stream.response, message) do
+      {:ok, parts} -> if :done in parts, do: :ended, else: ended(stream)
+      {:error, _reason} -> :ended
+    end
+  end
+
   defp parse(frame) do
     fields =
       for line <- String.split(frame, "\n"),
@@ -685,6 +742,7 @@ defmodule TarsHTTP.RouterTest do
       Agent.ask(agent, "hi")
       settled(agent)
       :ok = Log.trim(key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      {:ok, secret, _token} = Token.create("reader", "test/", [:read])
 
       answers = [
         Req.get(api, url: "/v1/agents", auth: nil),
@@ -693,11 +751,12 @@ defmodule TarsHTTP.RouterTest do
         Req.post(api, url: "/v1/agents/#{key}/interrupts/x", json: %{"decision" => "approve"}),
         Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0]),
         Req.get(api, url: "/v1/workers"),
-        Req.get(api, url: "/v1/agents/#{key}/definition")
+        Req.get(api, url: "/v1/agents/#{key}/definition"),
+        Req.post(api, url: "/v1/agents/#{key}/cancel", auth: {:bearer, secret})
       ]
 
       assert Enum.map(answers, fn {:ok, response} -> response.status end) ==
-               [401, 404, 400, 409, 410, 426, 501]
+               [401, 404, 400, 409, 410, 426, 501, 403]
 
       for {:ok, response} <- answers, do: conforms(response.body, "error")
     end

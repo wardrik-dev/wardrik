@@ -36,6 +36,12 @@ defmodule TarsHTTP.WorkerTest do
 
     def handle_info({:send, message}, state), do: {:reply, {:text, JSON.encode!(message)}, state}
 
+    @impl true
+    def handle_disconnect(%{reason: reason}, state) do
+      send(state.test, {:disconnected, reason})
+      {:ok, state}
+    end
+
     defp answer(%{"method" => "initialize", "id" => id}, state) do
       reply(id, state, %{
         "protocolVersion" => "2025-06-18",
@@ -279,6 +285,25 @@ defmodule TarsHTTP.WorkerTest do
 
     send(worker, {:send, %{"jsonrpc" => "2.0", "id" => 8, "method" => "sampling/createMessage"}})
     assert_receive {:answered, %{"id" => 8, "error" => %{"code" => -32_601}}}
+  end
+
+  test "a token that may not serve is refused the socket", %{port: port} do
+    {:ok, secret, _token} = Token.create("reader", "test/", [:read])
+
+    assert {:error, %WebSockex.RequestError{code: 403}} =
+             FakeWorker.start_link(port, secret, self(), [tool("echo")])
+  end
+
+  test "a worker's socket closes when its token is revoked",
+       context do
+    {:ok, secret, token} = Token.create("revoked", "test/")
+    worker = connect(context, [tool("echo")], secret)
+    monitor = Process.monitor(worker)
+
+    :ok = Token.revoke(token.id)
+
+    assert_receive {:disconnected, {:remote, 1008, "The token was revoked."}}, 2_000
+    assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}
   end
 
   test "a request that is not a WebSocket is told to upgrade", %{port: port, secret: secret} do

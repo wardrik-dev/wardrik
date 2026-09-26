@@ -51,8 +51,13 @@ defmodule Tars.Store do
   """
   @type put_opts() :: [if_vsn: vsn() | nil, ttl_ms: pos_integer()]
 
-  @typedoc "Options a read takes. `:consistent` reads through consensus where the adapter has one."
-  @type get_opts() :: [consistent: boolean()]
+  @typedoc """
+  Options a read takes.
+
+    * `:consistent` - read through consensus where the adapter has one
+    * `:timeout` - how long, in milliseconds, a consistent read may wait
+  """
+  @type get_opts() :: [consistent: boolean(), timeout: pos_integer()]
 
   @typedoc "Options a delete takes. `:if_vsn` deletes only the version `lookup/2` reported."
   @type delete_opts() :: [if_vsn: vsn()]

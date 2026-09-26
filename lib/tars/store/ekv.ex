@@ -56,7 +56,8 @@ defmodule Tars.Store.EKV do
   end
 
   @impl Tars.Store
-  def get(ns, key, opts), do: EKV.get(@name, path(ns, key), Keyword.take(opts, [:consistent]))
+  def get(ns, key, opts),
+    do: EKV.get(@name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
 
   @impl Tars.Store
   def lookup(ns, key), do: EKV.lookup(@name, path(ns, key))

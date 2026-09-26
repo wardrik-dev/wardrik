@@ -1,135 +1,116 @@
 defmodule TarsHTTP.Token do
   @moduledoc """
-  A bearer token for the HTTP API, and the agents it reaches.
+  A bearer token for the HTTP API, and the `Tars.Grant` it carries.
 
       {:ok, secret, token} = TarsHTTP.Token.create("ci", "acme/")
+      {:ok, secret, token} = TarsHTTP.Token.create("watcher", "acme/ops/", [:read])
 
-  A token reaches the agents under its scope, a key prefix that ends at a
-  segment:
-
-  | Scope | Reaches |
-  | --- | --- |
-  | `""` | every agent |
-  | `"acme/"` | the agents of one org |
-  | `"acme/jon/"` | one person's agents |
-  | `"acme/jon/triage"` | one agent |
-
-  `create/2` writes a scope of one or two segments as the prefix it is, so
-  `"acme"` is `"acme/"`, and refuses one with an empty segment or more than
-  three. `covers?/2` matches at segment boundaries: `"acme/"` never reaches
-  `acmecorp/…`, and `"acme/jon/triage"` never reaches `acme/jon/triage2`.
+  A token grants the actions it was made with, every one where none are
+  named, on the agents under its scope; see `Tars.Grant` for both.
 
   The secret, `tars_` and 32 characters, is answered once and never kept.
-  `Tars.Store` holds the token under the SHA-256 of its secret, in `:tokens`,
-  so the store holds nothing a caller could present. A token's `id` is the
-  first 12 hex digits of that hash: what `list/0` shows, what `revoke/1` takes,
-  and who a decision made with the token was made by.
+  `Tars.Store` holds the token in `:tokens` under its `id`, the first 12 hex
+  digits of the SHA-256 of its secret, with the whole hash, so the store holds
+  nothing a caller could present. The `id` is what `list/0` shows, what
+  `revoke/1` takes, and who a decision made with the token was made by.
+
+  `verify/1` reads the token with `Tars.Access.get/1`: a revoked token is
+  refused at once on every node the revocation reaches, and within a sweep on
+  one it does not. `ref/1` is the record a socket or a stream holds with
+  `Tars.Access.hold/1`, so `revoke/1` ends it.
   """
 
-  alias Tars.Store
+  alias Tars.Access
+  alias Tars.Grant
 
   @ns :tokens
   @prefix "tars_"
   @id_length 12
 
-  @enforce_keys [:id, :name, :scope, :created_at]
-  defstruct [:id, :name, :scope, :created_at]
+  @enforce_keys [:id, :name, :grant, :hash, :created_at]
+  defstruct [:id, :name, :grant, :hash, :created_at]
 
   @type t() :: %__MODULE__{
           id: String.t(),
           name: String.t(),
-          scope: String.t(),
+          grant: Grant.t(),
+          hash: String.t(),
           created_at: DateTime.t()
         }
 
   @doc """
-  Makes a token named `name` for the agents under `scope`, and answers its
-  secret, or a message saying why `scope` is not one.
+  Makes a token named `name` granting `can` on the agents under `scope`, and
+  answers its secret, or a message saying why the grant is not one.
   """
-  @spec create(String.t(), String.t()) :: {:ok, String.t(), t()} | {:error, String.t() | term()}
-  def create(name, scope) when is_binary(name) and is_binary(scope) do
-    with {:ok, scope} <- scope(scope) do
+  @spec create(String.t(), String.t(), [Grant.action() | String.t()]) ::
+          {:ok, String.t(), t()} | {:error, String.t() | term()}
+  def create(name, scope, can \\ Grant.actions()) when is_binary(name) do
+    with {:ok, grant} <- Grant.new(scope, can) do
       secret = @prefix <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
       hash = hash(secret)
 
       token = %__MODULE__{
         id: binary_part(hash, 0, @id_length),
         name: name,
-        scope: scope,
+        grant: grant,
+        hash: hash,
         created_at: DateTime.utc_now(:second)
       }
 
-      with {:ok, _vsn} <- Store.put(@ns, hash, token, if_vsn: nil), do: {:ok, secret, token}
+      with {:ok, _vsn} <- Tars.Store.put(@ns, token.id, token, if_vsn: nil),
+           do: {:ok, secret, token}
     end
   end
 
-  defp scope(""), do: {:ok, ""}
-
-  defp scope(scope) do
-    trimmed = String.trim_trailing(scope, "/")
-
-    case String.split(trimmed, "/") do
-      [org] when org != "" ->
-        {:ok, trimmed <> "/"}
-
-      [org, user] when org != "" and user != "" ->
-        {:ok, trimmed <> "/"}
-
-      [org, user, name] when org != "" and user != "" and name != "" ->
-        {:ok, trimmed}
-
-      _other ->
-        {:error,
-         "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"}
-    end
-  end
-
-  @doc "The token a secret belongs to, or `:error`."
-  @spec verify(String.t()) :: {:ok, t()} | :error
+  @doc """
+  The token a secret belongs to, read with `Tars.Access.get/1`: `:error` for a
+  secret no token has, and `{:error, :unavailable}` where the store could not
+  answer.
+  """
+  @spec verify(String.t()) :: {:ok, t()} | :error | {:error, :unavailable}
   def verify(@prefix <> _rest = secret) do
-    case Store.get(@ns, hash(secret)) do
-      %__MODULE__{} = token -> {:ok, token}
-      nil -> :error
+    hash = hash(secret)
+
+    case Access.get({@ns, binary_part(hash, 0, @id_length)}) do
+      {:ok, %__MODULE__{hash: stored, grant: %Grant{}} = token} ->
+        if Plug.Crypto.secure_compare(stored, hash), do: {:ok, token}, else: :error
+
+      {:ok, _other} ->
+        :error
+
+      {:error, :not_found} ->
+        :error
+
+      {:error, :unavailable} = unavailable ->
+        unavailable
     end
   end
 
   def verify(_secret), do: :error
 
-  @doc """
-  Whether a token reaches the agent under `key`: its scope is empty, or the
-  key is the scope, or goes on from it at a `/`.
-  """
-  @spec covers?(t(), String.t()) :: boolean()
-  def covers?(%__MODULE__{scope: ""}, key) when is_binary(key), do: true
-
-  def covers?(%__MODULE__{scope: scope}, key) when is_binary(key),
-    do: String.starts_with?(key <> "/", String.trim_trailing(scope, "/") <> "/")
+  @doc "The record `token` is kept in, for `Tars.Access.hold/1`."
+  @spec ref(t()) :: Access.ref()
+  def ref(%__MODULE__{id: id}), do: {@ns, id}
 
   @doc "Every token, oldest first."
   @spec list() :: [t()]
   def list do
     @ns
-    |> Store.keys("")
-    |> Enum.map(&Store.get(@ns, &1))
-    |> Enum.filter(&match?(%__MODULE__{}, &1))
+    |> Tars.Store.keys("")
+    |> Enum.map(&Tars.Store.get(@ns, &1))
+    |> Enum.filter(&match?(%__MODULE__{grant: %Grant{}}, &1))
     |> Enum.sort_by(& &1.created_at, DateTime)
   end
 
-  @doc "Stops the token with `id` working."
+  @doc """
+  Stops the token with `id` working, and ends every socket and stream open on
+  it.
+  """
   @spec revoke(String.t()) :: :ok | {:error, :not_found | term()}
-  def revoke(id) when is_binary(id) do
-    case Store.keys(@ns, id) do
-      [hash] when byte_size(id) == @id_length -> delete(hash)
-      _none_or_partial -> {:error, :not_found}
-    end
-  end
+  def revoke(id) when is_binary(id) and byte_size(id) == @id_length,
+    do: Access.revoke({@ns, id})
 
-  defp delete(hash) do
-    case Store.lookup(@ns, hash) do
-      {_token, vsn} -> Store.delete(@ns, hash, if_vsn: vsn)
-      nil -> {:error, :not_found}
-    end
-  end
+  def revoke(_id), do: {:error, :not_found}
 
   defp hash(secret), do: :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
 end

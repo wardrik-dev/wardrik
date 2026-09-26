@@ -9,7 +9,7 @@ defmodule TarsHTTP.Workers do
       Tars.LLM.Config.new(tools: [{TarsHTTP.Workers, "acme/_/triage"}])
 
   An agent file or definition names it as `workers/*`. The agent is offered
-  the tools of every connected worker whose token reaches its key, each named
+  the tools of every connected worker whose token may `:serve` it, each named
   `workers__<name>`, as an MCP server's tools are named for their server, so
   a policy governs them as `workers/*` or `workers/refund_order`. Workers that
   offer a tool of the same name are one pool, and a call goes to any of them.
@@ -30,6 +30,7 @@ defmodule TarsHTTP.Workers do
 
   @behaviour Tars.Tool
 
+  alias Tars.Access
   alias Tars.Tool.Result
   alias TarsHTTP.Token
   alias TarsHTTP.Worker.Tool
@@ -120,7 +121,7 @@ defmodule TarsHTTP.Workers do
 
   defp offered(key) do
     for {worker, %{token: token, tools: tools}} <- Group.members(__MODULE__, @group),
-        Token.covers?(token, key),
+        Access.authorize(token.grant, :serve, key) == :ok,
         tool <- tools,
         do: {worker, tool}
   end
