@@ -3,6 +3,8 @@ Mimic.copy(ReqLLM.StreamResponse)
 Mimic.copy(WardrikPolicy.Meter)
 Mimic.copy(WardrikDaemon.AgentFile)
 Mimic.copy(Wardrik.Store)
+Mimic.copy(Ecto.Adapters.SQL)
+Mimic.copy(Wardrik.Store.Memory)
 
 # `Wardrik.LLM.Catalog` loads the model database in the background as the
 # application starts, which takes about 1.3s. A lookup made before it finishes
@@ -27,4 +29,8 @@ end)
 # timeout costs a passing test nothing and keeps a suite running 64 cases at
 # once from failing one whose message was merely late. refute_receive keeps
 # its default, since it always waits the whole of it.
-ExUnit.start(capture_log: true, assert_receive_timeout: 1_000)
+# The :postgres and :s3 tests reach real services, which dev/services.sh
+# starts; see Wardrik.Test.Services.
+excluded = Wardrik.Test.Services.start()
+
+ExUnit.start(capture_log: true, assert_receive_timeout: 1_000, exclude: excluded)

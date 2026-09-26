@@ -114,10 +114,10 @@ defmodule Wardrik.Store.EKV do
   defp path(ns, key), do: "wardrik/#{ns}/" <> key
 
   defp put_opts(opts) do
-    Enum.flat_map(opts, fn
-      {:if_vsn, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
-      {:ttl_ms, ms} -> [ttl: ms]
-    end)
+    case Keyword.fetch(opts, :if_vsn) do
+      {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
+      :error -> []
+    end
   end
 
   defp written_key({key, _vsn}) when is_binary(key), do: key

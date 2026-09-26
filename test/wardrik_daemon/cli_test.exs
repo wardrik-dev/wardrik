@@ -27,6 +27,14 @@ defmodule WardrikDaemon.CLITest do
     {output, status}
   end
 
+  # A turn_parked event reaches a subscriber before the fleet lists the agent
+  # as parked, and `parked` reads the fleet.
+  defp await_parked(key) do
+    Wardrik.Test.Fleet.await_update(fn ->
+      Enum.any?(Wardrik.Fleet.list(), &(&1.key == key and &1.status == :parked))
+    end)
+  end
+
   defp parked_agent do
     test_pid = self()
     answer = {:ok, [Context.assistant("shipped")]}
@@ -41,9 +49,7 @@ defmodule WardrikDaemon.CLITest do
     Agent.ask(agent, "ship it")
     assert_receive %Event{payload: {:turn_parked, _calls}}
 
-    Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(Wardrik.Fleet.list(), &(&1.key == key and &1.status == :parked))
-    end)
+    await_parked(key)
 
     key
   end
@@ -67,6 +73,8 @@ defmodule WardrikDaemon.CLITest do
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "open an issue")
     assert_receive %Event{payload: {:turn_parked, _calls}}
+
+    await_parked(key)
 
     {output, 0} = command(["parked"])
 

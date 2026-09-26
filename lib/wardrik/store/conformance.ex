@@ -63,6 +63,49 @@ defmodule Wardrik.Store.Conformance do
           assert {:second, ^second} = @adapter.lookup(@ns, key)
         end
 
+        test "a version is never current again once the key is written over", context do
+          key = conformance_key(context)
+
+          {:ok, first} = @adapter.put(@ns, key, :same, if_vsn: nil)
+          {:ok, second} = @adapter.put(@ns, key, :other, if_vsn: first)
+          {:ok, _third} = @adapter.put(@ns, key, :same, if_vsn: second)
+
+          assert {:error, :conflict} = @adapter.put(@ns, key, :stale, if_vsn: first)
+          assert {:error, :conflict} = @adapter.delete(@ns, key, if_vsn: first)
+          assert @adapter.get(@ns, key, consistent: true) == :same
+        end
+
+        test "keeps a key of any characters, and lists it by any prefix of it", context do
+          base = conformance_key(context)
+          key = base <> "/a b+c%d~e&f=g?h#i/ü✓/.hidden/../x"
+
+          {:ok, _vsn} = @adapter.put(@ns, key, :odd, [])
+
+          assert @adapter.get(@ns, key, []) == :odd
+          assert @adapter.keys(@ns, base <> "/a b+c") == [key]
+          assert @adapter.keys(@ns, base <> "/a b+c%d~e&f=g?h#i/ü✓/.") == [key]
+          assert @adapter.keys(@ns, base <> "/a c") == []
+        end
+
+        test "matches a prefix as it is written, with nothing in it a wildcard", context do
+          base = conformance_key(context)
+
+          for key <- ["a_b", "axb", "a%b", "a\\b"],
+              do: {:ok, _vsn} = @adapter.put(@ns, base <> key, 1, [])
+
+          assert @adapter.keys(@ns, base <> "a_") == [base <> "a_b"]
+          assert @adapter.keys(@ns, base <> "a%") == [base <> "a%b"]
+          assert @adapter.keys(@ns, base <> "a\\") == [base <> "a\\b"]
+        end
+
+        test "hands back a large value whole", context do
+          key = conformance_key(context)
+          value = %{"bytes" => :crypto.strong_rand_bytes(1024 * 1024)}
+
+          {:ok, _vsn} = @adapter.put(@ns, key, value, [])
+          assert @adapter.get(@ns, key, []) == value
+        end
+
         test "deleting removes the key, and deleting again is fine", context do
           key = conformance_key(context)
 

@@ -36,7 +36,14 @@ jobs:
         with:
           cache-key: ${{ matrix.group }}
 
+      # The test leg reaches Postgres and an S3 service, and fails rather than
+      # skipping the tests that need them.
+      - if: matrix.group == 'test'
+        run: dev/services.sh
+
       - run: mix precommit --check --only ${{ matrix.group }}
+        env:
+          WARDRIK_TEST_SERVICES: ${{ matrix.group == 'test' && 'required' || '' }}
 
       # Saved from a failed leg too, since the compile it paid for is still
       # good; not from a cancelled one, which may have left _build half-written.

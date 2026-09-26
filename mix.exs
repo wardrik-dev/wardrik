@@ -28,7 +28,7 @@ defmodule Wardrik.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :os_mon],
+      extra_applications: [:logger, :os_mon, :xmerl],
       mod: {Wardrik.Application, []}
     ]
   end
@@ -108,6 +108,11 @@ defmodule Wardrik.MixProject do
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.6.0"},
+
+      # Used by lib/wardrik_ecto, not by core: a store in a host's own Repo.
+      # Optional, so a host that stores elsewhere compiles neither.
+      {:ecto_sql, "~> 3.14", optional: true},
+      {:postgrex, "~> 0.22.4", optional: true},
 
       # Test and dev
       # Dev deps

@@ -10,14 +10,6 @@ defmodule Wardrik.Store.MemoryTest do
 
   use Wardrik.Store.Conformance, adapter: Memory
 
-  test "a value with a ttl is gone once it has passed" do
-    {:ok, _vsn} = Memory.put(:ttl, "soon", :value, ttl_ms: 1)
-    assert Memory.get(:ttl, "soon", []) in [:value, nil]
-
-    {:ok, _vsn} = Memory.put(:ttl, "later", :value, ttl_ms: :timer.hours(1))
-    assert Memory.get(:ttl, "later", []) == :value
-  end
-
   test "clear/0 forgets everything" do
     {:ok, _vsn} = Memory.put(:clear, "a", 1, [])
     :ok = Memory.clear()

@@ -9,9 +9,16 @@ defmodule Wardrik.Store do
 
       config :wardrik, Wardrik.Store, adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"
 
-  Core ships `Wardrik.Store.EKV`, the default, and `Wardrik.Store.Memory` for tests.
+  | Adapter | Keeps it |
+  | --- | --- |
+  | `Wardrik.Store.EKV` | on each node's disk, replicated between nodes. The default |
+  | `WardrikEcto.Store` | in a Postgres table, through an Ecto repo the host owns |
+  | `WardrikS3.Store` | in an S3 bucket |
+  | `Wardrik.Store.Memory` | in one process, for tests |
+
   An adapter over another system implements this behaviour and passes
-  `Wardrik.Store.Conformance`.
+  `Wardrik.Store.Conformance`. One whose reads are current on every node can
+  hold the fleet through `Wardrik.Store.Durable`.
 
   ## Namespaces
 
@@ -47,9 +54,8 @@ defmodule Wardrik.Store do
 
     * `:if_vsn` - write only where the current version is this one, with `nil`
       meaning where nothing is written
-    * `:ttl_ms` - how long the value lives
   """
-  @type put_opts() :: [if_vsn: vsn() | nil, ttl_ms: pos_integer()]
+  @type put_opts() :: [if_vsn: vsn() | nil]
 
   @typedoc """
   Options a read takes.
