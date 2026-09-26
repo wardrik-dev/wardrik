@@ -28,13 +28,13 @@ defmodule TarsMCP.Tool do
   def connect(%Server{} = server) do
     {:module, TarsMCP} = Code.ensure_loaded(TarsMCP)
 
-    ReqLLM.Tool.new!(
+    Tars.Tool.new!(
       name: Server.local_name(server, "connect"),
       description: """
       Authorize this agent to use #{server.ref}. Call it when you need #{server.ref}       and no #{server.ref} tool is available yet: the user is asked to connect, and       #{server.ref}'s own tools appear once they have.
       """,
       parameter_schema: %{"type" => "object", "properties" => %{}},
-      callback: {TarsMCP, :authorize, [server.ref]}
+      call: {TarsMCP, :authorize, [server.ref]}
     )
   end
 
@@ -45,11 +45,11 @@ defmodule TarsMCP.Tool do
     # for a module nothing has loaded yet.
     {:module, TarsMCP} = Code.ensure_loaded(TarsMCP)
 
-    ReqLLM.Tool.new!(
+    Tars.Tool.new!(
       name: Server.local_name(server, name),
       description: description(listed, server),
       parameter_schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
-      callback: {TarsMCP, :call, [server.ref, name]}
+      call: {TarsMCP, :call, [server.ref, name]}
     )
   end
 

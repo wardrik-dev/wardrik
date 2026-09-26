@@ -63,7 +63,7 @@ defmodule TarsVault do
   @type owner() :: String.t() | nil
 
   @impl Tars.Credential
-  def resolve(ref, %Scope{} = scope) do
+  def resolve(ref, %Tars.Call{scope: %Scope{} = scope}) do
     with {:ok, owner} <- owner(ref, scope),
          {:ok, secret} <- fetch(ref, owner) do
       {:ok, Credential.secret(secret)}

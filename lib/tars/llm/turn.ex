@@ -1,15 +1,37 @@
 defmodule Tars.LLM.Turn do
   @moduledoc """
-  Runs a single agent turn: streams a model response, executes any tool calls,
+  One agent turn: streams a model response, runs any tool calls it asks for,
   and loops until the model produces a final answer.
 
-  Returns the messages appended *during* this turn, a delta rather than a
-  snapshot, so the caller remains the single writer of context. Stream and tool
-  progress go out through the scope's event source, which means this module
-  needs no subscriber pid and does not care how many listeners there are.
+  A turn is a token, the way a `Plug.Conn` is. `new/2` builds one from a
+  scope and the conversation as it stands, `run/1` takes it and hands it
+  back, and it is the same value whether it is running, waiting on a person,
+  or done:
 
-  Pure orchestration: it holds no state of its own, so tests can drive `run/2`
-  directly after subscribing to the scope's agent id.
+      turn = scope |> Tars.LLM.Turn.new(context) |> Tars.LLM.Turn.run()
+
+      case turn do
+        %Tars.LLM.Turn{state: :done, messages: messages} -> append(messages)
+        %Tars.LLM.Turn{state: :waiting} -> hold(turn)
+        %Tars.LLM.Turn{state: :failed, error: reason} -> report(reason)
+      end
+
+  `:messages` is what the turn added, a delta rather than a snapshot, so the
+  caller remains the single writer of context. Stream and tool progress go out
+  through the scope's event source, which means a turn needs no subscriber pid
+  and does not care how many listeners there are.
+
+  ## Fields
+
+    * `:scope` - the `Tars.Scope` it runs under, `nil` while it is written down
+    * `:context` - the conversation as it stands, what it added included
+    * `:messages` - what it added, in order
+    * `:remaining` - how many rounds of tool use it has left
+    * `:response` - the model response whose tool calls it is running, if any
+    * `:calls` - the `Tars.Call`s of that batch, or the model call it waits on
+    * `:revision` - the `Tars.Hook.revision/1` of the hooks it parked under
+    * `:state` - `:running`, `:waiting`, `:done` or `:failed`
+    * `:error` - why a failed turn failed
 
   ## Where a model call actually goes
 
@@ -27,7 +49,7 @@ defmodule Tars.LLM.Turn do
 
     * `:interrupt` is read at a boundary *and* on every stream chunk, so it
       also stops a response that is still arriving. Whatever text had streamed
-      is returned as the assistant's message, verbatim.
+      is added as the assistant's message, verbatim.
 
     * an expired deadline on the scope stops the turn at a boundary, the way
       `:yield` does. It takes effect without a closing request, because
@@ -41,22 +63,26 @@ defmodule Tars.LLM.Turn do
   ## Stopping to ask
 
   A `Tars.Hook` that asks a person about a tool call parks the call. The
-  turn returns `{:parked, parked}` with nothing appended to the
-  conversation, and `resume/3` finishes it once a person has decided. See
-  `Tars.LLM.Turn.Parked`.
+  turn comes back `:waiting` with nothing appended to the conversation, its
+  batch in `:calls`, and `resume/2` finishes it once a person has decided.
 
   A hook that asks about a model call parks the turn before the call the same
-  way. Approving it makes the call; denying it ends the turn as
-  `{:policy_denied, reason}`.
+  way, with the one call it waits on the model call itself, named `model`, so
+  a person answers it the way they answer any other. Approving it makes the
+  call; denying it fails the turn as `{:policy_denied, reason}`.
+
+  A turn that waits is written down with no scope, so it holds no
+  credentials and runs no processes, and `under/2` gives it the scope it
+  resumes under.
 
   ## Surviving a lost node
 
-  A scope with a journal, as `Tars.Agent` gives each turn it runs, is handed a
-  `Tars.LLM.Turn.Checkpoint` before every batch of tool calls, and the batch
-  runs only once the journal has answered `:ok`. A journal that does not
-  answer ends the turn before anything runs. `replay/2` carries a turn on from
-  its last checkpoint, with the response it had, so the calls it asked for keep
-  their ids and a `Tars.Ledger` can say which already ran.
+  A scope with a journal, as `Tars.Agent` gives each turn it runs, is handed
+  the turn, written down, before every batch of tool calls, and the batch runs
+  only once the journal has answered `:ok`. A journal that does not answer
+  ends the turn before anything runs. `replay/1` carries such a turn on, with
+  the response it had, so the calls it asked for keep their ids and a
+  `Tars.Ledger` can say which already ran.
 
   ## A model call that fails
 
@@ -64,11 +90,11 @@ defmodule Tars.LLM.Turn do
   `Tars.Failure` calls transient, such as a stream that times out before its
   first chunk, is asked again after each wait the config's `:retries` lists,
   through the dispatch each time. Each try is its own `{:model_started, _, _}`
-  and `{:model_finished, _, _, _, _}`, under the same message id. A call that fails once the provider has begun to
-  answer is not asked again, since what streamed has already been published;
-  it fails the turn, as a call does once its retries are spent. `:interrupt`
-  stops the wait, and a turn past its deadline fails with the call's reason
-  rather than waiting.
+  and `{:model_finished, _, _, _, _}`, under the same message id. A call that
+  fails once the provider has begun to answer is not asked again, since what
+  streamed has already been published; it fails the turn, as a call does once
+  its retries are spent. `:interrupt` stops the wait, and a turn past its
+  deadline fails with the call's reason rather than waiting.
 
   ## The iteration cap
 
@@ -87,27 +113,86 @@ defmodule Tars.LLM.Turn do
   alias Tars.LLM.Dispatch
   alias Tars.LLM.Request
   alias Tars.LLM.ToolRunner
-  alias Tars.LLM.Turn.Checkpoint
-  alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Trace
+
+  @enforce_keys [:context]
+  defstruct [
+    :scope,
+    :context,
+    :response,
+    :revision,
+    :error,
+    messages: [],
+    remaining: :infinity,
+    calls: [],
+    state: :running
+  ]
+
+  @type state() :: :running | :waiting | :done | :failed
+
+  @type t() :: %__MODULE__{
+          scope: Scope.t() | nil,
+          context: Context.t(),
+          response: ReqLLM.Response.t() | nil,
+          revision: String.t() | nil,
+          error: term(),
+          messages: [ReqLLM.Message.t()],
+          remaining: non_neg_integer() | :infinity,
+          calls: [Call.t()],
+          state: state()
+        }
+
+  @typedoc "What a person decides about one call a turn waits on."
+  @type decision() :: :approve | {:deny, String.t()}
 
   @streamed :tars_streamed_text
   @answered :tars_answered
 
   @closing "You have used every tool call available for this turn. Answer now from what you have, and say plainly what you could not verify."
 
-  @typedoc "How a turn ended."
-  @type result() ::
-          {:ok, [ReqLLM.Message.t()]} | {:parked, Parked.t()} | {:error, term()}
+  @doc "A turn to answer `context` under `scope`, with the rounds its config allows."
+  @spec new(Scope.t(), Context.t()) :: t()
+  def new(%Scope{} = scope, %Context{} = context),
+    do: %__MODULE__{scope: scope, context: context, remaining: scope.config.max_iterations}
 
-  @spec run(Scope.t(), Context.t()) :: result()
-  def run(%Scope{} = scope, %Context{} = context) do
-    loop(scope, context, [], scope.config.max_iterations)
+  @doc "Runs `turn` until it is done, waits on a person, or fails."
+  @spec run(t()) :: t()
+  def run(%__MODULE__{state: :running, scope: %Scope{}} = turn), do: loop(turn)
+
+  @doc "The turn under `scope`, or under none for one that is written down."
+  @spec under(t(), Scope.t() | nil) :: t()
+  def under(%__MODULE__{} = turn, scope), do: %{turn | scope: scope}
+
+  @doc "The turn done, having added `messages` besides what it already had."
+  @spec done(t(), [ReqLLM.Message.t()]) :: t()
+  def done(%__MODULE__{} = turn, messages \\ []),
+    do: %{turn | state: :done, messages: turn.messages ++ messages}
+
+  @doc "The turn failed, for `reason`."
+  @spec fail(t(), term()) :: t()
+  def fail(%__MODULE__{} = turn, reason), do: %{turn | state: :failed, error: reason}
+
+  @doc "The calls the turn waits on, each with the prompt a person is shown."
+  @spec waiting(t()) :: [{Tars.Tool.call(), String.t()}]
+  def waiting(%__MODULE__{calls: calls}), do: ToolRunner.parked(calls)
+
+  @doc "The ids of the tool calls the turn's response asked for."
+  @spec call_ids(t()) :: [String.t()]
+  def call_ids(%__MODULE__{response: nil}), do: []
+
+  def call_ids(%__MODULE__{response: response}) do
+    %{tool_calls: calls} = ReqLLM.Response.classify(response)
+    Enum.map(calls, & &1.id)
   end
 
+  @doc "Whether the turn waits on a person before a model call rather than at a tool call."
+  @spec model?(t()) :: boolean()
+  def model?(%__MODULE__{state: :waiting, response: nil}), do: true
+  def model?(%__MODULE__{}), do: false
+
   @doc """
-  Finishes a turn that parked, applying one decision per waiting call.
+  Finishes a waiting turn, applying one decision per waiting call.
 
   Approved calls go ahead now, without the hooks being asked again: the
   decision has been made, and asking again would park them forever. Each hook
@@ -115,50 +200,51 @@ defmodule Tars.LLM.Turn do
   parked because it may already have run runs again once approved; one
   approved when a hook asked, and found by the ledger to have begun since,
   parks again to ask that. Denied calls are answered with the reason, which
-  the model reads and can act on. A call with no decision stays parked, so a
+  the model reads and can act on. A call with no decision stays waiting, so a
   person can answer them one at a time.
 
-  A turn that parked under hooks other than the scope's, by
+  A turn that parked under hooks other than its scope's, by
   `Tars.Hook.revision/1`, has the scope's hooks asked about every call a hook
   was waiting on before any decision is applied, and a decision about such a
-  call is set aside: the call goes ahead, is refused, or parks again with what
+  call is set aside: the call goes ahead, is refused, or waits again on what
   the hooks ask now. A call waiting on its tool or the ledger keeps its
   decision.
   """
-  @spec resume(Scope.t(), Parked.t(), %{String.t() => Parked.decision()}) :: result()
-  def resume(%Scope{} = scope, %Parked{response: nil} = parked, decisions)
+  @spec resume(t(), %{String.t() => decision()}) :: t()
+  def resume(%__MODULE__{state: :waiting, response: nil, calls: [call]} = turn, decisions)
       when is_map(decisions) do
-    [%Call{} = call] = parked.outcomes
-
-    case if(stale?(scope, parked), do: :redecide, else: Map.get(decisions, call.id)) do
+    case if(stale?(turn), do: :redecide, else: Map.get(decisions, call.id)) do
       nil ->
-        {:parked, parked}
+        turn
 
       :redecide ->
-        loop(scope, parked.context, parked.acc, parked.remaining)
+        turn |> running() |> loop()
 
       :approve ->
-        call |> Call.approve() |> Call.under(scope) |> Hook.approved()
-        loop(scope, parked.context, parked.acc, parked.remaining, decided: true)
+        call |> Call.approve() |> Call.under(turn.scope) |> Hook.approved()
+        turn |> running() |> loop(decided: true)
 
       {:deny, reason} ->
-        {:error, {:policy_denied, reason}}
+        fail(turn, {:policy_denied, reason})
 
       other ->
-        {:error, {:policy_denied, "Undecidable answer #{inspect(other)}"}}
+        fail(turn, {:policy_denied, "Undecidable answer #{inspect(other)}"})
     end
   end
 
-  def resume(%Scope{} = scope, %Parked{} = parked, decisions) when is_map(decisions) do
-    batch = Scope.batch(scope, rounds(parked.acc))
-    stale? = stale?(scope, parked)
-    outcomes = Enum.map(parked.outcomes, &decide(&1, decisions, batch, stale?))
-    resumed = %{parked | outcomes: outcomes, revision: revision(scope)}
+  def resume(%__MODULE__{state: :waiting} = turn, decisions) when is_map(decisions) do
+    batch = Scope.batch(turn.scope, rounds(turn))
+    stale? = stale?(turn)
+    resumed = %{turn | calls: Enum.map(turn.calls, &decide(&1, decisions, batch, stale?))}
 
-    if Parked.waiting?(resumed), do: {:parked, resumed}, else: finish(scope, resumed)
+    if Enum.any?(resumed.calls, &Call.waiting?/1),
+      do: %{resumed | revision: revision(turn.scope)},
+      else: finish(%{resumed | state: :running, revision: nil})
   end
 
-  defp stale?(scope, %Parked{revision: revision}), do: revision != revision(scope)
+  defp running(turn), do: %{turn | state: :running, calls: [], revision: nil}
+
+  defp stale?(%__MODULE__{revision: revision, scope: scope}), do: revision != revision(scope)
 
   defp revision(%Scope{hooks: hooks}), do: Hook.revision(hooks)
 
@@ -183,27 +269,23 @@ defmodule Tars.LLM.Turn do
     do:
       ToolRunner.refuse(call, scope, "Undecidable answer #{inspect(other)}: #{Call.prompt(call)}")
 
-  defp finish(scope, %Parked{} = parked) do
-    messages = ToolRunner.messages(parked.outcomes)
-
-    case append_tool_exchange(parked.context, parked.response, messages) do
-      {:cont, context, appended} ->
-        continue(scope, context, appended, parked.acc, parked.remaining)
-
-      {:error, reason} ->
-        {:error, reason}
+  # A batch every call of which has been answered is appended, and the turn
+  # goes on.
+  defp finish(%__MODULE__{calls: calls} = turn) do
+    case append_tool_exchange(turn.context, turn.response, ToolRunner.messages(calls)) do
+      {:cont, context, appended} -> continue(turn, context, appended)
+      {:error, reason} -> fail(turn, reason)
     end
   end
 
   @doc """
-  Carries a turn on from `checkpoint`: the batch it was about to run runs, with
-  the ledger answering for any call that already had, and the turn goes on from
-  there.
+  Carries on a turn the journal was handed before a batch: the batch runs,
+  with the ledger answering for any call that already had, and the turn goes
+  on from there.
   """
-  @spec replay(Scope.t(), Checkpoint.t()) :: result()
-  def replay(%Scope{} = scope, %Checkpoint{} = checkpoint) do
-    advance(scope, checkpoint.context, checkpoint.acc, checkpoint.remaining, checkpoint.response)
-  end
+  @spec replay(t()) :: t()
+  def replay(%__MODULE__{state: :running, scope: %Scope{}, response: %ReqLLM.Response{}} = turn),
+    do: advance(turn)
 
   @doc "Asks the process running a turn to stop iterating once it reaches a boundary."
   @spec yield(pid()) :: :ok
@@ -219,36 +301,35 @@ defmodule Tars.LLM.Turn do
     :ok
   end
 
-  # `acc` holds this turn's messages in reverse order. `opts` apply to the
-  # next model call alone.
-  defp loop(scope, context, acc, remaining, opts \\ []) do
+  # `opts` apply to the next model call alone.
+  defp loop(%__MODULE__{scope: scope} = turn, opts \\ []) do
     cond do
-      Scope.expired?(scope) -> out_of_time(scope, acc)
-      remaining == 0 -> wrap_up(scope, context, acc, opts)
-      true -> iterate(scope, context, acc, remaining, opts)
+      Scope.expired?(scope) -> out_of_time(turn)
+      turn.remaining == 0 -> wrap_up(turn, opts)
+      true -> iterate(turn, opts)
     end
   end
 
-  defp out_of_time(scope, acc) do
+  defp out_of_time(turn) do
     Logger.warning("Turn reached its deadline, stopping with what it has")
-    Event.emit(scope.source, {:deadline_reached, length(acc)})
-    {:ok, Enum.reverse(acc)}
+    Event.emit(turn.scope.source, {:deadline_reached, length(turn.messages)})
+    done(turn)
   end
 
-  defp iterate(scope, context, acc, remaining, opts) do
-    case request(scope, context, message_id(scope, acc), opts) do
+  defp iterate(turn, opts) do
+    case request(turn, turn.scope, opts) do
       {:ok, response} ->
-        advance(scope, context, acc, remaining, response)
+        advance(%{turn | response: response})
 
       {:park, waiting} ->
-        model_parked(scope, context, waiting, acc, remaining)
+        waiting_on_model(turn, waiting)
 
       {:interrupted, text} ->
-        {:ok, Enum.reverse(acc, partial(text))}
+        done(turn, partial(text))
 
       {:error, reason} ->
         Logger.warning("Error streaming text: #{inspect(reason)}")
-        {:error, reason}
+        fail(turn, reason)
     end
   end
 
@@ -257,63 +338,56 @@ defmodule Tars.LLM.Turn do
 
   # One last request without tools. Any tool call the model asks for anyway
   # is dropped, so the conversation never ends on an unanswered call.
-  defp wrap_up(scope, context, acc, opts) do
+  defp wrap_up(%__MODULE__{scope: scope} = turn, opts) do
     Logger.warning("Turn hit its iteration cap, answering without tools")
     config = %{scope.config | tools: [], system: closing(scope.config.system)}
 
-    case request(%{scope | config: config}, context, message_id(scope, acc), opts) do
+    case request(turn, %{scope | config: config}, opts) do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
-        {:ok, Enum.reverse(acc, partial(text))}
+        done(turn, partial(text))
 
       {:park, waiting} ->
-        model_parked(scope, context, waiting, acc, 0)
+        waiting_on_model(turn, waiting)
 
       {:interrupted, text} ->
-        {:ok, Enum.reverse(acc, partial(text))}
+        done(turn, partial(text))
 
       {:error, reason} ->
         Logger.warning("Error streaming text: #{inspect(reason)}")
-        {:error, reason}
+        fail(turn, reason)
     end
   end
 
-  defp model_parked(scope, context, waiting, acc, remaining) do
-    parked =
-      Parked.model(waiting,
-        context: context,
-        acc: acc,
-        remaining: remaining,
-        revision: revision(scope)
-      )
-
-    {:parked, parked}
+  defp waiting_on_model(turn, waiting) do
+    %{
+      turn
+      | state: :waiting,
+        response: nil,
+        calls: [Call.under(waiting, nil)],
+        revision: revision(turn.scope)
+    }
   end
 
   defp closing(nil), do: @closing
   defp closing(system), do: system <> "\n\n" <> @closing
 
-  defp advance(scope, context, acc, remaining, response) do
-    with :ok <- journal(scope, context, acc, remaining, response) do
-      handle(scope, context, acc, remaining, response)
+  defp advance(turn) do
+    case journal(turn) do
+      :ok -> handle(turn)
+      {:error, reason} -> fail(turn, reason)
     end
   end
 
-  # A batch of tool calls is handed to the journal before any of it runs. A
-  # final answer changes nothing the journal needs, and is not.
-  defp journal(%Scope{journal: nil}, _context, _acc, _remaining, _response), do: :ok
+  # A batch of tool calls is handed to the journal, as the turn written down,
+  # before any of it runs. A final answer changes nothing the journal needs,
+  # and is not.
+  defp journal(%__MODULE__{scope: %Scope{journal: nil}}), do: :ok
 
-  defp journal(%Scope{journal: journal}, context, acc, remaining, response) do
+  defp journal(%__MODULE__{scope: %Scope{journal: journal}, response: response} = turn) do
     case ReqLLM.Response.classify(response) do
       %{type: :tool_calls} ->
-        checkpoint = %Checkpoint{
-          context: context,
-          response: response,
-          acc: acc,
-          remaining: remaining
-        }
-
-        case GenServer.call(journal, {:checkpoint, checkpoint}, :timer.seconds(30)) do
+        case GenServer.call(journal, {:checkpoint, under(turn, nil)}, :timer.seconds(30)) do
           :ok -> :ok
           {:error, reason} -> {:error, {:checkpoint_failed, reason}}
         end
@@ -325,36 +399,36 @@ defmodule Tars.LLM.Turn do
     :exit, reason -> {:error, {:checkpoint_failed, reason}}
   end
 
-  defp handle(scope, context, acc, remaining, response) do
-    case handle_response(Scope.batch(scope, rounds(acc)), context, response) do
-      {:done, messages} -> {:ok, Enum.reverse(acc, messages)}
-      {:cont, context, messages} -> continue(scope, context, messages, acc, remaining)
-      {:waiting, outcomes} -> park(scope, context, response, outcomes, acc, remaining)
-      {:error, reason} -> {:error, reason}
+  # The turn reports that it waits; the agent holding it is what announces the
+  # state change, because only it can say that `resume/2` will now work.
+  defp handle(turn) do
+    case handle_response(Scope.batch(turn.scope, rounds(turn)), turn.context, turn.response) do
+      {:done, messages} ->
+        done(turn, messages)
+
+      {:cont, context, messages} ->
+        continue(turn, context, messages)
+
+      {:waiting, calls} ->
+        %{turn | state: :waiting, calls: calls, revision: revision(turn.scope)}
+
+      {:error, reason} ->
+        fail(turn, reason)
     end
   end
 
-  # The turn reports that it stopped; the agent holding it is what announces
-  # the state change, because only it can say that `resume/2` will now work.
-  defp park(scope, context, response, outcomes, acc, remaining) do
-    parked = %Parked{
-      context: context,
-      response: response,
-      outcomes: outcomes,
-      acc: acc,
-      remaining: remaining,
-      revision: revision(scope)
+  defp continue(turn, context, messages) do
+    turn = %{
+      turn
+      | context: context,
+        response: nil,
+        calls: [],
+        messages: turn.messages ++ messages
     }
 
-    {:parked, parked}
-  end
-
-  defp continue(scope, context, messages, acc, remaining) do
-    acc = Enum.reverse(messages, acc)
-
     if stop_requested?(),
-      do: {:ok, Enum.reverse(acc)},
-      else: loop(scope, context, acc, countdown(remaining))
+      do: done(turn),
+      else: loop(%{turn | remaining: countdown(turn.remaining)})
   end
 
   defp stop_requested? do
@@ -379,17 +453,18 @@ defmodule Tars.LLM.Turn do
 
   # Each round of tool use adds one assistant message to what the turn has
   # produced, so their count is the round a batch belongs to.
-  defp rounds(acc), do: Enum.count(acc, &(&1.role == :assistant))
+  defp rounds(%__MODULE__{messages: messages}), do: Enum.count(messages, &(&1.role == :assistant))
 
   # The message a model call answers with is named by where the turn is: its
   # span and its round, so a turn replayed names it as it did the first time.
-  defp message_id(%Scope{source: source}, acc),
-    do: "#{source.trace.span_id}.m#{rounds(acc)}"
+  defp message_id(%__MODULE__{scope: %Scope{source: source}} = turn),
+    do: "#{source.trace.span_id}.m#{rounds(turn)}"
 
   # A call a hook parks is never made, so it has no model events. `opts` go
-  # to `Tars.LLM.Dispatch.admit/3` on every try.
-  defp request(%Scope{} = scope, context, message_id, opts),
-    do: request(scope, context, message_id, scope.config.retries, opts)
+  # to `Tars.LLM.Dispatch.admit/3` on every try. `scope` is the turn's, or one
+  # whose config is narrowed for the last request of a turn at its cap.
+  defp request(%__MODULE__{} = turn, %Scope{} = scope, opts),
+    do: request(scope, turn.context, message_id(turn), scope.config.retries, opts)
 
   defp request(%Scope{} = scope, context, message_id, retries, opts) do
     request = Request.new(scope.config, context)

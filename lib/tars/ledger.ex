@@ -50,11 +50,11 @@ defmodule Tars.Ledger do
   under the same key where its tool declares it may (`c:Tars.Tool.in_doubt/1`).
   See `Tars.LLM.Turn`.
 
-  A tool with an effect outside Tars passes `idempotency_key/2` along to the
-  system it calls, so the effect itself is not repeated either:
+  A tool with an effect outside Tars, handed its `Tars.Call` (see
+  `Tars.Tool.new!/1`), passes `idempotency_key/1` along to the system it calls,
+  so the effect itself is not repeated either:
 
-      key = Tars.Ledger.idempotency_key(Tars.Scope.Context.current(), Tars.Scope.Context.current_call())
-      Stripe.refund(order, idempotency_key: key)
+      Stripe.refund(order, idempotency_key: Tars.Ledger.idempotency_key(call))
 
   ## Claiming without a ledger
 
@@ -132,8 +132,14 @@ defmodule Tars.Ledger do
 
   @doc """
   A string naming `call` under `scope` that no other call shares, and that the
-  same call replayed shares: an idempotency key for a system a tool calls.
+  same call replayed shares: an idempotency key for a system a tool calls. A
+  `Tars.Call` names its own scope.
   """
+  @spec idempotency_key(Tars.Call.t()) :: String.t()
+  def idempotency_key(%Tars.Call{scope: %Tars.Scope{} = scope} = call),
+    do: idempotency_key(scope, Tars.Call.to_map(call))
+
+  @doc "`idempotency_key/1` for `call`, written as `t:Tars.Tool.call/0` writes one, under `scope`."
   @spec idempotency_key(Tars.Scope.t(), Tool.call()) :: String.t()
   def idempotency_key(scope, call) do
     {agent_id, call_id} = key(scope, call)

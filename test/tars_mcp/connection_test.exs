@@ -1,6 +1,8 @@
 defmodule TarsMCP.ConnectionTest do
   use TarsMCP.Case, async: false
 
+  alias Tars.Test.Calls
+
   describe "a server that filters its tools" do
     @describetag server_opts: [only: ~w(echo)]
 
@@ -9,7 +11,9 @@ defmodule TarsMCP.ConnectionTest do
     end
 
     test "still calls a tool it does not offer, when asked directly", %{ref: ref} do
-      assert {:ok, %{"ok" => true}} = TarsMCP.call(ref, "echo", %{"value" => "x"})
+      assert {:ok, %{"ok" => true}} =
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "x"}))
+               |> Calls.result()
     end
   end
 
@@ -18,7 +22,12 @@ defmodule TarsMCP.ConnectionTest do
 
     test "reads it from the environment it was started with", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "s3cret"}}} =
-               TarsMCP.call(ref, "secret", %{"name" => "DEMO_TOKEN"})
+               TarsMCP.call(
+                 ref,
+                 "secret",
+                 Calls.tool("secret", %{"name" => "DEMO_TOKEN"})
+               )
+               |> Calls.result()
     end
 
     test "and the credential is nowhere in the tools the model sees", %{ref: ref} do
@@ -33,7 +42,8 @@ defmodule TarsMCP.ConnectionTest do
       long = String.duplicate("a", 100)
 
       assert {:ok, %{"result" => %{"content" => content}}} =
-               TarsMCP.call(ref, "echo", %{"value" => long})
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => long}))
+               |> Calls.result()
 
       assert content =~ "[cut:"
       assert content =~ String.duplicate("a", 16)
@@ -42,7 +52,8 @@ defmodule TarsMCP.ConnectionTest do
 
     test "leaves a short result whole", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "short"}}} =
-               TarsMCP.call(ref, "echo", %{"value" => "short"})
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "short"}))
+               |> Calls.result()
     end
   end
 

@@ -13,7 +13,7 @@ defmodule TarsMCP.ExpiryTest do
     @behaviour Tars.Credential
 
     @impl true
-    def resolve({:user, "stub"}, %Scope{user: user}),
+    def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{user: user}}),
       do: {:ok, Credential.secret("token-#{user}")}
   end
 

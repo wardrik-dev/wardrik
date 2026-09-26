@@ -2,6 +2,7 @@ defmodule TarsMCPTest do
   use TarsMCP.Case, async: false
 
   alias Tars.LLM.Config
+  alias Tars.Test.Calls
   alias Tars.Tool
 
   defp offered(ref),
@@ -64,16 +65,20 @@ defmodule TarsMCPTest do
   describe "call/3" do
     test "calls the tool and hands back what the server answered", %{ref: ref} do
       assert {:ok, %{"ok" => true, "result" => %{"content" => "hello"}}} =
-               TarsMCP.call(ref, "echo", %{"value" => "hello"})
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "hello"}))
+               |> Calls.result()
     end
 
     test "takes arguments with atom keys", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "hello"}}} =
-               TarsMCP.call(ref, "echo", %{value: "hello"})
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{value: "hello"}))
+               |> Calls.result()
     end
 
     test "a tool error from the server is an error result, not a crash", %{ref: ref} do
-      assert {:ok, %{"ok" => false, "error" => error}} = TarsMCP.call(ref, "boom", %{})
+      assert {:ok, %{"ok" => false, "error" => error}} =
+               TarsMCP.call(ref, "boom", Calls.tool("boom", %{}))
+               |> Calls.result()
 
       assert error["code"] == "mcp_tool_error"
       assert error["message"] =~ "the tool refused"
@@ -81,7 +86,8 @@ defmodule TarsMCPTest do
 
     test "a server that is not connected answers as an error" do
       assert {:ok, %{"ok" => false, "error" => error}} =
-               TarsMCP.call(:never_connected, "echo", %{})
+               TarsMCP.call(:never_connected, "echo", Calls.tool("echo", %{}))
+               |> Calls.result()
 
       assert error["message"] =~ "no MCP server is connected"
     end
@@ -90,7 +96,7 @@ defmodule TarsMCPTest do
       [echo | _rest] = TarsMCP.tools(ref)
 
       assert {:ok, %{"result" => %{"content" => "through"}}} =
-               ReqLLM.Tool.execute(echo, %{"value" => "through"})
+               Calls.run(echo, %{"value" => "through"})
     end
   end
 

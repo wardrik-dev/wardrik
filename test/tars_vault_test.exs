@@ -4,6 +4,7 @@ defmodule TarsVaultTest do
   alias Tars.Credential
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias TarsVault.Sealed
 
   setup do
@@ -121,7 +122,10 @@ defmodule TarsVaultTest do
       :ok = TarsVault.put({:user, "github"}, user, "ghp_secret")
 
       assert {:ok, credential} =
-               Credential.resolve(scope(credentials: TarsVault, user: user), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: TarsVault, user: user)),
+                 {:user, "github"}
+               )
 
       assert Credential.reveal(credential) == "ghp_secret"
     end
@@ -130,19 +134,28 @@ defmodule TarsVaultTest do
       :ok = TarsVault.put({:org, "github"}, "acme", "org-token")
 
       assert {:ok, credential} =
-               Credential.resolve(scope(credentials: TarsVault, org: "acme"), {:org, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: TarsVault, org: "acme")),
+                 {:org, "github"}
+               )
 
       assert Credential.reveal(credential) == "org-token"
     end
 
     test "a scope with no user cannot resolve a user reference" do
       assert {:error, :no_user} =
-               Credential.resolve(scope(credentials: TarsVault), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: TarsVault)),
+                 {:user, "github"}
+               )
     end
 
     test "a secret nobody has put there is not found", %{user: user} do
       assert {:error, :not_found} =
-               Credential.resolve(scope(credentials: TarsVault, user: user), {:user, "nothing"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: TarsVault, user: user)),
+                 {:user, "nothing"}
+               )
     end
   end
 

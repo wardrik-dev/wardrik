@@ -4,6 +4,7 @@ defmodule TarsOAuthTest do
   alias Tars.Credential
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
 
   setup do
     start_supervised!({TarsOAuth.Supervisor, loopback: false})
@@ -19,7 +20,7 @@ defmodule TarsOAuthTest do
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
     {:error, {:authorization_required, url}} =
-      Credential.resolve(scope(owner), {:user, "github"})
+      Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
 
     url
   end
@@ -36,14 +37,20 @@ defmodule TarsOAuthTest do
       url = connect(owner)
 
       assert {:error, {:authorization_required, ^url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
     end
 
     test "gets a link of their own, not somebody else's", %{owner: owner} do
       mine = connect(owner)
 
       {:error, {:authorization_required, theirs}} =
-        Credential.resolve(scope("someone-else"), {:user, "github"})
+        Credential.resolve(
+          Calls.tool("tool", %{}, scope("someone-else")),
+          {:user, "github"}
+        )
 
       refute state_of(mine) == state_of(theirs)
     end
@@ -55,7 +62,12 @@ defmodule TarsOAuthTest do
 
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
-      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
+
       assert Credential.reveal(credential) == "at_first"
       assert TarsOAuth.connected?("github", owner)
     end
@@ -64,7 +76,11 @@ defmodule TarsOAuthTest do
       url = connect(owner)
       {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")
 
-      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
 
       assert credential.expires_at > System.system_time(:second)
       assert Credential.remaining_ms(credential) > 0
@@ -111,7 +127,12 @@ defmodule TarsOAuthTest do
     test "is renewed without asking the user again", %{owner: owner} do
       stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
 
-      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
+
       assert Credential.reveal(credential) == "at_second"
 
       assert_receive {:oauth, "POST", "/token", body}
@@ -120,11 +141,18 @@ defmodule TarsOAuthTest do
 
     test "the renewed token is what is stored from then on", %{owner: owner} do
       stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
-      {:ok, _credential} = Credential.resolve(scope(owner), {:user, "github"})
+
+      {:ok, _credential} =
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
 
       stub_server(cimd: true, token: %{"error" => "server_is_down"})
 
-      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
+
       assert Credential.reveal(credential) == "at_second"
     end
 
@@ -132,7 +160,10 @@ defmodule TarsOAuthTest do
       stub_server(cimd: true, token: %{"error" => "invalid_grant"})
 
       assert {:error, {:authorization_required, _url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
     end
   end
 
@@ -153,7 +184,10 @@ defmodule TarsOAuthTest do
       )
 
       assert {:error, {:authorization_required, _url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
     end
 
     test "opens the link where the callback comes back to this machine", %{owner: owner} do
@@ -165,7 +199,10 @@ defmodule TarsOAuthTest do
       )
 
       assert {:error, {:authorization_required, url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
 
       assert params_of(url)["redirect_uri"] == "http://127.0.0.1:4599/callback"
     end
@@ -186,7 +223,10 @@ defmodule TarsOAuthTest do
       Application.put_env(:tars, TarsVault, keys: [TarsVault.generate_key()])
 
       assert {:error, {:authorization_required, _url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
 
       refute TarsOAuth.connected?("github", owner)
     end
@@ -197,7 +237,10 @@ defmodule TarsOAuthTest do
       :ok = TarsVault.put({:user, "github"}, owner, "not json")
 
       assert {:error, {:authorization_required, _url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
     end
   end
 
@@ -206,14 +249,18 @@ defmodule TarsOAuthTest do
       configure(providers: [])
 
       assert {:error, {:no_such_provider, "unknown"}} =
-               Credential.resolve(scope(owner), {:user, "unknown"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "unknown"}
+               )
     end
 
     test "a scope with no user cannot authorize anyone" do
       configure(providers: [github: [resource: resource()]])
       scope = Config.new() |> Scope.root("acme/a", credentials: TarsOAuth)
 
-      assert {:error, :no_user} = Credential.resolve(scope, {:user, "github"})
+      assert {:error, :no_user} =
+               Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})
     end
 
     test "disconnecting means the next call asks again", %{owner: owner} do
@@ -224,7 +271,10 @@ defmodule TarsOAuthTest do
       refute TarsOAuth.connected?("github", owner)
 
       assert {:error, {:authorization_required, _url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
     end
 
     test "connections/1 says what a user could authorize and what they have", %{owner: owner} do

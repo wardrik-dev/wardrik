@@ -58,7 +58,6 @@ defmodule TarsMCP do
 
   alias Tars.Credential
   alias Tars.Scope
-  alias Tars.Scope.Context
   alias Tars.Tool
   alias Tars.Tool.Result
   alias TarsMCP.Connection
@@ -92,42 +91,52 @@ defmodule TarsMCP do
   What a tool built by `TarsMCP.Tool.build/2` calls; the ref and the remote
   name are the ones it was built with.
 
-  A call made from inside a tool call reports the server's progress as
+  The call reports the server's progress as
   `{:tool_progress, call_id, name, progress, total}` on the turn's event
   stream, and is cancelled on the server if this process is stopped before the
   server answers.
 
   A server with a `:credential` is called over a connection belonging to the
-  scope's user. A user who has not authorized it yet gets `{:park, prompt}`,
-  which stops the turn until they have. A server that refuses the credential
-  it was given is tried once more with a freshly resolved one, which covers a
-  token revoked or expired without warning.
+  call's user. A user who has not authorized it yet has the call parked on the
+  link, which stops the turn until they have. A server that refuses the
+  credential it was given is tried once more with a freshly resolved one,
+  which covers a token revoked or expired without warning.
   """
-  @spec call(atom(), String.t(), map()) :: Result.t() | {:park, String.t()}
-  def call(ref, name, params), do: call(ref, name, params, :may_retry)
+  @spec call(atom(), String.t(), Tars.Call.t()) :: Tars.Call.t()
+  def call(ref, name, %Tars.Call{} = call), do: call(ref, name, call, :may_retry)
 
-  defp call(ref, name, params, retry) do
+  defp call(ref, name, call, retry) do
     with %Offer{server: server} <- Connection.offer(ref),
-         {:ok, principal} <- connected(server) do
+         {:ok, principal} <- connected(server, call) do
       :ok = Connection.watch(ref, principal)
 
       answer =
         ref
         |> Connection.client(principal)
-        |> request(server, name, arguments(params))
+        |> request(server, name, call)
 
       if retry == :may_retry and refused?(answer) and Server.per_user?(server) do
         Connection.close(ref, principal)
-        call(ref, name, params, :tried)
+        call(ref, name, call, :tried)
       else
-        TarsMCP.Tool.answer(answer, server)
+        Tars.Call.answer(call, TarsMCP.Tool.answer(answer, server))
       end
     else
-      nil -> Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
-      {:park, prompt} -> {:park, prompt}
-      {:error, reason} -> Result.error(:not_authorized, reason)
+      not_connected -> unconnected(call, ref, not_connected)
     end
   end
+
+  defp unconnected(call, ref, nil),
+    do:
+      Tars.Call.answer(
+        call,
+        Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
+      )
+
+  defp unconnected(call, _ref, {:park, prompt}), do: Tars.Call.park(call, prompt)
+
+  defp unconnected(call, _ref, {:error, reason}),
+    do: Tars.Call.answer(call, Result.error(:not_authorized, reason))
 
   # A server saying the credential is no good, however it says it: an HTTP 401
   # or 403 from the transport, or a protocol error carrying one.
@@ -149,15 +158,13 @@ defmodule TarsMCP do
   the user has not authorized yet, and lists the server's real tools in place
   of this one once they have.
   """
-  @spec authorize(atom(), map()) :: Result.t() | {:park, String.t()}
-  def authorize(ref, _params) do
+  @spec authorize(atom(), Tars.Call.t()) :: Tars.Call.t()
+  def authorize(ref, %Tars.Call{} = call) do
     with %Offer{server: server} <- Connection.offer(ref),
-         {:ok, _principal} <- connected(server) do
-      Result.ok(%{"connected" => true, "server" => to_string(ref)})
+         {:ok, _principal} <- connected(server, call) do
+      Tars.Call.answer(call, Result.ok(%{"connected" => true, "server" => to_string(ref)}))
     else
-      nil -> Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
-      {:park, prompt} -> {:park, prompt}
-      {:error, reason} -> Result.error(:not_authorized, reason)
+      not_connected -> unconnected(call, ref, not_connected)
     end
   end
 
@@ -179,10 +186,10 @@ defmodule TarsMCP do
   @spec configured?() :: boolean()
   def configured?, do: TarsMCP.Config.configured?()
 
-  defp request(client, server, name, arguments) do
-    opts = [timeout: server.timeout] ++ reporting()
+  defp request(client, server, name, call) do
+    opts = [timeout: server.timeout] ++ reporting(call)
 
-    Anubis.Client.call_tool(client, name, arguments, opts)
+    Anubis.Client.call_tool(client, name, arguments(call.target.arguments), opts)
   catch
     :exit, {:noproc, _call} ->
       {:error, Anubis.MCP.Error.transport(:not_connected, %{server: server.ref})}
@@ -194,27 +201,23 @@ defmodule TarsMCP do
   # A server everyone shares is reached over the deployment's own connection.
   # One each user reaches as themselves needs that user's credential, and a
   # connection of their own to carry it.
-  defp connected(%Server{credential: nil}), do: {:ok, :deployment}
+  defp connected(%Server{credential: nil}, _call), do: {:ok, :deployment}
 
-  defp connected(%Server{} = server) do
-    case Context.current() do
-      %Scope{} = scope -> connected(server, scope)
-      nil -> {:error, "#{server.ref} is reached as a user, and this call has none"}
-    end
-  end
+  defp connected(%Server{} = server, %Tars.Call{scope: nil}),
+    do: {:error, "#{server.ref} is reached as a user, and this call has none"}
 
-  defp connected(%Server{} = server, %Scope{} = scope) do
+  defp connected(%Server{} = server, %Tars.Call{scope: %Scope{} = scope} = call) do
     principal = scope.user || :deployment
 
     if Connection.running?(server.ref, principal) do
       {:ok, principal}
     else
-      open(server, scope, principal)
+      open(server, call, principal)
     end
   end
 
-  defp open(%Server{} = server, %Scope{} = scope, principal) do
-    with {:ok, credential} <- Credential.resolve(scope, server.credential),
+  defp open(%Server{} = server, call, principal) do
+    with {:ok, credential} <- Credential.resolve(call, server.credential),
          {:ok, transport} <- Server.with_credential(server, credential),
          good_for = Credential.remaining_ms(credential),
          {:ok, _pid} <- TarsMCP.Supervisor.connect(server, principal, transport, good_for),
@@ -237,21 +240,14 @@ defmodule TarsMCP do
     end
   end
 
-  # The call in progress is the token the server echoes back, and the reporter
-  # is bound here because the callback runs in the client's process.
-  defp reporting do
-    case {Tool.progress_reporter(), Context.current_call_id()} do
-      {report, call_id} when is_function(report, 2) and is_binary(call_id) ->
-        [
-          progress: [
-            token: call_id,
-            callback: fn _token, progress, total -> report.(progress, total) end
-          ]
-        ]
+  # The call's id is the token the server echoes back, and the reporter is
+  # bound here because the callback runs in the client's process. A call
+  # outside a turn has nowhere to report to.
+  defp reporting(%Tars.Call{scope: nil}), do: []
 
-      _no_turn ->
-        []
-    end
+  defp reporting(%Tars.Call{id: id} = call) do
+    report = Tool.progress_reporter(call)
+    [progress: [token: id, callback: fn _token, progress, total -> report.(progress, total) end]]
   end
 
   # A model's arguments arrive with string keys already; a hand-written call is

@@ -162,14 +162,14 @@ under the span of the call they belong to.
 
 ### Credentials, and authorizing a user
 
-A tool names the secret it needs rather than holding one, and the scope
-resolves it:
+A tool names the secret it needs rather than holding one, and resolves it
+for the `Tars.Call` it was handed (see `Tars.Tool.new!/1`):
 
 ```elixir
-case Tars.Credential.resolve(scope, {:user, "github"}) do
-  {:ok, credential} -> call(Tars.Credential.reveal(credential))
-  {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
-  {:error, {:authorization_required, url, code}} -> {:park, "Enter #{code} at #{url}"}
+case Tars.Credential.resolve(call, {:user, "github"}) do
+  {:ok, credential} -> Tars.Call.answer(call, fetch(Tars.Credential.reveal(credential)))
+  {:error, {:authorization_required, url}} -> Tars.Call.park(call, "Connect GitHub: " <> url)
+  {:error, {:authorization_required, url, code}} -> Tars.Call.park(call, "Enter #{code} at #{url}")
 end
 ```
 

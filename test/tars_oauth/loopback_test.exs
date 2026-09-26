@@ -4,6 +4,7 @@ defmodule TarsOAuth.LoopbackTest do
   alias Tars.Credential
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
 
   setup %{owner: owner} do
     # The callback is served from a process of the listener's own, so the stub
@@ -22,7 +23,9 @@ defmodule TarsOAuth.LoopbackTest do
     )
 
     scope = Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: TarsOAuth)
-    {:error, {:authorization_required, url}} = Credential.resolve(scope, {:user, "github"})
+
+    {:error, {:authorization_required, url}} =
+      Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})
 
     %{port: port, scope: scope, url: url}
   end
@@ -46,7 +49,9 @@ defmodule TarsOAuth.LoopbackTest do
     assert response =~ "200 OK"
     assert response =~ "github is connected"
 
-    assert {:ok, credential} = Credential.resolve(scope, {:user, "github"})
+    assert {:ok, credential} =
+             Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})
+
     assert Credential.reveal(credential) == "at_first"
   end
 

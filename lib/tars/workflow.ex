@@ -51,7 +51,6 @@ defmodule Tars.Workflow do
   """
 
   alias Tars.Scope
-  alias Tars.Scope.Context
   alias Tars.Tool.Result
   alias Tars.Workflow.Step
 
@@ -84,26 +83,21 @@ defmodule Tars.Workflow do
   """
   @spec as_tool(Step.t(), keyword()) :: ReqLLM.Tool.t()
   def as_tool(step, opts) when is_list(opts) do
-    ReqLLM.Tool.new!(Keyword.put(opts, :callback, {__MODULE__, :call, [step]}))
+    Tars.Tool.new!(Keyword.put(opts, :call, {__MODULE__, :call, [step]}))
   end
 
   @doc """
-  Runs `step` as the tool call currently in progress.
+  Runs `step` for `call`, the tool call `as_tool/2` is handed.
 
-  This is what `as_tool/2` points a callback at. It finds the scope of the call in
-  progress, so everything the step spawns is attributed to the agent that asked
-  for it. The answer comes back as a `Tars.Tool.Result`, so a workflow that
-  fails reports the failure to the model instead of failing the turn.
+  The step runs under the call's scope, so everything it spawns is attributed
+  to the agent that asked for it. The call is answered with a
+  `Tars.Tool.Result`, so a workflow that fails reports the failure to the
+  model instead of failing the turn.
   """
-  @spec call(Step.t(), map() | keyword()) :: Result.t() | {:error, String.t()}
-  def call(step, args) do
-    case Context.current() do
-      nil ->
-        {:error, "#{inspect(step)} was called outside a tool call"}
-
-      %Scope{} = scope ->
-        step |> Step.invoke(Map.new(args), scope) |> to_result()
-    end
+  @spec call(Step.t(), Tars.Call.t()) :: Tars.Call.t()
+  def call(step, %Tars.Call{scope: %Scope{} = scope, target: %Tars.Call.Tool{} = tool} = call) do
+    result = step |> Step.invoke(Map.new(tool.arguments), scope) |> to_result()
+    Tars.Call.answer(call, result)
   end
 
   @doc """

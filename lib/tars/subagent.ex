@@ -69,12 +69,12 @@ defmodule Tars.Subagent do
   end
 
   defp answer(delegate, prompt) do
-    case Turn.run(delegate, Context.new([Context.user(prompt)])) do
-      {:ok, messages} -> {:ok, final_text(messages)}
+    case delegate |> Turn.new(Context.new([Context.user(prompt)])) |> Turn.run() do
+      %Turn{state: :done, messages: messages} -> {:ok, final_text(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
-      {:parked, _turn} -> {:error, :approval_required}
-      {:error, _reason} = error -> error
+      %Turn{state: :waiting} -> {:error, :approval_required}
+      %Turn{state: :failed, error: reason} -> {:error, reason}
     end
   end
 

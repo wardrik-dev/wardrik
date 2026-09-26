@@ -4,6 +4,7 @@ defmodule Tars.WorkflowTest do
   alias Tars.Event
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias Tars.Test.Steps
   alias Tars.Workflow
 
@@ -175,38 +176,32 @@ defmodule Tars.WorkflowTest do
   end
 
   describe "call/2" do
-    test "runs the step under the scope of the tool call in progress", %{scope: scope} do
-      :ok = Scope.Context.put(scope)
-
-      assert Workflow.call(Steps.Echo, %{topic: "pricing"}) ==
+    test "runs the step under the scope of the call it is handed", %{scope: scope} do
+      assert Steps.Echo
+             |> Workflow.call(Calls.tool("echo", %{topic: "pricing"}, scope))
+             |> Calls.result() ==
                {:ok, %{"ok" => true, "result" => %{topic: "pricing"}}}
     end
 
     test "accepts a step with options", %{scope: scope} do
-      :ok = Scope.Context.put(scope)
-
       assert {:ok, %{"result" => {%{}, [mode: :loud]}}} =
-               Workflow.call({Steps.Echo, [mode: :loud]}, %{})
+               {Steps.Echo, [mode: :loud]}
+               |> Workflow.call(Calls.tool("echo", %{}, scope))
+               |> Calls.result()
     end
 
     test "a failed workflow is an answer, not a failed tool", %{scope: scope} do
-      :ok = Scope.Context.put(scope)
-
       assert {:ok, %{"ok" => false, "error" => %{"code" => "boom"}}} =
-               Workflow.call(Steps.Boom, %{})
+               Steps.Boom
+               |> Workflow.call(Calls.tool("boom", %{}, scope))
+               |> Calls.result()
     end
 
     test "keyword arguments are accepted", %{scope: scope} do
-      :ok = Scope.Context.put(scope)
-
       assert {:ok, %{"result" => %{topic: "pricing"}}} =
-               Workflow.call(Steps.Echo, topic: "pricing")
-    end
-
-    test "says so when there is no tool call in progress" do
-      # This test's process has never been a tool call.
-      assert {:error, message} = Workflow.call(Steps.Echo, %{})
-      assert message =~ "outside a tool call"
+               Steps.Echo
+               |> Workflow.call(Calls.tool("echo", [topic: "pricing"], scope))
+               |> Calls.result()
     end
   end
 

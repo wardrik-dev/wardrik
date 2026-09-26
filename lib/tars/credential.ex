@@ -3,13 +3,13 @@ defmodule Tars.Credential do
   A secret a tool needs, named rather than held.
 
   Tars stores no credentials. A tool declares what it needs as a reference and
-  asks the scope to resolve it when it calls:
+  asks for it to be resolved for the `Tars.Call` it was handed:
 
-      case Tars.Credential.resolve(scope, {:user, "github"}) do
-        {:ok, credential} -> Req.get(url, auth: {:bearer, Tars.Credential.reveal(credential)})
-        {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
-        {:error, {:authorization_required, url, code}} -> {:park, "Enter " <> code <> " at " <> url}
-        {:error, reason} -> Tars.Tool.Result.error(reason)
+      case Tars.Credential.resolve(call, {:user, "github"}) do
+        {:ok, credential} -> Tars.Call.answer(call, fetch(url, credential))
+        {:error, {:authorization_required, url}} -> Tars.Call.park(call, "Connect GitHub: " <> url)
+        {:error, {:authorization_required, url, code}} -> Tars.Call.park(call, "Enter " <> code <> " at " <> url)
+        {:error, reason} -> Tars.Call.answer(call, Tars.Tool.Result.error(reason))
       end
 
   A deployment names a `Tars.Credential` module on the scope, the way it names
@@ -18,8 +18,8 @@ defmodule Tars.Credential do
 
   ## References
 
-    * `{:user, name}` - the acting user's credential for `name`, whoever
-      `scope.user` says that is
+    * `{:user, name}` - the acting user's credential for `name`, whoever the
+      call's `scope.user` says that is
     * `{:org, name}` - the organisation's own, shared by everyone in it
     * `{:named, name}` - one the deployment configured, belonging to nobody
 
@@ -51,17 +51,17 @@ defmodule Tars.Credential do
   could have this credential but has not connected yet, and connects at
   `url`. `{:error, {:authorization_required, url, code}}` says the same of a
   user who connects by entering `code` at `url`, on whatever device they have
-  to hand. A tool answering with `{:park, prompt}` stops the turn until they
-  do; see `c:Tars.Tool.tool/0`.
+  to hand. A tool that parks its call with `Tars.Call.park/2` stops the turn
+  until they do; see `Tars.Tool`.
 
   A resolver that sends the user somewhere else to authorize keeps
-  `continuation/0` alongside whatever it started, and applies it when the
+  `continuation/1` alongside whatever it started, and applies it when the
   credential becomes resolvable. The parked call is answered where the user
   finished, rather than waiting to be told a second time.
   """
 
+  alias Tars.Call
   alias Tars.Scope
-  alias Tars.Scope.Context
 
   @enforce_keys [:kind, :value]
   defstruct [:kind, :value, :expires_at]
@@ -82,33 +82,28 @@ defmodule Tars.Credential do
           | {:error, {:authorization_required, String.t(), String.t()}}
           | {:error, term()}
 
-  @typedoc "How to answer the call that a credential is being resolved for."
-  @type continuation() :: mfa()
+  @typedoc "How to answer the call that a credential is being resolved for, as `{module, function, args}`."
+  @type continuation() :: {module(), atom(), list()}
 
   @doc """
-  Resolves one reference for the principal a scope names.
+  Resolves one reference for the principal the call's scope names.
 
   Called in the process making the call, as often as the call is made. A
   resolver that caches is free to; core asks every time.
   """
-  @callback resolve(ref(), Scope.t()) :: outcome()
+  @callback resolve(ref(), Call.t()) :: outcome()
 
   @doc """
-  Approves the call this credential is being resolved for, as an MFA to apply
-  later, or `nil` when nothing is waiting on one.
+  Approves `call`, the call a credential is being resolved for, as an MFA to
+  apply later.
 
-  Read by a resolver in `c:resolve/2` and applied once the credential can be
+  Kept by a resolver in `c:resolve/2` and applied once the credential can be
   resolved. Applying it is a no-op on a turn that has already been answered.
   """
-  @spec continuation() :: continuation() | nil
-  def continuation do
-    with %Scope{source: %{agent_id: agent_id}} = scope <- Context.current(),
-         %{id: call_id} <- Context.current_call() do
-      by = %Tars.Principal{type: :oauth, id: to_string(scope.user || "_")}
-      {Tars.Agent, :decide, [agent_id, %{call_id => :approve}, [by: by]]}
-    else
-      _outside_a_call -> nil
-    end
+  @spec continuation(Call.t()) :: continuation()
+  def continuation(%Call{id: call_id, scope: %Scope{source: %{agent_id: agent_id}} = scope}) do
+    by = %Tars.Principal{type: :oauth, id: to_string(scope.user || "_")}
+    {Tars.Agent, :decide, [agent_id, %{call_id => :approve}, [by: by]]}
   end
 
   @doc """
@@ -150,17 +145,17 @@ defmodule Tars.Credential do
   def reveal(%__MODULE__{value: value}), do: value
 
   @doc """
-  Asks this scope's resolver for `ref`.
+  Asks the resolver of `call`'s scope for `ref`.
 
   Answers `{:error, :no_resolver}` where a deployment configured none, and
   `{:error, {:resolver_failed, reason}}` where one raised: a resolver that
   breaks must not take the turn with it.
   """
-  @spec resolve(Scope.t(), ref()) :: outcome()
-  def resolve(%Scope{credentials: nil}, _ref), do: {:error, :no_resolver}
+  @spec resolve(Call.t(), ref()) :: outcome()
+  def resolve(%Call{scope: %Scope{credentials: nil}}, _ref), do: {:error, :no_resolver}
 
-  def resolve(%Scope{credentials: resolver} = scope, ref) when is_atom(resolver) do
-    resolver.resolve(ref, scope)
+  def resolve(%Call{scope: %Scope{credentials: resolver}} = call, ref) when is_atom(resolver) do
+    resolver.resolve(ref, call)
   catch
     kind, reason -> {:error, {:resolver_failed, Exception.format(kind, reason)}}
   end

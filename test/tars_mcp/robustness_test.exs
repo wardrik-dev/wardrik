@@ -5,6 +5,7 @@ defmodule TarsMCP.RobustnessTest do
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias TarsMCP.Connection
 
   setup %{ref: ref} do
@@ -35,7 +36,11 @@ defmodule TarsMCP.RobustnessTest do
       batch = start_call(scope, "call_slow", "#{ref}__slow")
       await_reached_server("call_slow")
 
-      answering = Task.async(fn -> TarsMCP.call(ref, "echo", %{"value" => "still here"}) end)
+      answering =
+        Task.async(fn ->
+          TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "still here"}))
+          |> Calls.result()
+        end)
 
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
 
@@ -46,7 +51,12 @@ defmodule TarsMCP.RobustnessTest do
 
     test "a call that ends of its own accord cancels nothing", %{ref: ref} do
       assert {:ok, %{"ok" => true}} =
-               Task.await(Task.async(fn -> TarsMCP.call(ref, "echo", %{"value" => "done"}) end))
+               Task.await(
+                 Task.async(fn ->
+                   TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "done"}))
+                   |> Calls.result()
+                 end)
+               )
 
       assert cancelled(ref) == 0
     end
@@ -65,7 +75,9 @@ defmodule TarsMCP.RobustnessTest do
     end
 
     test "a call outside a turn reports none and still answers", %{ref: ref} do
-      assert {:ok, %{"result" => %{"content" => "done in 2"}}} = TarsMCP.call(ref, "noisy", %{})
+      assert {:ok, %{"result" => %{"content" => "done in 2"}}} =
+               TarsMCP.call(ref, "noisy", Calls.tool("noisy", %{}))
+               |> Calls.result()
 
       refute_receive %Event{payload: {:tool_progress, _id, _name, _progress, _total}}, 100
     end
@@ -84,7 +96,10 @@ defmodule TarsMCP.RobustnessTest do
 
       assert [_tool | _rest] = await_tools(ref)
       assert Process.alive?(connection)
-      assert {:ok, %{"ok" => true}} = TarsMCP.call(ref, "echo", %{"value" => "back"})
+
+      assert {:ok, %{"ok" => true}} =
+               TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "back"}))
+               |> Calls.result()
     end
 
     test "a client Anubis restarts for itself keeps answering", %{ref: ref} do
@@ -125,7 +140,9 @@ defmodule TarsMCP.RobustnessTest do
   end
 
   defp cancelled(ref) do
-    {:ok, %{"result" => %{"content" => count}}} = TarsMCP.call(ref, "cancellations", %{})
+    {:ok, %{"result" => %{"content" => count}}} =
+      TarsMCP.call(ref, "cancellations", Calls.tool("cancellations", %{}))
+      |> Calls.result()
 
     String.to_integer(count)
   end

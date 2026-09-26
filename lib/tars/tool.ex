@@ -32,23 +32,37 @@ defmodule Tars.Tool do
   `Tars.Tool.Result.ok/1` and `error/1` for the difference between a tool that
   failed and a call that did.
 
-  `{:park, prompt}` is the fourth answer: the call stops the turn instead of
-  answering it, and the prompt is what a person is shown. What it is for is
-  work that cannot finish until something outside the turn happens, such as a
-  credential the user has not authorized yet:
+  ## Handed the call
 
-      def run(_params) do
-        scope = Tars.Scope.Context.current()
+  A tool that needs to know who it works for, or which call it is answering,
+  is built with `new!/1` and a `:call` in place of a `:callback`. It is handed
+  the `Tars.Call` itself, under the scope it runs in and with its arguments
+  validated, and answers it with `Tars.Call.answer/2`.
 
-        case Tars.Credential.resolve(scope, {:user, "github"}) do
-          {:ok, credential} -> search(credential)
-          {:error, {:authorization_required, url}} -> {:park, "Connect GitHub: " <> url}
-          {:error, reason} -> Tars.Tool.Result.error(reason)
+  Or it parks it, with `Tars.Call.park/2`: the call stops the turn instead of
+  being answered, and the prompt is what a person is shown. What parking is
+  for is work that cannot finish until something outside the turn happens,
+  such as a credential the user has not authorized yet:
+
+      def tool do
+        Tars.Tool.new!(
+          name: "search_issues",
+          description: "Search this user's GitHub issues.",
+          parameter_schema: [query: [type: :string, required: true, doc: "What to find"]],
+          call: {__MODULE__, :run}
+        )
+      end
+
+      def run(%Tars.Call{target: %Tars.Call.Tool{arguments: args}} = call) do
+        case Tars.Credential.resolve(call, {:user, "github"}) do
+          {:ok, credential} -> Tars.Call.answer(call, search(credential, args.query))
+          {:error, {:authorization_required, url}} -> Tars.Call.park(call, "Connect GitHub: " <> url)
+          {:error, reason} -> Tars.Call.answer(call, Tars.Tool.Result.error(reason))
         end
       end
 
-  Approving a parked call runs the callback again, so a tool that parks must be
-  safe to call twice.
+  Approving a parked call hands the tool the call again, so a tool that parks
+  must be safe to call twice.
 
   ## Sources
 
@@ -65,8 +79,8 @@ defmodule Tars.Tool do
   A call the model asked for, in the shape `ReqLLM.Response.classify/1`
   produces: a provider-assigned id, the tool's name, and decoded arguments.
 
-  The id is what a host correlates against. A tool reads its own call with
-  `Tars.Scope.Context.current_call/0`.
+  The id is what a host correlates against. A tool built with `new!/1` is
+  handed its own call, as a `Tars.Call`.
   """
   @type call() :: %{id: String.t(), name: String.t(), arguments: map()}
 
@@ -118,6 +132,52 @@ defmodule Tars.Tool do
   @callback in_doubt(argument :: term(), name :: String.t()) :: :ask | :rerun
 
   @optional_callbacks tool: 0, tools: 1, timeout: 0, in_doubt: 1, in_doubt: 2
+
+  @typedoc """
+  What a tool `new!/1` builds hands its call to: `{module, function, args}`,
+  called as `module.function(args..., call)`, or a function of the call.
+  """
+  @type handler() :: {module(), atom(), list()} | (Tars.Call.t() -> Tars.Call.t())
+
+  @doc """
+  A tool handed its `Tars.Call`: what `ReqLLM.Tool.new!/1` takes, with `:call`
+  in place of `:callback`.
+
+  `:call` is `{module, function}`, `{module, function, args}`, or, for a tool
+  built inline, a function of the call. It answers with the call it was
+  handed, answered with `Tars.Call.answer/2` or parked with
+  `Tars.Call.park/2`. Raises on a bad schema, as `ReqLLM.Tool.new!/1` does.
+  """
+  @spec new!(keyword()) :: ReqLLM.Tool.t()
+  def new!(opts) when is_list(opts) do
+    {handler, opts} = Keyword.pop!(opts, :call)
+    ReqLLM.Tool.new!(Keyword.put(opts, :callback, {__MODULE__, :invoke, [handler(handler)]}))
+  end
+
+  defp handler({module, function}), do: {module, function, []}
+
+  defp handler({module, function, args} = handler)
+       when is_atom(module) and is_atom(function) and is_list(args),
+       do: handler
+
+  defp handler(fun) when is_function(fun, 1), do: fun
+
+  @doc "Hands `call` to `handler`, the one a `new!/1` tool was built with."
+  @spec hand(handler(), Tars.Call.t()) :: term()
+  def hand({module, function, args}, %Tars.Call{} = call),
+    do: apply(module, function, args ++ [call])
+
+  def hand(fun, %Tars.Call{} = call) when is_function(fun, 1), do: fun.(call)
+
+  @doc """
+  What a tool `new!/1` builds answers when something other than
+  `Tars.LLM.ToolRunner` calls it, which has no call to hand it.
+  """
+  @spec invoke(handler(), map()) :: {:error, String.t()}
+  def invoke(_handler, _input),
+    do:
+      {:error,
+       "a tool built with Tars.Tool.new!/1 is handed its Tars.Call, and runs only in a turn"}
 
   @doc """
   Builds every tool in a list of specs, in the order they are named.
@@ -176,39 +236,25 @@ defmodule Tars.Tool do
   def names(spec), do: Enum.map(resolve!([spec]), & &1.name)
 
   @doc """
-  Reports how far the call in progress has got, on the turn's event stream.
+  Reports how far `call` has got, on the turn's event stream.
 
   Emits `{:tool_progress, call_id, name, progress, total}` under the span of
-  the call, where `total` is `nil` for work with no known end. Does nothing
-  outside a tool call.
+  the call, where `total` is `nil` for work with no known end.
 
-      Tars.Tool.progress(3, 10)
+      Tars.Tool.progress(call, 3, 10)
   """
-  @spec progress(number(), number() | nil) :: :ok
-  def progress(progress, total \\ nil) do
-    case progress_reporter() do
-      nil -> :ok
-      report -> report.(progress, total)
-    end
-  end
+  @spec progress(Tars.Call.t(), number(), number() | nil) :: :ok
+  def progress(%Tars.Call{} = call, progress, total \\ nil),
+    do: progress_reporter(call).(progress, total)
 
   @doc """
-  A function that reports progress for the call in progress, bound to it, or
-  `nil` outside a tool call.
-
-  For a callback another process runs, such as a client library's progress
-  hook, which cannot read the call from its own process.
+  A function that reports progress for `call`, bound to it, for a callback
+  another process runs, such as a client library's progress hook.
   """
-  @spec progress_reporter() :: (number(), number() | nil -> :ok) | nil
-  def progress_reporter do
-    with %Tars.Scope{source: source} <- Tars.Scope.Context.current(),
-         %{id: id, name: name} <- Tars.Scope.Context.current_call() do
-      fn progress, total ->
-        Tars.Event.emit(source, {:tool_progress, id, name, progress, total})
-      end
-    else
-      _outside_a_call -> nil
-    end
+  @spec progress_reporter(Tars.Call.t()) :: (number(), number() | nil -> :ok)
+  def progress_reporter(%Tars.Call{id: id, scope: %Tars.Scope{source: source}} = call) do
+    name = Tars.Call.name(call)
+    fn progress, total -> Tars.Event.emit(source, {:tool_progress, id, name, progress, total}) end
   end
 
   defp resolve_one!(%ReqLLM.Tool{} = tool), do: [tool]

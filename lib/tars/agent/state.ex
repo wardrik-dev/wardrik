@@ -68,8 +68,6 @@ defmodule Tars.Agent.State do
   alias Tars.Hook
   alias Tars.LLM.Config
   alias Tars.LLM.Turn
-  alias Tars.LLM.Turn.Checkpoint
-  alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Trace
 
@@ -99,8 +97,8 @@ defmodule Tars.Agent.State do
             scope: Tars.Scope.t(),
             started_at: integer(),
             stopping: Tars.Agent.State.Stopping.t() | nil,
-            parked: Parked.t() | nil,
-            checkpoint: Checkpoint.t() | nil
+            parked: Turn.t() | nil,
+            checkpoint: Turn.t() | nil
           }
   end
 
@@ -121,7 +119,7 @@ defmodule Tars.Agent.State do
     defstruct [:checkpoint, :source]
 
     @typedoc "The checkpoint to go on from, and where the turn's events go."
-    @type t() :: %__MODULE__{checkpoint: Checkpoint.t(), source: Source.t()}
+    @type t() :: %__MODULE__{checkpoint: Turn.t(), source: Source.t()}
   end
 
   defmodule Waiting do
@@ -132,7 +130,7 @@ defmodule Tars.Agent.State do
 
     @typedoc "The parked turn, where its events go, and when it began."
     @type t() :: %__MODULE__{
-            turn: Parked.t(),
+            turn: Turn.t(),
             source: Source.t(),
             started_at: integer()
           }
@@ -178,9 +176,9 @@ defmodule Tars.Agent.State do
   @type mode() :: :idle | :owed | Running.t() | Waiting.t() | Replaying.t() | Compacting.t()
 
   @typedoc """
-  Runs one turn and reports how it ended, as `{module, function, args}`.
+  Runs one turn and hands it back, as `{module, function, args}`.
 
-  Called with the scope and the context appended to `args`, so a host that
+  Called with the `Tars.LLM.Turn` to run appended to `args`, so a host that
   needs to carry something of its own into the turn carries it there. It is an
   MFA rather than a function because an agent's state is written down and read
   back on another machine, and a closure is code rather than data.
@@ -188,9 +186,10 @@ defmodule Tars.Agent.State do
   @type runner() :: {module(), atom(), list()}
 
   @typedoc """
-  Finishes a parked turn once its calls have been answered.
+  Finishes a waiting turn once its calls have been answered.
 
-  Called with the scope, the parked turn and the decisions appended to `args`.
+  Called with the turn, under the scope it resumes in, and the decisions
+  appended to `args`.
   """
   @type resumer() :: {module(), atom(), list()}
 
@@ -228,7 +227,7 @@ defmodule Tars.Agent.State do
           runner: runner(),
           resumer: resumer(),
           outcome: outcome(),
-          mode: :idle | :owed | {:waiting, Parked.t(), Source.t()}
+          mode: :idle | :owed | {:waiting, Turn.t(), Source.t()}
         }
 
   @typedoc """
@@ -335,30 +334,30 @@ defmodule Tars.Agent.State do
   end
 
   @doc "Runs a turn with the runner this agent was given."
-  @spec apply_runner(t(), Scope.t(), Context.t()) :: Turn.result()
+  @spec apply_runner(t(), Scope.t(), Context.t()) :: Turn.t()
   def apply_runner(%__MODULE__{runner: {module, function, args}}, %Scope{} = scope, context) do
-    apply(module, function, args ++ [scope, context])
+    apply(module, function, args ++ [Turn.new(scope, context)])
   end
 
   @doc "Finishes a parked turn with the resumer this agent was given."
-  @spec apply_resumer(t(), Scope.t(), Parked.t(), map()) :: Turn.result()
+  @spec apply_resumer(t(), Scope.t(), Turn.t(), map()) :: Turn.t()
   def apply_resumer(
         %__MODULE__{resumer: {module, function, args}},
         %Scope{} = scope,
         turn,
         decisions
       ) do
-    apply(module, function, args ++ [scope, turn, decisions])
+    apply(module, function, args ++ [Turn.under(turn, scope), decisions])
   end
 
-  @doc "Carries a lost turn on from its checkpoint with the replayer this agent was given."
-  @spec apply_replayer(t(), Scope.t(), Checkpoint.t()) :: Turn.result()
+  @doc "Carries on a lost turn from where its journal last had it, with the replayer this agent was given."
+  @spec apply_replayer(t(), Scope.t(), Turn.t()) :: Turn.t()
   def apply_replayer(
         %__MODULE__{replayer: {module, function, args}},
         %Scope{} = scope,
         checkpoint
       ) do
-    apply(module, function, args ++ [scope, checkpoint])
+    apply(module, function, args ++ [Turn.under(checkpoint, scope)])
   end
 
   @doc "Writes this agent down as data. See the module docs for what a turn in flight becomes."
@@ -382,7 +381,7 @@ defmodule Tars.Agent.State do
     do: {:replaying, checkpoint, source}
 
   # A checkpoint is the furthest a turn got, past any park it was resumed from.
-  defp at_rest(%Running{checkpoint: %Checkpoint{} = checkpoint, scope: scope}),
+  defp at_rest(%Running{checkpoint: %Turn{} = checkpoint, scope: scope}),
     do: {:replaying, checkpoint, scope.source}
 
   defp at_rest(%Running{parked: nil}), do: :owed
@@ -448,7 +447,7 @@ defmodule Tars.Agent.State do
   it has now, by `Tars.Hook.revision/1`.
   """
   @spec stale?(t()) :: boolean()
-  def stale?(%__MODULE__{mode: %Waiting{turn: %Parked{revision: revision}}} = state),
+  def stale?(%__MODULE__{mode: %Waiting{turn: %Turn{revision: revision}}} = state),
     do: revision != Hook.revision(Keyword.get(state.scope_opts, :hooks) || [])
 
   def stale?(%__MODULE__{}), do: false
@@ -512,7 +511,7 @@ defmodule Tars.Agent.State do
 
   @doc "The calls a waiting agent needs answered, or `[]` when it is not waiting."
   @spec waiting_on(t()) :: [{Tars.Tool.call(), String.t()}]
-  def waiting_on(%__MODULE__{mode: %Waiting{turn: turn}}), do: Parked.calls(turn)
+  def waiting_on(%__MODULE__{mode: %Waiting{turn: turn}}), do: Turn.waiting(turn)
   def waiting_on(%__MODULE__{}), do: []
 
   @doc """
@@ -565,7 +564,7 @@ defmodule Tars.Agent.State do
   @spec take(t()) ::
           {:run, [Message.t()], t()}
           | {:compact, Scope.t(), t()}
-          | {:replay, Scope.t(), Checkpoint.t(), t()}
+          | {:replay, Scope.t(), Turn.t(), t()}
           | :none
   def take(%__MODULE__{mode: %Replaying{checkpoint: checkpoint, source: source}} = state) do
     {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
@@ -634,7 +633,7 @@ defmodule Tars.Agent.State do
   end
 
   @doc "Records the turn a `{:replay, ...}` from `take/1` led to."
-  @spec replayed(t(), Task.t(), Scope.t(), Checkpoint.t(), integer()) :: t()
+  @spec replayed(t(), Task.t(), Scope.t(), Turn.t(), integer()) :: t()
   def replayed(%__MODULE__{} = state, task, %Scope{} = scope, checkpoint, started_at) do
     %{
       state
@@ -646,7 +645,7 @@ defmodule Tars.Agent.State do
   Records the batch of tool calls the running turn is about to run, so a turn
   lost from here goes on from it. `:stale` when `pid` is not the running turn.
   """
-  @spec checkpointed(t(), pid(), Checkpoint.t()) :: {:ok, t()} | :stale
+  @spec checkpointed(t(), pid(), Turn.t()) :: {:ok, t()} | :stale
   def checkpointed(
         %__MODULE__{mode: %Running{task: %Task{pid: pid}} = running} = state,
         pid,
@@ -689,10 +688,10 @@ defmodule Tars.Agent.State do
       {:turn_interrupted, stats(running.started_at, stopping.dropped, length(messages), :stopped)}
 
   @doc "Holds a turn that stopped to ask, and announces that it can be resumed."
-  @spec parked(t(), Parked.t()) :: {t(), [effect()]}
+  @spec parked(t(), Turn.t()) :: {t(), [effect()]}
   def parked(%__MODULE__{mode: %Running{} = running} = state, turn) do
     waiting = %Waiting{turn: turn, source: running.scope.source, started_at: running.started_at}
-    announcement = {:emit, running.scope.source, {:turn_parked, Parked.calls(turn)}}
+    announcement = {:emit, running.scope.source, {:turn_parked, Turn.waiting(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
   end
@@ -806,7 +805,7 @@ defmodule Tars.Agent.State do
 
   `:none` when nothing is waiting.
   """
-  @spec resume(t()) :: {:resume, Scope.t(), Parked.t(), integer()} | :none
+  @spec resume(t()) :: {:resume, Scope.t(), Turn.t(), integer()} | :none
   def resume(%__MODULE__{mode: %Waiting{} = waiting} = state) do
     scope = %{turn_scope(state) | source: waiting.source}
 
@@ -816,7 +815,7 @@ defmodule Tars.Agent.State do
   def resume(%__MODULE__{}), do: :none
 
   @doc "Records the turn a `resume/1` led to, and the park it came from."
-  @spec resumed(t(), Task.t(), Scope.t(), Parked.t(), integer()) :: t()
+  @spec resumed(t(), Task.t(), Scope.t(), Turn.t(), integer()) :: t()
   def resumed(%__MODULE__{} = state, task, %Scope{} = scope, turn, started_at) do
     %{state | mode: %Running{task: task, scope: scope, started_at: started_at, parked: turn}}
   end

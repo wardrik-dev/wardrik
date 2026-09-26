@@ -6,6 +6,7 @@ defmodule TarsOAuth.DeviceTest do
   alias Tars.Credential
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias TarsOAuth.Device
   alias TarsOAuth.Pending
 
@@ -151,13 +152,21 @@ defmodule TarsOAuth.DeviceTest do
       configure(providers: provider(flow: :device))
 
       assert {:error, {:authorization_required, "https://auth.example.com/activate", "WDJB-MJHT"}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
 
       assert_receive {:device_done, %{provider: "github", owner: ^owner, outcome: :authorized}}
       assert_received {:oauth, "POST", "/token", _pending}
       assert_received {:oauth, "POST", "/token", _authorized}
 
-      assert {:ok, credential} = Credential.resolve(scope(owner), {:user, "github"})
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
+
       assert Credential.reveal(credential) == "at_first"
     end
 
@@ -165,10 +174,15 @@ defmodule TarsOAuth.DeviceTest do
       stub_server(cimd: true, device: @unhurried)
       configure(providers: provider(flow: :device))
 
-      first = Credential.resolve(scope(owner), {:user, "github"})
+      first =
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
 
       assert {:error, {:authorization_required, _url, "WDJB-MJHT"}} = first
-      assert Credential.resolve(scope(owner), {:user, "github"}) == first
+
+      assert Credential.resolve(
+               Calls.tool("tool", %{}, scope(owner)),
+               {:user, "github"}
+             ) == first
     end
 
     test "forgets a flow the user refused", %{owner: owner} do
@@ -178,7 +192,7 @@ defmodule TarsOAuth.DeviceTest do
       log =
         capture_log(fn ->
           {:error, {:authorization_required, _url, _code}} =
-            Credential.resolve(scope(owner), {:user, "github"})
+            Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
 
           assert_receive {:device_done, %{outcome: :access_denied}}
         end)
@@ -192,7 +206,10 @@ defmodule TarsOAuth.DeviceTest do
       stub_server(cimd: true)
       configure(providers: provider(flow: :device))
 
-      assert Credential.resolve(scope(owner), {:user, "github"}) ==
+      assert Credential.resolve(
+               Calls.tool("tool", %{}, scope(owner)),
+               {:user, "github"}
+             ) ==
                {:error, {:no_device_flow, "https://auth.example.com"}}
     end
 
@@ -203,7 +220,7 @@ defmodule TarsOAuth.DeviceTest do
       configure(providers: provider(flow: :device), client: [name: "Tars"])
 
       {:error, {:authorization_required, _url, _code}} =
-        Credential.resolve(scope(owner), {:user, "github"})
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
 
       assert_received {:oauth, "POST", "/register", body}
       assert @grant in JSON.decode!(body)["grant_types"]
@@ -214,7 +231,7 @@ defmodule TarsOAuth.DeviceTest do
     defp resolve(owner, redirect) do
       stub_server(cimd: true, device: @unhurried)
       configure(providers: provider([]), redirect: redirect)
-      Credential.resolve(scope(owner), {:user, "github"})
+      Credential.resolve(Calls.tool("tool", %{}, scope(owner)), {:user, "github"})
     end
 
     test "is on another device where the redirect comes back here and there is no browser", %{
@@ -238,7 +255,10 @@ defmodule TarsOAuth.DeviceTest do
       )
 
       assert {:error, {:authorization_required, url}} =
-               Credential.resolve(scope(owner), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(owner)),
+                 {:user, "github"}
+               )
 
       assert String.starts_with?(url, "https://auth.example.com/authorize?")
     end

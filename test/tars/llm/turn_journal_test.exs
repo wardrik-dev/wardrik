@@ -6,9 +6,17 @@ defmodule Tars.LLM.TurnJournalTest do
   alias Tars.Event
   alias Tars.Ledger
   alias Tars.LLM
-  alias Tars.LLM.Turn.Checkpoint
   alias Tars.Scope
   alias Tars.Test.LLMStub
+
+  # A turn run, resumed or replayed through its token, as a turn under
+  # `scope` is.
+  defp run(scope, context), do: scope |> LLM.Turn.new(context) |> LLM.Turn.run()
+
+  defp resume(scope, turn, decisions),
+    do: turn |> LLM.Turn.under(scope) |> LLM.Turn.resume(decisions)
+
+  defp replay(scope, turn), do: turn |> LLM.Turn.under(scope) |> LLM.Turn.replay()
 
   setup :verify_on_exit!
 
@@ -36,21 +44,21 @@ defmodule Tars.LLM.TurnJournalTest do
   end
 
   defp run_async(scope) do
-    Task.async(fn -> LLM.Turn.run(scope, Context.new([Context.user("refund it")])) end)
+    Task.async(fn -> run(scope, Context.new([Context.user("refund it")])) end)
   end
 
   test "hands the journal each batch before any of it runs", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.tool_call("call_1", "refund", %{}), LLMStub.final_answer("done")])
     task = run_async(scope(agent_id, journal: self()))
 
-    assert_receive {:"$gen_call", from, {:checkpoint, %Checkpoint{} = checkpoint}}
-    assert Checkpoint.call_ids(checkpoint) == ["call_1"]
+    assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{} = checkpoint}}
+    assert LLM.Turn.call_ids(checkpoint) == ["call_1"]
     refute_received :refunded
 
     GenServer.reply(from, :ok)
 
     assert_receive :refunded
-    assert {:ok, _messages} = Task.await(task)
+    assert %LLM.Turn{state: :done, messages: _messages} = Task.await(task)
   end
 
   test "a journal that does not answer ends the turn before anything runs", %{agent_id: agent_id} do
@@ -60,7 +68,7 @@ defmodule Tars.LLM.TurnJournalTest do
     assert_receive {:"$gen_call", from, {:checkpoint, _checkpoint}}
     GenServer.reply(from, {:error, :disk_full})
 
-    assert {:error, {:checkpoint_failed, :disk_full}} = Task.await(task)
+    assert %LLM.Turn{state: :failed, error: {:checkpoint_failed, :disk_full}} = Task.await(task)
     refute_received :refunded
   end
 
@@ -68,7 +76,7 @@ defmodule Tars.LLM.TurnJournalTest do
     LLMStub.stream([LLMStub.final_answer("done")])
     task = run_async(scope(agent_id, journal: self()))
 
-    assert {:ok, _messages} = Task.await(task)
+    assert %LLM.Turn{state: :done, messages: _messages} = Task.await(task)
     refute_received {:"$gen_call", _from, {:checkpoint, _checkpoint}}
   end
 
@@ -84,14 +92,13 @@ defmodule Tars.LLM.TurnJournalTest do
 
     LLMStub.stream([LLMStub.final_answer("Refunded.")])
 
-    checkpoint = %Checkpoint{
+    checkpoint = %LLM.Turn{
       context: Context.new([Context.user("refund it")]),
       response: response,
-      acc: [],
       remaining: 5
     }
 
-    assert {:ok, messages} = LLM.Turn.replay(scope, checkpoint)
+    assert %LLM.Turn{state: :done, messages: messages} = replay(scope, checkpoint)
     refute_received :refunded
     assert_received %Event{payload: {:tool_replayed, "call_1", "refund", {:ok, _result}}}
     assert List.last(messages).role == :assistant
@@ -105,23 +112,25 @@ defmodule Tars.LLM.TurnJournalTest do
     [call] = ReqLLM.Response.classify(response).tool_calls
     :ok = Ledger.claim(Ledger.Store, Ledger.key(Scope.batch(scope, 0), call), call)
 
-    parked = %LLM.Turn.Parked{
+    parked = %LLM.Turn{
       context: Context.new([Context.user("refund it")]),
       response: response,
-      outcomes: [Tars.Test.AgentRunners.waiting(call, "This refunds money.")],
-      acc: [],
+      calls: [Tars.Test.AgentRunners.waiting(call, "This refunds money.")],
       remaining: 5,
-      revision: Tars.Hook.revision([])
+      revision: Tars.Hook.revision([]),
+      state: :waiting
     }
 
-    assert {:parked, again} = LLM.Turn.resume(scope, parked, %{"call_1" => :approve})
-    assert [{%{id: "call_1"}, prompt}] = LLM.Turn.Parked.calls(again)
+    assert %LLM.Turn{state: :waiting} = again = resume(scope, parked, %{"call_1" => :approve})
+    assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(again)
     assert prompt =~ "may already have done what it does"
     refute_received :refunded
 
     LLMStub.stream([LLMStub.final_answer("Refunded.")])
 
-    assert {:ok, messages} = LLM.Turn.resume(scope, again, %{"call_1" => :approve})
+    assert %LLM.Turn{state: :done, messages: messages} =
+             resume(scope, again, %{"call_1" => :approve})
+
     assert_received :refunded
     assert List.last(messages).role == :assistant
   end
@@ -133,8 +142,8 @@ defmodule Tars.LLM.TurnJournalTest do
       LLMStub.final_answer("Refunded both.")
     ])
 
-    assert {:ok, _messages} =
-             LLM.Turn.run(scope(agent_id, []), Context.new([Context.user("refund both")]))
+    assert %LLM.Turn{state: :done, messages: _messages} =
+             run(scope(agent_id, []), Context.new([Context.user("refund both")]))
 
     assert_received :refunded
     assert_received :refunded
@@ -146,13 +155,13 @@ defmodule Tars.LLM.TurnJournalTest do
     test_pid = self()
 
     research =
-      ReqLLM.Tool.new!(
+      Tars.Tool.new!(
         name: "research",
         description: "Hands the work to a delegate.",
         parameter_schema: [],
-        callback: fn _args ->
-          {:ok, answer} = Tars.Subagent.run(Tars.Scope.Context.current(), "refund it")
-          {:ok, %{"answer" => answer}}
+        call: fn call ->
+          {:ok, answer} = Tars.Subagent.run(call.scope, "refund it")
+          Tars.Call.answer(call, {:ok, %{"answer" => answer}})
         end
       )
 
@@ -167,7 +176,9 @@ defmodule Tars.LLM.TurnJournalTest do
       LLM.Config.new(tools: [research, refund_tool(test_pid)])
       |> Scope.root(agent_id, name: "turn", ledger: Ledger.Store)
 
-    assert {:ok, _messages} = LLM.Turn.run(scope, Context.new([Context.user("look into it")]))
+    assert %LLM.Turn{state: :done, messages: _messages} =
+             run(scope, Context.new([Context.user("look into it")]))
+
     assert_received :refunded
   end
 

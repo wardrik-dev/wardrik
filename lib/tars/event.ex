@@ -70,7 +70,7 @@ defmodule Tars.Event do
           | {:turn_interrupted, Tars.Agent.State.stats()}
           | {:turn_parked, [{Tars.Tool.call(), String.t()}]}
           | {:turn_resumed, %{String.t() => term()}}
-          | {:call_decided, String.t(), Tars.LLM.Turn.Parked.decision(), Tars.Principal.t() | nil}
+          | {:call_decided, String.t(), Tars.LLM.Turn.decision(), Tars.Principal.t() | nil}
           | {:message_queued, Tars.Agent.Message.t()}
           | {:agent_started, node(), :idle | :running | :parked, String.t()}
           | {:context_compacted, Tars.Compaction.stats()}

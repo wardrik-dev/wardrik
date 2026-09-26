@@ -503,8 +503,8 @@ defmodule Tars.AgentTest do
       :ok = Tars.Fleet.stop(key)
       {:ok, _agent} = Tars.Fleet.spawn(key, opts)
 
-      assert_receive {:replayed, %Tars.LLM.Turn.Checkpoint{} = checkpoint}, 5_000
-      assert Tars.LLM.Turn.Checkpoint.call_ids(checkpoint) == ["call_1"]
+      assert_receive {:replayed, %Tars.LLM.Turn{} = checkpoint}, 5_000
+      assert Tars.LLM.Turn.call_ids(checkpoint) == ["call_1"]
       assert_receive %Event{payload: {:turn_finished, _messages}}
       assert roles(key) == [:user, :assistant]
     end

@@ -19,18 +19,31 @@ defmodule TarsOAuth.ResumeTest do
   defp scope(owner, key),
     do: Config.new() |> Scope.root(key, user: owner, credentials: TarsOAuth)
 
-  defp call(id), do: %{id: id, name: "slack__connect", arguments: %{}}
+  defp call(id, owner, key),
+    do: Tars.Call.tool(%{id: id, name: "slack__connect", arguments: %{}}, scope(owner, key))
 
   defp oauth(owner), do: %Tars.Principal{type: :oauth, id: owner}
 
   defp connect(owner, key) do
-    stub_server(cimd: true)
-    configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+    configured()
 
     {:error, {:authorization_required, url}} =
-      Credential.resolve(scope(owner, key), {:user, "github"})
+      Credential.resolve(call("call_1", owner, key), {:user, "github"})
 
     url
+  end
+
+  # A user connecting from a surface, with no call waiting on them.
+  defp connect_unasked(owner) do
+    configured()
+    [provider] = TarsOAuth.Provider.all()
+    {:error, {:authorization_required, url}} = TarsOAuth.hold(provider, owner)
+    url
+  end
+
+  defp configured do
+    stub_server(cimd: true)
+    configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
   end
 
   defp refuse_tokens do
@@ -39,21 +52,9 @@ defmodule TarsOAuth.ResumeTest do
     end)
   end
 
-  describe "continuation/0" do
-    test "is nothing outside a call" do
-      assert Credential.continuation() == nil
-    end
-
-    test "is nothing inside a scope that is not answering a call" do
-      :ok = Scope.Context.put(scope("jon", "acme/jon/a"))
-
-      assert Credential.continuation() == nil
-    end
-
-    test "approves the call the scope is answering" do
-      :ok = Scope.Context.put(scope("jon", "acme/jon/a"), call("call_1"))
-
-      assert Credential.continuation() ==
+  describe "continuation/1" do
+    test "approves the call it is given, as the user it is for" do
+      assert Credential.continuation(call("call_1", "jon", "acme/jon/a")) ==
                {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}, [by: oauth("jon")]]}
     end
   end
@@ -61,8 +62,6 @@ defmodule TarsOAuth.ResumeTest do
   describe "a flow started inside a parked call" do
     test "remembers the call to answer", %{owner: owner} do
       key = Fleet.key()
-      :ok = Scope.Context.put(scope(owner, key), call("call_1"))
-
       connect(owner, key)
 
       assert {:ok, flight} = Pending.under_way("github", owner)
@@ -74,14 +73,10 @@ defmodule TarsOAuth.ResumeTest do
 
     test "remembers a second call that parks while it runs", %{owner: owner} do
       key = Fleet.key()
-      :ok = Scope.Context.put(scope(owner, key), call("call_1"))
-
       first = connect(owner, key)
 
-      :ok = Scope.Context.put(scope(owner, key), call("call_2"))
-
       assert {:error, {:authorization_required, ^first}} =
-               Credential.resolve(scope(owner, key), {:user, "github"})
+               Credential.resolve(call("call_2", owner, key), {:user, "github"})
 
       assert {:ok, flight} = Pending.under_way("github", owner)
 
@@ -93,10 +88,8 @@ defmodule TarsOAuth.ResumeTest do
 
     test "does not remember the same call twice", %{owner: owner} do
       key = Fleet.key()
-      :ok = Scope.Context.put(scope(owner, key), call("call_1"))
-
       connect(owner, key)
-      Credential.resolve(scope(owner, key), {:user, "github"})
+      Credential.resolve(call("call_1", owner, key), {:user, "github"})
 
       assert {:ok, flight} = Pending.under_way("github", owner)
       assert [_one] = flight.resumes
@@ -110,8 +103,6 @@ defmodule TarsOAuth.ResumeTest do
         )
 
       :ok = Event.Bus.subscribe(key)
-      :ok = Scope.Context.put(scope(owner, key), call("call_1"))
-
       url = connect(owner, key)
 
       Agent.ask(key, "go")
@@ -127,8 +118,6 @@ defmodule TarsOAuth.ResumeTest do
   describe "a callback the token endpoint refuses" do
     test "leaves the flow, and the calls parked on it, where they were", %{owner: owner} do
       key = Fleet.key()
-      :ok = Scope.Context.put(scope(owner, key), call("call_1"))
-
       url = connect(owner, key)
       refuse_tokens()
 
@@ -156,7 +145,7 @@ defmodule TarsOAuth.ResumeTest do
 
   describe "a flow with nobody waiting" do
     test "finishes all the same", %{owner: owner} do
-      url = connect(owner, "acme/#{owner}/a")
+      url = connect_unasked(owner)
 
       assert {:ok, flight} = Pending.under_way("github", owner)
       assert flight.resumes == []
@@ -164,8 +153,6 @@ defmodule TarsOAuth.ResumeTest do
     end
 
     test "finishes even when the agent it named is gone", %{owner: owner} do
-      :ok = Scope.Context.put(scope(owner, "test/_/never-started"), call("call_1"))
-
       url = connect(owner, "test/_/never-started")
 
       assert {:ok, "github"} = TarsOAuth.finish(state_of(url), "the-code")

@@ -89,24 +89,27 @@ defmodule TarsDemo do
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Tars.Tool.new!(
         name: "deploy",
         description: "Deploy a service to an environment. This has a real effect.",
         parameter_schema: [
           service: [type: :string, required: true, doc: "Which service to deploy"],
           environment: [type: :string, required: true, doc: "Where to deploy it"]
         ],
-        callback: {__MODULE__, :run}
+        call: {__MODULE__, :run}
       )
     end
 
     @doc false
-    def run(%{service: service, environment: environment}) do
-      Tars.Tool.Result.ok(%{
-        "deployed" => service,
-        "environment" => environment,
-        "approved_call" => Tars.Scope.Context.current_call_id()
-      })
+    def run(%Tars.Call{id: id, target: %{arguments: args}} = call) do
+      Tars.Call.answer(
+        call,
+        Tars.Tool.Result.ok(%{
+          "deployed" => args.service,
+          "environment" => args.environment,
+          "approved_call" => id
+        })
+      )
     end
   end
 

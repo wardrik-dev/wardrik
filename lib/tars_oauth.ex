@@ -81,27 +81,29 @@ defmodule TarsOAuth do
   alias TarsOAuth.Token
 
   @impl Tars.Credential
-  def resolve({kind, name} = ref, %Scope{} = scope) when kind in [:user, :org] do
+  def resolve({kind, name} = ref, %Tars.Call{scope: %Scope{} = scope} = call)
+      when kind in [:user, :org] do
     with {:ok, provider} <- provider(name),
          {:ok, owner} <- owner(ref, scope) do
-      hold(provider, owner)
+      hold(provider, owner, Credential.continuation(call))
     end
   end
 
-  def resolve(ref, %Scope{}), do: {:error, {:unknown_reference, ref}}
+  def resolve(ref, %Tars.Call{}), do: {:error, {:unknown_reference, ref}}
 
   @doc """
   The token a user holds for a provider, renewing or asking for one as needed.
 
-  What `resolve/2` does, without a scope: for a surface that wants to connect a
-  user before an agent ever asks.
+  What `resolve/2` does, without a call: for a surface that wants to connect a
+  user before an agent ever asks. `resume` is applied once the user has
+  connected, where one is given.
   """
-  @spec hold(Provider.t(), term()) :: Credential.outcome()
-  def hold(%Provider{} = provider, owner) do
+  @spec hold(Provider.t(), term(), Credential.continuation() | nil) :: Credential.outcome()
+  def hold(%Provider{} = provider, owner, resume \\ nil) do
     case Config.tokens().fetch(provider.name, owner) do
-      {:ok, encoded} -> held(provider, owner, encoded)
-      {:error, :not_found} -> begin(provider, owner)
-      {:error, reason} -> unreadable(provider, owner, reason)
+      {:ok, encoded} -> held(provider, owner, encoded, resume)
+      {:error, :not_found} -> begin(provider, owner, resume)
+      {:error, reason} -> unreadable(provider, owner, reason, resume)
     end
   end
 
@@ -114,11 +116,11 @@ defmodule TarsOAuth do
     Credential.secret(token.access_token, expires_at: token.expires_at)
   end
 
-  defp unreadable(%Provider{} = provider, owner, reason) do
+  defp unreadable(%Provider{} = provider, owner, reason, resume) do
     Logger.warning("#{provider.name} for #{inspect(owner)} cannot be read (#{inspect(reason)})")
     Config.tokens().forget(provider.name, owner)
 
-    begin(provider, owner)
+    begin(provider, owner, resume)
   end
 
   @doc """
@@ -203,19 +205,19 @@ defmodule TarsOAuth do
   @spec document() :: map()
   def document, do: redirect_uri() |> then(&Client.new(redirect_uri: &1)) |> Client.document()
 
-  defp held(provider, owner, encoded) do
+  defp held(provider, owner, encoded, resume) do
     case Token.decode(encoded) do
       {:ok, %Token{} = token} ->
         if Token.fresh?(token, System.system_time(:second)),
           do: {:ok, credential(token)},
-          else: renew(provider, owner, token)
+          else: renew(provider, owner, token, resume)
 
       {:error, reason} ->
-        unreadable(provider, owner, reason)
+        unreadable(provider, owner, reason, resume)
     end
   end
 
-  defp renew(provider, owner, %Token{} = token) do
+  defp renew(provider, owner, %Token{} = token, resume) do
     with true <- Token.renewable?(token),
          {:ok, metadata, registered} <- prepare(provider),
          {:ok, fresh} <-
@@ -225,15 +227,13 @@ defmodule TarsOAuth do
     else
       _no ->
         Logger.info("#{provider.name} could not be renewed for #{inspect(owner)}; asking again")
-        begin(provider, owner)
+        begin(provider, owner, resume)
     end
   end
 
   # A flow already under way is offered again rather than restarted: an agent
   # retrying a parked call should keep showing the same link, or code.
-  defp begin(%Provider{} = provider, owner) do
-    resume = Credential.continuation()
-
+  defp begin(%Provider{} = provider, owner, resume) do
     case Pending.under_way(provider.name, owner, resume) do
       {:ok, %Flight{} = flight} -> {:error, required(flight)}
       :error -> open(provider, owner, resume)

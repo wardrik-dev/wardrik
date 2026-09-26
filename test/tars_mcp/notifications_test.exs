@@ -1,6 +1,8 @@
 defmodule TarsMCP.NotificationsTest do
   use TarsMCP.Case, async: false
 
+  alias Tars.Test.Calls
+
   describe "a server that says its tools changed" do
     setup %{ref: ref} do
       handler = {__MODULE__, ref}
@@ -20,7 +22,9 @@ defmodule TarsMCP.NotificationsTest do
     test "is listed again without anyone asking", %{ref: ref} do
       refute "#{ref}__grown" in Enum.map(TarsMCP.tools(ref), & &1.name)
 
-      assert {:ok, _result} = TarsMCP.call(ref, "grow", %{})
+      assert {:ok, _result} =
+               TarsMCP.call(ref, "grow", Calls.tool("grow", %{}))
+               |> Calls.result()
 
       assert_receive {:listed, ^ref}, 5_000
       assert "#{ref}__grown" in Enum.map(TarsMCP.tools(ref), & &1.name)
@@ -29,7 +33,9 @@ defmodule TarsMCP.NotificationsTest do
     test "reaches a config naming every server", %{ref: ref} do
       config = Tars.LLM.Config.new(tools: [{TarsMCP, :*}])
 
-      assert {:ok, _result} = TarsMCP.call(ref, "grow", %{})
+      assert {:ok, _result} =
+               TarsMCP.call(ref, "grow", Calls.tool("grow", %{}))
+               |> Calls.result()
 
       assert_receive {:listed, ^ref}, 5_000
       assert "#{ref}__grown" in Enum.map(Tars.LLM.Config.tools(config), & &1.name)

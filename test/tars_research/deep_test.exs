@@ -6,6 +6,7 @@ defmodule TarsResearch.DeepTest do
   alias Tars.Event
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias Tars.Test.LLMStub
   alias Tars.Test.SearchTool
   alias Tars.Workflow
@@ -366,7 +367,7 @@ defmodule TarsResearch.DeepTest do
       tool = Deep.tool()
 
       assert tool.name == "deep_research"
-      assert {Workflow, :call, [{Deep, _opts}]} = tool.callback
+      assert {Tars.Tool, :invoke, [{Workflow, :call, [{Deep, _opts}]}]} = tool.callback
       assert Keyword.fetch!(tool.parameter_schema, :topic)[:required]
       refute Keyword.fetch!(tool.parameter_schema, :angles)[:required]
     end
@@ -382,8 +383,7 @@ defmodule TarsResearch.DeepTest do
       stub_llm()
       tool = Deep.tool(angles: [%{angle: "pricing", prompt: "Think like a pricing analyst."}])
 
-      :ok = Scope.Context.put(scope)
-      assert {:ok, %{"ok" => true}} = ReqLLM.Tool.execute(tool, %{"topic" => "widgets"})
+      assert {:ok, %{"ok" => true}} = Calls.run(tool, %{"topic" => "widgets"}, scope)
 
       assert [asked] = research_turns()
       assert asked.system =~ "pricing analyst"
@@ -391,10 +391,17 @@ defmodule TarsResearch.DeepTest do
 
     test "runs from a tool call, wrapped as a tool result", %{scope: scope} do
       stub_llm()
-      :ok = Scope.Context.put(scope)
 
       assert {:ok, %{"ok" => true, "result" => result}} =
-               Workflow.call(Deep, %{topic: "widgets", angles: ["pricing"]})
+               Deep
+               |> Workflow.call(
+                 Calls.tool(
+                   "deep_research",
+                   %{topic: "widgets", angles: ["pricing"]},
+                   scope
+                 )
+               )
+               |> Calls.result()
 
       assert result["report"] == "the combined report"
     end
@@ -403,10 +410,19 @@ defmodule TarsResearch.DeepTest do
       scope: scope
     } do
       stub_llm(["pricing"])
-      :ok = Scope.Context.put(scope)
 
       assert {:ok, %{"ok" => false, "error" => %{"code" => "no_findings"}}} =
-               quietly(fn -> Workflow.call(Deep, %{topic: "widgets", angles: ["pricing"]}) end)
+               quietly(fn ->
+                 Deep
+                 |> Workflow.call(
+                   Calls.tool(
+                     "deep_research",
+                     %{topic: "widgets", angles: ["pricing"]},
+                     scope
+                   )
+                 )
+                 |> Calls.result()
+               end)
     end
   end
 

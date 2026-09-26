@@ -18,10 +18,10 @@ defmodule TarsMCP.BootstrapTest do
     @behaviour Tars.Credential
 
     @impl true
-    def resolve({:user, "locked"}, %Scope{user: "connected"}),
+    def resolve({:user, "locked"}, %Tars.Call{scope: %Scope{user: "connected"}}),
       do: {:ok, Credential.secret("a-token")}
 
-    def resolve({:user, "locked"}, %Scope{}),
+    def resolve({:user, "locked"}, %Tars.Call{scope: %Scope{}}),
       do: {:error, {:authorization_required, "https://example.com/authorize"}}
   end
 

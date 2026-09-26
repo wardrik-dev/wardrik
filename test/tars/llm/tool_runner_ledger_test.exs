@@ -25,21 +25,20 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
 
     @impl true
     def tool do
-      ReqLLM.Tool.new!(
+      Tars.Tool.new!(
         name: "refund",
         description: "Refunds an order, once per key.",
         parameter_schema: [],
-        callback: {__MODULE__, :run}
+        call: {__MODULE__, :run}
       )
     end
 
     @impl true
     def in_doubt("refund"), do: :rerun
 
-    def run(_args) do
-      key = Ledger.idempotency_key(Scope.Context.current(), Scope.Context.current_call())
-      send(self(), {:ran, "refund", key})
-      {:ok, %{"refunded" => true}}
+    def run(call) do
+      send(self(), {:ran, "refund", Ledger.idempotency_key(call)})
+      Call.answer(call, {:ok, %{"refunded" => true}})
     end
   end
 
@@ -53,16 +52,19 @@ defmodule Tars.LLM.ToolRunnerLedgerTest do
   defp counted(name, answer \\ {:ok, %{"done" => true}}) do
     test_pid = self()
 
-    ReqLLM.Tool.new!(
+    Tars.Tool.new!(
       name: name,
       description: "Does something with an effect.",
       parameter_schema: [],
-      callback: fn _args ->
+      call: fn call ->
         send(test_pid, {:ran, name})
-        answer
+        answered(call, answer)
       end
     )
   end
+
+  defp answered(call, {:park, prompt}), do: Call.park(call, prompt)
+  defp answered(call, answer), do: Call.answer(call, answer)
 
   defp scope(agent_id, tools, ledger \\ Ledger.Store) do
     Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", ledger: ledger)

@@ -5,6 +5,7 @@ defmodule TarsHTTP.WorkerTest do
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias TarsHTTP.Listener
   alias TarsHTTP.Token
   alias TarsHTTP.Workers
@@ -173,7 +174,8 @@ defmodule TarsHTTP.WorkerTest do
   test "a worker's error, and its going away, reach the model as errors", context do
     connect(context, [tool("fail"), tool("leave")])
 
-    assert Workers.call(context.agent, "fail", %{}) ==
+    assert Workers.call(context.agent, "fail", Calls.tool("fail"))
+           |> Calls.result() ==
              {:ok,
               %{
                 "ok" => false,
@@ -181,7 +183,8 @@ defmodule TarsHTTP.WorkerTest do
               }}
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "worker_gone", "message" => message}}} =
-             Workers.call(context.agent, "leave", %{})
+             Workers.call(context.agent, "leave", Calls.tool("leave"))
+             |> Calls.result()
 
     assert message =~ "may already have done what it does"
   end
@@ -194,7 +197,8 @@ defmodule TarsHTTP.WorkerTest do
     connect(context, [tool("hang")])
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "timeout"}}} =
-             Workers.call(context.agent, "hang", %{})
+             Workers.call(context.agent, "hang", Calls.tool("hang"))
+             |> Calls.result()
 
     assert_receive {:notified, "notifications/cancelled", %{"requestId" => _id}}
   end
@@ -203,7 +207,8 @@ defmodule TarsHTTP.WorkerTest do
     connect(context, [tool("echo")], elem(Token.create("elsewhere", "test/only/"), 1))
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "no_worker"}}} =
-             Workers.call(context.agent, "echo", %{})
+             Workers.call(context.agent, "echo", Calls.tool("echo"))
+             |> Calls.result()
 
     refute_received {:called, _params}
   end

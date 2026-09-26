@@ -5,6 +5,7 @@ defmodule TarsMCP.PerUserTest do
   alias Tars.LLM.Config
   alias Tars.LLM.ToolRunner
   alias Tars.Scope
+  alias Tars.Test.Calls
   alias TarsMCP.Connection
 
   defmodule Vault do
@@ -12,16 +13,16 @@ defmodule TarsMCP.PerUserTest do
     @behaviour Tars.Credential
 
     @impl true
-    def resolve({:user, "stub"}, %Scope{user: "connected"}),
+    def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{user: "connected"}}),
       do: {:ok, Credential.secret("token-for-connected")}
 
-    def resolve({:user, "stub"}, %Scope{user: "unconnected"}),
+    def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{user: "unconnected"}}),
       do: {:error, {:authorization_required, "https://example.com/connect"}}
 
-    def resolve({:user, "stub"}, %Scope{user: "elsewhere"}),
+    def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{user: "elsewhere"}}),
       do: {:error, {:authorization_required, "https://example.com/device", "WDJB-MJHT"}}
 
-    def resolve({:user, "stub"}, %Scope{}), do: {:error, :denied}
+    def resolve({:user, "stub"}, %Tars.Call{scope: %Scope{}}), do: {:error, :denied}
   end
 
   @moduletag server_opts: [
@@ -92,7 +93,8 @@ defmodule TarsMCP.PerUserTest do
 
   test "a call with no turn behind it cannot be made as anyone", %{ref: ref} do
     assert {:ok, %{"ok" => false, "error" => error}} =
-             TarsMCP.call(ref, "echo", %{"value" => "x"})
+             TarsMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "x"}))
+             |> Calls.result()
 
     assert error["message"] =~ "this call has none"
   end

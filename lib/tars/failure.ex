@@ -7,8 +7,8 @@ defmodule Tars.Failure do
   dead conversation. This classifies the reason so the decision is made once,
   from the error itself, rather than guessed at every call site.
 
-      case Tars.LLM.Turn.run(scope, context) do
-        {:error, reason} ->
+      case scope |> Tars.LLM.Turn.new(context) |> Tars.LLM.Turn.run() do
+        %Tars.LLM.Turn{state: :failed, error: reason} ->
           case Tars.Failure.classify(reason) do
             :transient -> retry(...)
             _terminal -> report(reason)

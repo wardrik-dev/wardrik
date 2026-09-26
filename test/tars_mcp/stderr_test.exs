@@ -3,6 +3,7 @@ defmodule TarsMCP.StderrTest do
 
   import TarsMCP.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
 
+  alias Tars.Test.Calls
   alias TarsMCP.Server
 
   defp start(ref, opts) do
@@ -17,7 +18,13 @@ defmodule TarsMCP.StderrTest do
     ref = fresh_ref()
     start(ref, stderr: {:file, path})
 
-    assert {:ok, %{"ok" => true}} = TarsMCP.call(ref, "noise", %{"line" => "npm notice hello"})
+    assert {:ok, %{"ok" => true}} =
+             TarsMCP.call(
+               ref,
+               "noise",
+               Calls.tool("noise", %{"line" => "npm notice hello"})
+             )
+             |> Calls.result()
 
     # The server writes the line before it answers, and Erlang's standard error
     # is unbuffered, so the file has it by the time the answer arrives.
@@ -29,7 +36,8 @@ defmodule TarsMCP.StderrTest do
     start(ref, stderr: :discard)
 
     assert {:ok, %{"result" => %{"content" => "noise made"}}} =
-             TarsMCP.call(ref, "noise", %{"line" => "gone"})
+             TarsMCP.call(ref, "noise", Calls.tool("noise", %{"line" => "gone"}))
+             |> Calls.result()
   end
 
   describe "the transport it builds" do

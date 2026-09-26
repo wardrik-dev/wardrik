@@ -19,6 +19,11 @@ defmodule Tars.LLM.ToolRunnerTest do
     ReqLLM.Tool.new!(name: name, description: "test tool", callback: callback)
   end
 
+  # A tool handed its call, as `Tars.Tool.new!/1` builds one.
+  defp handed!(name, handler) do
+    Tars.Tool.new!(name: name, description: "test tool", call: handler)
+  end
+
   defp scope(agent_id, tools) do
     Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
   end
@@ -32,7 +37,7 @@ defmodule Tars.LLM.ToolRunnerTest do
 
   describe "a tool that parks" do
     test "stops the turn instead of answering it", %{agent_id: agent_id} do
-      tools = [tool!("connect", fn _input -> {:park, "Authorize at https://example.com"} end)]
+      tools = [handed!("connect", &Call.park(&1, "Authorize at https://example.com"))]
       scope = scope(agent_id, tools)
 
       assert %Call{
@@ -42,7 +47,7 @@ defmodule Tars.LLM.ToolRunnerTest do
     end
 
     test "is announced as parked, not as finished", %{agent_id: agent_id} do
-      tools = [tool!("connect", fn _input -> {:park, "Authorize first"} end)]
+      tools = [handed!("connect", &Call.park(&1, "Authorize first"))]
 
       ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
 
@@ -54,17 +59,17 @@ defmodule Tars.LLM.ToolRunnerTest do
     test "runs again when the call is approved", %{agent_id: agent_id} do
       test = self()
 
-      callback = fn _input ->
+      handler = fn call ->
         if Process.get(:connected) do
-          {:ok, %{"done" => true}}
+          Call.answer(call, {:ok, %{"done" => true}})
         else
           send(test, :parked_once)
           Process.put(:connected, true)
-          {:park, "Authorize first"}
+          Call.park(call, "Authorize first")
         end
       end
 
-      scope = scope(agent_id, [tool!("connect", callback)])
+      scope = scope(agent_id, [handed!("connect", handler)])
       call = call("call_1", "connect", %{})
 
       assert %Call{id: "call_1", state: :waiting} = waiting = ToolRunner.execute(call, scope)

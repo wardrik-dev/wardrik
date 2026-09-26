@@ -30,8 +30,6 @@ defmodule TarsHTTP.Workers do
 
   @behaviour Tars.Tool
 
-  alias Tars.Scope
-  alias Tars.Scope.Context
   alias Tars.Tool.Result
   alias TarsHTTP.Token
   alias TarsHTTP.Worker.Tool
@@ -80,17 +78,18 @@ defmodule TarsHTTP.Workers do
   def in_doubt(_key, _name), do: :ask
 
   @doc false
-  @spec call(String.t(), String.t(), map()) :: Result.t()
-  def call(key, name, arguments) do
+  @spec call(String.t(), String.t(), Tars.Call.t()) :: Tars.Call.t()
+  def call(key, name, %Tars.Call{} = call) do
     case for({worker, tool} <- offered(key), tool.name == name, do: worker) do
       [] -> Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
-      workers -> ask(Enum.random(workers), name, arguments)
+      workers -> ask(Enum.random(workers), name, call)
     end
+    |> then(&Tars.Call.answer(call, &1))
   end
 
-  defp ask(worker, name, arguments) do
+  defp ask(worker, name, call) do
     ref = Process.monitor(worker)
-    send(worker, {:call, self(), ref, name, arguments, meta()})
+    send(worker, {:call, self(), ref, name, call.target.arguments, meta(call)})
 
     receive do
       {^ref, result} ->
@@ -115,15 +114,9 @@ defmodule TarsHTTP.Workers do
     end
   end
 
-  defp meta do
-    case {Context.current(), Context.current_call()} do
-      {%Scope{} = scope, %{id: _id} = call} ->
-        %{"idempotencyKey" => Tars.Ledger.idempotency_key(scope, call)}
-
-      _outside_a_call ->
-        %{}
-    end
-  end
+  # A call outside a turn has no key to be idempotent under.
+  defp meta(%Tars.Call{scope: nil}), do: %{}
+  defp meta(call), do: %{"idempotencyKey" => Tars.Ledger.idempotency_key(call)}
 
   defp offered(key) do
     for {worker, %{token: token, tools: tools}} <- Group.members(__MODULE__, @group),
@@ -133,11 +126,11 @@ defmodule TarsHTTP.Workers do
   end
 
   defp build(%Tool{} = tool, key) do
-    ReqLLM.Tool.new!(
+    Tars.Tool.new!(
       name: @prefix <> tool.name,
       description: (tool.description || tool.name) <> "\n\nFrom a tool worker.",
       parameter_schema: tool.input_schema,
-      callback: {__MODULE__, :call, [key, tool.name]}
+      call: {__MODULE__, :call, [key, tool.name]}
     )
   end
 end

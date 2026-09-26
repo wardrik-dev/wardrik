@@ -8,8 +8,7 @@ defmodule Tars.Agent.StateTest do
   alias Tars.Agent.State.Running
   alias Tars.Agent.State.Waiting
   alias Tars.LLM.Config
-  alias Tars.LLM.Turn.Checkpoint
-  alias Tars.LLM.Turn.Parked
+  alias Tars.LLM.Turn
   alias Tars.Scope
 
   defp state, do: State.new([config: Config.new()], "acme/jon/assistant")
@@ -26,7 +25,7 @@ defmodule Tars.Agent.StateTest do
   defp parked_turn do
     call = %{id: "call_1", name: "deploy", arguments: %{}}
 
-    %Parked{
+    %Turn{
       context: Context.new(),
       response: %ReqLLM.Response{
         id: "r",
@@ -34,15 +33,15 @@ defmodule Tars.Agent.StateTest do
         context: Context.new(),
         finish_reason: :tool_calls
       },
-      outcomes: [Tars.Test.AgentRunners.waiting(call, "Really?")],
-      acc: [],
+      calls: [Tars.Test.AgentRunners.waiting(call, "Really?")],
       remaining: 5,
-      revision: Tars.Hook.revision([])
+      revision: Tars.Hook.revision([]),
+      state: :waiting
     }
   end
 
   defp checkpoint do
-    %Checkpoint{
+    %Turn{
       context: Context.new(),
       response: %ReqLLM.Response{
         id: "r",
@@ -50,7 +49,6 @@ defmodule Tars.Agent.StateTest do
         context: Context.new(),
         finish_reason: :tool_calls
       },
-      acc: [],
       remaining: 5
     }
   end
@@ -271,7 +269,7 @@ defmodule Tars.Agent.StateTest do
       assert {:resume, scope, turn, started_at} = State.resume(state)
       assert scope.source == source
       assert scope.config == Config.new()
-      assert %Parked{} = turn
+      assert %Turn{state: :waiting} = turn
       assert is_integer(started_at)
     end
 
@@ -367,11 +365,11 @@ defmodule Tars.Agent.StateTest do
       source = state.mode.scope.source
       {:ok, state} = State.checkpointed(state, self(), checkpoint())
 
-      assert %State{mode: %Replaying{checkpoint: %Checkpoint{remaining: 5}, source: ^source}} =
+      assert %State{mode: %Replaying{checkpoint: %Turn{remaining: 5}, source: ^source}} =
                reopened = reload(state)
 
       assert %{state: :running} = State.status(reopened)
-      assert {:replay, scope, %Checkpoint{}, _state} = State.take(reopened)
+      assert {:replay, scope, %Turn{}, _state} = State.take(reopened)
       assert scope.source == source
       assert reload(reopened).mode == reopened.mode
     end
@@ -388,7 +386,7 @@ defmodule Tars.Agent.StateTest do
 
     test "a replay started is running, with the checkpoint it began from" do
       state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
-      assert %State{mode: %Running{checkpoint: %Checkpoint{}}} = state
+      assert %State{mode: %Running{checkpoint: %Turn{}}} = state
       assert %State{mode: %Replaying{}} = reload(state)
     end
 

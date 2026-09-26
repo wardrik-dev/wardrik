@@ -8,6 +8,9 @@ defmodule Tars.Call do
   The runtime moves it through its states, and it is the same value whether
   it is being decided, waiting on a person, or answered.
 
+  A tool built with `Tars.Tool.new!/1` is handed the call too, and answers it
+  with `answer/2` or parks it with `park/2`.
+
   What the call goes to is its `:target`, a `Tars.Call.Tool` or a
   `Tars.Call.Model`, and a hook matches on it:
 
@@ -170,6 +173,13 @@ defmodule Tars.Call do
   end
 
   @doc """
+  Parks a call a tool was handed: it waits on a person, who is shown `prompt`,
+  and the tool is handed it again once they approve.
+  """
+  @spec park(t(), String.t()) :: t()
+  def park(%__MODULE__{} = call, prompt) when is_binary(prompt), do: wait(call, :tool, prompt)
+
+  @doc """
   The call waiting on `by`, `:tool` or `:ledger`, which asks `prompt`. What
   was asked of it before, and approved, is behind it.
   """
@@ -177,10 +187,14 @@ defmodule Tars.Call do
   def wait(%__MODULE__{} = call, by, prompt) when by in [:tool, :ledger] and is_binary(prompt),
     do: %{call | state: :waiting, asks: [%Ask{by: by, prompt: prompt}]}
 
-  @doc "The call a person refused, with `reason`."
-  @spec refuse(t(), String.t()) :: t()
-  def refuse(%__MODULE__{} = call, reason) when is_binary(reason),
-    do: %{call | state: :denied, denied: %Denial{by: :person, reason: reason}}
+  @doc """
+  The call refused, with `reason`, by `by`: `:person` unless given, or
+  `:ledger` for a call the ledger could not record.
+  """
+  @spec refuse(t(), :person | :ledger, String.t()) :: t()
+  def refuse(%__MODULE__{} = call, by \\ :person, reason)
+      when by in [:person, :ledger] and is_binary(reason),
+      do: %{call | state: :denied, denied: %Denial{by: by, reason: reason}}
 
   @doc "The call a person approved."
   @spec approve(t()) :: t()

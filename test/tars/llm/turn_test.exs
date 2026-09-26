@@ -9,9 +9,14 @@ defmodule Tars.LLM.TurnTest do
   alias Tars.Call
   alias Tars.Event
   alias Tars.LLM
-  alias Tars.LLM.Turn.Parked
   alias Tars.Scope
   alias Tars.Test.LLMStub
+
+  # A turn run or resumed through its token, as a turn under `scope` is.
+  defp run(scope, context), do: scope |> LLM.Turn.new(context) |> LLM.Turn.run()
+
+  defp resume(scope, turn, decisions),
+    do: turn |> LLM.Turn.under(scope) |> LLM.Turn.resume(decisions)
 
   setup :verify_on_exit!
 
@@ -39,7 +44,8 @@ defmodule Tars.LLM.TurnTest do
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn")
 
-      assert {:ok, messages} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      assert %LLM.Turn{state: :done, messages: messages} =
+               run(scope, Context.new([Context.user("hi")]))
 
       assert_receive {:asked, %{system: "You answer briefly."}}
       refute Enum.any?(messages, &(&1.role == :system))
@@ -53,7 +59,7 @@ defmodule Tars.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
 
       assert_receive {:asked, %{system: nil}}
     end
@@ -64,7 +70,7 @@ defmodule Tars.LLM.TurnTest do
   } do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -78,7 +84,7 @@ defmodule Tars.LLM.TurnTest do
 
     context = Context.new([Context.user("hi")])
 
-    assert {:ok, messages} = LLM.Turn.run(scope(agent_id, [tool]), context)
+    assert %LLM.Turn{state: :done, messages: messages} = run(scope(agent_id, [tool]), context)
 
     # assistant(tool_use) -> tool(result) -> assistant(final), in order, and the
     # pre-existing user message is NOT re-reported: this is a delta.
@@ -92,7 +98,7 @@ defmodule Tars.LLM.TurnTest do
     :ok = Event.Bus.subscribe(agent_id, level: :raw)
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
 
     assert_receive %Event{payload: {:chunk, "chunk"}}
     assert_receive %Event{payload: {:meta, %{tokens: 1}}}
@@ -104,7 +110,7 @@ defmodule Tars.LLM.TurnTest do
   test "the model request announces both ends", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
 
     assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
     assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response}}
@@ -114,7 +120,7 @@ defmodule Tars.LLM.TurnTest do
     Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
     {_result, _log} =
-      ExUnit.CaptureLog.with_log(fn -> LLM.Turn.run(scope(agent_id), Context.new()) end)
+      ExUnit.CaptureLog.with_log(fn -> run(scope(agent_id), Context.new()) end)
 
     assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
 
@@ -142,8 +148,8 @@ defmodule Tars.LLM.TurnTest do
       expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :timeout} end)
 
       capture_log(fn ->
-        assert {:ok, [%{role: :assistant}]} =
-                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
+                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: {:model_started, _message_id, _model_spec}}
@@ -161,8 +167,8 @@ defmodule Tars.LLM.TurnTest do
 
       log =
         capture_log(fn ->
-          assert {:error, :timeout} =
-                   LLM.Turn.run(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
+          assert %LLM.Turn{state: :failed, error: :timeout} =
+                   run(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "asking again in 0ms"
@@ -172,8 +178,8 @@ defmodule Tars.LLM.TurnTest do
       expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
       capture_log(fn ->
-        assert {:error, :rate_limited} =
-                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :failed, error: :rate_limited} =
+                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
     end
 
@@ -186,8 +192,8 @@ defmodule Tars.LLM.TurnTest do
       end)
 
       capture_log(fn ->
-        assert {:error, :closed} =
-                 LLM.Turn.run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :failed, error: :closed} =
+                 run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
     end
 
@@ -196,8 +202,8 @@ defmodule Tars.LLM.TurnTest do
       :ok = LLM.Turn.interrupt(self())
 
       capture_log(fn ->
-        assert {:ok, []} =
-                 LLM.Turn.run(
+        assert %LLM.Turn{state: :done, messages: []} =
+                 run(
                    retrying(agent_id, [:timer.minutes(10)]),
                    Context.new([Context.user("hi")])
                  )
@@ -222,7 +228,7 @@ defmodule Tars.LLM.TurnTest do
         generation: [max_tokens: 8_000, provider_options: [thinking: %{type: "disabled"}]]
       )
 
-    LLM.Turn.run(Scope.root(config, agent_id, name: "turn"), Context.new())
+    run(Scope.root(config, agent_id, name: "turn"), Context.new())
 
     assert_receive {:opts, opts}
     assert opts[:max_tokens] == 8_000
@@ -248,7 +254,7 @@ defmodule Tars.LLM.TurnTest do
         generation: [tools: [], system_prompt: "an impostor"]
       )
 
-    LLM.Turn.run(Scope.root(config, agent_id, name: "turn"), Context.new())
+    run(Scope.root(config, agent_id, name: "turn"), Context.new())
 
     assert_receive {:opts, opts}
     assert opts[:system_prompt] == "the real persona"
@@ -258,7 +264,8 @@ defmodule Tars.LLM.TurnTest do
   test "stream events are not published to other agents", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
-    assert {:ok, _messages} = LLM.Turn.run(scope(Tars.Test.Fleet.key()), Context.new())
+    assert %LLM.Turn{state: :done, messages: _messages} =
+             run(scope(Tars.Test.Fleet.key()), Context.new())
 
     refute_receive %Event{}
     assert Event.Bus.subscribers(agent_id) == [self()]
@@ -267,8 +274,8 @@ defmodule Tars.LLM.TurnTest do
   test "a stream error aborts the turn", %{agent_id: agent_id} do
     stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
-    assert capture(fn -> LLM.Turn.run(scope(agent_id), Context.new()) end) ==
-             {:error, :rate_limited}
+    assert %LLM.Turn{state: :failed, error: :rate_limited} =
+             capture(fn -> run(scope(agent_id), Context.new()) end)
   end
 
   test "a response with no assistant message falls back to the classified text", %{
@@ -276,7 +283,7 @@ defmodule Tars.LLM.TurnTest do
   } do
     LLMStub.stream([LLMStub.response(nil, :stop)])
 
-    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
     assert message.role == :assistant
   end
 
@@ -286,7 +293,7 @@ defmodule Tars.LLM.TurnTest do
 
     LLMStub.stream([LLMStub.response(Context.assistant("", tool_calls: [builtin]), :tool_calls)])
 
-    assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
+    assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
     assert message.role == :assistant
     refute_receive %Event{payload: {:tool_started, _, _, _, _}}
   end
@@ -298,8 +305,8 @@ defmodule Tars.LLM.TurnTest do
     # never be matched back to the assistant message.
     LLMStub.stream([LLMStub.tool_call("", "echo", %{})])
 
-    assert {:error, _reason} =
-             capture(fn -> LLM.Turn.run(scope(agent_id, [tool]), Context.new()) end)
+    assert %LLM.Turn{state: :failed, error: _reason} =
+             capture(fn -> run(scope(agent_id, [tool]), Context.new()) end)
   end
 
   test "the iteration cap ends a model that never stops calling tools with an answer", %{
@@ -315,8 +322,8 @@ defmodule Tars.LLM.TurnTest do
         else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
     end)
 
-    assert {:ok, messages} =
-             capture(fn -> LLM.Turn.run(looping_scope(agent_id, 3), Context.new()) end)
+    assert %LLM.Turn{state: :done, messages: messages} =
+             capture(fn -> run(looping_scope(agent_id, 3), Context.new()) end)
 
     # Three rounds, each an assistant message and its tool result, then the answer.
     assert Enum.count(messages) == 7
@@ -342,7 +349,8 @@ defmodule Tars.LLM.TurnTest do
     scope = looping_scope(agent_id, 1)
     scope = %{scope | config: %{scope.config | system: "You are terse."}}
 
-    assert {:ok, _messages} = capture(fn -> LLM.Turn.run(scope, Context.new()) end)
+    assert %LLM.Turn{state: :done, messages: _messages} =
+             capture(fn -> run(scope, Context.new()) end)
 
     asked = for {:asked, asked} <- flush(), do: asked
     assert List.last(asked).system =~ "You are terse."
@@ -352,8 +360,8 @@ defmodule Tars.LLM.TurnTest do
   test "a closing answer that asks for tools anyway is kept as text only", %{agent_id: agent_id} do
     LLMStub.stream(List.duplicate(LLMStub.tool_call("call_1", "echo", %{}), 30))
 
-    assert {:ok, messages} =
-             capture(fn -> LLM.Turn.run(looping_scope(agent_id, 3), Context.new()) end)
+    assert %LLM.Turn{state: :done, messages: messages} =
+             capture(fn -> run(looping_scope(agent_id, 3), Context.new()) end)
 
     # Three rounds of tools; the closing call had nothing to say.
     assert Enum.count(messages) == 6
@@ -366,7 +374,8 @@ defmodule Tars.LLM.TurnTest do
         [LLMStub.final_answer("done")]
     )
 
-    assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+    assert %LLM.Turn{state: :done, messages: messages} =
+             run(looping_scope(agent_id, :infinity), Context.new())
 
     # Four rounds of tools, then the answer — none of it cut short.
     assert Enum.count(messages) == 9
@@ -378,7 +387,8 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.yield(self())
 
-      assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+      assert %LLM.Turn{state: :done, messages: messages} =
+               run(looping_scope(agent_id, :infinity), Context.new())
 
       # One round only: the assistant's tool call and its result.
       assert Enum.count(messages) == 2
@@ -389,7 +399,8 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.yield(self())
 
-      {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+      %LLM.Turn{state: :done, messages: messages} =
+        run(looping_scope(agent_id, :infinity), Context.new())
 
       assert Enum.map(messages, & &1.role) == [:assistant, :tool]
     end
@@ -399,7 +410,7 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.yield(self())
 
-      assert {:ok, [_message]} = LLM.Turn.run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: [_message]} = run(scope(agent_id), Context.new())
 
       # Unread, so it is still here for whoever looks next.
       assert_received :yield
@@ -423,7 +434,7 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.interrupt(self())
 
-      assert {:ok, [message]} = LLM.Turn.run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: [message]} = run(scope(agent_id), Context.new())
 
       assert text(message) == "half a th"
       refute text(message) =~ "never lands"
@@ -439,7 +450,7 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.interrupt(self())
 
-      assert {:ok, []} = LLM.Turn.run(scope(agent_id), Context.new())
+      assert %LLM.Turn{state: :done, messages: []} = run(scope(agent_id), Context.new())
     end
 
     test "the model request is reported as having failed", %{agent_id: agent_id} do
@@ -451,7 +462,7 @@ defmodule Tars.LLM.TurnTest do
       end)
 
       :ok = LLM.Turn.interrupt(self())
-      LLM.Turn.run(scope(agent_id), Context.new())
+      run(scope(agent_id), Context.new())
 
       assert_receive %Event{
         payload: {:model_finished, _message_id, {:error, :interrupted}, _ms, _response}
@@ -470,7 +481,8 @@ defmodule Tars.LLM.TurnTest do
 
       :ok = LLM.Turn.interrupt(self())
 
-      assert {:ok, messages} = LLM.Turn.run(looping_scope(agent_id, :infinity), Context.new())
+      assert %LLM.Turn{state: :done, messages: messages} =
+               run(looping_scope(agent_id, :infinity), Context.new())
 
       assert Enum.map(messages, & &1.role) == [:assistant, :tool]
     end
@@ -610,7 +622,8 @@ defmodule Tars.LLM.TurnTest do
         LLM.Config.new(model_spec: {:openai, model: "configured"})
         |> Scope.root(agent_id, name: "turn", dispatch: Routing)
 
-      assert {:ok, _messages} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      assert %LLM.Turn{state: :done, messages: _messages} =
+               run(scope, Context.new([Context.user("hi")]))
 
       assert_receive {:asked, %{model: {:anthropic, model: "routed"}}}
     end
@@ -620,7 +633,8 @@ defmodule Tars.LLM.TurnTest do
 
       scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Routing)
 
-      assert {:ok, _messages} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      assert %LLM.Turn{state: :done, messages: _messages} =
+               run(scope, Context.new([Context.user("hi")]))
 
       assert_receive %Event{payload: {:settled, :ok}}
     end
@@ -638,7 +652,8 @@ defmodule Tars.LLM.TurnTest do
       scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Recording)
 
       capture_log(fn ->
-        assert {:error, :closed} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :failed, error: :closed} =
+                 run(scope, Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: {:settled, {:error, :closed, "half an ans"}}}
@@ -652,7 +667,8 @@ defmodule Tars.LLM.TurnTest do
       scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Recording)
 
       capture_log(fn ->
-        assert {:error, :rate_limited} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+        assert %LLM.Turn{state: :failed, error: :rate_limited} =
+                 run(scope, Context.new([Context.user("hi")]))
       end)
 
       assert_receive %Event{payload: {:settled, {:error, :rate_limited}}}
@@ -665,7 +681,8 @@ defmodule Tars.LLM.TurnTest do
 
       log =
         capture_log(fn ->
-          assert {:error, :over_budget} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+          assert %LLM.Turn{state: :failed, error: :over_budget} =
+                   run(scope, Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "over_budget"
@@ -686,12 +703,12 @@ defmodule Tars.LLM.TurnTest do
     test "stops the turn before the call, with the model call waiting", %{scope: scope} do
       reject(&ReqLLM.stream_text/3)
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+      assert %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
 
-      assert Parked.model?(parked)
+      assert LLM.Turn.model?(parked)
 
       assert [{%{name: "model", id: "model_" <> _id}, "Spent $5.00 of $5.00 today."}] =
-               Parked.calls(parked)
+               LLM.Turn.waiting(parked)
 
       refute_received %Event{payload: {:model_started, _message_id, _spec}}
     end
@@ -702,10 +719,12 @@ defmodule Tars.LLM.TurnTest do
     } do
       LLMStub.stream([LLMStub.final_answer("done")])
 
-      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
-      [{call, _prompt}] = Parked.calls(parked)
+      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
 
-      assert {:ok, [answer]} = LLM.Turn.resume(scope, parked, %{call.id => :approve})
+      assert %LLM.Turn{state: :done, messages: [answer]} =
+               resume(scope, parked, %{call.id => :approve})
+
       assert answer.role == :assistant
       assert Agent.get(gate, & &1) == :day
     end
@@ -715,28 +734,32 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [], [Tars.Hook.new("asker", ModelAsker)])
 
-      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
-      [{call, _prompt}] = Parked.calls(parked)
+      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
 
-      assert {:ok, [answer]} = LLM.Turn.resume(scope, parked, %{call.id => :approve})
+      assert %LLM.Turn{state: :done, messages: [answer]} =
+               resume(scope, parked, %{call.id => :approve})
+
       assert answer.role == :assistant
     end
 
     test "denying it ends the turn as a refusal", %{scope: scope} do
       reject(&ReqLLM.stream_text/3)
 
-      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
-      [{call, _prompt}] = Parked.calls(parked)
+      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
 
-      assert {:error, {:policy_denied, "Not today."}} =
-               LLM.Turn.resume(scope, parked, %{call.id => {:deny, "Not today."}})
+      assert %LLM.Turn{state: :failed, error: {:policy_denied, "Not today."}} =
+               resume(scope, parked, %{call.id => {:deny, "Not today."}})
 
       assert Tars.Failure.classify({:policy_denied, "Not today."}) == :ceiling
     end
 
     test "with no decision for it, stays parked", %{scope: scope} do
-      {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
-      assert {:parked, ^parked} = LLM.Turn.resume(scope, parked, %{"call_other" => :approve})
+      %LLM.Turn{state: :waiting} = parked = run(scope, Context.new([Context.user("hi")]))
+
+      assert %LLM.Turn{state: :waiting} =
+               ^parked = resume(scope, parked, %{"call_other" => :approve})
     end
   end
 
@@ -748,7 +771,8 @@ defmodule Tars.LLM.TurnTest do
 
       log =
         capture_log(fn ->
-          assert {:ok, []} = LLM.Turn.run(scope, Context.new([Context.user("hi")]))
+          assert %LLM.Turn{state: :done, messages: []} =
+                   run(scope, Context.new([Context.user("hi")]))
         end)
 
       assert log =~ "deadline"
@@ -764,12 +788,13 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [deploy_tool()])
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("ship it")]))
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it")]))
 
       assert [{%{id: "call_1", name: "deploy"}, "This ships to production."}] =
-               Parked.calls(parked)
+               LLM.Turn.waiting(parked)
 
-      assert Parked.waiting?(parked)
+      assert parked.state == :waiting
     end
 
     test "approving runs the call and finishes the turn", %{agent_id: agent_id} do
@@ -780,8 +805,11 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [deploy_tool()])
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("ship it")]))
-      assert {:ok, messages} = LLM.Turn.resume(scope, parked, %{"call_1" => :approve})
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it")]))
+
+      assert %LLM.Turn{state: :done, messages: messages} =
+               resume(scope, parked, %{"call_1" => :approve})
 
       assert Enum.any?(messages, &(&1.role == :tool))
       assert List.last(messages).role == :assistant
@@ -796,10 +824,11 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [deploy_tool()])
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("ship it")]))
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it")]))
 
-      assert {:ok, messages} =
-               LLM.Turn.resume(scope, parked, %{"call_1" => {:deny, "Not this quarter."}})
+      assert %LLM.Turn{state: :done, messages: messages} =
+               resume(scope, parked, %{"call_1" => {:deny, "Not this quarter."}})
 
       result = Enum.find(messages, &(&1.role == :tool))
       [part] = result.content
@@ -813,9 +842,11 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [deploy_tool()])
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("ship it")]))
-      assert {:parked, still} = LLM.Turn.resume(scope, parked, %{})
-      assert Parked.waiting?(still)
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it")]))
+
+      assert %LLM.Turn{state: :waiting} = still = resume(scope, parked, %{})
+      assert still.state == :waiting
     end
 
     test "an answer that is neither approval nor refusal refuses", %{agent_id: agent_id} do
@@ -826,8 +857,11 @@ defmodule Tars.LLM.TurnTest do
 
       scope = governed(agent_id, [deploy_tool()])
 
-      assert {:parked, parked} = LLM.Turn.run(scope, Context.new([Context.user("ship it")]))
-      assert {:ok, _messages} = LLM.Turn.resume(scope, parked, %{"call_1" => :perhaps})
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it")]))
+
+      assert %LLM.Turn{state: :done, messages: _messages} =
+               resume(scope, parked, %{"call_1" => :perhaps})
 
       assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason}}
       assert reason =~ ":perhaps"
@@ -841,13 +875,14 @@ defmodule Tars.LLM.TurnTest do
         LLMStub.final_answer("shipped")
       ])
 
-      {:parked, parked} =
-        LLM.Turn.run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+      %LLM.Turn{state: :waiting} =
+        parked =
+        run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
 
       loosened = governed(agent_id, [deploy_tool()], [])
 
-      assert {:ok, _messages} =
-               LLM.Turn.resume(loosened, parked, %{"call_1" => {:deny, "Not now."}})
+      assert %LLM.Turn{state: :done, messages: _messages} =
+               resume(loosened, parked, %{"call_1" => {:deny, "Not now."}})
 
       assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
     end
@@ -858,13 +893,15 @@ defmodule Tars.LLM.TurnTest do
         LLMStub.final_answer("understood")
       ])
 
-      {:parked, parked} =
-        LLM.Turn.run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
+      %LLM.Turn{state: :waiting} =
+        parked =
+        run(governed(agent_id, [deploy_tool()]), Context.new([Context.user("ship")]))
 
       frozen =
         governed(agent_id, [deploy_tool()], [Tars.Hook.new("freeze", DenyingHook)])
 
-      assert {:ok, _messages} = LLM.Turn.resume(frozen, parked, %{"call_1" => :approve})
+      assert %LLM.Turn{state: :done, messages: _messages} =
+               resume(frozen, parked, %{"call_1" => :approve})
 
       assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Frozen."}}
       refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
@@ -876,17 +913,18 @@ defmodule Tars.LLM.TurnTest do
       old = [Tars.Hook.new("asking", AskingHook)]
       new = [Tars.Hook.new("asking-again", AskingHook)]
 
-      {:parked, parked} =
-        LLM.Turn.run(
+      %LLM.Turn{state: :waiting} =
+        parked =
+        run(
           governed(agent_id, [deploy_tool()], old),
           Context.new([Context.user("ship")])
         )
 
       scope = governed(agent_id, [deploy_tool()], new)
 
-      assert {:parked, again} = LLM.Turn.resume(scope, parked, %{"call_1" => :approve})
+      assert %LLM.Turn{state: :waiting} = again = resume(scope, parked, %{"call_1" => :approve})
       assert again.revision == Tars.Hook.revision(new)
-      assert [{%{id: "call_1"}, "This ships to production."}] = Parked.calls(again)
+      assert [{%{id: "call_1"}, "This ships to production."}] = LLM.Turn.waiting(again)
       refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
     end
 
@@ -894,11 +932,11 @@ defmodule Tars.LLM.TurnTest do
       LLMStub.stream([LLMStub.final_answer("done")])
 
       asking = governed(agent_id, [], [Tars.Hook.new("asker", ModelAsker)])
-      {:parked, parked} = LLM.Turn.run(asking, Context.new([Context.user("hi")]))
-      [{call, _prompt}] = Parked.calls(parked)
+      %LLM.Turn{state: :waiting} = parked = run(asking, Context.new([Context.user("hi")]))
+      [{call, _prompt}] = LLM.Turn.waiting(parked)
 
-      assert {:ok, [answer]} =
-               LLM.Turn.resume(governed(agent_id, [], []), parked, %{call.id => {:deny, "No."}})
+      assert %LLM.Turn{state: :done, messages: [answer]} =
+               resume(governed(agent_id, [], []), parked, %{call.id => {:deny, "No."}})
 
       assert answer.role == :assistant
     end

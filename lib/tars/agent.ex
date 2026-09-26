@@ -131,7 +131,6 @@ defmodule Tars.Agent do
   alias Tars.Event.Source
   alias Tars.Fleet
   alias Tars.LLM.Turn
-  alias Tars.LLM.Turn.Parked
 
   @typedoc "An agent: the pid of one, or the fleet key it is registered under."
   @type agent() :: pid() | String.t()
@@ -232,7 +231,7 @@ defmodule Tars.Agent do
       Tars.Agent.resume("acme/jon/researcher", %{"call_abc" => :approve})
       Tars.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
-  @spec resume(agent(), %{String.t() => Parked.decision()}, keyword()) ::
+  @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::
           :ok | {:error, :not_found}
   def resume(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
     do: cast(agent, {:resume, decisions, Keyword.get(opts, :by)})
@@ -366,7 +365,7 @@ defmodule Tars.Agent do
 
   defp resume_parked(state, scope, turn, started_at, decisions, by) do
     decided =
-      for {call, _prompt} <- Parked.calls(turn),
+      for {call, _prompt} <- Turn.waiting(turn),
           Map.has_key?(decisions, call.id),
           do: Event.new(scope.source, {:call_decided, call.id, decisions[call.id], by})
 
@@ -524,10 +523,14 @@ defmodule Tars.Agent do
     end)
   end
 
-  defp answered(state, {:ok, messages}), do: settle(state, State.settled(state, messages))
-  defp answered(state, {:parked, turn}), do: settle(state, State.parked(state, turn))
+  defp answered(state, %Turn{state: :done, messages: messages}),
+    do: settle(state, State.settled(state, messages))
 
-  defp answered(state, {:error, reason}) do
+  # A waiting turn is held as it is written down, with no scope.
+  defp answered(state, %Turn{state: :waiting} = turn),
+    do: settle(state, State.parked(state, Turn.under(turn, nil)))
+
+  defp answered(state, %Turn{state: :failed, error: reason}) do
     Logger.error("Turn failed: #{inspect(reason)}")
     settle(state, State.failed(state, reason))
   end

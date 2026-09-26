@@ -3,26 +3,19 @@ defmodule TarsTUI.App.ContextTest do
   alias Tars.{Agent, Event, Fleet}
   alias TarsTUI.App
 
-  def park_two(_scope, _context) do
+  def park_two(%Tars.LLM.Turn{scope: scope}) do
     parked = Tars.Test.AgentRunners.parked_turn("first")
     second = %{id: "second", name: "second", arguments: %{}}
+    calls = parked.calls ++ [Tars.Test.AgentRunners.waiting(second, "Second?")]
 
-    {:parked,
-     %{parked | outcomes: parked.outcomes ++ [Tars.Test.AgentRunners.waiting(second, "Second?")]}}
+    %{parked | calls: calls, scope: scope}
   end
 
-  def resume_blocked(owner, _scope, parked, decisions) do
+  def resume_blocked(owner, %Tars.LLM.Turn{} = parked, decisions) do
     send(owner, {:resumer, self(), decisions})
     receive do: (:release -> :ok)
 
-    {:parked,
-     %{
-       parked
-       | outcomes:
-           Enum.reject(parked.outcomes, fn call ->
-             Map.has_key?(decisions, call.id)
-           end)
-     }}
+    %{parked | calls: Enum.reject(parked.calls, &Map.has_key?(decisions, &1.id))}
   end
 
   defp session(key) do

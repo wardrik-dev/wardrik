@@ -4,22 +4,26 @@ defmodule Tars.CredentialTest do
   alias Tars.Credential
   alias Tars.LLM.Config
   alias Tars.Scope
+  alias Tars.Test.Calls
 
   defmodule Vault do
     @moduledoc false
     @behaviour Tars.Credential
 
     @impl true
-    def resolve({:user, "github"}, %Scope{user: "jon"}), do: {:ok, Credential.secret("ghs_real")}
+    def resolve({:user, "github"}, %Tars.Call{scope: %Scope{user: "jon"}}),
+      do: {:ok, Credential.secret("ghs_real")}
 
-    def resolve({:user, "github"}, %Scope{}),
+    def resolve({:user, "github"}, %Tars.Call{scope: %Scope{}}),
       do: {:error, {:authorization_required, "https://example.com/connect"}}
 
-    def resolve({:org, "github"}, %Scope{}), do: {:ok, Credential.placeholder("{{org.github}}")}
+    def resolve({:org, "github"}, %Tars.Call{scope: %Scope{}}),
+      do: {:ok, Credential.placeholder("{{org.github}}")}
 
-    def resolve({:named, "explodes"}, %Scope{}), do: raise("the vault is on fire")
+    def resolve({:named, "explodes"}, %Tars.Call{scope: %Scope{}}),
+      do: raise("the vault is on fire")
 
-    def resolve(_ref, %Scope{}), do: {:error, :denied}
+    def resolve(_ref, %Tars.Call{scope: %Scope{}}), do: {:error, :denied}
   end
 
   defp scope(opts \\ []) do
@@ -29,7 +33,10 @@ defmodule Tars.CredentialTest do
   describe "resolve/2" do
     test "asks the scope's resolver, which sees who the work is for" do
       assert {:ok, credential} =
-               Credential.resolve(scope(credentials: Vault, user: "jon"), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: Vault, user: "jon")),
+                 {:user, "github"}
+               )
 
       assert credential.kind == :secret
       assert Credential.reveal(credential) == "ghs_real"
@@ -37,28 +44,41 @@ defmodule Tars.CredentialTest do
 
     test "a user who has not connected is told where to" do
       assert {:error, {:authorization_required, "https://example.com/connect"}} =
-               Credential.resolve(scope(credentials: Vault, user: "someone"), {:user, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: Vault, user: "someone")),
+                 {:user, "github"}
+               )
     end
 
     test "an org reference can resolve to a placeholder for a proxy to exchange" do
       assert {:ok, %Credential{kind: :placeholder, value: "{{org.github}}"}} =
-               Credential.resolve(scope(credentials: Vault), {:org, "github"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: Vault)),
+                 {:org, "github"}
+               )
     end
 
     test "a reference the resolver refuses is an error, not a raise" do
       assert {:error, :denied} =
-               Credential.resolve(scope(credentials: Vault), {:named, "anything"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: Vault)),
+                 {:named, "anything"}
+               )
     end
 
     test "a resolver that raises fails the call, not the turn" do
       assert {:error, {:resolver_failed, message}} =
-               Credential.resolve(scope(credentials: Vault), {:named, "explodes"})
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: Vault)),
+                 {:named, "explodes"}
+               )
 
       assert message =~ "the vault is on fire"
     end
 
     test "a scope with no resolver resolves nothing" do
-      assert {:error, :no_resolver} = Credential.resolve(scope(), {:user, "github"})
+      assert {:error, :no_resolver} =
+               Credential.resolve(Calls.tool("tool", %{}, scope()), {:user, "github"})
     end
   end
 
