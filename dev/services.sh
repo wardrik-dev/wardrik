@@ -9,7 +9,15 @@
 # The suite reads WARDRIK_TEST_DATABASE_URL, WARDRIK_TEST_S3_ENDPOINT,
 # WARDRIK_TEST_S3_ACCESS_KEY_ID and WARDRIK_TEST_S3_SECRET_ACCESS_KEY, and
 # reaches these containers where they are unset. Without them it skips those
-# tests and says so.
+# tests and says so. WARDRIK_TEST_S3_BUCKET and WARDRIK_TEST_S3_REGION point the
+# :s3 tests at a bucket already there, such as one on R2:
+#
+#   WARDRIK_TEST_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com \
+#   WARDRIK_TEST_S3_REGION=auto WARDRIK_TEST_S3_BUCKET=wardrik-test \
+#   WARDRIK_TEST_S3_ACCESS_KEY_ID=... WARDRIK_TEST_S3_SECRET_ACCESS_KEY=... \
+#     mix test --only s3
+#
+# dev/hosts.sh and dev/failover.sh read the same variables.
 set -euo pipefail
 
 postgres_image=${WARDRIK_TEST_POSTGRES_IMAGE:-postgres:17-alpine}

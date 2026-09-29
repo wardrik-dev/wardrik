@@ -387,14 +387,30 @@ money finding out.
 ```elixir
 def deps do
   [
-    {:wardrik, "~> 0.1.0"}
+    {:wardrik, "~> 0.1.0"},
+    {:ekv, "~> 0.4.3"}
   ]
 end
 ```
 
-Wardrik starts with its application, keeping its store on the node's disk. An
-application that keeps it in its own Postgres starts it after its repo, and
-creates the table from a migration of its own:
+Wardrik starts with its application, keeping its store on the node's disk
+through EKV. EKV is optional, as `ecto_sql` and `postgrex` are, so an
+application that keeps the store elsewhere leaves it out and never compiles
+its SQLite NIF. One that keeps it in an S3 bucket names the bucket:
+
+```elixir
+# config/runtime.exs
+config :wardrik, Wardrik.Store,
+  adapter: WardrikS3.Store,
+  bucket: "wardrik",
+  endpoint: "https://<account>.r2.cloudflarestorage.com",
+  region: "auto",
+  access_key_id: System.fetch_env!("R2_ACCESS_KEY_ID"),
+  secret_access_key: System.fetch_env!("R2_SECRET_ACCESS_KEY")
+```
+
+An application that keeps it in its own Postgres starts it after its repo,
+and creates the table from a migration of its own:
 
 ```elixir
 # config/config.exs
@@ -623,8 +639,13 @@ storage:
     secret_access_key: ${R2_SECRET_ACCESS_KEY}
 ```
 
-On Postgres the daemon creates its table, `wardrik_records`, as it starts. A
-bucket must refuse a write whose condition fails: the daemon checks as it
+On Postgres the daemon creates its table, `wardrik_records`, as it starts. In
+a bucket everything is under `wardrik/`, or the `prefix` the `s3` section
+names, one prefix to a namespace: an agent is
+`wardrik/durable/agents/<org>/<user>/<name>`, its events are under
+`wardrik/events/`, and each node's heartbeat is
+`wardrik/durable/agents/__nodes/<node>`. The table holds the same keys, with
+the namespace in `ns`. A bucket must refuse a write whose condition fails: the daemon checks as it
 starts, and keeps nothing in one that does not. `wardrik doctor` runs the same
 checks without starting the daemon.
 

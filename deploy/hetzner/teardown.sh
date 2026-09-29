@@ -9,7 +9,9 @@
 #
 # WARDRIK_BOX names the box, wardrik-demo by default. The GitHub token it was
 # authorized with dies with the box's vault key, and GitHub goes on accepting
-# it until the OAuth app is revoked. Issues it opened stay open.
+# it until the OAuth app is revoked; on a box made with WARDRIK_BOX_BUCKET it
+# stays sealed in the bucket, for the next box made over it. Issues it opened
+# stay open.
 set -euo pipefail
 
 box=${WARDRIK_BOX:-wardrik-demo}

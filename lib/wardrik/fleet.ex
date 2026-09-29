@@ -56,7 +56,7 @@ defmodule Wardrik.Fleet do
   alias Wardrik.Schedule
 
   @name __MODULE__
-  @prefix "wardrik/agents/"
+  @prefix "agents/"
   @anonymous "_"
 
   @doc false

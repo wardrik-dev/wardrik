@@ -18,6 +18,17 @@
 #   WARDRIK_SSH_KEY        the key that lets you in as wardrik and into the TUI: the first of
 #                       ~/.ssh/id_ed25519.pub, id_ecdsa.pub and id_rsa.pub there is
 #   WARDRIK_ENV_FILE       ~/.config/wardrik/env, the keys the daemon reads
+#   WARDRIK_BRANCH         main; the branch whose last green CI run's release is installed
+#   WARDRIK_BOX_BUCKET     a bucket to keep everything in, rather than the box's disk
+#   WARDRIK_BOX_BUCKET_ENDPOINT
+#                       the bucket's S3 endpoint, https://<account>.r2.cloudflarestorage.com on R2
+#   WARDRIK_BOX_BUCKET_REGION
+#                       auto, as R2 names it
+#
+# With a bucket, the env file holds S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY
+# for it, and a WARDRIK_VAULT_KEY the box uses in place of one of its own, so
+# a box made again over the same bucket reads the credentials the last one
+# sealed there. deploy/hetzner/rebuild.sh does that.
 #
 # The firewall lets anyone reach SSH, and only this machine's address reach the
 # TUI. The box shares its Slack app with any daemon of yours, so it is not made
@@ -36,6 +47,10 @@ if [ -z "$public_key" ]; then
   done
 fi
 env_file=${WARDRIK_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/wardrik/env}
+branch=${WARDRIK_BRANCH:-main}
+bucket=${WARDRIK_BOX_BUCKET:-}
+bucket_endpoint=${WARDRIK_BOX_BUCKET_ENDPOINT:-}
+bucket_region=${WARDRIK_BOX_BUCKET_REGION:-auto}
 local_wardrik="$HOME/wardrik/bin/wardrik"
 
 say() { printf '==> %s\n' "$*"; }
@@ -53,6 +68,13 @@ done
 
 channel=${SLACK_CHANNEL:-$(sed -n 's/^SLACK_CHANNEL=//p' "$env_file" | tail -n 1)}
 [ -n "$channel" ] || die "set SLACK_CHANNEL to the id of a channel the Slack bot is in"
+
+if [ -n "$bucket" ]; then
+  [ -n "$bucket_endpoint" ] || die "set WARDRIK_BOX_BUCKET_ENDPOINT to $bucket's S3 endpoint"
+  for name in S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY WARDRIK_VAULT_KEY; do
+    grep -q "^$name=." "$env_file" || die "$env_file has no $name, which a box on $bucket needs"
+  done
+fi
 
 if [ -x "$local_wardrik" ] && "$local_wardrik" status >/dev/null 2>&1; then
   die "a daemon runs here, on the Slack app the box would share; stop it with $local_wardrik stop"
@@ -127,9 +149,9 @@ remote "wardrik@$address" true 2>/dev/null ||
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-run=$(gh run list --repo "$repo" --branch main --workflow CI --status success --limit 1 \
+run=$(gh run list --repo "$repo" --branch "$branch" --workflow CI --status success --limit 1 \
   --json databaseId --jq '.[0].databaseId')
-[ -n "$run" ] || die "no CI run on main has succeeded"
+[ -n "$run" ] || die "no CI run on $branch has succeeded"
 
 say "Downloading the release CI built in run $run"
 gh run download "$run" --repo "$repo" --pattern 'wardrik-*-linux-x86_64.tar.gz' --dir "$work"
@@ -142,8 +164,28 @@ tarball=$(find "$work" -type f -name 'wardrik-*-linux-x86_64.tar.gz' | head -n 1
   echo "SLACK_CHANNEL=$channel"
 ) >"$work/env"
 
-say "Installing $(basename "$tarball") and the keys, and starting a, b and c"
-scp -q "${ssh_opts[@]}" "$tarball" "$work/env" "wardrik@$address:"
+# With a bucket, config.yaml names it, and the env file's vault key is the
+# one the box seals with. The keys are read from the env file as the nodes
+# start, so none is written into config.yaml.
+if [ -n "$bucket" ]; then
+  cat >"$work/storage.yaml" <<EOF
+
+storage:
+  s3:
+    bucket: $bucket
+    endpoint: $bucket_endpoint
+    region: $bucket_region
+    access_key_id: \${S3_ACCESS_KEY_ID}
+    secret_access_key: \${S3_SECRET_ACCESS_KEY}
+EOF
+  where="the bucket $bucket"
+else
+  : >"$work/storage.yaml"
+  where="the box's disk"
+fi
+
+say "Installing $(basename "$tarball") and the keys, and starting a, b and c on $where"
+scp -q "${ssh_opts[@]}" "$tarball" "$work/env" "$work/storage.yaml" "wardrik@$address:"
 remote "wardrik@$address" "
   set -e
   systemctl --user stop wardrik@a wardrik@b wardrik@c 2>/dev/null || true
@@ -151,6 +193,11 @@ remote "wardrik@$address" "
   rm $(basename "$tarball")
   install -m 600 env ~/.config/wardrik/env
   rm env
+  if [ -s storage.yaml ]; then
+    grep -q '^storage:' ~/.config/wardrik/config.yaml || cat storage.yaml >>~/.config/wardrik/config.yaml
+    rm -f ~/.config/wardrik/vault.env
+  fi
+  rm storage.yaml
   systemctl --user enable --now wardrik@a wardrik@b wardrik@c
 "
 

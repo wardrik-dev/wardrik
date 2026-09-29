@@ -11,8 +11,8 @@ defmodule Wardrik.Store do
 
   | Adapter | Keeps it |
   | --- | --- |
-  | `Wardrik.Store.EKV` | on each node's disk, replicated between nodes. The default |
-  | `WardrikEcto.Store` | in a Postgres table, through an Ecto repo the host owns |
+  | `Wardrik.Store.EKV` | on each node's disk, replicated between nodes. The default, where the application has `:ekv` |
+  | `WardrikEcto.Store` | in a Postgres table, through an Ecto repo the host owns, where it has `:ecto_sql` and `:postgrex` |
   | `WardrikS3.Store` | in an S3 bucket |
   | `Wardrik.Store.Memory` | in one process, for tests |
 
@@ -23,8 +23,19 @@ defmodule Wardrik.Store do
   ## Namespaces
 
   Every key sits in a namespace, an atom the adapter maps to a prefix or a
-  table. Core uses `:agents` and `:claims`; a package uses one of its own.
-  Two callers never share a namespace, so neither has to know the other's keys.
+  column: `wardrik/<namespace>/<key>` on EKV and in a bucket, and a row's `ns`
+  in Postgres. Core keeps ledger claims in `:claims` and each agent's events in
+  `:events`; a package uses one of its own, as `WardrikVault` does `:vault` and
+  `WardrikHTTP` does `:tokens`. Two callers never share a namespace, so neither
+  has to know the other's keys.
+
+  The fleet is kept by `DurableServer`, whose supervisors each write under a
+  prefix of their own: `agents/<org>/<user>/<name>` for agents, `schedules/`
+  and, where budgets run, `meters/`, with each node's heartbeat under
+  `<prefix>__nodes/`. Through `Wardrik.Store.Durable` they sit in the
+  `:durable` namespace, so an agent in a bucket is
+  `wardrik/durable/agents/acme/jon/triage`. On EKV, DurableServer's own backend
+  writes them beside the namespaces, as `agents/acme/jon/triage`.
 
   ## Versions
 
@@ -122,10 +133,17 @@ defmodule Wardrik.Store do
   defp settings, do: Application.get_env(:wardrik, __MODULE__, [])
   defp split(settings), do: Keyword.pop(settings, :adapter, @default_adapter)
 
-  @doc "The child that runs the configured adapter, with `opts` over its configuration."
+  @doc """
+  The child that runs the configured adapter, with `opts` over its
+  configuration. Raises where the adapter is not a module this node has, as
+  one over a dependency the application leaves out is not.
+  """
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts \\ []) do
-    case adapter().child_spec(Keyword.merge(config(), opts)) do
+    adapter = adapter()
+    if message = missing(adapter), do: raise(ArgumentError, message)
+
+    case adapter.child_spec(Keyword.merge(config(), opts)) do
       nil -> %{id: __MODULE__, start: {Function, :identity, [:ignore]}}
       spec -> Map.put(spec, :id, __MODULE__)
     end
@@ -138,7 +156,21 @@ defmodule Wardrik.Store do
   @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def check(settings \\ settings()) do
     {adapter, opts} = split(settings)
-    adapter.check(opts)
+
+    case missing(adapter) do
+      nil -> adapter.check(opts)
+      message -> {:error, message}
+    end
+  end
+
+  # The adapters over optional dependencies are compiled only where the
+  # application has them, so a host that stores elsewhere compiles neither.
+  defp missing(adapter) do
+    unless Code.ensure_loaded?(adapter) do
+      "#{inspect(adapter)} is not a module this node has. WardrikEcto.Store needs " <>
+        ":ecto_sql and :postgrex among the application's dependencies, and " <>
+        "Wardrik.Store.EKV, the store where no adapter is named, needs :ekv"
+    end
   end
 
   @doc "How many nodes of a cluster of `size` the configured adapter needs connected. See `c:quorum/1`."

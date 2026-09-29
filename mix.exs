@@ -79,7 +79,10 @@ defmodule Wardrik.MixProject do
       # view of who is running.
       {:durable_server, "~> 0.1.5"},
       {:group, "~> 0.2.1"},
-      {:ekv, "~> 0.4.3"},
+      # The store where no adapter is configured. Optional, so a host that keeps
+      # its store in Postgres or S3 never compiles its SQLite NIF; the release
+      # carries it.
+      {:ekv, "~> 0.4.3", optional: true},
 
       # Used by lib/wardrik_tui, not by core. Pinned: pre-1.0. termite_ssh serves
       # the TUI over SSH, a session per client.

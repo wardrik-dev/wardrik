@@ -23,7 +23,8 @@
 # Then give it the release CI built from main, which is built on Ubuntu 24.04
 # as this box is, and the keys the daemon reads, as ~/.config/wardrik/env holds
 # them here, with SLACK_CHANNEL added: the id of a channel the bot is in. The
-# box keeps a vault key of its own, so the env file's goes unused:
+# box keeps a vault key of its own, so the env file's goes unused, unless
+# bootstrap.sh is given a bucket to keep everything in:
 #
 #   run=$(gh run list --repo jonlunsford/tars --branch main --workflow CI --status success \
 #     --limit 1 --json databaseId --jq '.[0].databaseId')
@@ -171,6 +172,13 @@ write_files:
     append: true
     content: |
       export PATH="$HOME/wardrik/bin:$PATH"
+
+      # What the nodes' units read, so a command run from a shell here, such
+      # as wardrik doctor, reads config.yaml as the nodes do.
+      set -a
+      [ -f "$HOME/.config/wardrik/env" ] && . "$HOME/.config/wardrik/env"
+      [ -f "$HOME/.config/wardrik/vault.env" ] && . "$HOME/.config/wardrik/vault.env"
+      set +a
 
 runcmd:
   - [chown, -R, "wardrik:wardrik", /home/wardrik]

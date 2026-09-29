@@ -18,7 +18,7 @@ defmodule WardrikS3.Store do
   | `:access_key_id`, `:secret_access_key` | required | |
   | `:session_token` | none | for temporary credentials |
   | `:region` | `"us-east-1"` | as the service names it; R2 takes `"auto"` |
-  | `:prefix` | `"wardrik"` | where in the bucket keys are written |
+  | `:prefix` | `"wardrik"` | where in the bucket keys are written, as `<prefix>/<namespace>/<key>` |
   | `:headers` | `[]` | sent with every request, such as `{"x-tigris-consistent", "true"}` on Tigris |
   | `:req_options` | `[]` | given to `Req.new/1` |
 

@@ -6,8 +6,9 @@ defmodule Wardrik.Store.Durable do
       {Wardrik.Store.Durable, store: WardrikEcto.Store, discovery_interval_ms: 5_000}
 
   An adapter names it from its `c:Wardrik.Store.durable_backend/1`. Every
-  object is a key in the `:durable` namespace, and its etag is the version the
-  adapter wrote it with. A claim is a write where nothing is written, and an
+  object is a key in the `:durable` namespace, under the prefix its
+  supervisor names, such as `agents/`, and its etag is the version the adapter
+  wrote it with. A claim is a write where nothing is written, and an
   update is a write over the version read, retried with a backoff while
   another writer keeps getting there first.
 

@@ -56,6 +56,22 @@ jobs:
             priv/plts
           key: ${{ steps.setup.outputs.key }}
 
+  # New applications that depend on Wardrik, neither with :ekv: a Phoenix app
+  # that keeps it in its own Repo, and a bare Mix app that keeps it in a
+  # bucket, without :ecto_sql either. See dev/hosts.sh.
+  hosts:
+    name: hosts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: hosts
+
+      - run: dev/services.sh
+      - run: dev/hosts.sh
+
   # The TypeScript SDK: its types are the ones the protocol's schemas make,
   # its tests pass, and it builds.
   sdk-typescript:
@@ -179,6 +195,17 @@ jobs:
           "$root/bin/wardrik" start
           "$root/bin/wardrik" status | tee status.txt
           grep -q "_/_/good" status.txt
+
+      # The store in Postgres, then in a bucket, and a node lost to kill -9:
+      # its agent carries on on the cluster's other node, or on a new machine
+      # given the same config.yaml. See dev/failover.sh.
+      - name: Fail over
+        run: |
+          dev/services.sh
+          root=$(mktemp -d)
+          tar -xzf "${{ steps.tarball.outputs.name }}" -C "$root"
+          dev/failover.sh postgres "$root"
+          dev/failover.sh s3 "$root"
 
       - name: Show the daemon's logs
         if: failure()

@@ -20,7 +20,7 @@ defmodule WardrikPolicy.Supervisor do
       {DurableServer.Supervisor,
        [
          name: WardrikPolicy.Meter.supervisor(),
-         prefix: "wardrik/meters/",
+         prefix: "meters/",
          backend: Wardrik.Store.durable_backend(),
          group: [log: Keyword.get(opts, :log, false)]
        ] ++ Wardrik.Store.durable_shutdown()}

@@ -15,12 +15,17 @@ defmodule Wardrik.Test.Services do
         "postgres://postgres:postgres@127.0.0.1:54329/wardrik_test"
       )
 
-  @doc "What `WardrikS3.Store.start_link/1` takes to reach the suite's bucket, under a prefix of this run's own."
+  @doc """
+  What `WardrikS3.Store.start_link/1` takes to reach the suite's bucket, under a
+  prefix of this run's own. `WARDRIK_TEST_S3_BUCKET` and `WARDRIK_TEST_S3_REGION`
+  point it at a bucket elsewhere, on R2 or AWS.
+  """
   @spec s3_opts() :: keyword()
   def s3_opts do
     [
-      bucket: "wardrik-test",
+      bucket: System.get_env("WARDRIK_TEST_S3_BUCKET", "wardrik-test"),
       endpoint: System.get_env("WARDRIK_TEST_S3_ENDPOINT", "http://127.0.0.1:59000"),
+      region: System.get_env("WARDRIK_TEST_S3_REGION", "us-east-1"),
       access_key_id: System.get_env("WARDRIK_TEST_S3_ACCESS_KEY_ID", "wardrik"),
       secret_access_key: System.get_env("WARDRIK_TEST_S3_SECRET_ACCESS_KEY", "wardrik-secret"),
       prefix: "run-#{System.system_time(:millisecond)}"
@@ -87,11 +92,16 @@ defmodule Wardrik.Test.Services do
     true
   end
 
-  @doc "Creates the suite's bucket where it is missing."
+  @doc """
+  Creates the suite's bucket where it is missing. A bucket
+  `WARDRIK_TEST_S3_BUCKET` names is one already there, and left as it is.
+  """
   @spec create_bucket!() :: true
   def create_bucket! do
-    opts = s3_opts()
+    if System.get_env("WARDRIK_TEST_S3_BUCKET"), do: true, else: create_bucket!(s3_opts())
+  end
 
+  defp create_bucket!(opts) do
     %{status: status} =
       Req.put!(
         Req.new(

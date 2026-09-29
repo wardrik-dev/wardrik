@@ -68,7 +68,7 @@ defmodule Wardrik.Schedule do
   @type outcome() :: :asked | :busy | :no_agent | :missed | :failed
 
   @name Wardrik.Schedules
-  @prefix "wardrik/schedules/"
+  @prefix "schedules/"
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
 
   @doc false

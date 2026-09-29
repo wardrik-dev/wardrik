@@ -45,6 +45,20 @@ defmodule Wardrik.StoreTest do
     assert Store.check(adapter: Wardrik.Store.Memory) == {:ok, "in this node's memory"}
   end
 
+  test "an adapter this node does not have is named, with what the optional ones need" do
+    settings = Application.fetch_env!(:wardrik, Store)
+    Application.put_env(:wardrik, Store, adapter: Wardrik.StoreTest.Absent)
+    on_exit(fn -> Application.put_env(:wardrik, Store, settings) end)
+
+    message =
+      "Wardrik.StoreTest.Absent is not a module this node has. WardrikEcto.Store needs " <>
+        ":ecto_sql and :postgrex among the application's dependencies, and " <>
+        "Wardrik.Store.EKV, the store where no adapter is named, needs :ekv"
+
+    assert Store.check() == {:error, message}
+    assert_raise ArgumentError, message, fn -> Store.child_spec() end
+  end
+
   test "quorum/1 is the configured adapter's" do
     assert Store.quorum(3) == 2
   end
