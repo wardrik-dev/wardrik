@@ -58,6 +58,42 @@ defmodule Wardrik.Store.EKVTest do
     end
   end
 
+  describe "check/1" do
+    @describetag :tmp_dir
+
+    test "finds a directory this node can write to", %{tmp_dir: dir} do
+      assert EKV.check(data_dir: dir) == {:ok, "on this node's disk, at #{dir}"}
+    end
+
+    test "finds one not made yet, which the store makes", %{tmp_dir: dir} do
+      dir = Path.join(dir, "store")
+
+      assert EKV.check(data_dir: dir) ==
+               {:ok, "on this node's disk, at #{dir}, made as the store starts"}
+    end
+
+    test "refuses one it cannot write to, or a file", %{tmp_dir: dir} do
+      locked = Path.join(dir, "locked")
+      File.mkdir_p!(locked)
+      File.chmod!(locked, 0o500)
+      on_exit(fn -> File.chmod!(locked, 0o700) end)
+
+      file = Path.join(dir, "file")
+      File.write!(file, "")
+
+      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: locked)
+      assert found =~ "which this node cannot write to"
+      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file)
+      assert found =~ "which is not a directory"
+      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file <> "/x")
+      assert found =~ "not a directory"
+    end
+  end
+
+  test "counts a quorum of more than half the cluster" do
+    assert Enum.map(1..5, &EKV.quorum/1) == [1, 2, 2, 3, 3]
+  end
+
   test "provides the fleet's DurableServer backend" do
     assert {DurableServer.Backends.EKVStore, name: :wardrik_store} = EKV.durable_backend([])
   end

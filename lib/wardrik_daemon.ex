@@ -40,6 +40,7 @@ defmodule WardrikDaemon do
       wardrik serve     # in the foreground, logging to the terminal
       wardrik start     # in the background, logging to the state directory
       wardrik status    # what is running
+      wardrik doctor    # whether config.yaml reads, and the store it names answers
       wardrik reload    # read agents/ and policies/ again
       wardrik parked    # what is waiting on a person
       wardrik schedules # when each schedule runs next, and how it last ran

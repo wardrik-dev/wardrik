@@ -35,12 +35,17 @@ defmodule WardrikDaemon.Cluster do
 
   ## Quorum
 
-  The store counts a quorum over the cluster's size: the number of `nodes`, or
-  `size` with `dns`. More than half of them must be connected for the fleet to
-  start or move an agent, so three nodes carry on with one lost, and two stop
-  when either is. A node starting waits until enough of the others are up,
-  saying so in its log and in `wardrik status`, and starts its agents once they
-  are.
+  A store kept on the nodes themselves, as it is without `storage` in
+  `config.yaml`, counts a quorum over the cluster's size: the number of
+  `nodes`, or `size` with `dns`. More than half of them must be connected for
+  the fleet to start or move an agent, so three nodes carry on with one lost,
+  and two stop when either is. A node starting waits until enough of the
+  others are up, saying so in its log and in `wardrik status`, and starts its
+  agents once they are.
+
+  A store kept elsewhere, in Postgres or S3, needs no quorum: each node starts
+  on its own, and the fleet carries on while any node is up. The store says
+  which; see `Wardrik.Store.quorum/1`.
 
   A release reads `cluster` as it boots, before anything starts; see
   `config/runtime.exs`. This supervisor runs a `WardrikDaemon.Cluster.Topology`
@@ -91,9 +96,9 @@ defmodule WardrikDaemon.Cluster do
   @spec named() :: [node()]
   def named, do: Keyword.get(settings(), :nodes, [])
 
-  @doc "How many of the cluster's nodes must be connected, this one among them."
+  @doc "How many of the cluster's nodes must be connected, this one among them, as the store counts them."
   @spec quorum(pos_integer()) :: pos_integer()
-  def quorum(size \\ size()), do: div(size, 2) + 1
+  def quorum(size \\ size()), do: Wardrik.Store.quorum(size)
 
   @doc """
   The cluster's nodes this one is connected to, itself among them: those

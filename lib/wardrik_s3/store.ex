@@ -37,6 +37,8 @@ defmodule WardrikS3.Store do
   listing. A tombstone stays in the bucket, since no request could remove it
   only where it is still a tombstone.
 
+  `check/1` runs the same requests, and answers what they found.
+
   ## Keys, values and versions
 
   A key is the object `prefix/namespace/key`. Every byte of the namespace and
@@ -107,6 +109,31 @@ defmodule WardrikS3.Store do
         {:error, {:missing_options, missing}}
     end
   end
+
+  @impl Wardrik.Store
+  def check(opts) do
+    where = "the bucket #{opts[:bucket]} at #{opts[:endpoint]}"
+
+    with {:ok, config} <- config(opts),
+         {:ok, conditional_delete} <- probe(config) do
+      {:ok, "#{where} refuses a write whose condition fails, and " <> deletes(conditional_delete)}
+    else
+      {:error, {:missing_options, missing}} ->
+        {:error, "#{where} needs #{Enum.map_join(missing, ", ", &to_string/1)}"}
+
+      {:error, {:unconditional_bucket, what, _response}} ->
+        {:error, "#{where}: #{what}, so it cannot hold the store"}
+
+      {:error, %Error{message: message}} ->
+        {:error, "#{where}: #{message}"}
+    end
+  end
+
+  defp deletes(true), do: "deletes over a version"
+  defp deletes(false), do: "deletes over any version, so a delete over one writes a tombstone"
+
+  @impl Wardrik.Store
+  def quorum(_size), do: 1
 
   # -- the contract ------------------------------------------------------------
 

@@ -392,6 +392,27 @@ def deps do
 end
 ```
 
+Wardrik starts with its application, keeping its store on the node's disk. An
+application that keeps it in its own Postgres starts it after its repo, and
+creates the table from a migration of its own:
+
+```elixir
+# config/config.exs
+config :wardrik, start: :host
+config :wardrik, Wardrik.Store, adapter: WardrikEcto.Store, repo: MyApp.Repo
+
+# lib/my_app/application.ex
+children = [MyApp.Repo, Wardrik, MyAppWeb.Endpoint]
+
+# priv/repo/migrations/20260926000000_add_wardrik.exs
+defmodule MyApp.Repo.Migrations.AddWardrik do
+  use Ecto.Migration
+
+  def up, do: WardrikEcto.Migration.up(version: 1)
+  def down, do: WardrikEcto.Migration.down(version: 1)
+end
+```
+
 ## Running the daemon
 
 `mix release` builds the daemon: a self-contained node with its own ERTS, and
@@ -402,6 +423,7 @@ attaches it to the GitHub release for a `v*` tag.
 MIX_ENV=prod mix release
 _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
+_build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml reads, and the store answers
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
 _build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"
 _build/prod/rel/wardrikd/bin/wardrik history acme/_/triage
@@ -422,10 +444,10 @@ what a person writes and can live in a dotfiles repository:
 
 | | |
 | --- | --- |
-| **`~/.config/wardrik/config.yaml`** | MCP servers, OAuth providers, vault keys and notify targets; `config.yml` works too. See `WardrikDaemon.Config` |
+| **`~/.config/wardrik/config.yaml`** | MCP servers, OAuth providers, vault keys, notify targets, the cluster and the store; `config.yml` works too. See `WardrikDaemon.Config` |
 | **`~/.config/wardrik/agents/*.md`** | the agents it runs, one per file. See `WardrikDaemon.AgentFile` |
 | **`~/.config/wardrik/policies/*.yaml`** | the policies agents name, as `.yaml` or `.yml`. See `WardrikPolicy` |
-| **`~/.local/share/wardrik/store/`** | the store |
+| **`~/.local/share/wardrik/store/`** | the store, where `config.yaml` names no other |
 | **`~/.local/share/wardrik/cookie`** | the node's cookie, created on first boot and readable by its owner only |
 | **`~/.local/state/wardrik/log/`** | `wardrik.log`, and `mcp.log` for what MCP commands write to stderr |
 
@@ -578,6 +600,38 @@ An MCP command sees only a few of the daemon's environment variables
 cookie and every key the daemon holds stay with the daemon.
 `WardrikMCP.Server`'s `:inherit_env` names others.
 
+### Where it keeps things
+
+Without `storage` in `config.yaml`, the daemon keeps agents, schedules,
+tokens and sealed credentials on its own disk, replicated to the other nodes
+of its cluster. `storage` keeps them in Postgres or S3 instead:
+
+```yaml
+# ~/.config/wardrik/config.yaml
+storage:
+  postgres:
+    url: ${DATABASE_URL}          # postgres://user:pass@host/db, ?ssl=true for TLS
+```
+
+```yaml
+storage:
+  s3:
+    bucket: wardrik
+    endpoint: https://<account>.r2.cloudflarestorage.com
+    region: auto
+    access_key_id: ${R2_ACCESS_KEY_ID}
+    secret_access_key: ${R2_SECRET_ACCESS_KEY}
+```
+
+On Postgres the daemon creates its table, `wardrik_records`, as it starts. A
+bucket must refuse a write whose condition fails: the daemon checks as it
+starts, and keeps nothing in one that does not. `wardrik doctor` runs the same
+checks without starting the daemon.
+
+A daemon on Postgres or S3 keeps nothing on its disk, so a new machine pointed
+at the same store carries on with its agents, and nodes of a cluster start
+and carry on without waiting for a quorum of the others.
+
 ### Several daemons, one cluster
 
 `cluster` in `config.yaml` names the nodes, and each is started as one of
@@ -598,9 +652,10 @@ kill -9 "$(wardrik pid --node b)"
 ```
 
 Their agents, schedules and store span all three, and the agents of a node
-that is lost carry on on another, parked calls still parked. More than half
-the nodes make a quorum: three carry on with one lost. A node starting waits
-until enough of the others are up, and `wardrik status` says what it waits for.
+that is lost carry on on another, parked calls still parked. With the store on
+the nodes, more than half of them make a quorum: three carry on with one lost.
+A node starting waits until enough of the others are up, and `wardrik status`
+says what it waits for.
 
 `start`, `stop`, `serve`, `remote`, `logs` and `pid` act on one node and take
 `--node` once there are several; every other command asks whichever node

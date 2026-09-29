@@ -54,6 +54,8 @@ Usage: wardrik [--node NAME] COMMAND
   start     run the daemon in the background, logging to its state directory
   stop      stop the daemon, and wait until it has
   status    what the daemon, or its cluster, is running
+  doctor    check config.yaml, and the store it names, whether or not the
+            daemon runs
   reload    read the agent and policy files again, on every node
   ask KEY MESSAGE            send an agent a message
   history KEY                what an agent has said
@@ -76,9 +78,9 @@ The daemon reads its configuration from $config_dir/config.yaml (or .yml), and
 runs the agents $config_dir/agents declares.
 
 Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which of
-its nodes a command is for. serve, start, stop, remote, logs and pid need one
-when this install runs several; every other command asks whichever node
-answers, since each speaks for the whole cluster.
+its nodes a command is for. serve, start, stop, remote, logs, pid and doctor
+need one when this install runs several; every other command asks whichever
+node answers, since each speaks for the whole cluster.
 USAGE
 }
 
@@ -224,7 +226,7 @@ alive () {
 }
 
 case "${1:-}" in
-  serve | start | stop | remote | logs | pid) one_node ;;
+  serve | start | stop | remote | logs | pid | doctor) one_node ;;
   status | reload | parked | schedules | ask | history | approve | deny | token) any_node ;;
 esac
 
@@ -274,6 +276,9 @@ case "${1:-}" in
   status)
     if ! running; then echo "wardrik is not running"; exit 3; fi
     cli status
+    ;;
+  doctor)
+    WARDRIK_LOG=- exec "$node" eval "WardrikDaemon.Doctor.main()"
     ;;
   reload|parked)
     cli "$1"

@@ -1,5 +1,6 @@
 defmodule WardrikDaemon.ClusterTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   import ExUnit.CaptureLog
 
@@ -86,6 +87,14 @@ defmodule WardrikDaemon.ClusterTest do
 
       assert Cluster.waiting() ==
                "nonode@nohost is waiting for 1 more node to reach a quorum of 2 of 3"
+    end
+
+    test "a node whose store is kept elsewhere waits for no other" do
+      stub(Wardrik.Store, :quorum, fn _size -> 1 end)
+      named([node(), :wardrik_b@localhost, :wardrik_c@localhost])
+
+      assert Cluster.quorum() == 1
+      assert Cluster.waiting() == nil
     end
 
     test "a node that is a quorum on its own waits for nothing" do

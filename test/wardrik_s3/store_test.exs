@@ -180,6 +180,41 @@ defmodule WardrikS3.StoreStartTest do
     assert :ignore = Store.start_link(S3Bucket.store_opts([], session_token: "token"))
   end
 
+  describe "check/1" do
+    test "says what a bucket that keeps the contract does with a delete" do
+      assert Store.check(S3Bucket.store_opts(conditional_delete: true)) ==
+               {:ok,
+                "the bucket wardrik at http://s3.test refuses a write whose condition fails, " <>
+                  "and deletes over a version"}
+
+      assert {:ok, found} = Store.check(S3Bucket.store_opts(conditional_delete: false))
+      assert found =~ "deletes over any version, so a delete over one writes a tombstone"
+    end
+
+    test "says what a bucket let through" do
+      assert Store.check(S3Bucket.store_opts(conditional_put: false)) ==
+               {:error,
+                "the bucket wardrik at http://s3.test: the bucket wrote a key where one was " <>
+                  "already written, so it cannot hold the store"}
+    end
+
+    test "says what the bucket answered" do
+      S3Bucket.refuse(403)
+
+      assert Store.check(S3Bucket.store_opts()) ==
+               {:error, "the bucket wardrik at http://s3.test: the bucket answered 403 Refused"}
+    end
+
+    test "names the options it needs" do
+      assert Store.check(bucket: "b", endpoint: "http://s3.test") ==
+               {:error, "the bucket b at http://s3.test needs access_key_id, secret_access_key"}
+    end
+
+    test "needs no other node" do
+      assert Store.quorum(3) == 1
+    end
+  end
+
   test "a call before it starts says so" do
     :persistent_term.erase({Store, :config})
     assert_raise WardrikS3.Error, ~r/not started/, fn -> Store.get(:none, "k", []) end

@@ -4,6 +4,7 @@ defmodule WardrikEcto.StoreTest do
 
   alias Ecto.Adapters.SQL
   alias Wardrik.Test.Repo
+  alias Wardrik.Test.Services
   alias WardrikEcto.Store
 
   @moduletag :postgres
@@ -15,17 +16,26 @@ defmodule WardrikEcto.StoreTest do
 
   use Wardrik.Store.Conformance, adapter: WardrikEcto.Store
 
+  defp away(table) do
+    SQL.query!(Repo, "ALTER TABLE #{table} RENAME TO #{table}_away")
+    on_exit(fn -> SQL.query!(Repo, "ALTER TABLE #{table}_away RENAME TO #{table}") end)
+  end
+
   describe "starting" do
-    test "needs a repo" do
+    test "needs a repo, or a url" do
       assert Store.start_link([]) == {:error, {:missing_options, [:repo]}}
+
+      assert Store.start_link(repo: Repo, url: Services.database_url()) ==
+               {:error, {:conflicting_options, [:repo, :url]}}
+    end
+
+    test "is a supervisor where it starts a repo of its own" do
+      refute Map.has_key?(Store.child_spec(repo: Repo), :type)
+      assert %{type: :supervisor} = Store.child_spec(url: Services.database_url())
     end
 
     test "needs the table WardrikEcto.Migration creates" do
-      SQL.query!(Repo, "ALTER TABLE wardrik_records RENAME TO wardrik_records_away")
-
-      on_exit(fn ->
-        SQL.query!(Repo, "ALTER TABLE wardrik_records_away RENAME TO wardrik_records")
-      end)
+      away("wardrik_records")
 
       assert {:error, {:no_table, "wardrik_records is missing; run WardrikEcto.Migration"}} =
                Store.start_link(repo: Repo)
@@ -33,6 +43,28 @@ defmodule WardrikEcto.StoreTest do
 
     test "fails where the repo is not running" do
       assert {:error, %RuntimeError{}} = Store.start_link(repo: WardrikEcto.StoreTest.Idle)
+      assert {:error, %RuntimeError{}} = Store.migrated(WardrikEcto.StoreTest.Idle)
+    end
+
+    test "with a url, starts a repo of its own and creates the table" do
+      # Run in reverse: the new tables go, the suite's comes back, and the
+      # store is kept through the suite's repo again.
+      on_exit(fn -> :ignore = Store.start_link(repo: Repo) end)
+      away("wardrik_records")
+      SQL.query!(Repo, "DROP TABLE IF EXISTS wardrik_schema_migrations")
+
+      on_exit(fn ->
+        SQL.query!(Repo, "DROP TABLE IF EXISTS wardrik_records, wardrik_schema_migrations")
+      end)
+
+      start_supervised!(Store.child_spec(url: Services.database_url()))
+
+      key = unique()
+      assert {:ok, vsn} = Store.put(:own, key, :value, if_vsn: nil)
+      assert Store.lookup(:own, key) == {:value, vsn}
+
+      assert %{rows: [[1]]} =
+               SQL.query!(WardrikEcto.Repo, "SELECT version FROM wardrik_schema_migrations")
     end
 
     test "a call before it starts says so" do
@@ -88,6 +120,56 @@ defmodule WardrikEcto.StoreTest do
   test "names Wardrik.Store.Durable to hold a fleet" do
     assert Store.durable_backend([]) ==
              {Wardrik.Store.Durable, store: Store, discovery_interval_ms: 5_000}
+  end
+
+  describe "check/1" do
+    test "finds the table through the repo" do
+      assert Store.check(repo: Repo) ==
+               {:ok, "the table wardrik_records through Wardrik.Test.Repo is there"}
+    end
+
+    test "says where the repo has no table, or does not answer" do
+      assert {:error, found} = Store.check(repo: WardrikEcto.StoreTest.Idle)
+
+      assert found =~
+               "the table wardrik_records through WardrikEcto.StoreTest.Idle: could not lookup"
+
+      away("wardrik_records")
+
+      assert Store.check(repo: Repo) ==
+               {:error,
+                "the table wardrik_records through Wardrik.Test.Repo is missing; " <>
+                  "run WardrikEcto.Migration"}
+    end
+
+    test "connects to the database a url names" do
+      where = "the database wardrik_test on 127.0.0.1:54329"
+      assert Store.check(url: Services.database_url()) == {:ok, "#{where} holds wardrik_records"}
+
+      away("wardrik_records")
+
+      assert Store.check(url: Services.database_url()) ==
+               {:ok, "#{where} answers, and wardrik_records is made as the store starts"}
+    end
+
+    test "says why it cannot connect" do
+      wrong = String.replace(Services.database_url(), ":postgres@", ":wrong@")
+      assert {:error, found} = Store.check(url: wrong)
+      assert found =~ "password authentication failed"
+
+      assert {:error, "invalid URL nowhere" <> _rest} = Store.check(url: "nowhere")
+    end
+
+    test "needs a repo or a url, not both" do
+      assert Store.check([]) == {:error, "the store names no repo or url"}
+
+      assert Store.check(repo: Repo, url: Services.database_url()) ==
+               {:error, "the store names both a repo and a url"}
+    end
+
+    test "needs no other node" do
+      assert Store.quorum(3) == 1
+    end
   end
 
   describe "WardrikEcto.Migration" do

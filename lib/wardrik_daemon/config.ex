@@ -54,6 +54,14 @@ defmodule WardrikDaemon.Config do
             url: https://hooks.example.com/wardrik
             secret: ${WARDRIK_WEBHOOK_SECRET}
 
+      storage:
+        s3:
+          bucket: wardrik
+          endpoint: https://<account>.r2.cloudflarestorage.com
+          region: auto
+          access_key_id: ${R2_ACCESS_KEY_ID}
+          secret_access_key: ${R2_SECRET_ACCESS_KEY}
+
   It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
   `${NAME}` in any string is replaced with that environment variable, so the
@@ -73,6 +81,18 @@ defmodule WardrikDaemon.Config do
 
   `cluster` takes `nodes`, or `dns` and `size`, as `WardrikDaemon.Cluster`
   describes them, and joins this daemon to others.
+
+  `storage` names the store everything is kept in, one of:
+
+    * `postgres`, with `url`, a `postgres://` URL, as `WardrikEcto.Store`
+      takes it: the daemon connects with a repo of its own and creates the
+      table as it starts.
+    * `s3`, with `bucket`, `endpoint`, `access_key_id` and `secret_access_key`,
+      and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
+
+  Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
+  `WARDRIK_DATA_DIR`. A release reads `storage` as it boots, before anything
+  starts; see `boot/1`.
 
   `notify` names targets an agent file's `notify` routes to, each one
   `slack`, with `channel`, `token`, and optionally `app_token` and
@@ -100,13 +120,27 @@ defmodule WardrikDaemon.Config do
   @provider ~w(resource issuer client_id client_secret redirect_uri scopes flow)a
   @vault ~w(keys)a
   @listener ~w(port ip)a
+  @stores %{
+    "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
+    "s3" =>
+      {WardrikS3.Store, ~w(bucket endpoint region prefix access_key_id secret_access_key),
+       ~w(bucket endpoint access_key_id secret_access_key)}
+  }
   @notifiers %{
     "slack" => {WardrikNotify.Slack, ~w(channel token app_token approvers), ~w(channel token)},
     "webhook" => {WardrikNotify.Webhook, ~w(url secret), ~w(url)}
   }
 
+  @store_settings ~w(url bucket endpoint region prefix access_key_id secret_access_key)a
+  @store_urls %{
+    "url" => {~w(postgres postgresql), "a postgres:// URL"},
+    "endpoint" => {~w(http https), "an https:// URL"}
+  }
+
   @settings Map.new(
-              @server ++ @oauth ++ @client ++ @redirect ++ @provider ++ @vault ++ @listener,
+              @server ++
+                @oauth ++
+                @client ++ @redirect ++ @provider ++ @vault ++ @listener ++ @store_settings,
               &{Atom.to_string(&1), &1}
             )
 
@@ -160,10 +194,35 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  @doc "Merges each package's settings over what its application environment already holds."
+  @doc """
+  What a release configures as it boots, before anything starts: the store
+  `storage` names, and the cluster `cluster` describes. A store kept on the
+  nodes, as it is without `storage`, counts its quorum over the cluster's size.
+  """
+  @spec boot(settings()) :: settings()
+  def boot(settings) do
+    cluster = Keyword.get(settings, WardrikDaemon.Cluster, [])
+    store = Keyword.get(settings, Wardrik.Store, [])
+
+    store =
+      case {Keyword.has_key?(store, :adapter), cluster[:size]} do
+        {false, size} when is_integer(size) -> Keyword.put(store, :cluster_size, size)
+        _kept_elsewhere_or_alone -> store
+      end
+
+    Enum.reject([{WardrikDaemon.Cluster, cluster}, {Wardrik.Store, store}], &(elem(&1, 1) == []))
+  end
+
+  @doc """
+  Merges each package's settings over what its application environment already
+  holds. The store's are left out: it is running by then, and `boot/1` gives
+  them to a release before it starts.
+  """
   @spec apply(settings()) :: :ok
   def apply(settings) do
-    Enum.each(settings, fn {package, opts} ->
+    settings
+    |> Keyword.delete(Wardrik.Store)
+    |> Enum.each(fn {package, opts} ->
       Application.put_env(
         :wardrik,
         package,
@@ -205,10 +264,13 @@ defmodule WardrikDaemon.Config do
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
 
+      {"storage", storage} ->
+        {Wardrik.Store, storage(table!(storage, ["storage"]))}
+
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected mcp, oauth, vault, ssh, http, notify or cluster"
+          "is not a section; expected mcp, oauth, vault, ssh, http, notify, cluster or storage"
         )
     end)
   end
@@ -454,6 +516,45 @@ defmodule WardrikDaemon.Config do
   defp cluster_nodes(_names),
     do: invalid!(["cluster", "nodes"], "is a list of node names, such as [a, b, c]")
 
+  # -- storage ---------------------------------------------------------------
+
+  defp storage(storage) do
+    known!(storage, Map.keys(@stores), ["storage"])
+
+    case Map.to_list(storage) do
+      [] ->
+        []
+
+      [{kind, options}] ->
+        {adapter, keys, required} = Map.fetch!(@stores, kind)
+        path = ["storage", kind]
+        options = table!(options, path)
+        known!(options, keys, path)
+
+        for key <- required,
+            not Map.has_key?(options, key),
+            do: invalid!(path ++ [key], "is required")
+
+        [adapter: adapter] ++
+          Enum.map(options, fn {key, value} -> store_option(key, value, path) end)
+
+      _several ->
+        invalid!(["storage"], "names one store, postgres or s3")
+    end
+  end
+
+  defp store_option(key, value, path) when is_binary(value) and value != "" do
+    with {:ok, url} <- Map.fetch(@store_urls, key), do: url!(value, url, path ++ [key])
+    {setting(key), value}
+  end
+
+  defp store_option(key, _value, path), do: invalid!(path ++ [key], "is text")
+
+  defp url!(value, {schemes, what}, path) do
+    %URI{scheme: scheme, host: host} = URI.parse(value)
+    unless scheme in schemes and host not in [nil, ""], do: invalid!(path, "is #{what}")
+  end
+
   # -- tables ----------------------------------------------------------------
 
   defp options(table, keys, path) do
@@ -478,7 +579,7 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: mcp, oauth, vault, ssh, http, notify, cluster"
+        "is a set of sections: mcp, oauth, vault, ssh, http, notify, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

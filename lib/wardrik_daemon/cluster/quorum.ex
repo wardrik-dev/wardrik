@@ -8,11 +8,13 @@ defmodule WardrikDaemon.Cluster.Quorum do
       config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
 
   It does not return from starting until `WardrikDaemon.Cluster.waiting/0` has
-  nothing to say: until more than half of the cluster's nodes, this one among
-  them, are connected. The fleet's first write to the store needs that
-  quorum, so it is made only once it can succeed. It logs what it is waiting
-  for as it begins, and again every half minute, while the cluster's
-  topologies, already running, connect to the nodes they find.
+  nothing to say: until a quorum of the cluster's nodes, as the store counts
+  one, is connected, this one among them. That is more than half of them for a
+  store kept on the nodes, and this one alone for a store kept elsewhere. The
+  fleet's first write to the store needs that quorum, so it is made only once
+  it can succeed. It logs what it is waiting for as it begins, and again every
+  half minute, while the cluster's topologies, already running, connect to the
+  nodes they find.
 
   A node that is not one of `cluster.nodes` does not start, and without a
   cluster there is nothing to wait for.

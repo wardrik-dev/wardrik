@@ -336,6 +336,76 @@ defmodule WardrikDaemon.ConfigTest do
       end
     end
 
+    test "storage in Postgres names the database", context do
+      assert {:ok, [{Wardrik.Store, store}]} =
+               read(
+                 "storage:\n  postgres:\n    url: postgres://w:secret@db.internal/w\n",
+                 context
+               )
+
+      assert store == [adapter: WardrikEcto.Store, url: "postgres://w:secret@db.internal/w"]
+    end
+
+    test "storage in S3 names the bucket, and how to reach it", context do
+      key = env("key-id")
+
+      assert {:ok, [{Wardrik.Store, store}]} =
+               read(
+                 """
+                 storage:
+                   s3:
+                     bucket: wardrik
+                     endpoint: https://acct.r2.cloudflarestorage.com
+                     region: auto
+                     prefix: box1
+                     access_key_id: ${#{key}}
+                     secret_access_key: secret
+                 """,
+                 context
+               )
+
+      assert Enum.sort(store) == [
+               access_key_id: "key-id",
+               adapter: WardrikS3.Store,
+               bucket: "wardrik",
+               endpoint: "https://acct.r2.cloudflarestorage.com",
+               prefix: "box1",
+               region: "auto",
+               secret_access_key: "secret"
+             ]
+    end
+
+    test "empty storage leaves the store as it is", context do
+      assert {:ok, [{Wardrik.Store, []}]} = read("storage: {}\n", context)
+    end
+
+    test "storage that does not read says why", context do
+      s3 = "storage:\n  s3:\n    bucket: b\n    access_key_id: a\n    secret_access_key: s\n"
+
+      for {yaml, message} <- [
+            {"storage:\n  postgres: {}\n", "storage.postgres.url is required"},
+            {"storage:\n  postgres:\n    url: mysql://db/w\n",
+             "storage.postgres.url is a postgres:// URL"},
+            {"storage:\n  postgres:\n    url: postgres:///w\n",
+             "storage.postgres.url is a postgres:// URL"},
+            {"storage:\n  postgres:\n    url: 5\n", "storage.postgres.url is text"},
+            {"storage:\n  postgres:\n    url: postgres://db/w\n    pool: 3\n",
+             "storage.postgres.pool is not a setting"},
+            {s3, "storage.s3.endpoint is required"},
+            {s3 <> "    endpoint: r2.example\n", "storage.s3.endpoint is an https:// URL"},
+            {s3 <> "    endpoint: https://r2.example\n    region: \"\"\n",
+             "storage.s3.region is text"},
+            {"storage:\n  ekv: {}\n",
+             "storage.ekv is not a setting; expected one of postgres, s3"},
+            {"storage:\n  postgres:\n    url: postgres://db/w\n  s3:\n    bucket: b\n",
+             "storage names one store, postgres or s3"},
+            {"storage: [s3]\n", "storage is a set of keys"}
+          ] do
+        assert {:error, error} = read(yaml, context)
+        assert error =~ message
+      end
+    end
+
     test "an unknown section is refused", context do
       assert {:error, message} = read("agents:\n  x: 1\n", context)
       assert message =~ "agents is not a section"
@@ -393,7 +463,43 @@ defmodule WardrikDaemon.ConfigTest do
     end
   end
 
+  describe "boot/1" do
+    @describetag tmp_dir: false
+
+    test "counts the store's quorum over the cluster, where the store is on the nodes" do
+      cluster = [nodes: [:a@box, :b@box, :c@box], size: 3]
+
+      assert Config.boot([{WardrikMCP, servers: []}, {WardrikDaemon.Cluster, cluster}]) == [
+               {WardrikDaemon.Cluster, cluster},
+               {Wardrik.Store, cluster_size: 3}
+             ]
+    end
+
+    test "leaves a store kept elsewhere as storage names it" do
+      store = [adapter: WardrikS3.Store, bucket: "b"]
+
+      assert Config.boot([{WardrikDaemon.Cluster, size: 3}, {Wardrik.Store, store}]) == [
+               {WardrikDaemon.Cluster, size: 3},
+               {Wardrik.Store, store}
+             ]
+
+      assert Config.boot([{Wardrik.Store, store}]) == [{Wardrik.Store, store}]
+    end
+
+    test "is nothing where the file names neither" do
+      assert Config.boot([{WardrikMCP, servers: []}]) == []
+    end
+  end
+
   describe "apply/1" do
+    @describetag tmp_dir: false
+
+    test "leaves the store's settings, which a release took as it booted" do
+      before = Application.get_env(:wardrik, Wardrik.Store)
+      :ok = Config.apply([{Wardrik.Store, adapter: Wardrik.Store.Memory}])
+      assert Application.get_env(:wardrik, Wardrik.Store) == before
+    end
+
     test "merges over what the package already holds" do
       package = :"Elixir.WardrikDaemon.ConfigTest.Package#{System.unique_integer([:positive])}"
       Application.put_env(:wardrik, package, kept: 1, replaced: 1)

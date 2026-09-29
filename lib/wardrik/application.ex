@@ -5,21 +5,9 @@ defmodule Wardrik.Application do
 
   @impl true
   def start(_type, _args) do
-    children =
-      [
-        Wardrik.LLM.Catalog,
-        Wardrik.Event.Bus,
-        Wardrik.Event.Log,
-        Wardrik.LLM.ToolRunner,
-        {Task.Supervisor, name: Wardrik.TaskSupervisor}
-      ] ++
-        Application.get_env(:wardrik, :cluster, []) ++
-        [
-          {Wardrik.Fleet.Supervisor, Application.get_env(:wardrik, Wardrik.Fleet, [])},
-          Wardrik.Access
-        ] ++
-        Application.get_env(:wardrik, :children, [])
-
-    Supervisor.start_link(children, strategy: :one_for_one, name: Wardrik.Supervisor)
+    case Application.get_env(:wardrik, :start, :application) do
+      :application -> Wardrik.start_link()
+      :host -> Supervisor.start_link([], strategy: :one_for_one, name: __MODULE__)
+    end
   end
 end

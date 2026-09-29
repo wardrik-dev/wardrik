@@ -20,18 +20,14 @@ if System.get_env("RELEASE_NAME") do
   config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
   config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers, WardrikDaemon]
 
-  # config.yaml's cluster is read here, since what it describes starts before
-  # WardrikDaemon reads the rest of the file: the topologies that connect this
-  # node to the others, and the size the store counts a quorum against. A file
-  # that does not read is left for WardrikDaemon to report.
+  # config.yaml's storage and cluster are read here, since what they describe
+  # starts before WardrikDaemon reads the rest of the file: the store, the
+  # topologies that connect this node to the others, and the size the store
+  # counts a quorum against. A file that does not read is left for
+  # WardrikDaemon to report.
   with {:ok, file} <- WardrikDaemon.Config.file(WardrikDaemon.Config.config_dir()),
-       {:ok, settings} <- WardrikDaemon.Config.read(file),
-       {:ok, cluster} <- Keyword.fetch(settings, WardrikDaemon.Cluster) do
-    config :wardrik, WardrikDaemon.Cluster, cluster
-
-    if size = cluster[:size] do
-      config :wardrik, Wardrik.Store, cluster_size: size
-    end
+       {:ok, settings} <- WardrikDaemon.Config.read(file) do
+    config :wardrik, WardrikDaemon.Config.boot(settings)
   end
 
   state =

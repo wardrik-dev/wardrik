@@ -25,6 +25,12 @@ defmodule Wardrik.Store.Memory do
         start: {__MODULE__, :start_link, [opts]}
       )
 
+  @impl Wardrik.Store
+  def check(_opts), do: {:ok, "in this node's memory"}
+
+  @impl Wardrik.Store
+  def quorum(_size), do: 1
+
   @doc "Forgets everything."
   @spec clear() :: :ok
   def clear, do: Agent.update(__MODULE__, fn _state -> %{} end)

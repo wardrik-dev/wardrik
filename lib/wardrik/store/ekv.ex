@@ -21,6 +21,9 @@ defmodule Wardrik.Store.EKV do
 
   Keys are written as `wardrik/<namespace>/<key>`. A conditional write is an EKV
   compare-and-swap, and a namespace written conditionally once stays that way.
+
+  Every member holds everything, and a write lands once more than half of them
+  have it, so a cluster needs a quorum of its nodes connected.
   """
 
   @behaviour Wardrik.Store
@@ -45,6 +48,27 @@ defmodule Wardrik.Store.EKV do
 
   @impl Wardrik.Store
   def durable_backend(_opts), do: {DurableServer.Backends.EKVStore, name: @name}
+
+  @impl Wardrik.Store
+  def quorum(size), do: div(size, 2) + 1
+
+  @doc """
+  Checks that `:data_dir` is a directory this node can write to, or is not
+  made yet.
+  """
+  @impl Wardrik.Store
+  def check(opts) do
+    dir = data_dir(opts)
+    where = "on this node's disk, at #{dir}"
+
+    case File.stat(dir) do
+      {:ok, %File.Stat{type: :directory, access: :read_write}} -> {:ok, where}
+      {:ok, %File.Stat{type: :directory}} -> {:error, "#{where}, which this node cannot write to"}
+      {:ok, %File.Stat{}} -> {:error, "#{where}, which is not a directory"}
+      {:error, :enoent} -> {:ok, "#{where}, made as the store starts"}
+      {:error, reason} -> {:error, "#{where}: #{:file.format_error(reason)}"}
+    end
+  end
 
   @impl Wardrik.Store
   def put(ns, key, value, opts) do

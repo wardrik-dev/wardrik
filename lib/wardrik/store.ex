@@ -36,8 +36,12 @@ defmodule Wardrik.Store do
 
   ## Starting it
 
-  `Wardrik.Fleet.Supervisor` starts the store. A host that runs no fleet puts
-  `Wardrik.Store` in its own tree instead.
+  `Wardrik.Fleet.Supervisor` starts the store, as `Wardrik` starts. A store
+  kept through a host's repo starts after it, so the host starts `Wardrik` in
+  its own tree; see `Wardrik`. A host that runs no fleet puts `Wardrik.Store`
+  in its own tree instead.
+
+  `check/1` looks at a store without starting it, for `wardrik doctor`.
   """
 
   @typedoc "Which set of keys a value belongs to."
@@ -90,17 +94,33 @@ defmodule Wardrik.Store do
   @doc "The `DurableServer` backend agents are written through, for an adapter that has one."
   @callback durable_backend(keyword()) :: {module(), keyword()}
 
+  @doc """
+  Looks at the store `opts` describe without starting it, and answers what it
+  found, naming the store: that it is there and keeps the contract, or why not.
+  """
+  @callback check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+
+  @doc """
+  How many nodes of a cluster of `size`, this one among them, must be
+  connected for a write to land: more than half for a store kept on the nodes
+  themselves, and one for a store kept elsewhere.
+  """
+  @callback quorum(size :: pos_integer()) :: pos_integer()
+
   @optional_callbacks durable_backend: 1
 
   @default_adapter Wardrik.Store.EKV
 
   @doc "The adapter this deployment configured, `Wardrik.Store.EKV` by default."
   @spec adapter() :: module()
-  def adapter, do: Keyword.get(config(), :adapter, @default_adapter)
+  def adapter, do: settings() |> split() |> elem(0)
 
   @doc "The adapter's options, as configured under `config :wardrik, Wardrik.Store`."
   @spec config() :: keyword()
-  def config, do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.delete(:adapter)
+  def config, do: settings() |> split() |> elem(1)
+
+  defp settings, do: Application.get_env(:wardrik, __MODULE__, [])
+  defp split(settings), do: Keyword.pop(settings, :adapter, @default_adapter)
 
   @doc "The child that runs the configured adapter, with `opts` over its configuration."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
@@ -110,6 +130,20 @@ defmodule Wardrik.Store do
       spec -> Map.put(spec, :id, __MODULE__)
     end
   end
+
+  @doc """
+  What the adapter `settings` name finds, as `c:check/1` answers. `settings`
+  are as `config :wardrik, Wardrik.Store` holds them, which they are by default.
+  """
+  @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def check(settings \\ settings()) do
+    {adapter, opts} = split(settings)
+    adapter.check(opts)
+  end
+
+  @doc "How many nodes of a cluster of `size` the configured adapter needs connected. See `c:quorum/1`."
+  @spec quorum(pos_integer()) :: pos_integer()
+  def quorum(size) when is_integer(size) and size > 0, do: adapter().quorum(size)
 
   @doc """
   How long a `DurableServer.Supervisor` over the store gives its processes to

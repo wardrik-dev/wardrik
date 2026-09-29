@@ -17,6 +17,11 @@ defmodule Wardrik.Store.MemoryTest do
     assert Memory.get(:clear, "a", []) == nil
   end
 
+  test "is kept in memory, and needs no other node" do
+    assert Memory.check([]) == {:ok, "in this node's memory"}
+    assert Memory.quorum(3) == 1
+  end
+
   test "provides no DurableServer backend" do
     refute function_exported?(Memory, :durable_backend, 1)
   end
