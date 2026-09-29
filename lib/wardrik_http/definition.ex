@@ -8,7 +8,9 @@ defmodule WardrikHTTP.Definition do
   `WardrikHTTP.Listener` takes the module as `:definition`. The router checks the
   token's scope, runs the spec `put/2` answers with `Wardrik.Fleet.put/1`, and
   forgets the agent on `DELETE`; the module decides what a definition may say,
-  the seams its agent is given, whether it is kept, and who owns a key.
+  the seams its agent is given, whether it is kept, and who owns a key. Every
+  spec runs under the token's ceiling, whose hooks the router puts ahead of the
+  spec's own, so no module lets a definition loosen it; see `Wardrik.Grant`.
 
   | Callback | Route | Without it |
   | --- | --- | --- |

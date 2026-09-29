@@ -2,11 +2,17 @@ defmodule WardrikHTTP.Token do
   @moduledoc """
   A bearer token for the HTTP API, and the `Wardrik.Grant` it carries.
 
-      {:ok, secret, token} = WardrikHTTP.Token.create("ci", "acme/")
+      {:ok, secret, token} = WardrikHTTP.Token.create("ci", "acme/", [:define], ceiling: hooks)
       {:ok, secret, token} = WardrikHTTP.Token.create("watcher", "acme/ops/", [:read])
 
   A token grants the actions it was made with, every one where none are
   named, on the agents under its scope; see `Wardrik.Grant` for both.
+
+  A token that can `:define` is made with a `:ceiling`, the hooks every agent
+  it defines is held to ahead of the definition's own, or with `ceiling: []`
+  to hold them to nothing more; it is never left unlimited by omission.
+  `WardrikHTTP.Router` puts the ceiling in place as it defines an agent. A
+  token stored before tokens had ceilings reads as one made with `[]`.
 
   The secret, `wardrik_` and 32 characters, is answered once and never kept.
   `Wardrik.Store` holds the token in `:tokens` under its `id`, the first 12 hex
@@ -40,12 +46,15 @@ defmodule WardrikHTTP.Token do
 
   @doc """
   Makes a token named `name` granting `can` on the agents under `scope`, and
-  answers its secret, or a message saying why the grant is not one.
+  answers its secret, or a message saying why the grant is not one. `:ceiling`
+  is the grant's ceiling, which a token that can `:define` must be given.
   """
-  @spec create(String.t(), String.t(), [Grant.action() | String.t()]) ::
+  @spec create(String.t(), String.t(), [Grant.action() | String.t()], keyword()) ::
           {:ok, String.t(), t()} | {:error, String.t() | term()}
-  def create(name, scope, can \\ Grant.actions()) when is_binary(name) do
-    with {:ok, grant} <- Grant.new(scope, can) do
+  def create(name, scope, can \\ Grant.actions(), opts \\ [])
+      when is_binary(name) and is_list(opts) do
+    with {:ok, grant} <- Grant.new(scope, can, Keyword.get(opts, :ceiling, [])),
+         :ok <- chosen(grant, opts) do
       secret = @prefix <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
       hash = hash(secret)
 
@@ -73,7 +82,7 @@ defmodule WardrikHTTP.Token do
 
     case Access.get({@ns, binary_part(hash, 0, @id_length)}) do
       {:ok, %__MODULE__{hash: stored, grant: %Grant{}} = token} ->
-        if Plug.Crypto.secure_compare(stored, hash), do: {:ok, token}, else: :error
+        if Plug.Crypto.secure_compare(stored, hash), do: {:ok, current(token)}, else: :error
 
       {:ok, _other} ->
         :error
@@ -88,6 +97,19 @@ defmodule WardrikHTTP.Token do
 
   def verify(_secret), do: :error
 
+  # A token that can define says what its agents are held to, even nothing.
+  defp chosen(grant, opts) do
+    if :define in grant.can and not Keyword.has_key?(opts, :ceiling),
+      do:
+        {:error,
+         "A token that can define agents is made with a ceiling, or with none, ceiling: []"},
+      else: :ok
+  end
+
+  # A grant stored before grants had ceilings has none.
+  defp current(%__MODULE__{grant: grant} = token),
+    do: %{token | grant: struct(Grant, Map.from_struct(grant))}
+
   @doc "The record `token` is kept in, for `Wardrik.Access.hold/1`."
   @spec ref(t()) :: Access.ref()
   def ref(%__MODULE__{id: id}), do: {@ns, id}
@@ -99,6 +121,7 @@ defmodule WardrikHTTP.Token do
     |> Wardrik.Store.keys("")
     |> Enum.map(&Wardrik.Store.get(@ns, &1))
     |> Enum.filter(&match?(%__MODULE__{grant: %Grant{}}, &1))
+    |> Enum.map(&current/1)
     |> Enum.sort_by(& &1.created_at, DateTime)
   end
 

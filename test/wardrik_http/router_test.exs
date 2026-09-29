@@ -6,6 +6,7 @@ defmodule WardrikHTTP.RouterTest do
   alias Wardrik.Agent.Spec
   alias Wardrik.Event
   alias Wardrik.Event.Log
+  alias Wardrik.Grant
   alias Wardrik.LLM.Config
   alias Wardrik.Schedule
   alias Wardrik.Test.AgentRunners
@@ -22,6 +23,12 @@ defmodule WardrikHTTP.RouterTest do
     def put(_key, %{"refuse" => message}), do: {:error, message}
     def put(key, %{"owned" => true}), do: {:error, :conflict, "#{key} belongs to a file."}
     def put(_key, %{"elsewhere" => true}), do: {:ok, Spec.new(name: "elsewhere", org: "test")}
+
+    def put(key, %{"allow" => patterns}) do
+      {org, user, name} = Wardrik.Fleet.parse(key)
+      own = WardrikPolicy.decode!(%{"allow" => patterns})
+      {:ok, Spec.new(name: name, org: org, user: user, hooks: WardrikPolicy.hooks(own))}
+    end
 
     def put(key, fields) do
       {org, user, name} = Wardrik.Fleet.parse(key)
@@ -64,7 +71,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   setup do
-    {:ok, secret, token} = Token.create("router-test", "test/")
+    {:ok, secret, token} = Token.create("router-test", "test/", Grant.actions(), ceiling: [])
     listener = :"router-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0, definition: Definition})
     {:ok, port} = Listener.port(listener)
@@ -140,7 +147,7 @@ defmodule WardrikHTTP.RouterTest do
     test "a token for one agent lists that agent, and none whose key it begins", %{api: api} do
       {key, _agent} = Fleet.start_agent([], Fleet.key("scoped"))
       {longer, _agent} = Fleet.start_agent([], key <> "0")
-      {:ok, secret, _token} = Token.create("one-agent", key)
+      {:ok, secret, _token} = Token.create("one-agent", key, Grant.actions(), ceiling: [])
       one = Req.merge(api, auth: {:bearer, secret})
 
       assert {:ok, %{status: 200, body: %{"agents" => [%{"id" => ^key}]}}} =
@@ -206,7 +213,7 @@ defmodule WardrikHTTP.RouterTest do
 
     test "a revoked token is refused, and a stream open on it ends", %{api: api} do
       {key, _agent} = echo_agent()
-      {:ok, secret, token} = Token.create("revoked", "test/")
+      {:ok, secret, token} = Token.create("revoked", "test/", Grant.actions(), ceiling: [])
       revoked = Req.merge(api, auth: {:bearer, secret})
       stream = open(revoked, key, [])
 
@@ -515,6 +522,53 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 501, body: body}} = Req.get(api, url: "/v1/agents/#{key}/definition")
       assert body["error"]["message"] == "This server does not keep agents' definitions."
       assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}")
+    end
+  end
+
+  describe "a token's ceiling" do
+    # A client of the same listener holding a token that defines under `ceiling`.
+    defp ceiled(api, ceiling) do
+      {:ok, secret, _token} = Token.create("ceiled", "test/", [:define], ceiling: ceiling)
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    # The hooks the agent under `key` runs its calls past.
+    defp hooks(key) do
+      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(key))
+      Keyword.fetch!(state.scope_opts, :hooks)
+    end
+
+    defp checked(hooks, tool) do
+      %{id: "call_1", name: tool, arguments: %{}}
+      |> Wardrik.Call.tool(Wardrik.Scope.root(Config.new(), :assistant, hooks: hooks))
+      |> Wardrik.Hook.check()
+    end
+
+    test "holds every agent the token defines, ahead of the definition's own", %{api: api} do
+      careful = %{WardrikPolicy.decode!(%{"ask" => ["github/*"]}) | name: "ceiling/careful"}
+      ceiling = WardrikPolicy.hooks(careful)
+      key = defined_key()
+
+      assert {:ok, %{status: 201}} = define(ceiled(api, ceiling), key, %{"allow" => ["*"]})
+      assert [%Wardrik.Hook{name: "ceiling/careful"}, %Wardrik.Hook{name: "policy"}] = hooks(key)
+
+      assert %Wardrik.Call{asks: [%Wardrik.Call.Ask{by: "ceiling/careful"}]} =
+               checked(hooks(key), "github__issue_write")
+
+      assert %Wardrik.Call{state: :allowed, asks: []} = checked(hooks(key), "web_search")
+    end
+
+    test "is the one an agent was last defined under, and none where that token has none",
+         %{api: api} do
+      ceiling = WardrikPolicy.hooks(%WardrikPolicy{name: "ceiling/strict", default: :deny})
+      key = defined_key()
+
+      {:ok, %{status: 201}} = define(ceiled(api, ceiling), key, %{})
+      assert [%Wardrik.Hook{name: "ceiling/strict"}] = hooks(key)
+      assert %Wardrik.Call{state: :denied} = checked(hooks(key), "web_search")
+
+      {:ok, %{status: 200}} = define(api, key, %{})
+      assert hooks(key) == []
     end
   end
 

@@ -25,6 +25,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Event.Log
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
+  alias Wardrik.Grant
   alias Wardrik.Schedule
   alias WardrikHTTP.EventStream
   alias WardrikHTTP.Resource
@@ -169,7 +170,8 @@ defmodule WardrikHTTP.Router do
          {:ok, fields} <- object(conn.body_params),
          {:ok, spec} <- module.put(key, fields) do
       if Spec.key(spec) == key,
-        do: put_agent(conn, key, spec),
+        do:
+          put_agent(conn, key, %{spec | hooks: Grant.held(conn.assigns.token.grant, spec.hooks)}),
         else: internal(conn, "#{inspect(module)} wrote a spec for #{Spec.key(spec)}, not #{key}")
     else
       :unsupported -> not_supported(conn, "This server does not define agents over HTTP.")

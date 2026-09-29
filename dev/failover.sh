@@ -149,6 +149,9 @@ EOF
 
 s3() {
   local old=$work/old new=$work/new node token
+  # Both homes' node, under a name of its own, so a daemon of the user's own,
+  # wardrikd@localhost, can go on running beside it.
+  local -x RELEASE_NODE=wardrik_failover@localhost
   if [ -z "$named_bucket" ]; then
     code=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
       --aws-sigv4 "aws:amz:$WARDRIK_TEST_S3_REGION:s3" \
@@ -178,7 +181,7 @@ EOF
   rpc "$old" "" "{:ok, _pid} = Wardrik.Fleet.spawn(\"$agent\")"
   node=$(running_on "$old" "")
   [ -n "$node" ] || die "$agent did not start"
-  wardrik "$old" token create failover --all >/dev/null
+  wardrik "$old" token create failover --all --unlimited >/dev/null
 
   say "$agent runs on $node; killing it with kill -9 and throwing its home away"
   kill -9 "$(wardrik "$old" pid)"

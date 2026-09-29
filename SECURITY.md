@@ -61,7 +61,13 @@ The API listens on loopback port 4747, and every request presents a bearer
 token that `wardrik token create` made. A token grants a set of actions (read,
 message, decide, define, serve) on the agents under a key prefix. An agent
 outside the prefix is answered as one that does not exist, and an action the
-token was not granted is refused with 403. The store holds each token as the
+token was not granted is refused with 403. A token that can define agents is
+made with a ceiling, a policy of `policies/` given as `--policy`, or with
+`--unlimited`: every agent it defines is held to its ceiling ahead of the
+definition's own policy, and the strictest of them decides each call, so a
+definition cannot allow what its ceiling asks about or denies. An agent keeps
+the ceiling it was defined under until it is defined again, and revoking the
+token leaves the agents it defined running. The store holds each token as the
 SHA-256 of its secret, never the secret. A node reads a token through
 consensus and trusts what it read for 15 seconds. Revoking a token refuses
 it, and ends every event stream and worker socket open on it, at once on

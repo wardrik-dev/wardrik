@@ -1,6 +1,7 @@
 defmodule WardrikHTTP.WorkerTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.Grant
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -94,7 +95,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   setup do
-    {:ok, secret, _token} = Token.create("worker-test", "test/")
+    {:ok, secret, _token} = Token.create("worker-test", "test/", Grant.actions(), ceiling: [])
     listener = :"worker-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0})
     {:ok, port} = Listener.port(listener)
@@ -210,7 +211,11 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a call no worker in reach offers does not run", context do
-    connect(context, [tool("echo")], elem(Token.create("elsewhere", "test/only/"), 1))
+    connect(
+      context,
+      [tool("echo")],
+      elem(Token.create("elsewhere", "test/only/", Grant.actions(), ceiling: []), 1)
+    )
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "no_worker"}}} =
              Workers.call(context.agent, "echo", Calls.tool("echo"))
@@ -243,7 +248,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
-    {:ok, elsewhere, _token} = Token.create("elsewhere", "other/")
+    {:ok, elsewhere, _token} = Token.create("elsewhere", "other/", Grant.actions(), ceiling: [])
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
 
@@ -296,7 +301,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a worker's socket closes when its token is revoked",
        context do
-    {:ok, secret, token} = Token.create("revoked", "test/")
+    {:ok, secret, token} = Token.create("revoked", "test/", Grant.actions(), ceiling: [])
     worker = connect(context, [tool("echo")], secret)
     monitor = Process.monitor(worker)
 

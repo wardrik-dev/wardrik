@@ -19,12 +19,20 @@ defmodule WardrikHTTP do
   does not exist, `404`, and an action the token was not granted is refused
   with `403`. A revoked token is refused, and the streams and worker sockets
   open on it are closed, at once on every node the revocation reaches and
-  within 15 seconds on one it does not. See `WardrikHTTP.Token`; from a shell:
+  within 15 seconds on one it does not.
 
-      wardrik token create ci --scope acme/
+  A token that can `define` carries a ceiling: the hooks every agent it
+  defines is held to, ahead of the definition's own `policy`, so a definition
+  can narrow what its ceiling allows and never widen it. It is made with one,
+  a policy of `policies/`, or with none said outright. An agent keeps the
+  ceiling it was defined under until it is defined again; see `Wardrik.Grant`.
+
+  See `WardrikHTTP.Token`; from a shell:
+
+      wardrik token create ci --scope acme/ --policy careful
       wardrik token create watcher --scope acme/ops/ --can read
-      wardrik token create one --scope acme/jon/triage
-      wardrik token create laptop --all
+      wardrik token create one --scope acme/jon/triage --policy careful
+      wardrik token create laptop --all --unlimited
       wardrik token list
       wardrik token revoke 3f9a61c0d4e2
 

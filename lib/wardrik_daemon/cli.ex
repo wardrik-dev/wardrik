@@ -16,7 +16,10 @@ defmodule WardrikDaemon.CLI do
   | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
   | `token create NAME --scope PREFIX` | a token for the HTTP API that reaches the agents under `PREFIX`, printed once. `PREFIX` is `org/`, `org/user/`, or a key, `org/user/name` |
   | `token create NAME --all` | a token that reaches every agent |
-  | `token list` | every token: its id, name and scope |
+  | `token create … --can ACTIONS` | a token for only those actions, some of `read,message,decide,define,serve` |
+  | `token create … --policy NAME` | a token whose ceiling is the policy `policies/` holds as `NAME`: every agent it defines is held to it, ahead of the definition's own |
+  | `token create … --unlimited` | a token that holds the agents it defines to their own policies alone. A token that can define is made with `--policy` or this |
+  | `token list` | every token: its id, name, scope and ceiling |
   | `token revoke ID` | stops the token working |
 
   A node waiting for a quorum of its cluster answers every command with what
@@ -135,14 +138,63 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp create_token(name, options) do
-    case token_options(options, %{}) do
-      {:ok, %{scope: scope} = options} ->
-        token(name, scope, Map.get(options, :can, Grant.actions()))
+    with {:ok, %{scope: scope} = options} <- token_options(options, %{}),
+         can = Map.get(options, :can, Grant.actions()),
+         {:ok, opts} <- ceiling(options, can) do
+      token(name, scope, can, opts)
+    else
+      {:error, message} ->
+        fail(message)
 
-      _other ->
-        fail("wardrik: token create NAME (--scope PREFIX | --all) [--can ACTIONS]")
+      _usage ->
+        fail(
+          "wardrik: token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
+            "[--policy NAME | --unlimited]"
+        )
     end
   end
+
+  # What a token that can define holds its agents to: a policy of policies/,
+  # or, said outright, nothing but their own.
+  defp ceiling(options, can) do
+    defines? = Enum.any?(can, &(&1 in [:define, "define"]))
+
+    case Map.fetch(options, :ceiling) do
+      {:ok, :unlimited} ->
+        {:ok, ceiling: []}
+
+      {:ok, {:policy, name}} when defines? ->
+        policy_ceiling(name)
+
+      {:ok, {:policy, _name}} ->
+        {:error, "--policy holds the agents a token defines, and this one cannot define"}
+
+      :error when defines? ->
+        {:error,
+         "A token that can define agents holds them to a policy: add --policy NAME, " <>
+           "one of policies/, or --unlimited to hold them to their own policies alone"}
+
+      :error ->
+        {:ok, []}
+    end
+  end
+
+  defp policy_ceiling(name) do
+    policies =
+      for {_path, {:ok, %WardrikPolicy{} = policy}} <- WardrikDaemon.Agents.files(),
+          do: policy
+
+    case Enum.find(policies, &(&1.name == name)) do
+      nil ->
+        {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
+
+      policy ->
+        {:ok, ceiling: WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
+    end
+  end
+
+  defp policy_names([]), do: ""
+  defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
   defp token_options([], options), do: {:ok, options}
 
@@ -155,10 +207,22 @@ defmodule WardrikDaemon.CLI do
   defp token_options(["--can", can | rest], options),
     do: token_options(rest, Map.put(options, :can, String.split(can, ",", trim: true)))
 
+  defp token_options(["--policy", policy | rest], options),
+    do: ceiling_option(rest, options, {:policy, policy})
+
+  defp token_options(["--unlimited" | rest], options),
+    do: ceiling_option(rest, options, :unlimited)
+
   defp token_options(_other, _options), do: :error
 
-  defp token(name, scope, can) do
-    case Token.create(name, scope, can) do
+  # One of --policy and --unlimited, once.
+  defp ceiling_option(_rest, %{ceiling: _chosen}, _ceiling), do: :error
+
+  defp ceiling_option(rest, options, ceiling),
+    do: token_options(rest, Map.put(options, :ceiling, ceiling))
+
+  defp token(name, scope, can, opts) do
+    case Token.create(name, scope, can, opts) do
       {:ok, secret, token} ->
         ok(
           Enum.join(
@@ -186,15 +250,41 @@ defmodule WardrikDaemon.CLI do
           do: "  #{token.id}  #{token.name}  #{reach(token.grant)}  made #{token.created_at}"
 
     case rows do
-      [] -> "No tokens. Make one with: wardrik token create NAME --scope PREFIX"
-      [_row] -> Enum.join(["1 token:" | rows], "\n")
-      rows -> Enum.join(["#{length(rows)} tokens:" | rows], "\n")
+      [] ->
+        "No tokens. Make one with: wardrik token create NAME --scope PREFIX (--policy NAME | --unlimited)"
+
+      [_row] ->
+        Enum.join(["1 token:" | rows], "\n")
+
+      rows ->
+        Enum.join(["#{length(rows)} tokens:" | rows], "\n")
     end
   end
 
-  defp reach(%Grant{scope: scope, can: can}) do
+  defp reach(%Grant{scope: scope, can: can} = grant) do
     agents = if scope == "", do: "every agent", else: "the agents under #{scope}"
-    agents <> actions(can)
+    agents <> actions(can) <> held(grant)
+  end
+
+  defp held(%Grant{can: can, ceiling: ceiling}) do
+    cond do
+      :define not in can -> ""
+      ceiling == [] -> ", with no ceiling"
+      true -> ", under the ceiling #{ceiling_names(ceiling)}"
+    end
+  end
+
+  # The policies a ceiling is, by name, and not their budgets' hooks.
+  defp ceiling_names(ceiling) do
+    Enum.map_join(
+      for(
+        %Wardrik.Hook{module: module} = hook <- ceiling,
+        module != WardrikPolicy.Budget,
+        do: hook
+      ),
+      ", ",
+      &String.replace_prefix(&1.name, "ceiling/", "")
+    )
   end
 
   defp actions(can) do

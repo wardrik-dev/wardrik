@@ -25,7 +25,10 @@ defmodule WardrikDaemonTest do
   test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
-    {:ok, secret, _token} = WardrikHTTP.Token.create("daemon-test", "daemon/")
+
+    {:ok, secret, _token} =
+      WardrikHTTP.Token.create("daemon-test", "daemon/", Wardrik.Grant.actions(), ceiling: [])
+
     key = "daemon/_/defined-#{System.unique_integer([:positive])}"
     on_exit(fn -> Wardrik.Fleet.forget(key) end)
 

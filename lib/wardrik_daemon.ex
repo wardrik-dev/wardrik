@@ -46,7 +46,7 @@ defmodule WardrikDaemon do
       wardrik schedules # when each schedule runs next, and how it last ran
       wardrik approve KEY CALL
       wardrik deny KEY CALL [REASON]
-      wardrik token create NAME --scope PREFIX   # a token for the HTTP API
+      wardrik token create NAME --scope PREFIX --policy NAME   # a token for the HTTP API
       wardrik attach    # the TUI, over SSH
       wardrik remote    # an IEx shell on the node
       wardrik logs      # follow the log

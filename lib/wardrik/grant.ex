@@ -32,31 +32,67 @@ defmodule Wardrik.Grant do
   | `:serve` | offer them tools as a worker |
 
   `new/1` grants every action.
+
+  ## Its ceiling
+
+  A grant that can `:define` carries a ceiling: the hooks every agent its
+  holder defines is held to, ahead of the agent's own. The strictest hook
+  decides a call, so what a definition says can narrow its ceiling and never
+  loosen it: a ceiling that asks before `github/*` asks, whatever the
+  definition allows. An empty ceiling holds its agents to nothing but their
+  own hooks.
+
+      {:ok, grant} = Wardrik.Grant.new("acme/", [:define], WardrikPolicy.hooks(careful))
+
+  `held/2` puts a grant's ceiling ahead of a definition's hooks. An agent
+  keeps the ceiling it was defined under, as plain data, until it is defined
+  again.
   """
+
+  alias Wardrik.Hook
 
   @actions [:read, :message, :decide, :define, :serve]
   @named Map.new(@actions, &{Atom.to_string(&1), &1})
 
   @enforce_keys [:scope, :can]
-  defstruct [:scope, :can]
+  defstruct [:scope, :can, ceiling: []]
 
   @type action() :: :read | :message | :decide | :define | :serve
 
-  @type t() :: %__MODULE__{scope: String.t(), can: [action()]}
+  @type t() :: %__MODULE__{scope: String.t(), can: [action()], ceiling: [Hook.t()]}
 
   @doc "Every action, in the order a grant lists them."
   @spec actions() :: [action()]
   def actions, do: @actions
 
   @doc """
-  A grant of `can`, actions or their names, on the agents under `scope`, or a
-  message saying what does not read.
+  A grant of `can`, actions or their names, on the agents under `scope`, with
+  `ceiling` over the agents it defines, or a message saying what does not
+  read. Only a grant that can `:define` has a ceiling.
   """
-  @spec new(String.t(), [action() | String.t()]) :: {:ok, t()} | {:error, String.t()}
-  def new(scope, can \\ @actions) when is_binary(scope) and is_list(can) do
+  @spec new(String.t(), [action() | String.t()], [Hook.t()]) ::
+          {:ok, t()} | {:error, String.t()}
+  def new(scope, can \\ @actions, ceiling \\ [])
+      when is_binary(scope) and is_list(can) and is_list(ceiling) do
     with {:ok, scope} <- scope(scope),
-         {:ok, can} <- actions(can) do
-      {:ok, %__MODULE__{scope: scope, can: can}}
+         {:ok, can} <- actions(can),
+         :ok <- ceiling(ceiling, can) do
+      {:ok, %__MODULE__{scope: scope, can: can, ceiling: ceiling}}
+    end
+  end
+
+  defp ceiling([], _can), do: :ok
+
+  defp ceiling(hooks, can) do
+    cond do
+      not Enum.all?(hooks, &match?(%Hook{}, &1)) ->
+        {:error, "A ceiling is a list of Wardrik.Hook"}
+
+      :define not in can ->
+        {:error, "A ceiling holds the agents a grant defines, and this one cannot define"}
+
+      true ->
+        :ok
     end
   end
 
@@ -108,6 +144,10 @@ defmodule Wardrik.Grant do
 
   def covers?(%__MODULE__{scope: scope}, key) when is_binary(key),
     do: String.starts_with?(key <> "/", String.trim_trailing(scope, "/") <> "/")
+
+  @doc "`hooks`, a definition's own, with `grant`'s ceiling ahead of them."
+  @spec held(t(), [Hook.t()] | nil) :: [Hook.t()]
+  def held(%__MODULE__{ceiling: ceiling}, hooks), do: ceiling ++ (hooks || [])
 
   @doc "Whether `grant` lets its holder take `action` on the agent under `key`."
   @spec allows?(t(), action(), String.t()) :: boolean()

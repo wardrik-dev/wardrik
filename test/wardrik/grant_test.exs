@@ -2,6 +2,18 @@ defmodule Wardrik.GrantTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Grant
+  alias Wardrik.Hook
+
+  defmodule Careful do
+    @moduledoc false
+    @behaviour Hook
+
+    @impl true
+    def init(opts), do: opts
+
+    @impl true
+    def call(call, _opts), do: call
+  end
 
   test "a grant reaches the agents under its scope, and an empty scope reaches every agent" do
     {:ok, grant} = Grant.new("acme/")
@@ -69,5 +81,36 @@ defmodule Wardrik.GrantTest do
     assert Grant.allows?(grant, :message, "acme/jon/triage")
     refute Grant.allows?(grant, :decide, "acme/jon/triage")
     refute Grant.allows?(grant, :message, "globex/jon/triage")
+  end
+
+  describe "a ceiling" do
+    test "is none unless given, and holds nothing back" do
+      {:ok, grant} = Grant.new("acme/")
+
+      assert grant.ceiling == []
+      assert Grant.held(grant, [Hook.new("own", Careful)]) == [Hook.new("own", Careful)]
+    end
+
+    test "goes ahead of a definition's own hooks" do
+      ceiling = [Hook.new("ceiling/careful", Careful)]
+      {:ok, grant} = Grant.new("acme/", [:define], ceiling)
+
+      assert grant.ceiling == ceiling
+
+      assert Grant.held(grant, [Hook.new("own", Careful)]) ==
+               ceiling ++ [Hook.new("own", Careful)]
+
+      assert Grant.held(grant, nil) == ceiling
+    end
+
+    test "is only for a grant that can define, and is hooks" do
+      ceiling = [Hook.new("ceiling/careful", Careful)]
+
+      assert Grant.new("acme/", [:read], ceiling) ==
+               {:error, "A ceiling holds the agents a grant defines, and this one cannot define"}
+
+      assert Grant.new("acme/", [:define], [:careful]) ==
+               {:error, "A ceiling is a list of Wardrik.Hook"}
+    end
   end
 end
