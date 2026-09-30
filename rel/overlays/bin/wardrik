@@ -68,6 +68,11 @@ Usage: wardrik [--node NAME] COMMAND
                              are some of read,message,decide,define,serve
   token list                 the HTTP API's tokens
   token revoke ID            stop a token working
+  service install            run the daemon under your user's systemd, and
+                             start it at boot
+  service uninstall          stop it, and remove its unit
+  service status             how systemd has it
+  service unit               print the unit install writes, installing nothing
   attach [HOST]              the TUI, over SSH to HOST, localhost by default
   remote    an IEx shell on the daemon
   logs      follow the daemon's log
@@ -227,8 +232,187 @@ alive () {
   pgrep -f "$root/erts-[^/]*/bin/beam.* -s?name $(node_name)( |\$)" > /dev/null 2>&1
 }
 
+# -- service ---------------------------------------------------------------
+
+unit_dir="${XDG_CONFIG_HOME:-"$HOME/.config"}/systemd/user"
+
+# The unit that runs the node WARDRIK_NODE names: wardrik.service for the one
+# node of an install, and an instance of wardrik@.service for each node of a
+# cluster on this machine.
+unit_name () {
+  case "${WARDRIK_NODE:-}" in
+    "") echo "wardrik.service" ;;
+    *@*)
+      echo "wardrik: service install runs nodes on this machine; name one as cluster.nodes does, such as a" >&2
+      exit 1
+      ;;
+    *) echo "wardrik@$WARDRIK_NODE.service" ;;
+  esac
+}
+
+# The wardrik a unit runs: the release the install script points current at
+# where it installed this one, so an upgrade takes effect when the service
+# restarts, and this release where it did not.
+launcher () {
+  current="$(dirname "$root")/current"
+  if [ -L "$current" ] && [ "$(cd "$current" && pwd -P)" = "$root" ]; then
+    echo "$current/bin/wardrik"
+  else
+    echo "$root/bin/wardrik"
+  fi
+}
+
+# The units install writes, each as `==> NAME` and its text. The directories
+# are this command's, so the service reads and keeps what this install does,
+# and the keys the daemon reads are the env file's in the config directory.
+units () {
+  unit_name > /dev/null
+  wardrik="$(launcher)"
+
+  case "${WARDRIK_NODE:-}" in
+    "")
+      echo "==> wardrik.service"
+      unit "wardrik" "" "$state_dir/log/wardrik.log"
+      ;;
+    *)
+      echo "==> epmd.service"
+      cat << UNIT
+# How the nodes of this machine find one another, as a unit of its own so
+# stopping one node leaves every other's name in place. Written by wardrik
+# service install.
+[Unit]
+Description=epmd, for the wardrik nodes
+
+[Service]
+ExecStart=/bin/sh -c 'exec "$(dirname "$(dirname "$wardrik")")"/erts-*/bin/epmd -address 127.0.0.1'
+Restart=on-failure
+UNIT
+      echo "==> wardrik@.service"
+      unit "wardrik node %i" "%i" "$state_dir/nodes/%i/log/wardrik.log"
+      ;;
+  esac
+}
+
+# A unit running the node $2 names, or the install's one node where $2 is
+# empty, described as $1 and logging to $3.
+unit () {
+  cat << UNIT
+# The wardrik daemon, as your user's systemd runs it. Written by wardrik
+# service install; wardrik service uninstall removes it.
+[Unit]
+Description=$1
+UNIT
+
+  if [ -n "$2" ]; then
+    printf 'Requires=epmd.service\nAfter=epmd.service\n'
+  fi
+
+  cat << UNIT
+
+[Service]
+Type=exec
+Environment=LANG=C.UTF-8
+Environment="WARDRIK_CONFIG_DIR=$config_dir"
+Environment="WARDRIK_DATA_HOME=$data_home"
+Environment="WARDRIK_STATE_DIR=$state_dir"
+Environment="WARDRIK_LOG=$3"
+UNIT
+
+  if [ -n "$2" ]; then
+    printf 'Environment=WARDRIK_NODE=%s\nEnvironment="ELIXIR_ERL_OPTIONS=-start_epmd false"\n' "$2"
+  fi
+
+  cat << UNIT
+EnvironmentFile=-$config_dir/env
+ExecStart="$wardrik" serve
+ExecStop="$wardrik" stop
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT
+}
+
+# Why the daemon cannot be a service of this user's here, or nothing.
+unserviceable () {
+  if [ "$(id -u)" = 0 ]; then
+    echo "service install runs the daemon as you, and you are root, whose home it would keep its store in; install it as the user it should run as"
+  elif [ "$(uname -s)" != Linux ] || ! command -v systemctl > /dev/null 2>&1; then
+    echo "service install writes a systemd unit, and this system has no systemd; run wardrik serve under what supervises services here"
+  elif ! systemctl --user show-environment > /dev/null 2>&1; then
+    echo "systemctl cannot reach your user's systemd, which a login over SSH or at a desktop starts and su does not; log in as $(id -un), or run: sudo loginctl enable-linger $(id -un)"
+  fi
+}
+
+service_install () {
+  name="$(unit_name)"
+  why="$(unserviceable)"
+  [ -z "$why" ] || { echo "wardrik: $why" >&2; exit 1; }
+
+  if running && ! systemctl --user is-active --quiet "$name"; then
+    echo "wardrik is running already, outside systemd; stop it with wardrik stop, and install the service again" >&2
+    exit 1
+  fi
+
+  mkdir -p "$unit_dir"
+  units | awk -v dir="$unit_dir" '
+    /^==> / { if (out) close(out); out = dir "/" substr($0, 5); next }
+    { print > out }
+  '
+
+  systemctl --user daemon-reload
+  systemctl --user enable --quiet "$name"
+  systemctl --user restart "$name"
+
+  # The user's systemd, and so the daemon, runs from boot rather than from
+  # their first login once they linger.
+  if [ "$(loginctl show-user "$(id -un)" --property=Linger --value 2> /dev/null)" != yes ] &&
+    ! loginctl enable-linger "$(id -un)" 2> /dev/null; then
+    lingering="It starts once you log in; to start it at boot, run: sudo loginctl enable-linger $(id -un)"
+  else
+    lingering="It starts at boot."
+  fi
+
+  for tick in $(seq 600); do
+    if waiting="$(call "'Elixir.IO':puts('Elixir.WardrikDaemon.CLI':started())." 2> /dev/null)"; then
+      [ -z "$waiting" ] || echo "$waiting"
+      echo "wardrik runs as $name, from $unit_dir. $lingering"
+      exit 0
+    fi
+    [ "$tick" -lt 10 ] || systemctl --user is-active --quiet "$name" || break
+    sleep 0.1
+  done
+
+  echo "wardrik did not start. What systemd says:" >&2
+  systemctl --user status --no-pager --lines=20 "$name" >&2 || true
+  exit 1
+}
+
+service_uninstall () {
+  name="$(unit_name)"
+  systemctl --user disable --now --quiet "$name" 2> /dev/null || true
+
+  case "$name" in
+    wardrik.service)
+      rm -f "$unit_dir/wardrik.service"
+      ;;
+    *)
+      # The template and epmd go with the last node.
+      if [ -z "$(systemctl --user list-units --all --no-legend 'wardrik@*' 2> /dev/null)" ]; then
+        systemctl --user disable --now --quiet epmd.service 2> /dev/null || true
+        rm -f "$unit_dir/wardrik@.service" "$unit_dir/epmd.service"
+      fi
+      ;;
+  esac
+
+  systemctl --user daemon-reload 2> /dev/null || true
+  echo "wardrik no longer runs as $name. What it keeps is where it was: $data_home"
+}
+
 case "${1:-}" in
-  serve | start | stop | remote | logs | pid | doctor) one_node ;;
+  serve | start | stop | remote | logs | pid | doctor | service) one_node ;;
   status | reload | parked | schedules | ask | history | approve | deny | token) any_node ;;
 esac
 
@@ -320,6 +504,15 @@ case "${1:-}" in
     ;;
   pid)
     call 'io:format("~s~n", [os:getpid()]).' || { echo "wardrik is not running" >&2; exit 1; }
+    ;;
+  service)
+    case "${2:-}" in
+      install) service_install ;;
+      uninstall) service_uninstall ;;
+      status) exec systemctl --user status "$(unit_name)" ;;
+      unit) units ;;
+      *) echo "Usage: wardrik [--node NAME] service install, uninstall, status or unit" >&2; exit 1 ;;
+    esac
     ;;
   version)
     echo "wardrik $(cut -d' ' -f2 "$root/releases/start_erl.data")"

@@ -112,11 +112,23 @@ defmodule WardrikDaemon.Agents do
     {:reply, if(file, do: {:file, file}, else: {:api, policies}), state}
   end
 
-  defp load(%{dir: dir} = state) do
+  @doc """
+  What the policy and agent files under `dir` read into, without starting
+  anything: each policy file's policy, and each agent file's spec with where
+  its notices go, or the message saying why it does not read.
+  """
+  @spec read_files(Path.t()) ::
+          {[{Path.t(), {:ok, WardrikPolicy.t()} | {:error, String.t()}}],
+           [{Path.t(), {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}}]}
+  def read_files(dir) do
     policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
+    {policy_files, read(dir, "agents/*.md", &AgentFile.load(&1, policies))}
+  end
 
-    loaded = read(dir, "agents/*.md", &(&1 |> AgentFile.load(policies) |> put()))
+  defp load(%{dir: dir} = state) do
+    {policy_files, read} = read_files(dir)
+    loaded = for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
     agent_files = for {path, result} <- loaded, do: {path, spec_only(result)}
 
     :ok =

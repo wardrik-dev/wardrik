@@ -244,10 +244,11 @@ main() {
 
   cat << EOF
 
-    wardrik start                      the daemon, in the background
+    wardrik service install            the daemon, as your user's systemd service, from boot
+    wardrik start                      or in the background, until you stop it
     wardrik token create dev --all --unlimited
                                        a token for the HTTP API, on 127.0.0.1:4747
-    wardrik doctor                     whether config.yaml reads, and the store answers
+    wardrik doctor                     whether what it reads will do
 
     Agents are files in ~/.config/wardrik/agents; see the README.
 EOF
