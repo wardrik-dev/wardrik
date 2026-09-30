@@ -28,8 +28,8 @@
 #
 #   run=$(gh run list --repo wardrik-dev/wardrik --branch main --workflow CI --status success \
 #     --limit 1 --json databaseId --jq '.[0].databaseId')
-#   gh run download "$run" --repo wardrik-dev/wardrik -n wardrik-0.1.0-linux-x86_64.tar.gz
-#   scp wardrik-0.1.0-linux-x86_64.tar.gz ~/.config/wardrik/env wardrik@BOX:
+#   gh run download "$run" --repo wardrik-dev/wardrik -n wardrik-0.1.0-linux-x86_64.tar.gz   # or linux-aarch64
+#   scp wardrik-0.1.0-linux-*.tar.gz ~/.config/wardrik/env wardrik@BOX:
 #   ssh wardrik@BOX 'tar -xzf wardrik-*.tar.gz -C ~/wardrik && install -m 600 env ~/.config/wardrik/env \
 #     && rm env && systemctl --user enable --now wardrik@a wardrik@b wardrik@c'
 #

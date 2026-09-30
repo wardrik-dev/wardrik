@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # the scripts in single quotes are expanded in the containers
 #
 # Installs a release tarball with deploy/install.sh as a user of its own, in a
 # container that runs systemd, and checks `wardrik service`: the daemon runs
@@ -8,17 +9,17 @@
 #   docker build --target tarball --output type=local,dest=dist .
 #   dev/service.sh dist/wardrikd-0.1.0.tar.gz
 #
-# The container is privileged, as systemd needs, and removed at the end.
-# WARDRIK_SYSTEMD_IMAGE names the image, jrei/systemd-ubuntu:24.04 by default.
+# The container runs systemd on Ubuntu 24.04, from an image built here for
+# this machine's architecture. It is privileged, as systemd needs, and removed
+# at the end.
 set -euo pipefail
 
-# The scripts in single quotes are expanded in the container, not here.
-# shellcheck disable=SC2016
 
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
 [ $# -eq 1 ] && [ -f "$1" ] || { echo "usage: dev/service.sh TARBALL" >&2; exit 1; }
 version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' "$repo/mix.exs")
-image=${WARDRIK_SYSTEMD_IMAGE:-jrei/systemd-ubuntu:24.04}
+image=wardrik-systemd:24.04
+arch=$(uname -m)
 box=wardrik-service-$$
 
 say() { printf '==> %s\n' "$*"; }
@@ -26,9 +27,20 @@ die() { printf 'service: %s\n' "$*" >&2; exit 1; }
 
 served=$(mktemp -d)
 trap 'docker rm -f "$box" > /dev/null 2>&1 || true; rm -rf "$served"' EXIT
-cp "$1" "$served/wardrik-$version-linux-x86_64.tar.gz"
+cp "$1" "$served/wardrik-$version-linux-$arch.tar.gz"
 cp "$repo/deploy/install.sh" "$served/"
 chmod -R a+rX "$served"
+
+# systemd as PID 1, a user's systemd bus, and logind to start it for a user
+# who lingers.
+docker build -q -t "$image" - > /dev/null << 'IMAGE'
+FROM ubuntu:24.04
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends systemd systemd-sysv dbus dbus-user-session libpam-systemd \
+  && rm -rf /var/lib/apt/lists/*
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
+IMAGE
 
 docker run -d --name "$box" --privileged --cgroupns=host \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw -v "$served:/served:ro" "$image" > /dev/null
@@ -73,7 +85,7 @@ docker exec "$box" loginctl enable-linger tester
 booted
 
 say "installs, and runs as the user's service"
-as_user "sh /served/install.sh /served/wardrik-$version-linux-x86_64.tar.gz > /dev/null"
+as_user "sh /served/install.sh /served/wardrik-$version-linux-$arch.tar.gz > /dev/null"
 as_user 'wardrik service install' | tee /dev/stderr | grep -q "wardrik runs as wardrik.service"
 answers
 as_user 'systemctl --user is-enabled --quiet wardrik.service'

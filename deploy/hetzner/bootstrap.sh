@@ -13,7 +13,7 @@
 # repository.
 #
 #   WARDRIK_BOX            the server's name, wardrik-demo
-#   WARDRIK_BOX_TYPE       cx23; an x86 type, since the release is built for x86_64
+#   WARDRIK_BOX_TYPE       cx23; an Arm type such as cax11 runs the aarch64 release
 #   WARDRIK_BOX_LOCATION   fsn1
 #   WARDRIK_SSH_KEY        the key that lets you in as wardrik and into the TUI: the first of
 #                       ~/.ssh/id_ed25519.pub, id_ecdsa.pub and id_rsa.pub there is
@@ -153,10 +153,12 @@ run=$(gh run list --repo "$repo" --branch "$branch" --workflow CI --status succe
   --json databaseId --jq '.[0].databaseId')
 [ -n "$run" ] || die "no CI run on $branch has succeeded"
 
-say "Downloading the release CI built in run $run"
-gh run download "$run" --repo "$repo" --pattern 'wardrik-*-linux-x86_64.tar.gz' --dir "$work"
-tarball=$(find "$work" -type f -name 'wardrik-*-linux-x86_64.tar.gz' | head -n 1)
-[ -n "$tarball" ] || die "run $run has no release tarball"
+arch=$(remote "root@$address" uname -m)
+
+say "Downloading the $arch release CI built in run $run"
+gh run download "$run" --repo "$repo" --pattern "wardrik-*-linux-$arch.tar.gz" --dir "$work"
+tarball=$(find "$work" -type f -name "wardrik-*-linux-$arch.tar.gz" | head -n 1)
+[ -n "$tarball" ] || die "run $run has no release tarball for $arch"
 
 (
   umask 077
