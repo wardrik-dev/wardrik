@@ -6,7 +6,7 @@ defmodule Wardrik.MixProject do
   def project do
     [
       app: :wardrik,
-      version: "0.1.0",
+      version: "0.1.0-rc.1",
       elixir: "~> 1.20",
       description: "An agent runtime built on OTP.",
       source_url: @source_url,
