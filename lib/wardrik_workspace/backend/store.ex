@@ -66,6 +66,19 @@ defmodule WardrikWorkspace.Backend.Store do
     end
   end
 
+  @impl true
+  def paths(tree, prefix) do
+    with :ok <- normalised(tree, :not_a_tree) do
+      root = tree <> @between
+
+      {:ok,
+       for(
+         key <- Wardrik.Store.keys(@ns, root <> prefix),
+         do: String.replace_prefix(key, root, "")
+       )}
+    end
+  end
+
   defp key(tree, path) do
     with :ok <- normalised(tree, :not_a_tree),
          :ok <- normalised(path, :not_a_path),

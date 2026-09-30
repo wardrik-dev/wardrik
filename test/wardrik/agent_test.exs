@@ -6,6 +6,7 @@ defmodule Wardrik.AgentTest do
   alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Event
+  alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
 
   defp runner(test_pid, reply \\ "ok"), do: {AgentRunners, :echo, [test_pid, reply]}
@@ -107,6 +108,32 @@ defmodule Wardrik.AgentTest do
       # Still alive, still serving, and the failed turn left no result behind.
       Agent.ask(agent, "after")
       assert_receive {:turn, [{:user, "boom"}, {:user, "after"}]}
+      assert Process.alive?(agent)
+    end)
+  end
+
+  defmodule RaisingContext do
+    @behaviour Wardrik.Tool
+
+    @impl true
+    def tools(_argument), do: []
+
+    @impl true
+    def context(_argument), do: raise("the store is down")
+  end
+
+  test "a tool that raises saying what goes first fails that turn, and the agent goes on" do
+    config = Config.new(tools: [{RaisingContext, :any}])
+
+    capture_log(fn ->
+      agent = start_agent(config: config)
+
+      Agent.ask(agent, "one")
+      assert_receive %Event{payload: {:turn_failed, _reason}}
+
+      Agent.ask(agent, "two")
+      assert_receive %Event{payload: {:turn_started, [%Agent.Message{text: "two"}]}}
+      assert_receive %Event{payload: {:turn_failed, _reason}}
       assert Process.alive?(agent)
     end)
   end
@@ -213,7 +240,7 @@ defmodule Wardrik.AgentTest do
 
     assert_receive {:scope, scope}
     assert scope.source.agent_id == key
-    assert scope.config == Wardrik.LLM.Config.new()
+    assert scope.config == Config.new()
     assert Wardrik.Trace.root?(scope.source.trace)
   end
 
@@ -559,7 +586,7 @@ defmodule Wardrik.AgentTest do
         )
 
       config =
-        Wardrik.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5", system: "New here.")
+        Config.new(model_spec: "anthropic:claude-sonnet-5", system: "New here.")
 
       assert :ok =
                Agent.configure(agent,

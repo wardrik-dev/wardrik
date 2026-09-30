@@ -69,4 +69,46 @@ defmodule WardrikWorkspace.SpecTest do
       assert {:error, _message} = Spec.resolve(spec, "/etc/passwd")
     end
   end
+
+  describe "context/2" do
+    setup do
+      {:ok, spec} = Spec.new("acme/jon/triage", %{"team" => "acme"})
+      {:ok, spec: spec}
+    end
+
+    test "names files in the agent's own tree and the trees it shares, once each, as written",
+         %{spec: spec} do
+      assert {:ok, %Spec{context: context}} =
+               Spec.context(spec, ["./SOUL.md", "shared/team//CONVENTIONS.md", "SOUL.md"])
+
+      assert context == ["SOUL.md", "shared/team/CONVENTIONS.md"]
+    end
+
+    test "refuses a path no file of the workspace is at", %{spec: spec} do
+      assert {:error, "context: ../other/MEMORY.md climbs out of the workspace with .."} =
+               Spec.context(spec, ["../other/MEMORY.md"])
+
+      assert {:error, "context: No tree is shared with you as shared/theirs" <> _rest} =
+               Spec.context(spec, ["shared/theirs/x.md"])
+
+      assert {:error, "context: 7 is not a path"} = Spec.context(spec, [7])
+    end
+
+    test "reads 16 KB of them into each turn unless context_bytes/2 says", %{spec: spec} do
+      assert spec.context_bytes == 16 * 1024
+      assert {:ok, %Spec{context_bytes: 65_536}} = Spec.context_bytes(spec, 65_536)
+
+      for bytes <- [1023, 256 * 1024 + 1, "64KB", nil] do
+        assert {:error, "context max_bytes is a number of bytes from 1024 to 262144"} =
+                 Spec.context_bytes(spec, bytes)
+      end
+    end
+
+    test "is a list of at most twenty files", %{spec: spec} do
+      assert {:error, "context is a list of files"} = Spec.context(spec, "SOUL.md")
+
+      assert {:error, "context names at most 20 files"} =
+               Spec.context(spec, Enum.map(1..21, &"#{&1}.md"))
+    end
+  end
 end

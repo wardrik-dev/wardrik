@@ -4,7 +4,7 @@ defmodule Deploy.HetznerTest do
   @moduletag :tmp_dir
 
   # The files deploy/hetzner/cloud-init.yaml writes onto the box, read as the
-  # daemon there reads them, so the rehearsal fails here before it fails there.
+  # daemon there reads them, so a file the box would refuse fails here first.
   @cloud_init Path.expand("../../deploy/hetzner/cloud-init.yaml", __DIR__)
 
   defp written(path) do

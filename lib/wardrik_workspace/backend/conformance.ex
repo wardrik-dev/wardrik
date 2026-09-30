@@ -110,6 +110,17 @@ defmodule WardrikWorkspace.Backend.Conformance do
           assert {:ok, [{"a.md", _inner_file, _inner_version}]} = @backend.list(under, "")
         end
 
+        test "names the files under a prefix of one tree without reading them" do
+          tree = conformance_tree()
+          {:ok, _a} = @backend.write(tree, "notes/a.md", conformance_file("a"), nil)
+          {:ok, _b} = @backend.write(tree, "MEMORY.md", conformance_file("b"), nil)
+          {:ok, _c} = @backend.write(tree <> "0", "notes/c.md", conformance_file("c"), nil)
+
+          assert {:ok, paths} = @backend.paths(tree, "")
+          assert Enum.sort(paths) == ["MEMORY.md", "notes/a.md"]
+          assert @backend.paths(tree, "notes/") == {:ok, ["notes/a.md"]}
+        end
+
         test "keeps a path of any characters a path may hold" do
           tree = conformance_tree()
           path = "notes/ünïcode, spaces & (brackets)/100%.md"

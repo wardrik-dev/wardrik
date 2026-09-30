@@ -30,6 +30,8 @@ defmodule Wardrik.LLM.Turn do
     * `:response` - the model response whose tool calls it is running, if any
     * `:calls` - the `Wardrik.Call`s of that batch, or the model call it waits on
     * `:revision` - the `Wardrik.Hook.revision/1` of the hooks it parked under
+    * `:preamble` - what the config's tools told the model as the turn began,
+      put after the system prompt of every request it makes
     * `:tainted` - whether a call it made has answered with content from
       outside, which every batch after it is told
     * `:state` - `:running`, `:waiting`, `:done` or `:failed`
@@ -76,6 +78,14 @@ defmodule Wardrik.LLM.Turn do
   A turn that waits is written down with no scope, so it holds no
   credentials and runs no processes, and `under/2` gives it the scope it
   resumes under.
+
+  ## What the tools say first
+
+  `new/2` asks each of the config's tools what it tells the model before the
+  turn (see `c:Wardrik.Tool.context/0`), once, and every request the turn
+  makes carries it after the system prompt. The turn keeps it, so a turn
+  carried on after a lost node says what it began with. What a tool tells it
+  from outside taints the turn from the start.
 
   ## Content from outside
 
@@ -126,6 +136,7 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
+  alias Wardrik.Tool
   alias Wardrik.Trace
 
   @enforce_keys [:context]
@@ -135,6 +146,7 @@ defmodule Wardrik.LLM.Turn do
     :response,
     :revision,
     :error,
+    :preamble,
     messages: [],
     remaining: :infinity,
     calls: [],
@@ -150,6 +162,7 @@ defmodule Wardrik.LLM.Turn do
           response: ReqLLM.Response.t() | nil,
           revision: String.t() | nil,
           error: term(),
+          preamble: String.t() | nil,
           messages: [ReqLLM.Message.t()],
           remaining: non_neg_integer() | :infinity,
           calls: [Call.t()],
@@ -165,10 +178,22 @@ defmodule Wardrik.LLM.Turn do
 
   @closing "You have used every tool call available for this turn. Answer now from what you have, and say plainly what you could not verify."
 
-  @doc "A turn to answer `context` under `scope`, with the rounds its config allows."
+  @doc """
+  A turn to answer `context` under `scope`, with the rounds its config allows,
+  and what its tools tell the model first.
+  """
   @spec new(Scope.t(), Context.t()) :: t()
-  def new(%Scope{} = scope, %Context{} = context),
-    do: %__MODULE__{scope: scope, context: context, remaining: scope.config.max_iterations}
+  def new(%Scope{config: config} = scope, %Context{} = context) do
+    {preamble, outside?} = Tool.context(config.tools)
+
+    %__MODULE__{
+      scope: scope,
+      context: context,
+      remaining: config.max_iterations,
+      preamble: preamble,
+      tainted: outside? and not config.trust_outside_content
+    }
+  end
 
   @doc "Runs `turn` until it is done, waits on a person, or fails."
   @spec run(t()) :: t()
@@ -354,9 +379,8 @@ defmodule Wardrik.LLM.Turn do
   # is dropped, so the conversation never ends on an unanswered call.
   defp wrap_up(%__MODULE__{scope: scope} = turn, opts) do
     Logger.warning("Turn hit its iteration cap, answering without tools")
-    config = %{scope.config | tools: [], system: closing(scope.config.system)}
 
-    case request(turn, %{scope | config: config}, opts) do
+    case request(turn, %{scope | config: %{scope.config | tools: []}}, opts, true) do
       {:ok, response} ->
         %{text: text} = ReqLLM.Response.classify(response)
         done(turn, partial(text))
@@ -383,8 +407,18 @@ defmodule Wardrik.LLM.Turn do
     }
   end
 
-  defp closing(nil), do: @closing
-  defp closing(system), do: system <> "\n\n" <> @closing
+  # A request's system prompt: the config's, what the tools said as the turn
+  # began, and the closing note on the last request of a turn at its cap. A
+  # turn written down before it had a preamble has none.
+  defp system(system, turn, closing?) do
+    case Enum.reject(
+           [system, Map.get(turn, :preamble), closing? && @closing],
+           &(&1 in [nil, false, ""])
+         ) do
+      [] -> nil
+      parts -> Enum.join(parts, "\n\n")
+    end
+  end
 
   defp advance(turn) do
     case journal(turn) do
@@ -493,8 +527,10 @@ defmodule Wardrik.LLM.Turn do
   # A call a hook parks is never made, so it has no model events. `opts` go
   # to `Wardrik.LLM.Dispatch.admit/3` on every try. `scope` is the turn's, or one
   # whose config is narrowed for the last request of a turn at its cap.
-  defp request(%__MODULE__{} = turn, %Scope{} = scope, opts),
-    do: request(scope, turn.context, message_id(turn), scope.config.retries, opts)
+  defp request(%__MODULE__{} = turn, %Scope{config: config} = scope, opts, closing? \\ false) do
+    config = %{config | system: system(config.system, turn, closing?)}
+    request(%{scope | config: config}, turn.context, message_id(turn), config.retries, opts)
+  end
 
   defp request(%Scope{} = scope, context, message_id, retries, opts) do
     request = Request.new(scope.config, context)

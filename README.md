@@ -536,8 +536,8 @@ mcp:
 provider keys such as `ZAI_API_KEY`. A key that is absent is reported by the
 tool that needs it; a `config.yaml` that does not read stops the boot.
 
-An agent is a Markdown file with YAML frontmatter, the shape Claude Code and
-GitHub Copilot read theirs in, and the body is its system prompt:
+An agent is a Markdown file with YAML frontmatter, and the body is its system
+prompt:
 
 ```markdown
 ---
@@ -679,6 +679,24 @@ A file keeps who wrote it, and whether the turn that wrote it had read
 content from outside; reading, listing or finding it taints the reader's turn
 in the same way. A policy names a file tool's call by its path, as
 `write_file(notes/*)`. See `WardrikWorkspace`.
+
+As each turn begins, the agent is told what its workspace holds: the files
+`context` names, up to 16 KB of them in all unless `max_bytes` says, and the
+names of the others at the top of its tree, which it reads when it needs them.
+A file longer than its share is read from its start and its end, so a log kept
+by appending keeps its newest lines in view, and the agent is asked to fold
+it shorter. A `MEMORY.md` it keeps is there to find in every turn without
+filling the context, and a schedule's `prompt_file` asks it to follow a file
+it can edit, as a heartbeat:
+
+```yaml
+tools: [files]
+context: [SOUL.md]
+schedule:
+  name: heartbeat
+  every: 30m
+  prompt_file: HEARTBEAT.md
+```
 
 A policy may also hold a budget for what the agent spends on model calls, in
 dollars, in tokens, or both:

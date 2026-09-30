@@ -104,7 +104,11 @@ every gated call in it waits on a person, who sees what it would do. This is
 what stops a page or an issue written to be read by an agent from running a
 command a rule pre-approved. A file a tainted turn writes says so, and
 reading, listing or finding it taints the reader's turn, so a finding left in
-a shared tree carries what its writer read to every agent that reads it. The
+a shared tree carries what its writer read to every agent that reads it. One
+an agent file's `context` reads into every turn taints each turn from its
+start, and of the files a turn is only told the names of, a name is shown
+only where it is plain, letters, digits, `.`, `-` and `_`, since a name is
+text a tainted run may have chosen too. The
 taint is kept with the turn, so a turn carried on after its node is lost is
 tainted still, and it does not reach the turns after: content a turn read
 stays in the conversation, and rules count again in the next turn.

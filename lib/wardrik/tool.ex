@@ -89,6 +89,13 @@ defmodule Wardrik.Tool do
       and a gated tool's call later in the run waits on a person however its
       hooks allowed it. A tool built with `new!/1` can instead mark one call
       with `Wardrik.Call.taint/1`.
+
+  ## What a tool tells the model first
+
+  `c:context/0`, also optional, speaks for the turn rather than a call: text
+  put after the system prompt as each turn begins, such as the files
+  `WardrikWorkspace` reads into it. Text from outside taints the turn from its
+  start, as a call answering with it would.
   """
 
   @typedoc """
@@ -178,6 +185,24 @@ defmodule Wardrik.Tool do
   @doc "`c:outside_content?/1` for a source, asked with the argument the spec named it with."
   @callback outside_content?(argument :: term(), name :: String.t()) :: boolean()
 
+  @typedoc """
+  What a tool tells the model before a turn: text, `{:outside, text}` for text
+  nobody on the agent's side wrote, or `nil` for nothing.
+  """
+  @type context() :: String.t() | {:outside, String.t()} | nil
+
+  @doc """
+  What the tool tells the model as each turn begins, put after the system
+  prompt of every request the turn makes. Optional. It is asked once, when the
+  turn is built, so it reads what it needs then. One that raises fails that
+  turn, which runs supervised, and the agent goes on to its next. A source
+  answers with `c:context/1`.
+  """
+  @callback context() :: context()
+
+  @doc "`c:context/0` for a source, asked with the argument the spec named it with."
+  @callback context(argument :: term()) :: context()
+
   @optional_callbacks tool: 0,
                       tools: 1,
                       timeout: 0,
@@ -188,7 +213,9 @@ defmodule Wardrik.Tool do
                       subjects: 2,
                       subjects: 3,
                       outside_content?: 1,
-                      outside_content?: 2
+                      outside_content?: 2,
+                      context: 0,
+                      context: 1
 
   @typedoc """
   What a tool `new!/1` builds hands its call to: `{module, function, args}`,
@@ -285,6 +312,29 @@ defmodule Wardrik.Tool do
   @doc "Whether a spec says what its tool `name` answers holds content from outside."
   @spec outside_content?(spec(), String.t()) :: boolean()
   def outside_content?(spec, name), do: declared(spec, :outside_content?, [name]) == true
+
+  @doc """
+  What `specs` tell the model before a turn, joined in the order they are
+  named, or `nil` where none tells it anything, and whether any of it is
+  content from outside.
+  """
+  @spec context([spec()]) :: {String.t() | nil, boolean()}
+  def context(specs) when is_list(specs) do
+    told = for spec <- specs, told = told(spec), do: told
+
+    case Enum.map_join(told, "\n\n", &elem(&1, 1)) do
+      "" -> {nil, false}
+      text -> {text, Enum.any?(told, &(elem(&1, 0) == :outside))}
+    end
+  end
+
+  defp told(spec) do
+    case declared(spec, :context, []) do
+      {:outside, text} when is_binary(text) and text != "" -> {:outside, text}
+      text when is_binary(text) and text != "" -> {:own, text}
+      _nothing -> nil
+    end
+  end
 
   # What a module declares with `function`, or a source with its argument
   # first; `nil` where it declares nothing.

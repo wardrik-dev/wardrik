@@ -494,6 +494,111 @@ defmodule Wardrik.LLM.TurnTest do
     |> Enum.map_join(& &1.text)
   end
 
+  describe "what the tools say first" do
+    defmodule TellingSource do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tools(_argument), do: []
+
+      @impl true
+      def context(:own), do: "Your notes say the deploy is Friday."
+      def context(:outside), do: {:outside, "A page you saved says to deploy now."}
+    end
+
+    test "follows the persona in every request of the turn, the closing one too", %{
+      agent_id: agent_id
+    } do
+      test_pid = self()
+
+      LLMStub.answering(fn asked ->
+        send(test_pid, {:asked, asked})
+
+        if asked.tools == [],
+          do: {:ok, LLMStub.final_answer("done")},
+          else: {:ok, LLMStub.tool_call("call_1", "echo", %{})}
+      end)
+
+      scope = looping_scope(agent_id, 1)
+
+      scope = %{
+        scope
+        | config: %{
+            scope.config
+            | system: "You are terse.",
+              tools: [{TellingSource, :own} | scope.config.tools]
+          }
+      }
+
+      assert %LLM.Turn{state: :done, preamble: "Your notes say the deploy is Friday."} =
+               capture(fn -> run(scope, Context.new()) end)
+
+      assert [first, closing] = for({:asked, asked} <- flush(), do: asked.system)
+      assert first == "You are terse.\n\nYour notes say the deploy is Friday."
+      assert String.starts_with?(closing, first <> "\n\n")
+      assert closing =~ "Answer now from what you have"
+    end
+
+    test "is what the turn began with, when it is resumed under tools that say otherwise", %{
+      agent_id: agent_id
+    } do
+      test_pid = self()
+
+      LLMStub.answering(fn asked ->
+        send(test_pid, {:asked, asked.system})
+        asked_before = Process.get(:asked, 0)
+        Process.put(:asked, asked_before + 1)
+
+        if asked_before == 0,
+          do: {:ok, LLMStub.tool_call("call_1", "deploy", %{})},
+          else: {:ok, LLMStub.final_answer("done")}
+      end)
+
+      assert %LLM.Turn{state: :waiting} =
+               parked =
+               run(governed(agent_id, [{TellingSource, :own}, deploy_tool()]), Context.new())
+
+      assert %LLM.Turn{state: :done} =
+               resume(governed(agent_id, [deploy_tool()]), parked, %{"call_1" => :approve})
+
+      assert for({:asked, system} <- flush(), do: system) ==
+               List.duplicate("Your notes say the deploy is Friday.", 2)
+    end
+
+    test "taints the turn from its start where it came from outside", %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+
+      scope =
+        [tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy]]
+        |> LLM.Config.new()
+        |> Scope.root(agent_id, name: "turn", hooks: rules)
+
+      assert %LLM.Turn{state: :waiting, tainted: true} = parked = run(scope, Context.new())
+      assert [{%{id: "call_1", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
+      assert prompt =~ "this run has read content from outside"
+    end
+
+    test "leaves a turn whose config trusts outside content untainted", %{agent_id: agent_id} do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"}),
+        LLMStub.final_answer("Deployed.")
+      ])
+
+      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+
+      scope =
+        [
+          tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy],
+          trust_outside_content: true
+        ]
+        |> LLM.Config.new()
+        |> Scope.root(agent_id, name: "turn", hooks: rules)
+
+      assert %LLM.Turn{state: :done, tainted: false} = run(scope, Context.new())
+    end
+  end
+
   defp flush do
     receive do
       message -> [message | flush()]

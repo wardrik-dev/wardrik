@@ -35,6 +35,15 @@ defmodule WardrikWorkspace do
   No file tool is gated. Every one can run again after a lost node: a read
   changes nothing, and a change finds its own write.
 
+  ## What it tells the agent first
+
+  As each turn begins the workspace tells the agent what it holds: the files
+  an agent file's `context` names, read in whole, the names of the others at
+  the top of its tree, and the trees it shares. See `WardrikWorkspace.Context`.
+
+      tools: [files]
+      context: [SOUL.md]
+
   ## Outside content
 
   A file records whether the run that wrote it had read content from outside,
@@ -45,6 +54,7 @@ defmodule WardrikWorkspace do
 
   @behaviour Wardrik.Tool
 
+  alias WardrikWorkspace.Context
   alias WardrikWorkspace.Path
   alias WardrikWorkspace.Spec
   alias WardrikWorkspace.Tools
@@ -68,6 +78,10 @@ defmodule WardrikWorkspace do
   end
 
   def subjects(%Spec{}, _name, _arguments), do: []
+
+  @doc "What the workspace tells its agent as each turn begins; see `WardrikWorkspace.Context`."
+  @impl Wardrik.Tool
+  def context(%Spec{} = spec), do: Context.text(spec)
 
   @doc "Every file tool may run again after a lost node."
   @impl Wardrik.Tool
