@@ -2,7 +2,7 @@
 #
 # Installs wardrik, the daemon and the command that runs it, from a release.
 #
-#   curl -fsSL https://github.com/jonlunsford/tars/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
 #   sh install.sh wardrik-0.1.0-linux-x86_64.tar.gz     a tarball you already have
 #
 # As a user it installs under ~/.local: the release in ~/.local/lib/wardrik,
@@ -14,7 +14,7 @@
 #   WARDRIK_VERSION        the release to install, such as 0.1.0; the latest by default
 #   WARDRIK_INSTALL_DIR    where the releases go
 #   WARDRIK_BIN_DIR        where wardrik goes
-#   WARDRIK_REPO           the GitHub repository the releases are in, jonlunsford/tars
+#   WARDRIK_REPO           the GitHub repository the releases are in, wardrik-dev/wardrik
 #   WARDRIK_DOWNLOAD_URL   where the tarball and its SHA256SUMS are, in place of the
 #                          release's; file:// works, with WARDRIK_VERSION beside it
 #
@@ -24,8 +24,8 @@
 # 22.04 or later, or Debian 12 or later. Elsewhere, the Docker image runs.
 set -eu
 
-repo=${WARDRIK_REPO:-jonlunsford/tars}
-image=ghcr.io/jonlunsford/wardrik
+repo=${WARDRIK_REPO:-wardrik-dev/wardrik}
+image=ghcr.io/wardrik-dev/wardrik
 
 say() { printf '==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }

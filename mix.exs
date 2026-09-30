@@ -1,7 +1,7 @@
 defmodule Wardrik.MixProject do
   use Mix.Project
 
-  @source_url "https://github.com/jonlunsford/tars"
+  @source_url "https://github.com/wardrik-dev/wardrik"
 
   def project do
     [
