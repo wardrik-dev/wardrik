@@ -393,6 +393,74 @@ defmodule WardrikDaemon.CLITest do
     assert reloaded =~ "on #{node()}"
   end
 
+  test "ls lists the agents a query picks, with what each is doing and where" do
+    parked = parked_agent()
+    {idle, _agent} = Wardrik.Test.Fleet.start_agent()
+
+    {output, 0} = command(["ls", parked])
+    [heading, row] = output |> String.trim_trailing() |> String.split("\n")
+    assert heading =~ ~r"AGENT +STATUS +NODE"
+    assert row =~ ~r"#{parked} +parked +#{node()}"
+
+    {output, 0} = command(["ls", "status:parked", "test/"])
+    assert output =~ parked
+    refute output =~ idle
+
+    assert command(["ls", idle, "status:parked"]) ==
+             {"No agent matches #{idle} status:parked.\n", 0}
+
+    assert {"status:busy is not a word a query takes" <> _rest, 1} =
+             command(["ls", "status:busy"])
+
+    {output, 0} = command(["ls", idle, "--json"])
+    assert %{"agents" => [%{"id" => ^idle, "status" => "idle"}]} = JSON.decode!(output)
+  end
+
+  test "show gives an agent in full, and what its file gives it" do
+    dir = Path.join(System.tmp_dir!(), "wardrik-cli-#{System.unique_integer([:positive])}")
+    org = "show-#{System.unique_integer([:positive])}"
+    on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(org <> "/") end)
+    File.mkdir_p!(Path.join(dir, "agents"))
+
+    File.write!(Path.join([dir, "agents", "counter.md"]), """
+    ---
+    org: #{org}
+    description: Counts what it is asked to.
+    tools: [web_search]
+    policy:
+      budget:
+        tokens: 500
+    schedule:
+      name: tally
+      every: 30m
+      prompt: Count again.
+    ---
+    You count.
+    """)
+
+    start_supervised!({WardrikDaemon.Agents, dir: dir})
+    key = "#{org}/_/counter"
+    Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
+
+    {output, 0} = command(["show", key])
+    assert output =~ "╭─#{key}"
+    assert output =~ "Counts what it is asked to."
+    assert output =~ ~r"status +idle on #{node()}"
+    assert output =~ ~r"tools +web_search"
+    assert output =~ ~r"policy +the file's own: no rules; otherwise allow"
+    assert output =~ ~r"budget +0 of 500 tokens today"
+    assert output =~ ~r"schedule +every 30m +next in \d+m +not run yet"
+    assert output =~ Path.join([dir, "agents", "counter.md"])
+
+    parked = parked_agent()
+    {output, 0} = command(["show", parked])
+    assert output =~ ~r"waiting +call_1 +deploy +This ships to production."
+    assert output =~ "none; it was defined over the HTTP API"
+
+    assert command(["show", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
+  end
+
   test "schedules lists each schedule's next run, and its last and what came of it" do
     prefix = "cli-#{System.unique_integer([:positive])}/"
     key = prefix <> "_/pinger"

@@ -43,8 +43,16 @@ defmodule WardrikDaemon.CLI.Terminal do
     end
   end
 
-  @doc "Writes `data` and a newline to `device`, in colour where the terminal takes it."
-  @spec puts(t(), Owl.Data.t(), IO.device()) :: :ok
-  def puts(%__MODULE__{colour?: colour?}, data, device \\ :stdio),
+  @doc """
+  Writes `data` and a newline to `device`, in colour where the terminal takes
+  it. `data` can be a function that lays it out at the terminal's width.
+  """
+  @spec puts(t(), Owl.Data.t() | (pos_integer() -> Owl.Data.t()), IO.device()) :: :ok
+  def puts(terminal, data, device \\ :stdio)
+
+  def puts(%__MODULE__{} = terminal, layout, device) when is_function(layout, 1),
+    do: puts(terminal, layout.(terminal.width), device)
+
+  def puts(%__MODULE__{colour?: colour?}, data, device),
     do: IO.puts(device, WardrikConsole.Ansi.chardata(data, colour?))
 end

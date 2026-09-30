@@ -37,7 +37,11 @@ defmodule WardrikDaemon.CLI.Command do
   it has to.
   """
   @type answer() ::
-          {:ok, Owl.Data.t()} | {:error, Owl.Data.t() | :usage} | :live | :ok | :error
+          {:ok, Owl.Data.t() | (pos_integer() -> Owl.Data.t())}
+          | {:error, Owl.Data.t() | :usage}
+          | :live
+          | :ok
+          | :error
 
   @typedoc """
   A command. `:name` is its words, `"token create"`; `:arguments` and

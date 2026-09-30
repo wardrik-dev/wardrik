@@ -474,6 +474,8 @@ GitHub release, and names the image, for both platforms, by its version and
 MIX_ENV=prod mix release
 _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
+_build/prod/rel/wardrikd/bin/wardrik ls status:parked   # the agents a query picks
+_build/prod/rel/wardrikd/bin/wardrik show acme/_/triage # one agent in full
 _build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml, the store, the vault, each MCP server and every agent file will do
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
 _build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"   # and follow the answer
@@ -489,7 +491,7 @@ _build/prod/rel/wardrikd/bin/wardrik stop
 ```
 
 `wardrik help` lists every command, and `wardrik help COMMAND`, or `--help`
-after one, gives it in full. `status`, `history` and `parked` take `--json`,
+after one, gives it in full. `status`, `ls`, `history` and `parked` take `--json`,
 and answer with one JSON document, the HTTP API's own where it has one. Output
 is in colour where it goes to a terminal, unless `NO_COLOR` is set.
 
