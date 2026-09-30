@@ -1,37 +1,121 @@
 defmodule WardrikDaemon.CLI do
   @moduledoc """
-  What `bin/wardrik` asks a running daemon. `main/1` runs one command on the
-  daemon's node and prints its answer; a command that fails prints why and
-  exits with status 1.
+  What `bin/wardrik` asks a running daemon, and what it says about commands
+  when none answers.
 
-  | Command | Answer |
-  | --- | --- |
-  | `status` | the node, its cluster, its agents, and each file that does not read |
-  | `reload` | reads the agent and policy files again on every node of the cluster, then answers as `status` |
-  | `ask KEY MESSAGE` | sends the agent a message, which it answers in a turn of its own |
-  | `history KEY` | the agent's conversation, one message a paragraph |
-  | `parked` | every call an agent is waiting on a person for |
-  | `schedules [PREFIX]` | every schedule, or those whose key starts with `PREFIX`: when it runs next, and when it last ran and what came of it |
-  | `approve KEY CALL` | runs the call, and the agent carries on |
-  | `deny KEY CALL [REASON]` | refuses the call, telling the agent why |
-  | `token create NAME --scope PREFIX` | a token for the HTTP API that reaches the agents under `PREFIX`, printed once. `PREFIX` is `org/`, `org/user/`, or a key, `org/user/name` |
-  | `token create NAME --all` | a token that reaches every agent |
-  | `token create … --can ACTIONS` | a token for only those actions, some of `read,message,decide,define,serve` |
-  | `token create … --policy NAME` | a token whose ceiling is the policy `policies/` holds as `NAME`: every agent it defines is held to it, ahead of the definition's own |
-  | `token create … --unlimited` | a token that holds the agents it defines to their own policies alone. A token that can define is made with `--policy` or this |
-  | `token list` | every token: its id, name, scope and ceiling |
-  | `token revoke ID` | stops the token working |
+  `commands/0` is every command `wardrik` takes, the script's own among them,
+  and `wardrik help` lists them. `main/1` runs one the daemon answers, on the
+  daemon's node, and prints its answer; a command that fails prints why and
+  exits with status 1. `offline/1` answers the rest on a VM of its own: help,
+  a name that is no command, and a command the daemon answers when no daemon
+  is running. Both read the `WardrikDaemon.CLI.Terminal` the script describes
+  ahead of the command's own arguments.
+
+  A command that takes `--json` answers with one JSON document, in the shape
+  the HTTP API answers with where it has one, and a command that fails with
+  `--json` answers `{"error": {"type": ..., "message": ...}}`.
 
   A node waiting for a quorum of its cluster answers every command with what
   it is waiting for; see `WardrikDaemon.Cluster.waiting/0`.
   """
 
   alias Wardrik.Agent
+  alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
-  alias Wardrik.Grant
+  alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.CLI.Tokens
   alias WardrikDaemon.Cluster
-  alias WardrikHTTP.Token
+  alias WardrikDaemon.Config
+  alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
+
+  @doc "Every command `wardrik` takes, in the order `wardrik help` lists them."
+  @spec commands() :: [Command.t()]
+  def commands do
+    [
+      %Command{name: "serve", summary: "run the daemon here, logging to the terminal"},
+      %Command{name: "start", summary: "run the daemon in the background"},
+      %Command{name: "stop", summary: "stop the daemon, and wait until it has"},
+      %Command{
+        name: "status",
+        summary: "what the daemon, or its cluster, is running",
+        details: ["With --json, the agents as GET /v1/agents lists them."],
+        run: &status/2,
+        json: &agents/2
+      },
+      %Command{name: "doctor", summary: "check what the daemon reads, running or not"},
+      %Command{
+        name: "reload",
+        summary: "read the agent and policy files again, everywhere",
+        run: &reload/2
+      },
+      %Command{
+        name: "ask",
+        arguments: "KEY MESSAGE",
+        summary: "send an agent a message",
+        count: {2, :any},
+        run: &ask/2
+      },
+      %Command{
+        name: "history",
+        arguments: "KEY",
+        summary: "what an agent has said",
+        details: ["With --json, the agent as GET /v1/agents/KEY answers with it."],
+        count: {1, 1},
+        run: &history/2,
+        json: &snapshot/2
+      },
+      %Command{
+        name: "parked",
+        summary: "the calls agents are waiting on a person for",
+        details: ["With --json, each call as an interrupt, with the agent it is for."],
+        run: &parked/2,
+        json: &interrupts/2
+      },
+      %Command{
+        name: "schedules",
+        arguments: "[PREFIX]",
+        summary: "when each schedule runs next, and how it last ran",
+        count: {0, 1},
+        run: &schedules/2
+      },
+      %Command{
+        name: "approve",
+        arguments: "KEY CALL",
+        summary: "run a parked call",
+        count: {2, 2},
+        run: &approve/2
+      },
+      %Command{
+        name: "deny",
+        arguments: "KEY CALL [REASON]",
+        summary: "refuse a parked call, saying why",
+        count: {2, :any},
+        run: &deny/2
+      }
+    ] ++ Tokens.commands() ++ script_commands()
+  end
+
+  # What bin/wardrik runs itself, listed for their help.
+  defp script_commands do
+    [
+      %Command{name: "service install", summary: "run the daemon under your user's systemd"},
+      %Command{name: "service uninstall", summary: "stop the service, and remove its unit"},
+      %Command{name: "service status", summary: "how systemd has the service"},
+      %Command{name: "service unit", summary: "print the unit install writes"},
+      %Command{
+        name: "attach",
+        arguments: "[HOST]",
+        summary: "the TUI, over SSH to HOST, localhost by default"
+      },
+      %Command{name: "remote", summary: "an IEx shell on the daemon"},
+      %Command{name: "logs", summary: "follow the daemon's log"},
+      %Command{name: "pid", summary: "the daemon's process id"},
+      %Command{name: "version", summary: "print the version"},
+      %Command{name: "help", arguments: "[COMMAND]", summary: "every command, or one in full"}
+    ]
+  end
 
   @doc """
   What `wardrik start` waits for: `""` once the agent files have been read, what
@@ -75,60 +159,141 @@ defmodule WardrikDaemon.CLI do
     end
   end
 
-  @doc "Runs the command `args` names."
+  @doc "Runs the command `args` name, on this node."
   @spec main([String.t()]) :: :ok
   def main(args) do
+    {terminal, args} = Terminal.read(args)
+
     case Cluster.waiting() do
-      nil -> run(args)
-      reason -> if args == ["status"], do: ok(reason), else: fail(reason)
+      nil -> run(terminal, args)
+      reason when args == ["status"] -> Terminal.puts(terminal, reason)
+      reason -> failed(terminal, "unavailable", reason, "--json" in args)
     end
   end
 
-  defp run(["status"]), do: ok(WardrikDaemon.status())
+  defp run(terminal, args) do
+    with {:ok, %Command{run: run} = command, rest} when run != nil <-
+           Command.find(commands(), args),
+         {:ok, words, opts} <- Command.parse(command, rest) do
+      answer(terminal, command, words, opts)
+    else
+      {:error, usage} -> failed(terminal, "usage", usage, "--json" in args)
+      not_a_command -> failed(terminal, "usage", unknown(not_a_command), "--json" in args)
+    end
+  end
 
-  defp run(["reload"]) do
+  defp answer(terminal, %Command{} = command, words, opts) do
+    json? = Keyword.get(opts, :json, false)
+
+    case if(json?, do: command.json, else: command.run).(words, opts) do
+      {:ok, document} when json? -> IO.puts(JSON.encode!(document))
+      {:ok, text} -> Terminal.puts(terminal, text)
+      {:error, :usage} -> failed(terminal, "usage", Command.usage(command), json?)
+      {:error, message} -> failed(terminal, "failed", message, json?)
+    end
+  end
+
+  # A command that fails prints why, or with --json an error of `type`
+  # saying so, and exits with status 1.
+  defp failed(terminal, type, message, json?) do
+    if json?,
+      do: IO.puts(JSON.encode!(Resource.error(type, plain(message)))),
+      else: Terminal.puts(terminal, message)
+
+    exit({:shutdown, 1})
+  end
+
+  defp plain(message),
+    do: message |> WardrikConsole.Ansi.chardata(false) |> IO.chardata_to_string()
+
+  @doc """
+  What `bin/wardrik` asks a VM of its own for, when no daemon answers or for
+  help, which it prints before halting: help to standard output with status
+  0, and anything else to standard error with status 1.
+  """
+  @spec offline([String.t()]) :: no_return()
+  def offline(args) do
+    {terminal, args} = Terminal.read(args)
+
+    case unanswered(args, terminal) do
+      {:ok, text} ->
+        Terminal.puts(terminal, text)
+        System.halt(0)
+
+      {:error, text} ->
+        Terminal.puts(terminal, text, :stderr)
+        System.halt(1)
+    end
+  end
+
+  @doc """
+  What `offline/1` prints for `args`: help for `help` and whatever follows
+  it, and otherwise why `args` name no command, or, for one the daemon
+  answers, that no daemon is running.
+  """
+  @spec unanswered([String.t()], Terminal.t()) :: {:ok | :error, Owl.Data.t()}
+  def unanswered(["help" | args], terminal), do: help(args -- ["-h", "--help"], terminal)
+  def unanswered([], terminal), do: help([], terminal)
+
+  def unanswered(args, _terminal) do
+    case Command.find(commands(), args) do
+      {:ok, _command, _rest} -> {:error, "wardrik is not running"}
+      not_a_command -> {:error, unknown(not_a_command)}
+    end
+  end
+
+  defp help([], terminal), do: {:ok, overview(terminal)}
+
+  defp help(args, terminal) do
+    case Command.find(commands(), args) do
+      {:ok, command, _rest} -> {:ok, Command.help(command)}
+      {:group, word, group} -> {:ok, group(word, group, terminal)}
+      not_a_command -> {:error, unknown(not_a_command)}
+    end
+  end
+
+  defp overview(terminal) do
+    config_dir = Config.config_dir()
+
+    [
+      "Usage: wardrik [--node NAME] COMMAND\n\n",
+      Command.listing(commands(), terminal.width),
+      "\n\nThe daemon reads config.yaml, and the agents in agents/, from\n",
+      "#{config_dir}. wardrik help COMMAND says more about one.\n\n",
+      "Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which\n",
+      "of its nodes a command is for. serve, start, stop, remote, logs, pid, doctor\n",
+      "and service need one when this install runs several; every other command asks\n",
+      "whichever node answers, since each speaks for the whole cluster."
+    ]
+  end
+
+  defp group(word, commands, terminal),
+    do: ["Usage: wardrik #{word} COMMAND\n\n", Command.listing(commands, terminal.width)]
+
+  defp unknown({:ok, command, _rest}), do: "bin/wardrik runs wardrik #{command.name} itself"
+  defp unknown({:group, word, commands}), do: group(word, commands, %Terminal{})
+  defp unknown({:unknown, word, []}), do: ["wardrik: no command ", word]
+
+  defp unknown({:unknown, word, nearest}),
+    do: ["wardrik: no command ", word, "; did you mean ", or_list(nearest), "?"]
+
+  defp or_list([only]), do: only
+
+  defp or_list(names),
+    do: [Enum.intersperse(Enum.drop(names, -1), ", "), " or ", List.last(names)]
+
+  # -- the commands the daemon answers ----------------------------------------
+
+  defp status(_words, _opts), do: {:ok, WardrikDaemon.status()}
+
+  defp agents(_words, _opts), do: {:ok, %{"agents" => Enum.map(Fleet.list(), &Resource.agent/1)}}
+
+  defp reload(_words, _opts) do
     for daemon <- daemons(),
         do: :erpc.call(daemon, WardrikDaemon.Agents, :reload, [], :timer.minutes(1))
 
-    ok(WardrikDaemon.status())
+    {:ok, WardrikDaemon.status()}
   end
-
-  defp run(["ask", key | words]) when words != [] do
-    case Agent.ask(key, Enum.join(words, " ")) do
-      :ok -> ok("Asked #{key}.")
-      {:error, :not_found} -> fail("No agent runs under #{key}.")
-    end
-  end
-
-  defp run(["history", key]) do
-    case Agent.get_context(key) do
-      {:error, :not_found} -> fail("No agent runs under #{key}.")
-      context -> ok(history(context))
-    end
-  end
-
-  defp run(["parked"]), do: ok(parked())
-  defp run(["schedules"]), do: ok(schedules(""))
-  defp run(["schedules", prefix]), do: ok(schedules(prefix))
-  defp run(["approve", key, call]), do: decide(key, call, :approve, "Approved")
-
-  defp run(["deny", key, call | reason]) do
-    reason = if reason == [], do: "A person refused this call.", else: Enum.join(reason, " ")
-    decide(key, call, {:deny, reason}, "Denied")
-  end
-
-  defp run(["token", "create", name | options]), do: create_token(name, options)
-
-  defp run(["token", "list"]), do: ok(tokens())
-
-  defp run(["token", "revoke", id]) do
-    case Token.revoke(id) do
-      :ok -> ok("Revoked #{id}.")
-      {:error, :not_found} -> fail("No token has the id #{id}.")
-    end
-  end
-
-  defp run(args), do: fail("wardrik: no command #{Enum.join(args, " ")}")
 
   # This node and every node connected to it that runs a daemon of its own.
   defp daemons do
@@ -137,167 +302,30 @@ defmodule WardrikDaemon.CLI do
         do: daemon
   end
 
-  defp create_token(name, options) do
-    with {:ok, %{scope: scope} = options} <- token_options(options, %{}),
-         can = Map.get(options, :can, Grant.actions()),
-         {:ok, opts} <- ceiling(options, can) do
-      token(name, scope, can, opts)
-    else
-      {:error, message} ->
-        fail(message)
-
-      _usage ->
-        fail(
-          "wardrik: token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
-            "[--policy NAME | --unlimited]"
-        )
+  defp ask([key | words], _opts) do
+    case Agent.ask(key, Enum.join(words, " ")) do
+      :ok -> {:ok, "Asked #{key}."}
+      {:error, :not_found} -> {:error, no_agent(key)}
     end
   end
 
-  # What a token that can define holds its agents to: a policy of policies/,
-  # or, said outright, nothing but their own.
-  defp ceiling(options, can) do
-    defines? = Enum.any?(can, &(&1 in [:define, "define"]))
-
-    case Map.fetch(options, :ceiling) do
-      {:ok, :unlimited} ->
-        {:ok, ceiling: []}
-
-      {:ok, {:policy, name}} when defines? ->
-        policy_ceiling(name)
-
-      {:ok, {:policy, _name}} ->
-        {:error, "--policy holds the agents a token defines, and this one cannot define"}
-
-      :error when defines? ->
-        {:error,
-         "A token that can define agents holds them to a policy: add --policy NAME, " <>
-           "one of policies/, or --unlimited to hold them to their own policies alone"}
-
-      :error ->
-        {:ok, []}
+  defp history([key], _opts) do
+    case Agent.get_context(key) do
+      {:error, :not_found} -> {:error, no_agent(key)}
+      context -> {:ok, conversation(context)}
     end
   end
 
-  defp policy_ceiling(name) do
-    policies =
-      for {_path, {:ok, %WardrikPolicy{} = policy}} <- WardrikDaemon.Agents.files(),
-          do: policy
-
-    case Enum.find(policies, &(&1.name == name)) do
-      nil ->
-        {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
-
-      policy ->
-        {:ok, ceiling: WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
+  defp snapshot([key], _opts) do
+    case Agent.snapshot(key) do
+      {:error, :not_found} -> {:error, no_agent(key)}
+      snapshot -> {:ok, Resource.snapshot(key, snapshot)}
     end
   end
 
-  defp policy_names([]), do: ""
-  defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
+  defp no_agent(key), do: "No agent runs under #{key}."
 
-  defp token_options([], options), do: {:ok, options}
-
-  defp token_options(["--scope", scope | rest], options),
-    do: token_options(rest, Map.put(options, :scope, scope))
-
-  defp token_options(["--all" | rest], options),
-    do: token_options(rest, Map.put(options, :scope, ""))
-
-  defp token_options(["--can", can | rest], options),
-    do: token_options(rest, Map.put(options, :can, String.split(can, ",", trim: true)))
-
-  defp token_options(["--policy", policy | rest], options),
-    do: ceiling_option(rest, options, {:policy, policy})
-
-  defp token_options(["--unlimited" | rest], options),
-    do: ceiling_option(rest, options, :unlimited)
-
-  defp token_options(_other, _options), do: :error
-
-  # One of --policy and --unlimited, once.
-  defp ceiling_option(_rest, %{ceiling: _chosen}, _ceiling), do: :error
-
-  defp ceiling_option(rest, options, ceiling),
-    do: token_options(rest, Map.put(options, :ceiling, ceiling))
-
-  defp token(name, scope, can, opts) do
-    case Token.create(name, scope, can, opts) do
-      {:ok, secret, token} ->
-        ok(
-          Enum.join(
-            [
-              secret,
-              "",
-              "#{token.name} (#{token.id}) reaches #{reach(token.grant)}. " <>
-                "This is the only time it is shown."
-            ],
-            "\n"
-          )
-        )
-
-      {:error, message} when is_binary(message) ->
-        fail(message)
-
-      {:error, reason} ->
-        fail("The token was not made: #{inspect(reason)}")
-    end
-  end
-
-  defp tokens do
-    rows =
-      for token <- Token.list(),
-          do: "  #{token.id}  #{token.name}  #{reach(token.grant)}  made #{token.created_at}"
-
-    case rows do
-      [] ->
-        "No tokens. Make one with: wardrik token create NAME --scope PREFIX (--policy NAME | --unlimited)"
-
-      [_row] ->
-        Enum.join(["1 token:" | rows], "\n")
-
-      rows ->
-        Enum.join(["#{length(rows)} tokens:" | rows], "\n")
-    end
-  end
-
-  defp reach(%Grant{scope: scope, can: can} = grant) do
-    agents = if scope == "", do: "every agent", else: "the agents under #{scope}"
-    agents <> actions(can) <> held(grant)
-  end
-
-  defp held(%Grant{can: can, ceiling: ceiling}) do
-    cond do
-      :define not in can -> ""
-      ceiling == [] -> ", with no ceiling"
-      true -> ", under the ceiling #{ceiling_names(ceiling)}"
-    end
-  end
-
-  # The policies a ceiling is, by name, and not their budgets' hooks.
-  defp ceiling_names(ceiling) do
-    Enum.map_join(
-      for(
-        %Wardrik.Hook{module: module} = hook <- ceiling,
-        module != WardrikPolicy.Budget,
-        do: hook
-      ),
-      ", ",
-      &String.replace_prefix(&1.name, "ceiling/", "")
-    )
-  end
-
-  defp actions(can) do
-    {names, [last]} = can |> Enum.map(&Atom.to_string/1) |> Enum.split(-1)
-
-    cond do
-      can == Grant.actions() -> ", for every action"
-      names == [] -> ", to #{last}"
-      true -> ", to #{Enum.join(names, ", ")} and #{last}"
-    end
-  end
-
-  defp history(context) do
+  defp conversation(context) do
     case ReqLLM.Context.to_list(context) do
       [] -> "Nothing has been said yet."
       messages -> Enum.map_join(messages, "\n\n", &message/1)
@@ -318,15 +346,36 @@ defmodule WardrikDaemon.CLI do
     Enum.join(written ++ calls, " ")
   end
 
-  defp parked do
+  defp parked(_words, _opts) do
     rows =
-      for %{status: :parked, key: key} <- Fleet.list(),
-          {call, prompt} <- waiting(key),
+      for {key, call, prompt} <- waiting(),
           do: "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}" <> link(call)
 
     case rows do
-      [] -> "Nothing is waiting on a person."
-      rows -> Enum.join(["#{length(rows)} waiting:" | rows], "\n")
+      [] -> {:ok, "Nothing is waiting on a person."}
+      rows -> {:ok, Enum.join(["#{length(rows)} waiting:" | rows], "\n")}
+    end
+  end
+
+  defp interrupts(_words, _opts) do
+    interrupts =
+      for {key, call, prompt} <- waiting(),
+          do: Map.put(Value.interrupt({call, prompt}), "agent", %{"id" => key})
+
+    {:ok, %{"interrupts" => interrupts}}
+  end
+
+  # Every call a parked agent is waiting on, with the agent's key.
+  defp waiting do
+    for %{status: :parked, key: key} <- Fleet.list(),
+        {call, prompt} <- parked_calls(key),
+        do: {key, call, prompt}
+  end
+
+  defp parked_calls(key) do
+    case Agent.parked(key) do
+      calls when is_list(calls) -> calls
+      {:error, :not_found} -> []
     end
   end
 
@@ -338,7 +387,8 @@ defmodule WardrikDaemon.CLI do
   defp link(%{link: %{url: url}}), do: "\n      open #{url}"
   defp link(_call), do: ""
 
-  defp schedules(prefix) do
+  defp schedules(words, _opts) do
+    prefix = List.first(words, "")
     now = DateTime.utc_now()
 
     rows =
@@ -348,9 +398,9 @@ defmodule WardrikDaemon.CLI do
       end
 
     case rows do
-      [] -> "Nothing is scheduled#{if prefix != "", do: " under #{prefix}"}."
-      [_row] -> Enum.join(["1 schedule:" | rows], "\n")
-      rows -> Enum.join(["#{length(rows)} schedules:" | rows], "\n")
+      [] -> {:ok, "Nothing is scheduled#{if prefix != "", do: " under #{prefix}"}."}
+      [_row] -> {:ok, Enum.join(["1 schedule:" | rows], "\n")}
+      rows -> {:ok, Enum.join(["#{length(rows)} schedules:" | rows], "\n")}
     end
   end
 
@@ -377,11 +427,11 @@ defmodule WardrikDaemon.CLI do
   defp outcome(:missed), do: "let a missed run go"
   defp outcome(:failed), do: "failed to ask"
 
-  defp waiting(key) do
-    case Agent.parked(key) do
-      calls when is_list(calls) -> calls
-      {:error, :not_found} -> []
-    end
+  defp approve([key, call], _opts), do: decide(key, call, :approve, "Approved")
+
+  defp deny([key, call | reason], _opts) do
+    reason = if reason == [], do: "A person refused this call.", else: Enum.join(reason, " ")
+    decide(key, call, {:deny, reason}, "Denied")
   end
 
   # `bin/wardrik` reaches the node with its cookie, which only the account the
@@ -390,18 +440,20 @@ defmodule WardrikDaemon.CLI do
     by = %Wardrik.Principal{type: :shell, id: System.get_env("USER") || "unknown"}
 
     case Agent.decide(key, %{call => decision}, by: by) do
-      :ok -> ok("#{done} #{call} for #{key}.")
-      {:error, :not_found} -> fail("No agent runs under #{key}.")
-      {:error, :not_parked} -> fail("#{key} is not waiting on anything.")
-      {:error, :stale_decision} -> fail("#{key} is not waiting on #{call}.")
-      {:error, :unrecorded} -> fail("#{key} could not record the decision, so it was not taken.")
+      :ok ->
+        {:ok, "#{done} #{call} for #{key}."}
+
+      {:error, :not_found} ->
+        {:error, no_agent(key)}
+
+      {:error, :not_parked} ->
+        {:error, "#{key} is not waiting on anything."}
+
+      {:error, :stale_decision} ->
+        {:error, "#{key} is not waiting on #{call}."}
+
+      {:error, :unrecorded} ->
+        {:error, "#{key} could not record the decision, so it was not taken."}
     end
-  end
-
-  defp ok(text), do: IO.puts(text)
-
-  defp fail(text) do
-    IO.puts(text)
-    exit({:shutdown, 1})
   end
 end

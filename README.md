@@ -486,6 +486,11 @@ _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log
 _build/prod/rel/wardrikd/bin/wardrik stop
 ```
 
+`wardrik help` lists every command, and `wardrik help COMMAND`, or `--help`
+after one, gives it in full. `status`, `history` and `parked` take `--json`,
+and answer with one JSON document, the HTTP API's own where it has one. Output
+is in colour where it goes to a terminal, unless `NO_COLOR` is set.
+
 `wardrik serve` runs it in the foreground, logging to the terminal, for a
 service manager to supervise. `bin/wardrikd` is the node's own release script
 underneath.
