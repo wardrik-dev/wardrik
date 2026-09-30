@@ -16,9 +16,7 @@ defmodule WardrikDaemon.AgentFile do
       issues need an engineer.
 
   The body after the frontmatter is the agent's system prompt, and a file
-  with no frontmatter is all prompt. The fields a file shares with the agent
-  files other tools read, `name`, `description`, `tools` and `model`, mean what
-  they mean there.
+  with no frontmatter is all prompt.
 
   | Key | What it gives the agent |
   | --- | --- |
@@ -134,9 +132,10 @@ defmodule WardrikDaemon.AgentFile do
       `*` as something else; or a duration of at least a minute, as `30m`,
       `2h` or `1d`
     * `prompt` - what the agent is asked
-    * `prompt_file` - in place of `prompt`, a file in its workspace the agent
-      is asked to read and follow, so it can keep its own checklist, as
-      OpenClaw's `HEARTBEAT.md` is kept. It needs `files` in `tools`
+    * `prompt_file` - in place of `prompt`, a file in its workspace: each time
+      the schedule fires the agent is asked to read it and do what it says,
+      so the agent can edit the checklist it follows. It needs `files` in
+      `tools`
     * `name` - the schedule's name, `schedule-1`, `schedule-2` and so on by
       its place in the list when absent
     * `overlap` - `skip`, the default, leaves an agent that is running or

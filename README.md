@@ -536,8 +536,8 @@ mcp:
 provider keys such as `ZAI_API_KEY`. A key that is absent is reported by the
 tool that needs it; a `config.yaml` that does not read stops the boot.
 
-An agent is a Markdown file with YAML frontmatter, the shape Claude Code and
-GitHub Copilot read theirs in, and the body is its system prompt:
+An agent is a Markdown file with YAML frontmatter, and the body is its system
+prompt:
 
 ```markdown
 ---

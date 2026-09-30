@@ -1,8 +1,8 @@
 #cloud-config
 #
-# A Hetzner box for rehearsing the demo: three wardrik nodes, a, b and c, on one
-# machine, each a systemd unit of the wardrik user's own, sharing one install and
-# one config directory. It holds nothing of anyone's: the SSH key is the one
+# A Hetzner box of three wardrik nodes, a, b and c, on one machine, each a
+# systemd unit of the wardrik user's own, sharing one install and one config
+# directory. It holds nothing of anyone's: the SSH key is the one
 # the server is created with, and the Slack channel and every secret come from
 # the env file it is given.
 #
