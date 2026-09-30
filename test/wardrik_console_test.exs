@@ -18,35 +18,18 @@ defmodule WardrikConsoleTest do
     end)
   end
 
-  test "renders result and thinking text verbatim" do
-    output = render(Fleet.key(), [{:thinking, "hmm"}, {:result, "answer"}])
-
-    assert output == "hmmanswer"
-  end
-
-  test "renders tool lifecycle" do
+  test "prints each line an event completes" do
     output =
       render(Fleet.key(), [
+        {:thinking, "hmm"},
+        {:result, "the answer"},
         {:tool_started, "call_1", "echo", %{}, "key"},
         {:tool_finished, "call_1", "echo", {:ok, "done"}},
-        {:tool_finished, "call_2", "boom", {:error, :timeout}}
-      ])
-
-    assert output =~ "→ echo"
-    assert output =~ "✓ echo"
-    assert output =~ "✗ boom: :timeout"
-  end
-
-  test "renders turn completion and failure" do
-    output =
-      render(Fleet.key(), [
-        {:result, "answer"},
-        {:turn_finished, []},
         {:turn_failed, :rate_limited}
       ])
 
-    assert output =~ "answer"
-    assert output =~ "turn failed: :rate_limited"
+    assert output ==
+             "┊ hmm\nthe answer\n  → echo\n  ✓ echo\n✗ the turn failed: :rate_limited\n"
   end
 
   test "ignores events it does not render" do
@@ -62,11 +45,25 @@ defmodule WardrikConsoleTest do
     output =
       capture_io(fn ->
         {:ok, console} = Console.start_link(agent_id: mine)
-        Events.emit(theirs, {:result, "not mine"})
-        Events.emit(mine, {:result, "mine"})
+        Events.emit(theirs, {:result, "not mine\n"})
+        Events.emit(mine, {:result, "mine\n"})
         :sys.get_state(console)
       end)
 
-    assert output == "mine"
+    assert output == "mine\n"
+  end
+
+  test "lays lines out to the width it is given, and ignores what is not an event" do
+    agent_id = Fleet.key()
+
+    output =
+      capture_io(fn ->
+        {:ok, console} = Console.start_link(agent_id: agent_id, width: 20)
+        send(console, :not_an_event)
+        Events.emit(agent_id, {:tool_denied, "call_1", "shell", String.duplicate("x", 40)})
+        :sys.get_state(console)
+      end)
+
+    assert output == "  ✗ shell was refus…\n"
   end
 end

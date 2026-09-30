@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.SSH do
   @moduledoc """
-  Serves the TUI over SSH, once the config directory holds keys to let in.
+  Serves the TUI over SSH, once the config directory holds keys to let in and
+  the build has a TUI to serve.
 
   With an `ssh/authorized_keys` file in the config directory, in OpenSSH's
   format, the daemon listens on port 2222 on loopback, and a client holding any
@@ -8,11 +9,19 @@ defmodule WardrikDaemon.SSH do
 
       ssh -p 2222 jon@localhost
 
-  Each connection is a `WardrikTUI.SSH` session, and the name is who it is for.
   The file is read at every login, so a key added or removed counts from the
   next connection on, with no restart. The host key is generated the first time
   the daemon listens, in `ssh/` under the data directory, and kept; the
   directory and the key are this user's alone, however they were left.
+
+  Each connection is a session of the `:entrypoint` the application
+  environment names, and the name is who it is for. `config/config.exs` names
+  the TUI's:
+
+      config :wardrik, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
+
+  Nothing else in the daemon names the TUI, so a build without it names no
+  entrypoint and serves nothing, and says so where keys are there to let in.
 
   `config.yaml` moves it:
 
@@ -34,27 +43,31 @@ defmodule WardrikDaemon.SSH do
 
   @doc """
   The listener for a daemon whose config lives in `config_dir` and whose data
-  lives in `data_dir`, or none where `config_dir` holds no `ssh/authorized_keys`.
+  lives in `data_dir`, as `settings` place it: none where `config_dir` holds no
+  `ssh/authorized_keys`, or where `settings` names no `:entrypoint`.
   """
-  @spec children(Path.t(), Path.t()) :: [{module(), keyword()}]
-  def children(config_dir, data_dir) do
+  @spec children(Path.t(), Path.t(), keyword()) :: [{module(), keyword()}]
+  def children(config_dir, data_dir, settings \\ Application.get_env(:wardrik, __MODULE__, [])) do
     keys = Path.join([config_dir, "ssh", "authorized_keys"])
 
-    if File.exists?(keys) do
-      settings = Application.get_env(:wardrik, __MODULE__, [])
-      system_dir = host_key!(Path.join(data_dir, "ssh"))
+    case {File.exists?(keys), Keyword.fetch(settings, :entrypoint)} do
+      {false, _entrypoint} ->
+        []
 
-      [
-        {__MODULE__,
-         name: __MODULE__,
-         port: Keyword.get(settings, :port, 2222),
-         ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
-         auth: {:public_key, fn _user, key -> authorized?(keys, key) end},
-         system_dir: system_dir,
-         entrypoint: {WardrikTUI.SSH, []}}
-      ]
-    else
-      []
+      {true, :error} ->
+        Logger.warning("SSH is not served: #{keys} lets keys in, but this build has no TUI")
+        []
+
+      {true, {:ok, entrypoint}} ->
+        [
+          {__MODULE__,
+           name: __MODULE__,
+           port: Keyword.get(settings, :port, 2222),
+           ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
+           auth: {:public_key, fn _user, key -> authorized?(keys, key) end},
+           system_dir: host_key!(Path.join(data_dir, "ssh")),
+           entrypoint: entrypoint}
+        ]
     end
   end
 

@@ -1,6 +1,7 @@
-defmodule WardrikTUI.Fleet.Filter do
+defmodule WardrikConsole.Filter do
   @moduledoc """
-  Which agents the fleet panel shows, from a query typed as `/filter QUERY`.
+  Which of the fleet's agents a query picks, as the TUI's `/filter QUERY`
+  reads it.
 
   A query is words separated by spaces, every one of which must match:
 
@@ -13,7 +14,9 @@ defmodule WardrikTUI.Fleet.Filter do
   | `status:idle`, `status:running`, `status:parked` | doing that |
   | `attention` | needing attention |
 
-  Matching ignores case. An empty query matches everything.
+  Matching ignores case. An empty query matches everything. Whether an agent
+  needs attention is for the caller to say, since it depends on what the
+  person has already seen.
   """
 
   alias Wardrik.Fleet.Member

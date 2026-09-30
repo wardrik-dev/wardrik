@@ -9,7 +9,7 @@ defmodule WardrikTUI.ViewTest do
 
   defp plain(data), do: Text.plain(data)
 
-  defp sequences(%Text{sequences: sequences, data: data}), do: sequences ++ sequences(data)
+  defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 

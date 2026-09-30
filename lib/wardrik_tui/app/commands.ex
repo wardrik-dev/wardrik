@@ -6,6 +6,7 @@ defmodule WardrikTUI.App.Commands do
 
   alias Wardrik.Agent
   alias Wardrik.Fleet
+  alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
   alias WardrikTUI.App.Interaction
@@ -214,7 +215,7 @@ defmodule WardrikTUI.App.Commands do
   defp adopt(term, _key, _pid), do: term
 
   defp placement(%{"node" => name} = options) when map_size(options) == 1 do
-    case node_named(name) do
+    case Nodes.find(name, [node() | Node.list()]) do
       nil -> {:error, {:no_such_node, name}}
       node -> {:ok, [node: node]}
     end
@@ -223,15 +224,6 @@ defmodule WardrikTUI.App.Commands do
   defp placement(options) when map_size(options) == 0, do: {:ok, []}
 
   defp placement(options), do: {:error, {:unknown_options, Map.keys(options) -- ["node"]}}
-
-  # A node by its full name, or by the part before the `@`.
-  defp node_named(name) do
-    Enum.find([node() | Node.list()], fn node ->
-      Atom.to_string(node) in [name, "#{name}@#{host(node)}"]
-    end)
-  end
-
-  defp host(node), do: node |> Atom.to_string() |> String.split("@", parts: 2) |> List.last()
 
   # A name that is an agent's, in this client's scope or as a whole key, is
   # connected to. Otherwise the fleet is searched for it: one agent whose key

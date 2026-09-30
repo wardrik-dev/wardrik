@@ -61,10 +61,9 @@ defmodule WardrikDaemon.Cluster do
 
   use Supervisor
 
+  alias WardrikConsole.Nodes
   alias WardrikDaemon.Cluster.Strategy
   alias WardrikDaemon.Cluster.Topology
-
-  @local_host "localhost"
 
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -122,8 +121,8 @@ defmodule WardrikDaemon.Cluster do
   @spec refusal() :: String.t() | nil
   def refusal do
     if named() != [] and node() not in named() do
-      "#{display(node())} is not one of cluster.nodes: " <>
-        Enum.map_join(named(), ", ", &display/1) <> "; start one of them with --node"
+      "#{Nodes.display(node())} is not one of cluster.nodes: " <>
+        Enum.map_join(named(), ", ", &Nodes.display/1) <> "; start one of them with --node"
     end
   end
 
@@ -139,7 +138,7 @@ defmodule WardrikDaemon.Cluster do
   defp short_of_quorum(members) do
     case quorum() - length(members) do
       needed when needed > 0 ->
-        "#{display(node())} is waiting for #{needed} more #{plural(needed, "node")} " <>
+        "#{Nodes.display(node())} is waiting for #{needed} more #{plural(needed, "node")} " <>
           "to reach a quorum of #{quorum()} of #{size()}" <> connected_to(members -- [node()])
 
       _enough ->
@@ -148,33 +147,10 @@ defmodule WardrikDaemon.Cluster do
   end
 
   defp connected_to([]), do: ""
-  defp connected_to(nodes), do: "; connected to " <> Enum.map_join(nodes, ", ", &display/1)
+  defp connected_to(nodes), do: "; connected to " <> Enum.map_join(nodes, ", ", &Nodes.display/1)
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
-
-  @doc """
-  The node a name in `cluster.nodes` or `--node` stands for: `a` is
-  `wardrik_a@localhost`, one of several on this machine, and a full name is
-  itself.
-  """
-  @spec node_name(String.t()) :: node()
-  def node_name(name) when is_binary(name) do
-    if String.contains?(name, "@"),
-      # reach:disable-next-line unsafe_atom_creation -- a node name from config.yaml or --node
-      do: String.to_atom(name),
-      # reach:disable-next-line unsafe_atom_creation -- a node name from config.yaml or --node
-      else: String.to_atom("wardrik_#{name}@#{@local_host}")
-  end
-
-  @doc "How `wardrik` shows a node: by its short name where it is one of several on this machine."
-  @spec display(node()) :: String.t()
-  def display(node) when is_atom(node) do
-    case String.split(Atom.to_string(node), "@") do
-      ["wardrik_" <> name, @local_host] -> name
-      _other -> Atom.to_string(node)
-    end
-  end
 
   defp settings, do: Application.get_env(:wardrik, __MODULE__, [])
 end

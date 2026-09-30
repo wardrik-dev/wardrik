@@ -19,6 +19,21 @@ defmodule WardrikDaemon.SSHTest do
     assert SSH.children(Path.join(dir, "config"), Path.join(dir, "data")) == []
   end
 
+  test "with keys but nothing to serve, as in a build without the TUI, says so and listens nowhere",
+       %{tmp_dir: dir} do
+    config = Path.join(dir, "config")
+    File.mkdir_p!(Path.join(config, "ssh"))
+    File.write!(Path.join([config, "ssh", "authorized_keys"]), "")
+
+    log =
+      capture_log(fn ->
+        assert SSH.children(config, Path.join(dir, "data"), port: 2222) == []
+      end)
+
+    assert log =~ "this build has no TUI"
+    refute File.exists?(Path.join([dir, "data", "ssh"]))
+  end
+
   test "with keys, listens on loopback with a host key made once and kept private", %{
     tmp_dir: dir
   } do

@@ -3,7 +3,7 @@ defmodule WardrikTUI.Components.FleetPanel do
   use Breeze.Component
   import Breeze.Blocks
   alias Wardrik.Delegation
-  alias WardrikTUI.Fleet.Filter
+  alias WardrikConsole.Filter
   alias WardrikTUI.{Render, Text}
 
   # The fleet panel: its heading and the list of rows, wherever it is placed.

@@ -8,12 +8,12 @@ defmodule WardrikTUI.App.Connection do
   alias Wardrik.Delegation
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
+  alias WardrikConsole.Filter
   alias WardrikTUI.Activity
   alias WardrikTUI.App.Conversation
   alias WardrikTUI.App.Display
   alias WardrikTUI.App.Frames
   alias WardrikTUI.App.TermState
-  alias WardrikTUI.Fleet.Filter
   alias WardrikTUI.View
 
   # -- delegations -----------------------------------------------------------

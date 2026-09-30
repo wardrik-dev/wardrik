@@ -19,6 +19,7 @@ defmodule WardrikTUI.App do
   alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias WardrikConsole.Filter
   alias WardrikTUI.App.Commands
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -28,7 +29,6 @@ defmodule WardrikTUI.App do
   alias WardrikTUI.App.Prompt
   alias WardrikTUI.App.TermState
   alias WardrikTUI.Components.Chrome
-  alias WardrikTUI.Fleet.Filter
   alias WardrikTUI.History
   alias WardrikTUI.Palette
   alias WardrikTUI.Search

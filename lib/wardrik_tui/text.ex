@@ -4,21 +4,21 @@ defmodule WardrikTUI.Text do
 
   Text is a binary, a `{text, style}` segment, a tag wrapping text in ANSI
   sequence names such as `:cyan`, `:bright` or `[:faint, :light_black]`, or
-  a list of any of these. `WardrikTUI.Line.segments/1` flattens it for layout;
-  `to_ansi/1` renders it for a single-row box.
+  a list of any of these. A tag is an `Owl.Tag`, so the lines
+  `WardrikConsole.Markdown` renders are text here too.
+  `WardrikTUI.Line.segments/1` flattens it for layout; `to_ansi/1` renders it
+  for a single-row box.
   """
 
   import Kernel, except: [length: 1]
 
   alias WardrikTUI.Line
 
-  @typedoc "A tag: text drawn with `sequences`."
-  @type tag() :: %__MODULE__{sequences: [atom() | tuple()], data: t()}
+  @typedoc "A tag: text drawn with its sequences."
+  @type tag() :: Owl.Tag.t(t())
 
   @typedoc "Styled text."
   @type t() :: binary() | Line.segment() | tag() | [t()]
-
-  defstruct sequences: [], data: []
 
   @doc "An elapsed duration in milliseconds or fractional seconds."
   @spec duration(non_neg_integer()) :: String.t()
@@ -26,8 +26,8 @@ defmodule WardrikTUI.Text do
   def duration(ms), do: "#{Float.round(ms / 1_000, 1)}s"
 
   @doc "Wraps `data` in one sequence or a list of them."
-  @spec tag(t(), atom() | tuple() | [atom() | tuple()]) :: tag()
-  def tag(data, sequences), do: %__MODULE__{sequences: List.wrap(sequences), data: data}
+  @spec tag(t(), Owl.Data.sequence() | [Owl.Data.sequence()]) :: tag()
+  def tag(data, sequences), do: Owl.Data.tag(data, sequences)
 
   @doc "The text without its styles."
   @spec plain(t()) :: String.t()
