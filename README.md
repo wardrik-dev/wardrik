@@ -13,9 +13,12 @@ On Linux, the daemon and the `wardrik` command:
 
 ```sh
 curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
-wardrik start
+wardrik service install                       # runs it under your systemd, from boot
 wardrik token create dev --all --unlimited    # a token for the HTTP API on 127.0.0.1:4747
 ```
+
+`wardrik start` runs it in the background instead, until you stop it, and
+`wardrik doctor` checks what it reads before it does.
 
 Anywhere Docker runs:
 
@@ -470,7 +473,7 @@ names it `main`.
 MIX_ENV=prod mix release
 _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
-_build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml reads, and the store answers
+_build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml, the store, the vault, each MCP server and every agent file will do
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
 _build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"
 _build/prod/rel/wardrikd/bin/wardrik history acme/_/triage
@@ -485,6 +488,16 @@ _build/prod/rel/wardrikd/bin/wardrik stop
 `wardrik serve` runs it in the foreground, logging to the terminal, for a
 service manager to supervise. `bin/wardrikd` is the node's own release script
 underneath.
+
+On Linux, `wardrik service install` makes it a service of your user's systemd:
+it writes `wardrik.service` under `~/.config/systemd/user`, running `wardrik
+serve` with this install's directories and the keys in
+`~/.config/wardrik/env`, starts it, and lets your systemd run from boot
+rather than from your first login. The unit runs the release the install
+script points `current` at, so an upgrade takes effect when the service
+restarts. `wardrik service uninstall` stops and removes it, and
+`wardrik service unit` prints the unit without installing it. With `--node`,
+each node of a cluster on the machine is an instance of `wardrik@.service`.
 
 The daemon follows the XDG base directories, so `~/.config/wardrik` holds only
 what a person writes and can live in a dotfiles repository:

@@ -25,7 +25,9 @@ defmodule WardrikDaemon.DoctorTest do
 
     assert Doctor.checks(dir) == [
              {:ok, "config", "#{dir}/config.yaml reads"},
-             {:ok, "store", "on this node's disk, at #{dir}/store"}
+             {:ok, "store", "on this node's disk, at #{dir}/store"},
+             {:ok, "vault", "no key, and nothing configured needs one"},
+             {:ok, "agents", "no agent files in #{dir}/agents"}
            ]
   end
 
@@ -48,14 +50,117 @@ defmodule WardrikDaemon.DoctorTest do
   test "reaches the database storage names, and says why it cannot", %{tmp_dir: dir} do
     config(dir, "storage:\n  postgres:\n    url: #{Services.database_url()}\n")
 
-    assert [{:ok, "config", _read}, {:ok, "store", found}] = Doctor.checks(dir)
+    assert [{:ok, "config", _read}, {:ok, "store", found} | _rest] = Doctor.checks(dir)
     assert found =~ "holds wardrik_records"
 
     wrong = String.replace(Services.database_url(), ":postgres@", ":wrong@")
     config(dir, "storage:\n  postgres:\n    url: #{wrong}\n")
 
-    assert [{:ok, "config", _read}, {:error, "store", found}] = Doctor.checks(dir)
+    assert [{:ok, "config", _read}, {:error, "store", found} | _rest] = Doctor.checks(dir)
     assert found =~ "password authentication failed"
+  end
+
+  defp check(checks, name), do: Enum.find(checks, &(elem(&1, 1) == name))
+
+  describe "the vault" do
+    test "has keys it can use", %{tmp_dir: dir} do
+      config(
+        dir,
+        "vault:\n  keys: [\"#{WardrikVault.generate_key()}\", \"#{WardrikVault.generate_key()}\"]\n"
+      )
+
+      assert check(Doctor.checks(dir), "vault") ==
+               {:ok, "vault", "2 keys: the first seals, and any of them unseals"}
+    end
+
+    test "fails a key the vault cannot use", %{tmp_dir: dir} do
+      config(dir, "vault:\n  keys: [\"#{WardrikVault.generate_key()}\", \"c2hvcnQ=\"]\n")
+
+      assert {:error, "vault", "key 2 is not 32 bytes in base64" <> _how} =
+               check(Doctor.checks(dir), "vault")
+    end
+
+    test "fails where a credential needs a key and there is none", %{tmp_dir: dir} do
+      config(
+        dir,
+        "mcp:\n  github:\n    url: http://127.0.0.1:1/mcp\n    credential: user:github\n"
+      )
+
+      assert {:error, "vault", "no key, and mcp.github's credential needs one" <> _how} =
+               check(Doctor.checks(dir), "vault")
+    end
+  end
+
+  describe "each MCP server" do
+    test "runs a program this machine has, and fails one it does not", %{tmp_dir: dir} do
+      config(dir, """
+      mcp:
+        here: {command: sh}
+        gone: {command: wardrik-no-such-program}
+      """)
+
+      checks = Doctor.checks(dir)
+
+      assert {:ok, "mcp here", "runs sh, at " <> _path} = check(checks, "mcp here")
+
+      assert check(checks, "mcp gone") ==
+               {:error, "mcp gone",
+                "runs wardrik-no-such-program, which is not on this machine's PATH"}
+    end
+
+    test "is reached where it is served, and says why it is not", %{tmp_dir: dir} do
+      {:ok, listening} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, open} = :inet.port(listening)
+      {:ok, closing} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, closed} = :inet.port(closing)
+      :ok = :gen_tcp.close(closing)
+
+      config(dir, """
+      vault:
+        keys: ["#{WardrikVault.generate_key()}"]
+      mcp:
+        up:
+          url: http://127.0.0.1:#{open}/mcp
+          credential: user:github
+        down: {url: "http://127.0.0.1:#{closed}/mcp"}
+      """)
+
+      checks = Doctor.checks(dir)
+
+      assert check(checks, "mcp up") ==
+               {:ok, "mcp up", "answers at 127.0.0.1:#{open}; each user authorizes it"}
+
+      assert check(checks, "mcp down") ==
+               {:error, "mcp down",
+                "127.0.0.1:#{closed} does not answer: the connection was refused"}
+    end
+  end
+
+  describe "the agent files" do
+    test "read, with the policies they name", %{tmp_dir: dir} do
+      config(dir, "")
+      File.mkdir_p!(Path.join(dir, "agents"))
+      File.mkdir_p!(Path.join(dir, "policies"))
+      File.write!(Path.join(dir, "policies/careful.yaml"), "ask: [run_lua]\n")
+      File.write!(Path.join(dir, "agents/triage.md"), "---\npolicy: careful\n---\nYou help.\n")
+
+      assert check(Doctor.checks(dir), "agents") ==
+               {:ok, "agents", "1 agent file and 1 policy read"}
+    end
+
+    test "fail a line for each file that does not read", %{tmp_dir: dir} do
+      config(dir, "")
+      File.mkdir_p!(Path.join(dir, "agents"))
+      File.write!(Path.join(dir, "agents/good.md"), "You help.\n")
+      File.write!(Path.join(dir, "agents/bad.md"), "---\norg: acme/eu\n---\nYou help.\n")
+      File.write!(Path.join(dir, "agents/worse.md"), "---\npolicy: missing\n---\nYou help.\n")
+
+      assert [{:error, "agents", bad}, {:error, "agents", worse}] =
+               Enum.filter(Doctor.checks(dir), &(elem(&1, 1) == "agents"))
+
+      assert bad =~ "bad.md"
+      assert worse =~ "worse.md"
+    end
   end
 
   test "reports a check a line, marked by how it went" do

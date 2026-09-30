@@ -220,6 +220,12 @@ jobs:
       - name: Install it
         run: dev/distros.sh "${{ steps.tarball.outputs.name }}"
 
+      # wardrik service install in a container running systemd: the daemon runs
+      # as a user's unit, answers, is running again after the container
+      # restarts, and is gone once uninstalled. See dev/service.sh.
+      - name: Run it as a service
+        run: dev/service.sh "${{ steps.tarball.outputs.name }}"
+
       # Started with nothing mounted, as docker run first starts it: the API
       # answers on the port it is run with, refuses a request without a token,
       # and still knows a token after a restart, which the volume kept.

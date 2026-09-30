@@ -126,6 +126,10 @@ defmodule WardrikVault do
   @spec generate_key() :: String.t()
   def generate_key, do: @key_bytes |> :crypto.strong_rand_bytes() |> Base.encode64()
 
+  @doc "Whether `key` is one `:keys` can hold: #{@key_bytes} bytes, base64-encoded."
+  @spec key?(term()) :: boolean()
+  def key?(key), do: decode_key(key) != []
+
   @doc "Whether this deployment gave the vault a key to work with."
   @spec ready?() :: boolean()
   def ready?, do: match?({:ok, _key}, sealing_key())
