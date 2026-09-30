@@ -14,13 +14,13 @@ defmodule WardrikTUI.App.Conversation do
   alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.LLM.Message
+  alias WardrikConsole.Markdown
+  alias WardrikConsole.Table
   alias WardrikTUI.Activity
   alias WardrikTUI.Exchange
   alias WardrikTUI.History
   alias WardrikTUI.Line
-  alias WardrikTUI.Markdown
   alias WardrikTUI.Render
-  alias WardrikTUI.Table
   alias WardrikTUI.Text
   alias WardrikTUI.Transcript
   alias WardrikTUI.Usage

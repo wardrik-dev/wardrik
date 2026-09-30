@@ -4,11 +4,11 @@ defmodule WardrikTUI.App.Interaction do
   """
   import Breeze.View, only: [assign: 2, focus: 2, put_implicit: 4]
 
+  alias WardrikConsole.Filter
+  alias WardrikConsole.Markdown
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.PaletteFlow
   alias WardrikTUI.Command
-  alias WardrikTUI.Fleet.Filter
-  alias WardrikTUI.Markdown
   alias WardrikTUI.Palette
   alias WardrikTUI.Search
   alias WardrikTUI.View

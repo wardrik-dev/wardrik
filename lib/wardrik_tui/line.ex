@@ -49,7 +49,7 @@ defmodule WardrikTUI.Line do
   @spec segments(Text.t() | t()) :: t()
   def segments(data), do: data |> flatten(%{}) |> merge()
 
-  defp flatten(%Text{sequences: sequences, data: data}, style) do
+  defp flatten(%Owl.Tag{sequences: sequences, data: data}, style) do
     flatten(data, Enum.reduce(List.wrap(sequences), style, &apply_sequence/2))
   end
 

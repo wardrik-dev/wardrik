@@ -89,6 +89,10 @@ defmodule Wardrik.MixProject do
       {:breeze, "0.5.1"},
       {:termite_ssh, "~> 0.1.2"},
 
+      # Used by lib/wardrik_console and lib/wardrik_tui, not by core: styled
+      # text, and the tables it lays out, on a terminal.
+      {:owl, "~> 0.13"},
+
       # Used by the bolt-on tool packages under lib/wardrik_brave, not by core.
       {:req, "~> 0.7"},
 

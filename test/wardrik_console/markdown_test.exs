@@ -1,12 +1,11 @@
-defmodule WardrikTUI.MarkdownTest do
+defmodule WardrikConsole.MarkdownTest do
   use ExUnit.Case, async: true
 
-  alias WardrikTUI.Markdown
-  alias WardrikTUI.Text
+  alias WardrikConsole.Markdown
 
-  defp plain(data), do: Text.plain(data)
+  defp plain(data), do: data |> Owl.Data.untag() |> IO.chardata_to_string()
 
-  defp sequences(%Text{sequences: sequences, data: data}), do: sequences ++ sequences(data)
+  defp sequences(%Owl.Tag{sequences: sequences, data: data}), do: sequences ++ sequences(data)
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
@@ -211,7 +210,7 @@ defmodule WardrikTUI.MarkdownTest do
   end
 
   describe "tables" do
-    alias WardrikTUI.Table
+    alias WardrikConsole.Table
 
     defp cells(row), do: Enum.map(row, &plain/1)
 

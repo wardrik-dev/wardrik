@@ -44,19 +44,6 @@ defmodule WardrikDaemon.ClusterTest do
     )
   end
 
-  describe "names" do
-    test "a short name is a node on this machine, and a full name is itself" do
-      assert Cluster.node_name("a") == :wardrik_a@localhost
-      assert Cluster.node_name("wardrik@box1") == :wardrik@box1
-    end
-
-    test "a node on this machine is shown by its short name" do
-      assert Cluster.display(:wardrik_a@localhost) == "a"
-      assert Cluster.display(:wardrik@box1) == "wardrik@box1"
-      assert Cluster.display(:wardrikd@localhost) == "wardrikd@localhost"
-    end
-  end
-
   describe "quorum" do
     test "is more than half the cluster" do
       assert Enum.map(1..5, &Cluster.quorum/1) == [1, 2, 2, 3, 3]

@@ -1,4 +1,4 @@
-defmodule WardrikTUI.Markdown do
+defmodule WardrikConsole.Markdown do
   @moduledoc """
   Renders streamed markdown a line at a time.
 
@@ -7,28 +7,28 @@ defmodule WardrikTUI.Markdown do
   takes whatever arrived and returns the lines that are now complete, keeping
   the rest:
 
-      {lines, buffer} = WardrikTUI.Markdown.push(WardrikTUI.Markdown.new(), "# Title\\nsome ")
-      {lines, buffer} = WardrikTUI.Markdown.push(buffer, "prose\\n")
-      {lines, _buffer} = WardrikTUI.Markdown.flush(buffer)
+      {lines, buffer} = WardrikConsole.Markdown.push(WardrikConsole.Markdown.new(), "# Title\\nsome ")
+      {lines, buffer} = WardrikConsole.Markdown.push(buffer, "prose\\n")
+      {lines, _buffer} = WardrikConsole.Markdown.flush(buffer)
 
-  Two constructs span lines. A fenced code block, so the buffer carries whether
-  it is inside one. A table, whose rows are held back until the line after it
-  arrives and then returned together as one `WardrikTUI.Table`, which the
-  transcript lays out at its own width. `tail/1` is the unfinished line, for a
-  surface that wants to show what is arriving before it is a line.
+  A line is `Owl.Data`. Two constructs span lines. A fenced code block, so the
+  buffer carries whether it is inside one. A table, whose rows are held back
+  until the line after it arrives and then returned together as one
+  `WardrikConsole.Table`, which whoever draws it lays out at its own width.
+  `tail/1` is the unfinished line, for a surface that wants to show what is
+  arriving before it is a line.
 
-  Nothing here wraps. Lines are written once and never redrawn, so the
-  transcript wraps them at its width and a window resize reflows them.
+  Nothing here wraps. Whoever draws a line wraps it at its own width, so a
+  screen that is resized can wrap it again.
   """
 
-  alias WardrikTUI.Table
-  alias WardrikTUI.Text
+  alias WardrikConsole.Table
 
   @typedoc "Text not yet a complete line, whether it sits inside a fence, and the table rows held back."
   @type t() :: %__MODULE__{pending: String.t(), fenced?: boolean(), table: [String.t()]}
 
   @typedoc "What one complete line renders to: styled text, or a table."
-  @type line() :: Text.t() | Table.t()
+  @type line() :: Owl.Data.t() | Table.t()
 
   defstruct pending: "", fenced?: false, table: []
 
@@ -130,14 +130,14 @@ defmodule WardrikTUI.Markdown do
   What comes back is provisional: the same text is rendered again, as a line,
   once its newline arrives.
   """
-  @spec tail(t()) :: Text.t() | nil
+  @spec tail(t()) :: Owl.Data.t() | nil
   def tail(%__MODULE__{pending: ""}), do: nil
 
   def tail(%__MODULE__{pending: pending, fenced?: fenced?}),
     do: pending |> line(fenced?) |> elem(0)
 
   @doc "Renders one complete line of markdown, outside any fence."
-  @spec line(String.t()) :: Text.t()
+  @spec line(String.t()) :: Owl.Data.t()
   def line(text) when is_binary(text), do: text |> line(false) |> elem(0)
 
   defp line(text, true) do
@@ -151,16 +151,16 @@ defmodule WardrikTUI.Markdown do
   defp fence(text) do
     case Regex.run(@fence, text) do
       [_whole, ""] -> []
-      [_whole, language] -> Text.tag(String.trim(language), @faint)
+      [_whole, language] -> Owl.Data.tag(String.trim(language), @faint)
     end
   end
 
-  defp code(text), do: ["  ", Text.tag(text, :cyan)]
+  defp code(text), do: ["  ", Owl.Data.tag(text, :cyan)]
 
   defp block(text) do
     cond do
       match = Regex.run(@heading, text) -> heading(match)
-      Regex.match?(@rule, text) -> Text.tag("───────", @faint)
+      Regex.match?(@rule, text) -> Owl.Data.tag("───────", @faint)
       match = Regex.run(@bullet, text) -> bullet(match)
       match = Regex.run(@ordered, text) -> ordered(match)
       match = Regex.run(@quoted, text) -> quoted(match)
@@ -169,22 +169,22 @@ defmodule WardrikTUI.Markdown do
   end
 
   defp heading([_whole, hashes, text]) do
-    Text.tag(inline(text), heading_tag(String.length(hashes)))
+    Owl.Data.tag(inline(text), heading_tag(String.length(hashes)))
   end
 
   defp heading_tag(1), do: [:bright, :cyan]
   defp heading_tag(_level), do: :cyan
 
   defp bullet([_whole, indent, text]) do
-    [indent, Text.tag("• ", :cyan), inline(text)]
+    [indent, Owl.Data.tag("• ", :cyan), inline(text)]
   end
 
   defp ordered([_whole, indent, number, text]) do
-    [indent, Text.tag("#{number}. ", :cyan), inline(text)]
+    [indent, Owl.Data.tag("#{number}. ", :cyan), inline(text)]
   end
 
   defp quoted([_whole, text]) do
-    [Text.tag("│ ", :cyan), Text.tag(inline(text), @faint)]
+    [Owl.Data.tag("│ ", :cyan), Owl.Data.tag(inline(text), @faint)]
   end
 
   # Rows held back in reverse order. The first row is the header; a rule row
@@ -209,7 +209,7 @@ defmodule WardrikTUI.Markdown do
 
   defp split_header([header, second | rest]) do
     if rule?(second) do
-      {header, Enum.map(second, &Table.alignment(Text.plain(&1))), rest}
+      {header, Enum.map(second, &Table.alignment(plain(&1))), rest}
     else
       {header, [], [second | rest]}
     end
@@ -217,7 +217,9 @@ defmodule WardrikTUI.Markdown do
 
   defp split_header([header]), do: {header, [], []}
 
-  defp rule?(cells), do: Enum.all?(cells, &Regex.match?(~r/^:?-{2,}:?$/, Text.plain(&1)))
+  defp rule?(cells), do: Enum.all?(cells, &Regex.match?(~r/^:?-{2,}:?$/, plain(&1)))
+
+  defp plain(cell), do: cell |> Owl.Data.untag() |> IO.chardata_to_string()
 
   defp inline(text) do
     @inline
@@ -235,8 +237,8 @@ defmodule WardrikTUI.Markdown do
     end
   end
 
-  defp tagged([_whole, text], sequence), do: Text.tag(text, sequence)
+  defp tagged([_whole, text], sequence), do: Owl.Data.tag(text, sequence)
 
   defp link([_whole, "", url]), do: link([nil, url, url])
-  defp link([_whole, text, url]), do: Text.tag(text, [{:hyperlink, url}, :underline])
+  defp link([_whole, text, url]), do: Owl.Data.tag(text, [{:hyperlink, url}, :underline])
 end

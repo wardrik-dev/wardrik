@@ -58,6 +58,7 @@ defmodule WardrikDaemon do
   require Logger
 
   alias Wardrik.Fleet
+  alias WardrikConsole.Nodes
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
 
@@ -121,7 +122,7 @@ defmodule WardrikDaemon do
 
     header =
       [
-        "wardrik #{Application.spec(:wardrik, :vsn)} on #{Cluster.display(node())}, up #{duration(uptime_ms)}"
+        "wardrik #{Application.spec(:wardrik, :vsn)} on #{Nodes.display(node())}, up #{duration(uptime_ms)}"
         | cluster()
       ] ++ ["#{length(members)} #{agents(members)}"]
 
@@ -139,7 +140,7 @@ defmodule WardrikDaemon do
               [
                 "  #{member.key}",
                 member.status,
-                Cluster.display(member.node)
+                Nodes.display(member.node)
                 | spending(specs[member.key], member.key) ++ next_run(member.key)
               ],
               "  "
@@ -196,13 +197,13 @@ defmodule WardrikDaemon do
   end
 
   defp found([]), do: "none connected"
-  defp found(nodes), do: Enum.map_join(nodes, ", ", &Cluster.display/1) <> " connected"
+  defp found(nodes), do: Enum.map_join(nodes, ", ", &Nodes.display/1) <> " connected"
 
   defp nodes(nodes, prefix \\ "", state)
   defp nodes([], _prefix, _state), do: ""
 
   defp nodes(nodes, prefix, state),
-    do: prefix <> Enum.map_join(nodes, ", ", &Cluster.display/1) <> " " <> state
+    do: prefix <> Enum.map_join(nodes, ", ", &Nodes.display/1) <> " " <> state
 
   defp problems([]), do: []
   defp problems([_one] = broken), do: ["", "1 file does not read:" | broken]

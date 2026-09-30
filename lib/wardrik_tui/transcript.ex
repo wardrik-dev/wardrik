@@ -3,7 +3,7 @@ defmodule WardrikTUI.Transcript do
   The append-only transcript, kept as terminal rows.
 
   Lines arrive as `WardrikTUI.Text` and are wrapped to the transcript's width as they
-  are appended. A `WardrikTUI.Table` arrives as one line and is laid out to the
+  are appended. A `WardrikConsole.Table` arrives as one line and is laid out to the
   width the same way. `source/1` presents the rows to Breeze as a lazy
   `BackBreeze.VirtualText`, which fetches only the rows it draws, under a key
   naming this transcript, its version and its width, so the renderer never
@@ -16,8 +16,8 @@ defmodule WardrikTUI.Transcript do
   """
 
   alias BackBreeze.VirtualText
+  alias WardrikConsole.Table
   alias WardrikTUI.Line
-  alias WardrikTUI.Table
   alias WardrikTUI.Text
 
   @type t() :: %__MODULE__{
@@ -72,7 +72,7 @@ defmodule WardrikTUI.Transcript do
     %{transcript | lines: [line | transcript.lines], rows: rows, version: transcript.version + 1}
   end
 
-  defp layout(%Table{} = table, width), do: Table.rows(table, width)
+  defp layout(%Table{} = table, width), do: WardrikTUI.Table.rows(table, width)
   defp layout(line, width), do: Line.wrap(line, width)
 
   defp fill(row, %__MODULE__{pad?: false}), do: row

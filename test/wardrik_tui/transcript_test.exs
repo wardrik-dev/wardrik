@@ -116,7 +116,7 @@ defmodule WardrikTUI.TranscriptTest do
   end
 
   test "a table is laid out to the width and again on rewrap" do
-    table = WardrikTUI.Table.new(["a", "b"], [["1", "one two three"]])
+    table = WardrikConsole.Table.new(["a", "b"], [["1", "one two three"]])
     transcript = Transcript.append(Transcript.new(40), table)
 
     assert Transcript.to_list(transcript) == ["a │ b", "──┼──────────────", "1 │ one two three"]

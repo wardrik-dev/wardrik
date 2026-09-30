@@ -1,8 +1,8 @@
-defmodule WardrikTUI.Fleet.FilterTest do
+defmodule WardrikConsole.FilterTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Fleet.Member
-  alias WardrikTUI.Fleet.Filter
+  alias WardrikConsole.Filter
 
   defp member(key, opts) do
     {org, user, name} = Wardrik.Fleet.parse(key)

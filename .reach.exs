@@ -20,7 +20,7 @@
     s3: ["WardrikS3", "WardrikS3.*"],
     ecto: ["WardrikEcto", "WardrikEcto.*"],
     workspace: ["WardrikWorkspace", "WardrikWorkspace.*"],
-    console: "WardrikConsole",
+    console: ["WardrikConsole", "WardrikConsole.*"],
     launcher: "Mix.Tasks.Wardrik",
     demo: ["WardrikDemo", "WardrikDemo.*"]
   ],
@@ -34,7 +34,7 @@
       mcp: [:core],
       vault: [:core],
       oauth: [:core, :vault],
-      tui: [:core],
+      tui: [:core, :console],
       daemon: [
         :core,
         :mcp,
@@ -44,7 +44,7 @@
         :research,
         :lua,
         :policy,
-        :tui,
+        :console,
         :notify,
         :http,
         :workspace

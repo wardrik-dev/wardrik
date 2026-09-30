@@ -1,10 +1,10 @@
 defmodule WardrikTUI.Table do
   @moduledoc """
-  A markdown table, laid out to a width when it is drawn.
+  Lays a `WardrikConsole.Table` out to a width when it is drawn.
 
-  `WardrikTUI.Markdown` builds one from the rows it held back and returns it in
-  place of a line. `WardrikTUI.Transcript` lays it out with `rows/2` at its
-  current width, and again on a resize, so a table reflows the way prose does.
+  `WardrikConsole.Markdown` returns a table in place of a line.
+  `WardrikTUI.Transcript` lays it out with `rows/2` at its current width, and
+  again on a resize, so a table reflows the way prose does.
 
   Columns take their natural width when the table fits. When it does not, the
   widest column gives up columns first until a row fits, and each cell wraps
@@ -20,53 +20,9 @@ defmodule WardrikTUI.Table do
   @separator " │ "
   @joint "─┼─"
 
-  @typedoc "How a column's cells sit in it, from the rule row's colons."
-  @type alignment() :: :left | :right | :center
-
-  @typedoc "A header row, body rows, one alignment per column, and columns of indent."
-  @type t() :: %__MODULE__{
-          header: [Text.t()],
-          rows: [[Text.t()]],
-          alignments: [alignment()],
-          indent: non_neg_integer()
-        }
-
-  defstruct header: [], rows: [], alignments: [], indent: 0
-
-  @doc """
-  A table from its header, its body rows and its alignments.
-
-  Rows shorter than the widest are squared up with empty cells; missing
-  alignments are `:left`.
-  """
-  @spec new([Text.t()], [[Text.t()]], [alignment()]) :: t()
-  def new(header, rows, alignments \\ []) when is_list(header) and is_list(rows) do
-    columns = [header | rows] |> Enum.map(&length/1) |> Enum.max()
-
-    %__MODULE__{
-      header: square(header, columns),
-      rows: Enum.map(rows, &square(&1, columns)),
-      alignments: alignments |> Enum.take(columns) |> square(columns, :left)
-    }
-  end
-
-  defp square(cells, columns, filler \\ []) do
-    cells ++ List.duplicate(filler, columns - length(cells))
-  end
-
-  @doc "The alignment a rule cell such as `:---:` asks for."
-  @spec alignment(String.t()) :: alignment()
-  def alignment(rule) do
-    case {String.starts_with?(rule, ":"), String.ends_with?(rule, ":")} do
-      {true, true} -> :center
-      {false, true} -> :right
-      _other -> :left
-    end
-  end
-
   @doc "The table as terminal rows no wider than `width`."
-  @spec rows(t(), pos_integer()) :: [Line.t()]
-  def rows(%__MODULE__{} = table, width) when is_integer(width) and width > 0 do
+  @spec rows(WardrikConsole.Table.t(), pos_integer()) :: [Line.t()]
+  def rows(%WardrikConsole.Table{} = table, width) when is_integer(width) and width > 0 do
     header = Enum.map(table.header, &Line.segments(Text.tag(&1, :bright)))
     body = Enum.map(table.rows, fn row -> Enum.map(row, &Line.segments/1) end)
     widths = widths([header | body], available(width, table.indent, length(header)))

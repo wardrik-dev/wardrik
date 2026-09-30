@@ -535,14 +535,14 @@ defmodule WardrikDaemon.Config do
         invalid!(["cluster", "nodes"], "mixes names on this machine with full names")
     end
 
-    nodes = Enum.map(names, fn {name, _path} -> WardrikDaemon.Cluster.node_name(name) end)
+    nodes = Enum.map(names, fn {name, _path} -> WardrikConsole.Nodes.named(name) end)
 
     case nodes -- Enum.uniq(nodes) do
       [] ->
         nodes
 
       [twice | _] ->
-        invalid!(["cluster", "nodes"], "names #{WardrikDaemon.Cluster.display(twice)} twice")
+        invalid!(["cluster", "nodes"], "names #{WardrikConsole.Nodes.display(twice)} twice")
     end
   end
 

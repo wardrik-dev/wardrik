@@ -813,7 +813,7 @@ defmodule WardrikTUI.View do
 
   defp format(value, _depth), do: JSON.encode!(value)
 
-  defp indented_lines(%Text{} = text), do: [["  ", text]]
+  defp indented_lines(%Owl.Tag{} = text), do: [["  ", text]]
 
   defp indented_lines(text) when is_binary(text),
     do: text |> String.split("\n") |> Enum.map(&["  ", &1])
