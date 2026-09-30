@@ -102,15 +102,17 @@ jobs:
   release:
     name: release (linux-${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - {arch: x86_64, platform: amd64, runner: ubuntu-24.04}
           - {arch: aarch64, platform: arm64, runner: ubuntu-24.04-arm}
-    permissions:
-      contents: read
-      packages: write
     outputs:
       version: ${{ steps.tarball.outputs.version }}
       name: ${{ steps.tarball.outputs.name }}
@@ -152,8 +154,39 @@ jobs:
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
           name="wardrik-$version-linux-${{ matrix.arch }}.tar.gz"
           mv "dist/wardrikd-$version.tar.gz" "$name"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
+          mkdir unpacked && tar -xzf "$name" -C unpacked
+
+          {
+            echo "version=$version"
+            echo "name=$name"
+            echo "sbom=wardrik-$version-linux-${{ matrix.arch }}.spdx.json"
+            echo "image_sbom=wardrik-$version-image-${{ matrix.platform }}.spdx.json"
+          } >> "$GITHUB_OUTPUT"
+
+      # What ships, as SPDX: the OTP applications in the release, and the
+      # image's packages beside them.
+      - uses: anchore/sbom-action@v0
+        with:
+          path: unpacked
+          format: spdx-json
+          output-file: ${{ steps.tarball.outputs.sbom }}
+          upload-artifact: false
+          upload-release-assets: false
+
+      - uses: anchore/sbom-action@v0
+        with:
+          image: wardrik:ci
+          format: spdx-json
+          output-file: ${{ steps.tarball.outputs.image_sbom }}
+          upload-artifact: false
+          upload-release-assets: false
+
+      # Where each was built, signed by this workflow. Artifact attestations
+      # need a public repository on this plan.
+      - if: github.event_name == 'push' && !github.event.repository.private
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.tarball.outputs.name }}
 
       # Unpacked somewhere new and started with no keys and no home of its own,
       # the way a first install is: one agent file that reads, one that does
@@ -288,7 +321,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.tarball.outputs.name }}
-          path: ${{ steps.tarball.outputs.name }}
+          path: |
+            ${{ steps.tarball.outputs.name }}
+            ${{ steps.tarball.outputs.sbom }}
+            ${{ steps.tarball.outputs.image_sbom }}
           if-no-files-found: error
 
       - if: github.event_name == 'push'
@@ -300,16 +336,27 @@ jobs:
 
       - if: github.event_name == 'push'
         name: Push the image
+        id: push
         env:
           IMAGE: ${{ steps.image.outputs.image }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           docker tag wardrik:ci "$IMAGE:sha-$GITHUB_SHA-$PLATFORM"
           docker push "$IMAGE:sha-$GITHUB_SHA-$PLATFORM"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$GITHUB_SHA-$PLATFORM")
+          echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
+
+      - if: github.event_name == 'push' && !github.event.repository.private
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ steps.image.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   # The images the release job booted, one for each platform, joined into one
   # and named once every check has passed: :sha-<commit>, with :main for a
-  # push to main, and the version and :latest for a v* tag.
+  # push to main, and the version for a v* tag, with :latest unless it is a
+  # pre-release such as 0.1.0-rc.1.
   image:
     name: image
     if: github.event_name == 'push'
@@ -339,15 +386,17 @@ jobs:
                 echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
                 exit 1
               fi
-              tags+=(-t "$IMAGE:$VERSION" -t "$IMAGE:latest")
+              tags+=(-t "$IMAGE:$VERSION")
+              case "$VERSION" in *-*) ;; *) tags+=(-t "$IMAGE:latest") ;; esac
               ;;
           esac
 
           docker buildx imagetools create "${tags[@]}" \
             "$IMAGE:sha-$GITHUB_SHA-amd64" "$IMAGE:sha-$GITHUB_SHA-arm64"
 
-  # A v* tag publishes the tarballs the release job booted, their SHA256SUMS
-  # and the install script, once every check has passed.
+  # A v* tag publishes the tarballs the release job booted, their SBOMs, a
+  # SHA256SUMS of both and the install script, once every check has passed. A
+  # pre-release version is published as a pre-release.
   publish:
     name: publish
     if: startsWith(github.ref, 'refs/tags/v')
@@ -374,6 +423,7 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
             exit 1
           fi
-          sha256sum wardrik-*-linux-*.tar.gz > SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" wardrik-*-linux-*.tar.gz SHA256SUMS deploy/install.sh \
-            --repo "$GITHUB_REPOSITORY" --generate-notes
+          case "$VERSION" in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac
+          sha256sum wardrik-*.tar.gz wardrik-*.spdx.json > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" wardrik-*.tar.gz wardrik-*.spdx.json SHA256SUMS deploy/install.sh \
+            --repo "$GITHUB_REPOSITORY" --generate-notes $prerelease
