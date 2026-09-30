@@ -417,7 +417,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
                Enum.sort(
                  (properties -- ["instructions"]) ++
-                   ~w(name org user schedule notify trust_outside_content workspace)
+                   ~w(name org user schedule notify trust_outside_content workspace context)
                )
     end
 
@@ -515,5 +515,67 @@ defmodule WardrikDaemon.AgentFileTest do
 
     assert {:error, yaml} = read("---\ntools: [a\n---\n", context)
     assert yaml =~ "not YAML"
+  end
+
+  describe "context" do
+    test "names files read into each turn, in the workspace the file tools reach", context do
+      assert {:ok, spec} =
+               read(
+                 "---\norg: acme\ntools: [files]\nworkspace: {shared: {team: acme}}\ncontext: [SOUL.md, shared/team/CONVENTIONS.md]\n---\n",
+                 context
+               )
+
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{context: files}}] = spec.config.tools
+      assert files == ["SOUL.md", "shared/team/CONVENTIONS.md"]
+    end
+
+    test "needs the file tools to read them with", context do
+      assert {:error, message} = read("---\ncontext: [SOUL.md]\n---\n", context)
+      assert message =~ "context names files to read into each turn, and tools names no files"
+
+      assert {:error, _message} =
+               read("---\ntools: [web_search]\ncontext: [SOUL.md]\n---\n", context)
+    end
+
+    test "refuses a file outside the workspace", context do
+      assert {:error, message} = read("---\ntools: [files]\ncontext: [../x.md]\n---\n", context)
+      assert message =~ "context: ../x.md climbs out of the workspace with .."
+    end
+  end
+
+  describe "prompt_file" do
+    test "asks the agent to read and follow a file of its workspace when the schedule fires",
+         context do
+      assert {:ok, spec} =
+               read(
+                 """
+                 ---
+                 tools: [files]
+                 schedule:
+                   name: heartbeat
+                   every: 30m
+                   prompt_file: ./HEARTBEAT.md
+                 ---
+                 """,
+                 context
+               )
+
+      assert [%Wardrik.Schedule{name: "heartbeat", prompt: prompt}] = spec.schedules
+      assert prompt =~ "It is time for heartbeat. Read HEARTBEAT.md with read_file"
+    end
+
+    test "is in place of a prompt, needs the file tools, and names a file", context do
+      for {settings, refusal} <- [
+            {"tools: [files]\nschedule: {every: 30m, prompt: Look., prompt_file: H.md}",
+             "a schedule has a prompt or a prompt_file, not both"},
+            {"schedule: {every: 30m, prompt_file: H.md}",
+             "prompt_file names a file, and tools names no files to read it with"},
+            {"tools: [files]\nschedule: {every: 30m, prompt_file: /etc/passwd}",
+             "prompt_file: /etc/passwd is absolute"}
+          ] do
+        assert {:error, message} = read("---\n#{settings}\n---\n", context)
+        assert message =~ refusal
+      end
+    end
   end
 end

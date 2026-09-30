@@ -680,6 +680,21 @@ content from outside; reading, listing or finding it taints the reader's turn
 in the same way. A policy names a file tool's call by its path, as
 `write_file(notes/*)`. See `WardrikWorkspace`.
 
+As each turn begins, the agent is told what its workspace holds: the files
+`context` names, read in whole up to 16 KB in all, and the names of the others
+at the top of its tree, which it reads when it needs them. A `MEMORY.md` it
+keeps is there to find in every turn without filling the context, and a
+schedule's `prompt_file` asks it to follow a file it can edit, as a heartbeat:
+
+```yaml
+tools: [files]
+context: [SOUL.md]
+schedule:
+  name: heartbeat
+  every: 30m
+  prompt_file: HEARTBEAT.md
+```
+
 A policy may also hold a budget for what the agent spends on model calls, in
 dollars, in tokens, or both:
 

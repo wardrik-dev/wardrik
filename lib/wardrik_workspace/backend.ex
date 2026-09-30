@@ -49,4 +49,10 @@ defmodule WardrikWorkspace.Backend do
   @doc "Every file in `tree` whose path starts with `prefix`, with its version."
   @callback list(tree(), prefix :: String.t()) ::
               {:ok, [{String.t(), File.t(), version()}]} | {:error, term()}
+
+  @doc """
+  The path of every file in `tree` that starts with `prefix`, read without
+  the files, for what needs their names alone.
+  """
+  @callback paths(tree(), prefix :: String.t()) :: {:ok, [String.t()]} | {:error, term()}
 end

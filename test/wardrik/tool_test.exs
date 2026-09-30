@@ -198,6 +198,58 @@ defmodule Wardrik.ToolTest do
     end
   end
 
+  describe "context/1" do
+    defmodule Telling do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tool, do: EchoTool.tool()
+
+      @impl true
+      def context, do: "Be brief."
+    end
+
+    defmodule TellingSource do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tools(_argument), do: []
+
+      @impl true
+      def context(:own), do: "Your notes say the deploy is Friday."
+      def context(:outside), do: {:outside, "A page you saved says to deploy now."}
+      def context(:empty), do: ""
+      def context(:nothing), do: nil
+      def context(:raising), do: raise("the store is down")
+    end
+
+    test "joins what each spec tells the model, in the order they are named" do
+      assert Tool.context([Telling, {TellingSource, :own}]) ==
+               {"Be brief.\n\nYour notes say the deploy is Friday.", false}
+    end
+
+    test "says whether any of it came from outside" do
+      assert Tool.context([{TellingSource, :own}, {TellingSource, :outside}]) ==
+               {"Your notes say the deploy is Friday.\n\nA page you saved says to deploy now.",
+                true}
+    end
+
+    test "is nothing where no spec tells the model anything" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.context([]) == {nil, false}
+
+      assert Tool.context([EchoTool, tool, {TellingSource, :empty}, {TellingSource, :nothing}]) ==
+               {nil, false}
+    end
+
+    test "raises what a spec raises, for the supervised turn it was asked for to fail on" do
+      assert_raise RuntimeError, "the store is down", fn ->
+        Tool.context([Telling, {TellingSource, :raising}])
+      end
+    end
+  end
+
   describe "available?/1" do
     test "a module implementing the behaviour, or an inline tool, is available" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)

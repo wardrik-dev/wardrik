@@ -27,6 +27,7 @@ defmodule WardrikDaemon.AgentFile do
   | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
   | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
+  | `context` | the files read into each turn; see below. A definition over HTTP cannot say it |
   | `org`, `user` | who it works for |
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
@@ -66,6 +67,18 @@ defmodule WardrikDaemon.AgentFile do
   A tree is reachable by the agents under the scope its name begins with, as
   `WardrikWorkspace.Spec` says, and a file naming one its agent cannot reach
   does not read.
+
+  As each turn begins the agent is told what its workspace holds: the files
+  `context` names, read in whole up to 16 KB in all, and the names of the
+  others at the top of its tree, which it reads when it needs them. So a
+  `MEMORY.md` it keeps is there to find in every turn without filling the
+  context:
+
+      tools: [files]
+      context: [SOUL.md, shared/team/CONVENTIONS.md]
+
+  A file read in whole that a turn which had read content from outside wrote
+  makes the turn tainted from its start. See `WardrikWorkspace.Context`.
 
   ## Policy
 
@@ -114,6 +127,9 @@ defmodule WardrikDaemon.AgentFile do
       `*` as something else; or a duration of at least a minute, as `30m`,
       `2h` or `1d`
     * `prompt` - what the agent is asked
+    * `prompt_file` - in place of `prompt`, a file in its workspace the agent
+      is asked to read and follow, so it can keep its own checklist, as
+      OpenClaw's `HEARTBEAT.md` is kept. It needs `files` in `tools`
     * `name` - the schedule's name, `schedule-1`, `schedule-2` and so on by
       its place in the list when absent
     * `overlap` - `skip`, the default, leaves an agent that is running or
@@ -164,9 +180,9 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools workspace org user policy timeout max_iterations compaction trust_outside_content schedule notify)
+  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction trust_outside_content schedule notify)
   @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
-  @schedule_keys ~w(name every prompt overlap missed jitter)
+  @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in
@@ -249,7 +265,7 @@ defmodule WardrikDaemon.AgentFile do
           optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
         org: optional_string!(fields["org"], "org"),
         user: optional_string!(fields["user"], "user"),
-        schedules: schedules(fields["schedule"])
+        schedules: schedules(fields["schedule"], files?(fields))
       )
 
     {:ok, spec, route(fields["notify"])}
@@ -296,8 +312,7 @@ defmodule WardrikDaemon.AgentFile do
   # -- tools and servers -----------------------------------------------------
 
   defp tools(%{"tools" => names} = fields, modules?, key) when is_list(names) do
-    if Map.has_key?(fields, "workspace") and not Enum.any?(names, &(&1 in ["files", "*"])),
-      do: invalid!("workspace shares trees, and tools names no files to reach them with")
+    if not files?(fields), do: unreached!(fields)
 
     names
     |> Enum.flat_map(fn
@@ -310,10 +325,28 @@ defmodule WardrikDaemon.AgentFile do
 
   defp tools(%{"tools" => _names}, _modules?, _key), do: invalid!("tools is a list")
 
-  defp tools(%{"workspace" => _workspace}, _modules?, _key),
+  defp tools(fields, _modules?, _key) do
+    unreached!(fields)
+    []
+  end
+
+  defp files?(%{"tools" => names}) when is_list(names),
+    do: Enum.any?(names, &(&1 in ["files", "*"]))
+
+  defp files?(_fields), do: false
+
+  # A workspace, or files to read into each turn, with no files tools to
+  # reach them.
+  defp unreached!(%{"workspace" => _workspace}),
     do: invalid!("workspace shares trees, and tools names no files to reach them with")
 
-  defp tools(_fields, _modules?, _key), do: []
+  defp unreached!(%{"context" => _context}),
+    do:
+      invalid!(
+        "context names files to read into each turn, and tools names no files to read them with"
+      )
+
+  defp unreached!(_fields), do: :ok
 
   # The file tools over the agent's own tree, and the trees `workspace` shares.
   defp files!(fields, key) do
@@ -325,9 +358,18 @@ defmodule WardrikDaemon.AgentFile do
       [key | _rest] -> invalid!("workspace.#{key} is not a setting; expected shared")
     end
 
+    with {:ok, spec} <- workspace!(key, workspace),
+         {:ok, spec} <- WardrikWorkspace.Spec.context(spec, Map.get(fields, "context", [])) do
+      {WardrikWorkspace, spec}
+    else
+      {:error, message} -> invalid!(message)
+    end
+  end
+
+  defp workspace!(key, workspace) do
     case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{}) do
-      {:ok, spec} -> {WardrikWorkspace, spec}
-      {:error, message} -> invalid!("workspace " <> message)
+      {:ok, spec} -> {:ok, spec}
+      {:error, message} -> {:error, "workspace " <> message}
     end
   end
 
@@ -400,11 +442,11 @@ defmodule WardrikDaemon.AgentFile do
 
   # -- schedules -------------------------------------------------------------
 
-  defp schedules(nil), do: []
-  defp schedules(%{} = one), do: schedules([one])
+  defp schedules(nil, _files?), do: []
+  defp schedules(%{} = one, files?), do: schedules([one], files?)
 
-  defp schedules(list) when is_list(list) do
-    schedules = list |> Enum.with_index(1) |> Enum.map(&schedule!/1)
+  defp schedules(list, files?) when is_list(list) do
+    schedules = list |> Enum.with_index(1) |> Enum.map(&schedule!(&1, files?))
 
     case schedules -- Enum.uniq_by(schedules, & &1.name) do
       [] -> schedules
@@ -412,9 +454,9 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  defp schedules(_other), do: invalid!("schedule is a schedule, or a list of them")
+  defp schedules(_other, _files?), do: invalid!("schedule is a schedule, or a list of them")
 
-  defp schedule!({%{} = fields, index}) do
+  defp schedule!({%{} = fields, index}, files?) do
     case Map.keys(fields) -- @schedule_keys do
       [] ->
         :ok
@@ -427,13 +469,43 @@ defmodule WardrikDaemon.AgentFile do
 
     name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
 
-    case Wardrik.Schedule.decode(name, Map.delete(fields, "name")) do
-      {:ok, schedule} -> schedule
+    with {:ok, fields} <- prompted(fields, name, files?),
+         {:ok, schedule} <- Wardrik.Schedule.decode(name, Map.delete(fields, "name")) do
+      schedule
+    else
       {:error, message} -> invalid!("schedule #{fields["name"] || index}: #{message}")
     end
   end
 
-  defp schedule!({_other, index}), do: invalid!("schedule #{index} is not a set of keys")
+  defp schedule!({_other, index}, _files?),
+    do: invalid!("schedule #{index} is not a set of keys")
+
+  # A schedule's prompt_file is a prompt asking the agent to follow the file,
+  # which it reads with read_file as the turn runs, so it reads it as it
+  # stands then, and its taint with it.
+  defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _name, _files?),
+    do: {:error, "a schedule has a prompt or a prompt_file, not both"}
+
+  defp prompted(%{"prompt_file" => _file}, _name, false),
+    do: {:error, "prompt_file names a file, and tools names no files to read it with"}
+
+  defp prompted(%{"prompt_file" => file} = fields, name, true) do
+    case WardrikWorkspace.Path.normalize(file) do
+      {:ok, path} ->
+        {:ok,
+         fields
+         |> Map.delete("prompt_file")
+         |> Map.put(
+           "prompt",
+           "It is time for #{name}. Read #{path} with read_file, and do what it says as it stands now. If it asks nothing of you, answer in one line."
+         )}
+
+      {:error, message} ->
+        {:error, "prompt_file: " <> message}
+    end
+  end
+
+  defp prompted(fields, _name, _files?), do: {:ok, fields}
 
   # -- notify ----------------------------------------------------------------
 
