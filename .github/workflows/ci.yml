@@ -95,12 +95,19 @@ jobs:
 
   # The daemon's image and its release tarball, from one build in the
   # Dockerfile, on Ubuntu 22.04 so the tarball runs on any Linux with glibc 2.35
-  # and OpenSSL 3. The tarball is booted here, installed on fresh distributions
-  # and failed over; the image is booted and asked over HTTP. A push keeps the
-  # image as :sha-<commit>, and the image job names it once every check passes.
+  # and OpenSSL 3, once for each architecture on a runner of its own. The
+  # tarball is booted, installed on fresh distributions, run as a service and
+  # failed over; the image is booted and asked over HTTP. A push keeps each
+  # image as :sha-<commit>-<platform>, and the image job joins them.
   release:
-    name: release (linux-x86_64)
-    runs-on: ubuntu-24.04
+    name: release (linux-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: x86_64, platform: amd64, runner: ubuntu-24.04}
+          - {arch: aarch64, platform: arm64, runner: ubuntu-24.04-arm}
     permissions:
       contents: read
       packages: write
@@ -128,8 +135,8 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=release
-          cache-to: type=gha,scope=release,mode=max
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max
 
       - name: Build the tarball
         uses: docker/build-push-action@v7
@@ -137,15 +144,14 @@ jobs:
           context: .
           target: tarball
           outputs: type=local,dest=dist
-          cache-from: type=gha,scope=release
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
 
       - name: Name the tarball
         id: tarball
         run: |
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
-          name="wardrik-$version-linux-x86_64.tar.gz"
+          name="wardrik-$version-linux-${{ matrix.arch }}.tar.gz"
           mv "dist/wardrikd-$version.tar.gz" "$name"
-          sha256sum "$name" > SHA256SUMS
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
@@ -282,9 +288,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.tarball.outputs.name }}
-          path: |
-            ${{ steps.tarball.outputs.name }}
-            SHA256SUMS
+          path: ${{ steps.tarball.outputs.name }}
           if-no-files-found: error
 
       - if: github.event_name == 'push'
@@ -298,12 +302,14 @@ jobs:
         name: Push the image
         env:
           IMAGE: ${{ steps.image.outputs.image }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          docker tag wardrik:ci "$IMAGE:sha-$GITHUB_SHA"
-          docker push "$IMAGE:sha-$GITHUB_SHA"
+          docker tag wardrik:ci "$IMAGE:sha-$GITHUB_SHA-$PLATFORM"
+          docker push "$IMAGE:sha-$GITHUB_SHA-$PLATFORM"
 
-  # The image the release job booted, named once every check has passed: :main
-  # for a push to main, and the version and :latest for a v* tag.
+  # The images the release job booted, one for each platform, joined into one
+  # and named once every check has passed: :sha-<commit>, with :main for a
+  # push to main, and the version and :latest for a v* tag.
   image:
     name: image
     if: github.event_name == 'push'
@@ -324,21 +330,24 @@ jobs:
           IMAGE: ${{ needs.release.outputs.image }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
+          tags=(-t "$IMAGE:sha-$GITHUB_SHA")
+
           case "$GITHUB_REF" in
-            refs/heads/main) tags=(-t "$IMAGE:main") ;;
+            refs/heads/main) tags+=(-t "$IMAGE:main") ;;
             refs/tags/v*)
               if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
                 echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
                 exit 1
               fi
-              tags=(-t "$IMAGE:$VERSION" -t "$IMAGE:latest")
+              tags+=(-t "$IMAGE:$VERSION" -t "$IMAGE:latest")
               ;;
-            *) exit 0 ;;
           esac
-          docker buildx imagetools create "${tags[@]}" "$IMAGE:sha-$GITHUB_SHA"
 
-  # A v* tag publishes the tarball the release job booted, its SHA256SUMS and
-  # the install script, once every check has passed.
+          docker buildx imagetools create "${tags[@]}" \
+            "$IMAGE:sha-$GITHUB_SHA-amd64" "$IMAGE:sha-$GITHUB_SHA-arm64"
+
+  # A v* tag publishes the tarballs the release job booted, their SHA256SUMS
+  # and the install script, once every check has passed.
   publish:
     name: publish
     if: startsWith(github.ref, 'refs/tags/v')
@@ -354,16 +363,17 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.release.outputs.name }}
+          pattern: wardrik-*-linux-*.tar.gz
+          merge-multiple: true
 
       - env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release.outputs.version }}
-          TARBALL: ${{ needs.release.outputs.name }}
         run: |
           if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
             echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS deploy/install.sh \
+          sha256sum wardrik-*-linux-*.tar.gz > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" wardrik-*-linux-*.tar.gz SHA256SUMS deploy/install.sh \
             --repo "$GITHUB_REPOSITORY" --generate-notes

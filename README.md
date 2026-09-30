@@ -27,7 +27,7 @@ docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/war
 docker exec wardrik wardrik token create dev --all --unlimited
 ```
 
-The script installs the release for Linux on x86_64, which needs glibc 2.35
+The script installs the release for Linux on x86_64 or arm64, which needs glibc 2.35
 and OpenSSL 3, as Ubuntu 22.04 and Debian 12 and everything since have. It
 checks the tarball against the release's `SHA256SUMS`, runs it once, and
 installs it under `~/.local`, or `/opt/wardrik` as root; `deploy/install.sh`
@@ -463,11 +463,12 @@ end
 `mix release` builds the daemon: a self-contained node with its own ERTS, and
 a tarball of it. The `Dockerfile` builds both the image and the tarball the
 install script installs, on Ubuntu 22.04 so the tarball runs on any Linux with
-glibc 2.35. CI builds them for Linux x86_64 on every push, installs the
-tarball on fresh Ubuntu and Debian (`dev/distros.sh`), and boots the image. A
-`v*` tag attaches the tarball, its `SHA256SUMS` and `install.sh` to the GitHub
-release, and names the image by its version and `latest`; a push to `main`
-names it `main`.
+glibc 2.35. CI builds them for x86_64 and arm64 on every push, each on a
+runner of that architecture, installs the tarball on fresh Ubuntu and Debian
+(`dev/distros.sh`) and as a service (`dev/service.sh`), and boots the image. A
+`v*` tag attaches both tarballs, their `SHA256SUMS` and `install.sh` to the
+GitHub release, and names the image, for both platforms, by its version and
+`latest`; a push to `main` names it `main`.
 
 ```sh
 MIX_ENV=prod mix release

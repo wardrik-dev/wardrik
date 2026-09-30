@@ -1,7 +1,8 @@
 # The daemon as an image, and the release tarball the install script installs,
-# from one build on Ubuntu 22.04. Building there, rather than on anything newer,
-# is what lets the tarball run on any Linux with glibc 2.35 and OpenSSL 3:
-# Ubuntu 22.04 and later, and Debian 12 and later.
+# from one build on Ubuntu 22.04, for whichever of amd64 and arm64 it is built
+# on. Building there, rather than on anything newer, is what lets the tarball
+# run on any Linux with glibc 2.35 and OpenSSL 3: Ubuntu 22.04 and later, and
+# Debian 12 and later.
 #
 #   docker build -t wardrik .                                        the image
 #   docker build --target tarball --output type=local,dest=dist .    the tarball, in dist/

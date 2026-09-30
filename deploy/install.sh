@@ -20,7 +20,7 @@
 #
 # A tarball is checked against the SHA256SUMS published with it before anything
 # is unpacked, and the release is run once before wardrik points at it. The
-# release runs on Linux on x86_64 with glibc 2.35 or later and OpenSSL 3: Ubuntu
+# release runs on Linux on x86_64 or aarch64 with glibc 2.35 or later and OpenSSL 3: Ubuntu
 # 22.04 or later, or Debian 12 or later. Elsewhere, the Docker image runs.
 set -eu
 
@@ -44,8 +44,9 @@ platform() {
   esac
 
   case "$(uname -m)" in
-    x86_64 | amd64) ;;
-    *) die "there is no build for Linux on $(uname -m) yet, only x86_64; the Docker image runs there: $image" ;;
+    x86_64 | amd64) arch=x86_64 ;;
+    aarch64 | arm64) arch=aarch64 ;;
+    *) die "there is no build for Linux on $(uname -m), only x86_64 and aarch64; the Docker image may run there: $image" ;;
   esac
 
   # musl, as Alpine has, answers nothing here.
@@ -63,7 +64,7 @@ platform() {
     die "the release needs glibc 2.35 or later, as Ubuntu 22.04 and Debian 12 have, and this Linux has $version; the Docker image runs here: $image"
   fi
 
-  echo linux-x86_64
+  echo "linux-$arch"
 }
 
 # The version of the latest release, from where GitHub sends a request for it.
