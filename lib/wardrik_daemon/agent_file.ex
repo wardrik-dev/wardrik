@@ -26,6 +26,7 @@ defmodule WardrikDaemon.AgentFile do
   | `description` | what it is for, as `wardrik status` shows it |
   | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
+  | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
   | `org`, `user` | who it works for |
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
@@ -41,13 +42,30 @@ defmodule WardrikDaemon.AgentFile do
   has none.
 
     * a tool the daemon ships, by name: #{Enum.map_join(["web_search", "deep_research", "run_lua"], ", ", &"`#{&1}`")}
+    * `files`, the six file tools over the agent's own tree and the trees it
+      shares, as `WardrikWorkspace` describes them
     * `server/*`, every tool of an MCP server as `config.yaml` names it. A
       server's `only` and `except` narrow what it offers
     * `workers/*`, every tool the connected tool workers offer the agent, as
       `WardrikHTTP.Workers` describes them. A policy narrows what it may call
-    * `*`, every tool the daemon ships, every MCP server connected, and every
-      tool worker's tools
+    * `*`, every tool the daemon ships, the file tools, every MCP server
+      connected, and every tool worker's tools
     * a module implementing `Wardrik.Tool`
+
+  ## Workspace
+
+  `files` gives the agent a tree of its own, kept in the store, and
+  `workspace` shares others with it, each seen under `shared/<name>/`:
+
+      tools: [files]
+      workspace:
+        shared:
+          team: acme                                  # acme's tree, read and written
+          runbooks: {tree: acme/runbooks, mode: read}
+
+  A tree is reachable by the agents under the scope its name begins with, as
+  `WardrikWorkspace.Spec` says, and a file naming one its agent cannot reach
+  does not read.
 
   ## Policy
 
@@ -146,7 +164,7 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools org user policy timeout max_iterations compaction trust_outside_content schedule notify)
+  @keys ~w(name description model tools workspace org user policy timeout max_iterations compaction trust_outside_content schedule notify)
   @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt overlap missed jitter)
 
@@ -277,11 +295,41 @@ defmodule WardrikDaemon.AgentFile do
 
   # -- tools and servers -----------------------------------------------------
 
-  defp tools(%{"tools" => names}, modules?, key) when is_list(names),
-    do: names |> Enum.flat_map(&tool!(&1, modules?, key)) |> Enum.uniq()
+  defp tools(%{"tools" => names} = fields, modules?, key) when is_list(names) do
+    if Map.has_key?(fields, "workspace") and not Enum.any?(names, &(&1 in ["files", "*"])),
+      do: invalid!("workspace shares trees, and tools names no files to reach them with")
+
+    names
+    |> Enum.flat_map(fn
+      "files" -> [files!(fields, key)]
+      "*" -> tool!("*", modules?, key) ++ [files!(fields, key)]
+      name -> tool!(name, modules?, key)
+    end)
+    |> Enum.uniq()
+  end
 
   defp tools(%{"tools" => _names}, _modules?, _key), do: invalid!("tools is a list")
+
+  defp tools(%{"workspace" => _workspace}, _modules?, _key),
+    do: invalid!("workspace shares trees, and tools names no files to reach them with")
+
   defp tools(_fields, _modules?, _key), do: []
+
+  # The file tools over the agent's own tree, and the trees `workspace` shares.
+  defp files!(fields, key) do
+    workspace = Map.get(fields, "workspace") || %{}
+    if not is_map(workspace), do: invalid!("workspace is a set of settings: shared")
+
+    case Map.keys(workspace) -- ["shared"] do
+      [] -> :ok
+      [key | _rest] -> invalid!("workspace.#{key} is not a setting; expected shared")
+    end
+
+    case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{}) do
+      {:ok, spec} -> {WardrikWorkspace, spec}
+      {:error, message} -> invalid!("workspace " <> message)
+    end
+  end
 
   defp tool!("*", _modules?, key), do: @shipped ++ [{WardrikMCP, :*}, {WardrikHTTP.Workers, key}]
   defp tool!("workers/*", _modules?, key), do: [{WardrikHTTP.Workers, key}]

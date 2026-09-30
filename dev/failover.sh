@@ -14,7 +14,8 @@
 #
 # ROOT is the unpacked release, _build/prod/rel/wardrikd after
 # MIX_ENV=prod mix release. The agent is spawned rather than read from an agent
-# file, so only the store can bring it back.
+# file, so only the store can bring it back, and the MEMORY.md written in its
+# tree before the kill is read back after it.
 #
 # The database is WARDRIK_FAILOVER_DATABASE_URL, and the bucket is reached
 # through the WARDRIK_TEST_S3_* variables the suite reads, each by default what
@@ -93,6 +94,24 @@ running_on() {
   " 2>/dev/null || true
 }
 
+# Writes MEMORY.md in the agent's tree, through node $2 of HOME $1.
+remember() {
+  rpc "$1" "$2" "
+    file = %WardrikWorkspace.File{content: \"$agent remembers\", by: \"$agent\"}
+    {:ok, _version} = WardrikWorkspace.Backend.Store.write(\"agents/$agent\", \"MEMORY.md\", file, nil)
+  " >/dev/null
+}
+
+# Reads MEMORY.md back through node $2 of HOME $1, and fails where it is not
+# what was written.
+recalled() {
+  rpc "$1" "$2" "
+    {:ok, %{content: \"$agent remembers\"}, _version} =
+      WardrikWorkspace.Backend.Store.read(\"agents/$agent\", \"MEMORY.md\")
+  " >/dev/null || die "$agent's MEMORY.md did not survive"
+  say "$agent's MEMORY.md survived"
+}
+
 # Waits up to two minutes, time enough for a heartbeat to go stale and the
 # next discovery to find the work it held, for the agent to run on node $3.
 await_agent() {
@@ -140,9 +159,11 @@ EOF
     *) victim=b other=a ;;
   esac
 
+  remember "$home" a
   say "$agent runs on $on; killing it with kill -9"
   kill -9 "$(wardrik "$home" --node "$victim" pid)"
   await_agent "$home" "$other" "wardrik_$other@localhost"
+  recalled "$home" "$other"
 
   rpc "$home" "$other" ":ok = Wardrik.Fleet.forget(\"$agent\")" >/dev/null
 }
@@ -182,6 +203,7 @@ EOF
   node=$(running_on "$old" "")
   [ -n "$node" ] || die "$agent did not start"
   wardrik "$old" token create failover --all --unlimited >/dev/null
+  remember "$old" ""
 
   say "$agent runs on $node; killing it with kill -9 and throwing its home away"
   kill -9 "$(wardrik "$old" pid)"
@@ -193,6 +215,7 @@ EOF
   token=$(wardrik "$new" token list)
   grep -q failover <<<"$token" || die "the token made before the kill is not listed: $token"
   say "The token made before the kill is listed"
+  recalled "$new" ""
 
   rpc "$new" "" ":ok = Wardrik.Fleet.forget(\"$agent\")" >/dev/null
 }

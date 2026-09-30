@@ -19,6 +19,7 @@
     http: ["WardrikHTTP", "WardrikHTTP.*"],
     s3: ["WardrikS3", "WardrikS3.*"],
     ecto: ["WardrikEcto", "WardrikEcto.*"],
+    workspace: ["WardrikWorkspace", "WardrikWorkspace.*"],
     console: "WardrikConsole",
     launcher: "Mix.Tasks.Wardrik",
     demo: ["WardrikDemo", "WardrikDemo.*"]
@@ -45,13 +46,15 @@
         :policy,
         :tui,
         :notify,
-        :http
+        :http,
+        :workspace
       ],
       policy: [:core],
       notify: [:core],
       http: [:core],
       s3: [:core],
       ecto: [:core],
+      workspace: [:core],
       console: [:core],
       demo: [:core],
       launcher: [:core, :tui, :mcp, :oauth, :vault, :brave, :research]
@@ -111,7 +114,9 @@
          "WardrikS3",
          "WardrikS3.*",
          "WardrikEcto",
-         "WardrikEcto.*"
+         "WardrikEcto.*",
+         "WardrikWorkspace",
+         "WardrikWorkspace.*"
        ],
        [
          "Application.get_env",

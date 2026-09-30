@@ -83,16 +83,84 @@ defmodule WardrikDaemon.AgentFileTest do
     assert Spec.key(spec) == "_/_/triage"
   end
 
-  test "* is every shipped tool, every connected server and the tool workers' tools", context do
+  test "* is every shipped tool, the file tools, every connected server and the tool workers' tools",
+       context do
     assert {:ok, spec} = read("---\ntools: ['*']\n---\n", context)
+    {:ok, files} = WardrikWorkspace.Spec.new("_/_/triage")
 
     assert spec.config.tools == [
              WardrikBrave.WebSearch,
              WardrikResearch.Deep,
              WardrikLua.Run,
              {WardrikMCP, :*},
-             {WardrikHTTP.Workers, "_/_/triage"}
+             {WardrikHTTP.Workers, "_/_/triage"},
+             {WardrikWorkspace, files}
            ]
+  end
+
+  describe "files" do
+    test "are the file tools over the agent's own tree, and the trees workspace shares",
+         context do
+      assert {:ok, spec} =
+               read(
+                 """
+                 ---
+                 org: acme
+                 user: jon
+                 tools: [files]
+                 workspace:
+                   shared:
+                     team: acme
+                     runbooks: {tree: acme/runbooks, mode: read}
+                 ---
+                 """,
+                 context
+               )
+
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
+      assert files.tree.tree == "agents/acme/jon/triage"
+
+      assert Enum.map(files.shared, &{&1.name, &1.tree, &1.mode}) == [
+               {"runbooks", "shared/acme/runbooks", :read},
+               {"team", "shared/acme", :write}
+             ]
+    end
+
+    test "share no tree the agent's key does not reach", context do
+      assert {:error, message} =
+               read(
+                 "---\norg: acme\ntools: [files]\nworkspace: {shared: {theirs: globex}}\n---\n",
+                 context
+               )
+
+      assert message =~
+               "workspace shared theirs: globex belongs to globex/, which acme/_/triage is not under"
+    end
+
+    test "are what a workspace needs, and a workspace takes only shared", context do
+      assert {:error, message} = read("---\nworkspace: {shared: {team: _}}\n---\n", context)
+      assert message =~ "workspace shares trees, and tools names no files"
+
+      assert {:error, message} =
+               read("---\ntools: [files]\nworkspace: {size: 1GB}\n---\n", context)
+
+      assert message =~ "workspace.size is not a setting; expected shared"
+    end
+
+    test "are the agent's own tree alone over HTTP, which shares nothing" do
+      assert {:ok, spec} = AgentFile.definition("acme/_/triage", %{"tools" => ["files"]})
+
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: []} = files}] = spec.config.tools
+      assert files.tree.tree == "agents/acme/_/triage"
+
+      assert {:error, message} =
+               AgentFile.definition("acme/_/triage", %{
+                 "tools" => ["files"],
+                 "workspace" => %{"shared" => %{"team" => "acme"}}
+               })
+
+      assert message =~ "workspace is not a setting"
+    end
   end
 
   test "workers/* is every tool the tool workers offer the agent, and * takes them too",
@@ -343,12 +411,13 @@ defmodule WardrikDaemon.AgentFileTest do
       assert Enum.sort(expected(AgentFile.definition("acme/_/triage", %{"?" => 1}))) ==
                Enum.sort(properties)
 
-      # trust_outside_content loosens what a token's ceiling holds, so only a
-      # file, which the operator writes, may say it.
+      # trust_outside_content loosens what a token's ceiling holds, and a
+      # workspace shares trees a token's scope may not cover, so only a file,
+      # which the operator writes, may say them.
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
                Enum.sort(
                  (properties -- ["instructions"]) ++
-                   ~w(name org user schedule notify trust_outside_content)
+                   ~w(name org user schedule notify trust_outside_content workspace)
                )
     end
 

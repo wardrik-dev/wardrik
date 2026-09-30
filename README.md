@@ -601,6 +601,26 @@ server, and `trusted_workers: true` under `http`, say their answers are the
 deployment's own. An agent whose job is to act on what strangers send writes
 `trust_outside_content: true` in its file; a definition over HTTP cannot.
 
+An agent with `files` in its tools has a tree of its own to write in, kept
+in the store with the agent, so its notes are on whichever node holds it and
+survive the one it was on: `read_file`, `write_file`, `edit_file`,
+`list_files`, `search_files` and `delete_file`. A change is made over the
+version last read, so two writers never lose each other's work. `workspace`
+shares trees between agents, each under `shared/<name>/`:
+
+```yaml
+tools: [files]
+workspace:
+  shared:
+    team: acme                                  # acme's tree, for acme's agents
+    runbooks: {tree: acme/runbooks, mode: read}
+```
+
+A file keeps who wrote it, and whether the turn that wrote it had read
+content from outside; reading, listing or finding it taints the reader's turn
+in the same way. A policy names a file tool's call by its path, as
+`write_file(notes/*)`. See `WardrikWorkspace`.
+
 A policy may also hold a budget for what the agent spends on model calls, in
 dollars, in tokens, or both:
 

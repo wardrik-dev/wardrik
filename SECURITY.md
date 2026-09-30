@@ -89,11 +89,14 @@ A turn that has read content nobody on the agent's side wrote, the results of
 worker unless `http.trusted_workers` is set, is tainted until it ends, and
 every gated call in it waits on a person, who sees what it would do. This is
 what stops a page or an issue written to be read by an agent from running a
-command a rule pre-approved. The taint is kept with the turn, so a turn
-carried on after its node is lost is tainted still, and it does not reach the
-turns after: content a turn read stays in the conversation, and rules count
-again in the next turn. `trust_outside_content: true` turns it off for an
-agent, and only an agent file, which the operator writes, can say so.
+command a rule pre-approved. A file a tainted turn writes says so, and
+reading, listing or finding it taints the reader's turn, so a finding left in
+a shared tree carries what its writer read to every agent that reads it. The
+taint is kept with the turn, so a turn carried on after its node is lost is
+tainted still, and it does not reach the turns after: content a turn read
+stays in the conversation, and rules count again in the next turn.
+`trust_outside_content: true` turns it off for an agent, and only an agent
+file, which the operator writes, can say so.
 
 ### Notifications
 
