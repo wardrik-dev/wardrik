@@ -869,6 +869,70 @@ defmodule Wardrik.LLM.TurnTest do
     end
   end
 
+  describe "content from outside" do
+    alias Wardrik.Test.Tools.Allowing
+    alias Wardrik.Test.Tools.Deploy
+    alias Wardrik.Test.Tools.Fetch
+
+    # A turn whose rules allow deploy by name, where deploy is gated.
+    defp allowing_deploy(agent_id, opts \\ []) do
+      [tools: [Fetch, Deploy]]
+      |> Keyword.merge(opts)
+      |> LLM.Config.new()
+      |> Scope.root(agent_id,
+        name: "turn",
+        hooks: [Wardrik.Hook.new("rules", Allowing, ["deploy"])]
+      )
+    end
+
+    test "a gated call a rule allows runs in a turn that has read nothing from outside", %{
+      agent_id: agent_id
+    } do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"}),
+        LLMStub.final_answer("deployed")
+      ])
+
+      assert %LLM.Turn{state: :done, tainted: false} =
+               run(allowing_deploy(agent_id), Context.new([Context.user("deploy")]))
+
+      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result}}
+    end
+
+    test "waits on a person once the turn has read content from outside, and stays tainted", %{
+      agent_id: agent_id
+    } do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+        LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
+      ])
+
+      assert %LLM.Turn{state: :waiting, tainted: true} =
+               parked = run(allowing_deploy(agent_id), Context.new([Context.user("read it")]))
+
+      assert [{%{id: "call_2", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
+      assert prompt =~ "this run has read content from outside"
+      refute_received %Event{payload: {:tool_started, "call_2", _, _, _}}
+
+      assert %LLM.Turn{tainted: true} = LLM.Turn.under(parked, nil)
+    end
+
+    test "lets the rule stand under a config that trusts outside content", %{agent_id: agent_id} do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+        LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"}),
+        LLMStub.final_answer("deployed")
+      ])
+
+      scope = allowing_deploy(agent_id, trust_outside_content: true)
+
+      assert %LLM.Turn{state: :done, tainted: false} =
+               run(scope, Context.new([Context.user("read it")]))
+
+      assert_receive %Event{payload: {:tool_finished, "call_2", "deploy", _result}}
+    end
+  end
+
   describe "resuming under other hooks" do
     test "a call the new hooks allow runs, whatever was decided", %{agent_id: agent_id} do
       LLMStub.stream([

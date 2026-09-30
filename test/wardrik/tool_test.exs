@@ -150,6 +150,54 @@ defmodule Wardrik.ToolTest do
     end
   end
 
+  describe "what a tool says about its calls" do
+    alias Wardrik.Test.Tools.Deploy
+    alias Wardrik.Test.Tools.Fetch
+
+    defmodule DeclaringSource do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tools(_argument), do: []
+
+      @impl true
+      def gated?(:strict, _name), do: true
+      def gated?(_argument, _name), do: false
+
+      @impl true
+      def subjects(argument, name, arguments), do: ["#{argument}:#{name}:#{arguments["path"]}"]
+
+      @impl true
+      def outside_content?(:web, _name), do: true
+      def outside_content?(_argument, _name), do: false
+    end
+
+    test "is read from a module" do
+      assert Tool.gated?(Deploy, "deploy")
+      assert Tool.subjects(Deploy, "deploy", %{"target" => "prod"}) == ["prod"]
+      refute Tool.outside_content?(Deploy, "deploy")
+      assert Tool.outside_content?(Fetch, "fetch")
+    end
+
+    test "is asked of a source with the argument it was named with" do
+      assert Tool.gated?({DeclaringSource, :strict}, "x")
+      refute Tool.gated?({DeclaringSource, :lax}, "x")
+      assert Tool.subjects({DeclaringSource, :a}, "x", %{"path" => "p"}) == ["a:x:p"]
+      assert Tool.outside_content?({DeclaringSource, :web}, "x")
+      refute Tool.outside_content?({DeclaringSource, :local}, "x")
+    end
+
+    test "is nothing where a module, a source or an inline tool declares nothing" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      for {spec, name} <- [{EchoTool, "echo"}, {{CountingSource, 3}, "counted_1"}, {tool, "x"}] do
+        refute Tool.gated?(spec, name)
+        assert Tool.subjects(spec, name, %{"a" => 1}) == []
+        refute Tool.outside_content?(spec, name)
+      end
+    end
+  end
+
   describe "available?/1" do
     test "a module implementing the behaviour, or an inline tool, is available" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)

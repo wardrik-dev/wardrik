@@ -61,6 +61,36 @@ defmodule Wardrik.LLM.TurnJournalTest do
     assert %LLM.Turn{state: :done, messages: _messages} = Task.await(task)
   end
 
+  test "a turn carried on after a lost node has read what it read, and is tainted still", %{
+    agent_id: agent_id
+  } do
+    LLMStub.stream([
+      LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+      LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
+    ])
+
+    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+
+    scope =
+      [tools: [Wardrik.Test.Tools.Fetch, Wardrik.Test.Tools.Deploy]]
+      |> LLM.Config.new()
+      |> Scope.root(agent_id, name: "turn", ledger: Ledger.Store, hooks: rules)
+
+    journaled = %{scope | journal: self()}
+    task = Task.async(fn -> run(journaled, Context.new()) end)
+
+    assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{tainted: false}}}
+    GenServer.reply(from, :ok)
+
+    # The node is lost as the second batch is written down.
+    assert_receive {:"$gen_call", _from, {:checkpoint, %LLM.Turn{tainted: true} = checkpoint}}
+    Task.shutdown(task, :brutal_kill)
+
+    assert %LLM.Turn{state: :waiting} = replayed = replay(scope, checkpoint)
+    assert [{%{id: "call_2"}, prompt}] = LLM.Turn.waiting(replayed)
+    assert prompt =~ "this run has read content from outside"
+  end
+
   test "a journal that does not answer ends the turn before anything runs", %{agent_id: agent_id} do
     LLMStub.stream([LLMStub.tool_call("call_1", "refund", %{})])
     task = run_async(scope(agent_id, journal: self()))

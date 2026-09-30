@@ -61,6 +61,77 @@ defmodule WardrikPolicyTest do
     end
   end
 
+  describe "decide/3" do
+    setup do
+      policy =
+        WardrikPolicy.decode!(%{
+          "allow" => ["shell(git status)", "shell(git diff *)"],
+          "ask" => %{"shell(npm install *)" => "This installs packages."},
+          "deny" => ["shell(git push *)"],
+          "default" => "deny"
+        })
+
+      %{policy: policy}
+    end
+
+    test "allows a call every one of whose subjects a rule allows", %{policy: policy} do
+      assert WardrikPolicy.decide(policy, "shell", ["git status"]) == :allow
+      assert WardrikPolicy.decide(policy, "shell", ["git status", "git diff HEAD"]) == :allow
+    end
+
+    test "is decided by a deny or an ask speaking for any one subject", %{policy: policy} do
+      assert {:deny, _reason} =
+               WardrikPolicy.decide(policy, "shell", ["git status", "git push origin"])
+
+      assert WardrikPolicy.decide(policy, "shell", ["git diff", "npm install left-pad"]) ==
+               {:ask, "This installs packages."}
+    end
+
+    test "leaves a subject no rule allows to the default", %{policy: policy} do
+      assert {:deny, _reason} = WardrikPolicy.decide(policy, "shell", ["git status", "ls"])
+      assert {:deny, _reason} = WardrikPolicy.decide(policy, "shell", [])
+    end
+
+    test "lets a rule naming the tool whole speak for every subject" do
+      policy = WardrikPolicy.decode!(%{"allow" => ["shell"], "deny" => ["shell(rm *)"]})
+
+      assert WardrikPolicy.decide(policy, "shell", ["ls", "git status"]) == :allow
+      assert {:deny, _reason} = WardrikPolicy.decide(policy, "shell", ["ls", "rm -rf x"])
+    end
+  end
+
+  describe "allowing by name" do
+    alias Wardrik.Test.Tools.Deploy
+
+    defp checked(policy, target \\ "prod") do
+      scope =
+        Scope.root(Config.new(tools: [Deploy]), "acme/_/triage",
+          hooks: WardrikPolicy.hooks(policy)
+        )
+
+      %{id: "c1", name: "deploy", arguments: %{"target" => target}}
+      |> Wardrik.Call.tool(scope)
+      |> then(&%{&1 | target: %{&1.target | gated: true, subjects: [target]}})
+      |> Wardrik.Hook.check()
+    end
+
+    test "is what an allow rule naming the call does, whole or by its subjects" do
+      for allow <- ["deploy", "deploy(prod)", "deploy(*)", "*"] do
+        assert %Wardrik.Call{state: :allowed, allowed: ["policy"]} =
+                 checked(WardrikPolicy.decode!(%{"allow" => [allow]}))
+      end
+    end
+
+    test "is not what default: allow does, so a gated tool asks under it as under nothing" do
+      for policy <- [
+            WardrikPolicy.decode!(%{}),
+            WardrikPolicy.decode!(%{"allow" => ["deploy(staging)"]})
+          ] do
+        assert %Wardrik.Call{state: :waiting, allowed: [], asks: [%{by: :tool}]} = checked(policy)
+      end
+    end
+  end
+
   describe "as a Wardrik.Hook" do
     test "decides tool calls through the seam, and allows every model call" do
       policy = WardrikPolicy.decode!(%{"deny" => ["run_lua"], "ask" => ["deploy"]})

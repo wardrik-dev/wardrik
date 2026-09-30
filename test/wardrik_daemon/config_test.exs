@@ -161,6 +161,33 @@ defmodule WardrikDaemon.ConfigTest do
       assert prefixed =~ "mcp.notes names its tools with my__notes"
     end
 
+    test "a server gates the tools it names, and may be trusted", context do
+      assert {:ok, [{WardrikMCP, servers: [github: github, notes: notes]}]} =
+               read(
+                 """
+                 mcp:
+                   github:
+                     url: https://api.githubcopilot.com/mcp/
+                     gated: [create_*, issue_write]
+                   notes:
+                     command: npx
+                     gated: true
+                     trusted: true
+                 """,
+                 context
+               )
+
+      assert github[:gated] == ["create_*", "issue_write"]
+      refute Keyword.has_key?(github, :trusted)
+      assert notes[:gated] == true
+      assert notes[:trusted] == true
+
+      assert {:error, gated} = read("mcp:\n  a:\n    command: x\n    gated: [1]\n", context)
+      assert gated =~ "mcp.a.gated is true, or a list of the server's tool names"
+      assert {:error, trusted} = read("mcp:\n  a:\n    command: x\n    trusted: 1\n", context)
+      assert trusted =~ "mcp.a.trusted is true or false"
+    end
+
     test "a credential is user:, org: or named:", context do
       assert {:error, message} =
                read("mcp:\n  a:\n    url: https://x\n    credential: github\n", context)
@@ -189,7 +216,15 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:error, ip} = read("http:\n  ip: nowhere\n", context)
       assert ip =~ "http.ip is an address"
       assert {:error, key} = read("http:\n  tls: true\n", context)
-      assert key =~ "http.tls is not a setting; expected one of port, ip"
+      assert key =~ "http.tls is not a setting; expected one of port, ip, trusted_workers"
+    end
+
+    test "http trusts tool workers' answers only where it says so", context do
+      assert {:ok, [{WardrikHTTP, http}]} = read("http:\n  trusted_workers: true\n", context)
+      assert http == [trusted_workers: true]
+
+      assert {:error, message} = read("http:\n  trusted_workers: yes please\n", context)
+      assert message =~ "http.trusted_workers is true or false"
     end
 
     test "notify names targets, each Slack or a webhook", context do

@@ -77,6 +77,24 @@ read it through consensus again, cannot, and refuses requests with 503,
 while re-reading the tokens its open connections hold every 15 seconds
 closes them. `http.ip` in `config.yaml` listens beyond loopback.
 
+### Gated tools and outside content
+
+A gated tool's call runs only where a rule of the agent's policy names it; a
+policy's `default: allow` does not, so an agent with no policy, or one defined
+over HTTP with none, asks a person before every such call. `gated` on an MCP
+server in `config.yaml` gates its tools.
+
+A turn that has read content nobody on the agent's side wrote, the results of
+`web_search` or `deep_research`, an MCP server not marked `trusted`, or a tool
+worker unless `http.trusted_workers` is set, is tainted until it ends, and
+every gated call in it waits on a person, who sees what it would do. This is
+what stops a page or an issue written to be read by an agent from running a
+command a rule pre-approved. The taint is kept with the turn, so a turn
+carried on after its node is lost is tainted still, and it does not reach the
+turns after: content a turn read stays in the conversation, and rules count
+again in the next turn. `trust_outside_content: true` turns it off for an
+agent, and only an agent file, which the operator writes, can say so.
+
 ### Notifications
 
 A Slack target posts a parked call's name, arguments and question to its

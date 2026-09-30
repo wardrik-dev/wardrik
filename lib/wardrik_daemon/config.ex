@@ -70,14 +70,17 @@ defmodule WardrikDaemon.Config do
   A server with `command` is started as a command, with `args`, `env` and
   `cwd` beside it; one with `url` is reached over HTTP, with `headers`. Either
   takes `only`, `except`, `prefix`, `timeout` in seconds, `max_result_bytes`,
-  and `credential` as `user:NAME`, `org:NAME` or `named:NAME` along with
-  `credential_header`, `credential_scheme` and `credential_env`. See
-  `WardrikMCP.Server`.
+  `credential` as `user:NAME`, `org:NAME` or `named:NAME` along with
+  `credential_header`, `credential_scheme` and `credential_env`, `gated`,
+  the tools whose calls wait on a person unless a rule allows them by name,
+  and `trusted: true` for a server whose answers are the deployment's own, so
+  a call to it does not taint its run. See `WardrikMCP.Server`.
 
   `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
   describes them. `vault` takes `keys`, as `WardrikVault` does. `ssh` takes
   `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
-  does.
+  does, with `trusted_workers: true` where tool workers' answers are the
+  deployment's own.
 
   `cluster` takes `nodes`, or `dns` and `size`, as `WardrikDaemon.Cluster`
   describes them, and joins this daemon to others.
@@ -113,7 +116,7 @@ defmodule WardrikDaemon.Config do
 
   @transport ~w(command args env cwd url headers)a
   @server @transport ++
-            ~w(only except prefix timeout max_result_bytes credential credential_header credential_scheme credential_env)a
+            ~w(only except prefix timeout max_result_bytes gated trusted credential credential_header credential_scheme credential_env)a
   @oauth ~w(client redirect providers)a
   @client ~w(name document_url client_uri logo_uri policy_uri tos_uri redirect_uri)a
   @redirect ~w(uri port open)a
@@ -256,7 +259,7 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.SSH, listener(ssh, "ssh")}
 
       {"http", http} ->
-        {WardrikHTTP, listener(http, "http")}
+        {WardrikHTTP, http(http)}
 
       {"notify", targets} ->
         {WardrikNotify, targets: targets(table!(targets, ["notify"]))}
@@ -323,6 +326,24 @@ defmodule WardrikDaemon.Config do
     do: invalid!(path ++ ["timeout"], "is a whole number of seconds")
 
   defp server_option({"credential", ref}, path), do: {:credential, credential(ref, path)}
+
+  defp server_option({"gated", gated}, _path) when is_boolean(gated), do: {:gated, gated}
+
+  defp server_option({"gated", names}, path) when is_list(names) do
+    if Enum.all?(names, &is_binary/1),
+      do: {:gated, names},
+      else: invalid!(path ++ ["gated"], "is true, or a list of the server's tool names")
+  end
+
+  defp server_option({"gated", _gated}, path),
+    do: invalid!(path ++ ["gated"], "is true, or a list of the server's tool names")
+
+  defp server_option({"trusted", trusted}, _path) when is_boolean(trusted),
+    do: {:trusted, trusted}
+
+  defp server_option({"trusted", _trusted}, path),
+    do: invalid!(path ++ ["trusted"], "is true or false")
+
   defp server_option({key, value}, _path), do: {setting(key), value}
 
   defp credential(ref, path) when is_binary(ref) do
@@ -387,6 +408,18 @@ defmodule WardrikDaemon.Config do
   defp vault(vault), do: options(vault, @vault_keys, ["vault"])
 
   # -- listeners -------------------------------------------------------------
+
+  defp http(http) do
+    http = table!(http, ["http"])
+    known!(http, @listener_keys ++ ["trusted_workers"], ["http"])
+    {trusted, listener} = Map.pop(http, "trusted_workers")
+
+    case trusted do
+      nil -> listener(listener, "http")
+      trusted when is_boolean(trusted) -> [trusted_workers: trusted] ++ listener(listener, "http")
+      _other -> invalid!(["http", "trusted_workers"], "is true or false")
+    end
+  end
 
   defp listener(listener, section) do
     listener = table!(listener, [section])

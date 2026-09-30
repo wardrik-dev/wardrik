@@ -23,6 +23,8 @@ defmodule Wardrik.HookTest do
     def call(call, {:ask, prompt}), do: Call.ask(call, prompt)
     def call(call, {:ask, prompt, memo}), do: Call.ask(call, prompt, memo)
     def call(call, {:assign, key, value}), do: Call.assign(call, key, value)
+    def call(call, :allow_by_name), do: Call.allow(call)
+    def call(call, :allow_as_another), do: %{call | allowed: ["another"]}
     def call(call, {:read, key}), do: send(self(), {:read, call.assigns[key]}) && call
     def call(_call, :answer_nonsense), do: :maybe
     def call(call, :forget_asks), do: %{call | asks: []}
@@ -109,6 +111,59 @@ defmodule Wardrik.HookTest do
     test "a hook cannot change what the call is" do
       assert %Call{state: :allowed, target: %Call.Tool{name: "echo"}} =
                check([hook("renamer", :rename)])
+    end
+  end
+
+  describe "a gated tool's call" do
+    defp gated(hooks, tainted \\ false) do
+      scope = %{scope(hooks) | tainted: tainted}
+
+      %{id: "call_1", name: "deploy", arguments: %{}}
+      |> Call.tool(scope)
+      |> then(&%{&1 | target: %{&1.target | gated: true}})
+      |> Hook.check()
+    end
+
+    test "waits on its tool where no hook allows it by name, under no hooks or quiet ones" do
+      for hooks <- [[], [hook("quiet", :allow)]] do
+        assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} = gated(hooks)
+        assert prompt == "deploy runs only where a rule allows it by name, and none does."
+      end
+    end
+
+    test "goes ahead where a hook allows it by name" do
+      assert %Call{state: :allowed, allowed: ["rules"]} = gated([hook("rules", :allow_by_name)])
+    end
+
+    test "is still refused by a deny, and asked about by an ask" do
+      assert %Call{state: :denied} =
+               gated([hook("rules", :allow_by_name), hook("no", {:deny, "No."})])
+
+      assert %Call{state: :waiting, asks: [%Ask{by: "careful"}]} =
+               gated([hook("rules", :allow_by_name), hook("careful", {:ask, "Sure?"})])
+    end
+
+    test "waits on its tool in a run that has read content from outside, however it was allowed" do
+      assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} =
+               gated([hook("rules", :allow_by_name)], true)
+
+      assert prompt ==
+               "rules allows deploy, but this run has read content from outside, " <>
+                 "which may be what asked for it."
+    end
+
+    test "is one a hook allows only in its own name" do
+      assert %Call{state: :denied, denied: %Denial{by: "sneaky", reason: reason}} =
+               gated([hook("sneaky", :allow_as_another)])
+
+      assert reason == "Hook sneaky changed what another hook said"
+    end
+
+    test "is not what an ungated call is: that goes ahead without an allow, tainted or not" do
+      scope = %{scope([hook("quiet", :allow)]) | tainted: true}
+
+      assert %Call{state: :allowed, allowed: []} =
+               %{id: "call_1", name: "echo", arguments: %{}} |> Call.tool(scope) |> Hook.check()
     end
   end
 

@@ -131,6 +131,24 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "mcp is not a setting"
   end
 
+  test "a tool is named alone, what its calls act on being a policy's to name", context do
+    assert {:error, message} = read("---\ntools: [run_lua(x)]\n---\n", context)
+
+    assert message =~
+             "tools names run_lua(x); name the tool alone, and let a policy name what its calls act on"
+  end
+
+  test "trusting outside content is off unless the file says it", context do
+    assert {:ok, spec} = read("---\ntools: [web_search]\n---\n", context)
+    refute spec.config.trust_outside_content
+
+    assert {:ok, spec} = read("---\ntrust_outside_content: true\n---\n", context)
+    assert spec.config.trust_outside_content
+
+    assert {:error, message} = read("---\ntrust_outside_content: often\n---\n", context)
+    assert message =~ "trust_outside_content is true or false"
+  end
+
   test "a named policy is the one policies/ holds, carried as hooks", context do
     careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
@@ -325,8 +343,13 @@ defmodule WardrikDaemon.AgentFileTest do
       assert Enum.sort(expected(AgentFile.definition("acme/_/triage", %{"?" => 1}))) ==
                Enum.sort(properties)
 
+      # trust_outside_content loosens what a token's ceiling holds, so only a
+      # file, which the operator writes, may say it.
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
-               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user schedule notify))
+               Enum.sort(
+                 (properties -- ["instructions"]) ++
+                   ~w(name org user schedule notify trust_outside_content)
+               )
     end
 
     test "takes its example, which the reader reads" do
@@ -402,7 +425,7 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "takes who the agent is from its key, and its schedules from their own routes" do
-      for key <- ~w(name org user schedule notify) do
+      for key <- ~w(name org user schedule notify trust_outside_content) do
         assert {:error, message} = AgentFile.definition("acme/_/triage", %{key => "x"})
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end

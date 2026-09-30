@@ -78,6 +78,14 @@ defmodule WardrikHTTP.Workers do
 
   def in_doubt(_key, _name), do: :ask
 
+  @doc """
+  Whether what a worker's tool answers is content from outside: unless
+  `WardrikHTTP.Config.trusted_workers?/0` says workers are the deployment's
+  own, since a worker can pass on anything it reads.
+  """
+  @impl Wardrik.Tool
+  def outside_content?(_key, _name), do: not WardrikHTTP.Config.trusted_workers?()
+
   @doc false
   @spec call(String.t(), String.t(), Wardrik.Call.t()) :: Wardrik.Call.t()
   def call(key, name, %Wardrik.Call{} = call) do

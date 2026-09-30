@@ -32,12 +32,16 @@ defmodule Wardrik.LLM.ToolRunner do
   Every call passes through the same steps, in order, as a `Plug.Conn`
   passes through a pipeline:
 
-    1. the scope's hooks decide an unchecked call
-    2. the ledger claims an allowed or approved call
-    3. a refused call is answered with why
-    4. the tool runs an allowed or approved call, or is handed it; see
+    1. what its tool declares is written on an unchecked call: whether it is
+       gated, and what it acts on; see `Wardrik.Call.Tool`
+    2. the scope's hooks decide an unchecked call
+    3. the ledger claims an allowed or approved call
+    4. a refused call is answered with why
+    5. the tool runs an allowed or approved call, or is handed it; see
        `Wardrik.Tool`
-    5. the ledger records what a claimed call answered
+    6. the ledger records what a claimed call answered
+    7. an answered call whose tool declares its answers hold content from
+       outside is tainted; see `Wardrik.Call.taint/1`
 
   Each step acts on the calls in the states it is for and hands every other
   on as it came, so a call answered, refused or waiting on a person passes
@@ -320,15 +324,33 @@ defmodule Wardrik.LLM.ToolRunner do
     try do
       call
       |> Call.under(scope)
+      |> declared()
       |> check()
       |> claim()
       |> refused()
       |> invoke()
       |> record()
+      |> outside()
     after
       Registry.unregister(@registry, {scope.source.agent_id, call.id})
     end
   end
+
+  # What the tool says about an unchecked call is written on it before any
+  # hook reads it.
+  defp declared(%Call{state: :unchecked, target: %Tool{name: name} = target} = call) do
+    case Config.tool_spec(call.scope.config, name) do
+      nil ->
+        call
+
+      spec ->
+        gated = Wardrik.Tool.gated?(spec, name)
+        subjects = Wardrik.Tool.subjects(spec, name, target.arguments)
+        %{call | target: %{target | gated: gated, subjects: subjects}}
+    end
+  end
+
+  defp declared(call), do: call
 
   # The hooks decide an unchecked call. An approved one has been decided.
   defp check(%Call{state: :unchecked} = call), do: call |> Hook.check() |> announced()
@@ -410,12 +432,24 @@ defmodule Wardrik.LLM.ToolRunner do
     end
   end
 
-  defp took(%Call{state: :done, result: result}, call), do: finished(call, result)
+  defp took(%Call{state: :done, result: result} = handed, call),
+    do: finished(%{call | tainted: handed.tainted}, result)
 
   defp took(%Call{state: :waiting} = parked, call),
     do: call |> Call.park(Call.prompt(parked), link: Call.link(parked)) |> announced()
 
   defp took(other, call), do: finished(call, other)
+
+  # A call answered by a tool whose answers hold content from outside taints
+  # its run, whether it ran now or its answer was replayed.
+  defp outside(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
+    case Config.tool_spec(call.scope.config, name) do
+      nil -> call
+      spec -> if Wardrik.Tool.outside_content?(spec, name), do: Call.taint(call), else: call
+    end
+  end
+
+  defp outside(call), do: call
 
   # A claimed call is settled with what it answered. One whose tool stopped to
   # ask before doing anything gives its claim back.

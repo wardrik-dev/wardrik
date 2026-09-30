@@ -318,4 +318,24 @@ defmodule WardrikHTTP.WorkerTest do
     assert Req.Response.get_header(response, "upgrade") == ["websocket"]
     assert response.body["error"]["type"] == "upgrade_required"
   end
+
+  test "a worker's answers are content from outside, unless the deployment trusts its workers" do
+    assert Workers.outside_content?("test/_/triage", "workers__echo")
+
+    previous = Application.get_env(:wardrik, WardrikHTTP)
+
+    Application.put_env(
+      :wardrik,
+      WardrikHTTP,
+      Keyword.put(previous || [], :trusted_workers, true)
+    )
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wardrik, WardrikHTTP, previous),
+        else: Application.delete_env(:wardrik, WardrikHTTP)
+    end)
+
+    refute Workers.outside_content?("test/_/triage", "workers__echo")
+  end
 end

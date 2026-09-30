@@ -30,6 +30,8 @@ defmodule Wardrik.LLM.Turn do
     * `:response` - the model response whose tool calls it is running, if any
     * `:calls` - the `Wardrik.Call`s of that batch, or the model call it waits on
     * `:revision` - the `Wardrik.Hook.revision/1` of the hooks it parked under
+    * `:tainted` - whether a call it made has answered with content from
+      outside, which every batch after it is told
     * `:state` - `:running`, `:waiting`, `:done` or `:failed`
     * `:error` - why a failed turn failed
 
@@ -74,6 +76,16 @@ defmodule Wardrik.LLM.Turn do
   A turn that waits is written down with no scope, so it holds no
   credentials and runs no processes, and `under/2` gives it the scope it
   resumes under.
+
+  ## Content from outside
+
+  Once a call the turn made answers with content from outside (see
+  `Wardrik.Call.taint/1`), the turn is tainted, and every batch after it runs
+  under a scope that says so: a gated tool's call then waits on a person
+  however its hooks allowed it, since what the turn read may be what asked for
+  it. A config with `:trust_outside_content` is never tainted. The taint ends
+  with the turn, and a turn written down carries it, so one carried on after
+  a lost node is tainted still.
 
   ## Surviving a lost node
 
@@ -126,7 +138,8 @@ defmodule Wardrik.LLM.Turn do
     messages: [],
     remaining: :infinity,
     calls: [],
-    state: :running
+    state: :running,
+    tainted: false
   ]
 
   @type state() :: :running | :waiting | :done | :failed
@@ -140,7 +153,8 @@ defmodule Wardrik.LLM.Turn do
           messages: [ReqLLM.Message.t()],
           remaining: non_neg_integer() | :infinity,
           calls: [Call.t()],
-          state: state()
+          state: state(),
+          tainted: boolean()
         }
 
   @typedoc "What a person decides about one call a turn waits on."
@@ -233,9 +247,9 @@ defmodule Wardrik.LLM.Turn do
   end
 
   def resume(%__MODULE__{state: :waiting} = turn, decisions) when is_map(decisions) do
-    batch = Scope.batch(turn.scope, rounds(turn))
     stale? = stale?(turn)
-    resumed = %{turn | calls: Enum.map(turn.calls, &decide(&1, decisions, batch, stale?))}
+    calls = Enum.map(turn.calls, &decide(&1, decisions, batch(turn), stale?))
+    resumed = read(%{turn | calls: calls}, calls)
 
     if Enum.any?(resumed.calls, &Call.waiting?/1),
       do: %{resumed | revision: revision(turn.scope)},
@@ -402,19 +416,35 @@ defmodule Wardrik.LLM.Turn do
   # The turn reports that it waits; the agent holding it is what announces the
   # state change, because only it can say that `resume/2` will now work.
   defp handle(turn) do
-    case handle_response(Scope.batch(turn.scope, rounds(turn)), turn.context, turn.response) do
+    case handle_response(batch(turn), turn.context, turn.response) do
       {:done, messages} ->
         done(turn, messages)
 
-      {:cont, context, messages} ->
-        continue(turn, context, messages)
+      {:cont, context, messages, calls} ->
+        turn |> read(calls) |> continue(context, messages)
 
       {:waiting, calls} ->
-        %{turn | state: :waiting, calls: calls, revision: revision(turn.scope)}
+        %{read(turn, calls) | state: :waiting, calls: calls, revision: revision(turn.scope)}
 
       {:error, reason} ->
         fail(turn, reason)
     end
+  end
+
+  # The scope a batch runs under: the turn's, for this round, saying whether
+  # the turn has read content from outside. A turn written down before turns
+  # were tainted has not.
+  defp batch(turn),
+    do: %{Scope.batch(turn.scope, rounds(turn)) | tainted: Map.get(turn, :tainted, false)}
+
+  # The turn, tainted where a call of `calls` answered with content from
+  # outside and its config does not trust that.
+  defp read(%__MODULE__{scope: %Scope{config: config}} = turn, calls) do
+    tainted =
+      Map.get(turn, :tainted, false) or
+        (not config.trust_outside_content and Enum.any?(calls, & &1.tainted))
+
+    %{turn | tainted: tainted}
   end
 
   defp continue(turn, context, messages) do
@@ -563,7 +593,9 @@ defmodule Wardrik.LLM.Turn do
     if ToolRunner.parked(outcomes) != [] do
       {:waiting, outcomes}
     else
-      append_tool_exchange(context, response, ToolRunner.messages(outcomes))
+      with {:cont, context, messages} <-
+             append_tool_exchange(context, response, ToolRunner.messages(outcomes)),
+           do: {:cont, context, messages, outcomes}
     end
   end
 

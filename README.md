@@ -573,6 +573,34 @@ wardrik approve acme/_/triage call_1
 wardrik deny acme/_/triage call_1 Not on a Friday.
 ```
 
+A rule may name what a call acts on, in parentheses, for a tool that says
+what its calls act on. A deny or an ask on any one of them decides, and a
+call is allowed by the rules only where they allow every one:
+
+```yaml
+allow: [write_file(notes/*)]
+deny: [delete_file(*)]
+```
+
+Some tools are gated: a call to one waits on a person unless an `allow` rule
+names it, and `default: allow` is not enough. `config.yaml` gates an MCP
+server's tools with `gated`:
+
+```yaml
+mcp:
+  github:
+    url: https://api.githubcopilot.com/mcp/
+    gated: [create_*, issue_write]   # or true, for every tool
+```
+
+Once a turn has read content from outside, a page `web_search` found, an
+issue an MCP server returned, whatever a tool worker passed on, a gated tool's
+calls wait on a person for the rest of the turn however the rules allow them:
+what the turn read may be what asked for the call. `trusted: true` on an MCP
+server, and `trusted_workers: true` under `http`, say their answers are the
+deployment's own. An agent whose job is to act on what strangers send writes
+`trust_outside_content: true` in its file; a definition over HTTP cannot.
+
 A policy may also hold a budget for what the agent spends on model calls, in
 dollars, in tokens, or both:
 

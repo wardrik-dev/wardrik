@@ -90,6 +90,10 @@ defmodule WardrikResearch.Deep do
   @impl Wardrik.Tool
   def timeout, do: @timeout
 
+  @doc "What its researchers found on the web is content from outside."
+  @impl Wardrik.Tool
+  def outside_content?(_name), do: true
+
   @doc """
   Builds the tool with angles, or limits, of your own.
 

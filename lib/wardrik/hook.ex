@@ -43,10 +43,15 @@ defmodule Wardrik.Hook do
   their say. So the strictest answer decides: a deny over an ask over an
   allow, and a person asked about a call is shown every prompt at once.
 
-  A hook changes a call only through those functions and
-  `Wardrik.Call.assign/3`. What it hands back is read for what it denied, what
-  it asked and what it assigned, and nothing else: it cannot change what the
-  call is, or take back what a hook before it said. A hook that raises,
+  A hook that lets a call go ahead because a rule of its own names it says
+  so with `Wardrik.Call.allow/1`, which is what a gated tool's call waits for;
+  see `Wardrik.Call`. Leaving the call as it was lets an ungated call go ahead
+  and a gated one wait.
+
+  A hook changes a call only through those functions, `Wardrik.Call.allow/1`
+  and `Wardrik.Call.assign/3`. What it hands back is read for what it denied,
+  what it asked, what it allowed and what it assigned, and nothing else: it
+  cannot change what the call is, or take back what a hook before it said. A hook that raises,
   throws or exits, hands back something other than a call, or takes back what
   another said, refuses the call.
 
@@ -124,16 +129,15 @@ defmodule Wardrik.Hook do
   end
 
   # What a hook said, and only that: asks added after the ones it was handed,
-  # a denial of its own, and what it assigned.
+  # a denial of its own, an allowance in its own name, and what it assigned.
   defp kept(call, answered, hook) do
-    said = Enum.drop(answered.asks, length(call.asks))
-
-    if Enum.take(answered.asks, length(call.asks)) == call.asks and
-         Enum.all?(said, &(&1.by == hook.name)) and
+    if own?(call.asks, answered.asks, & &1.by, hook) and
+         own?(call.allowed, answered.allowed, & &1, hook) and
          (answered.denied == nil or answered.denied.by == hook.name) do
       %{
         call
         | asks: answered.asks,
+          allowed: answered.allowed,
           denied: answered.denied,
           halted: answered.denied != nil,
           assigns: answered.assigns
@@ -141,6 +145,12 @@ defmodule Wardrik.Hook do
     else
       Call.deny(call, "Hook #{hook.name} changed what another hook said")
     end
+  end
+
+  # What was there before is kept as it was, and what was added is the hook's.
+  defp own?(before, now, by, hook) do
+    {kept, added} = Enum.split(now, length(before))
+    kept == before and Enum.all?(added, &(by.(&1) == hook.name))
   end
 
   @doc """

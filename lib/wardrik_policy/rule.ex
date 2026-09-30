@@ -14,7 +14,12 @@ defmodule WardrikPolicy.Rule do
 
   @type t() :: %__MODULE__{effect: effect(), pattern: Pattern.t(), message: String.t() | nil}
 
-  @doc "Whether the rule speaks for the tool the agent knows as `name`."
+  @doc "Whether the rule speaks for the whole of a call to the tool the agent knows as `name`."
   @spec match?(t(), String.t()) :: boolean()
   def match?(%__MODULE__{pattern: pattern}, name), do: Pattern.match?(pattern, name)
+
+  @doc "Whether the rule speaks for `subject` of a call to the tool the agent knows as `name`."
+  @spec match?(t(), String.t(), String.t()) :: boolean()
+  def match?(%__MODULE__{pattern: pattern}, name, subject),
+    do: Pattern.match?(pattern, name, subject)
 end

@@ -14,6 +14,8 @@ defmodule WardrikMCP.Server do
   | `:prefix` | the ref | what every tool name from this server starts with, which may not hold `__` |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
+  | `:gated` | none | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, or `true` for all of them; see `c:Wardrik.Tool.gated?/1` |
+  | `:trusted` | `false` | whether what its tools answer is the deployment's own; otherwise a call to one taints its run, see `c:Wardrik.Tool.outside_content?/1` |
   | `:timeout` | 60s | how long one call to this server may take |
   | `:max_result_bytes` | 128 KB | how much of a result reaches the model |
   | `:credential` | none | a `t:Wardrik.Credential.ref/0` each call is made with |
@@ -76,6 +78,8 @@ defmodule WardrikMCP.Server do
     :credential,
     :credential_env,
     except: [],
+    gated: [],
+    trusted: false,
     stderr: :inherit,
     inherit_env: ~w(HOME LANG LC_ALL LC_CTYPE LOGNAME PATH SHELL TERM TMPDIR USER),
     credential_header: "authorization",
@@ -94,6 +98,8 @@ defmodule WardrikMCP.Server do
           prefix: String.t(),
           only: [String.t()] | nil,
           except: [String.t()],
+          gated: [String.t()] | boolean(),
+          trusted: boolean(),
           credential: Wardrik.Credential.ref() | nil,
           credential_header: String.t(),
           credential_scheme: String.t(),
@@ -159,6 +165,18 @@ defmodule WardrikMCP.Server do
   @spec offers?(t(), String.t()) :: boolean()
   def offers?(%__MODULE__{} = server, name) do
     (is_nil(server.only) or name in server.only) and name not in server.except
+  end
+
+  @doc "Whether calls to a remote tool wait on a person unless a hook allows them by name."
+  @spec gated?(t(), String.t()) :: boolean()
+  def gated?(%__MODULE__{gated: gated}, _name) when is_boolean(gated), do: gated
+
+  def gated?(%__MODULE__{gated: gated}, name) when is_list(gated) do
+    Enum.any?(gated, fn gate ->
+      if String.ends_with?(gate, "*"),
+        do: String.starts_with?(name, String.trim_trailing(gate, "*")),
+        else: name == gate
+    end)
   end
 
   @doc """

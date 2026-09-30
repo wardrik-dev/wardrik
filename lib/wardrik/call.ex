@@ -4,12 +4,14 @@ defmodule Wardrik.Call do
   it is proposed until it has been answered.
 
   A call is a token, the way a `Plug.Conn` is. `Wardrik.Hook`s are handed it and
-  hand it back, and change it only through `deny/2`, `ask/3` and `assign/3`.
+  hand it back, and change it only through `deny/2`, `ask/3`, `allow/1` and
+  `assign/3`.
   The runtime moves it through its states, and it is the same value whether
   it is being decided, waiting on a person, or answered.
 
   A tool built with `Wardrik.Tool.new!/1` is handed the call too, and answers it
-  with `answer/2` or parks it with `park/2`.
+  with `answer/2` or parks it with `park/2`, and marks with `taint/1` a call
+  whose answer holds content from outside.
 
   What the call goes to is its `:target`, a `Wardrik.Call.Tool` or a
   `Wardrik.Call.Model`, and a hook matches on it:
@@ -33,6 +35,7 @@ defmodule Wardrik.Call do
 
     * `:denied` - the `Wardrik.Call.Denial` that refused it
     * `:asks` - the `Wardrik.Call.Ask`s it waits on, in the order they were asked
+    * `:allowed` - the names of the hooks that allowed it by name
     * `:halted` - whether the hooks after the one that refused it are skipped
     * `:assigns` - what hooks tell the hooks after them
 
@@ -41,6 +44,8 @@ defmodule Wardrik.Call do
     * `:state` - see below
     * `:result` - what a tool answered, `{:ok, output}` or `{:error, reason}`,
       or how a model call ended, as `t:Wardrik.LLM.Dispatch.outcome/0`
+    * `:tainted` - whether what it answered holds content from outside; see
+      `taint/1`
 
   `:private` is for Wardrik and the libraries built on it.
 
@@ -58,6 +63,16 @@ defmodule Wardrik.Call do
   A call waits on a hook, named by the hook's name, on its own tool, `:tool`,
   or on `:ledger`, when it began before its agent was lost and may already
   have done what it does.
+
+  ## Gated tools
+
+  A call to a gated tool (see `c:Wardrik.Tool.gated?/1`) goes ahead only where
+  a hook allowed it by name, with `allow/1`, and waits on its tool otherwise.
+  While the run it belongs to has read content from outside (see
+  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so: what the run
+  read may be what asked for it. A deny still refuses it and an ask still
+  asks. A call to a tool that is not gated goes ahead as the hooks said,
+  allowed by name or not.
   """
 
   alias Wardrik.Call.Ask
@@ -77,6 +92,8 @@ defmodule Wardrik.Call do
     state: :unchecked,
     halted: false,
     asks: [],
+    allowed: [],
+    tainted: false,
     assigns: %{},
     private: %{}
   ]
@@ -91,6 +108,8 @@ defmodule Wardrik.Call do
           halted: boolean(),
           denied: Denial.t() | nil,
           asks: [Ask.t()],
+          allowed: [String.t()],
+          tainted: boolean(),
           result: term(),
           assigns: map(),
           private: map()
@@ -130,6 +149,14 @@ defmodule Wardrik.Call do
   def ask(%__MODULE__{} = call, prompt, memo \\ nil) when is_binary(prompt),
     do: %{call | asks: call.asks ++ [%Ask{by: hook(call), prompt: prompt, memo: memo}]}
 
+  @doc """
+  Allows the call by name: says that a rule of this hook names it, where a
+  hook that lets it go ahead only by not objecting leaves it as it was. A
+  gated tool's call goes ahead only where a hook has said this.
+  """
+  @spec allow(t()) :: t()
+  def allow(%__MODULE__{} = call), do: %{call | allowed: Enum.uniq(call.allowed ++ [hook(call)])}
+
   @doc "Tells the hooks after this one `value` under `key`."
   @spec assign(t(), atom(), term()) :: t()
   def assign(%__MODULE__{} = call, key, value) when is_atom(key),
@@ -159,18 +186,45 @@ defmodule Wardrik.Call do
   @spec put_hook(t(), String.t() | nil) :: t()
   def put_hook(%__MODULE__{} = call, name), do: put_private(call, @hook, name)
 
-  @doc "Sets the state the hooks' answers come to: denied, waiting, or allowed."
+  @doc """
+  Sets the state the hooks' answers come to: denied, waiting, or allowed. A
+  gated tool's call no hook allowed by name, or one in a run that has read
+  content from outside, waits on its tool.
+  """
   @spec checked(t()) :: t()
   def checked(%__MODULE__{} = call) do
-    state =
-      cond do
-        call.denied -> :denied
-        call.asks != [] -> :waiting
-        true -> :allowed
-      end
+    call = put_hook(call, nil)
 
-    %{put_hook(call, nil) | state: state}
+    cond do
+      call.denied -> %{call | state: :denied}
+      call.asks != [] -> %{call | state: :waiting}
+      prompt = gate(call) -> wait(call, :tool, prompt)
+      true -> %{call | state: :allowed}
+    end
   end
+
+  defp gate(%__MODULE__{target: %Tool{gated: true}, allowed: []} = call),
+    do: "#{name(call)} runs only where a rule allows it by name, and none does."
+
+  defp gate(%__MODULE__{target: %Tool{gated: true}, scope: %Scope{tainted: true}} = call) do
+    IO.iodata_to_binary([
+      Enum.intersperse(call.allowed, ", "),
+      " allows #{name(call)}, but this run has read content from outside, ",
+      "which may be what asked for it."
+    ])
+  end
+
+  defp gate(_call), do: nil
+
+  @doc """
+  Marks the call's answer as holding content from outside: a page, a message,
+  an issue anyone could have written. The run it belongs to is tainted from
+  then on, and a gated tool's call later in the run waits on a person however
+  its hooks allowed it. A tool built with `Wardrik.Tool.new!/1` marks its own
+  call; one that declares `c:Wardrik.Tool.outside_content?/1` has it marked.
+  """
+  @spec taint(t()) :: t()
+  def taint(%__MODULE__{} = call), do: %{call | tainted: true}
 
   @doc """
   Parks a call a tool was handed: it waits on a person, who is shown `prompt`,
@@ -222,7 +276,15 @@ defmodule Wardrik.Call do
   @doc "The call as it was proposed, to be asked about again."
   @spec reset(t()) :: t()
   def reset(%__MODULE__{} = call),
-    do: %{call | state: :unchecked, denied: nil, asks: [], halted: false, assigns: %{}}
+    do: %{
+      call
+      | state: :unchecked,
+        denied: nil,
+        asks: [],
+        allowed: [],
+        halted: false,
+        assigns: %{}
+    }
 
   @doc "A tool call answered with `result`, `{:ok, output}` or `{:error, reason}`."
   @spec answer(t(), {:ok, term()} | {:error, term()}) :: t()

@@ -57,6 +57,10 @@ defmodule WardrikResearch.DeepTest do
 
   defp quietly(fun), do: fun |> ExUnit.CaptureLog.with_log() |> elem(0)
 
+  test "answers with what it read on the web, which taints a run" do
+    assert Wardrik.Tool.outside_content?(WardrikResearch.Deep, "deep_research")
+  end
+
   describe "run/3" do
     test "researches every angle and returns the synthesised report", %{scope: scope} do
       stub_llm()

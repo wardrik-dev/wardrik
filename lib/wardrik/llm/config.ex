@@ -56,6 +56,11 @@ defmodule Wardrik.LLM.Config do
 
       Wardrik.LLM.Config.new(retries: [2_000, 10_000, 30_000])
 
+  `:trust_outside_content` lets a gated tool's calls go ahead on what the
+  hooks allowed even in a run that has read content from outside (see
+  `Wardrik.Call.taint/1`), for an agent whose job is to act on what strangers
+  send. `false` by default.
+
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Wardrik.Scope`.
 
@@ -78,7 +83,8 @@ defmodule Wardrik.LLM.Config do
             generation: [],
             max_iterations: 30,
             retries: [1_000, 5_000],
-            compaction: %Wardrik.Compaction{}
+            compaction: %Wardrik.Compaction{},
+            trust_outside_content: false
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
@@ -88,7 +94,8 @@ defmodule Wardrik.LLM.Config do
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil
+          compaction: Wardrik.Compaction.t() | nil,
+          trust_outside_content: boolean()
         }
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
@@ -101,7 +108,8 @@ defmodule Wardrik.LLM.Config do
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil
+          compaction: Wardrik.Compaction.t() | nil,
+          trust_outside_content: boolean()
         }
 
   @doc """
@@ -147,6 +155,11 @@ defmodule Wardrik.LLM.Config do
       name in Tool.names(spec) and Tool.in_doubt(spec, name)
     end)
   end
+
+  @doc "The spec that builds the named tool, or `nil` for a tool this config does not name."
+  @spec tool_spec(t(), String.t()) :: Tool.spec() | nil
+  def tool_spec(%__MODULE__{} = config, name),
+    do: Enum.find(config.tools, &(name in Tool.names(&1)))
 
   defp declared(config, name) do
     Enum.find_value(config.tools, fn spec ->

@@ -7,7 +7,9 @@ defmodule WardrikHTTP.Config do
 
   `:port` is 4747 and `:ip` is loopback unless set. A daemon sets both from
   the `http` section of its `config.yaml`. `:worker_timeout` is 60 seconds
-  unless set.
+  unless set. `:trusted_workers` says tool workers' answers are the
+  deployment's own, so a call to one does not taint its run; `false` unless
+  set.
   """
 
   @default_port 4747
@@ -23,6 +25,14 @@ defmodule WardrikHTTP.Config do
       port: Keyword.get(settings, :port, @default_port),
       ip: Keyword.get(settings, :ip, @default_ip)
     ]
+  end
+
+  @doc "Whether what tool workers answer is the deployment's own, rather than content from outside."
+  @spec trusted_workers?() :: boolean()
+  def trusted_workers? do
+    :wardrik
+    |> Application.get_env(WardrikHTTP, [])
+    |> Keyword.get(:trusted_workers, false)
   end
 
   @doc "How long a call to a tool worker waits for its answer, in milliseconds."

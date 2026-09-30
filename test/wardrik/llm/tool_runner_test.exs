@@ -515,6 +515,87 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
   end
 
+  describe "what a tool says about a call" do
+    alias Wardrik.Test.Tools.Allowing
+    alias Wardrik.Test.Tools.Deploy
+    alias Wardrik.Test.Tools.Fetch
+
+    defmodule Reporting do
+      @behaviour Wardrik.Hook
+
+      @impl true
+      def init(test_pid), do: test_pid
+
+      @impl true
+      def call(call, test_pid) do
+        send(test_pid, {:hooked, call.target})
+        call
+      end
+    end
+
+    defmodule Refusing do
+      @behaviour Wardrik.Hook
+
+      @impl true
+      def init(_opts), do: nil
+
+      @impl true
+      def call(call, _value), do: Call.deny(call, "Not now.")
+    end
+
+    defp under(agent_id, tools, hooks),
+      do: Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", hooks: hooks)
+
+    test "is on the call before any hook reads it", %{agent_id: agent_id} do
+      scope = under(agent_id, [Deploy], [Wardrik.Hook.new("reporting", Reporting, self())])
+
+      ToolRunner.execute_many_async([call("call_1", "deploy", %{"target" => "prod"})], scope)
+
+      assert_receive {:hooked, %Call.Tool{gated: true, subjects: ["prod"]}}
+    end
+
+    test "a gated call runs only where a hook allows it by name", %{agent_id: agent_id} do
+      calls = [call("call_1", "deploy", %{"target" => "prod"})]
+
+      assert [%Call{state: :waiting, asks: [%Call.Ask{by: :tool}]}] =
+               ToolRunner.execute_many_async(calls, under(agent_id, [Deploy], []))
+
+      refute_receive %Event{payload: {:tool_started, "call_1", _, _, _}}
+
+      allowing = [Wardrik.Hook.new("rules", Allowing, ["deploy"])]
+
+      assert [%Call{state: :done, result: {:ok, %{"deployed" => "prod"}}}] =
+               ToolRunner.execute_many_async(calls, under(agent_id, [Deploy], allowing))
+    end
+
+    test "an answer from outside taints its call, and a refused call is not", %{
+      agent_id: agent_id
+    } do
+      scope = under(agent_id, [Fetch, Deploy], [])
+
+      assert [%Call{state: :done, tainted: true}, %Call{state: :waiting, tainted: false}] =
+               ToolRunner.execute_many_async(
+                 [call("call_1", "fetch", %{}), call("call_2", "deploy", %{})],
+                 scope
+               )
+
+      refused = %{scope | hooks: [Wardrik.Hook.new("no", Refusing)]}
+
+      assert [%Call{state: :done, tainted: false}] =
+               ToolRunner.execute_many_async([call("call_3", "fetch", %{})], refused)
+    end
+
+    test "a tool handed its call can taint it", %{agent_id: agent_id} do
+      tool = handed!("read_inbox", &(&1 |> Call.taint() |> Call.answer({:ok, %{"mail" => "hi"}})))
+
+      assert [%Call{state: :done, tainted: true}] =
+               ToolRunner.execute_many_async(
+                 [call("call_1", "read_inbox", %{})],
+                 scope(agent_id, [tool])
+               )
+    end
+  end
+
   describe "refuse/3" do
     test "answers the model the way a policy denial does", %{agent_id: agent_id} do
       scope = scope(agent_id, [])

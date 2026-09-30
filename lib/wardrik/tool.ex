@@ -73,6 +73,22 @@ defmodule Wardrik.Tool do
 
   A source is asked for its tools every time a turn is built, so `c:tools/1`
   reads what this node already holds and never goes out to fetch it.
+
+  ## What a tool says about its calls
+
+  Three optional callbacks tell the runtime about a call before and after it
+  runs, each with a form taking a source's argument first:
+
+    * `c:gated?/1` - its calls wait on a person unless a hook allows them by
+      name, as `WardrikPolicy`'s `allow` rules do; `default: allow` is not
+      enough. For a tool whose call cannot be taken back.
+    * `c:subjects/2` - what a call acts on, from its arguments, so a rule can
+      name a call by what it does: `write_file(notes/*)`.
+    * `c:outside_content?/1` - what it answers holds content nobody on the
+      agent's side wrote, such as a web page, so a call to it taints its run,
+      and a gated tool's call later in the run waits on a person however its
+      hooks allowed it. A tool built with `new!/1` can instead mark one call
+      with `Wardrik.Call.taint/1`.
   """
 
   @typedoc """
@@ -131,7 +147,48 @@ defmodule Wardrik.Tool do
   """
   @callback in_doubt(argument :: term(), name :: String.t()) :: :ask | :rerun
 
-  @optional_callbacks tool: 0, tools: 1, timeout: 0, in_doubt: 1, in_doubt: 2
+  @doc """
+  Whether a call to the tool `name` waits on a person unless a hook allows it
+  by name, with `Wardrik.Call.allow/1`. Optional, and `false` unless declared.
+  A source answers with `c:gated?/2`.
+  """
+  @callback gated?(name :: String.t()) :: boolean()
+
+  @doc "`c:gated?/1` for a source, asked with the argument the spec named it with."
+  @callback gated?(argument :: term(), name :: String.t()) :: boolean()
+
+  @doc """
+  What a call to the tool `name` with `arguments` acts on: strings a rule
+  that names the tool with an argument, `name(argument)`, is matched against,
+  each on its own. Optional; a tool that declares none is spoken for only by
+  rules naming it whole. A source answers with `c:subjects/3`.
+  """
+  @callback subjects(name :: String.t(), arguments :: map()) :: [String.t()]
+
+  @doc "`c:subjects/2` for a source, asked with the argument the spec named it with."
+  @callback subjects(argument :: term(), name :: String.t(), arguments :: map()) :: [String.t()]
+
+  @doc """
+  Whether what the tool `name` answers holds content from outside, so a call
+  to it taints the run it belongs to. Optional, and `false` unless declared.
+  A source answers with `c:outside_content?/2`.
+  """
+  @callback outside_content?(name :: String.t()) :: boolean()
+
+  @doc "`c:outside_content?/1` for a source, asked with the argument the spec named it with."
+  @callback outside_content?(argument :: term(), name :: String.t()) :: boolean()
+
+  @optional_callbacks tool: 0,
+                      tools: 1,
+                      timeout: 0,
+                      in_doubt: 1,
+                      in_doubt: 2,
+                      gated?: 1,
+                      gated?: 2,
+                      subjects: 2,
+                      subjects: 3,
+                      outside_content?: 1,
+                      outside_content?: 2
 
   @typedoc """
   What a tool `new!/1` builds hands its call to: `{module, function, args}`,
@@ -211,6 +268,36 @@ defmodule Wardrik.Tool do
   end
 
   def in_doubt(%ReqLLM.Tool{}, _name), do: :ask
+
+  @doc "Whether a spec says a call to its tool `name` waits unless a hook allows it by name."
+  @spec gated?(spec(), String.t()) :: boolean()
+  def gated?(spec, name), do: declared(spec, :gated?, [name]) == true
+
+  @doc "What a spec says a call to its tool `name` with `arguments` acts on."
+  @spec subjects(spec(), String.t(), map()) :: [String.t()]
+  def subjects(spec, name, arguments) do
+    case declared(spec, :subjects, [name, arguments]) do
+      subjects when is_list(subjects) -> Enum.filter(subjects, &is_binary/1)
+      _none -> []
+    end
+  end
+
+  @doc "Whether a spec says what its tool `name` answers holds content from outside."
+  @spec outside_content?(spec(), String.t()) :: boolean()
+  def outside_content?(spec, name), do: declared(spec, :outside_content?, [name]) == true
+
+  # What a module declares with `function`, or a source with its argument
+  # first; `nil` where it declares nothing.
+  defp declared({module, argument}, function, args) when is_atom(module) do
+    if exports?(module, function, length(args) + 1),
+      do: apply(module, function, [argument | args])
+  end
+
+  defp declared(module, function, args) when is_atom(module) do
+    if exports?(module, function, length(args)), do: apply(module, function, args)
+  end
+
+  defp declared(%ReqLLM.Tool{}, _function, _args), do: nil
 
   @doc "Whether this node can build the tools a spec names."
   @spec available?(spec()) :: boolean()

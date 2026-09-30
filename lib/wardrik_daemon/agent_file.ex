@@ -31,6 +31,7 @@ defmodule WardrikDaemon.AgentFile do
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
+  | `trust_outside_content` | `true` lets its rules allow a gated tool's calls even after a turn has read content from outside; see below. A definition over HTTP cannot say it |
   | `schedule` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
 
@@ -62,12 +63,21 @@ defmodule WardrikDaemon.AgentFile do
 
     * a module implementing `Wardrik.Hook`
 
-  and without one every call the agent's tools allow may run. Rules, named or
-  written in place, are a `WardrikPolicy`, and the agent carries them as its
-  `Wardrik.Hook`s: they are
-  written to the store with it and decide its calls on any node. A policy with
-  a `budget` limits what the agent spends on model calls too, parking it when
-  the budget runs out until a person approves more.
+  and without one every call the agent's tools allow may run, apart from a
+  gated tool's, which waits on a person unless a rule allows it by name. Rules,
+  named or written in place, are a `WardrikPolicy`, and the agent carries them
+  as its `Wardrik.Hook`s: they are written to the store with it and decide its
+  calls on any node. A rule may name what a call acts on, as
+  `write_file(notes/*)`. A policy with a `budget` limits what the agent spends
+  on model calls too, parking it when the budget runs out until a person
+  approves more.
+
+  Once a turn has read content from outside, from `web_search`,
+  `deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
+  tool worker, its rules stop counting for a gated tool's calls until the turn
+  ends: each waits on a person, who sees what it would do.
+  `trust_outside_content: true` is for an agent whose job is to act on what
+  strangers send.
 
   ## Schedule
 
@@ -136,7 +146,7 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools org user policy timeout max_iterations compaction schedule notify)
+  @keys ~w(name description model tools org user policy timeout max_iterations compaction trust_outside_content schedule notify)
   @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt overlap missed jitter)
 
@@ -245,6 +255,7 @@ defmodule WardrikDaemon.AgentFile do
       [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, key)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
+      |> put(:trust_outside_content, fields["trust_outside_content"], &trust!/1)
       |> compaction(fields)
       |> Config.new()
 
@@ -285,6 +296,11 @@ defmodule WardrikDaemon.AgentFile do
     pattern = Pattern.parse!(name)
 
     cond do
+      Pattern.argument?(pattern) ->
+        invalid!(
+          "tools names #{name}; name the tool alone, and let a policy name what its calls act on"
+        )
+
       server = Pattern.server(pattern) ->
         [server!(server)]
 
@@ -462,6 +478,9 @@ defmodule WardrikDaemon.AgentFile do
   rescue
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
+
+  defp trust!(trust) when is_boolean(trust), do: trust
+  defp trust!(_trust), do: invalid!("trust_outside_content is true or false")
 
   defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :compaction, nil)
 

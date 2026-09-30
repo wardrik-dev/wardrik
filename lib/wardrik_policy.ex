@@ -31,6 +31,22 @@ defmodule WardrikPolicy do
   message is what a person is asked, or what the model is told it may not do.
   The rules allow every model call.
 
+  A rule may name what a call acts on, `write_file(notes/*)`, and speaks then
+  for each of the call's subjects it matches (see `c:Wardrik.Tool.subjects/2`).
+  A deny or an ask that speaks for any subject decides the call, and the call
+  is allowed by the rules only where they allow the whole of it, or every one
+  of its subjects; otherwise `:default` decides:
+
+      allow: [shell(git status), shell(git diff *)]
+      deny: [shell(git push *)]
+
+  ## Allowing by name
+
+  A call an `allow` rule allows is allowed by name, with
+  `Wardrik.Call.allow/1`, which is what a gated tool's call waits for (see
+  `c:Wardrik.Tool.gated?/1`). One allowed only by `default: allow` is not, so
+  a gated tool asks under a policy that names nothing, as it does under none.
+
   ## Written down
 
   `decode/1` reads the map form a file or a request writes a policy in, and
@@ -85,17 +101,38 @@ defmodule WardrikPolicy do
     end
   end
 
-  @doc "What `policy` says about a call to the tool the agent knows as `name`."
-  @spec decide(t(), String.t()) :: decision()
-  def decide(%__MODULE__{} = policy, name) when is_binary(name) do
-    case Enum.filter(policy.rules, &Rule.match?(&1, name)) do
-      [] ->
+  @doc """
+  What `policy` says about a call to the tool the agent knows as `name`,
+  acting on `subjects`.
+  """
+  @spec decide(t(), String.t(), [String.t()]) :: decision()
+  def decide(%__MODULE__{} = policy, name, subjects \\ [])
+      when is_binary(name) and is_list(subjects) do
+    case verdict(policy, name, subjects) do
+      {:allow, :named} -> :allow
+      decision -> decision
+    end
+  end
+
+  # What the rules say, with `{:allow, :named}` for a call they allow, apart
+  # from one `:default` allows.
+  defp verdict(policy, name, subjects) do
+    whole = Enum.filter(policy.rules, &Rule.match?(&1, name))
+    each = for subject <- subjects, do: Enum.filter(policy.rules, &Rule.match?(&1, name, subject))
+
+    speaking = whole ++ Enum.concat(each)
+
+    case Enum.max_by(speaking, &Map.fetch!(@strictness, &1.effect), fn -> nil end) do
+      nil ->
         answer(policy.default, nil, name)
 
-      rules ->
-        rules
-        |> Enum.max_by(&Map.fetch!(@strictness, &1.effect))
-        |> then(&answer(&1.effect, &1.message, name))
+      %Rule{effect: :allow} ->
+        if whole != [] or (each != [] and Enum.all?(each, &(&1 != []))),
+          do: {:allow, :named},
+          else: answer(policy.default, nil, name)
+
+      %Rule{effect: effect, message: message} ->
+        answer(effect, message, name)
     end
   end
 
@@ -104,8 +141,9 @@ defmodule WardrikPolicy do
   def init(%{} = fields), do: decode!(fields)
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Tool{name: name}} = call, %__MODULE__{} = policy) do
-    case decide(policy, name) do
+  def call(%Call{target: %Call.Tool{name: name} = tool} = call, %__MODULE__{} = policy) do
+    case verdict(policy, name, Map.get(tool, :subjects, [])) do
+      {:allow, :named} -> Call.allow(call)
       :allow -> call
       {:ask, prompt} -> Call.ask(call, prompt)
       {:deny, reason} -> Call.deny(call, reason)

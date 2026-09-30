@@ -14,6 +14,10 @@ defmodule WardrikBrave.WebSearchTest do
       assert tool.callback == {WebSearch, :run}
     end
 
+    test "answers with pages from outside, which taint a run" do
+      assert Wardrik.Tool.outside_content?(WebSearch, "web_search")
+    end
+
     test "requires only a query" do
       assert {:ok, _input} = ReqLLM.Tool.validate_input(WebSearch.tool(), %{query: "elixir"})
       assert {:error, _reason} = ReqLLM.Tool.validate_input(WebSearch.tool(), %{})

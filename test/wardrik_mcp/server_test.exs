@@ -187,6 +187,23 @@ defmodule WardrikMCP.ServerTest do
     end
   end
 
+  describe "gated?/2" do
+    test "gates the remote names it lists, and every one a name ending in * begins" do
+      gated = server(gated: ["create_issue", "delete_*"])
+
+      assert Server.gated?(gated, "create_issue")
+      assert Server.gated?(gated, "delete_repo")
+      refute Server.gated?(gated, "create_issues")
+      refute Server.gated?(gated, "list_issues")
+    end
+
+    test "gates nothing unless told, and everything for true" do
+      refute Server.gated?(server(), "create_issue")
+      assert Server.gated?(server(gated: true), "list_issues")
+      assert %Server{trusted: false} = server()
+    end
+  end
+
   describe "local_name/2" do
     test "joins the prefix and the remote name" do
       assert Server.local_name(server(), "create_issue") == "github__create_issue"

@@ -17,6 +17,29 @@ defmodule WardrikMCP.ConnectionTest do
     end
   end
 
+  describe "a server that gates some of its tools" do
+    @describetag server_opts: [gated: ["ech*"]]
+
+    test "gates those, and its answers are content from outside", %{ref: ref} do
+      assert WardrikMCP.gated?(ref, "#{ref}__echo")
+      assert WardrikMCP.gated?(:*, "#{ref}__echo")
+      refute WardrikMCP.gated?(ref, "#{ref}__secret")
+
+      assert WardrikMCP.outside_content?(ref, "#{ref}__echo")
+      assert WardrikMCP.outside_content?(ref, "#{ref}__nothing_it_offers")
+    end
+  end
+
+  describe "a server marked trusted" do
+    @describetag server_opts: [trusted: true]
+
+    test "answers with what is the deployment's own", %{ref: ref} do
+      refute WardrikMCP.outside_content?(ref, "#{ref}__echo")
+      refute WardrikMCP.outside_content?(:*, "#{ref}__echo")
+      refute WardrikMCP.gated?(ref, "#{ref}__echo")
+    end
+  end
+
   describe "a server given a credential" do
     @describetag server_opts: [transport_opts: [env: %{"DEMO_TOKEN" => "s3cret"}]]
 

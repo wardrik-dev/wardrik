@@ -9,6 +9,9 @@ defmodule WardrikBrave.WebSearch do
   defaults: a tool result becomes part of the calling turn's context, and an
   agent that runs three searches at 8k tokens each has spent its window on
   search results.
+
+  What it answers is pages anyone could have written, so a call to it taints
+  its run; see `c:Wardrik.Tool.outside_content?/1`.
   """
 
   @behaviour Wardrik.Tool
@@ -32,6 +35,10 @@ defmodule WardrikBrave.WebSearch do
 
   Returns each source's URL, title, extracted passages, and the page's date where it is known. An empty result means nothing relevant was found, not that the search failed.
   """
+
+  @doc "The pages a search finds are content from outside."
+  @impl true
+  def outside_content?(_name), do: true
 
   @impl true
   def tool do
