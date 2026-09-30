@@ -20,15 +20,19 @@ defmodule WardrikDaemon.CLI do
   """
 
   alias Wardrik.Agent
-  alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
+  alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.CLI.Decisions
+  alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.CLI.Tokens
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
   alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
+
+  @faint [:faint, :light_black]
 
   @doc "Every command `wardrik` takes, in the order `wardrik help` lists them."
   @spec commands() :: [Command.t()]
@@ -53,9 +57,29 @@ defmodule WardrikDaemon.CLI do
       %Command{
         name: "ask",
         arguments: "KEY MESSAGE",
-        summary: "send an agent a message",
+        options: "[--no-wait]",
+        summary: "send an agent a message, and follow its answer",
+        details: [
+          "It follows the turn as it goes, until it ends or waits on a person; Ctrl-C",
+          "stops following, and the agent carries on. --no-wait only sends it."
+        ],
+        switches: [no_wait: :boolean],
         count: {2, :any},
-        run: &ask/2
+        run: &ask/2,
+        live: &answer_followed/3
+      },
+      %Command{
+        name: "watch",
+        arguments: "KEY",
+        options: "[--json]",
+        summary: "follow what an agent does, until Ctrl-C",
+        details: [
+          "With --json, each event as GET /v1/agents/KEY/events streams it, a line each."
+        ],
+        switches: [json: :boolean],
+        count: {1, 1},
+        run: &needs_terminal/2,
+        live: &watch/3
       },
       %Command{
         name: "history",
@@ -65,36 +89,19 @@ defmodule WardrikDaemon.CLI do
         count: {1, 1},
         run: &history/2,
         json: &snapshot/2
-      },
-      %Command{
-        name: "parked",
-        summary: "the calls agents are waiting on a person for",
-        details: ["With --json, each call as an interrupt, with the agent it is for."],
-        run: &parked/2,
-        json: &interrupts/2
-      },
-      %Command{
-        name: "schedules",
-        arguments: "[PREFIX]",
-        summary: "when each schedule runs next, and how it last ran",
-        count: {0, 1},
-        run: &schedules/2
-      },
-      %Command{
-        name: "approve",
-        arguments: "KEY CALL",
-        summary: "run a parked call",
-        count: {2, 2},
-        run: &approve/2
-      },
-      %Command{
-        name: "deny",
-        arguments: "KEY CALL [REASON]",
-        summary: "refuse a parked call, saying why",
-        count: {2, :any},
-        run: &deny/2
       }
-    ] ++ Tokens.commands() ++ script_commands()
+    ] ++
+      Decisions.commands() ++
+      [
+        %Command{
+          name: "schedules",
+          arguments: "[PREFIX]",
+          summary: "when each schedule runs next, and how it last ran",
+          count: {0, 1},
+          run: &schedules/2
+        }
+      ] ++
+      Tokens.commands() ++ script_commands()
   end
 
   # What bin/wardrik runs itself, listed for their help.
@@ -159,11 +166,27 @@ defmodule WardrikDaemon.CLI do
     end
   end
 
-  @doc "Runs the command `args` name, on this node."
+  @doc """
+  Runs the command `args` name, on this node, as `bin/wardrik` asks over
+  `erl_call`. A command that needs the terminal it came from exits with
+  `{:shutdown, :live}` instead, and the script runs it again with `live/1`.
+  """
   @spec main([String.t()]) :: :ok
-  def main(args) do
-    {terminal, args} = Terminal.read(args)
+  def main(args), do: args |> Terminal.read() |> dispatch()
 
+  @doc """
+  Runs the command `args` name live, as `bin/wardrik` asks over
+  `bin/wardrikd rpc`. That evaluates it on this node under the group leader
+  of the caller's own VM, so each line reaches the caller's terminal as it is
+  written, and what a person types there can be read.
+  """
+  @spec live([String.t()]) :: :ok
+  def live(args) do
+    {terminal, args} = Terminal.read(args)
+    dispatch({%{terminal | live?: true}, args})
+  end
+
+  defp dispatch({terminal, args}) do
     case Cluster.waiting() do
       nil -> run(terminal, args)
       reason when args == ["status"] -> Terminal.puts(terminal, reason)
@@ -183,13 +206,25 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp answer(terminal, %Command{} = command, words, opts) do
-    json? = Keyword.get(opts, :json, false)
+    json? = Keyword.get(opts, :json, false) and command.json != nil
 
-    case if(json?, do: command.json, else: command.run).(words, opts) do
+    case respond(command, words, opts, terminal, json?) do
       {:ok, document} when json? -> IO.puts(JSON.encode!(document))
       {:ok, text} -> Terminal.puts(terminal, text)
+      :ok -> :ok
+      :live -> exit({:shutdown, :live})
+      :error -> exit({:shutdown, 1})
       {:error, :usage} -> failed(terminal, "usage", Command.usage(command), json?)
       {:error, message} -> failed(terminal, "failed", message, json?)
+    end
+  end
+
+  defp respond(%Command{json: json}, words, opts, _terminal, true), do: json.(words, opts)
+
+  defp respond(%Command{run: run, live: live}, words, opts, terminal, false) do
+    case run.(words, opts) do
+      :live when terminal.live? -> live.(words, opts, terminal)
+      answer -> answer
     end
   end
 
@@ -302,11 +337,54 @@ defmodule WardrikDaemon.CLI do
         do: daemon
   end
 
-  defp ask([key | words], _opts) do
+  defp needs_terminal(_words, _opts), do: :live
+
+  defp ask(words, opts), do: if(opts[:no_wait], do: asked(words), else: :live)
+
+  defp asked([key | words]) do
     case Agent.ask(key, Enum.join(words, " ")) do
       :ok -> {:ok, "Asked #{key}."}
       {:error, :not_found} -> {:error, no_agent(key)}
     end
+  end
+
+  defp answer_followed([key | words], _opts, terminal) do
+    if match?(%{state: :parked}, Agent.status(key)) do
+      Terminal.puts(
+        terminal,
+        Owl.Data.tag("#{key} is waiting on a person, so this waits behind it.", @faint)
+      )
+    end
+
+    case Follow.turn(key, terminal, fn -> Agent.ask(key, Enum.join(words, " ")) end) do
+      {:error, :not_found} -> {:error, no_agent(key)}
+      :parked -> {:ok, Owl.Data.tag("wardrik approve #{key}, or deny, decides it.", @faint)}
+      :failed -> :error
+      _finished_or_gone -> :ok
+    end
+  end
+
+  defp watch([key], opts, terminal) do
+    case {Fleet.lookup(key), opts[:json]} do
+      {nil, _json?} ->
+        {:error, no_agent(key)}
+
+      {_member, true} ->
+        Follow.json(key)
+        :ok
+
+      {member, _json?} ->
+        Follow.events(key, terminal, watching(member))
+        :ok
+    end
+  end
+
+  defp watching(member) do
+    Owl.Data.tag(
+      "Watching #{member.key}, #{member.status} on #{Nodes.display(member.node)}. " <>
+        "Ctrl-C stops watching; the agent carries on.",
+      @faint
+    )
   end
 
   defp history([key], _opts) do
@@ -345,47 +423,6 @@ defmodule WardrikDaemon.CLI do
 
     Enum.join(written ++ calls, " ")
   end
-
-  defp parked(_words, _opts) do
-    rows =
-      for {key, call, prompt} <- waiting(),
-          do: "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}" <> link(call)
-
-    case rows do
-      [] -> {:ok, "Nothing is waiting on a person."}
-      rows -> {:ok, Enum.join(["#{length(rows)} waiting:" | rows], "\n")}
-    end
-  end
-
-  defp interrupts(_words, _opts) do
-    interrupts =
-      for {key, call, prompt} <- waiting(),
-          do: Map.put(Value.interrupt({call, prompt}), "agent", %{"id" => key})
-
-    {:ok, %{"interrupts" => interrupts}}
-  end
-
-  # Every call a parked agent is waiting on, with the agent's key.
-  defp waiting do
-    for %{status: :parked, key: key} <- Fleet.list(),
-        {call, prompt} <- parked_calls(key),
-        do: {key, call, prompt}
-  end
-
-  defp parked_calls(key) do
-    case Agent.parked(key) do
-      calls when is_list(calls) -> calls
-      {:error, :not_found} -> []
-    end
-  end
-
-  # Where to authorize, for the operator reading this on the node; no notice
-  # or event carries it.
-  defp link(%{link: %{url: url, code: code}}) when is_binary(code),
-    do: "\n      enter #{code} at #{url}"
-
-  defp link(%{link: %{url: url}}), do: "\n      open #{url}"
-  defp link(_call), do: ""
 
   defp schedules(words, _opts) do
     prefix = List.first(words, "")
@@ -426,34 +463,4 @@ defmodule WardrikDaemon.CLI do
   defp outcome(:no_agent), do: "no agent runs under the key"
   defp outcome(:missed), do: "let a missed run go"
   defp outcome(:failed), do: "failed to ask"
-
-  defp approve([key, call], _opts), do: decide(key, call, :approve, "Approved")
-
-  defp deny([key, call | reason], _opts) do
-    reason = if reason == [], do: "A person refused this call.", else: Enum.join(reason, " ")
-    decide(key, call, {:deny, reason}, "Denied")
-  end
-
-  # `bin/wardrik` reaches the node with its cookie, which only the account the
-  # node runs as can read, so that account is who decides.
-  defp decide(key, call, decision, done) do
-    by = %Wardrik.Principal{type: :shell, id: System.get_env("USER") || "unknown"}
-
-    case Agent.decide(key, %{call => decision}, by: by) do
-      :ok ->
-        {:ok, "#{done} #{call} for #{key}."}
-
-      {:error, :not_found} ->
-        {:error, no_agent(key)}
-
-      {:error, :not_parked} ->
-        {:error, "#{key} is not waiting on anything."}
-
-      {:error, :stale_decision} ->
-        {:error, "#{key} is not waiting on #{call}."}
-
-      {:error, :unrecorded} ->
-        {:error, "#{key} could not record the decision, so it was not taken."}
-    end
-  end
 end

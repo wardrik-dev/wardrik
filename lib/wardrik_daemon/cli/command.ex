@@ -10,6 +10,10 @@ defmodule WardrikDaemon.CLI.Command do
 
   A command with `:json` also takes `--json`, and answers with one JSON
   document in place of its text.
+
+  A command whose `:run` answers `:live` needs the terminal it came from,
+  to write as it goes or to ask something: `bin/wardrik` runs it again over
+  `bin/wardrikd rpc`, where `:live` runs it with that terminal.
   """
 
   alias WardrikConsole.Suggestion
@@ -23,10 +27,17 @@ defmodule WardrikDaemon.CLI.Command do
             switches: [],
             count: {0, 0},
             run: nil,
+            live: nil,
             json: nil
 
-  @typedoc "What a command answers: what to print, or why it failed."
-  @type answer() :: {:ok, Owl.Data.t()} | {:error, Owl.Data.t()}
+  @typedoc """
+  What a command answers: what to print, or why it failed; `:usage` where
+  its words do not make sense together; `:live` where it needs the terminal
+  it came from; and, from `:live`, `:ok` or `:error` where it has printed all
+  it has to.
+  """
+  @type answer() ::
+          {:ok, Owl.Data.t()} | {:error, Owl.Data.t() | :usage} | :live | :ok | :error
 
   @typedoc """
   A command. `:name` is its words, `"token create"`; `:arguments` and
@@ -43,6 +54,7 @@ defmodule WardrikDaemon.CLI.Command do
           switches: keyword(atom()),
           count: {non_neg_integer(), non_neg_integer() | :any},
           run: ([String.t()], keyword() -> answer()) | nil,
+          live: ([String.t()], keyword(), WardrikDaemon.CLI.Terminal.t() -> answer()) | nil,
           json: ([String.t()], keyword() -> {:ok, map()} | {:error, Owl.Data.t()}) | nil
         }
 

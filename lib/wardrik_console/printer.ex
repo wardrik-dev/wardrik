@@ -16,10 +16,11 @@ defmodule WardrikConsole.Printer do
   work it delegated.
 
   A tool call is a line when it starts and another when it finishes or is
-  refused. What the answer and the reasoning had not finished comes first, so
-  the lines keep the order things happened in. A turn that ends, fails, is
-  stopped, or waits on a person returns what is left of its text, then says
-  so. Every other event returns no lines.
+  refused, cut to the width. What the answer and the reasoning had not
+  finished comes first, so the lines keep the order things happened in. A
+  turn that ends, fails, is stopped, or waits on a person returns what is
+  left of its text, then says so, and why it failed is written whole. Every
+  other event returns no lines.
   """
 
   alias Wardrik.Event
@@ -70,28 +71,33 @@ defmodule WardrikConsole.Printer do
 
       lines ->
         {settled, printer} = settle(printer)
-        {settled ++ Enum.map(lines, &Owl.Data.truncate(&1, printer.width)), printer}
+        {settled ++ Enum.map(lines, &fitted(&1, printer.width)), printer}
     end
   end
+
+  # A tool's line is cut to the width, so a long call stays one line. A turn's
+  # own ending is written whole, since why it failed is worth wrapping for.
+  defp fitted({:cut, line}, width), do: Owl.Data.truncate(line, width)
+  defp fitted(line, _width), do: line
 
   # The lines an event says, before which the text so far is settled; `nil`
   # for an event that neither says anything nor settles.
   defp said({:tool_started, _id, name, arguments, _key}),
-    do: [["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]]
+    do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]}]
 
   defp said({:tool_finished, _id, name, {:ok, _output}}),
-    do: [["  ", Owl.Data.tag("✓", :green), " ", name]]
+    do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
   defp said({:tool_finished, _id, name, {:error, reason}}),
-    do: [["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]]
+    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
 
   defp said({:tool_denied, _id, name, reason}),
-    do: [["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]]
+    do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
 
   defp said({:turn_parked, calls}) do
     [
       Owl.Data.tag("Waiting on a person for #{count(calls)}:", [:bright, :yellow])
-      | for({call, prompt} <- calls, do: ["  ? ", call.name, "  ", call.id, "  ", prompt])
+      | for({call, prompt} <- calls, do: {:cut, ["  ? ", call.name, "  ", call.id, "  ", prompt]})
     ]
   end
 
