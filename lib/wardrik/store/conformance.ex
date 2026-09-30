@@ -87,6 +87,18 @@ defmodule Wardrik.Store.Conformance do
           assert @adapter.keys(@ns, base <> "/a c") == []
         end
 
+        test "keeps a key with an empty part, and lists it by the parts before", context do
+          base = conformance_key(context)
+          key = base <> "//tree//path"
+
+          {:ok, _vsn} = @adapter.put(@ns, key, :parts, [])
+
+          assert @adapter.get(@ns, key, []) == :parts
+          assert @adapter.keys(@ns, base <> "/") == [key]
+          assert @adapter.keys(@ns, base <> "//tree//") == [key]
+          assert @adapter.keys(@ns, base <> "//tree/p") == []
+        end
+
         test "matches a prefix as it is written, with nothing in it a wildcard", context do
           base = conformance_key(context)
 

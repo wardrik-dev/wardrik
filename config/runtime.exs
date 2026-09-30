@@ -30,6 +30,18 @@ if System.get_env("RELEASE_NAME") do
     config :wardrik, WardrikDaemon.Config.boot(settings)
   end
 
+  # WARDRIK_HTTP_IP and WARDRIK_SSH_IP move the HTTP API and the TUI off
+  # loopback where config.yaml's http.ip and ssh.ip do not say, as the Docker
+  # image does for the ports a container is run with.
+  listeners = [{WardrikHTTP, "WARDRIK_HTTP_IP"}, {WardrikDaemon.SSH, "WARDRIK_SSH_IP"}]
+
+  for {package, variable} <- listeners, ip = System.get_env(variable), ip != "" do
+    case :inet.parse_address(String.to_charlist(ip)) do
+      {:ok, address} -> config :wardrik, package, ip: address
+      {:error, _reason} -> raise "#{variable} is #{ip}, which is not an address such as 0.0.0.0"
+    end
+  end
+
   state =
     System.get_env("WARDRIK_STATE_DIR") ||
       Path.join(System.get_env("XDG_STATE_HOME") || Path.expand("~/.local/state"), "wardrik")

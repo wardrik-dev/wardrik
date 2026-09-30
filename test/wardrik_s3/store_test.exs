@@ -108,6 +108,7 @@ defmodule WardrikS3.StoreTest do
       assert Store.unescape(Store.escape(key)) == key
       assert String.starts_with?(Store.escape(key), Store.escape(String.slice(key, 0, 3)))
       assert Store.escape(key) =~ ~r{\A[A-Za-z0-9._~/-]*\z}
+      refute Store.escape(key) =~ ~r{\A/|//}
     end
   end
 

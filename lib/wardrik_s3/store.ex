@@ -463,8 +463,14 @@ defmodule WardrikS3.Store do
   @spec escape(String.t()) :: String.t()
   def escape(key), do: escape(key, true, "")
 
+  # A part of the key is never empty or dot-led in its object's name: a / that
+  # would begin one, at the start or after another /, is escaped, since MinIO
+  # refuses a name with an empty part, and so is a . that would. Each byte is
+  # escaped by what came before it alone, so a prefix's escape is always a
+  # prefix of the escape of every key under it.
   defp escape(<<>>, _start, acc), do: acc
-  defp escape(<<?/, rest::binary>>, _start, acc), do: escape(rest, true, acc <> "/")
+  defp escape(<<?/, rest::binary>>, true, acc), do: escape(rest, false, acc <> "~2F")
+  defp escape(<<?/, rest::binary>>, false, acc), do: escape(rest, true, acc <> "/")
   defp escape(<<?., rest::binary>>, true, acc), do: escape(rest, false, acc <> "~2E")
 
   defp escape(<<byte, rest::binary>>, _start, acc)

@@ -93,43 +93,61 @@ jobs:
       - run: npm run check
       - run: npm run build
 
+  # The daemon's image and its release tarball, from one build in the
+  # Dockerfile, on Ubuntu 22.04 so the tarball runs on any Linux with glibc 2.35
+  # and OpenSSL 3. The tarball is booted here, installed on fresh distributions
+  # and failed over; the image is booted and asked over HTTP. A push keeps the
+  # image as :sha-<commit>, and the image job names it once every check passes.
   release:
     name: release (linux-x86_64)
     runs-on: ubuntu-24.04
-    env:
-      MIX_ENV: prod
+    permissions:
+      contents: read
+      packages: write
     outputs:
       version: ${{ steps.tarball.outputs.version }}
       name: ${{ steps.tarball.outputs.name }}
+      image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v7
 
-      - id: setup
-        uses: ./.github/actions/setup
-        with:
-          cache-key: release
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Build
-        run: mix release --overwrite
+      - id: image
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/wardrik" >> "$GITHUB_OUTPUT"
+
+      # The image first, so its cache holds the build stage the tarball is
+      # taken from too.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: image
+          load: true
+          tags: wardrik:ci
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,scope=release,mode=max
+
+      - name: Build the tarball
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: tarball
+          outputs: type=local,dest=dist
+          cache-from: type=gha,scope=release
 
       - name: Name the tarball
         id: tarball
         run: |
           version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
           name="wardrik-$version-linux-x86_64.tar.gz"
-          mv "_build/prod/wardrikd-$version.tar.gz" "$name"
-          rm -rf _build/prod/rel
+          mv "dist/wardrikd-$version.tar.gz" "$name"
+          sha256sum "$name" > SHA256SUMS
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-
-      - if: ${{ !cancelled() && steps.setup.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            deps
-            _build
-            priv/plts
-          key: ${{ steps.setup.outputs.key }}
 
       # Unpacked somewhere new and started with no keys and no home of its own,
       # the way a first install is: one agent file that reads, one that does
@@ -196,6 +214,46 @@ jobs:
           "$root/bin/wardrik" status | tee status.txt
           grep -q "_/_/good" status.txt
 
+      # deploy/install.sh on Ubuntu 22.04 and 24.04 and Debian 12 and 13, where
+      # it installs and the daemon runs, and on Debian 11 and Alpine, where it
+      # refuses and says why. See dev/distros.sh.
+      - name: Install it
+        run: dev/distros.sh "${{ steps.tarball.outputs.name }}"
+
+      # Started with nothing mounted, as docker run first starts it: the API
+      # answers on the port it is run with, refuses a request without a token,
+      # and still knows a token after a restart, which the volume kept.
+      - name: Boot the image
+        run: |
+          docker run -d --name wardrik -p 127.0.0.1:4747:4747 wardrik:ci
+          trap 'docker logs wardrik 2>&1 | tail -n 40' ERR
+
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@" http://127.0.0.1:4747/v1/agents; }
+
+          # The node answers before the API listens, and curl reads 000 until
+          # it does.
+          up() {
+            for _ in $(seq 60); do
+              docker exec wardrik wardrik status > /dev/null 2>&1 && [ "$(code)" != 000 ] && return 0
+              sleep 1
+            done
+            return 1
+          }
+
+          up
+          docker exec wardrik wardrik status
+          test "$(code)" = 401
+
+          token=$(docker exec wardrik wardrik token create ci --all --unlimited | head -n 1)
+          echo "::add-mask::$token"
+          test "$(code -H "authorization: Bearer $token")" = 200
+
+          docker restart wardrik > /dev/null
+          up
+          test "$(code -H "authorization: Bearer $token")" = 200
+          test "$(docker inspect --format '{{.Config.User}}' wardrik)" = wardrik
+          docker stop wardrik
+
       # The store in Postgres, then in a bucket, and a node lost to kill -9:
       # its agent carries on on the cluster's other node, or on a new machine
       # given the same config.yaml. See dev/failover.sh.
@@ -218,11 +276,63 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.tarball.outputs.name }}
-          path: ${{ steps.tarball.outputs.name }}
+          path: |
+            ${{ steps.tarball.outputs.name }}
+            SHA256SUMS
           if-no-files-found: error
 
-  # A v* tag publishes the tarball the release job booted, once every check
-  # has passed.
+      - if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: github.event_name == 'push'
+        name: Push the image
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          docker tag wardrik:ci "$IMAGE:sha-$GITHUB_SHA"
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+
+  # The image the release job booted, named once every check has passed: :main
+  # for a push to main, and the version and :latest for a v* tag.
+  image:
+    name: image
+    if: github.event_name == 'push'
+    needs: [check, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - env:
+          IMAGE: ${{ needs.release.outputs.image }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main) tags=(-t "$IMAGE:main") ;;
+            refs/tags/v*)
+              if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+                echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
+                exit 1
+              fi
+              tags=(-t "$IMAGE:$VERSION" -t "$IMAGE:latest")
+              ;;
+            *) exit 0 ;;
+          esac
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:sha-$GITHUB_SHA"
+
+  # A v* tag publishes the tarball the release job booted, its SHA256SUMS and
+  # the install script, once every check has passed.
   publish:
     name: publish
     if: startsWith(github.ref, 'refs/tags/v')
@@ -231,6 +341,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: deploy/install.sh
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.release.outputs.name }}
@@ -244,4 +359,5 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" "$TARBALL" --repo "$GITHUB_REPOSITORY" --generate-notes
+          gh release create "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS deploy/install.sh \
+            --repo "$GITHUB_REPOSITORY" --generate-notes

@@ -26,3 +26,6 @@ wardrik-*.tar
 
 # Dialyzer PLTs, cached by CI.
 /priv/plts/
+
+# The tarball `docker build --target tarball` writes.
+/dist/

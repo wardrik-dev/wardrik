@@ -52,8 +52,8 @@ under any user name and has the TUI, and through it every agent the daemon
 runs: it can ask them, and approve or deny what they are waiting on. Only the
 keys in the file are read; options such as `from=` and `command=` are not
 applied. Keys are the only way in: there are no passwords, no commands, no
-subsystems and no forwarding. `ssh.ip` in `config.yaml` listens beyond
-loopback.
+subsystems and no forwarding. `ssh.ip` in `config.yaml`, or `WARDRIK_SSH_IP`,
+listens beyond loopback.
 
 ### HTTP API
 
@@ -75,7 +75,20 @@ every node the revocation reaches. A node it does not reach, such as one cut
 off from its quorum, stops trusting the token within 15 seconds: it must
 read it through consensus again, cannot, and refuses requests with 503,
 while re-reading the tokens its open connections hold every 15 seconds
-closes them. `http.ip` in `config.yaml` listens beyond loopback.
+closes them. `http.ip` in `config.yaml`, or `WARDRIK_HTTP_IP`, listens beyond
+loopback. The API speaks plain HTTP, so a token sent across a network is
+readable on it unless a proxy in front of the daemon ends TLS.
+
+### The Docker image
+
+The image sets `WARDRIK_HTTP_IP` and `WARDRIK_SSH_IP` to `0.0.0.0`, since
+inside a container loopback is reachable from nowhere else, and so the ports a
+container is run with decide who reaches the API and the TUI:
+`-p 127.0.0.1:4747:4747` keeps the API to the host. Distribution and epmd stay
+on the container's loopback, so only a process inside the container, such as
+`docker exec`, reaches the node. It runs as the user `wardrik`, not root, and
+keeps its cookie, store and host key on the `/data` volume, readable by that
+user alone.
 
 ### Gated tools and outside content
 

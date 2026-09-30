@@ -1,0 +1,11 @@
+# The Dockerfile copies only what a release is built from; these are left out
+# of the context so a build never sends them, or finds a local build's output.
+.git
+_build
+deps
+cover
+tmp
+dist
+priv/plts
+sdks
+erl_crash.dump

@@ -7,6 +7,32 @@ subscribe to and watch.
 Core has no dependencies you did not ask for and ships no tools and no
 workflows. What it ships is the contracts and the machinery that runs them.
 
+## Run it
+
+On Linux, the daemon and the `wardrik` command:
+
+```sh
+curl -fsSL https://github.com/jonlunsford/tars/releases/latest/download/install.sh | sh
+wardrik start
+wardrik token create dev --all --unlimited    # a token for the HTTP API on 127.0.0.1:4747
+```
+
+Anywhere Docker runs:
+
+```sh
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/jonlunsford/wardrik
+docker exec wardrik wardrik token create dev --all --unlimited
+```
+
+The script installs the release for Linux on x86_64, which needs glibc 2.35
+and OpenSSL 3, as Ubuntu 22.04 and Debian 12 and everything since have. It
+checks the tarball against the release's `SHA256SUMS`, runs it once, and
+installs it under `~/.local`, or `/opt/wardrik` as root; `deploy/install.sh`
+says what else it takes. `rik` is `wardrik` too, unless something else on the
+machine is already called `rik`. Elsewhere, the image runs. See
+[Running the daemon](#running-the-daemon), or [Installation](#installation)
+to use Wardrik as a library.
+
 ## Terminal client
 
 Run `mix wardrik` for the terminal client; `mix help wardrik` lists its options.
@@ -432,8 +458,13 @@ end
 ## Running the daemon
 
 `mix release` builds the daemon: a self-contained node with its own ERTS, and
-a tarball of it. CI builds one for Linux x86_64 on every push to `main` and
-attaches it to the GitHub release for a `v*` tag.
+a tarball of it. The `Dockerfile` builds both the image and the tarball the
+install script installs, on Ubuntu 22.04 so the tarball runs on any Linux with
+glibc 2.35. CI builds them for Linux x86_64 on every push, installs the
+tarball on fresh Ubuntu and Debian (`dev/distros.sh`), and boots the image. A
+`v*` tag attaches the tarball, its `SHA256SUMS` and `install.sh` to the GitHub
+release, and names the image by its version and `latest`; a push to `main`
+names it `main`.
 
 ```sh
 MIX_ENV=prod mix release
@@ -469,6 +500,29 @@ what a person writes and can live in a dotfiles repository:
 
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` move them, as they
 move any other tool's.
+
+### In Docker
+
+The image runs `wardrik serve` as the user `wardrik`, logging to the
+container's output, with `wardrik` on its `PATH` for `docker exec`:
+
+| | |
+| --- | --- |
+| **`/config`** | `config.yaml`, `agents/` and `policies/`: mount yours, read-only if you like. Empty unless you do, so agents come from the HTTP API |
+| **`/data`** | the store, unless `config.yaml` names one elsewhere, the cookie and the SSH host key. A volume, so a new container on the same volume carries on |
+| **4747**, **2222** | the HTTP API, and the TUI where `/config/ssh/authorized_keys` lets someone in. Both listen on every interface of the container, so the ports it is run with decide who reaches them |
+
+```sh
+docker run -d --name wardrik --env-file ~/.config/wardrik/env \
+  -p 127.0.0.1:4747:4747 -p 2222:2222 \
+  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/jonlunsford/wardrik
+docker exec wardrik wardrik status
+docker logs -f wardrik
+```
+
+Keys the daemon reads, a model provider's and any `config.yaml` names, come
+in with `-e` or `--env-file`. An MCP server run as a command needs its program
+in the image, so a deployment with one builds its own image `FROM` this one.
 
 ```yaml
 mcp:
@@ -759,6 +813,7 @@ config :wardrik, :children, [MyApp.Host]
 | **`WARDRIK_DATA_DIR`**, **`WARDRIK_COOKIE_FILE`** | the store and the cookie. `RELEASE_COOKIE` overrides the cookie file |
 | **`WARDRIK_DIST_INTERFACE`** | the address distribution listens on, as an Erlang tuple. Defaults to loopback, where the node is `wardrikd@localhost`; `any` listens everywhere |
 | **`WARDRIK_LOG`** | the log file, or `-` for the terminal |
+| **`WARDRIK_HTTP_IP`**, **`WARDRIK_SSH_IP`** | the address the HTTP API and the TUI listen on where `config.yaml`'s `http.ip` and `ssh.ip` do not say, as the image sets them to `0.0.0.0` |
 | **`WARDRIK_CLUSTER_SIZE`** | the store's voting members, where `config.yaml` has no `cluster` |
 
 Anyone who can reach the distribution port with the cookie can run code on the
