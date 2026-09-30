@@ -36,7 +36,7 @@
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd -P)
-repo=jonlunsford/tars
+repo=wardrik-dev/wardrik
 box=${WARDRIK_BOX:-wardrik-demo}
 type=${WARDRIK_BOX_TYPE:-cx23}
 location=${WARDRIK_BOX_LOCATION:-fsn1}

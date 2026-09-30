@@ -20,15 +20,15 @@
 #
 # The key the server is created with lets you in as wardrik, and into the TUI.
 #
-# Then give it the release CI built from main, which is built on Ubuntu 24.04
-# as this box is, and the keys the daemon reads, as ~/.config/wardrik/env holds
+# Then give it the release CI built from main, which is built on Ubuntu 22.04
+# and runs on this box's 24.04, and the keys the daemon reads, as ~/.config/wardrik/env holds
 # them here, with SLACK_CHANNEL added: the id of a channel the bot is in. The
 # box keeps a vault key of its own, so the env file's goes unused, unless
 # bootstrap.sh is given a bucket to keep everything in:
 #
-#   run=$(gh run list --repo jonlunsford/tars --branch main --workflow CI --status success \
+#   run=$(gh run list --repo wardrik-dev/wardrik --branch main --workflow CI --status success \
 #     --limit 1 --json databaseId --jq '.[0].databaseId')
-#   gh run download "$run" --repo jonlunsford/tars -n wardrik-0.1.0-linux-x86_64.tar.gz
+#   gh run download "$run" --repo wardrik-dev/wardrik -n wardrik-0.1.0-linux-x86_64.tar.gz
 #   scp wardrik-0.1.0-linux-x86_64.tar.gz ~/.config/wardrik/env wardrik@BOX:
 #   ssh wardrik@BOX 'tar -xzf wardrik-*.tar.gz -C ~/wardrik && install -m 600 env ~/.config/wardrik/env \
 #     && rm env && systemctl --user enable --now wardrik@a wardrik@b wardrik@c'
@@ -143,7 +143,7 @@ write_files:
     content: |
       ---
       name: triage
-      description: Reads what lands on jonlunsford/tars main, and opens an issue for anything broken.
+      description: Reads what lands on wardrik-dev/wardrik main, and opens an issue for anything broken.
       model: zai_coding_plan:glm-5.3
       tools: [github/*]
       user: jon
@@ -154,9 +154,9 @@ write_files:
       notify: {to: [demo], on: [parked, failed]}
       policy:
         ask:
-          github/issue_write: This opens or changes an issue on jonlunsford/tars.
+          github/issue_write: This opens or changes an issue on wardrik-dev/wardrik.
       ---
-      You watch the repository jonlunsford/tars on GitHub. If the only GitHub
+      You watch the repository wardrik-dev/wardrik on GitHub. If the only GitHub
       tool you have is github__connect, call it first.
 
       Each time you are asked to look, list the commits on main newer than the

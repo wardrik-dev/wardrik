@@ -12,7 +12,7 @@ workflows. What it ships is the contracts and the machinery that runs them.
 On Linux, the daemon and the `wardrik` command:
 
 ```sh
-curl -fsSL https://github.com/jonlunsford/tars/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
 wardrik start
 wardrik token create dev --all --unlimited    # a token for the HTTP API on 127.0.0.1:4747
 ```
@@ -20,7 +20,7 @@ wardrik token create dev --all --unlimited    # a token for the HTTP API on 127.
 Anywhere Docker runs:
 
 ```sh
-docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/jonlunsford/wardrik
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
 docker exec wardrik wardrik token create dev --all --unlimited
 ```
 
@@ -515,7 +515,7 @@ container's output, with `wardrik` on its `PATH` for `docker exec`:
 ```sh
 docker run -d --name wardrik --env-file ~/.config/wardrik/env \
   -p 127.0.0.1:4747:4747 -p 2222:2222 \
-  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/jonlunsford/wardrik
+  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
 docker exec wardrik wardrik status
 docker logs -f wardrik
 ```
