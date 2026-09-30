@@ -22,6 +22,7 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Agent
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
+  alias WardrikDaemon.CLI.Agents
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Decisions
   alias WardrikDaemon.CLI.Follow
@@ -91,17 +92,7 @@ defmodule WardrikDaemon.CLI do
         json: &snapshot/2
       }
     ] ++
-      Decisions.commands() ++
-      [
-        %Command{
-          name: "schedules",
-          arguments: "[PREFIX]",
-          summary: "when each schedule runs next, and how it last ran",
-          count: {0, 1},
-          run: &schedules/2
-        }
-      ] ++
-      Tokens.commands() ++ script_commands()
+      Agents.commands() ++ Decisions.commands() ++ Tokens.commands() ++ script_commands()
   end
 
   # What bin/wardrik runs itself, listed for their help.
@@ -423,44 +414,4 @@ defmodule WardrikDaemon.CLI do
 
     Enum.join(written ++ calls, " ")
   end
-
-  defp schedules(words, _opts) do
-    prefix = List.first(words, "")
-    now = DateTime.utc_now()
-
-    rows =
-      for schedule <- Wardrik.Schedule.list(prefix) do
-        next = WardrikDaemon.duration(max(DateTime.diff(schedule.next_at, now, :millisecond), 0))
-        "  #{schedule.key}  #{every(schedule.every)}  next in #{next}  #{last(schedule, now)}"
-      end
-
-    case rows do
-      [] -> {:ok, "Nothing is scheduled#{if prefix != "", do: " under #{prefix}"}."}
-      [_row] -> {:ok, Enum.join(["1 schedule:" | rows], "\n")}
-      rows -> {:ok, Enum.join(["#{length(rows)} schedules:" | rows], "\n")}
-    end
-  end
-
-  defp every({:cron, text}), do: text
-  defp every({:interval, ms}), do: "every " <> interval(ms)
-
-  defp interval(ms) when rem(ms, 86_400_000) == 0, do: "#{div(ms, 86_400_000)}d"
-  defp interval(ms) when rem(ms, 3_600_000) == 0, do: "#{div(ms, 3_600_000)}h"
-  defp interval(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}m"
-  defp interval(ms), do: "#{ms}ms"
-
-  defp last(%{last_at: nil, last_outcome: nil}, _now), do: "not run yet"
-  defp last(%{last_at: nil, last_outcome: outcome}, _now), do: "last: " <> outcome(outcome)
-
-  defp last(%{last_at: at, last_outcome: outcome}, now) do
-    ago = WardrikDaemon.duration(max(DateTime.diff(now, at, :millisecond), 0))
-    "last run #{ago} ago: " <> outcome(outcome)
-  end
-
-  defp outcome(nil), do: "asking"
-  defp outcome(:asked), do: "asked"
-  defp outcome(:busy), do: "skipped, the agent was busy"
-  defp outcome(:no_agent), do: "no agent runs under the key"
-  defp outcome(:missed), do: "let a missed run go"
-  defp outcome(:failed), do: "failed to ask"
 end
