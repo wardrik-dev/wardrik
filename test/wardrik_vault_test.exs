@@ -141,16 +141,62 @@ defmodule WardrikVaultTest do
   end
 
   describe "as a Wardrik.Credential resolver" do
-    test "resolves a user reference against the scope's user", %{user: user} do
-      :ok = WardrikVault.put({:user, "github"}, user, "ghp_secret")
+    test "resolves a user reference against the scope's user, within its org", %{user: user} do
+      :ok = WardrikVault.put({:user, "github"}, {"acme", user}, "ghp_secret")
 
       assert {:ok, credential} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: WardrikVault, user: user)),
+                 Calls.tool(
+                   "tool",
+                   %{},
+                   scope(credentials: WardrikVault, org: "acme", user: user)
+                 ),
                  {:user, "github"}
                )
 
       assert Credential.reveal(credential) == "ghp_secret"
+    end
+
+    test "a user of the same name in another org does not read it", %{user: user} do
+      :ok = WardrikVault.put({:user, "github"}, {"acme", user}, "acme-token")
+
+      assert {:error, :not_found} =
+               Credential.resolve(
+                 Calls.tool(
+                   "tool",
+                   %{},
+                   scope(credentials: WardrikVault, org: "globex", user: user)
+                 ),
+                 {:user, "github"}
+               )
+
+      :ok = WardrikVault.put({:user, "github"}, {"globex", user}, "globex-token")
+
+      assert {:ok, credential} =
+               Credential.resolve(
+                 Calls.tool(
+                   "tool",
+                   %{},
+                   scope(credentials: WardrikVault, org: "globex", user: user)
+                 ),
+                 {:user, "github"}
+               )
+
+      assert Credential.reveal(credential) == "globex-token"
+    end
+
+    test "a secret put for the user alone is not theirs in any org", %{user: user} do
+      :ok = WardrikVault.put({:user, "github"}, user, "ghp_secret")
+
+      assert {:error, :not_found} =
+               Credential.resolve(
+                 Calls.tool(
+                   "tool",
+                   %{},
+                   scope(credentials: WardrikVault, org: "acme", user: user)
+                 ),
+                 {:user, "github"}
+               )
     end
 
     test "resolves an org reference against the scope's org" do

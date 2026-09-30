@@ -18,7 +18,10 @@ defmodule WardrikWorkspace.Backend do
 
   A tree is named by a string the backend treats as opaque:
   `agents/<org>/<user>/<name>` for an agent's own, and `shared/<name>` for a
-  tree agents share.
+  tree agents share. Opaque means one tree never holds another's files, even
+  where its name begins the other's: `shared/acme` and `shared/acme/runbooks`
+  are two trees, and `runbooks/x.md` in the first is not `x.md` in the second.
+  Each may be shared with different agents, or only to read.
   """
 
   alias WardrikWorkspace.File

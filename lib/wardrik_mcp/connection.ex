@@ -4,15 +4,16 @@ defmodule WardrikMCP.Connection do
   last said it had.
 
   `WardrikMCP.Supervisor` starts one per configured `WardrikMCP.Server`, and
-  `WardrikMCP.call/3` starts one more per user of a server each user reaches as
-  themselves. A connection is named by its server and the principal it acts
-  for, which is `:deployment` for the one the supervisor starts. It starts an
-  `Anubis.Client` with the server's transport, asks for the server's tools, and
-  registers them as a `WardrikMCP.Offer` so `WardrikMCP.tools/1` can read them
-  without a call. A server that cannot be reached offers nothing and is asked
-  again, backing off to a minute; a client that dies takes its tools out of the
-  offer and is started again the same way, so a server that goes down and comes
-  back needs nothing from anyone.
+  `WardrikMCP.call/3` starts one more per owner of the credential a server is
+  reached with. A connection is named by its server and the principal it acts
+  for: `:deployment` for the one the supervisor starts, and `{:user, org,
+  user}`, `{:org, org}` or `{:named, name}` for one carrying a credential. It
+  starts an `Anubis.Client` with the server's transport, asks for the server's
+  tools, and registers them as a `WardrikMCP.Offer` so `WardrikMCP.tools/1` can
+  read them without a call. A server that cannot be reached offers nothing and
+  is asked again, backing off to a minute; a client that dies takes its tools
+  out of the offer and is started again the same way, so a server that goes
+  down and comes back needs nothing from anyone.
 
   A server reached as a user is different in both directions. The deployment
   has no credential for it, so a server that refuses to list its tools without

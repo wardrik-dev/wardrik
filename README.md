@@ -181,7 +181,7 @@ fallback without a key:
 ```elixir
 config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
 
-WardrikVault.put({:user, "github"}, "jon", "ghp_xxx")
+WardrikVault.put({:user, "github"}, {"acme", "jon"}, "ghp_xxx")
 ```
 
 `WardrikOAuth` gets them by asking the user instead. It discovers the
@@ -615,6 +615,11 @@ workspace:
     team: acme                                  # acme's tree, for acme's agents
     runbooks: {tree: acme/runbooks, mode: read}
 ```
+
+A tree is reachable by the agents under the scope its name begins with, and
+holds only its own files: `acme` does not hold `acme/runbooks` or
+`acme/jon/notes`, so a tree shared only to read, or one only jon's agents
+reach, stays that way however the trees above it are shared.
 
 A file keeps who wrote it, and whether the turn that wrote it had read
 content from outside; reading, listing or finding it taints the reader's turn

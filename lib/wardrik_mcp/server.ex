@@ -63,10 +63,12 @@ defmodule WardrikMCP.Server do
 
       credential: {:user, "github"}
 
-  Calls then run over a connection of that user's own, and a user who has not
-  authorized yet parks the call rather than failing it. The tools a server
-  offers are listed once over the deployment's own connection and shared: the
-  MCP specification has list results not varying per connection.
+  Calls then run over a connection of that user's own, within their org, and a
+  user who has not authorized yet parks the call rather than failing it. An
+  `{:org, name}` credential gives each org a connection of its own, and a
+  `{:named, name}` one the deployment. The tools a server offers are listed
+  once over the deployment's own connection and shared: the MCP specification
+  has list results not varying per connection.
   """
 
   @enforce_keys [:ref, :transport]

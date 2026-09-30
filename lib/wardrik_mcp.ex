@@ -243,22 +243,41 @@ defmodule WardrikMCP do
   end
 
   # A server everyone shares is reached over the deployment's own connection.
-  # One each user reaches as themselves needs that user's credential, and a
-  # connection of their own to carry it.
+  # One reached with a credential needs a connection for whoever the
+  # credential belongs to, carrying theirs and no one else's.
   defp connected(%Server{credential: nil}, _call), do: {:ok, :deployment}
 
   defp connected(%Server{} = server, %Wardrik.Call{scope: nil}),
     do: {:error, "#{server.ref} is reached as a user, and this call has none"}
 
   defp connected(%Server{} = server, %Wardrik.Call{scope: %Scope{} = scope} = call) do
-    principal = scope.user || :deployment
-
-    if Connection.running?(server.ref, principal) do
-      {:ok, principal}
-    else
-      open(server, call, principal)
+    with {:ok, principal} <- principal(server, scope) do
+      if Connection.running?(server.ref, principal) do
+        {:ok, principal}
+      else
+        open(server, call, principal)
+      end
     end
   end
+
+  # Who a connection acts for is whoever owns its credential: a user within
+  # their org, since two orgs may each have a user of the same name; an org;
+  # or, for a named credential, the deployment, over a connection of its own
+  # rather than the one that lists the server's tools.
+  defp principal(%Server{credential: {:user, _name}} = server, %Scope{user: nil}),
+    do: {:error, "#{server.ref} is reached as a user, and this call has none"}
+
+  defp principal(%Server{credential: {:user, _name}}, %Scope{org: org, user: user}),
+    do: {:ok, {:user, org, user}}
+
+  defp principal(%Server{credential: {:org, _name}} = server, %Scope{org: nil}),
+    do: {:error, "#{server.ref} is reached as an org, and this call has none"}
+
+  defp principal(%Server{credential: {:org, _name}}, %Scope{org: org}), do: {:ok, {:org, org}}
+  defp principal(%Server{credential: {:named, name}}, %Scope{}), do: {:ok, {:named, name}}
+
+  defp principal(%Server{credential: credential} = server, %Scope{}),
+    do: {:error, "#{server.ref} is reached with #{inspect(credential)}, which names no owner"}
 
   defp open(%Server{} = server, call, principal) do
     with {:ok, credential} <- Credential.resolve(call, server.credential),

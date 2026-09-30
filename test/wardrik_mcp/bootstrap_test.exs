@@ -35,7 +35,7 @@ defmodule WardrikMCP.BootstrapTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root("acme/#{user}/a", user: user, credentials: Vault)
+    |> Scope.root("acme/#{user}/a", org: "acme", user: user, credentials: Vault)
   end
 
   defp call(ref, user, tool) do
@@ -116,7 +116,7 @@ defmodule WardrikMCP.BootstrapTest do
     # connection of any user's.
     setup %{ref: ref, server_opts: opts} do
       %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
-      :ok = Connection.close(ref, "connected")
+      :ok = Connection.close(ref, {:user, "acme", "connected"})
       :ok = WardrikMCP.disconnect(ref)
 
       {:ok, _pid} = WardrikMCP.Supervisor.connect(Server.new(ref, stub_options(opts)))
@@ -135,7 +135,7 @@ defmodule WardrikMCP.BootstrapTest do
 
     test "runs a call as the user who connected, over a connection it opens", context do
       %{ref: ref} = context
-      refute Connection.running?(ref, "connected")
+      refute Connection.running?(ref, {:user, "acme", "connected"})
 
       secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 

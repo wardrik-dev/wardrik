@@ -280,6 +280,39 @@ defmodule WardrikWorkspace.ToolsTest do
                  "content" => "x"
                })
     end
+
+    test "an org's tree does not reach a tree named under it" do
+      org = "ws#{System.unique_integer([:positive])}"
+      jon = agent_at(org <> "/jon/triage", %{"notes" => org <> "/jon/notes"})
+      other = agent_at(org <> "/_/other", %{"team" => org})
+
+      {:ok, _written} =
+        answered(jon, "write_file", %{"path" => "shared/notes/private.md", "content" => "jon's"})
+
+      assert {:error, _none} =
+               answered(other, "read_file", %{"path" => "shared/team/jon/notes/private.md"})
+
+      assert {:ok, %{"files" => []}} =
+               answered(other, "list_files", %{"pattern" => "shared/team/**"})
+    end
+
+    test "a tree shared to read is not changed through a tree above it" do
+      org = "ws#{System.unique_integer([:positive])}"
+
+      agent =
+        agent_at(org <> "/_/writer", %{
+          "team" => org,
+          "runbooks" => %{"tree" => org <> "/runbooks", "mode" => "read"}
+        })
+
+      {:ok, _written} =
+        answered(agent, "write_file", %{
+          "path" => "shared/team/runbooks/x.md",
+          "content" => "changed"
+        })
+
+      assert {:error, _none} = answered(agent, "read_file", %{"path" => "shared/runbooks/x.md"})
+    end
   end
 
   describe "outside content" do
@@ -352,9 +385,10 @@ defmodule WardrikWorkspace.ToolsTest do
     end
   end
 
-  defp agent_under(tree, name) do
-    key = "#{tree}/_/#{name}"
-    {:ok, spec} = Spec.new(key, %{"team" => tree})
+  defp agent_under(tree, name), do: agent_at("#{tree}/_/#{name}", %{"team" => tree})
+
+  defp agent_at(key, shared) do
+    {:ok, spec} = Spec.new(key, shared)
     scope = Config.new(tools: [{WardrikWorkspace, spec}]) |> Scope.root(key, name: "turn")
     %{key: key, spec: spec, scope: scope}
   end

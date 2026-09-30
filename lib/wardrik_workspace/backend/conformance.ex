@@ -93,6 +93,23 @@ defmodule WardrikWorkspace.Backend.Conformance do
           assert {:ok, [_a, _b, _c]} = @backend.list(tree, "")
         end
 
+        test "keeps a tree apart from a tree named under it" do
+          tree = conformance_tree()
+          under = tree <> "/notes"
+
+          {:ok, _outer} = @backend.write(tree, "notes/a.md", conformance_file("outer"), nil)
+          assert {:ok, _inner} = @backend.write(under, "a.md", conformance_file("inner"), nil)
+
+          assert {:ok, %WardrikWorkspace.File{content: "outer"}, _version} =
+                   @backend.read(tree, "notes/a.md")
+
+          assert {:ok, %WardrikWorkspace.File{content: "inner"}, _version} =
+                   @backend.read(under, "a.md")
+
+          assert {:ok, [{"notes/a.md", _outer_file, _outer_version}]} = @backend.list(tree, "")
+          assert {:ok, [{"a.md", _inner_file, _inner_version}]} = @backend.list(under, "")
+        end
+
         test "keeps a path of any characters a path may hold" do
           tree = conformance_tree()
           path = "notes/ünïcode, spaces & (brackets)/100%.md"

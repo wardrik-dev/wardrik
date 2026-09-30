@@ -11,15 +11,18 @@ defmodule WardrikVault do
   can hold a user's tokens across restarts and across the nodes the store is
   replicated to.
 
-      WardrikVault.put({:user, "github"}, "jon", "ghp_xxx")
-      WardrikVault.fetch({:user, "github"}, "jon")
-      WardrikVault.forget({:user, "github"}, "jon")
+      WardrikVault.put({:user, "github"}, {"acme", "jon"}, "ghp_xxx")
+      WardrikVault.fetch({:user, "github"}, {"acme", "jon"})
+      WardrikVault.forget({:user, "github"}, {"acme", "jon"})
 
   A reference resolves against the scope it is asked for: `{:user, name}` reads
-  the secret belonging to `scope.user`, `{:org, name}` to `scope.org`, and
-  `{:named, name}` one the deployment put there itself. A secret that is not
-  there answers `{:error, :not_found}`, which a tool reads as "not connected
-  yet". `WardrikOAuth` wraps this with somewhere for the user to go.
+  the secret belonging to `scope.user` within `scope.org`, `{:org, name}` to
+  `scope.org`, and `{:named, name}` one the deployment put there itself. Two
+  orgs may each have a user of the same name, so a user's secret is theirs
+  within their org, `{org, user}`, as `WardrikOAuth` keeps its tokens. A
+  secret that is not there answers `{:error, :not_found}`, which a tool reads
+  as "not connected yet". `WardrikOAuth` wraps this with somewhere for the
+  user to go.
 
   ## Keys
 
@@ -60,7 +63,7 @@ defmodule WardrikVault do
   @key_bytes 32
   @nonce_bytes 12
 
-  @typedoc "Who a secret belongs to: a user, an organisation, any other term the host names, or the deployment, `nil`."
+  @typedoc "Who a secret belongs to: a user within an organisation, `{org, user}`, an organisation, any other term the host names, or the deployment, `nil`."
   @type owner() :: term()
 
   @impl Wardrik.Credential
@@ -143,7 +146,7 @@ defmodule WardrikVault do
   def path(ref, _owner), do: {:error, {:unknown_reference, ref}}
 
   defp owner({:user, _name}, %Scope{user: nil}), do: {:error, :no_user}
-  defp owner({:user, _name}, %Scope{user: user}), do: {:ok, user}
+  defp owner({:user, _name}, %Scope{org: org, user: user}), do: {:ok, {org, user}}
   defp owner({:org, _name}, %Scope{org: nil}), do: {:error, :no_org}
   defp owner({:org, _name}, %Scope{org: org}), do: {:ok, org}
   defp owner({:named, _name}, %Scope{}), do: {:ok, nil}
