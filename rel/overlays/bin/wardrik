@@ -46,48 +46,23 @@ while [ "$count" -gt 0 ]; do
   esac
 done
 
-usage () {
-  cat <<USAGE
-Usage: wardrik [--node NAME] COMMAND
+# The terminal this command writes to, for the node, which has none of its own:
+# how wide it is, and whether it takes colour, which it does where standard
+# output is a terminal and NO_COLOR is not set. See WardrikDaemon.CLI.Terminal.
+colour=plain
+width="${COLUMNS:-}"
+if [ -t 1 ]; then
+  [ -n "${NO_COLOR:-}" ] || colour=colour
+  [ -n "$width" ] || width="$(stty size 2> /dev/null < /dev/tty | cut -d' ' -f2)" || width=""
+fi
+terminal="--terminal=${width:-80},$colour"
 
-  serve     run the daemon in the foreground, logging to the terminal
-  start     run the daemon in the background, logging to its state directory
-  stop      stop the daemon, and wait until it has
-  status    what the daemon, or its cluster, is running
-  doctor    check config.yaml, and the store it names, whether or not the
-            daemon runs
-  reload    read the agent and policy files again, on every node
-  ask KEY MESSAGE            send an agent a message
-  history KEY                what an agent has said
-  parked    the calls agents are waiting on a person for
-  schedules [PREFIX]         when each schedule runs next, and how it last ran
-  approve KEY CALL           run a parked call
-  deny KEY CALL [REASON]     refuse a parked call
-  token create NAME (--scope PREFIX | --all) [--can ACTIONS]
-                             a token for the HTTP API, printed once; ACTIONS
-                             are some of read,message,decide,define,serve
-  token list                 the HTTP API's tokens
-  token revoke ID            stop a token working
-  service install            run the daemon under your user's systemd, and
-                             start it at boot
-  service uninstall          stop it, and remove its unit
-  service status             how systemd has it
-  service unit               print the unit install writes, installing nothing
-  attach [HOST]              the TUI, over SSH to HOST, localhost by default
-  remote    an IEx shell on the daemon
-  logs      follow the daemon's log
-  pid       the daemon's process id
-  version   print the version
-
-The daemon reads its configuration from $config_dir/config.yaml (or .yml), and
-runs the agents $config_dir/agents declares.
-
-Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which of
-its nodes a command is for. serve, start, stop, remote, logs, pid and doctor
-need one when this install runs several; every other command asks whichever
-node answers, since each speaks for the whole cluster.
-USAGE
-}
+# -h or --help, anywhere, is help for the command it follows.
+for arg in "$@"; do
+  case "$arg" in
+    -h | --help) help_asked=1 ;;
+  esac
+done
 
 # The nodes this install has run on this machine, as cluster.nodes names them:
 # each has a state directory of its own.
@@ -210,18 +185,35 @@ forget_unstarted () {
   fi
 }
 
-# Runs WardrikDaemon.CLI.main/1 on the node, and exits 1 where the command fails.
-# Each argument travels base64 encoded, so nothing a person types is read as
-# part of the expression.
-cli () {
-  args=""
+# The arguments as a list for the expression $1 names, erlang or elixir, each
+# base64 encoded, so nothing a person types is read as part of the expression.
+encoded () {
+  syntax=$1
+  shift
+  list=""
   for arg in "$@"; do
-    args="$args, 'Elixir.Base':'decode64!'(<<\"$(printf %s "$arg" | base64 | tr -d '\n')\">>)"
+    arg="$(printf %s "$arg" | base64 | tr -d '\n')"
+    case "$syntax" in
+      erlang) list="$list, 'Elixir.Base':'decode64!'(<<\"$arg\">>)" ;;
+      elixir) list="$list, Base.decode64!(\"$arg\")" ;;
+    esac
   done
-  call "try 'Elixir.WardrikDaemon.CLI':main([${args#, }]) catch exit:{shutdown, 1} -> error end." || {
-    [ $? -ne 2 ] || echo "wardrik is not running" >&2
+  echo "[${list#, }]"
+}
+
+# Runs WardrikDaemon.CLI.main/1 on the node, and exits 1 where the command
+# fails. Where no node answers, WardrikDaemon.CLI.offline/1 says why.
+cli () {
+  call "try 'Elixir.WardrikDaemon.CLI':main($(encoded erlang "$terminal" "$@")) catch exit:{shutdown, 1} -> error end." || {
+    [ $? -ne 2 ] || offline "$@"
     exit 1
   }
+}
+
+# Runs WardrikDaemon.CLI.offline/1 on a VM of its own, which needs no daemon:
+# help, a name that is no command, and a command no daemon is there to answer.
+offline () {
+  WARDRIK_LOG=- exec "$node" eval "WardrikDaemon.CLI.offline($(encoded elixir "$terminal" "$@"))"
 }
 
 # The node's VM, whether or not it answers yet: it runs this release's own
@@ -411,9 +403,12 @@ service_uninstall () {
   echo "wardrik no longer runs as $name. What it keeps is where it was: $data_home"
 }
 
+[ -z "${help_asked:-}" ] || offline help "$@"
+
 case "${1:-}" in
   serve | start | stop | remote | logs | pid | doctor | service) one_node ;;
-  status | reload | parked | schedules | ask | history | approve | deny | token) any_node ;;
+  attach | version | help | "") ;;
+  *) any_node ;;
 esac
 
 log="${WARDRIK_LOG:-"$(node_state_dir)/log/wardrik.log"}"
@@ -461,37 +456,10 @@ case "${1:-}" in
     ;;
   status)
     if ! running; then echo "wardrik is not running"; exit 3; fi
-    cli status
+    cli "$@"
     ;;
   doctor)
     WARDRIK_LOG=- exec "$node" eval "WardrikDaemon.Doctor.main()"
-    ;;
-  reload|parked)
-    cli "$1"
-    ;;
-  schedules)
-    [ $# -le 2 ] || { echo "Usage: wardrik schedules [PREFIX]" >&2; exit 1; }
-    cli "$@"
-    ;;
-  ask)
-    [ $# -ge 3 ] || { echo "Usage: wardrik ask KEY MESSAGE" >&2; exit 1; }
-    cli "$@"
-    ;;
-  history)
-    [ $# -eq 2 ] || { echo "Usage: wardrik history KEY" >&2; exit 1; }
-    cli "$@"
-    ;;
-  approve)
-    [ $# -eq 3 ] || { echo "Usage: wardrik approve KEY CALL" >&2; exit 1; }
-    cli "$@"
-    ;;
-  deny)
-    [ $# -ge 3 ] || { echo "Usage: wardrik deny KEY CALL [REASON]" >&2; exit 1; }
-    cli "$@"
-    ;;
-  token)
-    [ $# -ge 2 ] || { echo "Usage: wardrik token create NAME (--scope PREFIX | --all), list, or revoke ID" >&2; exit 1; }
-    cli "$@"
     ;;
   attach)
     exec ssh -t -p "${WARDRIK_SSH_PORT:-2222}" "${USER}@${2:-localhost}"
@@ -511,17 +479,17 @@ case "${1:-}" in
       uninstall) service_uninstall ;;
       status) exec systemctl --user status "$(unit_name)" ;;
       unit) units ;;
-      *) echo "Usage: wardrik [--node NAME] service install, uninstall, status or unit" >&2; exit 1 ;;
+      *) offline "$@" ;;
     esac
     ;;
   version)
     echo "wardrik $(cut -d' ' -f2 "$root/releases/start_erl.data")"
     ;;
-  help|-h|--help)
-    usage
+  "" | help)
+    [ $# -eq 0 ] || shift
+    offline help "$@"
     ;;
   *)
-    usage >&2
-    exit 1
+    cli "$@"
     ;;
 esac

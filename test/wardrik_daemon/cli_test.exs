@@ -9,7 +9,7 @@ defmodule WardrikDaemon.CLITest do
   alias Wardrik.Test.AgentRunners
   alias WardrikDaemon.CLI
 
-  @token_usage "wardrik: token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
+  @token_usage "Usage: wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
                  "[--policy NAME | --unlimited]\n"
 
   # Runs a command, answering what it printed and whether it exited.
@@ -290,7 +290,109 @@ defmodule WardrikDaemon.CLITest do
              ~r"  #{key}/tick  every 50ms  next in \d+s  last run \d+s ago: no agent runs under the key"
   end
 
-  test "an unknown command fails" do
+  test "an unknown command fails, saying what was probably meant" do
     assert {"wardrik: no command frobnicate\n", 1} = command(["frobnicate"])
+
+    assert {"wardrik: no command stauts; did you mean status or start?\n", 1} =
+             command(["stauts"])
+
+    assert {"wardrik: no command token craete; did you mean token create?\n", 1} =
+             command(["token", "craete"])
+  end
+
+  test "a word that names a group of commands lists them" do
+    assert {output, 1} = command(["token"])
+    assert output =~ "Usage: wardrik token COMMAND"
+    assert output =~ "token revoke ID"
+  end
+
+  test "a command read against its definition prints its usage where it does not read" do
+    assert command(["approve", "acme/_/triage"]) == {"Usage: wardrik approve KEY CALL\n", 1}
+
+    assert command(["status", "--verbose"]) ==
+             {"wardrik status takes no option --verbose\nUsage: wardrik status [--json]\n", 1}
+  end
+
+  test "a command the script runs itself is not the daemon's to run" do
+    assert command(["serve"]) == {"bin/wardrik runs wardrik serve itself\n", 1}
+  end
+
+  test "--json answers with the documents the HTTP API answers with" do
+    key = parked_agent()
+
+    {output, 0} = command(["status", "--json"])
+    assert %{"agents" => agents} = JSON.decode!(output)
+    assert %{"id" => ^key, "status" => "parked"} = Enum.find(agents, &(&1["id"] == key))
+
+    {output, 0} = command(["history", key, "--json"])
+
+    assert %{"agent" => %{"id" => ^key}, "interrupts" => [%{"id" => "call_1"}]} =
+             JSON.decode!(output)
+
+    {output, 0} = command(["parked", "--json"])
+    assert %{"interrupts" => interrupts} = JSON.decode!(output)
+
+    assert %{"id" => "call_1", "reason" => "tool_approval", "agent" => %{"id" => ^key}} =
+             Enum.find(interrupts, &(&1["agent"]["id"] == key))
+  end
+
+  test "--json answers a failure as an error document" do
+    {output, 1} = command(["history", "nobody/_/here", "--json"])
+
+    assert JSON.decode!(output) == %{
+             "error" => %{"type" => "failed", "message" => "No agent runs under nobody/_/here."}
+           }
+
+    {output, 1} = command(["history", "--json"])
+
+    assert %{"error" => %{"type" => "usage", "message" => "Usage: wardrik history KEY [--json]"}} =
+             JSON.decode!(output)
+  end
+
+  test "a terminal that takes colour is written to in colour, and one that does not is not" do
+    {coloured, 1} = command(["--terminal=100,colour", "token"])
+    {plain, 1} = command(["--terminal=100,plain", "token"])
+
+    assert coloured =~ IO.ANSI.bright()
+    refute plain =~ "\e["
+    assert plain == elem(command(["token"]), 0)
+  end
+
+  describe "unanswered/2" do
+    alias WardrikDaemon.CLI.Terminal
+
+    defp unanswered(args) do
+      {result, text} = CLI.unanswered(args, %Terminal{})
+      {result, text |> WardrikConsole.Ansi.chardata(false) |> IO.chardata_to_string()}
+    end
+
+    test "help lists every command, and says where the daemon reads its files" do
+      {:ok, text} = unanswered(["help"])
+
+      for command <- CLI.commands(), do: assert(text =~ "  #{command.name}")
+      assert text =~ "Usage: wardrik [--node NAME] COMMAND"
+      assert text =~ WardrikDaemon.Config.config_dir()
+      assert unanswered([]) == {:ok, text}
+    end
+
+    test "help for a command gives it in full, and for a group lists it" do
+      {:ok, text} = unanswered(["help", "token", "create", "--help"])
+      assert text =~ "Usage: wardrik token create NAME (--scope PREFIX | --all)"
+      assert text =~ "--can ACTIONS limits it"
+
+      assert {:ok, "Usage: wardrik service COMMAND" <> _listing} = unanswered(["help", "service"])
+
+      assert {:ok, "Usage: wardrik serve\n\nRun the daemon" <> _rest} =
+               unanswered(["help", "serve"])
+
+      assert {:error, "wardrik: no command nope"} = unanswered(["help", "nope"])
+    end
+
+    test "a command the daemon answers is one no daemon is running for" do
+      assert unanswered(["parked"]) == {:error, "wardrik is not running"}
+
+      assert unanswered(["stauts"]) ==
+               {:error, "wardrik: no command stauts; did you mean status or start?"}
+    end
   end
 end

@@ -267,14 +267,7 @@ defmodule WardrikTUI.Command do
 
   @doc "The commands closest to a word that names none, nearest first."
   @spec suggest(String.t()) :: [String.t()]
-  def suggest(word) do
-    all()
-    |> Enum.map(&{String.jaro_distance(&1.name, word), &1.name})
-    |> Enum.filter(fn {distance, _name} -> distance >= 0.75 end)
-    |> Enum.sort(:desc)
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.take(3)
-  end
+  def suggest(word), do: WardrikConsole.Suggestion.closest(word, Enum.map(all(), & &1.name))
 
   @doc """
   Reads one line typed at the prompt.
