@@ -529,6 +529,27 @@ defmodule WardrikDaemon.AgentFileTest do
       assert files == ["SOUL.md", "shared/team/CONVENTIONS.md"]
     end
 
+    test "takes the files with how much of them each turn reads", context do
+      assert {:ok, spec} =
+               read(
+                 "---\ntools: [files]\ncontext: {files: [MEMORY.md], max_bytes: 65536}\n---\n",
+                 context
+               )
+
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
+      assert {files.context, files.context_bytes} == {["MEMORY.md"], 65_536}
+
+      assert {:error, message} =
+               read("---\ntools: [files]\ncontext: {files: [], max_bytes: 10}\n---\n", context)
+
+      assert message =~ "context max_bytes is a number of bytes from 1024 to 262144"
+
+      assert {:error, message} =
+               read("---\ntools: [files]\ncontext: {paths: [MEMORY.md]}\n---\n", context)
+
+      assert message =~ "context.paths is not a setting; expected files or max_bytes"
+    end
+
     test "needs the file tools to read them with", context do
       assert {:error, message} = read("---\ncontext: [SOUL.md]\n---\n", context)
       assert message =~ "context names files to read into each turn, and tools names no files"

@@ -16,17 +16,27 @@ defmodule WardrikWorkspace.Spec do
   `shared/` at the root of a path is never the agent's own.
 
   `context/2` names files read into each turn, in its own tree or one it
-  shares; see `WardrikWorkspace.Context`.
+  shares, and `context_bytes/2` how much of them may be, 16 KB unless it
+  says; see `WardrikWorkspace.Context`.
   """
 
   alias Wardrik.Grant
   alias WardrikWorkspace.Mount
   alias WardrikWorkspace.Path
 
-  @enforce_keys [:tree]
-  defstruct [:tree, shared: [], context: []]
+  @context_bytes 16 * 1024
+  @min_context_bytes 1024
+  @max_context_bytes 256 * 1024
 
-  @type t() :: %__MODULE__{tree: Mount.t(), shared: [Mount.t()], context: [String.t()]}
+  @enforce_keys [:tree]
+  defstruct [:tree, shared: [], context: [], context_bytes: @context_bytes]
+
+  @type t() :: %__MODULE__{
+          tree: Mount.t(),
+          shared: [Mount.t()],
+          context: [String.t()],
+          context_bytes: pos_integer()
+        }
 
   @name ~r/\A[a-z0-9][a-z0-9_-]*\z/
   @max_context 20
@@ -182,6 +192,20 @@ defmodule WardrikWorkspace.Spec do
 
   # A path as the agent sees it, however it was written.
   defp written({:ok, mount, rest}), do: Mount.root(mount) <> rest
+
+  @doc """
+  The workspace, reading at most `bytes` of the files `context/2` names into
+  each turn, from #{@min_context_bytes} to #{@max_context_bytes}.
+  """
+  @spec context_bytes(t(), term()) :: {:ok, t()} | {:error, String.t()}
+  def context_bytes(%__MODULE__{} = spec, bytes)
+      when is_integer(bytes) and bytes in @min_context_bytes..@max_context_bytes,
+      do: {:ok, %{spec | context_bytes: bytes}}
+
+  def context_bytes(%__MODULE__{}, _bytes),
+    do:
+      {:error,
+       "context max_bytes is a number of bytes from #{@min_context_bytes} to #{@max_context_bytes}"}
 
   @doc "Every mount of the workspace: the agent's own, then those it shares."
   @spec mounts(t()) :: [Mount.t()]

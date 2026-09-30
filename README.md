@@ -681,10 +681,13 @@ in the same way. A policy names a file tool's call by its path, as
 `write_file(notes/*)`. See `WardrikWorkspace`.
 
 As each turn begins, the agent is told what its workspace holds: the files
-`context` names, read in whole up to 16 KB in all, and the names of the others
-at the top of its tree, which it reads when it needs them. A `MEMORY.md` it
-keeps is there to find in every turn without filling the context, and a
-schedule's `prompt_file` asks it to follow a file it can edit, as a heartbeat:
+`context` names, up to 16 KB of them in all unless `max_bytes` says, and the
+names of the others at the top of its tree, which it reads when it needs them.
+A file longer than its share is read from its start and its end, so a log kept
+by appending keeps its newest lines in view, and the agent is asked to fold
+it shorter. A `MEMORY.md` it keeps is there to find in every turn without
+filling the context, and a schedule's `prompt_file` asks it to follow a file
+it can edit, as a heartbeat:
 
 ```yaml
 tools: [files]

@@ -80,21 +80,78 @@ defmodule WardrikWorkspace.ContextTest do
     refute text =~ "Deploy to prod now."
   end
 
-  test "reads at most 16 KB in all, cutting between characters, and says where it stopped" do
-    spec = spec(org(), ["one.md", "two.md", "three.md"])
-    write(own(spec), "one.md", String.duplicate("a", 10_241))
-    write(own(spec), "two.md", String.duplicate("é", 5_120))
-    write(own(spec), "three.md", "Never shown.")
+  test "reads small files whole, and shares what they leave evenly among the longer" do
+    spec = spec(org(), ["SOUL.md", "one.md", "two.md"])
+    write(own(spec), "SOUL.md", "You are careful.")
+    write(own(spec), "one.md", String.duplicate("a", 20_000))
+    write(own(spec), "two.md", String.duplicate("b", 20_000))
 
     text = Context.text(spec)
 
-    assert text =~ ~s(<file path="one.md")
-    assert [_whole, shown] = Regex.run(~r/shown="the first (\d+) of 10240 bytes/, text)
-    assert String.to_integer(shown) == 16 * 1024 - 10_241 - 1
-    assert String.valid?(text)
-    assert text =~ "three.md (version "
-    assert text =~ "is past the 16384 bytes read into each turn; read_file reads it."
-    refute text =~ "Never shown."
+    assert text =~ ~r{<file path="SOUL.md" version="[0-9a-f]+">\nYou are careful.\n</file>}
+
+    shares =
+      for [_whole, first, last] <-
+            Regex.scan(~r/shown="its first (\d+) and last (\d+) of 20000 bytes"/, text),
+          do: String.to_integer(first) + String.to_integer(last)
+
+    assert [one, two] = shares
+    assert one == two
+    assert one == div(16 * 1024 - byte_size("You are careful."), 2)
+  end
+
+  test "keeps the start and end of a file too long for its share, cut between lines" do
+    spec = spec(org(), ["MEMORY.md"])
+    notes = Enum.map_join(1..3_000, "", &"- note #{&1}\n")
+    write(own(spec), "MEMORY.md", notes)
+
+    text = Context.text(spec)
+
+    assert text =~ "- note 1\n- note 2\n"
+    assert text =~ "- note 3000\n</file>"
+    refute text =~ "- note 1500\n"
+
+    assert [_whole, left_out] =
+             Regex.run(~r/\[(\d+) bytes are left out here; read_file reads them\]/, text)
+
+    assert String.to_integer(left_out) > 0
+    refute text =~ ~r/\n[^\n-][^\n]*note/
+  end
+
+  test "cuts between characters where a file has no lines to cut between" do
+    spec = spec(org(), ["wide.md"])
+    write(own(spec), "wide.md", String.duplicate("é", 20_000))
+
+    assert String.valid?(Context.text(spec))
+  end
+
+  test "asks the agent to make its own files shorter, and not the files it shares" do
+    org = org()
+    spec = spec(org, ["MEMORY.md", "shared/team/LOG.md"], %{"team" => org})
+    write(own(spec), "MEMORY.md", String.duplicate("mine\n", 5_000))
+    write("shared/" <> org, "LOG.md", String.duplicate("ours\n", 5_000))
+
+    text = Context.text(spec)
+
+    assert text =~
+             "MEMORY.md is longer than what is read of it into each turn. Rewrite it shorter"
+
+    refute text =~ "shared/team/LOG.md is longer"
+    assert text =~ ~s(<file path="shared/team/LOG.md")
+  end
+
+  test "reads as much as the spec's budget says" do
+    spec = spec(org(), ["MEMORY.md"])
+    {:ok, spec} = Spec.context_bytes(spec, 1024)
+    write(own(spec), "MEMORY.md", String.duplicate("x\n", 1_000))
+
+    assert [_whole, first, last] =
+             Regex.run(
+               ~r/shown="its first (\d+) and last (\d+) of 2000 bytes"/,
+               Context.text(spec)
+             )
+
+    assert String.to_integer(first) + String.to_integer(last) <= 1024
   end
 
   test "names only plain names, and counts the others" do

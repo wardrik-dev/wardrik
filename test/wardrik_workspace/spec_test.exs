@@ -94,6 +94,16 @@ defmodule WardrikWorkspace.SpecTest do
       assert {:error, "context: 7 is not a path"} = Spec.context(spec, [7])
     end
 
+    test "reads 16 KB of them into each turn unless context_bytes/2 says", %{spec: spec} do
+      assert spec.context_bytes == 16 * 1024
+      assert {:ok, %Spec{context_bytes: 65_536}} = Spec.context_bytes(spec, 65_536)
+
+      for bytes <- [1023, 256 * 1024 + 1, "64KB", nil] do
+        assert {:error, "context max_bytes is a number of bytes from 1024 to 262144"} =
+                 Spec.context_bytes(spec, bytes)
+      end
+    end
+
     test "is a list of at most twenty files", %{spec: spec} do
       assert {:error, "context is a list of files"} = Spec.context(spec, "SOUL.md")
 

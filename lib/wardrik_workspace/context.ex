@@ -3,9 +3,9 @@ defmodule WardrikWorkspace.Context do
   What a workspace tells its agent as each turn begins, which
   `WardrikWorkspace` gives the turn through `c:Wardrik.Tool.context/1`:
 
-    * the files `WardrikWorkspace.Spec.context/2` names, whole and in the
-      order named, up to 16 KB in all, each with the version `write_file` and
-      `edit_file` change it over;
+    * the files `WardrikWorkspace.Spec.context/2` names, in the order named,
+      within the spec's budget, 16 KB unless set otherwise, each with the
+      version `write_file` and `edit_file` change it over;
     * the ones it names that are not written yet, so the agent can write them;
     * the names of the other files and folders at the top of its own tree, so
       a `MEMORY.md` that grows is found without filling the context;
@@ -16,11 +16,25 @@ defmodule WardrikWorkspace.Context do
       tools: [files]
       context: [SOUL.md, shared/team/CONVENTIONS.md]
 
-  A file read in whole that a run which had read content from outside wrote
-  taints the turn from its start, as reading it with `read_file` would. The
-  names of the others are listed without reading them, and a name is listed
-  only where it is plain, letters, digits, `.`, `-` and `_`, since a name is
-  text a run chose too. The rest are counted, and `list_files` names them.
+  ## The budget
+
+  A file that fits its share of the budget is read whole, and what the
+  smaller files leave is shared evenly among the larger, so one long file
+  never keeps the others out. A file longer than its share is read from its
+  start and from its end, between lines where it can be, and what is left out
+  between them is said: a file kept by appending to it keeps its newest lines
+  in view. A file of the agent's own tree that is cut is named with a request
+  to rewrite it shorter, so memory the agent keeps stays within what it reads
+  each turn.
+
+  ## Outside content
+
+  A file read in part or whole that a run which had read content from
+  outside wrote taints the turn from its start, as reading it with
+  `read_file` would. The names of the others are listed without reading them,
+  and a name is listed only where it is plain, letters, digits, `.`, `-` and
+  `_`, since a name is text a run chose too. The rest are counted, and
+  `list_files` names them.
   """
 
   alias WardrikWorkspace.File
@@ -28,7 +42,6 @@ defmodule WardrikWorkspace.Context do
   alias WardrikWorkspace.Spec
   alias WardrikWorkspace.Tools
 
-  @max_bytes 16 * 1024
   @max_names 50
   @plain ~r{\A[A-Za-z0-9._-]+/?\z}
 
@@ -46,7 +59,14 @@ defmodule WardrikWorkspace.Context do
 
     sections =
       Enum.reject(
-        [files(read), unwritten(read), unreadable(read), listing(spec), shared(spec)],
+        [
+          files(read),
+          crowded(read),
+          unwritten(read),
+          unreadable(read),
+          listing(spec),
+          shared(spec)
+        ],
         &is_nil/1
       )
 
@@ -57,69 +77,146 @@ defmodule WardrikWorkspace.Context do
   end
 
   defp told(text, read) do
-    if Enum.any?(read, &(&1.state == :read and &1.tainted)), do: {:outside, text}, else: text
+    if Enum.any?(read, &(&1.state in [:whole, :cut] and &1.tainted)),
+      do: {:outside, text},
+      else: text
   end
 
-  # Each file `context` names, read while the budget lasts.
+  # Each file `context` names, with as much of it as its share of the budget
+  # holds.
   defp read(%Spec{} = spec) do
-    {read, _left} = Enum.map_reduce(spec.context, @max_bytes, &read(spec, &1, &2))
-    read
+    found = Enum.map(spec.context, &found(spec, &1))
+    shares = shares(found, spec.context_bytes)
+    Enum.map(found, &shown(&1, shares))
   end
 
-  defp read(spec, path, left) do
+  defp found(spec, path) do
     {:ok, mount, rest} = Spec.resolve(spec, path)
 
     case mount.backend.read(mount.tree, rest) do
-      {:ok, %File{} = file, version} -> shown(path, file, version, left)
-      :none -> {%{path: path, state: :unwritten}, left}
-      {:error, reason} -> {%{path: path, state: :unreadable, reason: reason}, left}
+      {:ok, %File{} = file, version} -> %{path: path, state: :found, file: file, version: version}
+      :none -> %{path: path, state: :unwritten}
+      {:error, reason} -> %{path: path, state: :unreadable, reason: reason}
     end
   end
 
-  defp shown(path, file, version, left) do
-    shown = cut(file.content, left)
+  # The smallest files first: each takes what it needs up to an even share of
+  # what is left, so what a short file does not use goes to the longer ones.
+  defp shares(found, budget) do
+    sized =
+      for %{state: :found, path: path, file: file} <- found,
+          do: {path, byte_size(file.content)}
 
-    read = %{
-      path: path,
-      state: if(shown == "" and file.content != "", do: :past, else: :read),
-      shown: shown,
-      size: byte_size(file.content),
-      version: Tools.version(version),
+    {shares, _left, _count} =
+      sized
+      |> Enum.sort_by(&elem(&1, 1))
+      |> Enum.reduce({%{}, budget, length(sized)}, fn {path, size}, {shares, left, count} ->
+        take = min(size, div(left, count))
+        {Map.put(shares, path, take), left - take, count - 1}
+      end)
+
+    shares
+  end
+
+  defp shown(%{state: :found, file: file} = found, shares) do
+    size = byte_size(file.content)
+    share = Map.fetch!(shares, found.path)
+
+    base = %{
+      path: found.path,
+      size: size,
+      version: Tools.version(found.version),
       tainted: file.tainted
     }
 
-    # A file cut short spends the budget, the bytes a cut left between two
-    # characters included.
-    {read, if(byte_size(shown) < read.size, do: 0, else: left - read.size)}
+    if size <= share do
+      Map.merge(base, %{state: :whole, content: file.content})
+    else
+      head = head(file.content, div(share, 2))
+      tail = tail(file.content, share - byte_size(head))
+      Map.merge(base, %{state: :cut, head: head, tail: tail})
+    end
   end
 
-  defp cut(content, left) when byte_size(content) <= left, do: content
-  defp cut(content, left), do: whole_characters(binary_part(content, 0, left))
+  defp shown(other, _shares), do: other
 
-  # A cut inside a character keeps the characters before it.
-  defp whole_characters(text) do
-    if String.valid?(text),
-      do: text,
-      else: whole_characters(binary_part(text, 0, byte_size(text) - 1))
+  # The start of `content` in at most `bytes`, ending where a line ends within
+  # them, and between characters where none does.
+  defp head(content, bytes) do
+    part = whole_characters(binary_part(content, 0, bytes), :trailing)
+
+    case :binary.matches(part, "\n") do
+      [] -> part
+      lines -> binary_part(part, 0, elem(List.last(lines), 0) + 1)
+    end
+  end
+
+  # The end of `content` in at most `bytes`, beginning where a line begins
+  # within them.
+  defp tail(content, bytes) do
+    part = whole_characters(binary_part(content, byte_size(content), -bytes), :leading)
+
+    case :binary.match(part, "\n") do
+      :nomatch -> part
+      {at, 1} -> binary_part(part, at + 1, byte_size(part) - at - 1)
+    end
+  end
+
+  # A cut inside a character keeps the characters on the kept side of it.
+  defp whole_characters(text, side) do
+    cond do
+      String.valid?(text) -> text
+      side == :trailing -> whole_characters(binary_part(text, 0, byte_size(text) - 1), side)
+      true -> whole_characters(binary_part(text, 1, byte_size(text) - 1), side)
+    end
   end
 
   defp files(read) do
-    case for(%{state: state} = file when state in [:read, :past] <- read, do: file(file)) do
+    case for(%{state: state} = file when state in [:whole, :cut] <- read, do: file(file)) do
       [] -> nil
       files -> Enum.join(files, "\n\n")
     end
   end
 
-  defp file(%{state: :past} = file),
-    do:
-      "#{file.path} (version #{file.version}, #{file.size} bytes) is past the #{@max_bytes} bytes read into each turn; read_file reads it."
+  defp file(%{state: :whole} = file),
+    do: ~s(<file path="#{file.path}" version="#{file.version}">\n) <> closed(file.content)
 
-  defp file(%{shown: shown, size: size} = file) when byte_size(shown) < size,
-    do:
-      ~s(<file path="#{file.path}" version="#{file.version}" shown="the first #{byte_size(shown)} of #{size} bytes; read_file reads the rest">\n#{shown}\n</file>)
+  defp file(%{state: :cut, head: head, tail: tail} = file) do
+    left_out = file.size - byte_size(head) - byte_size(tail)
 
-  defp file(file),
-    do: ~s(<file path="#{file.path}" version="#{file.version}">\n#{file.shown}\n</file>)
+    IO.iodata_to_binary([
+      ~s(<file path="#{file.path}" version="#{file.version}" ),
+      ~s(shown="its first #{byte_size(head)} and last #{byte_size(tail)} of #{file.size} bytes">\n),
+      head,
+      "\n[#{left_out} bytes are left out here; read_file reads them]\n\n",
+      closed(tail)
+    ])
+  end
+
+  # What a file holds, and the tag that closes it on a line of its own.
+  defp closed(text) do
+    if String.ends_with?(text, "\n"), do: text <> "</file>", else: text <> "\n</file>"
+  end
+
+  # The files of the agent's own tree read in part, which it can make fit.
+  defp crowded(read) do
+    case for(%{state: :cut, path: path} <- read, not shared?(path), do: path) do
+      [] ->
+        nil
+
+      [path] ->
+        "#{path} is longer than what is read of it into each turn. #{shorter("it")}"
+
+      paths ->
+        "#{Enum.join(paths, ", ")} are longer than what is read of them into each turn. #{shorter("them")}"
+    end
+  end
+
+  defp shared?(path), do: String.starts_with?(path, "shared/")
+
+  defp shorter(them),
+    do:
+      "Rewrite #{them} shorter: fold what is older into a summary, and keep what is only a record in files of their own, by date, which are named here rather than read."
 
   defp unwritten(read) do
     case for(%{state: :unwritten, path: path} <- read, do: path) do
@@ -136,7 +233,7 @@ defmodule WardrikWorkspace.Context do
   end
 
   # The files and folders at the top of the agent's own tree, but for those
-  # read in whole above.
+  # read above.
   defp listing(%Spec{tree: %Mount{} = mount, context: context}) do
     case mount.backend.paths(mount.tree, "") do
       {:ok, paths} -> paths |> Enum.map(&top/1) |> Enum.uniq() |> Kernel.--(context) |> names()
@@ -180,6 +277,5 @@ defmodule WardrikWorkspace.Context do
     do: "Shared with you: #{Enum.map_join(shared, ", ", &mount/1)}."
 
   defp mount(%Mount{mode: :read} = mount), do: Mount.root(mount) <> " (read only)"
-
   defp mount(%Mount{} = mount), do: Mount.root(mount)
 end

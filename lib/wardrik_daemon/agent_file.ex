@@ -69,16 +69,23 @@ defmodule WardrikDaemon.AgentFile do
   does not read.
 
   As each turn begins the agent is told what its workspace holds: the files
-  `context` names, read in whole up to 16 KB in all, and the names of the
-  others at the top of its tree, which it reads when it needs them. So a
-  `MEMORY.md` it keeps is there to find in every turn without filling the
-  context:
+  `context` names, up to 16 KB of them in all, and the names of the others at
+  the top of its tree, which it reads when it needs them. So a `MEMORY.md` it
+  keeps is there to find in every turn without filling the context:
 
       tools: [files]
       context: [SOUL.md, shared/team/CONVENTIONS.md]
 
-  A file read in whole that a turn which had read content from outside wrote
-  makes the turn tainted from its start. See `WardrikWorkspace.Context`.
+  A file longer than its share is read from its start and its end, and the
+  agent is asked to make one of its own shorter. `max_bytes` reads more or
+  less of them into each turn, from 1,024 to 262,144 bytes:
+
+      context:
+        files: [SOUL.md, MEMORY.md]
+        max_bytes: 65536
+
+  A file read into the turn that a turn which had read content from outside
+  wrote makes it tainted from its start. See `WardrikWorkspace.Context`.
 
   ## Policy
 
@@ -358,13 +365,30 @@ defmodule WardrikDaemon.AgentFile do
       [key | _rest] -> invalid!("workspace.#{key} is not a setting; expected shared")
     end
 
+    {files, bytes} = context!(Map.get(fields, "context", []))
+
     with {:ok, spec} <- workspace!(key, workspace),
-         {:ok, spec} <- WardrikWorkspace.Spec.context(spec, Map.get(fields, "context", [])) do
+         {:ok, spec} <- WardrikWorkspace.Spec.context(spec, files),
+         {:ok, spec} <- budget(spec, bytes) do
       {WardrikWorkspace, spec}
     else
       {:error, message} -> invalid!(message)
     end
   end
+
+  # `context` is the files, or the files with how much of them each turn may
+  # read.
+  defp context!(%{} = context) do
+    case Map.keys(context) -- ["files", "max_bytes"] do
+      [] -> {Map.get(context, "files", []), Map.get(context, "max_bytes")}
+      [key | _rest] -> invalid!("context.#{key} is not a setting; expected files or max_bytes")
+    end
+  end
+
+  defp context!(files), do: {files, nil}
+
+  defp budget(spec, nil), do: {:ok, spec}
+  defp budget(spec, bytes), do: WardrikWorkspace.Spec.context_bytes(spec, bytes)
 
   defp workspace!(key, workspace) do
     case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{}) do
