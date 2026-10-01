@@ -22,6 +22,8 @@ defmodule WardrikDaemon.SSH do
 
   Nothing else in the daemon names the TUI, so a build without it names no
   entrypoint and serves nothing, and says so where keys are there to let in.
+  `termite_ssh`, which listens, is an optional dependency like the TUI's own:
+  the Hex package leaves the TUI out, and the release carries both.
 
   `config.yaml` moves it:
 
@@ -38,6 +40,10 @@ defmodule WardrikDaemon.SSH do
   use GenServer
 
   require Logger
+
+  # Only reached where an entrypoint is named, which a build with the TUI,
+  # and so with termite_ssh and the :ssh it brings, does.
+  @compile {:no_warn_undefined, [Termite.SSH, :ssh_file]}
 
   @host_key "ssh_host_rsa_key"
 

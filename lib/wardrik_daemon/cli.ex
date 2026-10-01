@@ -24,6 +24,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Agents
   alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.CLI.Completion
   alias WardrikDaemon.CLI.Decisions
   alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Terminal
@@ -111,7 +112,18 @@ defmodule WardrikDaemon.CLI do
       %Command{name: "logs", summary: "follow the daemon's log"},
       %Command{name: "pid", summary: "the daemon's process id"},
       %Command{name: "version", summary: "print the version"},
-      %Command{name: "help", arguments: "[COMMAND]", summary: "every command, or one in full"}
+      %Command{name: "help", arguments: "[COMMAND]", summary: "every command, or one in full"},
+      %Command{
+        name: "completion",
+        arguments: "SHELL",
+        summary: "completion for bash, zsh or fish, to install",
+        details: [
+          "It completes commands, options, and the keys and calls of the agents running.",
+          "  wardrik completion bash > ~/.local/share/bash-completion/completions/wardrik",
+          "  wardrik completion zsh > \"${fpath[1]}/_wardrik\"",
+          "  wardrik completion fish > ~/.config/fish/completions/wardrik.fish"
+        ]
+      }
     ]
   end
 
@@ -177,6 +189,9 @@ defmodule WardrikDaemon.CLI do
     dispatch({%{terminal | live?: true}, args})
   end
 
+  # What a shell completing a word asks, which nothing else may answer.
+  defp dispatch({_terminal, ["__complete" | words]}), do: complete(words, running())
+
   defp dispatch({terminal, args}) do
     case Cluster.waiting() do
       nil -> run(terminal, args)
@@ -240,15 +255,29 @@ defmodule WardrikDaemon.CLI do
   @spec offline([String.t()]) :: no_return()
   def offline(args) do
     {terminal, args} = Terminal.read(args)
+    System.halt(print_offline(args, terminal))
+  end
 
+  @doc """
+  Prints what `offline/1` prints for `args`, and answers the status it exits
+  with: what can follow the words a shell is completing, or `unanswered/2`'s
+  answer, to standard output where it is help and to standard error where not.
+  """
+  @spec print_offline([String.t()], Terminal.t()) :: 0 | 1
+  def print_offline(["__complete" | words], _terminal) do
+    complete(words, %{keys: fn -> [] end, calls: fn _key -> [] end})
+    0
+  end
+
+  def print_offline(args, terminal) do
     case unanswered(args, terminal) do
       {:ok, text} ->
         Terminal.puts(terminal, text)
-        System.halt(0)
+        0
 
       {:error, text} ->
         Terminal.puts(terminal, text, :stderr)
-        System.halt(1)
+        1
     end
   end
 
@@ -260,6 +289,15 @@ defmodule WardrikDaemon.CLI do
   @spec unanswered([String.t()], Terminal.t()) :: {:ok | :error, Owl.Data.t()}
   def unanswered(["help" | args], terminal), do: help(args -- ["-h", "--help"], terminal)
   def unanswered([], terminal), do: help([], terminal)
+
+  def unanswered(["completion", shell], _terminal) do
+    if shell in Completion.shells(),
+      do: {:ok, Completion.script(shell)},
+      else: {:error, "wardrik completion writes for #{Enum.join(Completion.shells(), ", ")}"}
+  end
+
+  def unanswered(["completion" | _words], _terminal),
+    do: {:error, Command.usage(Enum.find(commands(), &(&1.name == "completion")))}
 
   def unanswered(args, _terminal) do
     case Command.find(commands(), args) do
@@ -302,6 +340,27 @@ defmodule WardrikDaemon.CLI do
 
   defp unknown({:unknown, word, nearest}),
     do: ["wardrik: no command ", word, "; did you mean ", or_list(nearest), "?"]
+
+  # The words that can follow, a line each, and nothing where none can.
+  defp complete(words, known) do
+    case Completion.candidates(words, commands(), known) do
+      [] -> :ok
+      candidates -> IO.puts(Enum.join(candidates, "\n"))
+    end
+  end
+
+  # What a running daemon knows to complete: its agents, and what each waits on.
+  defp running do
+    %{
+      keys: fn -> Enum.map(Fleet.list(), & &1.key) end,
+      calls: fn key ->
+        case Agent.parked(key) do
+          calls when is_list(calls) -> Enum.map(calls, &elem(&1, 0).id)
+          {:error, :not_found} -> []
+        end
+      end
+    }
+  end
 
   defp or_list([only]), do: only
 

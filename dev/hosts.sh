@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
-# Makes new applications that depend on Wardrik from this checkout, and checks
-# Wardrik inside each: a Phoenix app that keeps it in its own Repo and starts
-# it in its own tree, and a bare Mix app that keeps it in an S3 bucket.
-# Neither depends on :ekv, and the bare one not on :ecto_sql either, so each
-# shows Wardrik compiling and running without what it leaves out.
+# Builds Wardrik's Hex package from this checkout, as mix hex.build has it,
+# without the TUI, and compiles it alone without its optional dependencies,
+# warnings and all. Then makes new applications that depend on that package,
+# and checks Wardrik inside each: a Phoenix app that keeps it in its own Repo
+# and starts it in its own tree, and a bare Mix app that keeps it in an S3
+# bucket. Neither depends on :ekv, and the bare one not on :ecto_sql either,
+# so each shows Wardrik compiling and running without what it leaves out.
 #
 #   dev/services.sh && dev/hosts.sh     both
 #   dev/hosts.sh phoenix                one of them: phoenix or bare
@@ -35,7 +37,7 @@ export WARDRIK_TEST_S3_BUCKET=${WARDRIK_TEST_S3_BUCKET:-wardrik-test}
 # phx_new goes in an archives directory of this run's own, not the user's.
 export MIX_ARCHIVES="$dir/archives"
 export MIX_ENV=dev
-export WARDRIK_REPO=$repo
+export WARDRIK_PACKAGE=$dir/wardrik
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'hosts: %s\n' "$*" >&2; exit 1; }
@@ -47,6 +49,16 @@ quietly() {
   log=$(mktemp)
   "$@" >"$log" 2>&1 || { cat "$log" >&2; rm -f "$log"; die "$* failed"; }
   rm -f "$log"
+}
+
+package() {
+  say "Building Wardrik's Hex package, and compiling it without its optional dependencies"
+  rm -rf "$WARDRIK_PACKAGE"
+  (cd "$repo" && quietly mix hex.build --unpack --output "$WARDRIK_PACKAGE")
+  cd "$WARDRIK_PACKAGE"
+  quietly mix deps.get
+  quietly env MIX_ENV=prod mix compile --no-optional-deps --warnings-as-errors
+  cd "$repo"
 }
 
 check() {
@@ -66,7 +78,7 @@ phoenix() {
     --no-live --no-mailer --no-install >/dev/null)
 
   cd "$dir/host"
-  perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_REPO}"},\n      $1/' mix.exs
+  perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_PACKAGE}"},\n      $1/' mix.exs
   perl -0pi -e 's/(      Host\.Repo,\n)/$1      Wardrik,\n/' lib/host/application.ex
   grep -q '^      Wardrik,$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
 
@@ -110,7 +122,7 @@ bare() {
   (cd "$dir" && mix new bare >/dev/null)
 
   cd "$dir/bare"
-  perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_REPO}"},/' mix.exs
+  perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_PACKAGE}"},/' mix.exs
   mkdir -p config
   cat >config/config.exs <<'EOF'
 import Config
@@ -135,6 +147,8 @@ EOF
 
   WARDRIK_HOST_STORE=WardrikS3.Store WARDRIK_HOST_WITHOUT=EKV,Ecto,Postgrex check bare
 }
+
+package
 
 case "${1:-all}" in
   phoenix) phoenix ;;

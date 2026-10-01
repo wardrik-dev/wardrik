@@ -45,10 +45,15 @@ defmodule Wardrik.MixProject do
     [Mix.Tasks.Wardrik]
   end
 
+  # The library, without the TUI, which ships in the release alone: its
+  # dependencies are optional, so an app depending on Wardrik compiles
+  # neither. priv/plts is the dialyzer cache, not the package's.
   defp package do
     [
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => @source_url}
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib priv/protocol .formatter.exs mix.exs README.md LICENSE SECURITY.md),
+      exclude_patterns: [~r"^lib/wardrik_tui(/|\.ex$)"]
     ]
   end
 
@@ -85,9 +90,10 @@ defmodule Wardrik.MixProject do
       {:ekv, "~> 0.4.3", optional: true},
 
       # Used by lib/wardrik_tui, not by core. Pinned: pre-1.0. termite_ssh serves
-      # the TUI over SSH, a session per client.
-      {:breeze, "0.5.1"},
-      {:termite_ssh, "~> 0.1.2"},
+      # the TUI over SSH, a session per client. Optional, as the TUI is left out
+      # of the Hex package; the release carries both.
+      {:breeze, "0.5.1", optional: true},
+      {:termite_ssh, "~> 0.1.2", optional: true},
 
       # Used by lib/wardrik_console and lib/wardrik_tui, not by core: styled
       # text, and the tables it lays out, on a terminal.
