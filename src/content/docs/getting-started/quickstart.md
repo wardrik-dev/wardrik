@@ -66,7 +66,9 @@ streams what they do as [events](/reference/events/).
 
 ## Next
 
-- [Agent files](/reference/agent-files/): every key an agent file takes, its tools, policy and
-  schedules.
-- [config.yaml](/reference/config/): MCP servers, notifications, storage and clusters.
-- [Policies](/reference/policies/): what an agent's tool calls may do, and which wait on a person.
+- [Agents](/concepts/agents/): how an agent answers in turns, and where it runs.
+- [Policy and approvals](/concepts/policy/): what an agent's tool calls may do, and which wait on a
+  person.
+- [Connect MCP servers](/guides/mcp/): give agents the tools of the services you use.
+- [Run an agent on a schedule](/guides/schedules/): ask it something on a clock.
+- [Agent files](/reference/agent-files/): every key an agent file takes.

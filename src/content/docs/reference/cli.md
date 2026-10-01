@@ -262,4 +262,10 @@ Completion for bash, zsh or fish, to install.
 wardrik completion SHELL
 ```
 
-It completes commands, options, and the keys and calls of the agents running.   wardrik completion bash > ~/.local/share/bash-completion/completions/wardrik   wardrik completion zsh > "${fpath[1]}/_wardrik"   wardrik completion fish > ~/.config/fish/completions/wardrik.fish
+It completes commands, options, and the keys and calls of the agents running.
+
+```sh
+wardrik completion bash > ~/.local/share/bash-completion/completions/wardrik
+wardrik completion zsh > "${fpath[1]}/_wardrik"
+wardrik completion fish > ~/.config/fish/completions/wardrik.fish
+```
