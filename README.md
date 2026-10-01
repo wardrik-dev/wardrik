@@ -611,7 +611,10 @@ need an engineer.
 ```
 
 The daemon starts one agent per file when it boots, and `wardrik reload` gives
-each running agent what its file says now without losing what it has said.
+each running agent what its file says now without losing what it has said, and
+removes the agent of a file that is gone. An agent defined over the HTTP API
+is never touched by reading the files, and one a file declares is changed only
+through its file.
 An agent has only the tools its file lists; `linear/*` is every tool of the
 server `config.yaml` calls `linear`, and `*` is everything it can reach. A file
 that does not read is listed by `wardrik status`, and the others run regardless.

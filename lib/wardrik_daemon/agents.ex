@@ -14,15 +14,25 @@ defmodule WardrikDaemon.Agents do
   A file that does not read, or whose agent does not start, is reported by
   `files/0`, and by `wardrik status`, and every other file is read as if it were
   not there. An agent already running for it is left as it was, and an agent
-  naming a policy that does not read does not read either. Removing a file
-  stops nothing; `Wardrik.Fleet.forget/1` removes an agent and what it said.
+  naming a policy that does not read does not read either.
+
+  ## Agents the files no longer declare
+
+  The keys the agent files declare, and the name of the file each came from,
+  are kept in the store as the files' inventory. A key in the inventory that no file
+  declares any more, because its file was removed or now names another
+  agent, is the agent of a file that is gone: it is removed, with its
+  conversation and schedules, and leaves the inventory. A file that does not
+  read keeps its keys there, so its agent is left as it was. An agent the
+  HTTP API defined is in no inventory, and reading the files never touches
+  it.
 
   It is also the daemon's `WardrikHTTP.Definition`. `put/2` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.definition/3`, under the
   policies it last read, and keeps none; an agent defined that way has no
   file, so `files/0` and `reload/0` leave it out. A key an agent file
-  declares belongs to the file: `put/2` and `delete/1` refuse it with a
-  conflict.
+  declares belongs to the file: `put/2`, `delete/1` and `editable/1` refuse
+  it with a conflict, so the API changes neither it nor its schedules.
   """
 
   @behaviour WardrikHTTP.Definition
@@ -33,8 +43,11 @@ defmodule WardrikDaemon.Agents do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.Fleet
+  alias Wardrik.Store
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.PolicyFile
+
+  @inventory :declared
 
   @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
@@ -76,6 +89,15 @@ defmodule WardrikDaemon.Agents do
     case GenServer.call(__MODULE__, {:owner, key}) do
       {:file, path} -> declared(key, path)
       {:api, _policies} -> {:error, :not_found}
+    end
+  end
+
+  @doc "`:ok` where the HTTP API may change the agent under `key`, or a conflict where a file declares it."
+  @impl WardrikHTTP.Definition
+  def editable(key) do
+    case GenServer.call(__MODULE__, {:owner, key}) do
+      {:file, path} -> declared(key, path)
+      {:api, _policies} -> :ok
     end
   end
 
@@ -130,6 +152,7 @@ defmodule WardrikDaemon.Agents do
     {policy_files, read} = read_files(dir)
     loaded = for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
     agent_files = for {path, result} <- loaded, do: {path, spec_only(result)}
+    prune(agent_files)
 
     :ok =
       WardrikNotify.put_routes(
@@ -164,6 +187,26 @@ defmodule WardrikDaemon.Agents do
       end)
 
     files
+  end
+
+  # The keys the files declare now, and those of files that do not read,
+  # become the inventory; every other key the inventory held is an agent
+  # whose file is gone.
+  # A file is named by its name alone, so the nodes of a cluster on several
+  # machines, each reading its own copy of the files, agree.
+  defp prune(agent_files) do
+    unread =
+      for {path, {:error, _message}} <- agent_files, into: MapSet.new(), do: Path.basename(path)
+
+    declared =
+      for {path, {:ok, spec}} <- agent_files, into: %{}, do: {Spec.key(spec), Path.basename(path)}
+
+    previous = Store.get(@inventory, "agents") || %{}
+    {kept, gone} = Map.split_with(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
+
+    for {key, _path} <- gone, not Map.has_key?(declared, key), do: :ok = Fleet.forget(key)
+
+    {:ok, _vsn} = Store.put(@inventory, "agents", Map.merge(kept, declared))
   end
 
   defp spec_only({:ok, spec, _route}), do: {:ok, spec}

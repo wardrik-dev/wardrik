@@ -1,7 +1,7 @@
 defmodule WardrikHTTP.Definition do
   @moduledoc """
   Where the HTTP API's agent definitions go: the body of
-  `PUT /v1/agents/{org}/{user}/{name}`, as
+  `PUT /v1/agents/{key}`, as
   `priv/protocol/v1/agent_definition.json` describes it, read into the
   `Wardrik.Agent.Spec` it writes.
 
@@ -14,9 +14,10 @@ defmodule WardrikHTTP.Definition do
 
   | Callback | Route | Without it |
   | --- | --- | --- |
-  | `put/2` | `PUT /v1/agents/{org}/{user}/{name}` | the listener has no module, and the route answers `501` |
-  | `get/1` | `GET /v1/agents/{org}/{user}/{name}/definition` | `501` |
-  | `delete/1` | `DELETE /v1/agents/{org}/{user}/{name}` | `501` |
+  | `put/2` | `PUT /v1/agents/{key}` | the listener has no module, and the route answers `501` |
+  | `get/1` | `GET /v1/agents/{key}/definition` | `501` |
+  | `delete/1` | `DELETE /v1/agents/{key}` | `501` |
+  | `editable/1` | `PUT` and `DELETE /v1/agents/{key}/schedules/{schedule}` | every agent's schedules may be changed |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps none, and refuses the keys its agent files declare. A
@@ -49,5 +50,12 @@ defmodule WardrikHTTP.Definition do
   @callback delete(key :: String.t()) ::
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
-  @optional_callbacks get: 1, delete: 1
+  @doc """
+  Whether the API may change the agent under `key` other than by defining
+  it, as its schedules: `:ok`, or `{:error, :conflict, message}` where
+  something else declares the agent, which answers `409`.
+  """
+  @callback editable(key :: String.t()) :: :ok | {:error, :conflict, String.t()}
+
+  @optional_callbacks get: 1, delete: 1, editable: 1
 end
