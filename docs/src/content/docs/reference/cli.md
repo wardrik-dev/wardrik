@@ -16,6 +16,16 @@ of its nodes a command is for. serve, start, stop, remote, logs, pid, doctor
 and service need one when this install runs several; every other command asks
 whichever node answers, since each speaks for the whole cluster.
 
+## wardrik init
+
+Set up a first agent, its model and key, and the daemon to run it.
+
+```sh
+wardrik init [--provider P] [--model M] [--agent NAME] [--key-from-env VAR] [--yes] [--no-service] [--no-ask]
+```
+
+It asks what it needs, says what it does, and writes no file that is there already. Without a terminal, --provider, --model, --agent and --key-from-env VAR answer, and --yes says yes. --no-service starts the daemon without systemd, and --no-ask asks the agent nothing.
+
 ## wardrik serve
 
 Run the daemon here, logging to the terminal.

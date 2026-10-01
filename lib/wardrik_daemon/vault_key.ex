@@ -21,6 +21,23 @@ defmodule WardrikDaemon.VaultKey do
 
   alias WardrikDaemon.Config
 
+  @doc """
+  What making a key means, a line each, for a command that asks whether to:
+  where it is kept, and the ways to give the vault a key instead.
+  """
+  @spec about() :: [String.t()]
+  def about do
+    file = file()
+
+    [
+      "It is kept in #{file}, beside the store; anyone who can read both can read the secrets.",
+      "To make your own instead: openssl rand -base64 32 > #{file}",
+      "To set one instead: WARDRIK_VAULT_KEY in the daemon's environment " <>
+        "(#{Path.join(Config.config_dir(), "env")} for the service, -e in Docker), " <>
+        "or vault.keys in config.yaml, then restart."
+    ]
+  end
+
   @doc "Where the key is kept, in the data home `data_dir`."
   @spec file(Path.t()) :: Path.t()
   def file(data_dir \\ Config.data_dir()), do: Path.join(data_dir, "vault_key")

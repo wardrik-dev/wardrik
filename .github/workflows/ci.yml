@@ -285,12 +285,14 @@ jobs:
       - name: Run it as a service
         run: dev/service.sh "${{ steps.tarball.outputs.name }}"
 
-      # Started with nothing mounted, as docker run first starts it: the API
-      # answers on the port it is run with, refuses a request without a token,
-      # and still knows a token after a restart, which the volume kept.
+      # Started on named volumes, as the README runs it: the API answers on the
+      # port it is run with, refuses a request without a token, and still knows
+      # a token after a restart, which the volume kept. wardrik init writes a
+      # first agent into the config volume and seals its key, with no terminal.
       - name: Boot the image
         run: |
-          docker run -d --name wardrik -p 127.0.0.1:4747:4747 wardrik:ci
+          docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
+            -v wardrik-config:/config -v wardrik:/data wardrik:ci
           trap 'docker logs wardrik 2>&1 | tail -n 40' ERR
 
           code() { curl -s -o /dev/null -w '%{http_code}' "$@" http://127.0.0.1:4747/v1/agents; }
@@ -308,6 +310,11 @@ jobs:
           up
           docker exec wardrik wardrik status
           test "$(code)" = 401
+
+          docker exec -e CI_KEY=sk-ant-ci wardrik wardrik init --provider anthropic \
+            --key-from-env CI_KEY --yes --no-ask --no-service
+          docker exec wardrik wardrik ls | grep -q default/assistant
+          docker exec wardrik wardrik vault ls | grep -q ANTHROPIC_API_KEY
 
           token=$(docker exec wardrik wardrik token create ci --all --unlimited | head -n 1)
           echo "::add-mask::$token"

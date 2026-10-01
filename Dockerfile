@@ -60,9 +60,10 @@ RUN useradd --create-home --uid 1000 --user-group wardrik \
 COPY --from=build /src/_build/prod/rel/wardrikd /opt/wardrik
 RUN ln -s wardrik /opt/wardrik/bin/rik
 
-# /config is what a person writes: config.yaml, agents/ and policies/, mounted
-# read-only if they like. /data is what the daemon keeps: the store, unless
-# config.yaml names one elsewhere, the cookie and the SSH host key. The HTTP
+# /config is what a person writes: config.yaml, agents/ and policies/, and
+# what wardrik init writes for them, so a volume of its own, writable by the
+# image's user. /data is what the daemon keeps: the store, unless config.yaml
+# names one elsewhere, the cookie, the SSH host key and the vault's key. The HTTP
 # API and the TUI listen on every interface of the container, since only the
 # ports it is run with reach them; config.yaml's http.ip and ssh.ip still win.
 ENV PATH=/opt/wardrik/bin:$PATH \
@@ -76,7 +77,7 @@ ENV PATH=/opt/wardrik/bin:$PATH \
 
 USER wardrik
 WORKDIR /home/wardrik
-VOLUME /data
+VOLUME /config /data
 EXPOSE 4747 2222
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \

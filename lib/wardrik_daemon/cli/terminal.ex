@@ -61,20 +61,22 @@ defmodule WardrikDaemon.CLI.Terminal do
   command running live where someone can type: the line, or `nil` where
   nothing was typed.
 
-  The VM a live command reads through, the caller's over `bin/wardrikd rpc`,
-  leaves the terminal to echo what is typed, and cannot stop it. So it reads
-  the terminal raw, which echoes nothing, for that one line, and goes back to
-  reading it a line at a time after. Input this node reads itself, as a test
-  captures it, has no terminal to hide it from, and is read as it is.
+  The VM that reads the terminal, the caller's over `bin/wardrikd rpc` or
+  this one for a command run on a VM of its own, leaves the terminal to echo
+  what is typed, and cannot stop it. So it reads the terminal raw, which
+  echoes nothing, for that one line, and goes back to reading it a line at a
+  time after. Input that is no VM's terminal, as a test captures it, is read
+  as it is.
   """
   @spec secret(t(), Owl.Data.t()) :: {:ok, String.t() | nil} | {:error, String.t()}
   def secret(%__MODULE__{} = terminal, prompt) do
     prompt = WardrikConsole.Ansi.chardata(prompt, terminal.colour?)
 
-    case node(Process.group_leader()) do
-      reader when reader == node() -> {:ok, typed(IO.gets(prompt))}
-      reader -> hidden(reader, prompt)
-    end
+    reader = node(Process.group_leader())
+
+    if :erpc.call(reader, Process, :whereis, [:user]) == Process.group_leader(),
+      do: hidden(reader, prompt),
+      else: {:ok, typed(IO.gets(prompt))}
   end
 
   defp hidden(reader, prompt) do

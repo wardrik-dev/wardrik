@@ -241,17 +241,7 @@ defmodule WardrikDaemon.CLI.Vault do
     if Owl.IO.confirm(message: "Make one?", default: true), do: made(), else: :declined
   end
 
-  defp why_a_key do
-    file = VaultKey.file()
-    env = Path.join(Config.config_dir(), "env")
-
-    [
-      "  It is kept in #{file}, beside the store; anyone who can read both can read the secrets.",
-      "  To make your own instead: openssl rand -base64 32 > #{file}",
-      "  To set one instead: WARDRIK_VAULT_KEY in the daemon's environment (#{env} for the " <>
-        "service, -e in Docker), or vault.keys in config.yaml, then restart."
-    ]
-  end
+  defp why_a_key, do: Enum.map(VaultKey.about(), &("  " <> &1))
 
   defp made do
     with {:ok, file} <- VaultKey.make(),
