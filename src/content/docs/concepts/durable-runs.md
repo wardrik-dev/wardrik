@@ -50,7 +50,7 @@ The daemon gives every agent the ledger, and clears a turn's claims once the tur
 Each call has an idempotency key, the same each time the call runs:
 
 ```
-acme/_/triage/<trace>/<span>/<round>/<call>
+acme/triage/<trace>/<span>/<round>/<call>
 ```
 
 A tool with an effect outside Wardrik passes the key on, so the system it calls does not repeat the

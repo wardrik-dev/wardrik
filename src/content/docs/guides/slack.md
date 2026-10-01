@@ -73,6 +73,23 @@ authorization link to whoever pressed it, and nobody else. See
 
 A turn waiting on several calls sends a notice again when some are decided and others still wait.
 
+## Which orgs a target tells
+
+A target tells the agents of the deployment's [org](/concepts/agents/#keys-and-orgs) unless its
+`org` names others, or `*` for every org:
+
+```yaml
+notify:
+  ops:
+    slack: {channel: "#ops", token: "${SLACK_BOT_TOKEN}"}
+  globex-ops:
+    org: globex
+    slack: {channel: "#globex-ops", token: "${GLOBEX_SLACK_BOT_TOKEN}"}
+```
+
+An agent file that routes to another org's target does not read, so one org's calls never reach
+another's channel, where its people could approve them.
+
 ## Who may press the buttons
 
 `approvers` lists the Slack user IDs that may, and anyone else is told only the channel's approvers
@@ -91,7 +108,7 @@ A `webhook` target is sent each notice as JSON, in a POST:
 ```json
 {
   "event": "turn_parked",
-  "agent": "acme/_/triage",
+  "agent": "acme/triage",
   "at": "2026-10-01T12:04:09.611Z",
   "calls": [
     {

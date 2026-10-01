@@ -10,19 +10,42 @@ It answers one message at a time, keeps what was said, and runs until it is remo
 process for each agent across a cluster, and its state is kept in the store, so when the node it
 runs on is lost it carries on on another.
 
-## Keys
+## Keys and orgs
 
-Every agent has a key, `org/user/name`: who it works for, and its name. A part that is absent is
-`_`, so an agent file with no `org` or `user` is the agent `_/_/triage`, after its name.
+Every agent belongs to an org, and may work for one of its users. Its key says which:
 
-```sh
-wardrik show acme/jon/triage
-wardrik ask _/_/triage "What changed today?"
+| Key | The agent |
+| --- | --- |
+| `acme/triage` | acme's own `triage` |
+| `acme/@jon/triage` | jon's `triage`, in acme |
+
+An org is the boundary between agents. A [token](/operate/security/#tokens) reaches the agents of
+an org, `acme/`, or of one of its users, `acme/@jon/`. A
+[shared tree](/concepts/files-and-memory/#sharing-trees) belongs to an org or a user, and an
+[MCP server](/guides/mcp/#which-orgs-a-server-serves) and a
+[notice target](/guides/slack/#which-orgs-a-target-tells) serve one org unless `config.yaml` says
+others.
+
+The deployment has an org of its own, `default` unless `config.yaml` names another:
+
+```yaml title="~/.config/wardrik/config.yaml"
+org: acme
 ```
 
-Over the HTTP API, each part is a part of the path: `/v1/agents/acme/jon/triage`. A
-[token](/operate/security/#tokens) reaches the agents under a prefix of the key, such as `acme/`,
-and a [shared tree](/concepts/files-and-memory/#sharing-trees) is reachable by the agents under one.
+An agent file that names no `org` is in it, and the CLI finds an agent in it by its name alone, or
+a user's by `@user/name`:
+
+```sh
+wardrik ask triage "What changed today?"      # acme/triage
+wardrik show @jon/triage                      # acme/@jon/triage
+wardrik show globex/triage                    # another org's
+```
+
+Over the HTTP API, the key is the path, always in full: `/v1/agents/acme/@jon/triage`.
+
+An org, a user and a name each hold no `/` or whitespace, and do not begin with `@` or `_`. They
+are in every event's `source`, in store keys and in logs, so a user's should be an id, not an email
+address.
 
 ## Where agents come from
 
@@ -31,13 +54,13 @@ API.
 
 - **A file** is read when the daemon starts, and again with `wardrik reload`, which gives each
   running agent what its file says now. See [Agent files](/reference/agent-files/).
-- **A definition** is sent with `PUT /v1/agents/{org}/{user}/{name}`, by a token that can
+- **A definition** is sent with `PUT /v1/agents/{key}`, by a token that can
   `define`, and takes effect at once. It says less than a file can: no schedules, notices, shared
   trees or `context`. See [Use the HTTP API](/guides/http-api/).
 
 A key a file declares belongs to the file, and the HTTP API refuses to define or remove it.
 Removing the file does not stop the agent; once the file is gone and the files are read again,
-`DELETE /v1/agents/{org}/{user}/{name}` removes it, with its conversation and schedules.
+`DELETE /v1/agents/{key}` removes it, with its conversation and schedules.
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
 carries on as it was.
@@ -65,7 +88,7 @@ A tool call may wait on a person, which parks the turn until it is decided. See
 
 ### Stopping a turn
 
-`POST /v1/agents/{org}/{user}/{name}/cancel`, or `/stop` in the [terminal client](/guides/tui/), stops
+`POST /v1/agents/{key}/cancel`, or `/stop` in the [terminal client](/guides/tui/), stops
 the running turn, drops the messages waiting behind it, and abandons a parked one. A turn that stops
 within two seconds keeps what it said; one that does not is ended, and adds nothing. Stopping a turn
 does not stop the agent, which answers the next message as usual.
@@ -86,11 +109,12 @@ spent. An agent whose last turn failed shows as `idle, last failed`, and `wardri
 ```sh
 wardrik ls                    # every agent
 wardrik ls org:acme triage    # acme's agents with triage in their key
+wardrik ls @jon               # jon's agents
 wardrik ls attention          # the agents waiting on a person
 ```
 
-A query is words that must all match: text in the key, `name:`, `org:` and `user:` (`_` for none),
-`node:`, and `status:idle`, `status:running` or `status:parked`.
+A query is words that must all match: text in the key, `name:`, `org:`, `user:`, `node:`, and
+`status:idle`, `status:running` or `status:parked`.
 
 ## The conversation
 

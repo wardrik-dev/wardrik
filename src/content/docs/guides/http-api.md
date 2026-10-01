@@ -30,12 +30,13 @@ ahead of their own. See [Tokens](/operate/security/#tokens).
 
 ## Define an agent
 
-`PUT` a definition at the agent's key. Each part of the key is a part of the path, with `_` for an
-org or user it has none of:
+`PUT` a definition at the agent's key, which is its path: `acme/triage` for an org's own agent, or
+`acme/@jon/triage` for one that works for a user. Over the HTTP API a key is always written in
+full, with its org:
 
 ```sh
 curl -s -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage \
+  http://127.0.0.1:4747/v1/agents/acme/triage \
   -d '{
     "description": "Watches the incident queue.",
     "instructions": "You watch the incident queue, and say what needs an engineer.",
@@ -61,7 +62,7 @@ time:
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/messages \
+  http://127.0.0.1:4747/v1/agents/acme/triage/messages \
   -d '{"id": "b7c1d0e2-...", "content": "What is on fire?"}'
 ```
 
@@ -75,14 +76,14 @@ written, then `message.completed` and `run.completed`:
 
 ```sh
 curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/events
+  http://127.0.0.1:4747/v1/agents/acme/triage/events
 ```
 
 Open the stream before sending the message, or read the agent's snapshot first and follow from its
 `sequence` with `Last-Event-ID`, so nothing is missed. See
 [The event stream](/concepts/events/#following-over-http).
 
-`GET /v1/agents/acme/_/triage` answers the agent's snapshot: its status, what it is waiting on, its
+`GET /v1/agents/acme/triage` answers the agent's snapshot: its status, what it is waiting on, its
 messages, and the `sequence` it was taken at.
 
 ## Decide what it waits on
@@ -92,11 +93,11 @@ A call that waits on a person arrives as `run.interrupted`, whose `interrupts` e
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/interrupts/call_1 \
+  http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
   -d '{"decision": "approve"}'
 
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/interrupts/call_1 \
+  http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
   -d '{"decision": "reject", "reason": "Not on a Friday."}'
 ```
 
@@ -107,8 +108,8 @@ carries on by itself once they have. See [Connect accounts](/guides/accounts/).
 ## Stop it, and remove it
 
 ```sh
-curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/_/triage/cancel
-curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/_/triage
+curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/triage/cancel
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/triage
 ```
 
 `cancel` stops the running turn, drops the messages waiting behind it, and abandons one waiting on a
@@ -123,7 +124,7 @@ Schedules are put and removed at `/schedules/{name}`; see
 An error answers with its status and a body saying what went wrong:
 
 ```json
-{"error": {"type": "not_found", "message": "No agent runs under acme/_/triage."}}
+{"error": {"type": "not_found", "message": "No agent runs under acme/triage."}}
 ```
 
 | Status | `type` | |
@@ -147,7 +148,7 @@ import { Wardrik } from "@wardrik/sdk";
 
 const wardrik = new Wardrik(); // WARDRIK_URL, else http://127.0.0.1:4747; WARDRIK_TOKEN
 
-const agent = await wardrik.agents.put("acme/_/triage", {
+const agent = await wardrik.agents.put("acme/triage", {
   model: "anthropic:claude-sonnet-5",
   instructions: "You watch the incident queue.",
   tools: ["linear/*"],

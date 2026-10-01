@@ -17,8 +17,8 @@ wardrik status
 ```
 wardrik 0.1.0 on wardrikd@localhost, up 3h 12m
 2 agents
-  _/_/triage  idle  wardrikd@localhost  $0.84 of $5.00 today  next run in 12m
-  acme/_/deploy  parked  wardrikd@localhost
+  default/triage  idle  wardrikd@localhost  $0.84 of $5.00 today  next run in 12m
+  acme/deploy  parked  wardrikd@localhost
 
 1 file does not read:
   /home/me/.config/wardrik/agents/notes.md: tools names notes/*, but config.yaml configures no server notes; it has github, linear

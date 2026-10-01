@@ -29,12 +29,13 @@ with no frontmatter is all prompt.
 | Key | What it gives the agent |
 | --- | --- |
 | `name` | its name, and with `org` and `user` its key in the fleet. The file's name without `.md` when absent |
+| `org` | the org it belongs to. `config.yaml`'s `org` when absent |
+| `user` | the user of its org it works for, if any |
 | `description` | what it is for, as `wardrik show` shows it |
 | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
 | `tools` | what it may call; see below |
 | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
 | `context` | the files read into each turn; see below. A definition over HTTP cannot say it |
-| `org`, `user` | who it works for |
 | `policy` | what its tool calls may do; see below |
 | `timeout` | how many seconds a turn may take |
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
@@ -42,6 +43,9 @@ with no frontmatter is all prompt.
 | `trust_outside_content` | `true` lets its rules allow a gated tool's calls even after a turn has read content from outside; see below. A definition over HTTP cannot say it |
 | `schedule` | when it is asked something on a clock; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
+
+Its key is `org/name`, or `org/@user/name` for one that works for a user:
+the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
 
 ## Tools
 
@@ -56,8 +60,13 @@ has none.
   * `workers/*`, every tool the connected tool workers offer the agent, as
     `WardrikHTTP.Workers` describes them. A policy narrows what it may call
   * `*`, every tool the daemon ships, the file tools, every MCP server
-    connected, and every tool worker's tools
+    the agent can reach, and every tool worker's tools
   * a module implementing `Wardrik.Tool`
+
+An agent reaches an MCP server that serves its org, as the server's `org`
+in `config.yaml` says, and one reached as each agent's user
+(`credential: user:NAME`) only where it works for a user. A file naming a
+server its agent cannot reach does not read, and says why.
 
 ## Workspace
 
@@ -162,7 +171,8 @@ section names, as `WardrikNotify` describes them:
     notify: {to: [ops], on: [parked, failed, finished]}
 
 `on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
-answered.
+answered. A target tells the agents of the org its `org` in `config.yaml`
+names, and a file routing to one for another org does not read.
 
 The agent is given the credentials `WardrikOAuth` holds where a provider is
 configured, and `WardrikVault`'s where the vault has a key, and records every
@@ -171,7 +181,7 @@ call twice.
 
 ## Over HTTP
 
-`definition/3` reads the body of `PUT /v1/agents/{org}/{user}/{name}` into
+`definition/3` reads the body of `PUT /v1/agents/{key}` into
 a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
     {"description": "Watches the incident queue.",
@@ -182,8 +192,7 @@ a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
 `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
-mean in a file. The key gives the agent's `name`,
-`org` and `user`. A definition has no `schedule` or `notify`: it leaves the
+mean in a file. The key gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
 agent's schedules as they are, and the schedules routes set them. Its
 `tools` and `policy` name what the daemon ships or configures, and never a
 module.

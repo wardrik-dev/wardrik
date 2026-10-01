@@ -58,14 +58,14 @@ workspace:
     runbooks: {tree: acme/runbooks, mode: read}
 ```
 
-A tree is named `org`, `org/name` or `org/user/name`, and is reachable by the agents under the scope
+A tree is named `org`, `org/name` or `org/@user/name`, and is reachable by the agents under the scope
 its name begins with:
 
 | Tree | Reachable by |
 | --- | --- |
 | `acme` | every agent of `acme` |
 | `acme/runbooks` | every agent of `acme` |
-| `acme/jon/notes` | the agents of `acme` that work for `jon` |
+| `acme/@jon/notes` | the agents of `acme` that work for `jon` |
 
 An agent file that shares a tree its agent cannot reach does not read, and says which tree and why.
 A tree holds only its own files: `acme` does not hold `acme/runbooks`, so a tree shared only to
@@ -140,4 +140,4 @@ writes them with its tools. A tree belongs to its agent's key rather than to the
 an agent removed and started again under the same key finds its files where it left them.
 
 Files are kept in the store's `files` namespace, under the tree and the path: an agent's
-`MEMORY.md` is `agents/acme/jon/triage//MEMORY.md`. See [Storage](/operate/storage/).
+`MEMORY.md` is `agents/acme/@jon/triage//MEMORY.md`. See [Storage](/operate/storage/).

@@ -62,10 +62,13 @@ sealed with it is not read, and its user connects again.
 
 ## Whose account
 
-| `credential` | Reached as | The agent needs |
-| --- | --- | --- |
-| `user:NAME` | the agent's user, with a connection of their own | `user` in its file |
-| `org:NAME` | the agent's org, connected once for all of its agents | `org` in its file |
+| `credential` | Reached as |
+| --- | --- |
+| `user:NAME` | the agent's user, with a connection of their own |
+| `org:NAME` | the agent's org, connected once for all of its agents |
+
+A server reached as each user serves only agents that work for one: an agent file without a `user`
+that names it does not read, and `*` leaves it out.
 
 A server reached over HTTP is sent the token as `authorization: Bearer <token>`.
 `credential_header` and `credential_scheme` send it another way. A server run as a command is given
@@ -82,7 +85,7 @@ The link is never in the conversation, an event or a notice. A person finds it:
 
 - with `wardrik parked`, which prints `open URL`, or `enter CODE at URL`;
 - in Slack, with the notice's Show link button, which shows it to whoever pressed it;
-- over the HTTP API, at `GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization`.
+- over the HTTP API, at `GET /v1/agents/{key}/interrupts/{id}/authorization`.
 
 Once the account is connected, the call carries on by itself, with nobody approving it. A link is
 good for 15 minutes; a call after that parks on a new one.

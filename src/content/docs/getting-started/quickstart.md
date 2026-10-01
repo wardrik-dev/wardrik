@@ -42,16 +42,17 @@ wardrik reload
 wardrik ls
 ```
 
-A file with no `org` or `user` is the agent `_/_/triage`, after its name.
+The agent is `default/triage`: a file that names no `org` is in the deployment's, which is
+`default` unless `config.yaml` names another, and the CLI finds an agent in it by its name alone.
 
 ## Ask it something
 
 ```sh
-wardrik ask _/_/triage "Start a MEMORY.md with today's date and what you are for."
+wardrik ask triage "Start a MEMORY.md with today's date and what you are for."
 ```
 
 `wardrik ask` follows the answer as it arrives. Ask again and the agent reads the `MEMORY.md` it
-wrote. `wardrik history _/_/triage` shows what it has said, and `wardrik watch _/_/triage` follows
+wrote. `wardrik history triage` shows what it has said, and `wardrik watch triage` follows
 everything it does.
 
 ## Reach it over HTTP
