@@ -13,8 +13,8 @@ defmodule WardrikMCP.ExpiryTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{user: user}}),
-      do: {:ok, Credential.secret("token-#{user}")}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{user: user}}),
+      do: {:ok, Credential.secret("token-#{user}", owner: user)}
 
     @impl true
     def refused(ref, %Wardrik.Call{scope: %Scope{user: user}}) do
@@ -26,7 +26,7 @@ defmodule WardrikMCP.ExpiryTest do
   @flag Path.join(System.tmp_dir!(), "wardrik-refusal-#{System.unique_integer([:positive])}")
 
   @moduletag server_opts: [
-               credential: {:user, "stub"},
+               credential: "stub",
                credential_env: "DEMO_TOKEN",
                transport_opts: [env: %{"STUB_REFUSAL_FLAG" => @flag}]
              ]
@@ -78,7 +78,7 @@ defmodule WardrikMCP.ExpiryTest do
 
       [part] = message.content
       assert part.text =~ "accepted this time"
-      assert_received {:refused, {:user, "stub"}, "jon"}
+      assert_received {:refused, "stub", "jon"}
     end
 
     test "a server that refuses twice is reported rather than retried forever", %{ref: ref} do
@@ -98,7 +98,7 @@ defmodule WardrikMCP.ExpiryTest do
     end
 
     defp always_refusing do
-      stub_options(credential: {:user, "stub"}, credential_env: "DEMO_TOKEN")
+      stub_options(credential: "stub", credential_env: "DEMO_TOKEN")
     end
   end
 end

@@ -195,25 +195,30 @@ A tool names the secret it needs rather than holding one, and resolves it
 for the `Wardrik.Call` it was handed (see `Wardrik.Tool.new!/1`):
 
 ```elixir
-case Wardrik.Credential.resolve(call, {:user, "github"}) do
+case Wardrik.Credential.resolve(call, "github") do
   {:ok, credential} -> Wardrik.Call.answer(call, fetch(Wardrik.Credential.reveal(credential)))
   {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
   {:error, {:authorization_required, url, code}} -> Wardrik.Call.park(call, "Enter #{code} at #{url}")
 end
 ```
 
-`:credentials` is a scope seam beside `:hooks` and `:dispatch`. Two resolvers
-ship with the binary. `WardrikVault` seals secrets with AES-256-GCM into
-`Wardrik.Store`, the store the fleet already runs on — no broker, and no plaintext
-fallback without a key:
+`:credentials` is a scope seam beside `:hooks` and `:dispatch`. `WardrikVault`
+is the resolver that ships with the binary: it seals credentials with
+AES-256-GCM into `Wardrik.Store`, the store the fleet already runs on — no
+broker, and no plaintext fallback without a key — and finds a name for each
+call the most specific first, the call's user's, then its org's, then the
+deployment's:
 
 ```elixir
-config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
+config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth
 
-WardrikVault.put({:user, "github"}, {"acme", "jon"}, "ghp_xxx")
+WardrikVault.put("github", {"acme", "jon"}, "ghp_xxx")   # jon's, in acme
+WardrikVault.put("pagerduty", "acme", "pd_xxx")         # acme's
+WardrikVault.put("linear", nil, "lin_xxx")              # the deployment's
 ```
 
-`WardrikOAuth` gets them by asking the user instead. It discovers the
+`WardrikOAuth` is how a credential nobody holds is asked for instead: the
+vault's grants module, for a name a provider is configured under. It discovers the
 authorization server from the resource, and presents whichever client identity
 the server will accept — one registered by hand, its own metadata document, or
 a dynamic registration. A user who has not authorized yet parks the turn, and
@@ -228,9 +233,8 @@ authorizes one of two ways:
   open port can be authorized from Slack.
 
 Either way the parked call runs again by itself once they have, with the
-token, which is then sealed by `WardrikVault` and refreshed without asking again.
-The daemon resolves through `WardrikDaemon.Credentials`: OAuth for a
-reference a provider is named for, and the vault for every other.
+token, which is then sealed in `WardrikVault` as their grant, found like any
+other credential, and refreshed without asking again.
 A provider's `flow` is `browser`, `device`, or `auto`, the default: on another
 device where the server offers it and the daemon has no browser of its own to
 send the user through, and in a browser otherwise.
@@ -250,12 +254,12 @@ config :wardrik, WardrikOAuth,
   ]
 ```
 
-An MCP server reached as the user names the reference to resolve, and each user
-gets a connection of their own:
+An MCP server names the credential each call is made with, and runs it over a
+connection of its owner's own, a user's, an org's or the deployment's:
 
 ```elixir
 config :wardrik, WardrikMCP,
-  servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: {:user, "github"}]]
+  servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: "github"]]
 ```
 
 Until a user has connected, such a server offers only `github__connect`. Once
@@ -517,13 +521,13 @@ until Ctrl-C, and `watch --json` writes each event as the HTTP API streams it.
 answer. These run through `bin/wardrikd rpc`, so they write as they go and
 read what is typed; Ctrl-C stops them, and the agent carries on.
 
-`vault put NAME` seals a secret, such as a model provider's key, a
-`${NAME}` in `config.yaml`, or the one an MCP server's
-`credential: named:NAME` reads, asking for its value without showing it, or
-reading it from standard input when piped. `--org` and `--user` seal one for
-an org or a user, `vault ls` lists them by name and owner, never their
-values, and `vault rm` removes one. The first `put` on a vault with no key
-asks to make one, kept in `~/.local/share/wardrik/vault_key`.
+`vault put NAME` seals a secret, such as a model provider's key, a `${NAME}`
+in `config.yaml`, or the one an MCP server's `credential: NAME` reads, asking
+for its value without showing it, or reading it from standard input when
+piped. `--org` and `--user` seal one for an org or a user, which their agents
+read before the deployment's, `vault ls` lists them by name and owner, never
+their values, and `vault rm` removes one. The first `put` on a vault with no
+key asks to make one, kept in `~/.local/share/wardrik/vault_key`.
 
 `wardrik serve` runs it in the foreground, logging to the terminal, for a
 service manager to supervise. `bin/wardrikd` is the node's own release script

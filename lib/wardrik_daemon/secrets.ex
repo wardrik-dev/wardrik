@@ -5,8 +5,8 @@ defmodule WardrikDaemon.Secrets do
   `WardrikDaemon.Config.read/2` reads through `named/1`, model providers'
   keys, and the keys of the tools `:keys` names.
 
-  The environment comes first, and the vault's `{:named, NAME}` second, for
-  every one of them. `wardrik vault put NAME` seals one.
+  The environment comes first, and the deployment's secret `NAME` in the vault
+  second, for every one of them. `wardrik vault put NAME` seals one.
 
   A provider's key is `ReqLLM.Keys.env_var_name/1` of it, such as
   `ANTHROPIC_API_KEY`. A tool's is whatever `:keys` maps to the setting it
@@ -33,9 +33,9 @@ defmodule WardrikDaemon.Secrets do
   @doc "The deployment's secret `name` in the vault, or `nil` where it holds none it can read."
   @spec named(String.t()) :: String.t() | nil
   def named(name) do
-    case WardrikVault.fetch({:named, name}, nil) do
-      {:ok, secret} -> secret
-      {:error, _absent_or_no_key} -> nil
+    case WardrikVault.lookup(name, nil) do
+      {:ok, :secret, secret} -> secret
+      _grant_absent_or_unreadable -> nil
     end
   end
 
@@ -67,7 +67,7 @@ defmodule WardrikDaemon.Secrets do
   def apply do
     variables = variables()
 
-    for {:named, name} <- WardrikVault.names(:named, nil),
+    for name <- WardrikVault.names(nil),
         Map.has_key?(variables, name),
         do: settle(name, named(name), variables[name])
 

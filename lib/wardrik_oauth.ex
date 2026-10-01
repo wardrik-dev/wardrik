@@ -1,6 +1,7 @@
 defmodule WardrikOAuth do
   @moduledoc """
-  A `Wardrik.Credential` resolver that gets its secrets by asking the user.
+  Accounts users connect by authorizing: the `WardrikVault.Grants` module
+  that asks a user, or an org, for a grant, and renews the grants it gave.
 
       config :wardrik, WardrikOAuth,
         client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
@@ -14,15 +15,18 @@ defmodule WardrikOAuth do
           ]
         ]
 
+      config :wardrik, WardrikVault, keys: [...], grants: WardrikOAuth
+
       children = [WardrikOAuth.Supervisor]
+      Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
 
-      Wardrik.Fleet.spawn("assistant", config: config, credentials: WardrikOAuth)
-
-  `{:user, "github"}` then resolves to that user's access token. A user who
-  has not authorized yet is asked to, a tool parks on the answer, and the
-  parked call runs again with the token in hand once they have, with nobody
-  approving it. They authorize one of two ways, as the provider's `:flow`
-  says; see `WardrikOAuth.Provider`:
+  A credential named `github` that the vault holds for nobody the call
+  reaches is then asked for: of the call's user, or of its org where it has
+  no user. A tool parks on the answer, and the parked call runs again with the
+  token in hand once they have authorized, with nobody approving it. The
+  token is kept in the vault as a grant for whoever authorized, and is the
+  credential their calls resolve from then on. They authorize one of two
+  ways, as the provider's `:flow` says; see `WardrikOAuth.Provider`:
 
     * in a browser: `{:error, {:authorization_required, url}}`, a link that
       comes back to this deployment's redirect URI. Where that is this
@@ -43,9 +47,8 @@ defmodule WardrikOAuth do
   `[:wardrik_oauth, :device, :done]` is emitted as a device flow ends, with the
   provider, the owner, and `:authorized` or why not as its metadata.
 
-  Tokens are kept by a `WardrikOAuth.Tokens` module, `WardrikOAuth.Tokens.Vault` by
-  default: sealed by `WardrikVault`, inside the customer's network. Wardrik is not a
-  broker and holds no other tenant's tokens.
+  Tokens are kept in `WardrikVault`, sealed, inside the customer's network.
+  Wardrik is not a broker and holds no other tenant's tokens.
 
   ## What it does per server
 
@@ -58,7 +61,7 @@ defmodule WardrikOAuth do
 
   ## Renewing
 
-  A token that has expired, or that a server refused (`c:Wardrik.Credential.refused/2`),
+  A token that has expired, or that a server refused (`c:WardrikVault.Grants.refused/3`),
   is refreshed before the user is asked for anything, at the token endpoint
   it came from, as the client it was issued to (`WardrikOAuth.Token`). One
   process in the cluster renews a user's token for a provider at a time, and
@@ -78,12 +81,11 @@ defmodule WardrikOAuth do
   `WardrikOAuth.Config` reads `config :wardrik_oauth` instead.
   """
 
-  @behaviour Wardrik.Credential
+  @behaviour WardrikVault.Grants
 
   require Logger
 
   alias Wardrik.Credential
-  alias Wardrik.Scope
   alias WardrikOAuth.Browser
   alias WardrikOAuth.Client
   alias WardrikOAuth.Config
@@ -98,35 +100,43 @@ defmodule WardrikOAuth do
   alias WardrikOAuth.Registrations
   alias WardrikOAuth.Token
 
-  @impl Wardrik.Credential
-  def resolve({kind, name} = ref, %Wardrik.Call{scope: %Scope{} = scope} = call)
-      when kind in [:user, :org] do
+  @doc "Whether a provider named `name` is configured, so a user can be asked to authorize it."
+  @impl WardrikVault.Grants
+  def grants?(name), do: match?({:ok, _provider}, Provider.fetch(name))
+
+  @doc "The credential a token held for `owner` answers with, renewed where it has run out."
+  @impl WardrikVault.Grants
+  def renew(name, owner, encoded, %Wardrik.Call{} = call) do
     with {:ok, provider} <- provider(name),
-         {:ok, owner} <- owner(ref, scope) do
-      hold(provider, owner, Credential.continuation(call, flow_principal(provider)))
-    end
+         do: held(provider, owner, encoded, resume(call, provider))
   end
 
-  def resolve(ref, %Wardrik.Call{}), do: {:error, {:unknown_reference, ref}}
-
-  # Whoever finishes a flow is known only as the flow itself: the provider's
-  # authorization, not the user the token is kept for.
-  defp flow_principal(%Provider{name: name}),
-    do: %Wardrik.Principal{type: :oauth, id: name, name: "#{name} authorization"}
-
-  @doc "Treats the token held for `ref` as expired, so the next resolve renews it."
-  @impl Wardrik.Credential
-  def refused({kind, name} = ref, %Wardrik.Call{scope: %Scope{} = scope})
-      when kind in [:user, :org] do
+  @doc "Asks `owner` to authorize `name`, for the call to park on until they have."
+  @impl WardrikVault.Grants
+  def ask(name, owner, %Wardrik.Call{} = call) do
     with {:ok, provider} <- provider(name),
-         {:ok, owner} <- owner(ref, scope) do
-      single_flight(provider, owner, fn -> expire(provider, owner) end)
-    end
+         do: begin(provider, owner, resume(call, provider))
+  end
+
+  @doc "Treats the token held for `owner` as expired, so the next resolve renews it."
+  @impl WardrikVault.Grants
+  def refused(name, owner, %Wardrik.Call{}) do
+    with {:ok, provider} <- provider(name),
+         do: single_flight(provider, owner, fn -> expire(provider, owner) end)
 
     :ok
   end
 
-  def refused(_ref, %Wardrik.Call{}), do: :ok
+  # The call parked on a flow is approved once it finishes, by the flow:
+  # whoever finished it is known only as the provider's authorization, not
+  # the user the token is kept for.
+  defp resume(call, %Provider{name: name}),
+    do:
+      Credential.continuation(call, %Wardrik.Principal{
+        type: :oauth,
+        id: name,
+        name: "#{name} authorization"
+      })
 
   defp expire(provider, owner) do
     case current(provider, owner) do
@@ -136,26 +146,30 @@ defmodule WardrikOAuth do
   end
 
   @doc """
-  The token a user holds for a provider, renewing or asking for one as needed.
+  The token `owner` holds for a provider, renewing or asking for one as
+  needed.
 
-  What `resolve/2` does, without a call: for a surface that wants to connect a
-  user before an agent ever asks. `resume` is applied once the user has
-  connected, where one is given.
+  What resolving does, without a call: for a surface that wants to connect a
+  user before an agent ever asks. `resume` is applied once they have
+  connected, where one is given. A secret the vault holds under the
+  provider's name for `owner` is not a token, and is left be.
   """
   @spec hold(Provider.t(), term(), Credential.continuation() | nil) :: Credential.outcome()
   def hold(%Provider{} = provider, owner, resume \\ nil) do
-    case Config.tokens().fetch(provider.name, owner) do
-      {:ok, encoded} -> held(provider, owner, encoded, resume)
+    case WardrikVault.lookup(provider.name, owner) do
+      {:ok, :grant, encoded} -> held(provider, owner, encoded, resume)
+      {:ok, :secret, _secret} -> {:error, :held_as_a_secret}
       {:error, :not_found} -> begin(provider, owner, resume)
       {:error, :no_key} -> {:error, :no_key}
-      {:error, reason} -> unreadable(provider, owner, reason, resume)
+      {:error, _kind, reason} -> unreadable(provider, owner, reason, resume)
+      {:error, reason} -> {:error, reason}
     end
   end
 
   # The expiry travels with the token, so anything holding a connection open
   # around it knows when to stop and ask for another.
-  defp credential(%Token{} = token) do
-    Credential.secret(token.access_token, expires_at: token.expires_at)
+  defp credential(%Token{} = token, owner) do
+    Credential.secret(token.access_token, expires_at: token.expires_at, owner: owner)
   end
 
   # A token nothing can read, sealed under a key rotated away or written in
@@ -258,11 +272,12 @@ defmodule WardrikOAuth do
 
   @doc "Forgets a user's token, so the next call asks them to authorize again."
   @spec disconnect(String.t(), term()) :: :ok | {:error, term()}
-  def disconnect(provider, owner), do: Config.tokens().forget(provider, owner)
+  def disconnect(provider, owner), do: WardrikVault.forget(provider, owner)
 
   @doc "Whether a user has authorized a provider."
   @spec connected?(String.t(), term()) :: boolean()
-  def connected?(provider, owner), do: Config.tokens().has?(provider, owner)
+  def connected?(provider, owner),
+    do: match?({:ok, :grant, _token}, WardrikVault.lookup(provider, owner))
 
   @doc "The providers this deployment can offer, and whether this owner has each."
   @spec connections(term()) :: [%{provider: String.t(), connected?: boolean()}]
@@ -286,7 +301,7 @@ defmodule WardrikOAuth do
     case Token.decode(encoded) do
       {:ok, %Token{} = token} ->
         if Token.fresh?(token, System.system_time(:second)),
-          do: {:ok, credential(token)},
+          do: {:ok, credential(token, owner)},
           else: renew(provider, owner, resume)
 
       {:error, reason} ->
@@ -297,7 +312,7 @@ defmodule WardrikOAuth do
   defp renew(provider, owner, resume) do
     case single_flight(provider, owner, fn -> refresh(provider, owner) end) do
       {:ok, %Token{} = fresh} ->
-        {:ok, credential(fresh)}
+        {:ok, credential(fresh, owner)}
 
       :ask ->
         Logger.info("#{provider.name} could not be renewed for #{inspect(owner)}; asking again")
@@ -364,7 +379,7 @@ defmodule WardrikOAuth do
   end
 
   defp current(provider, owner) do
-    with {:ok, encoded} <- Config.tokens().fetch(provider.name, owner),
+    with {:ok, :grant, encoded} <- WardrikVault.lookup(provider.name, owner),
          {:ok, %Token{} = token} <- Token.decode(encoded) do
       token
     else
@@ -636,7 +651,7 @@ defmodule WardrikOAuth do
   end
 
   defp store(%Provider{} = provider, owner, %Token{} = token) do
-    Config.tokens().put(provider.name, owner, Token.encode(token))
+    WardrikVault.put(provider.name, owner, Token.encode(token), kind: :grant)
   end
 
   defp provider(name) do
@@ -645,13 +660,6 @@ defmodule WardrikOAuth do
       :error -> {:error, {:no_such_provider, name}}
     end
   end
-
-  # A user's token is kept for the org and the user together; an org's for the
-  # org alone.
-  defp owner({:user, _name}, %Scope{user: nil}), do: {:error, :no_user}
-  defp owner({:user, _name}, %Scope{org: org, user: user}), do: {:ok, {org, user}}
-  defp owner({:org, _name}, %Scope{org: nil}), do: {:error, :no_org}
-  defp owner({:org, _name}, %Scope{org: org}), do: {:ok, {org, nil}}
 
   defp scopes(%Provider{} = provider, %Metadata{} = metadata), do: Flow.scopes(provider, metadata)
 

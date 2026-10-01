@@ -39,7 +39,7 @@ refused, since one of them would go unread.
         only: [read_file, list_directory]
       github:
         url: https://api.githubcopilot.com/mcp/
-        credential: user:github
+        credential: github
       docs:
         url: https://docs.example.com/mcp
         org: "*"
@@ -97,18 +97,18 @@ target, that is not its org's.
 A server with `command` is started as a command, with `args`, `env` and
 `cwd` beside it; one with `url` is reached over HTTP, with `headers`. Either
 takes `only`, `except`, `prefix`, `timeout` in seconds, `max_result_bytes`,
-`credential` as `user:NAME`, `org:NAME` or `named:NAME` along with
+`credential`, the name of the credential it is reached with, along with
 `credential_header`, `credential_scheme` and `credential_env`, `gated`,
 the tools whose calls wait on a person unless a rule allows them by name,
 and `trusted: true` for a server whose answers are the deployment's own, so
 a call to it does not taint its run. See `WardrikMCP.Server`.
 
-A credential is a secret the vault keeps sealed. `named:NAME` is one for the
-whole deployment, which `wardrik vault put NAME` seals. `org:NAME` is the
-agent's org's, sealed with `wardrik vault put NAME --org ORG`, and
-`user:NAME` the agent's user's, sealed with `--user USER`, and `--org ORG`
-where the agent is not in the deployment's org, or by the user connecting
-their account where `oauth` has a provider for the server.
+A credential is kept in the vault, sealed, and found for each call the most
+specific first: the agent's user's, sealed with `wardrik vault put NAME
+--user USER`; its org's, with `--org ORG`; then the deployment's, with
+`wardrik vault put NAME`. Where none holds it and `oauth` has a provider of
+the same name, the agent's user, or its org where it has no user, is asked
+to connect an account, which is kept in the vault from then on.
 
 `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
 describes them. `vault` takes `keys`, as `WardrikVault` does; without them,

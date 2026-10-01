@@ -64,9 +64,8 @@ has none.
   * a module implementing `Wardrik.Tool`
 
 An agent reaches an MCP server that serves its org, as the server's `org`
-in `config.yaml` says, and one reached as each agent's user
-(`credential: user:NAME`) only where it works for a user. A file naming a
-server its agent cannot reach does not read, and says why.
+in `config.yaml` says. A file naming a server its agent cannot reach does
+not read, and says why.
 
 ## Workspace
 
@@ -176,11 +175,11 @@ section names, as `WardrikNotify` describes them:
 answered. A target tells the agents of the org its `org` in `config.yaml`
 names, and a file routing to one for another org does not read.
 
-The agent resolves the credentials its tools name through
-`WardrikDaemon.Credentials`: an account a user connects where an OAuth
-provider is named for it, and a secret in the vault otherwise. It records
-every tool call in `Wardrik.Ledger.Store`, so a turn lost part way through
-runs no call twice.
+The agent resolves the credentials its tools name from `WardrikVault`: its
+user's, its org's or the deployment's, and an account its user, or its
+org, connects through `WardrikOAuth` where a provider is named for one
+nobody holds. It records every tool call in `Wardrik.Ledger.Store`, so a
+turn lost part way through runs no call twice.
 
 ## Over HTTP
 

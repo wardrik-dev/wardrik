@@ -112,7 +112,7 @@ write_files:
           url: https://api.githubcopilot.com/mcp/
           headers:
             X-MCP-Toolsets: repos,issues
-          credential: user:github
+          credential: github
           only: [list_commits, get_commit, list_issues, issue_write]
 
       # This box has no browser, so a user authorizes GitHub by entering a

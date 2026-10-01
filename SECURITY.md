@@ -150,17 +150,20 @@ the agents that post there.
 
 OAuth tokens and the secrets `wardrik vault put` keeps are sealed with
 AES-256-GCM, under the vault's keys, before they are stored. A server's
-credential comes from OAuth where a provider is named for it, and from the
-vault otherwise. Model providers' keys, tools' keys and `${NAME}` in
+credential is found in the vault for each call, the agent's user's before its
+org's before the deployment's, so a secret put for an org reaches all of its
+agents that hold none of their own. Where none is held and an OAuth provider
+has the same name, the user, or the org, is asked to connect an account, which
+the vault keeps as theirs. Model providers' keys, tools' keys and `${NAME}` in
 `config.yaml` are read from the environment, and, for a name it does not set,
 from the deployment's secret of that name in the vault. Anyone who can read
 both the store and the vault's key can read them, as they can every secret the
 vault holds. A key from the vault is put in the daemon's application settings,
 never its environment. `storage`, `cluster` and `vault` in `config.yaml` read
-the environment alone. An MCP server started as a command is given only `HOME`, `LANG`,
-`LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER`
-of the daemon's environment, beside those its own config sets, and runs as
-the daemon's user, so it can read what the daemon can.
+the environment alone. An MCP server started as a command is given only
+`HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`,
+`TMPDIR` and `USER` of the daemon's environment, beside those its own config
+sets, and runs as the daemon's user, so it can read what the daemon can.
 
 ### Agents
 

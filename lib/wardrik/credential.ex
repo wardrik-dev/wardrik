@@ -2,10 +2,10 @@ defmodule Wardrik.Credential do
   @moduledoc """
   A secret a tool needs, named rather than held.
 
-  Wardrik stores no credentials. A tool declares what it needs as a reference and
-  asks for it to be resolved for the `Wardrik.Call` it was handed:
+  Wardrik stores no credentials. A tool names what it needs and asks for it
+  to be resolved for the `Wardrik.Call` it was handed:
 
-      case Wardrik.Credential.resolve(call, {:user, "github"}) do
+      case Wardrik.Credential.resolve(call, "github") do
         {:ok, credential} -> Wardrik.Call.answer(call, fetch(url, credential))
         {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
         {:error, {:authorization_required, url, code}} -> Wardrik.Call.park(call, "Enter " <> code <> " at " <> url)
@@ -16,15 +16,17 @@ defmodule Wardrik.Credential do
   a policy, and that module decides where secrets come from. A run with no
   resolver resolves nothing, so the default costs nothing.
 
-  ## References
+  ## Names, and whose
 
-    * `{:user, name}` - the acting user's credential for `name`, whoever the
-      call's `scope.user` says that is
-    * `{:org, name}` - the organisation's own, shared by everyone in it
-    * `{:named, name}` - one the deployment configured, belonging to nobody
+  A credential is named, as `"github"`, and belongs to someone: the call's
+  user, its org, or the deployment. Which one a name resolves to is the
+  resolver's business, as is what the name means; `WardrikVault` takes the
+  most specific it holds, the user's before the org's before the
+  deployment's. Core carries the name and never interprets it.
 
-  What a name means is the resolver's business. Core carries the reference and
-  never interprets it.
+  A resolved credential says whose it is as `:owner`, an opaque term, so a
+  tool holding something open per credential, such as a connection, holds one
+  for each owner and never lends one owner's to another.
 
   ## Secrets and placeholders
 
@@ -71,16 +73,21 @@ defmodule Wardrik.Credential do
   alias Wardrik.Scope
 
   @enforce_keys [:kind, :value]
-  defstruct [:kind, :value, :expires_at]
+  defstruct [:kind, :value, :expires_at, :owner]
 
   @typedoc "Whether the value is the secret itself or a sentinel standing in for it."
   @type kind() :: :secret | :placeholder
 
   @typedoc "A credential, opaque to everything but the code that uses it."
-  @type t() :: %__MODULE__{kind: kind(), value: binary(), expires_at: integer() | nil}
+  @type t() :: %__MODULE__{
+          kind: kind(),
+          value: binary(),
+          expires_at: integer() | nil,
+          owner: term()
+        }
 
-  @typedoc "What a tool asks for."
-  @type ref() :: {:user, String.t()} | {:org, String.t()} | {:named, String.t()}
+  @typedoc "What a tool asks for: a credential's name."
+  @type ref() :: String.t()
 
   @typedoc "What a resolver answers."
   @type outcome() ::
@@ -124,18 +131,23 @@ defmodule Wardrik.Credential do
   @doc """
   A credential holding the real value.
 
-  `:expires_at` is unix seconds, for a resolver that knows.
+  `:expires_at` is unix seconds, for a resolver that knows, and `:owner`
+  whose it is.
   """
   @spec secret(binary(), keyword()) :: t()
-  def secret(value, opts \\ []) when is_binary(value) do
-    %__MODULE__{kind: :secret, value: value, expires_at: Keyword.get(opts, :expires_at)}
-  end
+  def secret(value, opts \\ []) when is_binary(value), do: new(:secret, value, opts)
 
   @doc "A credential holding a sentinel an egress proxy exchanges for the real value."
   @spec placeholder(binary(), keyword()) :: t()
-  def placeholder(value, opts \\ []) when is_binary(value) do
-    %__MODULE__{kind: :placeholder, value: value, expires_at: Keyword.get(opts, :expires_at)}
-  end
+  def placeholder(value, opts \\ []) when is_binary(value), do: new(:placeholder, value, opts)
+
+  defp new(kind, value, opts),
+    do: %__MODULE__{
+      kind: kind,
+      value: value,
+      expires_at: Keyword.get(opts, :expires_at),
+      owner: Keyword.get(opts, :owner)
+    }
 
   @doc """
   How long this credential is still good for, in milliseconds.

@@ -16,6 +16,10 @@ config :wardrik, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 # The org an agent is in where nothing names one; config.yaml's org replaces it.
 config :wardrik, Wardrik.Fleet, org: "default"
 
+# Credentials are kept in the vault, and accounts users connect through OAuth
+# are grants it holds.
+config :wardrik, WardrikVault, grants: WardrikOAuth
+
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]

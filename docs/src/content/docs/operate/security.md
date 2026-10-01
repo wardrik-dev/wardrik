@@ -85,14 +85,15 @@ between agents. What belongs to an org is kept to its agents:
 
 - tokens scoped to the org, or to one of its users;
 - shared trees named for the org or one of its users;
-- the vault's `org:` and `user:` credentials, and the accounts users connect;
+- the vault's credentials put for the org or one of its users, and the accounts they connect;
 - MCP servers and notice targets, which serve the deployment's org unless `config.yaml` names
   others.
 
 Some things are the deployment's, whatever the org:
 
 - `policies/`, which any agent file can name;
-- `named:` credentials, which any server `config.yaml` gives them to can use;
+- the vault's credentials put for the deployment, which every agent reads where neither its user
+  nor its org holds one of the same name;
 - the credentials in an MCP server's `headers` or `env`, used for every org the server serves;
 - the terminal client, whose keys reach every org's agents.
 

@@ -23,7 +23,7 @@ defmodule WardrikDaemon.SecretsTest do
     Enum.each(@variables, &System.delete_env/1)
 
     on_exit(fn ->
-      Enum.each(@variables, &WardrikVault.forget({:named, &1}, nil))
+      Enum.each(@variables, &WardrikVault.forget(&1, nil))
       Application.delete_env(:wardrik, @tool)
       restore(:wardrik, WardrikVault, previous.vault)
       restore(:wardrik, Secrets, previous.secrets)
@@ -48,8 +48,8 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "gives a provider and a tool the vault's key where the environment sets none" do
-    :ok = WardrikVault.put({:named, "ANTHROPIC_API_KEY"}, nil, "sk-ant-vault")
-    :ok = WardrikVault.put({:named, "SEARCH_API_KEY"}, nil, "search-vault")
+    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
+    :ok = WardrikVault.put("SEARCH_API_KEY", nil, "search-vault")
 
     assert Secrets.apply() == :ok
     assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-vault", :application}
@@ -57,7 +57,7 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "leaves a key the environment sets to the environment" do
-    :ok = WardrikVault.put({:named, "ANTHROPIC_API_KEY"}, nil, "sk-ant-vault")
+    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
     Application.delete_env(:req_llm, :anthropic_api_key)
     System.put_env("ANTHROPIC_API_KEY", "sk-ant-environment")
 
@@ -79,7 +79,7 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "reads the deployment's secret, or nothing" do
-    :ok = WardrikVault.put({:named, "ANTHROPIC_API_KEY"}, nil, "sk-ant-vault")
+    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
 
     assert Secrets.named("ANTHROPIC_API_KEY") == "sk-ant-vault"
     assert Secrets.named("NOT_IN_THE_VAULT") == nil

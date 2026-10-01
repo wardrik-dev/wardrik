@@ -243,15 +243,15 @@ defmodule WardrikDaemon.Doctor do
     end
   end
 
-  # Where a server's credential comes from, as WardrikDaemon.Credentials
-  # resolves it.
+  # Where a server's credential comes from: the vault, where a user, an org
+  # or the deployment may hold it, and an account each user connects where a
+  # provider is named for it.
   defp authorized(nil, _providers), do: ""
 
-  defp authorized({kind, _name} = ref, providers) do
-    case WardrikDaemon.Credentials.source(ref, providers) do
-      :oauth -> "; each #{kind} authorizes it"
-      :vault -> "; its credential comes from the vault"
-    end
+  defp authorized(name, providers) do
+    if name in providers,
+      do: "; credential #{name}, from the vault, or an account each user connects",
+      else: "; credential #{name}, from the vault"
   end
 
   defp reach({:stdio, opts}) do

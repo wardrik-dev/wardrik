@@ -17,7 +17,7 @@ defmodule WardrikOAuth.ResumeTest do
   end
 
   defp scope(owner, key),
-    do: Config.new() |> Scope.root(key, user: owner, credentials: WardrikOAuth)
+    do: Config.new() |> Scope.root(key, user: owner, credentials: WardrikVault)
 
   defp call(id, owner, key),
     do: Wardrik.Call.tool(%{id: id, name: "slack__connect", arguments: %{}}, scope(owner, key))
@@ -29,7 +29,7 @@ defmodule WardrikOAuth.ResumeTest do
     configured()
 
     {:error, {:authorization_required, url}} =
-      Credential.resolve(call("call_1", owner, key), {:user, "github"})
+      Credential.resolve(call("call_1", owner, key), "github")
 
     url
   end
@@ -77,7 +77,7 @@ defmodule WardrikOAuth.ResumeTest do
       first = connect(owner, key)
 
       assert {:error, {:authorization_required, ^first}} =
-               Credential.resolve(call("call_2", owner, key), {:user, "github"})
+               Credential.resolve(call("call_2", owner, key), "github")
 
       assert {:ok, flight} = Pending.under_way("github", {nil, owner})
 
@@ -90,7 +90,7 @@ defmodule WardrikOAuth.ResumeTest do
     test "does not remember the same call twice", %{owner: owner} do
       key = Fleet.key()
       connect(owner, key)
-      Credential.resolve(call("call_1", owner, key), {:user, "github"})
+      Credential.resolve(call("call_1", owner, key), "github")
 
       assert {:ok, flight} = Pending.under_way("github", {nil, owner})
       assert [_one] = flight.resumes

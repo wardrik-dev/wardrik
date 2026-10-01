@@ -6,7 +6,6 @@ defmodule WardrikOAuth.Config do
         client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
         providers: [github: [resource: "https://api.githubcopilot.com/mcp/"]],
         redirect: [port: 4599, open: true],
-        tokens: WardrikOAuth.Tokens.Vault,
         req_options: []
 
   | Key | What it is |
@@ -14,7 +13,6 @@ defmodule WardrikOAuth.Config do
   | `:client` | the identity this deployment presents, see `WardrikOAuth.Client` |
   | `:providers` | what a user can authorize, see `WardrikOAuth.Provider` |
   | `:redirect` | where a code comes back to: `:uri`, `:port`, `:open`, `:opener` |
-  | `:tokens` | the `WardrikOAuth.Tokens` module tokens are kept in |
   | `:req_options` | merged into every request |
   | `:resolver` | the module whose `resolve/1` answers a host's addresses, `WardrikOAuth.Egress` by default |
   | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |
@@ -22,8 +20,6 @@ defmodule WardrikOAuth.Config do
   Every read of the application environment this package makes goes through
   here, so moving the setting to `config :wardrik_oauth` changes one module.
   """
-
-  @default_tokens WardrikOAuth.Tokens.Vault
 
   @spec client() :: keyword()
   def client, do: Keyword.get(env(), :client, [])
@@ -36,10 +32,6 @@ defmodule WardrikOAuth.Config do
 
   @spec req_options() :: keyword()
   def req_options, do: Keyword.get(env(), :req_options, [])
-
-  @doc "The `WardrikOAuth.Tokens` module tokens are kept in, `WardrikOAuth.Tokens.Vault` by default."
-  @spec tokens() :: module()
-  def tokens, do: Keyword.get(env(), :tokens, @default_tokens)
 
   @doc "The module whose `resolve/1` answers a host's addresses; see `WardrikOAuth.Egress`."
   @spec resolver() :: module()

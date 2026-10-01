@@ -90,10 +90,10 @@ defmodule WardrikDaemonTest do
     http = Application.get_env(:wardrik, WardrikHTTP)
     Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put({:named, name}, nil, "127.0.0.1")
+    :ok = WardrikVault.put(name, nil, "127.0.0.1")
 
     on_exit(fn ->
-      WardrikVault.forget({:named, name}, nil)
+      WardrikVault.forget(name, nil)
       Application.put_env(:wardrik, WardrikHTTP, http)
     end)
 
@@ -108,8 +108,8 @@ defmodule WardrikDaemonTest do
   test "reads storage from the environment alone, and says why it stops", %{tmp_dir: dir} do
     Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put({:named, name}, nil, "postgres://localhost/wardrik")
-    on_exit(fn -> WardrikVault.forget({:named, name}, nil) end)
+    :ok = WardrikVault.put(name, nil, "postgres://localhost/wardrik")
+    on_exit(fn -> WardrikVault.forget(name, nil) end)
 
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 

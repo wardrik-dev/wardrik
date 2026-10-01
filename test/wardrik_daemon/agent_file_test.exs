@@ -88,7 +88,7 @@ defmodule WardrikDaemon.AgentFileTest do
     with_servers(
       linear: [transport: {:streamable_http, base_url: "https://mcp.linear.app/mcp"}],
       theirs: [transport: {:stdio, command: "theirs"}, orgs: ["globex"]],
-      github: [transport: {:stdio, command: "gh"}, credential: {:user, "github"}]
+      github: [transport: {:stdio, command: "gh"}, credential: "github"]
     )
 
     assert {:ok, spec} = read("---\ntools: ['*']\n---\n", context)
@@ -99,23 +99,17 @@ defmodule WardrikDaemon.AgentFileTest do
              WardrikResearch.Deep,
              WardrikLua.Run,
              {WardrikMCP, :linear},
+             {WardrikMCP, :github},
              {WardrikHTTP.Workers, "default/triage"},
              {WardrikWorkspace, files}
            ]
-
-    assert {:ok, spec} = read("---\ntools: ['*']\nuser: jon\n---\n", context)
-    assert {WardrikMCP, :github} in spec.config.tools
 
     assert {:ok, spec} = read("---\ntools: ['*']\norg: globex\n---\n", context)
     assert {WardrikMCP, :theirs} in spec.config.tools
   end
 
-  test "a server is refused to an agent of an org it does not serve, and one reached as a user to an agent working for none",
-       context do
-    with_servers(
-      theirs: [transport: {:stdio, command: "theirs"}, orgs: ["globex"]],
-      github: [transport: {:stdio, command: "gh"}, credential: {:user, "github"}]
-    )
+  test "a server is refused to an agent of an org it does not serve", context do
+    with_servers(theirs: [transport: {:stdio, command: "theirs"}, orgs: ["globex"]])
 
     assert {:error, message} = read("---\ntools: [theirs/*]\n---\n", context)
 
@@ -123,13 +117,6 @@ defmodule WardrikDaemon.AgentFileTest do
              "tools names theirs/*, but config.yaml's theirs serves globex, and not default"
 
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
-
-    assert {:error, message} = read("---\ntools: [github/*]\n---\n", context)
-
-    assert message =~
-             "tools names github/*, but github is reached as each agent's user, and default/triage works for none"
-
-    assert {:ok, _spec} = read("---\ntools: [github/*]\nuser: jon\n---\n", context)
 
     assert {:error, message} =
              AgentFile.definition("default/triage", %{"tools" => ["theirs/*"]})

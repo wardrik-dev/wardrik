@@ -29,10 +29,10 @@ defmodule WardrikOAuth.LoopbackTest do
       redirect: [port: port, open: false]
     )
 
-    scope = Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
+    scope = Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
 
     {:error, {:authorization_required, url}} =
-      Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})
+      Credential.resolve(Calls.tool("tool", %{}, scope), "github")
 
     %{scope: scope, url: url, state: state_of(url)}
   end
@@ -71,7 +71,7 @@ defmodule WardrikOAuth.LoopbackTest do
     assert response =~ "github is connected"
 
     assert {:ok, credential} =
-             Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})
+             Credential.resolve(Calls.tool("tool", %{}, scope), "github")
 
     assert Credential.reveal(credential) == "at_first"
   end
