@@ -182,7 +182,7 @@ Seal secrets in the vault, asking for a value not given.
 wardrik vault put NAME[=VALUE]... [--org ORG] [--user USER] [--yes]
 ```
 
-NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which credential: named:NAME reads. --org ORG seals it for an org, which org:NAME reads, and --user USER for a user, which user:NAME reads, within --org ORG or the deployment's org. Where the vault has no key, it asks to make one; --yes makes it without asking.
+NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which credential: NAME reads where nothing more specific holds NAME. --org ORG seals it for an org, whose agents read it first, and --user USER for a user, within --org ORG or the deployment's org. Where the vault has no key, it asks to make one; --yes makes it without asking.
 
 ## wardrik vault ls
 

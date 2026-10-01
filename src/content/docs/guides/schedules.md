@@ -156,5 +156,5 @@ curl -X DELETE -H "authorization: Bearer $TOKEN" \
 ```
 
 The body takes `every`, `prompt`, `overlap`, `missed` and `jitter`, but not `prompt_file`. Defining
-an agent over HTTP leaves its schedules as they are. A schedule put on an agent that has a file is
-replaced by the file's at the next reload, so give each agent its schedules one way or the other.
+an agent over HTTP leaves its schedules as they are. An agent a file declares has the schedules its
+file lists, and the HTTP API refuses, with `409`, to change them.

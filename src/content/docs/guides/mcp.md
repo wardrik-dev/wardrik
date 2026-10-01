@@ -113,9 +113,9 @@ mcp:
 ```
 
 A key in `headers` is the deployment's own: every agent reaches the server as the deployment. To
-keep it out of the environment, seal it with `wardrik vault put LINEAR_TOKEN` and name it as the
-server's `credential: named:LINEAR_TOKEN`, which sends it as `authorization: Bearer <token>`. To
-have each user connect their own account instead, see [Connect accounts](/guides/accounts/).
+keep it out of the environment, seal it with `wardrik vault put linear` and name it as the server's
+`credential: linear`, which sends it as `authorization: Bearer <token>`. A credential can also be
+an org's or a user's, or an account each user connects; see [Connect accounts](/guides/accounts/).
 
 ## What a server's tools may do
 
@@ -130,7 +130,7 @@ have each user connect their own account instead, see [Connect accounts](/guides
 mcp:
   github:
     url: https://api.githubcopilot.com/mcp/
-    credential: user:github
+    credential: github
     gated: [create_*, merge_*, delete_*]
   runbooks:
     url: http://runbooks.internal:8080/mcp

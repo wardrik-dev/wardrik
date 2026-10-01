@@ -68,7 +68,8 @@ of them. A worker that goes away takes its tools with it, until it connects agai
 | `name` | the tool's name: letters, digits, `_` and `-`, up to 55. The daemon leaves out a tool whose name is not |
 | `description` | what the model is told the tool does |
 | `input` | a schema for its arguments, such as a `zod` object, sent to the model as JSON Schema |
-| `idempotent`, `readOnly` | whether running a call twice is safe; see below |
+| `readOnly` | whether it changes nothing. A tool that is not read-only is [gated](/concepts/policy/#gated-tools): a call to it asks a person unless a policy allows it by name |
+| `idempotent` | whether running a call twice is safe; see below |
 | `run` | the function, given the arguments, and `{ idempotencyKey, signal }` |
 
 `run` answers with an object, which the model is given as the call's result, or a string, as text.

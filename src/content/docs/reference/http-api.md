@@ -83,8 +83,8 @@ agent with is its key.
 | `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
-| `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
-| `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
+| `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`; `409` where something else, such as an agent file, declares the agent |
+| `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `409` as for `PUT` |
 | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
 `WardrikHTTP.Resource` shows what each answers. Each resource's JSON Schema is
