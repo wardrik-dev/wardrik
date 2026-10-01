@@ -13,9 +13,9 @@ defmodule WardrikDaemon.CLI.Vault do
   `credential: named:NAME` reads. `--org ORG` seals it for an org,
   `{:org, NAME}`, which `org:NAME` reads for that org's agents. `--user USER`
   seals it for a user, `{:user, NAME}`, which `user:NAME` reads for that
-  user's agents: within `--org ORG`, or without it, as for an agent whose file
-  names no org. An org or a user is one segment of an agent's key, and is
-  shown as the key shows it, `acme` or `acme/@jon`.
+  user's agents: within `--org ORG`, or the deployment's org without it. An
+  org or a user is one segment of an agent's key, and is shown as the key
+  shows it, `acme` or `acme/@jon`.
 
   `vault ls` names each secret and whose it is. A user's secret is written
   under a hash of who they are, so `vault ls` counts users' secrets by name,
@@ -36,7 +36,6 @@ defmodule WardrikDaemon.CLI.Vault do
   alias WardrikDaemon.VaultKey
 
   @owner [org: :string, user: :string]
-  @segment ~r/\A[^\/@_\s][^\/\s]*\z/u
   @one_at_a_time "wardrik vault put asks for one value at a time: give NAME alone, or NAME=VALUE for each"
 
   @doc "The vault commands, for `WardrikDaemon.CLI.commands/0`."
@@ -53,7 +52,7 @@ defmodule WardrikDaemon.CLI.Vault do
           "input where that is not a terminal. NAME=VALUE stays in your shell's history.",
           "A secret is the deployment's, which credential: named:NAME reads. --org ORG",
           "seals it for an org, which org:NAME reads, and --user USER for a user, which",
-          "user:NAME reads, within --org ORG where it is given.",
+          "user:NAME reads, within --org ORG or the deployment's org.",
           "Where the vault has no key, it asks to make one; --yes makes it without asking."
         ],
         switches: [yes: :boolean] ++ @owner,
@@ -371,7 +370,7 @@ defmodule WardrikDaemon.CLI.Vault do
   defp segment(nil, _flag, _whose, _hint), do: :ok
 
   defp segment(text, flag, whose, hint) do
-    if text not in [".", ".."] and Regex.match?(@segment, text),
+    if Fleet.segment?(text),
       do: :ok,
       else:
         {:error,
@@ -380,15 +379,13 @@ defmodule WardrikDaemon.CLI.Vault do
   end
 
   # The org and user a user's agents resolve user:NAME against, as their keys
-  # carry them, so a user named without --org is in the org an agent file
-  # without one gives its agent.
+  # carry them: without --org, the deployment's org.
   defp user(org, user) do
     {org, user, _name} = Fleet.parse(Fleet.key("vault", org: org, user: user))
     {org, user}
   end
 
   # An owner as an agent's key shows it.
-  defp shown({nil, user}), do: "@#{user}"
   defp shown({org, user}), do: "#{org}/@#{user}"
   defp shown(owner), do: to_string(owner)
 end

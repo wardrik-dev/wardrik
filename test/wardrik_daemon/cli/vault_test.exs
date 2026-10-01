@@ -76,12 +76,14 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}=jon's", "--org", "acme", "--user", "jon"]) ==
                {"Sealed #{name} for acme/@jon.\n", 0}
 
-      assert command(["vault", "put", "#{name}=none's", "--user", "jon"]) ==
-               {"Sealed #{name} for @jon.\n", 0}
+      assert command(["vault", "put", "#{name}=deployment org's", "--user", "jon"]) ==
+               {"Sealed #{name} for #{Wardrik.Fleet.org()}/@jon.\n", 0}
 
       assert WardrikVault.fetch({:org, name}, "acme") == {:ok, "org's"}
       assert WardrikVault.fetch({:user, name}, {"acme", "jon"}) == {:ok, "jon's"}
-      assert WardrikVault.fetch({:user, name}, {nil, "jon"}) == {:ok, "none's"}
+
+      assert WardrikVault.fetch({:user, name}, {Wardrik.Fleet.org(), "jon"}) ==
+               {:ok, "deployment org's"}
     end
 
     test "says where the daemon's environment sets the name too", %{name: name} do

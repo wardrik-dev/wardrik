@@ -95,8 +95,8 @@ defmodule WardrikDaemon.Config do
   whole deployment, which `wardrik vault put NAME` seals. `org:NAME` is the
   agent's org's, sealed with `wardrik vault put NAME --org ORG`, and
   `user:NAME` the agent's user's, sealed with `--user USER`, and `--org ORG`
-  where the agent has one, or by the user connecting their account where
-  `oauth` has a provider for the server.
+  where the agent is not in the deployment's org, or by the user connecting
+  their account where `oauth` has a provider for the server.
 
   `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
   describes them. `vault` takes `keys`, as `WardrikVault` does; without them,
