@@ -63,6 +63,22 @@ needs, such as your model provider's, from `~/.config/wardrik/env`.
 `wardrik doctor` checks `config.yaml`, the store, the vault, each MCP server and every agent file,
 whether the daemon runs or not.
 
+## Keep secrets in the vault
+
+```sh
+wardrik vault put LINEAR_TOKEN    # asks for the value, and does not show it
+wardrik vault ls
+```
+
+The vault seals secrets, such as the credential an MCP server reads with `credential:
+named:LINEAR_TOKEN`, and keeps them in the store. The first `vault put` asks to make the vault's
+key, and keeps it in `~/.local/share/wardrik/vault_key`, or `/data/vault_key` in Docker, beside the
+store: anyone who can read both can read the secrets. To keep them apart, set `WARDRIK_VAULT_KEY`
+in the daemon's environment, or `vault.keys` in `config.yaml`, before the first `put`.
+
+The nodes of a cluster on one machine share the key. A node on another host needs a copy of
+`vault_key`, as it needs the cookie, or every node needs the same `vault.keys`.
+
 ## Upgrade
 
 Run the install script again. It puts the new release beside the old one and points `wardrik` at

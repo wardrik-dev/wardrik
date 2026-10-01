@@ -18,8 +18,8 @@ cluster:
 
 ## On one machine
 
-Short names are nodes on this machine. They share the install, its config directory and its cookie,
-and each keeps a store and a log of its own, under `nodes/<name>/`:
+Short names are nodes on this machine. They share the install, its config directory, its cookie and
+the vault's key, and each keeps a store and a log of its own, under `nodes/<name>/`:
 
 ```sh
 wardrik start --node a   # a is waiting for 1 more node to reach a quorum of 2 of 3
@@ -104,6 +104,10 @@ RELEASE_COOKIE=...                     # the same on every node
 - `WARDRIK_DIST_EXPOSED=1` says you mean it: an address beyond loopback is refused without it.
 - `RELEASE_COOKIE` is the cookie. Each install makes its own at first start, so give every node the
   same one, such as the first machine's `~/.local/share/wardrik/cookie`.
+
+The vault's key has to be the same on every node too. Copy the first machine's
+`~/.local/share/wardrik/vault_key` to each, or give every node the same `WARDRIK_VAULT_KEY`.
+`wardrik vault put` names any node it reaches that has no key.
 
 The service reads `~/.config/wardrik/env`; export the same variables in your shell for `wardrik`
 commands to reach the node. Then install the service on each machine with `wardrik service install`.

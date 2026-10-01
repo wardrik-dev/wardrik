@@ -113,6 +113,8 @@ mcp:
 ```
 
 A key in `headers` is the deployment's own: every agent reaches the server as the deployment. To
+keep it out of the environment, seal it with `wardrik vault put LINEAR_TOKEN` and name it as the
+server's `credential: named:LINEAR_TOKEN`, which sends it as `authorization: Bearer <token>`. To
 have each user connect their own account instead, see [Connect accounts](/guides/accounts/).
 
 ## What a server's tools may do

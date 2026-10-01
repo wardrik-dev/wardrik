@@ -18,6 +18,7 @@ apart from what the daemon writes:
 | `WARDRIK_CONFIG_DIR` | `$XDG_CONFIG_HOME/wardrik`, `~/.config/wardrik` | `config.yaml` or `config.yml`, and `agents/`; see `WardrikDaemon.AgentFile` |
 | `WARDRIK_DATA_DIR` | `$XDG_DATA_HOME/wardrik/store`, `~/.local/share/wardrik/store` | the store |
 | `WARDRIK_COOKIE_FILE` | `$XDG_DATA_HOME/wardrik/cookie`, `~/.local/share/wardrik/cookie` | the node's distribution cookie |
+| `WARDRIK_DATA_HOME` | `$XDG_DATA_HOME/wardrik`, `~/.local/share/wardrik` | `vault_key`, the vault's key where none is configured; see `WardrikDaemon.VaultKey` |
 | `WARDRIK_STATE_DIR` | `$XDG_STATE_HOME/wardrik`, `~/.local/state/wardrik` | `log/wardrik.log`, and `log/mcp.log` for what MCP commands write to stderr |
 
 ## config.yaml
@@ -98,8 +99,17 @@ the tools whose calls wait on a person unless a rule allows them by name,
 and `trusted: true` for a server whose answers are the deployment's own, so
 a call to it does not taint its run. See `WardrikMCP.Server`.
 
+A credential is a secret the vault keeps sealed. `named:NAME` is one for the
+whole deployment, which `wardrik vault put NAME` seals. `org:NAME` is the
+agent's org's, sealed with `wardrik vault put NAME --org ORG`, and
+`user:NAME` the agent's user's, sealed with `--user USER`, and `--org ORG`
+where the agent is not in the deployment's org, or by the user connecting
+their account where `oauth` has a provider for the server.
+
 `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
-describes them. `vault` takes `keys`, as `WardrikVault` does. `ssh` takes
+describes them. `vault` takes `keys`, as `WardrikVault` does; without them,
+or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
+which the first `wardrik vault put` asks to make. `ssh` takes
 `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
 does, with `trusted_workers: true` where tool workers' answers are the
 deployment's own.
