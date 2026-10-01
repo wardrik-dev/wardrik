@@ -15,7 +15,7 @@
   "properties": {
     "id": {
       "type": "string",
-      "description": "The agent's key, org/user/name."
+      "description": "The agent's key, org/name, or org/@user/name for one that works for a user."
     },
     "name": {
       "type": "string"

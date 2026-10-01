@@ -30,7 +30,7 @@ defmodule WardrikHost.FleetTest do
 
   test "an agent spawned in the fleet is kept in the application's store" do
     name = "host-#{System.unique_integer([:positive])}"
-    key = Wardrik.Fleet.key(name)
+    key = Wardrik.Fleet.key(name, org: "host")
 
     assert {:ok, _pid} = Wardrik.Fleet.spawn(key)
     assert key in Enum.map(Wardrik.Fleet.list(), & &1.key)

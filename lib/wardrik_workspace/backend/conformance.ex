@@ -21,9 +21,9 @@ defmodule WardrikWorkspace.Backend.Conformance do
       defp conformance_file(content),
         do: %WardrikWorkspace.File{
           content: content,
-          by: "test/_/writer",
+          by: "test/writer",
           run: "4bf92f3577b34da6a3ce929d0e0e4736",
-          call: "test/_/writer/call_1",
+          call: "test/writer/call_1",
           tainted: true,
           at: ~U[2026-09-30 12:00:00.000000Z]
         }

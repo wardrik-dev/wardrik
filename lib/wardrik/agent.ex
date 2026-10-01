@@ -29,7 +29,7 @@ defmodule Wardrik.Agent do
   Every function here takes a pid or a fleet key, and a key nothing holds
   answers `{:error, :not_found}`.
 
-      Wardrik.Agent.ask("acme/jon/researcher", "What changed this week?")
+      Wardrik.Agent.ask("acme/@jon/researcher", "What changed this week?")
 
   ## Interrupting
 
@@ -171,7 +171,7 @@ defmodule Wardrik.Agent do
   resumed with no decisions, so its new hooks decide the calls it waits on:
   each goes ahead, is refused, or waits again on what the new hooks ask.
 
-      Wardrik.Agent.configure("acme/jon/researcher", config: config, hooks: hooks)
+      Wardrik.Agent.configure("acme/@jon/researcher", config: config, hooks: hooks)
   """
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
   def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
@@ -228,7 +228,7 @@ defmodule Wardrik.Agent do
   and a no-op when nothing is parked. `:by` names the `Wardrik.Principal`
   deciding, as `decide/3` takes it.
 
-      Wardrik.Agent.resume("acme/jon/researcher", %{"call_abc" => :approve})
+      Wardrik.Agent.resume("acme/@jon/researcher", %{"call_abc" => :approve})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
   @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::

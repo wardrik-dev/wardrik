@@ -40,7 +40,7 @@ defmodule WardrikMCP.ExpiryTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root("acme/#{user}/a", user: user, credentials: Vault)
+    |> Scope.root("acme/@#{user}/a", user: user, credentials: Vault)
   end
 
   describe "a connection built around a credential" do

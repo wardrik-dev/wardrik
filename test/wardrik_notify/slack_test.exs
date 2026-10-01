@@ -33,7 +33,7 @@ defmodule WardrikNotify.SlackTest do
 
   defp parked_notice do
     %Notice{
-      agent: "acme/_/triage",
+      agent: "acme/triage",
       kind: :parked,
       at: ~U[2026-09-24 09:30:00Z],
       calls: [
@@ -48,7 +48,7 @@ defmodule WardrikNotify.SlackTest do
 
       assert_receive {:slack, "slack.com", "/api/chat.postMessage", message}
       assert message["channel"] == "#ops"
-      assert message["text"] == "acme/_/triage is waiting on you: deploy"
+      assert message["text"] == "acme/triage is waiting on you: deploy"
 
       assert %{"elements" => [approve, deny]} =
                Enum.find(message["blocks"], &(&1["block_id"] == "wardrik:call_1"))
@@ -57,7 +57,7 @@ defmodule WardrikNotify.SlackTest do
       assert deny["action_id"] == "wardrik_deny"
 
       assert JSON.decode!(approve["value"]) == %{
-               "a" => "acme/_/triage",
+               "a" => "acme/triage",
                "c" => "call_1",
                "n" => "deploy",
                "t" => "ops"
@@ -70,7 +70,7 @@ defmodule WardrikNotify.SlackTest do
 
       assert_receive {:slack, _host, "/api/chat.postMessage", message}
       refute Enum.any?(message["blocks"], &(&1["type"] == "actions"))
-      assert JSON.encode!(message["blocks"]) =~ "wardrik approve acme/_/triage call_1"
+      assert JSON.encode!(message["blocks"]) =~ "wardrik approve acme/triage call_1"
     end
 
     test "posts what a turn failed of, and what one answered" do
@@ -78,7 +78,7 @@ defmodule WardrikNotify.SlackTest do
       assert :ok = Slack.deliver(failed, [target: :ops] ++ @target)
 
       assert_receive {:slack, _host, _path,
-                      %{"text" => "acme/_/triage failed", "blocks" => [block]}}
+                      %{"text" => "acme/triage failed", "blocks" => [block]}}
 
       assert block["text"]["text"] =~ ":timeout"
 
@@ -86,7 +86,7 @@ defmodule WardrikNotify.SlackTest do
       assert :ok = Slack.deliver(answered, [target: :ops] ++ @target)
 
       assert_receive {:slack, _host, _path,
-                      %{"text" => "acme/_/triage answered", "blocks" => [_title, body]}}
+                      %{"text" => "acme/triage answered", "blocks" => [_title, body]}}
 
       assert body["text"]["text"] == "Two incidents need you."
     end
@@ -105,7 +105,7 @@ defmodule WardrikNotify.SlackTest do
   describe "a call waiting on a person to connect an account" do
     defp connecting_notice do
       %Notice{
-        agent: "acme/_/triage",
+        agent: "acme/triage",
         kind: :parked,
         at: ~U[2026-09-24 09:30:00Z],
         calls: [

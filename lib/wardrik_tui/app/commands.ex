@@ -248,12 +248,21 @@ defmodule WardrikTUI.App.Commands do
   end
 
   # A bare name is an agent beside this client's own, under the same org and
-  # user; `org/user/name` is any agent in the fleet. A leading slash is
-  # tolerated, as is a key nothing holds, which the lookup then reports.
+  # user; any other key is read as `Wardrik.Fleet.expand/1` reads it. A leading
+  # slash is tolerated, as is a key nothing holds, which the lookup then
+  # reports.
   defp key(term, target) do
-    case target |> String.trim_leading("/") |> String.split("/") do
-      [name] -> Fleet.key(name, term.assigns.spawn_opts)
-      parts -> Enum.join(parts, "/")
+    target = String.trim_leading(target, "/")
+
+    case {String.split(target, "/"), Fleet.expand(target)} do
+      {[name], _key} ->
+        if Fleet.segment?(name), do: Fleet.key(name, term.assigns.spawn_opts), else: name
+
+      {_parts, {:ok, key}} ->
+        key
+
+      {_parts, {:error, _message}} ->
+        target
     end
   end
 
@@ -263,7 +272,13 @@ defmodule WardrikTUI.App.Commands do
     target = String.trim_leading(target, "/")
 
     if String.ends_with?(target, "/") do
-      Display.append(term, View.stopped_under(target, Fleet.kill(target)))
+      prefix =
+        case Fleet.expand_prefix(target) do
+          {:ok, prefix} -> prefix
+          {:error, _message} -> target
+        end
+
+      Display.append(term, View.stopped_under(prefix, Fleet.kill(prefix)))
     else
       key = key(term, target)
 

@@ -16,7 +16,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd -P)
 box=${WARDRIK_BOX:-wardrik-demo}
-agent="_/_/survivor-$(date +%s)"
+agent="default/survivor-$(date +%s)"
 ssh_opts=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o LogLevel=ERROR)
 
 say() { printf '==> %s\n' "$*"; }

@@ -84,6 +84,26 @@ defmodule WardrikMCPTest do
       assert error["message"] =~ "the tool refused"
     end
 
+    @tag server_opts: [orgs: ["acme"]]
+    test "a server serves the agents of the orgs it names, and refuses another org's", %{
+      ref: ref
+    } do
+      scope = fn org -> Wardrik.Scope.root(Config.new(), org <> "/x", org: org) end
+
+      assert {:ok, %{"ok" => true}} =
+               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{value: "hi"}, scope.("acme")))
+               |> Calls.result()
+
+      for scope <- [scope.("globex"), nil] do
+        assert {:ok, %{"ok" => false, "error" => error}} =
+                 WardrikMCP.call(ref, "echo", Calls.tool("echo", %{value: "hi"}, scope))
+                 |> Calls.result()
+
+        assert error["message"] =~ "#{ref} "
+        assert error["message"] =~ ~r/does not serve globex's agents|this call is from none/
+      end
+    end
+
     test "a server that is not connected answers as an error" do
       assert {:ok, %{"ok" => false, "error" => error}} =
                WardrikMCP.call(:never_connected, "echo", Calls.tool("echo", %{}))

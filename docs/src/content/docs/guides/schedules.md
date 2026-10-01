@@ -31,8 +31,8 @@ wardrik schedules
 
 ```
 2 schedules:
-  _/_/triage/digest  0 17 * * 1-5  next in 3h 12m  not run yet
-  _/_/triage/sweep  every 30m  next in 29m  not run yet
+  default/triage/digest  0 17 * * 1-5  next in 3h 12m  not run yet
+  default/triage/sweep  every 30m  next in 29m  not run yet
 ```
 
 `wardrik status` and `wardrik ls` show when each agent next runs, and `wardrik show` lists its
@@ -148,11 +148,11 @@ The HTTP API puts and removes one schedule at a time, with a token that can `def
 
 ```sh
 curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/schedules/sweep \
+  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/sweep \
   -d '{"every": "30m", "prompt": "Check the incident queue."}'
 
 curl -X DELETE -H "authorization: Bearer $TOKEN" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/schedules/sweep
+  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/sweep
 ```
 
 The body takes `every`, `prompt`, `overlap`, `missed` and `jitter`, but not `prompt_file`. Defining

@@ -6,7 +6,7 @@ defmodule WardrikHTTP.Workers do
 
   It is a `Wardrik.Tool` source, named with the key of the agent it serves:
 
-      Wardrik.LLM.Config.new(tools: [{WardrikHTTP.Workers, "acme/_/triage"}])
+      Wardrik.LLM.Config.new(tools: [{WardrikHTTP.Workers, "acme/triage"}])
 
   An agent file or definition names it as `workers/*`. The agent is offered
   the tools of every connected worker whose token may `:serve` it, each named

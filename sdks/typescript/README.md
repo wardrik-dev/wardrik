@@ -25,10 +25,10 @@ its streams and workers.
 
 ## Agents
 
-An agent's key is `org/user/name`, with `_` for none.
+An agent's key is `org/name`, or `org/@user/name` for one that works for a user.
 
 ```ts
-const agent = await wardrik.agents.put("acme/_/triage", {
+const agent = await wardrik.agents.put("acme/triage", {
   model: "anthropic:claude-sonnet-5",
   instructions: "You watch the incident queue.",
   tools: ["linear/*", "workers/*"],

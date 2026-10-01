@@ -203,13 +203,29 @@ defmodule WardrikDaemon.CLI do
   defp run(terminal, args) do
     with {:ok, %Command{run: run} = command, rest} when run != nil <-
            Command.find(commands(), args),
-         {:ok, words, opts} <- Command.parse(command, rest) do
+         {:ok, words, opts} <- Command.parse(command, rest),
+         {:ok, words} <- named(command, words) do
       answer(terminal, command, words, opts)
     else
       {:error, usage} -> failed(terminal, "usage", usage, "--json" in args)
       not_a_command -> failed(terminal, "usage", unknown(not_a_command), "--json" in args)
     end
   end
+
+  # A KEY or PREFIX, first among a command's arguments, may leave out the
+  # deployment's org, as Wardrik.Fleet.expand/1 reads it.
+  defp named(%Command{arguments: arguments}, [word | rest]) do
+    expanded =
+      cond do
+        String.starts_with?(arguments, ["KEY", "[KEY"]) -> Fleet.expand(word)
+        String.starts_with?(arguments, "[PREFIX") -> Fleet.expand_prefix(word)
+        true -> {:ok, word}
+      end
+
+    with {:ok, word} <- expanded, do: {:ok, [word | rest]}
+  end
+
+  defp named(_command, []), do: {:ok, []}
 
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil

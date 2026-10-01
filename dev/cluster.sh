@@ -18,7 +18,7 @@
 # And from either iex pane, to see the same fleet from another node:
 #
 #   Wardrik.Fleet.list()
-#   Wardrik.Fleet.spawn("analyst", org: "acme", user: "jon")
+#   Wardrik.Fleet.spawn(Wardrik.Fleet.key("analyst", org: "acme", user: "jon"))
 #   Wardrik.Fleet.kill("acme/")
 #
 # Killing a node, from outside the session, leaves its agents to be restarted

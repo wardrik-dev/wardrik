@@ -6,8 +6,8 @@ import { error, event, fake, json, stream, type Fake } from "./server.ts";
 let server: Fake;
 let wardrik: Wardrik;
 
-const key = "acme/_/triage";
-const path = "/v1/agents/acme/_/triage";
+const key = "acme/triage";
+const path = "/v1/agents/acme/triage";
 const snapshot = (sequence: number) => ({ sequence });
 
 beforeEach(async () => {
@@ -26,31 +26,42 @@ const collect = async (events: AsyncIterable<WardrikEvent>, count = Infinity) =>
 
 describe("requests", () => {
   test("carry the token, and each segment of a key encoded on its own", async () => {
-    server.on("GET", "/v1/agents/acme/a%20b/tri%3Fage", (_request, response) =>
+    server.on("GET", "/v1/agents/acme/tri%3Fage", (_request, response) =>
       json(response, 200, snapshot(3)),
     );
 
-    assert.equal((await wardrik.agent("acme/a b/tri?age").snapshot()).sequence, 3);
+    assert.equal((await wardrik.agent("acme/tri?age").snapshot()).sequence, 3);
     assert.equal(server.received[0]!.headers.authorization, "Bearer wardrik_secret");
     await server.close();
   });
 
-  test("refuse a key that is not three segments", async () => {
-    assert.throws(() => wardrik.agent("acme/triage"), TypeError);
-    assert.throws(() => wardrik.agent("acme//triage"), TypeError);
+  test("reach a user's agent under @user, with the @ kept", async () => {
+    server.on("GET", "/v1/agents/acme/@j%20n/triage", (_request, response) =>
+      json(response, 200, snapshot(4)),
+    );
+
+    assert.equal((await wardrik.agent("acme/@j n/triage").snapshot()).sequence, 4);
+    await server.close();
+  });
+
+  test("refuse what is not a key", async () => {
+    for (const key of ["triage", "acme/jon/triage", "acme//triage", "acme/@/triage", "a/@b/c/d"]) {
+      assert.throws(() => wardrik.agent(key), TypeError, key);
+    }
+
     await server.close();
   });
 
   test("throw what the server answers as an error", async () => {
     server.on("GET", path, (_request, response) =>
-      json(response, 404, error("not_found", "No agent runs under acme/_/triage.")),
+      json(response, 404, error("not_found", "No agent runs under acme/triage.")),
     );
 
     await assert.rejects(wardrik.agent(key).snapshot(), (thrown: unknown) => {
       assert.ok(thrown instanceof WardrikError);
       assert.equal(thrown.status, 404);
       assert.equal(thrown.type, "not_found");
-      assert.equal(thrown.message, "No agent runs under acme/_/triage.");
+      assert.equal(thrown.message, "No agent runs under acme/triage.");
       assert.equal(thrown.requestId, "req_test");
       return true;
     });

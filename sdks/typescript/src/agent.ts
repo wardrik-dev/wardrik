@@ -25,11 +25,11 @@ const ends = new Set(["wardrik.run.completed", "wardrik.run.failed", "wardrik.ru
 const runOf = (event: WardrikEvent): string | undefined => event.traceparent.split("-")[1];
 
 /**
- * One agent, by its key, `org/user/name`. Every method is one request, and
- * nothing is read until one is called.
+ * One agent, by its key, `org/name` or `org/@user/name`. Every method is one
+ * request, and nothing is read until one is called.
  */
 export class Agent {
-  /** The agent's key, `org/user/name`. */
+  /** The agent's key, `org/name` or `org/@user/name`. */
   readonly key: string;
 
   readonly #http: Http;

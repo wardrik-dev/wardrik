@@ -21,12 +21,13 @@ defmodule WardrikDaemon.AgentFile do
   | Key | What it gives the agent |
   | --- | --- |
   | `name` | its name, and with `org` and `user` its key in the fleet. The file's name without `.md` when absent |
+  | `org` | the org it belongs to. `config.yaml`'s `org` when absent |
+  | `user` | the user of its org it works for, if any |
   | `description` | what it is for, as `wardrik show` shows it |
   | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
   | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
   | `context` | the files read into each turn; see below. A definition over HTTP cannot say it |
-  | `org`, `user` | who it works for |
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
@@ -34,6 +35,9 @@ defmodule WardrikDaemon.AgentFile do
   | `trust_outside_content` | `true` lets its rules allow a gated tool's calls even after a turn has read content from outside; see below. A definition over HTTP cannot say it |
   | `schedule` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
+
+  Its key is `org/name`, or `org/@user/name` for one that works for a user:
+  the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
 
   ## Tools
 
@@ -48,8 +52,13 @@ defmodule WardrikDaemon.AgentFile do
     * `workers/*`, every tool the connected tool workers offer the agent, as
       `WardrikHTTP.Workers` describes them. A policy narrows what it may call
     * `*`, every tool the daemon ships, the file tools, every MCP server
-      connected, and every tool worker's tools
+      the agent can reach, and every tool worker's tools
     * a module implementing `Wardrik.Tool`
+
+  An agent reaches an MCP server that serves its org, as the server's `org`
+  in `config.yaml` says, and one reached as each agent's user
+  (`credential: user:NAME`) only where it works for a user. A file naming a
+  server its agent cannot reach does not read, and says why.
 
   ## Workspace
 
@@ -154,7 +163,8 @@ defmodule WardrikDaemon.AgentFile do
       notify: {to: [ops], on: [parked, failed, finished]}
 
   `on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
-  answered.
+  answered. A target tells the agents of the org its `org` in `config.yaml`
+  names, and a file routing to one for another org does not read.
 
   The agent is given the credentials `WardrikOAuth` holds where a provider is
   configured, and `WardrikVault`'s where the vault has a key, and records every
@@ -163,7 +173,7 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Over HTTP
 
-  `definition/3` reads the body of `PUT /v1/agents/{org}/{user}/{name}` into
+  `definition/3` reads the body of `PUT /v1/agents/{key}` into
   a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
       {"description": "Watches the incident queue.",
@@ -174,8 +184,7 @@ defmodule WardrikDaemon.AgentFile do
 
   `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
   the system prompt, as a file's body is, and the other keys mean what they
-  mean in a file. The key gives the agent's `name`,
-  `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
+  mean in a file. The key gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
   agent's schedules as they are, and the schedules routes set them. Its
   `tools` and `policy` name what the daemon ships or configures, and never a
   module.
@@ -269,12 +278,12 @@ defmodule WardrikDaemon.AgentFile do
       spec(fields, body, policies, true,
         name:
           optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
-        org: optional_string!(fields["org"], "org"),
+        org: optional_string!(fields["org"], "org") || Wardrik.Fleet.org(),
         user: optional_string!(fields["user"], "user"),
         schedules: schedules(fields["schedule"], files?(fields))
       )
 
-    {:ok, spec, route(fields["notify"])}
+    {:ok, spec, route(fields["notify"], spec.org)}
   rescue
     error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
   end
@@ -396,7 +405,13 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  defp tool!("*", _modules?, key), do: @shipped ++ [{WardrikMCP, :*}, {WardrikHTTP.Workers, key}]
+  defp tool!("*", _modules?, key) do
+    servers =
+      for {ref, opts} <- WardrikMCP.Config.servers(), reach(key, ref, opts) == :ok, do: ref
+
+    @shipped ++ Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
+  end
+
   defp tool!("workers/*", _modules?, key), do: [{WardrikHTTP.Workers, key}]
 
   defp tool!("workers/" <> tool = name, _modules?, _key) do
@@ -405,7 +420,7 @@ defmodule WardrikDaemon.AgentFile do
     )
   end
 
-  defp tool!(name, modules?, _key) when is_binary(name) do
+  defp tool!(name, modules?, key) when is_binary(name) do
     pattern = Pattern.parse!(name)
 
     cond do
@@ -415,7 +430,7 @@ defmodule WardrikDaemon.AgentFile do
         )
 
       server = Pattern.server(pattern) ->
-        [server!(server)]
+        [server!(server, key)]
 
       String.contains?(name, "/") ->
         [server, tool] = String.split(name, "/", parts: 2)
@@ -441,18 +456,40 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  defp server!(name) do
+  defp server!(name, key) do
     configured = Map.new(WardrikMCP.Config.refs(), &{Atom.to_string(&1), &1})
 
-    case Map.fetch(configured, name) do
-      {:ok, ref} ->
-        {WardrikMCP, ref}
+    with {:ok, ref} <- Map.fetch(configured, name),
+         :ok <- reach(key, ref, Keyword.fetch!(WardrikMCP.Config.servers(), ref)) do
+      {WardrikMCP, ref}
+    else
+      {:error, why} ->
+        invalid!("tools names #{name}/*, but #{why}")
 
       :error ->
         invalid!(
           "tools names #{name}/*, but config.yaml configures no server #{name}" <>
             configured_servers(configured)
         )
+    end
+  end
+
+  # Whether the agent under `key` can reach the server `ref`: one serving its
+  # org, and of those reached as each agent's user, only where it has one.
+  defp reach(key, ref, opts) do
+    {org, user, _name} = Wardrik.Fleet.parse(key)
+    orgs = Keyword.get(opts, :orgs, :all)
+
+    cond do
+      orgs != :all and org not in orgs ->
+        {:error, "config.yaml's #{ref} serves #{Enum.join(orgs, ", ")}, and not #{org}"}
+
+      match?({:user, _name}, opts[:credential]) and is_nil(user) ->
+        {:error,
+         "#{ref} is reached as each agent's user, and #{key} works for none; give it a user"}
+
+      true ->
+        :ok
     end
   end
 
@@ -532,11 +569,11 @@ defmodule WardrikDaemon.AgentFile do
 
   # -- notify ----------------------------------------------------------------
 
-  defp route(nil), do: nil
-  defp route(target) when is_binary(target), do: route(%{"to" => [target]})
-  defp route(targets) when is_list(targets), do: route(%{"to" => targets})
+  defp route(nil, _org), do: nil
+  defp route(target, org) when is_binary(target), do: route(%{"to" => [target]}, org)
+  defp route(targets, org) when is_list(targets), do: route(%{"to" => targets}, org)
 
-  defp route(%{} = fields) do
+  defp route(%{} = fields, org) do
     case Map.keys(fields) -- ~w(to on) do
       [] -> :ok
       [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
@@ -546,14 +583,14 @@ defmodule WardrikDaemon.AgentFile do
     if targets == [], do: invalid!("notify names no target")
 
     %WardrikNotify.Route{
-      targets: Enum.map(targets, &target!/1),
+      targets: Enum.map(targets, &target!(&1, org)),
       on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
     }
   end
 
-  defp route(_other), do: invalid!("notify is a target, a list of them, or to and on")
+  defp route(_other, _org), do: invalid!("notify is a target, a list of them, or to and on")
 
-  defp target!(name) when is_binary(name) do
+  defp target!(name, org) when is_binary(name) do
     names = Enum.map(WardrikNotify.Config.targets(), fn {key, _target} -> key end)
 
     case Enum.find(names, &(Atom.to_string(&1) == name)) do
@@ -566,11 +603,14 @@ defmodule WardrikDaemon.AgentFile do
         )
 
       target ->
+        if not WardrikNotify.Config.tells?(target, org),
+          do: invalid!("notify names #{name}, which config.yaml's notify keeps for another org")
+
         target
     end
   end
 
-  defp target!(name), do: invalid!("notify names #{inspect(name)}, which is not a target")
+  defp target!(name, _org), do: invalid!("notify names #{inspect(name)}, which is not a target")
 
   defp known_targets([]), do: []
 

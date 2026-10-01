@@ -34,8 +34,8 @@ defmodule Wardrik.Store do
   and, where budgets run, `meters/`, with each node's heartbeat under
   `<prefix>__nodes/`. Through `Wardrik.Store.Durable` they sit in the
   `:durable` namespace, so an agent in a bucket is
-  `wardrik/durable/agents/acme/jon/triage`. On EKV, DurableServer's own backend
-  writes them beside the namespaces, as `agents/acme/jon/triage`.
+  `wardrik/durable/agents/acme/@jon/triage`. On EKV, DurableServer's own backend
+  writes them beside the namespaces, as `agents/acme/@jon/triage`.
 
   ## Versions
 

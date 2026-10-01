@@ -5,7 +5,14 @@ defmodule WardrikDaemon.ConfigTest do
 
   @moduletag :tmp_dir
 
-  defp read(yaml, %{tmp_dir: dir}) do
+  # Every file names the deployment's org first; what each other test reads
+  # is the rest.
+  defp read(yaml, context) do
+    with {:ok, [{Wardrik.Fleet, _org} | settings]} <- read_all(yaml, context),
+         do: {:ok, settings}
+  end
+
+  defp read_all(yaml, %{tmp_dir: dir}) do
     file = Path.join(dir, "config.yaml")
     File.write!(file, yaml)
     Config.read(file)
@@ -25,6 +32,52 @@ defmodule WardrikDaemon.ConfigTest do
 
     test "an empty file configures nothing", context do
       assert {:ok, []} = read("", context)
+    end
+
+    test "org is the deployment's org, default unless it says", context do
+      assert {:ok, [{Wardrik.Fleet, [org: "default"]}, {WardrikDaemon.SSH, _ssh}]} =
+               read_all("ssh: {port: 2223}\n", context)
+
+      assert {:ok, [{Wardrik.Fleet, [org: "acme"]}]} = read_all("org: acme\n", context)
+
+      for org <- ["_acme", "@acme", "a/b"] do
+        assert {:error, message} = read_all("org: #{inspect(org)}\n", context)
+        assert message =~ "which is not an org"
+      end
+    end
+
+    test "a server and a target serve the deployment's org, the orgs they name, or every org",
+         context do
+      yaml = """
+      org: acme
+      mcp:
+        mine: {url: https://a.example.com/mcp}
+        theirs: {url: https://b.example.com/mcp, org: globex}
+        shared: {url: https://c.example.com/mcp, org: [acme, globex]}
+        public: {url: https://d.example.com/mcp, org: "*"}
+      notify:
+        ops: {webhook: {url: https://hooks.example.com/a}}
+        globex: {org: globex, webhook: {url: https://hooks.example.com/b}}
+      """
+
+      assert {:ok, settings} = read_all(yaml, context)
+      servers = settings[WardrikMCP][:servers]
+
+      assert servers[:mine][:orgs] == ["acme"]
+      assert servers[:theirs][:orgs] == ["globex"]
+      assert servers[:shared][:orgs] == ["acme", "globex"]
+      assert servers[:public][:orgs] == :all
+
+      targets = settings[WardrikNotify][:targets]
+      assert {WardrikNotify.Webhook, ops} = targets[:ops]
+      assert ops[:orgs] == ["acme"]
+      assert {WardrikNotify.Webhook, globex} = targets[:globex]
+      assert globex[:orgs] == ["globex"]
+
+      assert {:error, message} =
+               read_all("mcp:\n  x: {url: https://a.example.com/mcp, org: [_x]}\n", context)
+
+      assert message =~ "mcp.x.org is an org, a list of them, or * for every org"
     end
 
     test "a server with a command is started as one", context do
@@ -244,10 +297,18 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, [{WardrikNotify, notify}]} = read(yaml, context)
 
       assert Enum.sort(notify[:targets]) == [
-               audit: {WardrikNotify.Webhook, [url: "https://hooks.example.com/wardrik"]},
+               audit:
+                 {WardrikNotify.Webhook,
+                  [url: "https://hooks.example.com/wardrik", orgs: ["default"]]},
                ops:
                  {WardrikNotify.Slack,
-                  [app_token: "xapp-1", approvers: ["U1"], channel: "#ops", token: "xoxb-1"]}
+                  [
+                    app_token: "xapp-1",
+                    approvers: ["U1"],
+                    channel: "#ops",
+                    token: "xoxb-1",
+                    orgs: ["default"]
+                  ]}
              ]
     end
 

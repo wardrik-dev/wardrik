@@ -55,8 +55,8 @@ defmodule WardrikOAuth.ResumeTest do
 
   describe "continuation/2" do
     test "approves the call it is given, as the principal it is given" do
-      assert Credential.continuation(call("call_1", "jon", "acme/jon/a"), oauth()) ==
-               {Agent, :decide, ["acme/jon/a", %{"call_1" => :approve}, [by: oauth()]]}
+      assert Credential.continuation(call("call_1", "jon", "acme/@jon/a"), oauth()) ==
+               {Agent, :decide, ["acme/@jon/a", %{"call_1" => :approve}, [by: oauth()]]}
     end
   end
 
@@ -132,7 +132,7 @@ defmodule WardrikOAuth.ResumeTest do
     end
 
     test "finishes on the same link once the endpoint answers", %{owner: owner} do
-      url = connect(owner, "acme/#{owner}/a")
+      url = connect(owner, "acme/@#{owner}/a")
       refuse_tokens()
 
       assert {:error, _trouble} = WardrikOAuth.finish(state_of(url), "the-code")
@@ -154,7 +154,7 @@ defmodule WardrikOAuth.ResumeTest do
     end
 
     test "finishes even when the agent it named is gone", %{owner: owner} do
-      url = connect(owner, "test/_/never-started")
+      url = connect(owner, "test/never-started")
 
       assert {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
       assert WardrikOAuth.connected?("github", {nil, owner})

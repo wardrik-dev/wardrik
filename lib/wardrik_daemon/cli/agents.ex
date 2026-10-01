@@ -31,10 +31,10 @@ defmodule WardrikDaemon.CLI.Agents do
         arguments: "[QUERY]",
         summary: "the agents, or those a query picks",
         details: [
-          "A query is words that must all match: TEXT in the key, name:, org: and user:",
-          "(_ for none), node:, status:idle, status:running or status:parked, and",
-          "attention, an agent waiting on a person. With --json, the agents as",
-          "GET /v1/agents lists them."
+          "A query is words that must all match: TEXT in the key, name:, org:, user:,",
+          "node:, status:idle, status:running or status:parked, and attention, an",
+          "agent waiting on a person. With --json, the agents as GET /v1/agents",
+          "lists them."
         ],
         count: {0, :any},
         run: &ls/2,

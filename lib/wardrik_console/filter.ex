@@ -9,7 +9,7 @@ defmodule WardrikConsole.Filter do
   | --- | --- |
   | `TEXT` | whose key contains the text |
   | `name:TEXT` | whose name contains the text |
-  | `org:TEXT`, `user:TEXT` | in that org or for that user; `_` means none |
+  | `org:TEXT`, `user:TEXT` | in that org, or working for that user |
   | `node:TEXT` | on a node whose name contains the text |
   | `status:idle`, `status:running`, `status:parked` | doing that |
   | `attention` | needing attention |
@@ -89,7 +89,7 @@ defmodule WardrikConsole.Filter do
   defp matches?({:node, text}, member, _), do: contains?(Atom.to_string(member.node), text)
   defp matches?({:status, status}, member, _), do: member.status == status
 
-  defp scope?(nil, text), do: text == "_"
+  defp scope?(nil, _text), do: false
   defp scope?(value, text), do: String.downcase(value) == text
 
   defp contains?(value, text), do: String.contains?(String.downcase(value), text)

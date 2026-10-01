@@ -3,7 +3,7 @@ defmodule WardrikWorkspace.Spec do
   An agent's workspace: its own tree, and the trees it shares with other
   agents, as `WardrikWorkspace.Mount`s.
 
-      {:ok, spec} = WardrikWorkspace.Spec.new("acme/jon/triage", %{
+      {:ok, spec} = WardrikWorkspace.Spec.new("acme/@jon/triage", %{
         "team" => "acme",
         "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}
       })
@@ -11,7 +11,7 @@ defmodule WardrikWorkspace.Spec do
   The agent's own tree is `agents/<key>`, seen at the root of its paths. A
   shared tree is named like a scope with a name after it, and is reachable by
   the agents under that scope: `acme` and `acme/runbooks` by acme's agents,
-  `acme/jon/notes` by jon's. `new/2` refuses one the agent cannot reach, as
+  `acme/@jon/notes` by jon's. `new/2` refuses one the agent cannot reach, as
   `Wardrik.Grant.covers?/2` decides, and sees each at `shared/<name>`, so
   `shared/` at the root of a path is never the agent's own.
 
@@ -104,20 +104,27 @@ defmodule WardrikWorkspace.Spec do
          "shared #{inspect(name)} is not a name; a name is lowercase letters, digits, - and _"}
   end
 
+  # A tree is named as an org is, or as an agent would be: `acme`,
+  # `acme/runbooks` or `acme/@jon/notes`.
   defp tree(name, tree) do
     trimmed = String.trim_trailing(tree, "/")
 
-    case Path.normalize(trimmed) do
-      {:ok, ^trimmed} when trimmed != "" ->
-        if Enum.count_until(String.split(trimmed, "/"), 4) <= 3,
-          do: {:ok, trimmed},
-          else: {:error, "shared #{name}: #{tree} has more than three parts"}
+    case {String.split(trimmed, "/"), Wardrik.Fleet.cast(trimmed)} do
+      {[org], _key} ->
+        if Wardrik.Fleet.segment?(org), do: {:ok, trimmed}, else: not_a_tree(name, tree)
 
-      _other ->
-        {:error,
-         "shared #{name}: #{inspect(tree)} is not a tree; a tree is org, org/name or org/user/name"}
+      {_parts, {:ok, _parts_of_key}} ->
+        {:ok, trimmed}
+
+      {_parts, :error} ->
+        not_a_tree(name, tree)
     end
   end
+
+  defp not_a_tree(name, tree),
+    do:
+      {:error,
+       "shared #{name}: #{inspect(tree)} is not a tree; a tree is org, org/name or org/@user/name"}
 
   # A tree is reachable by the agents under the scope its name begins with.
   defp reaches(key, name, tree) do

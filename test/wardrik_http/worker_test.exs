@@ -149,7 +149,7 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("echo"), tool("not a name!")])
 
     assert names(Workers.tools(context.agent)) == ["workers__echo"]
-    assert Workers.tools("other/_/agent") == []
+    assert Workers.tools("other/agent") == []
   end
 
   test "a call reaches a worker with its idempotency key, and is answered with what it returned",
@@ -253,7 +253,7 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("refund")])
 
     assert Workers.in_doubt(context.agent, "workers__refund") == :ask
-    assert Workers.in_doubt("other/_/agent", "workers__refund") == :rerun
+    assert Workers.in_doubt("other/agent", "workers__refund") == :rerun
   end
 
   test "a tool runs again only where every worker in reach offering it says it may", context do
@@ -320,7 +320,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker's answers are content from outside, unless the deployment trusts its workers" do
-    assert Workers.outside_content?("test/_/triage", "workers__echo")
+    assert Workers.outside_content?("test/triage", "workers__echo")
 
     previous = Application.get_env(:wardrik, WardrikHTTP)
 
@@ -336,6 +336,6 @@ defmodule WardrikHTTP.WorkerTest do
         else: Application.delete_env(:wardrik, WardrikHTTP)
     end)
 
-    refute Workers.outside_content?("test/_/triage", "workers__echo")
+    refute Workers.outside_content?("test/triage", "workers__echo")
   end
 end

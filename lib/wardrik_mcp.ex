@@ -17,6 +17,10 @@ defmodule WardrikMCP do
 
       Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])
 
+  A server's `:orgs` limits which orgs' agents it serves. A call from an agent
+  of another org is refused, so an agent that is not to see a server's tools
+  names the servers it is given, rather than `:*`.
+
   Both are read again for every turn, so a config outlives the servers it was
   built alongside.
 
@@ -149,6 +153,7 @@ defmodule WardrikMCP do
 
   defp call(ref, name, call, retry) do
     with %Offer{server: server} <- Connection.offer(ref),
+         :ok <- serves(server, call),
          {:ok, principal} <- connected(server, call) do
       :ok = Connection.watch(ref, principal)
 
@@ -205,6 +210,7 @@ defmodule WardrikMCP do
   @spec authorize(atom(), Wardrik.Call.t()) :: Wardrik.Call.t()
   def authorize(ref, %Wardrik.Call{} = call) do
     with %Offer{server: server} <- Connection.offer(ref),
+         :ok <- serves(server, call),
          {:ok, _principal} <- connected(server, call) do
       Wardrik.Call.answer(call, Result.ok(%{"connected" => true, "server" => to_string(ref)}))
     else
@@ -241,6 +247,18 @@ defmodule WardrikMCP do
     :exit, {:timeout, _call} ->
       {:error, Anubis.MCP.Error.transport(:timeout, %{server: server.ref})}
   end
+
+  # A server serves the agents of the orgs `:orgs` names, and no others.
+  defp serves(%Server{orgs: :all}, _call), do: :ok
+
+  defp serves(%Server{} = server, %Wardrik.Call{scope: %Scope{org: org}}) when is_binary(org) do
+    if Server.for_org?(server, org),
+      do: :ok,
+      else: {:error, "#{server.ref} does not serve #{org}'s agents"}
+  end
+
+  defp serves(%Server{} = server, _call),
+    do: {:error, "#{server.ref} serves the agents of some orgs, and this call is from none"}
 
   # A server everyone shares is reached over the deployment's own connection.
   # One reached with a credential needs a connection for whoever the

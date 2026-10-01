@@ -25,6 +25,8 @@ apart from what the daemon writes:
 The file is `config.yaml`, or `config.yml`; a directory holding both is
 refused, since one of them would go unread.
 
+    org: acme
+
     mcp:
       linear:
         url: https://mcp.linear.app/mcp
@@ -37,6 +39,9 @@ refused, since one of them would go unread.
       github:
         url: https://api.githubcopilot.com/mcp/
         credential: user:github
+      docs:
+        url: https://docs.example.com/mcp
+        org: "*"
 
     oauth:
       providers:
@@ -74,6 +79,15 @@ It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
 `${NAME}` in any string is replaced with that environment variable, so the
 file itself need hold no secret.
+
+`org` is the deployment's org: the one an agent belongs to where its file
+names none, and the one the CLI finds an agent in when it is named without
+an org. It is `default` unless set. See `Wardrik.Fleet`.
+
+An MCP server and a notify target each serve one org's agents, the
+deployment's own, unless its `org` names another, a list of them, or `*`
+for every org. An agent cannot reach a server, or route its notices to a
+target, that is not its org's.
 
 A server with `command` is started as a command, with `args`, `env` and
 `cwd` beside it; one with `url` is reached over HTTP, with `headers`. Either

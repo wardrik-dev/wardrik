@@ -112,7 +112,7 @@ conversation, and the agent holds what it was doing until each call it waits on 
 parked turn is kept in the store, so it outlives the node it parked on, and it does not time out:
 an agent's `timeout` starts again when the turn carries on.
 
-Messages that arrive meanwhile wait behind it. `POST /v1/agents/{org}/{user}/{name}/cancel`
+Messages that arrive meanwhile wait behind it. `POST /v1/agents/{key}/cancel`
 abandons it.
 
 In a round of several calls, the ones the rules allowed have run already. Each call that waits is
@@ -124,14 +124,14 @@ decided on its own, in any order, and the model has the round's answers once eve
 
 ```
 1 waiting:
-  acme/_/triage  call_1  github/create_issue  This opens an issue on GitHub.
+  acme/triage  call_1  github/create_issue  This opens an issue on GitHub.
 ```
 
 `approve` and `deny` decide one call, and `deny` takes a reason for the model:
 
 ```sh
-wardrik approve acme/_/triage call_1
-wardrik deny acme/_/triage call_1 Not on a Friday.
+wardrik approve acme/triage call_1
+wardrik deny acme/triage call_1 Not on a Friday.
 ```
 
 Without a call, they list the calls waiting and ask which, where there is someone at the terminal
@@ -142,7 +142,7 @@ A call can also be decided:
 - from Slack, where the notice shows the call's arguments, with Approve and Deny buttons. See
   [Approve calls from Slack](/guides/slack/);
 - over the HTTP API, with a token that can `decide`:
-  `POST /v1/agents/{org}/{user}/{name}/interrupts/{id}` with `{"decision": "approve"}`, or
+  `POST /v1/agents/{key}/interrupts/{id}` with `{"decision": "approve"}`, or
   `{"decision": "reject", "reason": "..."}`;
 - in the [terminal client](/guides/tui/), with Ctrl-Y and Ctrl-N.
 

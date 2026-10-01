@@ -40,14 +40,41 @@ An agent file names a server's tools as `server/*`, by the name `config.yaml` gi
 tools: [linear/*, notes/*]
 ```
 
-`*` gives an agent every server's tools, with everything else. A file cannot name one tool of a
-server: narrow what the server offers with `only` or `except` in `config.yaml`, by the names the
-server gives its tools, or decide which calls may run with a [policy](/concepts/policy/).
+`*` gives an agent the tools of every server it can reach, with everything else. A file cannot
+name one tool of a server: narrow what the server offers with `only` or `except` in `config.yaml`,
+by the names the server gives its tools, or decide which calls may run with a
+[policy](/concepts/policy/).
 
 The model sees each tool as `server__tool`, such as `linear__search_issues`, with the server's own
 description and JSON Schema. A policy names it as `linear/search_issues`, or every tool of the
 server as `linear/*`. `prefix` gives the server's tools another name than the server's, for the
 model and for policies alike, while an agent file still names the server by its own.
+
+## Which orgs a server serves
+
+A server serves the agents of the deployment's [org](/concepts/agents/#keys-and-orgs) unless its
+`org` names others, or `*` for every org:
+
+```yaml
+org: acme
+
+mcp:
+  linear:                                  # acme's agents
+    url: https://mcp.linear.app/mcp
+  globex-crm:
+    url: https://crm.globex.example/mcp
+    org: globex                            # globex's agents alone
+  docs:
+    url: https://docs.example.com/mcp
+    org: "*"                               # every org's
+```
+
+An agent file that names a server its org is not served by does not read, and says why;
+`wardrik status` lists it. A call from another org's agent is refused too, whatever it was given.
+
+The credentials in a server's `headers` or `env` are the deployment's, so a server that every org
+shares reaches the service the same way for all of them. Give each org a server of its own, or
+reach it as each user with [Connect accounts](/guides/accounts/).
 
 ## A server run as a command
 

@@ -4,12 +4,12 @@ defmodule WardrikDaemon.CLI.Tokens do
   daemon.
 
   `token create NAME` makes a token printed once. `--scope PREFIX` is the
-  agents it reaches, `org/`, `org/user/` or a key, `org/user/name`, and
-  `--all` reaches every agent. `--can ACTIONS` limits it to some of
-  `read,message,decide,define,serve`. A token that can define agents holds
-  them to a ceiling: `--policy NAME`, a policy `policies/` holds, which every
-  agent it defines is held to ahead of its own, or `--unlimited`, which holds
-  them to their own policies alone.
+  agents it reaches, `org/`, `org/@user/` or a key, `org/name` or
+  `org/@user/name`, and `--all` reaches every agent. `--can ACTIONS` limits
+  it to some of `read,message,decide,define,serve`. A token that can define
+  agents holds them to a ceiling: `--policy NAME`, a policy `policies/`
+  holds, which every agent it defines is held to ahead of its own, or
+  `--unlimited`, which holds them to their own policies alone.
   """
 
   alias Wardrik.Grant
@@ -26,7 +26,8 @@ defmodule WardrikDaemon.CLI.Tokens do
         options: "(--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]",
         summary: "a token for the HTTP API, printed once",
         details: [
-          "--scope PREFIX is the agents it reaches: org/, org/user/ or a key, org/user/name.",
+          "--scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or",
+          "org/@user/name.",
           "--can ACTIONS limits it to some of read,message,decide,define,serve.",
           "A token that can define holds the agents it defines to --policy NAME, one of",
           "policies/, or to their own policies alone with --unlimited."

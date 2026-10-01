@@ -12,6 +12,7 @@ defmodule WardrikMCP.Server do
   | `:ref` | required | what this server is called here, and the prefix on its tool names |
   | `:transport` | required | `{:stdio, opts}` or `{:streamable_http, opts}`, as `Anubis.Client` takes them |
   | `:prefix` | the ref | what every tool name from this server starts with, which may not hold `__` |
+  | `:orgs` | `:all` | the orgs whose agents may call its tools, or `:all` of them |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
   | `:gated` | none | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, or `true` for all of them; see `c:Wardrik.Tool.gated?/1` |
@@ -80,6 +81,7 @@ defmodule WardrikMCP.Server do
     :credential,
     :credential_env,
     except: [],
+    orgs: :all,
     gated: [],
     trusted: false,
     stderr: :inherit,
@@ -100,6 +102,7 @@ defmodule WardrikMCP.Server do
           prefix: String.t(),
           only: [String.t()] | nil,
           except: [String.t()],
+          orgs: [String.t()] | :all,
           gated: [String.t()] | boolean(),
           trusted: boolean(),
           credential: Wardrik.Credential.ref() | nil,
@@ -162,6 +165,11 @@ defmodule WardrikMCP.Server do
 
     {:ok, {layer, Keyword.put(opts, :headers, Map.put(headers, server.credential_header, value))}}
   end
+
+  @doc "Whether the agents of `org` may call this server's tools."
+  @spec for_org?(t(), String.t()) :: boolean()
+  def for_org?(%__MODULE__{orgs: :all}, _org), do: true
+  def for_org?(%__MODULE__{orgs: orgs}, org), do: org in orgs
 
   @doc "Whether a remote tool name is one this server offers to an agent."
   @spec offers?(t(), String.t()) :: boolean()

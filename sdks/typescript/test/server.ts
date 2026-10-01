@@ -82,7 +82,7 @@ export function event(type: string, data: object, options: { sequence?: number; 
   return {
     specversion: "1.0",
     id: crypto.randomUUID(),
-    source: "wardrik://test/agents/acme/_/triage",
+    source: "wardrik://test/agents/acme/triage",
     type: `wardrik.${type}`,
     subject: "runs/" + run,
     time: new Date().toISOString(),

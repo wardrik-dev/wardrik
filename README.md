@@ -319,7 +319,7 @@ spec = Wardrik.Agent.Spec.new(name: "assistant", org: current_org, config: confi
 
 | | |
 | --- | --- |
-| **`:user`, `:org`** | written into the agent's key through `Wardrik.Fleet.Segment` and carried on `Wardrik.Scope`, the way a Phoenix scope carries them. Your own values; core never reads inside them and never puts them in an event. |
+| **`:org`, `:user`** | written into the agent's key through `Wardrik.Fleet.Segment`, `acme/@jon/assistant`, and carried on `Wardrik.Scope`, the way a Phoenix scope carries them. Every agent has an org: a key without one is in `config :wardrik, Wardrik.Fleet, org: ...`, and refused where none is set. The segments are in every event's `source` and every store key, so give a user's as an id, not an email address. |
 | **`:hooks`** | a list of `Wardrik.Hook`s. Each is handed every tool call and model call, as a `Wardrik.Call`, before it happens, and may deny it, ask a person about it, or leave it be. The strictest answer decides. |
 | **`:dispatch`** | a `Wardrik.LLM.Dispatch`. `admit/2` decides what the call actually is, immediately before it is made; `settle/3` reports what it cost. |
 | **`:timeout`** | a deadline on the scope. Work can narrow it and never widen it. |
@@ -353,10 +353,10 @@ A hook that asks **parks** the turn: nothing runs, nothing is appended to the
 conversation, and the agent waits.
 
 ```elixir
-Wardrik.Agent.parked("acme/jon/assistant")
+Wardrik.Agent.parked("acme/@jon/assistant")
 #=> [{%{id: "call_1", name: "deploy", arguments: %{}}, "This ships to production."}]
 
-Wardrik.Agent.resume("acme/jon/assistant", %{"call_1" => :approve})
+Wardrik.Agent.resume("acme/@jon/assistant", %{"call_1" => :approve})
 ```
 
 Approval, a credential that needs connecting, and a call a person has to run
@@ -369,9 +369,9 @@ refused, and one they ask about waits on what they ask now.
 ### Stopping things
 
 ```elixir
-Wardrik.Agent.interrupt("acme/jon/assistant")                      # the whole turn
-Wardrik.LLM.ToolRunner.kill_call("acme/jon/assistant", "call_1")   # one tool call
-Wardrik.LLM.ToolRunner.in_flight("acme/jon/assistant")             # what could be stopped
+Wardrik.Agent.interrupt("acme/@jon/assistant")                      # the whole turn
+Wardrik.LLM.ToolRunner.kill_call("acme/@jon/assistant", "call_1")   # one tool call
+Wardrik.LLM.ToolRunner.in_flight("acme/@jon/assistant")             # what could be stopped
 ```
 
 A killed call is answered with an error result, so the model is never left with
@@ -484,15 +484,15 @@ MIX_ENV=prod mix release
 _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
 _build/prod/rel/wardrikd/bin/wardrik ls status:parked   # the agents a query picks
-_build/prod/rel/wardrikd/bin/wardrik show acme/_/triage # one agent in full
+_build/prod/rel/wardrikd/bin/wardrik show acme/triage # one agent in full
 _build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml, the store, the vault, each MCP server and every agent file will do
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
-_build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"   # and follow the answer
-_build/prod/rel/wardrikd/bin/wardrik watch acme/_/triage   # follow what it does, until Ctrl-C
-_build/prod/rel/wardrikd/bin/wardrik history acme/_/triage
+_build/prod/rel/wardrikd/bin/wardrik ask acme/triage "What changed today?"   # and follow the answer
+_build/prod/rel/wardrikd/bin/wardrik watch acme/triage   # follow what it does, until Ctrl-C
+_build/prod/rel/wardrikd/bin/wardrik history acme/triage
 _build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
 _build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
-_build/prod/rel/wardrikd/bin/wardrik approve acme/_/triage call_1
+_build/prod/rel/wardrikd/bin/wardrik approve acme/triage call_1
 _build/prod/rel/wardrikd/bin/wardrik approve   # choose among every call waiting
 _build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
 _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log
@@ -595,8 +595,15 @@ need an engineer.
 The daemon starts one agent per file when it boots, and `wardrik reload` gives
 each running agent what its file says now without losing what it has said.
 An agent has only the tools its file lists; `linear/*` is every tool of the
-server `config.yaml` calls `linear`, and `*` is everything. A file that does
-not read is listed by `wardrik status`, and the others run regardless.
+server `config.yaml` calls `linear`, and `*` is everything it can reach. A file
+that does not read is listed by `wardrik status`, and the others run regardless.
+
+The file above is the agent `acme/triage`: every agent belongs to an org, and
+one with `user: jon` is `acme/@jon/triage`. A file that names no `org` is in
+`config.yaml`'s `org`, `default` unless it says, where the CLI finds an agent
+by its name alone: `wardrik ask triage`. An MCP server and a notify target
+serve that org's agents, unless their `org` names others or `*` for every
+org.
 
 An agent can be asked something on a clock:
 
@@ -665,8 +672,8 @@ the agent until a person answers, from the TUI or from a shell:
 
 ```sh
 wardrik parked
-wardrik approve acme/_/triage call_1
-wardrik deny acme/_/triage call_1 Not on a Friday.
+wardrik approve acme/triage call_1
+wardrik deny acme/triage call_1 Not on a Friday.
 ```
 
 A rule may name what a call acts on, in parentheses, for a tool that says
@@ -714,7 +721,7 @@ workspace:
 
 A tree is reachable by the agents under the scope its name begins with, and
 holds only its own files: `acme` does not hold `acme/runbooks` or
-`acme/jon/notes`, so a tree shared only to read, or one only jon's agents
+`acme/@jon/notes`, so a tree shared only to read, or one only jon's agents
 reach, stays that way however the trees above it are shared.
 
 A file keeps who wrote it, and whether the turn that wrote it had read

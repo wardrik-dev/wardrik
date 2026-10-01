@@ -13,16 +13,16 @@ defmodule WardrikTUI.App.PaletteFlowTest do
 
     agent = %Palette{step: :agent, command: command}
 
-    assert {:step, :node, ^command, ["org/user/research"]} =
-             PaletteFlow.select(agent, {"org/user/research", "Research"}, [])
+    assert {:step, :node, ^command, ["org/@user/research"]} =
+             PaletteFlow.select(agent, {"org/@user/research", "Research"}, [])
 
-    node = %Palette{step: :node, command: command, chosen: ["org/user/research"]}
+    node = %Palette{step: :node, command: command, chosen: ["org/@user/research"]}
 
     assert {:run, ^command, line} =
              PaletteFlow.select(node, {"worker@host", "Worker"}, [])
 
     assert Command.parse(line, false) ==
-             {:move, "org/user/research", %{"node" => "worker@host"}}
+             {:move, "org/@user/research", %{"node" => "worker@host"}}
   end
 
   test "approving one call skips selection while several require an explicit choice" do

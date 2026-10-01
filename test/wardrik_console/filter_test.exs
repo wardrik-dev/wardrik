@@ -35,9 +35,9 @@ defmodule WardrikConsole.FilterTest do
 
   defp members do
     [
-      member("acme/jon/researcher", status: :running),
-      member("acme/ann/writer", node: :wardrik_b@there),
-      member("_/_/assistant", status: :parked)
+      member("acme/@jon/researcher", status: :running),
+      member("acme/@ann/writer", node: :wardrik_b@there),
+      member("default/assistant", status: :parked)
     ]
   end
 
@@ -56,14 +56,14 @@ defmodule WardrikConsole.FilterTest do
     assert matching("name:res", members()) == ["researcher"]
     assert matching("org:acme", members()) == ["researcher", "writer"]
     assert matching("user:ann", members()) == ["writer"]
-    assert matching("user:_", members()) == ["assistant"]
+    assert matching("user:_", members()) == []
     assert matching("node:wardrik_b", members()) == ["writer"]
   end
 
   test "status and attention narrow by what the agent is doing and needs" do
     assert matching("status:running", members()) == ["researcher"]
     assert matching("status:parked", members()) == ["assistant"]
-    assert matching("attention", members(), ["acme/ann/writer"]) == ["writer"]
+    assert matching("attention", members(), ["acme/@ann/writer"]) == ["writer"]
   end
 
   test "every word must match" do

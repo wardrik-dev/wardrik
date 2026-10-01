@@ -105,9 +105,7 @@ defmodule WardrikPolicyTest do
 
     defp checked(policy, target \\ "prod") do
       scope =
-        Scope.root(Config.new(tools: [Deploy]), "acme/_/triage",
-          hooks: WardrikPolicy.hooks(policy)
-        )
+        Scope.root(Config.new(tools: [Deploy]), "acme/triage", hooks: WardrikPolicy.hooks(policy))
 
       %{id: "c1", name: "deploy", arguments: %{"target" => target}}
       |> Wardrik.Call.tool(scope)
@@ -135,7 +133,7 @@ defmodule WardrikPolicyTest do
   describe "as a Wardrik.Hook" do
     test "decides tool calls through the seam, and allows every model call" do
       policy = WardrikPolicy.decode!(%{"deny" => ["run_lua"], "ask" => ["deploy"]})
-      scope = Scope.root(Config.new(), "acme/_/triage", hooks: WardrikPolicy.hooks(policy))
+      scope = Scope.root(Config.new(), "acme/triage", hooks: WardrikPolicy.hooks(policy))
       check = &(&1 |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check())
       tool = &%{id: "c1", name: &1, arguments: %{}}
 

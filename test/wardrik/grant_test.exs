@@ -18,23 +18,23 @@ defmodule Wardrik.GrantTest do
   test "a grant reaches the agents under its scope, and an empty scope reaches every agent" do
     {:ok, grant} = Grant.new("acme/")
 
-    assert Grant.covers?(grant, "acme/jon/triage")
-    refute Grant.covers?(grant, "globex/_/triage")
-    assert Grant.covers?(%{grant | scope: ""}, "globex/_/triage")
+    assert Grant.covers?(grant, "acme/@jon/triage")
+    refute Grant.covers?(grant, "globex/triage")
+    assert Grant.covers?(%{grant | scope: ""}, "globex/triage")
   end
 
   test "a scope ends at a segment, however it was written" do
     {:ok, grant} = Grant.new("acme/")
-    refute Grant.covers?(grant, "acmecorp/_/triage")
+    refute Grant.covers?(grant, "acmecorp/triage")
 
-    {:ok, one} = Grant.new("acme/jon/triage")
-    assert Grant.covers?(one, "acme/jon/triage")
-    refute Grant.covers?(one, "acme/jon/triage2")
+    {:ok, one} = Grant.new("acme/@jon/triage")
+    assert Grant.covers?(one, "acme/@jon/triage")
+    refute Grant.covers?(one, "acme/@jon/triage2")
 
     # A scope held without its trailing slash is still read as a prefix.
     bare = %{grant | scope: "acme"}
-    assert Grant.covers?(bare, "acme/jon/triage")
-    refute Grant.covers?(bare, "acmecorp/_/triage")
+    assert Grant.covers?(bare, "acme/@jon/triage")
+    refute Grant.covers?(bare, "acmecorp/triage")
   end
 
   test "new/2 writes a scope as the key prefix it is" do
@@ -42,21 +42,20 @@ defmodule Wardrik.GrantTest do
           {"", ""},
           {"acme", "acme/"},
           {"acme/", "acme/"},
-          {"acme/jon", "acme/jon/"},
-          {"_/_/", "_/_/"},
-          {"acme/jon/triage", "acme/jon/triage"},
-          {"acme/jon/triage/", "acme/jon/triage"}
+          {"acme/@jon", "acme/@jon/"},
+          {"acme/@jon/", "acme/@jon/"},
+          {"acme/triage", "acme/triage"},
+          {"acme/@jon/triage", "acme/@jon/triage"},
+          {"acme/@jon/triage/", "acme/@jon/triage"}
         ] do
       assert {:ok, %Grant{scope: ^scope}} = Grant.new(given)
     end
   end
 
   test "new/2 refuses a scope that is not a key prefix" do
-    for scope <- ["/", "/acme", "acme//jon", "acme/jon/triage/more"] do
+    for scope <- ["/", "/acme", "acme//jon", "acme/jon/triage", "acme/@jon/triage/more", "@jon/"] do
       assert {:error, message} = Grant.new(scope)
-
-      assert message ==
-               "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"
+      assert message == "#{inspect(scope)} is not a scope; a scope is org/, org/@user/ or a key"
     end
   end
 
@@ -78,9 +77,9 @@ defmodule Wardrik.GrantTest do
   test "allows?/3 wants the action and the reach both" do
     {:ok, grant} = Grant.new("acme/", [:read, :message])
 
-    assert Grant.allows?(grant, :message, "acme/jon/triage")
-    refute Grant.allows?(grant, :decide, "acme/jon/triage")
-    refute Grant.allows?(grant, :message, "globex/jon/triage")
+    assert Grant.allows?(grant, :message, "acme/@jon/triage")
+    refute Grant.allows?(grant, :decide, "acme/@jon/triage")
+    refute Grant.allows?(grant, :message, "globex/@jon/triage")
   end
 
   describe "a ceiling" do

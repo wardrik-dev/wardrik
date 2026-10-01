@@ -26,7 +26,7 @@ defmodule WardrikOAuth.RenewTest do
   end
 
   defp scope(owner),
-    do: Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: WardrikOAuth)
+    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
 
   defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
 

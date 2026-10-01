@@ -9,7 +9,7 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Test.ProtocolResolver
 
   @schemas Application.app_dir(:wardrik, "priv/protocol/v1")
-  @agent "acme/ops/triage"
+  @agent "acme/@ops/triage"
 
   defp read(name), do: @schemas |> Path.join(name <> ".json") |> File.read!() |> JSON.decode!()
 
@@ -73,7 +73,7 @@ defmodule Wardrik.Event.CodecTest do
       {turn, {:tool_call, %{name: "deploy"}}},
       {turn, {:deadline_reached, 6}},
       {tool,
-       {:tool_started, "call_1", "deploy", %{"repo" => "wardrik"}, "acme/ops/triage/t/call_1"}},
+       {:tool_started, "call_1", "deploy", %{"repo" => "wardrik"}, "acme/@ops/triage/t/call_1"}},
       {tool,
        {:tool_finished, "call_1", "deploy",
         {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}}}},
@@ -129,7 +129,7 @@ defmodule Wardrik.Event.CodecTest do
                "specversion" => "1.0",
                "type" => "wardrik.tool_call.denied",
                "subject" => "tool_calls/call_1",
-               "source" => "wardrik://local/agents/acme/ops/triage",
+               "source" => "wardrik://local/agents/acme/@ops/triage",
                "dataschema" => "urn:wardrik:schema:v1:tool_call.denied",
                "sequence" => "000000000041"
              } = cloud_event
@@ -154,7 +154,7 @@ defmodule Wardrik.Event.CodecTest do
       Application.put_env(:wardrik, :deployment, "wardrik-demo")
       on_exit(fn -> Application.delete_env(:wardrik, :deployment) end)
 
-      assert Codec.source(@agent) == "wardrik://wardrik-demo/agents/acme/ops/triage"
+      assert Codec.source(@agent) == "wardrik://wardrik-demo/agents/acme/@ops/triage"
     end
   end
 

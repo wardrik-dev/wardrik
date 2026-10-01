@@ -217,7 +217,7 @@ $box is at $address.
 
   ssh -p 2222 jon@$address                            the TUI
   ssh wardrik@$address wardrik/bin/wardrik parked              what waits on a person
-  ssh wardrik@$address 'wardrik/bin/wardrik ask _/jon/triage "Open an issue titled Check."'
+  ssh wardrik@$address 'wardrik/bin/wardrik ask @jon/triage "Open an issue titled Check."'
   ssh wardrik@$address 'journalctl --user -u wardrik@a -n 40 --no-pager'
 
 deploy/hetzner/teardown.sh deletes it.

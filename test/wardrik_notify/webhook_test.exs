@@ -5,7 +5,7 @@ defmodule WardrikNotify.WebhookTest do
   alias WardrikNotify.Webhook
 
   @notice %Notice{
-    agent: "acme/_/triage",
+    agent: "acme/triage",
     kind: :failed,
     at: ~U[2026-09-24 09:30:00Z],
     reason: :timeout
@@ -28,7 +28,7 @@ defmodule WardrikNotify.WebhookTest do
     assert_receive {:posted, "/wardrik", headers, body}
     assert {"x-wardrik-event", "turn_failed"} in headers
     refute List.keyfind(headers, "x-wardrik-signature", 0)
-    assert %{"event" => "turn_failed", "agent" => "acme/_/triage"} = JSON.decode!(body)
+    assert %{"event" => "turn_failed", "agent" => "acme/triage"} = JSON.decode!(body)
   end
 
   test "signs the body with a secret" do

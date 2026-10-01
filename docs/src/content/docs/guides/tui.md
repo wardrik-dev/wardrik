@@ -43,7 +43,8 @@ In Docker, mount a directory holding `ssh/authorized_keys` at `/config`, and pub
 
 ## Using it
 
-A session opens on the first agent, by key, or starts `_/<you>/assistant` where none runs. Type at
+A session opens on the first agent, by key, or starts your own, `@<you>/assistant` in the
+deployment's org, where none runs. Type at
 the prompt and press Enter to send a message. Quitting ends the session and nothing else: the agents
 carry on.
 

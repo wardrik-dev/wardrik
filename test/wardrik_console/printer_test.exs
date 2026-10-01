@@ -11,7 +11,7 @@ defmodule WardrikConsole.PrinterTest do
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
-  defp root, do: Source.root("acme/jon/triage")
+  defp root, do: Source.root("acme/@jon/triage")
 
   # Every payload through one printer, on the turn's own span unless given
   # events, and the lines they returned as plain text.

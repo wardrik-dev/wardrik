@@ -35,7 +35,7 @@ defmodule WardrikMCP.BootstrapTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root("acme/#{user}/a", org: "acme", user: user, credentials: Vault)
+    |> Scope.root("acme/@#{user}/a", org: "acme", user: user, credentials: Vault)
   end
 
   defp call(ref, user, tool) do

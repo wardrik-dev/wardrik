@@ -46,7 +46,7 @@ export WARDRIK_TEST_S3_BUCKET=${WARDRIK_TEST_S3_BUCKET:-wardrik-test}
 export WARDRIK_FAILOVER_DATABASE_URL=${WARDRIK_FAILOVER_DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:54329/postgres}
 
 stamp=$(date +%s)
-agent="_/_/survivor-$stamp"
+agent="default/survivor-$stamp"
 work=$(mktemp -d -t wardrik-failover.XXXXXX)
 pids=()
 

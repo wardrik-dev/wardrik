@@ -29,7 +29,7 @@ defmodule WardrikOAuth.LoopbackTest do
       redirect: [port: port, open: false]
     )
 
-    scope = Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: WardrikOAuth)
+    scope = Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
 
     {:error, {:authorization_required, url}} =
       Credential.resolve(Calls.tool("tool", %{}, scope), {:user, "github"})

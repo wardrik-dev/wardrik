@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:authorization",
   "title": "An authorization",
-  "description": "Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.",
+  "description": "Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{key}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.",
   "type": "object",
   "additionalProperties": false,
   "required": [

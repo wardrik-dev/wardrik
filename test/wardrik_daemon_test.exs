@@ -29,7 +29,7 @@ defmodule WardrikDaemonTest do
     {:ok, secret, _token} =
       WardrikHTTP.Token.create("daemon-test", "daemon/", Wardrik.Grant.actions(), ceiling: [])
 
-    key = "daemon/_/defined-#{System.unique_integer([:positive])}"
+    key = "daemon/defined-#{System.unique_integer([:positive])}"
     on_exit(fn -> Wardrik.Fleet.forget(key) end)
 
     start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir})
@@ -104,7 +104,7 @@ defmodule WardrikDaemonTest do
     start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir})
 
     Wardrik.Test.Fleet.await_update(fn -> Enum.any?(Wardrik.Fleet.list(org <> "/")) end)
-    assert WardrikDaemon.status() =~ "#{org}/_/counter  idle  #{node()}  0 of 500 tokens today"
+    assert WardrikDaemon.status() =~ "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
   end
 
   test "status/0 names the node and counts the fleet" do

@@ -170,7 +170,7 @@ defmodule WardrikTUI.App.FleetTest do
     session: session,
     org: org
   } do
-    key = "#{org}/_/helper"
+    key = "#{org}/helper"
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/spawn helper")
@@ -180,7 +180,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do
-    on_exit(fn -> Fleet.forget("#{org}/_/asked") end)
+    on_exit(fn -> Fleet.forget("#{org}/asked") end)
 
     submit(session, "/spawn asked look into it")
 
@@ -189,7 +189,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/connect moves this client onto another agent", %{session: session, org: org} do
-    key = "#{org}/_/other"
+    key = "#{org}/other"
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -497,11 +497,11 @@ defmodule WardrikTUI.App.FleetTest do
     {:ok, _pid} = Fleet.spawn(twin, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(twin) end)
 
-    assert eventually(session, fn -> screen(session) =~ "○ #{org}b/_/" end)
-    assert screen(session) =~ "› ○ #{org}/_/"
+    assert eventually(session, fn -> screen(session) =~ "○ #{org}b/" end)
+    assert screen(session) =~ "› ○ #{org}/"
 
-    assert String.starts_with?(twin, org <> "b/_/") and
-             String.starts_with?(agent_id, org <> "/_/")
+    assert String.starts_with?(twin, org <> "b/") and
+             String.starts_with?(agent_id, org <> "/")
   end
 
   test "on a narrow terminal the panel is an overlay while it is focused", %{session: session} do
@@ -595,7 +595,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/spawn places the agent on the node it is given", %{session: session, org: org} do
-    key = "#{org}/_/placed"
+    key = "#{org}/placed"
     on_exit(fn -> Fleet.forget(key) end)
     [short | _host] = node() |> Atom.to_string() |> String.split("@")
 
@@ -768,7 +768,7 @@ defmodule WardrikTUI.App.FleetTest do
   test "/connect says so when nothing holds the key", %{session: session, org: org} do
     submit(session, "/connect nobody")
 
-    assert screen(session) =~ "no agent at #{org}/_/nobody"
+    assert screen(session) =~ "no agent at #{org}/nobody"
   end
 
   test "/connect alone asks which agent", %{session: session, org: org} do
@@ -929,7 +929,7 @@ defmodule WardrikTUI.App.FleetTest do
   test "/rm NAME says so when nothing holds the key", %{session: session, org: org} do
     submit(session, "/rm nobody")
 
-    assert screen(session) =~ "no agent at #{org}/_/nobody"
+    assert screen(session) =~ "no agent at #{org}/nobody"
   end
 
   test "/rm says so when a prefix matches nothing", %{session: session} do

@@ -33,7 +33,7 @@ defmodule Wardrik.LedgerTest do
 
   setup do
     id = System.unique_integer([:positive])
-    key = {"test/_/ledger-#{id}", "call_#{id}"}
+    key = {"test/ledger-#{id}", "call_#{id}"}
 
     {:ok, key: key, call: %{id: elem(key, 1), name: "deploy", arguments: %{"env" => "prod"}}}
   end
@@ -130,7 +130,7 @@ defmodule Wardrik.LedgerTest do
   end
 
   describe "release" do
-    defp claim_key, do: {"release-#{System.unique_integer([:positive])}/_/a", "trace/call_1"}
+    defp claim_key, do: {"release-#{System.unique_integer([:positive])}/a", "trace/call_1"}
     defp a_call, do: %{id: "call_1", name: "connect", arguments: %{}}
 
     test "removes a claim that never settled, so the call can be claimed again" do

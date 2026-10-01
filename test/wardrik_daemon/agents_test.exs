@@ -37,24 +37,24 @@ defmodule WardrikDaemon.AgentsTest do
     start_supervised!({Agents, dir: context.dir})
 
     assert [{_alpha, {:ok, _}}, {_beta, {:ok, _}}] = Agents.files()
-    assert Agent.status("#{org}/_/beta").model == "anthropic:claude-sonnet-5"
+    assert Agent.status("#{org}/beta").model == "anthropic:claude-sonnet-5"
 
     assert Enum.sort(Enum.map(Fleet.list(org <> "/"), & &1.key)) == [
-             "#{org}/_/alpha",
-             "#{org}/_/beta"
+             "#{org}/alpha",
+             "#{org}/beta"
            ]
   end
 
   test "reload/0 gives a running agent what its file says now", %{org: org} = context do
     write(context, "alpha", "")
     start_supervised!({Agents, dir: context.dir})
-    {:ok, pid} = Fleet.spawn("#{org}/_/alpha")
+    {:ok, pid} = Fleet.spawn("#{org}/alpha")
 
     write(context, "alpha", "model: anthropic:claude-sonnet-5\n")
     Agents.reload()
 
-    assert {:ok, ^pid} = Fleet.spawn("#{org}/_/alpha")
-    assert Agent.status("#{org}/_/alpha").model == "anthropic:claude-sonnet-5"
+    assert {:ok, ^pid} = Fleet.spawn("#{org}/alpha")
+    assert Agent.status("#{org}/alpha").model == "anthropic:claude-sonnet-5"
   end
 
   test "a file that does not read is reported, and the rest still run", %{org: org} = context do
@@ -66,8 +66,8 @@ defmodule WardrikDaemon.AgentsTest do
     assert [{_alpha, {:ok, _}}, {broken, {:error, message}}] = Agents.files()
     assert Path.basename(broken) == "broken.md"
     assert message =~ "names nope"
-    assert %{} = Agent.status("#{org}/_/alpha")
-    assert {:error, :not_found} = Agent.status("#{org}/_/broken")
+    assert %{} = Agent.status("#{org}/alpha")
+    assert {:error, :not_found} = Agent.status("#{org}/broken")
   end
 
   test "a file whose agent cannot be keyed is reported, and the rest still run", %{
@@ -81,8 +81,9 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert [{_alpha, {:ok, _}}, {slashed, {:error, message}}] = Agents.files()
     assert Path.basename(slashed) == "slashed.md"
-    assert message =~ "slashed.md: a fleet key segment may not contain \"/\""
-    assert %{} = Agent.status("#{org}/_/alpha")
+    assert message =~ "slashed.md: an agent's org is"
+    assert message =~ "which is not a segment"
+    assert %{} = Agent.status("#{org}/alpha")
   end
 
   test "a file whose reading fails outright is reported, and the rest still run",
@@ -100,7 +101,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert [{_alpha, {:ok, _}}, {failing, {:error, message}}] = Agents.files()
     assert message == "#{failing}: (exit) :store_timeout"
-    assert %{} = Agent.status("#{org}/_/alpha")
+    assert %{} = Agent.status("#{org}/alpha")
   end
 
   test "a policy in policies/ governs the agents that name it", %{org: org} = context do
@@ -113,7 +114,7 @@ defmodule WardrikDaemon.AgentsTest do
              Agents.files()
 
     assert spec.hooks == WardrikPolicy.hooks(careful)
-    assert %{} = Agent.status("#{org}/_/alpha")
+    assert %{} = Agent.status("#{org}/alpha")
   end
 
   test "reads a definition sent to the HTTP API under the policies it read",
@@ -121,22 +122,22 @@ defmodule WardrikDaemon.AgentsTest do
     write_policy(context, "careful", "deny: [run_lua]\n")
     start_supervised!({Agents, dir: context.dir})
 
-    assert {:ok, spec} = Agents.put("#{org}/_/defined", %{"policy" => "careful"})
+    assert {:ok, spec} = Agents.put("#{org}/defined", %{"policy" => "careful"})
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
 
-    assert {:error, message} = Agents.put("#{org}/_/defined", %{"policy" => "lax"})
+    assert {:error, message} = Agents.put("#{org}/defined", %{"policy" => "lax"})
     assert message =~ "policy names lax"
 
-    assert Agents.delete("#{org}/_/defined") == {:error, :not_found}
+    assert Agents.delete("#{org}/defined") == {:error, :not_found}
   end
 
   test "leaves an agent a file declares to its file", %{org: org} = context do
     write(context, "alpha", "")
     start_supervised!({Agents, dir: context.dir})
-    message = "#{org}/_/alpha is declared by agents/alpha.md; change the file"
+    message = "#{org}/alpha is declared by agents/alpha.md; change the file"
 
-    assert Agents.put("#{org}/_/alpha", %{}) == {:error, :conflict, message}
-    assert Agents.delete("#{org}/_/alpha") == {:error, :conflict, message}
+    assert Agents.put("#{org}/alpha", %{}) == {:error, :conflict, message}
+    assert Agents.delete("#{org}/alpha") == {:error, :conflict, message}
   end
 
   test "an agent naming a policy that does not read does not run", %{org: org} = context do
@@ -148,7 +149,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] = Agents.files()
     assert policy_error =~ "careful.yaml: deny is a list"
     assert agent_error =~ "names careful"
-    assert {:error, :not_found} = Agent.status("#{org}/_/alpha")
+    assert {:error, :not_found} = Agent.status("#{org}/alpha")
   end
 
   test "runs the schedules a file declares, and stops those it no longer does",
@@ -158,14 +159,14 @@ defmodule WardrikDaemon.AgentsTest do
     assert [{_alpha, {:ok, _spec}}] = Agents.files()
 
     assert [%Wardrik.Schedule.Status{name: "sweep"}] =
-             Wardrik.Schedule.for_agent("#{org}/_/alpha")
+             Wardrik.Schedule.for_agent("#{org}/alpha")
 
-    assert WardrikDaemon.status() =~ ~r"#{org}/_/alpha .*next run in 5\dm"
+    assert WardrikDaemon.status() =~ ~r"#{org}/alpha .*next run in 5\dm"
 
     write(context, "alpha", "")
     Agents.reload()
 
-    assert Wardrik.Schedule.for_agent("#{org}/_/alpha") == []
+    assert Wardrik.Schedule.for_agent("#{org}/alpha") == []
   end
 
   test "reads a policy written as .yml, and reports a second file of the same name",

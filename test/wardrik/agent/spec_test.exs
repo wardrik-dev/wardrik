@@ -12,14 +12,14 @@ defmodule Wardrik.Agent.SpecTest do
   end
 
   test "key/1 is the fleet key of its name, org and user" do
-    assert Spec.key(Spec.new(name: "triage", org: "acme", user: "jon")) == "acme/jon/triage"
-    assert Spec.key(Spec.new(name: "triage")) == "_/_/triage"
+    assert Spec.key(Spec.new(name: "triage", org: "acme", user: "jon")) == "acme/@jon/triage"
+    assert Spec.key(Spec.new(name: "triage")) == "default/triage"
   end
 
   test "new/1 refuses a name, org or user a key cannot hold" do
-    assert_raise ArgumentError, ~r/may not contain "\/"/, fn -> Spec.new(name: "a/b") end
+    assert_raise ArgumentError, ~r/not a segment/, fn -> Spec.new(name: "a/b") end
 
-    assert_raise ArgumentError, ~r/may not contain "\/"/, fn ->
+    assert_raise ArgumentError, ~r/not a segment/, fn ->
       Spec.new(name: "x", org: "acme/eu")
     end
   end

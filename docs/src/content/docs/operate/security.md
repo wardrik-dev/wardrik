@@ -48,7 +48,7 @@ Every HTTP request presents a token that `wardrik token create` made:
 wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]
 ```
 
-- **`--scope`** is the agents it reaches: `acme/`, `acme/jon/` or one agent, `acme/jon/triage`.
+- **`--scope`** is the agents it reaches: `acme/`, `acme/@jon/` or one agent, `acme/@jon/triage`.
   `--all` reaches every agent. An agent outside the scope is answered as one that does not exist.
 - **`--can`** is what it may do, some of `read`, `message`, `decide`, `define` and `serve`, and all
   of them unless it says fewer. An action it may not take is refused with `403`.
@@ -67,7 +67,7 @@ wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAM
 
 ```sh
 wardrik token create ci --scope acme/ --policy careful
-wardrik token create watcher --scope acme/ops/ --can read
+wardrik token create watcher --scope acme/@ops/ --can read
 wardrik token create shop --scope acme/ --can serve
 wardrik token list
 wardrik token revoke 3f9a61c0d4e2
@@ -77,6 +77,24 @@ The token is printed once, and the store keeps only its SHA-256. It does not exp
 that is no longer needed. Revoking refuses it at once, and closes the event streams and worker
 connections open on it, on every node the revocation reaches, and within 15 seconds on one it does
 not. An agent a revoked token defined keeps running, under the policy it was defined with.
+
+## Orgs
+
+Every agent belongs to an [org](/concepts/agents/#keys-and-orgs), and an org is the boundary
+between agents. What belongs to an org is kept to its agents:
+
+- tokens scoped to the org, or to one of its users;
+- shared trees named for the org or one of its users;
+- the vault's `org:` and `user:` credentials, and the accounts users connect;
+- MCP servers and notice targets, which serve the deployment's org unless `config.yaml` names
+  others.
+
+Some things are the deployment's, whatever the org:
+
+- `policies/`, which any agent file can name;
+- `named:` credentials, which any server `config.yaml` gives them to can use;
+- the credentials in an MCP server's `headers` or `env`, used for every org the server serves;
+- the terminal client, whose keys reach every org's agents.
 
 ## The terminal client
 

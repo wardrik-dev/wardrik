@@ -12,8 +12,9 @@ defmodule WardrikTUI.SSH do
 
   A session opens on the first agent the fleet runs, in the order of their
   keys, and the fleet panel moves it to any other. Where the fleet runs none,
-  it starts an assistant for whoever connected, under
-  `_/<username>/assistant`, with `:spawn_opts`.
+  it starts an assistant for whoever connected, `<org>/@<username>/assistant`
+  in the deployment's org, with `:spawn_opts`; for a user name that cannot be
+  a key's segment, the org's own `<org>/assistant`.
 
   Breeze starts the session's terminal itself, from the options
   `Termite.SSH.Session.terminal_opts/1` gives, so the keys the client types
@@ -75,9 +76,11 @@ defmodule WardrikTUI.SSH do
   def choose(members, username) do
     case Enum.sort_by(members, & &1.key) do
       [first | _rest] -> {:attach, first.key}
-      [] -> {:start, Fleet.key("assistant", user: to_string(username))}
+      [] -> {:start, Fleet.key("assistant", whose(to_string(username)))}
     end
   end
+
+  defp whose(username), do: if(Fleet.segment?(username), do: [user: username], else: [])
 
   defp model(key) do
     case Agent.status(key) do
