@@ -127,11 +127,7 @@ defmodule WardrikDaemon do
       ] ++ ["#{length(members)} #{agents(members)}"]
 
     files = agent_files()
-
-    specs =
-      for {_path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
-          into: %{},
-          do: {Wardrik.Agent.Spec.key(spec), spec}
+    specs = specs(files)
 
     rows =
       for member <- members,
@@ -141,7 +137,7 @@ defmodule WardrikDaemon do
                 "  #{member.key}",
                 member.status,
                 Nodes.display(member.node)
-                | spending(specs[member.key], member.key) ++ next_run(member.key)
+                | spent(specs[member.key], member.key) ++ next_run(member.key)
               ],
               "  "
             )
@@ -153,28 +149,51 @@ defmodule WardrikDaemon do
     Enum.join(header ++ rows ++ problems(broken), "\n")
   end
 
-  defp spending(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
+  @doc """
+  The specs the agent files hold, by the key of the agent each declares, or
+  those `files` hold, as `WardrikDaemon.Agents.files/0` answers them.
+  """
+  @spec specs([WardrikDaemon.Agents.file()]) :: %{String.t() => Wardrik.Agent.Spec.t()}
+  def specs(files \\ agent_files()) do
+    for {_path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
+        into: %{},
+        do: {Wardrik.Agent.Spec.key(spec), spec}
+  end
+
+  @doc "What the agent under `key` has spent of each budget `spec` gives it, as its budgets say it."
+  @spec spent(Wardrik.Agent.Spec.t() | nil, String.t()) :: [String.t()]
+  def spent(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
     for %Wardrik.Hook{module: WardrikPolicy.Budget, value: budget} <- hooks,
         spent = WardrikPolicy.Budget.spending(budget, key),
         spent != nil,
         do: spent
   end
 
-  defp spending(_spec, _key), do: []
+  def spent(_spec, _key), do: []
 
-  defp next_run(key) do
+  @doc "How long until a schedule next asks the agent under `key`, in milliseconds, or `nil` where none does."
+  @spec next_in(String.t()) :: non_neg_integer() | nil
+  def next_in(key) do
     case Wardrik.Schedule.for_agent(key) do
       [] ->
-        []
+        nil
 
       schedules ->
         next = schedules |> Enum.map(& &1.next_at) |> Enum.min(DateTime)
-        ms = max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
-        ["next run in #{duration(ms)}"]
+        max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
     end
   end
 
-  defp agent_files do
+  defp next_run(key) do
+    case next_in(key) do
+      nil -> []
+      ms -> ["next run in #{duration(ms)}"]
+    end
+  end
+
+  @doc "The agent and policy files, as `WardrikDaemon.Agents.files/0` reads them, or none where it is not running."
+  @spec agent_files() :: [WardrikDaemon.Agents.file()]
+  def agent_files do
     if Process.whereis(WardrikDaemon.Agents), do: WardrikDaemon.Agents.files(), else: []
   end
 
