@@ -11,6 +11,11 @@ defmodule WardrikDaemon.CLI.TerminalTest do
 
     assert Terminal.read(["--terminal=90,plain", "parked"]) ==
              {%Terminal{width: 90, colour?: false}, ["parked"]}
+
+    assert Terminal.read(["--terminal=90,plain,input", "approve"]) ==
+             {%Terminal{width: 90, input?: true}, ["approve"]}
+
+    assert {%Terminal{input?: false}, []} = Terminal.read(["--terminal=90,colour,no-input"])
   end
 
   test "is plain and 80 wide where none is described, or its width does not read" do

@@ -81,6 +81,13 @@ defmodule WardrikConsole.PrinterTest do
     assert String.ends_with?(line, "…")
   end
 
+  test "why a turn failed is written whole, however long" do
+    reason = {:provider_build_failed, String.duplicate("x", 60)}
+    [line] = print([{:turn_failed, reason}], Printer.new(width: 30))
+
+    assert line == "✗ the turn failed: #{inspect(reason)}"
+  end
+
   test "a turn waiting on a person says what for, each call with its id" do
     calls = [
       {%{id: "call_1", name: "github/create_issue", arguments: %{}}, "This opens an issue."},

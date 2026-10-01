@@ -476,11 +476,13 @@ _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
 _build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml, the store, the vault, each MCP server and every agent file will do
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
-_build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"
+_build/prod/rel/wardrikd/bin/wardrik ask acme/_/triage "What changed today?"   # and follow the answer
+_build/prod/rel/wardrikd/bin/wardrik watch acme/_/triage   # follow what it does, until Ctrl-C
 _build/prod/rel/wardrikd/bin/wardrik history acme/_/triage
 _build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
 _build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
 _build/prod/rel/wardrikd/bin/wardrik approve acme/_/triage call_1
+_build/prod/rel/wardrikd/bin/wardrik approve   # choose among every call waiting
 _build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
 _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log
 _build/prod/rel/wardrikd/bin/wardrik stop
@@ -490,6 +492,13 @@ _build/prod/rel/wardrikd/bin/wardrik stop
 after one, gives it in full. `status`, `history` and `parked` take `--json`,
 and answer with one JSON document, the HTTP API's own where it has one. Output
 is in colour where it goes to a terminal, unless `NO_COLOR` is set.
+
+`ask` follows the answer as it streams, until the turn ends or waits on a
+person, and `ask --no-wait` only sends the message. `watch` follows an agent
+until Ctrl-C, and `watch --json` writes each event as the HTTP API streams it.
+`approve` and `deny` without a call ask which, where someone is there to
+answer. These run through `bin/wardrikd rpc`, so they write as they go and
+read what is typed; Ctrl-C stops them, and the agent carries on.
 
 `wardrik serve` runs it in the foreground, logging to the terminal, for a
 service manager to supervise. `bin/wardrikd` is the node's own release script

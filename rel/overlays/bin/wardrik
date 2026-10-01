@@ -47,15 +47,18 @@ while [ "$count" -gt 0 ]; do
 done
 
 # The terminal this command writes to, for the node, which has none of its own:
-# how wide it is, and whether it takes colour, which it does where standard
-# output is a terminal and NO_COLOR is not set. See WardrikDaemon.CLI.Terminal.
+# how wide it is, whether it takes colour, which it does where standard output
+# is a terminal and NO_COLOR is not set, and whether someone can type into it.
+# See WardrikDaemon.CLI.Terminal.
 colour=plain
+input=no-input
 width="${COLUMNS:-}"
 if [ -t 1 ]; then
   [ -n "${NO_COLOR:-}" ] || colour=colour
   [ -n "$width" ] || width="$(stty size 2> /dev/null < /dev/tty | cut -d' ' -f2)" || width=""
 fi
-terminal="--terminal=${width:-80},$colour"
+[ ! -t 0 ] || input=input
+terminal="--terminal=${width:-80},$colour,$input"
 
 # -h or --help, anywhere, is help for the command it follows.
 for arg in "$@"; do
@@ -148,9 +151,11 @@ call () {
   out="$(printf '%s\n' "$1" | "$root"/erts-*/bin/erl_call "-$mode" "$target" -c "$cookie" -fetch_stdout -e 2> /dev/null)" || return 2
 
   # erl_call ends with the expression's result: {ok, Value}, or {error, Reason}
-  # where it raised.
+  # where it raised. A command that needs this terminal answers live, and
+  # prints nothing first.
   ok='{ok, ok}'
   failed='{ok, error}'
+  live='{ok, live}'
   raised='{error, '
   case "$out" in
     *"$ok")
@@ -159,6 +164,9 @@ call () {
     *"$failed")
       printf %s "${out%"$failed"}"
       return 1
+      ;;
+    *"$live")
+      return 4
       ;;
     *)
       written="${out%"$raised"*}"
@@ -202,12 +210,24 @@ encoded () {
 }
 
 # Runs WardrikDaemon.CLI.main/1 on the node, and exits 1 where the command
-# fails. Where no node answers, WardrikDaemon.CLI.offline/1 says why.
+# fails. Where no node answers, WardrikDaemon.CLI.offline/1 says why, and a
+# command that needs this terminal runs again live.
 cli () {
-  call "try 'Elixir.WardrikDaemon.CLI':main($(encoded erlang "$terminal" "$@")) catch exit:{shutdown, 1} -> error end." || {
-    [ $? -ne 2 ] || offline "$@"
+  call "try 'Elixir.WardrikDaemon.CLI':main($(encoded erlang "$terminal" "$@")) catch exit:{shutdown, 1} -> error; exit:{shutdown, live} -> live end." || {
+    case $? in
+      2) offline "$@" ;;
+      4) live "$@" ;;
+    esac
     exit 1
   }
+}
+
+# Runs WardrikDaemon.CLI.live/1 on the node through bin/wardrikd rpc, under
+# this VM's group leader: what the command writes reaches this terminal as it
+# goes, and what is typed here reaches the command. Ctrl-C ends this VM at
+# once, without the break menu, and the command on the node with it.
+live () {
+  ELIXIR_ERL_OPTIONS="+Bd ${ELIXIR_ERL_OPTIONS:-}" exec "$node" rpc "WardrikDaemon.CLI.live($(encoded elixir "$terminal" "$@"))"
 }
 
 # Runs WardrikDaemon.CLI.offline/1 on a VM of its own, which needs no daemon:

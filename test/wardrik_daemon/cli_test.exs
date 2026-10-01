@@ -12,14 +12,21 @@ defmodule WardrikDaemon.CLITest do
   @token_usage "Usage: wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
                  "[--policy NAME | --unlimited]\n"
 
-  # Runs a command, answering what it printed and whether it exited.
-  defp command(args) do
+  # Runs a command, answering what it printed and how it exited: 0, 1, or
+  # :live for one that needs the terminal it came from.
+  defp command(args), do: run(&CLI.main/1, args, "")
+
+  # Runs a command live, as over bin/wardrikd rpc, from a terminal someone can
+  # type `input` into.
+  defp live(args, input \\ ""), do: run(&CLI.live/1, ["--terminal=80,plain,input" | args], input)
+
+  defp run(entry, args, input) do
     parent = self()
 
     output =
-      capture_io(fn ->
+      capture_io(input, fn ->
         try do
-          CLI.main(args)
+          entry.(args)
           send(parent, {:status, 0})
         catch
           :exit, {:shutdown, code} -> send(parent, {:status, code})
@@ -230,8 +237,126 @@ defmodule WardrikDaemon.CLITest do
     {key, _agent} =
       Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
 
-    assert command(["ask", key, "hello", "there"]) == {"Asked #{key}.\n", 0}
+    assert command(["ask", key, "hello", "there", "--no-wait"]) == {"Asked #{key}.\n", 0}
     assert_receive {:turn, [{:user, "hello there"}]}
+  end
+
+  test "ask follows the answer live, and says so where it cannot" do
+    {key, _agent} =
+      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :emitting, ["# Shipped\nall done\n"]})
+
+    assert command(["ask", key, "ship it"]) == {"", :live}
+    assert live(["ask", key, "ship", "it"]) == {"Shipped\nall done\n", 0}
+  end
+
+  test "ask that parks says what it waits on and how to decide it; one that fails exits 1" do
+    {parking, _agent} =
+      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :parking, [self(), "call_1"]})
+
+    {output, 0} = live(["ask", parking, "deploy"])
+    assert output =~ "Waiting on a person for 1 call:\n  ? deploy  call_1"
+    assert output =~ "wardrik approve #{parking}, or deny, decides it."
+
+    {failing, _agent} =
+      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :failing, [:rate_limited]})
+
+    assert live(["ask", failing, "hi"]) == {"✗ the turn failed: :rate_limited\n", 1}
+    assert live(["ask", "nobody/_/here", "hi"]) == {"No agent runs under nobody/_/here.\n", 1}
+  end
+
+  # A live command in a process of its own, writing to a terminal that sends
+  # the test each line and stops when told, as Ctrl-C ends the VM a live
+  # command writes to.
+  defp watching(args) do
+    parent = self()
+    terminal = spawn(fn -> terminal(parent) end)
+
+    spawn(fn ->
+      Process.group_leader(self(), terminal)
+      send(parent, {:watched, CLI.live(args)})
+    end)
+
+    terminal
+  end
+
+  defp terminal(test) do
+    receive do
+      {:io_request, from, reply_as, {:put_chars, :unicode, chars}} ->
+        send(test, {:written, IO.chardata_to_string(chars)})
+        send(from, {:io_reply, reply_as, :ok})
+        terminal(test)
+
+      {:io_request, from, reply_as, _request} ->
+        send(from, {:io_reply, reply_as, {:error, :enotsup}})
+        terminal(test)
+
+      :close ->
+        :ok
+    end
+  end
+
+  test "watch follows an agent's events until its terminal goes" do
+    {key, _agent} = Wardrik.Test.Fleet.start_agent()
+    terminal = watching(["watch", key])
+
+    assert_receive {:written, "Watching " <> watching}
+    assert watching =~ "#{key}, idle on "
+
+    Wardrik.Test.Events.emit(key, {:result, "first\n"})
+    Wardrik.Test.Events.emit(key, {:tool_started, "call_1", "deploy", %{}, "key"})
+    assert_receive {:written, "first\n"}
+    assert_receive {:written, "  → deploy\n"}
+
+    send(terminal, :close)
+    assert_receive {:watched, :ok}
+    assert command(["watch", key]) == {"", :live}
+    assert live(["watch", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
+  end
+
+  test "watch --json writes each event of the log as a line of JSON" do
+    {key, _agent} = Wardrik.Test.Fleet.start_agent()
+    :ok = Group.monitor(Wardrik.Event.Log, key)
+    terminal = watching(["watch", key, "--json"])
+    assert_receive {:group, [%Group.Event{type: :joined} | _events], _info}
+
+    event = %{"type" => "wardrik.message.delta", "data" => %{"delta" => "hi"}}
+    Wardrik.Event.Log.publish(key, %Wardrik.Event.Log.Entry{event: event, follows: 0})
+    assert_receive {:written, written}
+    assert written == JSON.encode!(event) <> "\n"
+
+    send(terminal, :close)
+    assert_receive {:watched, :ok}
+  end
+
+  test "approve KEY approves the one call it waits on, and deny KEY asks why" do
+    key = parked_agent()
+    assert live(["approve", key]) == {"Approved call_1 for #{key}.\n", 0}
+    assert_receive {:resumed, %{"call_1" => :approve}}
+
+    key = parked_agent()
+    {output, 0} = live(["deny", key], "Not on a Friday.\n")
+    assert output =~ "Why? Enter for no reason."
+    assert output =~ "Denied call_1 for #{key}."
+    assert_receive {:resumed, %{"call_1" => {:deny, "Not on a Friday."}}}
+  end
+
+  test "approve alone lists every call waiting, and decides none it is not given" do
+    key = parked_agent()
+    {output, 0} = live(["approve"], "\n")
+
+    assert output =~ ~r"\d+\. deploy  #{key}  This ships to production."
+    assert output =~ "Which to approve?"
+    assert output =~ "Nothing was decided."
+  end
+
+  test "approve without a call asks which only where someone can answer" do
+    key = parked_agent()
+    assert command(["approve", key]) == {"", :live}
+
+    assert {"wardrik approve asks which call only where someone can answer" <> _rest, 1} =
+             run(&CLI.live/1, ["--terminal=80,plain,no-input", "approve", key], "")
+
+    assert live(["approve", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
   end
 
   test "history prints what has been said, and says when nothing has" do
@@ -250,7 +375,9 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "ask and history on a key nothing holds fail" do
-    assert {"No agent runs under nobody/_/here.\n", 1} = command(["ask", "nobody/_/here", "hi"])
+    assert {"No agent runs under nobody/_/here.\n", 1} =
+             command(["ask", "nobody/_/here", "hi", "--no-wait"])
+
     assert {"No agent runs under nobody/_/here.\n", 1} = command(["history", "nobody/_/here"])
   end
 
@@ -307,7 +434,7 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "a command read against its definition prints its usage where it does not read" do
-    assert command(["approve", "acme/_/triage"]) == {"Usage: wardrik approve KEY CALL\n", 1}
+    assert command(["history"]) == {"Usage: wardrik history KEY [--json]\n", 1}
 
     assert command(["status", "--verbose"]) ==
              {"wardrik status takes no option --verbose\nUsage: wardrik status [--json]\n", 1}
