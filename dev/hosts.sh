@@ -53,6 +53,8 @@ quietly() {
 
 package() {
   say "Building Wardrik's Hex package, and compiling it without its optional dependencies"
+  # Hex goes in this run's archives, as phx_new does.
+  quietly mix local.hex --force
   rm -rf "$WARDRIK_PACKAGE"
   (cd "$repo" && quietly mix hex.build --unpack --output "$WARDRIK_PACKAGE")
   cd "$WARDRIK_PACKAGE"
