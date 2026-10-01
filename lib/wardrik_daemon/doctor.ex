@@ -5,8 +5,10 @@ defmodule WardrikDaemon.Doctor do
     * `config` - that `config.yaml` reads
     * `store` - that the store it names is there and keeps the store's
       contract, as `Wardrik.Store.check/1` looks at it
-    * `vault` - that each vault key is one the vault can use, and that there
-      is one where OAuth providers or servers' credentials need it
+    * `vault` - that each vault key is one the vault can use, from
+      `config.yaml`, `WARDRIK_VAULT_KEY` or the key file in the data home (see
+      `WardrikDaemon.VaultKey`), and that there is one where OAuth providers or
+      servers' credentials need it
     * `mcp NAME` - for each MCP server, that the program a command server
       runs is on this machine, and that the host an HTTP server is reached at
       answers
@@ -30,6 +32,7 @@ defmodule WardrikDaemon.Doctor do
 
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Config
+  alias WardrikDaemon.VaultKey
 
   @connect_timeout :timer.seconds(5)
 
@@ -81,12 +84,27 @@ defmodule WardrikDaemon.Doctor do
 
   # -- vault -------------------------------------------------------------------
 
-  # config.yaml's keys where it names any, and those WARDRIK_VAULT_KEY gave
-  # the release where it does not.
+  # config.yaml's keys where it names any, those WARDRIK_VAULT_KEY gave the
+  # release where it does not, and the key file in the data home where neither
+  # gives one.
   defp vault(settings) do
     keys =
       Keyword.get(Keyword.get(settings, WardrikVault, []), :keys) || WardrikVault.Config.keys()
 
+    if keys == [], do: key_file(settings), else: vault_keys(keys, settings)
+  end
+
+  defp key_file(settings) do
+    file = VaultKey.file()
+
+    case VaultKey.read(file) do
+      {:ok, _key} -> {:ok, "vault", "1 key, from #{file}"}
+      :none -> vault_keys([], settings)
+      {:error, message} -> {:error, "vault", message}
+    end
+  end
+
+  defp vault_keys(keys, settings) do
     case {Enum.reject(Enum.with_index(keys, 1), fn {key, _n} -> WardrikVault.key?(key) end), keys,
           needs_key(settings)} do
       {[{_key, n} | _rest], _keys, _needs} ->
@@ -98,7 +116,7 @@ defmodule WardrikDaemon.Doctor do
 
       {[], [], needs} ->
         {:error, "vault",
-         "no key, and #{needs} needs one to seal what users authorize; set WARDRIK_VAULT_KEY, or vault.keys in config.yaml"}
+         "no key, and #{needs} needs one to seal what users authorize; wardrik vault put makes one, or set WARDRIK_VAULT_KEY, or vault.keys in config.yaml"}
 
       {[], [_one], _needs} ->
         {:ok, "vault", "1 key, which seals"}

@@ -13,8 +13,9 @@ defmodule WardrikDaemon do
 
   Starting, it reads `config.yaml`, or `config.yml`, from the config directory
   into the settings
-  each package reads (see `WardrikDaemon.Config`), then starts what those
-  settings call for:
+  each package reads (see `WardrikDaemon.Config`), gives the vault the key in
+  the data home where nothing else gives it one (see `WardrikDaemon.VaultKey`),
+  then starts what those settings call for:
 
     * `WardrikMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
@@ -47,6 +48,7 @@ defmodule WardrikDaemon do
       wardrik approve KEY CALL
       wardrik deny KEY CALL [REASON]
       wardrik token create NAME --scope PREFIX --policy NAME   # a token for the HTTP API
+      wardrik vault put NAME   # seal a secret, asking for its value
       wardrik attach    # the TUI, over SSH
       wardrik remote    # an IEx shell on the node
       wardrik logs      # follow the log
@@ -61,6 +63,7 @@ defmodule WardrikDaemon do
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
+  alias WardrikDaemon.VaultKey
 
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
@@ -71,11 +74,21 @@ defmodule WardrikDaemon do
     with {:ok, file} <- Config.file(config_dir),
          {:ok, settings} <- Config.read(file) do
       :ok = Config.apply(settings)
+      vault_key(data_dir)
       Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
     else
       {:error, message} ->
         Logger.error(message)
         {:error, {:config, message}}
+    end
+  end
+
+  # A key file that holds no key leaves the vault without one, as no file
+  # does; wardrik doctor says why.
+  defp vault_key(data_dir) do
+    case VaultKey.load(data_dir) do
+      {:error, message} -> Logger.warning("The vault has no key: " <> message)
+      _loaded_or_none -> :ok
     end
   end
 

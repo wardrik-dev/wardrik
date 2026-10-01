@@ -30,4 +30,18 @@ defmodule WardrikDaemon.CLI.TerminalTest do
     assert capture_io(fn -> Terminal.puts(%Terminal{colour?: true}, data) end) =~ IO.ANSI.green()
     assert capture_io(fn -> Terminal.puts(%Terminal{}, data) end) == "ok\n"
   end
+
+  test "reads a line without writing it back, and nothing where none was typed" do
+    terminal = %Terminal{input?: true, live?: true}
+
+    output =
+      capture_io("hunter2\n", fn ->
+        assert Terminal.secret(terminal, "Password: ") == {:ok, "hunter2"}
+      end)
+
+    assert output == "Password: "
+
+    capture_io("\n", fn -> assert Terminal.secret(terminal, "Password: ") == {:ok, nil} end)
+    capture_io("", fn -> assert Terminal.secret(terminal, "Password: ") == {:ok, nil} end)
+  end
 end

@@ -494,13 +494,14 @@ _build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
 _build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
 _build/prod/rel/wardrikd/bin/wardrik approve acme/triage call_1
 _build/prod/rel/wardrikd/bin/wardrik approve   # choose among every call waiting
+_build/prod/rel/wardrikd/bin/wardrik vault put LINEAR_TOKEN   # seal a secret, asking for its value
 _build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
 _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log
 _build/prod/rel/wardrikd/bin/wardrik stop
 ```
 
 `wardrik help` lists every command, and `wardrik help COMMAND`, or `--help`
-after one, gives it in full. `status`, `ls`, `history` and `parked` take `--json`,
+after one, gives it in full. `status`, `ls`, `history`, `parked` and `vault ls` take `--json`,
 and answer with one JSON document, the HTTP API's own where it has one. Output
 is in colour where it goes to a terminal, unless `NO_COLOR` is set.
 `wardrik completion bash`, `zsh` or `fish` writes a script that completes
@@ -513,6 +514,13 @@ until Ctrl-C, and `watch --json` writes each event as the HTTP API streams it.
 `approve` and `deny` without a call ask which, where someone is there to
 answer. These run through `bin/wardrikd rpc`, so they write as they go and
 read what is typed; Ctrl-C stops them, and the agent carries on.
+
+`vault put NAME` seals a secret, such as the one an MCP server's
+`credential: named:NAME` reads, asking for its value without showing it, or
+reading it from standard input when piped. `--org` and `--user` seal one for
+an org or a user, `vault ls` lists them by name and owner, never their
+values, and `vault rm` removes one. The first `put` on a vault with no key
+asks to make one, kept in `~/.local/share/wardrik/vault_key`.
 
 `wardrik serve` runs it in the foreground, logging to the terminal, for a
 service manager to supervise. `bin/wardrikd` is the node's own release script
@@ -538,6 +546,7 @@ what a person writes and can live in a dotfiles repository:
 | **`~/.config/wardrik/policies/*.yaml`** | the policies agents name, as `.yaml` or `.yml`. See `WardrikPolicy` |
 | **`~/.local/share/wardrik/store/`** | the store, where `config.yaml` names no other |
 | **`~/.local/share/wardrik/cookie`** | the node's cookie, created on first boot and readable by its owner only |
+| **`~/.local/share/wardrik/vault_key`** | the vault's key, where none is configured: the first `wardrik vault put` asks to make it. See `WardrikDaemon.VaultKey` |
 | **`~/.local/state/wardrik/log/`** | `wardrik.log`, and `mcp.log` for what MCP commands write to stderr |
 
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` move them, as they
@@ -551,7 +560,7 @@ container's output, with `wardrik` on its `PATH` for `docker exec`:
 | | |
 | --- | --- |
 | **`/config`** | `config.yaml`, `agents/` and `policies/`: mount yours, read-only if you like. Empty unless you do, so agents come from the HTTP API |
-| **`/data`** | the store, unless `config.yaml` names one elsewhere, the cookie and the SSH host key. A volume, so a new container on the same volume carries on |
+| **`/data`** | the store, unless `config.yaml` names one elsewhere, the cookie, the SSH host key and the vault's key. A volume, so a new container on the same volume carries on |
 | **4747**, **2222** | the HTTP API, and the TUI where `/config/ssh/authorized_keys` lets someone in. Both listen on every interface of the container, so the ports it is run with decide who reaches them |
 
 ```sh
