@@ -92,12 +92,13 @@ defmodule Wardrik.LLM.Turn do
   Once a call the turn made answers with content from outside (see
   `Wardrik.Call.taint/1`), the turn is tainted, and every batch after it runs
   under a scope that says so: a gated tool's call then waits on a person
-  however its hooks allowed it, since what the turn read may be what asked for
-  it. A config with `:trust_outside_content` lets its gated calls go ahead,
-  but its turn is tainted all the same, so a file it writes says what it read.
-  The taint ends
-  with the turn, and a turn written down carries it, so one carried on after
-  a lost node is tainted still.
+  unless a hook allowed it after outside content, since what the turn read
+  may be what asked for it. A turn written down carries the taint, so one
+  carried on after a lost node is tainted still.
+
+  What the turn read stays in the history it leaves, so a turn begun under a
+  scope that is tainted already, as `Wardrik.Agent` begins one on a history
+  that holds content from outside, is tainted from the start.
 
   ## Surviving a lost node
 
@@ -193,7 +194,7 @@ defmodule Wardrik.LLM.Turn do
       context: context,
       remaining: config.max_iterations,
       preamble: preamble,
-      tainted: outside?
+      tainted: outside? or scope.tainted
     }
   end
 
@@ -217,7 +218,7 @@ defmodule Wardrik.LLM.Turn do
   @doc "The calls the turn waits on, each with the prompt a person is shown."
   @spec waiting(t()) :: [{Wardrik.Tool.call(), String.t()}]
   def waiting(%__MODULE__{calls: calls} = turn) do
-    if Map.get(turn, :tainted, false),
+    if turn.tainted,
       do:
         for(
           {call, prompt} <- ToolRunner.parked(calls),
@@ -476,15 +477,13 @@ defmodule Wardrik.LLM.Turn do
   end
 
   # The scope a batch runs under: the turn's, for this round, saying whether
-  # the turn has read content from outside. A turn written down before turns
-  # were tainted has not.
-  defp batch(turn),
-    do: %{Scope.batch(turn.scope, rounds(turn)) | tainted: Map.get(turn, :tainted, false)}
+  # the turn has read content from outside.
+  defp batch(turn), do: %{Scope.batch(turn.scope, rounds(turn)) | tainted: turn.tainted}
 
   # The turn, tainted where a call of `calls` answered with content from
   # outside.
   defp read(%__MODULE__{} = turn, calls),
-    do: %{turn | tainted: Map.get(turn, :tainted, false) or Enum.any?(calls, & &1.tainted)}
+    do: %{turn | tainted: turn.tainted or Enum.any?(calls, & &1.tainted)}
 
   defp continue(turn, context, messages) do
     turn = %{

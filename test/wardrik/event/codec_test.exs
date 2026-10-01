@@ -59,6 +59,7 @@ defmodule Wardrik.Event.CodecTest do
       {turn,
        {:context_compacted,
         %{messages_before: 40, messages_after: 8, tokens_before: 60_000, tokens_after: 9_000}}},
+      {Source.root(@agent), {:context_cleared, 12}},
       {Source.root(@agent), {:schedule_fired, "sweep", :asked}},
       {step, {:span_started, "research"}},
       {step, {:span_finished, {:error, :timeout}, 1_200}},

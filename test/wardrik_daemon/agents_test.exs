@@ -142,21 +142,28 @@ defmodule WardrikDaemon.AgentsTest do
   end
 
   describe "an agent the files no longer declare" do
-    test "is removed once its file is, with its conversation", %{dir: dir, org: org} = context do
+    test "stops once its file is gone, and comes back as it was with the file",
+         %{dir: dir, org: org} = context do
       write(context, "alpha", "")
-      write(context, "beta", "")
+      write(context, "beta", "schedule:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
       start_supervised!({Agents, dir: dir})
       Agents.files()
-      assert %{} = Agent.status("#{org}/beta")
+      %{generation: generation} = Agent.snapshot("#{org}/beta")
 
       File.rm!(Path.join([dir, "agents", "beta.md"]))
       Agents.reload()
 
       assert {:error, :not_found} = Agent.status("#{org}/beta")
+      assert Wardrik.Schedule.for_agent("#{org}/beta") == []
       assert %{} = Agent.status("#{org}/alpha")
+
+      write(context, "beta", "")
+      Agents.reload()
+
+      assert %{generation: ^generation} = Agent.snapshot("#{org}/beta")
     end
 
-    test "is removed when its file names another agent", %{org: org} = context do
+    test "stops when its file names another agent", %{org: org} = context do
       write(context, "alpha", "")
       start_supervised!({Agents, dir: context.dir})
 
@@ -165,6 +172,25 @@ defmodule WardrikDaemon.AgentsTest do
 
       assert {:error, :not_found} = Agent.status("#{org}/alpha")
       assert %{} = Agent.status("#{org}/gamma")
+    end
+
+    test "runs on while another node's files declare it", %{dir: dir, org: org} = context do
+      other = :"agents-test@elsewhere"
+      write(context, "beta", "")
+      start_supervised!({Agents, dir: dir, nodes: fn -> [other] end})
+      Agents.files()
+
+      {:ok, _vsn} = Wardrik.Store.put(:declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
+      on_exit(fn -> Wardrik.Store.delete(:declared, "agents/#{other}") end)
+
+      File.rm!(Path.join([dir, "agents", "beta.md"]))
+      Agents.reload()
+
+      assert %{} = Agent.status("#{org}/beta")
+
+      assert Agents.editable("#{org}/beta") ==
+               {:error, :conflict,
+                "#{org}/beta is declared by agents/beta.md on #{other}; change the file"}
     end
 
     test "is left as it was while its file does not read", %{org: org} = context do

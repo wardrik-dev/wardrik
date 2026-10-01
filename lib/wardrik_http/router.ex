@@ -115,6 +115,7 @@ defmodule WardrikHTTP.Router do
     do: {:decide, &authorization(&1, &2, id)}
 
   defp route("POST", ["cancel"]), do: {:message, &cancel/2}
+  defp route("DELETE", ["conversation"]), do: {:message, &clear/2}
   defp route("PUT", ["schedules", schedule]), do: {:define, &schedule(&1, &2, schedule)}
   defp route("DELETE", ["schedules", schedule]), do: {:define, &unschedule(&1, &2, schedule)}
   defp route(_method, _rest), do: nil
@@ -445,6 +446,19 @@ defmodule WardrikHTTP.Router do
     case Agent.interrupt(key) do
       :ok -> json(conn, 202, %{"agent" => %{"id" => key}})
       {:error, :not_found} -> not_found(conn, key)
+    end
+  end
+
+  defp clear(conn, key) do
+    case Agent.clear(key) do
+      :ok ->
+        send_resp(conn, 204, "")
+
+      {:error, :busy} ->
+        conflict(conn, "#{key} is running a turn, or waiting on a person; cancel it, or wait")
+
+      {:error, :not_found} ->
+        not_found(conn, key)
     end
   end
 

@@ -249,7 +249,8 @@ defmodule WardrikMCP.Connection do
     Process.flag(:trap_exit, true)
 
     if principal == :deployment do
-      offer = %Offer{server: server, tools: remembered(server)}
+      {tools, read_only} = remembered(server)
+      offer = %Offer{server: server, tools: tools, read_only: read_only}
       {:ok, _pid} = Registry.register(@registry, {:offer, server.ref}, offer)
     end
 
@@ -448,18 +449,27 @@ defmodule WardrikMCP.Connection do
       GenServer.cast(name(server.ref, :deployment), {:offer, tools})
   end
 
+  # The tools a listing offers, and the remote names of those it marks
+  # read-only.
   defp built(%Server{} = server, listed) do
-    for %{"name" => name} = entry <- listed,
-        Server.offers?(server, name),
-        do: Tool.build(server, entry)
+    offered = for %{"name" => name} = entry <- listed, Server.offers?(server, name), do: entry
+
+    {Enum.map(offered, &Tool.build(server, &1)),
+     for(%{"name" => name, "annotations" => %{"readOnlyHint" => true}} <- offered, do: name)}
   end
 
-  defp remembered(%Server{credential: nil}), do: []
+  defp remembered(%Server{credential: nil}), do: {[], []}
   defp remembered(%Server{} = server), do: built(server, Listing.recall(server.ref))
 
-  defp offer(%Server{} = server, tools) do
-    Registry.update_value(@registry, {:offer, server.ref}, &%{&1 | tools: tools})
+  defp offer(%Server{} = server, {tools, read_only}) do
+    Registry.update_value(
+      @registry,
+      {:offer, server.ref},
+      &%{&1 | tools: tools, read_only: read_only}
+    )
   end
+
+  defp offer(%Server{} = server, tools), do: offer(server, {tools, []})
 
   # Cancelling is a call into the client with a timeout of its own, and this
   # process answers every tool build, so it does not wait for it here.

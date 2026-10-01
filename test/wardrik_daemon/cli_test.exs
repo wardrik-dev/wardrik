@@ -373,6 +373,19 @@ defmodule WardrikDaemon.CLITest do
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
   end
 
+  test "clear empties what has been said" do
+    {key, agent} =
+      Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "hello back"]})
+
+    :ok = Event.Bus.subscribe(key)
+    Agent.ask(agent, "hello")
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+
+    assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
+    assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
+    assert command(["clear", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
+  end
+
   test "a KEY in the deployment's org may leave the org out, and one that is not a key is refused" do
     test_pid = self()
     name = "bare-#{System.unique_integer([:positive])}"
@@ -481,6 +494,30 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ "none; it was defined over the HTTP API"
 
     assert command(["show", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
+  end
+
+  test "rm removes an agent for good, stopped or running, and leaves a file's to its file" do
+    dir = Path.join(System.tmp_dir!(), "wardrik-cli-#{System.unique_integer([:positive])}")
+    org = "cli-#{System.unique_integer([:positive])}"
+    File.mkdir_p!(Path.join(dir, "agents"))
+    File.write!(Path.join(dir, "agents/filed.md"), "---\norg: #{org}\n---\nYou help.\n")
+    on_exit(fn -> File.rm_rf!(dir) end)
+    start_supervised!({WardrikDaemon.Agents, dir: dir})
+
+    {:ok, _pid} = Wardrik.Fleet.spawn("#{org}/running")
+    {:ok, _pid} = Wardrik.Fleet.spawn("#{org}/stopped")
+    :ok = Wardrik.Fleet.stop("#{org}/stopped")
+
+    assert command(["rm", "#{org}/running"]) == {"Removed #{org}/running.\n", 0}
+    assert command(["rm", "#{org}/stopped"]) == {"Removed #{org}/stopped.\n", 0}
+    refute Wardrik.Fleet.stored?("#{org}/running")
+    refute Wardrik.Fleet.stored?("#{org}/stopped")
+
+    assert command(["rm", "#{org}/stopped"]) ==
+             {"No agent is kept under #{org}/stopped.\n", 1}
+
+    assert command(["rm", "#{org}/filed"]) ==
+             {"#{org}/filed is declared by agents/filed.md; change the file\n", 1}
   end
 
   test "schedules lists each schedule's next run, and its last and what came of it" do

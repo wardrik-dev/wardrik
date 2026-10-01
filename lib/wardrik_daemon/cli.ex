@@ -92,6 +92,18 @@ defmodule WardrikDaemon.CLI do
         count: {1, 1},
         run: &history/2,
         json: &snapshot/2
+      },
+      %Command{
+        name: "clear",
+        arguments: "KEY",
+        summary: "empty an agent's conversation, and the mark of what it read",
+        details: [
+          "An agent whose conversation holds content from outside asks a person",
+          "before each gated call until it is cleared. Its files, schedules and",
+          "config stay. Refused while it runs a turn or waits on a person."
+        ],
+        count: {1, 1},
+        run: &clear/2
       }
     ] ++
       Agents.commands() ++
@@ -478,6 +490,19 @@ defmodule WardrikDaemon.CLI do
     case Agent.snapshot(key) do
       {:error, :not_found} -> {:error, no_agent(key)}
       snapshot -> {:ok, Resource.snapshot(key, snapshot)}
+    end
+  end
+
+  defp clear([key], _opts) do
+    case Agent.clear(key) do
+      :ok ->
+        {:ok, "Cleared #{key}'s conversation."}
+
+      {:error, :busy} ->
+        {:error, "#{key} is running a turn, or waiting on a person; cancel it, or wait."}
+
+      {:error, :not_found} ->
+        {:error, no_agent(key)}
     end
   end
 

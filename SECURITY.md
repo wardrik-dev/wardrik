@@ -103,31 +103,34 @@ user alone.
 
 A gated tool's call runs only where a rule of the agent's policy names it; a
 policy's `default: allow` does not, so an agent with no policy, or one defined
-over HTTP with none, asks a person before every such call. `gated` on an MCP
-server in `config.yaml` gates its tools, and a tool worker's tool is gated
-unless the worker marks it read-only. Wherever a waiting call is shown, it
-says whether its turn had read content from outside first.
+over HTTP with none, asks a person before every such call. An MCP server's
+tool, and a tool worker's, is gated unless the server or worker marks it
+read-only, and `gated` on an MCP server in `config.yaml` decides instead.
+Wherever a waiting call is shown, it says whether its turn had read content
+from outside first.
 
 A turn that has read content nobody on the agent's side wrote, the results of
 `web_search` or `deep_research`, an MCP server not marked `trusted`, or a tool
-worker unless `http.trusted_workers` is set, is tainted until it ends, and
-every gated call in it waits on a person, who sees what it would do. This is
-what stops a page or an issue written to be read by an agent from running a
-command a rule pre-approved. A file a tainted turn writes says so, an append
-or an edit by a turn that is not keeps the mark, and reading, listing or
-finding it taints the reader's turn, so a finding left in a shared tree
-carries what its writer read to every agent that reads it. One
-an agent file's `context` reads into every turn taints each turn from its
-start, and of the files a turn is only told the names of, a name is shown
-only where it is plain, letters, digits, `.`, `-` and `_`, since a name is
-text a tainted run may have chosen too. The
-taint is kept with the turn, so a turn carried on after its node is lost is
-tainted still, and it does not reach the turns after: content a turn read
-stays in the conversation, and rules count again in the next turn.
-`trust_outside_content: true` lets an agent's gated calls go ahead in a
-tainted turn, and only an agent file, which the operator writes, can say so.
-Its turns are tainted all the same, so what it writes for other agents
-carries the mark.
+worker unless `http.trusted_workers` is set, is tainted, and every gated call
+in it waits on a person, who sees what it would do, unless an
+`allow_after_outside` rule names it. This is what stops a page or an issue
+written to be read by an agent from running a command a rule pre-approved: an
+agent may read content from outside, reach what is private, or change things,
+and a person decides where it would do all three. Only a policy the operator
+writes, in `policies/` or an agent file, may say `allow_after_outside`.
+
+What a turn read stays in the agent's conversation, so every turn after it is
+tainted too, until `wardrik clear` empties the conversation; a summary of the
+conversation keeps the mark. A subagent begins tainted under a tainted caller,
+and one that reads content from outside taints the tool call that ran it. A
+file a tainted turn writes says so, an append or an edit by a turn that is not
+keeps the mark, and reading, listing or finding it taints the reader's turn,
+so a finding left in a shared tree carries what its writer read to every agent
+that reads it. One an agent file's `context` reads into every turn taints each
+turn from its start, and of the files a turn is only told the names of, a name
+is shown only where it is plain, letters, digits, `.`, `-` and `_`, since a
+name is text a tainted run may have chosen too. The taint is kept with the
+turn, so a turn carried on after its node is lost is tainted still.
 
 ### Notifications
 
@@ -152,18 +155,21 @@ OAuth tokens and the secrets `wardrik vault put` keeps are sealed with
 AES-256-GCM, under the vault's keys, before they are stored. A server's
 credential is found in the vault for each call, the agent's user's before its
 org's before the deployment's, so a secret put for an org reaches all of its
-agents that hold none of their own. Where none is held and an OAuth provider
-has the same name, the user, or the org, is asked to connect an account, which
-the vault keeps as theirs. Model providers' keys, tools' keys and `${NAME}` in
-`config.yaml` are read from the environment, and, for a name it does not set,
-from the deployment's secret of that name in the vault. Anyone who can read
-both the store and the vault's key can read them, as they can every secret the
-vault holds. A key from the vault is put in the daemon's application settings,
-never its environment. `storage`, `cluster` and `vault` in `config.yaml` read
-the environment alone. An MCP server started as a command is given only
-`HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`,
-`TMPDIR` and `USER` of the daemon's environment, beside those its own config
-sets, and runs as the daemon's user, so it can read what the daemon can.
+agents that hold none of their own. An account connected over OAuth acts as
+whoever connected it, so it reaches their calls alone: a user whose org
+connected one is asked to connect their own. Where none is held and an OAuth
+provider has the same name, the user, or the org, is asked to connect an
+account, which the vault keeps as theirs. Model providers' keys, tools' keys
+and `${NAME}` in `config.yaml` are read from the environment, and, for a name
+it does not set, from the deployment's secret of that name in the vault.
+Anyone who can read both the store and the vault's key can read them, as they
+can every secret the vault holds. A key from the vault is put in the daemon's
+application settings, never its environment. `storage`, `cluster` and `vault`
+in `config.yaml` read the environment alone. An MCP server started as a
+command is given only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`,
+`SHELL`, `TERM`, `TMPDIR` and `USER` of the daemon's environment, beside those
+its own config sets, and runs as the daemon's user, so it can read what the
+daemon can.
 
 ### Agents
 

@@ -43,9 +43,24 @@ defmodule WardrikPolicy do
   ## Allowing by name
 
   A call an `allow` rule allows is allowed by name, with
-  `Wardrik.Call.allow/1`, which is what a gated tool's call waits for (see
+  `Wardrik.Call.allow/2`, which is what a gated tool's call waits for (see
   `c:Wardrik.Tool.gated?/1`). One allowed only by `default: allow` is not, so
   a gated tool asks under a policy that names nothing, as it does under none.
+
+  ## After content from outside
+
+  Once a run has read content from outside, a gated tool's call waits on a
+  person however the rules allowed it, since what the run read may be what
+  asked for it. An `allow_after_outside` rule allows by name as `allow` does,
+  and holds after that too: it is for a tool whose calls may follow what a
+  stranger wrote, because the agent reaches nothing they could take, or the
+  tool can do little harm.
+
+      allow: [linear/*]
+      allow_after_outside: [github/add_labels]
+
+  The call is allowed after outside content only where such rules allow the
+  whole of it, or every one of its subjects.
 
   ## Written down
 
@@ -58,8 +73,9 @@ defmodule WardrikPolicy do
       deny: [run_lua]
       default: allow
 
-  `allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
-  to message. `budget` takes what `WardrikPolicy.Budget` describes.
+  `allow`, `allow_after_outside`, `ask` and `deny` each take a list of
+  patterns, or a map of pattern to message. `budget` takes what
+  `WardrikPolicy.Budget` describes.
   """
 
   @behaviour Wardrik.Hook
@@ -82,7 +98,7 @@ defmodule WardrikPolicy do
   @typedoc "What a policy says about one tool."
   @type decision() :: :allow | {:ask, String.t()} | {:deny, String.t()}
 
-  @effects ~w(allow ask deny)
+  @effects ~w(allow allow_after_outside ask deny)
   @keys @effects ++ ["default", "budget"]
   @strictness %{deny: 2, ask: 1, allow: 0}
 
@@ -109,13 +125,14 @@ defmodule WardrikPolicy do
   def decide(%__MODULE__{} = policy, name, subjects \\ [])
       when is_binary(name) and is_list(subjects) do
     case verdict(policy, name, subjects) do
-      {:allow, :named} -> :allow
+      {:allow, _how} -> :allow
       decision -> decision
     end
   end
 
   # What the rules say, with `{:allow, :named}` for a call they allow, apart
-  # from one `:default` allows.
+  # from one `:default` allows, and `{:allow, :after_outside}` for one they
+  # allow after content from outside too.
   defp verdict(policy, name, subjects) do
     whole = Enum.filter(policy.rules, &Rule.match?(&1, name))
     each = for subject <- subjects, do: Enum.filter(policy.rules, &Rule.match?(&1, name, subject))
@@ -127,14 +144,21 @@ defmodule WardrikPolicy do
         answer(policy.default, nil, name)
 
       %Rule{effect: :allow} ->
-        if whole != [] or (each != [] and Enum.all?(each, &(&1 != []))),
-          do: {:allow, :named},
-          else: answer(policy.default, nil, name)
+        cond do
+          covered?(whole, each, & &1.after_outside) -> {:allow, :after_outside}
+          covered?(whole, each, fn _rule -> true end) -> {:allow, :named}
+          true -> answer(policy.default, nil, name)
+        end
 
       %Rule{effect: effect, message: message} ->
         answer(effect, message, name)
     end
   end
+
+  # Whether rules that pass `test` speak for the whole of the call, or for
+  # every one of its subjects.
+  defp covered?(whole, each, test),
+    do: Enum.any?(whole, test) or (each != [] and Enum.all?(each, &Enum.any?(&1, test)))
 
   @impl Wardrik.Hook
   def init(%__MODULE__{} = policy), do: policy
@@ -143,6 +167,7 @@ defmodule WardrikPolicy do
   @impl Wardrik.Hook
   def call(%Call{target: %Call.Tool{name: name} = tool} = call, %__MODULE__{} = policy) do
     case verdict(policy, name, Map.get(tool, :subjects, [])) do
+      {:allow, :after_outside} -> Call.allow(call, after_outside: true)
       {:allow, :named} -> Call.allow(call)
       :allow -> call
       {:ask, prompt} -> Call.ask(call, prompt)
@@ -180,7 +205,8 @@ defmodule WardrikPolicy do
     end
   end
 
-  def decode(_fields, _name), do: {:error, "is a set of rules: allow, ask, deny and default"}
+  def decode(_fields, _name),
+    do: {:error, "is a set of rules: allow, allow_after_outside, ask, deny and default"}
 
   @doc "The policy a map with string keys writes, raising where it writes none."
   @spec decode!(map(), String.t() | nil) :: t()
@@ -195,16 +221,19 @@ defmodule WardrikPolicy do
   @spec encode(t()) :: map()
   def encode(%__MODULE__{} = policy) do
     by_effect =
-      for effect <- [:allow, :ask, :deny],
-          rules = Enum.filter(policy.rules, &(&1.effect == effect)),
+      for key <- @effects,
+          rules = Enum.filter(policy.rules, &(written_under(&1) == key)),
           rules != [],
           into: %{},
-          do: {Atom.to_string(effect), written(rules)}
+          do: {key, written(rules)}
 
     by_effect
     |> Map.put("default", Atom.to_string(policy.default))
     |> then(&if(policy.budget, do: Map.put(&1, "budget", Budget.encode(policy.budget)), else: &1))
   end
+
+  defp written_under(%Rule{effect: :allow, after_outside: true}), do: "allow_after_outside"
+  defp written_under(%Rule{effect: effect}), do: Atom.to_string(effect)
 
   defp budget(:error), do: {:ok, nil}
   defp budget({:ok, fields}), do: Budget.decode(fields)
@@ -241,8 +270,14 @@ defmodule WardrikPolicy do
 
   defp rule(key, {source, message}) when is_binary(message) or is_nil(message) do
     with {:ok, pattern} <- Pattern.parse(source),
-         {:ok, effect} <- effect(key, key) do
-      {:ok, %Rule{effect: effect, pattern: pattern, message: message}}
+         {:ok, effect} <- effect(String.replace_suffix(key, "_after_outside", ""), key) do
+      {:ok,
+       %Rule{
+         effect: effect,
+         pattern: pattern,
+         message: message,
+         after_outside: key == "allow_after_outside"
+       }}
     else
       {:error, reason} -> {:error, "#{key} names #{reason}"}
     end

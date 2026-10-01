@@ -92,8 +92,9 @@ defmodule WardrikDaemon.Config do
   `credential`, the name of the credential it is reached with, along with
   `credential_header`, `credential_scheme` and `credential_env`, `gated`,
   the tools whose calls wait on a person unless a rule allows them by name,
-  and `trusted: true` for a server whose answers are the deployment's own, so
-  a call to it does not taint its run. See `WardrikMCP.Server`.
+  every tool the server does not mark read-only unless set, and
+  `trusted: true` for a server whose answers are the deployment's own, so a
+  call to it does not taint its run. See `WardrikMCP.Server`.
 
   A credential is kept in the vault, sealed, and found for each call the most
   specific first: the agent's user's, sealed with `wardrik vault put NAME
@@ -416,11 +417,11 @@ defmodule WardrikDaemon.Config do
   defp server_option({"gated", names}, path) when is_list(names) do
     if Enum.all?(names, &is_binary/1),
       do: {:gated, names},
-      else: invalid!(path ++ ["gated"], "is true, or a list of the server's tool names")
+      else: invalid!(path ++ ["gated"], "is true, false, or a list of the server's tool names")
   end
 
   defp server_option({"gated", _gated}, path),
-    do: invalid!(path ++ ["gated"], "is true, or a list of the server's tool names")
+    do: invalid!(path ++ ["gated"], "is true, false, or a list of the server's tool names")
 
   defp server_option({"trusted", trusted}, _path) when is_boolean(trusted),
     do: {:trusted, trusted}

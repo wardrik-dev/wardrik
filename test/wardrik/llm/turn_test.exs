@@ -579,24 +579,41 @@ defmodule Wardrik.LLM.TurnTest do
       assert prompt =~ "this run has read content from outside"
     end
 
-    test "marks a turn whose config trusts outside content, and lets its gated calls go ahead",
+    test "lets a gated call a rule allows after outside content go ahead, and marks the turn",
          %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"}),
         LLMStub.final_answer("Deployed.")
       ])
 
-      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+      rules = [
+        Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, {["deploy"], after_outside: true})
+      ]
 
       scope =
-        [
-          tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy],
-          trust_outside_content: true
-        ]
+        [tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy]]
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn", hooks: rules)
 
       assert %LLM.Turn{state: :done, tainted: true} = run(scope, Context.new())
+    end
+
+    test "is tainted from the start under a scope that is tainted already",
+         %{agent_id: agent_id} do
+      LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+
+      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+
+      scope =
+        [tools: [Wardrik.Test.Tools.Deploy]]
+        |> LLM.Config.new()
+        |> Scope.root(agent_id, name: "turn", hooks: rules)
+
+      assert %LLM.Turn{state: :waiting, tainted: true} =
+               parked = run(%{scope | tainted: true}, Context.new())
+
+      assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(parked)
+      assert prompt =~ "this run has read content from outside"
     end
   end
 
@@ -981,13 +998,12 @@ defmodule Wardrik.LLM.TurnTest do
     alias Wardrik.Test.Tools.Fetch
 
     # A turn whose rules allow deploy by name, where deploy is gated.
-    defp allowing_deploy(agent_id, opts \\ []) do
+    defp allowing_deploy(agent_id, allow \\ []) do
       [tools: [Fetch, Deploy]]
-      |> Keyword.merge(opts)
       |> LLM.Config.new()
       |> Scope.root(agent_id,
         name: "turn",
-        hooks: [Wardrik.Hook.new("rules", Allowing, ["deploy"])]
+        hooks: [Wardrik.Hook.new("rules", Allowing, {["deploy"], allow})]
       )
     end
 
@@ -1023,7 +1039,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{tainted: true} = LLM.Turn.under(parked, nil)
     end
 
-    test "lets the rule stand under a config that trusts outside content, and keeps the mark",
+    test "lets a rule that allows after outside content stand, and keeps the mark",
          %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
@@ -1031,7 +1047,7 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("deployed")
       ])
 
-      scope = allowing_deploy(agent_id, trust_outside_content: true)
+      scope = allowing_deploy(agent_id, after_outside: true)
 
       assert %LLM.Turn{state: :done, tainted: true} =
                run(scope, Context.new([Context.user("read it")]))

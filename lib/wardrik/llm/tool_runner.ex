@@ -38,7 +38,8 @@ defmodule Wardrik.LLM.ToolRunner do
     3. the ledger claims an allowed or approved call
     4. a refused call is answered with why
     5. the tool runs an allowed or approved call, or is handed it; see
-       `Wardrik.Tool`
+       `Wardrik.Tool`. One whose work ran a delegate that read content from
+       outside is tainted; see `Wardrik.Subagent`
     6. the ledger records what a claimed call answered
     7. an answered call whose tool declares its answers hold content from
        outside is tainted; see `Wardrik.Call.taint/1`
@@ -97,6 +98,7 @@ defmodule Wardrik.LLM.ToolRunner do
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
+  alias Wardrik.Subagent
   alias Wardrik.Tool.Result
 
   @registry __MODULE__.Registry
@@ -402,10 +404,18 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp refused(call), do: call
 
+  # A call whose work ran a delegate that read content from outside is
+  # tainted as one that read it itself is; see `Wardrik.Subagent`.
   defp invoke(%Call{state: state, target: %Tool{name: name, arguments: args}} = call)
        when state in [:allowed, :approved] do
     emit(call, {:tool_started, call.id, name, args, Ledger.idempotency_key(call)})
+    {invoked, read_outside?} = Subagent.watching(fn -> invoked(call, name, args) end)
+    if read_outside?, do: Call.taint(invoked), else: invoked
+  end
 
+  defp invoke(call), do: call
+
+  defp invoked(call, name, args) do
     case Enum.find(Config.tools(call.scope.config), &(&1.name == name)) do
       nil ->
         finished(call, {:error, "Unknown tool: #{name}"})
@@ -417,8 +427,6 @@ defmodule Wardrik.LLM.ToolRunner do
         finished(call, ReqLLM.Tool.execute(tool, args))
     end
   end
-
-  defp invoke(call), do: call
 
   # A tool built with `Wardrik.Tool.new!/1` is handed the call, and what it hands
   # back is read for its answer or its park, and nothing else.

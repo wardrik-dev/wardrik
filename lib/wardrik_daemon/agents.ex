@@ -18,21 +18,24 @@ defmodule WardrikDaemon.Agents do
 
   ## Agents the files no longer declare
 
-  The keys the agent files declare, and the name of the file each came from,
-  are kept in the store as the files' inventory. A key in the inventory that no file
-  declares any more, because its file was removed or now names another
-  agent, is the agent of a file that is gone: it is removed, with its
-  conversation and schedules, and leaves the inventory. A file that does not
-  read keeps its keys there, so its agent is left as it was. An agent the
-  HTTP API defined is in no inventory, and reading the files never touches
-  it.
+  Each node keeps its own inventory in the store: the keys its agent files
+  declare, and the name of the file each came from. A key its inventory held
+  that no file declares any more, because its file was removed or now names
+  another agent, is retired once no other node connected to it declares it
+  either: the agent stops and its schedules are cleared, and it keeps its
+  conversation, so a file that declares it again brings it back as it was.
+  `Wardrik.Fleet.forget/1`, or `wardrik rm`, removes it for good. A file that
+  does not read keeps its keys in the inventory, so its agent is left as it
+  was. An agent the HTTP API defined is in no inventory, and reading the
+  files never touches it.
 
   It is also the daemon's `WardrikHTTP.Definition`. `put/2` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.definition/3`, under the
   policies it last read, and keeps none; an agent defined that way has no
   file, so `files/0` and `reload/0` leave it out. A key an agent file
-  declares belongs to the file: `put/2`, `delete/1` and `editable/1` refuse
-  it with a conflict, so the API changes neither it nor its schedules.
+  declares, here or on any node connected to this one, belongs to the file:
+  `put/2`, `delete/1` and `editable/1` refuse it with a conflict, so the API
+  changes neither it nor its schedules.
   """
 
   @behaviour WardrikHTTP.Definition
@@ -43,6 +46,7 @@ defmodule WardrikDaemon.Agents do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.Fleet
+  alias Wardrik.Schedule
   alias Wardrik.Store
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.PolicyFile
@@ -52,9 +56,14 @@ defmodule WardrikDaemon.Agents do
   @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
 
+  @doc """
+  Starts it, reading the files under `:dir`. `:nodes` gives the other nodes
+  whose inventories count, `Node.list/0` unless given.
+  """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, Keyword.fetch!(opts, :dir), name: __MODULE__)
+    state = %{dir: Keyword.fetch!(opts, :dir), nodes: Keyword.get(opts, :nodes, &Node.list/0)}
+    GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
   @doc "Reads every file again and brings the fleet to what they say."
@@ -101,12 +110,17 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
+  defp declared(key, {path, node}),
+    do:
+      {:error, :conflict,
+       "#{key} is declared by agents/#{Path.basename(path)} on #{node}; change the file"}
+
   defp declared(key, path),
     do:
       {:error, :conflict, "#{key} is declared by agents/#{Path.basename(path)}; change the file"}
 
   @impl true
-  def init(dir), do: {:ok, %{dir: dir, files: []}, {:continue, :load}}
+  def init(state), do: {:ok, Map.put(state, :files, []), {:continue, :load}}
 
   @impl true
   def handle_continue(:load, state), do: {:noreply, load(state)}
@@ -131,7 +145,21 @@ defmodule WardrikDaemon.Agents do
           into: %{},
           do: {policy.name, policy}
 
-    {:reply, if(file, do: {:file, file}, else: {:api, policies}), state}
+    case file || elsewhere(state, key) do
+      nil -> {:reply, {:api, policies}, state}
+      file -> {:reply, {:file, file}, state}
+    end
+  end
+
+  # The file another node connected to this one declares `key` in, with the
+  # node, as its inventory has it.
+  defp elsewhere(state, key) do
+    Enum.find_value(state.nodes.(), fn node ->
+      case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, key) do
+        {:ok, path} -> {path, node}
+        :error -> nil
+      end
+    end)
   end
 
   @doc """
@@ -152,7 +180,7 @@ defmodule WardrikDaemon.Agents do
     {policy_files, read} = read_files(dir)
     loaded = for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
     agent_files = for {path, result} <- loaded, do: {path, spec_only(result)}
-    prune(agent_files)
+    prune(state, agent_files)
 
     :ok =
       WardrikNotify.put_routes(
@@ -190,21 +218,32 @@ defmodule WardrikDaemon.Agents do
   end
 
   # The keys the files declare now, and those of files that do not read,
-  # become the inventory; every other key the inventory held is an agent
-  # whose file is gone. A file is named by its name alone, so the nodes of a
-  # cluster on several machines, each reading its own copy of the files,
-  # agree.
-  defp prune(agent_files) do
+  # become this node's inventory. A key it held before that it holds no
+  # longer, and that no connected node's inventory holds, is retired.
+  defp prune(state, agent_files) do
     named = for {path, result} <- agent_files, do: {Path.basename(path), result}
     unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
     declared = for {name, {:ok, spec}} <- named, into: %{}, do: {Spec.key(spec), name}
 
-    previous = Store.get(@inventory, "agents") || %{}
-    {kept, gone} = Map.split_with(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
+    previous = Store.get(@inventory, inventory(node())) || %{}
+    kept = Map.filter(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
+    inventory = Map.merge(kept, declared)
+    {:ok, _vsn} = Store.put(@inventory, inventory(node()), inventory)
 
-    for {key, _path} <- gone, not Map.has_key?(declared, key), do: :ok = Fleet.forget(key)
+    for key <- Map.keys(previous) -- Map.keys(inventory),
+        elsewhere(state, key) == nil,
+        do: retire(key)
+  end
 
-    {:ok, _vsn} = Store.put(@inventory, "agents", Map.merge(kept, declared))
+  defp inventory(node), do: "agents/#{node}"
+
+  defp retire(key) do
+    :ok = Schedule.sync(key, [])
+
+    case Fleet.stop(key) do
+      :ok -> :ok
+      {:error, :noproc} -> :ok
+    end
   end
 
   defp spec_only({:ok, spec, _route}), do: {:ok, spec}

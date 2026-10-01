@@ -156,7 +156,7 @@ defmodule Wardrik.Tool do
 
   @doc """
   Whether a call to the tool `name` waits on a person unless a hook allows it
-  by name, with `Wardrik.Call.allow/1`. Optional, and `false` unless declared.
+  by name, with `Wardrik.Call.allow/2`. Optional, and `false` unless declared.
   A source answers with `c:gated?/2`.
   """
   @callback gated?(name :: String.t()) :: boolean()

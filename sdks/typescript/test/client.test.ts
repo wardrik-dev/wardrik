@@ -92,7 +92,7 @@ describe("requests", () => {
     await server.close();
   });
 
-  test("send a message, schedule, decide, cancel and page as the API takes them", async () => {
+  test("send a message, schedule, decide, cancel, clear and page as the API takes them", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
       json(response, 202, { message: { id: "m1" } }),
     );
@@ -103,6 +103,7 @@ describe("requests", () => {
       json(response, 200, { interrupt: { id: "call_1", decision: "approved" } }),
     );
     server.on("POST", path + "/cancel", (_request, response) => json(response, 202, {}));
+    server.on("DELETE", path + "/conversation", (_request, response) => json(response, 204));
     server.on("GET", path + "/events", (_request, response) =>
       json(response, 200, { events: [event("run.started", {}, { sequence: 5 })] }),
     );
@@ -114,6 +115,7 @@ describe("requests", () => {
     await agent.approve("call_1");
     await agent.reject("call_1", "Not now.");
     await agent.cancel();
+    await agent.clear();
     const page = await agent.page({ after: 4, limit: 10 });
 
     assert.equal(page[0]!.sequence, "000000000005");
@@ -125,6 +127,7 @@ describe("requests", () => {
         ["POST", path + "/interrupts/call_1", { decision: "approve" }],
         ["POST", path + "/interrupts/call_1", { decision: "reject", reason: "Not now." }],
         ["POST", path + "/cancel", undefined],
+        ["DELETE", path + "/conversation", undefined],
         ["GET", path + "/events?starting_after=4&limit=10", undefined],
       ],
     );

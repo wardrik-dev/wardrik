@@ -51,6 +51,7 @@ defmodule Wardrik.Workflow do
   """
 
   alias Wardrik.Scope
+  alias Wardrik.Subagent
   alias Wardrik.Tool.Result
   alias Wardrik.Workflow.Step
 
@@ -122,7 +123,9 @@ defmodule Wardrik.Workflow do
     Wardrik.TaskSupervisor
     |> Task.Supervisor.async_stream_nolink(
       branches(scope, inputs, name),
-      fn {input, branch} -> {input, Scope.closing(branch, &Step.invoke(step, input, &1))} end,
+      fn {input, branch} ->
+        Subagent.watching(fn -> {input, Scope.closing(branch, &Step.invoke(step, input, &1))} end)
+      end,
       ordered: true,
       max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
       timeout: Keyword.get(opts, :timeout, @timeout),
@@ -130,10 +133,19 @@ defmodule Wardrik.Workflow do
       zip_input_on_exit: true
     )
     |> Enum.map(fn
-      {:ok, outcome} -> outcome
+      {:ok, {outcome, read_outside?}} -> read(outcome, read_outside?)
       {:exit, {{input, branch}, reason}} -> reap(input, branch, reason)
     end)
   end
+
+  # A branch whose delegates read content from outside marks the process that
+  # fanned out, as a delegate run here would; see `Wardrik.Subagent`.
+  defp read(outcome, true) do
+    :ok = Subagent.read_outside()
+    outcome
+  end
+
+  defp read(outcome, false), do: outcome
 
   defp branches(scope, inputs, name) do
     inputs

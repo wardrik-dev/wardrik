@@ -82,7 +82,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "settling anything returns to idle" do
-      {settled, _effects} = State.settled(running(), [])
+      {settled, _effects} = State.settled(running(), [], false)
       {failed, _effects} = State.failed(running(), :nope)
       {abandoned, _effects} = State.interrupt(waiting())
 
@@ -200,7 +200,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "a timer that fired after the turn answered is refused" do
-      {settled, _effects} = State.settled(stopping(), [])
+      {settled, _effects} = State.settled(stopping(), [], false)
 
       assert State.kill(settled, make_ref()) == :stale
     end
@@ -210,12 +210,27 @@ defmodule Wardrik.Agent.StateTest do
     end
   end
 
+  describe "clearing" do
+    test "empties the history and its mark, and says how much it held" do
+      {state, _effects} = State.settled(running(), [Context.assistant("read it")], true)
+
+      assert {:ok, cleared, [{:emit, _source, {:context_cleared, 1}}]} = State.clear(state)
+      assert cleared.context.messages == []
+      refute cleared.tainted
+    end
+
+    test "is refused unless the agent is idle" do
+      assert State.clear(running()) == {:error, :busy}
+      assert State.clear(%{state() | mode: :owed}) == {:error, :busy}
+    end
+  end
+
   describe "settling" do
     test "a turn that answered normally reports what it produced" do
       messages = [Context.assistant("done")]
 
       {state, [{:emit, source, event}, {:close_turn, scope}]} =
-        State.settled(running(), messages)
+        State.settled(running(), messages, false)
 
       assert event == {:turn_finished, messages}
       assert scope.source == source
@@ -224,7 +239,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a turn that answered while stopping reports what the interrupt kept" do
       messages = [Context.assistant("partial")]
-      {_state, effects} = State.settled(stopping(), messages)
+      {_state, effects} = State.settled(stopping(), messages, false)
 
       assert [
                {:emit, _source, {:turn_interrupted, stats}},
@@ -237,15 +252,25 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "answering before the kill was needed cancels it" do
-      {_state, effects} = State.settled(stopping(), [])
+      {_state, effects} = State.settled(stopping(), [], false)
 
       assert Enum.any?(effects, &match?({:cancel_kill, _timer}, &1))
     end
 
     test "a turn that never armed a kill has none to cancel" do
-      {_state, effects} = State.settled(running(), [])
+      {_state, effects} = State.settled(running(), [], false)
 
       refute Enum.any?(effects, &match?({:cancel_kill, _timer}, &1))
+    end
+
+    test "a turn that read content from outside leaves the history tainted, and every turn after" do
+      {state, _effects} = State.settled(running(), [Context.assistant("read it")], true)
+      assert state.tainted
+      assert State.turn_scope(state).tainted
+
+      {state, _effects} = State.settled(running(state), [Context.assistant("still")], false)
+      assert state.tainted
+      refute State.turn_scope(state()).tainted
     end
 
     test "parking announces the calls a person has to answer" do

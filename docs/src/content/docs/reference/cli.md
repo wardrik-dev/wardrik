@@ -96,6 +96,16 @@ wardrik history KEY
 
 With --json, the agent as GET /v1/agents/KEY answers with it.
 
+## wardrik clear
+
+Empty an agent's conversation, and the mark of what it read.
+
+```sh
+wardrik clear KEY
+```
+
+An agent whose conversation holds content from outside asks a person before each gated call until it is cleared. Its files, schedules and config stay. Refused while it runs a turn or waits on a person.
+
 ## wardrik ls
 
 The agents, or those a query picks.
@@ -121,6 +131,16 @@ When each schedule runs next, and how it last ran.
 ```sh
 wardrik schedules [PREFIX]
 ```
+
+## wardrik rm
+
+Remove an agent for good, with its conversation and schedules.
+
+```sh
+wardrik rm KEY
+```
+
+An agent a file declares is the file's: remove the file, and the agent stops when the files are read again.
 
 ## wardrik parked
 

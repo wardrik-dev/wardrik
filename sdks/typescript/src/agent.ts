@@ -164,6 +164,15 @@ export class Agent {
     await this.#http.send("POST", this.#path + "/cancel");
   }
 
+  /**
+   * Empties the agent's conversation, and with it the mark of content from
+   * outside it held, which holds its gated tools' calls for a person until
+   * then. Refused while the agent runs a turn or waits on a person.
+   */
+  async clear(): Promise<void> {
+    await this.#http.send("DELETE", this.#path + "/conversation");
+  }
+
   /** Asks the agent on a clock, as `name`, replacing a schedule of that name. */
   async schedule(name: string, definition: ScheduleDefinition): Promise<Schedule> {
     const answer = await this.#http.json<{ schedule: Schedule }>(
