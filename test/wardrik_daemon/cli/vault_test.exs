@@ -91,8 +91,55 @@ defmodule WardrikDaemon.CLI.VaultTest do
       on_exit(fn -> System.delete_env(name) end)
 
       assert command(["vault", "put", "#{name}=sealed"]) ==
-               {"Sealed #{name}. The daemon's environment sets #{name} too, " <>
-                  "and ${#{name}} reads that one.\n", 0}
+               {"Sealed #{name}. The daemon's environment sets #{name} too, which " <>
+                  "${#{name}} and model providers read before the vault.\n", 0}
+    end
+
+    test "gives a model provider its key at once, and takes it back on rm" do
+      previous =
+        {System.get_env("ANTHROPIC_API_KEY"), Application.get_env(:req_llm, :anthropic_api_key)}
+
+      System.delete_env("ANTHROPIC_API_KEY")
+
+      on_exit(fn ->
+        WardrikVault.forget({:named, "ANTHROPIC_API_KEY"}, nil)
+
+        case previous do
+          {nil, _config} -> System.delete_env("ANTHROPIC_API_KEY")
+          {value, _config} -> System.put_env("ANTHROPIC_API_KEY", value)
+        end
+
+        case previous do
+          {_value, nil} -> Application.delete_env(:req_llm, :anthropic_api_key)
+          {_value, config} -> Application.put_env(:req_llm, :anthropic_api_key, config)
+        end
+      end)
+
+      assert command(["vault", "put", "ANTHROPIC_API_KEY=sk-ant-vault"]) ==
+               {"Sealed ANTHROPIC_API_KEY. Every node reads it now.\n", 0}
+
+      assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-vault", :application}
+
+      assert command(["vault", "rm", "ANTHROPIC_API_KEY"]) == {"Removed ANTHROPIC_API_KEY.\n", 0}
+      assert {:error, _none} = ReqLLM.Keys.get(:anthropic)
+    end
+
+    test "says config.yaml reads a name it names when the daemon next starts",
+         %{name: name, tmp_dir: dir} do
+      previous = System.get_env("WARDRIK_CONFIG_DIR")
+      System.put_env("WARDRIK_CONFIG_DIR", dir)
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("WARDRIK_CONFIG_DIR", previous),
+          else: System.delete_env("WARDRIK_CONFIG_DIR")
+      end)
+
+      File.write!(Path.join(dir, "config.yaml"), "mcp:\n  a: {command: \"${#{name}}\"}\n")
+
+      assert command(["vault", "put", "#{name}=v"]) ==
+               {"Sealed #{name}. config.yaml's ${#{name}} reads it when the daemon next starts.\n",
+                0}
     end
 
     test "asks for a value it is not given, live, and never shows it", %{name: name} do

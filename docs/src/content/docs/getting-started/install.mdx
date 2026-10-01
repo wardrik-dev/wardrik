@@ -37,10 +37,14 @@ if you like: `config.yaml`, `agents/` and `policies/`. The daemon keeps its stor
 host key on the `/data` volume, so a new container on the same volume carries on.
 
 ```sh
-docker run -d --name wardrik --env-file ~/.config/wardrik/env \
+docker run -d --name wardrik \
   -p 127.0.0.1:4747:4747 -p 2222:2222 \
   -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec -it wardrik wardrik vault put ANTHROPIC_API_KEY
 ```
+
+Your model provider's key, and any `config.yaml` names, go in the vault, which keeps its key at
+`/data/vault_key`; `-e` sets one in the container's environment instead.
 
 The HTTP API listens on port 4747 and the TUI on 2222, on every interface of the container, so the
 ports you publish decide who reaches them.
@@ -57,8 +61,8 @@ wardrik doctor             # whether what it reads will do
 ```
 
 `wardrik service install` writes `wardrik.service` under `~/.config/systemd/user`, starts it, and
-lets your systemd run from boot rather than from your first login. It reads the keys the daemon
-needs, such as your model provider's, from `~/.config/wardrik/env`.
+lets your systemd run from boot rather than from your first login. It reads anything set in
+`~/.config/wardrik/env`, which may set what the daemon would otherwise read from the vault.
 
 `wardrik doctor` checks `config.yaml`, the store, the vault, each MCP server and every agent file,
 whether the daemon runs or not.

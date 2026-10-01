@@ -2,7 +2,9 @@ defmodule WardrikDaemon.Doctor do
   @moduledoc """
   What `wardrik doctor` checks, each a line:
 
-    * `config` - that `config.yaml` reads
+    * `config` - that `config.yaml` reads, as the daemon reads it: a
+      `${NAME}` this environment does not set is read from the vault, of a
+      daemon that runs
     * `store` - that the store it names is there and keeps the store's
       contract, as `Wardrik.Store.check/1` looks at it
     * `vault` - that each vault key is one the vault can use, from
@@ -16,7 +18,10 @@ defmodule WardrikDaemon.Doctor do
       them, a line for each that does not
 
   `bin/wardrik` runs it on a VM of its own, so it checks a daemon that does
-  not start as well as one that runs.
+  not start as well as one that runs. It cannot read the store from there, so
+  it reads what the vault holds from a daemon that runs, as `bin/wardrik`
+  reaches one; the secrets stay in doctor's VM. Where none runs, a name from
+  the vault reads as itself, `${NAME}`, and doctor says it could not check.
 
       $ wardrik doctor
       ok    config      /home/me/.config/wardrik/config.yaml reads
@@ -48,9 +53,10 @@ defmodule WardrikDaemon.Doctor do
     :logger.set_primary_config(:level, :none)
     {:ok, _started} = Application.ensure_all_started([:req, :postgrex, :ssl])
     dir = Config.config_dir()
+    vault = daemon_vault()
 
     with {:ok, file} <- Config.file(dir),
-         {:ok, settings} <- Config.read(file),
+         {:ok, settings, _from_vault} <- read(file, vault),
          do: Config.apply(settings)
 
     # Reading an agent file builds its tools, and a file naming every tool
@@ -58,20 +64,102 @@ defmodule WardrikDaemon.Doctor do
     # empty: a check is made with no worker connected.
     {:ok, _workers} = Supervisor.start_link([WardrikHTTP.Workers], strategy: :one_for_one)
 
-    checks = checks(dir)
+    checks = checks(dir, vault)
     IO.puts(report(checks))
     System.halt(if Enum.all?(checks, &(elem(&1, 0) == :ok)), do: 0, else: 1)
   end
 
-  @doc "The checks, in order."
-  @spec checks(Path.t()) :: [check()]
-  def checks(config_dir) do
+  defp daemon_vault do
+    target = System.get_env("RELEASE_NODE", "")
+    name = :"doctor-#{System.unique_integer([:positive])}-#{target}"
+
+    with {:ok, _pid} <- Node.start(name, name_domain: name_domain(), hidden: true),
+         {:ok, daemon} <- joined(daemon_node(target)) do
+      &:erpc.call(daemon, WardrikDaemon.Secrets, :named, [&1])
+    else
+      _not_running -> nil
+    end
+  end
+
+  defp joined(daemon) do
+    # reach:disable-next-line unsafe_atom_creation -- the release's cookie, once per run
+    true = Node.set_cookie(daemon, String.to_atom(System.get_env("RELEASE_COOKIE", "")))
+    if Node.connect(daemon), do: {:ok, daemon}, else: :error
+  end
+
+  defp name_domain,
+    do: if(System.get_env("RELEASE_DISTRIBUTION") == "name", do: :longnames, else: :shortnames)
+
+  defp daemon_node(target) do
+    if String.contains?(target, "@"),
+      # reach:disable-next-line unsafe_atom_creation -- the release's node name, once per run
+      do: String.to_atom(target),
+      else: :"#{target}@#{node() |> Atom.to_string() |> String.split("@") |> List.last()}"
+  end
+
+  @doc """
+  The checks, in order. `vault` answers the deployment's secret of a name, as
+  a daemon that runs reads it, or is `nil` where none does.
+  """
+  @spec checks(Path.t(), (String.t() -> String.t() | nil) | nil) :: [check()]
+  def checks(config_dir, vault \\ nil) do
     with {:ok, file} <- Config.file(config_dir),
-         {:ok, settings} <- Config.read(file) do
-      [{:ok, "config", "#{file} reads"}, store(settings), vault(settings)] ++
+         {:ok, settings, from_vault} <- read(file, vault) do
+      [config(file, from_vault, vault), store(settings), vault(settings)] ++
         servers(settings) ++ agents(config_dir)
     else
       {:error, message} -> [{:error, "config", message}]
+    end
+  end
+
+  defp read(file, vault) do
+    doctor = self()
+
+    lookup = fn name ->
+      secret = if vault, do: vault.(name), else: "${#{name}}"
+      if secret, do: send(doctor, {:from_vault, name})
+      secret
+    end
+
+    case Config.read(file, vault: lookup) do
+      {:ok, settings} -> {:ok, settings, from_vault([])}
+      {:error, message} -> {:error, message <> unread(vault, from_vault([]))}
+    end
+  end
+
+  defp from_vault(names) do
+    receive do
+      {:from_vault, name} -> from_vault([name | names])
+    after
+      0 -> names |> Enum.reverse() |> Enum.uniq()
+    end
+  end
+
+  defp unread(nil, [_name | _rest] = names),
+    do:
+      ". It reads #{variables(names)} from the vault, which doctor reads only while the " <>
+        "daemon runs, and checked it as written"
+
+  defp unread(_vault, _names), do: ""
+
+  defp config(file, [], _vault), do: {:ok, "config", "#{file} reads"}
+
+  defp config(file, names, nil),
+    do:
+      {:ok, "config",
+       "#{file} reads, with #{variables(names)} from the vault, which doctor reads only " <>
+         "while the daemon runs"}
+
+  defp config(file, names, _vault),
+    do: {:ok, "config", "#{file} reads, with #{variables(names)} from the vault"}
+
+  defp variables(names) do
+    case Enum.map(names, &"${#{&1}}") do
+      [only] ->
+        only
+
+      shown ->
+        IO.iodata_to_binary([Enum.join(Enum.drop(shown, -1), ", "), " and ", List.last(shown)])
     end
   end
 
@@ -168,7 +256,15 @@ defmodule WardrikDaemon.Doctor do
   end
 
   defp reach({_http, opts}) do
-    uri = URI.parse(Keyword.fetch!(opts, :base_url))
+    url = Keyword.fetch!(opts, :base_url)
+
+    if String.contains?(url, "${"),
+      do: {:ok, "reads its url from the vault, which doctor reads only while the daemon runs"},
+      else: answers(url)
+  end
+
+  defp answers(url) do
+    uri = URI.parse(url)
     where = "#{uri.host}:#{uri.port}"
 
     case connect(uri) do

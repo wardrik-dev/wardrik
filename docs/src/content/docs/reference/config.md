@@ -78,8 +78,12 @@ refused, since one of them would go unread.
 
 It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
-`${NAME}` in any string is replaced with that environment variable, so the
-file itself need hold no secret.
+`${NAME}` in any string is replaced with that environment variable, or,
+where the environment does not set it, with the deployment's secret of that
+name in the vault, which `wardrik vault put NAME` seals. Either way the file
+itself need hold no secret. `storage`, `cluster` and `vault` read the
+environment alone: the store holds the vault, the cluster is read as the
+node boots, before the vault can be, and the vault cannot unlock itself.
 
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
@@ -126,8 +130,8 @@ describes them, and joins this daemon to others.
     and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
 Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
-`WARDRIK_DATA_DIR`. A release reads `storage` as it boots, before anything
-starts; see `boot/1`.
+`WARDRIK_DATA_DIR`. A release reads `storage` and `cluster` as it boots,
+before anything starts, and the rest once the store runs; see `boot/1`.
 
 `notify` names targets an agent file's `notify` routes to, each one
 `slack`, with `channel`, `token`, and optionally `app_token` and

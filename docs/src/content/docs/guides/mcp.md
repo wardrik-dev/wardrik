@@ -20,8 +20,8 @@ mcp:
     only: [read_file, list_directory]
 ```
 
-`${NAME}` is read from the daemon's environment, so the file need hold no secret. Under the service,
-put the variable in `~/.config/wardrik/env`.
+`${NAME}` is read from the daemon's environment, or, where that does not set it, from the vault, so
+the file need hold no secret. `wardrik vault put LINEAR_TOKEN` seals one.
 
 The daemon reads `config.yaml` when it starts, so restart it after changing one:
 

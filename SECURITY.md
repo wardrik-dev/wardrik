@@ -36,7 +36,7 @@ or WireGuard, and never on a public interface.
 
 | Directory | What it holds | Who can read it |
 | --- | --- | --- |
-| `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys` | as its owner sets it; `${NAME}` in `config.yaml` reads a value from the environment, so the file need hold no secret |
+| `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys` | as its owner sets it; `${NAME}` in `config.yaml` reads a value from the environment, or the vault where the environment does not set it, so the file need hold no secret |
 | `~/.local/share/wardrik` | the store, with every agent's conversation, the ledger, budgets and sealed tokens; the cookie; the SSH host key; `vault_key`, where the vault's key is kept when none is configured | the daemon's user |
 | `~/.local/state/wardrik` | logs | the daemon's user |
 
@@ -144,8 +144,14 @@ the agents that post there.
 ### Credentials
 
 OAuth tokens and named credentials are sealed with AES-256-GCM, under the
-vault's keys, before they are stored. Model providers' keys are read from the
-environment. An MCP server started as a command is given only `HOME`, `LANG`,
+vault's keys, before they are stored. Model providers' keys, tools' keys and
+`${NAME}` in `config.yaml` are read from the environment, and, for a name it
+does not set, from the deployment's secret of that name in the vault, which
+`wardrik vault put` seals. Anyone who can read both the store and the vault's
+key can read them, as they can every secret the vault holds. A key from the
+vault is put in the daemon's application settings, never its environment.
+`storage`, `cluster` and `vault` in `config.yaml` read the environment alone.
+An MCP server started as a command is given only `HOME`, `LANG`,
 `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER`
 of the daemon's environment, beside those its own config sets, and runs as
 the daemon's user, so it can read what the daemon can.
