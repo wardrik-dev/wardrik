@@ -8,15 +8,16 @@ first agent.
 
 ## Give it a model
 
-An agent's model is named as `provider:model`, and the daemon reads the provider's key from its
-environment. Put it in `~/.config/wardrik/env`, which the service reads:
+An agent's model is named as `provider:model`, and the daemon reads the provider's key from the
+vault. Seal it there, and every node uses it at once:
 
 ```sh
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> ~/.config/wardrik/env
-systemctl --user restart wardrik
+wardrik vault put ANTHROPIC_API_KEY    # asks for the key, and does not show it
 ```
 
-With `wardrik start` instead of the service, export it in the shell you start it from.
+The first `vault put` asks to make the vault's key; see [Install](/getting-started/install/). A key
+set in the daemon's environment, such as in `~/.config/wardrik/env` for the service, is read before
+the vault's.
 
 ## Write an agent
 

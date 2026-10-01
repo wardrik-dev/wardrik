@@ -85,8 +85,11 @@ not read stops the daemon starting, and says where:
 config.yaml: mcp.linear.headers.authorization names ${LINEAR_TOKEN}, which is not set
 ```
 
-`wardrik doctor` says the same without starting it. The service reads `~/.config/wardrik/env`, and
-`wardrik start` reads only the environment of the shell it runs in.
+A name the environment does not set is read from the vault, so `wardrik vault put LINEAR_TOKEN`
+seals it, and the daemon reads it when it next starts; `storage`, `cluster` and `vault` read the
+environment alone. `wardrik doctor` says the same without starting it, and asks a daemon that runs
+whether the vault holds each name. The service reads `~/.config/wardrik/env`, and `wardrik start`
+reads only the environment of the shell it runs in.
 
 **An agent file is not running as written.** A file that does not read is listed by
 `wardrik status`, and the agent it declared, if one runs, carries on as it was. Fix the file and run
