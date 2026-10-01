@@ -10,9 +10,6 @@ it as themselves, an MCP server names the credential it needs, and each user con
 account, in a browser or with a code, the first time one of their agents calls it.
 
 ```yaml title="~/.config/wardrik/config.yaml"
-vault:
-  keys: ["${WARDRIK_VAULT_KEY}"]
-
 oauth:
   providers:
     github:
@@ -35,30 +32,37 @@ connected through the provider `oauth` calls `github`. Restart the daemon after 
 ## A key for the vault
 
 Tokens are sealed with AES-256-GCM, by the vault, and kept in the store, so every node of a cluster
-can use them. The vault needs a key, and the daemon makes none:
+can use them. The vault needs a key before anyone connects. The first `wardrik vault put` asks to
+make one, and keeps it in `~/.local/share/wardrik/vault_key`, beside the store. With nothing to put
+yet, make the file yourself, and restart the daemon, which reads it as it starts:
 
 ```sh
-openssl rand -base64 32
+openssl rand -base64 32 > ~/.local/share/wardrik/vault_key
+systemctl --user restart wardrik
 ```
 
-Put it where the daemon reads its environment, such as `~/.config/wardrik/env` under the service,
-as `WARDRIK_VAULT_KEY`, and name it in `vault.keys`. Without a key nothing is sealed or read, and
-every call needing a connected account fails; nothing falls back to plain text.
+To keep the key apart from the store, set `WARDRIK_VAULT_KEY` where the daemon reads its
+environment, such as `~/.config/wardrik/env` under the service, or `vault.keys` in `config.yaml`.
+Either is used in place of the file. Without a key nothing is sealed or read, and every call needing
+a connected account fails; nothing falls back to plain text.
 
-Keep the key safe and apart from the store: without it, what the vault sealed cannot be read, and
-with it and the store, it can.
+Keep the key safe, and out of the store's backups: without it, what the vault sealed cannot be read,
+and with it and the store, it can.
 
 ### Changing the key
 
-`keys` takes several. The first seals, and any of them opens:
+`vault.keys` takes several. The first seals, and any of them opens:
 
 ```yaml
 vault:
   keys: ["${WARDRIK_VAULT_KEY_NEW}", "${WARDRIK_VAULT_KEY}"]
 ```
 
-A token is sealed with the new key the next time it is refreshed. Once a key is removed, a token
-sealed with it is not read, and its user connects again.
+`vault.keys` is used in place of `vault_key`, so to change the key the daemon made, set
+`WARDRIK_VAULT_KEY` to what the file holds.
+
+A token is sealed with the new key the next time it is refreshed, and a secret you put the next time
+you put it. Once a key is removed, a token sealed with it is not read, and its user connects again.
 
 ## Whose account
 
@@ -140,13 +144,19 @@ asks the user to connect again, the same way.
 
 ## A secret you already hold
 
-The vault also keeps a secret you put there yourself, such as a key for an org, for an agent whose
-credential is `org:NAME`, or `named:NAME` for the whole deployment. There is no command for it yet:
-put it from an IEx shell on the daemon, with `wardrik remote`:
+The vault also keeps a secret you put there yourself, for a server whose `credential` is
+`named:NAME`, one for the whole deployment, or `org:NAME`, one for each org:
 
-```elixir
-WardrikVault.put({:org, "pagerduty"}, "acme", System.fetch_env!("PAGERDUTY_KEY"))
+```sh
+wardrik vault put LINEAR_TOKEN             # credential: named:LINEAR_TOKEN, for every agent
+wardrik vault put pagerduty --org acme     # credential: org:pagerduty, for acme's agents
+wardrik vault ls                           # what it holds, and whose, never the values
+wardrik vault rm pagerduty --org acme
 ```
+
+`vault put NAME` asks for the value and does not show it as you type, or reads it from a pipe.
+`--user ORG/USER` puts one for a single user, which `user:NAME` reads in place of a connected
+account.
 
 An agent's credentials come from OAuth where `config.yaml` has a provider, and from the vault where
 it has a key and no provider.

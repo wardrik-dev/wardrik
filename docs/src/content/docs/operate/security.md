@@ -109,7 +109,9 @@ subsystems or forwarding: only the client. See [The terminal client](/guides/tui
   the file need hold no secret. The service reads `~/.config/wardrik/env`; keep it readable by the
   daemon's user only.
 - **Credentials and OAuth tokens** are sealed with AES-256-GCM by the vault, before they are stored.
-  Keep the vault's key apart from the store. See [Connect accounts](/guides/accounts/).
+  Where no key is configured, the first `wardrik vault put` makes `vault_key` beside the store, and
+  anyone who can read both reads every secret; `WARDRIK_VAULT_KEY` or `vault.keys` keeps the key
+  apart. The daemon never puts it in its environment. See [Connect accounts](/guides/accounts/).
 - **An MCP server run as a command** is given only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`,
   `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER` of the daemon's environment, beside what its own
   config sets, so the keys the daemon holds stay with it. It runs as the daemon's user, so it can
@@ -120,7 +122,7 @@ subsystems or forwarding: only the client. See [The terminal client](/guides/tui
 | Directory | What it holds | Who can read it |
 | --- | --- | --- |
 | `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys`, `env` | as you set it |
-| `~/.local/share/wardrik` | the store, the cookie, the SSH host key | the daemon's user |
+| `~/.local/share/wardrik` | the store, the cookie, the SSH host key, the vault's key | the daemon's user |
 | `~/.local/state/wardrik` | logs | the daemon's user |
 
 The daemon writes with umask 077, and makes its data and state directories private again each time
