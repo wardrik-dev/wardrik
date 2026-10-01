@@ -104,7 +104,9 @@ user alone.
 A gated tool's call runs only where a rule of the agent's policy names it; a
 policy's `default: allow` does not, so an agent with no policy, or one defined
 over HTTP with none, asks a person before every such call. `gated` on an MCP
-server in `config.yaml` gates its tools.
+server in `config.yaml` gates its tools, and a tool worker's tool is gated
+unless the worker marks it read-only. Wherever a waiting call is shown, it
+says whether its turn had read content from outside first.
 
 A turn that has read content nobody on the agent's side wrote, the results of
 `web_search` or `deep_research`, an MCP server not marked `trusted`, or a tool

@@ -38,7 +38,11 @@ export interface ToolDefinition<Input extends StandardSchemaWithJSON = StandardS
    * tool says so, and waits for a person otherwise.
    */
   idempotent?: boolean;
-  /** Whether it changes nothing, which makes it safe to run again as well. */
+  /**
+   * Whether it changes nothing, which makes it safe to run again as well. A
+   * tool that is not read-only is gated: a call to it waits on a person
+   * unless the agent's policy allows it by name.
+   */
   readOnly?: boolean;
   /**
    * Does the work. An object is answered as the call's result, a string as

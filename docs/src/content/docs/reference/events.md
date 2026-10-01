@@ -395,3 +395,4 @@ A call a run waits on a person for.
 | `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`. |
 | `message` | string | yes |  |
 | `tool_call_id` | string |  |  |
+| `outside_content` | boolean |  | true where the run had read content from outside, which may be what asked for the call. |

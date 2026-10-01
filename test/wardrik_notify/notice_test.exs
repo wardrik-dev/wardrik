@@ -20,10 +20,18 @@ defmodule WardrikNotify.NoticeTest do
              name: "deploy",
              arguments: %{"env" => "prod"},
              prompt: "This ships to production.",
-             authorization: false
+             authorization: false,
+             outside_content: false
            }
 
     assert notice.at == DateTime.from_unix!(1_790_000_000_000_000, :microsecond)
+  end
+
+  test "a call a turn made after reading content from outside says so" do
+    call = %{id: "call_1", name: "deploy", arguments: %{}, outside: true}
+
+    assert {:ok, %Notice{calls: [%{outside_content: true}]}} =
+             Notice.from_event(event({:turn_parked, [{call, "This ships to production."}]}))
   end
 
   test "a call waiting on an authorization is named without its link" do

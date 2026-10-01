@@ -204,7 +204,7 @@ defmodule Wardrik.Call do
   end
 
   defp gate(%__MODULE__{target: %Tool{gated: true}, allowed: []} = call),
-    do: "#{name(call)} runs only where a rule allows it by name, and none does."
+    do: "#{name(call)} is gated, so it asks unless a rule allows it by name, and none does."
 
   defp gate(
          %__MODULE__{

@@ -59,8 +59,8 @@ public address and no open port.
 
 ## What a notice says
 
-**Parked:** which agent is waiting, and for each call its tool, what the policy asks, and its
-arguments, with **Approve** and **Deny** buttons. Pressing one decides the call as `wardrik approve`
+**Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
+turn had read content from outside first, and its arguments, with **Approve** and **Deny** buttons. Pressing one decides the call as `wardrik approve`
 or `wardrik deny` would, and the message is changed to say who decided it and how. A call denied
 from Slack tells the model "Denied in Slack by" whoever pressed it.
 
@@ -116,7 +116,8 @@ A `webhook` target is sent each notice as JSON, in a POST:
       "name": "github__create_issue",
       "arguments": {"title": "Disk full on db-2"},
       "prompt": "This opens an issue on GitHub.",
-      "authorization": false
+      "authorization": false,
+      "outside_content": true
     }
   ],
   "reason": null,
@@ -125,7 +126,8 @@ A `webhook` target is sent each notice as JSON, in a POST:
 ```
 
 `event` is `turn_parked`, `turn_failed` or `turn_finished`, and is in the `x-wardrik-event` header
-too. `reason` is why a turn failed, and `text` what it answered.
+too. `reason` is why a turn failed, and `text` what it answered. A call's `outside_content` says
+whether its turn had read content from outside first, which may be what asked for it.
 
 With a `secret`, each body is signed, as `x-wardrik-signature: sha256=<hex>`: the HMAC-SHA256 of the
 raw body, keyed with the secret. Check it against the body as it arrived, before parsing it:

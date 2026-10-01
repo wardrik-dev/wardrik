@@ -89,9 +89,14 @@ defmodule WardrikNotify.Slack do
     [section("*#{notice.agent}* answered:"), section(clip(notice.text || "(nothing)", @max_text))]
   end
 
+  defp outside(%{outside_content: true}),
+    do: "\n_It has read content from outside, which may be what asked for this._"
+
+  defp outside(_call), do: ""
+
   defp call_blocks(call, agent, opts) do
     arguments = clip(JSON.encode!(call.arguments), @max_arguments)
-    question = section("`#{call.name}`  #{call.prompt}\n```#{arguments}```")
+    question = section("`#{call.name}`  #{call.prompt}#{outside(call)}\n```#{arguments}```")
 
     if opts[:app_token] do
       value = JSON.encode!(%{a: agent, c: call.id, n: call.name, t: opts[:target]})

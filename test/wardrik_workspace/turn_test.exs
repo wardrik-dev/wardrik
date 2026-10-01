@@ -43,8 +43,11 @@ defmodule WardrikWorkspace.TurnTest do
              parked =
              scope |> LLM.Turn.new(Context.new([Context.user("Any news?")])) |> LLM.Turn.run()
 
-    assert [{%{id: "call_2", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
+    assert [{%{id: "call_2", name: "deploy", outside: true}, prompt} = waiting] =
+             LLM.Turn.waiting(parked)
+
     assert prompt =~ "this run has read content from outside"
+    assert %{"outside_content" => true} = Wardrik.Event.Codec.Value.interrupt(waiting)
   end
 
   test "an agent that trusts outside content still marks what it writes after reading it" do

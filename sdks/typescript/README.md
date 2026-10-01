@@ -102,7 +102,9 @@ MCP server, until its `signal` aborts. The daemon offers the tools, as
 `idempotencyKey` is the same each time the daemon runs one call. A call the
 daemon cannot tell finished, because its agent was lost while the call was
 running, runs again under the same key where every worker in reach marks the
-tool `idempotent` or `readOnly`, and waits for a person otherwise.
+tool `idempotent` or `readOnly`, and waits for a person otherwise. A tool that
+is not `readOnly` is gated: a call to it waits on a person unless the agent's
+policy allows it by name.
 
 `run` answers an object as the call's result and a string as text. A thrown
 error is a failed call the model is told about. `signal` aborts when the

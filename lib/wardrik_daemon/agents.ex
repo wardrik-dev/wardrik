@@ -191,15 +191,13 @@ defmodule WardrikDaemon.Agents do
 
   # The keys the files declare now, and those of files that do not read,
   # become the inventory; every other key the inventory held is an agent
-  # whose file is gone.
-  # A file is named by its name alone, so the nodes of a cluster on several
-  # machines, each reading its own copy of the files, agree.
+  # whose file is gone. A file is named by its name alone, so the nodes of a
+  # cluster on several machines, each reading its own copy of the files,
+  # agree.
   defp prune(agent_files) do
-    unread =
-      for {path, {:error, _message}} <- agent_files, into: MapSet.new(), do: Path.basename(path)
-
-    declared =
-      for {path, {:ok, spec}} <- agent_files, into: %{}, do: {Spec.key(spec), Path.basename(path)}
+    named = for {path, result} <- agent_files, do: {Path.basename(path), result}
+    unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
+    declared = for {name, {:ok, spec}} <- named, into: %{}, do: {Spec.key(spec), name}
 
     previous = Store.get(@inventory, "agents") || %{}
     {kept, gone} = Map.split_with(previous, fn {_key, path} -> MapSet.member?(unread, path) end)

@@ -216,7 +216,15 @@ defmodule Wardrik.LLM.Turn do
 
   @doc "The calls the turn waits on, each with the prompt a person is shown."
   @spec waiting(t()) :: [{Wardrik.Tool.call(), String.t()}]
-  def waiting(%__MODULE__{calls: calls}), do: ToolRunner.parked(calls)
+  def waiting(%__MODULE__{calls: calls} = turn) do
+    if Map.get(turn, :tainted, false),
+      do:
+        for(
+          {call, prompt} <- ToolRunner.parked(calls),
+          do: {Map.put(call, :outside, true), prompt}
+        ),
+      else: ToolRunner.parked(calls)
+  end
 
   @doc "The ids of the tool calls the turn's response asked for."
   @spec call_ids(t()) :: [String.t()]
