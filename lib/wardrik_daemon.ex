@@ -63,6 +63,7 @@ defmodule WardrikDaemon do
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
+  alias WardrikDaemon.Secrets
   alias WardrikDaemon.VaultKey
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -71,10 +72,16 @@ defmodule WardrikDaemon do
     state_dir = Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0)
     data_dir = Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
 
+    # The vault's key comes first, from vault.keys, the environment or the key
+    # file, so the rest of config.yaml can read from the vault what the
+    # environment does not set.
     with {:ok, file} <- Config.file(config_dir),
-         {:ok, settings} <- Config.read(file) do
+         {:ok, vault} <- Config.read(file, only: ["vault"]),
+         :ok <- Config.apply(Keyword.take(vault, [WardrikVault])),
+         :ok <- vault_key(data_dir),
+         {:ok, settings} <- Config.read(file, vault: &Secrets.named/1) do
       :ok = Config.apply(settings)
-      vault_key(data_dir)
+      :ok = Secrets.apply()
       Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
     else
       {:error, message} ->
@@ -90,6 +97,8 @@ defmodule WardrikDaemon do
       {:error, message} -> Logger.warning("The vault has no key: " <> message)
       _loaded_or_none -> :ok
     end
+
+    :ok
   end
 
   @impl true

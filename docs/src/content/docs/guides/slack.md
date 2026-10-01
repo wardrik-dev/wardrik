@@ -46,11 +46,11 @@ the app has, so another service connected with the same app would receive some o
 4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
 5. Invite the app to the channel: `/invite @yourapp`.
 
-Put both tokens in `~/.config/wardrik/env`, and restart the daemon:
+Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
 
 ```sh
-echo "SLACK_BOT_TOKEN=xoxb-..." >> ~/.config/wardrik/env
-echo "SLACK_APP_TOKEN=xapp-..." >> ~/.config/wardrik/env
+wardrik vault put SLACK_BOT_TOKEN    # xoxb-...
+wardrik vault put SLACK_APP_TOKEN    # xapp-...
 systemctl --user restart wardrik
 ```
 

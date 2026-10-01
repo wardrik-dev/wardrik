@@ -70,8 +70,12 @@ defmodule WardrikDaemon.Config do
 
   It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 
-  `${NAME}` in any string is replaced with that environment variable, so the
-  file itself need hold no secret.
+  `${NAME}` in any string is replaced with that environment variable, or,
+  where the environment does not set it, with the deployment's secret of that
+  name in the vault, which `wardrik vault put NAME` seals. Either way the file
+  itself need hold no secret. `storage`, `cluster` and `vault` read the
+  environment alone: the store holds the vault, the cluster is read as the
+  node boots, before the vault can be, and the vault cannot unlock itself.
 
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
@@ -118,8 +122,8 @@ defmodule WardrikDaemon.Config do
       and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
   Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
-  `WARDRIK_DATA_DIR`. A release reads `storage` as it boots, before anything
-  starts; see `boot/1`.
+  `WARDRIK_DATA_DIR`. A release reads `storage` and `cluster` as it boots,
+  before anything starts, and the rest once the store runs; see `boot/1`.
 
   `notify` names targets an agent file's `notify` routes to, each one
   `slack`, with `channel`, `token`, and optionally `app_token` and
@@ -180,6 +184,14 @@ defmodule WardrikDaemon.Config do
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
   @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
+
+  # The sections a read gives no name from the vault, and why.
+  @environment_only %{
+    "storage" => "storage reads the environment alone, since the vault is kept in the store",
+    "cluster" =>
+      "cluster reads the environment alone, as the node boots, before the vault can be",
+    "vault" => "vault reads the environment alone, since the vault cannot unlock itself"
+  }
   @org "default"
   @segment "an org holds no / or whitespace and does not begin with @ or _"
 
@@ -213,11 +225,19 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  @doc "The settings `file` configures, or none where there is no file."
-  @spec read(Path.t()) :: {:ok, settings()} | {:error, String.t()}
-  def read(file) do
+  @doc """
+  The settings `file` configures, or none where there is no file.
+
+  `${NAME}` reads the environment. Given `:vault`, a name the environment
+  does not set is read from it: a function answering the deployment's secret
+  of that name, or `nil`. `storage`, `cluster` and `vault` read the
+  environment alone, and say why where a name is not set. `:only` reads only
+  the sections it names.
+  """
+  @spec read(Path.t(), keyword()) :: {:ok, settings()} | {:error, String.t()}
+  def read(file, opts \\ []) do
     case File.read(file) do
-      {:ok, text} -> decode(text, file)
+      {:ok, text} -> decode(text, file, opts)
       {:error, :enoent} -> {:ok, []}
       {:error, reason} -> {:error, "#{file}: #{:file.format_error(reason)}"}
     end
@@ -260,11 +280,17 @@ defmodule WardrikDaemon.Config do
     end)
   end
 
-  defp decode(text, file) do
+  defp decode(text, file, opts) do
     case YamlElixir.read_from_string(text) do
-      {:ok, nil} -> {:ok, []}
-      {:ok, document} -> {:ok, document |> table!([]) |> interpolate([]) |> settings()}
-      {:error, error} -> {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
+      {:ok, nil} ->
+        {:ok, []}
+
+      {:ok, document} ->
+        document = document |> table!([]) |> only(opts[:only])
+        {:ok, document |> interpolate([], opts[:vault]) |> settings()}
+
+      {:error, error} ->
+        {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
     end
   catch
     {:invalid, path, message} -> {:error, "#{file}: #{Enum.join(path, ".")} #{message}"}
@@ -692,22 +718,44 @@ defmodule WardrikDaemon.Config do
 
   # The path is built innermost first and turned around only when it is
   # reported.
-  defp interpolate(value, path) when is_map(value),
-    do: Map.new(value, fn {key, value} -> {key, interpolate(value, [key | path])} end)
+  defp interpolate(value, path, vault) when is_map(value),
+    do: Map.new(value, fn {key, value} -> {key, interpolate(value, [key | path], vault)} end)
 
-  defp interpolate(value, path) when is_list(value) do
+  defp interpolate(value, path, vault) when is_list(value) do
     value
     |> Enum.with_index()
-    |> Enum.map(fn {value, i} -> interpolate(value, ["#{i}" | path]) end)
+    |> Enum.map(fn {value, i} -> interpolate(value, ["#{i}" | path], vault) end)
   end
 
-  defp interpolate(value, path) when is_binary(value) do
+  defp interpolate(value, path, vault) when is_binary(value) do
     Regex.replace(~r/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/, value, fn _match, name ->
-      System.get_env(name) || invalid!(Enum.reverse(path), "names ${#{name}}, which is not set")
+      System.get_env(name) || secret(name, Enum.reverse(path), vault)
     end)
   end
 
-  defp interpolate(value, _path), do: value
+  defp interpolate(value, _path, _vault), do: value
+
+  defp secret(name, path, nil), do: invalid!(path, "names ${#{name}}, which is not set")
+
+  defp secret(name, [section | _rest] = path, vault) do
+    cond do
+      reason = @environment_only[section] ->
+        invalid!(path, "names ${#{name}}, which is not set; #{reason}")
+
+      value = vault.(name) ->
+        value
+
+      true ->
+        invalid!(
+          path,
+          "names ${#{name}}, which neither the environment nor the vault sets; " <>
+            "wardrik vault put #{name} seals it"
+        )
+    end
+  end
+
+  defp only(document, nil), do: document
+  defp only(document, sections), do: Map.take(document, sections)
 
   defp invalid!(path, message), do: throw({:invalid, path, message})
 end

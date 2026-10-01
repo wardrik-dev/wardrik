@@ -6,6 +6,10 @@ import Config
 if config_env() == :prod do
   config :wardrik, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
 
+  # Where the environment sets none, the vault's is read; see WardrikDaemon.Secrets.
+  config :wardrik, WardrikDaemon.Secrets,
+    keys: %{"BRAVE_API_KEY" => {:wardrik, WardrikBrave, :api_key}}
+
   config :req_llm, zai_api_key: System.get_env("ZAI_API_KEY")
 
   if key = System.get_env("WARDRIK_VAULT_KEY") do
@@ -23,10 +27,11 @@ if System.get_env("RELEASE_NAME") do
   # config.yaml's storage and cluster are read here, since what they describe
   # starts before WardrikDaemon reads the rest of the file: the store, the
   # topologies that connect this node to the others, and the size the store
-  # counts a quorum against. A file that does not read is left for
-  # WardrikDaemon to report.
+  # counts a quorum against. They alone are read, from the environment, so a
+  # ${NAME} elsewhere that only the vault sets cannot keep them from the
+  # boot. A file that does not read is left for WardrikDaemon to report.
   with {:ok, file} <- WardrikDaemon.Config.file(WardrikDaemon.Config.config_dir()),
-       {:ok, settings} <- WardrikDaemon.Config.read(file) do
+       {:ok, settings} <- WardrikDaemon.Config.read(file, only: ~w(storage cluster)) do
     config :wardrik, WardrikDaemon.Config.boot(settings)
   end
 

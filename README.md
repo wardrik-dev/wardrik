@@ -515,7 +515,8 @@ until Ctrl-C, and `watch --json` writes each event as the HTTP API streams it.
 answer. These run through `bin/wardrikd rpc`, so they write as they go and
 read what is typed; Ctrl-C stops them, and the agent carries on.
 
-`vault put NAME` seals a secret, such as the one an MCP server's
+`vault put NAME` seals a secret, such as a model provider's key, a
+`${NAME}` in `config.yaml`, or the one an MCP server's
 `credential: named:NAME` reads, asking for its value without showing it, or
 reading it from standard input when piped. `--org` and `--user` seal one for
 an org or a user, `vault ls` lists them by name and owner, never their
@@ -528,7 +529,7 @@ underneath.
 
 On Linux, `wardrik service install` makes it a service of your user's systemd:
 it writes `wardrik.service` under `~/.config/systemd/user`, running `wardrik
-serve` with this install's directories and the keys in
+serve` with this install's directories and anything set in
 `~/.config/wardrik/env`, starts it, and lets your systemd run from boot
 rather than from your first login. The unit runs the release the install
 script points `current` at, so an upgrade takes effect when the service
@@ -564,16 +565,18 @@ container's output, with `wardrik` on its `PATH` for `docker exec`:
 | **4747**, **2222** | the HTTP API, and the TUI where `/config/ssh/authorized_keys` lets someone in. Both listen on every interface of the container, so the ports it is run with decide who reaches them |
 
 ```sh
-docker run -d --name wardrik --env-file ~/.config/wardrik/env \
+docker run -d --name wardrik \
   -p 127.0.0.1:4747:4747 -p 2222:2222 \
   -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec -it wardrik wardrik vault put ANTHROPIC_API_KEY
 docker exec wardrik wardrik status
 docker logs -f wardrik
 ```
 
-Keys the daemon reads, a model provider's and any `config.yaml` names, come
-in with `-e` or `--env-file`. An MCP server run as a command needs its program
-in the image, so a deployment with one builds its own image `FROM` this one.
+Keys the daemon reads, a model provider's and any `config.yaml` names, are
+sealed in the vault with `wardrik vault put`, its key kept on `/data`, or
+come in with `-e`. An MCP server run as a command needs its program in the
+image, so a deployment with one builds its own image `FROM` this one.
 
 ```yaml
 mcp:
@@ -583,9 +586,13 @@ mcp:
       authorization: Bearer ${LINEAR_TOKEN}
 ```
 
-`${NAME}` is read from the environment when the daemon boots, and so are
-provider keys such as `ZAI_API_KEY`. A key that is absent is reported by the
-tool that needs it; a `config.yaml` that does not read stops the boot.
+`${NAME}` is read from the environment when the daemon boots, or, where the
+environment does not set it, from the deployment's secret of that name in the
+vault, and so are provider keys such as `ZAI_API_KEY`.
+`storage`, `cluster` and `vault` read the environment alone. A provider key
+put in the vault is used at once; a `config.yaml` name, when the daemon next
+starts. A key that is absent is reported by the tool that needs it; a
+`config.yaml` that does not read stops the boot.
 
 An agent is a Markdown file with YAML frontmatter, and the body is its system
 prompt:

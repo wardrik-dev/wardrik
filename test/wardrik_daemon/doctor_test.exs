@@ -69,6 +69,77 @@ defmodule WardrikDaemon.DoctorTest do
 
   defp check(checks, name), do: Enum.find(checks, &(elem(&1, 1) == name))
 
+  describe "config.yaml's names from the vault" do
+    setup %{tmp_dir: dir} do
+      config(dir, """
+      mcp:
+        linear:
+          command: sh
+          env: {LINEAR_TOKEN: "${DOCTOR_LINEAR_TOKEN}"}
+        zapier:
+          url: "https://mcp.zapier.com/${DOCTOR_ZAPIER_PATH}/mcp"
+      """)
+    end
+
+    test "are read from the vault of the daemon that runs", %{tmp_dir: dir} do
+      {:ok, closing} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, closed} = :inet.port(closing)
+      :ok = :gen_tcp.close(closing)
+
+      config(dir, """
+      mcp:
+        linear:
+          command: sh
+          env: {LINEAR_TOKEN: "${DOCTOR_LINEAR_TOKEN}"}
+        zapier:
+          url: "http://127.0.0.1:#{closed}/${DOCTOR_ZAPIER_PATH}/mcp"
+      """)
+
+      vault = fn
+        "DOCTOR_LINEAR_TOKEN" -> "lin_secret"
+        "DOCTOR_ZAPIER_PATH" -> "s/abc"
+      end
+
+      checks = Doctor.checks(dir, vault)
+
+      assert check(checks, "config") ==
+               {:ok, "config",
+                "#{dir}/config.yaml reads, with ${DOCTOR_LINEAR_TOKEN} and " <>
+                  "${DOCTOR_ZAPIER_PATH} from the vault"}
+
+      assert {:error, "mcp zapier", "127.0.0.1:" <> _does_not_answer} =
+               check(checks, "mcp zapier")
+    end
+
+    test "fail where the vault does not hold one", %{tmp_dir: dir} do
+      vault = fn
+        "DOCTOR_LINEAR_TOKEN" -> "lin_secret"
+        _other -> nil
+      end
+
+      assert [{:error, "config", message}] = Doctor.checks(dir, vault)
+
+      assert message =~
+               "names ${DOCTOR_ZAPIER_PATH}, which neither the environment nor the vault sets"
+    end
+
+    test "read as written where no daemon runs, and say so", %{tmp_dir: dir} do
+      checks = Doctor.checks(dir)
+
+      assert {:ok, "config", found} = check(checks, "config")
+      assert found =~ "from the vault, which doctor reads only while the daemon runs"
+
+      assert {:ok, "mcp zapier", "reads its url from the vault" <> _rest} =
+               check(checks, "mcp zapier")
+
+      config(dir, "http:\n  ip: \"${DOCTOR_HTTP_IP}\"\n")
+
+      assert [{:error, "config", message}] = Doctor.checks(dir)
+      assert message =~ "http.ip is an address"
+      assert message =~ "It reads ${DOCTOR_HTTP_IP} from the vault, which doctor reads only"
+    end
+  end
+
   describe "the vault" do
     test "has keys it can use", %{tmp_dir: dir} do
       config(

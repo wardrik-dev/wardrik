@@ -33,6 +33,7 @@ defmodule WardrikDaemon.CLI.Vault do
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Config
+  alias WardrikDaemon.Secrets
   alias WardrikDaemon.VaultKey
 
   @owner [org: :string, user: :string]
@@ -169,7 +170,7 @@ defmodule WardrikDaemon.CLI.Vault do
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
       case WardrikVault.put({kind, name}, owner, value) do
-        :ok -> {:cont, [sealed(kind, name, owner) | lines]}
+        :ok -> {:cont, [sealed(kind, name, owner, value) | lines]}
         {:error, reason} -> {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
       end
     end)
@@ -179,14 +180,26 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(:named, name, nil) do
-    if System.get_env(name),
-      do:
-        "Sealed #{name}. The daemon's environment sets #{name} too, and ${#{name}} reads that one.",
-      else: "Sealed #{name}."
+  defp sealed(:named, name, nil, value) do
+    :ok = placed(name, value)
+
+    cond do
+      System.get_env(name) ->
+        "Sealed #{name}. The daemon's environment sets #{name} too, which ${#{name}} and " <>
+          "model providers read before the vault."
+
+      Secrets.key?(name) ->
+        "Sealed #{name}. Every node reads it now."
+
+      read_at_start?(name) ->
+        "Sealed #{name}. config.yaml's ${#{name}} reads it when the daemon next starts."
+
+      true ->
+        "Sealed #{name}."
+    end
   end
 
-  defp sealed(_kind, name, owner), do: "Sealed #{name} for #{shown(owner)}."
+  defp sealed(_kind, name, owner, _value), do: "Sealed #{name} for #{shown(owner)}."
 
   # -- the key -----------------------------------------------------------------
 
@@ -257,6 +270,24 @@ defmodule WardrikDaemon.CLI.Vault do
         do:
           "#{Nodes.display(other)} has no key to read it with: copy #{VaultKey.file()} " <>
             "to it, as the cookie is, or give every node vault.keys."
+  end
+
+  defp placed(name, secret) do
+    if Secrets.key?(name) do
+      :ok = Secrets.place(name, secret)
+      _answers = :erpc.multicall(CLI.daemons() -- [node()], Secrets, :place, [name, secret])
+    end
+
+    :ok
+  end
+
+  defp read_at_start?(name) do
+    with {:ok, file} <- Config.file(Config.config_dir()),
+         {:ok, text} <- File.read(file) do
+      String.contains?(text, "${#{name}}")
+    else
+      {:error, _none_or_both} -> false
+    end
   end
 
   # -- ls and rm ---------------------------------------------------------------
@@ -338,12 +369,17 @@ defmodule WardrikDaemon.CLI.Vault do
       for_owner = if kind == :named, do: "", else: " for #{shown(owner)}"
 
       if {kind, name} in WardrikVault.names(kind, owner) do
-        :ok = WardrikVault.forget({kind, name}, owner)
+        :ok = removed(kind, name, owner)
         {:ok, "Removed #{name}#{for_owner}."}
       else
         {:error, "The vault holds no #{name}#{for_owner}."}
       end
     end
+  end
+
+  defp removed(kind, name, owner) do
+    :ok = WardrikVault.forget({kind, name}, owner)
+    if kind == :named, do: placed(name, nil), else: :ok
   end
 
   # -- owners ------------------------------------------------------------------

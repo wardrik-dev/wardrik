@@ -7,15 +7,15 @@ defmodule WardrikDaemon.ConfigTest do
 
   # Every file names the deployment's org first; what each other test reads
   # is the rest.
-  defp read(yaml, context) do
-    with {:ok, [{Wardrik.Fleet, _org} | settings]} <- read_all(yaml, context),
+  defp read(yaml, context, opts \\ []) do
+    with {:ok, [{Wardrik.Fleet, _org} | settings]} <- read_all(yaml, context, opts),
          do: {:ok, settings}
   end
 
-  defp read_all(yaml, %{tmp_dir: dir}) do
+  defp read_all(yaml, %{tmp_dir: dir}, opts \\ []) do
     file = Path.join(dir, "config.yaml")
     File.write!(file, yaml)
-    Config.read(file)
+    Config.read(file, opts)
   end
 
   defp env(value) do
@@ -175,6 +175,72 @@ defmodule WardrikDaemon.ConfigTest do
                read(~s(vault:\n  keys: ["${WARDRIK_CONFIG_TEST_UNSET}"]\n), context)
 
       assert message =~ "vault.keys.0 names ${WARDRIK_CONFIG_TEST_UNSET}, which is not set"
+    end
+
+    test "${NAME} the environment does not set is read from the vault, if it is given one",
+         context do
+      yaml =
+        "mcp:\n  linear:\n    url: https://mcp.linear.app/mcp\n    headers: {authorization: \"Bearer ${LIN_TOKEN}\"}\n"
+
+      vault = fn "LIN_TOKEN" -> "from-vault" end
+
+      assert {:ok, [{WardrikMCP, servers: [linear: server]}]} = read(yaml, context, vault: vault)
+      assert {:streamable_http, opts} = server[:transport]
+      assert opts[:headers] == %{"authorization" => "Bearer from-vault"}
+
+      assert {:error, message} = read(yaml, context)
+      assert message =~ "mcp.linear.headers.authorization names ${LIN_TOKEN}, which is not set"
+
+      assert {:error, message} = read(yaml, context, vault: fn _name -> nil end)
+
+      assert message =~
+               "names ${LIN_TOKEN}, which neither the environment nor the vault sets; " <>
+                 "wardrik vault put LIN_TOKEN seals it"
+    end
+
+    test "the environment comes before the vault", context do
+      name = env("from-environment")
+
+      assert {:ok, [{WardrikVault, keys: ["from-environment"]}]} =
+               read(~s(vault:\n  keys: ["${#{name}}"]\n), context, vault: fn _ -> "vault" end)
+
+      assert {:ok, [{WardrikMCP, servers: [a: server]}]} =
+               read("mcp:\n  a: {command: \"${#{name}}\"}\n", context, vault: fn _ -> "vault" end)
+
+      assert {:stdio, opts} = server[:transport]
+      assert opts[:command] == "from-environment"
+    end
+
+    test "storage, cluster and vault never read the vault, and say why", context do
+      vault = fn _name -> "from-vault" end
+
+      for {yaml, why} <- [
+            {"storage:\n  postgres: {url: \"${DB_URL}\"}\n",
+             "since the vault is kept in the store"},
+            {"cluster:\n  dns: \"${CLUSTER_DNS}\"\n",
+             "as the node boots, before the vault can be"},
+            {~s(vault:\n  keys: ["${KEY}"]\n), "since the vault cannot unlock itself"}
+          ] do
+        assert {:error, message} = read(yaml, context, vault: vault)
+        assert message =~ "which is not set; "
+        assert message =~ why
+      end
+    end
+
+    test "only reads the sections it names", context do
+      yaml = """
+      mcp:
+        linear: {url: "https://mcp.linear.app/mcp", headers: {authorization: "${UNSET_ANYWHERE}"}}
+      cluster:
+        nodes: [a, b]
+      """
+
+      assert {:error, _unset} = read(yaml, context)
+
+      assert {:ok, [{WardrikDaemon.Cluster, cluster}]} =
+               read(yaml, context, only: ~w(storage cluster))
+
+      assert cluster[:size] == 2
     end
 
     test "a key nothing takes is refused", context do
