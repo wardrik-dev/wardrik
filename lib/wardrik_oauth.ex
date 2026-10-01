@@ -431,7 +431,8 @@ defmodule WardrikOAuth do
       url =
         Flow.authorize_url(metadata, flight.registered, challenge,
           state: flight.state,
-          scopes: scopes(flight.provider, metadata)
+          scopes: scopes(flight.provider, metadata),
+          params: flight.provider.authorization_params
         )
 
       {:ok, url} = Pending.start(%{flight | verifier: verifier, url: url})

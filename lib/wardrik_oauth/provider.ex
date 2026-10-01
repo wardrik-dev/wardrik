@@ -23,6 +23,17 @@ defmodule WardrikOAuth.Provider do
   deployment's own (see `WardrikOAuth.Egress`). A `:client_secret` is sent only
   to a named `:issuer`.
 
+  `:authorization_params` are more to send with the authorization request
+  in a browser, for a server that needs them. Google, for one, gives a
+  token it can refresh only when asked with `access_type: "offline"`, and
+  gives one again after the first time only with `prompt: "consent"`:
+
+      authorization_params: %{"access_type" => "offline", "prompt" => "consent"}
+
+  They cannot set what the flow sets itself, such as `redirect_uri` or
+  `state` (see `WardrikOAuth.Flow.own_params/0`), and a provider whose
+  params name one is refused.
+
   `:flow` is how the user authorizes:
 
     * `:browser` - in a browser sent back to this deployment's redirect URI,
@@ -45,6 +56,7 @@ defmodule WardrikOAuth.Provider do
     :client_secret,
     :redirect_uri,
     scopes: [],
+    authorization_params: %{},
     flow: :auto
   ]
 
@@ -57,6 +69,7 @@ defmodule WardrikOAuth.Provider do
           client_secret: String.t() | nil,
           redirect_uri: String.t() | nil,
           scopes: [String.t()],
+          authorization_params: %{optional(String.t()) => String.t()},
           flow: flow()
         }
 
@@ -69,8 +82,34 @@ defmodule WardrikOAuth.Provider do
   @doc "Builds a provider from its name and options."
   @spec new(atom() | String.t(), keyword()) :: t()
   def new(name, opts) do
-    opts = Keyword.update(opts, :flow, :auto, &flow!/1)
+    opts =
+      opts
+      |> Keyword.update(:flow, :auto, &flow!/1)
+      |> Keyword.update(:authorization_params, %{}, &authorization_params!/1)
+
     struct!(__MODULE__, Keyword.put(opts, :name, to_string(name)))
+  end
+
+  @doc """
+  Reads a provider's authorization params into text, refusing any that would
+  set what the flow sets itself.
+  """
+  @spec authorization_params!(Enumerable.t()) :: %{optional(String.t()) => String.t()}
+  def authorization_params!(params) do
+    params = Map.new(params, fn {name, value} -> {to_string(name), to_string(value)} end)
+
+    case Enum.filter(Map.keys(params), &(&1 in WardrikOAuth.Flow.own_params())) do
+      [] ->
+        params
+
+      own ->
+        raise ArgumentError,
+              IO.iodata_to_binary([
+                "a provider's authorization_params cannot set ",
+                Enum.intersperse(own, ", "),
+                ", which the flow sets itself"
+              ])
+    end
   end
 
   @flows %{"auto" => :auto, "browser" => :browser, "device" => :device}

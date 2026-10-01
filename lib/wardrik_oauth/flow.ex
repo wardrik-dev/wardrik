@@ -98,15 +98,25 @@ defmodule WardrikOAuth.Flow do
   def scopes(%Provider{scopes: [_ | _] = scopes}, %Metadata{}), do: scopes
   def scopes(%Provider{}, %Metadata{resource_scopes: scopes}), do: scopes
 
+  @own_params ~w(response_type client_id redirect_uri code_challenge code_challenge_method state scope resource)
+
+  @doc "The authorization request's parameters the flow sets itself, which a provider's cannot."
+  @spec own_params() :: [String.t()]
+  def own_params, do: @own_params
+
   @doc """
   Where to send the user.
 
   `:state` correlates the answer, `:scopes` overrides what the provider asks
   for, and the resource indicator is sent where the metadata names one, so the
-  token comes back bound to the server it is for.
+  token comes back bound to the server it is for. `:params` are more to send,
+  a provider's `:authorization_params`; none of them sets one of
+  `own_params/0`.
   """
   @spec authorize_url(Metadata.t(), registered(), String.t(), keyword()) :: String.t()
   def authorize_url(%Metadata{} = metadata, registered, challenge, opts) do
+    more = opts |> Keyword.get(:params, %{}) |> Map.drop(@own_params)
+
     params =
       %{
         "response_type" => "code",
@@ -121,7 +131,9 @@ defmodule WardrikOAuth.Flow do
 
     metadata.authorization_endpoint
     |> URI.parse()
-    |> then(&%{&1 | query: URI.encode_query(Map.merge(query(&1), params))})
+    |> then(
+      &%{&1 | query: URI.encode_query(&1 |> query() |> Map.merge(more) |> Map.merge(params))}
+    )
     |> URI.to_string()
   end
 

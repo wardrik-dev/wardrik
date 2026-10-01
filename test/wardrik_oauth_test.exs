@@ -143,6 +143,33 @@ defmodule WardrikOAuthTest do
     end
   end
 
+  test "a provider's authorization params go with the user to the server", %{owner: owner} do
+    stub_server(cimd: true)
+
+    configure(
+      providers: [
+        github: [
+          resource: resource(),
+          authorization_params: [access_type: "offline", prompt: :consent]
+        ]
+      ]
+    )
+
+    {:error, {:authorization_required, url}} =
+      Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+
+    assert %{"access_type" => "offline", "prompt" => "consent"} = params_of(url)
+  end
+
+  test "a provider's authorization params cannot set what the flow sets itself" do
+    assert_raise ArgumentError, ~r/cannot set redirect_uri, which the flow sets itself/, fn ->
+      WardrikOAuth.Provider.new(:github,
+        resource: resource(),
+        authorization_params: %{"redirect_uri" => "https://elsewhere.example"}
+      )
+    end
+  end
+
   test "a provider says what it is, never its client secret" do
     provider =
       WardrikOAuth.Provider.new(:github, resource: resource(), client_secret: "s3cret-value")
