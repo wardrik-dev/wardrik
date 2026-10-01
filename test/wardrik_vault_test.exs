@@ -237,6 +237,25 @@ defmodule WardrikVaultTest do
                [{:user, "github"}, {:user, "linear"}]
     end
 
+    test "lists names as they were given, whatever they hold", %{user: user} do
+      :ok = WardrikVault.put({:user, "git_hub key"}, user, "a")
+
+      assert WardrikVault.names(:user, user) == [{:user, "git_hub key"}]
+    end
+
+    test "lists every secret, with each owner written as text", %{user: user} do
+      org = "org-#{user}"
+      :ok = WardrikVault.put({:named, "#{user}_TOKEN"}, nil, "a")
+      :ok = WardrikVault.put({:org, "linear"}, org, "b")
+      :ok = WardrikVault.put({:user, "github"}, {org, user}, "c")
+
+      listed = WardrikVault.list()
+
+      assert {{:named, "#{user}_TOKEN"}, nil} in listed
+      assert {{:org, "linear"}, org} in listed
+      assert {{:user, "github"}, :hashed} in listed
+    end
+
     test "forgetting removes one, and forgetting twice is still fine", %{user: user} do
       :ok = WardrikVault.put({:user, "github"}, user, "a")
 

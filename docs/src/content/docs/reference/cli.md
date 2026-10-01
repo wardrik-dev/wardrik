@@ -174,6 +174,34 @@ Stop a token working.
 wardrik token revoke ID
 ```
 
+## wardrik vault put
+
+Seal secrets in the vault, asking for a value not given.
+
+```sh
+wardrik vault put NAME[=VALUE]... [--org ORG] [--user USER] [--yes]
+```
+
+NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which credential: named:NAME reads. --org ORG seals it for an org, which org:NAME reads, and --user USER for a user, which user:NAME reads, within --org ORG or the deployment's org. Where the vault has no key, it asks to make one; --yes makes it without asking.
+
+## wardrik vault ls
+
+The vault's secrets and whose they are, never their values.
+
+```sh
+wardrik vault ls [--org ORG] [--user USER]
+```
+
+Users' secrets are counted by name; --user USER lists one user's. With --json, each as its name, kind, and owner as --org and --user take it, or the count of users with it; the deployment's say whether the daemon's environment sets them.
+
+## wardrik vault rm
+
+Remove a secret from the vault.
+
+```sh
+wardrik vault rm NAME [--org ORG] [--user USER]
+```
+
 ## wardrik service install
 
 Run the daemon under your user's systemd.

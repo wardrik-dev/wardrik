@@ -55,4 +55,52 @@ defmodule WardrikDaemon.CLI.Terminal do
 
   def puts(%__MODULE__{colour?: colour?}, data, device),
     do: IO.puts(device, WardrikConsole.Ansi.chardata(data, colour?))
+
+  @doc """
+  Reads a line typed at the terminal after `prompt`, without showing it, for a
+  command running live where someone can type: the line, or `nil` where
+  nothing was typed.
+
+  The VM a live command reads through, the caller's over `bin/wardrikd rpc`,
+  leaves the terminal to echo what is typed, and cannot stop it. So it reads
+  the terminal raw, which echoes nothing, for that one line, and goes back to
+  reading it a line at a time after. Input this node reads itself, as a test
+  captures it, has no terminal to hide it from, and is read as it is.
+  """
+  @spec secret(t(), Owl.Data.t()) :: {:ok, String.t() | nil} | {:error, String.t()}
+  def secret(%__MODULE__{} = terminal, prompt) do
+    prompt = WardrikConsole.Ansi.chardata(prompt, terminal.colour?)
+
+    case node(Process.group_leader()) do
+      reader when reader == node() -> {:ok, typed(IO.gets(prompt))}
+      reader -> hidden(reader, prompt)
+    end
+  end
+
+  defp hidden(reader, prompt) do
+    with :ok <- reading(reader, :raw) do
+      IO.write(prompt)
+      # Read through the group leader, the caller's, not this node's own user.
+      line = :io.get_password(Process.group_leader())
+      :ok = reading(reader, :cooked)
+      IO.write("\n")
+      {:ok, typed(line)}
+    end
+  end
+
+  defp reading(reader, mode) do
+    case :erpc.call(reader, :shell, :start_interactive, [{:noshell, mode}]) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, "This terminal cannot hide what is typed; pipe the value in."}
+    end
+  end
+
+  defp typed(line) when is_binary(line) or is_list(line) do
+    case line |> IO.chardata_to_string() |> String.trim_trailing("\n") do
+      "" -> nil
+      line -> line
+    end
+  end
+
+  defp typed(_eof_or_error), do: nil
 end

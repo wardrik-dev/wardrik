@@ -37,12 +37,21 @@ or WireGuard, and never on a public interface.
 | Directory | What it holds | Who can read it |
 | --- | --- | --- |
 | `~/.config/wardrik` | `config.yaml`, agent and policy files, `ssh/authorized_keys` | as its owner sets it; `${NAME}` in `config.yaml` reads a value from the environment, so the file need hold no secret |
-| `~/.local/share/wardrik` | the store, with every agent's conversation, the ledger, budgets and sealed tokens; the cookie; the SSH host key | the daemon's user |
+| `~/.local/share/wardrik` | the store, with every agent's conversation, the ledger, budgets and sealed tokens; the cookie; the SSH host key; `vault_key`, where the vault's key is kept when none is configured | the daemon's user |
 | `~/.local/state/wardrik` | logs | the daemon's user |
 
 The release sets umask 077, so what the node and the commands it starts write
 is readable by the daemon's user only, and it makes the data and state
 directories private again on every start.
+
+Where neither `WARDRIK_VAULT_KEY` nor `vault.keys` in `config.yaml` gives the
+vault a key, the first `wardrik vault put` asks to make one, and keeps it in
+`~/.local/share/wardrik/vault_key`, readable by the daemon's user only. The
+daemon reads it into its own settings, never its environment, so no MCP
+command inherits it. The file sits beside the store, so anyone who can read
+both can read every secret the vault seals; to keep them apart, set a key of
+your own instead. The nodes of a cluster on one machine share the file; a
+node on another host needs a copy, as it needs the cookie, or `vault.keys`.
 
 ### SSH
 

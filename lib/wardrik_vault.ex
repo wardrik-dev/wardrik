@@ -119,7 +119,23 @@ defmodule WardrikVault do
     for key <- Store.keys(@ns, prefix),
         name = String.replace_prefix(key, prefix, ""),
         name != "",
-        do: {kind, name}
+        do: {kind, URI.decode(name)}
+  end
+
+  @doc """
+  Every secret written, as `{ref, owner}` pairs.
+
+  An owner written as text, such as an org, reads back as that text, and the
+  deployment's as `nil`. Any other owner, such as a user's `{org, user}`, is
+  written only as a hash of it, and reads back as `:hashed`; `names/2` lists
+  what one such owner has. Reads no secret and needs no key.
+  """
+  @spec list() :: [{Credential.ref(), owner() | :hashed}]
+  def list do
+    for key <- Store.keys(@ns),
+        [kind, owner, name] <- [String.split(key, "/")],
+        kind in ~w(user org named),
+        do: {{String.to_existing_atom(kind), URI.decode(name)}, unsegment(owner)}
   end
 
   @doc "A new key, base64-encoded, for `:keys`."
@@ -241,4 +257,8 @@ defmodule WardrikVault do
     do:
       "~" <>
         Base.url_encode64(:crypto.hash(:sha256, :erlang.term_to_binary(value)), padding: false)
+
+  defp unsegment("_"), do: nil
+  defp unsegment("~" <> _hash), do: :hashed
+  defp unsegment(text), do: URI.decode(text)
 end

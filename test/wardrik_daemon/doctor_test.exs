@@ -9,14 +9,21 @@ defmodule WardrikDaemon.DoctorTest do
   defp config(dir, yaml), do: File.write!(Path.join(dir, "config.yaml"), yaml)
 
   setup %{tmp_dir: dir} do
-    previous = System.get_env("WARDRIK_DATA_DIR")
-    System.put_env("WARDRIK_DATA_DIR", Path.join(dir, "store"))
+    for {variable, value} <- [
+          {"WARDRIK_DATA_DIR", Path.join(dir, "store")},
+          {"WARDRIK_DATA_HOME", dir}
+        ] do
+      previous = System.get_env(variable)
+      System.put_env(variable, value)
 
-    on_exit(fn ->
-      if previous,
-        do: System.put_env("WARDRIK_DATA_DIR", previous),
-        else: System.delete_env("WARDRIK_DATA_DIR")
-    end)
+      on_exit(fn ->
+        if previous,
+          do: System.put_env(variable, previous),
+          else: System.delete_env(variable)
+      end)
+    end
+
+    :ok
   end
 
   test "checks that config.yaml reads, and the store it names", %{tmp_dir: dir} do
@@ -80,14 +87,29 @@ defmodule WardrikDaemon.DoctorTest do
                check(Doctor.checks(dir), "vault")
     end
 
+    test "reads the key file in the data home where nothing else names a key", %{tmp_dir: dir} do
+      {:ok, file} = WardrikDaemon.VaultKey.make(dir)
+
+      assert check(Doctor.checks(dir), "vault") == {:ok, "vault", "1 key, from #{file}"}
+
+      File.write!(file, "c2hvcnQ=\n")
+
+      assert {:error, "vault", message} = check(Doctor.checks(dir), "vault")
+
+      assert message ==
+               "#{file} holds no key the vault can use: 32 bytes in base64, as openssl rand -base64 32 makes"
+    end
+
     test "fails where a credential needs a key and there is none", %{tmp_dir: dir} do
       config(
         dir,
         "mcp:\n  github:\n    url: http://127.0.0.1:1/mcp\n    credential: user:github\n"
       )
 
-      assert {:error, "vault", "no key, and mcp.github's credential needs one" <> _how} =
+      assert {:error, "vault", "no key, and mcp.github's credential needs one" <> how} =
                check(Doctor.checks(dir), "vault")
+
+      assert how =~ "wardrik vault put makes one"
     end
   end
 

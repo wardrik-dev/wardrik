@@ -29,6 +29,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.CLI.Tokens
+  alias WardrikDaemon.CLI.Vault
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
   alias WardrikHTTP.Resource
@@ -93,7 +94,8 @@ defmodule WardrikDaemon.CLI do
         json: &snapshot/2
       }
     ] ++
-      Agents.commands() ++ Decisions.commands() ++ Tokens.commands() ++ script_commands()
+      Agents.commands() ++
+      Decisions.commands() ++ Tokens.commands() ++ Vault.commands() ++ script_commands()
   end
 
   # What bin/wardrik runs itself, listed for their help.
@@ -407,8 +409,9 @@ defmodule WardrikDaemon.CLI do
     {:ok, WardrikDaemon.status()}
   end
 
-  # This node and every node connected to it that runs a daemon of its own.
-  defp daemons do
+  @doc "This node and every node connected to it that runs a daemon of its own."
+  @spec daemons() :: [node()]
+  def daemons do
     for daemon <- [node() | Node.list()],
         :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Agents]) != nil,
         do: daemon

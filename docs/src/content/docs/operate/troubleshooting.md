@@ -51,8 +51,9 @@ It checks, a line each:
 - **`config`**: that `config.yaml` reads. Where it does not, this is the only line.
 - **`store`**: that the store is there and behaves as the daemon needs. For a bucket, this writes a
   probe under `wardrik/probe/`; for Postgres, it connects.
-- **`vault`**: that each key is one the vault can use, and that there is one where OAuth or a
-  server's credential needs it.
+- **`vault`**: that each key is one the vault can use, from `vault.keys`, `WARDRIK_VAULT_KEY` or
+  `~/.local/share/wardrik/vault_key`, and that there is one where OAuth or a server's credential
+  needs it.
 - **`mcp NAME`**: for a server run as a command, that its program is on the `PATH`; for one over
   HTTP, that its host answers. It does not start the server or speak MCP to it.
 - **`agents`**: that every agent and policy file reads, with a line for each that does not.

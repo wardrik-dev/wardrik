@@ -1,0 +1,391 @@
+defmodule WardrikDaemon.CLI.Vault do
+  @moduledoc """
+  `wardrik vault`: the secrets `WardrikVault` keeps, sealed, listed and
+  removed on the daemon.
+
+  `vault put NAME` asks for the value without showing it, or reads it from
+  standard input where that is not a terminal, less the line ending it ends
+  with. `vault put NAME=VALUE` takes it from the command line, where it stays
+  in the shell's history and, while the command runs, in the list of
+  processes. Neither prints the value back.
+
+  A secret is the deployment's, `{:named, NAME}`, which an MCP server's
+  `credential: named:NAME` reads. `--org ORG` seals it for an org,
+  `{:org, NAME}`, which `org:NAME` reads for that org's agents. `--user USER`
+  seals it for a user, `{:user, NAME}`, which `user:NAME` reads for that
+  user's agents: within `--org ORG`, or the deployment's org without it. An
+  org or a user is one segment of an agent's key, and is shown as the key
+  shows it, `acme` or `acme/@jon`.
+
+  `vault ls` names each secret and whose it is. A user's secret is written
+  under a hash of who they are, so `vault ls` counts users' secrets by name,
+  and `vault ls --user USER` lists one user's.
+
+  Where the vault has no key, the first `put` asks to make one, and keeps it
+  in the data home; see `WardrikDaemon.VaultKey`. `--yes` makes it without
+  asking. Where no one can answer and `--yes` is not given, `put` says how to
+  give the vault a key instead.
+  """
+
+  alias Wardrik.Fleet
+  alias WardrikConsole.Nodes
+  alias WardrikDaemon.CLI
+  alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.Config
+  alias WardrikDaemon.VaultKey
+
+  @owner [org: :string, user: :string]
+  @one_at_a_time "wardrik vault put asks for one value at a time: give NAME alone, or NAME=VALUE for each"
+
+  @doc "The vault commands, for `WardrikDaemon.CLI.commands/0`."
+  @spec commands() :: [Command.t()]
+  def commands do
+    [
+      %Command{
+        name: "vault put",
+        arguments: "NAME[=VALUE]...",
+        options: "[--org ORG] [--user USER] [--yes]",
+        summary: "seal secrets in the vault, asking for a value not given",
+        details: [
+          "NAME alone asks for its value without showing it, or reads it from standard",
+          "input where that is not a terminal. NAME=VALUE stays in your shell's history.",
+          "A secret is the deployment's, which credential: named:NAME reads. --org ORG",
+          "seals it for an org, which org:NAME reads, and --user USER for a user, which",
+          "user:NAME reads, within --org ORG or the deployment's org.",
+          "Where the vault has no key, it asks to make one; --yes makes it without asking."
+        ],
+        switches: [yes: :boolean] ++ @owner,
+        count: {1, :any},
+        run: &put/2,
+        live: &put_asked/3
+      },
+      %Command{
+        name: "vault ls",
+        options: "[--org ORG] [--user USER]",
+        summary: "the vault's secrets and whose they are, never their values",
+        details: [
+          "Users' secrets are counted by name; --user USER lists one user's. With --json,",
+          "each as its name, kind, and owner as --org and --user take it, or the count of",
+          "users with it; the deployment's say whether the daemon's environment sets them."
+        ],
+        switches: @owner,
+        run: &ls/2,
+        json: &documents/2
+      },
+      %Command{
+        name: "vault rm",
+        arguments: "NAME",
+        options: "[--org ORG] [--user USER]",
+        summary: "remove a secret from the vault",
+        switches: @owner,
+        count: {1, 1},
+        run: &rm/2
+      }
+    ]
+  end
+
+  # -- put ---------------------------------------------------------------------
+
+  # Over erl_call: values given on the command line, sealed with a key the
+  # vault has, or makes with --yes. Anything to ask runs live.
+  defp put(words, opts) do
+    with {:ok, owner} <- owner(opts),
+         {:ok, pairs} when is_list(pairs) <- given(words),
+         {:ok, notes} <- key(opts, nil) do
+      seal(pairs, owner, notes)
+    else
+      {:ok, {:ask, _name}} -> :live
+      other -> other
+    end
+  end
+
+  defp put_asked(words, opts, terminal) do
+    with {:ok, owner} <- owner(opts),
+         {:ok, given} <- given(words),
+         {:ok, notes} <- key(opts, terminal),
+         :ok <- Enum.each(notes, &Terminal.puts(terminal, &1)),
+         {:ok, pairs} <- value(given, terminal) do
+      seal(pairs, owner, [])
+    else
+      :declined -> {:ok, "Nothing was sealed."}
+      other -> other
+    end
+  end
+
+  # The names and values a put gives, or the one name whose value it asks for.
+  defp given([word]) do
+    case String.split(word, "=", parts: 2) do
+      [name] -> {:ok, {:ask, name}}
+      _pair -> pairs([word])
+    end
+  end
+
+  defp given(words), do: pairs(words)
+
+  defp pairs(words) do
+    words
+    |> Enum.reduce_while([], fn word, pairs ->
+      case String.split(word, "=", parts: 2) do
+        [name, value] when name != "" and value != "" ->
+          {:cont, [{name, value} | pairs]}
+
+        [name, ""] when name != "" ->
+          {:halt, {:error, "#{name}= gives no value; wardrik vault put #{name} asks for it"}}
+
+        _bare_or_nameless ->
+          {:halt, {:error, @one_at_a_time}}
+      end
+    end)
+    |> case do
+      pairs when is_list(pairs) -> {:ok, Enum.reverse(pairs)}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  defp value(pairs, _terminal) when is_list(pairs), do: {:ok, pairs}
+
+  defp value({:ask, name}, %Terminal{input?: true} = terminal) do
+    with {:ok, typed} <- Terminal.secret(terminal, "#{name}, which is not shown as you type: ") do
+      {:ok, if(typed, do: [{name, typed}], else: [])}
+    end
+  end
+
+  defp value({:ask, name}, %Terminal{}) do
+    case IO.read(:eof) do
+      text when is_binary(text) and text not in ["", "\n", "\r\n"] ->
+        {:ok, [{name, String.replace(text, ~r/\r?\n\z/, "")}]}
+
+      _empty ->
+        {:error,
+         "Nothing came on standard input to seal. Pipe the value in, as in:\n" <>
+           "  printf %s \"$VALUE\" | wardrik vault put #{name}"}
+    end
+  end
+
+  defp seal([], _owner, _notes), do: {:ok, "Nothing was sealed."}
+
+  defp seal(pairs, {kind, owner}, notes) do
+    pairs
+    |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
+      case WardrikVault.put({kind, name}, owner, value) do
+        :ok -> {:cont, [sealed(kind, name, owner) | lines]}
+        {:error, reason} -> {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
+      end
+    end)
+    |> case do
+      {lines, failed} -> {:error, lines |> Enum.reverse([failed]) |> Enum.join("\n")}
+      lines -> {:ok, lines |> Enum.reverse() |> Enum.join("\n")}
+    end
+  end
+
+  defp sealed(:named, name, nil) do
+    if System.get_env(name),
+      do:
+        "Sealed #{name}. The daemon's environment sets #{name} too, and ${#{name}} reads that one.",
+      else: "Sealed #{name}."
+  end
+
+  defp sealed(_kind, name, owner), do: "Sealed #{name} for #{shown(owner)}."
+
+  # -- the key -----------------------------------------------------------------
+
+  # Lines to say before sealing where the vault has a key, or has one made;
+  # :live where asking to make one needs a terminal.
+  defp key(opts, terminal) do
+    cond do
+      WardrikVault.ready?() ->
+        {:ok, []}
+
+      WardrikVault.Config.configured?() ->
+        {:error,
+         "The vault's key is not one it can use, 32 bytes in base64. " <>
+           "wardrik doctor says where it comes from."}
+
+      true ->
+        case VaultKey.load() do
+          :ok -> {:ok, spread()}
+          :none -> make(opts[:yes], terminal)
+          {:error, message} -> {:error, message}
+        end
+    end
+  end
+
+  defp make(true, _terminal), do: made()
+  defp make(_yes, nil), do: :live
+
+  defp make(_yes, %Terminal{input?: false}) do
+    {:error,
+     Enum.join(
+       ["The vault has no key, and wardrik vault put --yes makes one." | why_a_key()],
+       "\n"
+     )}
+  end
+
+  defp make(_yes, terminal) do
+    Terminal.puts(terminal, Enum.join(["The vault has no key." | why_a_key()], "\n"))
+
+    if Owl.IO.confirm(message: "Make one?", default: true), do: made(), else: :declined
+  end
+
+  defp why_a_key do
+    file = VaultKey.file()
+    env = Path.join(Config.config_dir(), "env")
+
+    [
+      "  It is kept in #{file}, beside the store; anyone who can read both can read the secrets.",
+      "  To make your own instead: openssl rand -base64 32 > #{file}",
+      "  To set one instead: WARDRIK_VAULT_KEY in the daemon's environment (#{env} for the " <>
+        "service, -e in Docker), or vault.keys in config.yaml, then restart."
+    ]
+  end
+
+  defp made do
+    with {:ok, file} <- VaultKey.make(),
+         :ok <- VaultKey.load() do
+      {:ok, ["Made a vault key, in #{file}." | spread()]}
+    end
+  end
+
+  # Every other node running a daemon reads the key file too. One without a
+  # copy, on another host, is named, since what is sealed is unreadable there.
+  defp spread do
+    others = CLI.daemons() -- [node()]
+
+    for {other, answer} <- Enum.zip(others, :erpc.multicall(others, VaultKey, :load, [])),
+        answer != {:ok, :ok},
+        do:
+          "#{Nodes.display(other)} has no key to read it with: copy #{VaultKey.file()} " <>
+            "to it, as the cookie is, or give every node vault.keys."
+  end
+
+  # -- ls and rm ---------------------------------------------------------------
+
+  defp ls(_words, opts) do
+    with {:ok, secrets} <- listed(opts) do
+      {:ok, listing(rows(secrets), opts)}
+    end
+  end
+
+  defp documents(_words, opts) do
+    with {:ok, secrets} <- listed(opts) do
+      {:ok, %{"secrets" => Enum.map(rows(secrets), &document/1)}}
+    end
+  end
+
+  # Every secret, or those of the owner --org or --user names.
+  defp listed(opts) do
+    if opts[:org] || opts[:user] do
+      with {:ok, {kind, owner}} <- owner(opts),
+           do: {:ok, for(ref <- WardrikVault.names(kind, owner), do: {ref, owner})}
+    else
+      {:ok, WardrikVault.list()}
+    end
+  end
+
+  # A row each, those written under a hash of their owner counted by name.
+  defp rows(secrets) do
+    {hashed, owned} = Enum.split_with(secrets, &match?({_ref, :hashed}, &1))
+
+    counted =
+      for {ref, count} <- Enum.frequencies_by(hashed, &elem(&1, 0)), do: {ref, {:hashed, count}}
+
+    Enum.sort_by(owned ++ counted, fn {{kind, name}, _owner} -> {name, kind != :named, kind} end)
+  end
+
+  defp listing([], opts) do
+    case owner(opts) do
+      {:ok, {:named, nil}} -> "The vault holds no secrets. wardrik vault put NAME seals one."
+      {:ok, {_kind, owner}} -> "The vault holds no secrets for #{shown(owner)}."
+    end
+  end
+
+  defp listing(rows, _opts) do
+    width = rows |> Enum.map(fn {{_kind, name}, _owner} -> String.length(name) end) |> Enum.max()
+    total = Enum.sum_by(rows, &count/1)
+
+    lines =
+      for {{_kind, name} = ref, owner} <- rows,
+          do: "  " <> String.pad_trailing(name, width) <> "  " <> whose(ref, owner)
+
+    Enum.join(["#{total} #{if total == 1, do: "secret", else: "secrets"}:" | lines], "\n")
+  end
+
+  defp count({_ref, {:hashed, count}}), do: count
+  defp count(_row), do: 1
+
+  defp whose({:named, name}, nil) do
+    if System.get_env(name),
+      do: "the deployment's; the daemon's environment sets it too",
+      else: "the deployment's"
+  end
+
+  defp whose({kind, _name}, {:hashed, 1}), do: "1 #{kind}'s"
+  defp whose({kind, _name}, {:hashed, count}), do: "#{count} #{kind}s'"
+  defp whose(_ref, owner), do: "#{shown(owner)}'s"
+
+  defp document({{:named, name}, nil}),
+    do: %{"name" => name, "kind" => "named", "environment" => System.get_env(name) != nil}
+
+  defp document({{kind, name}, {:hashed, count}}),
+    do: %{"name" => name, "kind" => Atom.to_string(kind), "count" => count}
+
+  defp document({{kind, name}, owner}),
+    do: %{"name" => name, "kind" => Atom.to_string(kind), "owner" => shown(owner)}
+
+  defp rm([name], opts) do
+    with {:ok, {kind, owner}} <- owner(opts) do
+      for_owner = if kind == :named, do: "", else: " for #{shown(owner)}"
+
+      if {kind, name} in WardrikVault.names(kind, owner) do
+        :ok = WardrikVault.forget({kind, name}, owner)
+        {:ok, "Removed #{name}#{for_owner}."}
+      else
+        {:error, "The vault holds no #{name}#{for_owner}."}
+      end
+    end
+  end
+
+  # -- owners ------------------------------------------------------------------
+
+  # Whose a secret is, as a reference's kind and its owner: the deployment's,
+  # an org's, or a user's.
+  defp owner(opts) do
+    with :ok <- segment(opts[:org], "--org", "an org's", ""),
+         :ok <-
+           segment(
+             opts[:user],
+             "--user",
+             "a user's",
+             " A user within an org is --org ORG --user USER."
+           ) do
+      case {opts[:org], opts[:user]} do
+        {nil, nil} -> {:ok, {:named, nil}}
+        {org, nil} -> {:ok, {:org, org}}
+        {org, user} -> {:ok, {:user, user(org, user)}}
+      end
+    end
+  end
+
+  defp segment(nil, _flag, _whose, _hint), do: :ok
+
+  defp segment(text, flag, whose, hint) do
+    if Fleet.segment?(text),
+      do: :ok,
+      else:
+        {:error,
+         "#{flag} #{text} is not #{whose} name: a name holds no / or whitespace, and does " <>
+           "not begin with @ or _." <> hint}
+  end
+
+  # The org and user a user's agents resolve user:NAME against, as their keys
+  # carry them: without --org, the deployment's org.
+  defp user(org, user) do
+    {org, user, _name} = Fleet.parse(Fleet.key("vault", org: org, user: user))
+    {org, user}
+  end
+
+  # An owner as an agent's key shows it.
+  defp shown({org, user}), do: "#{org}/@#{user}"
+  defp shown(owner), do: to_string(owner)
+end
