@@ -13,18 +13,20 @@ On Linux, the daemon and the `wardrik` command:
 
 ```sh
 curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
-wardrik service install                       # runs it under your systemd, from boot
+wardrik init                                  # a first agent, its model and key, and the daemon
 wardrik token create dev --all --unlimited    # a token for the HTTP API on 127.0.0.1:4747
 ```
 
-`wardrik start` runs it in the background instead, until you stop it, and
-`wardrik doctor` checks what it reads before it does.
+`wardrik init` asks for a model provider and its key, writes a first agent,
+starts the daemon, under your systemd if you like, and asks the agent one
+question. It writes no file that is there already, so it can run again.
 
 Anywhere Docker runs:
 
 ```sh
-docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
-docker exec wardrik wardrik token create dev --all --unlimited
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 \
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec -it wardrik wardrik init
 ```
 
 The script installs the release for Linux on x86_64 or arm64, which needs glibc 2.35
@@ -487,6 +489,7 @@ GitHub release, and names the image, for both platforms, by its version and
 
 ```sh
 MIX_ENV=prod mix release
+_build/prod/rel/wardrikd/bin/wardrik init      # a first agent, its model and key, and the daemon
 _build/prod/rel/wardrikd/bin/wardrik start     # in the background
 _build/prod/rel/wardrikd/bin/wardrik status    # what it is running
 _build/prod/rel/wardrikd/bin/wardrik ls status:parked   # the agents a query picks
@@ -566,15 +569,15 @@ container's output, with `wardrik` on its `PATH` for `docker exec`:
 
 | | |
 | --- | --- |
-| **`/config`** | `config.yaml`, `agents/` and `policies/`: mount yours, read-only if you like. Empty unless you do, so agents come from the HTTP API |
+| **`/config`** | `config.yaml`, `agents/` and `policies/`, and what `wardrik init` writes there. A volume; mount a directory of yours instead, one the image's user, uid 1000, can write, to edit it on the host |
 | **`/data`** | the store, unless `config.yaml` names one elsewhere, the cookie, the SSH host key and the vault's key. A volume, so a new container on the same volume carries on |
 | **4747**, **2222** | the HTTP API, and the TUI where `/config/ssh/authorized_keys` lets someone in. Both listen on every interface of the container, so the ports it is run with decide who reaches them |
 
 ```sh
 docker run -d --name wardrik \
   -p 127.0.0.1:4747:4747 -p 2222:2222 \
-  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
-docker exec -it wardrik wardrik vault put ANTHROPIC_API_KEY
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec -it wardrik wardrik init
 docker exec wardrik wardrik status
 docker logs -f wardrik
 ```

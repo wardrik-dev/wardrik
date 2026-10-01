@@ -428,7 +428,7 @@ service_uninstall () {
 
 case "${1:-}" in
   serve | start | stop | remote | logs | pid | doctor | service) one_node ;;
-  attach | version | help | completion | "") ;;
+  attach | version | help | completion | init | "") ;;
   *) any_node ;;
 esac
 
@@ -512,6 +512,11 @@ case "${1:-}" in
     ;;
   completion)
     offline "$@"
+    ;;
+  init)
+    # Answered on a VM of its own, as help is, since no daemon need run yet.
+    # See WardrikDaemon.CLI.Init.
+    WARDRIK_LOG=- exec "$node" eval "WardrikDaemon.CLI.Init.main($(encoded elixir "$terminal" "$@"))"
     ;;
   *)
     cli "$@"

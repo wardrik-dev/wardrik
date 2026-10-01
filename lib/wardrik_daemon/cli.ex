@@ -27,6 +27,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Completion
   alias WardrikDaemon.CLI.Decisions
   alias WardrikDaemon.CLI.Follow
+  alias WardrikDaemon.CLI.Init
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.CLI.Tokens
   alias WardrikDaemon.CLI.Vault
@@ -41,6 +42,7 @@ defmodule WardrikDaemon.CLI do
   @spec commands() :: [Command.t()]
   def commands do
     [
+      Init.command(),
       %Command{name: "serve", summary: "run the daemon here, logging to the terminal"},
       %Command{name: "start", summary: "run the daemon in the background"},
       %Command{name: "stop", summary: "stop the daemon, and wait until it has"},
@@ -339,8 +341,15 @@ defmodule WardrikDaemon.CLI do
       "Usage: wardrik [--node NAME] COMMAND\n\n",
       Command.listing(commands(), terminal.width),
       "\n\n",
+      first_agent(Config.config_dir()),
       about(Config.config_dir())
     ]
+  end
+
+  defp first_agent(config_dir) do
+    if Path.wildcard(Path.join([config_dir, "agents", "*.md"])) == [],
+      do: "No agent files yet: wardrik init sets one up.\n\n",
+      else: ""
   end
 
   @doc """

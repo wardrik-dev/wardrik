@@ -1,23 +1,24 @@
 ---
 title: Quickstart
-description: Write an agent file, ask the agent something, and reach it over the HTTP API.
+description: Set up a first agent with wardrik init, write another, and reach them over the HTTP API.
 ---
 
-This takes a daemon you have [installed](/getting-started/install/) and running, and gives it its
-first agent.
-
-## Give it a model
-
-An agent's model is named as `provider:model`, and the daemon reads the provider's key from the
-vault. Seal it there, and every node uses it at once:
+## Set it up
 
 ```sh
-wardrik vault put ANTHROPIC_API_KEY    # asks for the key, and does not show it
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+wardrik init
 ```
 
-The first `vault put` asks to make the vault's key; see [Install](/getting-started/install/). A key
-set in the daemon's environment, such as in `~/.config/wardrik/env` for the service, is read before
-the vault's.
+`wardrik init` asks for a model provider and its key, writes a first agent,
+`~/.config/wardrik/agents/assistant.md`, starts the daemon, seals the key in the vault, and asks the
+agent one question. [Install](/getting-started/install/) covers Docker, and the flags that answer
+`init` in a script.
+
+An agent's model is named as `provider:model`, and the daemon reads the provider's key from the
+vault. `wardrik vault put ANTHROPIC_API_KEY` seals another, which every node uses at once. A key set
+in the daemon's environment, such as in `~/.config/wardrik/env` for the service, is read before the
+vault's.
 
 ## Write an agent
 
