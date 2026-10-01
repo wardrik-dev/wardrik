@@ -155,8 +155,8 @@ wardrik vault rm pagerduty --org acme
 ```
 
 `vault put NAME` asks for the value and does not show it as you type, or reads it from a pipe.
-`--user ORG/USER` puts one for a single user, which `user:NAME` reads in place of a connected
-account.
+`--user USER` puts one for a single user, with `--org ORG` for one in an org, which `user:NAME`
+reads in place of a connected account.
 
 An agent's credentials come from OAuth where `config.yaml` has a provider, and from the vault where
 it has a key and no provider.

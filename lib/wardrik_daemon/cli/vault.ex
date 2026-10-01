@@ -11,13 +11,15 @@ defmodule WardrikDaemon.CLI.Vault do
 
   A secret is the deployment's, `{:named, NAME}`, which an MCP server's
   `credential: named:NAME` reads. `--org ORG` seals it for an org,
-  `{:org, NAME}`, and `--user ORG/USER` for a user within one,
-  `{:user, NAME}`, which `org:NAME` and `user:NAME` read for the agents of
-  that org or user; `_` is no org, as it is in an agent's key.
+  `{:org, NAME}`, which `org:NAME` reads for that org's agents. `--user USER`
+  seals it for a user, `{:user, NAME}`, which `user:NAME` reads for that
+  user's agents: within `--org ORG`, or without it, as for an agent whose file
+  names no org. An org or a user is one segment of an agent's key, and is
+  shown as the key shows it, `acme` or `acme/@jon`.
 
   `vault ls` names each secret and whose it is. A user's secret is written
   under a hash of who they are, so `vault ls` counts users' secrets by name,
-  and `vault ls --user ORG/USER` lists one user's.
+  and `vault ls --user USER` lists one user's.
 
   Where the vault has no key, the first `put` asks to make one, and keeps it
   in the data home; see `WardrikDaemon.VaultKey`. `--yes` makes it without
@@ -25,6 +27,7 @@ defmodule WardrikDaemon.CLI.Vault do
   give the vault a key instead.
   """
 
+  alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
@@ -33,6 +36,7 @@ defmodule WardrikDaemon.CLI.Vault do
   alias WardrikDaemon.VaultKey
 
   @owner [org: :string, user: :string]
+  @segment ~r/\A[^\/@_\s][^\/\s]*\z/u
   @one_at_a_time "wardrik vault put asks for one value at a time: give NAME alone, or NAME=VALUE for each"
 
   @doc "The vault commands, for `WardrikDaemon.CLI.commands/0`."
@@ -42,13 +46,14 @@ defmodule WardrikDaemon.CLI.Vault do
       %Command{
         name: "vault put",
         arguments: "NAME[=VALUE]...",
-        options: "[--org ORG | --user ORG/USER] [--yes]",
+        options: "[--org ORG] [--user USER] [--yes]",
         summary: "seal secrets in the vault, asking for a value not given",
         details: [
           "NAME alone asks for its value without showing it, or reads it from standard",
           "input where that is not a terminal. NAME=VALUE stays in your shell's history.",
-          "A secret is the deployment's, which credential: named:NAME reads; --org ORG",
-          "seals it for an org, and --user ORG/USER for a user within one.",
+          "A secret is the deployment's, which credential: named:NAME reads. --org ORG",
+          "seals it for an org, which org:NAME reads, and --user USER for a user, which",
+          "user:NAME reads, within --org ORG where it is given.",
           "Where the vault has no key, it asks to make one; --yes makes it without asking."
         ],
         switches: [yes: :boolean] ++ @owner,
@@ -58,10 +63,10 @@ defmodule WardrikDaemon.CLI.Vault do
       },
       %Command{
         name: "vault ls",
-        options: "[--org ORG | --user ORG/USER]",
+        options: "[--org ORG] [--user USER]",
         summary: "the vault's secrets and whose they are, never their values",
         details: [
-          "Users' secrets are counted by name; --user ORG/USER lists one user's. With --json,",
+          "Users' secrets are counted by name; --user USER lists one user's. With --json,",
           "each as its name, kind, and owner as --org and --user take it, or the count of",
           "users with it; the deployment's say whether the daemon's environment sets them."
         ],
@@ -72,7 +77,7 @@ defmodule WardrikDaemon.CLI.Vault do
       %Command{
         name: "vault rm",
         arguments: "NAME",
-        options: "[--org ORG | --user ORG/USER]",
+        options: "[--org ORG] [--user USER]",
         summary: "remove a secret from the vault",
         switches: @owner,
         count: {1, 1},
@@ -345,39 +350,45 @@ defmodule WardrikDaemon.CLI.Vault do
   # -- owners ------------------------------------------------------------------
 
   # Whose a secret is, as a reference's kind and its owner: the deployment's,
-  # an org's, or a user's within an org, `_` where in none.
+  # an org's, or a user's.
   defp owner(opts) do
-    case {opts[:org], opts[:user]} do
-      {nil, nil} ->
-        {:ok, {:named, nil}}
+    with :ok <- segment(opts[:org], "--org", "an org's", ""),
+         :ok <-
+           segment(
+             opts[:user],
+             "--user",
+             "a user's",
+             " A user within an org is --org ORG --user USER."
+           ) do
+      case {opts[:org], opts[:user]} do
+        {nil, nil} -> {:ok, {:named, nil}}
+        {org, nil} -> {:ok, {:org, org}}
+        {org, user} -> {:ok, {:user, user(org, user)}}
+      end
+    end
+  end
 
-      {org, nil} when org in ["", "_"] ->
+  defp segment(nil, _flag, _whose, _hint), do: :ok
+
+  defp segment(text, flag, whose, hint) do
+    if text not in [".", ".."] and Regex.match?(@segment, text),
+      do: :ok,
+      else:
         {:error,
-         "--org names an org, such as acme; a secret for none is the deployment's, " <>
-           "with neither --org nor --user"}
-
-      {org, nil} ->
-        {:ok, {:org, org}}
-
-      {nil, user} ->
-        user(user)
-
-      _both ->
-        {:error, "A secret is an org's, with --org, or a user's, with --user, and not both."}
-    end
+         "#{flag} #{text} is not #{whose} name: a name holds no / or whitespace, and does " <>
+           "not begin with @ or _." <> hint}
   end
 
-  defp user(text) do
-    case String.split(text, "/") do
-      [org, user] when org != "" and user not in ["", "_"] ->
-        {:ok, {:user, {if(org == "_", do: nil, else: org), user}}}
-
-      _other ->
-        {:error, "--user is a user within an org, ORG/USER, such as acme/jon, or _/jon in none"}
-    end
+  # The org and user a user's agents resolve user:NAME against, as their keys
+  # carry them, so a user named without --org is in the org an agent file
+  # without one gives its agent.
+  defp user(org, user) do
+    {org, user, _name} = Fleet.parse(Fleet.key("vault", org: org, user: user))
+    {org, user}
   end
 
-  # An owner as --org and --user take it.
-  defp shown({org, user}), do: "#{org || "_"}/#{user}"
+  # An owner as an agent's key shows it.
+  defp shown({nil, user}), do: "@#{user}"
+  defp shown({org, user}), do: "#{org}/@#{user}"
   defp shown(owner), do: to_string(owner)
 end

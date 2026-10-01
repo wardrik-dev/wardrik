@@ -73,11 +73,11 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}=org's", "--org", "acme"]) ==
                {"Sealed #{name} for acme.\n", 0}
 
-      assert command(["vault", "put", "#{name}=jon's", "--user", "acme/jon"]) ==
-               {"Sealed #{name} for acme/jon.\n", 0}
+      assert command(["vault", "put", "#{name}=jon's", "--org", "acme", "--user", "jon"]) ==
+               {"Sealed #{name} for acme/@jon.\n", 0}
 
-      assert command(["vault", "put", "#{name}=none's", "--user", "_/jon"]) ==
-               {"Sealed #{name} for _/jon.\n", 0}
+      assert command(["vault", "put", "#{name}=none's", "--user", "jon"]) ==
+               {"Sealed #{name} for @jon.\n", 0}
 
       assert WardrikVault.fetch({:org, name}, "acme") == {:ok, "org's"}
       assert WardrikVault.fetch({:user, name}, {"acme", "jon"}) == {:ok, "jon's"}
@@ -128,14 +128,14 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}="]) ==
                {"#{name}= gives no value; wardrik vault put #{name} asks for it\n", 1}
 
-      assert {"A secret is an org's, with --org, or a user's, with --user, and not both.\n", 1} =
-               command(["vault", "put", "#{name}=v", "--org", "acme", "--user", "acme/jon"])
+      assert command(["vault", "put", "#{name}=v", "--user", "acme/jon"]) ==
+               {"--user acme/jon is not a user's name: a name holds no / or whitespace, and " <>
+                  "does not begin with @ or _. A user within an org is --org ORG --user USER.\n",
+                1}
 
-      assert {"--user is a user within an org, ORG/USER" <> _rest, 1} =
-               command(["vault", "put", "#{name}=v", "--user", "jon"])
-
-      assert {"--org names an org" <> _rest, 1} =
-               command(["vault", "put", "#{name}=v", "--org", "_"])
+      for org <- ["_", "@acme", "ac me", ".."] do
+        assert {"--org " <> _rest, 1} = command(["vault", "put", "#{name}=v", "--org", org])
+      end
     end
 
     test "says why a secret was not sealed", %{name: name} do
@@ -230,8 +230,8 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert output =~ ~r/^  #{name} +2 users'$/m
       refute output =~ "-value"
 
-      assert command(["vault", "ls", "--user", "#{org}/jon"]) ==
-               {"1 secret:\n  #{name}  #{org}/jon's\n", 0}
+      assert command(["vault", "ls", "--org", org, "--user", "jon"]) ==
+               {"1 secret:\n  #{name}  #{org}/@jon's\n", 0}
 
       assert command(["vault", "ls", "--org", "nobody-#{name}"]) ==
                {"The vault holds no secrets for nobody-#{name}.\n", 0}
@@ -271,11 +271,11 @@ defmodule WardrikDaemon.CLI.VaultTest do
                %{"name" => name, "kind" => "user", "count" => 1}
              ]
 
-      {output, 0} = command(["vault", "ls", "--user", "#{org}/jon", "--json"])
+      {output, 0} = command(["vault", "ls", "--org", org, "--user", "jon", "--json"])
 
       assert JSON.decode!(output) == %{
                "secrets" => [
-                 %{"name" => name, "kind" => "user", "owner" => "#{org}/jon"}
+                 %{"name" => name, "kind" => "user", "owner" => "#{org}/@jon"}
                ]
              }
     end
@@ -289,6 +289,11 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "rm", name, "--org", "acme"]) == {"Removed #{name} for acme.\n", 0}
       assert WardrikVault.fetch({:org, name}, "acme") == {:error, :not_found}
       assert WardrikVault.fetch({:named, name}, nil) == {:ok, "v"}
+
+      :ok = WardrikVault.put({:user, name}, {"acme", "jon"}, "v")
+
+      assert command(["vault", "rm", name, "--org", "acme", "--user", "jon"]) ==
+               {"Removed #{name} for acme/@jon.\n", 0}
 
       assert command(["vault", "rm", name]) == {"Removed #{name}.\n", 0}
       assert command(["vault", "rm", name]) == {"The vault holds no #{name}.\n", 1}
