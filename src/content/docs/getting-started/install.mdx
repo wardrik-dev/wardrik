@@ -28,23 +28,19 @@ wardrik-0.1.0-linux-x86_64.tar.gz` installs a tarball you already have.
 	<TabItem label="Docker">
 
 ```sh
-docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
-docker exec wardrik wardrik status
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 -p 2222:2222 \
+  -v wardrik-config:/config -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec -it wardrik wardrik init
 ```
 
-The image runs `wardrik serve` as the user `wardrik`. Mount what you write at `/config`, read-only
-if you like: `config.yaml`, `agents/` and `policies/`. The daemon keeps its store, cookie and SSH
-host key on the `/data` volume, so a new container on the same volume carries on.
+The image runs `wardrik serve` as the user `wardrik`, uid 1000. `/config` holds what you write,
+`config.yaml`, `agents/` and `policies/`, and what `wardrik init` writes for you; `/data` holds the
+store, the cookie, the SSH host key and the vault's key, `/data/vault_key`. Both are volumes, so a
+new container on the same volumes carries on.
 
-```sh
-docker run -d --name wardrik \
-  -p 127.0.0.1:4747:4747 -p 2222:2222 \
-  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
-docker exec -it wardrik wardrik vault put ANTHROPIC_API_KEY
-```
-
-Your model provider's key, and any `config.yaml` names, go in the vault, which keeps its key at
-`/data/vault_key`; `-e` sets one in the container's environment instead.
+To edit `/config` on the host, mount a directory of yours there instead, one uid 1000 can write,
+as the first user's is on most Linux machines: `-v ~/.config/wardrik:/config`. `wardrik init`
+stops, and says so, where it cannot write `/config`.
 
 The HTTP API listens on port 4747 and the TUI on 2222, on every interface of the container, so the
 ports you publish decide who reaches them.
@@ -52,7 +48,38 @@ ports you publish decide who reaches them.
 	</TabItem>
 </Tabs>
 
-## Run it
+## Set it up
+
+```sh
+wardrik init
+```
+
+`wardrik init` says what it finds, then asks for a model provider, offering those whose key your
+shell already sets, a model, the provider's key, which it does not show as you type, and the first
+agent's name. It writes `agents/assistant.md` with that model and no tools, offers to let your SSH
+keys in for `wardrik attach`, starts the daemon, under your systemd from boot if you like, seals
+the key in the vault, and asks the agent one short question. It writes no file that is there
+already, so it can run again.
+
+Without a terminal, as in a script, flags answer its questions:
+
+```sh
+wardrik init --provider anthropic --key-from-env ANTHROPIC_API_KEY --yes --no-service
+```
+
+| Flag | Answers |
+| --- | --- |
+| `--provider P` | the model provider, which has no default |
+| `--model M` | the model, the provider's newest unless given |
+| `--agent NAME` | the first agent's name, `assistant` unless given |
+| `--key-from-env VAR` | the provider's key, read from `VAR`; without it, the provider's own variable, such as `ANTHROPIC_API_KEY` |
+| `--yes` | yes to each yes or no: the vault's key, your SSH keys, the service |
+| `--no-service` | start the daemon with `wardrik start`, not under systemd |
+| `--no-ask` | ask the agent nothing |
+
+A question with no default and no flag fails, naming the flag.
+
+## Run it by hand
 
 ```sh
 wardrik service install    # under your systemd, from boot
