@@ -107,6 +107,15 @@
 	letter-spacing: -0.01em;
 	text-transform: lowercase;
 	color: var(--sl-color-white);
+	gap: 0.625rem;
+}
+
+.site-title img {
+	height: 1.5rem;
+}
+
+.hero > img {
+	width: min(45vw, 16rem);
 }
 
 /* Display: page titles in Mono 500. */

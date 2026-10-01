@@ -17,6 +17,7 @@ export default defineConfig({
 		starlight({
 			title: 'Wardrik',
 			description: 'An agent runtime built on OTP.',
+			logo: { light: './src/assets/mark-light.svg', dark: './src/assets/mark-dark.svg' },
 			customCss: ['./src/styles/brand.css'],
 			expressiveCode: {
 				themes: [terminal],
