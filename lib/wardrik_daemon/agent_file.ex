@@ -21,7 +21,7 @@ defmodule WardrikDaemon.AgentFile do
   | Key | What it gives the agent |
   | --- | --- |
   | `name` | its name, and with `org` and `user` its key in the fleet. The file's name without `.md` when absent |
-  | `description` | what it is for, as `wardrik status` shows it |
+  | `description` | what it is for, as `wardrik show` shows it |
   | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
   | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
