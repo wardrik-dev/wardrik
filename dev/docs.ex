@@ -106,7 +106,10 @@ defmodule Mix.Tasks.Wardrik.Docs do
     usage =
       Enum.reject(["wardrik", command.name, command.arguments, command.options], &(&1 == ""))
 
-    details = Enum.join(command.details, " ")
+    details =
+      command.details
+      |> Enum.chunk_by(&String.starts_with?(&1, "  "))
+      |> Enum.map_join("\n\n", &details/1)
 
     [
       "## wardrik #{command.name}\n\n",
@@ -115,6 +118,12 @@ defmodule Mix.Tasks.Wardrik.Docs do
       if(details == "", do: "", else: "\n#{details}\n")
     ]
   end
+
+  # Indented lines in a command's details are examples, and the rest is prose.
+  defp details(["  " <> _ | _] = lines),
+    do: "```sh\n#{Enum.map_join(lines, "\n", &String.trim_leading/1)}\n```"
+
+  defp details(lines), do: Enum.join(lines, " ")
 
   defp sentence(text),
     do: String.capitalize(String.first(text)) <> String.slice(text, 1..-1//1) <> "."

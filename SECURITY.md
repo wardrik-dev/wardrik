@@ -136,9 +136,10 @@ the agents that post there.
 
 OAuth tokens and named credentials are sealed with AES-256-GCM, under the
 vault's keys, before they are stored. Model providers' keys are read from the
-environment. An MCP server started as a command is given only the
-environment variables its `inherit_env` names, beside those its own config
-sets, and runs as the daemon's user, so it can read what the daemon can.
+environment. An MCP server started as a command is given only `HOME`, `LANG`,
+`LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER`
+of the daemon's environment, beside those its own config sets, and runs as
+the daemon's user, so it can read what the daemon can.
 
 ### Agents
 

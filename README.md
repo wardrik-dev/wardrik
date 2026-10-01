@@ -353,10 +353,10 @@ A hook that asks **parks** the turn: nothing runs, nothing is appended to the
 conversation, and the agent waits.
 
 ```elixir
-Wardrik.Agent.parked(:assistant)
+Wardrik.Agent.parked("acme/jon/assistant")
 #=> [{%{id: "call_1", name: "deploy", arguments: %{}}, "This ships to production."}]
 
-Wardrik.Agent.resume(:assistant, %{"call_1" => :approve})
+Wardrik.Agent.resume("acme/jon/assistant", %{"call_1" => :approve})
 ```
 
 Approval, a credential that needs connecting, and a call a person has to run
@@ -369,9 +369,9 @@ refused, and one they ask about waits on what they ask now.
 ### Stopping things
 
 ```elixir
-Wardrik.Agent.interrupt(:assistant)                      # the whole turn
-Wardrik.LLM.ToolRunner.kill_call(:assistant, "call_1")   # one tool call
-Wardrik.LLM.ToolRunner.in_flight(:assistant)             # what could be stopped
+Wardrik.Agent.interrupt("acme/jon/assistant")                      # the whole turn
+Wardrik.LLM.ToolRunner.kill_call("acme/jon/assistant", "call_1")   # one tool call
+Wardrik.LLM.ToolRunner.in_flight("acme/jon/assistant")             # what could be stopped
 ```
 
 A killed call is answered with an error result, so the model is never left with

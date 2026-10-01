@@ -1,6 +1,6 @@
 // An agent that refunds orders through a tool running in this process.
 //
-//   wardrik token create shop --scope acme/
+//   wardrik token create shop --scope acme/ --unlimited
 //   WARDRIK_TOKEN=wardrik_… WARDRIK_MODEL=anthropic:claude-sonnet-5 node examples/refund.ts
 
 import { z } from "zod";
