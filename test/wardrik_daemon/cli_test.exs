@@ -553,6 +553,16 @@ defmodule WardrikDaemon.CLITest do
     assert plain == elem(command(["token"]), 0)
   end
 
+  test "__complete answers what can follow, a line each, with the agents running" do
+    {key, _agent} = Wardrik.Test.Fleet.start_agent()
+
+    {output, 0} = command(["__complete", "show", key])
+    assert output == key <> "\n"
+
+    assert command(["__complete", "statu"]) == {"status\n", 0}
+    assert command(["__complete", "nothing-starts-so"]) == {"", 0}
+  end
+
   describe "unanswered/2" do
     alias WardrikDaemon.CLI.Terminal
 
@@ -581,6 +591,32 @@ defmodule WardrikDaemon.CLITest do
                unanswered(["help", "serve"])
 
       assert {:error, "wardrik: no command nope"} = unanswered(["help", "nope"])
+    end
+
+    test "print_offline/2 prints help to standard output, completions without agents, and errors to standard error" do
+      assert capture_io(fn -> assert CLI.print_offline(["help", "ls"], %Terminal{}) == 0 end) =~
+               "Usage: wardrik ls [QUERY]"
+
+      assert capture_io(fn ->
+               assert CLI.print_offline(["__complete", "show", ""], %Terminal{}) == 0
+             end) == ""
+
+      assert capture_io(fn ->
+               assert CLI.print_offline(["__complete", "statu"], %Terminal{}) == 0
+             end) == "status\n"
+
+      assert capture_io(:stderr, fn -> assert CLI.print_offline(["parked"], %Terminal{}) == 1 end) ==
+               "wardrik is not running\n"
+    end
+
+    test "completion writes the script for a shell, and says which it writes for" do
+      {:ok, script} = unanswered(["completion", "fish"])
+      assert script =~ "complete -c $name"
+
+      assert unanswered(["completion", "tcsh"]) ==
+               {:error, "wardrik completion writes for bash, zsh, fish"}
+
+      assert unanswered(["completion"]) == {:error, "Usage: wardrik completion SHELL"}
     end
 
     test "a command the daemon answers is one no daemon is running for" do

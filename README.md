@@ -425,7 +425,8 @@ end
 Wardrik starts with its application, keeping its store on the node's disk
 through EKV. EKV is optional, as `ecto_sql` and `postgrex` are, so an
 application that keeps the store elsewhere leaves it out and never compiles
-its SQLite NIF. One that keeps it in an S3 bucket names the bucket:
+its SQLite NIF. The package leaves out the TUI, which the release and the
+image carry; `WardrikConsole` writes an agent's events to a terminal instead. One that keeps it in an S3 bucket names the bucket:
 
 ```elixir
 # config/runtime.exs
@@ -494,6 +495,9 @@ _build/prod/rel/wardrikd/bin/wardrik stop
 after one, gives it in full. `status`, `ls`, `history` and `parked` take `--json`,
 and answer with one JSON document, the HTTP API's own where it has one. Output
 is in colour where it goes to a terminal, unless `NO_COLOR` is set.
+`wardrik completion bash`, `zsh` or `fish` writes a script that completes
+commands, options, and the keys and parked calls of the agents running, for
+`rik` as well; `wardrik help completion` says where each goes.
 
 `ask` follows the answer as it streams, until the turn ends or waits on a
 person, and `ask --no-wait` only sends the message. `watch` follows an agent

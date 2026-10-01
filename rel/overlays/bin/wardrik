@@ -60,8 +60,9 @@ fi
 [ ! -t 0 ] || input=input
 terminal="--terminal=${width:-80},$colour,$input"
 
-# -h or --help, anywhere, is help for the command it follows.
-for arg in "$@"; do
+# -h or --help, anywhere, is help for the command it follows, except among the
+# words a shell asks completions for.
+[ "${1:-}" = __complete ] || for arg in "$@"; do
   case "$arg" in
     -h | --help) help_asked=1 ;;
   esac
@@ -427,7 +428,7 @@ service_uninstall () {
 
 case "${1:-}" in
   serve | start | stop | remote | logs | pid | doctor | service) one_node ;;
-  attach | version | help | "") ;;
+  attach | version | help | completion | "") ;;
   *) any_node ;;
 esac
 
@@ -508,6 +509,9 @@ case "${1:-}" in
   "" | help)
     [ $# -eq 0 ] || shift
     offline help "$@"
+    ;;
+  completion)
+    offline "$@"
     ;;
   *)
     cli "$@"
