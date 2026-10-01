@@ -20,7 +20,7 @@ defmodule WardrikVaultTest do
     %{user: "jon-#{System.unique_integer([:positive])}"}
   end
 
-  defp scope(opts), do: Config.new() |> Scope.root("acme/jon/assistant", opts)
+  defp scope(opts), do: Config.new() |> Scope.root("acme/@jon/assistant", opts)
 
   defp keys(list), do: Application.put_env(:wardrik, WardrikVault, keys: list)
 

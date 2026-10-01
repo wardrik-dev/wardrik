@@ -66,12 +66,18 @@ defmodule WardrikNotify.Dispatcher do
   end
 
   defp deliver(name, notice) do
+    {org, _user, _name} = Wardrik.Fleet.parse(notice.agent)
+
     with {:ok, {module, opts}} <- WardrikNotify.Config.target(name),
+         true <- WardrikNotify.Config.tells?(name, org),
          :ok <- module.deliver(notice, Keyword.put(opts, :target, name)) do
       :ok
     else
       :error ->
         Logger.warning("#{notice.agent} routes to #{name}, which config.yaml does not configure")
+
+      false ->
+        Logger.warning("#{notice.agent} routes to #{name}, which tells another org's agents")
 
       {:error, reason} ->
         Logger.warning(

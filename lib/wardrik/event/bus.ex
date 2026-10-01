@@ -30,8 +30,8 @@ defmodule Wardrik.Event.Bus do
   `t:Wardrik.Event.level/0`. `:activity` is what an agent is doing; `:raw` adds
   the provider's own stream records, which repeat it token by token.
 
-      Wardrik.Event.Bus.subscribe("_/_/assistant")                  # :activity
-      Wardrik.Event.Bus.subscribe("_/_/assistant", level: :raw)     # everything
+      Wardrik.Event.Bus.subscribe("acme/assistant")                  # :activity
+      Wardrik.Event.Bus.subscribe("acme/assistant", level: :raw)     # everything
 
   `Wardrik.Event.level/1` decides where a type sits, so a type added later
   reaches existing subscribers without them naming it. Each level is its own

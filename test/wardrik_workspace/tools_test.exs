@@ -10,7 +10,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
   # An agent of its own, sharing `shared`, with the hooks given.
   defp agent(shared \\ %{}, hooks \\ []) do
-    key = "ws#{System.unique_integer([:positive])}/_/agent"
+    key = "ws#{System.unique_integer([:positive])}/agent"
     {:ok, spec} = Spec.new(key, shared)
 
     scope =
@@ -266,7 +266,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
     test "a tree shared to read is not changed" do
       tree = "ws#{System.unique_integer([:positive])}"
-      key = tree <> "/_/reader"
+      key = tree <> "/reader"
 
       {:ok, spec} =
         Spec.new(key, %{"runbooks" => %{"tree" => tree <> "/runbooks", "mode" => "read"}})
@@ -283,14 +283,14 @@ defmodule WardrikWorkspace.ToolsTest do
 
     test "an org's tree does not reach a tree named under it" do
       org = "ws#{System.unique_integer([:positive])}"
-      jon = agent_at(org <> "/jon/triage", %{"notes" => org <> "/jon/notes"})
-      other = agent_at(org <> "/_/other", %{"team" => org})
+      jon = agent_at(org <> "/@jon/triage", %{"notes" => org <> "/@jon/notes"})
+      other = agent_at(org <> "/other", %{"team" => org})
 
       {:ok, _written} =
         answered(jon, "write_file", %{"path" => "shared/notes/private.md", "content" => "jon's"})
 
       assert {:error, _none} =
-               answered(other, "read_file", %{"path" => "shared/team/jon/notes/private.md"})
+               answered(other, "read_file", %{"path" => "shared/team/@jon/notes/private.md"})
 
       assert {:ok, %{"files" => []}} =
                answered(other, "list_files", %{"pattern" => "shared/team/**"})
@@ -300,7 +300,7 @@ defmodule WardrikWorkspace.ToolsTest do
       org = "ws#{System.unique_integer([:positive])}"
 
       agent =
-        agent_at(org <> "/_/writer", %{
+        agent_at(org <> "/writer", %{
           "team" => org,
           "runbooks" => %{"tree" => org <> "/runbooks", "mode" => "read"}
         })
@@ -368,7 +368,7 @@ defmodule WardrikWorkspace.ToolsTest do
     end
 
     test "subjects are the normalised path, or the glob listed or searched" do
-      {:ok, spec} = Spec.new("acme/jon/triage")
+      {:ok, spec} = Spec.new("acme/@jon/triage")
 
       assert WardrikWorkspace.subjects(spec, "read_file", %{"path" => "./notes//a.md"}) == [
                "notes/a.md"
@@ -385,7 +385,7 @@ defmodule WardrikWorkspace.ToolsTest do
     end
   end
 
-  defp agent_under(tree, name), do: agent_at("#{tree}/_/#{name}", %{"team" => tree})
+  defp agent_under(tree, name), do: agent_at("#{tree}/#{name}", %{"team" => tree})
 
   defp agent_at(key, shared) do
     {:ok, spec} = Spec.new(key, shared)

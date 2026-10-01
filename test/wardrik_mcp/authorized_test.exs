@@ -24,7 +24,7 @@ defmodule WardrikMCP.AuthorizedTest do
 
     scope =
       Config.new(tools: [{WardrikMCP, ref}])
-      |> Scope.root("acme/#{owner}/assistant", user: owner, credentials: WardrikOAuth)
+      |> Scope.root("acme/@#{owner}/assistant", user: owner, credentials: WardrikOAuth)
 
     %{scope: scope}
   end

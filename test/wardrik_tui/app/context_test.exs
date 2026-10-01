@@ -129,7 +129,7 @@ defmodule WardrikTUI.App.ContextTest do
   test "prefix deletion still previews its exact targets with --yes" do
     {a, _} = Wardrik.Test.Fleet.start_agent()
     prefix = "review#{System.unique_integer([:positive])}/"
-    {b, _} = Wardrik.Test.Fleet.start_agent([], prefix <> "_/other")
+    {b, _} = Wardrik.Test.Fleet.start_agent([], prefix <> "other")
     s = session(a)
     submit(s, "/rm #{prefix} --yes")
     assert screen(s) =~ b

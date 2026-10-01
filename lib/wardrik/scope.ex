@@ -8,7 +8,7 @@ defmodule Wardrik.Scope do
   written down, shared and reused, while a scope belongs to one run and carries
   the things that change per run.
 
-      scope = Wardrik.Scope.root(config, "acme/jon/assistant", name: "turn", user: user, org: org)
+      scope = Wardrik.Scope.root(config, "acme/@jon/assistant", name: "turn", user: user, org: org)
       Wardrik.Event.emit(scope.source, {:turn_started, [Wardrik.Agent.Message.new("hello")]})
 
   Work the turn spawns takes a child scope, so its events land in the same
@@ -44,7 +44,7 @@ defmodule Wardrik.Scope do
   through however many layers of delegation without anyone recomputing it.
   Give one as a duration and it is resolved once:
 
-      scope = Wardrik.Scope.root(config, "acme/jon/assistant", timeout: :timer.minutes(10))
+      scope = Wardrik.Scope.root(config, "acme/@jon/assistant", timeout: :timer.minutes(10))
       Wardrik.Scope.remaining_ms(scope)
 
   `with_timeout/2` only ever narrows. Work cannot award itself more time than

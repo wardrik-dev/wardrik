@@ -7,7 +7,7 @@ defmodule Wardrik.Event.Source do
   a child span, which is what puts a subagent's events in its parent's stream
   without a second subscription.
 
-      source = Wardrik.Event.Source.root("acme/jon/assistant", name: "turn")
+      source = Wardrik.Event.Source.root("acme/@jon/assistant", name: "turn")
       branch = Wardrik.Event.Source.child(source, name: "web_search")
 
       branch.agent_id == source.agent_id

@@ -16,24 +16,38 @@ defmodule Wardrik.Fleet do
   ## Keys
 
   An agent's key is its address across the cluster and its topic on the event
-  bus. It reads `org/user/name`, so the three ways a fleet is sliced are
-  prefixes of one string:
+  bus. Every agent belongs to an org, and may work for one of its users:
 
-      Wardrik.Fleet.list()             # everything
-      Wardrik.Fleet.list("acme/")      # one tenant
-      Wardrik.Fleet.list("acme/jon/")  # one person's agents
+  | Key | The agent |
+  | --- | --- |
+  | `acme/triage` | acme's own `triage` |
+  | `acme/@jon/triage` | jon's `triage`, in acme |
+
+  So the ways a fleet is sliced are prefixes of one string:
+
+      Wardrik.Fleet.list()              # everything
+      Wardrik.Fleet.list("acme/")       # one tenant
+      Wardrik.Fleet.list("acme/@jon/")  # one person's agents
 
   `key/2` builds one from a name and the host's own org and user values,
   written down through `Wardrik.Fleet.Segment`. The agent's scope reads `:org`
   and `:user` back out of the key, so identity is given once:
 
-      key = Wardrik.Fleet.key("researcher", user: current_user, org: current_org)
+      key = Wardrik.Fleet.key("researcher", org: current_org, user: current_user)
       Wardrik.Fleet.spawn(key, config: config)
 
-  An absent org or user is `#{inspect("_")}` in the key and `nil` on the scope:
+  A key without an `:org` is in the deployment's org, where one is configured,
+  and refused where none is:
 
-      Wardrik.Fleet.key("researcher")                           #=> "_/_/researcher"
-      Wardrik.Fleet.key("researcher", org: "acme", user: "jon") #=> "acme/jon/researcher"
+      config :wardrik, Wardrik.Fleet, org: "app"
+
+      Wardrik.Fleet.key("researcher", user: "42")  #=> "app/@42/researcher"
+
+  A segment is the org, the user or the name. It holds no `/` or whitespace,
+  and does not begin with `@`, which marks the user, or `_`, which is kept
+  for the fleet's own records. A segment is in every event's `source`, every
+  store key and every log line naming the agent, so a user's should be an
+  opaque id rather than an email address.
 
   ## Listing
 
@@ -57,7 +71,7 @@ defmodule Wardrik.Fleet do
 
   @name __MODULE__
   @prefix "agents/"
-  @anonymous "_"
+  @segment ~r/\A[^\/@_\s][^\/\s]*\z/u
 
   @doc false
   @spec prefix() :: String.t()
@@ -66,47 +80,162 @@ defmodule Wardrik.Fleet do
   # -- keys ------------------------------------------------------------------
 
   @doc """
-  The key an agent is addressed by, from its name and the `:org` and `:user`
-  it works for. Each is written down through `Wardrik.Fleet.Segment`, and none
-  may contain `/`.
+  The key an agent is addressed by, from its name, the `:org` it belongs to
+  and the `:user` it works for, if it works for one. Each is written down
+  through `Wardrik.Fleet.Segment`. Without an `:org` the key is in `org/0`,
+  and raises where there is none.
   """
   @spec key(String.t(), keyword()) :: String.t()
   def key(name, opts \\ []) when is_binary(name) do
-    Enum.map_join([opts[:org], opts[:user], name], "/", &segment/1)
+    org = segment!(opts[:org] || org() || raise(ArgumentError, no_org()), "org")
+    name = segment!(name, "name")
+
+    case opts[:user] do
+      nil -> org <> "/" <> name
+      user -> org <> "/@" <> segment!(user, "user") <> "/" <> name
+    end
   end
 
-  defp segment(nil), do: @anonymous
+  @doc "The deployment's org, which a key without one is in, or `nil` where none is configured."
+  @spec org() :: String.t() | nil
+  def org, do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.get(:org)
 
-  defp segment(value) do
-    case Segment.to_segment(value) do
-      "" ->
-        @anonymous
+  defp no_org,
+    do:
+      "an agent key needs an org: pass :org, or set one for the deployment with " <>
+        "config :wardrik, Wardrik.Fleet, org: \"...\""
 
-      segment when is_binary(segment) ->
-        if String.contains?(segment, "/") do
-          raise ArgumentError,
-                "a fleet key segment may not contain \"/\", got #{inspect(segment)} " <>
-                  "from #{inspect(value)}"
-        end
+  defp segment!(value, what) do
+    segment = Segment.to_segment(value)
 
-        segment
+    if segment?(segment),
+      do: segment,
+      else:
+        raise(
+          ArgumentError,
+          "an agent's #{what} is #{inspect(segment)} from #{inspect(value)}, which is not a " <>
+            "segment; a segment holds no / or whitespace and does not begin with @ or _"
+        )
+  end
+
+  @doc "Whether `text` can be one segment of a key: an org, a user or a name."
+  @spec segment?(term()) :: boolean()
+  def segment?(text) when is_binary(text),
+    do: text not in [".", ".."] and Regex.match?(@segment, text)
+
+  def segment?(_text), do: false
+
+  @doc """
+  The org, user and name a key is made of, with `nil` for the user of an
+  org's own agent. Raises on anything `key/2` would not have built.
+  """
+  @spec parse(String.t()) :: {String.t(), String.t() | nil, String.t()}
+  def parse(key) when is_binary(key) do
+    case cast(key) do
+      {:ok, parts} ->
+        parts
+
+      :error ->
+        raise ArgumentError, "an agent key is org/name or org/@user/name, got #{inspect(key)}"
+    end
+  end
+
+  @doc "`parse/1`, answering `:error` rather than raising."
+  @spec cast(String.t()) :: {:ok, {String.t(), String.t() | nil, String.t()}} | :error
+  def cast(key) when is_binary(key) do
+    case String.split(key, "/") do
+      [org, "@" <> user, name] -> segments({org, user, name}, [org, user, name])
+      [org, name] -> segments({org, nil, name}, [org, name])
+      _other -> :error
+    end
+  end
+
+  defp segments(parts, segments),
+    do: if(Enum.all?(segments, &segment?/1), do: {:ok, parts}, else: :error)
+
+  @doc """
+  The key `text` names, where an agent in `org/0` may be named without it: an
+  org's own agent by its name, and a user's as `@user/name`.
+
+      Wardrik.Fleet.expand("triage")            #=> {:ok, "app/triage"}
+      Wardrik.Fleet.expand("@jon/triage")       #=> {:ok, "app/@jon/triage"}
+      Wardrik.Fleet.expand("acme/@jon/triage")  #=> {:ok, "acme/@jon/triage"}
+  """
+  @spec expand(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def expand(text) when is_binary(text) do
+    case String.split(text, "/") do
+      [_name] -> in_org(text, &key_of/2)
+      ["@" <> _user, _name] -> in_org(text, &key_of/2)
+      _whole -> key_of(text, text)
+    end
+  end
+
+  defp key_of(key, text),
+    do: if(cast(key) == :error, do: {:error, not_a_key(text)}, else: {:ok, key})
+
+  @doc """
+  The prefix `text` names, as `expand/1` reads a key: `""` for every agent, an
+  org as `acme/`, a user as `acme/@jon/`, or `@jon/` for one in `org/0`. Text
+  that does not end in `/` is a key, and names that agent alone.
+  """
+  @spec expand_prefix(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def expand_prefix(""), do: {:ok, ""}
+
+  def expand_prefix(text) when is_binary(text) do
+    case String.split(text, "/") do
+      ["@" <> _user, ""] -> in_org(text, &scope_of/2)
+      [_org, ""] -> scope_of(text, text)
+      [_org, "@" <> _user, ""] -> scope_of(text, text)
+      _key -> expand(text)
+    end
+  end
+
+  defp scope_of(prefix, text) do
+    case scope(prefix) do
+      {:ok, _prefix} = ok -> ok
+      {:error, _message} -> {:error, not_a_scope(text)}
+    end
+  end
+
+  # `text` in the deployment's org, as `check` reads it.
+  defp in_org(text, check) do
+    case org() do
+      nil -> {:error, "#{text} names no org, and the deployment has none; name it as org/#{text}"}
+      org -> check.(org <> "/" <> text, text)
     end
   end
 
   @doc """
-  The org, user and name a key is made of, with `nil` for an org or user the
-  key does not carry. Raises on anything `key/2` would not have built.
+  The prefix of keys `text` reaches: `""` for every agent, `acme` or `acme/`
+  for an org's, `acme/@jon` or `acme/@jon/` for one user's, or a key for one
+  agent alone. A `Wardrik.Grant`'s scope, and a shared tree's, are read this
+  way.
   """
-  @spec parse(String.t()) :: {String.t() | nil, String.t() | nil, String.t()}
-  def parse(key) when is_binary(key) do
-    case String.split(key, "/") do
-      [org, user, name] -> {identity(org), identity(user), name}
-      _other -> raise ArgumentError, "a fleet key is org/user/name, got #{inspect(key)}"
+  @spec scope(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def scope(""), do: {:ok, ""}
+
+  def scope(text) when is_binary(text) do
+    trimmed = String.trim_trailing(text, "/")
+
+    case String.split(trimmed, "/") do
+      [org] -> scoped(trimmed <> "/", [org], text)
+      [org, "@" <> user] -> scoped(trimmed <> "/", [org, user], text)
+      _key -> if cast(trimmed) == :error, do: {:error, not_a_scope(text)}, else: {:ok, trimmed}
     end
   end
 
-  defp identity(@anonymous), do: nil
-  defp identity(segment), do: segment
+  defp scoped(prefix, segments, text),
+    do:
+      if(Enum.all?(segments, &segment?/1),
+        do: {:ok, prefix},
+        else: {:error, not_a_scope(text)}
+      )
+
+  defp not_a_key(text),
+    do: "#{text} is not an agent key; a key is name, @user/name, org/name or org/@user/name"
+
+  defp not_a_scope(text),
+    do: "#{inspect(text)} is not a scope; a scope is org/, org/@user/ or a key"
 
   # -- lifecycle -------------------------------------------------------------
 
@@ -152,7 +281,7 @@ defmodule Wardrik.Fleet do
   @doc """
   Stops an agent and starts it again on `node`, with the state it had.
 
-      {:ok, pid} = Wardrik.Fleet.move("acme/jon/researcher", :"wardrik_b@host")
+      {:ok, pid} = Wardrik.Fleet.move("acme/@jon/researcher", :"wardrik_b@host")
   """
   @spec move(String.t(), node()) :: {:ok, pid()} | {:error, term()}
   def move(key, node) when is_binary(key) and is_atom(node) do

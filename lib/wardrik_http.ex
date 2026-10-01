@@ -30,8 +30,8 @@ defmodule WardrikHTTP do
   See `WardrikHTTP.Token`; from a shell:
 
       wardrik token create ci --scope acme/ --policy careful
-      wardrik token create watcher --scope acme/ops/ --can read
-      wardrik token create one --scope acme/jon/triage --policy careful
+      wardrik token create watcher --scope acme/@ops/ --can read
+      wardrik token create one --scope acme/@jon/triage --policy careful
       wardrik token create laptop --all --unlimited
       wardrik token list
       wardrik token revoke 3f9a61c0d4e2
@@ -46,37 +46,37 @@ defmodule WardrikHTTP do
 
   ## Keys in paths
 
-  An agent's key is always three segments, `org/user/name`, with `_` for an
-  org or user it has none of. Each segment is one path segment under
-  `/v1/agents/`, in the same order:
+  An agent's key is its path under `/v1/agents/`, as `Wardrik.Fleet` writes
+  it: `org/name` for an org's own agent, and `org/@user/name` for one that
+  works for a user.
 
   | Key | Path |
   | --- | --- |
-  | `_/_/researcher` | `/v1/agents/_/_/researcher` |
-  | `acme/_/triage` | `/v1/agents/acme/_/triage` |
-  | `acme/jon/triage` | `/v1/agents/acme/jon/triage` |
+  | `acme/triage` | `/v1/agents/acme/triage` |
+  | `acme/@jon/triage` | `/v1/agents/acme/@jon/triage` |
 
   A segment holds no `/`, so a client percent-encodes each segment on its
-  own and joins them with `/`. A path segment that decodes to a `/`, as
-  `%2F` does, is refused with `400`. The `id` the API answers an agent with is
-  its key.
+  own and joins them with `/`; `@` may be sent as it is or as `%40`. A path
+  segment that decodes to a `/`, as `%2F` does, is refused with `400`, and so
+  is a key `Wardrik.Fleet` would not have written. The `id` the API answers an
+  agent with is its key.
 
   ## Routes
 
   | Route | Answers |
   | --- | --- |
   | `GET /v1/agents` | the agents the token reaches |
-  | `GET /v1/agents/{org}/{user}/{name}` | the agent's snapshot, with `sequence`, the last event its log has written |
-  | `PUT /v1/agents/{org}/{user}/{name}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
-  | `GET /v1/agents/{org}/{user}/{name}/definition` | the definition last put, as it was sent, where the server keeps definitions |
-  | `DELETE /v1/agents/{org}/{user}/{name}` | stops the running agent and deletes everything it had, its schedules included, `204` |
-  | `GET /v1/agents/{org}/{user}/{name}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
-  | `POST /v1/agents/{org}/{user}/{name}/messages` | queues a message for the agent to answer, `202` |
-  | `POST /v1/agents/{org}/{user}/{name}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
-  | `GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
-  | `POST /v1/agents/{org}/{user}/{name}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
-  | `PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
-  | `DELETE /v1/agents/{org}/{user}/{name}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
+  | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
+  | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
+  | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, where the server keeps definitions |
+  | `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its schedules included, `204` |
+  | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
+  | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
+  | `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
+  | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
+  | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
+  | `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200` |
+  | `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
   `WardrikHTTP.Resource` shows what each answers. Each resource's JSON Schema is

@@ -62,15 +62,15 @@ defmodule Wardrik.AccessTest do
   describe "authorize/3" do
     test "wants a grant that reaches the agent and allows the action" do
       {:ok, reader} = Grant.new("acme/", [:read])
-      {:ok, decider} = Grant.new("acme/ops/", [:decide])
+      {:ok, decider} = Grant.new("acme/@ops/", [:decide])
 
-      assert :ok = Access.authorize(reader, :read, "acme/ops/deploy")
-      assert {:error, :forbidden} = Access.authorize(reader, :decide, "acme/ops/deploy")
-      assert {:error, :not_found} = Access.authorize(reader, :read, "globex/_/deploy")
+      assert :ok = Access.authorize(reader, :read, "acme/@ops/deploy")
+      assert {:error, :forbidden} = Access.authorize(reader, :decide, "acme/@ops/deploy")
+      assert {:error, :not_found} = Access.authorize(reader, :read, "globex/deploy")
 
-      assert :ok = Access.authorize([reader, decider], :decide, "acme/ops/deploy")
-      assert {:error, :forbidden} = Access.authorize([reader, decider], :decide, "acme/jon/x")
-      assert {:error, :not_found} = Access.authorize([], :read, "acme/ops/deploy")
+      assert :ok = Access.authorize([reader, decider], :decide, "acme/@ops/deploy")
+      assert {:error, :forbidden} = Access.authorize([reader, decider], :decide, "acme/@jon/x")
+      assert {:error, :not_found} = Access.authorize([], :read, "acme/@ops/deploy")
     end
   end
 

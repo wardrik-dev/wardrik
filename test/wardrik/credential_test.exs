@@ -39,7 +39,7 @@ defmodule Wardrik.CredentialTest do
   end
 
   defp scope(opts \\ []) do
-    Config.new() |> Scope.root("acme/jon/assistant", opts)
+    Config.new() |> Scope.root("acme/@jon/assistant", opts)
   end
 
   describe "resolve/2" do

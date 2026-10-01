@@ -62,7 +62,7 @@ defmodule WardrikTUI.SSHTest do
 
   test "choose/2 opens on the first agent by key, or starts one for whoever connected" do
     members =
-      for key <- ["b/_/two", "a/_/one"],
+      for key <- ["b/two", "a/one"],
           do: %Fleet.Member{
             key: key,
             pid: self(),
@@ -75,8 +75,9 @@ defmodule WardrikTUI.SSHTest do
             waiting_on: []
           }
 
-    assert WardrikTUI.SSH.choose(members, "jon") == {:attach, "a/_/one"}
-    assert WardrikTUI.SSH.choose([], ~c"jon") == {:start, "_/jon/assistant"}
+    assert WardrikTUI.SSH.choose(members, "jon") == {:attach, "a/one"}
+    assert WardrikTUI.SSH.choose([], ~c"jon") == {:start, "default/@jon/assistant"}
+    assert WardrikTUI.SSH.choose([], "_build") == {:start, "default/assistant"}
   end
 
   test "copying goes to the client's clipboard, as OSC 52" do

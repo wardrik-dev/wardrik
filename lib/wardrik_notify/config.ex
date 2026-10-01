@@ -9,7 +9,8 @@ defmodule WardrikNotify.Config do
         ]
 
   `:targets` names each target and the module and options that deliver to
-  it. `:req_options` is merged into every HTTP request the package makes,
+  it. A target's `:orgs` is the orgs whose agents it tells, every org's
+  unless it says. `:req_options` is merged into every HTTP request the package makes,
   which is the seam a test routes them through.
 
   The daemon fills these in from `config.yaml`'s `notify` section; see
@@ -30,6 +31,18 @@ defmodule WardrikNotify.Config do
       nil -> :error
     end
   end
+
+  @doc "Whether the target `name` tells the agents of `org`, as its `:orgs` says."
+  @spec tells?(atom() | String.t(), String.t() | nil) :: boolean()
+  def tells?(name, org) do
+    case target(name) do
+      {:ok, {_module, opts}} -> served?(Keyword.get(opts, :orgs, :all), org)
+      :error -> false
+    end
+  end
+
+  defp served?(:all, _org), do: true
+  defp served?(orgs, org), do: org in orgs
 
   @doc "Options merged into every request the package makes."
   @spec req_options() :: keyword()

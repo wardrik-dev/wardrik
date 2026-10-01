@@ -75,57 +75,49 @@ defmodule WardrikHTTP.Router do
     json(conn, 200, %{"agents" => agents})
   end
 
-  get "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], :read, &snapshot(conn, &1))
-  end
-
-  put "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], :define, &define(conn, &1))
-  end
-
-  delete "/v1/agents/:org/:user/:name" do
-    within(conn, [org, user, name], :define, &forget(conn, &1))
-  end
-
-  get "/v1/agents/:org/:user/:name/definition" do
-    within(conn, [org, user, name], :read, &definition(conn, &1))
-  end
-
-  get "/v1/agents/:org/:user/:name/events" do
-    within(conn, [org, user, name], :read, &events(conn, &1))
-  end
-
-  post "/v1/agents/:org/:user/:name/messages" do
-    within(conn, [org, user, name], :message, &ask(conn, &1))
-  end
-
-  post "/v1/agents/:org/:user/:name/interrupts/:id" do
-    within(conn, [org, user, name], :decide, &decide(conn, &1, id))
-  end
-
-  get "/v1/agents/:org/:user/:name/interrupts/:id/authorization" do
-    within(conn, [org, user, name], :decide, &authorization(conn, &1, id))
-  end
-
-  post "/v1/agents/:org/:user/:name/cancel" do
-    within(conn, [org, user, name], :message, &cancel(conn, &1))
-  end
-
-  put "/v1/agents/:org/:user/:name/schedules/:schedule" do
-    within(conn, [org, user, name], :define, &schedule(conn, &1, schedule))
-  end
-
-  delete "/v1/agents/:org/:user/:name/schedules/:schedule" do
-    within(conn, [org, user, name], :define, &unschedule(conn, &1, schedule))
+  # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
+  # for a user's, and what follows its key is what is asked of it.
+  match "/v1/agents/:org/*rest" do
+    with {segments, rest} <- agent_path([org | rest]),
+         {action, fun} <- route(conn.method, rest) do
+      within(conn, segments, action, &fun.(conn, &1))
+    else
+      nil -> no_route(conn)
+    end
   end
 
   match _ do
-    json(
-      conn,
-      404,
-      Resource.error("not_found", "No such route: #{conn.method} #{conn.request_path}")
-    )
+    no_route(conn)
   end
+
+  defp no_route(conn),
+    do:
+      json(
+        conn,
+        404,
+        Resource.error("not_found", "No such route: #{conn.method} #{conn.request_path}")
+      )
+
+  # The segments of the key at the front of an agent's path, and the rest.
+  defp agent_path([org, "@" <> _user = user, name | rest]), do: {[org, user, name], rest}
+  defp agent_path([org, name | rest]), do: {[org, name], rest}
+  defp agent_path(_segments), do: nil
+
+  defp route("GET", []), do: {:read, &snapshot/2}
+  defp route("PUT", []), do: {:define, &define/2}
+  defp route("DELETE", []), do: {:define, &forget/2}
+  defp route("GET", ["definition"]), do: {:read, &definition/2}
+  defp route("GET", ["events"]), do: {:read, &events/2}
+  defp route("POST", ["messages"]), do: {:message, &ask/2}
+  defp route("POST", ["interrupts", id]), do: {:decide, &decide(&1, &2, id)}
+
+  defp route("GET", ["interrupts", id, "authorization"]),
+    do: {:decide, &authorization(&1, &2, id)}
+
+  defp route("POST", ["cancel"]), do: {:message, &cancel/2}
+  defp route("PUT", ["schedules", schedule]), do: {:define, &schedule(&1, &2, schedule)}
+  defp route("DELETE", ["schedules", schedule]), do: {:define, &unschedule(&1, &2, schedule)}
+  defp route(_method, _rest), do: nil
 
   @impl Plug.ErrorHandler
   def handle_errors(conn, %{reason: %Plug.Parsers.ParseError{}}),
@@ -140,15 +132,18 @@ defmodule WardrikHTTP.Router do
   defp within(conn, segments, action, fun) do
     key = Enum.join(segments, "/")
 
-    case Enum.find(segments, &String.contains?(&1, "/")) do
-      nil ->
+    case {Enum.find(segments, &String.contains?(&1, "/")), Fleet.cast(key)} do
+      {nil, {:ok, _parts}} ->
         case Access.authorize(conn.assigns.token.grant, action, key) do
           :ok -> fun.(key)
           {:error, :forbidden} -> forbidden(conn, action, key)
           {:error, :not_found} -> not_found(conn, key)
         end
 
-      segment ->
+      {nil, :error} ->
+        invalid(conn, "#{key} is not an agent key; a key is org/name or org/@user/name")
+
+      {segment, _key} ->
         invalid(
           conn,
           "#{inspect(segment)} holds a /; a key's org, user and name are a path segment each"

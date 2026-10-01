@@ -48,7 +48,7 @@ defmodule Mix.Tasks.Wardrik do
   parks the turn; resume it from anywhere that can reach the
   node:
 
-      Wardrik.Agent.resume("acme/jon/assistant", %{"call_abc" => :approve})
+      Wardrik.Agent.resume("acme/@jon/assistant", %{"call_abc" => :approve})
 
   `--timeout` bounds a whole turn, in seconds.
 

@@ -104,7 +104,7 @@ The agents, or those a query picks.
 wardrik ls [QUERY]
 ```
 
-A query is words that must all match: TEXT in the key, name:, org: and user: (_ for none), node:, status:idle, status:running or status:parked, and attention, an agent waiting on a person. With --json, the agents as GET /v1/agents lists them.
+A query is words that must all match: TEXT in the key, name:, org:, user:, node:, status:idle, status:running or status:parked, and attention, an agent waiting on a person. With --json, the agents as GET /v1/agents lists them.
 
 ## wardrik show
 
@@ -156,7 +156,7 @@ A token for the HTTP API, printed once.
 wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]
 ```
 
---scope PREFIX is the agents it reaches: org/, org/user/ or a key, org/user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited.
+--scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or org/@user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited.
 
 ## wardrik token list
 

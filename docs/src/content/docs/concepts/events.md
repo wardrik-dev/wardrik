@@ -10,8 +10,8 @@ and delegation. `wardrik watch` follows it in a terminal, the HTTP API streams i
 terminal client is drawn from it.
 
 ```sh
-wardrik watch acme/_/triage          # readable, until Ctrl-C
-wardrik watch acme/_/triage --json   # one CloudEvent a line
+wardrik watch acme/triage          # readable, until Ctrl-C
+wardrik watch acme/triage --json   # one CloudEvent a line
 ```
 
 ## An event
@@ -22,7 +22,7 @@ Each event is a [CloudEvent](https://cloudevents.io), with what it is about unde
 {
   "specversion": "1.0",
   "id": "0199a3c2-5f1e-7c3a-9d2b-4e8f1a6b7c90",
-  "source": "wardrik://local/agents/acme/_/triage",
+  "source": "wardrik://local/agents/acme/triage",
   "type": "wardrik.tool_call.started",
   "subject": "tool_calls/call_1",
   "time": "2026-10-01T12:04:01.540213Z",
@@ -36,7 +36,7 @@ Each event is a [CloudEvent](https://cloudevents.io), with what it is about unde
       "name": "linear__search_issues",
       "call": {
         "id": "call_1",
-        "idempotency_key": "acme/_/triage/4bf92f3577b34da6a3ce929d0e0e4736/00f067aa0ba902b7/1/call_1",
+        "idempotency_key": "acme/triage/4bf92f3577b34da6a3ce929d0e0e4736/00f067aa0ba902b7/1/call_1",
         "arguments": {"query": "open incidents"}
       }
     }
@@ -82,13 +82,13 @@ Kept events are kept for 30 days.
 
 ## Following over HTTP
 
-`GET /v1/agents/{org}/{user}/{name}/events`, with a token that can `read`, answers with a page of
+`GET /v1/agents/{key}/events`, with a token that can `read`, answers with a page of
 kept events as JSON, or with a stream of every event as it happens when asked for
 `text/event-stream`:
 
 ```sh
 curl -N -H "authorization: Bearer $TOKEN" -H "accept: text/event-stream" \
-  http://127.0.0.1:4747/v1/agents/acme/_/triage/events
+  http://127.0.0.1:4747/v1/agents/acme/triage/events
 ```
 
 ```
@@ -108,7 +108,7 @@ connection open.
   unless set, page through what is kept.
 
 A position older than what is kept answers `410` with the oldest sequence there is. Read the agent
-with `GET /v1/agents/{org}/{user}/{name}`, whose `sequence` is where its state was taken, and follow
+with `GET /v1/agents/{key}`, whose `sequence` is where its state was taken, and follow
 from there.
 
 The TypeScript SDK follows a stream, reconnects, and resumes from the last sequence for you. See

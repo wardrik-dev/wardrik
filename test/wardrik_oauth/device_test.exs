@@ -44,7 +44,7 @@ defmodule WardrikOAuth.DeviceTest do
     do: %{client_id: "wardrik-client", client_secret: nil, redirect_uri: nil, how: :static}
 
   defp scope(owner),
-    do: Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: WardrikOAuth)
+    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
 
   defp provider(opts), do: [github: [resource: resource(), scopes: ~w(repo)] ++ opts]
 

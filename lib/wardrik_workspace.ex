@@ -7,7 +7,7 @@ defmodule WardrikWorkspace do
   It is a `Wardrik.Tool` source, named with the agent's
   `WardrikWorkspace.Spec`:
 
-      {:ok, spec} = WardrikWorkspace.Spec.new("acme/jon/triage", %{"team" => "acme"})
+      {:ok, spec} = WardrikWorkspace.Spec.new("acme/@jon/triage", %{"team" => "acme"})
       Wardrik.LLM.Config.new(tools: [{WardrikWorkspace, spec}])
 
   An agent file names it as `files`, and its shared trees under `workspace`:

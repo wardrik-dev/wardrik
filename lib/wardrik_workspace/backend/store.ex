@@ -4,7 +4,7 @@ defmodule WardrikWorkspace.Backend.Store do
   in the `:files` namespace under its tree and path, so a tree is wherever the
   store is, on every node, on EKV, Postgres or a bucket alike.
 
-      files / agents/acme/jon/triage//MEMORY.md
+      files / agents/acme/@jon/triage//MEMORY.md
       files / shared/acme//findings/2026-09-30-db-failover.md
 
   The `//` is where a tree ends and its path begins. A tree and a path are

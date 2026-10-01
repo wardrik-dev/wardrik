@@ -22,7 +22,7 @@ wardrik.tool({
 
 const working = wardrik.work({ signal: stop.signal });
 
-const agent = await wardrik.agents.put("acme/_/refunds", {
+const agent = await wardrik.agents.put("acme/refunds", {
   model: process.env.WARDRIK_MODEL ?? "anthropic:claude-sonnet-5",
   instructions: "You refund orders when asked, with refund_order, and say what you did.",
   tools: ["workers/*"],

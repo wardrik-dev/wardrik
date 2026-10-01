@@ -13,6 +13,9 @@ config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false
 # code names. A build without the TUI leaves this out and serves nothing there.
 config :wardrik, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 
+# The org an agent is in where nothing names one; config.yaml's org replaces it.
+config :wardrik, Wardrik.Fleet, org: "default"
+
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]

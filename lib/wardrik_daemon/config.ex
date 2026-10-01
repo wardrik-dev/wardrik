@@ -17,6 +17,8 @@ defmodule WardrikDaemon.Config do
   The file is `config.yaml`, or `config.yml`; a directory holding both is
   refused, since one of them would go unread.
 
+      org: acme
+
       mcp:
         linear:
           url: https://mcp.linear.app/mcp
@@ -29,6 +31,9 @@ defmodule WardrikDaemon.Config do
         github:
           url: https://api.githubcopilot.com/mcp/
           credential: user:github
+        docs:
+          url: https://docs.example.com/mcp
+          org: "*"
 
       oauth:
         providers:
@@ -66,6 +71,15 @@ defmodule WardrikDaemon.Config do
 
   `${NAME}` in any string is replaced with that environment variable, so the
   file itself need hold no secret.
+
+  `org` is the deployment's org: the one an agent belongs to where its file
+  names none, and the one the CLI finds an agent in when it is named without
+  an org. It is `default` unless set. See `Wardrik.Fleet`.
+
+  An MCP server and a notify target each serve one org's agents, the
+  deployment's own, unless its `org` names another, a list of them, or `*`
+  for every org. An agent cannot reach a server, or route its notices to a
+  target, that is not its org's.
 
   A server with `command` is started as a command, with `args`, `env` and
   `cwd` beside it; one with `url` is reached over HTTP, with `headers`. Either
@@ -156,6 +170,8 @@ defmodule WardrikDaemon.Config do
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
   @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
+  @org "default"
+  @segment "an org holds no / or whitespace and does not begin with @ or _"
 
   @doc "Where `config.yaml` is read from: `WARDRIK_CONFIG_DIR`, or `wardrik` under the XDG config home."
   @spec config_dir() :: Path.t()
@@ -245,9 +261,16 @@ defmodule WardrikDaemon.Config do
   end
 
   defp settings(document) do
+    {org, document} = Map.pop(document, "org")
+    org = org!(org)
+
+    [{Wardrik.Fleet, org: org} | sections(document, org)]
+  end
+
+  defp sections(document, org) do
     Enum.map(document, fn
       {"mcp", servers} ->
-        {WardrikMCP, servers: servers(table!(servers, ["mcp"]))}
+        {WardrikMCP, servers: servers(table!(servers, ["mcp"]), org)}
 
       {"oauth", oauth} ->
         {WardrikOAuth, oauth(table!(oauth, ["oauth"]))}
@@ -262,7 +285,7 @@ defmodule WardrikDaemon.Config do
         {WardrikHTTP, http(http)}
 
       {"notify", targets} ->
-        {WardrikNotify, targets: targets(table!(targets, ["notify"]))}
+        {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -273,22 +296,47 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected mcp, oauth, vault, ssh, http, notify, cluster or storage"
+          "is not a section; expected org, mcp, oauth, vault, ssh, http, notify, cluster or storage"
         )
     end)
   end
 
+  # -- org -------------------------------------------------------------------
+
+  defp org!(nil), do: @org
+
+  defp org!(org) do
+    if Wardrik.Fleet.segment?(org),
+      do: org,
+      else: invalid!(["org"], "is #{inspect(org)}, which is not an org; #{@segment}")
+  end
+
+  # The orgs whose agents reach a server, or hear from a target: the
+  # deployment's own unless it says, or every org's for `*`.
+  defp orgs(nil, org, _path), do: [org]
+  defp orgs("*", _org, _path), do: :all
+  defp orgs(name, org, path) when is_binary(name), do: orgs([name], org, path)
+
+  defp orgs([_ | _] = names, _org, path) do
+    if Enum.all?(names, &Wardrik.Fleet.segment?/1),
+      do: names,
+      else: invalid!(path, "is an org, a list of them, or * for every org; #{@segment}")
+  end
+
+  defp orgs(_value, _org, path),
+    do: invalid!(path, "is an org, a list of them, or * for every org")
+
   # -- mcp -------------------------------------------------------------------
 
-  defp servers(servers) do
+  defp servers(servers, org) do
     Enum.map(servers, fn {name, server} ->
       path = ["mcp", name]
-      server = table!(server, path)
-      known!(server, @server_keys, path)
+      {orgs, server} = Map.pop(table!(server, path), "org")
+      known!(server, @server_keys ++ ["org"], path)
       prefix!(Map.get(server, "prefix", name), path)
 
       {name(name),
-       [transport: transport(server, path)] ++
+       [transport: transport(server, path), orgs: orgs(orgs, org, path ++ ["org"])] ++
          Enum.map(Map.drop(server, @transport_keys), &server_option(&1, path))}
     end)
   end
@@ -443,13 +491,18 @@ defmodule WardrikDaemon.Config do
 
   # -- notify ----------------------------------------------------------------
 
-  defp targets(targets) do
+  defp targets(targets, org) do
     Enum.map(targets, fn {name, target} ->
       path = ["notify", name]
+      {orgs, target} = Map.pop(table!(target, path), "org")
 
-      case Map.to_list(table!(target, path)) do
-        [{kind, options}] -> {name(name), notifier(kind, options, path ++ [kind])}
-        _other -> invalid!(path, "is one of slack or webhook")
+      case Map.to_list(target) do
+        [{kind, options}] ->
+          {module, options} = notifier(kind, options, path ++ [kind])
+          {name(name), {module, options ++ [orgs: orgs(orgs, org, path ++ ["org"])]}}
+
+        _other ->
+          invalid!(path, "is one of slack or webhook, with the org it tells")
       end
     end)
   end
@@ -612,7 +665,7 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: mcp, oauth, vault, ssh, http, notify, cluster, storage"
+        "is a set of sections: org, mcp, oauth, vault, ssh, http, notify, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

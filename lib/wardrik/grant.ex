@@ -4,22 +4,23 @@ defmodule Wardrik.Grant do
 
       {:ok, grant} = Wardrik.Grant.new("acme/", [:read, :message])
 
-      Wardrik.Grant.allows?(grant, :message, "acme/jon/triage")  #=> true
-      Wardrik.Grant.allows?(grant, :decide, "acme/jon/triage")   #=> false
+      Wardrik.Grant.allows?(grant, :message, "acme/@jon/triage")  #=> true
+      Wardrik.Grant.allows?(grant, :decide, "acme/@jon/triage")   #=> false
 
-  A scope is a key prefix that ends at a segment:
+  A scope is a key prefix that ends at a segment, as `Wardrik.Fleet.scope/1`
+  reads it:
 
   | Scope | Reaches |
   | --- | --- |
   | `""` | every agent |
-  | `"acme/"` | the agents of one org |
-  | `"acme/jon/"` | one person's agents |
-  | `"acme/jon/triage"` | one agent |
+  | `"acme/"` | the agents of one org, its users' among them |
+  | `"acme/@jon/"` | one person's agents |
+  | `"acme/triage"`, `"acme/@jon/triage"` | one agent |
 
-  `new/2` writes a scope of one or two segments as the prefix it is, so
-  `"acme"` is `"acme/"`, and refuses one with an empty segment or more than
-  three. `covers?/2` matches at segment boundaries: `"acme/"` never reaches
-  `acmecorp/…`, and `"acme/jon/triage"` never reaches `acme/jon/triage2`.
+  `new/2` writes an org or a user as the prefix it is, so `"acme"` is
+  `"acme/"`, and refuses anything that is neither a prefix nor a key.
+  `covers?/2` matches at segment boundaries: `"acme/"` never reaches
+  `acmecorp/…`, and `"acme/triage"` never reaches `acme/triage2`.
 
   ## Actions
 
@@ -74,7 +75,7 @@ defmodule Wardrik.Grant do
           {:ok, t()} | {:error, String.t()}
   def new(scope, can \\ @actions, ceiling \\ [])
       when is_binary(scope) and is_list(can) and is_list(ceiling) do
-    with {:ok, scope} <- scope(scope),
+    with {:ok, scope} <- Wardrik.Fleet.scope(scope),
          {:ok, can} <- actions(can),
          :ok <- ceiling(ceiling, can) do
       {:ok, %__MODULE__{scope: scope, can: can, ceiling: ceiling}}
@@ -93,27 +94,6 @@ defmodule Wardrik.Grant do
 
       true ->
         :ok
-    end
-  end
-
-  defp scope(""), do: {:ok, ""}
-
-  defp scope(scope) do
-    trimmed = String.trim_trailing(scope, "/")
-
-    case String.split(trimmed, "/") do
-      [org] when org != "" ->
-        {:ok, trimmed <> "/"}
-
-      [org, user] when org != "" and user != "" ->
-        {:ok, trimmed <> "/"}
-
-      [org, user, name] when org != "" and user != "" and name != "" ->
-        {:ok, trimmed}
-
-      _other ->
-        {:error,
-         "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"}
     end
   end
 

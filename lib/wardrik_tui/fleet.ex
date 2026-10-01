@@ -175,14 +175,11 @@ defmodule WardrikTUI.Fleet do
   end
 
   defp scope(key) do
-    case String.split(key, "/") do
-      [org, user, _name] -> {identity(org), identity(user)}
-      _other -> nil
+    case Wardrik.Fleet.cast(key) do
+      {:ok, {org, user, _name}} -> {org, user}
+      :error -> nil
     end
   end
-
-  defp identity("_"), do: nil
-  defp identity(segment), do: segment
 
   defp prefix(%Member{key: key, name: name}) do
     String.slice(key, 0, String.length(key) - String.length(name))

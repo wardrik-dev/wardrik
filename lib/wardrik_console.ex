@@ -14,7 +14,7 @@ defmodule WardrikConsole do
 
   This module is a subscriber that prints one agent's events as they happen:
 
-      {:ok, _pid} = WardrikConsole.start_link(agent_id: "acme/jon/assistant")
+      {:ok, _pid} = WardrikConsole.start_link(agent_id: "acme/@jon/assistant")
 
   Each line is written to the group leader of the process that started it, as
   `WardrikConsole.Printer` completes it, and laid out to `:width` columns, the

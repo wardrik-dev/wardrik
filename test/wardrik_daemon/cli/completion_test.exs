@@ -7,9 +7,9 @@ defmodule WardrikDaemon.CLI.CompletionTest do
   # Two agents running, one waiting on two calls.
   defp known do
     %{
-      keys: fn -> ["acme/_/triage", "acme/jon/digest"] end,
+      keys: fn -> ["acme/triage", "acme/@jon/digest"] end,
       calls: fn
-        "acme/_/triage" -> ["call_1", "call_2"]
+        "acme/triage" -> ["call_1", "call_2"]
         _key -> []
       end
     }
@@ -37,25 +37,25 @@ defmodule WardrikDaemon.CLI.CompletionTest do
              ~w(--scope --all --can --policy --unlimited --help)
 
     assert complete(["history", "--j"]) == ["--json"]
-    assert complete(["ask", "acme/_/triage", "--no"]) == ["--no-wait"]
+    assert complete(["ask", "acme/triage", "--no"]) == ["--no-wait"]
   end
 
   test "a KEY is a running agent's, and a CALL one that agent waits on" do
-    assert complete(["show", "acme/j"]) == ["acme/jon/digest"]
-    assert complete(["approve", ""]) == ["acme/_/triage", "acme/jon/digest"]
-    assert complete(["approve", "acme/_/triage", ""]) == ["call_1", "call_2"]
-    assert complete(["deny", "acme/jon/digest", ""]) == []
-    assert complete(["schedules", "acme/"]) == ["acme/_/triage", "acme/jon/digest"]
+    assert complete(["show", "acme/@j"]) == ["acme/@jon/digest"]
+    assert complete(["approve", ""]) == ["acme/triage", "acme/@jon/digest"]
+    assert complete(["approve", "acme/triage", ""]) == ["call_1", "call_2"]
+    assert complete(["deny", "acme/@jon/digest", ""]) == []
+    assert complete(["schedules", "acme/"]) == ["acme/triage", "acme/@jon/digest"]
   end
 
   test "a query takes its words and agents' keys, as many as it is given" do
     assert complete(["ls", "status:"]) == ~w(status:idle status:running status:parked)
-    assert complete(["ls", "status:parked", "acme/_"]) == ["acme/_/triage"]
+    assert complete(["ls", "status:parked", "acme/t"]) == ["acme/triage"]
   end
 
   test "a word an option is waiting for, or one past the last a command takes, has nothing" do
     assert complete(["token", "create", "dev", "--scope", ""]) == []
-    assert complete(["show", "acme/_/triage", ""]) == []
+    assert complete(["show", "acme/triage", ""]) == []
     assert complete(["status", ""]) == []
   end
 

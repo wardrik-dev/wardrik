@@ -17,7 +17,8 @@ defmodule WardrikNotify.DispatcherTest do
       :wardrik,
       WardrikNotify,
       Keyword.put(previous, :targets,
-        audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"}
+        audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"},
+        globex: {WardrikNotify.Webhook, url: "https://hooks.test/globex", orgs: ["globex"]}
       )
     )
 
@@ -93,6 +94,23 @@ defmodule WardrikNotify.DispatcherTest do
 
     assert log =~ "Could not tell audit that #{key} parked: {:status, 400}"
     assert log =~ "#{key} routes to missing, which config.yaml does not configure"
+  end
+
+  test "tells a target only of its own orgs' agents, and logs one routed to another's", %{
+    key: key
+  } do
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:globex, :audit]}})
+
+    log =
+      capture_log(fn ->
+        :ok = Agent.ask(key, "Ship it.")
+        assert_receive {:notice, %{"event" => "turn_parked", "agent" => ^key}}
+        wait_for_deliveries()
+      end)
+
+    refute_receive {:notice, _second}
+    assert log =~ "#{key} routes to globex, which tells another org's agents"
   end
 
   test "ignores what is not an event" do

@@ -74,7 +74,7 @@ Each kind of record has a namespace of its own:
 
 | Namespace | What |
 | --- | --- |
-| `durable` | agents, as `agents/<org>/<user>/<name>`; schedules; budget meters; each node's heartbeat |
+| `durable` | agents, as `agents/<key>`; schedules; budget meters; each node's heartbeat |
 | `events` | each agent's event log, for 30 days |
 | `files` | agents' files, as `<tree>//<path>` |
 | `claims` | the ledger, until each turn ends |
@@ -84,7 +84,7 @@ Each kind of record has a namespace of its own:
 | `oauth_clients` | the clients the daemon registered with OAuth providers |
 
 In a bucket, a record is the object `<prefix>/<namespace>/<key>`, so an agent is
-`wardrik/durable/agents/acme/jon/triage`. In Postgres, `ns` is the namespace and `key` the key.
+`wardrik/durable/agents/acme/@jon/triage`. In Postgres, `ns` is the namespace and `key` the key.
 
 ## Moving
 

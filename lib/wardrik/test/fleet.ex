@@ -71,6 +71,6 @@ defmodule Wardrik.Test.Fleet do
   @doc "A key nothing else in the suite will use, under the `test` org and no user."
   @spec key(String.t()) :: String.t()
   def key(name \\ "agent") do
-    "test/_/#{name}-#{System.unique_integer([:positive])}"
+    "test/#{name}-#{System.unique_integer([:positive])}"
   end
 end

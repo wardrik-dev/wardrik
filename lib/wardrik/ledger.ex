@@ -17,7 +17,7 @@ defmodule Wardrik.Ledger do
   `Wardrik.Ledger.Store` writes to the store the fleet already runs on. A deployment
   that keeps its own system of record implements this behaviour instead.
 
-      key = {"acme/jon/assistant", call.id}
+      key = {"acme/@jon/assistant", call.id}
 
       case Wardrik.Ledger.claim(Wardrik.Ledger.Store, key, call) do
         :ok -> run(call)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:schedule",
   "title": "A schedule",
-  "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule} answers.",
+  "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.",
   "type": "object",
   "additionalProperties": false,
   "required": [

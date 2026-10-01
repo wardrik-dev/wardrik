@@ -124,7 +124,7 @@ export interface Interrupt {
  */
 export interface AgentSummary {
   /**
-   * The agent's key, org/user/name.
+   * The agent's key, org/name, or org/@user/name for one that works for a user.
    */
   id: string;
   name: string;
@@ -143,7 +143,7 @@ export interface AgentSummary {
   outcome?: "ok" | "failed" | "interrupted";
 }
 /**
- * The body of PUT /v1/agents/{org}/{user}/{name}, and of GET /v1/agents/{org}/{user}/{name}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
+ * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
  */
 export interface AgentDefinition {
   /**
@@ -183,12 +183,12 @@ export interface AgentDefinition {
       };
 }
 /**
- * The body of GET /v1/agents/{org}/{user}/{name}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
+ * The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
  */
 export interface AgentSnapshot {
   agent: {
     /**
-     * The agent's key, org/user/name.
+     * The agent's key, org/name, or org/@user/name for one that works for a user.
      */
     id: string;
     name: string;
@@ -220,7 +220,7 @@ export interface AgentSnapshot {
   sequence: number;
 }
 /**
- * Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{org}/{user}/{name}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.
+ * Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{key}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.
  */
 export interface Authorization {
   /**
@@ -274,7 +274,7 @@ export interface ErrorBody {
   };
 }
 /**
- * A schedule as it was put, the schedule field of what PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule} answers.
+ * A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.
  */
 export interface Schedule {
   name: string;
@@ -300,7 +300,7 @@ export interface Schedule {
   jitter: number;
 }
 /**
- * The body of PUT /v1/agents/{org}/{user}/{name}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.
+ * The body of PUT /v1/agents/{key}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.
  */
 export interface ScheduleDefinition {
   /**

@@ -13,7 +13,7 @@ defmodule WardrikOAuthTest do
   end
 
   defp scope(owner),
-    do: Config.new() |> Scope.root("acme/#{owner}/a", user: owner, credentials: WardrikOAuth)
+    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
 
   defp connect(owner, opts \\ []) do
     stub_server(Keyword.merge([cimd: true], opts))
@@ -29,7 +29,7 @@ defmodule WardrikOAuthTest do
     defp in_org(org, user),
       do:
         Config.new()
-        |> Scope.root("#{org}/#{user}/a", org: org, user: user, credentials: WardrikOAuth)
+        |> Scope.root("#{org}/@#{user}/a", org: org, user: user, credentials: WardrikOAuth)
 
     defp resolve_in(scope, ref), do: Credential.resolve(Calls.tool("tool", %{}, scope), ref)
 
@@ -110,7 +110,7 @@ defmodule WardrikOAuthTest do
 
     test "on another node is joined there, and dropped with the rest", %{owner: owner} do
       url = connect(owner)
-      resume = {Wardrik.Agent, :decide, ["acme/x/a", %{"call_9" => :approve}, []]}
+      resume = {Wardrik.Agent, :decide, ["acme/@x/a", %{"call_9" => :approve}, []]}
 
       # This node stands in for the others: the flow is found by asking.
       assert {:ok, flight} = Pending.under_way_on([node()], "github", {nil, owner}, resume)

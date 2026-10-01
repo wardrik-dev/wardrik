@@ -10,7 +10,7 @@ defmodule WardrikWorkspace.ContextTest do
   defp org, do: "ctx#{System.unique_integer([:positive])}"
 
   defp spec(org, context, shared \\ %{}) do
-    {:ok, spec} = Spec.new(org <> "/_/agent", shared)
+    {:ok, spec} = Spec.new(org <> "/agent", shared)
     {:ok, spec} = Spec.context(spec, context)
     spec
   end

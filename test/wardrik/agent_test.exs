@@ -605,7 +605,7 @@ defmodule Wardrik.AgentTest do
     end
 
     test "configure/2 on a key nothing holds says so" do
-      assert {:error, :not_found} = Agent.configure("nobody/_/here", [])
+      assert {:error, :not_found} = Agent.configure("nobody/here", [])
     end
 
     test "an agent started with none of them runs under an inert scope" do

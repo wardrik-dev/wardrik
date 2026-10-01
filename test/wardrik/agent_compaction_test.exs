@@ -78,7 +78,7 @@ defmodule Wardrik.AgentCompactionTest do
   end
 
   describe "the state" do
-    defp due, do: State.new([config: config(), context: history()], "acme/jon/assistant")
+    defp due, do: State.new([config: config(), context: history()], "acme/@jon/assistant")
     defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
 
     test "take/1 compacts first when the history is due, and not with nothing to do" do

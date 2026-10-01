@@ -158,17 +158,17 @@ defmodule WardrikHTTP.RouterTest do
 
     test "a path segment that holds a / is not a key segment", %{api: api} do
       {key, _agent} = echo_agent()
-      [org, user, name] = String.split(key, "/")
+      [org, name] = String.split(key, "/")
 
       assert {:ok, %{status: 400, body: body}} =
-               Req.get(api, url: "/v1/agents/#{org}/#{user}%2F#{name}/x")
+               Req.get(api, url: "/v1/agents/#{org}/@jon%2F#{name}")
 
       assert body["error"]["message"] ==
-               ~s("#{user}/#{name}" holds a /; a key's org, user and name are a path segment each)
+               ~s("@jon/#{name}" holds a /; a key's org, user and name are a path segment each)
     end
 
     test "an agent outside the token's scope is one that does not exist", %{api: api} do
-      {key, _agent} = Fleet.start_agent([], "other/_/hidden-#{System.unique_integer()}")
+      {key, _agent} = Fleet.start_agent([], "other/hidden-#{System.unique_integer()}")
 
       assert {:ok, %{status: 404, body: body}} = Req.get(api, url: "/v1/agents/#{key}")
       assert body["error"]["message"] == "No agent runs under #{key}."
@@ -206,7 +206,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 404}} =
                Req.post(watcher,
-                 url: "/v1/agents/other/_/hidden/messages",
+                 url: "/v1/agents/other/hidden/messages",
                  json: %{"content" => "hi"}
                )
     end
@@ -277,7 +277,59 @@ defmodule WardrikHTTP.RouterTest do
     assert snapshot["sequence"] == Agent.snapshot(agent).sequence
     assert snapshot["conversation"]["id"] == key <> "/" <> Agent.snapshot(agent).generation
 
-    assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/_/nobody")
+    assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/nobody")
+  end
+
+  describe "keys" do
+    test "a user's agent is reached under @user, with every route after it", %{api: api} do
+      name = "mine-#{System.unique_integer([:positive])}"
+
+      {key, _agent} =
+        Fleet.start_agent([runner: {AgentRunners, :echo, [self(), "ok"]}], "test/@jon/#{name}")
+
+      assert {:ok, %{status: 200, body: %{"agent" => %{"id" => ^key}}}} =
+               Req.get(api, url: "/v1/agents/test/@jon/#{name}")
+
+      assert {:ok, %{status: 200, body: %{"agent" => %{"id" => ^key}}}} =
+               Req.get(api, url: "/v1/agents/test/%40jon/#{name}")
+
+      assert {:ok, %{status: 202}} =
+               Req.post(api, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
+
+      assert_receive {:turn, [{:user, "hi"}]}
+
+      assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/@ann/#{name}")
+    end
+
+    test "a path that is not an agent's key is refused, and one past it is no route", %{api: api} do
+      for path <- ["/v1/agents/test/@jon", "/v1/agents/_test/x", "/v1/agents/test/_x"] do
+        assert {:ok, %{status: 400, body: body}} = Req.get(api, url: path)
+        assert body["error"]["message"] =~ "is not an agent key"
+      end
+
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 404, body: body}} = Req.get(api, url: "/v1/agents/#{key}/nothing")
+      assert body["error"]["message"] == "No such route: GET /v1/agents/#{key}/nothing"
+      assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test")
+    end
+
+    test "a token scoped to a user reaches that user's agents alone", %{api: api} do
+      {:ok, secret, _token} = Token.create("jon-only", "test/@jon/", [:read], ceiling: [])
+      jon = Req.merge(api, auth: {:bearer, secret})
+      name = "scoped-#{System.unique_integer([:positive])}"
+
+      {mine, _agent} = Fleet.start_agent([], "test/@jon/#{name}")
+      {org, _agent} = Fleet.start_agent([], "test/#{name}")
+
+      assert {:ok, %{status: 200}} = Req.get(jon, url: "/v1/agents/#{mine}")
+      assert {:ok, %{status: 404}} = Req.get(jon, url: "/v1/agents/#{org}")
+      assert {:ok, %{status: 200, body: %{"agents" => agents}}} = Req.get(jon, url: "/v1/agents")
+      ids = Enum.map(agents, & &1["id"])
+      assert mine in ids
+      refute org in ids
+      assert Enum.all?(ids, &String.starts_with?(&1, "test/@jon/"))
+    end
   end
 
   describe "messages" do
@@ -308,7 +360,7 @@ defmodule WardrikHTTP.RouterTest do
       end
 
       assert {:ok, %{status: 404}} =
-               Req.post(api, url: "/v1/agents/test/_/nobody/messages", json: %{"content" => "hi"})
+               Req.post(api, url: "/v1/agents/test/nobody/messages", json: %{"content" => "hi"})
     end
   end
 
@@ -427,7 +479,7 @@ defmodule WardrikHTTP.RouterTest do
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
     assert_receive %Event{payload: {:turn_interrupted, _stats}}
 
-    assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/_/nobody/cancel")
+    assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/cancel")
   end
 
   describe "definitions" do
@@ -479,7 +531,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "outside the token's scope start nothing", %{api: api} do
-      key = "other/_/defined-#{System.unique_integer([:positive])}"
+      key = "other/defined-#{System.unique_integer([:positive])}"
 
       assert {:ok, %{status: 404}} = define(api, key, %{})
       assert Wardrik.Fleet.lookup(key) == nil
@@ -493,8 +545,8 @@ defmodule WardrikHTTP.RouterTest do
           assert {:ok, %{status: 500}} = define(api, key, %{"elsewhere" => true})
         end)
 
-      assert log =~ "wrote a spec for test/_/elsewhere, not #{key}"
-      assert Wardrik.Fleet.lookup("test/_/elsewhere") == nil
+      assert log =~ "wrote a spec for test/elsewhere, not #{key}"
+      assert Wardrik.Fleet.lookup("test/elsewhere") == nil
     end
 
     test "for a key the module refuses start nothing", %{api: api} do
@@ -656,7 +708,7 @@ defmodule WardrikHTTP.RouterTest do
       assert body["error"]["message"] == ~s(every: "30s" is shorter than a minute)
 
       assert {:ok, %{status: 404}} =
-               schedule(api, "test/_/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
+               schedule(api, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
 
       assert Schedule.for_agent(key) == []
     end
@@ -746,7 +798,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 404}} =
                Req.get(api,
-                 url: "/v1/agents/test/_/nobody/events",
+                 url: "/v1/agents/test/nobody/events",
                  headers: [{"accept", "text/event-stream"}]
                )
     end
@@ -857,7 +909,7 @@ defmodule WardrikHTTP.RouterTest do
 
       answers = [
         Req.get(api, url: "/v1/agents", auth: nil),
-        Req.get(api, url: "/v1/agents/test/_/nobody"),
+        Req.get(api, url: "/v1/agents/test/nobody"),
         Req.post(api, url: "/v1/agents/#{key}/messages", json: %{}),
         Req.post(api, url: "/v1/agents/#{key}/interrupts/x", json: %{"decision" => "approve"}),
         Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0]),

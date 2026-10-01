@@ -28,7 +28,7 @@ defmodule WardrikHTTP.TokenTest do
     for {given, scope} <- [
           {"", ""},
           {"acme", "acme/"},
-          {"acme/jon/triage/", "acme/jon/triage"}
+          {"acme/@jon/triage/", "acme/@jon/triage"}
         ] do
       assert {:ok, _secret, %Token{grant: %Grant{scope: ^scope}}} =
                Token.create("scoped", given, Grant.actions(), ceiling: [])
@@ -48,11 +48,10 @@ defmodule WardrikHTTP.TokenTest do
   end
 
   test "create/3 refuses a scope that is not a key prefix" do
-    for scope <- ["/", "/acme", "acme//jon", "acme/jon/triage/more"] do
+    for scope <- ["/", "/acme", "acme//jon", "acme/@jon/triage/more"] do
       assert {:error, message} = Token.create("unscoped", scope)
 
-      assert message ==
-               "#{inspect(scope)} is not a scope; a scope is org/, org/user/ or a key, org/user/name"
+      assert message == "#{inspect(scope)} is not a scope; a scope is org/, org/@user/ or a key"
     end
   end
 

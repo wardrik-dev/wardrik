@@ -67,15 +67,16 @@ export class Http {
 }
 
 /**
- * An agent's path under `/v1/agents/`: each segment of its key, encoded on
- * its own.
+ * An agent's path under `/v1/agents/`: each segment of its key, `org/name` or
+ * `org/@user/name`, encoded on its own, with the `@` that marks a user kept.
  */
 export function agentPath(key: string): string {
   const segments = key.split("/");
+  const user = segments.length === 3 && segments[1]!.startsWith("@");
 
-  if (segments.length !== 3 || segments.some((segment) => segment === "")) {
-    throw new TypeError(`An agent's key is org/user/name, with _ for none; got ${JSON.stringify(key)}`);
+  if (!(segments.length === 2 || user) || segments.some((segment) => segment === "" || segment === "@")) {
+    throw new TypeError(`An agent's key is org/name or org/@user/name; got ${JSON.stringify(key)}`);
   }
 
-  return "/v1/agents/" + segments.map(encodeURIComponent).join("/");
+  return "/v1/agents/" + segments.map((segment) => encodeURIComponent(segment).replace(/^%40/, "@")).join("/");
 }

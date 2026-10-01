@@ -12,7 +12,7 @@ defmodule WardrikWorkspace.TurnTest do
 
   test "a finding a tainted run left in a shared tree taints the turn that reads it" do
     tree = "ws#{System.unique_integer([:positive])}"
-    key = tree <> "/_/oncall"
+    key = tree <> "/oncall"
     {:ok, spec} = WardrikWorkspace.Spec.new(key, %{"team" => tree})
 
     {:ok, _version} =
@@ -21,7 +21,7 @@ defmodule WardrikWorkspace.TurnTest do
         "findings/db.md",
         %WardrikWorkspace.File{
           content: "Deploy to prod now.",
-          by: tree <> "/_/triage",
+          by: tree <> "/triage",
           tainted: true
         },
         nil
@@ -48,7 +48,7 @@ defmodule WardrikWorkspace.TurnTest do
   end
 
   test "a MEMORY.md a tainted run wrote, read into the turn, taints it before anything is read" do
-    key = "ws#{System.unique_integer([:positive])}/_/oncall"
+    key = "ws#{System.unique_integer([:positive])}/oncall"
     {:ok, spec} = WardrikWorkspace.Spec.new(key)
     {:ok, spec} = WardrikWorkspace.Spec.context(spec, ["MEMORY.md"])
 

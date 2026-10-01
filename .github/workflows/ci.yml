@@ -242,13 +242,13 @@ jobs:
 
           "$root/bin/wardrikd" rpc '
             {:ok, _pid} = Wardrik.Fleet.spawn(Wardrik.Fleet.key("smoke"))
-            ["_/_/good", "_/_/smoke"] = Enum.sort(Enum.map(Wardrik.Fleet.list(), & &1.key))
+            ["default/good", "default/smoke"] = Enum.sort(Enum.map(Wardrik.Fleet.list(), & &1.key))
           '
 
           "$root/bin/wardrik" status | tee status.txt
-          grep -q "_/_/smoke" status.txt
-          grep -q "_/_/good" status.txt
-          grep -q "bad.md: a fleet key segment may not contain" status.txt
+          grep -q "default/smoke" status.txt
+          grep -q "default/good" status.txt
+          grep -q "bad.md: an agent.s org is \"acme/eu\"" status.txt
 
           for private in "$HOME/.local/share/wardrik" "$HOME/.local/share/wardrik/store" "$HOME/.local/state/wardrik"; do
             test "$(stat -c %a "$private")" = 700 || { echo "$private is not private" >&2; exit 1; }
@@ -271,7 +271,7 @@ jobs:
 
           "$root/bin/wardrik" start
           "$root/bin/wardrik" status | tee status.txt
-          grep -q "_/_/good" status.txt
+          grep -q "default/good" status.txt
 
       # deploy/install.sh on Ubuntu 22.04 and 24.04 and Debian 12 and 13, where
       # it installs and the daemon runs, and on Debian 11 and Alpine, where it

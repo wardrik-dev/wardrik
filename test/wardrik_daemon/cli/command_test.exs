@@ -35,13 +35,13 @@ defmodule WardrikDaemon.CLI.CommandTest do
   test "parse/2 reads words and options, and answers the usage where they do not read" do
     [ask, create, list] = @commands
 
-    assert Command.parse(ask, ["acme/_/triage", "what", "changed"]) ==
-             {:ok, ["acme/_/triage", "what", "changed"], []}
+    assert Command.parse(ask, ["acme/triage", "what", "changed"]) ==
+             {:ok, ["acme/triage", "what", "changed"], []}
 
     assert Command.parse(create, ["dev", "--can", "read"]) == {:ok, ["dev"], [can: "read"]}
     assert Command.parse(list, ["--json"]) == {:ok, [], [json: true]}
 
-    assert {:error, usage} = Command.parse(ask, ["acme/_/triage"])
+    assert {:error, usage} = Command.parse(ask, ["acme/triage"])
     assert plain(usage) == "Usage: wardrik ask KEY MESSAGE"
 
     assert {:error, usage} = Command.parse(create, ["dev", "--json"])

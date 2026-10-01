@@ -6,13 +6,13 @@ defmodule WardrikNotify.NoticeTest do
   alias WardrikNotify.Notice
 
   defp event(payload) do
-    %Event{source: %{agent_id: "acme/_/triage"}, payload: payload, at: 1_790_000_000_000_000}
+    %Event{source: %{agent_id: "acme/triage"}, payload: payload, at: 1_790_000_000_000_000}
   end
 
   test "a parked turn names each call and its question" do
     call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
 
-    assert {:ok, %Notice{kind: :parked, agent: "acme/_/triage", calls: [parked]} = notice} =
+    assert {:ok, %Notice{kind: :parked, agent: "acme/triage", calls: [parked]} = notice} =
              Notice.from_event(event({:turn_parked, [{call, "This ships to production."}]}))
 
     assert parked == %{
@@ -63,7 +63,7 @@ defmodule WardrikNotify.NoticeTest do
   test "to_map/1 is what a webhook sends" do
     {:ok, notice} = Notice.from_event(event({:turn_failed, :timeout}))
 
-    assert %{event: "turn_failed", agent: "acme/_/triage", reason: ":timeout", calls: []} =
+    assert %{event: "turn_failed", agent: "acme/triage", reason: ":timeout", calls: []} =
              Notice.to_map(notice)
   end
 

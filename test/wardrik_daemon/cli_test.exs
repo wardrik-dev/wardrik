@@ -115,8 +115,8 @@ defmodule WardrikDaemon.CLITest do
 
     assert command(["approve", key, "call_9"]) == {"#{key} is not waiting on call_9.\n", 1}
 
-    assert {"No agent runs under nobody/_/here.\n", 1} =
-             command(["approve", "nobody/_/here", "call_1"])
+    assert {"No agent runs under nobody/here.\n", 1} =
+             command(["approve", "nobody/here", "call_1"])
   end
 
   test "a decision the agent cannot record fails, saying so" do
@@ -155,8 +155,7 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ") reaches the agents under acme/, for every action, with no ceiling."
 
     assert command(["token", "create", "bad", "--scope", "acme//triage", "--unlimited"]) ==
-             {~s("acme//triage" is not a scope; a scope is org/, org/user/ or a key, org/user/name\n),
-              1}
+             {~s("acme//triage" is not a scope; a scope is org/, org/@user/ or a key\n), 1}
   end
 
   test "token create --all makes a token that reaches every agent" do
@@ -261,7 +260,7 @@ defmodule WardrikDaemon.CLITest do
       Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :failing, [:rate_limited]})
 
     assert live(["ask", failing, "hi"]) == {"✗ the turn failed: :rate_limited\n", 1}
-    assert live(["ask", "nobody/_/here", "hi"]) == {"No agent runs under nobody/_/here.\n", 1}
+    assert live(["ask", "nobody/here", "hi"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
   # A live command in a process of its own, writing to a terminal that sends
@@ -310,7 +309,7 @@ defmodule WardrikDaemon.CLITest do
     send(terminal, :close)
     assert_receive {:watched, :ok}
     assert command(["watch", key]) == {"", :live}
-    assert live(["watch", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
+    assert live(["watch", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
   test "watch --json writes each event of the log as a line of JSON" do
@@ -356,7 +355,7 @@ defmodule WardrikDaemon.CLITest do
     assert {"wardrik approve asks which call only where someone can answer" <> _rest, 1} =
              run(&CLI.live/1, ["--terminal=80,plain,no-input", "approve", key], "")
 
-    assert live(["approve", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
+    assert live(["approve", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
   test "history prints what has been said, and says when nothing has" do
@@ -374,11 +373,34 @@ defmodule WardrikDaemon.CLITest do
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
   end
 
-  test "ask and history on a key nothing holds fail" do
-    assert {"No agent runs under nobody/_/here.\n", 1} =
-             command(["ask", "nobody/_/here", "hi", "--no-wait"])
+  test "a KEY in the deployment's org may leave the org out, and one that is not a key is refused" do
+    test_pid = self()
+    name = "bare-#{System.unique_integer([:positive])}"
 
-    assert {"No agent runs under nobody/_/here.\n", 1} = command(["history", "nobody/_/here"])
+    {key, _agent} =
+      Wardrik.Test.Fleet.start_agent(
+        [runner: {AgentRunners, :echo, [test_pid, "hi"]}],
+        Wardrik.Fleet.key(name)
+      )
+
+    assert key == "default/#{name}"
+    assert command(["ask", name, "hello", "--no-wait"]) == {"Asked #{key}.\n", 0}
+    assert_receive {:turn, [{:user, "hello"}]}
+
+    {mine, _agent} = Wardrik.Test.Fleet.start_agent([], Wardrik.Fleet.key(name, user: "jon"))
+    assert {_shown, 0} = command(["show", "@jon/#{name}"])
+    assert {"Nothing has been said yet.\n", 0} = command(["history", "@jon/#{name}"])
+    assert mine == "default/@jon/#{name}"
+
+    assert {message, 1} = command(["show", "_#{name}"])
+    assert message =~ "_#{name} is not an agent key"
+  end
+
+  test "ask and history on a key nothing holds fail" do
+    assert {"No agent runs under nobody/here.\n", 1} =
+             command(["ask", "nobody/here", "hi", "--no-wait"])
+
+    assert {"No agent runs under nobody/here.\n", 1} = command(["history", "nobody/here"])
   end
 
   test "status and reload answer with the node's state" do
@@ -440,7 +462,7 @@ defmodule WardrikDaemon.CLITest do
     """)
 
     start_supervised!({WardrikDaemon.Agents, dir: dir})
-    key = "#{org}/_/counter"
+    key = "#{org}/counter"
     Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
 
     {output, 0} = command(["show", key])
@@ -458,12 +480,12 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ~r"waiting +call_1 +deploy +This ships to production."
     assert output =~ "none; it was defined over the HTTP API"
 
-    assert command(["show", "nobody/_/here"]) == {"No agent runs under nobody/_/here.\n", 1}
+    assert command(["show", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
   test "schedules lists each schedule's next run, and its last and what came of it" do
     prefix = "cli-#{System.unique_integer([:positive])}/"
-    key = prefix <> "_/pinger"
+    key = prefix <> "pinger"
     on_exit(fn -> Wardrik.Schedule.sync(key, []) end)
 
     assert {output, 0} = command(["schedules", prefix])
@@ -532,10 +554,10 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "--json answers a failure as an error document" do
-    {output, 1} = command(["history", "nobody/_/here", "--json"])
+    {output, 1} = command(["history", "nobody/here", "--json"])
 
     assert JSON.decode!(output) == %{
-             "error" => %{"type" => "failed", "message" => "No agent runs under nobody/_/here."}
+             "error" => %{"type" => "failed", "message" => "No agent runs under nobody/here."}
            }
 
     {output, 1} = command(["history", "--json"])
