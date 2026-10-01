@@ -22,7 +22,8 @@
     workspace: ["WardrikWorkspace", "WardrikWorkspace.*"],
     console: ["WardrikConsole", "WardrikConsole.*"],
     launcher: "Mix.Tasks.Wardrik",
-    demo: ["WardrikDemo", "WardrikDemo.*"]
+    demo: ["WardrikDemo", "WardrikDemo.*"],
+    docs: "Mix.Tasks.Wardrik.Docs"
   ],
   deps: [
     mode: :allowlist,
@@ -57,6 +58,7 @@
       workspace: [:core],
       console: [:core],
       demo: [:core],
+      docs: [:daemon, :policy, :http],
       launcher: [:core, :tui, :mcp, :oauth, :vault, :brave, :research]
     ]
   ],

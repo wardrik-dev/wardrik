@@ -317,18 +317,29 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp overview(terminal) do
-    config_dir = Config.config_dir()
-
     [
       "Usage: wardrik [--node NAME] COMMAND\n\n",
       Command.listing(commands(), terminal.width),
-      "\n\nThe daemon reads config.yaml, and the agents in agents/, from\n",
-      "#{config_dir}. wardrik help COMMAND says more about one.\n\n",
-      "Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which\n",
-      "of its nodes a command is for. serve, start, stop, remote, logs, pid, doctor\n",
-      "and service need one when this install runs several; every other command asks\n",
-      "whichever node answers, since each speaks for the whole cluster."
+      "\n\n",
+      about(Config.config_dir())
     ]
+  end
+
+  @doc """
+  What `wardrik help` says after the commands it lists, for a daemon that
+  reads its config from `config_dir`.
+  """
+  @spec about(Path.t()) :: String.t()
+  def about(config_dir) do
+    """
+    The daemon reads config.yaml, and the agents in agents/, from
+    #{config_dir}. wardrik help COMMAND says more about one.
+
+    Where config.yaml describes a cluster, --node NAME, or WARDRIK_NODE, is which
+    of its nodes a command is for. serve, start, stop, remote, logs, pid, doctor
+    and service need one when this install runs several; every other command asks
+    whichever node answers, since each speaks for the whole cluster.\
+    """
   end
 
   defp group(word, commands, terminal),

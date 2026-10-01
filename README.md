@@ -283,6 +283,14 @@ After extraction that becomes `config :wardrik_brave, api_key: ...`. Each packag
 documents its own extraction in its moduledoc. Nothing in `Wardrik` changes
 either way, because core names no tool and no workflow.
 
+### The docs site
+
+`docs/` is the docs site, built with Starlight. Its reference pages, the CLI,
+`config.yaml`, agent files, policies, the HTTP API and events, are written from
+the code by `mix wardrik.docs`, and precommit fails where they are stale:
+edit the moduledoc or schema they come from. `cd docs && npm run dev` serves
+it locally.
+
 ## Seams
 
 Core runs agents. Everything that decides *who* an agent is working for, *what*

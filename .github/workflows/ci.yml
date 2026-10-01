@@ -99,6 +99,26 @@ jobs:
   # tarball is booted, installed on fresh distributions, run as a service and
   # failed over; the image is booted and asked over HTTP. A push keeps each
   # image as :sha-<commit>-<platform>, and the image job joins them.
+  # The docs site builds. Its reference pages are what mix wardrik.docs writes,
+  # which the lint leg checks.
+  docs:
+    name: docs
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
   release:
     name: release (linux-${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
