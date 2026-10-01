@@ -166,6 +166,53 @@ test("offers its tools with their hints, and answers a call with the call's idem
   await working;
 });
 
+test("tells a tool which agent and run a call is for", async () => {
+  const seen: unknown[] = [];
+  const wardrik = new Wardrik({ url, token: "wardrik_secret" });
+
+  wardrik.tool({
+    name: "whose",
+    input: z.object({}),
+    readOnly: true,
+    run: (_args, { agent, run }) => {
+      seen.push({ agent, run });
+      return "ok";
+    },
+  });
+
+  const arriving = next();
+  const working = wardrik.work({ signal: stop.signal });
+  const peer = await arriving;
+  await peer.initialize();
+
+  await peer.request("tools/call", {
+    name: "whose",
+    arguments: {},
+    _meta: {
+      agent: { key: "acme/@u_42/assistant", org: "acme", user: "u_42", name: "assistant" },
+      run: "4bf92f3577b34da6a3ce929d0e0e4736",
+    },
+  });
+  await peer.request("tools/call", {
+    name: "whose",
+    arguments: {},
+    _meta: { agent: { key: "acme/triage", org: "acme", name: "triage" } },
+  });
+  await peer.request("tools/call", { name: "whose", arguments: {} });
+
+  assert.deepEqual(seen, [
+    {
+      agent: { key: "acme/@u_42/assistant", org: "acme", user: "u_42", name: "assistant" },
+      run: "4bf92f3577b34da6a3ce929d0e0e4736",
+    },
+    { agent: { key: "acme/triage", org: "acme", name: "triage" }, run: undefined },
+    { agent: undefined, run: undefined },
+  ]);
+
+  stop.abort();
+  await working;
+});
+
 test("aborts a call Wardrik stops waiting for", async () => {
   const wardrik = new Wardrik({ url, token: "wardrik_secret" });
   let aborted!: () => void;

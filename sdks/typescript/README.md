@@ -99,6 +99,11 @@ MCP server, until its `signal` aborts. The daemon offers the tools, as
 `workers__<name>`, to every agent the token reaches whose tools name
 `workers/*`.
 
+`agent` is the agent a call is made for, `{ key, org, user?, name }`, which
+the daemon names from the key the worker's token was checked against, never
+from what the model sent: a worker serving an agent for each customer answers
+each with what is theirs. `run` is the run the call is part of.
+
 `idempotencyKey` is the same each time the daemon runs one call. A call the
 daemon cannot tell finished, because its agent was lost while the call was
 running, runs again under the same key where every worker in reach marks the
