@@ -139,13 +139,16 @@ defmodule Wardrik.Event.Codec.Value do
   for a person to authorize is `authorization`, and carries no link.
   """
   @spec interrupt({Wardrik.Tool.call(), String.t()}) :: map()
-  def interrupt({%{id: id, name: "model"}, prompt}),
+  def interrupt({call, _prompt} = waiting),
+    do: waiting |> interrupt_of() |> put("outside_content", if(Map.get(call, :outside), do: true))
+
+  defp interrupt_of({%{id: id, name: "model"}, prompt}),
     do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
 
-  def interrupt({%{id: id, link: %{url: _url}}, prompt}),
+  defp interrupt_of({%{id: id, link: %{url: _url}}, prompt}),
     do: %{"id" => id, "reason" => "authorization", "message" => prompt, "tool_call_id" => id}
 
-  def interrupt({%{id: id}, prompt}),
+  defp interrupt_of({%{id: id}, prompt}),
     do: %{"id" => id, "reason" => "tool_approval", "message" => prompt, "tool_call_id" => id}
 
   @doc """

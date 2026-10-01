@@ -8,8 +8,8 @@ defmodule WardrikWorkspace.File do
     * `:run` - the run it was written in, for an agent
     * `:call` - the idempotency key of the call that wrote it, so a call run
       again after a lost node finds its own write and does not make it twice
-    * `:tainted` - whether the run that wrote it had read content from outside,
-      so reading it taints the reader's run in turn
+    * `:tainted` - whether a run that had read content from outside wrote any
+      of what it holds, so reading it taints the reader's run in turn
     * `:at` - when it was written
   """
 

@@ -25,7 +25,7 @@ defmodule WardrikMCP.SupervisorTest do
   end
 
   test "a per-principal connection is started and stopped on its own", %{ref: ref} do
-    {:ok, server} = {:ok, %{WardrikMCP.Connection.offer(ref).server | credential: {:user, "x"}}}
+    {:ok, server} = {:ok, %{WardrikMCP.Connection.offer(ref).server | credential: "x"}}
 
     assert {:ok, pid} = WardrikMCP.Supervisor.connect(server, "someone", server.transport)
     assert {:ok, ^pid} = WardrikMCP.Supervisor.connect(server, "someone", server.transport)

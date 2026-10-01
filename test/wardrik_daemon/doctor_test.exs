@@ -174,7 +174,7 @@ defmodule WardrikDaemon.DoctorTest do
     test "fails where a credential needs a key and there is none", %{tmp_dir: dir} do
       config(
         dir,
-        "mcp:\n  github:\n    url: http://127.0.0.1:1/mcp\n    credential: user:github\n"
+        "mcp:\n  github:\n    url: http://127.0.0.1:1/mcp\n    credential: github\n"
       )
 
       assert {:error, "vault", "no key, and mcp.github's credential needs one" <> how} =
@@ -211,17 +211,28 @@ defmodule WardrikDaemon.DoctorTest do
       config(dir, """
       vault:
         keys: ["#{WardrikVault.generate_key()}"]
+      oauth:
+        providers:
+          github: {resource: "https://api.githubcopilot.com/mcp/"}
       mcp:
         up:
           url: http://127.0.0.1:#{open}/mcp
-          credential: user:github
+          credential: github
+        kept:
+          url: http://127.0.0.1:#{open}/mcp
+          credential: pagerduty
         down: {url: "http://127.0.0.1:#{closed}/mcp"}
       """)
 
       checks = Doctor.checks(dir)
 
       assert check(checks, "mcp up") ==
-               {:ok, "mcp up", "answers at 127.0.0.1:#{open}; each user authorizes it"}
+               {:ok, "mcp up",
+                "answers at 127.0.0.1:#{open}; credential github, from the vault, or an account each user connects"}
+
+      assert check(checks, "mcp kept") ==
+               {:ok, "mcp kept",
+                "answers at 127.0.0.1:#{open}; credential pagerduty, from the vault"}
 
       assert check(checks, "mcp down") ==
                {:error, "mcp down",

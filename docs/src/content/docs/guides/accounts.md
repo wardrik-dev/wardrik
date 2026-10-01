@@ -1,13 +1,14 @@
 ---
 title: Connect accounts
-description: Let each user connect their own account to an MCP server with OAuth, and keep the tokens sealed in the store with the vault.
+description: Give MCP servers credentials kept in the vault, for each user, each org or the deployment, and let users connect their own accounts with OAuth.
 sidebar:
   order: 3
 ---
 
-A key in `config.yaml` makes every agent reach a server as the deployment. To have each user reach
-it as themselves, an MCP server names the credential it needs, and each user connects their own
-account, in a browser or with a code, the first time one of their agents calls it.
+An MCP server names the credential it is reached with, and the vault holds it: for each user, for
+each org, or for the whole deployment. Where none is held and an OAuth provider has the same name,
+the user connects their own account, in a browser or with a code, the first time one of their agents
+calls the server.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 oauth:
@@ -22,12 +23,32 @@ oauth:
 mcp:
   github:
     url: https://api.githubcopilot.com/mcp/
-    credential: user:github
+    credential: github
 ```
 
-`credential: user:github` says the server is reached as the agent's user, with the account they
-connected through the provider `oauth` calls `github`. Restart the daemon after changing
-`config.yaml`, and `wardrik doctor` checks the vault and each server.
+`credential: github` names the credential each call to the server is made with. Restart the daemon
+after changing `config.yaml`, and `wardrik doctor` checks the vault and each server.
+
+## Whose credential
+
+The vault looks a credential up for each call, the most specific first, and the first it holds is
+the one used:
+
+1. the agent's user's, where the agent works for one;
+2. its org's;
+3. the deployment's.
+
+Where none of them holds it and `oauth.providers` names a provider of the same name, the agent's
+user is asked to connect an account, or its org where the agent has no user. The account is kept in
+the vault from then on, as theirs.
+
+So a deployment can let each user connect GitHub as themselves, give one org a shared key
+instead, and give every agent the same Linear key, all through `credential` alone.
+
+A call runs over a connection to the server for whoever's credential it used: a user's own, an
+org's, or the deployment's. A server reached over HTTP is sent it as
+`authorization: Bearer <token>`; `credential_header` and `credential_scheme` send it another way. A
+server run as a command is given it in the environment variable `credential_env` names.
 
 ## A key for the vault
 
@@ -64,24 +85,10 @@ vault:
 A token is sealed with the new key the next time it is refreshed, and a secret you put the next time
 you put it. Once a key is removed, a token sealed with it is not read, and its user connects again.
 
-## Whose account
-
-| `credential` | Reached as |
-| --- | --- |
-| `user:NAME` | the agent's user, with a connection of their own |
-| `org:NAME` | the agent's org, connected once for all of its agents |
-
-A server reached as each user serves only agents that work for one: an agent file without a `user`
-that names it does not read, and `*` leaves it out.
-
-A server reached over HTTP is sent the token as `authorization: Bearer <token>`.
-`credential_header` and `credential_scheme` send it another way. A server run as a command is given
-it in the environment variable `credential_env` names.
-
 ## Connecting
 
-The first time an agent calls a server for a user who has not connected, the call parks, and the
-agent waits:
+The first time an agent calls a server for a user who has not connected, and nothing their org or
+the deployment holds stands in, the call parks, and the agent waits:
 
 > To connect github, open its authorization link. This carries on once the account is connected.
 
@@ -144,19 +151,18 @@ asks the user to connect again, the same way.
 
 ## A secret you already hold
 
-The vault also keeps a secret you put there yourself, for a server whose `credential` is
-`named:NAME`, one for the whole deployment, or `org:NAME`, one for each org:
+The vault also keeps a secret you put there yourself, for the deployment, an org or a user:
 
 ```sh
-wardrik vault put LINEAR_TOKEN             # credential: named:LINEAR_TOKEN, for every agent
-wardrik vault put pagerduty --org acme     # credential: org:pagerduty, for acme's agents
+wardrik vault put linear                   # every agent's, where nothing nearer holds linear
+wardrik vault put pagerduty --org acme     # acme's agents'
+wardrik vault put sentry --user jon        # jon's agents', in the deployment's org
 wardrik vault ls                           # what it holds, and whose, never the values
 wardrik vault rm pagerduty --org acme
 ```
 
 `vault put NAME` asks for the value and does not show it as you type, or reads it from a pipe.
-`--user USER` puts one for a single user, with `--org ORG` for one outside the deployment's org,
-which `user:NAME` reads in place of a connected account.
-
-An agent's credentials come from OAuth where `config.yaml` has a provider, and from the vault where
-it has a key and no provider.
+`--user USER` puts one for a single user, with `--org ORG` for one outside the deployment's org.
+A secret put for a user, or their org, is found before an OAuth provider of the same name is asked
+for, so it stands in for an account they would otherwise connect. `vault ls` lists the accounts
+users connected too.

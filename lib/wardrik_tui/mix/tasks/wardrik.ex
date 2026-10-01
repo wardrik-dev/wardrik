@@ -38,10 +38,9 @@ defmodule Mix.Tasks.Wardrik do
   token reaches a server.
 
   `--credentials` names a `Wardrik.Credential` module. Unnamed, the agent gets
-  `WardrikOAuth` where providers are configured, `WardrikVault` where the vault has a
-  key, and none otherwise. A tool that needs a credential the user has not
-  authorized parks the turn on a link; open it, then answer `y` to run the call
-  again.
+  `WardrikVault` where the vault has a key, and none otherwise. A tool that needs
+  a credential the user has not authorized parks the turn on a link; open it,
+  then answer `y` to run the call again.
 
   `--policy` names a `Wardrik.Hook` module, and `--user` and `--org` say who the
   turn is for, which is what a hook reads to decide. A hook that asks about a call
@@ -258,12 +257,11 @@ defmodule Mix.Tasks.Wardrik do
     if WardrikOAuth.Config.configured?(), do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link()
   end
 
-  # Whichever resolver this build can actually use, so a deployment that
-  # configured one does not also have to name it.
+  # The vault, where it can unseal, so a deployment that keyed one does not
+  # also have to name it.
   defp credentials(opts) do
     cond do
       opts[:credentials] -> Module.safe_concat([opts[:credentials]])
-      WardrikOAuth.Config.configured?() -> WardrikOAuth
       WardrikVault.ready?() -> WardrikVault
       true -> nil
     end

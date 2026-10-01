@@ -1,32 +1,47 @@
 defmodule WardrikVault do
   @moduledoc """
-  A `Wardrik.Credential` resolver that keeps secrets in `Wardrik.Store`, sealed
-  with a key the deployment holds.
+  Where credentials are kept, sealed with a key the deployment holds, in
+  `Wardrik.Store`, and the `Wardrik.Credential` resolver that finds them.
 
       config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
 
-      Wardrik.Fleet.spawn("assistant", config: config, credentials: WardrikVault)
+      Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
 
   Nothing else is needed: no database, no broker, no network. A single binary
-  can hold a user's tokens across restarts and across the nodes the store is
-  replicated to.
+  can hold its users' credentials across restarts and across the nodes the
+  store is replicated to.
 
-      WardrikVault.put({:user, "github"}, {"acme", "jon"}, "ghp_xxx")
-      WardrikVault.fetch({:user, "github"}, {"acme", "jon"})
-      WardrikVault.forget({:user, "github"}, {"acme", "jon"})
+  A credential is a name and whose it is: a user within an org, `{org, user}`,
+  since two orgs may each have a user of the same name; an org; or the
+  deployment, `nil`.
 
-  A reference resolves against the scope it is asked for: `{:user, name}` reads
-  the secret belonging to `scope.user` within `scope.org`, `{:org, name}` to
-  `scope.org`, and `{:named, name}` one the deployment put there itself. Two
-  orgs may each have a user of the same name, so a user's secret is theirs
-  within their org, `{org, user}`, as `WardrikOAuth` keeps its tokens. A
-  secret that is not there answers `{:error, :not_found}`, which a tool reads
-  as "not connected yet". `WardrikOAuth` wraps this with somewhere for the
-  user to go.
+      WardrikVault.put("github", {"acme", "jon"}, "ghp_xxx")
+      WardrikVault.put("pagerduty", "acme", "pd_xxx")
+      WardrikVault.put("linear", nil, "lin_xxx")
+
+  ## Resolving
+
+  `resolve/2` finds a name for the call's scope, the most specific first: the
+  call's user's, then its org's, then the deployment's. The credential it
+  answers says whose it is as `:owner`. A name nobody holds answers
+  `{:error, :not_found}`.
+
+  ## Grants
+
+  A credential is a secret someone put here, or a grant: what a user, or an
+  org, gave by authorizing an account, kept here like any other and renewed by
+  the module `:grants` names, such as `WardrikOAuth`:
+
+      config :wardrik, WardrikVault, keys: [...], grants: WardrikOAuth
+
+  A grant `resolve/2` finds is handed to that module to answer, renewing it
+  where it has run out. A name nobody holds that the module can grant is asked
+  for, of the call's user, or of its org where the call has no user, and the
+  call parks on where they authorize. See `WardrikVault.Grants`.
 
   ## Keys
 
-  Secrets are sealed with AES-256-GCM. `:keys` is a list of base64-encoded
+  Credentials are sealed with AES-256-GCM. `:keys` is a list of base64-encoded
   32-byte keys; the first seals, and any of them may unseal, which is what
   makes rotation possible: put the new key first, leave the old one behind it
   until nothing needs it.
@@ -37,9 +52,10 @@ defmodule WardrikVault do
   Without a key nothing is written and nothing is read: every call answers
   `{:error, :no_key}` rather than falling back to plaintext.
 
-  The key seals the value only. Which user has a secret for which name is
-  visible to anyone who can read the store, and the store is the customer's.
-  Two owners, or two names, never share a key: see `path/2`.
+  The key seals the value only. Which owner has a credential of which name,
+  and whether it is a grant, is visible to anyone who can read the store, and
+  the store is the customer's. Two owners, or two names, never share a key:
+  see `path/2`.
 
   ## Extracting this package
 
@@ -50,92 +66,165 @@ defmodule WardrikVault do
 
   @behaviour Wardrik.Credential
 
+  require Logger
+
   alias Wardrik.Credential
   alias Wardrik.Scope
   alias Wardrik.Store
+  alias WardrikVault.Config
   alias WardrikVault.Sealed
 
   @ns :vault
-  # The additional data a value is sealed with: the key, under the prefix the
-  # vault has always written.
+  # The additional data a value is sealed with: its kind and its key, under
+  # the prefix the vault has always written.
   @aad_prefix "wardrik/vault/"
   @version 1
   @key_bytes 32
   @nonce_bytes 12
 
-  @typedoc "Who a secret belongs to: a user within an organisation, `{org, user}`, an organisation, any other term the host names, or the deployment, `nil`."
+  @typedoc "Who a credential belongs to: a user within an org, `{org, user}`, an org, any other term the host names, or the deployment, `nil`."
   @type owner() :: term()
 
+  @typedoc "A secret someone put, or a grant someone gave by authorizing."
+  @type kind() :: :secret | :grant
+
   @impl Wardrik.Credential
-  def resolve(ref, %Wardrik.Call{scope: %Scope{} = scope}) do
-    with {:ok, owner} <- owner(ref, scope),
-         {:ok, secret} <- fetch(ref, owner) do
-      {:ok, Credential.secret(secret)}
+  def resolve(name, %Wardrik.Call{scope: %Scope{} = scope} = call) when is_binary(name) do
+    owners = owners(scope)
+
+    case find(name, owners) do
+      {:ok, owner, :secret, secret} -> {:ok, Credential.secret(secret, owner: owner)}
+      {:ok, owner, :grant, grant} -> Config.grants().renew(name, owner, grant, call)
+      {:unreadable, owner} -> ask(name, owner, call)
+      :none -> ask(name, hd(owners), call)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Tells the grants module that the grant last resolved for `name` was refused."
+  @impl Wardrik.Credential
+  def refused(name, %Wardrik.Call{scope: %Scope{} = scope} = call) when is_binary(name) do
+    case find(name, owners(scope)) do
+      {:ok, owner, :grant, _grant} -> Config.grants().refused(name, owner, call)
+      _secret_or_none -> :ok
+    end
+  end
+
+  # Whose credentials a scope reaches, the most specific first.
+  defp owners(%Scope{org: org, user: user}) do
+    Enum.reject([user && {org, user}, org], &is_nil/1) ++ [nil]
+  end
+
+  # The first of `owners` holding `name`. A grant that no longer unseals is
+  # asked for again; a secret that does not is an error.
+  defp find(name, owners) do
+    Enum.reduce_while(owners, :none, fn owner, :none ->
+      case lookup(name, owner) do
+        {:ok, kind, value} -> {:halt, {:ok, owner, kind, value}}
+        {:error, :not_found} -> {:cont, :none}
+        {:error, :grant, reason} -> {:halt, unreadable(name, owner, reason)}
+        {:error, _kind, reason} -> {:halt, {:error, reason}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp unreadable(name, owner, reason) do
+    Logger.warning(
+      "#{name} for #{inspect(owner)} cannot be read (#{inspect(reason)}); asking again"
+    )
+
+    {:unreadable, owner}
+  end
+
+  defp ask(name, owner, call) do
+    grants = Config.grants()
+
+    if grants && grants.grants?(name),
+      do: grants.ask(name, owner, call),
+      else: {:error, :not_found}
+  end
+
+  @doc """
+  Seals `value` and writes it down as `name` for `owner`, a secret unless
+  `kind: :grant` says it is one.
+
+  Overwrites whatever was there, so authorizing again is a `put/4`.
+  """
+  @spec put(String.t(), owner(), String.t(), keyword()) :: :ok | {:error, term()}
+  def put(name, owner, value, opts \\ []) when is_binary(name) and is_binary(value) do
+    kind = Keyword.get(opts, :kind, :secret)
+
+    with {:ok, key} <- sealing_key() do
+      path = path(name, owner)
+      write(path, seal(key, path, kind, value))
+    end
+  end
+
+  @doc "Unseals what is written as `name` for `owner`, a secret or a grant."
+  @spec fetch(String.t(), owner()) :: {:ok, String.t()} | {:error, term()}
+  def fetch(name, owner) do
+    case lookup(name, owner) do
+      {:ok, _kind, value} -> {:ok, value}
+      {:error, _kind, reason} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   @doc """
-  Seals `secret` and writes it down.
-
-  Overwrites whatever was there, so re-authorizing is a `put/3`.
+  What is written as `name` for `owner`, with its kind, or why not: `:not_found`
+  where nothing is, and the kind with the reason where it does not unseal.
   """
-  @spec put(Credential.ref(), owner(), String.t()) :: :ok | {:error, term()}
-  def put(ref, owner, secret) when is_binary(secret) do
-    with {:ok, key} <- sealing_key(),
-         {:ok, path} <- path(ref, owner) do
-      write(path, seal(key, path, secret))
-    end
-  end
+  @spec lookup(String.t(), owner()) ::
+          {:ok, kind(), String.t()} | {:error, term()} | {:error, kind(), term()}
+  def lookup(name, owner) do
+    path = path(name, owner)
 
-  @doc "Unseals the secret written for this reference and owner."
-  @spec fetch(Credential.ref(), owner()) :: {:ok, String.t()} | {:error, term()}
-  def fetch(ref, owner) do
     with {:ok, keys} <- unsealing_keys(),
-         {:ok, path} <- path(ref, owner),
          {:ok, %Sealed{} = sealed} <- read(path) do
-      unseal(keys, path, sealed)
+      case unseal(keys, path, sealed) do
+        {:ok, value} -> {:ok, sealed.kind, value}
+        {:error, reason} -> {:error, sealed.kind, reason}
+      end
     end
   end
 
-  @doc "Whether a secret is written for this reference and owner."
-  @spec has?(Credential.ref(), owner()) :: boolean()
-  def has?(ref, owner), do: match?({:ok, _secret}, fetch(ref, owner))
+  @doc "Whether anything is written as `name` for `owner`."
+  @spec has?(String.t(), owner()) :: boolean()
+  def has?(name, owner), do: match?({:ok, _value}, fetch(name, owner))
 
-  @doc "Removes a secret. Removing one that is not there is still `:ok`."
-  @spec forget(Credential.ref(), owner()) :: :ok | {:error, term()}
-  def forget(ref, owner) do
-    with {:ok, path} <- path(ref, owner), do: Store.delete(@ns, path)
-  end
+  @doc "Removes what is written as `name` for `owner`. Removing nothing is still `:ok`."
+  @spec forget(String.t(), owner()) :: :ok | {:error, term()}
+  def forget(name, owner), do: Store.delete(@ns, path(name, owner))
 
   @doc """
-  The references an owner has secrets for, as `{kind, name}` pairs.
+  The names `owner` holds credentials of.
 
-  Reads no secret and needs no key.
+  Reads no credential and needs no key.
   """
-  @spec names(:user | :org | :named, owner()) :: [Credential.ref()]
-  def names(kind, owner) do
-    prefix = "#{kind}/" <> segment(owner) <> "/"
+  @spec names(owner()) :: [String.t()]
+  def names(owner) do
+    prefix = segment(owner) <> "/"
 
     for key <- Store.keys(@ns, prefix),
         name = String.replace_prefix(key, prefix, ""),
         name != "",
-        do: {kind, URI.decode(name)}
+        do: URI.decode(name)
   end
 
   @doc """
-  Every secret written, as `{ref, owner}` pairs.
+  Every credential written, as `{name, owner}` pairs.
 
   An owner written as text, such as an org, reads back as that text, and the
   deployment's as `nil`. Any other owner, such as a user's `{org, user}`, is
-  written only as a hash of it, and reads back as `:hashed`; `names/2` lists
-  what one such owner has. Reads no secret and needs no key.
+  written only as a hash of it, and reads back as `:hashed`; `names/1` lists
+  what one such owner holds. Reads no credential and needs no key.
   """
-  @spec list() :: [{Credential.ref(), owner() | :hashed}]
+  @spec list() :: [{String.t(), owner() | :hashed}]
   def list do
     for key <- Store.keys(@ns),
-        [kind, owner, name] <- [String.split(key, "/")],
-        kind in ~w(user org named),
-        do: {{String.to_existing_atom(kind), URI.decode(name)}, unsegment(owner)}
+        [owner, name] <- [String.split(key, "/")],
+        do: {URI.decode(name), unsegment(owner)}
   end
 
   @doc "A new key, base64-encoded, for `:keys`."
@@ -155,22 +244,11 @@ defmodule WardrikVault do
   def namespace, do: @ns
 
   @doc """
-  The key a reference and owner are written under, within `namespace/0`.
-  Distinct references and owners are written under distinct keys.
+  The key `name` is written under for `owner`, within `namespace/0`. Distinct
+  names and owners are written under distinct keys.
   """
-  @spec path(Credential.ref(), owner()) :: {:ok, String.t()} | {:error, term()}
-  def path({kind, name}, owner) when kind in [:user, :org, :named] and is_binary(name) do
-    {:ok, "#{kind}/" <> segment(owner) <> "/" <> segment(name)}
-  end
-
-  def path(ref, _owner), do: {:error, {:unknown_reference, ref}}
-
-  defp owner({:user, _name}, %Scope{user: nil}), do: {:error, :no_user}
-  defp owner({:user, _name}, %Scope{org: org, user: user}), do: {:ok, {org, user}}
-  defp owner({:org, _name}, %Scope{org: nil}), do: {:error, :no_org}
-  defp owner({:org, _name}, %Scope{org: org}), do: {:ok, org}
-  defp owner({:named, _name}, %Scope{}), do: {:ok, nil}
-  defp owner(ref, %Scope{}), do: {:error, {:unknown_reference, ref}}
+  @spec path(String.t(), owner()) :: String.t()
+  def path(name, owner) when is_binary(name), do: segment(owner) <> "/" <> segment(name)
 
   defp write(path, %Sealed{} = sealed) do
     case Store.put(@ns, path, sealed) do
@@ -187,19 +265,23 @@ defmodule WardrikVault do
     end
   end
 
-  # The path is authenticated along with the secret, so a sealed value moved to
-  # another user's key will not unseal there.
-  defp seal(key, path, secret) do
+  # The kind and the path are authenticated along with the value, so a sealed
+  # value moved to another owner's key, or passed off as another kind, will
+  # not unseal.
+  defp seal(key, path, kind, value) do
     nonce = :crypto.strong_rand_bytes(@nonce_bytes)
 
     {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, secret, @aad_prefix <> path, true)
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, value, aad(kind, path), true)
 
-    %Sealed{version: @version, nonce: nonce, ciphertext: ciphertext, tag: tag}
+    %Sealed{version: @version, kind: kind, nonce: nonce, ciphertext: ciphertext, tag: tag}
   end
 
+  defp aad(:secret, path), do: @aad_prefix <> path
+  defp aad(kind, path), do: @aad_prefix <> Atom.to_string(kind) <> ":" <> path
+
   defp unseal(keys, path, %Sealed{version: @version} = sealed) do
-    aad = @aad_prefix <> path
+    aad = aad(sealed.kind, path)
 
     Enum.reduce_while(keys, {:error, :undecipherable}, fn key, answer ->
       case :crypto.crypto_one_time_aead(
@@ -233,7 +315,7 @@ defmodule WardrikVault do
     end
   end
 
-  defp configured_keys, do: WardrikVault.Config.keys()
+  defp configured_keys, do: Config.keys()
 
   defp decode_key(key) when is_binary(key) do
     case Base.decode64(key) do

@@ -7,7 +7,6 @@ defmodule WardrikOAuth.RenewTest do
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
   alias Wardrik.Test.Calls
-  alias WardrikOAuth.Tokens
 
   setup do
     start_supervised!({WardrikOAuth.Supervisor, loopback: false})
@@ -26,11 +25,11 @@ defmodule WardrikOAuth.RenewTest do
   end
 
   defp scope(owner),
-    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikOAuth)
+    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
 
   defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
 
-  defp resolve(owner), do: Credential.resolve(call(owner), {:user, "github"})
+  defp resolve(owner), do: Credential.resolve(call(owner), "github")
 
   defp provider(opts \\ []),
     do: [github: Keyword.merge([resource: resource(), scopes: ~w(repo)], opts)]
@@ -48,11 +47,11 @@ defmodule WardrikOAuth.RenewTest do
     }
 
     token = struct(Token, Map.merge(fields, overrides))
-    :ok = Tokens.Vault.put("github", {nil, owner}, Token.encode(token))
+    :ok = WardrikVault.put("github", {nil, owner}, Token.encode(token), kind: :grant)
   end
 
   defp kept(owner) do
-    {:ok, encoded} = Tokens.Vault.fetch("github", {nil, owner})
+    {:ok, encoded} = WardrikVault.fetch("github", {nil, owner})
     {:ok, token} = Token.decode(encoded)
     token
   end
@@ -156,7 +155,7 @@ defmodule WardrikOAuth.RenewTest do
     assert Credential.reveal(credential) == "at_old"
     assert token_posts() == []
 
-    :ok = Credential.refused(call(owner), {:user, "github"})
+    :ok = Credential.refused(call(owner), "github")
 
     assert {:ok, credential} = resolve(owner)
     assert Credential.reveal(credential) == "at_new"
@@ -166,12 +165,12 @@ defmodule WardrikOAuth.RenewTest do
   test "a token that cannot be read is asked for again, and left where it is", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    :ok = Tokens.Vault.put("github", {nil, owner}, "not a token")
+    :ok = WardrikVault.put("github", {nil, owner}, "not a token", kind: :grant)
 
     log = capture_log(fn -> assert {:error, {:authorization_required, _url}} = resolve(owner) end)
 
     assert log =~ "cannot be read (token_unreadable); asking again"
-    assert {:ok, "not a token"} = Tokens.Vault.fetch("github", {nil, owner})
+    assert {:ok, "not a token"} = WardrikVault.fetch("github", {nil, owner})
   end
 
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do

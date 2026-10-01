@@ -56,9 +56,8 @@ defmodule WardrikDaemon.AgentFile do
     * a module implementing `Wardrik.Tool`
 
   An agent reaches an MCP server that serves its org, as the server's `org`
-  in `config.yaml` says, and one reached as each agent's user
-  (`credential: user:NAME`) only where it works for a user. A file naming a
-  server its agent cannot reach does not read, and says why.
+  in `config.yaml` says. A file naming a server its agent cannot reach does
+  not read, and says why.
 
   ## Workspace
 
@@ -122,7 +121,9 @@ defmodule WardrikDaemon.AgentFile do
   tool worker, its rules stop counting for a gated tool's calls until the turn
   ends: each waits on a person, who sees what it would do.
   `trust_outside_content: true` is for an agent whose job is to act on what
-  strangers send.
+  strangers send. Its gated calls go ahead as its rules say, but the files
+  it writes after reading content from outside are marked all the same, so
+  another agent reading them is held as if it had read that content itself.
 
   ## Schedule
 
@@ -166,10 +167,11 @@ defmodule WardrikDaemon.AgentFile do
   answered. A target tells the agents of the org its `org` in `config.yaml`
   names, and a file routing to one for another org does not read.
 
-  The agent is given the credentials `WardrikOAuth` holds where a provider is
-  configured, and `WardrikVault`'s where the vault has a key, and records every
-  tool call in `Wardrik.Ledger.Store`, so a turn lost part way through runs no
-  call twice.
+  The agent resolves the credentials its tools name from `WardrikVault`: its
+  user's, its org's or the deployment's, and an account its user, or its
+  org, connects through `WardrikOAuth` where a provider is named for one
+  nobody holds. It records every tool call in `Wardrik.Ledger.Store`, so a
+  turn lost part way through runs no call twice.
 
   ## Over HTTP
 
@@ -315,7 +317,7 @@ defmodule WardrikDaemon.AgentFile do
           config: config,
           hooks: policy(fields["policy"], policies, modules?),
           timeout: fields["timeout"] && seconds!(fields["timeout"]),
-          credentials: credentials(),
+          credentials: WardrikVault,
           ledger: Wardrik.Ledger.Store
         ]
     )
@@ -475,23 +477,18 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   # Whether the agent under `key` can reach the server `ref`: one serving its
-  # org, and of those reached as each agent's user, only where it has one.
+  # org.
   defp reach(key, ref, opts) do
-    {org, user, _name} = Wardrik.Fleet.parse(key)
-    orgs = Keyword.get(opts, :orgs, :all)
+    {org, _user, _name} = Wardrik.Fleet.parse(key)
 
-    cond do
-      orgs != :all and org not in orgs ->
-        {:error, "config.yaml's #{ref} serves #{Enum.join(orgs, ", ")}, and not #{org}"}
-
-      match?({:user, _name}, opts[:credential]) and is_nil(user) ->
-        {:error,
-         "#{ref} is reached as each agent's user, and #{key} works for none; give it a user"}
-
-      true ->
-        :ok
+    case Keyword.get(opts, :orgs, :all) do
+      :all -> :ok
+      orgs -> if org in orgs, do: :ok, else: {:error, not_served(ref, orgs, org)}
     end
   end
+
+  defp not_served(ref, orgs, org),
+    do: "config.yaml's #{ref} serves #{Enum.join(orgs, ", ")}, and not #{org}"
 
   defp configured_servers(configured) when map_size(configured) == 0, do: ""
 
@@ -717,14 +714,6 @@ defmodule WardrikDaemon.AgentFile do
     do: to_string(value)
 
   defp optional_string!(_value, key), do: invalid!("#{key} is a string")
-
-  defp credentials do
-    cond do
-      WardrikOAuth.Config.configured?() -> WardrikOAuth
-      WardrikVault.ready?() -> WardrikVault
-      true -> nil
-    end
-  end
 
   defp invalid!(message), do: throw({:invalid, message})
 end

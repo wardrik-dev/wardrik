@@ -127,7 +127,9 @@ defmodule Wardrik.HookTest do
     test "waits on its tool where no hook allows it by name, under no hooks or quiet ones" do
       for hooks <- [[], [hook("quiet", :allow)]] do
         assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} = gated(hooks)
-        assert prompt == "deploy runs only where a rule allows it by name, and none does."
+
+        assert prompt ==
+                 "deploy is gated, so it asks unless a rule allows it by name, and none does."
       end
     end
 

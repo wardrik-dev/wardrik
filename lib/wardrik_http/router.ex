@@ -213,7 +213,7 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  @callbacks %{put: 2, get: 1, delete: 1}
+  @callbacks %{put: 2, get: 1, delete: 1, editable: 1}
 
   # The listener's definition module, where it has `callback`.
   defp definitions(conn, callback) do
@@ -234,6 +234,7 @@ defmodule WardrikHTTP.Router do
 
   defp schedule(conn, key, name) do
     with %Member{} <- Fleet.lookup(key),
+         :ok <- editable(conn, key),
          {:ok, fields} <- object(conn.body_params),
          {:ok, schedule} <- Schedule.decode(name, fields) do
       status = if scheduled?(key, name), do: 200, else: 201
@@ -244,16 +245,30 @@ defmodule WardrikHTTP.Router do
       end
     else
       nil -> not_found(conn, key)
+      {:error, :conflict, message} -> conflict(conn, message)
       {:error, message} -> invalid(conn, message)
     end
   end
 
   defp unschedule(conn, key, name) do
-    if scheduled?(key, name) do
-      :ok = Schedule.delete(key, name)
-      send_resp(conn, 204, "")
-    else
-      json(conn, 404, Resource.error("not_found", "#{key} has no schedule #{name}."))
+    case {editable(conn, key), scheduled?(key, name)} do
+      {:ok, true} ->
+        :ok = Schedule.delete(key, name)
+        send_resp(conn, 204, "")
+
+      {:ok, false} ->
+        json(conn, 404, Resource.error("not_found", "#{key} has no schedule #{name}."))
+
+      {{:error, :conflict, message}, _scheduled} ->
+        conflict(conn, message)
+    end
+  end
+
+  # An agent something else declares, such as a file, is changed there.
+  defp editable(conn, key) do
+    case definitions(conn, :editable) do
+      {:ok, module} -> module.editable(key)
+      :unsupported -> :ok
     end
   end
 

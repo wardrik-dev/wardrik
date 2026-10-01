@@ -170,7 +170,7 @@ defmodule WardrikMCP.ToolTest do
   describe "per_user?/1" do
     test "is what naming a credential means" do
       refute Server.per_user?(server())
-      assert Server.per_user?(server(credential: {:user, "github"}))
+      assert Server.per_user?(server(credential: "github"))
     end
   end
 end

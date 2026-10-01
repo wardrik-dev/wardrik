@@ -58,12 +58,13 @@ API.
   `define`, and takes effect at once. It says less than a file can: no schedules, notices, shared
   trees or `context`. See [Use the HTTP API](/guides/http-api/).
 
-A key a file declares belongs to the file, and the HTTP API refuses to define or remove it.
-Removing the file does not stop the agent; once the file is gone and the files are read again,
-`DELETE /v1/agents/{key}` removes it, with its conversation and schedules.
+An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
+refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
+`wardrik reload` removes the agent, with its conversation and schedules, and so does changing the
+file's `name`. An agent the HTTP API defined is never touched by reading the files.
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
-carries on as it was.
+carries on as it was until the file reads again.
 
 ## Turns
 

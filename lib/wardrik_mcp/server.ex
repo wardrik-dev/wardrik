@@ -19,7 +19,7 @@ defmodule WardrikMCP.Server do
   | `:trusted` | `false` | whether what its tools answer is the deployment's own; otherwise a call to one taints its run, see `c:Wardrik.Tool.outside_content?/1` |
   | `:timeout` | 60s | how long one call to this server may take |
   | `:max_result_bytes` | 128 KB | how much of a result reaches the model |
-  | `:credential` | none | a `t:Wardrik.Credential.ref/0` each call is made with |
+  | `:credential` | none | the name of the credential each call is made with, resolved for the call |
   | `:credential_header` | `authorization` | the header a resolved credential is sent in |
   | `:credential_env` | none | the variable a resolved credential is given to a command in |
   | `:stderr` | `:inherit` | where a command's own output goes: `:inherit`, `:discard`, or `{:file, path}` |
@@ -59,17 +59,17 @@ defmodule WardrikMCP.Server do
 
   ## A server each user reaches as themselves
 
-  `:credential` names what to resolve instead, and the answer is different per
-  user:
+  `:credential` names a credential to resolve for each call instead, through
+  the call's resolver, such as `WardrikVault`:
 
-      credential: {:user, "github"}
+      credential: "github"
 
-  Calls then run over a connection of that user's own, within their org, and a
-  user who has not authorized yet parks the call rather than failing it. An
-  `{:org, name}` credential gives each org a connection of its own, and a
-  `{:named, name}` one the deployment. The tools a server offers are listed
-  once over the deployment's own connection and shared: the MCP specification
-  has list results not varying per connection.
+  The answer may be the call's user's, its org's or the deployment's, and
+  calls run over a connection of its owner's own: a user's within their org,
+  an org's, or the deployment's. A user who has not authorized yet parks the
+  call rather than failing it. The tools a server offers are listed once over
+  the deployment's own connection and shared: the MCP specification has list
+  results not varying per connection.
   """
 
   @enforce_keys [:ref, :transport]
@@ -137,7 +137,7 @@ defmodule WardrikMCP.Server do
   @spec http?(t()) :: boolean()
   def http?(%__MODULE__{transport: {layer, _opts}}), do: layer in [:streamable_http, :websocket]
 
-  @doc "Whether each user reaches this server as themselves."
+  @doc "Whether calls reach this server with a credential resolved for each, over a connection of its owner's."
   @spec per_user?(t()) :: boolean()
   def per_user?(%__MODULE__{credential: credential}), do: not is_nil(credential)
 

@@ -18,17 +18,17 @@ defmodule WardrikMCP.BootstrapTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve({:user, "locked"}, %Wardrik.Call{scope: %Scope{user: "connected"}}),
-      do: {:ok, Credential.secret("a-token")}
+    def resolve("locked", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
+      do: {:ok, Credential.secret("a-token", owner: {org, "connected"})}
 
-    def resolve({:user, "locked"}, %Wardrik.Call{scope: %Scope{}}),
+    def resolve("locked", %Wardrik.Call{scope: %Scope{}}),
       do: {:error, {:authorization_required, "https://example.com/authorize"}}
   end
 
   # The stub refuses to list its tools without a token, the way a server
   # reached as a user does, so the deployment's own connection gets nothing.
   @moduletag server_opts: [
-               credential: {:user, "locked"},
+               credential: "locked",
                credential_env: "DEMO_TOKEN",
                transport_opts: [env: %{"STUB_REQUIRE_TOKEN" => "1"}]
              ]
@@ -116,7 +116,7 @@ defmodule WardrikMCP.BootstrapTest do
     # connection of any user's.
     setup %{ref: ref, server_opts: opts} do
       %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
-      :ok = Connection.close(ref, {:user, "acme", "connected"})
+      :ok = Connection.close(ref, {:owner, {"acme", "connected"}})
       :ok = WardrikMCP.disconnect(ref)
 
       {:ok, _pid} = WardrikMCP.Supervisor.connect(Server.new(ref, stub_options(opts)))
@@ -135,7 +135,7 @@ defmodule WardrikMCP.BootstrapTest do
 
     test "runs a call as the user who connected, over a connection it opens", context do
       %{ref: ref} = context
-      refute Connection.running?(ref, {:user, "acme", "connected"})
+      refute Connection.running?(ref, {:owner, {"acme", "connected"}})
 
       secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 

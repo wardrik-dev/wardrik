@@ -262,49 +262,31 @@ defmodule WardrikMCP do
 
   # A server everyone shares is reached over the deployment's own connection.
   # One reached with a credential needs a connection for whoever the
-  # credential belongs to, carrying theirs and no one else's.
+  # credential resolved belongs to, carrying theirs and no one else's: a
+  # user's, an org's, or the deployment's, over one of its own rather than
+  # the one that lists the server's tools.
   defp connected(%Server{credential: nil}, _call), do: {:ok, :deployment}
 
   defp connected(%Server{} = server, %Wardrik.Call{scope: nil}),
-    do: {:error, "#{server.ref} is reached as a user, and this call has none"}
+    do:
+      {:error,
+       "#{server.ref} needs its credential, #{server.credential}, and this call has no one to find it for"}
 
-  defp connected(%Server{} = server, %Wardrik.Call{scope: %Scope{} = scope} = call) do
-    with {:ok, principal} <- principal(server, scope) do
-      if Connection.running?(server.ref, principal) do
-        {:ok, principal}
-      else
-        open(server, call, principal)
-      end
+  defp connected(%Server{} = server, %Wardrik.Call{} = call) do
+    with {:ok, credential} <- credential(server, call) do
+      principal = {:owner, credential.owner}
+
+      if Connection.running?(server.ref, principal),
+        do: {:ok, principal},
+        else: open(server, principal, credential)
     end
   end
 
-  # Who a connection acts for is whoever owns its credential: a user within
-  # their org, since two orgs may each have a user of the same name; an org;
-  # or, for a named credential, the deployment, over a connection of its own
-  # rather than the one that lists the server's tools.
-  defp principal(%Server{credential: {:user, _name}} = server, %Scope{user: nil}),
-    do: {:error, "#{server.ref} is reached as a user, and this call has none"}
+  defp credential(%Server{} = server, call) do
+    case Credential.resolve(call, server.credential) do
+      {:ok, credential} ->
+        {:ok, credential}
 
-  defp principal(%Server{credential: {:user, _name}}, %Scope{org: org, user: user}),
-    do: {:ok, {:user, org, user}}
-
-  defp principal(%Server{credential: {:org, _name}} = server, %Scope{org: nil}),
-    do: {:error, "#{server.ref} is reached as an org, and this call has none"}
-
-  defp principal(%Server{credential: {:org, _name}}, %Scope{org: org}), do: {:ok, {:org, org}}
-  defp principal(%Server{credential: {:named, name}}, %Scope{}), do: {:ok, {:named, name}}
-
-  defp principal(%Server{credential: credential} = server, %Scope{}),
-    do: {:error, "#{server.ref} is reached with #{inspect(credential)}, which names no owner"}
-
-  defp open(%Server{} = server, call, principal) do
-    with {:ok, credential} <- Credential.resolve(call, server.credential),
-         {:ok, transport} <- Server.with_credential(server, credential),
-         good_for = Credential.remaining_ms(credential),
-         {:ok, _pid} <- WardrikMCP.Supervisor.connect(server, principal, transport, good_for),
-         {:ok, _tools} <- Connection.await(server.ref, principal, :timer.seconds(30)) do
-      {:ok, principal}
-    else
       {:error, {:authorization_required, url}} ->
         {:park, "To connect #{server.ref}, open its authorization link. " <> @carries_on,
          %{url: url, code: nil}}
@@ -318,7 +300,20 @@ defmodule WardrikMCP do
         {:error, "#{server.ref} needs a credential and this deployment resolves none"}
 
       {:error, reason} ->
-        {:error, "#{server.ref} could not be reached as this user: #{inspect(reason)}"}
+        {:error,
+         "#{server.ref} could not resolve its credential, #{server.credential}: #{inspect(reason)}"}
+    end
+  end
+
+  defp open(%Server{} = server, principal, credential) do
+    with {:ok, transport} <- Server.with_credential(server, credential),
+         good_for = Credential.remaining_ms(credential),
+         {:ok, _pid} <- WardrikMCP.Supervisor.connect(server, principal, transport, good_for),
+         {:ok, _tools} <- Connection.await(server.ref, principal, :timer.seconds(30)) do
+      {:ok, principal}
+    else
+      {:error, reason} when is_binary(reason) -> {:error, reason}
+      {:error, reason} -> {:error, "#{server.ref} could not be reached: #{inspect(reason)}"}
     end
   end
 

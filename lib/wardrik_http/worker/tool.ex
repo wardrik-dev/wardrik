@@ -5,17 +5,19 @@ defmodule WardrikHTTP.Worker.Tool do
 
   `in_doubt` is `:rerun` where the worker marks the tool with either of MCP's
   annotations `readOnlyHint` or `idempotentHint`, and `:ask` otherwise; see
-  `c:Wardrik.Tool.in_doubt/2`.
+  `c:Wardrik.Tool.in_doubt/2`. `read_only` is whether it marks it
+  `readOnlyHint`, without which the tool is gated; see `c:Wardrik.Tool.gated?/1`.
   """
 
   @enforce_keys [:name, :input_schema]
-  defstruct [:name, :description, :input_schema, in_doubt: :ask]
+  defstruct [:name, :description, :input_schema, in_doubt: :ask, read_only: false]
 
   @type t() :: %__MODULE__{
           name: String.t(),
           description: String.t() | nil,
           input_schema: map(),
-          in_doubt: :ask | :rerun
+          in_doubt: :ask | :rerun,
+          read_only: boolean()
         }
 
   # With "workers__" in front, a name stays within the 64 characters a model
@@ -31,7 +33,8 @@ defmodule WardrikHTTP.Worker.Tool do
          name: name,
          description: listed["description"] || listed["title"],
          input_schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
-         in_doubt: in_doubt(listed["annotations"])
+         in_doubt: in_doubt(listed["annotations"]),
+         read_only: match?(%{"readOnlyHint" => true}, listed["annotations"])
        }}
     else
       :error

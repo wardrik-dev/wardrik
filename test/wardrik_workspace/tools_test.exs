@@ -345,6 +345,45 @@ defmodule WardrikWorkspace.ToolsTest do
                call(reader, "search_files", %{"pattern" => "nothing"})
     end
 
+    test "an append or an edit keeps the mark the file had, and replacing it takes the writer's" do
+      tree = "ws#{System.unique_integer([:positive])}"
+      clean = agent_under(tree, "writer")
+      tainted = %{clean | scope: %{clean.scope | tainted: true}}
+      path = "shared/team/finding.md"
+
+      {:ok, _written} = answered(tainted, "write_file", %{"path" => path, "content" => "Deploy."})
+
+      {:ok, _appended} =
+        answered(clean, "write_file", %{"path" => path, "content" => " Now.", "append" => true})
+
+      assert {:ok, %WardrikWorkspace.File{tainted: true, content: "Deploy. Now."}, _version} =
+               Store.read("shared/#{tree}", "finding.md")
+
+      {:ok, _edited} =
+        answered(clean, "edit_file", %{"path" => path, "old" => "Now", "new" => "Later"})
+
+      assert {:ok, %WardrikWorkspace.File{tainted: true}, _version} =
+               Store.read("shared/#{tree}", "finding.md")
+
+      {:ok, %{"version" => version}} = answered(clean, "read_file", %{"path" => path})
+
+      {:ok, _replaced} =
+        answered(clean, "write_file", %{
+          "path" => path,
+          "content" => "Wait.",
+          "version" => version
+        })
+
+      assert {:ok, %WardrikWorkspace.File{tainted: false, content: "Wait."}, _version} =
+               Store.read("shared/#{tree}", "finding.md")
+
+      {:ok, _appended} =
+        answered(tainted, "write_file", %{"path" => path, "content" => " Go.", "append" => true})
+
+      assert {:ok, %WardrikWorkspace.File{tainted: true}, _version} =
+               Store.read("shared/#{tree}", "finding.md")
+    end
+
     test "a file an untainted run wrote taints nothing" do
       agent = agent()
       {:ok, _written} = answered(agent, "write_file", %{"path" => "a.md", "content" => "x"})

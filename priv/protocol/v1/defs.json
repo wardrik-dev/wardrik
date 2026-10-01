@@ -251,6 +251,10 @@
         },
         "tool_call_id": {
           "type": "string"
+        },
+        "outside_content": {
+          "type": "boolean",
+          "description": "true where the run had read content from outside, which may be what asked for the call."
         }
       },
       "additionalProperties": false,

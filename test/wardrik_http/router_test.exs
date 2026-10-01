@@ -68,6 +68,13 @@ defmodule WardrikHTTP.RouterTest do
         true -> Wardrik.Store.delete(@ns, key)
       end
     end
+
+    @impl true
+    def editable(key) do
+      if String.ends_with?(key, "-owned"),
+        do: {:error, :conflict, "#{key} belongs to a file."},
+        else: :ok
+    end
   end
 
   setup do
@@ -665,6 +672,22 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
       assert Wardrik.Fleet.lookup(key)
+    end
+
+    test "may refuse to change an agent's schedules, which are left be", %{kept: kept} do
+      {key, _agent} = Fleet.start_agent([], Fleet.key("kept") <> "-owned")
+      {:ok, _pid} = Schedule.put(key, "sweep", every: "1h", prompt: "Look.")
+      on_exit(fn -> Schedule.sync(key, []) end)
+
+      assert {:ok, %{status: 409, body: body}} =
+               Req.put(kept,
+                 url: "/v1/agents/#{key}/schedules/sweep",
+                 json: %{"every" => "2h", "prompt" => "Look less."}
+               )
+
+      assert body["error"]["message"] == "#{key} belongs to a file."
+      assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
+      assert [%{every: {:interval, 3_600_000}}] = Schedule.for_agent(key)
     end
   end
 

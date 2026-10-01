@@ -51,7 +51,11 @@ defmodule WardrikOAuth.Case do
       vault: Application.get_env(:wardrik, WardrikVault)
     }
 
-    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
+    Application.put_env(:wardrik, WardrikVault,
+      keys: [WardrikVault.generate_key()],
+      grants: WardrikOAuth
+    )
+
     forget_registrations()
 
     on_exit(fn ->

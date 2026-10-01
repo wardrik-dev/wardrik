@@ -118,6 +118,10 @@ export interface Interrupt {
   reason: "tool_approval" | "model_approval" | "authorization";
   message: string;
   tool_call_id?: string;
+  /**
+   * true where the run had read content from outside, which may be what asked for the call.
+   */
+  outside_content?: boolean;
 }
 /**
  * One entry of GET /v1/agents.

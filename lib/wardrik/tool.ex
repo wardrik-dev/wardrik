@@ -54,7 +54,7 @@ defmodule Wardrik.Tool do
       end
 
       def run(%Wardrik.Call{target: %Wardrik.Call.Tool{arguments: args}} = call) do
-        case Wardrik.Credential.resolve(call, {:user, "github"}) do
+        case Wardrik.Credential.resolve(call, "github") do
           {:ok, credential} -> Wardrik.Call.answer(call, search(credential, args.query))
           {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
           {:error, reason} -> Wardrik.Call.answer(call, Wardrik.Tool.Result.error(reason))

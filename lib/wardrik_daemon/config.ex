@@ -31,7 +31,7 @@ defmodule WardrikDaemon.Config do
           only: [read_file, list_directory]
         github:
           url: https://api.githubcopilot.com/mcp/
-          credential: user:github
+          credential: github
         docs:
           url: https://docs.example.com/mcp
           org: "*"
@@ -89,18 +89,18 @@ defmodule WardrikDaemon.Config do
   A server with `command` is started as a command, with `args`, `env` and
   `cwd` beside it; one with `url` is reached over HTTP, with `headers`. Either
   takes `only`, `except`, `prefix`, `timeout` in seconds, `max_result_bytes`,
-  `credential` as `user:NAME`, `org:NAME` or `named:NAME` along with
+  `credential`, the name of the credential it is reached with, along with
   `credential_header`, `credential_scheme` and `credential_env`, `gated`,
   the tools whose calls wait on a person unless a rule allows them by name,
   and `trusted: true` for a server whose answers are the deployment's own, so
   a call to it does not taint its run. See `WardrikMCP.Server`.
 
-  A credential is a secret the vault keeps sealed. `named:NAME` is one for the
-  whole deployment, which `wardrik vault put NAME` seals. `org:NAME` is the
-  agent's org's, sealed with `wardrik vault put NAME --org ORG`, and
-  `user:NAME` the agent's user's, sealed with `--user USER`, and `--org ORG`
-  where the agent is not in the deployment's org, or by the user connecting
-  their account where `oauth` has a provider for the server.
+  A credential is kept in the vault, sealed, and found for each call the most
+  specific first: the agent's user's, sealed with `wardrik vault put NAME
+  --user USER`; its org's, with `--org ORG`; then the deployment's, with
+  `wardrik vault put NAME`. Where none holds it and `oauth` has a provider of
+  the same name, the agent's user, or its org where it has no user, is asked
+  to connect an account, which is kept in the vault from then on.
 
   `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
   describes them. `vault` takes `keys`, as `WardrikVault` does; without them,
@@ -183,7 +183,7 @@ defmodule WardrikDaemon.Config do
   @provider_keys Enum.map(@provider, &Atom.to_string/1)
   @vault_keys Enum.map(@vault, &Atom.to_string/1)
   @listener_keys Enum.map(@listener, &Atom.to_string/1)
-  @credential_kinds %{"user" => :user, "org" => :org, "named" => :named}
+  @credential "the name of a credential, such as github: letters, digits, ., - and _"
 
   # The sections a read gives no name from the vault, and why.
   @environment_only %{
@@ -430,17 +430,13 @@ defmodule WardrikDaemon.Config do
 
   defp server_option({key, value}, _path), do: {setting(key), value}
 
-  defp credential(ref, path) when is_binary(ref) do
-    with [kind, name] when name != "" <- String.split(ref, ":", parts: 2),
-         {:ok, kind} <- Map.fetch(@credential_kinds, kind) do
-      {kind, name}
-    else
-      _other -> invalid!(path ++ ["credential"], "is user:NAME, org:NAME or named:NAME")
-    end
+  defp credential(name, path) when is_binary(name) do
+    if Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/, name),
+      do: name,
+      else: invalid!(path ++ ["credential"], "is #{inspect(name)}, which is not #{@credential}")
   end
 
-  defp credential(_ref, path),
-    do: invalid!(path ++ ["credential"], "is user:NAME, org:NAME or named:NAME")
+  defp credential(_name, path), do: invalid!(path ++ ["credential"], "is #{@credential}")
 
   # -- oauth and vault -------------------------------------------------------
 

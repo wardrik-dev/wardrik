@@ -12,7 +12,7 @@ defmodule WardrikMCP.AuthorizedTest do
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
 
-  @moduletag server_opts: [credential: {:user, "github"}, credential_env: "DEMO_TOKEN"]
+  @moduletag server_opts: [credential: "github", credential_env: "DEMO_TOKEN"]
 
   setup %{ref: ref, owner: owner} do
     Req.Test.set_req_test_to_shared()
@@ -24,7 +24,7 @@ defmodule WardrikMCP.AuthorizedTest do
 
     scope =
       Config.new(tools: [{WardrikMCP, ref}])
-      |> Scope.root("acme/@#{owner}/assistant", user: owner, credentials: WardrikOAuth)
+      |> Scope.root("acme/@#{owner}/assistant", user: owner, credentials: WardrikVault)
 
     %{scope: scope}
   end

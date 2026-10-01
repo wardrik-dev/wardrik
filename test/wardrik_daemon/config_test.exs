@@ -104,7 +104,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert server[:timeout] == 30_000
     end
 
-    test "a server with a url is reached over HTTP, as the user it names", context do
+    test "a server with a url is reached over HTTP, with the credential it names", context do
       assert {:ok, [{WardrikMCP, servers: [github: server]}]} =
                read(
                  """
@@ -113,7 +113,7 @@ defmodule WardrikDaemon.ConfigTest do
                      url: https://api.githubcopilot.com/mcp/
                      headers:
                        x-team: core
-                     credential: user:github
+                     credential: github
                  """,
                  context
                )
@@ -122,7 +122,7 @@ defmodule WardrikDaemon.ConfigTest do
                {:streamable_http,
                 base_url: "https://api.githubcopilot.com/mcp/", headers: %{"x-team" => "core"}}
 
-      assert server[:credential] == {:user, "github"}
+      assert server[:credential] == "github"
     end
 
     test "${NAME} is read from the environment", context do
@@ -307,11 +307,14 @@ defmodule WardrikDaemon.ConfigTest do
       assert trusted =~ "mcp.a.trusted is true or false"
     end
 
-    test "a credential is user:, org: or named:", context do
-      assert {:error, message} =
-               read("mcp:\n  a:\n    url: https://x\n    credential: github\n", context)
+    test "a credential is a name", context do
+      for credential <- ["user:github", "a/b", "_x", "\"\""] do
+        assert {:error, message} =
+                 read("mcp:\n  a:\n    url: https://x\n    credential: #{credential}\n", context)
 
-      assert message =~ "mcp.a.credential is user:NAME, org:NAME or named:NAME"
+        assert message =~ "mcp.a.credential is"
+        assert message =~ "the name of a credential"
+      end
     end
 
     test "ssh moves the listener", context do

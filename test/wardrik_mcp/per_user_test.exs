@@ -8,37 +8,38 @@ defmodule WardrikMCP.PerUserTest do
   alias Wardrik.Test.Calls
   alias WardrikMCP.Connection
 
+  # Resolves stub as a vault would: each connected user's own, and an org's
+  # for an agent with no user, each saying whose it is.
   defmodule Vault do
     @moduledoc false
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{org: "globex", user: "connected"}}),
-      do: {:ok, Credential.secret("token-for-globex-connected")}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: nil}}),
+      do: {:ok, Credential.secret("token-for-#{org}", owner: org)}
 
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{user: "connected"}}),
-      do: {:ok, Credential.secret("token-for-connected")}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{org: "globex", user: "connected"}}),
+      do: {:ok, Credential.secret("token-for-globex-connected", owner: {"globex", "connected"})}
 
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{user: "unconnected"}}),
+    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
+      do: {:ok, Credential.secret("token-for-connected", owner: {org, "connected"})}
+
+    def resolve("stub", %Wardrik.Call{scope: %Scope{user: "unconnected"}}),
       do: {:error, {:authorization_required, "https://example.com/connect"}}
 
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{user: "elsewhere"}}),
+    def resolve("stub", %Wardrik.Call{scope: %Scope{user: "elsewhere"}}),
       do: {:error, {:authorization_required, "https://example.com/device", "WDJB-MJHT"}}
 
-    def resolve({:user, "stub"}, %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
-
-    def resolve({:org, "stub"}, %Wardrik.Call{scope: %Scope{org: org}}),
-      do: {:ok, Credential.secret("token-for-#{org}")}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
   end
 
-  @moduletag server_opts: [
-               credential: {:user, "stub"},
-               credential_env: "DEMO_TOKEN"
-             ]
+  @moduletag server_opts: [credential: "stub", credential_env: "DEMO_TOKEN"]
 
   defp scope(ref, org, user) do
+    key = if user, do: "#{org}/@#{user}/assistant", else: "#{org}/assistant"
+
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root("#{org}/#{user || "_"}/assistant", org: org, user: user, credentials: Vault)
+    |> Scope.root(key, org: org, user: user, credentials: Vault)
   end
 
   defp run(ref, user, tool, arguments), do: run(ref, "acme", user, tool, arguments)
@@ -75,9 +76,9 @@ defmodule WardrikMCP.PerUserTest do
   test "each user gets a connection of their own", %{ref: ref} do
     run(ref, "connected", "echo", %{"value" => "hello"})
 
-    assert Connection.running?(ref, {:user, "acme", "connected"})
+    assert Connection.running?(ref, {:owner, {"acme", "connected"}})
     assert Connection.running?(ref, :deployment)
-    refute Connection.running?(ref, {:user, "acme", "someone-else"})
+    refute Connection.running?(ref, {:owner, {"acme", "someone-else"}})
   end
 
   test "a user of the same name in another org calls over a connection of their own",
@@ -88,32 +89,19 @@ defmodule WardrikMCP.PerUserTest do
     globex = text(run(ref, "globex", "connected", "secret", %{"name" => "DEMO_TOKEN"}))
 
     assert globex =~ "token-for-globex-connected"
-    assert Connection.running?(ref, {:user, "acme", "connected"})
-    assert Connection.running?(ref, {:user, "globex", "connected"})
+    assert Connection.running?(ref, {:owner, {"acme", "connected"}})
+    assert Connection.running?(ref, {:owner, {"globex", "connected"}})
   end
 
-  test "an agent with no user is refused, and the deployment's own connection is left alone",
-       %{ref: ref} do
-    assert text(run(ref, nil, "secret", %{"name" => "DEMO_TOKEN"})) =~
-             "is reached as a user, and this call has none"
+  test "a credential an org holds gives each org a connection of its own", %{ref: ref} do
+    assert text(run(ref, "acme", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~ "token-for-acme"
 
-    assert Connection.running?(ref, :deployment)
-  end
-
-  @tag server_opts: [credential: {:org, "stub"}, credential_env: "DEMO_TOKEN"]
-  test "an org credential gives each org a connection of its own", %{ref: ref} do
-    assert text(run(ref, "acme", "jon", "secret", %{"name" => "DEMO_TOKEN"})) =~
-             "token-for-acme"
-
-    assert text(run(ref, "globex", "jon", "secret", %{"name" => "DEMO_TOKEN"})) =~
+    assert text(run(ref, "globex", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~
              "token-for-globex"
 
-    assert text(run(ref, "acme", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~
-             "token-for-acme"
-
-    assert Connection.running?(ref, {:org, "acme"})
-    assert Connection.running?(ref, {:org, "globex"})
-    refute Connection.running?(ref, {:user, "acme", "jon"})
+    assert Connection.running?(ref, {:owner, "acme"})
+    assert Connection.running?(ref, {:owner, "globex"})
+    assert Connection.running?(ref, :deployment)
   end
 
   test "a user who has not authorized parks the call, with somewhere to go", %{ref: ref} do
@@ -123,7 +111,7 @@ defmodule WardrikMCP.PerUserTest do
     assert prompt =~ "To connect #{ref}, open its authorization link"
     refute prompt =~ "https://"
     assert link == %{url: "https://example.com/connect", code: nil}
-    refute Connection.running?(ref, {:user, "acme", "unconnected"})
+    refute Connection.running?(ref, {:owner, {"acme", "unconnected"}})
   end
 
   test "a user who authorizes on another device is given the code to enter", %{ref: ref} do
@@ -148,7 +136,7 @@ defmodule WardrikMCP.PerUserTest do
              WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "x"}))
              |> Calls.result()
 
-    assert error["message"] =~ "this call has none"
+    assert error["message"] =~ "this call has no one to find it for"
   end
 
   test "the deployment's own connection is not given a user's credential", %{ref: ref} do

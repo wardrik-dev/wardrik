@@ -6,8 +6,8 @@ defmodule WardrikMCP.Connection do
   `WardrikMCP.Supervisor` starts one per configured `WardrikMCP.Server`, and
   `WardrikMCP.call/3` starts one more per owner of the credential a server is
   reached with. A connection is named by its server and the principal it acts
-  for: `:deployment` for the one the supervisor starts, and `{:user, org,
-  user}`, `{:org, org}` or `{:named, name}` for one carrying a credential. It
+  for: `:deployment` for the one the supervisor starts, and `{:owner, owner}`
+  for one carrying a credential, with the credential's `:owner`. It
   starts an `Anubis.Client` with the server's transport, asks for the server's
   tools, and registers them as a `WardrikMCP.Offer` so `WardrikMCP.tools/1` can
   read them without a call. A server that cannot be reached offers nothing and

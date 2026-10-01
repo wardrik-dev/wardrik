@@ -71,9 +71,10 @@ An agent with no policy may make every call its tools allow, apart from a gated 
 
 ## Gated tools
 
-Some tools are gated: a call to one waits on a person unless an `allow` rule names it.
-`default: allow` is not enough, so a gated tool asks under a policy that names nothing, as it does
-under none.
+A gated tool is one that may change something, such as opening an issue or refunding an order. Its
+calls ask a person by default: one runs without asking only where an `allow` rule names it.
+`default: allow` covers the other tools, not gated ones, so a gated tool asks under a policy that
+names nothing, as it does under none.
 
 `config.yaml` gates an MCP server's tools with `gated`, by the names the server gives them:
 
@@ -84,7 +85,9 @@ mcp:
     gated: [create_*, issue_write]   # or true, for every tool
 ```
 
-A tool written in Elixir can say it is gated too. The tools the daemon ships are not.
+A [tool worker](/guides/tool-workers/)'s tool is gated unless the worker marks it read-only, with
+MCP's `readOnlyHint`. A tool written in Elixir can say it is gated too. The tools the daemon ships
+are not.
 
 ## Content from outside
 
@@ -103,7 +106,9 @@ from the next round of calls the model makes. The person is told why:
 > asked for it.
 
 An agent whose job is to act on what strangers send writes `trust_outside_content: true` in its
-file. An agent defined over the HTTP API cannot.
+file. Its gated calls then go ahead as its rules say, but what it writes after reading content from
+outside is [marked](/concepts/files-and-memory/#content-from-outside) all the same, so another agent
+that reads it is held. An agent defined over the HTTP API cannot say it.
 
 ## Waiting on a person
 
@@ -148,6 +153,10 @@ A call can also be decided:
 
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the
 [webhook](/guides/slack/#webhooks) do.
+
+Wherever a call is shown, it says whether its turn had read content from outside first, which may
+be what asked for it: `wardrik parked` and the Slack notice say so under the question, and the
+HTTP API and the webhook carry `outside_content: true`.
 
 A denied tool call is answered with an error the model reads, carrying the reason, and the turn
 carries on. A model call refused by a budget ends the turn.

@@ -138,6 +138,62 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Agents.put("#{org}/alpha", %{}) == {:error, :conflict, message}
     assert Agents.delete("#{org}/alpha") == {:error, :conflict, message}
+    assert Agents.editable("#{org}/alpha") == {:error, :conflict, message}
+  end
+
+  describe "an agent the files no longer declare" do
+    test "is removed once its file is, with its conversation", %{dir: dir, org: org} = context do
+      write(context, "alpha", "")
+      write(context, "beta", "")
+      start_supervised!({Agents, dir: dir})
+      Agents.files()
+      assert %{} = Agent.status("#{org}/beta")
+
+      File.rm!(Path.join([dir, "agents", "beta.md"]))
+      Agents.reload()
+
+      assert {:error, :not_found} = Agent.status("#{org}/beta")
+      assert %{} = Agent.status("#{org}/alpha")
+    end
+
+    test "is removed when its file names another agent", %{org: org} = context do
+      write(context, "alpha", "")
+      start_supervised!({Agents, dir: context.dir})
+
+      write(context, "alpha", "name: gamma\n")
+      Agents.reload()
+
+      assert {:error, :not_found} = Agent.status("#{org}/alpha")
+      assert %{} = Agent.status("#{org}/gamma")
+    end
+
+    test "is left as it was while its file does not read", %{org: org} = context do
+      write(context, "alpha", "")
+      start_supervised!({Agents, dir: context.dir})
+
+      write(context, "alpha", "tools: [nope]\n")
+      Agents.reload()
+      assert %{} = Agent.status("#{org}/alpha")
+
+      write(context, "alpha", "")
+      Agents.reload()
+      assert %{} = Agent.status("#{org}/alpha")
+    end
+
+    test "leaves an agent the HTTP API defined alone", %{org: org} = context do
+      write(context, "alpha", "")
+      start_supervised!({Agents, dir: context.dir})
+
+      {:ok, spec} = Agents.put("#{org}/defined", %{"instructions" => "You help."})
+      {:ok, _pid} = Fleet.put(spec)
+
+      File.rm!(Path.join([context.dir, "agents", "alpha.md"]))
+      Agents.reload()
+
+      assert {:error, :not_found} = Agent.status("#{org}/alpha")
+      assert %{} = Agent.status("#{org}/defined")
+      assert :ok = Agents.editable("#{org}/defined")
+    end
   end
 
   test "an agent naming a policy that does not read does not run", %{org: org} = context do

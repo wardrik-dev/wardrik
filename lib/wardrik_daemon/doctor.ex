@@ -232,18 +232,26 @@ defmodule WardrikDaemon.Doctor do
   # -- servers -----------------------------------------------------------------
 
   defp servers(settings) do
+    providers =
+      for {name, _provider} <-
+            settings |> Keyword.get(WardrikOAuth, []) |> Keyword.get(:providers, []),
+          do: to_string(name)
+
     for {ref, opts} <- settings |> Keyword.get(WardrikMCP, []) |> Keyword.get(:servers, []) do
       {result, found} = reach(Keyword.fetch!(opts, :transport))
-      {result, "mcp #{ref}", found <> authorized(opts)}
+      {result, "mcp #{ref}", found <> authorized(opts[:credential], providers)}
     end
   end
 
-  defp authorized(opts) do
-    case opts[:credential] do
-      nil -> ""
-      {:user, _name} -> "; each user authorizes it"
-      _org_or_named -> "; its credential comes from the vault"
-    end
+  # Where a server's credential comes from: the vault, where a user, an org
+  # or the deployment may hold it, and an account each user connects where a
+  # provider is named for it.
+  defp authorized(nil, _providers), do: ""
+
+  defp authorized(name, providers) do
+    if name in providers,
+      do: "; credential #{name}, from the vault, or an account each user connects",
+      else: "; credential #{name}, from the vault"
   end
 
   defp reach({:stdio, opts}) do

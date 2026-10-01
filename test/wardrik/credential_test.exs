@@ -11,22 +11,22 @@ defmodule Wardrik.CredentialTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve({:user, "github"}, %Wardrik.Call{scope: %Scope{user: "jon"}}),
-      do: {:ok, Credential.secret("ghs_real")}
+    def resolve("github", %Wardrik.Call{scope: %Scope{user: "jon"}}),
+      do: {:ok, Credential.secret("ghs_real", owner: "jon")}
 
-    def resolve({:user, "github"}, %Wardrik.Call{scope: %Scope{}}),
-      do: {:error, {:authorization_required, "https://example.com/connect"}}
-
-    def resolve({:org, "github"}, %Wardrik.Call{scope: %Scope{}}),
+    def resolve("github", %Wardrik.Call{scope: %Scope{user: nil}}),
       do: {:ok, Credential.placeholder("{{org.github}}")}
 
-    def resolve({:named, "explodes"}, %Wardrik.Call{scope: %Scope{}}),
+    def resolve("github", %Wardrik.Call{scope: %Scope{}}),
+      do: {:error, {:authorization_required, "https://example.com/connect"}}
+
+    def resolve("explodes", %Wardrik.Call{scope: %Scope{}}),
       do: raise("the vault is on fire")
 
     def resolve(_ref, %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
 
     @impl true
-    def refused({:named, "explodes"}, _call), do: raise("the vault is on fire")
+    def refused("explodes", _call), do: raise("the vault is on fire")
     def refused(ref, %Wardrik.Call{}), do: send(self(), {:refused, ref}) && :ok
   end
 
@@ -47,10 +47,11 @@ defmodule Wardrik.CredentialTest do
       assert {:ok, credential} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(credentials: Vault, user: "jon")),
-                 {:user, "github"}
+                 "github"
                )
 
       assert credential.kind == :secret
+      assert credential.owner == "jon"
       assert Credential.reveal(credential) == "ghs_real"
     end
 
@@ -58,31 +59,25 @@ defmodule Wardrik.CredentialTest do
       assert {:error, {:authorization_required, "https://example.com/connect"}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(credentials: Vault, user: "someone")),
-                 {:user, "github"}
+                 "github"
                )
     end
 
-    test "an org reference can resolve to a placeholder for a proxy to exchange" do
+    test "a credential can resolve to a placeholder for a proxy to exchange" do
       assert {:ok, %Credential{kind: :placeholder, value: "{{org.github}}"}} =
-               Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: Vault)),
-                 {:org, "github"}
-               )
+               Credential.resolve(Calls.tool("tool", %{}, scope(credentials: Vault)), "github")
     end
 
-    test "a reference the resolver refuses is an error, not a raise" do
+    test "a name the resolver refuses is an error, not a raise" do
       assert {:error, :denied} =
-               Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: Vault)),
-                 {:named, "anything"}
-               )
+               Credential.resolve(Calls.tool("tool", %{}, scope(credentials: Vault)), "anything")
     end
 
     test "a resolver that raises fails the call, not the turn" do
       assert {:error, {:resolver_failed, message}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(credentials: Vault)),
-                 {:named, "explodes"}
+                 "explodes"
                )
 
       assert message =~ "the vault is on fire"
@@ -90,29 +85,29 @@ defmodule Wardrik.CredentialTest do
 
     test "a scope with no resolver resolves nothing" do
       assert {:error, :no_resolver} =
-               Credential.resolve(Calls.tool("tool", %{}, scope()), {:user, "github"})
+               Credential.resolve(Calls.tool("tool", %{}, scope()), "github")
     end
   end
 
   describe "refused/2" do
-    test "tells the scope's resolver which reference was refused" do
+    test "tells the scope's resolver which credential was refused" do
       call = Calls.tool("github__read", %{}, scope(user: "jon", credentials: Vault))
 
-      assert :ok = Credential.refused(call, {:user, "github"})
-      assert_received {:refused, {:user, "github"}}
+      assert :ok = Credential.refused(call, "github")
+      assert_received {:refused, "github"}
     end
 
     test "passes over a resolver without it, one that raises, and a scope with none" do
       assert :ok =
-               Credential.refused(Calls.tool("t", %{}, scope(credentials: Plain)), {:user, "x"})
+               Credential.refused(Calls.tool("t", %{}, scope(credentials: Plain)), "x")
 
       assert :ok =
                Credential.refused(
                  Calls.tool("t", %{}, scope(credentials: Vault)),
-                 {:named, "explodes"}
+                 "explodes"
                )
 
-      assert :ok = Credential.refused(Calls.tool("t", %{}, scope()), {:user, "x"})
+      assert :ok = Credential.refused(Calls.tool("t", %{}, scope()), "x")
     end
   end
 

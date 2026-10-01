@@ -23,6 +23,11 @@ defmodule WardrikHTTP.Workers do
   offers the tool marks it `readOnlyHint` or `idempotentHint`, and waits for a
   person otherwise; see `c:Wardrik.Tool.in_doubt/2`.
 
+  A worker's tool is gated unless every worker offering it marks it
+  `readOnlyHint`, as a client of an MCP server asks before a tool that may
+  change something: a call to one waits on a person unless a hook allows it
+  by name. See `c:Wardrik.Tool.gated?/1`.
+
   The group of workers is a child the host starts before `WardrikHTTP.Listener`:
 
       children = [WardrikHTTP.Workers, WardrikHTTP.Listener]
@@ -77,6 +82,22 @@ defmodule WardrikHTTP.Workers do
   end
 
   def in_doubt(_key, _name), do: :ask
+
+  @doc """
+  Whether a call to a worker's tool waits on a person unless a hook allows
+  it by name: unless every worker in reach of the agent under `key` offering
+  it marks it read-only, since anything else a worker does may change
+  something.
+  """
+  @impl Wardrik.Tool
+  def gated?(key, @prefix <> name) when is_binary(key) do
+    case for({_worker, tool} <- offered(key), tool.name == name, do: tool.read_only) do
+      [] -> true
+      read_only -> not Enum.all?(read_only)
+    end
+  end
+
+  def gated?(_key, _name), do: true
 
   @doc """
   Whether what a worker's tool answers is content from outside: unless

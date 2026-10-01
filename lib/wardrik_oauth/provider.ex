@@ -15,8 +15,8 @@ defmodule WardrikOAuth.Provider do
           linear: [resource: "https://mcp.linear.app/mcp"]
         ]
 
-  The name is what a credential reference names: `{:user, "github"}` resolves
-  through the `:github` provider. Everything but `:resource` is optional —
+  The name is a credential's: a credential named `github` that nobody holds
+  is asked for through the `:github` provider. Everything but `:resource` is optional —
   `:client_id` is for a server that will not register a client any other way,
   and `:issuer` names the authorization server rather than taking the one the
   resource's metadata names, and trusts it and its endpoints as the

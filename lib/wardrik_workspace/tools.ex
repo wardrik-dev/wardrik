@@ -13,7 +13,10 @@ defmodule WardrikWorkspace.Tools do
   | `delete_file` | `path` | whether it was there |
 
   A write records who wrote it, in which run, with which call, and whether
-  that run had read content from outside. Reading a file a tainted run wrote,
+  that run had read content from outside. An append or an edit keeps the
+  mark the file had, since what was there before is there still, and a
+  write that replaces the whole file takes its writer's. Reading a file a
+  tainted run wrote,
   or listing or finding one, taints the reader's call, and with it the
   reader's run (see `Wardrik.Call.taint/1`). A call run again after a lost node
   finds its own write on the file and answers as it did, without writing
@@ -277,9 +280,9 @@ defmodule WardrikWorkspace.Tools do
       {:ok, %File{call: ^key}, version} ->
         {:ok, written(mount, path, version)}
 
-      {:ok, %File{content: old}, version} ->
+      {:ok, %File{content: old} = file, version} ->
         with :ok <- fits(old <> content),
-             do: again(put(mount, path, old <> content, call, version), retry, tries)
+             do: again(put(mount, path, old <> content, {call, file}, version), retry, tries)
 
       :none ->
         again(put(mount, path, content, call, nil), retry, tries)
@@ -306,7 +309,7 @@ defmodule WardrikWorkspace.Tools do
          content = String.replace(file.content, args.old, args.new, global: all?),
          :ok <- fits(content) do
       mount
-      |> put(path, content, call, version)
+      |> put(path, content, {call, file}, version)
       |> replaced(if(all?, do: count, else: 1))
       |> again(fn -> edit(mount, path, args, call, tries - 1) end, tries)
     end
@@ -352,14 +355,22 @@ defmodule WardrikWorkspace.Tools do
   defp removed({:error, reason}, _mount, _path), do: unavailable(reason)
 
   # Writes `content` as this call's, over `version`, answering `:conflict`
-  # where the file has changed since.
-  defp put(mount, path, content, call, version) do
+  # where the file has changed since. Content kept from the file written
+  # before, by an append or an edit, keeps its mark: a file is tainted while
+  # anything a tainted run wrote may still be in it.
+  defp put(mount, path, content, {call, %File{tainted: kept}}, version),
+    do: write(mount, path, content, call, version, kept)
+
+  defp put(mount, path, content, call, version),
+    do: write(mount, path, content, call, version, false)
+
+  defp write(mount, path, content, call, version, kept) do
     file = %File{
       content: content,
       by: call.scope.source.agent_id,
       run: call.scope.source.trace.trace_id,
       call: Wardrik.Ledger.idempotency_key(call),
-      tainted: call.scope.tainted,
+      tainted: call.scope.tainted or kept,
       at: DateTime.utc_now()
     }
 

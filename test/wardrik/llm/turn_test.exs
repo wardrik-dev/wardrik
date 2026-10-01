@@ -579,7 +579,8 @@ defmodule Wardrik.LLM.TurnTest do
       assert prompt =~ "this run has read content from outside"
     end
 
-    test "leaves a turn whose config trusts outside content untainted", %{agent_id: agent_id} do
+    test "marks a turn whose config trusts outside content, and lets its gated calls go ahead",
+         %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"}),
         LLMStub.final_answer("Deployed.")
@@ -595,7 +596,7 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :done, tainted: false} = run(scope, Context.new())
+      assert %LLM.Turn{state: :done, tainted: true} = run(scope, Context.new())
     end
   end
 
@@ -1022,7 +1023,8 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{tainted: true} = LLM.Turn.under(parked, nil)
     end
 
-    test "lets the rule stand under a config that trusts outside content", %{agent_id: agent_id} do
+    test "lets the rule stand under a config that trusts outside content, and keeps the mark",
+         %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
         LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"}),
@@ -1031,7 +1033,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       scope = allowing_deploy(agent_id, trust_outside_content: true)
 
-      assert %LLM.Turn{state: :done, tainted: false} =
+      assert %LLM.Turn{state: :done, tainted: true} =
                run(scope, Context.new([Context.user("read it")]))
 
       assert_receive %Event{payload: {:tool_finished, "call_2", "deploy", _result}}

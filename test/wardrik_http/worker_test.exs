@@ -144,6 +144,19 @@ defmodule WardrikHTTP.WorkerTest do
 
   defp names(tools), do: Enum.map(tools, & &1.name)
 
+  # A worker's tool is gated unless it is read-only, so a call to echo runs
+  # where a rule allows it by name.
+  defp allowing_echo,
+    do: WardrikPolicy.hooks(WardrikPolicy.decode!(%{"allow" => ["workers/echo"]}))
+
+  test "a worker's tool is gated unless every worker offering it marks it read-only", context do
+    connect(context, [tool("lookup", %{"readOnlyHint" => true}), tool("refund")])
+
+    refute Workers.gated?(context.agent, "workers__lookup")
+    assert Workers.gated?(context.agent, "workers__refund")
+    assert Workers.gated?(context.agent, "workers__nothing")
+  end
+
   test "a worker's tools are offered to the agents its token reaches, named for the workers",
        context do
     connect(context, [tool("echo"), tool("not a name!")])
@@ -159,7 +172,7 @@ defmodule WardrikHTTP.WorkerTest do
     scope =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store)
+      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store, hooks: allowing_echo())
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
@@ -271,7 +284,7 @@ defmodule WardrikHTTP.WorkerTest do
     scope =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store)
+      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store, hooks: allowing_echo())
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
