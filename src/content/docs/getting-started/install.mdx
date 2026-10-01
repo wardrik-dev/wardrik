@@ -1,0 +1,82 @@
+---
+title: Install
+description: Install the daemon and the wardrik command on Linux, or run the Docker image anywhere Docker runs.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Wardrik is one daemon and the `wardrik` command that runs it and asks it things. The release runs
+on Linux, on x86_64 or arm64, with glibc 2.35 or later and OpenSSL 3: Ubuntu 22.04 and later, and
+Debian 12 and later. Elsewhere, such as on macOS or Alpine, run the Docker image.
+
+<Tabs>
+	<TabItem label="Install script">
+
+```sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+```
+
+The script checks the release against its `SHA256SUMS`, runs it once to be sure it runs on this
+machine, and installs it under `~/.local`, or under `/opt/wardrik` as root. `wardrik` goes on your
+`PATH` in `~/.local/bin`, and so does `rik`, unless something else on the machine is already called
+that.
+
+`WARDRIK_VERSION=0.1.0` installs a version other than the latest, and `sh install.sh
+wardrik-0.1.0-linux-x86_64.tar.gz` installs a tarball you already have.
+
+	</TabItem>
+	<TabItem label="Docker">
+
+```sh
+docker run -d --name wardrik -p 127.0.0.1:4747:4747 -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+docker exec wardrik wardrik status
+```
+
+The image runs `wardrik serve` as the user `wardrik`. Mount what you write at `/config`, read-only
+if you like: `config.yaml`, `agents/` and `policies/`. The daemon keeps its store, cookie and SSH
+host key on the `/data` volume, so a new container on the same volume carries on.
+
+```sh
+docker run -d --name wardrik --env-file ~/.config/wardrik/env \
+  -p 127.0.0.1:4747:4747 -p 2222:2222 \
+  -v ~/.config/wardrik:/config:ro -v wardrik:/data ghcr.io/wardrik-dev/wardrik
+```
+
+The HTTP API listens on port 4747 and the TUI on 2222, on every interface of the container, so the
+ports you publish decide who reaches them.
+
+	</TabItem>
+</Tabs>
+
+## Run it
+
+```sh
+wardrik service install    # under your systemd, from boot
+wardrik start              # or in the background, until you stop it
+wardrik doctor             # whether what it reads will do
+```
+
+`wardrik service install` writes `wardrik.service` under `~/.config/systemd/user`, starts it, and
+lets your systemd run from boot rather than from your first login. It reads the keys the daemon
+needs, such as your model provider's, from `~/.config/wardrik/env`.
+
+`wardrik doctor` checks `config.yaml`, the store, the vault, each MCP server and every agent file,
+whether the daemon runs or not.
+
+## Upgrade
+
+Run the install script again. It puts the new release beside the old one and points `wardrik` at
+it, keeping the one before. The service runs the new release when it restarts:
+
+```sh
+systemctl --user restart wardrik
+```
+
+## Remove it
+
+```sh
+wardrik service uninstall
+```
+
+The service is stopped and its unit removed. What the daemon keeps stays in
+`~/.local/share/wardrik` until you remove it.

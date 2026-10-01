@@ -1,0 +1,70 @@
+---
+title: "Policies"
+description: "A policy written as data: the tools an agent may call, the ones that ask a person first, and the ones it may not call at all."
+editUrl: false
+sidebar:
+  order: 4
+---
+
+<!-- Written by mix wardrik.docs from WardrikPolicy. Edit it there, not here. -->
+
+A policy written as data: the tools an agent may call, the ones that ask a
+person first, and the ones it may not call at all.
+
+    policy =
+      WardrikPolicy.decode!(%{
+        "allow" => ["web_search", "linear/*"],
+        "ask" => %{"github/create_*" => "This opens an issue on GitHub."},
+        "deny" => ["run_lua"],
+        "default" => "allow"
+      })
+
+    Wardrik.Fleet.spawn(key, config: config, hooks: WardrikPolicy.hooks(policy))
+
+A policy's rules are a `Wardrik.Hook`, named for the policy. It is plain data,
+so it is written to the store with the agent it governs and decides the
+same way on whichever node holds that agent.
+
+## Budgets
+
+A policy with a `WardrikPolicy.Budget` limits what the agent spends on model
+calls. `hooks/1` gives the budget a hook of its own, after the rules, named
+for the policy with `/budget` added.
+
+## Deciding
+
+Every rule whose `WardrikPolicy.Pattern` names a call speaks for it, and the
+strictest of them decides: `:deny` over `:ask` over `:allow`. A call no rule
+names is decided by `:default`, which is `:allow` unless set. A rule's
+message is what a person is asked, or what the model is told it may not do.
+The rules allow every model call.
+
+A rule may name what a call acts on, `write_file(notes/*)`, and speaks then
+for each of the call's subjects it matches (see `c:Wardrik.Tool.subjects/2`).
+A deny or an ask that speaks for any subject decides the call, and the call
+is allowed by the rules only where they allow the whole of it, or every one
+of its subjects; otherwise `:default` decides:
+
+    allow: [shell(git status), shell(git diff *)]
+    deny: [shell(git push *)]
+
+## Allowing by name
+
+A call an `allow` rule allows is allowed by name, with
+`Wardrik.Call.allow/1`, which is what a gated tool's call waits for (see
+`c:Wardrik.Tool.gated?/1`). One allowed only by `default: allow` is not, so
+a gated tool asks under a policy that names nothing, as it does under none.
+
+## Written down
+
+`decode/1` reads the map form a file or a request writes a policy in, and
+`encode/1` writes it back:
+
+    allow: [web_search, linear/*]
+    ask:
+      github/create_*: This opens an issue on GitHub.
+    deny: [run_lua]
+    default: allow
+
+`allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
+to message. `budget` takes what `WardrikPolicy.Budget` describes.

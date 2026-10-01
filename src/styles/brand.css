@@ -1,0 +1,186 @@
+/*
+ * Wardrik's design system, as Starlight reads it. The tokens are the brand
+ * guide's: Ink, Signal and Amber on Paper, a slate scale that leans towards
+ * the accent, and the terminal's state colours. Colour means state, never
+ * decoration: cyan running, amber waiting on a person, green done, red failed.
+ */
+
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/400-italic.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root {
+	--wardrik-signal: #11a3b3;
+	--wardrik-term-bg: #10181d;
+
+	--sl-font: 'IBM Plex Sans';
+	--sl-font-mono: 'IBM Plex Mono';
+	--sl-line-height: 1.6;
+
+	/* The type scale, in steps of 1.25 from 16. */
+	--sl-text-h1: 2.4375rem; /* 39 */
+	--sl-text-h2: 1.9375rem; /* 31 */
+	--sl-text-h3: 1.5625rem; /* 25 */
+	--sl-text-h4: 1.25rem; /* 20 */
+	--sl-text-h5: 1rem;
+	--sl-text-code: 0.875rem;
+
+	/* Dark: slate 950 ground, slate 50 text. */
+	--sl-color-white: #f2f4f5;
+	--sl-color-gray-1: #dde5e9;
+	--sl-color-gray-2: #c3ced4;
+	--sl-color-gray-3: #8e9ca4;
+	--sl-color-gray-4: #56656f;
+	--sl-color-gray-5: #27333a;
+	--sl-color-gray-6: #151d21;
+	--sl-color-black: #0e1417;
+
+	--sl-color-accent-low: #0f3236;
+	--sl-color-accent: #4fc3cf;
+	--sl-color-accent-high: #9bdde4;
+	--sl-color-text: #dde5e9;
+	--sl-color-text-accent: #4fc3cf;
+
+	/* Callouts take the state colours: a note is signal, a tip done, caution a
+	 * person deciding, and danger failed. */
+	--sl-color-blue-low: #0f3236;
+	--sl-color-blue: #4fc3cf;
+	--sl-color-blue-high: #9bdde4;
+	--sl-color-purple-low: #1c3322;
+	--sl-color-purple: #7cc98a;
+	--sl-color-purple-high: #b5e3be;
+	--sl-color-green-low: #1c3322;
+	--sl-color-green: #7cc98a;
+	--sl-color-green-high: #b5e3be;
+	--sl-color-orange-low: #2a2114;
+	--sl-color-orange: #e2a447;
+	--sl-color-orange-high: #f0cb8e;
+	--sl-color-red-low: #3a1d1b;
+	--sl-color-red: #e57a72;
+	--sl-color-red-high: #f2b3ad;
+}
+
+:root[data-theme='light'] {
+	/* Light: Ink on Paper. */
+	--sl-color-white: #15212a;
+	--sl-color-gray-1: #27333a;
+	--sl-color-gray-2: #3a4851;
+	--sl-color-gray-3: #56656f;
+	--sl-color-gray-4: #8e9ca4;
+	--sl-color-gray-5: #d3dade;
+	--sl-color-gray-6: #e3e8ea;
+	--sl-color-gray-7: #f7f9fa;
+	--sl-color-black: #f2f4f5;
+
+	/* Signal 700: the accent as text on a light ground. */
+	--sl-color-accent-low: #d3eef1;
+	--sl-color-accent: #0a7e8c;
+	--sl-color-accent-high: #075a64;
+	--sl-color-text: #15212a;
+	--sl-color-text-accent: #0a7e8c;
+	--sl-color-bg-nav: #f2f4f5;
+
+	--sl-color-blue-low: #d3eef1;
+	--sl-color-blue: #0a7e8c;
+	--sl-color-blue-high: #075a64;
+	--sl-color-purple-low: #e2f1e4;
+	--sl-color-purple: #2e7d3a;
+	--sl-color-purple-high: #22602c;
+	--sl-color-green-low: #e2f1e4;
+	--sl-color-green: #2e7d3a;
+	--sl-color-green-high: #22602c;
+	--sl-color-orange-low: #fbf3e4;
+	--sl-color-orange: #9a620f;
+	--sl-color-orange-high: #7a4d0c;
+	--sl-color-red-low: #f8e1df;
+	--sl-color-red: #b83a30;
+	--sl-color-red-high: #8e2c24;
+}
+
+/* The wordmark, lowercase, as it is typed. */
+.site-title {
+	font-family: var(--__sl-font-mono);
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	text-transform: lowercase;
+	color: var(--sl-color-white);
+	gap: 0.625rem;
+}
+
+.site-title img {
+	height: 1.5rem;
+}
+
+.hero > img {
+	width: min(45vw, 16rem);
+}
+
+/* Display: page titles in Mono 500. */
+h1#_top,
+.hero h1 {
+	font-family: var(--__sl-font-mono);
+	font-weight: 500;
+	letter-spacing: -0.02em;
+}
+
+.hero h1 {
+	text-transform: lowercase;
+}
+
+.sl-markdown-content :is(h2, h3, h4) {
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+/* Labels: Sans 600, small, uppercase, tracked. */
+.sl-markdown-content th {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--sl-color-gray-3);
+}
+
+/* Corners of 2, 4 or 6 px, and nothing rounder: it's an instrument. */
+.sl-link-button {
+	border-radius: 4px;
+}
+
+.sl-link-button.primary {
+	background: var(--sl-color-white);
+	border-color: var(--sl-color-white);
+	color: var(--sl-color-black);
+}
+
+.sl-link-button.primary:hover {
+	background: var(--sl-color-text-accent);
+	border-color: var(--sl-color-text-accent);
+}
+
+site-search button,
+.starlight-aside,
+.sl-markdown-content code:not(pre code) {
+	border-radius: 4px;
+}
+
+/* Cards are not states, so they stay ink on paper. */
+.card {
+	--sl-card-border: var(--sl-color-gray-5);
+	--sl-card-bg: transparent;
+	border-color: var(--sl-color-gray-5);
+	border-radius: 6px;
+}
+
+.card .icon {
+	color: var(--sl-color-text-accent);
+	border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		scroll-behavior: auto !important;
+	}
+}
