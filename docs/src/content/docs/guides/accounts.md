@@ -158,5 +158,14 @@ wardrik vault rm pagerduty --org acme
 `--user USER` puts one for a single user, with `--org ORG` for one outside the deployment's org,
 which `user:NAME` reads in place of a connected account.
 
-An agent's credentials come from OAuth where `config.yaml` has a provider, and from the vault where
-it has a key and no provider.
+A server's `credential` is resolved by OAuth where `oauth.providers` names a provider for it, and
+from the vault otherwise:
+
+| `credential` | Comes from |
+| --- | --- |
+| `user:NAME`, `org:NAME`, with a provider `NAME` | the account the user, or the org, connects |
+| `user:NAME`, `org:NAME`, with no provider `NAME` | the secret `vault put` keeps for them |
+| `named:NAME` | the secret `vault put` keeps for the deployment |
+
+So a deployment can let its users connect GitHub and still give a Linear server a key it keeps
+itself. `wardrik doctor` says which each server's credential comes from.

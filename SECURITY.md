@@ -111,9 +111,10 @@ A turn that has read content nobody on the agent's side wrote, the results of
 worker unless `http.trusted_workers` is set, is tainted until it ends, and
 every gated call in it waits on a person, who sees what it would do. This is
 what stops a page or an issue written to be read by an agent from running a
-command a rule pre-approved. A file a tainted turn writes says so, and
-reading, listing or finding it taints the reader's turn, so a finding left in
-a shared tree carries what its writer read to every agent that reads it. One
+command a rule pre-approved. A file a tainted turn writes says so, an append
+or an edit by a turn that is not keeps the mark, and reading, listing or
+finding it taints the reader's turn, so a finding left in a shared tree
+carries what its writer read to every agent that reads it. One
 an agent file's `context` reads into every turn taints each turn from its
 start, and of the files a turn is only told the names of, a name is shown
 only where it is plain, letters, digits, `.`, `-` and `_`, since a name is
@@ -121,8 +122,10 @@ text a tainted run may have chosen too. The
 taint is kept with the turn, so a turn carried on after its node is lost is
 tainted still, and it does not reach the turns after: content a turn read
 stays in the conversation, and rules count again in the next turn.
-`trust_outside_content: true` turns it off for an agent, and only an agent
-file, which the operator writes, can say so.
+`trust_outside_content: true` lets an agent's gated calls go ahead in a
+tainted turn, and only an agent file, which the operator writes, can say so.
+Its turns are tainted all the same, so what it writes for other agents
+carries the mark.
 
 ### Notifications
 
@@ -143,15 +146,16 @@ the agents that post there.
 
 ### Credentials
 
-OAuth tokens and named credentials are sealed with AES-256-GCM, under the
-vault's keys, before they are stored. Model providers' keys, tools' keys and
-`${NAME}` in `config.yaml` are read from the environment, and, for a name it
-does not set, from the deployment's secret of that name in the vault, which
-`wardrik vault put` seals. Anyone who can read both the store and the vault's
-key can read them, as they can every secret the vault holds. A key from the
-vault is put in the daemon's application settings, never its environment.
-`storage`, `cluster` and `vault` in `config.yaml` read the environment alone.
-An MCP server started as a command is given only `HOME`, `LANG`,
+OAuth tokens and the secrets `wardrik vault put` keeps are sealed with
+AES-256-GCM, under the vault's keys, before they are stored. A server's
+credential comes from OAuth where a provider is named for it, and from the
+vault otherwise. Model providers' keys, tools' keys and `${NAME}` in
+`config.yaml` are read from the environment, and, for a name it does not set,
+from the deployment's secret of that name in the vault. Anyone who can read
+both the store and the vault's key can read them, as they can every secret the
+vault holds. A key from the vault is put in the daemon's application settings,
+never its environment. `storage`, `cluster` and `vault` in `config.yaml` read
+the environment alone. An MCP server started as a command is given only `HOME`, `LANG`,
 `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER`
 of the daemon's environment, beside those its own config sets, and runs as
 the daemon's user, so it can read what the daemon can.

@@ -130,7 +130,9 @@ Once a turn has read content from outside, from `web_search`,
 tool worker, its rules stop counting for a gated tool's calls until the turn
 ends: each waits on a person, who sees what it would do.
 `trust_outside_content: true` is for an agent whose job is to act on what
-strangers send.
+strangers send. Its gated calls go ahead as its rules say, but the files
+it writes after reading content from outside are marked all the same, so
+another agent reading them is held as if it had read that content itself.
 
 ## Schedule
 
@@ -174,10 +176,11 @@ section names, as `WardrikNotify` describes them:
 answered. A target tells the agents of the org its `org` in `config.yaml`
 names, and a file routing to one for another org does not read.
 
-The agent is given the credentials `WardrikOAuth` holds where a provider is
-configured, and `WardrikVault`'s where the vault has a key, and records every
-tool call in `Wardrik.Ledger.Store`, so a turn lost part way through runs no
-call twice.
+The agent resolves the credentials its tools name through
+`WardrikDaemon.Credentials`: an account a user connects where an OAuth
+provider is named for it, and a secret in the vault otherwise. It records
+every tool call in `Wardrik.Ledger.Store`, so a turn lost part way through
+runs no call twice.
 
 ## Over HTTP
 

@@ -211,10 +211,16 @@ defmodule WardrikDaemon.DoctorTest do
       config(dir, """
       vault:
         keys: ["#{WardrikVault.generate_key()}"]
+      oauth:
+        providers:
+          github: {resource: "https://api.githubcopilot.com/mcp/"}
       mcp:
         up:
           url: http://127.0.0.1:#{open}/mcp
           credential: user:github
+        kept:
+          url: http://127.0.0.1:#{open}/mcp
+          credential: org:pagerduty
         down: {url: "http://127.0.0.1:#{closed}/mcp"}
       """)
 
@@ -222,6 +228,10 @@ defmodule WardrikDaemon.DoctorTest do
 
       assert check(checks, "mcp up") ==
                {:ok, "mcp up", "answers at 127.0.0.1:#{open}; each user authorizes it"}
+
+      assert check(checks, "mcp kept") ==
+               {:ok, "mcp kept",
+                "answers at 127.0.0.1:#{open}; its credential comes from the vault"}
 
       assert check(checks, "mcp down") ==
                {:error, "mcp down",

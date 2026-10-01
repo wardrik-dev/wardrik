@@ -69,9 +69,9 @@ defmodule Wardrik.Call do
   A call to a gated tool (see `c:Wardrik.Tool.gated?/1`) goes ahead only where
   a hook allowed it by name, with `allow/1`, and waits on its tool otherwise.
   While the run it belongs to has read content from outside (see
-  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so: what the run
-  read may be what asked for it. A deny still refuses it and an ask still
-  asks. A call to a tool that is not gated goes ahead as the hooks said,
+  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, unless the
+  run's config trusts outside content: what the run read may be what asked
+  for it. A deny still refuses it and an ask still asks. A call to a tool that is not gated goes ahead as the hooks said,
   allowed by name or not.
   """
 
@@ -206,7 +206,12 @@ defmodule Wardrik.Call do
   defp gate(%__MODULE__{target: %Tool{gated: true}, allowed: []} = call),
     do: "#{name(call)} runs only where a rule allows it by name, and none does."
 
-  defp gate(%__MODULE__{target: %Tool{gated: true}, scope: %Scope{tainted: true}} = call) do
+  defp gate(
+         %__MODULE__{
+           target: %Tool{gated: true},
+           scope: %Scope{tainted: true, config: %{trust_outside_content: false}}
+         } = call
+       ) do
     IO.iodata_to_binary([
       Enum.intersperse(call.allowed, ", "),
       " allows #{name(call)}, but this run has read content from outside, ",

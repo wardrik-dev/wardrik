@@ -59,7 +59,8 @@ defmodule Wardrik.LLM.Config do
   `:trust_outside_content` lets a gated tool's calls go ahead on what the
   hooks allowed even in a run that has read content from outside (see
   `Wardrik.Call.taint/1`), for an agent whose job is to act on what strangers
-  send. `false` by default.
+  send. `false` by default. The run is still marked as having read it, so
+  what it writes for others carries the mark.
 
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Wardrik.Scope`.

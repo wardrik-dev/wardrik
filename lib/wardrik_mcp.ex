@@ -318,7 +318,10 @@ defmodule WardrikMCP do
         {:error, "#{server.ref} needs a credential and this deployment resolves none"}
 
       {:error, reason} ->
-        {:error, "#{server.ref} could not be reached as this user: #{inspect(reason)}"}
+        {kind, name} = server.credential
+
+        {:error,
+         "#{server.ref} could not resolve its credential, #{kind}:#{name}: #{inspect(reason)}"}
     end
   end
 

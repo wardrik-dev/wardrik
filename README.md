@@ -229,6 +229,8 @@ authorizes one of two ways:
 
 Either way the parked call runs again by itself once they have, with the
 token, which is then sealed by `WardrikVault` and refreshed without asking again.
+The daemon resolves through `WardrikDaemon.Credentials`: OAuth for a
+reference a provider is named for, and the vault for every other.
 A provider's `flow` is `browser`, `device`, or `auto`, the default: on another
 device where the server offers it and the daemon has no browser of its own to
 send the user through, and in a browser otherwise.
@@ -718,7 +720,8 @@ calls wait on a person for the rest of the turn however the rules allow them:
 what the turn read may be what asked for the call. `trusted: true` on an MCP
 server, and `trusted_workers: true` under `http`, say their answers are the
 deployment's own. An agent whose job is to act on what strangers send writes
-`trust_outside_content: true` in its file; a definition over HTTP cannot.
+`trust_outside_content: true` in its file, which lets its gated calls go ahead
+while still marking what it writes; a definition over HTTP cannot.
 
 An agent with `files` in its tools has a tree of its own to write in, kept
 in the store with the agent, so its notes are on whichever node holds it and
@@ -740,9 +743,9 @@ holds only its own files: `acme` does not hold `acme/runbooks` or
 `acme/@jon/notes`, so a tree shared only to read, or one only jon's agents
 reach, stays that way however the trees above it are shared.
 
-A file keeps who wrote it, and whether the turn that wrote it had read
-content from outside; reading, listing or finding it taints the reader's turn
-in the same way. A policy names a file tool's call by its path, as
+A file keeps who wrote it, and whether a turn that had read content from
+outside wrote any of it, which an append or an edit keeps; reading, listing or
+finding it taints the reader's turn in the same way. A policy names a file tool's call by its path, as
 `write_file(notes/*)`. See `WardrikWorkspace`.
 
 As each turn begins, the agent is told what its workspace holds: the files

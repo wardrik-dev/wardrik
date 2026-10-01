@@ -103,7 +103,9 @@ from the next round of calls the model makes. The person is told why:
 > asked for it.
 
 An agent whose job is to act on what strangers send writes `trust_outside_content: true` in its
-file. An agent defined over the HTTP API cannot.
+file. Its gated calls then go ahead as its rules say, but what it writes after reading content from
+outside is [marked](/concepts/files-and-memory/#content-from-outside) all the same, so another agent
+that reads it is held. An agent defined over the HTTP API cannot say it.
 
 ## Waiting on a person
 

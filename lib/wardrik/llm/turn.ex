@@ -93,7 +93,9 @@ defmodule Wardrik.LLM.Turn do
   `Wardrik.Call.taint/1`), the turn is tainted, and every batch after it runs
   under a scope that says so: a gated tool's call then waits on a person
   however its hooks allowed it, since what the turn read may be what asked for
-  it. A config with `:trust_outside_content` is never tainted. The taint ends
+  it. A config with `:trust_outside_content` lets its gated calls go ahead,
+  but its turn is tainted all the same, so a file it writes says what it read.
+  The taint ends
   with the turn, and a turn written down carries it, so one carried on after
   a lost node is tainted still.
 
@@ -191,7 +193,7 @@ defmodule Wardrik.LLM.Turn do
       context: context,
       remaining: config.max_iterations,
       preamble: preamble,
-      tainted: outside? and not config.trust_outside_content
+      tainted: outside?
     }
   end
 
@@ -472,14 +474,9 @@ defmodule Wardrik.LLM.Turn do
     do: %{Scope.batch(turn.scope, rounds(turn)) | tainted: Map.get(turn, :tainted, false)}
 
   # The turn, tainted where a call of `calls` answered with content from
-  # outside and its config does not trust that.
-  defp read(%__MODULE__{scope: %Scope{config: config}} = turn, calls) do
-    tainted =
-      Map.get(turn, :tainted, false) or
-        (not config.trust_outside_content and Enum.any?(calls, & &1.tainted))
-
-    %{turn | tainted: tainted}
-  end
+  # outside.
+  defp read(%__MODULE__{} = turn, calls),
+    do: %{turn | tainted: Map.get(turn, :tainted, false) or Enum.any?(calls, & &1.tainted)}
 
   defp continue(turn, context, messages) do
     turn = %{
