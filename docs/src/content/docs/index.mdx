@@ -1,0 +1,35 @@
+---
+title: Wardrik
+description: An agent runtime built on OTP. Agents that carry on when a node is lost, with every tool call decided by policy.
+template: splash
+hero:
+  tagline: An agent runtime built on OTP. Agents carry on when a node is lost, and every tool call they make goes through a policy you can read.
+  actions:
+    - text: Install
+      link: /getting-started/install/
+      icon: right-arrow
+    - text: Quickstart
+      link: /getting-started/quickstart/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+	<Card title="Carries on through kill -9" icon="rocket">
+		Each agent is a durable process. Kill the node it runs on mid-turn and it carries on on
+		another, and the ledger keeps a tool call that already ran from running twice.
+	</Card>
+	<Card title="Policy on every call" icon="approve-check">
+		Allow, ask or deny a tool call by its name and by what it acts on. A call that waits on a
+		person reaches Slack with Approve and Deny.
+	</Card>
+	<Card title="Your tools, in your process" icon="puzzle">
+		Tools written with the TypeScript SDK run in your own app. Wardrik calls them over a socket,
+		each call with an idempotency key.
+	</Card>
+	<Card title="Files and memory" icon="document">
+		Each agent has a tree of files of its own, kept in the store, and the trees it shares. The
+		files its agent file names are read into every turn.
+	</Card>
+</CardGrid>

@@ -8,4 +8,5 @@ tmp
 dist
 priv/plts
 sdks
+docs
 erl_crash.dump

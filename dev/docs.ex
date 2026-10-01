@@ -1,0 +1,269 @@
+defmodule Mix.Tasks.Wardrik.Docs do
+  @shortdoc "Writes the docs site's reference pages from the code"
+  @moduledoc """
+  Writes the reference pages of the docs site, under
+  `docs/src/content/docs/reference`, from what the code already says: the
+  commands `WardrikDaemon.CLI.commands/0` lists, the moduledocs of
+  `config.yaml`, agent files, policies and the HTTP API, and the protocol's
+  JSON Schemas in `priv/protocol/v1`.
+
+      mix wardrik.docs           write them
+      mix wardrik.docs --check   fail where one is not what it would write
+
+  A reference page is edited where it comes from, not in the docs site.
+  """
+
+  use Mix.Task
+
+  @dir "docs/src/content/docs/reference"
+  @schemas "priv/protocol/v1"
+  @events "/reference/events/"
+
+  @impl Mix.Task
+  def run(args) do
+    {opts, _rest} = OptionParser.parse!(args, strict: [check: :boolean])
+    Mix.Task.run("compile")
+    pages = pages()
+
+    if opts[:check], do: check(pages), else: write(pages)
+  end
+
+  defp pages do
+    [
+      cli(),
+      moduledoc("config", "config.yaml", 2, WardrikDaemon.Config),
+      moduledoc("agent-files", "Agent files", 3, WardrikDaemon.AgentFile),
+      moduledoc("policies", "Policies", 4, WardrikPolicy),
+      http(),
+      events()
+    ]
+  end
+
+  defp write(pages) do
+    File.mkdir_p!(@dir)
+    for {file, text} <- pages, do: File.write!(file, text)
+    Mix.shell().info("Wrote #{length(pages)} reference pages in #{@dir}")
+  end
+
+  defp check(pages) do
+    case for({file, text} <- pages, File.read(file) != {:ok, text}, do: file) do
+      [] -> :ok
+      stale -> Mix.raise("#{Enum.join(stale, ", ")}: not what mix wardrik.docs writes; run it")
+    end
+  end
+
+  # -- pages -------------------------------------------------------------------
+
+  defp page(name, title, order, description, source, body) do
+    front = [
+      "---\n",
+      "title: #{JSON.encode!(title)}\n",
+      "description: #{JSON.encode!(description)}\n",
+      "editUrl: false\n",
+      "sidebar:\n  order: #{order}\n",
+      "---\n\n",
+      "<!-- Written by mix wardrik.docs from #{source}. Edit it there, not here. -->\n\n"
+    ]
+
+    {Path.join(@dir, name <> ".md"),
+     IO.iodata_to_binary([front, body]) |> String.trim_trailing() |> Kernel.<>("\n")}
+  end
+
+  defp moduledoc(name, title, order, module) do
+    doc = moduledoc!(module)
+    page(name, title, order, lead(doc), inspect(module), doc)
+  end
+
+  defp moduledoc!(module) do
+    {:docs_v1, _anno, _language, _format, %{"en" => doc}, _meta, _docs} = Code.fetch_docs(module)
+    doc
+  end
+
+  # The first paragraph, as plain text.
+  defp lead(doc) do
+    doc
+    |> String.split("\n\n", parts: 2)
+    |> hd()
+    |> String.replace(~r/\s+/, " ")
+    |> String.replace("`", "")
+  end
+
+  defp cli do
+    intro = WardrikDaemon.CLI.about("~/.config/wardrik")
+    commands = Enum.map_join(WardrikDaemon.CLI.commands(), "\n", &command/1)
+
+    page(
+      "cli",
+      "CLI",
+      1,
+      "Every command wardrik takes, and what each does.",
+      "WardrikDaemon.CLI.commands/0",
+      [intro, "\n\n", commands]
+    )
+  end
+
+  defp command(command) do
+    usage =
+      Enum.reject(["wardrik", command.name, command.arguments, command.options], &(&1 == ""))
+
+    details = Enum.join(command.details, " ")
+
+    [
+      "## wardrik #{command.name}\n\n",
+      sentence(command.summary),
+      "\n\n```sh\n#{Enum.join(usage, " ")}\n```\n",
+      if(details == "", do: "", else: "\n#{details}\n")
+    ]
+  end
+
+  defp sentence(text),
+    do: String.capitalize(String.first(text)) <> String.slice(text, 1..-1//1) <> "."
+
+  defp http do
+    doc = moduledoc!(WardrikHTTP)
+
+    resources =
+      for {name, schema} <- schemas(), resource?(name), do: schema(name, schema, @events)
+
+    page("http-api", "HTTP API", 5, lead(doc), "WardrikHTTP and priv/protocol/v1", [
+      doc,
+      "\n\n## Resources\n\nThe bodies the routes take and answer with.\n\n",
+      Enum.intersperse(resources, "\n")
+    ])
+  end
+
+  defp events do
+    schemas = schemas()
+    {"cloudevent", envelope} = List.keyfind(schemas, "cloudevent", 0)
+    {"defs", defs} = List.keyfind(schemas, "defs", 0)
+
+    events =
+      for {_name, schema} <- schemas, event?(schema), do: schema(schema["title"], schema, "")
+
+    shared =
+      for {name, def} <- ordered(defs["$defs"]), do: schema(name, def, "")
+
+    page(
+      "events",
+      "Events",
+      6,
+      "The events an agent publishes, as CloudEvents, and the data each carries.",
+      "priv/protocol/v1",
+      [
+        "Every event is a CloudEvent: the envelope below, with the event's own data under `data`.\n\n",
+        "## The envelope\n\n",
+        description(envelope),
+        fields(envelope, ""),
+        "\n## Events\n\n",
+        Enum.intersperse(events, "\n"),
+        "\n## Shared types\n\nThe types events and resources refer to.\n\n",
+        Enum.intersperse(shared, "\n")
+      ]
+    )
+  end
+
+  # -- schemas -----------------------------------------------------------------
+
+  defp schemas do
+    @schemas
+    |> Path.join("*.json")
+    |> Path.wildcard()
+    |> Enum.sort()
+    |> Enum.map(&{Path.basename(&1, ".json"), &1 |> File.read!() |> decode()})
+  end
+
+  # A schema with each object's keys kept in order under :keys, since the order
+  # a schema lists its fields in is the order to read them in.
+  defp decode(json) do
+    {schema, :ok, ""} =
+      :json.decode(json, :ok, %{
+        object_finish: fn pairs, old ->
+          {Map.put(Map.new(pairs), :keys, pairs |> Enum.reverse() |> Enum.map(&elem(&1, 0))), old}
+        end
+      })
+
+    schema
+  end
+
+  defp ordered(object), do: for(key <- object.keys, do: {key, object[key]})
+
+  defp event?(schema), do: String.starts_with?(schema["title"] || "", "wardrik.")
+
+  defp resource?(name), do: name not in ["cloudevent", "defs"] and not String.contains?(name, ".")
+
+  defp schema(heading, schema, defs_page) do
+    ["### `#{heading}`\n\n", description(schema), fields(schema, defs_page)]
+  end
+
+  defp description(%{"description" => description}), do: [description, "\n\n"]
+  defp description(_schema), do: []
+
+  defp fields(schema, defs_page) do
+    case rows(schema, "", defs_page) do
+      [] ->
+        "No fields.\n"
+
+      rows ->
+        [
+          "| Field | Type | Required | Description |\n| --- | --- | --- | --- |\n",
+          Enum.map(rows, fn {field, type, required, about} ->
+            "| `#{field}` | #{type} | #{if required, do: "yes", else: ""} | #{cell(about)} |\n"
+          end)
+        ]
+    end
+  end
+
+  # A row for each field, and for the fields of a field that is an object, by
+  # its dotted name.
+  defp rows(%{"properties" => properties} = schema, prefix, defs_page) do
+    required = Map.get(schema, "required", [])
+
+    Enum.flat_map(ordered(properties), fn {name, field} ->
+      path = prefix <> name
+      row = {path, type(field, defs_page), name in required, about(field)}
+      [row | rows(field, path <> ".", defs_page)]
+    end)
+  end
+
+  defp rows(_schema, _prefix, _defs_page), do: []
+
+  defp type(%{"$ref" => ref}, defs_page), do: ref(ref, defs_page)
+  defp type(%{"const" => value}, _defs_page), do: "`#{JSON.encode!(value)}`"
+
+  defp type(%{"type" => "array", "items" => items}, defs_page),
+    do: "array of #{type(items, defs_page)}"
+
+  defp type(%{"type" => types}, _defs_page) when is_list(types), do: Enum.join(types, " or ")
+  defp type(%{"type" => type} = field, _defs_page), do: "#{type}#{format(field)}"
+
+  defp type(%{"oneOf" => options}, defs_page),
+    do: Enum.map_join(options, " or ", &type(&1, defs_page))
+
+  defp type(%{"anyOf" => options}, defs_page),
+    do: Enum.map_join(options, " or ", &type(&1, defs_page))
+
+  defp type(_field, _defs_page), do: "any"
+
+  defp format(%{"format" => format}), do: " (#{format})"
+  defp format(_field), do: ""
+
+  defp ref(ref, defs_page) do
+    name = ref |> String.split("/") |> List.last()
+    "[#{name}](#{defs_page}##{name})"
+  end
+
+  defp about(field) do
+    Enum.join(
+      Enum.reject(
+        [
+          field["description"],
+          field["enum"] && "One of #{Enum.map_join(field["enum"], ", ", &"`#{&1}`")}."
+        ],
+        &is_nil/1
+      ),
+      " "
+    )
+  end
+
+  defp cell(text), do: text |> String.replace("|", "\\|") |> String.replace(~r/\s+/, " ")
+end

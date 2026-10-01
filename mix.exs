@@ -147,7 +147,9 @@ defmodule Wardrik.MixProject do
       ["format"],
       ["credo", "--strict"],
       ["ex_dna", "--max-clones", "0"],
-      ["reach.check", "--arch", "--smells", "--strict"]
+      ["reach.check", "--arch", "--smells", "--strict"],
+      # The docs site's reference pages, written from the code.
+      ["wardrik.docs"]
     ],
     test: [
       ["test", "--warnings-as-errors", "--cover", "--export-coverage", "default"],
@@ -172,7 +174,8 @@ defmodule Wardrik.MixProject do
   # group as `mix precommit --check --only <group>`.
   @check_steps %{
     ["deps.unlock", "--unused"] => ["deps.unlock", "--check-unused"],
-    ["format"] => ["format", "--check-formatted"]
+    ["format"] => ["format", "--check-formatted"],
+    ["wardrik.docs"] => ["wardrik.docs", "--check"]
   }
 
   defp precommit(args) do

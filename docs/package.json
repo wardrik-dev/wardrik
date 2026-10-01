@@ -1,0 +1,22 @@
+{
+  "name": "wardrik-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.5",
+    "@catppuccin/starlight": "^2.1.0",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.3"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}
