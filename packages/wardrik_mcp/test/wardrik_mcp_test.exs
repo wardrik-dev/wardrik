@@ -112,11 +112,12 @@ defmodule WardrikMCPTest do
       assert error["message"] =~ "no MCP server is connected"
     end
 
-    test "the built tool calls through to the server", %{ref: ref} do
+    test "a call to the server's tool runs through to it", %{ref: ref} do
       [echo | _rest] = WardrikMCP.tools(ref)
+      scope = Wardrik.Test.scope(tools: [{WardrikMCP, ref}])
 
       assert {:ok, %{"result" => %{"content" => "through"}}} =
-               Calls.run(echo, %{"value" => "through"})
+               scope |> Wardrik.Test.call(echo.name, %{"value" => "through"}) |> Calls.result()
     end
   end
 

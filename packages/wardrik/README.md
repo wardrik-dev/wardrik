@@ -283,7 +283,17 @@ otherwise spends real money finding out.
 
 ## Testing
 
-Core ships helpers for your own suite under `Wardrik.Test`:
+Core ships what a suite built on it needs, under `Wardrik.Test`.
+`Wardrik.Test.start/1` starts ExUnit once the runtime is ready, so a
+`test_helper.exs` is one line. `Wardrik.Test.scope/1` builds the scope a turn
+runs under, and `Wardrik.Test.call/4` runs one tool call through the steps a
+turn runs it, hooks and ledger included:
+
+```elixir
+scope = Wardrik.Test.scope(tools: [MyApp.Tools.Ping], hooks: hooks)
+assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(scope, "ping", %{host: "a"})
+```
+
 `Wardrik.Test.Fleet` starts an agent under a key of each test's own and
 removes it after, `Wardrik.Test.LLMStub` answers turns with canned responses
 through Mimic, and `Wardrik.Test.Durable` and `Wardrik.Store.Conformance`

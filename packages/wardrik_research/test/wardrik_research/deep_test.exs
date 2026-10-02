@@ -383,11 +383,13 @@ defmodule WardrikResearch.DeepTest do
       assert Enum.map(Config.tools(config), & &1.name) == ["deep_research"]
     end
 
-    test "tool/1 carries its angles into the sweep", %{scope: scope} do
+    test "tool/1 carries its angles into the sweep", %{agent_id: agent_id} do
       stub_llm()
       tool = Deep.tool(angles: [%{angle: "pricing", prompt: "Think like a pricing analyst."}])
+      scope = Wardrik.Test.scope(tools: [SearchTool, tool], key: agent_id, name: "turn")
 
-      assert {:ok, %{"ok" => true}} = Calls.run(tool, %{"topic" => "widgets"}, scope)
+      assert {:ok, %{"ok" => true}} =
+               scope |> Wardrik.Test.call(tool.name, %{"topic" => "widgets"}) |> Calls.result()
 
       assert [asked] = research_turns()
       assert asked.system =~ "pricing analyst"

@@ -5,14 +5,20 @@ defmodule Wardrik.Test.LLMStub do
   Each call to the stream is answered with the next response in the list, and
   every stream callback is invoked on the way, so the publishing path runs too.
 
-  The responses are stubbed with Mimic, which a suite using this depends on
-  and starts, having copied `ReqLLM` and `ReqLLM.StreamResponse`:
-
-      Mimic.copy(ReqLLM)
-      Mimic.copy(ReqLLM.StreamResponse)
+  The responses are stubbed with Mimic, which a suite using this depends on,
+  and `copy/0` copies what it stubs before the suite starts:
+  `Wardrik.Test.start(llm_stub: true)` calls it.
   """
 
   @compile {:no_warn_undefined, Mimic}
+
+  @doc "Copies the modules `stream/1`, `answering/1` and `by_round/1` stub."
+  @spec copy() :: :ok
+  def copy do
+    Mimic.copy(ReqLLM)
+    Mimic.copy(ReqLLM.StreamResponse)
+    :ok
+  end
 
   @doc "Answers successive turn iterations with `responses`, in order."
   def stream(responses) when is_list(responses) do
