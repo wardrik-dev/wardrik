@@ -102,9 +102,21 @@ defmodule Wardrik.Test do
   place of one of its own.
   """
   @spec call(Scope.t(), String.t(), map(), keyword()) :: Call.t()
-  def call(%Scope{} = scope, name, arguments \\ %{}, opts \\ []) when is_binary(name) do
+  def call(%Scope{} = scope, name, arguments \\ %{}, opts \\ []) when is_binary(name),
+    do: scope |> proposed(name, arguments, opts) |> ToolRunner.execute(scope)
+
+  @doc """
+  What the scope's hooks say of one call to the tool `name` with `arguments`,
+  with what its tool declares written on it first and nothing run: the call
+  as `:allowed`, `:denied` or `:waiting`.
+  """
+  @spec check(Scope.t(), String.t(), map()) :: Call.t()
+  def check(%Scope{} = scope, name, arguments \\ %{}) when is_binary(name),
+    do: scope |> proposed(name, arguments, []) |> Wardrik.Tool.declared() |> Wardrik.Hook.check()
+
+  defp proposed(scope, name, arguments, opts) do
     id = Keyword.get_lazy(opts, :id, fn -> "call_#{System.unique_integer([:positive])}" end)
-    ToolRunner.execute(%Call{id: id, target: %Call.Tool{name: name, arguments: arguments}}, scope)
+    %Call{id: id, target: %Call.Tool{name: name, arguments: arguments}, scope: scope}
   end
 
   @doc """

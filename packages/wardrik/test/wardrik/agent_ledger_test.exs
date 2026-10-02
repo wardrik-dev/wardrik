@@ -43,10 +43,10 @@ defmodule Wardrik.AgentLedgerTest do
     def init(_opts), do: nil
 
     @impl true
-    def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}} = call, _value),
-      do: Wardrik.Call.ask(call, "This ships to production.")
+    def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}}, _value),
+      do: {:ask, "This ships to production."}
 
-    def call(call, _value), do: call
+    def call(_call, _value), do: :pass
   end
 
   @careful [%Wardrik.Hook{name: "careful", module: Careful, value: nil}]

@@ -41,6 +41,14 @@ defmodule Wardrik.TestTest do
                Wardrik.Test.resume(scope, waiting)
     end
 
+    test "check/3 says what the hooks make of a call, declared, and runs nothing" do
+      hooks = [Wardrik.Hook.new("rules", Tools.Rules, deny: ["deploy"])]
+      scope = Wardrik.Test.scope(tools: [Tools.Deploy], hooks: hooks)
+
+      assert %Call{state: :denied, target: %Call.Tool{gated: true, subjects: ["prod"]}} =
+               Wardrik.Test.check(scope, "deploy", %{"target" => "prod"})
+    end
+
     test "the scope's hooks decide the call" do
       hooks = [Wardrik.Hook.new("rules", Tools.Rules, allow: ["deploy"])]
       scope = Wardrik.Test.scope(tools: [Tools.Deploy], hooks: hooks)

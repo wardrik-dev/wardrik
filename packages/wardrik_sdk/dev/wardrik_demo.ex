@@ -27,35 +27,23 @@ defmodule WardrikDemo do
 
     @behaviour Wardrik.Hook
 
-    import Wardrik.Call
-
     alias Wardrik.Call.Tool
 
     @impl true
     def init(_opts), do: nil
 
     @impl true
-    def call(%Wardrik.Call{target: %Tool{name: "deploy", arguments: args}} = call, _value) do
-      ask(
-        call,
-        "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(call.scope)}?"
-      )
-    end
+    def call(%Wardrik.Call{target: %Tool{name: "deploy", arguments: args}, scope: scope}, _value),
+      do:
+        {:ask, "Deploy #{args["service"]} to #{args["environment"]}, asked for by #{who(scope)}?"}
 
-    def call(%Wardrik.Call{target: %Tool{name: "drop_table", arguments: args}} = call, _value),
-      do: deny(call, "Dropping #{args["table"]} is not something an agent may do. Ask a DBA.")
+    def call(%Wardrik.Call{target: %Tool{name: "drop_table", arguments: args}}, _value),
+      do: {:deny, "Dropping #{args["table"]} is not something an agent may do. Ask a DBA."}
 
-    def call(
-          %Wardrik.Call{target: %Tool{name: "restart_service", arguments: args}} = call,
-          _value
-        ),
-        do:
-          deny(
-            call,
-            "Restarting #{args["service"]} is owned by the platform team. Open a ticket."
-          )
+    def call(%Wardrik.Call{target: %Tool{name: "restart_service", arguments: args}}, _value),
+      do: {:deny, "Restarting #{args["service"]} is owned by the platform team. Open a ticket."}
 
-    def call(call, _value), do: call
+    def call(_call, _value), do: :pass
 
     defp who(%{user: nil, org: nil}), do: "nobody in particular"
     defp who(%{user: nil, org: org}), do: org

@@ -410,13 +410,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     def init(_opts), do: nil
 
     @impl true
-    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
-      do: Call.ask(call, "This ships to production.")
+    def call(%Call{target: %Call.Tool{name: "deploy"}}, _value),
+      do: {:ask, "This ships to production."}
 
-    def call(%Call{target: %Call.Tool{name: "drop"}} = call, _value),
-      do: Call.deny(call, "Never.")
-
-    def call(call, _value), do: call
+    def call(%Call{target: %Call.Tool{name: "drop"}}, _value), do: {:deny, "Never."}
+    def call(_call, _value), do: :pass
   end
 
   defp governed(agent_id, tools) do
@@ -529,7 +527,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       @impl true
       def call(call, test_pid) do
         send(test_pid, {:hooked, call.target})
-        call
+        :pass
       end
     end
 
@@ -540,7 +538,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       def init(_opts), do: nil
 
       @impl true
-      def call(call, _value), do: Call.deny(call, "Not now.")
+      def call(_call, _value), do: {:deny, "Not now."}
     end
 
     defp under(agent_id, tools, hooks),

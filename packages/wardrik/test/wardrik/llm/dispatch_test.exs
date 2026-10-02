@@ -56,15 +56,11 @@ defmodule Wardrik.LLM.DispatchTest do
   defmodule Asking do
     @behaviour Wardrik.Hook
 
-    alias Wardrik.Call
-
     @impl true
     def init(answer), do: answer
 
     @impl true
-    def call(call, :allow), do: call
-    def call(call, {:deny, reason}), do: Call.deny(call, reason)
-    def call(call, {:ask, prompt, memo}), do: Call.ask(call, prompt, memo)
+    def call(_call, answer), do: answer
 
     @impl true
     def settle(call, _answer), do: send(self(), {:hook_settled, call})

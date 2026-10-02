@@ -340,18 +340,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
   # What the tool says about an unchecked call is written on it before any
   # hook reads it.
-  defp declared(%Call{state: :unchecked, target: %Tool{name: name} = target} = call) do
-    case Config.tool_spec(call.scope.config, name) do
-      nil ->
-        call
-
-      spec ->
-        gated = Wardrik.Tool.gated?(spec, name)
-        subjects = Wardrik.Tool.subjects(spec, name, target.arguments)
-        %{call | target: %{target | gated: gated, subjects: subjects}}
-    end
-  end
-
+  defp declared(%Call{state: :unchecked} = call), do: Wardrik.Tool.declared(call)
   defp declared(call), do: call
 
   # The hooks decide an unchecked call. An approved one has been decided.

@@ -7,10 +7,9 @@ defmodule Wardrik.HookTest do
   alias Wardrik.Call.Ask
   alias Wardrik.Call.Denial
   alias Wardrik.Hook
-  alias Wardrik.LLM.Config
-  alias Wardrik.Scope
+  alias Wardrik.Test.Tools.Deploy
 
-  # Does to the call whatever its value says, and reports what it hears.
+  # Says of every call whatever its value is, and reports what it hears.
   defmodule Scripted do
     @behaviour Hook
 
@@ -18,37 +17,25 @@ defmodule Wardrik.HookTest do
     def init(script), do: script
 
     @impl true
-    def call(call, :allow), do: call
-    def call(call, {:deny, reason}), do: Call.deny(call, reason)
-    def call(call, {:ask, prompt}), do: Call.ask(call, prompt)
-    def call(call, {:ask, prompt, memo}), do: Call.ask(call, prompt, memo)
-    def call(call, {:assign, key, value}), do: Call.assign(call, key, value)
-    def call(call, :allow_by_name), do: Call.allow(call)
-    def call(call, :allow_as_another), do: %{call | allowed: ["another"]}
-    def call(call, {:read, key}), do: send(self(), {:read, call.assigns[key]}) && call
-    def call(_call, :answer_nonsense), do: :maybe
-    def call(call, :forget_asks), do: %{call | asks: []}
-    def call(call, :rename), do: %{call | target: %Call.Tool{name: "other"}}
     def call(_call, :raise), do: raise("hook is broken")
+    def call(_call, decision), do: decision
 
     @impl true
-    def approved(call, script), do: send(self(), {:approved, call.id, Call.memo(call), script})
+    def approved(call, memo, script), do: send(self(), {:approved, call.id, memo, script})
   end
 
   defp hook(name, script), do: Hook.new(name, Scripted, script)
-  defp scope(hooks), do: Scope.root(Config.new(), :assistant, hooks: hooks)
 
-  defp check(hooks, name \\ "echo") do
-    %{id: "call_1", name: name, arguments: %{}} |> Call.tool(scope(hooks)) |> Hook.check()
-  end
+  defp check(hooks, name \\ "echo"),
+    do: Wardrik.Test.check(Wardrik.Test.scope(hooks: hooks), name)
 
   describe "check/1" do
     test "no hooks allow everything, so a deployment without one configures nothing" do
       assert %Call{state: :allowed} = check([])
     end
 
-    test "a hook that hands the call back as it was allows it" do
-      assert %Call{state: :allowed, asks: [], denied: nil} = check([hook("quiet", :allow)])
+    test "a hook that passes allows the call" do
+      assert %Call{state: :allowed, asks: [], denied: nil} = check([hook("quiet", :pass)])
     end
 
     test "a deny refuses the call, says whose it was, and ends the asking" do
@@ -64,8 +51,8 @@ defmodule Wardrik.HookTest do
     test "every hook that asks is kept, with its memo, in order" do
       hooks = [
         hook("first", {:ask, "Sure?", :one}),
-        hook("second", :allow),
-        hook("third", {:ask, "Really sure?", :three})
+        hook("second", :pass),
+        hook("third", {:ask, "Really sure?"})
       ]
 
       call = check(hooks)
@@ -74,22 +61,15 @@ defmodule Wardrik.HookTest do
 
       assert call.asks == [
                %Ask{by: "first", prompt: "Sure?", memo: :one},
-               %Ask{by: "third", prompt: "Really sure?", memo: :three}
+               %Ask{by: "third", prompt: "Really sure?", memo: nil}
              ]
 
       assert Call.prompt(call) == "Sure?\n\nReally sure?"
     end
 
-    test "what one hook assigns, the hooks after it read" do
-      assert %Call{state: :allowed} =
-               check([hook("classify", {:assign, :risk, :high}), hook("read", {:read, :risk})])
-
-      assert_received {:read, :high}
-    end
-
-    test "a hook that hands back something else refuses the call" do
+    test "a hook that answers with something else refuses the call" do
       assert %Call{state: :denied, denied: %Denial{reason: reason}} =
-               check([hook("odd", :answer_nonsense)])
+               check([hook("odd", :maybe)])
 
       assert reason =~ "odd" and reason =~ ":maybe"
     end
@@ -100,32 +80,16 @@ defmodule Wardrik.HookTest do
 
       assert reason =~ "hook is broken"
     end
-
-    test "a hook cannot take back what another hook said" do
-      hooks = [hook("first", {:ask, "Sure?"}), hook("sneaky", :forget_asks)]
-
-      assert %Call{state: :denied, denied: %Denial{by: "sneaky", reason: reason}} = check(hooks)
-      assert reason =~ "changed what another hook said"
-    end
-
-    test "a hook cannot change what the call is" do
-      assert %Call{state: :allowed, target: %Call.Tool{name: "echo"}} =
-               check([hook("renamer", :rename)])
-    end
   end
 
   describe "a gated tool's call" do
     defp gated(hooks, tainted \\ false) do
-      scope = %{scope(hooks) | tainted: tainted}
-
-      %{id: "call_1", name: "deploy", arguments: %{}}
-      |> Call.tool(scope)
-      |> then(&%{&1 | target: %{&1.target | gated: true}})
-      |> Hook.check()
+      scope = %{Wardrik.Test.scope(tools: [Deploy], hooks: hooks) | tainted: tainted}
+      Wardrik.Test.check(scope, "deploy", %{"target" => "prod"})
     end
 
     test "waits on its tool where no hook allows it by name, under no hooks or quiet ones" do
-      for hooks <- [[], [hook("quiet", :allow)]] do
+      for hooks <- [[], [hook("quiet", :pass)]] do
         assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} = gated(hooks)
 
         assert prompt ==
@@ -133,56 +97,53 @@ defmodule Wardrik.HookTest do
       end
     end
 
-    test "goes ahead where a hook allows it by name" do
-      assert %Call{state: :allowed, allowed: ["rules"]} = gated([hook("rules", :allow_by_name)])
+    test "goes ahead where a hook allows it, in that hook's name" do
+      assert %Call{state: :allowed, allowed: ["rules"]} = gated([hook("rules", :allow)])
     end
 
     test "is still refused by a deny, and asked about by an ask" do
-      assert %Call{state: :denied} =
-               gated([hook("rules", :allow_by_name), hook("no", {:deny, "No."})])
+      assert %Call{state: :denied} = gated([hook("rules", :allow), hook("no", {:deny, "No."})])
 
       assert %Call{state: :waiting, asks: [%Ask{by: "careful"}]} =
-               gated([hook("rules", :allow_by_name), hook("careful", {:ask, "Sure?"})])
+               gated([hook("rules", :allow), hook("careful", {:ask, "Sure?"})])
     end
 
     test "waits on its tool in a run that has read content from outside, however it was allowed" do
       assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} =
-               gated([hook("rules", :allow_by_name)], true)
+               gated([hook("rules", :allow)], true)
 
       assert prompt ==
                "rules allows deploy, but this run has read content from outside, " <>
                  "which may be what asked for it."
     end
 
-    test "is one a hook allows only in its own name" do
-      assert %Call{state: :denied, denied: %Denial{by: "sneaky", reason: reason}} =
-               gated([hook("sneaky", :allow_as_another)])
-
-      assert reason == "Hook sneaky changed what another hook said"
+    test "goes ahead in such a run where the hook allowed it after outside content" do
+      assert %Call{state: :allowed, allowed: ["rules"], allowed_after_outside: ["rules"]} =
+               gated([hook("rules", {:allow, after_outside: true})], true)
     end
 
     test "is not what an ungated call is: that goes ahead without an allow, tainted or not" do
-      scope = %{scope([hook("quiet", :allow)]) | tainted: true}
+      scope = %{Wardrik.Test.scope(hooks: [hook("quiet", :pass)]) | tainted: true}
 
-      assert %Call{state: :allowed, allowed: []} =
-               %{id: "call_1", name: "echo", arguments: %{}} |> Call.tool(scope) |> Hook.check()
+      assert %Call{state: :allowed, allowed: []} = Wardrik.Test.check(scope, "echo")
     end
   end
 
   describe "approved/1" do
     test "tells each hook that asked, with its own memo" do
-      hooks = [hook("first", {:ask, "Sure?", :one}), hook("second", :allow)]
+      hooks = [hook("first", {:ask, "Sure?", :one}), hook("second", :pass)]
 
-      :ok = hooks |> check() |> Call.approve() |> Hook.approved()
+      %Call{id: id} = call = check(hooks)
+      :ok = call |> Call.approve() |> Hook.approved()
 
-      assert_received {:approved, "call_1", :one, {:ask, "Sure?", :one}}
+      assert_received {:approved, ^id, :one, {:ask, "Sure?", :one}}
       refute_received {:approved, _id, _memo, _script}
     end
 
     test "skips a hook the scope no longer has" do
       waiting = check([hook("gone", {:ask, "Sure?"})])
 
-      :ok = waiting |> Call.approve() |> Call.under(scope([])) |> Hook.approved()
+      :ok = waiting |> Call.approve() |> Call.under(Wardrik.Test.scope()) |> Hook.approved()
       refute_received {:approved, _id, _memo, _script}
     end
 
@@ -192,9 +153,9 @@ defmodule Wardrik.HookTest do
         @impl true
         def init(_opts), do: nil
         @impl true
-        def call(call, _value), do: Call.ask(call, "Sure?")
+        def call(_call, _value), do: {:ask, "Sure?"}
         @impl true
-        def approved(_call, _value), do: raise("approval is broken")
+        def approved(_call, _memo, _value), do: raise("approval is broken")
       end
 
       log =
@@ -208,9 +169,9 @@ defmodule Wardrik.HookTest do
 
   describe "revision/1" do
     test "is the same for the same hooks, and changes with what they hold" do
-      assert Hook.revision([hook("a", :allow)]) == Hook.revision([hook("a", :allow)])
-      refute Hook.revision([hook("a", :allow)]) == Hook.revision([hook("a", {:ask, "?"})])
-      refute Hook.revision([]) == Hook.revision([hook("a", :allow)])
+      assert Hook.revision([hook("a", :pass)]) == Hook.revision([hook("a", :pass)])
+      refute Hook.revision([hook("a", :pass)]) == Hook.revision([hook("a", {:ask, "?"})])
+      refute Hook.revision([]) == Hook.revision([hook("a", :pass)])
     end
   end
 end

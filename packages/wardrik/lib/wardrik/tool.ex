@@ -156,7 +156,8 @@ defmodule Wardrik.Tool do
 
   @doc """
   Whether a call to the tool `name` waits on a person unless a hook allows it
-  by name, with `Wardrik.Call.allow/2`. Optional, and `false` unless declared.
+  by name, with an `:allow` decision; see `t:Wardrik.Hook.decision/0`. Optional,
+  and `false` unless declared.
   A source answers with `c:gated?/2`.
   """
   @callback gated?(name :: String.t()) :: boolean()
@@ -295,6 +296,24 @@ defmodule Wardrik.Tool do
   end
 
   def in_doubt(%ReqLLM.Tool{}, _name), do: :ask
+
+  @doc """
+  The call with what its tool declares written on it, before any hook reads
+  it: whether it is gated, and what it acts on. A call to a tool its scope's
+  config does not name is left as it is.
+  """
+  @spec declared(Wardrik.Call.t()) :: Wardrik.Call.t()
+  def declared(%Wardrik.Call{target: %Wardrik.Call.Tool{name: name} = target} = call) do
+    case Wardrik.LLM.Config.tool_spec(call.scope.config, name) do
+      nil ->
+        call
+
+      spec ->
+        gated = gated?(spec, name)
+        subjects = subjects(spec, name, target.arguments)
+        %{call | target: %{target | gated: gated, subjects: subjects}}
+    end
+  end
 
   @doc "Whether a spec says a call to its tool `name` waits unless a hook allows it by name."
   @spec gated?(spec(), String.t()) :: boolean()

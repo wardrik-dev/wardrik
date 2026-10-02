@@ -140,51 +140,49 @@ defmodule WardrikPolicy.Budget do
   end
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Model{model_spec: spec}} = call, %__MODULE__{} = budget) do
+  def call(%Call{target: %Call.Model{model_spec: spec}, scope: scope}, %__MODULE__{} = budget) do
     if budget.usd != nil and not Cost.priced?(spec),
-      do: Call.deny(call, @unpriced),
-      else: metered(call, spend_key(call.scope, budget), budget)
+      do: {:deny, @unpriced},
+      else: metered(spend_key(scope, budget), budget)
   end
 
-  def call(%Call{} = call, %__MODULE__{}), do: call
+  def call(%Call{}, %__MODULE__{}), do: :pass
 
   # The memo an ask carries is the meter it read, so an approval grants more
   # to the period that ran out.
-  defp metered(call, key, budget) do
+  defp metered(key, budget) do
     case Meter.read(key) do
       {:ok, spend} ->
         cond do
           not exhausted?(budget, spend) ->
-            call
+            :pass
 
           budget.on_exhausted == :ask ->
-            Call.ask(call, exhausted(budget, spend) <> " " <> more(budget), key)
+            {:ask, exhausted(budget, spend) <> " " <> more(budget), key}
 
           true ->
-            Call.deny(call, exhausted(budget, spend))
+            {:deny, exhausted(budget, spend)}
         end
 
       {:error, reason} ->
-        Call.deny(
-          call,
-          "This agent's budget could not be read, so no call it governs may run: #{inspect(reason)}"
-        )
+        {:deny,
+         "This agent's budget could not be read, so no call it governs may run: #{inspect(reason)}"}
     end
   end
 
   @impl Wardrik.Hook
-  def approved(%Call{target: %Call.Model{}, scope: scope} = call, %__MODULE__{} = budget) do
+  def approved(%Call{target: %Call.Model{}, scope: scope}, key, %__MODULE__{} = budget)
+      when is_binary(key) do
     {micro_usd, tokens} = grant(budget)
 
-    with key when is_binary(key) <- Call.memo(call),
-         {:error, reason} <- Meter.grant(key, micro_usd, tokens) do
+    with {:error, reason} <- Meter.grant(key, micro_usd, tokens) do
       Logger.error(
         "#{scope.source.agent_id} was granted more budget that was not recorded: #{inspect(reason)}"
       )
     end
   end
 
-  def approved(%Call{}, %__MODULE__{}), do: :ok
+  def approved(%Call{}, _memo, %__MODULE__{}), do: :ok
 
   @impl Wardrik.Hook
   def settle(%Call{target: %Call.Model{} = model, scope: scope}, %__MODULE__{} = budget) do
