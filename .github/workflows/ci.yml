@@ -42,15 +42,17 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '--all' }}
         run: dev/affected.sh "$BASE" | tee -a "$GITHUB_OUTPUT"
 
-      # A pull request builds the release on x86_64 alone; a push builds it
-      # on both architectures, which the image job joins.
+      # A pull request builds the release on x86_64, and on arm64 too only
+      # where it changes how the release is built; a push builds it on both,
+      # which the image job joins.
       - id: arches
         env:
           EVENT: ${{ github.event_name }}
+          ARM: ${{ steps.affected.outputs.arm }}
         run: |
           x86='{"arch":"x86_64","platform":"amd64","runner":"ubuntu-24.04"}'
           arm='{"arch":"aarch64","platform":"arm64","runner":"ubuntu-24.04-arm"}'
-          if [ "$EVENT" = pull_request ]; then arches="[$x86]"; else arches="[$x86,$arm]"; fi
+          if [ "$EVENT" = pull_request ] && [ "$ARM" != true ]; then arches="[$x86]"; else arches="[$x86,$arm]"; fi
           echo "arches=$arches" >> "$GITHUB_OUTPUT"
 
   # One leg per Mix project, running the `mix precommit` groups it needs with

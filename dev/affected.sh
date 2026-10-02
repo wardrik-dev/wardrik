@@ -4,6 +4,7 @@
 #
 #   check=[{"project":"packages/wardrik_mcp","only":"lint,test,dialyzer"}, ...]
 #   release=true
+#   arm=false
 #   hosts=false
 #   sdk=false
 #   docs=false
@@ -16,9 +17,12 @@
 # builds with, the CI workflow, tools/precommit, .credo.exs or mise.toml,
 # checks everything.
 #
-# The release is built and booted where what it ships changed, the host apps
-# made where core or its Postgres or S3 store did, the TypeScript SDK checked
-# where it or the protocol's schemas did, and the docs site built where it did.
+# The release is built and booted where what it ships changed, and on arm64
+# as well where how it is built did: the Dockerfile, the release project,
+# whose lockfile is where a native dependency arrives, or what installs and
+# runs it. The host apps are made where core or its Postgres or S3 store
+# changed, the TypeScript SDK is checked where it or the protocol's schemas
+# did, and the docs site is built where it did.
 #
 #   dev/affected.sh origin/main     what changed since this branch left main
 #   dev/affected.sh --all           everything
@@ -92,6 +96,7 @@ job() {
 }
 
 echo "release=$(job '^(packages/[^/]+/(lib/|priv/|mix\.exs$)|release/|Dockerfile$|\.dockerignore$|deploy/|dev/(distros|service|failover|services)\.sh$)')"
+echo "arm=$(job '^(Dockerfile$|\.dockerignore$|release/|deploy/|dev/(distros|service|failover)\.sh$)')"
 echo "hosts=$(job '^(packages/(wardrik|wardrik_ecto|wardrik_s3)/(lib/|priv/|mix\.exs$)|dev/hosts|dev/services\.sh$)')"
 echo "sdk=$(job '^(sdks/typescript/|packages/wardrik/priv/protocol/)')"
 echo "docs=$(job '^docs/')"
