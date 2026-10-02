@@ -16,7 +16,7 @@ defmodule Wardrik.Agent.State do
 
       %State{mode: :idle}
       %State{mode: :owed}
-      %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil, parked: nil}}
+      %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil, recovery: :owed}}
       %State{mode: %Waiting{turn: parked, source: source, started_at: at}}
 
   Because the data lives inside the mode rather than beside it, a whole class
@@ -27,7 +27,8 @@ defmodule Wardrik.Agent.State do
   ## Written down
 
   `dump/1` and `load/1` carry an agent between nodes. A turn in flight is
-  written as what it comes back as. A turn that has handed over a batch of
+  written as what it comes back as, which it holds as its `recovery` from the
+  moment it starts. A turn that has handed over a batch of
   tool calls comes back replaying from the last one, under the trace it began
   on, so the calls keep their ids; a fresh turn that has not is `:owed` and
   runs again against the context it already holds; a turn resumed from a park,
@@ -94,23 +95,30 @@ defmodule Wardrik.Agent.State do
   defmodule Running do
     @moduledoc "A turn in flight, and everything that belongs to it."
 
-    @enforce_keys [:task, :scope, :started_at]
-    defstruct [:task, :scope, :started_at, :stopping, :parked, :decisions, :checkpoint]
+    @enforce_keys [:task, :scope, :started_at, :recovery]
+    defstruct [:task, :scope, :started_at, :stopping, :recovery]
+
+    @typedoc """
+    What the turn comes back as if it is lost: `:owed`, run again against
+    the context the agent holds; `{:replaying, checkpoint}`, carried on from
+    the batch of tool calls it last handed over; or `{:resuming, parked,
+    decisions}`, the park it resumed, with the decisions it was resumed with.
+    """
+    @type recovery() ::
+            :owed
+            | {:replaying, Turn.t()}
+            | {:resuming, Turn.t(), %{String.t() => Turn.decision()}}
 
     @typedoc """
     The task running the turn, the scope it runs under, whether it is
-    stopping, the parked turn it resumed and the decisions it was resumed
-    with, if it was, and the batch of tool calls it last handed over before
-    running them.
+    stopping, and what it comes back as.
     """
     @type t() :: %__MODULE__{
             task: Task.t(),
             scope: Wardrik.Scope.t(),
             started_at: integer(),
             stopping: Wardrik.Agent.State.Stopping.t() | nil,
-            parked: Turn.t() | nil,
-            decisions: %{String.t() => Turn.decision()} | nil,
-            checkpoint: Turn.t() | nil
+            recovery: recovery()
           }
   end
 
@@ -421,16 +429,15 @@ defmodule Wardrik.Agent.State do
   defp at_rest(%Replaying{checkpoint: checkpoint, source: source}),
     do: {:replaying, checkpoint, source}
 
-  # A checkpoint is the furthest a turn got, past any park it was resumed from.
-  defp at_rest(%Running{checkpoint: %Turn{} = checkpoint, scope: scope}),
-    do: {:replaying, checkpoint, scope.source}
-
   defp at_rest(%Resuming{turn: turn, decisions: decisions, source: source}),
     do: {:resuming, turn, decisions, source}
 
-  defp at_rest(%Running{parked: nil}), do: :owed
+  defp at_rest(%Running{recovery: :owed}), do: :owed
 
-  defp at_rest(%Running{parked: turn, decisions: decisions, scope: scope}),
+  defp at_rest(%Running{recovery: {:replaying, checkpoint}, scope: scope}),
+    do: {:replaying, checkpoint, scope.source}
+
+  defp at_rest(%Running{recovery: {:resuming, turn, decisions}, scope: scope}),
     do: {:resuming, turn, decisions, scope.source}
 
   defp at_rest(mode) when mode in [:idle, :owed], do: mode
@@ -689,7 +696,7 @@ defmodule Wardrik.Agent.State do
     %{
       state
       | context: context,
-        mode: %Running{task: task, scope: scope, started_at: started_at}
+        mode: %Running{task: task, scope: scope, started_at: started_at, recovery: :owed}
     }
   end
 
@@ -698,13 +705,19 @@ defmodule Wardrik.Agent.State do
   def replayed(%__MODULE__{} = state, task, %Scope{} = scope, checkpoint, started_at) do
     %{
       state
-      | mode: %Running{task: task, scope: scope, started_at: started_at, checkpoint: checkpoint}
+      | mode: %Running{
+          task: task,
+          scope: scope,
+          started_at: started_at,
+          recovery: {:replaying, checkpoint}
+        }
     }
   end
 
   @doc """
   Records the batch of tool calls the running turn is about to run, so a turn
-  lost from here goes on from it. `:stale` when `pid` is not the running turn.
+  lost from here goes on from it, past any park it was resumed from.
+  `:stale` when `pid` is not the running turn.
   """
   @spec checkpointed(t(), pid(), Turn.t()) :: {:ok, t()} | :stale
   def checkpointed(
@@ -712,7 +725,7 @@ defmodule Wardrik.Agent.State do
         pid,
         checkpoint
       ),
-      do: {:ok, %{state | mode: %{running | checkpoint: checkpoint}}}
+      do: {:ok, %{state | mode: %{running | recovery: {:replaying, checkpoint}}}}
 
   def checkpointed(%__MODULE__{}, _pid, _checkpoint), do: :stale
 
@@ -910,8 +923,7 @@ defmodule Wardrik.Agent.State do
       task: task,
       scope: scope,
       started_at: started_at,
-      parked: turn,
-      decisions: decisions
+      recovery: {:resuming, turn, decisions}
     }
 
     %{state | mode: running}

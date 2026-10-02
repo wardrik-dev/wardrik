@@ -431,7 +431,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a replay started is running, with the checkpoint it began from" do
       state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
-      assert %State{mode: %Running{checkpoint: %Turn{}}} = state
+      assert %State{mode: %Running{recovery: {:replaying, %Turn{}}}} = state
       assert %State{mode: %Replaying{}} = reload(state)
     end
 
