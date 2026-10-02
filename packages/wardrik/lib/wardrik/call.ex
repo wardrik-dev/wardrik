@@ -61,7 +61,9 @@ defmodule Wardrik.Call do
 
   A call waits on a hook, named by the hook's name, on its own tool, `:tool`,
   or on `:ledger`, when it began before its agent was lost and may already
-  have done what it does.
+  have done what it does. One parked to resolve a credential waits on its
+  tool, and its agent approves it once the credential is available; see
+  `Wardrik.Credential.available/3`.
 
   ## Gated tools
 
@@ -219,24 +221,35 @@ defmodule Wardrik.Call do
   `link:` is where the person authorizes, `%{url: url, code: code}`. It is
   kept apart from the prompt: `prompt/1` never holds it, and it is shown only
   where the person answering is, never in an event log or a notice.
+  `credential:` is the credential the runtime parked the call to resolve, as
+  `%{ref: ref, owner: owner}`: its agent approves the call once
+  `Wardrik.Credential.available/3` says the credential can be resolved.
   """
-  @spec park(t(), String.t(), link: Ask.link()) :: t()
+  @spec park(t(), String.t(), link: Ask.link(), credential: Ask.credential() | nil) :: t()
   def park(%__MODULE__{} = call, prompt, opts \\ []) when is_binary(prompt) do
-    case Keyword.get(opts, :link) do
-      nil ->
-        wait(call, :tool, prompt)
+    ask = %Ask{
+      by: :tool,
+      prompt: prompt,
+      link: linked(Keyword.get(opts, :link)),
+      credential: Keyword.get(opts, :credential)
+    }
 
-      %{url: url} = link when is_binary(url) ->
-        %{
-          wait(call, :tool, prompt)
-          | asks: [%Ask{by: :tool, prompt: prompt, link: Map.put_new(link, :code, nil)}]
-        }
-    end
+    %{call | state: :waiting, asks: [ask]}
   end
+
+  defp linked(nil), do: nil
+  defp linked(%{url: url} = link) when is_binary(url), do: Map.put_new(link, :code, nil)
 
   @doc "Where the person a waiting call asks authorizes, where its tool said."
   @spec link(t()) :: Ask.link() | nil
   def link(%__MODULE__{asks: asks}), do: Enum.find_value(asks, & &1.link)
+
+  @doc "Whether the call waits on `ref` being resolvable for `owner`; see `Wardrik.Credential.available/3`."
+  @spec awaits?(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: boolean()
+  def awaits?(%__MODULE__{state: :waiting, asks: asks}, ref, owner),
+    do: Enum.any?(asks, &(&1.credential == %{ref: ref, owner: owner}))
+
+  def awaits?(%__MODULE__{}, _ref, _owner), do: false
 
   @doc """
   The call waiting on `by`, `:tool` or `:ledger`, which asks `prompt`. What

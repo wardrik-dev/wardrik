@@ -39,7 +39,8 @@ defmodule Wardrik.LLM.ToolRunner do
     4. a refused call is answered with why
     5. the credentials its tool's annotations name are resolved for an
        allowed or approved call; one the person has yet to authorize parks
-       the call on its link
+       the call on its link, until `Wardrik.Credential.available/3` says it
+       can be resolved
     6. the tool runs the call, handed its arguments and a
        `Wardrik.Tool.Context`; see `Wardrik.Tool`. One whose work ran a
        delegate that read content from outside is tainted; see
@@ -411,11 +412,8 @@ defmodule Wardrik.LLM.ToolRunner do
         {:ok, credential} ->
           {:cont, put_credential(call, ref, credential)}
 
-        {:error, {:authorization_required, url}} ->
-          {:halt, unauthorized(call, ref, url, nil)}
-
-        {:error, {:authorization_required, url, code}} ->
-          {:halt, unauthorized(call, ref, url, code)}
+        {:error, {:authorization_required, link, owner}} ->
+          {:halt, unauthorized(call, ref, link, owner)}
 
         {:error, reason} ->
           {:halt, finished(call, unresolved(name, ref, reason))}
@@ -432,12 +430,12 @@ defmodule Wardrik.LLM.ToolRunner do
     end
   end
 
-  defp unauthorized(call, ref, url, code) do
+  defp unauthorized(call, ref, link, owner) do
     prompt =
       "To use #{Call.name(call)}, connect #{ref} at its link. " <>
         "This carries on once it is connected."
 
-    call |> Call.park(prompt, link: %{url: url, code: code}) |> announced()
+    call |> Call.park(prompt, link: link, credential: %{ref: ref, owner: owner}) |> announced()
   end
 
   defp unresolved(name, ref, :no_resolver),

@@ -151,7 +151,9 @@ defmodule WardrikOAuth.DeviceTest do
 
       configure(providers: provider(flow: :device))
 
-      assert {:error, {:authorization_required, "https://auth.example.com/activate", "WDJB-MJHT"}} =
+      assert {:error,
+              {:authorization_required,
+               %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, {nil, ^owner}}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -179,7 +181,7 @@ defmodule WardrikOAuth.DeviceTest do
       first =
         Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
-      assert {:error, {:authorization_required, _url, "WDJB-MJHT"}} = first
+      assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} = first
 
       assert Credential.resolve(
                Calls.tool("tool", %{}, scope(owner)),
@@ -193,7 +195,7 @@ defmodule WardrikOAuth.DeviceTest do
 
       log =
         capture_log(fn ->
-          {:error, {:authorization_required, _url, _code}} =
+          {:error, {:authorization_required, _link, _owner}} =
             Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
           assert_receive {:device_done, %{outcome: :access_denied}}
@@ -221,7 +223,7 @@ defmodule WardrikOAuth.DeviceTest do
       stub_server(register: true, device: @unhurried)
       configure(providers: provider(flow: :device), client: [name: "Wardrik"])
 
-      {:error, {:authorization_required, _url, _code}} =
+      {:error, {:authorization_required, _link, _owner}} =
         Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
       assert_received {:oauth, "POST", "/register", body}
@@ -239,12 +241,14 @@ defmodule WardrikOAuth.DeviceTest do
     test "is on another device where the redirect comes back here and there is no browser", %{
       owner: owner
     } do
-      assert {:error, {:authorization_required, _url, "WDJB-MJHT"}} =
+      assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} =
                resolve(owner, open: false, opener: "no-such-opener-anywhere")
     end
 
     test "is in a browser where the redirect comes back somewhere else", %{owner: owner} do
-      assert {:error, {:authorization_required, url}} = resolve(owner, uri: redirect_uri())
+      assert {:error, {:authorization_required, %{url: url}, _owner}} =
+               resolve(owner, uri: redirect_uri())
+
       assert String.starts_with?(url, "https://auth.example.com/authorize?")
     end
 
@@ -256,7 +260,7 @@ defmodule WardrikOAuth.DeviceTest do
         redirect: [open: false, opener: "no-such-opener-anywhere"]
       )
 
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, %{url: url}, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"

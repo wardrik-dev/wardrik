@@ -4,10 +4,9 @@ defmodule WardrikOAuth.Pending do
 
   One entry per `state` value: what was being authorized, for whom, the PKCE
   verifier the callback needs, or the code a user enters on another device,
-  where to send the user, and the calls parked waiting for it. Entries expire
-  after fifteen minutes, or when a device code does, because a user who never
-  finishes should not leave a verifier lying around, and a second attempt
-  should start clean.
+  and where to send the user. Entries expire after fifteen minutes, or when a
+  device code does, because a user who never finishes should not leave a
+  verifier lying around, and a second attempt should start clean.
 
   A flow already under way for the same user and provider is handed back
   rather than started again, so an agent that retries a parked call keeps
@@ -40,8 +39,7 @@ defmodule WardrikOAuth.Pending do
       :user_code,
       :url,
       :started_at,
-      expires_after: :timer.minutes(15),
-      resumes: []
+      expires_after: :timer.minutes(15)
     ]
 
     @type t() :: %__MODULE__{
@@ -54,8 +52,7 @@ defmodule WardrikOAuth.Pending do
             user_code: String.t() | nil,
             url: String.t(),
             started_at: integer(),
-            expires_after: pos_integer(),
-            resumes: [Wardrik.Credential.continuation()]
+            expires_after: pos_integer()
           }
   end
 
@@ -66,16 +63,9 @@ defmodule WardrikOAuth.Pending do
   @spec start(Flight.t()) :: {:ok, String.t()}
   def start(%Flight{} = flight), do: GenServer.call(__MODULE__, {:start, flight})
 
-  @doc """
-  The flow under way for this provider and owner, if any.
-
-  A continuation is added to the flow it finds, so every call that parks while
-  one authorization runs is answered by the callback that ends it.
-  """
-  @spec under_way(String.t(), term(), Wardrik.Credential.continuation() | nil) ::
-          {:ok, Flight.t()} | :error
-  def under_way(provider, owner, resume \\ nil),
-    do: GenServer.call(__MODULE__, {:under_way, provider, owner, resume})
+  @doc "The flow under way for this provider and owner, if any."
+  @spec under_way(String.t(), term()) :: {:ok, Flight.t()} | :error
+  def under_way(provider, owner), do: GenServer.call(__MODULE__, {:under_way, provider, owner})
 
   @doc """
   Takes the flow a callback belongs to, which can only be claimed once, where
@@ -95,15 +85,13 @@ defmodule WardrikOAuth.Pending do
   def drop(provider, owner), do: GenServer.cast(__MODULE__, {:drop, provider, owner})
 
   @doc """
-  The flow under way for this provider and owner on any of `nodes`, joined as
-  `under_way/3` joins one here, with `resume` added to it where it is held. A
-  node that cannot be asked, or runs no registry of flows, is passed over.
+  The flow under way for this provider and owner on any of `nodes`. A node
+  that cannot be asked, or runs no registry of flows, is passed over.
   """
-  @spec under_way_on([node()], String.t(), term(), Wardrik.Credential.continuation() | nil) ::
-          {:ok, Flight.t()} | :error
-  def under_way_on(nodes, provider, owner, resume) do
+  @spec under_way_on([node()], String.t(), term()) :: {:ok, Flight.t()} | :error
+  def under_way_on(nodes, provider, owner) do
     nodes
-    |> :erpc.multicall(__MODULE__, :under_way, [provider, owner, resume], :timer.seconds(5))
+    |> :erpc.multicall(__MODULE__, :under_way, [provider, owner], :timer.seconds(5))
     |> Enum.find_value(:error, fn
       {:ok, {:ok, %Flight{} = flight}} -> {:ok, flight}
       _none -> nil
@@ -129,7 +117,7 @@ defmodule WardrikOAuth.Pending do
     {:reply, {:ok, flight.url}, Map.put(flights, flight.state, flight)}
   end
 
-  def handle_call({:under_way, provider, owner, resume}, _from, flights) do
+  def handle_call({:under_way, provider, owner}, _from, flights) do
     found =
       Enum.find_value(flights, :error, fn {_state, flight} ->
         if flight.provider.name == provider and flight.owner == owner and
@@ -137,15 +125,7 @@ defmodule WardrikOAuth.Pending do
            do: {:ok, flight}
       end)
 
-    case found do
-      {:ok, flight} ->
-        waiting = %{flight | resumes: add(flight.resumes, resume)}
-
-        {:reply, {:ok, waiting}, Map.put(flights, waiting.state, waiting)}
-
-      :error ->
-        {:reply, :error, flights}
-    end
+    {:reply, found, flights}
   end
 
   def handle_call({:claim, state, accept}, _from, flights) do
@@ -176,9 +156,6 @@ defmodule WardrikOAuth.Pending do
 
     {:noreply, Map.reject(flights, fn {_state, flight} -> expired?(flight) end)}
   end
-
-  defp add(resumes, nil), do: resumes
-  defp add(resumes, resume), do: if(resume in resumes, do: resumes, else: resumes ++ [resume])
 
   defp expired?(%Flight{started_at: started_at, expires_after: expires_after}) do
     System.monotonic_time(:millisecond) - started_at > expires_after

@@ -14,24 +14,20 @@ defmodule WardrikVault.Grants do
 
   @doc """
   The credential the grant `value`, held as `name` for `owner`, answers
-  `call` with, renewing it where it has run out, and writing back what it
-  renewed.
+  with, renewing it where it has run out, and writing back what it renewed.
   """
-  @callback renew(
-              name :: String.t(),
-              owner :: WardrikVault.owner(),
-              value :: String.t(),
-              Wardrik.Call.t()
-            ) :: Wardrik.Credential.outcome()
+  @callback renew(name :: String.t(), owner :: WardrikVault.owner(), value :: String.t()) ::
+              Wardrik.Credential.outcome()
 
   @doc """
-  Asks `owner` to authorize `name` for `call`: what the call parks on until
-  they have, `{:error, {:authorization_required, url}}` or
-  `{:error, {:authorization_required, url, code}}`.
+  Asks `owner` to authorize `name`: what a call parks on until they have,
+  `{:error, {:authorization_required, link, owner}}`. Once they have, the
+  module keeps the grant with `WardrikVault.put/4` and says so with
+  `Wardrik.Credential.available/3`, and the call carries on.
   """
-  @callback ask(name :: String.t(), owner :: WardrikVault.owner(), Wardrik.Call.t()) ::
+  @callback ask(name :: String.t(), owner :: WardrikVault.owner()) ::
               Wardrik.Credential.outcome()
 
   @doc "Hears that the grant held as `name` for `owner` was refused by the server it was for."
-  @callback refused(name :: String.t(), owner :: WardrikVault.owner(), Wardrik.Call.t()) :: :ok
+  @callback refused(name :: String.t(), owner :: WardrikVault.owner()) :: :ok
 end

@@ -52,6 +52,12 @@ defmodule Wardrik.Agent do
   it rather than starting a turn of their own, because the parked work is still
   the current work; `interrupt/1` abandons it if that is what you want.
 
+  A call parked to resolve a credential the person has yet to connect waits
+  the same way, and the agent approves it itself once
+  `Wardrik.Credential.available/3` says the credential can be resolved, as
+  the `Wardrik.Principal` that connected it; the turn carries on with nobody
+  asked.
+
   A parked turn is written to the store and outlives the node it parked on. A
   turn lost after being resumed goes on with the decisions it was given, which
   are not asked for again. Resuming gives the turn this node's tools and a
@@ -130,6 +136,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.Agent.State
+  alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Log
@@ -361,7 +368,9 @@ defmodule Wardrik.Agent do
     state |> perform(effects) |> advance(sync: true)
   end
 
-  def handle_cast({:resume, decisions, by}, state) do
+  def handle_cast({:resume, decisions, by}, state), do: decided(state, decisions, by)
+
+  defp decided(state, decisions, by) do
     case resume_turn(state, decisions, by) do
       {:ok, next} -> stay(next, sync: true)
       {:error, next} -> stay(next)
@@ -472,6 +481,15 @@ defmodule Wardrik.Agent do
     case State.kill(state, tag) do
       {:kill, state, effects} -> state |> perform(effects) |> advance(sync: true)
       :stale -> stay(state)
+    end
+  end
+
+  # Every agent hears of every credential; one that parked a call to resolve
+  # it approves the call.
+  def handle_info(%Credential.Available{ref: ref, owner: owner, by: by}, state) do
+    case State.awaiting(state, ref, owner) do
+      [] -> {:noreply, state}
+      ids -> decided(state, Map.new(ids, &{&1, :approve}), by)
     end
   end
 

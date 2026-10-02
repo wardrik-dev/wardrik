@@ -29,15 +29,15 @@ defmodule WardrikVaultTest do
     def grants?(name), do: name == "github"
 
     @impl true
-    def renew(name, owner, value, _call),
+    def renew(name, owner, value),
       do: {:ok, Credential.secret("renewed #{value}", owner: owner, expires_at: byte_size(name))}
 
     @impl true
-    def ask(name, owner, _call),
-      do: {:error, {:authorization_required, "https://#{name}.test/#{inspect(owner)}"}}
+    def ask(name, owner),
+      do: {:error, {:authorization_required, %{url: "https://#{name}.test", code: nil}, owner}}
 
     @impl true
-    def refused(_name, owner, _call) do
+    def refused(_name, owner) do
       send(self(), {:refused, owner})
       :ok
     end
@@ -247,15 +247,11 @@ defmodule WardrikVaultTest do
       grants(Grants)
       org = "org-#{user}"
 
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, %{url: "https://github.test"}, {^org, ^user}}} =
                Credential.resolve(call(org: org, user: user), "github")
 
-      assert url == "https://github.test/#{inspect({org, user})}"
-
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, %{url: "https://github.test"}, ^org}} =
                Credential.resolve(call(org: org), "github")
-
-      assert url == "https://github.test/#{inspect(org)}"
     end
 
     test "an org's grant reaches the org's own calls, and a user is asked for theirs",
@@ -268,10 +264,9 @@ defmodule WardrikVaultTest do
       assert {:ok, credential} = Credential.resolve(call(org: org), "github")
       assert {Credential.reveal(credential), credential.owner} == {"renewed org-token", org}
 
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, _link, {^org, ^user}}} =
                Credential.resolve(call(org: org, user: user), "github")
 
-      assert url == "https://github.test/#{inspect({org, user})}"
       assert :ok = Credential.refused(call(org: org, user: user), "github")
       refute_received {:refused, _owner}
 
@@ -296,7 +291,7 @@ defmodule WardrikVaultTest do
       keys([WardrikVault.generate_key()])
       grants(Grants)
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, {"acme", ^user}}} =
                Credential.resolve(call(org: "acme", user: user), "github")
 
       keys([old])

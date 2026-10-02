@@ -22,22 +22,23 @@ defmodule WardrikOAuth do
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has
-  no user. A tool parks on the answer, and the parked call runs again with the
-  token in hand once they have authorized, with nobody approving it. The
-  token is kept in the vault as a grant for whoever authorized, and is the
-  credential their calls resolve from then on. They authorize one of two
-  ways, as the provider's `:flow` says; see `WardrikOAuth.Provider`:
+  no user. A tool parks on the answer,
+  `{:error, {:authorization_required, link, owner}}`. Once they have
+  authorized, the token is kept in the vault as a grant for whoever did, and
+  `Wardrik.Credential.available/3` carries the parked call on, with nobody
+  approving it; the token is the credential their calls resolve from then
+  on. They authorize one of two ways, as the provider's `:flow` says; see
+  `WardrikOAuth.Provider`:
 
-    * in a browser: `{:error, {:authorization_required, url}}`, a link that
-      comes back to this deployment's redirect URI. Where that is this
-      machine's loopback the link is opened as the flow starts, since there is
-      a browser here; see `WardrikOAuth.Browser` and `WardrikOAuth.Loopback`.
-    * on another device: `{:error, {:authorization_required, url, code}}`, a
-      code to enter at the server's page, from a phone or any browser at all,
-      while a task here asks the server whether they have; see
-      `WardrikOAuth.Device`. Nothing comes back to this machine, so a daemon on a
-      server with no browser and no open port can be authorized from
-      anywhere.
+    * in a browser: a link that comes back to this deployment's redirect
+      URI. Where that is this machine's loopback the link is opened as the
+      flow starts, since there is a browser here; see `WardrikOAuth.Browser`
+      and `WardrikOAuth.Loopback`.
+    * on another device: a code to enter at the server's page, from a phone
+      or any browser at all, while a task here asks the server whether they
+      have; see `WardrikOAuth.Device`. Nothing comes back to this machine, so
+      a daemon on a server with no browser and no open port can be
+      authorized from anywhere.
 
   By default a provider whose server offers the device grant is authorized
   that way where a browser flow could not finish, on a machine with no
@@ -61,7 +62,7 @@ defmodule WardrikOAuth do
 
   ## Renewing
 
-  A token that has expired, or that a server refused (`c:WardrikVault.Grants.refused/3`),
+  A token that has expired, or that a server refused (`c:WardrikVault.Grants.refused/2`),
   is refreshed before the user is asked for anything, at the token endpoint
   it came from, as the client it was issued to (`WardrikOAuth.Token`). One
   process in the cluster renews a user's token for a provider at a time, and
@@ -99,37 +100,24 @@ defmodule WardrikOAuth do
 
   @doc "The credential a token held for `owner` answers with, renewed where it has run out."
   @impl WardrikVault.Grants
-  def renew(name, owner, encoded, %Wardrik.Call{} = call) do
-    with {:ok, provider} <- provider(name),
-         do: held(provider, owner, encoded, resume(call, provider))
+  def renew(name, owner, encoded) do
+    with {:ok, provider} <- provider(name), do: held(provider, owner, encoded)
   end
 
-  @doc "Asks `owner` to authorize `name`, for the call to park on until they have."
+  @doc "Asks `owner` to authorize `name`, for a call to park on until they have."
   @impl WardrikVault.Grants
-  def ask(name, owner, %Wardrik.Call{} = call) do
-    with {:ok, provider} <- provider(name),
-         do: begin(provider, owner, resume(call, provider))
+  def ask(name, owner) do
+    with {:ok, provider} <- provider(name), do: begin(provider, owner)
   end
 
   @doc "Treats the token held for `owner` as expired, so the next resolve renews it."
   @impl WardrikVault.Grants
-  def refused(name, owner, %Wardrik.Call{}) do
+  def refused(name, owner) do
     with {:ok, provider} <- provider(name),
          do: single_flight(provider, owner, fn -> expire(provider, owner) end)
 
     :ok
   end
-
-  # The call parked on a flow is approved once it finishes, by the flow:
-  # whoever finished it is known only as the provider's authorization, not
-  # the user the token is kept for.
-  defp resume(call, %Provider{name: name}),
-    do:
-      Credential.continuation(call, %Wardrik.Principal{
-        type: :oauth,
-        id: name,
-        name: "#{name} authorization"
-      })
 
   defp expire(provider, owner) do
     case current(provider, owner) do
@@ -143,18 +131,17 @@ defmodule WardrikOAuth do
   needed.
 
   What resolving does, without a call: for a surface that wants to connect a
-  user before an agent ever asks. `resume` is applied once they have
-  connected, where one is given. A secret the vault holds under the
+  user before an agent ever asks. A secret the vault holds under the
   provider's name for `owner` is not a token, and is left be.
   """
-  @spec hold(Provider.t(), term(), Credential.continuation() | nil) :: Credential.outcome()
-  def hold(%Provider{} = provider, owner, resume \\ nil) do
+  @spec hold(Provider.t(), term()) :: Credential.outcome()
+  def hold(%Provider{} = provider, owner) do
     case WardrikVault.lookup(provider.name, owner) do
-      {:ok, :grant, encoded} -> held(provider, owner, encoded, resume)
+      {:ok, :grant, encoded} -> held(provider, owner, encoded)
       {:ok, :secret, _secret} -> {:error, :held_as_a_secret}
-      {:error, :not_found} -> begin(provider, owner, resume)
+      {:error, :not_found} -> begin(provider, owner)
       {:error, :no_key} -> {:error, :no_key}
-      {:error, _kind, reason} -> unreadable(provider, owner, reason, resume)
+      {:error, _kind, reason} -> unreadable(provider, owner, reason)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -168,12 +155,12 @@ defmodule WardrikOAuth do
   # A token nothing can read, sealed under a key rotated away or written in
   # another shape, is asked for again and replaced when the user finishes. It
   # is left where it is until then.
-  defp unreadable(%Provider{} = provider, owner, reason, resume) do
+  defp unreadable(%Provider{} = provider, owner, reason) do
     Logger.warning(
       "#{provider.name} for #{inspect(owner)} cannot be read (#{tag(reason)}); asking again"
     )
 
-    begin(provider, owner, resume)
+    begin(provider, owner)
   end
 
   defp tag(reason) when is_atom(reason), do: reason
@@ -192,11 +179,12 @@ defmodule WardrikOAuth do
       issuer, and must be there where the issuer says it sends one
 
   Only a browser flow still under way is finished; a device flow waits for
-  its code. The token is written before the call parked on it is answered, so
-  the turn that carries on finds the credential it asked for. A callback that
-  cannot be turned into a token leaves the flow where it was, so the same
-  link still works. Once one flow for a user and provider finishes, any other
-  under way for them, on any node, is dropped.
+  its code. The token is written before the calls parked on it are told,
+  through `Wardrik.Credential.available/3`, so the turn that carries on finds
+  the credential it asked for. A callback that cannot be turned into a token
+  leaves the flow where it was, so the same link still works. Once one flow
+  for a user and provider finishes, any other under way for them, on any
+  node, is dropped.
 
   A flow is held by the node that started it. One this node did not start is
   finished on whichever connected node did, all of them asked at once.
@@ -243,15 +231,14 @@ defmodule WardrikOAuth do
     end)
   end
 
-  # The flow is claimed before the token is asked for, and the calls parked on
-  # it travel with it, so a flow that gets no token goes back rather than
-  # taking them with it.
+  # The flow is claimed before the token is asked for, so a flow that gets no
+  # token goes back rather than being lost.
   defp complete(%Flight{} = flight, code) do
     with {:ok, token} <- exchange(flight, code),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
       :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
-      resume(flight)
+      connected(flight)
 
       {:ok, flight.provider.name}
     else
@@ -290,26 +277,26 @@ defmodule WardrikOAuth do
     %{Client.document(Client.new()) | "redirect_uris" => uris}
   end
 
-  defp held(provider, owner, encoded, resume) do
+  defp held(provider, owner, encoded) do
     case Token.decode(encoded) do
       {:ok, %Token{} = token} ->
         if Token.fresh?(token, System.system_time(:second)),
           do: {:ok, credential(token, owner)},
-          else: renew(provider, owner, resume)
+          else: renew(provider, owner)
 
       {:error, reason} ->
-        unreadable(provider, owner, reason, resume)
+        unreadable(provider, owner, reason)
     end
   end
 
-  defp renew(provider, owner, resume) do
+  defp renew(provider, owner) do
     case single_flight(provider, owner, fn -> refresh(provider, owner) end) do
       {:ok, %Token{} = fresh} ->
         {:ok, credential(fresh, owner)}
 
       :ask ->
         Logger.info("#{provider.name} could not be renewed for #{inspect(owner)}; asking again")
-        begin(provider, owner, resume)
+        begin(provider, owner)
 
       {:error, reason} ->
         {:error, reason}
@@ -385,21 +372,21 @@ defmodule WardrikOAuth do
   # begin one at a time for a user and provider across the cluster, and one
   # under way on any node is joined there, so calls parking at once, on any
   # node, share one.
-  defp begin(%Provider{} = provider, owner, resume) do
+  defp begin(%Provider{} = provider, owner) do
     single_flight(provider, owner, fn ->
-      with :error <- Pending.under_way(provider.name, owner, resume),
-           :error <- Pending.under_way_on(Node.list(), provider.name, owner, resume) do
-        open(provider, owner, resume)
+      with :error <- Pending.under_way(provider.name, owner),
+           :error <- Pending.under_way_on(Node.list(), provider.name, owner) do
+        open(provider, owner)
       else
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
       end
     end)
   end
 
-  defp required(%Flight{user_code: nil, url: url}), do: {:authorization_required, url}
-  defp required(%Flight{user_code: code, url: url}), do: {:authorization_required, url, code}
+  defp required(%Flight{url: url, user_code: code, owner: owner}),
+    do: {:authorization_required, %{url: url, code: code}, owner}
 
-  defp open(%Provider{} = provider, owner, resume) do
+  defp open(%Provider{} = provider, owner) do
     with {:ok, metadata, registered} <- prepare(provider),
          {:ok, flow} <- flow(provider, metadata) do
       flight = %Flight{
@@ -409,8 +396,7 @@ defmodule WardrikOAuth do
         metadata: metadata,
         registered: registered,
         url: nil,
-        started_at: System.monotonic_time(:millisecond),
-        resumes: List.wrap(resume)
+        started_at: System.monotonic_time(:millisecond)
       }
 
       open(flow, flight)
@@ -428,10 +414,11 @@ defmodule WardrikOAuth do
           params: flight.provider.authorization_params
         )
 
-      {:ok, url} = Pending.start(%{flight | verifier: verifier, url: url})
+      flight = %{flight | verifier: verifier, url: url}
+      {:ok, ^url} = Pending.start(flight)
       opened(url, metadata.trust)
 
-      {:error, {:authorization_required, url}}
+      {:error, required(flight)}
     else
       {:error, {:no_pkce, metadata.issuer}}
     end
@@ -462,7 +449,7 @@ defmodule WardrikOAuth do
         "A device flow for #{flight.provider.name} started for #{inspect(flight.owner)}"
       )
 
-      {:error, {:authorization_required, url, device.user_code}}
+      {:error, required(flight)}
     end
   end
 
@@ -541,7 +528,7 @@ defmodule WardrikOAuth do
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
       :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
-      resume(flight)
+      connected(flight)
       :authorized
     else
       {:error, reason} ->
@@ -554,32 +541,12 @@ defmodule WardrikOAuth do
     end
   end
 
-  # A flow started outside a parked call has nothing to answer, and a turn
-  # answered already says so rather than failing the callback.
-  defp resume(%Flight{} = flight), do: Enum.each(flight.resumes, &answer(&1, flight))
-
-  defp answer({module, function, args}, %Flight{} = flight) do
-    case apply(module, function, args) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} ->
-        Logger.warning(
-          "#{flight.provider.name} was authorized, but the agent waiting on it is not running " <>
-            "here; its call is still parked"
-        )
-
-      {:error, reason} ->
-        Logger.info("#{flight.provider.name}: nothing parked (#{reason})")
-    end
-  catch
-    kind, reason ->
-      Logger.warning(
-        "#{flight.provider.name} was authorized, but a call waiting on it could not be " <>
-          "answered: #{Exception.format(kind, reason, __STACKTRACE__)}"
-      )
-
-      :ok
+  # Every call parked on the provider for this owner carries on, approved by
+  # the authorization that finished: whoever finished it is known only as
+  # that, not as the user the token is kept for.
+  defp connected(%Flight{provider: %Provider{name: name}, owner: owner}) do
+    by = %Wardrik.Principal{type: :oauth, id: name, name: "#{name} authorization"}
+    Credential.available(name, owner, by: by)
   end
 
   # A flow whose callback comes back to this machine has a browser on it. One

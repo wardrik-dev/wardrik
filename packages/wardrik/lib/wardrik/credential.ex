@@ -49,19 +49,19 @@ defmodule Wardrik.Credential do
 
   ## Asking for authorization
 
-  `{:error, {:authorization_required, url}}` is a resolver saying the user
-  could have this credential but has not connected yet, and connects at
-  `url`. `{:error, {:authorization_required, url, code}}` says the same of a
-  user who connects by entering `code` at `url`, on whatever device they have
-  to hand. The runtime parks the call on the link until they do, and runs it
-  once they have. A tool whose credential the system it reaches refuses
-  answers `{:refused, name}`; the runtime tells the resolver through
-  `c:refused/2`, resolves the name again and runs the tool once more.
+  `{:error, {:authorization_required, link, owner}}` is a resolver saying
+  that `owner` could have this credential but has not connected yet, and
+  connects at `link`: `%{url: url, code: code}`, with a code where they
+  connect by entering it at `url`, on whatever device they have to hand, and
+  `nil` where following the link is enough. The runtime parks the call on
+  the link, and the call carries on by itself once the resolver says, with
+  `available/3`, that the credential can now be resolved for that owner. Who
+  the owner is, the resolver decides, as it decides whose a resolved
+  credential is; the runtime compares what it is told and never reads it.
 
-  A resolver that sends the user somewhere else to authorize keeps
-  `continuation/1` alongside whatever it started, and applies it when the
-  credential becomes resolvable. The parked call is answered where the user
-  finished, rather than waiting to be told a second time.
+  A tool whose credential the system it reaches refuses answers
+  `{:refused, name}`; the runtime tells the resolver through `c:refused/2`,
+  resolves the name again and runs the tool once more.
 
   ## When a credential is refused
 
@@ -72,7 +72,25 @@ defmodule Wardrik.Credential do
   """
 
   alias Wardrik.Call
+  alias Wardrik.Fleet
   alias Wardrik.Scope
+
+  defmodule Available do
+    @moduledoc """
+    Word that a credential can now be resolved: `ref` for `owner`, as
+    `Wardrik.Credential.available/3` sends it to every agent, and `by`, the
+    `Wardrik.Principal` that made it so, or `nil`.
+    """
+
+    @enforce_keys [:ref, :owner]
+    defstruct [:ref, :owner, :by]
+
+    @type t() :: %__MODULE__{
+            ref: Wardrik.Credential.ref(),
+            owner: Wardrik.Credential.owner(),
+            by: Wardrik.Principal.t() | nil
+          }
+  end
 
   @enforce_keys [:kind, :value]
   defstruct [:kind, :value, :expires_at, :owner]
@@ -80,12 +98,15 @@ defmodule Wardrik.Credential do
   @typedoc "Whether the value is the secret itself or a sentinel standing in for it."
   @type kind() :: :secret | :placeholder
 
+  @typedoc "Whose a credential is: an opaque term the resolver chooses, such as a user within an org."
+  @type owner() :: term()
+
   @typedoc "A credential, opaque to everything but the code that uses it."
   @type t() :: %__MODULE__{
           kind: kind(),
           value: binary(),
           expires_at: integer() | nil,
-          owner: term()
+          owner: owner()
         }
 
   @typedoc "What a tool asks for: a credential's name."
@@ -94,12 +115,8 @@ defmodule Wardrik.Credential do
   @typedoc "What a resolver answers."
   @type outcome() ::
           {:ok, t()}
-          | {:error, {:authorization_required, String.t()}}
-          | {:error, {:authorization_required, String.t(), String.t()}}
+          | {:error, {:authorization_required, Call.Ask.link(), owner()}}
           | {:error, term()}
-
-  @typedoc "How to answer the call that a credential is being resolved for, as `{module, function, args}`."
-  @type continuation() :: {module(), atom(), list()}
 
   @doc """
   Resolves one reference for the principal the call's scope names.
@@ -115,19 +132,19 @@ defmodule Wardrik.Credential do
   @optional_callbacks refused: 2
 
   @doc """
-  Approves `call`, the call a credential is being resolved for, as an MFA to
-  apply later, decided by `by`: the principal the resolver knows finished the
-  authorization as.
+  Says that `ref` can now be resolved for `owner`, so a call parked on it
+  carries on.
 
-  Kept by a resolver in `c:resolve/2` and applied once the credential can be
-  resolved. Applying it is a no-op on a turn that has already been answered.
+  Every agent in the cluster hears it, as an `Available`, and one holding a
+  call parked to resolve `ref` for `owner` approves the call as `:by`, the
+  `Wardrik.Principal` that connected it, and carries on with nobody asked. A
+  resolver says it once the credential is kept where the next `c:resolve/2`
+  finds it.
   """
-  @spec continuation(Call.t(), Wardrik.Principal.t()) :: continuation()
-  def continuation(
-        %Call{id: call_id, scope: %Scope{source: %{agent_id: agent_id}}},
-        %Wardrik.Principal{} = by
-      ) do
-    {Wardrik.Agent, :decide, [agent_id, %{call_id => :approve}, [by: by]]}
+  @spec available(ref(), owner(), by: Wardrik.Principal.t() | nil) :: :ok
+  def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
+    word = %Available{ref: ref, owner: owner, by: Keyword.get(opts, :by)}
+    Enum.each(Fleet.list(), &send(&1.pid, word))
   end
 
   @doc """

@@ -17,8 +17,10 @@ defmodule Wardrik.CredentialTest do
     def resolve("github", %Wardrik.Call{scope: %Scope{user: nil}}),
       do: {:ok, Credential.placeholder("{{org.github}}")}
 
-    def resolve("github", %Wardrik.Call{scope: %Scope{}}),
-      do: {:error, {:authorization_required, "https://example.com/connect"}}
+    def resolve("github", %Wardrik.Call{scope: %Scope{user: user}}),
+      do:
+        {:error,
+         {:authorization_required, %{url: "https://example.com/connect", code: nil}, user}}
 
     def resolve("explodes", %Wardrik.Call{scope: %Scope{}}),
       do: raise("the vault is on fire")
@@ -55,8 +57,8 @@ defmodule Wardrik.CredentialTest do
       assert Credential.reveal(credential) == "ghs_real"
     end
 
-    test "a user who has not connected is told where to" do
-      assert {:error, {:authorization_required, "https://example.com/connect"}} =
+    test "a user who has not connected is told where to, and whose the credential will be" do
+      assert {:error, {:authorization_required, %{url: "https://example.com/connect"}, "someone"}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(credentials: Vault, user: "someone")),
                  "github"

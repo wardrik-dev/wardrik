@@ -472,6 +472,45 @@ defmodule Wardrik.AgentTest do
       assert [{%{id: "call_2"}, _prompt}] = Agent.parked(agent)
     end
 
+    test "a call parked to resolve a credential carries on once it is available" do
+      test_pid = self()
+      answer = {:ok, [Context.assistant("opened")]}
+      link = %{url: "https://github.com/login/oauth", code: nil}
+      credential = %{ref: "github", owner: {"acme", "jon"}}
+      by = %Wardrik.Principal{type: :oauth, id: "github", name: "github authorization"}
+
+      agent =
+        start_agent(
+          runner: {AgentRunners, :connecting, [test_pid, "call_1", link, credential]},
+          resumer: resumer(test_pid, answer)
+        )
+
+      Agent.ask(agent, "open an issue")
+      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}
+
+      :ok = Wardrik.Credential.available("github", {"acme", "someone-else"}, by: by)
+      :ok = Wardrik.Credential.available("linear", {"acme", "jon"}, by: by)
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
+
+      :ok = Wardrik.Credential.available("github", {"acme", "jon"}, by: by)
+
+      assert_receive %Event{payload: {:call_decided, "call_1", :approve, ^by}}
+      assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
+      assert_receive {:resumed, %{"call_1" => :approve}}
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert %{state: :idle, pending: 0} = Agent.status(agent)
+    end
+
+    test "a call a hook asked about waits for a person, whatever credential arrives" do
+      agent = start_agent(runner: parking_runner(self()))
+
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+
+      :ok = Wardrik.Credential.available("github", nil)
+      assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
+    end
+
     test "resuming an agent that is not parked does nothing" do
       agent = start_agent(runner: runner(self()))
 

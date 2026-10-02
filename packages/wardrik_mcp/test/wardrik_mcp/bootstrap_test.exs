@@ -21,8 +21,9 @@ defmodule WardrikMCP.BootstrapTest do
     def resolve("locked", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
       do: {:ok, Credential.secret("a-token", owner: {org, "connected"})}
 
-    def resolve("locked", %Wardrik.Call{scope: %Scope{}}),
-      do: {:error, {:authorization_required, "https://example.com/authorize"}}
+    def resolve("locked", %Wardrik.Call{scope: %Scope{org: org, user: user}}),
+      do:
+        {:error, {:authorization_required, %{url: "https://example.com/authorize"}, {org, user}}}
   end
 
   # The stub refuses to list its tools without a token, the way a server

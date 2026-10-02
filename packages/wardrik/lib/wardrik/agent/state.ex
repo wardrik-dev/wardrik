@@ -574,6 +574,13 @@ defmodule Wardrik.Agent.State do
   def waiting_on(%__MODULE__{mode: %Waiting{turn: turn}}), do: Turn.waiting(turn)
   def waiting_on(%__MODULE__{}), do: []
 
+  @doc "The ids of the calls a waiting agent parked to resolve `ref` for `owner`, or `[]`."
+  @spec awaiting(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: [String.t()]
+  def awaiting(%__MODULE__{mode: %Waiting{turn: turn}}, ref, owner),
+    do: Turn.awaiting(turn, ref, owner)
+
+  def awaiting(%__MODULE__{}, _ref, _owner), do: []
+
   @doc """
   Queues a message, announces it, and says who to nudge.
 

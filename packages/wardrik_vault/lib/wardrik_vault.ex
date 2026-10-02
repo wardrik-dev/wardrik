@@ -43,7 +43,8 @@ defmodule WardrikVault do
   A grant `resolve/2` finds is handed to that module to answer, renewing it
   where it has run out. A name nobody holds that the module can grant is asked
   for, of the call's user, or of its org where the call has no user, and the
-  call parks on where they authorize. See `WardrikVault.Grants`.
+  call parks on where they authorize, until the module says they have. See
+  `WardrikVault.Grants`.
 
   ## Keys
 
@@ -89,23 +90,23 @@ defmodule WardrikVault do
   @type kind() :: :secret | :grant
 
   @impl Wardrik.Credential
-  def resolve(name, %Wardrik.Call{scope: %Scope{} = scope} = call) when is_binary(name) do
+  def resolve(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
     owners = owners(scope)
 
     case find(name, owners) do
       {:ok, owner, :secret, secret} -> {:ok, Credential.secret(secret, owner: owner)}
-      {:ok, owner, :grant, grant} -> Config.grants().renew(name, owner, grant, call)
-      {:unreadable, owner} -> ask(name, owner, call)
-      :none -> ask(name, hd(owners), call)
+      {:ok, owner, :grant, grant} -> Config.grants().renew(name, owner, grant)
+      {:unreadable, owner} -> ask(name, owner)
+      :none -> ask(name, hd(owners))
       {:error, reason} -> {:error, reason}
     end
   end
 
   @doc "Tells the grants module that the grant last resolved for `name` was refused."
   @impl Wardrik.Credential
-  def refused(name, %Wardrik.Call{scope: %Scope{} = scope} = call) when is_binary(name) do
+  def refused(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
     case find(name, owners(scope)) do
-      {:ok, owner, :grant, _grant} -> Config.grants().refused(name, owner, call)
+      {:ok, owner, :grant, _grant} -> Config.grants().refused(name, owner)
       _secret_or_none -> :ok
     end
   end
@@ -140,11 +141,11 @@ defmodule WardrikVault do
     {:unreadable, owner}
   end
 
-  defp ask(name, owner, call) do
+  defp ask(name, owner) do
     grants = Config.grants()
 
     if grants && grants.grants?(name),
-      do: grants.ask(name, owner, call),
+      do: grants.ask(name, owner),
       else: {:error, :not_found}
   end
 
