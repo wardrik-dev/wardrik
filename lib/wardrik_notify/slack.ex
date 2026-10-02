@@ -16,6 +16,10 @@ defmodule WardrikNotify.Slack do
   click, so the daemon opens no port for it. Without one, the message says
   how to answer from a shell instead.
 
+  Each call waiting on approval has a box above its buttons, for why it is
+  denied or what to do instead: Deny tells the agent what was written there,
+  as `wardrik deny` tells it a reason, so a denial can steer it.
+
   Anyone in the channel may press a button unless `:approvers` lists the
   Slack user ids that may. A press decides the call with
   `Wardrik.Agent.decide/2`, and the message then says who decided it.
@@ -39,6 +43,7 @@ defmodule WardrikNotify.Slack do
   alias WardrikNotify.Notice
 
   @api "https://slack.com/api/"
+  @reason "wardrik-reason:"
   @max_arguments 1_500
   @max_text 2_900
 
@@ -101,13 +106,27 @@ defmodule WardrikNotify.Slack do
     if opts[:app_token] do
       value = JSON.encode!(%{a: agent, c: call.id, n: call.name, t: opts[:target]})
 
-      [
-        question,
-        %{type: "actions", block_id: "wardrik:" <> call.id, elements: buttons(call, value)}
-      ]
+      [question] ++
+        reason_box(call) ++
+        [%{type: "actions", block_id: "wardrik:" <> call.id, elements: buttons(call, value)}]
     else
       [question, context(from_a_shell(call, agent))]
     end
+  end
+
+  # A call waiting on a connection has no approval to steer.
+  defp reason_box(%{authorization: true}), do: []
+
+  defp reason_box(call) do
+    [
+      %{
+        type: "input",
+        block_id: @reason <> call.id,
+        optional: true,
+        label: %{type: "plain_text", text: "Why, or what to do instead (sent with Deny)"},
+        element: %{type: "plain_text_input", action_id: "reason", multiline: true}
+      }
+    ]
   end
 
   defp buttons(%{authorization: true}, value),
@@ -198,26 +217,38 @@ defmodule WardrikNotify.Slack do
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
   defp decide(payload, action, user, agent, call, name) do
-    decision =
-      if action == "wardrik_approve",
-        do: :approve,
-        else: {:deny, "Denied in Slack by #{user["username"] || user["name"] || user["id"]}."}
-
+    reason = reason(payload, call)
+    decision = decision(action, reason, user["username"] || user["name"] || user["id"])
     by = %Wardrik.Principal{type: :slack, id: user["id"], name: user["username"] || user["name"]}
 
     case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
-      :ok -> decided(payload, action, user, call, name)
+      :ok -> decided(payload, action, reason, user, call, name)
       {:error, :not_found} -> ephemeral("#{agent} is not running.")
       {:error, :unrecorded} -> ephemeral("#{agent} could not record that, so it was not taken.")
       {:error, _not_waiting} -> ephemeral("That was already answered.")
     end
   end
 
-  # The message keeps what it asked, and the answered call's buttons give way
-  # to who answered it.
-  defp decided(payload, action, user, call, name) do
+  defp decision("wardrik_approve", _reason, _who), do: :approve
+  defp decision(_deny, nil, who), do: {:deny, "Denied in Slack by #{who}."}
+  defp decision(_deny, reason, who), do: {:deny, "Denied in Slack by #{who}: #{reason}"}
+
+  # What was written in the call's box as the button was pressed, where
+  # anything was.
+  defp reason(payload, call) do
+    case get_in(payload, ["state", "values", @reason <> call, "reason", "value"]) do
+      text when is_binary(text) -> if String.trim(text) == "", do: nil, else: String.trim(text)
+      _nothing -> nil
+    end
+  end
+
+  # The message keeps what it asked, and the answered call's box and buttons
+  # give way to who answered it, and what they said.
+  defp decided(payload, action, reason, user, call, name) do
     verb = if action == "wardrik_approve", do: "Approved", else: "Denied"
-    line = context("#{verb} `#{name}` — <@#{user["id"]}>")
+    why = if verb == "Denied" and reason, do: ": " <> reason, else: ""
+    line = context("#{verb} `#{name}` — <@#{user["id"]}>#{why}")
+    box = @reason <> call
 
     blocks =
       payload
@@ -225,6 +256,7 @@ defmodule WardrikNotify.Slack do
       |> List.wrap()
       |> Enum.flat_map(fn
         %{"block_id" => "wardrik:" <> ^call} -> [line]
+        %{"block_id" => ^box} -> []
         block -> [block]
       end)
 

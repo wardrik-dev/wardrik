@@ -64,12 +64,27 @@ defmodule WardrikNotify.SlackTest do
              }
     end
 
+    test "gives each call a box for why it is denied, above its buttons" do
+      assert :ok = Slack.deliver(parked_notice(), [target: :ops] ++ @target)
+      assert_receive {:slack, "slack.com", "/api/chat.postMessage", message}
+
+      ids = Enum.map(message["blocks"], & &1["block_id"])
+
+      assert Enum.find_index(ids, &(&1 == "wardrik-reason:call_1")) ==
+               Enum.find_index(ids, &(&1 == "wardrik:call_1")) - 1
+
+      box = Enum.find(message["blocks"], &(&1["block_id"] == "wardrik-reason:call_1"))
+
+      assert %{"type" => "input", "optional" => true, "element" => %{"action_id" => "reason"}} =
+               box
+    end
+
     test "says how to answer from a shell when there is no app token" do
       assert :ok =
                Slack.deliver(parked_notice(), target: :ops, channel: "#ops", token: "xoxb-test")
 
       assert_receive {:slack, _host, "/api/chat.postMessage", message}
-      refute Enum.any?(message["blocks"], &(&1["type"] == "actions"))
+      refute Enum.any?(message["blocks"], &(&1["type"] in ["actions", "input"]))
       assert JSON.encode!(message["blocks"]) =~ "wardrik approve acme/triage call_1"
     end
 
@@ -130,6 +145,7 @@ defmodule WardrikNotify.SlackTest do
       assert show["action_id"] == "wardrik_link"
       assert deny["action_id"] == "wardrik_deny"
       refute JSON.encode!(message) =~ "https://"
+      refute Enum.any?(message["blocks"], &(&1["type"] == "input"))
     end
 
     test "says to find the link with wardrik parked where there is no app token" do
@@ -216,14 +232,18 @@ defmodule WardrikNotify.SlackTest do
       %{key: key}
     end
 
-    defp press(key, action, user \\ "U1") do
+    defp press(key, action, user \\ "U1", reason \\ nil) do
       %{
+        "state" => %{
+          "values" => %{"wardrik-reason:call_1" => %{"reason" => %{"value" => reason}}}
+        },
         "type" => "block_actions",
         "user" => %{"id" => user, "username" => "jon"},
         "response_url" => "https://hooks.slack.com/actions/r",
         "message" => %{
           "blocks" => [
             %{"type" => "section"},
+            %{"type" => "input", "block_id" => "wardrik-reason:call_1"},
             %{"type" => "actions", "block_id" => "wardrik:call_1"}
           ]
         },
@@ -258,6 +278,28 @@ defmodule WardrikNotify.SlackTest do
       assert :ok = Slack.answer(press(key, "wardrik_deny"))
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Denied in Slack by jon."}}}
+    end
+
+    test "denies the call with what was written in its box, and says it in place of the box",
+         %{key: key} do
+      assert :ok = Slack.answer(press(key, "wardrik_deny", "U1", "  Deploy to staging first.\n"))
+
+      assert_receive {:resumed,
+                      %{"call_1" => {:deny, "Denied in Slack by jon: Deploy to staging first."}}}
+
+      assert_receive {:slack, "hooks.slack.com", "/actions/r", reply}
+      assert [%{"type" => "section"}, %{"type" => "context"} = line] = reply["blocks"]
+      assert JSON.encode!(line) =~ "Denied `deploy`"
+      assert JSON.encode!(line) =~ "Deploy to staging first."
+    end
+
+    test "approves without what was written in the box, and leaves a blank box unsaid",
+         %{key: key} do
+      assert :ok = Slack.answer(press(key, "wardrik_approve", "U1", "Fine by me."))
+      assert_receive {:resumed, %{"call_1" => :approve}}
+
+      assert_receive {:slack, _host, _path, reply}
+      refute JSON.encode!(reply) =~ "Fine by me."
     end
 
     test "refuses someone who is not an approver", %{key: key} do
