@@ -100,8 +100,8 @@ Then who you are, and what to do on each heartbeat:
 > remove it. Say nothing between 22:00 and 07:00 my time.
 
 Now `remind me at four to call the bank` puts a line in `reminders.md`, and the first heartbeat
-after four messages you about it. The agent can change `HEARTBEAT.md` whenever you ask it to, or when it sees
-a reason to, so what it checks grows with what you hand it.
+after four messages you about it. The agent can change `HEARTBEAT.md` whenever you ask it to, or
+when it sees a reason to, so what it checks grows with what you hand it.
 
 `/stop` stops whatever it is doing.
 
