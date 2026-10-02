@@ -95,7 +95,7 @@ you put it. Once a key is removed, a token sealed with it is not read, and its u
 The first time an agent calls a server for a user who has not connected, and nothing their org or
 the deployment holds stands in, the call parks, and the agent waits:
 
-> To connect github, open its authorization link. This carries on once the account is connected.
+> To use github__create_issue, connect github at its link. This carries on once it is connected.
 
 The link is never in the conversation, an event or a notice. A person finds it:
 
