@@ -315,6 +315,11 @@ defmodule Wardrik.Fleet do
     DurableServer.Supervisor.terminate_child_permanent(@name, key)
   end
 
+  @doc "Whether an agent is kept under `key`, running or stopped."
+  @spec stored?(String.t()) :: boolean()
+  def stored?(key) when is_binary(key),
+    do: match?({:ok, _info}, DurableServer.Supervisor.get_server_info(@name, key))
+
   @doc "Stops an agent and deletes everything it had, its schedules included, permanently."
   @spec forget(String.t()) :: :ok | {:error, term()}
   def forget(key) when is_binary(key) do

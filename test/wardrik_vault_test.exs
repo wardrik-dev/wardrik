@@ -229,6 +229,26 @@ defmodule WardrikVaultTest do
       assert url == "https://github.test/#{inspect(org)}"
     end
 
+    test "an org's grant reaches the org's own calls, and a user is asked for theirs",
+         %{user: user} do
+      grants(Grants)
+      org = "org-#{user}"
+      :ok = WardrikVault.put("github", org, "org-token", kind: :grant)
+      :ok = WardrikVault.put("github", nil, "deployment-token", kind: :grant)
+
+      assert {:ok, credential} = Credential.resolve(call(org: org), "github")
+      assert {Credential.reveal(credential), credential.owner} == {"renewed org-token", org}
+
+      assert {:error, {:authorization_required, url}} =
+               Credential.resolve(call(org: org, user: user), "github")
+
+      assert url == "https://github.test/#{inspect({org, user})}"
+      assert :ok = Credential.refused(call(org: org, user: user), "github")
+      refute_received {:refused, _owner}
+
+      :ok = WardrikVault.forget("github", nil)
+    end
+
     test "a secret held for the name is the answer, and no grant is asked for", %{user: user} do
       grants(Grants)
       org = "org-#{user}"

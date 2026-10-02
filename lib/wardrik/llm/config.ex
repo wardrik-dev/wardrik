@@ -22,6 +22,9 @@ defmodule Wardrik.LLM.Config do
 
       Wardrik.LLM.Config.new(tools: [MyApp.Tools.Ping])
 
+  `:except_tools` names tools to leave out of those the specs name, so a spec
+  that offers more than is wanted keeps what it declares about the rest.
+
   `:tool_timeouts` caps how long one call to a named tool may take, overriding
   what the tool itself declares through `c:Wardrik.Tool.timeout/0`.
 
@@ -56,12 +59,6 @@ defmodule Wardrik.LLM.Config do
 
       Wardrik.LLM.Config.new(retries: [2_000, 10_000, 30_000])
 
-  `:trust_outside_content` lets a gated tool's calls go ahead on what the
-  hooks allowed even in a run that has read content from outside (see
-  `Wardrik.Call.taint/1`), for an agent whose job is to act on what strangers
-  send. `false` by default. The run is still marked as having read it, so
-  what it writes for others carries the mark.
-
   The runtime wiring a turn also needs, such as who its events are published
   to, lives on `Wardrik.Scope`.
 
@@ -80,23 +77,23 @@ defmodule Wardrik.LLM.Config do
   defstruct model_spec: {:zai_coding_plan, model: "glm-5.3-flash"},
             system: nil,
             tools: [],
+            except_tools: [],
             tool_timeouts: %{},
             generation: [],
             max_iterations: 30,
             retries: [1_000, 5_000],
-            compaction: %Wardrik.Compaction{},
-            trust_outside_content: false
+            compaction: %Wardrik.Compaction{}
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
           system: String.t() | nil,
           tools: [Tool.spec()],
+          except_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil,
-          trust_outside_content: boolean()
+          compaction: Wardrik.Compaction.t() | nil
         }
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
@@ -105,12 +102,12 @@ defmodule Wardrik.LLM.Config do
           system: String.t() | nil,
           tools: [module() | {module(), term()}],
           dropped_tools: [String.t()],
+          except_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil,
-          trust_outside_content: boolean()
+          compaction: Wardrik.Compaction.t() | nil
         }
 
   @doc """
@@ -132,9 +129,10 @@ defmodule Wardrik.LLM.Config do
     %{config | tools: [spec | config.tools]}
   end
 
-  @doc "The tools this config names, built on this node."
+  @doc "The tools this config names, built on this node, apart from those it leaves out."
   @spec tools(t()) :: [ReqLLM.Tool.t()]
-  def tools(%__MODULE__{} = config), do: Tool.resolve!(config.tools)
+  def tools(%__MODULE__{} = config),
+    do: config.tools |> Tool.resolve!() |> Enum.reject(&(&1.name in config.except_tools))
 
   @doc """
   How long one call to the named tool may take: what `:tool_timeouts` says,

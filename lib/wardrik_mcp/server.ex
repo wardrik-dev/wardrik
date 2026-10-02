@@ -15,7 +15,7 @@ defmodule WardrikMCP.Server do
   | `:orgs` | `:all` | the orgs whose agents may call its tools, or `:all` of them |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
-  | `:gated` | none | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, or `true` for all of them; see `c:Wardrik.Tool.gated?/1` |
+  | `:gated` | every tool the server does not mark `readOnlyHint` | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, `true` for all of them, or `false` for none; see `c:Wardrik.Tool.gated?/1` |
   | `:trusted` | `false` | whether what its tools answer is the deployment's own; otherwise a call to one taints its run, see `c:Wardrik.Tool.outside_content?/1` |
   | `:timeout` | 60s | how long one call to this server may take |
   | `:max_result_bytes` | 128 KB | how much of a result reaches the model |
@@ -57,6 +57,15 @@ defmodule WardrikMCP.Server do
 
   Only stdout carries the protocol, so nothing here touches it.
 
+  ## Which tools ask
+
+  A tool the server does not mark `readOnlyHint` may change something, so its
+  calls wait on a person unless a hook allows them by name, as an MCP client
+  asks before such a tool. The hint is taken from any server configured here:
+  one that would lie about its tools could do as much harm on any call.
+  `:gated` decides instead: a list of the tools that ask, `true` for all of
+  them, or `false` for none.
+
   ## A server each user reaches as themselves
 
   `:credential` names a credential to resolve for each call instead, through
@@ -82,7 +91,7 @@ defmodule WardrikMCP.Server do
     :credential_env,
     except: [],
     orgs: :all,
-    gated: [],
+    gated: nil,
     trusted: false,
     stderr: :inherit,
     inherit_env: ~w(HOME LANG LC_ALL LC_CTYPE LOGNAME PATH SHELL TERM TMPDIR USER),
@@ -103,7 +112,7 @@ defmodule WardrikMCP.Server do
           only: [String.t()] | nil,
           except: [String.t()],
           orgs: [String.t()] | :all,
-          gated: [String.t()] | boolean(),
+          gated: [String.t()] | boolean() | nil,
           trusted: boolean(),
           credential: Wardrik.Credential.ref() | nil,
           credential_header: String.t(),
@@ -177,11 +186,15 @@ defmodule WardrikMCP.Server do
     (is_nil(server.only) or name in server.only) and name not in server.except
   end
 
-  @doc "Whether calls to a remote tool wait on a person unless a hook allows them by name."
-  @spec gated?(t(), String.t()) :: boolean()
-  def gated?(%__MODULE__{gated: gated}, _name) when is_boolean(gated), do: gated
+  @doc """
+  Whether calls to a remote tool wait on a person unless a hook allows them
+  by name, with `read_only?` whether the server marks it `readOnlyHint`.
+  """
+  @spec gated?(t(), String.t(), boolean()) :: boolean()
+  def gated?(%__MODULE__{gated: nil}, _name, read_only?), do: not read_only?
+  def gated?(%__MODULE__{gated: gated}, _name, _read_only?) when is_boolean(gated), do: gated
 
-  def gated?(%__MODULE__{gated: gated}, name) when is_list(gated) do
+  def gated?(%__MODULE__{gated: gated}, name, _read_only?) when is_list(gated) do
     Enum.any?(gated, fn gate ->
       if String.ends_with?(gate, "*"),
         do: String.starts_with?(name, String.trim_trailing(gate, "*")),

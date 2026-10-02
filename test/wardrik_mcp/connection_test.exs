@@ -17,6 +17,13 @@ defmodule WardrikMCP.ConnectionTest do
     end
   end
 
+  describe "a server left to say which of its tools may change something" do
+    test "gates the tools it does not mark read-only", %{ref: ref} do
+      refute WardrikMCP.gated?(ref, "#{ref}__echo")
+      assert WardrikMCP.gated?(ref, "#{ref}__grow")
+    end
+  end
+
   describe "a server that gates some of its tools" do
     @describetag server_opts: [gated: ["ech*"]]
 

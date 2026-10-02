@@ -67,10 +67,18 @@ defmodule WardrikWorkspace.TurnTest do
       LLMStub.final_answer("Summarised.")
     ])
 
+    rules = [
+      Wardrik.Hook.new(
+        "rules",
+        Wardrik.Test.Tools.Allowing,
+        {["write_file"], after_outside: true}
+      )
+    ]
+
     scope =
-      [tools: [{WardrikWorkspace, spec}], trust_outside_content: true]
+      [tools: [{WardrikWorkspace, spec}]]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn")
+      |> Scope.root(key, name: "turn", hooks: rules)
 
     assert %LLM.Turn{state: :done, tainted: true} =
              scope |> LLM.Turn.new(Context.new([Context.user("Summarise.")])) |> LLM.Turn.run()

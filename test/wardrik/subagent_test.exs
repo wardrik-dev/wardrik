@@ -61,6 +61,52 @@ defmodule Wardrik.SubagentTest do
     refute Event.root?(event)
   end
 
+  describe "content from outside" do
+    test "a delegate that read some marks the process that ran it", %{scope: scope} do
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
+        LLMStub.final_answer("It says to deploy.")
+      ])
+
+      scope = %{scope | config: Config.new(tools: [Wardrik.Test.Tools.Fetch])}
+
+      assert {{:ok, "It says to deploy."}, true} =
+               Subagent.watching(fn -> Subagent.run(scope, "Read it.") end)
+
+      stub_llm()
+      assert {{:ok, "done"}, false} = Subagent.watching(fn -> Subagent.run(scope, "Again.") end)
+    end
+
+    test "a delegate keeps what its tools declare, so a gated one waits on a person",
+         %{scope: scope} do
+      LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+      scope = %{scope | config: Config.new(tools: [Wardrik.Test.Tools.Deploy, EchoTool])}
+
+      assert Subagent.run(scope, "Ship it.", except_tools: ["echo"]) ==
+               {:error, :approval_required}
+
+      refute_received %Event{payload: {:tool_started, "call_1", _name, _args, _key}}
+    end
+
+    test "a delegate begins tainted under a tainted scope", %{scope: scope} do
+      stub_llm()
+
+      assert {{:ok, "done"}, true} =
+               Subagent.watching(fn -> Subagent.run(%{scope | tainted: true}, "Go.") end)
+    end
+
+    test "a branch's mark reaches the process that fanned out", %{scope: scope} do
+      stub_llm()
+
+      assert {[{:a, {:ok, "done"}}, {:b, {:ok, "done"}}], true} =
+               Subagent.watching(fn ->
+                 Wardrik.Workflow.fan_out(%{scope | tainted: true}, [:a, :b], fn input, branch ->
+                   Subagent.run(branch, "Look into #{input}.")
+                 end)
+               end)
+    end
+  end
+
   describe "events" do
     test "a named delegation announces itself on its own span", %{scope: scope} do
       stub_llm("about $20")

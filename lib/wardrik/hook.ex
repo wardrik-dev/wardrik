@@ -44,16 +44,17 @@ defmodule Wardrik.Hook do
   allow, and a person asked about a call is shown every prompt at once.
 
   A hook that lets a call go ahead because a rule of its own names it says
-  so with `Wardrik.Call.allow/1`, which is what a gated tool's call waits for;
+  so with `Wardrik.Call.allow/2`, which is what a gated tool's call waits for;
   see `Wardrik.Call`. Leaving the call as it was lets an ungated call go ahead
-  and a gated one wait.
+  and a gated one wait. `after_outside: true` lets a gated call go ahead
+  once its run has read content from outside too.
 
-  A hook changes a call only through those functions, `Wardrik.Call.allow/1`
+  A hook changes a call only through those functions, `Wardrik.Call.allow/2`
   and `Wardrik.Call.assign/3`. What it hands back is read for what it denied,
   what it asked, what it allowed and what it assigned, and nothing else: it
-  cannot change what the call is, or take back what a hook before it said. A hook that raises,
-  throws or exits, hands back something other than a call, or takes back what
-  another said, refuses the call.
+  cannot change what the call is, or take back what a hook before it said. A
+  hook that raises, throws or exits, hands back something other than a call,
+  or takes back what another said, refuses the call.
 
   ## Once a person approves
 
@@ -133,11 +134,13 @@ defmodule Wardrik.Hook do
   defp kept(call, answered, hook) do
     if own?(call.asks, answered.asks, & &1.by, hook) and
          own?(call.allowed, answered.allowed, & &1, hook) and
+         own?(call.allowed_after_outside, answered.allowed_after_outside, & &1, hook) and
          (answered.denied == nil or answered.denied.by == hook.name) do
       %{
         call
         | asks: answered.asks,
           allowed: answered.allowed,
+          allowed_after_outside: answered.allowed_after_outside,
           denied: answered.denied,
           halted: answered.denied != nil,
           assigns: answered.assigns

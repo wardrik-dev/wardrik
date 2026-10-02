@@ -65,7 +65,7 @@ defmodule Wardrik.Event.Codec do
     :deadline_reached,
     :call_decided
   ]
-  @agent [:message_queued, :agent_started, :context_compacted, :schedule_fired]
+  @agent [:message_queued, :agent_started, :context_compacted, :context_cleared, :schedule_fired]
   @steps [:span_started, :span_finished, :delegation_started, :delegation_finished]
   @messages [:model_started, :model_finished, :result, :thinking]
 
@@ -204,6 +204,11 @@ defmodule Wardrik.Event.Codec do
        "tokens_after" => stats.tokens_after
      }}
   end
+
+  defp agent({:context_cleared, dropped}, event, _opts),
+    do:
+      {"conversation.cleared", "agents/" <> event.source.agent_id,
+       %{"messages_before" => dropped}}
 
   defp agent({:schedule_fired, name, outcome}, event, _opts) do
     {"schedule.triggered", "agents/" <> event.source.agent_id,

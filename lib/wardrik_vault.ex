@@ -26,6 +26,12 @@ defmodule WardrikVault do
   answers says whose it is as `:owner`. A name nobody holds answers
   `{:error, :not_found}`.
 
+  A grant is an account its owner connected, and acts as them, so only its
+  owner's calls reach it: a user's grant for their calls, an org's for the
+  calls of its agents that have no user. A user whose org connected an
+  account is asked to connect their own, and a secret the org put reaches
+  them as before.
+
   ## Grants
 
   A credential is a secret someone put here, or a grant: what a user, or an
@@ -115,11 +121,14 @@ defmodule WardrikVault do
     Enum.reject([user && {org, user}, org], &is_nil/1) ++ [nil]
   end
 
-  # The first of `owners` holding `name`. A grant that no longer unseals is
-  # asked for again; a secret that does not is an error.
-  defp find(name, owners) do
+  # The first of `owners` holding `name`, passing over the grants of any but
+  # the first. A grant that no longer unseals is asked for again; a secret
+  # that does not is an error.
+  defp find(name, [own | _others] = owners) do
     Enum.reduce_while(owners, :none, fn owner, :none ->
       case lookup(name, owner) do
+        {:ok, :grant, _value} when owner != own -> {:cont, :none}
+        {:error, :grant, _reason} when owner != own -> {:cont, :none}
         {:ok, kind, value} -> {:halt, {:ok, owner, kind, value}}
         {:error, :not_found} -> {:cont, :none}
         {:error, :grant, reason} -> {:halt, unreadable(name, owner, reason)}

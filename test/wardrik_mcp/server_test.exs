@@ -187,20 +187,25 @@ defmodule WardrikMCP.ServerTest do
     end
   end
 
-  describe "gated?/2" do
+  describe "gated?/3" do
     test "gates the remote names it lists, and every one a name ending in * begins" do
       gated = server(gated: ["create_issue", "delete_*"])
 
-      assert Server.gated?(gated, "create_issue")
-      assert Server.gated?(gated, "delete_repo")
-      refute Server.gated?(gated, "create_issues")
-      refute Server.gated?(gated, "list_issues")
+      assert Server.gated?(gated, "create_issue", false)
+      assert Server.gated?(gated, "delete_repo", true)
+      refute Server.gated?(gated, "create_issues", false)
+      refute Server.gated?(gated, "list_issues", false)
     end
 
-    test "gates nothing unless told, and everything for true" do
-      refute Server.gated?(server(), "create_issue")
-      assert Server.gated?(server(gated: true), "list_issues")
+    test "gates every tool the server does not mark read-only unless told" do
+      assert Server.gated?(server(), "create_issue", false)
+      refute Server.gated?(server(), "list_issues", true)
       assert %Server{trusted: false} = server()
+    end
+
+    test "gates everything for true, and nothing for false" do
+      assert Server.gated?(server(gated: true), "list_issues", true)
+      refute Server.gated?(server(gated: false), "create_issue", false)
     end
   end
 

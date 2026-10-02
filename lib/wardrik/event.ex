@@ -38,7 +38,8 @@ defmodule Wardrik.Event do
 
     * `{:message_queued, message}`, a `Wardrik.Agent.Message` the agent will
       answer, `{:agent_started, node, status, generation}`, each time the
-      agent is loaded
+      agent is loaded, `{:context_cleared, dropped}`, when its history is
+      emptied, with how many messages it held
 
   Spans and delegations, on their own span:
 
@@ -74,6 +75,7 @@ defmodule Wardrik.Event do
           | {:message_queued, Wardrik.Agent.Message.t()}
           | {:agent_started, node(), :idle | :running | :parked, String.t()}
           | {:context_compacted, Wardrik.Compaction.stats()}
+          | {:context_cleared, non_neg_integer()}
           | {:schedule_fired, String.t(), Wardrik.Schedule.outcome()}
           | {:span_started, String.t()}
           | {:span_finished, Wardrik.Scope.outcome(), non_neg_integer()}

@@ -100,8 +100,9 @@ takes `only`, `except`, `prefix`, `timeout` in seconds, `max_result_bytes`,
 `credential`, the name of the credential it is reached with, along with
 `credential_header`, `credential_scheme` and `credential_env`, `gated`,
 the tools whose calls wait on a person unless a rule allows them by name,
-and `trusted: true` for a server whose answers are the deployment's own, so
-a call to it does not taint its run. See `WardrikMCP.Server`.
+every tool the server does not mark read-only unless set, and
+`trusted: true` for a server whose answers are the deployment's own, so a
+call to it does not taint its run. See `WardrikMCP.Server`.
 
 A credential is kept in the vault, sealed, and found for each call the most
 specific first: the agent's user's, sealed with `wardrik vault put NAME

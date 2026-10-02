@@ -33,6 +33,16 @@ defmodule Wardrik.Subagent do
   Returns the delegate's final assistant text. For work that should outlive the
   call and hold a conversation, start a `Wardrik.Agent` instead.
 
+  ## Content from outside
+
+  A delegate begins tainted where `scope` is (see `Wardrik.LLM.Turn`), and one
+  whose turn read content from outside marks the process that ran it, since
+  its answer may carry what it read. The tool call whose work ran it is
+  tainted by the mark, as one that read the content itself is (see
+  `Wardrik.Call.taint/1`), and `Wardrik.Workflow.fan_out/4` carries a branch's
+  mark back to the process that fanned out. `watching/1` says whether the
+  delegates a function ran left one.
+
   ## Events
 
   A delegation announces itself on its own span:
@@ -51,6 +61,8 @@ defmodule Wardrik.Subagent do
   alias Wardrik.Tool
   alias Wardrik.Trace
 
+  @read_outside :wardrik_read_outside
+
   @doc "Runs `prompt` as one turn under `scope`."
   @spec run(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def run(%Scope{} = scope, prompt, opts \\ []) when is_binary(prompt) do
@@ -68,8 +80,32 @@ defmodule Wardrik.Subagent do
     outcome
   end
 
+  @doc """
+  Runs `fun`, and answers what it returned with whether a delegate it ran read
+  content from outside. The mark this process held before stays, joined with
+  what `fun` left.
+  """
+  @spec watching((-> result)) :: {result, boolean()} when result: term()
+  def watching(fun) when is_function(fun, 0) do
+    before = Process.delete(@read_outside) || false
+    result = fun.()
+    read_outside? = Process.get(@read_outside, false)
+    if before or read_outside?, do: Process.put(@read_outside, true)
+    {result, read_outside?}
+  end
+
+  @doc false
+  @spec read_outside() :: :ok
+  def read_outside do
+    Process.put(@read_outside, true)
+    :ok
+  end
+
   defp answer(delegate, prompt) do
-    case delegate |> Turn.new(Context.new([Context.user(prompt)])) |> Turn.run() do
+    turn = delegate |> Turn.new(Context.new([Context.user(prompt)])) |> Turn.run()
+    if turn.tainted, do: read_outside()
+
+    case turn do
       %Turn{state: :done, messages: messages} -> {:ok, final_text(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
@@ -88,16 +124,23 @@ defmodule Wardrik.Subagent do
     end
   end
 
+  # The specs are kept, so what each declares of its tools, such as whether
+  # one is gated or answers with content from outside, holds in the delegate.
   defp put_tools(config, opts) do
-    tools =
+    config =
       case Keyword.fetch(opts, :tools) do
-        {:ok, tools} -> Tool.resolve!(tools)
-        :error -> Config.tools(config)
+        {:ok, tools} ->
+          Tool.resolve!(tools)
+          %{config | tools: tools, except_tools: []}
+
+        :error ->
+          config
       end
 
-    except = Keyword.get(opts, :except_tools, [])
-
-    %{config | tools: Enum.reject(tools, &(&1.name in except))}
+    %{
+      config
+      | except_tools: Enum.uniq(config.except_tools ++ Keyword.get(opts, :except_tools, []))
+    }
   end
 
   defp put_system(config, opts) do

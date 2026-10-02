@@ -47,18 +47,22 @@ defmodule Wardrik.Test.Tools.Fetch do
 end
 
 defmodule Wardrik.Test.Tools.Allowing do
-  @moduledoc "A hook that allows by name every call to the tools its value lists."
+  @moduledoc """
+  A hook that allows by name every call to the tools its value lists, given
+  as names, or as `{names, opts}` for `Wardrik.Call.allow/2`.
+  """
 
   @behaviour Wardrik.Hook
 
   alias Wardrik.Call
 
   @impl true
-  def init(names), do: names
+  def init({names, opts}), do: {names, opts}
+  def init(names), do: {names, []}
 
   @impl true
-  def call(%Call{target: %Call.Tool{name: name}} = call, names),
-    do: if(name in names, do: Call.allow(call), else: call)
+  def call(%Call{target: %Call.Tool{name: name}} = call, {names, opts}),
+    do: if(name in names, do: Call.allow(call, opts), else: call)
 
-  def call(call, _names), do: call
+  def call(call, _value), do: call
 end

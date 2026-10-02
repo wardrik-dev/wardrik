@@ -82,7 +82,7 @@ Each kind of record has a namespace of its own:
 | `vault` | sealed credentials |
 | `mcp_tools` | the tools each MCP server listed |
 | `oauth_clients` | the clients the daemon registered with OAuth providers |
-| `declared` | the agents the agent files declared when last read, and which file each came from |
+| `declared` | each node's inventory: the agents its agent files declared when last read, and which file each came from |
 
 In a bucket, a record is the object `<prefix>/<namespace>/<key>`, so an agent is
 `wardrik/durable/agents/acme/@jon/triage`. In Postgres, `ns` is the namespace and `key` the key.

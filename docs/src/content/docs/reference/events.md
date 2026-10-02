@@ -44,6 +44,14 @@ The agent was loaded: started, restarted, or moved to another node.
 | `node` | string | yes |  |
 | `status` | string | yes | One of `idle`, `running`, `parked`. |
 
+### `wardrik.conversation.cleared`
+
+The conversation was emptied, and with it the mark of content from outside it held.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `messages_before` | integer | yes | How many messages it held. |
+
 ### `wardrik.conversation.compacted`
 
 The older part of the conversation was summarised.

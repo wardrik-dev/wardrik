@@ -4,7 +4,7 @@ defmodule Wardrik.Call do
   it is proposed until it has been answered.
 
   A call is a token, the way a `Plug.Conn` is. `Wardrik.Hook`s are handed it and
-  hand it back, and change it only through `deny/2`, `ask/3`, `allow/1` and
+  hand it back, and change it only through `deny/2`, `ask/3`, `allow/2` and
   `assign/3`.
   The runtime moves it through its states, and it is the same value whether
   it is being decided, waiting on a person, or answered.
@@ -36,6 +36,8 @@ defmodule Wardrik.Call do
     * `:denied` - the `Wardrik.Call.Denial` that refused it
     * `:asks` - the `Wardrik.Call.Ask`s it waits on, in the order they were asked
     * `:allowed` - the names of the hooks that allowed it by name
+    * `:allowed_after_outside` - those of them that allowed it after content
+      from outside too
     * `:halted` - whether the hooks after the one that refused it are skipped
     * `:assigns` - what hooks tell the hooks after them
 
@@ -67,12 +69,13 @@ defmodule Wardrik.Call do
   ## Gated tools
 
   A call to a gated tool (see `c:Wardrik.Tool.gated?/1`) goes ahead only where
-  a hook allowed it by name, with `allow/1`, and waits on its tool otherwise.
+  a hook allowed it by name, with `allow/2`, and waits on its tool otherwise.
   While the run it belongs to has read content from outside (see
-  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, unless the
-  run's config trusts outside content: what the run read may be what asked
-  for it. A deny still refuses it and an ask still asks. A call to a tool that is not gated goes ahead as the hooks said,
-  allowed by name or not.
+  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, since what the
+  run read may be what asked for it, unless a hook allowed it with
+  `after_outside: true`. A deny still refuses it and an ask still asks. A call
+  to a tool that is not gated goes ahead as the hooks said, allowed by name or
+  not.
   """
 
   alias Wardrik.Call.Ask
@@ -93,6 +96,7 @@ defmodule Wardrik.Call do
     halted: false,
     asks: [],
     allowed: [],
+    allowed_after_outside: [],
     tainted: false,
     assigns: %{},
     private: %{}
@@ -109,6 +113,7 @@ defmodule Wardrik.Call do
           denied: Denial.t() | nil,
           asks: [Ask.t()],
           allowed: [String.t()],
+          allowed_after_outside: [String.t()],
           tainted: boolean(),
           result: term(),
           assigns: map(),
@@ -153,9 +158,18 @@ defmodule Wardrik.Call do
   Allows the call by name: says that a rule of this hook names it, where a
   hook that lets it go ahead only by not objecting leaves it as it was. A
   gated tool's call goes ahead only where a hook has said this.
+
+  `after_outside: true` says the rule holds once the run has read content
+  from outside too, which a gated tool's call then waits for.
   """
-  @spec allow(t()) :: t()
-  def allow(%__MODULE__{} = call), do: %{call | allowed: Enum.uniq(call.allowed ++ [hook(call)])}
+  @spec allow(t(), after_outside: boolean()) :: t()
+  def allow(%__MODULE__{} = call, opts \\ []) do
+    call = %{call | allowed: Enum.uniq(call.allowed ++ [hook(call)])}
+
+    if Keyword.get(opts, :after_outside, false),
+      do: %{call | allowed_after_outside: Enum.uniq(call.allowed_after_outside ++ [hook(call)])},
+      else: call
+  end
 
   @doc "Tells the hooks after this one `value` under `key`."
   @spec assign(t(), atom(), term()) :: t()
@@ -209,7 +223,8 @@ defmodule Wardrik.Call do
   defp gate(
          %__MODULE__{
            target: %Tool{gated: true},
-           scope: %Scope{tainted: true, config: %{trust_outside_content: false}}
+           scope: %Scope{tainted: true},
+           allowed_after_outside: []
          } = call
        ) do
     IO.iodata_to_binary([
@@ -224,9 +239,10 @@ defmodule Wardrik.Call do
   @doc """
   Marks the call's answer as holding content from outside: a page, a message,
   an issue anyone could have written. The run it belongs to is tainted from
-  then on, and a gated tool's call later in the run waits on a person however
-  its hooks allowed it. A tool built with `Wardrik.Tool.new!/1` marks its own
-  call; one that declares `c:Wardrik.Tool.outside_content?/1` has it marked.
+  then on, and a gated tool's call later in the run waits on a person unless
+  a hook allowed it after outside content. A tool built with
+  `Wardrik.Tool.new!/1` marks its own call; one that declares
+  `c:Wardrik.Tool.outside_content?/1` has it marked.
   """
   @spec taint(t()) :: t()
   def taint(%__MODULE__{} = call), do: %{call | tainted: true}
@@ -287,6 +303,7 @@ defmodule Wardrik.Call do
         denied: nil,
         asks: [],
         allowed: [],
+        allowed_after_outside: [],
         halted: false,
         assigns: %{}
     }

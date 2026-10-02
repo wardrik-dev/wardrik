@@ -52,7 +52,7 @@ defmodule WardrikOAuthTest do
                resolve_in(in_org("globex", owner), "github")
     end
 
-    test "an org's is asked of an agent with no user, and shared by its users who hold none",
+    test "an org's is asked of an agent with no user, and its users are asked for their own",
          %{owner: owner} do
       stub_server(cimd: true)
       configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
@@ -61,9 +61,11 @@ defmodule WardrikOAuthTest do
       {:error, {:authorization_required, url}} = resolve_in(in_org(org, nil), "github")
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      assert {:ok, credential} = resolve_in(in_org(org, owner), "github")
+      assert {:ok, credential} = resolve_in(in_org(org, nil), "github")
       assert credential.owner == org
       assert WardrikOAuth.connected?("github", org)
+
+      assert {:error, {:authorization_required, _url}} = resolve_in(in_org(org, owner), "github")
       refute WardrikOAuth.connected?("github", {org, owner})
     end
 

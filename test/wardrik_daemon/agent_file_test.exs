@@ -234,15 +234,26 @@ defmodule WardrikDaemon.AgentFileTest do
              "tools names run_lua(x); name the tool alone, and let a policy name what its calls act on"
   end
 
-  test "trusting outside content is off unless the file says it", context do
-    assert {:ok, spec} = read("---\ntools: [web_search]\n---\n", context)
-    refute spec.config.trust_outside_content
+  test "a file may write a rule that holds after outside content, and a definition may not",
+       context do
+    assert {:ok, spec} =
+             read("---\npolicy:\n  allow_after_outside: [github/add_labels]\n---\n", context)
 
-    assert {:ok, spec} = read("---\ntrust_outside_content: true\n---\n", context)
-    assert spec.config.trust_outside_content
+    assert [%Wardrik.Hook{value: %WardrikPolicy{rules: [rule]}}] = spec.hooks
+    assert rule.after_outside
 
-    assert {:error, message} = read("---\ntrust_outside_content: often\n---\n", context)
-    assert message =~ "trust_outside_content is true or false"
+    assert {:error, message} =
+             AgentFile.definition("acme/triage", %{
+               "policy" => %{"allow_after_outside" => ["github/add_labels"]}
+             })
+
+    assert message ==
+             "policy cannot allow_after_outside in a definition; name a policy in policies/ that does"
+
+    careful = WardrikPolicy.decode!(%{"allow_after_outside" => ["github/add_labels"]}, "careful")
+
+    assert {:ok, _spec} =
+             AgentFile.definition("acme/triage", %{"policy" => "careful"}, %{"careful" => careful})
   end
 
   test "a named policy is the one policies/ holds, carried as hooks", context do
@@ -446,13 +457,12 @@ defmodule WardrikDaemon.AgentFileTest do
       assert Enum.sort(expected(AgentFile.definition("acme/triage", %{"?" => 1}))) ==
                Enum.sort(properties)
 
-      # trust_outside_content loosens what a token's ceiling holds, and a
-      # workspace shares trees a token's scope may not cover, so only a file,
-      # which the operator writes, may say them.
+      # A workspace shares trees a token's scope may not cover, so only a
+      # file, which the operator writes, may say it.
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
                Enum.sort(
                  (properties -- ["instructions"]) ++
-                   ~w(name org user schedule notify trust_outside_content workspace context)
+                   ~w(name org user schedule notify workspace context)
                )
     end
 
@@ -529,7 +539,7 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "takes who the agent is from its key, and its schedules from their own routes" do
-      for key <- ~w(name org user schedule notify trust_outside_content) do
+      for key <- ~w(name org user schedule notify) do
         assert {:error, message} = AgentFile.definition("acme/triage", %{key => "x"})
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end

@@ -343,6 +343,15 @@ export interface AgentStartedData {
   status: "idle" | "running" | "parked";
 }
 /**
+ * The conversation was emptied, and with it the mark of content from outside it held.
+ */
+export interface ConversationClearedData {
+  /**
+   * How many messages it held.
+   */
+  messages_before: number;
+}
+/**
  * The older part of the conversation was summarised.
  */
 export interface ConversationCompactedData {
@@ -550,6 +559,7 @@ export interface ToolCallStartedData {
 /** Each event type, and the data its events carry. */
 export interface EventData {
   "wardrik.agent.started": AgentStartedData;
+  "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
   "wardrik.interrupt.resolved": InterruptResolvedData;
   "wardrik.message.completed": MessageCompletedData;

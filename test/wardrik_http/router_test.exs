@@ -203,6 +203,7 @@ defmodule WardrikHTTP.RouterTest do
       for {method, path, body} <- [
             {:post, "/interrupts/x", %{"decision" => "approve"}},
             {:post, "/cancel", %{}},
+            {:delete, "/conversation", nil},
             {:put, "", %{}},
             {:delete, "", nil},
             {:put, "/schedules/sweep", %{"every" => "1h", "prompt" => "Look."}}
@@ -487,6 +488,27 @@ defmodule WardrikHTTP.RouterTest do
     assert_receive %Event{payload: {:turn_interrupted, _stats}}
 
     assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/cancel")
+  end
+
+  test "clearing the conversation empties it, and waits while a turn runs", %{api: api} do
+    {key, agent} =
+      Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
+
+    :ok = Event.Bus.subscribe(key)
+    Agent.ask(agent, "wait")
+    assert_receive {:turn, _messages, turn}
+
+    assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
+             Req.delete(api, url: "/v1/agents/#{key}/conversation")
+
+    send(turn, :release)
+    assert_receive %Event{payload: {:turn_finished, _messages}}
+
+    assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/conversation")
+    assert_receive %Event{payload: {:context_cleared, 2}}
+    assert Agent.get_context(agent).messages == []
+
+    assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/test/nobody/conversation")
   end
 
   describe "definitions" do

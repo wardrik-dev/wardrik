@@ -120,6 +120,30 @@ defmodule WardrikPolicyTest do
       end
     end
 
+    test "after outside content is what an allow_after_outside rule does, whole or by subject" do
+      for allow <- ["deploy", "deploy(prod)"] do
+        assert %Wardrik.Call{allowed: ["policy"], allowed_after_outside: ["policy"]} =
+                 checked(WardrikPolicy.decode!(%{"allow_after_outside" => [allow]}))
+      end
+
+      assert %Wardrik.Call{allowed: ["policy"], allowed_after_outside: []} =
+               checked(WardrikPolicy.decode!(%{"allow" => ["deploy"]}))
+    end
+
+    test "after outside content holds a gated call for a person, unless the rule says it holds" do
+      tainted = fn policy -> %{checked(policy) | state: :unchecked} end
+
+      for {policy, state} <- [
+            {%{"allow" => ["deploy"]}, :waiting},
+            {%{"allow_after_outside" => ["deploy"]}, :allowed},
+            {%{"allow_after_outside" => ["deploy"], "ask" => ["deploy"]}, :waiting}
+          ] do
+        call = tainted.(WardrikPolicy.decode!(policy))
+        call = %{call | scope: %{call.scope | tainted: true}} |> Wardrik.Call.reset()
+        assert %Wardrik.Call{state: ^state} = Wardrik.Hook.check(call)
+      end
+    end
+
     test "is not what default: allow does, so a gated tool asks under it as under nothing" do
       for policy <- [
             WardrikPolicy.decode!(%{}),
@@ -172,8 +196,20 @@ defmodule WardrikPolicyTest do
     end
 
     test "refuse a default that is not an effect" do
-      assert {:error, "default is allow, ask or deny"} =
-               WardrikPolicy.decode(%{"default" => "maybe"})
+      for default <- ["maybe", "allow_after_outside"] do
+        assert {:error, "default is allow, ask or deny"} =
+                 WardrikPolicy.decode(%{"default" => default})
+      end
+    end
+
+    test "write a rule that holds after outside content under its own key" do
+      written = %{
+        "allow" => ["linear/*"],
+        "allow_after_outside" => ["github/add_labels"],
+        "default" => "allow"
+      }
+
+      assert written |> WardrikPolicy.decode!() |> WardrikPolicy.encode() == written
     end
 
     test "refuse a budget that sets nothing" do

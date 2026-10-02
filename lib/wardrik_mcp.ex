@@ -95,7 +95,7 @@ defmodule WardrikMCP do
   @impl Wardrik.Tool
   def gated?(ref, name) do
     case offering(ref, name) do
-      {server, remote} -> Server.gated?(server, remote)
+      {server, remote, read_only?} -> Server.gated?(server, remote, read_only?)
       nil -> false
     end
   end
@@ -108,19 +108,20 @@ defmodule WardrikMCP do
   @impl Wardrik.Tool
   def outside_content?(ref, name) do
     case offering(ref, name) do
-      {server, _remote} -> not server.trusted
+      {server, _remote, _read_only?} -> not server.trusted
       nil -> true
     end
   end
 
   # The server offering the tool the agent knows as `name`, among `ref`'s or
-  # every connected server's for `:*`, and the tool's own name there.
+  # every connected server's for `:*`, the tool's own name there, and whether
+  # the server marks it read-only.
   defp offering(ref, name) do
     Enum.find_value(if(ref == :*, do: servers(), else: [ref]), fn ref ->
-      with %Offer{server: server, tools: tools} <- Connection.offer(ref),
+      with %Offer{server: server, tools: tools, read_only: read_only} <- Connection.offer(ref),
            %ReqLLM.Tool{callback: {Tool, :invoke, [{__MODULE__, :call, [_ref, remote]}]}} <-
              Enum.find(tools, &(&1.name == name)) do
-        {server, remote}
+        {server, remote, remote in read_only}
       else
         _none -> nil
       end

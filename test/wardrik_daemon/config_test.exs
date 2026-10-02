@@ -281,7 +281,7 @@ defmodule WardrikDaemon.ConfigTest do
     end
 
     test "a server gates the tools it names, and may be trusted", context do
-      assert {:ok, [{WardrikMCP, servers: [github: github, notes: notes]}]} =
+      assert {:ok, [{WardrikMCP, servers: [docs: docs, github: github, notes: notes]}]} =
                read(
                  """
                  mcp:
@@ -292,6 +292,9 @@ defmodule WardrikDaemon.ConfigTest do
                      command: npx
                      gated: true
                      trusted: true
+                   docs:
+                     command: npx
+                     gated: false
                  """,
                  context
                )
@@ -300,9 +303,10 @@ defmodule WardrikDaemon.ConfigTest do
       refute Keyword.has_key?(github, :trusted)
       assert notes[:gated] == true
       assert notes[:trusted] == true
+      assert docs[:gated] == false
 
       assert {:error, gated} = read("mcp:\n  a:\n    command: x\n    gated: [1]\n", context)
-      assert gated =~ "mcp.a.gated is true, or a list of the server's tool names"
+      assert gated =~ "mcp.a.gated is true, false, or a list of the server's tool names"
       assert {:error, trusted} = read("mcp:\n  a:\n    command: x\n    trusted: 1\n", context)
       assert trusted =~ "mcp.a.trusted is true or false"
     end

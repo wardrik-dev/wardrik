@@ -121,12 +121,12 @@ A file in a shared tree is read the same way, but the agent is not asked to chan
 A file is marked when a turn that had read content from outside, such as a page `web_search` found
 or an issue an MCP server returned, writes any of it. Appending to a marked file, or editing it,
 keeps the mark, since what was there before is there still; writing it over replaces it, and takes
-the mark of the turn that wrote it. A turn of an agent that trusts outside content marks what it
-writes the same way.
+the mark of the turn that wrote it.
 
 Reading a marked file, or listing or finding it, counts as reading content from outside, and so
-does a `context` file with that mark. Once a turn has, a gated tool's calls wait on a person for the
-rest of it. See [Policy and approvals](/concepts/policy/).
+does a `context` file with that mark. Once a turn has, a gated tool's calls wait on a person, in
+that turn and the ones after it, until the agent's conversation is cleared. See
+[Policy and approvals](/concepts/policy/).
 
 A policy names a file tool's call by its path, or by the glob for `list_files` and `search_files`:
 

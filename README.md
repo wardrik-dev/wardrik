@@ -235,8 +235,9 @@ authorizes one of two ways:
   open port can be authorized from Slack.
 
 Either way the parked call runs again by itself once they have, with the
-token, which is then sealed in `WardrikVault` as their grant, found like any
-other credential, and refreshed without asking again.
+token, which is then sealed in `WardrikVault` as their grant and refreshed
+without asking again. A grant acts as whoever connected it, so only their
+calls find it: a user whose org connected an account is asked for their own.
 A provider's `flow` is `browser`, `device`, or `auto`, the default: on another
 device where the server offers it and the daemon has no browser of its own to
 send the user through, and in a browser otherwise.
@@ -619,9 +620,9 @@ need an engineer.
 
 The daemon starts one agent per file when it boots, and `wardrik reload` gives
 each running agent what its file says now without losing what it has said, and
-removes the agent of a file that is gone. An agent defined over the HTTP API
-is never touched by reading the files, and one a file declares is changed only
-through its file.
+stops the agent of a file that is gone, keeping its conversation until `wardrik
+rm` removes it. An agent defined over the HTTP API is never touched by reading
+the files, and one a file declares is changed only through its file.
 An agent has only the tools its file lists; `linear/*` is every tool of the
 server `config.yaml` calls `linear`, and `*` is everything it can reach. A file
 that does not read is listed by `wardrik status`, and the others run regardless.
@@ -714,24 +715,31 @@ deny: [delete_file(*)]
 ```
 
 Some tools are gated: a call to one waits on a person unless an `allow` rule
-names it, and `default: allow` is not enough. `config.yaml` gates an MCP
-server's tools with `gated`:
+names it, and `default: allow` is not enough. An MCP server's tools are gated
+unless the server marks them read-only, and `gated` in `config.yaml` decides
+instead:
 
 ```yaml
 mcp:
   github:
     url: https://api.githubcopilot.com/mcp/
-    gated: [create_*, issue_write]   # or true, for every tool
+    gated: [create_*, issue_write]   # or true, for every tool, or false, for none
 ```
 
 Once a turn has read content from outside, a page `web_search` found, an
 issue an MCP server returned, whatever a tool worker passed on, a gated tool's
-calls wait on a person for the rest of the turn however the rules allow them:
-what the turn read may be what asked for the call. `trusted: true` on an MCP
-server, and `trusted_workers: true` under `http`, say their answers are the
-deployment's own. An agent whose job is to act on what strangers send writes
-`trust_outside_content: true` in its file, which lets its gated calls go ahead
-while still marking what it writes; a definition over HTTP cannot.
+calls wait on a person however the `allow` rules name them: what the turn read
+may be what asked for the call. It stays in the conversation, so the turns
+after it are held too, until `wardrik clear` empties it. `trusted: true` on an
+MCP server, and `trusted_workers: true` under `http`, say their answers are
+the deployment's own. `allow_after_outside` allows a tool that may follow what
+a stranger wrote, because the agent reaches nothing they could take or the
+tool can do little harm, even then:
+
+```yaml
+allow: [linear/*]
+allow_after_outside: [github/add_labels]
+```
 
 An agent with `files` in its tools has a tree of its own to write in, kept
 in the store with the agent, so its notes are on whichever node holds it and

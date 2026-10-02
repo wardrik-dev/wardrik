@@ -32,7 +32,6 @@ defmodule WardrikDaemon.AgentFile do
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
-  | `trust_outside_content` | `true` lets its rules allow a gated tool's calls even after a turn has read content from outside; see below. A definition over HTTP cannot say it |
   | `schedule` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
 
@@ -118,12 +117,13 @@ defmodule WardrikDaemon.AgentFile do
 
   Once a turn has read content from outside, from `web_search`,
   `deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
-  tool worker, its rules stop counting for a gated tool's calls until the turn
-  ends: each waits on a person, who sees what it would do.
-  `trust_outside_content: true` is for an agent whose job is to act on what
-  strangers send. Its gated calls go ahead as its rules say, but the files
-  it writes after reading content from outside are marked all the same, so
-  another agent reading them is held as if it had read that content itself.
+  tool worker, its `allow` rules stop counting for a gated tool's calls, there
+  and in every turn after it, until `wardrik clear` empties the agent's
+  conversation: each waits on a person, who sees what it would do. An
+  `allow_after_outside` rule still counts, for a tool whose calls may follow
+  what a stranger wrote; see `WardrikPolicy`. A definition over HTTP cannot
+  write one in place, though it may name a policy in `policies/` that has
+  one.
 
   ## Schedule
 
@@ -197,7 +197,7 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction trust_outside_content schedule notify)
+  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify)
   @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
 
@@ -239,6 +239,7 @@ defmodule WardrikDaemon.AgentFile do
           {:ok, Spec.t()} | {:error, String.t()}
   def definition(key, fields, policies \\ %{}) when is_binary(key) and is_map(fields) do
     known!(fields, @definition_keys)
+    held_after_outside!(fields["policy"])
     {org, user, name} = Wardrik.Fleet.parse(key)
     instructions = optional_string!(fields["instructions"], "instructions") || ""
 
@@ -254,6 +255,16 @@ defmodule WardrikDaemon.AgentFile do
   catch
     {:invalid, message} -> {:error, message}
   end
+
+  # A rule that holds after content from outside loosens what a token's
+  # ceiling holds, so only a policy the operator writes may say one.
+  defp held_after_outside!(%{"allow_after_outside" => _rules}),
+    do:
+      invalid!(
+        "policy cannot allow_after_outside in a definition; name a policy in policies/ that does"
+      )
+
+  defp held_after_outside!(_policy), do: :ok
 
   defp split("---\n" <> rest) do
     case String.split(rest, ~r/^---[ \t]*$\n?/m, parts: 2) do
@@ -306,7 +317,6 @@ defmodule WardrikDaemon.AgentFile do
       [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, key)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
-      |> put(:trust_outside_content, fields["trust_outside_content"], &trust!/1)
       |> compaction(fields)
       |> Config.new()
 
@@ -658,9 +668,6 @@ defmodule WardrikDaemon.AgentFile do
   rescue
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
-
-  defp trust!(trust) when is_boolean(trust), do: trust
-  defp trust!(_trust), do: invalid!("trust_outside_content is true or false")
 
   defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :compaction, nil)
 

@@ -1,5 +1,6 @@
 # An MCP server over stdio, for tests: a handful of tools, no dependencies, and
-# only the state it needs to report what it was sent. Run as
+# only the state it needs to report what it was sent. Every tool but `grow`,
+# which changes what the server offers, is marked read-only. Run as
 # `elixir stub_server.exs`.
 #
 # Anything written to stdout that is not a JSON-RPC message corrupts the
@@ -11,6 +12,7 @@ defmodule StubServer do
   @tools [
     %{
       "name" => "echo",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Hands the value back.",
       "inputSchema" => %{
         "type" => "object",
@@ -20,11 +22,13 @@ defmodule StubServer do
     },
     %{
       "name" => "boom",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Answers with a tool error.",
       "inputSchema" => %{"type" => "object", "properties" => %{}}
     },
     %{
       "name" => "secret",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Reports the value of an environment variable.",
       "inputSchema" => %{
         "type" => "object",
@@ -34,11 +38,13 @@ defmodule StubServer do
     },
     %{
       "name" => "slow",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Reports progress once, then never answers.",
       "inputSchema" => %{"type" => "object", "properties" => %{}}
     },
     %{
       "name" => "noisy",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Reports progress, then answers.",
       "inputSchema" => %{
         "type" => "object",
@@ -47,11 +53,13 @@ defmodule StubServer do
     },
     %{
       "name" => "refuses_once",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Answers the first call with a 401, and the next one properly.",
       "inputSchema" => %{"type" => "object", "properties" => %{}}
     },
     %{
       "name" => "noise",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "Writes a line to stderr, the way a chatty server does.",
       "inputSchema" => %{
         "type" => "object",
@@ -60,6 +68,7 @@ defmodule StubServer do
     },
     %{
       "name" => "cancellations",
+      "annotations" => %{"readOnlyHint" => true},
       "description" => "How many cancellations this server has been sent.",
       "inputSchema" => %{"type" => "object", "properties" => %{}}
     },
@@ -72,6 +81,7 @@ defmodule StubServer do
 
   @grown %{
     "name" => "grown",
+    "annotations" => %{"readOnlyHint" => true},
     "description" => "The tool `grow` added.",
     "inputSchema" => %{"type" => "object", "properties" => %{}}
   }

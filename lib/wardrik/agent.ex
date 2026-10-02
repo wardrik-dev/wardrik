@@ -64,6 +64,11 @@ defmodule Wardrik.Agent do
   the turn that follows. A summary that cannot be made leaves the history as it
   was, and the turn runs regardless.
 
+  `clear/1` empties the history of an idle agent, and reports
+  `{:context_cleared, dropped}`, with how many messages it held. It is how an
+  agent that read content from outside is rid of it: until then, every turn
+  holds its gated tools' calls for a person. See `Wardrik.Agent.State`.
+
   ## A turn lost part way
 
   Each turn hands the agent every batch of tool calls before running it, and
@@ -212,6 +217,13 @@ defmodule Wardrik.Agent do
     do: call(agent, {:decide, decisions, Keyword.get(opts, :by)})
 
   @doc """
+  Empties this agent's history, keeping its config, queue and schedules.
+  `{:error, :busy}` unless it is idle.
+  """
+  @spec clear(agent()) :: :ok | {:error, :not_found | :busy}
+  def clear(agent), do: call(agent, :clear)
+
+  @doc """
   Stops whatever this agent is doing and discards whatever is queued.
 
   Non-blocking, and safe when the agent is idle. A parked turn is abandoned,
@@ -298,6 +310,17 @@ defmodule Wardrik.Agent do
     case State.checkpointed(state, pid, checkpoint) do
       {:ok, next} -> {:reply, :ok, next, meta: State.meta(next), sync: true}
       :stale -> {:reply, {:error, :not_the_running_turn}, state}
+    end
+  end
+
+  def handle_call(:clear, _from, state) do
+    case State.clear(state) do
+      {:ok, next, effects} ->
+        next = perform(next, effects)
+        {:reply, :ok, next, meta: State.meta(next), sync: true}
+
+      {:error, :busy} ->
+        {:reply, {:error, :busy}, state}
     end
   end
 
@@ -523,8 +546,8 @@ defmodule Wardrik.Agent do
     end)
   end
 
-  defp answered(state, %Turn{state: :done, messages: messages}),
-    do: settle(state, State.settled(state, messages))
+  defp answered(state, %Turn{state: :done, messages: messages} = turn),
+    do: settle(state, State.settled(state, messages, turn.tainted))
 
   # A waiting turn is held as it is written down, with no scope.
   defp answered(state, %Turn{state: :waiting} = turn),
