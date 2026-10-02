@@ -4,7 +4,7 @@ defmodule WardrikMCP.BootstrapTest do
   which is what GitHub's does — has to offer some way to get one.
   """
 
-  use WardrikMCP.Case, async: false
+  use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.Credential
   alias Wardrik.LLM.Config

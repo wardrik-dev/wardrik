@@ -1,5 +1,5 @@
 defmodule WardrikMCP.ExpiryTest do
-  use WardrikMCP.Case, async: false
+  use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.Credential
   alias Wardrik.LLM.Config

@@ -24,10 +24,10 @@ defmodule WardrikHTTP.RouterTest do
     def put(key, %{"owned" => true}), do: {:error, :conflict, "#{key} belongs to a file."}
     def put(_key, %{"elsewhere" => true}), do: {:ok, Spec.new(name: "elsewhere", org: "test")}
 
-    def put(key, %{"allow" => patterns}) do
+    def put(key, %{"allow" => names}) do
       {org, user, name} = Wardrik.Fleet.parse(key)
-      own = WardrikPolicy.decode!(%{"allow" => patterns})
-      {:ok, Spec.new(name: name, org: org, user: user, hooks: WardrikPolicy.hooks(own))}
+      own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: names)]
+      {:ok, Spec.new(name: name, org: org, user: user, hooks: own)}
     end
 
     def put(key, fields) do
@@ -626,12 +626,17 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "holds every agent the token defines, ahead of the definition's own", %{api: api} do
-      careful = %{WardrikPolicy.decode!(%{"ask" => ["github/*"]}) | name: "ceiling/careful"}
-      ceiling = WardrikPolicy.hooks(careful)
+      careful =
+        Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules,
+          ask: ["github__issue_write"]
+        )
+
       key = defined_key()
 
-      assert {:ok, %{status: 201}} = define(ceiled(api, ceiling), key, %{"allow" => ["*"]})
-      assert [%Wardrik.Hook{name: "ceiling/careful"}, %Wardrik.Hook{name: "policy"}] = hooks(key)
+      assert {:ok, %{status: 201}} =
+               define(ceiled(api, [careful]), key, %{"allow" => ["web_search"]})
+
+      assert [%Wardrik.Hook{name: "ceiling/careful"}, %Wardrik.Hook{name: "own"}] = hooks(key)
 
       assert %Wardrik.Call{asks: [%Wardrik.Call.Ask{by: "ceiling/careful"}]} =
                checked(hooks(key), "github__issue_write")
@@ -641,7 +646,7 @@ defmodule WardrikHTTP.RouterTest do
 
     test "is the one an agent was last defined under, and none where that token has none",
          %{api: api} do
-      ceiling = WardrikPolicy.hooks(%WardrikPolicy{name: "ceiling/strict", default: :deny})
+      ceiling = [Wardrik.Hook.new("ceiling/strict", Wardrik.Test.Tools.Rules, deny: :all)]
       key = defined_key()
 
       {:ok, %{status: 201}} = define(ceiled(api, ceiling), key, %{})

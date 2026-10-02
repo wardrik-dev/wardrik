@@ -15,3 +15,4 @@ config :wardrik, Wardrik.Fleet, org: "default"
 config :wardrik_vault, WardrikVault, grants: WardrikOAuth
 
 if config_env() == :dev, do: import_config("dev.exs")
+if config_env() == :test, do: import_config("test.exs")

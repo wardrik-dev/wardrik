@@ -69,7 +69,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
       LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
     ])
 
-    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
     scope =
       [tools: [Wardrik.Test.Tools.Fetch, Wardrik.Test.Tools.Deploy]]

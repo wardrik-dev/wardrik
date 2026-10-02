@@ -3,9 +3,9 @@ defmodule WardrikEcto.StoreTest do
   use Mimic
 
   alias Ecto.Adapters.SQL
-  alias Wardrik.Test.Repo
-  alias Wardrik.Test.Services
   alias WardrikEcto.Store
+  alias WardrikEcto.Test.Repo
+  alias WardrikEcto.Test.Services
 
   @moduletag :postgres
 
@@ -125,7 +125,7 @@ defmodule WardrikEcto.StoreTest do
   describe "check/1" do
     test "finds the table through the repo" do
       assert Store.check(repo: Repo) ==
-               {:ok, "the table wardrik_records through Wardrik.Test.Repo is there"}
+               {:ok, "the table wardrik_records through WardrikEcto.Test.Repo is there"}
     end
 
     test "says where the repo has no table, or does not answer" do
@@ -138,7 +138,7 @@ defmodule WardrikEcto.StoreTest do
 
       assert Store.check(repo: Repo) ==
                {:error,
-                "the table wardrik_records through Wardrik.Test.Repo is missing; " <>
+                "the table wardrik_records through WardrikEcto.Test.Repo is missing; " <>
                   "run WardrikEcto.Migration"}
     end
 
@@ -174,10 +174,10 @@ defmodule WardrikEcto.StoreTest do
 
   describe "WardrikEcto.Migration" do
     test "drops the table, and creates it again" do
-      Ecto.Migrator.run(Repo, [{1, Wardrik.Test.Migration}], :down, all: true, log: false)
+      Ecto.Migrator.run(Repo, [{1, WardrikEcto.Test.Migration}], :down, all: true, log: false)
       assert %{rows: [[nil]]} = SQL.query!(Repo, "SELECT to_regclass('wardrik_records')::text")
 
-      Ecto.Migrator.run(Repo, [{1, Wardrik.Test.Migration}], :up, all: true, log: false)
+      Ecto.Migrator.run(Repo, [{1, WardrikEcto.Test.Migration}], :up, all: true, log: false)
 
       assert %{rows: [["wardrik_records"]]} =
                SQL.query!(Repo, "SELECT to_regclass('wardrik_records')::text")

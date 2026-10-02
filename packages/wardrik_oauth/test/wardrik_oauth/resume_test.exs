@@ -1,5 +1,5 @@
 defmodule WardrikOAuth.ResumeTest do
-  use WardrikOAuth.Case, async: false
+  use WardrikOAuth.Test.Case, async: false
 
   alias Wardrik.Agent
   alias Wardrik.Credential

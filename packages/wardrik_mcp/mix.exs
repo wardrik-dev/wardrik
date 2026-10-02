@@ -26,10 +26,7 @@ defmodule WardrikMCP.MixProject do
 
   def application, do: [extra_applications: [:logger]]
 
-  # A server that asks for authorization is reached through the OAuth
-  # package's case.
-  defp elixirc_paths(:test),
-    do: ["lib", "test/support", Path.expand("../wardrik_oauth/test/support", __DIR__)]
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
 
   defp elixirc_paths(_env), do: ["lib"]
 
@@ -40,8 +37,6 @@ defmodule WardrikMCP.MixProject do
       # Its HTTP transport expects a Finch pool it does not start, which
       # WardrikMCP.Supervisor starts.
       {:finch, "~> 0.23"},
-      sibling(:wardrik_oauth, only: :test),
-      sibling(:wardrik_vault, only: :test),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

@@ -42,7 +42,7 @@ defmodule Wardrik.TestTest do
     end
 
     test "the scope's hooks decide the call" do
-      hooks = [Wardrik.Hook.new("rules", Tools.Allowing, ["deploy"])]
+      hooks = [Wardrik.Hook.new("rules", Tools.Rules, allow: ["deploy"])]
       scope = Wardrik.Test.scope(tools: [Tools.Deploy], hooks: hooks)
 
       assert %Call{state: :done, result: {:ok, _deployed}} =

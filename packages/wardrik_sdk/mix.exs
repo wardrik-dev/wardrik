@@ -20,7 +20,7 @@ defmodule WardrikSDK.MixProject do
       ],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      precommit: [skip: ["test", "test.coverage", "crap"]],
+      precommit: [skip: ["test.coverage", "crap"]],
       test_coverage: [ignore_modules: [Mix.Tasks.Wardrik]]
     ]
   end

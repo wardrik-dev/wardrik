@@ -57,7 +57,7 @@ defmodule WardrikHTTP.TokenTest do
 
   describe "a token that can define" do
     test "is made with a ceiling, or with none, and never without saying" do
-      ceiling = WardrikPolicy.hooks(%WardrikPolicy{name: "ceiling/careful", default: :ask})
+      ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
 
       assert {:error, message} = Token.create("unsaid", "acme/")
 
@@ -75,7 +75,7 @@ defmodule WardrikHTTP.TokenTest do
     end
 
     test "is the only kind a ceiling is for" do
-      ceiling = WardrikPolicy.hooks(%WardrikPolicy{name: "ceiling/careful"})
+      ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
 
       assert {:ok, _secret, _token} = Token.create("reader", "acme/", [:read])
 

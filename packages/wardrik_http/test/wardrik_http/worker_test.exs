@@ -147,7 +147,7 @@ defmodule WardrikHTTP.WorkerTest do
   # A worker's tool is gated unless it is read-only, so a call to echo runs
   # where a rule allows it by name.
   defp allowing_echo,
-    do: WardrikPolicy.hooks(WardrikPolicy.decode!(%{"allow" => ["workers/echo"]}))
+    do: [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["workers__echo"])]
 
   test "a worker's tool is gated unless every worker offering it marks it read-only", context do
     connect(context, [tool("lookup", %{"readOnlyHint" => true}), tool("refund")])

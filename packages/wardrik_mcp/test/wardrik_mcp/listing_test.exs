@@ -7,7 +7,7 @@ defmodule WardrikMCP.ListingTest do
   @listed [%{"name" => "echo", "description" => "Hands the value back."}]
 
   setup do
-    %{ref: WardrikMCP.Case.fresh_ref()}
+    %{ref: WardrikMCP.Test.Case.fresh_ref()}
   end
 
   test "recalls what was remembered", %{ref: ref} do
