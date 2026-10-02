@@ -69,6 +69,8 @@ streams what they do as [events](/reference/events/).
 
 ## Next
 
+- [Recipes](/recipes/): agents to copy and run, from a morning brief to one that anyone may try to
+  hijack.
 - [Agents](/concepts/agents/): how an agent answers in turns, and where it runs.
 - [Policy and approvals](/concepts/policy/): what an agent's tool calls may do, and which wait on a
   person.

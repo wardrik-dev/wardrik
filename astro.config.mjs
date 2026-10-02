@@ -48,6 +48,7 @@ export default defineConfig({
 						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
 					],
 				},
+				{ label: 'Recipes', items: [{ autogenerate: { directory: 'recipes' } }] },
 				{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
 				{ label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },
 				{ label: 'Operate', items: [{ autogenerate: { directory: 'operate' } }] },
