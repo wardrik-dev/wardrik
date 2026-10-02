@@ -165,7 +165,7 @@ defmodule WardrikHTTP.WorkerTest do
     assert Workers.tools("other/agent") == []
   end
 
-  test "a call reaches a worker with its idempotency key, and is answered with what it returned",
+  test "a call reaches a worker with its agent, its run and its idempotency key, and is answered with what it returned",
        context do
     connect(context, [tool("echo")])
 
@@ -179,16 +179,46 @@ defmodule WardrikHTTP.WorkerTest do
     assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
 
     key = Ledger.idempotency_key(scope, call)
+    run = scope.source.trace.trace_id
+    agent = context.agent
+    "test/" <> name = agent
 
     assert_receive {:called,
                     %{
                       "name" => "echo",
                       "arguments" => %{"order" => "o_1"},
-                      "_meta" => %{"idempotencyKey" => ^key}
+                      "_meta" => %{
+                        "agent" => %{"key" => ^agent, "org" => "test", "name" => ^name} = whose,
+                        "run" => ^run,
+                        "idempotencyKey" => ^key
+                      }
                     }}
+
+    refute Map.has_key?(whose, "user")
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
              Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "a call for a user's agent says whose it is, however the model called it", context do
+    connect(context, [tool("echo")])
+    agent = "test/@u_42/assistant-#{System.unique_integer([:positive])}"
+    "test/@u_42/" <> name = agent
+
+    Workers.call(agent, "echo", Calls.tool("echo", %{"order" => "o_1", "user" => "u_7"}))
+
+    assert_receive {:called,
+                    %{
+                      "arguments" => %{"user" => "u_7"},
+                      "_meta" => %{
+                        "agent" => %{
+                          "key" => ^agent,
+                          "org" => "test",
+                          "user" => "u_42",
+                          "name" => ^name
+                        }
+                      }
+                    }}
   end
 
   test "a worker's error, and its going away, reach the model as errors", context do

@@ -70,13 +70,34 @@ of them. A worker that goes away takes its tools with it, until it connects agai
 | `input` | a schema for its arguments, such as a `zod` object, sent to the model as JSON Schema |
 | `readOnly` | whether it changes nothing. A tool that is not read-only is [gated](/concepts/policy/#gated-tools): a call to it asks a person unless a policy allows it by name |
 | `idempotent` | whether running a call twice is safe; see below |
-| `run` | the function, given the arguments, and `{ idempotencyKey, signal }` |
+| `run` | the function, given the arguments, and `{ agent, run, idempotencyKey, signal }` |
 
 `run` answers with an object, which the model is given as the call's result, or a string, as text.
 A thrown error is a failed call: the model is told its message, and the turn carries on.
 
 A call may take up to 60 seconds. One that takes longer is answered as timed out, the model is told
 it may already have done what it does, and `signal` aborts.
+
+### Whose call it is
+
+`agent` is the agent the call is made for, with its `key`, its `org`, its `user` where it works for
+one, and its `name`. The daemon names it from the agent's key, which the worker's token was checked
+against, never from what the model sent. So one worker can serve an agent for every customer, each
+under a key of its own, and answer each with what is that customer's alone:
+
+```ts
+wardrik.tool({
+  name: "list_orders",
+  description: "List the customer's orders.",
+  input: z.object({}),
+  readOnly: true,
+  run: (_args, { agent }) => db.orders.where({ customer: agent?.user }),
+});
+```
+
+Here each customer's agent is `shop/@<customer id>/support`, and no argument the model writes can
+reach another customer's orders. `run` is the run the call is part of, the id its events carry, so a
+call can be matched with the turn it belongs to.
 
 ### Running a call twice
 

@@ -10,8 +10,26 @@ import {
 import { WardrikError } from "./errors.ts";
 import type { Http } from "./http.ts";
 
+/** The agent a call is made for. */
+export interface CallingAgent {
+  /** Its key, `org/name`, or `org/@user/name` for one that works for a user. */
+  key: string;
+  org: string;
+  /** The user it works for, where it works for one. */
+  user?: string;
+  name: string;
+}
+
 /** What a tool's `run` is given beside its arguments. */
 export interface ToolContext {
+  /**
+   * The agent the call is made for. Wardrik names it from the key this
+   * worker's token was checked against, never from what the model sent, so a
+   * tool serving many agents can answer each with what is theirs alone.
+   */
+  agent: CallingAgent | undefined;
+  /** The run the call is part of: the id the run's events carry. */
+  run: string | undefined;
   /**
    * The call's idempotency key, the same each time Wardrik runs this call.
    * Pass it on to what the tool changes, such as a payment API, so a call
@@ -71,6 +89,15 @@ function answer(value: unknown): CallToolResult {
     content: [{ type: "text", text }],
     ...(isObject ? { structuredContent: value as Record<string, unknown> } : {}),
   };
+}
+
+function callingAgent(meta: unknown): CallingAgent | undefined {
+  if (typeof meta !== "object" || meta === null) return undefined;
+
+  const { key, org, user, name } = meta as Record<string, unknown>;
+  if (typeof key !== "string" || typeof org !== "string" || typeof name !== "string") return undefined;
+
+  return typeof user === "string" ? { key, org, user, name } : { key, org, name };
 }
 
 function failed(error: unknown): CallToolResult {
@@ -172,9 +199,11 @@ export class Worker {
         annotations,
       },
       async (args: unknown, ctx: ServerContext) => {
-        const key = ctx.mcpReq._meta?.["idempotencyKey"];
+        const meta = ctx.mcpReq._meta ?? {};
         const context = {
-          idempotencyKey: typeof key === "string" ? key : undefined,
+          agent: callingAgent(meta["agent"]),
+          run: typeof meta["run"] === "string" ? meta["run"] : undefined,
+          idempotencyKey: typeof meta["idempotencyKey"] === "string" ? meta["idempotencyKey"] : undefined,
           signal: ctx.mcpReq.signal,
         };
 

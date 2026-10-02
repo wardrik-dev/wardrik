@@ -14,9 +14,17 @@ defmodule WardrikHTTP.Workers do
   a policy governs them as `workers/*` or `workers/refund_order`. Workers that
   offer a tool of the same name are one pool, and a call goes to any of them.
 
-  A call carries its `Wardrik.Ledger.idempotency_key/2` as
-  `_meta.idempotencyKey`, and waits for the worker's answer for
-  `WardrikHTTP.Config.worker_timeout/0`. A worker gone before it answers, or one
+  A call says whose it is: `_meta.agent` is the agent it is made for, the
+  key the worker's token was checked against, with its `org`, its `user`
+  where it works for one, and its `name`:
+
+      {"key": "acme/@jon/assistant", "org": "acme", "user": "jon", "name": "assistant"}
+
+  Wardrik writes it, never the model, so a worker serving many agents can
+  answer each with what is theirs alone. A call made in a turn also carries
+  the turn's run, as `_meta.run`, the id its events carry, and its
+  `Wardrik.Ledger.idempotency_key/2` as `_meta.idempotencyKey`. It waits for
+  the worker's answer for `WardrikHTTP.Config.worker_timeout/0`. A worker gone before it answers, or one
   that answers late, fails the call, and the model is told it may already
   have done what it does. A call that began before its agent was lost runs
   again under the same key where every worker in the agent's reach that
@@ -36,6 +44,7 @@ defmodule WardrikHTTP.Workers do
   @behaviour Wardrik.Tool
 
   alias Wardrik.Access
+  alias Wardrik.Fleet
   alias Wardrik.Tool.Result
   alias WardrikHTTP.Token
   alias WardrikHTTP.Worker.Tool
@@ -112,14 +121,14 @@ defmodule WardrikHTTP.Workers do
   def call(key, name, %Wardrik.Call{} = call) do
     case for({worker, tool} <- offered(key), tool.name == name, do: worker) do
       [] -> Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
-      workers -> ask(Enum.random(workers), name, call)
+      workers -> ask(Enum.random(workers), name, call, meta(key, call))
     end
     |> then(&Wardrik.Call.answer(call, &1))
   end
 
-  defp ask(worker, name, call) do
+  defp ask(worker, name, call, meta) do
     ref = Process.monitor(worker)
-    send(worker, {:call, self(), ref, name, call.target.arguments, meta(call)})
+    send(worker, {:call, self(), ref, name, call.target.arguments, meta})
 
     receive do
       {^ref, result} ->
@@ -144,9 +153,25 @@ defmodule WardrikHTTP.Workers do
     end
   end
 
-  # A call outside a turn has no key to be idempotent under.
-  defp meta(%Wardrik.Call{scope: nil}), do: %{}
-  defp meta(call), do: %{"idempotencyKey" => Wardrik.Ledger.idempotency_key(call)}
+  # A call outside a turn has no run, and no key to be idempotent under.
+  defp meta(key, %Wardrik.Call{scope: nil}), do: %{"agent" => agent(key)}
+
+  defp meta(key, %Wardrik.Call{scope: scope} = call) do
+    %{
+      "agent" => agent(key),
+      "run" => scope.source.trace.trace_id,
+      "idempotencyKey" => Wardrik.Ledger.idempotency_key(call)
+    }
+  end
+
+  defp agent(key) do
+    {org, user, name} = Fleet.parse(key)
+
+    Map.reject(
+      %{"key" => key, "org" => org, "user" => user, "name" => name},
+      &is_nil(elem(&1, 1))
+    )
+  end
 
   defp offered(key) do
     for {worker, %{token: token, tools: tools}} <- Group.members(__MODULE__, @group),

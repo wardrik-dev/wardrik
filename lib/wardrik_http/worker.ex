@@ -12,8 +12,9 @@ defmodule WardrikHTTP.Worker do
     2. Wardrik sends `tools/list`, and offers what the worker lists to the agents
        its token reaches (see `WardrikHTTP.Workers`). The worker sends
        `notifications/tools/list_changed` to be listed again.
-    3. Wardrik sends `tools/call` for each call an agent makes, with the call's
-       idempotency key as `_meta.idempotencyKey`, and the worker answers with a
+    3. Wardrik sends `tools/call` for each call an agent makes, with the agent
+       it is for as `_meta.agent`, its run as `_meta.run`, and its idempotency
+       key as `_meta.idempotencyKey`, and the worker answers with a
        `CallToolResult`: `structuredContent` where it has any, `content`, and
        `isError`. A call Wardrik stops waiting for is sent
        `notifications/cancelled`.
