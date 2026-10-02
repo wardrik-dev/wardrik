@@ -504,6 +504,7 @@ _build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
 _build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
 _build/prod/rel/wardrikd/bin/wardrik approve acme/triage call_1
 _build/prod/rel/wardrikd/bin/wardrik approve   # choose among every call waiting
+_build/prod/rel/wardrikd/bin/wardrik cancel acme/triage   # stop what it is doing, and leave it running
 _build/prod/rel/wardrikd/bin/wardrik vault put LINEAR_TOKEN   # seal a secret, asking for its value
 _build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
 _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log

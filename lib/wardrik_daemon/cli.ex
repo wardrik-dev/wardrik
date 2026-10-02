@@ -30,6 +30,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Init
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.CLI.Tokens
+  alias WardrikDaemon.CLI.Turns
   alias WardrikDaemon.CLI.Vault
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
@@ -109,7 +110,8 @@ defmodule WardrikDaemon.CLI do
       }
     ] ++
       Agents.commands() ++
-      Decisions.commands() ++ Tokens.commands() ++ Vault.commands() ++ script_commands()
+      Decisions.commands() ++
+      Turns.commands() ++ Tokens.commands() ++ Vault.commands() ++ script_commands()
   end
 
   # What bin/wardrik runs itself, listed for their help.

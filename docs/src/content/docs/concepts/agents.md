@@ -94,10 +94,19 @@ A tool call may wait on a person, which parks the turn until it is decided. See
 
 ### Stopping a turn
 
-`POST /v1/agents/{key}/cancel`, or `/stop` in the [terminal client](/guides/tui/), stops
-the running turn, drops the messages waiting behind it, and abandons a parked one. A turn that stops
-within two seconds keeps what it said; one that does not is ended, and adds nothing. Stopping a turn
-does not stop the agent, which answers the next message as usual.
+`wardrik cancel KEY`, `POST /v1/agents/{key}/cancel`, or `/stop` in the
+[terminal client](/guides/tui/), stops the running turn, drops the messages waiting behind it, and
+abandons a parked one. A turn that stops within two seconds keeps what it said; one that does not is
+ended, and adds nothing. Stopping a turn does not stop the agent, which answers the next message as
+usual, and a stopped turn stays stopped on whichever node holds the agent next.
+
+```sh
+wardrik cancel triage       # acme/triage
+wardrik cancel acme/@jon/   # every agent of jon's
+wardrik cancel --all        # every agent there is
+```
+
+`wardrik stop` is the daemon's, and stops every agent with it.
 
 ## Status
 
