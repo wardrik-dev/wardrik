@@ -158,6 +158,16 @@ Refuse a parked call, saying why.
 wardrik deny [KEY [CALL [REASON]]]
 ```
 
+## wardrik cancel
+
+Stop what an agent is doing, and leave it running.
+
+```sh
+wardrik cancel [PREFIX/ | KEY] [--all]
+```
+
+Its turn stops at its next step, the messages waiting behind it are dropped, and a turn waiting on a person is abandoned. PREFIX/ stops every agent under it, as acme/ or acme/@jon/, and --all every agent there is.
+
 ## wardrik token create
 
 A token for the HTTP API, printed once.
