@@ -22,7 +22,8 @@ defmodule Wardrik.Store.MemoryTest do
     assert Memory.quorum(3) == 1
   end
 
-  test "provides no DurableServer backend" do
-    refute function_exported?(Memory, :durable_backend, 1)
+  test "holds a one-node fleet through Wardrik.Store.Durable" do
+    assert Memory.durable_backend(discovery_interval_ms: 200) ==
+             {Wardrik.Store.Durable, store: Memory, discovery_interval_ms: 200}
   end
 end
