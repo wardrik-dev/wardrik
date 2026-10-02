@@ -64,7 +64,7 @@ defmodule Wardrik.Workflow do
   @doc """
   Builds the tool an agent calls to reach `step`.
 
-  Takes the same options as `ReqLLM.Tool.new!/1` and supplies the callback, so
+  Takes the same options as `ReqLLM.Tool.new!/1` and supplies what runs it, so
   a workflow declares what the model sees and nothing else:
 
       @impl Wardrik.Tool
@@ -84,25 +84,21 @@ defmodule Wardrik.Workflow do
   """
   @spec as_tool(Step.t(), keyword()) :: ReqLLM.Tool.t()
   def as_tool(step, opts) when is_list(opts) do
-    Wardrik.Tool.new!(Keyword.put(opts, :call, {__MODULE__, :call, [step]}))
+    Wardrik.Tool.new!(Keyword.put(opts, :run, {__MODULE__, :handle, [step]}))
   end
 
   @doc """
-  Runs `step` for `call`, the tool call `as_tool/2` is handed.
+  Runs `step` for a call to the tool `as_tool/2` built, with the call's
+  `input` and `context`.
 
-  The step runs under the call's scope, so everything it spawns is attributed
-  to the agent that asked for it. The call is answered with a
+  The step runs under the context's scope, so everything it spawns is
+  attributed to the agent that asked for it. It answers with a
   `Wardrik.Tool.Result`, so a workflow that fails reports the failure to the
   model instead of failing the turn.
   """
-  @spec call(Step.t(), Wardrik.Call.t()) :: Wardrik.Call.t()
-  def call(
-        step,
-        %Wardrik.Call{scope: %Scope{} = scope, target: %Wardrik.Call.Tool{} = tool} = call
-      ) do
-    result = step |> Step.invoke(Map.new(tool.arguments), scope) |> to_result()
-    Wardrik.Call.answer(call, result)
-  end
+  @spec handle(Step.t(), map() | keyword(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.Result.t()
+  def handle(step, input, %Wardrik.Tool.Context{scope: %Scope{} = scope}),
+    do: step |> Step.invoke(Map.new(input), scope) |> to_result()
 
   @doc """
   Runs `step` over every input at once and reports what each one did.

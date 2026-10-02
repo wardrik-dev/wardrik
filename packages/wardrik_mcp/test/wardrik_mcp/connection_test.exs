@@ -1,7 +1,7 @@
 defmodule WardrikMCP.ConnectionTest do
   use WardrikMCP.Test.Case, async: false
 
-  alias Wardrik.Test.Calls
+  defp annotations(ref, name), do: Wardrik.Tool.annotations({WardrikMCP, ref}, name)
 
   describe "a server that filters its tools" do
     @describetag server_opts: [only: ~w(echo)]
@@ -12,15 +12,14 @@ defmodule WardrikMCP.ConnectionTest do
 
     test "still calls a tool it does not offer, when asked directly", %{ref: ref} do
       assert {:ok, %{"ok" => true}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "x"}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{"value" => "x"}, context())
     end
   end
 
   describe "a server left to say which of its tools may change something" do
     test "gates the tools it does not mark read-only", %{ref: ref} do
-      refute WardrikMCP.gated?(ref, "#{ref}__echo")
-      assert WardrikMCP.gated?(ref, "#{ref}__grow")
+      refute annotations(ref, "#{ref}__echo").gated
+      assert annotations(ref, "#{ref}__grow").gated
     end
   end
 
@@ -28,12 +27,12 @@ defmodule WardrikMCP.ConnectionTest do
     @describetag server_opts: [gated: ["ech*"]]
 
     test "gates those, and its answers are content from outside", %{ref: ref} do
-      assert WardrikMCP.gated?(ref, "#{ref}__echo")
-      assert WardrikMCP.gated?(:*, "#{ref}__echo")
-      refute WardrikMCP.gated?(ref, "#{ref}__secret")
+      assert annotations(ref, "#{ref}__echo").gated
+      assert annotations(:*, "#{ref}__echo").gated
+      refute annotations(ref, "#{ref}__secret").gated
 
-      assert WardrikMCP.outside_content?(ref, "#{ref}__echo")
-      assert WardrikMCP.outside_content?(ref, "#{ref}__nothing_it_offers")
+      assert annotations(ref, "#{ref}__echo").outside
+      assert annotations(ref, "#{ref}__nothing_it_offers").outside
     end
   end
 
@@ -41,9 +40,9 @@ defmodule WardrikMCP.ConnectionTest do
     @describetag server_opts: [trusted: true]
 
     test "answers with what is the deployment's own", %{ref: ref} do
-      refute WardrikMCP.outside_content?(ref, "#{ref}__echo")
-      refute WardrikMCP.outside_content?(:*, "#{ref}__echo")
-      refute WardrikMCP.gated?(ref, "#{ref}__echo")
+      refute annotations(ref, "#{ref}__echo").outside
+      refute annotations(:*, "#{ref}__echo").outside
+      refute annotations(ref, "#{ref}__echo").gated
     end
   end
 
@@ -52,12 +51,7 @@ defmodule WardrikMCP.ConnectionTest do
 
     test "reads it from the environment it was started with", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "s3cret"}}} =
-               WardrikMCP.call(
-                 ref,
-                 "secret",
-                 Calls.tool("secret", %{"name" => "DEMO_TOKEN"})
-               )
-               |> Calls.result()
+               WardrikMCP.call(ref, "secret", %{"name" => "DEMO_TOKEN"}, context())
     end
 
     test "and the credential is nowhere in the tools the model sees", %{ref: ref} do
@@ -72,8 +66,7 @@ defmodule WardrikMCP.ConnectionTest do
       long = String.duplicate("a", 100)
 
       assert {:ok, %{"result" => %{"content" => content}}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => long}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{"value" => long}, context())
 
       assert content =~ "[cut:"
       assert content =~ String.duplicate("a", 16)
@@ -82,8 +75,7 @@ defmodule WardrikMCP.ConnectionTest do
 
     test "leaves a short result whole", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "short"}}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "short"}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{"value" => "short"}, context())
     end
   end
 

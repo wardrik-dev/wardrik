@@ -31,6 +31,13 @@ defmodule WardrikMCP.Test.Case do
     %{ref: ref}
   end
 
+  @doc """
+  The context a call to a server's tool is handed under `scope`, for a test
+  that calls `WardrikMCP.call/4` directly.
+  """
+  @spec context(Wardrik.Scope.t()) :: Wardrik.Tool.Context.t()
+  def context(scope \\ Wardrik.Test.scope()), do: Wardrik.Test.context(scope)
+
   @doc "A ref no other test is using, so servers started in one test do not reach another."
   @spec fresh_ref() :: atom()
   def fresh_ref, do: :"stub_#{System.unique_integer([:positive])}"

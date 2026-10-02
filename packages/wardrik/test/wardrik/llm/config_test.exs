@@ -55,7 +55,7 @@ defmodule Wardrik.LLM.ConfigTest do
       end
 
       @impl true
-      def timeout, do: :timer.minutes(10)
+      def annotations(_name), do: %{timeout: :timer.minutes(10)}
     end
 
     test "reads what the tool declares" do

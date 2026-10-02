@@ -34,7 +34,7 @@ defmodule WardrikMCP.Tool do
       Authorize this agent to use #{server.ref}. Call it when you need #{server.ref}       and no #{server.ref} tool is available yet: the user is asked to connect, and       #{server.ref}'s own tools appear once they have.
       """,
       parameter_schema: %{"type" => "object", "properties" => %{}},
-      call: {WardrikMCP, :authorize, [server.ref]}
+      run: {WardrikMCP, :authorize, [server.ref]}
     )
   end
 
@@ -49,7 +49,7 @@ defmodule WardrikMCP.Tool do
       name: Server.local_name(server, name),
       description: description(listed, server),
       parameter_schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
-      call: {WardrikMCP, :call, [server.ref, name]}
+      run: {WardrikMCP, :call, [server.ref, name]}
     )
   end
 

@@ -32,37 +32,40 @@ defmodule Wardrik.Tool do
   `Wardrik.Tool.Result.ok/1` and `error/1` for the difference between a tool that
   failed and a call that did.
 
-  ## Handed the call
+  ## Handed its context
 
-  A tool that needs to know who it works for, or which call it is answering,
-  is built with `new!/1` and a `:call` in place of a `:callback`. It is handed
-  the `Wardrik.Call` itself, under the scope it runs in and with its arguments
-  validated, and answers it with `Wardrik.Call.answer/2`.
-
-  Or it parks it, with `Wardrik.Call.park/2`: the call stops the turn instead of
-  being answered, and the prompt is what a person is shown. What parking is
-  for is work that cannot finish until something outside the turn happens,
-  such as a credential the user has not authorized yet:
+  A tool that needs to know who it works for, which call it is answering, or
+  a credential, is built with `new!/1` and `:run` in place of `:callback`. It
+  is handed its arguments, validated, and a `Wardrik.Tool.Context`: the scope
+  the call runs under, the call's id and idempotency key, the credentials its
+  annotations named, and a way to report progress. It answers the same way,
+  and in three more ways; see `t:answer/0`:
 
       def tool do
         Wardrik.Tool.new!(
           name: "search_issues",
           description: "Search this user's GitHub issues.",
           parameter_schema: [query: [type: :string, required: true, doc: "What to find"]],
-          call: {__MODULE__, :run}
+          run: {__MODULE__, :run}
         )
       end
 
-      def run(%Wardrik.Call{target: %Wardrik.Call.Tool{arguments: args}} = call) do
-        case Wardrik.Credential.resolve(call, "github") do
-          {:ok, credential} -> Wardrik.Call.answer(call, search(credential, args.query))
-          {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
-          {:error, reason} -> Wardrik.Call.answer(call, Wardrik.Tool.Result.error(reason))
+      @impl true
+      def annotations(_name), do: %{credentials: ["github"], outside: true}
+
+      def run(%{query: query}, %Wardrik.Tool.Context{credentials: %{"github" => github}}) do
+        case search(query, github) do
+          {:ok, issues} -> Wardrik.Tool.Result.ok(issues)
+          {:error, :unauthorized} -> {:refused, "github"}
+          {:error, reason} -> Wardrik.Tool.Result.error(reason)
         end
       end
 
-  Approving a parked call hands the tool the call again, so a tool that parks
-  must be safe to call twice.
+  Parking a call, `{:park, prompt}`, stops the turn instead of answering it,
+  and the prompt is what a person is shown. What parking is for is work that
+  cannot finish until something outside the turn happens. Approving a parked
+  call hands the tool its arguments again, so a tool that parks must be safe
+  to call twice.
 
   ## Sources
 
@@ -74,36 +77,32 @@ defmodule Wardrik.Tool do
   A source is asked for its tools every time a turn is built, so `c:tools/1`
   reads what this node already holds and never goes out to fetch it.
 
-  ## What a tool says about its calls
+  ## What a tool declares
 
-  Three optional callbacks tell the runtime about a call before and after it
-  runs, each with a form taking a source's argument first:
+  Three optional callbacks tell the runtime about a tool's calls, each with a
+  form taking a source's argument first:
 
-    * `c:gated?/1` - its calls wait on a person unless a hook allows them by
-      name, as `WardrikPolicy`'s `allow` rules do; `default: allow` is not
-      enough. For a tool whose call cannot be taken back.
+    * `c:annotations/1` - what holds for every call to the tool: whether it
+      is gated, whether its answers are content from outside, what a call
+      does in doubt, how long one may take, and the credentials it needs;
+      see `Wardrik.Tool.Annotations`
     * `c:subjects/2` - what a call acts on, from its arguments, so a rule can
-      name a call by what it does: `write_file(notes/*)`.
-    * `c:outside_content?/1` - what it answers holds content nobody on the
-      agent's side wrote, such as a web page, so a call to it taints its run,
-      and a gated tool's call later in the run waits on a person however its
-      hooks allowed it. A tool built with `new!/1` can instead mark one call
-      with `Wardrik.Call.taint/1`.
+      name a call by what it does: `write_file(notes/*)`
+    * `c:context/0` - what the tool tells the model as each turn begins
 
-  ## What a tool tells the model first
-
-  `c:context/0`, also optional, speaks for the turn rather than a call: text
-  put after the system prompt as each turn begins, such as the files
-  `WardrikWorkspace` reads into it. Text from outside taints the turn from its
-  start, as a call answering with it would.
+  `c:context/0` speaks for the turn rather than a call: text put after the
+  system prompt as each turn begins, such as the files `WardrikWorkspace`
+  reads into it. Text from outside taints the turn from its start, as a call
+  answering with it would.
   """
+
+  alias Wardrik.Tool.Annotations
 
   @typedoc """
   A call the model asked for, in the shape `ReqLLM.Response.classify/1`
   produces: a provider-assigned id, the tool's name, and decoded arguments.
 
-  The id is what a host correlates against. A tool built with `new!/1` is
-  handed its own call, as a `Wardrik.Call`.
+  The id is what a host correlates against.
   """
   @type call() :: %{id: String.t(), name: String.t(), arguments: map()}
 
@@ -112,6 +111,27 @@ defmodule Wardrik.Tool do
   module with its argument, or a tool built inline.
   """
   @type spec() :: module() | {module(), term()} | ReqLLM.Tool.t()
+
+  @typedoc """
+  What a tool handed its context answers.
+
+    * `{:ok, output}` and `{:error, reason}`, as a callback does
+    * `{:ok, output, outside: true}` - an answer that is content from
+      outside, which taints the run; see `Wardrik.Call.taint/1`
+    * `{:park, prompt}` and `{:park, prompt, link: link}` - the call waits on
+      a person, who is shown `prompt`, and authorizes at `link` where there
+      is one; see `Wardrik.Call.park/3`
+    * `{:refused, name}` - the system the tool reaches refused the credential
+      it was handed as `name`. The runtime tells the resolver, resolves it
+      again, and runs the tool once more.
+  """
+  @type answer() ::
+          {:ok, term()}
+          | {:error, term()}
+          | {:ok, term(), outside: boolean()}
+          | {:park, String.t()}
+          | {:park, String.t(), link: Wardrik.Call.Ask.link()}
+          | {:refused, Wardrik.Credential.ref()}
 
   @doc """
   Called when a config naming this module is built, so a tool that reads
@@ -128,42 +148,15 @@ defmodule Wardrik.Tool do
   @callback tools(term()) :: [ReqLLM.Tool.t()]
 
   @doc """
-  How long one call may take, in milliseconds.
-
-  Optional; `Wardrik.LLM.ToolRunner` has a default. Declare one for work that
-  legitimately runs longer than a request — a workflow that fans out across
-  subagents takes minutes, and is killed part way through otherwise.
+  What holds for every call to the tool `name`, as `Wardrik.Tool.Annotations`
+  reads it. Optional; a tool that declares none has every default. A source
+  answers with `c:annotations/2`.
   """
-  @callback timeout() :: timeout()
+  @callback annotations(name :: String.t()) :: Annotations.t() | map() | keyword()
 
-  @doc """
-  What a call to the tool `name` does when its turn is replayed and the ledger
-  holds it as begun and never finished, so whether it had its effect is not
-  known: `:ask`, the default, parks it for a person, and `:rerun` runs it
-  again under the same `Wardrik.Ledger.idempotency_key/2`.
-
-  Optional. Declare `:rerun` for a tool that passes that key on to the system
-  it calls, or that changes nothing, so running it again has no second
-  effect. A source answers with `c:in_doubt/2` instead.
-  """
-  @callback in_doubt(name :: String.t()) :: :ask | :rerun
-
-  @doc """
-  `c:in_doubt/1` for a source: what a call to its tool `name` does in doubt,
-  asked with the argument the spec named the source with, as `c:tools/1` is.
-  """
-  @callback in_doubt(argument :: term(), name :: String.t()) :: :ask | :rerun
-
-  @doc """
-  Whether a call to the tool `name` waits on a person unless a hook allows it
-  by name, with an `:allow` decision; see `t:Wardrik.Hook.decision/0`. Optional,
-  and `false` unless declared.
-  A source answers with `c:gated?/2`.
-  """
-  @callback gated?(name :: String.t()) :: boolean()
-
-  @doc "`c:gated?/1` for a source, asked with the argument the spec named it with."
-  @callback gated?(argument :: term(), name :: String.t()) :: boolean()
+  @doc "`c:annotations/1` for a source, asked with the argument the spec named it with."
+  @callback annotations(argument :: term(), name :: String.t()) ::
+              Annotations.t() | map() | keyword()
 
   @doc """
   What a call to the tool `name` with `arguments` acts on: strings a rule
@@ -175,16 +168,6 @@ defmodule Wardrik.Tool do
 
   @doc "`c:subjects/2` for a source, asked with the argument the spec named it with."
   @callback subjects(argument :: term(), name :: String.t(), arguments :: map()) :: [String.t()]
-
-  @doc """
-  Whether what the tool `name` answers holds content from outside, so a call
-  to it taints the run it belongs to. Optional, and `false` unless declared.
-  A source answers with `c:outside_content?/2`.
-  """
-  @callback outside_content?(name :: String.t()) :: boolean()
-
-  @doc "`c:outside_content?/1` for a source, asked with the argument the spec named it with."
-  @callback outside_content?(argument :: term(), name :: String.t()) :: boolean()
 
   @typedoc """
   What a tool tells the model before a turn: text, `{:outside, text}` for text
@@ -206,36 +189,33 @@ defmodule Wardrik.Tool do
 
   @optional_callbacks tool: 0,
                       tools: 1,
-                      timeout: 0,
-                      in_doubt: 1,
-                      in_doubt: 2,
-                      gated?: 1,
-                      gated?: 2,
+                      annotations: 1,
+                      annotations: 2,
                       subjects: 2,
                       subjects: 3,
-                      outside_content?: 1,
-                      outside_content?: 2,
                       context: 0,
                       context: 1
 
   @typedoc """
-  What a tool `new!/1` builds hands its call to: `{module, function, args}`,
-  called as `module.function(args..., call)`, or a function of the call.
+  What a tool `new!/1` builds runs: `{module, function, args}`, called as
+  `module.function(args..., input, context)`, or a function of the input and
+  the context.
   """
-  @type handler() :: {module(), atom(), list()} | (Wardrik.Call.t() -> Wardrik.Call.t())
+  @type handler() ::
+          {module(), atom(), list()} | (map(), Wardrik.Tool.Context.t() -> answer())
 
   @doc """
-  A tool handed its `Wardrik.Call`: what `ReqLLM.Tool.new!/1` takes, with `:call`
-  in place of `:callback`.
+  A tool handed its context: what `ReqLLM.Tool.new!/1` takes, with `:run` in
+  place of `:callback`.
 
-  `:call` is `{module, function}`, `{module, function, args}`, or, for a tool
-  built inline, a function of the call. It answers with the call it was
-  handed, answered with `Wardrik.Call.answer/2` or parked with
-  `Wardrik.Call.park/2`. Raises on a bad schema, as `ReqLLM.Tool.new!/1` does.
+  `:run` is `{module, function}`, `{module, function, args}`, or, for a tool
+  built inline, a function of the input and the context. It is handed the
+  call's arguments, validated, and a `Wardrik.Tool.Context`, and answers as
+  `t:answer/0` says. Raises on a bad schema, as `ReqLLM.Tool.new!/1` does.
   """
   @spec new!(keyword()) :: ReqLLM.Tool.t()
   def new!(opts) when is_list(opts) do
-    {handler, opts} = Keyword.pop!(opts, :call)
+    {handler, opts} = Keyword.pop!(opts, :run)
     ReqLLM.Tool.new!(Keyword.put(opts, :callback, {__MODULE__, :invoke, [handler(handler)]}))
   end
 
@@ -245,24 +225,25 @@ defmodule Wardrik.Tool do
        when is_atom(module) and is_atom(function) and is_list(args),
        do: handler
 
-  defp handler(fun) when is_function(fun, 1), do: fun
+  defp handler(fun) when is_function(fun, 2), do: fun
 
-  @doc "Hands `call` to `handler`, the one a `new!/1` tool was built with."
-  @spec hand(handler(), Wardrik.Call.t()) :: term()
-  def hand({module, function, args}, %Wardrik.Call{} = call),
-    do: apply(module, function, args ++ [call])
+  @doc "Hands `input` and `context` to `handler`, the one a `new!/1` tool was built with."
+  @spec hand(handler(), map(), Wardrik.Tool.Context.t()) :: answer()
+  def hand({module, function, args}, input, %Wardrik.Tool.Context{} = context),
+    do: apply(module, function, args ++ [input, context])
 
-  def hand(fun, %Wardrik.Call{} = call) when is_function(fun, 1), do: fun.(call)
+  def hand(fun, input, %Wardrik.Tool.Context{} = context) when is_function(fun, 2),
+    do: fun.(input, context)
 
   @doc """
   What a tool `new!/1` builds answers when something other than
-  `Wardrik.LLM.ToolRunner` calls it, which has no call to hand it.
+  `Wardrik.LLM.ToolRunner` calls it, which has no context to hand it.
   """
   @spec invoke(handler(), map()) :: {:error, String.t()}
   def invoke(_handler, _input),
     do:
       {:error,
-       "a tool built with Wardrik.Tool.new!/1 is handed its Wardrik.Call, and runs only in a turn"}
+       "a tool built with Wardrik.Tool.new!/1 is handed its context, and runs only in a turn"}
 
   @doc """
   Builds every tool in a list of specs, in the order they are named.
@@ -273,51 +254,12 @@ defmodule Wardrik.Tool do
   @spec resolve!([spec()]) :: [ReqLLM.Tool.t()]
   def resolve!(specs) when is_list(specs), do: Enum.flat_map(specs, &resolve_one!/1)
 
-  @doc "The timeout a spec declares, or `nil` when it leaves that to the runner."
-  @spec timeout(spec()) :: timeout() | nil
-  def timeout({module, _argument}) when is_atom(module), do: timeout(module)
-
-  def timeout(module) when is_atom(module) do
-    if exports?(module, :timeout, 0), do: module.timeout(), else: nil
-  end
-
-  def timeout(%ReqLLM.Tool{}), do: nil
-
-  @doc "What a spec says a call to its tool `name` does in doubt: `:rerun`, or `:ask`."
-  @spec in_doubt(spec(), String.t()) :: :ask | :rerun
-  def in_doubt({module, argument}, name) when is_atom(module) do
-    if exports?(module, :in_doubt, 2) and module.in_doubt(argument, name) == :rerun,
-      do: :rerun,
-      else: :ask
-  end
-
-  def in_doubt(module, name) when is_atom(module) do
-    if exports?(module, :in_doubt, 1) and module.in_doubt(name) == :rerun, do: :rerun, else: :ask
-  end
-
-  def in_doubt(%ReqLLM.Tool{}, _name), do: :ask
-
   @doc """
-  The call with what its tool declares written on it, before any hook reads
-  it: whether it is gated, and what it acts on. A call to a tool its scope's
-  config does not name is left as it is.
+  What a spec declares holds for every call to its tool `name`, with every
+  default where it declares nothing; see `Wardrik.Tool.Annotations`.
   """
-  @spec declared(Wardrik.Call.t()) :: Wardrik.Call.t()
-  def declared(%Wardrik.Call{target: %Wardrik.Call.Tool{name: name} = target} = call) do
-    case Wardrik.LLM.Config.tool_spec(call.scope.config, name) do
-      nil ->
-        call
-
-      spec ->
-        gated = gated?(spec, name)
-        subjects = subjects(spec, name, target.arguments)
-        %{call | target: %{target | gated: gated, subjects: subjects}}
-    end
-  end
-
-  @doc "Whether a spec says a call to its tool `name` waits unless a hook allows it by name."
-  @spec gated?(spec(), String.t()) :: boolean()
-  def gated?(spec, name), do: declared(spec, :gated?, [name]) == true
+  @spec annotations(spec(), String.t()) :: Annotations.t()
+  def annotations(spec, name), do: Annotations.new(declared(spec, :annotations, [name]) || %{})
 
   @doc "What a spec says a call to its tool `name` with `arguments` acts on."
   @spec subjects(spec(), String.t(), map()) :: [String.t()]
@@ -327,10 +269,6 @@ defmodule Wardrik.Tool do
       _none -> []
     end
   end
-
-  @doc "Whether a spec says what its tool `name` answers holds content from outside."
-  @spec outside_content?(spec(), String.t()) :: boolean()
-  def outside_content?(spec, name), do: declared(spec, :outside_content?, [name]) == true
 
   @doc """
   What `specs` tell the model before a turn, joined in the order they are
@@ -368,6 +306,24 @@ defmodule Wardrik.Tool do
 
   defp declared(%ReqLLM.Tool{}, _function, _args), do: nil
 
+  @doc """
+  The call with what its tool declares written on it, before any hook reads
+  it: whether it is gated, and what it acts on. A call to a tool its scope's
+  config does not name is left as it is.
+  """
+  @spec declared(Wardrik.Call.t()) :: Wardrik.Call.t()
+  def declared(%Wardrik.Call{target: %Wardrik.Call.Tool{name: name} = target} = call) do
+    case Wardrik.LLM.Config.tool_spec(call.scope.config, name) do
+      nil ->
+        call
+
+      spec ->
+        gated = annotations(spec, name).gated
+        subjects = subjects(spec, name, target.arguments)
+        %{call | target: %{target | gated: gated, subjects: subjects}}
+    end
+  end
+
   @doc "Whether this node can build the tools a spec names."
   @spec available?(spec()) :: boolean()
   def available?(%ReqLLM.Tool{}), do: true
@@ -390,31 +346,6 @@ defmodule Wardrik.Tool do
   @doc "The names of the tools a spec builds."
   @spec names(spec()) :: [String.t()]
   def names(spec), do: Enum.map(resolve!([spec]), & &1.name)
-
-  @doc """
-  Reports how far `call` has got, on the turn's event stream.
-
-  Emits `{:tool_progress, call_id, name, progress, total}` under the span of
-  the call, where `total` is `nil` for work with no known end.
-
-      Wardrik.Tool.progress(call, 3, 10)
-  """
-  @spec progress(Wardrik.Call.t(), number(), number() | nil) :: :ok
-  def progress(%Wardrik.Call{} = call, progress, total \\ nil),
-    do: progress_reporter(call).(progress, total)
-
-  @doc """
-  A function that reports progress for `call`, bound to it, for a callback
-  another process runs, such as a client library's progress hook.
-  """
-  @spec progress_reporter(Wardrik.Call.t()) :: (number(), number() | nil -> :ok)
-  def progress_reporter(%Wardrik.Call{id: id, scope: %Wardrik.Scope{source: source}} = call) do
-    name = Wardrik.Call.name(call)
-
-    fn progress, total ->
-      Wardrik.Event.emit(source, {:tool_progress, id, name, progress, total})
-    end
-  end
 
   defp resolve_one!(%ReqLLM.Tool{} = tool), do: [tool]
 

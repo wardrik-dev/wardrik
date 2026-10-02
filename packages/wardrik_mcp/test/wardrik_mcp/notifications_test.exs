@@ -1,8 +1,6 @@
 defmodule WardrikMCP.NotificationsTest do
   use WardrikMCP.Test.Case, async: false
 
-  alias Wardrik.Test.Calls
-
   describe "a server that says its tools changed" do
     setup %{ref: ref} do
       handler = {__MODULE__, ref}
@@ -23,8 +21,7 @@ defmodule WardrikMCP.NotificationsTest do
       refute "#{ref}__grown" in Enum.map(WardrikMCP.tools(ref), & &1.name)
 
       assert {:ok, _result} =
-               WardrikMCP.call(ref, "grow", Calls.tool("grow", %{}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "grow", %{}, context())
 
       assert_receive {:listed, ^ref}, 5_000
       assert "#{ref}__grown" in Enum.map(WardrikMCP.tools(ref), & &1.name)
@@ -34,8 +31,7 @@ defmodule WardrikMCP.NotificationsTest do
       config = Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])
 
       assert {:ok, _result} =
-               WardrikMCP.call(ref, "grow", Calls.tool("grow", %{}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "grow", %{}, context())
 
       assert_receive {:listed, ^ref}, 5_000
       assert "#{ref}__grown" in Enum.map(Wardrik.LLM.Config.tools(config), & &1.name)

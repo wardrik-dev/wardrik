@@ -87,5 +87,5 @@ defmodule WardrikWorkspace do
 
   @doc "Every file tool may run again after a lost node."
   @impl Wardrik.Tool
-  def in_doubt(%Spec{}, _name), do: :rerun
+  def annotations(%Spec{}, _name), do: %{in_doubt: :rerun}
 end

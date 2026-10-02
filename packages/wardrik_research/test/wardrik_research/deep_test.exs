@@ -58,7 +58,7 @@ defmodule WardrikResearch.DeepTest do
   defp quietly(fun), do: fun |> ExUnit.CaptureLog.with_log() |> elem(0)
 
   test "answers with what it read on the web, which taints a run" do
-    assert Wardrik.Tool.outside_content?(WardrikResearch.Deep, "deep_research")
+    assert Wardrik.Tool.annotations(WardrikResearch.Deep, "deep_research").outside
   end
 
   describe "run/3" do
@@ -371,7 +371,7 @@ defmodule WardrikResearch.DeepTest do
       tool = Deep.tool()
 
       assert tool.name == "deep_research"
-      assert {Wardrik.Tool, :invoke, [{Workflow, :call, [{Deep, _opts}]}]} = tool.callback
+      assert {Wardrik.Tool, :invoke, [{Workflow, :handle, [{Deep, _opts}]}]} = tool.callback
       assert Keyword.fetch!(tool.parameter_schema, :topic)[:required]
       refute Keyword.fetch!(tool.parameter_schema, :angles)[:required]
     end
@@ -399,15 +399,11 @@ defmodule WardrikResearch.DeepTest do
       stub_llm()
 
       assert {:ok, %{"ok" => true, "result" => result}} =
-               Deep
-               |> Workflow.call(
-                 Calls.tool(
-                   "deep_research",
-                   %{topic: "widgets", angles: ["pricing"]},
-                   scope
-                 )
+               Workflow.handle(
+                 Deep,
+                 %{topic: "widgets", angles: ["pricing"]},
+                 Wardrik.Test.context(scope)
                )
-               |> Calls.result()
 
       assert result["report"] == "the combined report"
     end
@@ -419,15 +415,11 @@ defmodule WardrikResearch.DeepTest do
 
       assert {:ok, %{"ok" => false, "error" => %{"code" => "no_findings"}}} =
                quietly(fn ->
-                 Deep
-                 |> Workflow.call(
-                   Calls.tool(
-                     "deep_research",
-                     %{topic: "widgets", angles: ["pricing"]},
-                     scope
-                   )
+                 Workflow.handle(
+                   Deep,
+                   %{topic: "widgets", angles: ["pricing"]},
+                   Wardrik.Test.context(scope)
                  )
-                 |> Calls.result()
                end)
     end
   end

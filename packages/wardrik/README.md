@@ -103,6 +103,11 @@ Give a callback as `{module, function}` rather than an anonymous function:
 a config is written to the store and read back on whichever node runs the
 agent next, and a function cannot travel that way.
 
+A tool that needs to know who it works for, a credential, or a way to report
+progress is built with `Wardrik.Tool.new!/1` and handed a `Wardrik.Tool.Context`
+with its arguments. What holds for every call to it, such as being gated or
+needing a credential, is its `annotations/1`; see `Wardrik.Tool.Annotations`.
+
 Modules belong to their package, so they only need to say what sets them
 apart inside it. A tool's name is different: the model sees every tool's name
 in one flat list, so it has to say everything on its own. `WardrikBrave.WebSearch`

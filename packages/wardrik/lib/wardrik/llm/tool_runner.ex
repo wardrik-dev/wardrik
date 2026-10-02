@@ -10,15 +10,15 @@ defmodule Wardrik.LLM.ToolRunner do
 
   Each call runs under its own child span, so its events are attributed to
   that call rather than to the turn as a whole. A tool built with
-  `Wardrik.Tool.new!/1` is handed the call under that scope, which is how a tool
-  that delegates finds its place in the tree and how a tool with an outside
-  effect finds an idempotency key.
+  `Wardrik.Tool.new!/1` is handed a `Wardrik.Tool.Context` under that scope,
+  which is how a tool that delegates finds its place in the tree and how a
+  tool with an outside effect finds an idempotency key.
 
   Spans are opened by the caller and closed inside the task; a call killed at
   the timeout is closed by the caller instead.
 
   A batch runs under the longest timeout any tool in it declares, narrowed by
-  whatever its scope has left. See `c:Wardrik.Tool.timeout/0` and
+  whatever its scope has left. See `Wardrik.Tool.Annotations` and
   `Wardrik.Scope.remaining_ms/1`.
 
   Each call is a `Wardrik.Call` to a `Wardrik.Call.Tool`, built from the normalized
@@ -37,11 +37,15 @@ defmodule Wardrik.LLM.ToolRunner do
     2. the scope's hooks decide an unchecked call
     3. the ledger claims an allowed or approved call
     4. a refused call is answered with why
-    5. the tool runs an allowed or approved call, or is handed it; see
-       `Wardrik.Tool`. One whose work ran a delegate that read content from
-       outside is tainted; see `Wardrik.Subagent`
-    6. the ledger records what a claimed call answered
-    7. an answered call whose tool declares its answers hold content from
+    5. the credentials its tool's annotations name are resolved for an
+       allowed or approved call; one the person has yet to authorize parks
+       the call on its link
+    6. the tool runs the call, handed its arguments and a
+       `Wardrik.Tool.Context`; see `Wardrik.Tool`. One whose work ran a
+       delegate that read content from outside is tainted; see
+       `Wardrik.Subagent`
+    7. the ledger records what a claimed call answered
+    8. an answered call whose tool declares its answers hold content from
        outside is tainted; see `Wardrik.Call.taint/1`
 
   Each step acts on the calls in the states it is for and hands every other
@@ -71,7 +75,7 @@ defmodule Wardrik.LLM.ToolRunner do
   claimed and never settled may or may not have had its effect, so it waits on
   `:ledger`, asking a person whether to run it again, and runs once they
   approve that, or at once, under the same key, where its tool declares it may
-  run again (see `c:Wardrik.Tool.in_doubt/1`). Approving a call a hook asked
+  run again (see `Wardrik.Tool.Annotations`). Approving a call a hook asked
   about runs nothing the ledger holds as begun, and refusing one tells the
   model what the ledger holds, not that it never ran. A call whose claim the
   ledger cannot answer does not run. A tool that stops to ask before doing
@@ -93,6 +97,7 @@ defmodule Wardrik.LLM.ToolRunner do
   alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Tool
+  alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Hook
   alias Wardrik.Ledger
@@ -103,6 +108,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
   @registry __MODULE__.Registry
   @claim :wardrik_ledger_key
+  @credentials :wardrik_credentials
 
   @tool_timeout :timer.seconds(60)
   @max_concurrency 8
@@ -330,7 +336,9 @@ defmodule Wardrik.LLM.ToolRunner do
       |> check()
       |> claim()
       |> refused()
+      |> resolved()
       |> invoke()
+      |> forgotten()
       |> record()
       |> outside()
     after
@@ -393,56 +401,143 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp refused(call), do: call
 
+  # The credentials a tool's annotations name are resolved before it runs,
+  # and handed to it. One the person has yet to authorize parks the call on
+  # its link; one that cannot be resolved answers the call with why.
+  defp resolved(%Call{state: state, target: %Tool{name: name}} = call)
+       when state in [:allowed, :approved] do
+    Enum.reduce_while(needed(call, name), call, fn ref, call ->
+      case Credential.resolve(call, ref) do
+        {:ok, credential} ->
+          {:cont, put_credential(call, ref, credential)}
+
+        {:error, {:authorization_required, url}} ->
+          {:halt, unauthorized(call, ref, url, nil)}
+
+        {:error, {:authorization_required, url, code}} ->
+          {:halt, unauthorized(call, ref, url, code)}
+
+        {:error, reason} ->
+          {:halt, finished(call, unresolved(name, ref, reason))}
+      end
+    end)
+  end
+
+  defp resolved(call), do: call
+
+  defp needed(call, name) do
+    case Config.tool_spec(call.scope.config, name) do
+      nil -> []
+      spec -> Wardrik.Tool.annotations(spec, name).credentials
+    end
+  end
+
+  defp unauthorized(call, ref, url, code) do
+    prompt =
+      "To use #{Call.name(call)}, connect #{ref} at its link. " <>
+        "This carries on once it is connected."
+
+    call |> Call.park(prompt, link: %{url: url, code: code}) |> announced()
+  end
+
+  defp unresolved(name, ref, :no_resolver),
+    do:
+      Result.error(
+        :not_authorized,
+        "#{name} needs #{ref}, and this deployment resolves no credentials."
+      )
+
+  defp unresolved(name, ref, reason),
+    do:
+      Result.error(
+        :not_authorized,
+        "#{name} needs #{ref}, which could not be resolved: #{inspect(reason)}"
+      )
+
+  defp put_credential(call, ref, credential),
+    do: Call.put_private(call, @credentials, Map.put(credentials(call), ref, credential))
+
+  defp credentials(%Call{private: private}), do: Map.get(private, @credentials) || %{}
+
   # A call whose work ran a delegate that read content from outside is
   # tainted as one that read it itself is; see `Wardrik.Subagent`.
   defp invoke(%Call{state: state, target: %Tool{name: name, arguments: args}} = call)
        when state in [:allowed, :approved] do
     emit(call, {:tool_started, call.id, name, args, Ledger.idempotency_key(call)})
-    {invoked, read_outside?} = Subagent.watching(fn -> invoked(call, name, args) end)
+    {invoked, read_outside?} = Subagent.watching(fn -> invoked(call, :may_retry) end)
     if read_outside?, do: Call.taint(invoked), else: invoked
   end
 
   defp invoke(call), do: call
 
-  defp invoked(call, name, args) do
+  defp invoked(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
     case Enum.find(Config.tools(call.scope.config), &(&1.name == name)) do
       nil ->
         finished(call, {:error, "Unknown tool: #{name}"})
 
       %ReqLLM.Tool{callback: {Wardrik.Tool, :invoke, [handler]}} = tool ->
-        hand(call, tool, handler)
+        handed(call, tool, handler, retry)
 
       tool ->
         finished(call, ReqLLM.Tool.execute(tool, args))
     end
   end
 
-  # A tool built with `Wardrik.Tool.new!/1` is handed the call, and what it hands
-  # back is read for its answer or its park, and nothing else.
-  defp hand(%Call{target: target} = call, tool, handler) do
+  # A tool built with `Wardrik.Tool.new!/1` is handed its arguments and its
+  # context, and what it answers is read as `t:Wardrik.Tool.answer/0`.
+  defp handed(%Call{target: target} = call, tool, handler, retry) do
     case ReqLLM.Tool.validate_input(tool, target.arguments) do
       {:ok, input} ->
-        handler |> Wardrik.Tool.hand(%{call | target: %{target | arguments: input}}) |> took(call)
+        context = Wardrik.Tool.Context.new(call, credentials(call))
+        handler |> Wardrik.Tool.hand(input, context) |> took(call, retry)
 
       {:error, reason} ->
         finished(call, {:error, reason})
     end
   end
 
-  defp took(%Call{state: :done, result: result} = handed, call),
-    do: finished(%{call | tainted: handed.tainted}, result)
+  defp took({:ok, output, opts}, call, _retry) when is_list(opts) do
+    answered = finished(call, {:ok, output})
+    if Keyword.get(opts, :outside, false), do: Call.taint(answered), else: answered
+  end
 
-  defp took(%Call{state: :waiting} = parked, call),
-    do: call |> Call.park(Call.prompt(parked), link: Call.link(parked)) |> announced()
+  defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
 
-  defp took(other, call), do: finished(call, other)
+  defp took({:park, prompt, opts}, call, _retry) when is_binary(prompt) and is_list(opts),
+    do: call |> Call.park(prompt, link: Keyword.get(opts, :link)) |> announced()
+
+  # A credential the system refused is resolved afresh, once its resolver
+  # has heard, and the call is tried once more.
+  defp took({:refused, ref}, call, :may_retry) when is_binary(ref) do
+    :ok = Credential.refused(call, ref)
+
+    case Credential.resolve(call, ref) do
+      {:ok, credential} -> call |> put_credential(ref, credential) |> invoked(:tried)
+      {:error, reason} -> finished(call, unresolved(Call.name(call), ref, reason))
+    end
+  end
+
+  defp took({:refused, ref}, call, :tried) when is_binary(ref) do
+    finished(
+      call,
+      Result.error(
+        :not_authorized,
+        "#{ref} is no longer valid: what #{Call.name(call)} reaches refused it twice."
+      )
+    )
+  end
+
+  defp took(other, call, _retry), do: finished(call, other)
+
+  # A credential is handed to the tool for the call, and kept nowhere.
+  defp forgotten(call), do: Call.put_private(call, @credentials, nil)
 
   # A call answered by a tool whose answers hold content from outside taints
   # its run, whether it ran now or its answer was replayed.
   defp outside(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
     case Config.tool_spec(call.scope.config, name) do
       nil -> call
-      spec -> if Wardrik.Tool.outside_content?(spec, name), do: Call.taint(call), else: call
+      spec -> if Wardrik.Tool.annotations(spec, name).outside, do: Call.taint(call), else: call
     end
   end
 

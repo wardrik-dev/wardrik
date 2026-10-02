@@ -4,7 +4,6 @@ defmodule Wardrik.WorkflowTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
-  alias Wardrik.Test.Calls
   alias Wardrik.Test.Steps
   alias Wardrik.Workflow
 
@@ -175,33 +174,25 @@ defmodule Wardrik.WorkflowTest do
     end
   end
 
-  describe "call/2" do
-    test "runs the step under the scope of the call it is handed", %{scope: scope} do
-      assert Steps.Echo
-             |> Workflow.call(Calls.tool("echo", %{topic: "pricing"}, scope))
-             |> Calls.result() ==
+  describe "handle/3" do
+    test "runs the step under the scope of the context it is handed", %{scope: scope} do
+      assert Workflow.handle(Steps.Echo, %{topic: "pricing"}, Wardrik.Test.context(scope)) ==
                {:ok, %{"ok" => true, "result" => %{topic: "pricing"}}}
     end
 
     test "accepts a step with options", %{scope: scope} do
       assert {:ok, %{"result" => {%{}, [mode: :loud]}}} =
-               {Steps.Echo, [mode: :loud]}
-               |> Workflow.call(Calls.tool("echo", %{}, scope))
-               |> Calls.result()
+               Workflow.handle({Steps.Echo, [mode: :loud]}, %{}, Wardrik.Test.context(scope))
     end
 
     test "a failed workflow is an answer, not a failed tool", %{scope: scope} do
       assert {:ok, %{"ok" => false, "error" => %{"code" => "boom"}}} =
-               Steps.Boom
-               |> Workflow.call(Calls.tool("boom", %{}, scope))
-               |> Calls.result()
+               Workflow.handle(Steps.Boom, %{}, Wardrik.Test.context(scope))
     end
 
     test "keyword arguments are accepted", %{scope: scope} do
       assert {:ok, %{"result" => %{topic: "pricing"}}} =
-               Steps.Echo
-               |> Workflow.call(Calls.tool("echo", [topic: "pricing"], scope))
-               |> Calls.result()
+               Workflow.handle(Steps.Echo, [topic: "pricing"], Wardrik.Test.context(scope))
     end
   end
 

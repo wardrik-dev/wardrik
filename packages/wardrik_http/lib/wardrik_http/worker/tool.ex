@@ -4,9 +4,9 @@ defmodule WardrikHTTP.Worker.Tool do
   shape: a name, a description, and the JSON Schema its arguments follow.
 
   `in_doubt` is `:rerun` where the worker marks the tool with either of MCP's
-  annotations `readOnlyHint` or `idempotentHint`, and `:ask` otherwise; see
-  `c:Wardrik.Tool.in_doubt/2`. `read_only` is whether it marks it
-  `readOnlyHint`, without which the tool is gated; see `c:Wardrik.Tool.gated?/1`.
+  annotations `readOnlyHint` or `idempotentHint`, and `:ask` otherwise.
+  `read_only` is whether it marks it `readOnlyHint`, without which the tool is
+  gated. See `Wardrik.Tool.Annotations`.
   """
 
   @enforce_keys [:name, :input_schema]

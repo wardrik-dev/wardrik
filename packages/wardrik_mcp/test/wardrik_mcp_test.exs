@@ -65,20 +65,17 @@ defmodule WardrikMCPTest do
   describe "call/3" do
     test "calls the tool and hands back what the server answered", %{ref: ref} do
       assert {:ok, %{"ok" => true, "result" => %{"content" => "hello"}}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "hello"}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{"value" => "hello"}, context())
     end
 
     test "takes arguments with atom keys", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "hello"}}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{value: "hello"}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{value: "hello"}, context())
     end
 
     test "a tool error from the server is an error result, not a crash", %{ref: ref} do
       assert {:ok, %{"ok" => false, "error" => error}} =
-               WardrikMCP.call(ref, "boom", Calls.tool("boom", %{}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "boom", %{}, context())
 
       assert error["code"] == "mcp_tool_error"
       assert error["message"] =~ "the tool refused"
@@ -88,26 +85,20 @@ defmodule WardrikMCPTest do
     test "a server serves the agents of the orgs it names, and refuses another org's", %{
       ref: ref
     } do
-      scope = fn org -> Wardrik.Scope.root(Config.new(), org <> "/x", org: org) end
+      scope = fn org -> Wardrik.Test.scope(key: org <> "/x", org: org) end
 
       assert {:ok, %{"ok" => true}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{value: "hi"}, scope.("acme")))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{value: "hi"}, context(scope.("acme")))
 
-      for scope <- [scope.("globex"), nil] do
-        assert {:ok, %{"ok" => false, "error" => error}} =
-                 WardrikMCP.call(ref, "echo", Calls.tool("echo", %{value: "hi"}, scope))
-                 |> Calls.result()
+      assert {:ok, %{"ok" => false, "error" => error}} =
+               WardrikMCP.call(ref, "echo", %{value: "hi"}, context(scope.("globex")))
 
-        assert error["message"] =~ "#{ref} "
-        assert error["message"] =~ ~r/does not serve globex's agents|this call is from none/
-      end
+      assert error["message"] =~ "#{ref} does not serve globex's agents"
     end
 
     test "a server that is not connected answers as an error" do
       assert {:ok, %{"ok" => false, "error" => error}} =
-               WardrikMCP.call(:never_connected, "echo", Calls.tool("echo", %{}))
-               |> Calls.result()
+               WardrikMCP.call(:never_connected, "echo", %{}, context())
 
       assert error["message"] =~ "no MCP server is connected"
     end

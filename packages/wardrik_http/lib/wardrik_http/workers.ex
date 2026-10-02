@@ -29,12 +29,12 @@ defmodule WardrikHTTP.Workers do
   have done what it does. A call that began before its agent was lost runs
   again under the same key where every worker in the agent's reach that
   offers the tool marks it `readOnlyHint` or `idempotentHint`, and waits for a
-  person otherwise; see `c:Wardrik.Tool.in_doubt/2`.
+  person otherwise; see `Wardrik.Tool.Annotations`.
 
   A worker's tool is gated unless every worker offering it marks it
   `readOnlyHint`, as a client of an MCP server asks before a tool that may
   change something: a call to one waits on a person unless a hook allows it
-  by name. See `c:Wardrik.Tool.gated?/1`.
+  by name.
 
   The group of workers is a child the host starts before `WardrikHTTP.Listener`:
 
@@ -74,61 +74,44 @@ defmodule WardrikHTTP.Workers do
     |> Enum.map(fn {_worker, tool} -> build(tool, key) end)
   end
 
-  @doc "How long a batch holding a call to a worker may take: the worker's wait, and a little."
-  @impl Wardrik.Tool
-  def timeout, do: WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
-
   @doc """
-  `:rerun` for a tool that every worker in reach of the agent under `key`
-  offering it marks read-only or idempotent, `:ask` otherwise.
+  What holds for a worker's tool, from what the workers in reach of the agent
+  under `key` offering it say of it: a call waits on a person unless a hook
+  allows it by name, unless every one marks the tool read-only, since
+  anything else a worker does may change something; a call in doubt runs
+  again where every one marks it read-only or idempotent; its answers are
+  content from outside unless `WardrikHTTP.Config.trusted_workers?/0` says
+  workers are the deployment's own, since a worker can pass on anything it
+  reads; and a call may take the worker's wait, and a little.
   """
   @impl Wardrik.Tool
-  def in_doubt(key, @prefix <> name) when is_binary(key) do
-    case for({_worker, tool} <- offered(key), tool.name == name, do: tool.in_doubt) do
-      [] -> :ask
-      answers -> if Enum.all?(answers, &(&1 == :rerun)), do: :rerun, else: :ask
-    end
+  def annotations(key, @prefix <> name) when is_binary(key) do
+    offered = for {_worker, tool} <- offered(key), tool.name == name, do: tool
+
+    %{
+      gated: offered == [] or not Enum.all?(offered, & &1.read_only),
+      in_doubt:
+        if(offered != [] and Enum.all?(offered, &(&1.in_doubt == :rerun)), do: :rerun, else: :ask),
+      outside: not WardrikHTTP.Config.trusted_workers?(),
+      timeout: WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
+    }
   end
 
-  def in_doubt(_key, _name), do: :ask
-
-  @doc """
-  Whether a call to a worker's tool waits on a person unless a hook allows
-  it by name: unless every worker in reach of the agent under `key` offering
-  it marks it read-only, since anything else a worker does may change
-  something.
-  """
-  @impl Wardrik.Tool
-  def gated?(key, @prefix <> name) when is_binary(key) do
-    case for({_worker, tool} <- offered(key), tool.name == name, do: tool.read_only) do
-      [] -> true
-      read_only -> not Enum.all?(read_only)
-    end
-  end
-
-  def gated?(_key, _name), do: true
-
-  @doc """
-  Whether what a worker's tool answers is content from outside: unless
-  `WardrikHTTP.Config.trusted_workers?/0` says workers are the deployment's
-  own, since a worker can pass on anything it reads.
-  """
-  @impl Wardrik.Tool
-  def outside_content?(_key, _name), do: not WardrikHTTP.Config.trusted_workers?()
+  def annotations(_key, _name),
+    do: %{gated: true, outside: not WardrikHTTP.Config.trusted_workers?()}
 
   @doc false
-  @spec call(String.t(), String.t(), Wardrik.Call.t()) :: Wardrik.Call.t()
-  def call(key, name, %Wardrik.Call{} = call) do
+  @spec call(String.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Result.t()
+  def call(key, name, input, %Wardrik.Tool.Context{} = context) do
     case for({worker, tool} <- offered(key), tool.name == name, do: worker) do
       [] -> Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
-      workers -> ask(Enum.random(workers), name, call, meta(key, call))
+      workers -> ask(Enum.random(workers), name, input, meta(key, context))
     end
-    |> then(&Wardrik.Call.answer(call, &1))
   end
 
-  defp ask(worker, name, call, meta) do
+  defp ask(worker, name, input, meta) do
     ref = Process.monitor(worker)
-    send(worker, {:call, self(), ref, name, call.target.arguments, meta})
+    send(worker, {:call, self(), ref, name, input, meta})
 
     receive do
       {^ref, result} ->
@@ -153,14 +136,11 @@ defmodule WardrikHTTP.Workers do
     end
   end
 
-  # A call outside a turn has no run, and no key to be idempotent under.
-  defp meta(key, %Wardrik.Call{scope: nil}), do: %{"agent" => agent(key)}
-
-  defp meta(key, %Wardrik.Call{scope: scope} = call) do
+  defp meta(key, %Wardrik.Tool.Context{scope: scope, idempotency_key: idempotency_key}) do
     %{
       "agent" => agent(key),
       "run" => scope.source.trace.trace_id,
-      "idempotencyKey" => Wardrik.Ledger.idempotency_key(call)
+      "idempotencyKey" => idempotency_key
     }
   end
 
@@ -185,7 +165,7 @@ defmodule WardrikHTTP.Workers do
       name: @prefix <> tool.name,
       description: (tool.description || tool.name) <> "\n\nFrom a tool worker.",
       parameter_schema: tool.input_schema,
-      call: {__MODULE__, :call, [key, tool.name]}
+      run: {__MODULE__, :call, [key, tool.name]}
     )
   end
 end

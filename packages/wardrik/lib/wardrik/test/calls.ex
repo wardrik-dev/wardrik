@@ -1,8 +1,10 @@
 defmodule Wardrik.Test.Calls do
   @moduledoc """
   Tool calls built and read the way `Wardrik.LLM.ToolRunner` builds and reads
-  them, for a test that hands a tool or a resolver its call directly. A test
-  that runs a call the way a turn does uses `Wardrik.Test.call/4`.
+  them, for a test that hands a `Wardrik.Credential` resolver its call
+  directly. A test that runs a call the way a turn does uses
+  `Wardrik.Test.call/4`, and one that hands a tool its arguments uses
+  `Wardrik.Test.context/2`.
   """
 
   alias Wardrik.Call

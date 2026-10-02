@@ -407,7 +407,7 @@ defmodule WardrikWorkspace.ToolsTest do
              ]
 
       assert WardrikWorkspace.subjects(spec, "search_files", %{"pattern" => "x"}) == ["**"]
-      assert WardrikWorkspace.in_doubt(spec, "write_file") == :rerun
+      assert Wardrik.Tool.annotations({WardrikWorkspace, spec}, "write_file").in_doubt == :rerun
     end
   end
 

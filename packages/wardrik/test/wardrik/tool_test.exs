@@ -79,37 +79,12 @@ defmodule Wardrik.ToolTest do
     end
   end
 
-  describe "timeouts/2" do
-    defmodule Patient do
-      @behaviour Wardrik.Tool
+  describe "annotations/2" do
+    alias Wardrik.Test.Tools.Deploy
+    alias Wardrik.Test.Tools.Fetch
+    alias Wardrik.Tool.Annotations
 
-      @impl true
-      def tool do
-        ReqLLM.Tool.new!(name: "patient", description: "slow", callback: fn _ -> {:ok, %{}} end)
-      end
-
-      @impl true
-      def timeout, do: :timer.minutes(10)
-    end
-
-    test "reads what a module declares" do
-      assert Tool.timeout(Patient) == :timer.minutes(10)
-    end
-
-    test "a source declares one timeout for every tool it gives" do
-      assert Tool.timeout({CountingSource, 3}) == :timer.seconds(90)
-    end
-
-    test "a module that declares none, or an inline tool, declares none" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
-
-      assert Tool.timeout(Wardrik.Test.EchoTool) == nil
-      assert Tool.timeout(tool) == nil
-    end
-  end
-
-  describe "in_doubt/2" do
-    defmodule Rerunnable do
+    defmodule Declaring do
       @behaviour Wardrik.Tool
 
       @impl true
@@ -118,41 +93,9 @@ defmodule Wardrik.ToolTest do
       end
 
       @impl true
-      def in_doubt("refund"), do: :rerun
+      def annotations("refund"),
+        do: %{in_doubt: :rerun, timeout: :timer.minutes(10), credentials: ["stripe"]}
     end
-
-    defmodule KeyedSource do
-      @behaviour Wardrik.Tool
-
-      @impl true
-      def tools(_argument), do: []
-
-      @impl true
-      def in_doubt(:mine, "refund"), do: :rerun
-      def in_doubt(_argument, _name), do: :ask
-    end
-
-    test "reads what a module declares for its tool" do
-      assert Tool.in_doubt(Rerunnable, "refund") == :rerun
-    end
-
-    test "asks a source with the argument it was named with" do
-      assert Tool.in_doubt({KeyedSource, :mine}, "refund") == :rerun
-      assert Tool.in_doubt({KeyedSource, :theirs}, "refund") == :ask
-    end
-
-    test "a module or source that declares nothing, or an inline tool, asks" do
-      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
-
-      assert Tool.in_doubt(EchoTool, "echo") == :ask
-      assert Tool.in_doubt({CountingSource, 3}, "counted_1") == :ask
-      assert Tool.in_doubt(tool, "x") == :ask
-    end
-  end
-
-  describe "what a tool says about its calls" do
-    alias Wardrik.Test.Tools.Deploy
-    alias Wardrik.Test.Tools.Fetch
 
     defmodule DeclaringSource do
       @behaviour Wardrik.Tool
@@ -161,39 +104,55 @@ defmodule Wardrik.ToolTest do
       def tools(_argument), do: []
 
       @impl true
-      def gated?(:strict, _name), do: true
-      def gated?(_argument, _name), do: false
+      def annotations(:strict, _name), do: [gated: true, outside: true]
+      def annotations(_argument, _name), do: %{}
 
       @impl true
       def subjects(argument, name, arguments), do: ["#{argument}:#{name}:#{arguments["path"]}"]
-
-      @impl true
-      def outside_content?(:web, _name), do: true
-      def outside_content?(_argument, _name), do: false
     end
 
-    test "is read from a module" do
-      assert Tool.gated?(Deploy, "deploy")
-      assert Tool.subjects(Deploy, "deploy", %{"target" => "prod"}) == ["prod"]
-      refute Tool.outside_content?(Deploy, "deploy")
-      assert Tool.outside_content?(Fetch, "fetch")
+    test "reads what a module declares for its tool, with every default where it is quiet" do
+      assert Tool.annotations(Declaring, "refund") == %Annotations{
+               in_doubt: :rerun,
+               timeout: :timer.minutes(10),
+               credentials: ["stripe"]
+             }
+
+      assert Tool.annotations(Deploy, "deploy").gated
+      refute Tool.annotations(Deploy, "deploy").outside
+      assert Tool.annotations(Fetch, "fetch").outside
     end
 
-    test "is asked of a source with the argument it was named with" do
-      assert Tool.gated?({DeclaringSource, :strict}, "x")
-      refute Tool.gated?({DeclaringSource, :lax}, "x")
-      assert Tool.subjects({DeclaringSource, :a}, "x", %{"path" => "p"}) == ["a:x:p"]
-      assert Tool.outside_content?({DeclaringSource, :web}, "x")
-      refute Tool.outside_content?({DeclaringSource, :local}, "x")
+    test "asks a source with the argument it was named with" do
+      assert %Annotations{gated: true, outside: true} =
+               Tool.annotations({DeclaringSource, :strict}, "x")
+
+      assert %Annotations{gated: false, outside: false} =
+               Tool.annotations({DeclaringSource, :lax}, "x")
+
+      assert Tool.annotations({CountingSource, 3}, "counted_1").timeout == :timer.seconds(90)
     end
 
-    test "is nothing where a module, a source or an inline tool declares nothing" do
+    test "is every default where a module, a source or an inline tool declares nothing" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
 
+      for {spec, name} <- [{EchoTool, "echo"}, {{DeclaringSource, :lax}, "y"}, {tool, "x"}] do
+        assert Tool.annotations(spec, name) == %Annotations{}
+      end
+    end
+
+    test "a field that is not one is a bug in the tool, and raises" do
+      assert_raise KeyError, fn -> Annotations.new(%{gatd: true}) end
+    end
+
+    test "subjects are read from a module, asked of a source with its argument, and nothing otherwise" do
+      tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
+
+      assert Tool.subjects(Deploy, "deploy", %{"target" => "prod"}) == ["prod"]
+      assert Tool.subjects({DeclaringSource, :a}, "x", %{"path" => "p"}) == ["a:x:p"]
+
       for {spec, name} <- [{EchoTool, "echo"}, {{CountingSource, 3}, "counted_1"}, {tool, "x"}] do
-        refute Tool.gated?(spec, name)
         assert Tool.subjects(spec, name, %{"a" => 1}) == []
-        refute Tool.outside_content?(spec, name)
       end
     end
   end

@@ -6,7 +6,6 @@ defmodule WardrikHTTP.WorkerTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
-  alias Wardrik.Test.Calls
   alias WardrikHTTP.Listener
   alias WardrikHTTP.Token
   alias WardrikHTTP.Workers
@@ -144,6 +143,11 @@ defmodule WardrikHTTP.WorkerTest do
 
   defp names(tools), do: Enum.map(tools, & &1.name)
 
+  defp annotations(agent, name), do: Wardrik.Tool.annotations({Workers, agent}, name)
+
+  # The context a call to a worker's tool is handed, for the agent under `key`.
+  defp handed(key), do: Wardrik.Test.context(Wardrik.Test.scope(key: key))
+
   # A worker's tool is gated unless it is read-only, so a call to echo runs
   # where a rule allows it by name.
   defp allowing_echo,
@@ -152,9 +156,9 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's tool is gated unless every worker offering it marks it read-only", context do
     connect(context, [tool("lookup", %{"readOnlyHint" => true}), tool("refund")])
 
-    refute Workers.gated?(context.agent, "workers__lookup")
-    assert Workers.gated?(context.agent, "workers__refund")
-    assert Workers.gated?(context.agent, "workers__nothing")
+    refute annotations(context.agent, "workers__lookup").gated
+    assert annotations(context.agent, "workers__refund").gated
+    assert annotations(context.agent, "workers__nothing").gated
   end
 
   test "a worker's tools are offered to the agents its token reaches, named for the workers",
@@ -205,7 +209,7 @@ defmodule WardrikHTTP.WorkerTest do
     agent = "test/@u_42/assistant-#{System.unique_integer([:positive])}"
     "test/@u_42/" <> name = agent
 
-    Workers.call(agent, "echo", Calls.tool("echo", %{"order" => "o_1", "user" => "u_7"}))
+    Workers.call(agent, "echo", %{"order" => "o_1", "user" => "u_7"}, handed(agent))
 
     assert_receive {:called,
                     %{
@@ -224,8 +228,7 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's error, and its going away, reach the model as errors", context do
     connect(context, [tool("fail"), tool("leave")])
 
-    assert Workers.call(context.agent, "fail", Calls.tool("fail"))
-           |> Calls.result() ==
+    assert Workers.call(context.agent, "fail", %{}, handed(context.agent)) ==
              {:ok,
               %{
                 "ok" => false,
@@ -233,8 +236,7 @@ defmodule WardrikHTTP.WorkerTest do
               }}
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "worker_gone", "message" => message}}} =
-             Workers.call(context.agent, "leave", Calls.tool("leave"))
-             |> Calls.result()
+             Workers.call(context.agent, "leave", %{}, handed(context.agent))
 
     assert message =~ "may already have done what it does"
   end
@@ -247,8 +249,7 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("hang")])
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "timeout"}}} =
-             Workers.call(context.agent, "hang", Calls.tool("hang"))
-             |> Calls.result()
+             Workers.call(context.agent, "hang", %{}, handed(context.agent))
 
     assert_receive {:notified, "notifications/cancelled", %{"requestId" => _id}}
   end
@@ -261,8 +262,7 @@ defmodule WardrikHTTP.WorkerTest do
     )
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "no_worker"}}} =
-             Workers.call(context.agent, "echo", Calls.tool("echo"))
-             |> Calls.result()
+             Workers.call(context.agent, "echo", %{}, handed(context.agent))
 
     refute_received {:called, _params}
   end
@@ -283,11 +283,11 @@ defmodule WardrikHTTP.WorkerTest do
       tool("send")
     ])
 
-    assert Workers.in_doubt(context.agent, "workers__look") == :rerun
-    assert Workers.in_doubt(context.agent, "workers__refund") == :rerun
-    assert Workers.in_doubt(context.agent, "workers__send") == :ask
-    assert Workers.in_doubt(context.agent, "workers__absent") == :ask
-    assert Workers.in_doubt(context.agent, "web_search") == :ask
+    assert annotations(context.agent, "workers__look").in_doubt == :rerun
+    assert annotations(context.agent, "workers__refund").in_doubt == :rerun
+    assert annotations(context.agent, "workers__send").in_doubt == :ask
+    assert annotations(context.agent, "workers__absent").in_doubt == :ask
+    assert annotations(context.agent, "web_search").in_doubt == :ask
   end
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
@@ -295,16 +295,16 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
 
-    assert Workers.in_doubt(context.agent, "workers__refund") == :ask
-    assert Workers.in_doubt("other/agent", "workers__refund") == :rerun
+    assert annotations(context.agent, "workers__refund").in_doubt == :ask
+    assert annotations("other/agent", "workers__refund").in_doubt == :rerun
   end
 
   test "a tool runs again only where every worker in reach offering it says it may", context do
     connect(context, [tool("refund", %{"idempotentHint" => true})])
-    assert Workers.in_doubt(context.agent, "workers__refund") == :rerun
+    assert annotations(context.agent, "workers__refund").in_doubt == :rerun
 
     connect(context, [tool("refund")])
-    assert Workers.in_doubt(context.agent, "workers__refund") == :ask
+    assert annotations(context.agent, "workers__refund").in_doubt == :ask
   end
 
   test "a call that began before its agent was lost runs again, under its key, on an idempotent tool",
@@ -363,7 +363,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker's answers are content from outside, unless the deployment trusts its workers" do
-    assert Workers.outside_content?("test/triage", "workers__echo")
+    assert annotations("test/triage", "workers__echo").outside
 
     previous = Application.get_env(:wardrik_http, WardrikHTTP)
 
@@ -379,6 +379,6 @@ defmodule WardrikHTTP.WorkerTest do
         else: Application.delete_env(:wardrik_http, WardrikHTTP)
     end)
 
-    refute Workers.outside_content?("test/triage", "workers__echo")
+    refute annotations("test/triage", "workers__echo").outside
   end
 end

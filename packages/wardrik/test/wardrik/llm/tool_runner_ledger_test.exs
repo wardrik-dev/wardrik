@@ -29,16 +29,16 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
         name: "refund",
         description: "Refunds an order, once per key.",
         parameter_schema: [],
-        call: {__MODULE__, :run}
+        run: {__MODULE__, :run}
       )
     end
 
     @impl true
-    def in_doubt("refund"), do: :rerun
+    def annotations("refund"), do: %{in_doubt: :rerun}
 
-    def run(call) do
-      send(self(), {:ran, "refund", Ledger.idempotency_key(call)})
-      Call.answer(call, {:ok, %{"refunded" => true}})
+    def run(_input, %Wardrik.Tool.Context{idempotency_key: key}) do
+      send(self(), {:ran, "refund", key})
+      {:ok, %{"refunded" => true}}
     end
   end
 
@@ -56,15 +56,12 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
       name: name,
       description: "Does something with an effect.",
       parameter_schema: [],
-      call: fn call ->
+      run: fn _input, _context ->
         send(test_pid, {:ran, name})
-        answered(call, answer)
+        answer
       end
     )
   end
-
-  defp answered(call, {:park, prompt}), do: Call.park(call, prompt)
-  defp answered(call, answer), do: Call.answer(call, answer)
 
   defp scope(agent_id, tools, ledger \\ Ledger.Store) do
     Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", ledger: ledger)
