@@ -28,7 +28,7 @@ defmodule WardrikMCP do
 
   ## Configuration
 
-      config :wardrik, WardrikMCP,
+      config :wardrik_mcp, WardrikMCP,
         servers: [
           github: [
             transport:
@@ -50,12 +50,6 @@ defmodule WardrikMCP do
   the transport: `:env` for a command, `:headers` for HTTP. Wardrik holds no token
   of its own and runs no OAuth flow; a server that needs one is given a token
   that was minted elsewhere.
-
-  ## Extracting this package
-
-  When MCP moves out into `wardrik_mcp`, `lib/wardrik_mcp/` and `test/wardrik_mcp/` move
-  into a project declaring `{:wardrik, "~> 0.1"}` and `{:anubis_mcp, "~> 2.0"}`,
-  and the setting becomes `config :wardrik_mcp, servers: [...]`.
   """
 
   @behaviour Wardrik.Tool

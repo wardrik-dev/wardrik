@@ -56,8 +56,8 @@ defmodule WardrikDaemon.VaultKey do
       :ok
     else
       with {:ok, key} <- read(file(data_dir)) do
-        settings = Application.get_env(:wardrik, WardrikVault, [])
-        Application.put_env(:wardrik, WardrikVault, Keyword.put(settings, :keys, [key]))
+        settings = Application.get_env(:wardrik_vault, WardrikVault, [])
+        Application.put_env(:wardrik_vault, WardrikVault, Keyword.put(settings, :keys, [key]))
       end
     end
   end

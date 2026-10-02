@@ -2,7 +2,7 @@ defmodule WardrikOAuth.Config do
   @moduledoc """
   Where `WardrikOAuth` reads its settings.
 
-      config :wardrik, WardrikOAuth,
+      config :wardrik_oauth, WardrikOAuth,
         client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
         providers: [github: [resource: "https://api.githubcopilot.com/mcp/"]],
         redirect: [port: 4599, open: true],
@@ -18,7 +18,7 @@ defmodule WardrikOAuth.Config do
   | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |
 
   Every read of the application environment this package makes goes through
-  here, so moving the setting to `config :wardrik_oauth` changes one module.
+  here.
   """
 
   @spec client() :: keyword()
@@ -45,5 +45,5 @@ defmodule WardrikOAuth.Config do
   @spec configured?() :: boolean()
   def configured?, do: providers() != []
 
-  defp env, do: Application.get_env(:wardrik, WardrikOAuth, [])
+  defp env, do: Application.get_env(:wardrik_oauth, WardrikOAuth, [])
 end

@@ -7,7 +7,7 @@ defmodule WardrikMCP.Supervisor do
 
       children = [WardrikMCP.Supervisor]
 
-  or as options, stated the way `config :wardrik, WardrikMCP` states them:
+  or as options, stated the way `config :wardrik_mcp, WardrikMCP` states them:
 
       children = [
         {WardrikMCP.Supervisor,

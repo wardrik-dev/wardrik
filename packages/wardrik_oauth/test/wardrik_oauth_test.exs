@@ -383,7 +383,7 @@ defmodule WardrikOAuthTest do
     end
 
     test "a machine with nothing to open a link with says so, and the flow stands" do
-      Application.put_env(:wardrik, WardrikOAuth, redirect: [opener: "no-such-browser-command"])
+      Application.put_env(:wardrik_oauth, WardrikOAuth, redirect: [opener: "no-such-browser-command"])
 
       assert {:error, :no_browser} = WardrikOAuth.Browser.open("https://example.com")
     end
@@ -395,7 +395,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       # The key it was sealed with, rotated away without it.
-      Application.put_env(:wardrik, WardrikVault,
+      Application.put_env(:wardrik_vault, WardrikVault,
         keys: [WardrikVault.generate_key()],
         grants: WardrikOAuth
       )

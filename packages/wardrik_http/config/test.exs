@@ -16,7 +16,7 @@ config :wardrik, Wardrik.Store,
 config :wardrik, Wardrik.Fleet, org: "default"
 
 # A daemon started by a test serves the HTTP API on whatever port is free.
-config :wardrik, WardrikHTTP, port: 0
+config :wardrik_http, WardrikHTTP, port: 0
 
 # Budgets are kept by meters, and tool workers join a group, that core
 # starts as a release does.

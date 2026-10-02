@@ -12,6 +12,6 @@ config :wardrik, Wardrik.Fleet, org: "default"
 
 # Credentials are kept in the vault, and accounts users connect through OAuth
 # are grants it holds.
-config :wardrik, WardrikVault, grants: WardrikOAuth
+config :wardrik_vault, WardrikVault, grants: WardrikOAuth
 
 if config_env() == :dev, do: import_config("dev.exs")

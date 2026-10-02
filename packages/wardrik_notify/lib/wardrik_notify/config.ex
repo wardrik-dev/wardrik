@@ -2,7 +2,7 @@ defmodule WardrikNotify.Config do
   @moduledoc """
   Where `WardrikNotify` gets its settings.
 
-      config :wardrik, WardrikNotify,
+      config :wardrik_notify, WardrikNotify,
         targets: [
           ops: {WardrikNotify.Slack, channel: "#ops", token: "xoxb-…", app_token: "xapp-…"},
           audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}
@@ -48,5 +48,5 @@ defmodule WardrikNotify.Config do
   @spec req_options() :: keyword()
   def req_options, do: Keyword.get(env(), :req_options, [])
 
-  defp env, do: Application.get_env(:wardrik, WardrikNotify, [])
+  defp env, do: Application.get_env(:wardrik_notify, WardrikNotify, [])
 end

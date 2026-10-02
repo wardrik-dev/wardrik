@@ -16,13 +16,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know.\n"
 
   setup %{tmp_dir: dir} do
-    previous = Application.get_env(:wardrik, WardrikDaemon.Agents)
-    Application.put_env(:wardrik, WardrikDaemon.Agents, defaults: @defaults)
+    previous = Application.get_env(:wardrik_daemon, WardrikDaemon.Agents)
+    Application.put_env(:wardrik_daemon, WardrikDaemon.Agents, defaults: @defaults)
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikDaemon.Agents, previous),
-        else: Application.delete_env(:wardrik, WardrikDaemon.Agents)
+        do: Application.put_env(:wardrik_daemon, WardrikDaemon.Agents, previous),
+        else: Application.delete_env(:wardrik_daemon, WardrikDaemon.Agents)
     end)
 
     start_supervised!({WardrikDaemon.Agents, dir: dir})
@@ -185,7 +185,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"agents/broken.md is there already, and is kept as it is: wardrik reload " <>
                   "reads it, and wardrik status says why where it does not.\n", 1}
 
-      Application.put_env(:wardrik, WardrikDaemon.Agents, defaults: %{"tools" => "web_search"})
+      Application.put_env(:wardrik_daemon, WardrikDaemon.Agents,
+        defaults: %{"tools" => "web_search"}
+      )
 
       assert command(["agent", "spawn", "fresh", "--org", org]) ==
                {"config.yaml's defaults do not make an agent for #{org}/fresh: tools is a list\n",

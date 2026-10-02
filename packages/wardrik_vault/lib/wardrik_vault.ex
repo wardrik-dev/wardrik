@@ -3,7 +3,7 @@ defmodule WardrikVault do
   Where credentials are kept, sealed with a key the deployment holds, in
   `Wardrik.Store`, and the `Wardrik.Credential` resolver that finds them.
 
-      config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
+      config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
 
       Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
 
@@ -38,7 +38,7 @@ defmodule WardrikVault do
   org, gave by authorizing an account, kept here like any other and renewed by
   the module `:grants` names, such as `WardrikOAuth`:
 
-      config :wardrik, WardrikVault, keys: [...], grants: WardrikOAuth
+      config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
 
   A grant `resolve/2` finds is handed to that module to answer, renewing it
   where it has run out. A name nobody holds that the module can grant is asked
@@ -62,12 +62,6 @@ defmodule WardrikVault do
   and whether it is a grant, is visible to anyone who can read the store, and
   the store is the customer's. Two owners, or two names, never share a key:
   see `path/2`.
-
-  ## Extracting this package
-
-  When the vault moves out into `wardrik_vault`, `lib/wardrik_vault/` and
-  `test/wardrik_vault/` move into a project declaring `{:wardrik, "~> 0.1"}`, and the
-  setting becomes `config :wardrik_vault, keys: [...]`.
   """
 
   @behaviour Wardrik.Credential

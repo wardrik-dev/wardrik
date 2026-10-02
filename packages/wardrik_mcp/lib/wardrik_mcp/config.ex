@@ -2,7 +2,7 @@ defmodule WardrikMCP.Config do
   @moduledoc """
   Where `WardrikMCP` reads its settings.
 
-      config :wardrik, WardrikMCP,
+      config :wardrik_mcp, WardrikMCP,
         servers: [
           github: [transport: {:stdio, command: "github-mcp-server"}]
         ]
@@ -14,7 +14,7 @@ defmodule WardrikMCP.Config do
   costs one listing, 250 by default.
 
   Every read of the application environment this package makes goes through
-  here, so moving the setting to `config :wardrik_mcp` changes one module.
+  here.
   """
 
   @doc "The servers as configured: a keyword list of ref to `WardrikMCP.Server.new/2` options."
@@ -37,5 +37,5 @@ defmodule WardrikMCP.Config do
   @spec refresh_after() :: non_neg_integer()
   def refresh_after, do: Keyword.get(env(), :refresh_after, 250)
 
-  defp env, do: Application.get_env(:wardrik, WardrikMCP, [])
+  defp env, do: Application.get_env(:wardrik_mcp, WardrikMCP, [])
 end

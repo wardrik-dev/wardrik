@@ -11,10 +11,10 @@ defmodule WardrikNotify.DispatcherTest do
   setup :set_req_test_to_shared
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikNotify)
+    previous = Application.get_env(:wardrik_notify, WardrikNotify)
 
     Application.put_env(
-      :wardrik,
+      :wardrik_notify,
       WardrikNotify,
       Keyword.put(previous, :targets,
         audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"},
@@ -22,7 +22,7 @@ defmodule WardrikNotify.DispatcherTest do
       )
     )
 
-    on_exit(fn -> Application.put_env(:wardrik, WardrikNotify, previous) end)
+    on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
 
     test = self()
 

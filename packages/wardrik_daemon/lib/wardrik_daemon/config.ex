@@ -151,7 +151,10 @@ defmodule WardrikDaemon.Config do
   alias WardrikDaemon.Cluster.Epmd
   alias WardrikDaemon.Cluster.Topology
 
-  @typedoc "Settings for one package, as `Application.put_env(:wardrik, package, settings)` takes them."
+  @typedoc """
+  Settings by the module that reads them, as
+  `Application.put_env(application(module), module, settings)` takes them.
+  """
   @type settings() :: [{module(), keyword()}]
 
   @transport ~w(command args env cwd url headers)a
@@ -208,6 +211,18 @@ defmodule WardrikDaemon.Config do
   @org "default"
   @segment "an org holds no / or whitespace and does not begin with @ or _"
 
+  # The namespaces of the modules a config.yaml configures, and the
+  # application each reads its settings from.
+  @applications %{
+    "Wardrik" => :wardrik,
+    "WardrikDaemon" => :wardrik_daemon,
+    "WardrikHTTP" => :wardrik_http,
+    "WardrikMCP" => :wardrik_mcp,
+    "WardrikNotify" => :wardrik_notify,
+    "WardrikOAuth" => :wardrik_oauth,
+    "WardrikVault" => :wardrik_vault
+  }
+
   @doc "Where `config.yaml` is read from: `WARDRIK_CONFIG_DIR`, or `wardrik` under the XDG config home."
   @spec config_dir() :: Path.t()
   def config_dir, do: dir("WARDRIK_CONFIG_DIR", "XDG_CONFIG_HOME", "~/.config")
@@ -257,11 +272,14 @@ defmodule WardrikDaemon.Config do
   end
 
   @doc """
-  What a release configures as it boots, before anything starts: the store
-  `storage` names, and the cluster `cluster` describes. A store kept on the
-  nodes, as it is without `storage`, counts its quorum over the cluster's size.
+  What a release configures as it boots, before anything starts, by
+  application: the store `storage` names, and the cluster `cluster`
+  describes. A store kept on the nodes, as it is without `storage`, counts its
+  quorum over the cluster's size.
+
+      for {app, settings} <- WardrikDaemon.Config.boot(settings), do: config(app, settings)
   """
-  @spec boot(settings()) :: settings()
+  @spec boot(settings()) :: [{atom(), settings()}]
   def boot(settings) do
     cluster = Keyword.get(settings, WardrikDaemon.Cluster, [])
     store = Keyword.get(settings, Wardrik.Store, [])
@@ -272,11 +290,13 @@ defmodule WardrikDaemon.Config do
         _kept_elsewhere_or_alone -> store
       end
 
-    Enum.reject([{WardrikDaemon.Cluster, cluster}, {Wardrik.Store, store}], &(elem(&1, 1) == []))
+    for {module, settings} <- [{WardrikDaemon.Cluster, cluster}, {Wardrik.Store, store}],
+        settings != [],
+        do: {application(module), [{module, settings}]}
   end
 
   @doc """
-  Merges each package's settings over what its application environment already
+  Merges each module's settings over what its application environment already
   holds. The store's are left out: it is running by then, and `boot/1` gives
   them to a release before it starts.
   """
@@ -284,14 +304,19 @@ defmodule WardrikDaemon.Config do
   def apply(settings) do
     settings
     |> Keyword.delete(Wardrik.Store)
-    |> Enum.each(fn {package, opts} ->
-      Application.put_env(
-        :wardrik,
-        package,
-        Keyword.merge(Application.get_env(:wardrik, package, []), opts)
-      )
+    |> Enum.each(fn {module, opts} ->
+      app = application(module)
+      Application.put_env(app, module, Keyword.merge(Application.get_env(app, module, []), opts))
     end)
   end
+
+  @doc """
+  The application whose environment holds what `module` reads: core's for
+  `Wardrik.*`, and each package's own for its modules.
+  """
+  @spec application(module()) :: atom()
+  def application(module) when is_atom(module),
+    do: Map.fetch!(@applications, hd(Module.split(module)))
 
   defp decode(text, file, opts) do
     case YamlElixir.read_from_string(text) do

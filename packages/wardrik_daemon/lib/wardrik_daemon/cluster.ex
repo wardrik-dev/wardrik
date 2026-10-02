@@ -152,5 +152,5 @@ defmodule WardrikDaemon.Cluster do
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
 
-  defp settings, do: Application.get_env(:wardrik, __MODULE__, [])
+  defp settings, do: Application.get_env(:wardrik_daemon, __MODULE__, [])
 end

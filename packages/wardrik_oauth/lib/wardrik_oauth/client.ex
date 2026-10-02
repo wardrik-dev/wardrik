@@ -3,7 +3,7 @@ defmodule WardrikOAuth.Client do
   What Wardrik looks like to an authorization server: one identity, rendered
   however each server wants to be told about it.
 
-      config :wardrik, WardrikOAuth,
+      config :wardrik_oauth, WardrikOAuth,
         client: [
           name: "Wardrik",
           client_uri: "https://wardrik.dev",
@@ -49,7 +49,7 @@ defmodule WardrikOAuth.Client do
           req_options: keyword()
         }
 
-  @doc "Builds the client from `config :wardrik, WardrikOAuth, client: [...]`, with overrides."
+  @doc "Builds the client from `config :wardrik_oauth, WardrikOAuth, client: [...]`, with overrides."
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     struct!(__MODULE__, Keyword.merge(configured(), opts))

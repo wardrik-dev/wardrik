@@ -8,13 +8,13 @@ defmodule WardrikVaultTest do
   alias WardrikVault.Sealed
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikVault)
-    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
+    previous = Application.get_env(:wardrik_vault, WardrikVault)
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikVault, previous),
-        else: Application.delete_env(:wardrik, WardrikVault)
+        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
+        else: Application.delete_env(:wardrik_vault, WardrikVault)
     end)
 
     %{user: "jon-#{System.unique_integer([:positive])}"}
@@ -44,8 +44,8 @@ defmodule WardrikVaultTest do
   end
 
   defp grants(module) do
-    settings = Application.get_env(:wardrik, WardrikVault)
-    Application.put_env(:wardrik, WardrikVault, Keyword.put(settings, :grants, module))
+    settings = Application.get_env(:wardrik_vault, WardrikVault)
+    Application.put_env(:wardrik_vault, WardrikVault, Keyword.put(settings, :grants, module))
   end
 
   defp call(scope_opts) do
@@ -54,7 +54,7 @@ defmodule WardrikVaultTest do
 
   defp scope(opts), do: Config.new() |> Scope.root("acme/@jon/assistant", opts)
 
-  defp keys(list), do: Application.put_env(:wardrik, WardrikVault, keys: list)
+  defp keys(list), do: Application.put_env(:wardrik_vault, WardrikVault, keys: list)
 
   describe "path/2" do
     test "writes distinct owners and names under distinct keys" do
@@ -126,11 +126,24 @@ defmodule WardrikVaultTest do
       {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), mine, %{sealed | kind: :secret})
       assert {:error, :secret, :undecipherable} = WardrikVault.lookup("github", user)
     end
+
+    test "is not read where it is not sealed, or sealed by a version this one does not know",
+         %{user: user} do
+      path = WardrikVault.path("github", user)
+
+      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), path, "ghp_plain")
+      assert {:error, {:unreadable, "ghp_plain"}} = WardrikVault.fetch("github", user)
+
+      :ok = WardrikVault.put("github", user, "ghp_secret")
+      {sealed, _vsn} = Wardrik.Store.lookup(WardrikVault.namespace(), path)
+      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), path, %{sealed | version: 99})
+      assert {:error, {:unknown_version, 99}} = WardrikVault.fetch("github", user)
+    end
   end
 
   describe "keys" do
     test "a rotated key still reads what the old one sealed", %{user: user} do
-      [old] = Application.get_env(:wardrik, WardrikVault)[:keys]
+      [old] = Application.get_env(:wardrik_vault, WardrikVault)[:keys]
       :ok = WardrikVault.put("github", user, "ghp_secret")
 
       keys([WardrikVault.generate_key(), old])
@@ -151,6 +164,22 @@ defmodule WardrikVaultTest do
 
       assert {:error, :no_key} = WardrikVault.put("github", user, "ghp_secret")
       assert {:error, :no_key} = WardrikVault.fetch("github", user)
+      refute WardrikVault.ready?()
+    end
+
+    test "a key is 32 bytes in base64, and anything else is not one" do
+      assert WardrikVault.key?(WardrikVault.generate_key())
+      refute WardrikVault.key?(Base.encode64("too short"))
+      refute WardrikVault.key?("not base64!")
+      refute WardrikVault.key?(nil)
+    end
+
+    test "is configured where a key is named, usable or not" do
+      keys([])
+      refute WardrikVault.Config.configured?()
+
+      keys(["not a key"])
+      assert WardrikVault.Config.configured?()
       refute WardrikVault.ready?()
     end
 
@@ -263,7 +292,7 @@ defmodule WardrikVaultTest do
     test "a grant that no longer unseals is asked for again", %{user: user} do
       grants(Grants)
       :ok = WardrikVault.put("github", {"acme", user}, "token", kind: :grant)
-      [old] = Application.get_env(:wardrik, WardrikVault)[:keys]
+      [old] = Application.get_env(:wardrik_vault, WardrikVault)[:keys]
       keys([WardrikVault.generate_key()])
       grants(Grants)
 

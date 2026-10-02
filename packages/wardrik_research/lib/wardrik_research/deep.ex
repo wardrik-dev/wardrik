@@ -50,20 +50,6 @@ defmodule WardrikResearch.Deep do
   every angle failed is an error. An angle has eight minutes and its
   researcher twelve model calls unless the tool is built with `:timeout` or
   `:max_iterations`.
-
-  ## Extracting this package
-
-  When research moves out into `wardrik_research`, three things change and
-  nothing else:
-
-    1. `lib/wardrik_research/` and `test/wardrik_research/` move into the new
-       project, which declares `{:wardrik, "~> 0.1"}` itself.
-    2. Wardrik depends on it, first as `{:wardrik_research, path: "packs/wardrik_research"}`
-       and later as a version.
-    3. Any setting it grows becomes `config :wardrik_research, ...` instead of
-       the nested `config :wardrik, WardrikResearch, ...` key.
-
-  Nothing in `Wardrik` itself is touched, because core names no workflow.
   """
 
   @behaviour Wardrik.Tool

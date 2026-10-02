@@ -6,13 +6,13 @@ defmodule WardrikDaemon.VaultKeyTest do
   @moduletag :tmp_dir
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikVault)
-    Application.delete_env(:wardrik, WardrikVault)
+    previous = Application.get_env(:wardrik_vault, WardrikVault)
+    Application.delete_env(:wardrik_vault, WardrikVault)
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikVault, previous),
-        else: Application.delete_env(:wardrik, WardrikVault)
+        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
+        else: Application.delete_env(:wardrik_vault, WardrikVault)
     end)
   end
 
@@ -50,7 +50,7 @@ defmodule WardrikDaemon.VaultKeyTest do
 
   test "leaves a key configured elsewhere in place", %{tmp_dir: dir} do
     configured = WardrikVault.generate_key()
-    Application.put_env(:wardrik, WardrikVault, keys: [configured])
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [configured])
     {:ok, _file} = VaultKey.make(dir)
 
     assert VaultKey.load(dir) == :ok

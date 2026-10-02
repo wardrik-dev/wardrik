@@ -8,15 +8,15 @@ defmodule WardrikDaemon.SecretsTest do
 
   setup do
     previous = %{
-      vault: Application.get_env(:wardrik, WardrikVault),
-      secrets: Application.get_env(:wardrik, Secrets),
+      vault: Application.get_env(:wardrik_vault, WardrikVault),
+      secrets: Application.get_env(:wardrik_daemon, Secrets),
       anthropic: Application.get_env(:req_llm, :anthropic_api_key),
       environment: Map.new(@variables, &{&1, System.get_env(&1)})
     }
 
-    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
 
-    Application.put_env(:wardrik, Secrets,
+    Application.put_env(:wardrik_daemon, Secrets,
       keys: %{"SEARCH_API_KEY" => {:wardrik, @tool, :api_key}}
     )
 
@@ -25,8 +25,8 @@ defmodule WardrikDaemon.SecretsTest do
     on_exit(fn ->
       Enum.each(@variables, &WardrikVault.forget(&1, nil))
       Application.delete_env(:wardrik, @tool)
-      restore(:wardrik, WardrikVault, previous.vault)
-      restore(:wardrik, Secrets, previous.secrets)
+      restore(:wardrik_vault, WardrikVault, previous.vault)
+      restore(:wardrik_daemon, Secrets, previous.secrets)
       restore(:req_llm, :anthropic_api_key, previous.anthropic)
 
       for {name, value} <- previous.environment,
@@ -84,7 +84,7 @@ defmodule WardrikDaemon.SecretsTest do
     assert Secrets.named("ANTHROPIC_API_KEY") == "sk-ant-vault"
     assert Secrets.named("NOT_IN_THE_VAULT") == nil
 
-    Application.delete_env(:wardrik, WardrikVault)
+    Application.delete_env(:wardrik_vault, WardrikVault)
     assert Secrets.named("ANTHROPIC_API_KEY") == nil
   end
 end

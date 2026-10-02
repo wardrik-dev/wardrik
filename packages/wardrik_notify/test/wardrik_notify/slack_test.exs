@@ -11,15 +11,15 @@ defmodule WardrikNotify.SlackTest do
   @target [channel: "#ops", token: "xoxb-test", app_token: "xapp-test"]
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikNotify)
+    previous = Application.get_env(:wardrik_notify, WardrikNotify)
 
     Application.put_env(
-      :wardrik,
+      :wardrik_notify,
       WardrikNotify,
       Keyword.put(previous, :targets, ops: {Slack, @target})
     )
 
-    on_exit(fn -> Application.put_env(:wardrik, WardrikNotify, previous) end)
+    on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
 
     test = self()
 
@@ -186,9 +186,9 @@ defmodule WardrikNotify.SlackTest do
 
     test "is refused to someone who is not an approver", %{key: key} do
       Application.put_env(
-        :wardrik,
+        :wardrik_notify,
         WardrikNotify,
-        Keyword.put(Application.get_env(:wardrik, WardrikNotify), :targets,
+        Keyword.put(Application.get_env(:wardrik_notify, WardrikNotify), :targets,
           ops: {Slack, [approvers: ["U2"]] ++ @target}
         )
       )
@@ -304,9 +304,9 @@ defmodule WardrikNotify.SlackTest do
 
     test "refuses someone who is not an approver", %{key: key} do
       Application.put_env(
-        :wardrik,
+        :wardrik_notify,
         WardrikNotify,
-        Keyword.put(Application.get_env(:wardrik, WardrikNotify), :targets,
+        Keyword.put(Application.get_env(:wardrik_notify, WardrikNotify), :targets,
           ops: {Slack, [approvers: ["U2"]] ++ @target}
         )
       )

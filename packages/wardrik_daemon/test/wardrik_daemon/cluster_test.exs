@@ -26,13 +26,13 @@ defmodule WardrikDaemon.ClusterTest do
   end
 
   defp cluster(settings) do
-    previous = Application.get_env(:wardrik, Cluster)
-    Application.put_env(:wardrik, Cluster, settings)
+    previous = Application.get_env(:wardrik_daemon, Cluster)
+    Application.put_env(:wardrik_daemon, Cluster, settings)
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, Cluster, previous),
-        else: Application.delete_env(:wardrik, Cluster)
+        do: Application.put_env(:wardrik_daemon, Cluster, previous),
+        else: Application.delete_env(:wardrik_daemon, Cluster)
     end)
   end
 

@@ -240,9 +240,9 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a call not answered in time is cancelled", context do
-    previous = Application.get_env(:wardrik, WardrikHTTP, [])
-    Application.put_env(:wardrik, WardrikHTTP, Keyword.put(previous, :worker_timeout, 50))
-    on_exit(fn -> Application.put_env(:wardrik, WardrikHTTP, previous) end)
+    previous = Application.get_env(:wardrik_http, WardrikHTTP, [])
+    Application.put_env(:wardrik_http, WardrikHTTP, Keyword.put(previous, :worker_timeout, 50))
+    on_exit(fn -> Application.put_env(:wardrik_http, WardrikHTTP, previous) end)
 
     connect(context, [tool("hang")])
 
@@ -365,18 +365,18 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's answers are content from outside, unless the deployment trusts its workers" do
     assert Workers.outside_content?("test/triage", "workers__echo")
 
-    previous = Application.get_env(:wardrik, WardrikHTTP)
+    previous = Application.get_env(:wardrik_http, WardrikHTTP)
 
     Application.put_env(
-      :wardrik,
+      :wardrik_http,
       WardrikHTTP,
       Keyword.put(previous || [], :trusted_workers, true)
     )
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikHTTP, previous),
-        else: Application.delete_env(:wardrik, WardrikHTTP)
+        do: Application.put_env(:wardrik_http, WardrikHTTP, previous),
+        else: Application.delete_env(:wardrik_http, WardrikHTTP)
     end)
 
     refute Workers.outside_content?("test/triage", "workers__echo")

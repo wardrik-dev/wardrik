@@ -22,7 +22,7 @@ defmodule WardrikNotify do
 
   A target is a module implementing this behaviour and its options.
   `WardrikNotify.Slack` and `WardrikNotify.Webhook` ship with the package, and a
-  host names its own as `config :wardrik, WardrikNotify, targets: [pager:
+  host names its own as `config :wardrik_notify, WardrikNotify, targets: [pager:
   {MyApp.Pager, opts}]`.
 
   `WardrikNotify.Dispatcher` subscribes to each routed agent's events and sends

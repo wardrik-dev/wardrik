@@ -13,8 +13,8 @@ defmodule WardrikDaemon.Secrets do
   reads its key from, as a release that reads the tool's key from the
   environment names it:
 
-      config :wardrik, WardrikDaemon.Secrets,
-        keys: %{"SEARCH_API_KEY" => {:wardrik, MyApp.Search, :api_key}}
+      config :wardrik_daemon, WardrikDaemon.Secrets,
+        keys: %{"SEARCH_API_KEY" => {:my_app, MyApp.Search, :api_key}}
 
   ReqLLM reads its application config ahead of the environment, so a key from
   the vault is put there only where the environment does not set the name. It
@@ -51,7 +51,7 @@ defmodule WardrikDaemon.Secrets do
 
     tools =
       Map.new(
-        Application.get_env(:wardrik, __MODULE__, [])[:keys] || %{},
+        Application.get_env(:wardrik_daemon, __MODULE__, [])[:keys] || %{},
         fn {name, setting} -> {name, [setting]} end
       )
 

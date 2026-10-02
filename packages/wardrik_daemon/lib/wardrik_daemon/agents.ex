@@ -91,7 +91,8 @@ defmodule WardrikDaemon.Agents do
 
   @doc "`config.yaml`'s `defaults`, as the file writes them, or none."
   @spec defaults() :: map()
-  def defaults, do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
+  def defaults,
+    do: :wardrik_daemon |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
 
   @doc """
   The options the agent under `key` starts with, as `Wardrik.Fleet.spawn/2`

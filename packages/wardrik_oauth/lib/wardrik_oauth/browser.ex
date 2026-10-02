@@ -7,7 +7,7 @@ defmodule WardrikOAuth.Browser do
   and no reason to make them copy a URL out of a terminal. A deployment
   serving its own redirect URI opens nothing.
 
-      config :wardrik, WardrikOAuth, redirect: [open: false]
+      config :wardrik_oauth, WardrikOAuth, redirect: [open: false]
 
   `:opener` names the command to open a link with, for a desktop this does not
   know about and for a test that must not open anything.

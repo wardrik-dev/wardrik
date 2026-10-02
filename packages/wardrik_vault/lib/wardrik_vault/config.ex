@@ -2,10 +2,10 @@ defmodule WardrikVault.Config do
   @moduledoc """
   Where `WardrikVault` reads its settings.
 
-      config :wardrik, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth
+      config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth
 
   Every read of the application environment this package makes goes through
-  here, so moving the setting to `config :wardrik_vault` changes one module.
+  here.
   """
 
   @doc "The base64-encoded keys, the first of which seals."
@@ -20,5 +20,5 @@ defmodule WardrikVault.Config do
   @spec configured?() :: boolean()
   def configured?, do: keys() != []
 
-  defp env, do: Application.get_env(:wardrik, WardrikVault, [])
+  defp env, do: Application.get_env(:wardrik_vault, WardrikVault, [])
 end

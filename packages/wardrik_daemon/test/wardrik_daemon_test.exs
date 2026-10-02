@@ -4,12 +4,12 @@ defmodule WardrikDaemonTest do
   @moduletag :tmp_dir
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikVault)
+    previous = Application.get_env(:wardrik_vault, WardrikVault)
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikVault, previous),
-        else: Application.delete_env(:wardrik, WardrikVault)
+        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
+        else: Application.delete_env(:wardrik_vault, WardrikVault)
     end)
   end
 
@@ -63,7 +63,7 @@ defmodule WardrikDaemonTest do
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik, WardrikVault)[:keys] == [key]
+    assert Application.get_env(:wardrik_vault, WardrikVault)[:keys] == [key]
   end
 
   test "reads config.yml where that is the file there", %{tmp_dir: dir} do
@@ -73,7 +73,7 @@ defmodule WardrikDaemonTest do
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik, WardrikVault)[:keys] == [key]
+    assert Application.get_env(:wardrik_vault, WardrikVault)[:keys] == [key]
   end
 
   test "refuses a config directory holding both config.yaml and config.yml", %{tmp_dir: dir} do
@@ -87,14 +87,14 @@ defmodule WardrikDaemonTest do
   end
 
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
-    http = Application.get_env(:wardrik, WardrikHTTP)
-    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
+    http = Application.get_env(:wardrik_http, WardrikHTTP)
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
     :ok = WardrikVault.put(name, nil, "127.0.0.1")
 
     on_exit(fn ->
       WardrikVault.forget(name, nil)
-      Application.put_env(:wardrik, WardrikHTTP, http)
+      Application.put_env(:wardrik_http, WardrikHTTP, http)
     end)
 
     File.write!(Path.join(dir, "config.yaml"), "http:\n  ip: \"${#{name}}\"\n")
@@ -102,11 +102,11 @@ defmodule WardrikDaemonTest do
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik, WardrikHTTP)[:ip] == {127, 0, 0, 1}
+    assert Application.get_env(:wardrik_http, WardrikHTTP)[:ip] == {127, 0, 0, 1}
   end
 
   test "reads storage from the environment alone, and says why it stops", %{tmp_dir: dir} do
-    Application.put_env(:wardrik, WardrikVault, keys: [WardrikVault.generate_key()])
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
     :ok = WardrikVault.put(name, nil, "postgres://localhost/wardrik")
     on_exit(fn -> WardrikVault.forget(name, nil) end)

@@ -17,7 +17,7 @@ config :wardrik, Wardrik.Fleet, org: "default"
 
 # OAuth hosts resolve without DNS, and a device flow polls as often as the
 # test's stub server asks.
-config :wardrik, WardrikOAuth, resolver: WardrikOAuth.Case.Resolver, poll_floor: 0
+config :wardrik_oauth, WardrikOAuth, resolver: WardrikOAuth.Case.Resolver, poll_floor: 0
 
 config :req_llm,
   load_dotenv: false,

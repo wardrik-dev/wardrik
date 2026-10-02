@@ -15,7 +15,7 @@ config :wardrik, Wardrik.Store,
 
 config :wardrik, Wardrik.Fleet, org: "default"
 
-config :wardrik, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]
+config :wardrik_notify, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]
 
 config :req_llm,
   load_dotenv: false,

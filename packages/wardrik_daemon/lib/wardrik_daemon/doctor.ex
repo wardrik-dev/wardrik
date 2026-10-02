@@ -165,7 +165,11 @@ defmodule WardrikDaemon.Doctor do
 
   defp store(settings) do
     {result, found} =
-      settings |> Config.boot() |> Keyword.get(Wardrik.Store, []) |> Wardrik.Store.check()
+      settings
+      |> Config.boot()
+      |> Keyword.get(:wardrik, [])
+      |> Keyword.get(Wardrik.Store, [])
+      |> Wardrik.Store.check()
 
     {result, "store", found}
   end

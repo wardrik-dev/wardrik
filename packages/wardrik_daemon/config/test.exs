@@ -15,16 +15,16 @@ config :wardrik, Wardrik.Store,
 
 config :wardrik, Wardrik.Fleet, org: "default"
 
-config :wardrik, WardrikBrave,
+config :wardrik_brave, WardrikBrave,
   api_key: "test-brave-api-key",
   base_url: "https://brave.test",
   req_options: [plug: {Req.Test, WardrikBrave.Stub}, retry: false]
 
-config :wardrik, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]
+config :wardrik_notify, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]
 
 # A connection that retries, or waits out a burst of tool changes, does so in
 # milliseconds rather than a second or a quarter of one.
-config :wardrik, WardrikMCP, first_retry: 10, refresh_after: 10
+config :wardrik_mcp, WardrikMCP, first_retry: 10, refresh_after: 10
 
 # The MCP client library logs every transport failure at error level. The
 # suite reaches servers that are down on purpose, and the test around each one
@@ -32,10 +32,10 @@ config :wardrik, WardrikMCP, first_retry: 10, refresh_after: 10
 config :anubis_mcp, log: false
 
 # A daemon started by a test serves the HTTP API on whatever port is free.
-config :wardrik, WardrikHTTP, port: 0
+config :wardrik_http, WardrikHTTP, port: 0
 
 # What the daemon serves over SSH, as a release that carries the TUI names it.
-config :wardrik, WardrikDaemon.SSH,
+config :wardrik_daemon, WardrikDaemon.SSH,
   entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
 
 # Budgets are kept by meters, and tool workers join a group, that core

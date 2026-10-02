@@ -682,8 +682,8 @@ defmodule WardrikDaemon.ConfigTest do
       cluster = [nodes: [:a@box, :b@box, :c@box], size: 3]
 
       assert Config.boot([{WardrikMCP, servers: []}, {WardrikDaemon.Cluster, cluster}]) == [
-               {WardrikDaemon.Cluster, cluster},
-               {Wardrik.Store, cluster_size: 3}
+               wardrik_daemon: [{WardrikDaemon.Cluster, cluster}],
+               wardrik: [{Wardrik.Store, cluster_size: 3}]
              ]
     end
 
@@ -691,11 +691,11 @@ defmodule WardrikDaemon.ConfigTest do
       store = [adapter: WardrikS3.Store, bucket: "b"]
 
       assert Config.boot([{WardrikDaemon.Cluster, size: 3}, {Wardrik.Store, store}]) == [
-               {WardrikDaemon.Cluster, size: 3},
-               {Wardrik.Store, store}
+               wardrik_daemon: [{WardrikDaemon.Cluster, size: 3}],
+               wardrik: [{Wardrik.Store, store}]
              ]
 
-      assert Config.boot([{Wardrik.Store, store}]) == [{Wardrik.Store, store}]
+      assert Config.boot([{Wardrik.Store, store}]) == [wardrik: [{Wardrik.Store, store}]]
     end
 
     test "is nothing where the file names neither" do
@@ -712,14 +712,21 @@ defmodule WardrikDaemon.ConfigTest do
       assert Application.get_env(:wardrik, Wardrik.Store) == before
     end
 
-    test "merges over what the package already holds" do
-      package = :"Elixir.WardrikDaemon.ConfigTest.Package#{System.unique_integer([:positive])}"
-      Application.put_env(:wardrik, package, kept: 1, replaced: 1)
-      on_exit(fn -> Application.delete_env(:wardrik, package) end)
+    test "merges over what the module already holds, in its own application" do
+      module = :"Elixir.WardrikDaemon.ConfigTest.Package#{System.unique_integer([:positive])}"
+      Application.put_env(:wardrik_daemon, module, kept: 1, replaced: 1)
+      on_exit(fn -> Application.delete_env(:wardrik_daemon, module) end)
 
-      :ok = Config.apply([{package, replaced: 2}])
+      :ok = Config.apply([{module, replaced: 2}])
 
-      assert Application.get_env(:wardrik, package) == [kept: 1, replaced: 2]
+      assert Application.get_env(:wardrik_daemon, module) == [kept: 1, replaced: 2]
+    end
+
+    test "names the application each module reads from" do
+      assert Config.application(Wardrik.Store) == :wardrik
+      assert Config.application(WardrikMCP) == :wardrik_mcp
+      assert Config.application(WardrikOAuth) == :wardrik_oauth
+      assert Config.application(WardrikDaemon.SSH) == :wardrik_daemon
     end
   end
 end

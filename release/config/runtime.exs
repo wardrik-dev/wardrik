@@ -4,16 +4,16 @@ import Config
 # absent is a tool reporting it at call time rather than a node refusing to
 # start.
 if config_env() == :prod do
-  config :wardrik, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
+  config :wardrik_brave, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
 
   # Where the environment sets none, the vault's is read; see WardrikDaemon.Secrets.
-  config :wardrik, WardrikDaemon.Secrets,
-    keys: %{"BRAVE_API_KEY" => {:wardrik, WardrikBrave, :api_key}}
+  config :wardrik_daemon, WardrikDaemon.Secrets,
+    keys: %{"BRAVE_API_KEY" => {:wardrik_brave, WardrikBrave, :api_key}}
 
   config :req_llm, zai_api_key: System.get_env("ZAI_API_KEY")
 
   if key = System.get_env("WARDRIK_VAULT_KEY") do
-    config :wardrik, WardrikVault, keys: [key]
+    config :wardrik_vault, WardrikVault, keys: [key]
   end
 end
 
@@ -32,7 +32,7 @@ if System.get_env("RELEASE_NAME") do
   # boot. A file that does not read is left for WardrikDaemon to report.
   with {:ok, file} <- WardrikDaemon.Config.file(WardrikDaemon.Config.config_dir()),
        {:ok, settings} <- WardrikDaemon.Config.read(file, only: ~w(storage cluster)) do
-    config :wardrik, WardrikDaemon.Config.boot(settings)
+    for {app, settings} <- WardrikDaemon.Config.boot(settings), do: config(app, settings)
   end
 
   # WARDRIK_HTTP_IP and WARDRIK_SSH_IP move the HTTP API and the TUI off
@@ -42,7 +42,7 @@ if System.get_env("RELEASE_NAME") do
 
   for {package, variable} <- listeners, ip = System.get_env(variable), ip != "" do
     case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, address} -> config :wardrik, package, ip: address
+      {:ok, address} -> config WardrikDaemon.Config.application(package), package, ip: address
       {:error, _reason} -> raise "#{variable} is #{ip}, which is not an address such as 0.0.0.0"
     end
   end

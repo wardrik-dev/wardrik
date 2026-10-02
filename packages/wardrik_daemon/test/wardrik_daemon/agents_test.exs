@@ -133,9 +133,13 @@ defmodule WardrikDaemon.AgentsTest do
 
   test "an agent starts with its file's options, or the defaults where no file declares it",
        %{org: org} = context do
-    previous = Application.get_env(:wardrik, Agents)
-    on_exit(fn -> Application.put_env(:wardrik, Agents, previous || []) end)
-    Application.put_env(:wardrik, Agents, defaults: %{"model" => "anthropic:claude-sonnet-5"})
+    previous = Application.get_env(:wardrik_daemon, Agents)
+    on_exit(fn -> Application.put_env(:wardrik_daemon, Agents, previous || []) end)
+
+    Application.put_env(:wardrik_daemon, Agents,
+      defaults: %{"model" => "anthropic:claude-sonnet-5"}
+    )
+
     write(context, "alpha", "model: anthropic:claude-haiku-4-5\n")
     start_supervised!({Agents, dir: context.dir})
 
@@ -145,7 +149,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, options} = Agents.options("#{org}/@jon/assistant")
     assert options[:config].model_spec == "anthropic:claude-sonnet-5"
 
-    Application.put_env(:wardrik, Agents, defaults: %{"tools" => ["nothing"]})
+    Application.put_env(:wardrik_daemon, Agents, defaults: %{"tools" => ["nothing"]})
     assert {:error, message} = Agents.options("#{org}/assistant")
     assert message =~ "tools names nothing"
   end

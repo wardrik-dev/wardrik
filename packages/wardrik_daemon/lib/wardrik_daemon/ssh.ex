@@ -18,7 +18,7 @@ defmodule WardrikDaemon.SSH do
   environment names, and the name is who it is for. `config/config.exs` names
   the TUI's, which starts agents as `config.yaml`'s `defaults` say:
 
-      config :wardrik, WardrikDaemon.SSH,
+      config :wardrik_daemon, WardrikDaemon.SSH,
         entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
 
   Nothing else in the daemon names the TUI, so a build without it names no
@@ -54,7 +54,11 @@ defmodule WardrikDaemon.SSH do
   `ssh/authorized_keys`, or where `settings` names no `:entrypoint`.
   """
   @spec children(Path.t(), Path.t(), keyword()) :: [{module(), keyword()}]
-  def children(config_dir, data_dir, settings \\ Application.get_env(:wardrik, __MODULE__, [])) do
+  def children(
+        config_dir,
+        data_dir,
+        settings \\ Application.get_env(:wardrik_daemon, __MODULE__, [])
+      ) do
     keys = Path.join([config_dir, "ssh", "authorized_keys"])
 
     case {File.exists?(keys), Keyword.fetch(settings, :entrypoint)} do

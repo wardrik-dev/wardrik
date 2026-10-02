@@ -2,10 +2,11 @@ import Config
 
 config :logger, level: :debug
 
-# Each package's settings nest under :wardrik. See `WardrikBrave.Config`.
-config :wardrik, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
+# Each package reads its settings from its own application, keyed by the
+# module that reads them. See `WardrikBrave.Config`.
+config :wardrik_brave, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
 
-config :wardrik, WardrikMCP,
+config :wardrik_mcp, WardrikMCP,
   servers: [
     stub: [
       transport:
@@ -36,7 +37,7 @@ config :wardrik, WardrikMCP,
     ]
   ]
 
-config :wardrik, WardrikOAuth,
+config :wardrik_oauth, WardrikOAuth,
   providers: [
     github: [
       resource: "https://api.githubcopilot.com/mcp/",
@@ -52,7 +53,7 @@ config :wardrik, WardrikOAuth,
     ]
   ]
 
-config :wardrik, WardrikVault, keys: [System.get_env("WARDRIK_VAULT_KEY")]
+config :wardrik_vault, WardrikVault, keys: [System.get_env("WARDRIK_VAULT_KEY")]
 
 config :req_llm,
   debug: true,

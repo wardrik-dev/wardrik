@@ -27,7 +27,7 @@ defmodule Mix.Tasks.Wardrik do
   Unnamed, the agent takes every MCP server connected on the node, as they
   stand each turn: one that connects, reconnects, or says its tools changed
   while the agent runs is picked up without restarting it. `--mcp` narrows that
-  to the servers it names, from `config :wardrik, WardrikMCP`, and is repeatable. An
+  to the servers it names, from `config :wardrik_mcp, WardrikMCP`, and is repeatable. An
   agent given `--tool` takes only what it names, so the servers an agent with a
   tool set of its own reaches are the ones `--mcp` names beside it.
 
@@ -231,7 +231,7 @@ defmodule Mix.Tasks.Wardrik do
   defp configured!(configured, name) do
     Enum.find(configured, fn ref -> to_string(ref) == name end) ||
       Mix.raise(
-        "no MCP server is configured as #{name}; config :wardrik, WardrikMCP has " <>
+        "no MCP server is configured as #{name}; config :wardrik_mcp, WardrikMCP has " <>
           Enum.map_join(configured, ", ", &to_string/1)
       )
   end

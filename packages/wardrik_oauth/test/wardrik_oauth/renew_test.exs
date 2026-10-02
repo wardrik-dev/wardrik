@@ -176,7 +176,7 @@ defmodule WardrikOAuth.RenewTest do
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    Application.put_env(:wardrik, WardrikVault, keys: [])
+    Application.put_env(:wardrik_vault, WardrikVault, keys: [])
 
     assert {:error, :no_key} = resolve(owner)
     refute_received {:oauth, _method, _path, _body}

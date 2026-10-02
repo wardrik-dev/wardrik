@@ -3,7 +3,7 @@ defmodule WardrikOAuth.Provider do
   One thing a user can authorize Wardrik for, and what is known about it in
   advance.
 
-      config :wardrik, WardrikOAuth,
+      config :wardrik_oauth, WardrikOAuth,
         providers: [
           github: [
             resource: "https://api.githubcopilot.com/mcp/",

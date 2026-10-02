@@ -2,7 +2,7 @@ defmodule WardrikOAuth.Case do
   @moduledoc """
   An authorization server that answers without a socket, and a vault with a key.
 
-  Requests are routed to a `Req.Test` stub through `config :wardrik, WardrikOAuth,
+  Requests are routed to a `Req.Test` stub through `config :wardrik_oauth, WardrikOAuth,
   req_options:`, so discovery, registration, exchange and refresh all run their
   real request building against a stub that reports what it was sent.
 
@@ -47,11 +47,11 @@ defmodule WardrikOAuth.Case do
 
   setup do
     previous = %{
-      oauth: Application.get_env(:wardrik, WardrikOAuth),
-      vault: Application.get_env(:wardrik, WardrikVault)
+      oauth: Application.get_env(:wardrik_oauth, WardrikOAuth),
+      vault: Application.get_env(:wardrik_vault, WardrikVault)
     }
 
-    Application.put_env(:wardrik, WardrikVault,
+    Application.put_env(:wardrik_vault, WardrikVault,
       keys: [WardrikVault.generate_key()],
       grants: WardrikOAuth
     )
@@ -59,8 +59,8 @@ defmodule WardrikOAuth.Case do
     forget_registrations()
 
     on_exit(fn ->
-      put_back(WardrikOAuth, previous.oauth)
-      put_back(WardrikVault, previous.vault)
+      put_back(:wardrik_oauth, WardrikOAuth, previous.oauth)
+      put_back(:wardrik_vault, WardrikVault, previous.vault)
       forget_registrations()
     end)
 
@@ -84,7 +84,7 @@ defmodule WardrikOAuth.Case do
       poll_floor: 0
     ]
 
-    Application.put_env(:wardrik, WardrikOAuth, Keyword.merge(defaults, opts))
+    Application.put_env(:wardrik_oauth, WardrikOAuth, Keyword.merge(defaults, opts))
   end
 
   @doc "The redirect URI the tests register."
@@ -272,6 +272,6 @@ defmodule WardrikOAuth.Case do
     end
   end
 
-  defp put_back(key, nil), do: Application.delete_env(:wardrik, key)
-  defp put_back(key, value), do: Application.put_env(:wardrik, key, value)
+  defp put_back(app, key, nil), do: Application.delete_env(app, key)
+  defp put_back(app, key, value), do: Application.put_env(app, key, value)
 end

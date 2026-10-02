@@ -3,7 +3,7 @@ defmodule WardrikOAuth do
   Accounts users connect by authorizing: the `WardrikVault.Grants` module
   that asks a user, or an org, for a grant, and renews the grants it gave.
 
-      config :wardrik, WardrikOAuth,
+      config :wardrik_oauth, WardrikOAuth,
         client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
         providers: [
           github: [
@@ -15,7 +15,7 @@ defmodule WardrikOAuth do
           ]
         ]
 
-      config :wardrik, WardrikVault, keys: [...], grants: WardrikOAuth
+      config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
 
       children = [WardrikOAuth.Supervisor]
       Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
@@ -72,13 +72,6 @@ defmodule WardrikOAuth do
   A token that cannot be read, sealed under a key rotated away, starts a new
   flow and is replaced once the user finishes; it is never deleted. A vault
   with no key is an error, and starts nothing.
-
-  ## Extracting this package
-
-  When OAuth moves out into `wardrik_oauth`, `lib/wardrik_oauth/` and
-  `test/wardrik_oauth/` move into a project declaring `{:wardrik, "~> 0.1"}`,
-  `{:wardrik_vault, "~> 0.1", optional: true}` and `{:req, "~> 0.7"}`, and
-  `WardrikOAuth.Config` reads `config :wardrik_oauth` instead.
   """
 
   @behaviour WardrikVault.Grants

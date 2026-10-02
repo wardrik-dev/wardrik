@@ -17,16 +17,16 @@ defmodule WardrikDaemon.AgentFileTest do
   end
 
   setup do
-    previous = Application.get_env(:wardrik, WardrikMCP)
+    previous = Application.get_env(:wardrik_mcp, WardrikMCP)
 
-    Application.put_env(:wardrik, WardrikMCP,
+    Application.put_env(:wardrik_mcp, WardrikMCP,
       servers: [linear: [transport: {:streamable_http, base_url: "https://mcp.linear.app/mcp"}]]
     )
 
     on_exit(fn ->
       if previous,
-        do: Application.put_env(:wardrik, WardrikMCP, previous),
-        else: Application.delete_env(:wardrik, WardrikMCP)
+        do: Application.put_env(:wardrik_mcp, WardrikMCP, previous),
+        else: Application.delete_env(:wardrik_mcp, WardrikMCP)
     end)
   end
 
@@ -146,7 +146,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "serves globex, and not default"
   end
 
-  defp with_servers(servers), do: Application.put_env(:wardrik, WardrikMCP, servers: servers)
+  defp with_servers(servers), do: Application.put_env(:wardrik_mcp, WardrikMCP, servers: servers)
 
   describe "files" do
     test "are the file tools over the agent's own tree, and the trees workspace shares",
@@ -404,10 +404,10 @@ defmodule WardrikDaemon.AgentFileTest do
 
   describe "notify" do
     setup do
-      previous = Application.get_env(:wardrik, WardrikNotify)
+      previous = Application.get_env(:wardrik_notify, WardrikNotify)
 
       Application.put_env(
-        :wardrik,
+        :wardrik_notify,
         WardrikNotify,
         Keyword.put(previous, :targets,
           ops: {WardrikNotify.Slack, channel: "#ops", token: "x"},
@@ -416,7 +416,7 @@ defmodule WardrikDaemon.AgentFileTest do
         )
       )
 
-      on_exit(fn -> Application.put_env(:wardrik, WardrikNotify, previous) end)
+      on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
     end
 
     test "routes the agent's notices to the targets it names", %{tmp_dir: dir} = context do
