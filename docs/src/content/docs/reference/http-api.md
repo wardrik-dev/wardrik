@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-<!-- Written by mix wardrik.docs from WardrikHTTP and priv/protocol/v1. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from WardrikHTTP and packages/wardrik/priv/protocol/v1. Edit it there, not here. -->
 
 Wardrik's agents over HTTP: a versioned JSON API, and each agent's event log
 as server-sent events a client resumes after any disconnect.
