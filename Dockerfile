@@ -17,31 +17,41 @@ ARG ELIXIR=1.20.2
 ARG OTP=28.5.0.5
 ARG UBUNTU=jammy-20260627
 
-FROM hexpm/elixir:${ELIXIR}-erlang-${OTP}-ubuntu-${UBUNTU} AS build
+FROM hexpm/elixir:${ELIXIR}-erlang-${OTP}-ubuntu-${UBUNTU} AS base
+
+# Each package's mix.exs alone, which is what Mix reads to resolve the
+# release's dependencies. A change to code leaves this stage's output as it
+# was, so the dependencies' layer below is reused.
+FROM base AS manifests
+WORKDIR /src
+COPY packages packages
+RUN find packages -type f ! -name mix.exs -delete
+
+FROM base AS build
 
 # A C compiler for EKV's SQLite NIF, the one NIF the release builds.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src
+WORKDIR /src/release
 ENV MIX_ENV=prod LANG=C.UTF-8
 
 RUN mix local.hex --force && mix local.rebar --force
 
 # Dependencies first, so a change to Wardrik alone reuses their layer.
-COPY mix.exs mix.lock ./
-COPY config/config.exs config/prod.exs config/
+COPY --from=manifests /src/packages /src/packages
+COPY release/mix.exs release/mix.lock ./
+COPY release/config/config.exs release/config/prod.exs config/
 RUN mix deps.get --only prod && mix deps.compile
 
-COPY priv priv
-COPY lib lib
-COPY rel rel
-COPY config/runtime.exs config/
+COPY packages /src/packages
+COPY release/rel rel
+COPY release/config/runtime.exs config/
 RUN mix release --overwrite
 
 FROM scratch AS tarball
-COPY --from=build /src/_build/prod/wardrikd-*.tar.gz /
+COPY --from=build /src/release/_build/prod/wardrikd-*.tar.gz /
 
 FROM ubuntu:${UBUNTU} AS image
 
@@ -57,7 +67,7 @@ RUN useradd --create-home --uid 1000 --user-group wardrik \
   && install -d -o wardrik -g wardrik -m 755 /config \
   && install -d -o wardrik -g wardrik -m 700 /data /state
 
-COPY --from=build /src/_build/prod/rel/wardrikd /opt/wardrik
+COPY --from=build /src/release/_build/prod/rel/wardrikd /opt/wardrik
 RUN ln -s wardrik /opt/wardrik/bin/rik
 
 # /config is what a person writes: config.yaml, agents/ and policies/, and

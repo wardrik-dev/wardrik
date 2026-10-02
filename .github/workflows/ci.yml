@@ -19,31 +19,55 @@ env:
   MIX_OS_DEPS_COMPILE_PARTITION_COUNT: "2"
 
 jobs:
-  # One leg per `mix precommit` group, each with a cache of its own. The
-  # groups are listed in mix.exs.
+  # One leg per Mix project, each running every `mix precommit` group with a
+  # cache of its own. See tools/precommit.
   check:
-    name: ${{ matrix.group }}
+    name: ${{ matrix.project }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        group: [lint, test, dialyzer]
+        project:
+          - packages/wardrik
+          - packages/wardrik_brave
+          - packages/wardrik_console
+          - packages/wardrik_daemon
+          - packages/wardrik_ecto
+          - packages/wardrik_http
+          - packages/wardrik_lua
+          - packages/wardrik_mcp
+          - packages/wardrik_notify
+          - packages/wardrik_oauth
+          - packages/wardrik_policy
+          - packages/wardrik_research
+          - packages/wardrik_s3
+          - packages/wardrik_sdk
+          - packages/wardrik_tui
+          - packages/wardrik_vault
+          - packages/wardrik_workspace
+          - release
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    env:
+      # The projects whose tests reach Postgres or an S3 service fail rather
+      # than skip the tests that need them.
+      SERVICES: ${{ contains(fromJSON('["packages/wardrik_daemon", "packages/wardrik_ecto", "packages/wardrik_s3"]'), matrix.project) }}
     steps:
       - uses: actions/checkout@v7
 
       - id: setup
         uses: ./.github/actions/setup
         with:
-          cache-key: ${{ matrix.group }}
+          project: ${{ matrix.project }}
 
-      # The test leg reaches Postgres and an S3 service, and fails rather than
-      # skipping the tests that need them.
-      - if: matrix.group == 'test'
+      - if: env.SERVICES == 'true'
+        working-directory: .
         run: dev/services.sh
 
-      - run: mix precommit --check --only ${{ matrix.group }}
+      - run: mix precommit --check
         env:
-          WARDRIK_TEST_SERVICES: ${{ matrix.group == 'test' && 'required' || '' }}
+          WARDRIK_TEST_SERVICES: ${{ env.SERVICES == 'true' && 'required' || '' }}
 
       # Saved from a failed leg too, since the compile it paid for is still
       # good; not from a cancelled one, which may have left _build half-written.
@@ -51,9 +75,9 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: |
-            deps
-            _build
-            priv/plts
+            ${{ matrix.project }}/deps
+            ${{ matrix.project }}/_build
+            ${{ matrix.project }}/priv/plts
           key: ${{ steps.setup.outputs.key }}
 
   # New applications that depend on Wardrik, neither with :ekv: a Phoenix app
@@ -67,7 +91,7 @@ jobs:
 
       - uses: ./.github/actions/setup
         with:
-          cache-key: hosts
+          project: packages/wardrik
 
       - run: dev/services.sh
       - run: dev/hosts.sh
@@ -171,7 +195,7 @@ jobs:
       - name: Name the tarball
         id: tarball
         run: |
-          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
+          version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' release/mix.exs)
           name="wardrik-$version-linux-${{ matrix.arch }}.tar.gz"
           mv "dist/wardrikd-$version.tar.gz" "$name"
           mkdir unpacked && tar -xzf "$name" -C unpacked
@@ -410,7 +434,7 @@ jobs:
             refs/heads/main) tags+=(-t "$IMAGE:main") ;;
             refs/tags/v*)
               if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
-                echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
+                echo "tag $GITHUB_REF_NAME does not match release/mix.exs version $VERSION" >&2
                 exit 1
               fi
               tags+=(-t "$IMAGE:$VERSION")
@@ -447,7 +471,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
-            echo "tag $GITHUB_REF_NAME does not match mix.exs version $VERSION" >&2
+            echo "tag $GITHUB_REF_NAME does not match release/mix.exs version $VERSION" >&2
             exit 1
           fi
           case "$VERSION" in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac

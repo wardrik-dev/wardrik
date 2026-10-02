@@ -1,12 +1,12 @@
 name: Set up Elixir
 description: >
-  Installs the Erlang and Elixir named in mise.toml, restores this job's build
-  cache, and fetches deps. The job saves the cache itself, under the `key`
-  output, with actions/cache/save.
+  Installs the Erlang and Elixir named in mise.toml, restores the build cache
+  of one Mix project, and fetches its deps. The job saves the cache itself,
+  under the `key` output, with actions/cache/save.
 
 inputs:
-  cache-key:
-    description: The job's cache, one per job, since each builds its own environment.
+  project:
+    description: The Mix project's directory, such as packages/wardrik, whose cache is the job's own.
     required: true
 
 outputs:
@@ -38,8 +38,8 @@ runs:
     - id: key
       shell: bash
       env:
-        PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}
-        LOCK: ${{ hashFiles('mix.lock') }}
+        PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.project }}
+        LOCK: ${{ hashFiles(format('{0}/mix.lock', inputs.project)) }}
         SUFFIX: ${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
       run: |
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
@@ -50,13 +50,14 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: |
-          deps
-          _build
-          priv/plts
+          ${{ inputs.project }}/deps
+          ${{ inputs.project }}/_build
+          ${{ inputs.project }}/priv/plts
         key: ${{ steps.key.outputs.key }}
         restore-keys: |
           ${{ steps.key.outputs.lock }}-
           ${{ steps.key.outputs.prefix }}-
 
     - shell: bash
+      working-directory: ${{ inputs.project }}
       run: mix deps.get

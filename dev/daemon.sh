@@ -82,7 +82,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-(cd "$root" && MIX_ENV=prod mix release --path "$dir/rel" --overwrite --quiet >/dev/null)
+(cd "$root/release" && MIX_ENV=prod mix release --path "$dir/rel" --overwrite --quiet >/dev/null)
 
 mkdir -p "$dir/config/ssh" "$dir/bin"
 ssh-keygen -q -t ed25519 -N "" -C wardrik-dev -f "$dir/id_ed25519"
