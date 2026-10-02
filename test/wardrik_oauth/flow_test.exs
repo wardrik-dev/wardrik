@@ -243,6 +243,24 @@ defmodule WardrikOAuth.FlowTest do
       assert params["resource"] == resource()
     end
 
+    test "carries a provider's params, which cannot change what the flow sets itself" do
+      metadata = discover(cimd: true)
+      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {_verifier, challenge} = Flow.pkce()
+
+      params =
+        metadata
+        |> Flow.authorize_url(registered, challenge,
+          state: "st",
+          params: %{"access_type" => "offline", "prompt" => "consent", "state" => "theirs"}
+        )
+        |> params_of()
+
+      assert params["access_type"] == "offline"
+      assert params["prompt"] == "consent"
+      assert params["state"] == "st"
+    end
+
     test "a challenge is the SHA-256 of its verifier, and each pair is new" do
       {verifier, challenge} = Flow.pkce()
 

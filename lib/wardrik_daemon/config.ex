@@ -149,7 +149,7 @@ defmodule WardrikDaemon.Config do
   @oauth ~w(client redirect providers)a
   @client ~w(name document_url client_uri logo_uri policy_uri tos_uri redirect_uri)a
   @redirect ~w(uri port open)a
-  @provider ~w(resource issuer client_id client_secret redirect_uri scopes flow)a
+  @provider ~w(resource issuer client_id client_secret redirect_uri scopes authorization_params flow)a
   @vault ~w(keys)a
   @listener ~w(port ip)a
   @stores %{
@@ -459,7 +459,13 @@ defmodule WardrikDaemon.Config do
   defp providers(providers) do
     Enum.map(providers, fn {name, provider} ->
       path = ["oauth", "providers", name]
-      {name(name), provider |> options(@provider_keys, path) |> flow(path) |> secret(path)}
+
+      {name(name),
+       provider
+       |> options(@provider_keys, path)
+       |> flow(path)
+       |> secret(path)
+       |> authorization_params(path)}
     end)
   end
 
@@ -472,6 +478,37 @@ defmodule WardrikDaemon.Config do
         ),
       else: provider
   end
+
+  defp authorization_params(provider, path) do
+    path = path ++ ["authorization_params"]
+
+    case Keyword.fetch(provider, :authorization_params) do
+      {:ok, params} when is_map(params) ->
+        Enum.each(params, &authorization_param(&1, path))
+        Keyword.put(provider, :authorization_params, Map.new(params, &text/1))
+
+      {:ok, _params} ->
+        invalid!(path, "is a table of names to the values to send")
+
+      :error ->
+        provider
+    end
+  end
+
+  defp authorization_param({name, value}, path) do
+    cond do
+      name in WardrikOAuth.Flow.own_params() ->
+        invalid!(path ++ [name], "is one Wardrik sets itself")
+
+      is_binary(value) or is_number(value) or is_boolean(value) ->
+        :ok
+
+      true ->
+        invalid!(path ++ [name], "is a string, a number or true or false")
+    end
+  end
+
+  defp text({name, value}), do: {name, to_string(value)}
 
   defp flow(provider, path) do
     case Keyword.fetch(provider, :flow) do

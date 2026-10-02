@@ -427,6 +427,39 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "oauth.providers.github.flow is auto, browser or device"
     end
 
+    test "a provider sends more with the authorization request, but not what Wardrik sets",
+         context do
+      assert {:ok, [{WardrikOAuth, oauth}]} =
+               read(
+                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
+                   "      authorization_params:\n        access_type: offline\n" <>
+                   "        prompt: consent\n        max_age: 0\n",
+                 context
+               )
+
+      assert oauth[:providers][:google][:authorization_params] ==
+               %{"access_type" => "offline", "prompt" => "consent", "max_age" => "0"}
+
+      assert {:error, message} =
+               read(
+                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
+                   "      authorization_params:\n        redirect_uri: https://y\n",
+                 context
+               )
+
+      assert message =~
+               "oauth.providers.google.authorization_params.redirect_uri is one Wardrik sets itself"
+
+      assert {:error, message} =
+               read(
+                 "oauth:\n  providers:\n    google:\n      resource: https://x\n" <>
+                   "      authorization_params: offline\n",
+                 context
+               )
+
+      assert message =~ "oauth.providers.google.authorization_params is a table"
+    end
+
     test "a provider's client secret goes only to an issuer it names", context do
       assert {:error, message} =
                read(

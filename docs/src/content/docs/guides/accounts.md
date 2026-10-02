@@ -144,7 +144,21 @@ otherwise.
 | `issuer` | the authorization server. Without it, it is found from the resource |
 | `client_id`, `client_secret` | a client registered with the provider by hand |
 | `scopes` | what to ask for. Without them, what the resource says it supports |
+| `authorization_params` | more to send with the authorization request in a browser, for a provider that needs them |
 | `flow` | `browser`, `device` or `auto` |
+
+Some providers give a token they can refresh only when asked in their own way. Google gives one only
+with `access_type: offline`, and again after the first time only with `prompt: consent`, so a Google
+provider says:
+
+```yaml
+authorization_params:
+  access_type: offline
+  prompt: consent
+```
+
+`authorization_params` cannot set what the daemon sends itself, such as `redirect_uri`, `state` or
+`scope`: a provider whose params name one does not read.
 
 Without a `client_id`, the daemon presents whichever identity the provider accepts: a client
 metadata document at `oauth.client.document_url`, which you host, or a client it registers with the
