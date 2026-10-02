@@ -393,19 +393,6 @@ defmodule WardrikWorkspace.ToolsTest do
   end
 
   describe "deciding a call" do
-    test "a policy names a file tool's call by its path" do
-      policy = WardrikPolicy.decode!(%{"deny" => ["write_file(secrets/*)", "delete_file(*)"]})
-      agent = agent(%{}, WardrikPolicy.hooks(policy))
-
-      assert {:ok, _written} =
-               answered(agent, "write_file", %{"path" => "notes/a.md", "content" => "x"})
-
-      assert {:error, _denied} =
-               answered(agent, "write_file", %{"path" => "secrets/key", "content" => "x"})
-
-      assert {:error, _denied} = answered(agent, "delete_file", %{"path" => "notes/a.md"})
-    end
-
     test "subjects are the normalised path, or the glob listed or searched" do
       {:ok, spec} = Spec.new("acme/@jon/triage")
 

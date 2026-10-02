@@ -52,7 +52,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Wardrik.Test.*", "WardrikOAuth.Case"]
+      ignore: ["Wardrik.Test.*"]
     ]
   ]
 ]

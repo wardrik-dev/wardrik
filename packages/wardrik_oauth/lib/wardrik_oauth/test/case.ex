@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.Case do
+defmodule WardrikOAuth.Test.Case do
   @moduledoc """
   An authorization server that answers without a socket, and a vault with a key.
 
@@ -6,7 +6,7 @@ defmodule WardrikOAuth.Case do
   req_options:`, so discovery, registration, exchange and refresh all run their
   real request building against a stub that reports what it was sent.
 
-      use WardrikOAuth.Case
+      use WardrikOAuth.Test.Case
 
       test "..." do
         stub_server()
@@ -35,7 +35,7 @@ defmodule WardrikOAuth.Case do
 
   using do
     quote do
-      import WardrikOAuth.Case
+      import WardrikOAuth.Test.Case
 
       alias WardrikOAuth.Client
       alias WardrikOAuth.Flow

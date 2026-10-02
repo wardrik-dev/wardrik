@@ -46,10 +46,14 @@ defmodule Wardrik.Test.Tools.Fetch do
   def outside_content?(_name), do: true
 end
 
-defmodule Wardrik.Test.Tools.Allowing do
+defmodule Wardrik.Test.Tools.Rules do
   @moduledoc """
-  A hook that allows by name every call to the tools its value lists, given
-  as names, or as `{names, opts}` for `Wardrik.Call.allow/2`.
+  A hook that decides a call by its tool's name, the way a policy's rules do.
+  `deny:`, `ask:`, `allow_after_outside:` and `allow:` each name tools, or
+  every tool as `:all`, and the first of them that names the call decides
+  it; a call none names is left as it was.
+
+      Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, ask: ["deploy"], allow: :all)
   """
 
   @behaviour Wardrik.Hook
@@ -57,12 +61,22 @@ defmodule Wardrik.Test.Tools.Allowing do
   alias Wardrik.Call
 
   @impl true
-  def init({names, opts}), do: {names, opts}
-  def init(names), do: {names, []}
+  def init(rules), do: Map.new(rules)
 
   @impl true
-  def call(%Call{target: %Call.Tool{name: name}} = call, {names, opts}),
-    do: if(name in names, do: Call.allow(call, opts), else: call)
+  def call(%Call{target: %Call.Tool{name: name}} = call, rules) do
+    cond do
+      names?(rules[:deny], name) -> Call.deny(call, "#{name} is refused here.")
+      names?(rules[:ask], name) -> Call.ask(call, "#{name} needs a person.")
+      names?(rules[:allow_after_outside], name) -> Call.allow(call, after_outside: true)
+      names?(rules[:allow], name) -> Call.allow(call)
+      true -> call
+    end
+  end
 
-  def call(call, _value), do: call
+  def call(call, _rules), do: call
+
+  defp names?(:all, _name), do: true
+  defp names?(names, name) when is_list(names), do: name in names
+  defp names?(nil, _name), do: false
 end

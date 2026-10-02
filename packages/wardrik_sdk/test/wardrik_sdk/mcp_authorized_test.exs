@@ -1,16 +1,14 @@
-defmodule WardrikMCP.AuthorizedTest do
+defmodule WardrikSDK.MCPAuthorizedTest do
   @moduledoc """
   The whole chain, with only the authorization server stubbed: an agent calls a
   tool on a server it is not authorized for, the turn parks on a link, the
   person follows it, and approving the parked call runs it with the token.
   """
 
-  use WardrikMCP.Case, async: false
-  use WardrikOAuth.Case, async: false
+  use WardrikMCP.Test.Case, async: false
+  use WardrikOAuth.Test.Case, async: false
 
-  alias Wardrik.LLM.Config
-  alias Wardrik.LLM.ToolRunner
-  alias Wardrik.Scope
+  alias Wardrik.Call
 
   @moduletag server_opts: [credential: "github", credential_env: "DEMO_TOKEN"]
 
@@ -23,22 +21,24 @@ defmodule WardrikMCP.AuthorizedTest do
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
     scope =
-      Config.new(tools: [{WardrikMCP, ref}])
-      |> Scope.root("acme/@#{owner}/assistant", user: owner, credentials: WardrikVault)
+      Wardrik.Test.scope(
+        tools: [{WardrikMCP, ref}],
+        key: "acme/@#{owner}/assistant",
+        user: owner,
+        credentials: WardrikVault
+      )
 
     %{scope: scope}
   end
 
-  defp call(ref, scope, tool, arguments) do
-    ToolRunner.execute(%{id: "call_1", name: "#{ref}__#{tool}", arguments: arguments}, scope)
-  end
+  defp secret(ref, scope),
+    do: Wardrik.Test.call(scope, "#{ref}__secret", %{"name" => "DEMO_TOKEN"})
 
   test "parks on a link, then runs once the user has followed it", context do
     %{ref: ref, scope: scope, owner: owner} = context
 
-    assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: %{url: url}}]} =
-             call =
-             call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
+    assert %Call{state: :waiting, asks: [%{prompt: prompt, link: %{url: url}}]} =
+             call = secret(ref, scope)
 
     assert url =~ "https://auth.example.com/authorize"
     refute prompt =~ "https://"
@@ -46,33 +46,21 @@ defmodule WardrikMCP.AuthorizedTest do
     assert {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
     assert WardrikOAuth.connected?("github", {nil, owner})
 
-    [message] =
-      call
-      |> Wardrik.Call.approve()
-      |> ToolRunner.execute(scope)
-      |> List.wrap()
-      |> ToolRunner.messages()
+    assert %Call{state: :done, result: {:ok, %{"result" => %{"content" => content}}}} =
+             Wardrik.Test.resume(scope, call)
 
-    [part] = message.content
-    assert part.text =~ "at_first"
+    assert content =~ "at_first"
   end
 
   test "the token the server sees is the one the flow produced", context do
     %{ref: ref, scope: scope} = context
 
-    %Wardrik.Call{asks: [%{link: %{url: url}}]} =
-      call = call(ref, scope, "secret", %{"name" => "DEMO_TOKEN"})
-
+    %Call{asks: [%{link: %{url: url}}]} = call = secret(ref, scope)
     {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    [message] =
-      call
-      |> Wardrik.Call.approve()
-      |> ToolRunner.execute(scope)
-      |> List.wrap()
-      |> ToolRunner.messages()
+    assert %Call{result: {:ok, %{"result" => %{"content" => content}}}} =
+             Wardrik.Test.resume(scope, call)
 
-    [part] = message.content
-    refute part.text =~ "rt_first"
+    refute content =~ "rt_first"
   end
 end

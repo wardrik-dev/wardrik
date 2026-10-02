@@ -1,5 +1,5 @@
 defmodule WardrikOAuth.BrowserTest do
-  use WardrikOAuth.Case, async: false
+  use WardrikOAuth.Test.Case, async: false
 
   alias WardrikOAuth.Browser
 

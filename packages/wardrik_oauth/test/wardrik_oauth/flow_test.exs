@@ -1,5 +1,5 @@
 defmodule WardrikOAuth.FlowTest do
-  use WardrikOAuth.Case, async: false
+  use WardrikOAuth.Test.Case, async: false
 
   setup do
     configure(providers: [])

@@ -1,8 +1,8 @@
 defmodule WardrikDaemon.DoctorTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Test.Services
   alias WardrikDaemon.Doctor
+  alias WardrikEcto.Test.Services
 
   @moduletag :tmp_dir
 

@@ -516,9 +516,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   end
 
   describe "what a tool says about a call" do
-    alias Wardrik.Test.Tools.Allowing
     alias Wardrik.Test.Tools.Deploy
     alias Wardrik.Test.Tools.Fetch
+    alias Wardrik.Test.Tools.Rules
 
     defmodule Reporting do
       @behaviour Wardrik.Hook
@@ -562,7 +562,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       refute_receive %Event{payload: {:tool_started, "call_1", _, _, _}}
 
-      allowing = [Wardrik.Hook.new("rules", Allowing, ["deploy"])]
+      allowing = [Wardrik.Hook.new("rules", Rules, allow: ["deploy"])]
 
       assert [%Call{state: :done, result: {:ok, %{"deployed" => "prod"}}}] =
                ToolRunner.execute_many_async(calls, under(agent_id, [Deploy], allowing))

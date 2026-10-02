@@ -567,7 +567,7 @@ defmodule Wardrik.LLM.TurnTest do
 
     test "taints the turn from its start where it came from outside", %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
-      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
       scope =
         [tools: [{TellingSource, :outside}, Wardrik.Test.Tools.Deploy]]
@@ -587,7 +587,7 @@ defmodule Wardrik.LLM.TurnTest do
       ])
 
       rules = [
-        Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, {["deploy"], after_outside: true})
+        Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow_after_outside: ["deploy"])
       ]
 
       scope =
@@ -602,7 +602,7 @@ defmodule Wardrik.LLM.TurnTest do
          %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
 
-      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+      rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
       scope =
         [tools: [Wardrik.Test.Tools.Deploy]]
@@ -993,17 +993,17 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   describe "content from outside" do
-    alias Wardrik.Test.Tools.Allowing
     alias Wardrik.Test.Tools.Deploy
     alias Wardrik.Test.Tools.Fetch
+    alias Wardrik.Test.Tools.Rules
 
     # A turn whose rules allow deploy by name, where deploy is gated.
-    defp allowing_deploy(agent_id, allow \\ []) do
+    defp allowing_deploy(agent_id, rule \\ :allow) do
       [tools: [Fetch, Deploy]]
       |> LLM.Config.new()
       |> Scope.root(agent_id,
         name: "turn",
-        hooks: [Wardrik.Hook.new("rules", Allowing, {["deploy"], allow})]
+        hooks: [Wardrik.Hook.new("rules", Rules, [{rule, ["deploy"]}])]
       )
     end
 
@@ -1047,7 +1047,7 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("deployed")
       ])
 
-      scope = allowing_deploy(agent_id, after_outside: true)
+      scope = allowing_deploy(agent_id, :allow_after_outside)
 
       assert %LLM.Turn{state: :done, tainted: true} =
                run(scope, Context.new([Context.user("read it")]))

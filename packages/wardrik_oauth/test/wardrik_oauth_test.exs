@@ -1,5 +1,5 @@
 defmodule WardrikOAuthTest do
-  use WardrikOAuth.Case, async: false
+  use WardrikOAuth.Test.Case, async: false
 
   alias Wardrik.Credential
   alias Wardrik.LLM.Config

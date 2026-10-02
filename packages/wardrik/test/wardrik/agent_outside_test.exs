@@ -6,9 +6,9 @@ defmodule Wardrik.AgentOutsideTest do
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Test.LLMStub
-  alias Wardrik.Test.Tools.Allowing
   alias Wardrik.Test.Tools.Deploy
   alias Wardrik.Test.Tools.Fetch
+  alias Wardrik.Test.Tools.Rules
 
   setup :set_mimic_global
 
@@ -19,7 +19,7 @@ defmodule Wardrik.AgentOutsideTest do
       Wardrik.Test.Fleet.start_agent(
         [
           config: Config.new(tools: [Fetch, Deploy]),
-          hooks: [Wardrik.Hook.new("rules", Allowing, ["deploy"])]
+          hooks: [Wardrik.Hook.new("rules", Rules, allow: ["deploy"])]
         ],
         key
       )

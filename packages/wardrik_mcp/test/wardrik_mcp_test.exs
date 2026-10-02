@@ -1,5 +1,5 @@
 defmodule WardrikMCPTest do
-  use WardrikMCP.Case, async: false
+  use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.LLM.Config
   alias Wardrik.Test.Calls

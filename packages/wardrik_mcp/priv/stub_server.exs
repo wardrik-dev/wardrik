@@ -1,7 +1,7 @@
 # An MCP server over stdio, for tests: a handful of tools, no dependencies, and
 # only the state it needs to report what it was sent. Every tool but `grow`,
 # which changes what the server offers, is marked read-only. Run as
-# `elixir stub_server.exs`.
+# `elixir stub_server.exs`; `WardrikMCP.Test.Case` runs it for a suite.
 #
 # Anything written to stdout that is not a JSON-RPC message corrupts the
 # stream, so trouble goes to stderr.
