@@ -5,6 +5,7 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Replaying
+  alias Wardrik.Agent.State.Resuming
   alias Wardrik.Agent.State.Running
   alias Wardrik.Agent.State.Waiting
   alias Wardrik.LLM.Config
@@ -324,7 +325,7 @@ defmodule Wardrik.Agent.StateTest do
 
     defp resumed do
       {:resume, scope, turn, started_at} = State.resume(waiting())
-      State.resumed(waiting(), task(), scope, turn, started_at)
+      State.resumed(waiting(), task(), scope, turn, %{"call_1" => {:deny, "No."}}, started_at)
     end
 
     # Pids, references, ports and functions, wherever they sit in a term.
@@ -378,11 +379,30 @@ defmodule Wardrik.Agent.StateTest do
       assert %State{mode: %Waiting{source: ^source}} = reload(state)
     end
 
-    test "a turn resumed from a park comes back parked on the same calls" do
-      state = reload(resumed())
+    test "a turn resumed from a park comes back resuming, with the decisions it was given" do
+      state = resumed()
+      source = state.mode.scope.source
 
-      assert %State{mode: %Waiting{}} = state
-      assert [{%{id: "call_1"}, "Really?"}] = State.waiting_on(state)
+      assert %State{mode: %Resuming{decisions: %{"call_1" => {:deny, "No."}}, source: ^source}} =
+               reopened = reload(state)
+
+      assert %{state: :running} = State.status(reopened)
+      assert State.waiting_on(reopened) == []
+
+      assert {:resume, scope, %Turn{state: :waiting}, %{"call_1" => {:deny, "No."}}, _state} =
+               State.take(reopened)
+
+      assert scope.source == source
+      assert reload(reopened).mode == reopened.mode
+    end
+
+    test "interrupting a turn due to resume abandons it" do
+      assert {%State{mode: :idle, outcome: :interrupted},
+              [
+                {:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}},
+                {:close_turn, _scope}
+              ]} =
+               State.interrupt(reload(resumed()))
     end
 
     test "a turn that handed over a batch comes back replaying it, under its own trace" do
@@ -411,7 +431,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a replay started is running, with the checkpoint it began from" do
       state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
-      assert %State{mode: %Running{checkpoint: %Turn{}}} = state
+      assert %State{mode: %Running{recovery: {:replaying, %Turn{}}}} = state
       assert %State{mode: %Replaying{}} = reload(state)
     end
 

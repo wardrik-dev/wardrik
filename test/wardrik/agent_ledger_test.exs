@@ -111,11 +111,8 @@ defmodule Wardrik.AgentLedgerTest do
     assert_receive {:began, "deploy", tool}, 5_000
     lose(key, tool)
 
+    # The approval stands; what is asked is whether the call may have run.
     {:ok, agent} = Wardrik.Fleet.spawn(key, opts(hooks: @careful))
-    assert [{%{id: "call_1"}, "This ships to production."}] = Agent.parked(agent)
-
-    Agent.resume(agent, %{"call_1" => :approve})
-
     assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}, 5_000
     assert prompt =~ "may already have done what it does"
     refute_received {:began, "deploy", _tool}
@@ -179,7 +176,7 @@ defmodule Wardrik.AgentLedgerTest do
     lose(key, tool)
 
     {:ok, agent} = Wardrik.Fleet.spawn(key, opts(hooks: @careful))
-    assert [{%{id: "call_1"}, "This ships to production."}] = Agent.parked(agent)
+    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
 
     Agent.resume(agent, %{"call_1" => {:deny, "Not today."}})
 

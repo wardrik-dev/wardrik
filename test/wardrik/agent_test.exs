@@ -536,6 +536,36 @@ defmodule Wardrik.AgentTest do
       assert roles(key) == [:user, :assistant]
     end
 
+    test "goes on with the decisions it was resumed with, not asking for them again" do
+      test_pid = self()
+      key = Wardrik.Test.Fleet.key("decided")
+      denied = %{"call_1" => {:deny, "Not today."}}
+      answer = {:ok, [Context.assistant("left it")]}
+
+      opts = [
+        runner: parking_runner(test_pid),
+        resumer: {AgentRunners, :holding, [test_pid, answer]}
+      ]
+
+      agent = start_agent(opts, key)
+      Agent.ask(agent, "ship it")
+      assert_receive %Event{payload: {:turn_parked, _calls}}
+      :ok = Agent.decide(agent, denied)
+      assert_receive {:holding, ^denied, _lost}
+      assert_receive %Event{payload: {:turn_resumed, ^denied}}
+
+      :ok = Wardrik.Fleet.stop(key)
+      {:ok, _agent} = Wardrik.Fleet.spawn(key, opts)
+
+      assert_receive {:holding, ^denied, resumed}, 5_000
+      assert_receive %Event{payload: {:turn_resumed, ^denied}}
+      send(resumed, :release)
+
+      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert Agent.parked(key) == []
+      assert roles(key) == [:user, :assistant]
+    end
+
     test "a checkpoint from anything but the running turn is refused" do
       agent = start_agent(runner: blocking_runner(self()))
 

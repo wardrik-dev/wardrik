@@ -53,8 +53,9 @@ defmodule Wardrik.Agent do
   the current work; `interrupt/1` abandons it if that is what you want.
 
   A parked turn is written to the store and outlives the node it parked on. A
-  turn lost after being resumed comes back parked on the same calls. Resuming
-  gives the turn this node's tools and a fresh budget.
+  turn lost after being resumed goes on with the decisions it was given, which
+  are not asked for again. Resuming gives the turn this node's tools and a
+  fresh budget.
 
   ## A history that grows
 
@@ -394,11 +395,15 @@ defmodule Wardrik.Agent do
 
     with {:ok, state} <- log_ahead(state, decided) do
       Enum.each(decided, &Bus.publish/1)
-      Event.emit(scope.source, {:turn_resumed, decisions})
-      task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
-
-      {:ok, State.resumed(state, task, scope, turn, started_at)}
+      {:ok, carry_on(state, scope, turn, decisions, started_at)}
     end
+  end
+
+  defp carry_on(state, scope, turn, decisions, started_at) do
+    Event.emit(scope.source, {:turn_resumed, decisions})
+    task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
+
+    State.resumed(state, task, scope, turn, decisions, started_at)
   end
 
   # Decisions are written to the log before they take effect, so none takes
@@ -419,10 +424,20 @@ defmodule Wardrik.Agent do
   @impl DurableServer
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
-      {:run, messages, state} -> stay(start(state, messages))
-      {:replay, scope, checkpoint, state} -> stay(replay(state, scope, checkpoint))
-      {:compact, scope, state} -> stay(compact(state, scope))
-      :none -> stay(state)
+      {:run, messages, state} ->
+        stay(start(state, messages))
+
+      {:replay, scope, checkpoint, state} ->
+        stay(replay(state, scope, checkpoint))
+
+      {:resume, scope, turn, decisions, state} ->
+        stay(resume_again(state, scope, turn, decisions))
+
+      {:compact, scope, state} ->
+        stay(compact(state, scope))
+
+      :none ->
+        stay(state)
     end
   end
 
@@ -529,6 +544,10 @@ defmodule Wardrik.Agent do
 
     State.replayed(state, task, scope, checkpoint, System.monotonic_time())
   end
+
+  # Its decisions were logged when they were taken.
+  defp resume_again(state, scope, turn, decisions),
+    do: carry_on(state, journaled(scope), turn, decisions, System.monotonic_time())
 
   # Each turn hands its batches of tool calls to this process before running
   # them, which writes them down.
