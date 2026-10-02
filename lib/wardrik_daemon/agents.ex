@@ -24,10 +24,10 @@ defmodule WardrikDaemon.Agents do
   another agent, is retired once no other node connected to it declares it
   either: the agent stops and its schedules are cleared, and it keeps its
   conversation, so a file that declares it again brings it back as it was.
-  `Wardrik.Fleet.forget/1`, or `wardrik rm`, removes it for good. A file that
-  does not read keeps its keys in the inventory, so its agent is left as it
-  was. An agent the HTTP API defined is in no inventory, and reading the
-  files never touches it.
+  `Wardrik.Fleet.forget/1`, or `wardrik agent rm`, removes it for good. A
+  file that does not read keeps its keys in the inventory, so its agent is
+  left as it was. An agent the HTTP API defined is in no inventory, and
+  reading the files never touches it.
 
   It is also the daemon's `WardrikHTTP.Definition`. `put/2` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.definition/3`, under the
@@ -36,6 +36,14 @@ defmodule WardrikDaemon.Agents do
   declares, here or on any node connected to this one, belongs to the file:
   `put/2`, `delete/1` and `editable/1` refuse it with a conflict, so the API
   changes neither it nor its schedules.
+
+  ## Defaults
+
+  `config.yaml`'s `defaults` is what an agent is given where nothing else
+  says, read as a definition over the HTTP API is. `options/1` answers what
+  an agent starts with, its file's or the defaults', for a surface that
+  starts one under a key no file declares, as the TUI does; `wardrik agent
+  spawn` writes a file from them.
   """
 
   @behaviour WardrikHTTP.Definition
@@ -77,6 +85,30 @@ defmodule WardrikDaemon.Agents do
   @spec files() :: [file()]
   def files, do: GenServer.call(__MODULE__, :files)
 
+  @doc "The config directory the files are read from."
+  @spec dir() :: Path.t()
+  def dir, do: GenServer.call(__MODULE__, :dir)
+
+  @doc "`config.yaml`'s `defaults`, as the file writes them, or none."
+  @spec defaults() :: map()
+  def defaults, do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
+
+  @doc """
+  The options the agent under `key` starts with, as `Wardrik.Fleet.spawn/2`
+  takes them: what its file says, or `defaults/0` where no file declares it.
+  """
+  @spec options(String.t()) :: {:ok, keyword()} | {:error, String.t()}
+  def options(key) do
+    spec =
+      case GenServer.call(__MODULE__, {:owner, key}) do
+        {:file, _path, %Spec{} = spec} -> {:ok, spec}
+        {:file, elsewhere, nil} -> conflict(declared(key, elsewhere))
+        {:api, policies} -> AgentFile.definition(key, defaults(), policies)
+      end
+
+    with {:ok, spec} <- spec, do: {:ok, Spec.options(spec)}
+  end
+
   @doc """
   The spec a definition sent to the HTTP API writes for the agent under
   `key`, or a conflict where an agent file declares it.
@@ -84,7 +116,7 @@ defmodule WardrikDaemon.Agents do
   @impl WardrikHTTP.Definition
   def put(key, definition) do
     case GenServer.call(__MODULE__, {:owner, key}) do
-      {:file, path} -> declared(key, path)
+      {:file, path, _spec} -> declared(key, path)
       {:api, policies} -> AgentFile.definition(key, definition, policies)
     end
   end
@@ -96,7 +128,7 @@ defmodule WardrikDaemon.Agents do
   @impl WardrikHTTP.Definition
   def delete(key) do
     case GenServer.call(__MODULE__, {:owner, key}) do
-      {:file, path} -> declared(key, path)
+      {:file, path, _spec} -> declared(key, path)
       {:api, _policies} -> {:error, :not_found}
     end
   end
@@ -105,10 +137,12 @@ defmodule WardrikDaemon.Agents do
   @impl WardrikHTTP.Definition
   def editable(key) do
     case GenServer.call(__MODULE__, {:owner, key}) do
-      {:file, path} -> declared(key, path)
+      {:file, path, _spec} -> declared(key, path)
       {:api, _policies} -> :ok
     end
   end
+
+  defp conflict({:error, :conflict, message}), do: {:error, message}
 
   defp declared(key, {path, node}),
     do:
@@ -132,11 +166,12 @@ defmodule WardrikDaemon.Agents do
   end
 
   def handle_call(:files, _from, state), do: {:reply, state.files, state}
+  def handle_call(:dir, _from, state), do: {:reply, state.dir, state}
 
   def handle_call({:owner, key}, _from, state) do
     file =
       Enum.find_value(state.files, fn
-        {path, {:ok, %Spec{} = spec}} -> if Spec.key(spec) == key, do: path
+        {path, {:ok, %Spec{} = spec}} -> if Spec.key(spec) == key, do: {:file, path, spec}
         _other -> nil
       end)
 
@@ -145,18 +180,16 @@ defmodule WardrikDaemon.Agents do
           into: %{},
           do: {policy.name, policy}
 
-    case file || elsewhere(state, key) do
-      nil -> {:reply, {:api, policies}, state}
-      file -> {:reply, {:file, file}, state}
-    end
+    {:reply, file || elsewhere(state, key) || {:api, policies}, state}
   end
 
   # The file another node connected to this one declares `key` in, with the
-  # node, as its inventory has it.
+  # node, as its inventory has it. This node has not read it, so it has no
+  # spec of it.
   defp elsewhere(state, key) do
     Enum.find_value(state.nodes.(), fn node ->
       case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, key) do
-        {:ok, path} -> {path, node}
+        {:ok, path} -> {:file, {path, node}, nil}
         :error -> nil
       end
     end)

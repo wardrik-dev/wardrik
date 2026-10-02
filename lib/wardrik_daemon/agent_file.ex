@@ -190,6 +190,12 @@ defmodule WardrikDaemon.AgentFile do
   agent's schedules as they are, and the schedules routes set them. Its
   `tools` and `policy` name what the daemon ships or configures, and never a
   module.
+
+  ## Written by wardrik
+
+  `wardrik init` and `wardrik agent spawn` write a file here: the frontmatter
+  they choose, such as `config.yaml`'s `defaults`, and a short prompt to edit
+  into what the agent is for.
   """
 
   alias Wardrik.Agent.Spec
@@ -200,6 +206,27 @@ defmodule WardrikDaemon.AgentFile do
   @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify)
   @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
+  @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
+
+  @doc """
+  An agent file with `fields` as its frontmatter, in the order given, and a
+  short prompt after it. A value is written as JSON, which YAML reads, where
+  it is not a word YAML reads as itself.
+  """
+  @spec text([{String.t(), term()}]) :: String.t()
+  def text(fields) do
+    front = for {key, value} <- fields, do: "#{key}: #{yaml(value)}\n"
+    IO.iodata_to_binary(["---\n", front, "---\n", @prompt, "\n"])
+  end
+
+  defp yaml(value) when is_binary(value) do
+    if Regex.match?(~r/\A[A-Za-z][\w.:\/@+-]*\z/, value) and
+         String.downcase(value) not in ~w(true false null yes no on off),
+       do: value,
+       else: JSON.encode!(value)
+  end
+
+  defp yaml(value), do: JSON.encode!(value)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in

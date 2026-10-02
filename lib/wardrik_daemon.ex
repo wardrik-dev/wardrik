@@ -45,6 +45,8 @@ defmodule WardrikDaemon do
       wardrik reload    # read agents/ and policies/ again
       wardrik parked    # what is waiting on a person
       wardrik schedules # when each schedule runs next, and how it last ran
+      wardrik agent spawn NAME   # start an agent, writing its file from defaults
+      wardrik agent rm KEY       # remove one, its conversation and schedules
       wardrik approve KEY CALL
       wardrik deny KEY CALL [REASON]
       wardrik token create NAME --scope PREFIX --policy NAME   # a token for the HTTP API
@@ -180,6 +182,18 @@ defmodule WardrikDaemon do
     for {_path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
         into: %{},
         do: {Wardrik.Agent.Spec.key(spec), spec}
+  end
+
+  @doc """
+  The agent files that read, by the key of the agent each declares, with its
+  spec, from `files` as `WardrikDaemon.Agents.files/0` answers them.
+  """
+  @spec declared([WardrikDaemon.Agents.file()]) ::
+          %{String.t() => {Path.t(), Wardrik.Agent.Spec.t()}}
+  def declared(files \\ agent_files()) do
+    for {path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
+        into: %{},
+        do: {Wardrik.Agent.Spec.key(spec), {path, spec}}
   end
 
   @doc "What the agent under `key` has spent of each budget `spec` gives it, as its budgets say it."

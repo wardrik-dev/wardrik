@@ -133,9 +133,16 @@ defmodule WardrikDaemon.CLI.InitTest do
       ~w(--provider anthropic --model claude-sonnet-5 --agent bot --key-from-env MY_KEY --yes
          --no-service --no-ask)
 
-    {_output, 0} = alone(flags, opts)
+    {output, 0} = alone(flags, opts)
 
     assert File.read!(Path.join(config, "agents/bot.md")) =~ "model: anthropic:claude-sonnet-5\n"
+
+    assert File.read!(Path.join(config, "config.yaml")) ==
+             "defaults:\n  model: anthropic:claude-sonnet-5\n"
+
+    assert output =~
+             "Wrote config.yaml, whose defaults give an agent wardrik agent spawn starts " <>
+               "anthropic:claude-sonnet-5 too."
 
     commands = log(log)
     assert commands =~ "start"
@@ -198,6 +205,33 @@ defmodule WardrikDaemon.CLI.InitTest do
     {output, 0} = alone(flags, opts)
     assert output =~ "The daemon runs, so it reads the new agent file with wardrik reload."
     assert log(log) =~ "reload"
+  end
+
+  test "keeps a config.yaml that is there, and says what its defaults could be", %{
+    opts: opts,
+    config: config
+  } do
+    opts = Keyword.put(opts, :getenv, env(%{"MY_KEY" => "sk"}))
+    flags = ~w(--provider anthropic --model claude-sonnet-5 --key-from-env MY_KEY --yes --no-ask)
+    File.mkdir_p!(config)
+    File.write!(Path.join(config, "config.yaml"), "org: acme\n")
+
+    {output, 0} = alone(flags, opts)
+    assert File.read!(Path.join(config, "config.yaml")) == "org: acme\n"
+
+    assert output =~
+             "config.yaml gives no defaults; defaults: with model: anthropic:claude-sonnet-5 " <>
+               "in it gives an agent wardrik agent spawn starts the same model."
+
+    File.write!(Path.join(config, "config.yaml"), "defaults:\n  model: anthropic:other\n")
+    {output, 0} = alone(flags, opts)
+    refute output =~ "gives no defaults"
+
+    File.rm!(Path.join(config, "config.yaml"))
+    System.put_env("WARDRIK_FAKE_RUNNING", "1")
+    {output, 0} = alone(flags, opts)
+    assert output =~ "Wrote config.yaml, whose defaults"
+    assert output =~ "The daemon reads it when it next starts."
   end
 
   test "keeps the files where the agent does not answer, and names the fix", %{

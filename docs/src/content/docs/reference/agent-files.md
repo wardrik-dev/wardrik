@@ -198,3 +198,9 @@ mean in a file. The key gives the agent's `name`, `org` and `user`. A definition
 agent's schedules as they are, and the schedules routes set them. Its
 `tools` and `policy` name what the daemon ships or configures, and never a
 module.
+
+## Written by wardrik
+
+`wardrik init` and `wardrik agent spawn` write a file here: the frontmatter
+they choose, such as `config.yaml`'s `defaults`, and a short prompt to edit
+into what the agent is for.

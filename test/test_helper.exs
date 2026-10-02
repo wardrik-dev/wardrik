@@ -5,6 +5,8 @@ Mimic.copy(WardrikDaemon.AgentFile)
 Mimic.copy(Wardrik.Store)
 Mimic.copy(Ecto.Adapters.SQL)
 Mimic.copy(Wardrik.Store.Memory)
+Mimic.copy(Wardrik.Fleet)
+Mimic.copy(WardrikDaemon.CLI)
 
 # `Wardrik.LLM.Catalog` loads the model database in the background as the
 # application starts, which takes about 1.3s. A lookup made before it finishes

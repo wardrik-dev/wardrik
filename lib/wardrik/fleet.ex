@@ -12,6 +12,7 @@ defmodule Wardrik.Fleet do
   | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
   | `move/2` | restart an agent on another node, as it was |
   | `whereis/1` | the pid behind a key, on whatever node holds it |
+  | `stored?/1` | whether the store holds an agent, running or stopped |
 
   ## Keys
 

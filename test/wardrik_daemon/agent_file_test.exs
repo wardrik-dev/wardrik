@@ -69,6 +69,28 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.ledger == Wardrik.Ledger.Store
   end
 
+  test "text/1 writes a file that reads back as it was given", context do
+    text =
+      AgentFile.text([
+        {"org", "acme"},
+        {"description", "Says what it does."},
+        {"model", "anthropic:claude-sonnet-5"},
+        {"tools", ["web_search", "*"]},
+        {"policy", %{"ask" => ["linear/*"]}},
+        {"timeout", 600},
+        {"name", "yes"}
+      ])
+
+    assert text =~ "\norg: acme\ndescription: \"Says what it does.\"\nmodel: anthropic:"
+    assert text =~ "\nname: \"yes\"\n---\nYou are a helpful assistant."
+    assert {:ok, spec} = read("written", text, context)
+    assert Spec.key(spec) == "acme/yes"
+    assert spec.description == "Says what it does."
+    assert spec.config.model_spec == "anthropic:claude-sonnet-5"
+    assert WardrikBrave.WebSearch in spec.config.tools
+    assert spec.timeout == 600_000
+  end
+
   test "a file with no frontmatter is all prompt, and names no tools", context do
     assert {:ok, spec} = read("helper", "Answer briefly.\n", context)
 

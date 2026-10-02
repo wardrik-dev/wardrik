@@ -132,6 +132,7 @@ defmodule WardrikTUI.View do
   defp dropped(n), do: " · #{n} queued messages dropped"
 
   @spec error(term()) :: Text.t()
+  def error(message) when is_binary(message), do: Text.tag("\n✗ #{message}\n", :red)
   def error(reason), do: Text.tag("\n✗ #{inspect(reason)}\n", :red)
 
   @doc """

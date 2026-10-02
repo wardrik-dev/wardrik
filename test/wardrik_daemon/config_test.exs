@@ -243,6 +243,16 @@ defmodule WardrikDaemon.ConfigTest do
       assert cluster[:size] == 2
     end
 
+    test "defaults keep what an agent file takes, and refuse what it does not", context do
+      yaml = "defaults:\n  model: anthropic:claude-sonnet-5\n  tools: [web_search]\n"
+
+      assert {:ok, [{WardrikDaemon.Agents, defaults: defaults}]} = read(yaml, context)
+      assert defaults == %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
+
+      assert {:error, message} = read("defaults:\n  name: helper\n", context)
+      assert message =~ "defaults.name is not a setting; expected one of model, tools, policy"
+    end
+
     test "a key nothing takes is refused", context do
       assert {:error, message} =
                read("mcp:\n  notes:\n    command: npx\n    comand: typo\n", context)
