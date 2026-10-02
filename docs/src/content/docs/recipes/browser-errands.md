@@ -111,33 +111,28 @@ fill and with what, the button it would press.
 ## Letting it click
 
 Once you trust its judgement on a kind of errand, let it click and choose on its own, and keep what
-it types waiting on you. Take those tools out of `gated`:
-
-```yaml title="~/.config/wardrik/config.yaml"
-mcp:
-  browser:
-    command: npx
-    args: [-y, "@playwright/mcp@0.0.83", --headless]
-    except: [browser_evaluate, browser_run_code_unsafe]
-    gated:
-      - browser_type
-      - browser_fill_form
-      - browser_file_upload
-      - browser_drop
-      - browser_handle_dialog
-```
-
-A tool that is not gated runs as the agent's policy says, whatever the turn has read, so clicks,
-choices and key presses now go ahead. The tools still gated wait on a person as before, and a policy
-can give them questions of their own:
+it types waiting on you. Its policy allows those tools after it has read a page:
 
 ```yaml
 policy:
+  allow_after_outside:
+    - browser/browser_click
+    - browser/browser_select_option
+    - browser/browser_press_key
   ask:
     browser/browser_fill_form: This fills in a form.
     browser/browser_type: This types into the page.
   budget: {usd: 3.00, per: turn, on_exhausted: ask}
 ```
+
+`allow_after_outside` allows a gated tool by name, as `allow` does, and keeps allowing it after the
+agent has read content from outside, where `allow` stops counting. It is this agent's: another
+agent given the same browser still asks before each click. The gated tools it does not name keep
+waiting on a person, and `ask` gives the ones that type questions of their own.
+
+A page is anyone's writing, and a click can buy something, so this is a choice about this agent's
+errands. With `--isolated` the browser holds none of your sessions, which leaves a page less to
+steer a click towards.
 
 ## What it shows
 
