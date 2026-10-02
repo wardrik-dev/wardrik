@@ -15,6 +15,10 @@ config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false
 config :wardrik_daemon, WardrikDaemon.SSH,
   entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
 
+# Wardrik is started by Wardrikd.Application, after the applications of the
+# store config.yaml names, rather than with its own.
+config :wardrik, start: :host
+
 # The org an agent is in where nothing names one; config.yaml's org replaces it.
 config :wardrik, Wardrik.Fleet, org: "default"
 

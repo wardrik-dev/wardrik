@@ -14,7 +14,7 @@ defmodule Wardrikd.MixProject do
     ]
   end
 
-  def application, do: [extra_applications: [:logger]]
+  def application, do: [extra_applications: [:logger], mod: {Wardrikd.Application, []}]
 
   defp deps do
     [

@@ -46,6 +46,7 @@ COPY release/config/config.exs release/config/prod.exs config/
 RUN mix deps.get --only prod && mix deps.compile
 
 COPY packages /src/packages
+COPY release/lib lib
 COPY release/rel rel
 COPY release/config/runtime.exs config/
 RUN mix release --overwrite
