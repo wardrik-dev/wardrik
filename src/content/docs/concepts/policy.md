@@ -76,18 +76,19 @@ calls ask a person by default: one runs without asking only where an `allow` rul
 `default: allow` covers the other tools, not gated ones, so a gated tool asks under a policy that
 names nothing, as it does under none.
 
-`config.yaml` gates an MCP server's tools with `gated`, by the names the server gives them:
+An MCP server's tools are gated unless the server marks them read-only, with MCP's `readOnlyHint`,
+as an MCP client asks before a tool that may change something. `gated` in `config.yaml` decides
+instead, by the names the server gives its tools:
 
 ```yaml
 mcp:
   github:
     url: https://api.githubcopilot.com/mcp/
-    gated: [create_*, issue_write]   # or true, for every tool
+    gated: [create_*, issue_write]   # or true, for every tool, or false, for none
 ```
 
-A [tool worker](/guides/tool-workers/)'s tool is gated unless the worker marks it read-only, with
-MCP's `readOnlyHint`. A tool written in Elixir can say it is gated too. The tools the daemon ships
-are not.
+A [tool worker](/guides/tool-workers/)'s tool is gated unless the worker marks it read-only too. A
+tool written in Elixir can say it is gated. The tools the daemon ships are not.
 
 ## Content from outside
 
@@ -98,17 +99,31 @@ Some tools bring in content from outside the deployment:
 - tool workers, unless `http` in `config.yaml` says `trusted_workers: true`;
 - a file a turn wrote after reading content from outside, when another turn reads it.
 
-Once a turn has read such content, a gated tool's calls wait on a person for the rest of the turn,
-however the rules allow them, since what the turn read may be what asked for the call. It counts
-from the next round of calls the model makes. The person is told why:
+Once a turn has read such content, a gated tool's calls wait on a person however the `allow` rules
+name them, since what the turn read may be what asked for the call. It counts from the next round
+of calls the model makes. The person is told why:
 
 > careful allows github__create_issue, but this run has read content from outside, which may be what
 > asked for it.
 
-An agent whose job is to act on what strangers send writes `trust_outside_content: true` in its
-file. Its gated calls then go ahead as its rules say, but what it writes after reading content from
-outside is [marked](/concepts/files-and-memory/#content-from-outside) all the same, so another agent
-that reads it is held. An agent defined over the HTTP API cannot say it.
+What the turn read stays in the agent's conversation, so the turns after it are held the same way,
+until `wardrik clear AGENT`, or `DELETE /v1/agents/{key}/conversation`, empties it.
+
+### Allowing after content from outside
+
+An agent may read content from outside, reach what is private, and change things: any two are
+safe, and all three need a person. So `allow_after_outside` allows a gated tool by name as `allow`
+does, and holds after the turn has read content from outside too. It is for a tool whose calls
+may follow what a stranger wrote, because the agent reaches nothing they could take, or the tool
+can do little harm:
+
+```yaml
+allow: [linear/*]
+allow_after_outside: [github/add_labels]
+```
+
+An ask or a deny still decides over it. A policy in `policies/` or an agent file may say it; a
+definition sent to the HTTP API may name such a policy, but not write the rule itself.
 
 ## Waiting on a person
 

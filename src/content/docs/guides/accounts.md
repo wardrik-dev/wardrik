@@ -42,6 +42,11 @@ Where none of them holds it and `oauth.providers` names a provider of the same n
 user is asked to connect an account, or its org where the agent has no user. The account is kept in
 the vault from then on, as theirs.
 
+A connected account acts as whoever connected it, so only their calls find it: an org's reaches
+the org's agents that have no user, and a user whose org connected one is asked to connect their
+own. A key put with `wardrik vault put` is not an account, and reaches the agents below its owner
+as the list says.
+
 So a deployment can let each user connect GitHub as themselves, give one org a shared key
 instead, and give every agent the same Linear key, all through `credential` alone.
 

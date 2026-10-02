@@ -63,6 +63,7 @@ prefix. A value longer than 64 KiB is cut short and marked `"truncated": true`.
 | `tool_call.started`, `tool_call.completed`, `tool_call.denied`, `tool_call.progress` | a tool call, what it returned or why it was refused, and how far it has got |
 | `subagent.started`, `subagent.completed`, `subagent.failed` | delegated work |
 | `conversation.compacted` | the agent summarised its older history |
+| `conversation.cleared` | the agent's conversation was emptied |
 | `schedule.triggered` | a schedule came round, and what came of it |
 | `agent.started` | the agent started on a node |
 

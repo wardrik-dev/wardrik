@@ -40,7 +40,6 @@ with no frontmatter is all prompt.
 | `timeout` | how many seconds a turn may take |
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
-| `trust_outside_content` | `true` lets its rules allow a gated tool's calls even after a turn has read content from outside; see below. A definition over HTTP cannot say it |
 | `schedule` | when it is asked something on a clock; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
 
@@ -126,12 +125,13 @@ approves more.
 
 Once a turn has read content from outside, from `web_search`,
 `deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
-tool worker, its rules stop counting for a gated tool's calls until the turn
-ends: each waits on a person, who sees what it would do.
-`trust_outside_content: true` is for an agent whose job is to act on what
-strangers send. Its gated calls go ahead as its rules say, but the files
-it writes after reading content from outside are marked all the same, so
-another agent reading them is held as if it had read that content itself.
+tool worker, its `allow` rules stop counting for a gated tool's calls, there
+and in every turn after it, until `wardrik clear` empties the agent's
+conversation: each waits on a person, who sees what it would do. An
+`allow_after_outside` rule still counts, for a tool whose calls may follow
+what a stranger wrote; see `WardrikPolicy`. A definition over HTTP cannot
+write one in place, though it may name a policy in `policies/` that has
+one.
 
 ## Schedule
 

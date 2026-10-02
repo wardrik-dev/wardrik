@@ -60,8 +60,13 @@ API.
 
 An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
 refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
-`wardrik reload` removes the agent, with its conversation and schedules, and so does changing the
-file's `name`. An agent the HTTP API defined is never touched by reading the files.
+`wardrik reload` stops the agent and clears its schedules, and so does changing the file's `name`.
+The agent keeps its conversation, so a file that declares it again brings it back as it was;
+`wardrik rm AGENT` removes it for good. An agent the HTTP API defined is never touched by reading
+the files.
+
+In a [cluster](/operate/cluster/) each node reads its own `agents/`, and an agent stops only once no
+node's files declare it.
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
 carries on as it was until the file reads again.
@@ -129,6 +134,11 @@ model can read. See [Durable runs](/concepts/durable-runs/#a-history-that-grows)
 `wardrik reload` keeps the conversation. What a file says now applies from the agent's next turn,
 and a turn already running finishes with what it started with.
 
+`wardrik clear AGENT` empties the conversation of an agent that is not running a turn or waiting on
+a person, keeping its files, schedules and config. It is how an agent that read content from outside
+is rid of it: until then, its gated tools ask a person on every turn. See
+[Policy and approvals](/concepts/policy/#content-from-outside).
+
 ## In a cluster
 
 An agent runs on one node of a cluster at a time, and every command, on any node, reaches it.
@@ -147,9 +157,10 @@ every node. See [Durable runs](/concepts/durable-runs/) and [Run a cluster](/ope
 
 `deep_research` hands a question to subagents: several researchers at once, each with a turn of its
 own, and one more to bring what they found together. A subagent has no conversation of its own and
-cannot wait on a person: a call that would ask one is refused. What a subagent does is in its
-caller's event stream, as `subagent.started`, `subagent.completed` and `subagent.failed`, with its
-own events beneath them.
+cannot wait on a person: a call that would ask one is refused. It has its caller's tools, as they
+are gated, and a subagent that reads content from outside marks the call that ran it, as reading it
+directly would. What a subagent does is in its caller's event stream, as `subagent.started`,
+`subagent.completed` and `subagent.failed`, with its own events beneath them.
 
 An application running Wardrik as a library delegates with `Wardrik.Subagent.run/3`, from a tool or
 a workflow.

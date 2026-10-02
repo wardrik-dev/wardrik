@@ -109,6 +109,11 @@ The vault's key has to be the same on every node too. Copy the first machine's
 `~/.local/share/wardrik/vault_key` to each, or give every node the same `WARDRIK_VAULT_KEY`.
 `wardrik vault put` names any node it reaches that has no key.
 
+Each node reads the agent and policy files on its own machine. Keep them the same everywhere: an
+agent runs while any connected node's files declare it, and stops once none do, so a file left on
+one machine keeps its agent running. The HTTP API refuses to change an agent any node's files
+declare.
+
 The service reads `~/.config/wardrik/env`; export the same variables in your shell for `wardrik`
 commands to reach the node. Then install the service on each machine with `wardrik service install`.
 

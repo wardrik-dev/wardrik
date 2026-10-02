@@ -106,16 +106,19 @@ An interrupt with the reason `authorization` waits on a person to connect an acc
 `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`, and the call
 carries on by itself once they have. See [Connect accounts](/guides/accounts/).
 
-## Stop it, and remove it
+## Stop it, clear it, and remove it
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/triage/cancel
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/triage/conversation
 curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents/acme/triage
 ```
 
 `cancel` stops the running turn, drops the messages waiting behind it, and abandons one waiting on a
-person; the agent answers the next message as usual. `DELETE` stops the agent and removes its
-conversation and schedules.
+person; the agent answers the next message as usual. `DELETE .../conversation` empties the
+conversation, and with it the mark of [content from outside](/concepts/policy/#content-from-outside)
+it held, answering `409` while a turn runs or waits on a person. `DELETE` stops the agent and
+removes its conversation and schedules.
 
 Schedules are put and removed at `/schedules/{name}`; see
 [Run an agent on a schedule](/guides/schedules/#over-http).
