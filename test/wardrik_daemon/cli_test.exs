@@ -502,6 +502,7 @@ defmodule WardrikDaemon.CLITest do
     File.mkdir_p!(Path.join(dir, "agents"))
     File.write!(Path.join(dir, "agents/filed.md"), "---\norg: #{org}\n---\nYou help.\n")
     on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(org <> "/") end)
     start_supervised!({WardrikDaemon.Agents, dir: dir})
 
     {:ok, _pid} = Wardrik.Fleet.spawn("#{org}/running")
