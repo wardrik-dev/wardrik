@@ -156,8 +156,8 @@ A tool worker is an MCP server that dials in: it opens a WebSocket to
 it answers each call from its own process. See `WardrikHTTP.Worker` for the
 messages. An agent whose tools include `workers/*` is offered the tools of
 every worker whose token reaches its key, as `workers__<name>`, and a call
-carries its idempotency key as `_meta.idempotencyKey`. See
-`WardrikHTTP.Workers`.
+carries the agent it is for as `_meta.agent`, its run as `_meta.run`, and
+its idempotency key as `_meta.idempotencyKey`. See `WardrikHTTP.Workers`.
 
 ## Every response
 
