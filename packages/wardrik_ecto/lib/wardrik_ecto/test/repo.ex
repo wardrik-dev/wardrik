@@ -1,10 +1,10 @@
-defmodule Wardrik.Test.Repo do
+defmodule WardrikEcto.Test.Repo do
   @moduledoc "The Postgres repo the suite's `:postgres` tests keep `WardrikEcto.Store` in."
 
-  use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
+  use Ecto.Repo, otp_app: :wardrik_ecto, adapter: Ecto.Adapters.Postgres
 end
 
-defmodule Wardrik.Test.Migration do
+defmodule WardrikEcto.Test.Migration do
   @moduledoc "A host's migration, as `WardrikEcto.Migration` asks for one."
 
   use Ecto.Migration

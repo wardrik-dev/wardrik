@@ -1,8 +1,8 @@
 defmodule WardrikEcto.ConnectionTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Test.Services
   alias WardrikEcto.Connection
+  alias WardrikEcto.Test.Services
 
   @tag :postgres
   test "answers the rows a query finds, over one connection" do

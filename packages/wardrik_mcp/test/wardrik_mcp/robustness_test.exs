@@ -1,5 +1,5 @@
 defmodule WardrikMCP.RobustnessTest do
-  use WardrikMCP.Case, async: false
+  use WardrikMCP.Test.Case, async: false
 
   alias Wardrik.Event
   alias Wardrik.LLM.Config

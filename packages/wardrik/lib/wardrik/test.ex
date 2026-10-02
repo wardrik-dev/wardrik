@@ -24,8 +24,8 @@ defmodule Wardrik.Test do
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
   starts an agent under a key of each test's own, `Wardrik.Test.LLMStub`
   answers turns with canned responses, `Wardrik.Test.Tools` has a gated
-  tool, one that reads from outside, and a hook that allows by name, and
-  `Wardrik.Test.Durable` checks a store adapter of your own.
+  tool, one that reads from outside, and a hook that decides calls by rules,
+  and `Wardrik.Test.Durable` checks a store adapter of your own.
   """
 
   alias Wardrik.Call

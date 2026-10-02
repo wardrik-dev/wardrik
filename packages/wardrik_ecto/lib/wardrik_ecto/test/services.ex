@@ -1,10 +1,10 @@
-defmodule Wardrik.Test.Services do
+defmodule WardrikEcto.Test.Services do
   @moduledoc """
   The database the `:postgres` tests reach, where the environment names one or
   `dev/services.sh` started it.
   """
 
-  alias Wardrik.Test.Repo
+  alias WardrikEcto.Test.Repo
 
   @doc "Where the suite's database is."
   @spec database_url() :: String.t()
@@ -55,7 +55,7 @@ defmodule Wardrik.Test.Services do
   @spec start_postgres!() :: true
   def start_postgres! do
     config = Ecto.Repo.Supervisor.parse_url(database_url()) ++ [pool_size: 10, log: false]
-    Application.put_env(:wardrik, Repo, config)
+    Application.put_env(:wardrik_ecto, Repo, config)
 
     case Ecto.Adapters.Postgres.storage_up(config) do
       :ok -> :ok
@@ -63,7 +63,10 @@ defmodule Wardrik.Test.Services do
     end
 
     {:ok, _pid} = Repo.start_link()
-    _migrated = Ecto.Migrator.run(Repo, [{1, Wardrik.Test.Migration}], :up, all: true, log: false)
+
+    _migrated =
+      Ecto.Migrator.run(Repo, [{1, WardrikEcto.Test.Migration}], :up, all: true, log: false)
+
     true
   end
 end

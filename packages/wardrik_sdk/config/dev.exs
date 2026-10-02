@@ -11,8 +11,7 @@ config :wardrik_mcp, WardrikMCP,
     stub: [
       transport:
         {:stdio,
-         command: "elixir",
-         args: [Path.expand("../../wardrik_mcp/test/support/mcp/stub_server.exs", __DIR__)]}
+         command: "elixir", args: [Path.expand("../../wardrik_mcp/priv/stub_server.exs", __DIR__)]}
     ],
     fs: [
       transport:

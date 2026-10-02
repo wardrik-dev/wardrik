@@ -1,7 +1,7 @@
 defmodule WardrikMCP.StderrTest do
   use ExUnit.Case, async: false
 
-  import WardrikMCP.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
+  import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
 
   alias Wardrik.Test.Calls
   alias WardrikMCP.Server

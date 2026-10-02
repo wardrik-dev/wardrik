@@ -1,1 +1,1 @@
-Wardrik.Test.start(wait: [WardrikPolicy.Meter.supervisor()])
+Wardrik.Test.start()

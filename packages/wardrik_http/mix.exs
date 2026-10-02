@@ -36,7 +36,6 @@ defmodule WardrikHTTP.MixProject do
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.6.0"},
-      sibling(:wardrik_policy, only: :test),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

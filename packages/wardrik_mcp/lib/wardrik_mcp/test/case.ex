@@ -1,9 +1,9 @@
-defmodule WardrikMCP.Case do
+defmodule WardrikMCP.Test.Case do
   @moduledoc """
-  A `WardrikMCP.Supervisor` running against `test/support/mcp/stub_server.exs`, a
-  real MCP server over stdio.
+  A `WardrikMCP.Supervisor` running against `priv/stub_server.exs`, a real MCP
+  server over stdio.
 
-      use WardrikMCP.Case
+      use WardrikMCP.Test.Case
 
       test "the stub offers its tools", %{ref: ref} do
         assert "stub__echo" in Enum.map(WardrikMCP.tools(ref), & &1.name)
@@ -15,11 +15,9 @@ defmodule WardrikMCP.Case do
 
   use ExUnit.CaseTemplate
 
-  @stub Path.expand("mcp/stub_server.exs", __DIR__)
-
   using do
     quote do
-      import WardrikMCP.Case
+      import WardrikMCP.Test.Case
     end
   end
 
@@ -42,7 +40,7 @@ defmodule WardrikMCP.Case do
   def stub_options(opts \\ []) do
     {transport_opts, opts} = Keyword.pop(opts, :transport_opts, [])
 
-    Keyword.put(opts, :transport, {:stdio, [command: elixir(), args: [@stub]] ++ transport_opts})
+    Keyword.put(opts, :transport, {:stdio, [command: elixir(), args: [stub()]] ++ transport_opts})
   end
 
   @doc "Waits until a server has reported its tools, or fails the test."
@@ -55,4 +53,6 @@ defmodule WardrikMCP.Case do
   end
 
   defp elixir, do: System.find_executable("elixir") || "elixir"
+
+  defp stub, do: Application.app_dir(:wardrik_mcp, "priv/stub_server.exs")
 end

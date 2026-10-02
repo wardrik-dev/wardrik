@@ -32,7 +32,7 @@ defmodule WardrikWorkspace.TurnTest do
       LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
     ])
 
-    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
     scope =
       [tools: [{WardrikWorkspace, spec}, Wardrik.Test.Tools.Deploy]]
@@ -68,11 +68,7 @@ defmodule WardrikWorkspace.TurnTest do
     ])
 
     rules = [
-      Wardrik.Hook.new(
-        "rules",
-        Wardrik.Test.Tools.Allowing,
-        {["write_file"], after_outside: true}
-      )
+      Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow_after_outside: ["write_file"])
     ]
 
     scope =
@@ -102,7 +98,7 @@ defmodule WardrikWorkspace.TurnTest do
       {:ok, LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})}
     end)
 
-    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Allowing, ["deploy"])]
+    rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
     scope =
       [

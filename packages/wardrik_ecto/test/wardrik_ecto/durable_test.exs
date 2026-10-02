@@ -4,7 +4,7 @@ defmodule WardrikEcto.DurableTest do
   @moduletag :postgres
 
   test "holds a DurableServer in Postgres through a restart" do
-    :ignore = WardrikEcto.Store.start_link(repo: Wardrik.Test.Repo)
+    :ignore = WardrikEcto.Store.start_link(repo: WardrikEcto.Test.Repo)
     Wardrik.Test.Durable.survives_a_restart(WardrikEcto.Store, :durable_over_postgres)
   end
 end
