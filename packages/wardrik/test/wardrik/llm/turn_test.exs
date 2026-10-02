@@ -643,10 +643,10 @@ defmodule Wardrik.LLM.TurnTest do
     @impl true
     def init(_opts), do: nil
     @impl true
-    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
-      do: Call.ask(call, "This ships to production.")
+    def call(%Call{target: %Call.Tool{name: "deploy"}}, _value),
+      do: {:ask, "This ships to production."}
 
-    def call(call, _value), do: call
+    def call(_call, _value), do: :pass
   end
 
   defmodule DenyingHook do
@@ -654,10 +654,8 @@ defmodule Wardrik.LLM.TurnTest do
     @impl true
     def init(_opts), do: nil
     @impl true
-    def call(%Call{target: %Call.Tool{name: "deploy"}} = call, _value),
-      do: Call.deny(call, "Frozen.")
-
-    def call(call, _value), do: call
+    def call(%Call{target: %Call.Tool{name: "deploy"}}, _value), do: {:deny, "Frozen."}
+    def call(_call, _value), do: :pass
   end
 
   # Asks about every model call, and remembers nothing.
@@ -666,8 +664,8 @@ defmodule Wardrik.LLM.TurnTest do
     @impl true
     def init(_opts), do: nil
     @impl true
-    def call(%Call{target: %Call.Model{}} = call, _value), do: Call.ask(call, "Use the model?")
-    def call(call, _value), do: call
+    def call(%Call{target: %Call.Model{}}, _value), do: {:ask, "Use the model?"}
+    def call(_call, _value), do: :pass
   end
 
   defmodule Routing do
@@ -710,14 +708,12 @@ defmodule Wardrik.LLM.TurnTest do
     def init(gate), do: gate
 
     @impl true
-    def call(%Call{target: %Call.Model{}} = call, gate) do
-      if Agent.get(gate, & &1),
-        do: call,
-        else: Call.ask(call, "Spent $5.00 of $5.00 today.", :day)
+    def call(%Call{target: %Call.Model{}}, gate) do
+      if Agent.get(gate, & &1), do: :pass, else: {:ask, "Spent $5.00 of $5.00 today.", :day}
     end
 
     @impl true
-    def approved(call, gate), do: Agent.update(gate, fn _ -> Call.memo(call) end)
+    def approved(_call, memo, gate), do: Agent.update(gate, fn _ -> memo end)
   end
 
   defp deploy_tool do

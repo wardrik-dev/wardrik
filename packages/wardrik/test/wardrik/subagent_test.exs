@@ -142,10 +142,8 @@ defmodule Wardrik.SubagentTest do
     @impl true
     def init(_opts), do: nil
     @impl true
-    def call(%Wardrik.Call{target: %Wardrik.Call.Tool{}} = call, _value),
-      do: Wardrik.Call.ask(call, "approval needed")
-
-    def call(call, _value), do: call
+    def call(%Wardrik.Call{target: %Wardrik.Call.Tool{}}, _value), do: {:ask, "approval needed"}
+    def call(_call, _value), do: :pass
   end
 
   test "a parked delegation reports an error that observers can fold", %{scope: scope} do

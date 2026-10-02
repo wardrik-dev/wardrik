@@ -13,7 +13,7 @@ defmodule WardrikDaemon.AgentFileTest do
     def init(_opts), do: nil
 
     @impl true
-    def call(call, _value), do: call
+    def call(_call, _value), do: :pass
   end
 
   setup do

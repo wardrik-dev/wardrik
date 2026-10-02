@@ -4,10 +4,9 @@ defmodule Wardrik.Call do
   it is proposed until it has been answered.
 
   A call is a token, the way a `Plug.Conn` is. `Wardrik.Hook`s are handed it and
-  hand it back, and change it only through `deny/2`, `ask/3`, `allow/2` and
-  `assign/3`.
-  The runtime moves it through its states, and it is the same value whether
-  it is being decided, waiting on a person, or answered.
+  say what they make of it, and the runtime writes what they said on it with
+  `decided/3`. The runtime moves it through its states, and it is the same
+  value whether it is being decided, waiting on a person, or answered.
 
   A tool built with `Wardrik.Tool.new!/1` is handed the call too, and answers it
   with `answer/2` or parks it with `park/2`, and marks with `taint/1` a call
@@ -16,11 +15,11 @@ defmodule Wardrik.Call do
   What the call goes to is its `:target`, a `Wardrik.Call.Tool` or a
   `Wardrik.Call.Model`, and a hook matches on it:
 
-      def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}} = call, _value) do
-        if friday?(), do: Wardrik.Call.deny(call, "No deploys on a Friday."), else: call
+      def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}}, _value) do
+        if friday?(), do: {:deny, "No deploys on a Friday."}, else: :pass
       end
 
-      def call(call, _value), do: call
+      def call(_call, _value), do: :pass
 
   ## Fields
 
@@ -31,15 +30,13 @@ defmodule Wardrik.Call do
     * `:target` - the `Wardrik.Call.Tool` or `Wardrik.Call.Model` it goes to
     * `:scope` - the `Wardrik.Scope` it runs under, `nil` while it waits
 
-  What was said about it, written through the functions here:
+  What was said about it, written with `decided/3`:
 
     * `:denied` - the `Wardrik.Call.Denial` that refused it
     * `:asks` - the `Wardrik.Call.Ask`s it waits on, in the order they were asked
     * `:allowed` - the names of the hooks that allowed it by name
     * `:allowed_after_outside` - those of them that allowed it after content
       from outside too
-    * `:halted` - whether the hooks after the one that refused it are skipped
-    * `:assigns` - what hooks tell the hooks after them
 
   What became of it, set by the runtime:
 
@@ -69,11 +66,11 @@ defmodule Wardrik.Call do
   ## Gated tools
 
   A call to a gated tool (see `c:Wardrik.Tool.gated?/1`) goes ahead only where
-  a hook allowed it by name, with `allow/2`, and waits on its tool otherwise.
+  a hook allowed it by name, with `:allow`, and waits on its tool otherwise.
   While the run it belongs to has read content from outside (see
   `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, since what the
   run read may be what asked for it, unless a hook allowed it with
-  `after_outside: true`. A deny still refuses it and an ask still asks. A call
+  `{:allow, after_outside: true}`. A deny still refuses it and an ask still asks. A call
   to a tool that is not gated goes ahead as the hooks said, allowed by name or
   not.
   """
@@ -93,12 +90,10 @@ defmodule Wardrik.Call do
     :denied,
     :result,
     state: :unchecked,
-    halted: false,
     asks: [],
     allowed: [],
     allowed_after_outside: [],
     tainted: false,
-    assigns: %{},
     private: %{}
   ]
 
@@ -109,18 +104,14 @@ defmodule Wardrik.Call do
           target: Tool.t() | Model.t(),
           scope: Scope.t() | nil,
           state: state(),
-          halted: boolean(),
           denied: Denial.t() | nil,
           asks: [Ask.t()],
           allowed: [String.t()],
           allowed_after_outside: [String.t()],
           tainted: boolean(),
           result: term(),
-          assigns: map(),
           private: map()
         }
-
-  @hook :wardrik_hook
 
   # -- building ----------------------------------------------------------------
 
@@ -139,66 +130,42 @@ defmodule Wardrik.Call do
     }
   end
 
-  # -- for hooks ---------------------------------------------------------------
-
-  @doc "Refuses the call with `reason`, and skips the hooks after this one."
-  @spec deny(t(), String.t()) :: t()
-  def deny(%__MODULE__{} = call, reason) when is_binary(reason),
-    do: %{call | denied: %Denial{by: hook(call), reason: reason}, halted: true}
+  # -- what the hooks said -----------------------------------------------------
 
   @doc """
-  Asks a person about the call before it goes ahead, with `prompt`. The memo
-  comes back to this hook's `c:Wardrik.Hook.approved/2` through `memo/1`.
+  The call with what the hook named `by` said of it written on it; see
+  `t:Wardrik.Hook.decision/0`. An ask is kept after those before it, and an
+  allow in the hook's own name.
   """
-  @spec ask(t(), String.t(), term()) :: t()
-  def ask(%__MODULE__{} = call, prompt, memo \\ nil) when is_binary(prompt),
-    do: %{call | asks: call.asks ++ [%Ask{by: hook(call), prompt: prompt, memo: memo}]}
+  @spec decided(t(), String.t(), Wardrik.Hook.decision()) :: t()
+  def decided(%__MODULE__{} = call, _by, :pass), do: call
 
-  @doc """
-  Allows the call by name: says that a rule of this hook names it, where a
-  hook that lets it go ahead only by not objecting leaves it as it was. A
-  gated tool's call goes ahead only where a hook has said this.
+  def decided(%__MODULE__{} = call, by, :allow),
+    do: %{call | allowed: Enum.uniq(call.allowed ++ [by])}
 
-  `after_outside: true` says the rule holds once the run has read content
-  from outside too, which a gated tool's call then waits for.
-  """
-  @spec allow(t(), after_outside: boolean()) :: t()
-  def allow(%__MODULE__{} = call, opts \\ []) do
-    call = %{call | allowed: Enum.uniq(call.allowed ++ [hook(call)])}
-
-    if Keyword.get(opts, :after_outside, false),
-      do: %{call | allowed_after_outside: Enum.uniq(call.allowed_after_outside ++ [hook(call)])},
-      else: call
+  def decided(%__MODULE__{} = call, by, {:allow, after_outside: true}) do
+    call = decided(call, by, :allow)
+    %{call | allowed_after_outside: Enum.uniq(call.allowed_after_outside ++ [by])}
   end
 
-  @doc "Tells the hooks after this one `value` under `key`."
-  @spec assign(t(), atom(), term()) :: t()
-  def assign(%__MODULE__{} = call, key, value) when is_atom(key),
-    do: %{call | assigns: Map.put(call.assigns, key, value)}
+  def decided(%__MODULE__{} = call, by, {:allow, after_outside: false}),
+    do: decided(call, by, :allow)
+
+  def decided(%__MODULE__{} = call, by, {:ask, prompt}),
+    do: decided(call, by, {:ask, prompt, nil})
+
+  def decided(%__MODULE__{} = call, by, {:ask, prompt, memo}) when is_binary(prompt),
+    do: %{call | asks: call.asks ++ [%Ask{by: by, prompt: prompt, memo: memo}]}
+
+  def decided(%__MODULE__{} = call, by, {:deny, reason}) when is_binary(reason),
+    do: %{call | denied: %Denial{by: by, reason: reason}}
+
+  # -- for the runtime ---------------------------------------------------------
 
   @doc "Keeps `value` under `key` for Wardrik or a library built on it."
   @spec put_private(t(), atom(), term()) :: t()
   def put_private(%__MODULE__{} = call, key, value) when is_atom(key),
     do: %{call | private: Map.put(call.private, key, value)}
-
-  @doc "The memo the hook being asked left when it asked about the call."
-  @spec memo(t()) :: term()
-  def memo(%__MODULE__{} = call) do
-    by = hook(call)
-
-    case Enum.find(call.asks, &(&1.by == by)) do
-      %Ask{memo: memo} -> memo
-      nil -> nil
-    end
-  end
-
-  defp hook(call), do: Map.get(call.private, @hook)
-
-  # -- for the runtime ---------------------------------------------------------
-
-  @doc "The call as the hook named `name` is handed it, or as no hook is, for `nil`."
-  @spec put_hook(t(), String.t() | nil) :: t()
-  def put_hook(%__MODULE__{} = call, name), do: put_private(call, @hook, name)
 
   @doc """
   Sets the state the hooks' answers come to: denied, waiting, or allowed. A
@@ -207,8 +174,6 @@ defmodule Wardrik.Call do
   """
   @spec checked(t()) :: t()
   def checked(%__MODULE__{} = call) do
-    call = put_hook(call, nil)
-
     cond do
       call.denied -> %{call | state: :denied}
       call.asks != [] -> %{call | state: :waiting}
@@ -303,9 +268,7 @@ defmodule Wardrik.Call do
         denied: nil,
         asks: [],
         allowed: [],
-        allowed_after_outside: [],
-        halted: false,
-        assigns: %{}
+        allowed_after_outside: []
     }
 
   @doc "A tool call answered with `result`, `{:ok, output}` or `{:error, reason}`."

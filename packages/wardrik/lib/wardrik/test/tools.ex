@@ -51,7 +51,7 @@ defmodule Wardrik.Test.Tools.Rules do
   A hook that decides a call by its tool's name, the way a policy's rules do.
   `deny:`, `ask:`, `allow_after_outside:` and `allow:` each name tools, or
   every tool as `:all`, and the first of them that names the call decides
-  it; a call none names is left as it was.
+  it; a call none names is passed.
 
       Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, ask: ["deploy"], allow: :all)
   """
@@ -64,17 +64,17 @@ defmodule Wardrik.Test.Tools.Rules do
   def init(rules), do: Map.new(rules)
 
   @impl true
-  def call(%Call{target: %Call.Tool{name: name}} = call, rules) do
+  def call(%Call{target: %Call.Tool{name: name}}, rules) do
     cond do
-      names?(rules[:deny], name) -> Call.deny(call, "#{name} is refused here.")
-      names?(rules[:ask], name) -> Call.ask(call, "#{name} needs a person.")
-      names?(rules[:allow_after_outside], name) -> Call.allow(call, after_outside: true)
-      names?(rules[:allow], name) -> Call.allow(call)
-      true -> call
+      names?(rules[:deny], name) -> {:deny, "#{name} is refused here."}
+      names?(rules[:ask], name) -> {:ask, "#{name} needs a person."}
+      names?(rules[:allow_after_outside], name) -> {:allow, after_outside: true}
+      names?(rules[:allow], name) -> :allow
+      true -> :pass
     end
   end
 
-  def call(call, _rules), do: call
+  def call(_call, _rules), do: :pass
 
   defp names?(:all, _name), do: true
   defp names?(names, name) when is_list(names), do: name in names

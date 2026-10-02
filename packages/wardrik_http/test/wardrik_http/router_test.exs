@@ -619,11 +619,7 @@ defmodule WardrikHTTP.RouterTest do
       Keyword.fetch!(state.scope_opts, :hooks)
     end
 
-    defp checked(hooks, tool) do
-      %{id: "call_1", name: tool, arguments: %{}}
-      |> Wardrik.Call.tool(Wardrik.Scope.root(Config.new(), :assistant, hooks: hooks))
-      |> Wardrik.Hook.check()
-    end
+    defp checked(hooks, tool), do: Wardrik.Test.check(Wardrik.Test.scope(hooks: hooks), tool)
 
     test "holds every agent the token defines, ahead of the definition's own", %{api: api} do
       careful =

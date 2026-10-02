@@ -186,23 +186,23 @@ spec = Wardrik.Agent.Spec.new(name: "assistant", org: current_org, config: confi
 
 ### Hooks
 
-A hook is a module with `init/1` and `call/2`, the way a plug is, and a
-`Wardrik.Call` is what it is handed:
+A hook is a module with `init/1` and `call/2`, the way a plug is. It is
+handed a `Wardrik.Call` and says what it makes of it: `:pass`, `:allow`,
+`{:ask, prompt}` or `{:deny, reason}`.
 
 ```elixir
 defmodule MyApp.NoFridayDeploys do
   @behaviour Wardrik.Hook
-  import Wardrik.Call
 
   @impl true
   def init(opts), do: Map.new(opts)
 
   @impl true
-  def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}} = call, _value) do
-    if friday?(), do: deny(call, "No deploys on a Friday."), else: call
+  def call(%Wardrik.Call{target: %Wardrik.Call.Tool{name: "deploy"}}, %{timezone: tz}) do
+    if friday?(tz), do: {:deny, "No deploys on a Friday."}, else: :pass
   end
 
-  def call(call, _value), do: call
+  def call(_call, _value), do: :pass
 end
 
 hooks = [Wardrik.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/London")]

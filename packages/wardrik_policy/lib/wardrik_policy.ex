@@ -42,8 +42,8 @@ defmodule WardrikPolicy do
 
   ## Allowing by name
 
-  A call an `allow` rule allows is allowed by name, with
-  `Wardrik.Call.allow/2`, which is what a gated tool's call waits for (see
+  A call an `allow` rule allows is allowed by name, with an
+  `:allow` decision, which is what a gated tool's call waits for (see
   `c:Wardrik.Tool.gated?/1`). One allowed only by `default: allow` is not, so
   a gated tool asks under a policy that names nothing, as it does under none.
 
@@ -165,17 +165,16 @@ defmodule WardrikPolicy do
   def init(%{} = fields), do: decode!(fields)
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Tool{name: name} = tool} = call, %__MODULE__{} = policy) do
+  def call(%Call{target: %Call.Tool{name: name} = tool}, %__MODULE__{} = policy) do
     case verdict(policy, name, Map.get(tool, :subjects, [])) do
-      {:allow, :after_outside} -> Call.allow(call, after_outside: true)
-      {:allow, :named} -> Call.allow(call)
-      :allow -> call
-      {:ask, prompt} -> Call.ask(call, prompt)
-      {:deny, reason} -> Call.deny(call, reason)
+      {:allow, :after_outside} -> {:allow, after_outside: true}
+      {:allow, :named} -> :allow
+      :allow -> :pass
+      asked_or_denied -> asked_or_denied
     end
   end
 
-  def call(%Call{} = call, %__MODULE__{}), do: call
+  def call(%Call{}, %__MODULE__{}), do: :pass
 
   defp answer(:allow, _message, _name), do: :allow
 

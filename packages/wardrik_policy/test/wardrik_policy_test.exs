@@ -103,14 +103,15 @@ defmodule WardrikPolicyTest do
   describe "allowing by name" do
     alias Wardrik.Test.Tools.Deploy
 
-    defp checked(policy, target \\ "prod") do
-      scope =
-        Scope.root(Config.new(tools: [Deploy]), "acme/triage", hooks: WardrikPolicy.hooks(policy))
+    defp checked(policy, target \\ "prod", tainted \\ false) do
+      hooks = WardrikPolicy.hooks(policy)
 
-      %{id: "c1", name: "deploy", arguments: %{"target" => target}}
-      |> Wardrik.Call.tool(scope)
-      |> then(&%{&1 | target: %{&1.target | gated: true, subjects: [target]}})
-      |> Wardrik.Hook.check()
+      scope = %{
+        Wardrik.Test.scope(tools: [Deploy], key: "acme/triage", hooks: hooks)
+        | tainted: tainted
+      }
+
+      Wardrik.Test.check(scope, "deploy", %{"target" => target})
     end
 
     test "is what an allow rule naming the call does, whole or by its subjects" do
@@ -131,16 +132,12 @@ defmodule WardrikPolicyTest do
     end
 
     test "after outside content holds a gated call for a person, unless the rule says it holds" do
-      tainted = fn policy -> %{checked(policy) | state: :unchecked} end
-
       for {policy, state} <- [
             {%{"allow" => ["deploy"]}, :waiting},
             {%{"allow_after_outside" => ["deploy"]}, :allowed},
             {%{"allow_after_outside" => ["deploy"], "ask" => ["deploy"]}, :waiting}
           ] do
-        call = tainted.(WardrikPolicy.decode!(policy))
-        call = %{call | scope: %{call.scope | tainted: true}} |> Wardrik.Call.reset()
-        assert %Wardrik.Call{state: ^state} = Wardrik.Hook.check(call)
+        assert %Wardrik.Call{state: ^state} = checked(WardrikPolicy.decode!(policy), "prod", true)
       end
     end
 
