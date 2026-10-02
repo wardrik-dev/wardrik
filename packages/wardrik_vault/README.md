@@ -2,14 +2,15 @@
 
 Credentials for [Wardrik](../wardrik) agents, sealed with a key you hold.
 
-A tool names the secret it needs rather than holding one, and asks for it for
-the call it is answering:
+A tool names the secret it needs rather than holding one, and is handed it
+resolved for the call it is answering:
 
 ```elixir
-case Wardrik.Credential.resolve(call, "github") do
-  {:ok, credential} -> Wardrik.Call.answer(call, fetch(Wardrik.Credential.reveal(credential)))
-  {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
-end
+@impl true
+def annotations(_name), do: %{credentials: ["github"]}
+
+def run(%{url: url}, %Wardrik.Tool.Context{credentials: %{"github" => credential}}),
+  do: fetch(url, Wardrik.Credential.reveal(credential))
 ```
 
 The vault is the resolver that answers. It seals each credential with

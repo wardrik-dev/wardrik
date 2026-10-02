@@ -93,7 +93,7 @@ defmodule WardrikOAuth.RenewTest do
       configure(providers: provider())
       keep(owner)
 
-      assert {:error, {:authorization_required, _url}} = resolve(owner)
+      assert {:error, {:authorization_required, _link, _owner}} = resolve(owner)
     end
 
     test "at a server that cannot be reached fails the call, starts nothing, and keeps the token",
@@ -167,7 +167,10 @@ defmodule WardrikOAuth.RenewTest do
     configure(providers: provider())
     :ok = WardrikVault.put("github", {nil, owner}, "not a token", kind: :grant)
 
-    log = capture_log(fn -> assert {:error, {:authorization_required, _url}} = resolve(owner) end)
+    log =
+      capture_log(fn ->
+        assert {:error, {:authorization_required, _link, _owner}} = resolve(owner)
+      end)
 
     assert log =~ "cannot be read (token_unreadable); asking again"
     assert {:ok, "not a token"} = WardrikVault.fetch("github", {nil, owner})
@@ -194,8 +197,8 @@ defmodule WardrikOAuth.RenewTest do
       stub_server(register: true)
       configure(providers: provider())
 
-      assert {:error, {:authorization_required, _url}} = resolve(owner)
-      assert {:error, {:authorization_required, _url}} = resolve(owner <> "-second")
+      assert {:error, {:authorization_required, _link, _owner}} = resolve(owner)
+      assert {:error, {:authorization_required, _link, _owner}} = resolve(owner <> "-second")
 
       assert [_registered] = posts("/register", [])
     end
@@ -204,13 +207,13 @@ defmodule WardrikOAuth.RenewTest do
       stub_server(register: true, tokens: [{401, %{"error" => "invalid_client"}}])
       configure(providers: provider())
 
-      assert {:error, {:authorization_required, _url}} = resolve(owner)
+      assert {:error, {:authorization_required, _link, _owner}} = resolve(owner)
       assert [_registered] = posts("/register", [])
 
       second = owner <> "-second"
       keep(second, %{client_id: "registered-id"})
 
-      assert {:error, {:authorization_required, _url}} = resolve(second)
+      assert {:error, {:authorization_required, _link, _owner}} = resolve(second)
       assert [%{"client_id" => "registered-id"}] = token_posts()
       assert [_registered_again] = posts("/register", [])
     end
@@ -225,7 +228,7 @@ defmodule WardrikOAuth.RenewTest do
 
     configure(providers: provider(flow: :device))
 
-    assert {:error, {:authorization_required, _url, "WDJB-MJHT"}} = resolve(owner)
+    assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} = resolve(owner)
     assert_receive {:device_done, %{owner: {nil, ^owner}, outcome: :authorized}}
 
     assert %Token{access_token: "at_first", token_endpoint: "https://auth.example.com/token"} =

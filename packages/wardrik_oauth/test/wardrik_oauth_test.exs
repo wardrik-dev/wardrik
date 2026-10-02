@@ -19,7 +19,7 @@ defmodule WardrikOAuthTest do
     stub_server(Keyword.merge([cimd: true], opts))
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
-    {:error, {:authorization_required, url}} =
+    {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
     url
@@ -40,7 +40,7 @@ defmodule WardrikOAuthTest do
       stub_server(cimd: true)
       configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
-      {:error, {:authorization_required, url}} =
+      {:error, {:authorization_required, %{url: url}, _owner}} =
         resolve_in(in_org("acme", owner), "github")
 
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
@@ -48,7 +48,7 @@ defmodule WardrikOAuthTest do
       assert {:ok, _credential} = resolve_in(in_org("acme", owner), "github")
       assert WardrikOAuth.connected?("github", {"acme", owner})
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                resolve_in(in_org("globex", owner), "github")
     end
 
@@ -58,14 +58,18 @@ defmodule WardrikOAuthTest do
       configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
       org = "org-#{owner}"
 
-      {:error, {:authorization_required, url}} = resolve_in(in_org(org, nil), "github")
+      {:error, {:authorization_required, %{url: url}, _owner}} =
+        resolve_in(in_org(org, nil), "github")
+
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       assert {:ok, credential} = resolve_in(in_org(org, nil), "github")
       assert credential.owner == org
       assert WardrikOAuth.connected?("github", org)
 
-      assert {:error, {:authorization_required, _url}} = resolve_in(in_org(org, owner), "github")
+      assert {:error, {:authorization_required, _link, _owner}} =
+               resolve_in(in_org(org, owner), "github")
+
       refute WardrikOAuth.connected?("github", {org, owner})
     end
 
@@ -79,7 +83,7 @@ defmodule WardrikOAuthTest do
           Task.async(fn -> resolve_in(scope(owner), "github") end)
         end)
         |> Task.await_many()
-        |> Enum.map(fn {:error, {:authorization_required, url}} -> url end)
+        |> Enum.map(fn {:error, {:authorization_required, %{url: url}, _owner}} -> url end)
         |> Enum.uniq()
 
       assert [_one] = urls
@@ -103,7 +107,7 @@ defmodule WardrikOAuthTest do
 
       configure(providers: [github: [resource: resource(), scopes: ~w(repo), flow: :device]])
 
-      {:error, {:authorization_required, _url, _code}} =
+      {:error, {:authorization_required, _link, _owner}} =
         Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
       {:ok, flight} = Pending.under_way("github", {nil, owner})
@@ -112,17 +116,15 @@ defmodule WardrikOAuthTest do
       assert {:ok, _still} = Pending.under_way("github", {nil, owner})
     end
 
-    test "on another node is joined there, and dropped with the rest", %{owner: owner} do
+    test "on another node is found there, and dropped with the rest", %{owner: owner} do
       url = connect(owner)
-      resume = {Wardrik.Agent, :decide, ["acme/@x/a", %{"call_9" => :approve}, []]}
 
       # This node stands in for the others: the flow is found by asking.
-      assert {:ok, flight} = Pending.under_way_on([node()], "github", {nil, owner}, resume)
+      assert {:ok, flight} = Pending.under_way_on([node()], "github", {nil, owner})
       assert flight.url == url
-      assert resume in flight.resumes
 
-      assert :error = Pending.under_way_on([node()], "github", {nil, "nobody"}, nil)
-      assert :error = Pending.under_way_on([:nowhere@nohost], "github", {nil, owner}, nil)
+      assert :error = Pending.under_way_on([node()], "github", {nil, "nobody"})
+      assert :error = Pending.under_way_on([:nowhere@nohost], "github", {nil, owner})
 
       :ok = Pending.drop_on([node()], "github", {nil, owner})
       assert :error = Pending.under_way("github", {nil, owner})
@@ -157,7 +159,7 @@ defmodule WardrikOAuthTest do
       ]
     )
 
-    {:error, {:authorization_required, url}} =
+    {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
     assert %{"access_type" => "offline", "prompt" => "consent"} = params_of(url)
@@ -185,7 +187,7 @@ defmodule WardrikOAuthTest do
       stub_server(cimd: true, resource_scopes: ["read", "write"])
       configure(providers: [github: [resource: resource()]])
 
-      {:error, {:authorization_required, url}} =
+      {:error, {:authorization_required, %{url: url}, _owner}} =
         Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
       assert params_of(url)["scope"] == "read write"
@@ -193,7 +195,7 @@ defmodule WardrikOAuthTest do
       other = owner <> "-other"
       stub_server(cimd: true)
 
-      {:error, {:authorization_required, url}} =
+      {:error, {:authorization_required, %{url: url}, _owner}} =
         Credential.resolve(Calls.tool("tool", %{}, scope(other)), "github")
 
       refute Map.has_key?(params_of(url), "scope")
@@ -211,7 +213,7 @@ defmodule WardrikOAuthTest do
     test "is offered the same link while the flow is still under way", %{owner: owner} do
       url = connect(owner)
 
-      assert {:error, {:authorization_required, ^url}} =
+      assert {:error, {:authorization_required, %{url: ^url}, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -221,7 +223,7 @@ defmodule WardrikOAuthTest do
     test "gets a link of their own, not somebody else's", %{owner: owner} do
       mine = connect(owner)
 
-      {:error, {:authorization_required, theirs}} =
+      {:error, {:authorization_required, %{url: theirs}, _owner}} =
         Credential.resolve(
           Calls.tool("tool", %{}, scope("someone-else")),
           "github"
@@ -334,7 +336,7 @@ defmodule WardrikOAuthTest do
     test "sends the user back where it cannot be renewed", %{owner: owner} do
       stub_server(cimd: true, token: %{"error" => "invalid_grant"})
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -358,7 +360,7 @@ defmodule WardrikOAuthTest do
         redirect: [open: false]
       )
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -373,7 +375,7 @@ defmodule WardrikOAuthTest do
         redirect: [port: 4599, opener: "true"]
       )
 
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, %{url: url}, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -402,7 +404,7 @@ defmodule WardrikOAuthTest do
         grants: WardrikOAuth
       )
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -416,7 +418,7 @@ defmodule WardrikOAuthTest do
       stub_server(cimd: true)
       :ok = WardrikVault.put("github", {nil, owner}, "not json", kind: :grant)
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
@@ -440,7 +442,7 @@ defmodule WardrikOAuthTest do
       configure(providers: [github: [resource: resource()]])
       scope = Config.new() |> Scope.root("acme/a", credentials: WardrikVault)
 
-      assert {:error, {:authorization_required, url}} =
+      assert {:error, {:authorization_required, %{url: url}, _owner}} =
                Credential.resolve(Calls.tool("tool", %{}, scope), "github")
 
       assert {:ok, %{owner: nil}} = WardrikOAuth.Pending.claim(state_of(url))
@@ -453,7 +455,7 @@ defmodule WardrikOAuthTest do
       assert :ok = WardrikOAuth.disconnect("github", {nil, owner})
       refute WardrikOAuth.connected?("github", {nil, owner})
 
-      assert {:error, {:authorization_required, _url}} =
+      assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"

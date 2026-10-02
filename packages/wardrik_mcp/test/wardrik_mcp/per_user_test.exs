@@ -23,11 +23,16 @@ defmodule WardrikMCP.PerUserTest do
     def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
       do: {:ok, Credential.secret("token-for-connected", owner: {org, "connected"})}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{user: "unconnected"}}),
-      do: {:error, {:authorization_required, "https://example.com/connect"}}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "unconnected"}}),
+      do:
+        {:error,
+         {:authorization_required, %{url: "https://example.com/connect"}, {org, "unconnected"}}}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{user: "elsewhere"}}),
-      do: {:error, {:authorization_required, "https://example.com/device", "WDJB-MJHT"}}
+    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "elsewhere"}}),
+      do:
+        {:error,
+         {:authorization_required, %{url: "https://example.com/device", code: "WDJB-MJHT"},
+          {org, "elsewhere"}}}
 
     def resolve("stub", %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
   end

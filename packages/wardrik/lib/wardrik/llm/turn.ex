@@ -227,6 +227,14 @@ defmodule Wardrik.LLM.Turn do
       else: ToolRunner.parked(calls)
   end
 
+  @doc """
+  The ids of the calls the turn waits on that were parked to resolve `ref`
+  for `owner`; see `Wardrik.Credential.available/3`.
+  """
+  @spec awaiting(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: [String.t()]
+  def awaiting(%__MODULE__{calls: calls}, ref, owner),
+    do: for(call <- calls, Call.awaits?(call, ref, owner), do: call.id)
+
   @doc "The ids of the tool calls the turn's response asked for."
   @spec call_ids(t()) :: [String.t()]
   def call_ids(%__MODULE__{response: nil}), do: []

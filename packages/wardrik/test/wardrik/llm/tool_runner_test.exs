@@ -634,15 +634,18 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         do: {:ok, Wardrik.Credential.secret("ghp_x", owner: "jon")}
 
       def resolve("github", %Call{scope: %Scope{user: "new"}}),
-        do: {:error, {:authorization_required, "https://example.com/authorize"}}
+        do: {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "new"}}
 
       def resolve("github", %Call{scope: %Scope{user: "device"}}),
-        do: {:error, {:authorization_required, "https://example.com/device", "WDJB"}}
+        do:
+          {:error,
+           {:authorization_required, %{url: "https://example.com/device", code: "WDJB"}, "device"}}
 
       def resolve("github", %Call{scope: %Scope{user: "later"}}) do
         if Process.get(:authorized),
           do: {:ok, Wardrik.Credential.secret("ghp_later", owner: "later")},
-          else: {:error, {:authorization_required, "https://example.com/authorize"}}
+          else:
+            {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "later"}}
       end
 
       def resolve("github", %Call{scope: %Scope{user: "stale"}}) do
@@ -703,6 +706,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       agent_id: agent_id
     } do
       assert %Call{state: :waiting, asks: [%Call.Ask{by: :tool, prompt: prompt, link: link}]} =
+               parked =
                ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "new"))
 
       assert prompt ==
@@ -710,6 +714,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       assert link == %{url: "https://example.com/authorize", code: nil}
       assert_receive %Event{payload: {:tool_parked, "call_1", "issues", ^prompt}}
+
+      assert Call.awaits?(parked, "github", "new")
+      refute Call.awaits?(parked, "github", "device")
+      refute Call.awaits?(parked, "linear", "new")
 
       assert %Call{asks: [%{link: %{url: "https://example.com/device", code: "WDJB"}}]} =
                ToolRunner.execute(call("call_2", "issues", %{}), needing(agent_id, "device"))

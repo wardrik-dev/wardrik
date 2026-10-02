@@ -99,13 +99,18 @@ defmodule Wardrik.Test.AgentRunners do
 
   @doc """
   Tells the test it was asked, then comes back waiting on a person to
-  authorize at `link`, as a tool connecting an account parks.
+  authorize at `link`, as a tool connecting an account parks; with
+  `credential`, `%{ref: ref, owner: owner}`, as the runtime parks a call
+  whose tool names a credential the person has yet to connect.
   """
-  def connecting(test_pid, call_id, link, %Turn{scope: scope}) do
+  def connecting(test_pid, call_id, link, %Turn{} = turn),
+    do: connecting(test_pid, call_id, link, nil, turn)
+
+  def connecting(test_pid, call_id, link, credential, %Turn{scope: scope}) do
     send(test_pid, :asked)
     %Turn{calls: [waiting]} = turn = parked_turn(call_id)
     prompt = "To connect github, open its authorization link."
-    parked = Wardrik.Call.park(%{waiting | asks: []}, prompt, link: link)
+    parked = Wardrik.Call.park(%{waiting | asks: []}, prompt, link: link, credential: credential)
     Turn.under(%{turn | calls: [parked]}, scope)
   end
 

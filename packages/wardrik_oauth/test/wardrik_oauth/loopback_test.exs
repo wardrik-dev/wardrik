@@ -31,7 +31,7 @@ defmodule WardrikOAuth.LoopbackTest do
 
     scope = Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
 
-    {:error, {:authorization_required, url}} =
+    {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope), "github")
 
     %{scope: scope, url: url, state: state_of(url)}
