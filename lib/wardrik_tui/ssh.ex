@@ -13,8 +13,14 @@ defmodule WardrikTUI.SSH do
   A session opens on the first agent the fleet runs, in the order of their
   keys, and the fleet panel moves it to any other. Where the fleet runs none,
   it starts an assistant for whoever connected, `<org>/@<username>/assistant`
-  in the deployment's org, with `:spawn_opts`; for a user name that cannot be
-  a key's segment, the org's own `<org>/assistant`.
+  in the deployment's org; for a user name that cannot be a key's segment,
+  the org's own `<org>/assistant`.
+
+  An agent a session starts, that assistant or one `/spawn` names, is spawned
+  with what `:options` answers for its key, ahead of `:spawn_opts`, where it
+  is given: an `{module, function, args}` called with the key first,
+  answering `{:ok, options}` or `{:error, message}`. A host gives its agents'
+  defaults this way, so every surface starts the same agent.
 
   Breeze starts the session's terminal itself, from the options
   `Termite.SSH.Session.terminal_opts/1` gives, so the keys the client types
@@ -31,12 +37,14 @@ defmodule WardrikTUI.SSH do
   def start_link(opts) do
     session = Keyword.fetch!(opts, :session)
     spawn_opts = Keyword.get(opts, :spawn_opts, [])
+    options = Keyword.get(opts, :options)
 
-    with {:ok, key} <- attach(session.username, spawn_opts) do
+    with {:ok, key} <- attach(session.username, spawn_opts, options) do
       start_opts = [
         agent: key,
         agent_id: key,
         spawn_opts: spawn_opts,
+        options: options,
         principal: %Wardrik.Principal{type: :ssh, id: to_string(session.username)},
         model: model(key),
         clipboard: WardrikTUI.Clipboard.osc52(&write(session, &1)),
@@ -60,10 +68,15 @@ defmodule WardrikTUI.SSH do
   defp write(session, string),
     do: Termite.SSH.Adapter.write(%Termite.SSH.Adapter{channel_pid: session.channel_pid}, string)
 
-  defp attach(username, spawn_opts) do
+  defp attach(username, spawn_opts, options) do
     case choose(Fleet.list(), username) do
-      {:attach, key} -> {:ok, key}
-      {:start, key} -> with {:ok, _pid} <- Fleet.spawn(key, spawn_opts), do: {:ok, key}
+      {:attach, key} ->
+        {:ok, key}
+
+      {:start, key} ->
+        with {:ok, given} <- WardrikTUI.App.options(options, key),
+             {:ok, _pid} <- Fleet.spawn(key, given ++ spawn_opts),
+             do: {:ok, key}
     end
   end
 

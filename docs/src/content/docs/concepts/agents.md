@@ -53,7 +53,8 @@ An agent is declared by a file in `agents/` under the config directory, or defin
 API.
 
 - **A file** is read when the daemon starts, and again with `wardrik reload`, which gives each
-  running agent what its file says now. See [Agent files](/reference/agent-files/).
+  running agent what its file says now. `wardrik agent spawn NAME` writes one from `config.yaml`'s
+  `defaults` and starts its agent. See [Agent files](/reference/agent-files/).
 - **A definition** is sent with `PUT /v1/agents/{key}`, by a token that can
   `define`, and takes effect at once. It says less than a file can: no schedules, notices, shared
   trees or `context`. See [Use the HTTP API](/guides/http-api/).
@@ -62,11 +63,15 @@ An agent belongs to whichever made it. A file's agent is changed through its fil
 refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
 `wardrik reload` stops the agent and clears its schedules, and so does changing the file's `name`.
 The agent keeps its conversation, so a file that declares it again brings it back as it was;
-`wardrik rm AGENT` removes it for good. An agent the HTTP API defined is never touched by reading
-the files.
+`wardrik agent rm KEY` removes it for good. An agent the HTTP API defined is never touched by
+reading the files, and `wardrik agent rm KEY` removes it too.
 
 In a [cluster](/operate/cluster/) each node reads its own `agents/`, and an agent stops only once no
 node's files declare it.
+
+`wardrik agent cancel` ends the turn an agent is taking, `agent stop` stops it and keeps its
+conversation for `agent spawn`, and `agent move` starts it again on another node, as it was. See
+[the CLI](/reference/cli/).
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
 carries on as it was until the file reads again.
@@ -94,16 +99,16 @@ A tool call may wait on a person, which parks the turn until it is decided. See
 
 ### Stopping a turn
 
-`wardrik cancel KEY`, `POST /v1/agents/{key}/cancel`, or `/stop` in the
+`wardrik agent cancel KEY`, `POST /v1/agents/{key}/cancel`, or `/stop` in the
 [terminal client](/guides/tui/), stops the running turn, drops the messages waiting behind it, and
 abandons a parked one. A turn that stops within two seconds keeps what it said; one that does not is
 ended, and adds nothing. Stopping a turn does not stop the agent, which answers the next message as
 usual, and a stopped turn stays stopped on whichever node holds the agent next.
 
 ```sh
-wardrik cancel triage       # acme/triage
-wardrik cancel acme/@jon/   # every agent of jon's
-wardrik cancel --all        # every agent there is
+wardrik agent cancel triage       # acme/triage
+wardrik agent cancel acme/@jon/   # every agent of jon's
+wardrik agent cancel --all        # every agent there is
 ```
 
 `wardrik stop` is the daemon's, and stops every agent with it.

@@ -7,16 +7,21 @@ defmodule WardrikDaemon.CLI.Completion do
   words so far after the command's name, the one being completed last, and
   offers what `candidates/3` answers: command names, a command's options,
   the keys of the agents running for a `KEY`, the calls an agent waits on for
-  a `CALL`, and a query's words for `ls`. Where no daemon is running,
-  `bin/wardrik` answers on a VM of its own, which knows no agents.
+  a `CALL`, the nodes running a daemon for a `NODE`, and a query's words for
+  `ls`. Where no daemon is running, `bin/wardrik` answers on a VM of its own,
+  which knows no agents.
 
   The scripts complete `rik` as well as `wardrik`, and ask whichever was typed.
   """
 
   alias WardrikDaemon.CLI.Command
 
-  @typedoc "What only a running daemon knows: the agents' keys, and the calls an agent waits on."
-  @type known() :: %{keys: (-> [String.t()]), calls: (String.t() -> [String.t()])}
+  @typedoc "What only a running daemon knows: the agents' keys, the calls an agent waits on, and its nodes."
+  @type known() :: %{
+          keys: (-> [String.t()]),
+          calls: (String.t() -> [String.t()]),
+          nodes: (-> [String.t()])
+        }
 
   @shells ~w(bash zsh fish)
   @query ~w(status:idle status:running status:parked attention name: org: user: node:)
@@ -104,11 +109,12 @@ defmodule WardrikDaemon.CLI.Completion do
     do: Enum.any?(switches, fn {switch, type} -> type == :string and dashed(switch) == option end)
 
   # The name its usage gives the word at `index`, the last again for a
-  # command that takes any number.
+  # command that takes any number, and none past the most it takes.
   defp placeholder(%Command{arguments: arguments, count: {_fewest, most}}, index) do
     names = ~r/[A-Z]+/ |> Regex.scan(arguments) |> List.flatten()
 
     cond do
+      most != :any and index >= most -> nil
       index < length(names) -> Enum.at(names, index)
       most == :any -> List.last(names)
       true -> nil
@@ -120,6 +126,7 @@ defmodule WardrikDaemon.CLI.Completion do
 
   defp values("QUERY", _command, _positional, known), do: @query ++ known.keys.()
   defp values("SHELL", _command, _positional, _known), do: @shells
+  defp values("NODE", _command, _positional, known), do: known.nodes.()
 
   defp values("CALL", command, positional, known) do
     case Enum.at(positional, key_index(command)) do

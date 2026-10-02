@@ -28,9 +28,9 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Decisions
   alias WardrikDaemon.CLI.Follow
   alias WardrikDaemon.CLI.Init
+  alias WardrikDaemon.CLI.Lifecycle
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.CLI.Tokens
-  alias WardrikDaemon.CLI.Turns
   alias WardrikDaemon.CLI.Vault
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
@@ -110,8 +110,8 @@ defmodule WardrikDaemon.CLI do
       }
     ] ++
       Agents.commands() ++
-      Decisions.commands() ++
-      Turns.commands() ++ Tokens.commands() ++ Vault.commands() ++ script_commands()
+      Lifecycle.commands() ++
+      Decisions.commands() ++ Tokens.commands() ++ Vault.commands() ++ script_commands()
   end
 
   # What bin/wardrik runs itself, listed for their help.
@@ -124,7 +124,8 @@ defmodule WardrikDaemon.CLI do
       %Command{
         name: "attach",
         arguments: "[HOST]",
-        summary: "the TUI, over SSH to HOST, localhost by default"
+        summary: "the TUI, over SSH to HOST, localhost by default",
+        count: {0, 1}
       },
       %Command{name: "remote", summary: "an IEx shell on the daemon"},
       %Command{name: "logs", summary: "follow the daemon's log"},
@@ -135,6 +136,7 @@ defmodule WardrikDaemon.CLI do
         name: "completion",
         arguments: "SHELL",
         summary: "completion for bash, zsh or fish, to install",
+        count: {1, 1},
         details: [
           "It completes commands, options, and the keys and calls of the agents running.",
           "  wardrik completion bash > ~/.local/share/bash-completion/completions/wardrik",
@@ -199,16 +201,33 @@ defmodule WardrikDaemon.CLI do
   Runs the command `args` name live, as `bin/wardrik` asks over
   `bin/wardrikd rpc`. That evaluates it on this node under the group leader
   of the caller's own VM, so each line reaches the caller's terminal as it is
-  written, and what a person types there can be read.
+  written, and what a person types there can be read. What it logs goes to
+  this node's log, as any other command's does.
   """
   @spec live([String.t()]) :: :ok
   def live(args) do
+    # Logged as this node's own: logger takes an event to the node of the
+    # group leader, the caller's, whose terminal would print it.
+    :ok = :logger.update_process_metadata(%{gl: Process.whereis(:user)})
     {terminal, args} = Terminal.read(args)
     dispatch({%{terminal | live?: true}, args})
   end
 
   # What a shell completing a word asks, which nothing else may answer.
   defp dispatch({_terminal, ["__complete" | words]}), do: complete(words, running())
+
+  # Where the file wardrik agent edit opens is, which bin/wardrik asks first.
+  defp dispatch({terminal, ["__agent_file" | args]}) do
+    edit = Enum.find(commands(), &(&1.name == "agent edit"))
+
+    with {:ok, words, _opts} <- Command.parse(edit, args),
+         {:ok, [key]} <- named(edit, words),
+         {:ok, path} <- Lifecycle.file(key) do
+      IO.puts(path)
+    else
+      {:error, message} -> failed(terminal, "failed", message, false)
+    end
+  end
 
   defp dispatch({terminal, args}) do
     case Cluster.waiting() do
@@ -231,13 +250,25 @@ defmodule WardrikDaemon.CLI do
   end
 
   # A KEY or PREFIX, first among a command's arguments, may leave out the
-  # deployment's org, as Wardrik.Fleet.expand/1 reads it.
+  # deployment's org, as Wardrik.Fleet.expand/1 reads it. A KEY|PREFIX/ is
+  # one or the other, and never every agent at once.
   defp named(%Command{arguments: arguments}, [word | rest]) do
     expanded =
       cond do
-        String.starts_with?(arguments, ["KEY", "[KEY"]) -> Fleet.expand(word)
-        String.starts_with?(arguments, "[PREFIX") -> Fleet.expand_prefix(word)
-        true -> {:ok, word}
+        String.starts_with?(arguments, "KEY|PREFIX/") and word == "" ->
+          {:error, "Name an agent's key, or a prefix such as acme/."}
+
+        String.starts_with?(arguments, "KEY|PREFIX/") ->
+          Fleet.expand_prefix(word)
+
+        String.starts_with?(arguments, ["KEY", "[KEY"]) ->
+          Fleet.expand(word)
+
+        String.starts_with?(arguments, "[PREFIX") ->
+          Fleet.expand_prefix(word)
+
+        true ->
+          {:ok, word}
       end
 
     with {:ok, word} <- expanded, do: {:ok, [word | rest]}
@@ -299,7 +330,7 @@ defmodule WardrikDaemon.CLI do
   """
   @spec print_offline([String.t()], Terminal.t()) :: 0 | 1
   def print_offline(["__complete" | words], _terminal) do
-    complete(words, %{keys: fn -> [] end, calls: fn _key -> [] end})
+    complete(words, %{keys: fn -> [] end, calls: fn _key -> [] end, nodes: fn -> [] end})
     0
   end
 
@@ -401,10 +432,12 @@ defmodule WardrikDaemon.CLI do
     end
   end
 
-  # What a running daemon knows to complete: its agents, and what each waits on.
+  # What a running daemon knows to complete: its agents, what each waits on,
+  # and the nodes an agent can move to.
   defp running do
     %{
       keys: fn -> Enum.map(Fleet.list(), & &1.key) end,
+      nodes: fn -> Enum.map(daemons(), &Nodes.display/1) end,
       calls: fn key ->
         case Agent.parked(key) do
           calls when is_list(calls) -> Enum.map(calls, &elem(&1, 0).id)

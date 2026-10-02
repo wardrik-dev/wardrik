@@ -231,6 +231,21 @@ live () {
   ELIXIR_ERL_OPTIONS="+Bd ${ELIXIR_ERL_OPTIONS:-}" exec "$node" rpc "WardrikDaemon.CLI.live($(encoded elixir "$terminal" "$@"))"
 }
 
+# Opens the file that declares the agent wardrik agent edit names in the
+# editor, here, where the terminal is, then reads the files again. The node
+# says where the file is, or why there is none.
+edit () {
+  shift 2
+  file="$(call "try 'Elixir.WardrikDaemon.CLI':main($(encoded erlang "$terminal" __agent_file "$@")) catch exit:{shutdown, 1} -> error end.")" || {
+    status=$?
+    [ "$status" -ne 2 ] || offline agent edit "$@"
+    printf '%s\n' "$file" >&2
+    exit 1
+  }
+  ${VISUAL:-${EDITOR:-vi}} "$file"
+  cli reload
+}
+
 # Runs WardrikDaemon.CLI.offline/1 on a VM of its own, which needs no daemon:
 # help, a name that is no command, and a command no daemon is there to answer.
 offline () {
@@ -512,6 +527,12 @@ case "${1:-}" in
     ;;
   completion)
     offline "$@"
+    ;;
+  agent)
+    case "${2:-}" in
+      edit) edit "$@" ;;
+      *) cli "$@" ;;
+    esac
     ;;
   init)
     # Answered on a VM of its own, as help is, since no daemon need run yet.

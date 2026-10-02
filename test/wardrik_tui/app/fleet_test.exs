@@ -179,6 +179,45 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.whereis(key)
   end
 
+  # What a host's :options gives the agents a session starts, here a model,
+  # or why one cannot start.
+  @doc false
+  def given(key, test_pid) do
+    send(test_pid, {:options_for, key})
+
+    if String.ends_with?(key, "/refused"),
+      do: {:error, "the defaults name no such tool"},
+      else: {:ok, [config: Wardrik.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5")]}
+  end
+
+  test "/spawn starts an agent with what :options gives its key", %{org: org, agent_id: agent_id} do
+    session =
+      Breeze.Test.start!(App,
+        size: {90, 14},
+        start_opts: [
+          agent: agent_id,
+          agent_id: agent_id,
+          spawn_opts: [org: org],
+          options: {__MODULE__, :given, [self()]},
+          model: "test:model"
+        ],
+        global_keybindings: App.keybindings()
+      )
+
+    on_exit(fn -> Breeze.Test.stop(session) end)
+    key = "#{org}/helper"
+    on_exit(fn -> Fleet.forget(key) end)
+
+    submit(session, "/spawn helper")
+    assert_receive {:options_for, ^key}
+    assert screen(session) =~ "spawned and connected to #{key}"
+    assert Agent.status(key).model == "anthropic:claude-sonnet-5"
+
+    submit(session, "/spawn refused")
+    assert screen(session) =~ "✗ the defaults name no such tool"
+    refute Fleet.whereis("#{org}/refused")
+  end
+
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do
     on_exit(fn -> Fleet.forget("#{org}/asked") end)
 

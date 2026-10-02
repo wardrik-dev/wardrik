@@ -142,15 +142,65 @@ When each schedule runs next, and how it last ran.
 wardrik schedules [PREFIX]
 ```
 
-## wardrik rm
+## wardrik agent spawn
 
-Remove an agent for good, with its conversation and schedules.
+Start an agent, writing its file from config.yaml's defaults if it has none.
 
 ```sh
-wardrik rm KEY
+wardrik agent spawn NAME [--org ORG] [--user USER] [--on NODE]
 ```
 
-An agent a file declares is the file's: remove the file, and the agent stops when the files are read again.
+It starts the agent agents/NAME.md declares, writing the file first where there is none, and reads the files again, as wardrik reload does. --org and --user put it in an org, or with one of its users, and --on NODE starts it on that node. An agent wardrik agent stop stopped comes back with its conversation.
+
+## wardrik agent cancel
+
+End the turn an agent is taking; it keeps running.
+
+```sh
+wardrik agent cancel KEY|PREFIX/ [--all]
+```
+
+The messages waiting behind the turn go too, and a turn waiting on a person is abandoned. A PREFIX/, such as acme/, ends the turns of every agent under it, and --all those of every agent there is.
+
+## wardrik agent stop
+
+Stop an agent, and keep its conversation for agent spawn.
+
+```sh
+wardrik agent stop KEY
+```
+
+An agent a file declares starts again at the next wardrik reload.
+
+## wardrik agent rm
+
+Remove an agent, its conversation and its schedules, for good.
+
+```sh
+wardrik agent rm KEY|PREFIX/ [--yes]
+```
+
+It lists what it removes and asks first; --yes removes without asking. A PREFIX/, such as acme/, removes every agent under it. An agent a file declares is left: remove the file, then wardrik reload removes it.
+
+## wardrik agent move
+
+Restart an agent on another node, with its conversation.
+
+```sh
+wardrik agent move KEY [NODE] [--yes]
+```
+
+Without NODE it asks which. Moving ends a turn the agent is taking, and abandons what it waits on a person for, so it asks first; --yes moves it without asking.
+
+## wardrik agent edit
+
+Edit the file that declares an agent, then read the files again.
+
+```sh
+wardrik agent edit KEY
+```
+
+It opens the file in $VISUAL, or $EDITOR, or vi.
 
 ## wardrik parked
 
@@ -177,16 +227,6 @@ Refuse a parked call, saying why.
 ```sh
 wardrik deny [KEY [CALL [REASON]]]
 ```
-
-## wardrik cancel
-
-Stop what an agent is doing, and leave it running.
-
-```sh
-wardrik cancel [PREFIX/ | KEY] [--all]
-```
-
-Its turn stops at its next step, the messages waiting behind it are dropped, and a turn waiting on a person is abandoned. PREFIX/ stops every agent under it, as acme/ or acme/@jon/, and --all every agent there is.
 
 ## wardrik token create
 

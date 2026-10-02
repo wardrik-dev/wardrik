@@ -113,8 +113,10 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp start_agent(term, key, name, placement, prompt, mode) do
-    case Fleet.spawn(key, term.assigns.spawn_opts ++ placement) do
-      {:ok, pid} -> started(term, key, name, pid, prompt, mode)
+    with {:ok, options} <- WardrikTUI.App.options(term.assigns.options, key),
+         {:ok, pid} <- Fleet.spawn(key, options ++ term.assigns.spawn_opts ++ placement) do
+      started(term, key, name, pid, prompt, mode)
+    else
       {:error, reason} -> Display.append(term, fleet_error(reason, placement[:node]))
     end
   end

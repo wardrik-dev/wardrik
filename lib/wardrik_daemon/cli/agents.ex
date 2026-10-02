@@ -1,8 +1,7 @@
 defmodule WardrikDaemon.CLI.Agents do
   @moduledoc """
-  `wardrik ls`, `show`, `schedules` and `rm`: the fleet's agents a line
-  each, one agent in full, when each schedule asks its agent, and removing
-  one for good.
+  `wardrik ls`, `show` and `schedules`: the fleet's agents a line each, one
+  agent in full, and when each schedule asks its agent.
 
   `ls` takes the words the TUI's `/filter` does, as `WardrikConsole.Filter`
   reads them, where `attention` is an agent waiting on a person. `show KEY`
@@ -10,11 +9,6 @@ defmodule WardrikDaemon.CLI.Agents do
   file gives it, what it has spent, when it is asked next, and what it waits
   on. An agent defined over the HTTP API has no file, so what one gives it is
   not shown.
-
-  `rm KEY` removes an agent, running or stopped, with its conversation and
-  schedules, as `Wardrik.Fleet.forget/1` does. An agent a file declares is the
-  file's, and `rm` refuses it: remove the file, and the agent stops when the
-  files are read again.
   """
 
   alias Wardrik.Agent
@@ -59,40 +53,8 @@ defmodule WardrikDaemon.CLI.Agents do
         summary: "when each schedule runs next, and how it last ran",
         count: {0, 1},
         run: &schedules/2
-      },
-      %Command{
-        name: "rm",
-        arguments: "KEY",
-        summary: "remove an agent for good, with its conversation and schedules",
-        details: [
-          "An agent a file declares is the file's: remove the file, and the agent",
-          "stops when the files are read again."
-        ],
-        count: {1, 1},
-        run: &rm/2
       }
     ]
-  end
-
-  # -- rm -----------------------------------------------------------------------
-
-  defp rm([key], _opts) do
-    with true <- Fleet.stored?(key) || {:error, "No agent is kept under #{key}."},
-         :ok <- editable(key) do
-      :ok = Fleet.forget(key)
-      {:ok, "Removed #{key}."}
-    end
-  end
-
-  defp editable(key) do
-    if Process.whereis(WardrikDaemon.Agents) do
-      case WardrikDaemon.Agents.editable(key) do
-        :ok -> :ok
-        {:error, :conflict, message} -> {:error, message}
-      end
-    else
-      :ok
-    end
   end
 
   # -- ls -----------------------------------------------------------------------
@@ -193,18 +155,8 @@ defmodule WardrikDaemon.CLI.Agents do
     case {Fleet.lookup(key), Agent.snapshot(key)} do
       {nil, _snapshot} -> {:error, "No agent runs under #{key}."}
       {_member, {:error, :not_found}} -> {:error, "No agent runs under #{key}."}
-      {member, snapshot} -> {:ok, &shown(member, snapshot, file(key), &1)}
+      {member, snapshot} -> {:ok, &shown(member, snapshot, WardrikDaemon.declared()[key], &1)}
     end
-  end
-
-  defp file(key) do
-    Enum.find_value(WardrikDaemon.agent_files(), fn
-      {path, {:ok, %Wardrik.Agent.Spec{} = spec}} ->
-        if Wardrik.Agent.Spec.key(spec) == key, do: {path, spec}
-
-      _other ->
-        nil
-    end)
   end
 
   defp shown(member, snapshot, file, width) do

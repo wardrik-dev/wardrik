@@ -497,6 +497,9 @@ _build/prod/rel/wardrikd/bin/wardrik ls status:parked   # the agents a query pic
 _build/prod/rel/wardrikd/bin/wardrik show acme/triage # one agent in full
 _build/prod/rel/wardrikd/bin/wardrik doctor    # whether config.yaml, the store, the vault, each MCP server and every agent file will do
 _build/prod/rel/wardrikd/bin/wardrik reload    # read the agent and policy files again
+_build/prod/rel/wardrikd/bin/wardrik agent spawn helper   # write agents/helper.md from config.yaml's defaults, and start it
+_build/prod/rel/wardrikd/bin/wardrik agent move acme/triage b   # start it again on node b, as it was
+_build/prod/rel/wardrikd/bin/wardrik agent rm acme/       # remove the agents under acme/, after listing them
 _build/prod/rel/wardrikd/bin/wardrik ask acme/triage "What changed today?"   # and follow the answer
 _build/prod/rel/wardrikd/bin/wardrik watch acme/triage   # follow what it does, until Ctrl-C
 _build/prod/rel/wardrikd/bin/wardrik history acme/triage
@@ -504,7 +507,7 @@ _build/prod/rel/wardrikd/bin/wardrik parked    # what is waiting on a person
 _build/prod/rel/wardrikd/bin/wardrik schedules # when each schedule runs next, and how it last ran
 _build/prod/rel/wardrikd/bin/wardrik approve acme/triage call_1
 _build/prod/rel/wardrikd/bin/wardrik approve   # choose among every call waiting
-_build/prod/rel/wardrikd/bin/wardrik cancel acme/triage   # stop what it is doing, and leave it running
+_build/prod/rel/wardrikd/bin/wardrik agent cancel acme/triage   # stop what it is doing, and leave it running
 _build/prod/rel/wardrikd/bin/wardrik vault put LINEAR_TOKEN   # seal a secret, asking for its value
 _build/prod/rel/wardrikd/bin/wardrik remote    # an IEx shell on it
 _build/prod/rel/wardrikd/bin/wardrik logs      # follow its log

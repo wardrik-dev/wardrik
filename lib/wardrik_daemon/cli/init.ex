@@ -13,7 +13,8 @@ defmodule WardrikDaemon.CLI.Init do
     3. the provider's key, without showing it, unless this environment sets
        it and that one is kept
     4. the first agent's name, `assistant` by default, and its file in
-       `agents/`, with that model and no tools
+       `agents/`, with that model and no tools, and `config.yaml`, whose
+       `defaults` give the agents `wardrik agent spawn` starts that model
     5. the public keys in `~/.ssh`, into `ssh/authorized_keys`, for
        `wardrik attach`
     6. the daemon: under the user's systemd where they have one and want
@@ -35,6 +36,7 @@ defmodule WardrikDaemon.CLI.Init do
   """
 
   alias Wardrik.Fleet
+  alias WardrikDaemon.AgentFile
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Config
@@ -148,6 +150,7 @@ defmodule WardrikDaemon.CLI.Init do
       &model/1,
       &key/1,
       &agent/1,
+      &defaults/1,
       &ssh/1,
       &daemon/1,
       &seal/1,
@@ -394,13 +397,13 @@ defmodule WardrikDaemon.CLI.Init do
     else
       File.mkdir_p!(Path.dirname(file))
 
-      File.write!(file, """
-      ---
-      description: A first agent, written by wardrik init.
-      model: #{init.provider}:#{init.model}
-      ---
-      You are a helpful assistant. Answer briefly, and say what you do not know.
-      """)
+      File.write!(
+        file,
+        AgentFile.text([
+          {"description", "A first agent, written by wardrik init."},
+          {"model", "#{init.provider}:#{init.model}"}
+        ])
+      )
 
       say(
         init,
@@ -409,6 +412,49 @@ defmodule WardrikDaemon.CLI.Init do
 
       {:ok, %{init | wrote?: true}}
     end
+  end
+
+  # A config.yaml that is there is kept, and says what to add where it gives
+  # no defaults.
+  defp defaults(init) do
+    model = "#{init.provider}:#{init.model}"
+
+    case Config.file(init.config_dir) do
+      {:ok, file} ->
+        if File.exists?(file), do: kept(init, file, model), else: write_config(init, file, model)
+
+      {:error, _both} ->
+        {:ok, init}
+    end
+  end
+
+  defp write_config(init, file, model) do
+    File.write!(file, "defaults:\n  model: #{model}\n")
+
+    say(init, [
+      "Wrote config.yaml, whose defaults give an agent wardrik agent spawn starts #{model} too."
+      | if(init.running?, do: ["The daemon reads it when it next starts."], else: [])
+    ])
+
+    {:ok, init}
+  end
+
+  defp kept(init, file, model) do
+    case Config.read(file, only: ["defaults"]) do
+      {:ok, settings} ->
+        unless Keyword.has_key?(settings, WardrikDaemon.Agents) do
+          say(
+            init,
+            "#{Path.basename(file)} gives no defaults; defaults: with model: #{model} in it " <>
+              "gives an agent wardrik agent spawn starts the same model."
+          )
+        end
+
+      {:error, _unread} ->
+        :ok
+    end
+
+    {:ok, init}
   end
 
   # -- 5. ssh ------------------------------------------------------------------

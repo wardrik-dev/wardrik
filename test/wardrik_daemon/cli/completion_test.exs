@@ -4,14 +4,15 @@ defmodule WardrikDaemon.CLI.CompletionTest do
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Completion
 
-  # Two agents running, one waiting on two calls.
+  # Two agents running, one waiting on two calls, on two nodes.
   defp known do
     %{
       keys: fn -> ["acme/triage", "acme/@jon/digest"] end,
       calls: fn
         "acme/triage" -> ["call_1", "call_2"]
         _key -> []
-      end
+      end,
+      nodes: fn -> ["a", "b"] end
     }
   end
 
@@ -46,6 +47,12 @@ defmodule WardrikDaemon.CLI.CompletionTest do
     assert complete(["approve", "acme/triage", ""]) == ["call_1", "call_2"]
     assert complete(["deny", "acme/@jon/digest", ""]) == []
     assert complete(["schedules", "acme/"]) == ["acme/triage", "acme/@jon/digest"]
+    assert complete(["agent", "cancel", "acme/t"]) == ["acme/triage"]
+  end
+
+  test "a NODE is one running a daemon" do
+    assert complete(["agent", "move", "acme/triage", ""]) == ["a", "b"]
+    assert complete(["agent", "move", "acme/triage", "b", ""]) == []
   end
 
   test "a query takes its words and agents' keys, as many as it is given" do
@@ -56,6 +63,7 @@ defmodule WardrikDaemon.CLI.CompletionTest do
   test "a word an option is waiting for, or one past the last a command takes, has nothing" do
     assert complete(["token", "create", "dev", "--scope", ""]) == []
     assert complete(["show", "acme/triage", ""]) == []
+    assert complete(["agent", "rm", "acme/", ""]) == []
     assert complete(["status", ""]) == []
   end
 

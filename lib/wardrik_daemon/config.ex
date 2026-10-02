@@ -20,6 +20,11 @@ defmodule WardrikDaemon.Config do
 
       org: acme
 
+      defaults:
+        model: anthropic:claude-sonnet-5
+        tools: [web_search]
+        policy: careful
+
       mcp:
         linear:
           url: https://mcp.linear.app/mcp
@@ -80,6 +85,12 @@ defmodule WardrikDaemon.Config do
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
   an org. It is `default` unless set. See `Wardrik.Fleet`.
+
+  `defaults` is what an agent is given where nothing else says: one
+  `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
+  `model`, `tools`, `policy`, `timeout`, `max_iterations` and `compaction`,
+  as an agent file does; see `WardrikDaemon.AgentFile`. `wardrik init`
+  writes it with the model it chose.
 
   An MCP server and a notify target each serve one org's agents, the
   deployment's own, unless its `org` names another, a list of them, or `*`
@@ -151,6 +162,7 @@ defmodule WardrikDaemon.Config do
   @redirect ~w(uri port open)a
   @provider ~w(resource issuer client_id client_secret redirect_uri scopes authorization_params flow)a
   @vault ~w(keys)a
+  @defaults ~w(model tools policy timeout max_iterations compaction)
   @listener ~w(port ip)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
@@ -306,6 +318,9 @@ defmodule WardrikDaemon.Config do
 
   defp sections(document, org) do
     Enum.map(document, fn
+      {"defaults", defaults} ->
+        {WardrikDaemon.Agents, defaults: defaults(defaults)}
+
       {"mcp", servers} ->
         {WardrikMCP, servers: servers(table!(servers, ["mcp"]), org)}
 
@@ -333,7 +348,8 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, mcp, oauth, vault, ssh, http, notify, cluster or storage"
+          "is not a section; expected org, defaults, mcp, oauth, vault, ssh, http, notify, " <>
+            "cluster or storage"
         )
     end)
   end
@@ -438,6 +454,16 @@ defmodule WardrikDaemon.Config do
   end
 
   defp credential(_name, path), do: invalid!(path ++ ["credential"], "is #{@credential}")
+
+  # -- defaults --------------------------------------------------------------
+
+  # Kept as the file writes them, to be written into an agent file and read
+  # as one.
+  defp defaults(defaults) do
+    defaults = table!(defaults, ["defaults"])
+    known!(defaults, @defaults, ["defaults"])
+    defaults
+  end
 
   # -- oauth and vault -------------------------------------------------------
 
@@ -735,7 +761,8 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: org, mcp, oauth, vault, ssh, http, notify, cluster, storage"
+        "is a set of sections: org, defaults, mcp, oauth, vault, ssh, http, notify, cluster, " <>
+          "storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")
