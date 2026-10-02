@@ -172,8 +172,35 @@ mix precommit   # formatting, credo, the architecture checks, tests with coverag
 | `dev/` | scripts for running clusters, test services and the host apps CI builds |
 | `deploy/` | the install script, and a server set up from scratch |
 
-`dev/services.sh` starts the Postgres and S3 services some tests reach. To
-build the daemon:
+`dev/services.sh` starts the Postgres and S3 services some tests reach.
+
+### Adding a package
+
+A package is one of four kinds, and each kind is set up the same way:
+
+| Kind | For example | Depends on | Implements | Its tests |
+| --- | --- | --- | --- | --- |
+| Plugin | `wardrik_brave`, `wardrik_mcp`, `wardrik_policy`, `wardrik_vault` | core, and the library it wraps | a core behaviour, such as `Wardrik.Tool`, `Wardrik.Hook` or `Wardrik.Credential` | call its callbacks, with core's `Wardrik.Test` helpers |
+| Store | `wardrik_ecto`, `wardrik_s3` | core, and its client | `Wardrik.Store` | run `Wardrik.Store.Conformance` and `Wardrik.Test.Durable` against the real service |
+| Surface | `wardrik_http`, `wardrik_tui`, `wardrik_daemon` | core, and the packages it puts in front of people | nothing; it calls core | drive agents in the fleet |
+| Assembly | `wardrik_sdk`, `release` | the packages it gathers | nothing | — |
+
+In every one:
+
+- `mix.exs` names the packages beside it with `sibling(:wardrik)`, which is a
+  path here and a version on Hex.
+- Its settings live in its own application, under its top module, and one
+  module reads them: `config :wardrik_mcp, WardrikMCP, servers: [...]`, read
+  by `WardrikMCP.Config`.
+- Its tests boot core with nothing to set up, on the store core keeps in
+  memory:
+
+  ```elixir
+  # config/test.exs
+  config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
+  ```
+
+To build the daemon:
 
 ```sh
 cd release

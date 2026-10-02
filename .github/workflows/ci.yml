@@ -19,33 +19,34 @@ env:
   MIX_OS_DEPS_COMPILE_PARTITION_COUNT: "2"
 
 jobs:
+  # The Mix projects to check: on a pull request, those it changes and those
+  # that depend on them; on a push, every one. See dev/affected.sh.
+  projects:
+    name: projects
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.affected.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: affected
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '--all' }}
+        run: echo "matrix=$(dev/affected.sh "$BASE")" >> "$GITHUB_OUTPUT"
+
   # One leg per Mix project, each running every `mix precommit` group with a
   # cache of its own. See tools/precommit.
   check:
     name: ${{ matrix.project }}
+    needs: projects
+    if: needs.projects.outputs.matrix != '[]'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        project:
-          - packages/wardrik
-          - packages/wardrik_brave
-          - packages/wardrik_console
-          - packages/wardrik_daemon
-          - packages/wardrik_ecto
-          - packages/wardrik_http
-          - packages/wardrik_lua
-          - packages/wardrik_mcp
-          - packages/wardrik_notify
-          - packages/wardrik_oauth
-          - packages/wardrik_policy
-          - packages/wardrik_research
-          - packages/wardrik_s3
-          - packages/wardrik_sdk
-          - packages/wardrik_tui
-          - packages/wardrik_vault
-          - packages/wardrik_workspace
-          - release
+        project: ${{ fromJSON(needs.projects.outputs.matrix) }}
     defaults:
       run:
         working-directory: ${{ matrix.project }}
