@@ -23,8 +23,10 @@ defmodule WardrikDaemon.MixProject do
       deps: deps(),
       test_coverage: [summary: [threshold: 89]],
       precommit: [
-        # The docs site's reference pages, written from the code.
-        lint: [{["wardrik.docs"], ["wardrik.docs", "--check"]}]
+        # The docs site's reference pages, written from this package's code
+        # and the HTTP API's, policies' and core's schemas, so checked with
+        # the tests a change to any of them runs.
+        test: [{["wardrik.docs"], ["wardrik.docs", "--check"]}]
       ]
     ]
   end

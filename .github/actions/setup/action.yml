@@ -32,19 +32,19 @@ runs:
         elixir-version: ${{ steps.versions.outputs.elixir }}
         version-type: strict
 
-    # On main the key ends in the commit, so every run saves a fresh entry and
-    # restores the newest by prefix. Elsewhere it ends in the lockfile, so a
-    # branch's first run saves and its later runs hit it exactly.
+    # The key ends in the project's lockfile, so a project saves one entry for
+    # each set of dependencies, and every run after restores it and compiles
+    # only what changed since. What takes minutes, compiling the dependencies
+    # and building the PLTs, changes only with the lockfile; saving an entry
+    # per commit would have eighteen projects evict each other's.
     - id: key
       shell: bash
       env:
         PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.project }}
         LOCK: ${{ hashFiles(format('{0}/mix.lock', inputs.project)) }}
-        SUFFIX: ${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
       run: |
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
-        echo "lock=$PREFIX-$LOCK" >> "$GITHUB_OUTPUT"
-        echo "key=$PREFIX-$LOCK$SUFFIX" >> "$GITHUB_OUTPUT"
+        echo "key=$PREFIX-$LOCK" >> "$GITHUB_OUTPUT"
 
     - id: restore
       uses: actions/cache/restore@v6
@@ -55,7 +55,6 @@ runs:
           ${{ inputs.project }}/priv/plts
         key: ${{ steps.key.outputs.key }}
         restore-keys: |
-          ${{ steps.key.outputs.lock }}-
           ${{ steps.key.outputs.prefix }}-
 
     - shell: bash

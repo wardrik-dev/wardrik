@@ -5,11 +5,11 @@ defmodule Mix.Tasks.Precommit do
   step in an OS process of its own so a step that halts or raises cannot take
   the rest down with it.
 
-      mix precommit                 every group, fixing what can be fixed in place
-      mix precommit --check         verifying instead: a fixing step fails on what it would fix
-      mix precommit --only test     one group
+      mix precommit                         every group, fixing what can be fixed in place
+      mix precommit --check                 verifying instead: a fixing step fails on what it would fix
+      mix precommit --only test,dialyzer    some groups
 
-  CI runs each group as `mix precommit --check --only <group>`.
+  CI runs the groups a change needs, as `dev/affected.sh` names them.
 
   A package adds steps of its own, or leaves some out, under `:precommit` in
   its `project/0`. A step is the arguments to `mix`, or a `{step, check}` pair
@@ -39,7 +39,10 @@ defmodule Mix.Tasks.Precommit do
       ["crap", "--verbose"]
     ],
     dialyzer: [
-      ["dialyzer"]
+      # A PLT is rebuilt when mix.lock changes, which a change to a package
+      # beside this one never does, so the PLT is checked against the beams
+      # it holds every time.
+      ["dialyzer", "--force-check"]
     ]
   ]
 
@@ -77,9 +80,16 @@ defmodule Mix.Tasks.Precommit do
   defp only(groups, nil), do: groups
 
   defp only(groups, only) do
-    case Enum.filter(groups, fn {group, _steps} -> Atom.to_string(group) == only end) do
-      [] -> Mix.raise("no precommit group #{only}, expected one of lint, test, dialyzer")
-      groups -> groups
+    names = String.split(only, ",", trim: true)
+
+    case names -- Enum.map(groups, fn {group, _steps} -> Atom.to_string(group) end) do
+      [] ->
+        Enum.filter(groups, fn {group, _steps} -> Atom.to_string(group) in names end)
+
+      unknown ->
+        Mix.raise(
+          "no precommit group #{Enum.join(unknown, ", ")}; the groups are lint, test and dialyzer"
+        )
     end
   end
 

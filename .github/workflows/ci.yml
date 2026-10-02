@@ -19,13 +19,19 @@ env:
   MIX_OS_DEPS_COMPILE_PARTITION_COUNT: "2"
 
 jobs:
-  # The Mix projects to check: on a pull request, those it changes and those
-  # that depend on them; on a push, every one. See dev/affected.sh.
+  # What to run: on a pull request, the precommit groups of the Mix projects
+  # it changes and of those that build against what it changed, and the jobs
+  # below whose inputs it changed; on a push, everything. See dev/affected.sh.
   projects:
     name: projects
     runs-on: ubuntu-24.04
     outputs:
-      matrix: ${{ steps.affected.outputs.matrix }}
+      check: ${{ steps.affected.outputs.check }}
+      release: ${{ steps.affected.outputs.release }}
+      hosts: ${{ steps.affected.outputs.hosts }}
+      sdk: ${{ steps.affected.outputs.sdk }}
+      docs: ${{ steps.affected.outputs.docs }}
+      arches: ${{ steps.arches.outputs.arches }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,26 +40,37 @@ jobs:
       - id: affected
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '--all' }}
-        run: echo "matrix=$(dev/affected.sh "$BASE")" >> "$GITHUB_OUTPUT"
+        run: dev/affected.sh "$BASE" | tee -a "$GITHUB_OUTPUT"
 
-  # One leg per Mix project, each running every `mix precommit` group with a
-  # cache of its own. See tools/precommit.
+      # A pull request builds the release on x86_64 alone; a push builds it
+      # on both architectures, which the image job joins.
+      - id: arches
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          x86='{"arch":"x86_64","platform":"amd64","runner":"ubuntu-24.04"}'
+          arm='{"arch":"aarch64","platform":"arm64","runner":"ubuntu-24.04-arm"}'
+          if [ "$EVENT" = pull_request ]; then arches="[$x86]"; else arches="[$x86,$arm]"; fi
+          echo "arches=$arches" >> "$GITHUB_OUTPUT"
+
+  # One leg per Mix project, running the `mix precommit` groups it needs with
+  # a cache of its own. See tools/precommit.
   check:
     name: ${{ matrix.project }}
     needs: projects
-    if: needs.projects.outputs.matrix != '[]'
+    if: needs.projects.outputs.check != '[]'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJSON(needs.projects.outputs.matrix) }}
+        include: ${{ fromJSON(needs.projects.outputs.check) }}
     defaults:
       run:
         working-directory: ${{ matrix.project }}
     env:
       # The projects whose tests reach Postgres or an S3 service fail rather
       # than skip the tests that need them.
-      SERVICES: ${{ contains(fromJSON('["packages/wardrik_daemon", "packages/wardrik_ecto", "packages/wardrik_s3"]'), matrix.project) }}
+      SERVICES: ${{ contains(matrix.only, 'test') && contains(fromJSON('["packages/wardrik_daemon", "packages/wardrik_ecto", "packages/wardrik_s3"]'), matrix.project) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -66,8 +83,9 @@ jobs:
         working-directory: .
         run: dev/services.sh
 
-      - run: mix precommit --check
+      - run: mix precommit --check --only "$ONLY"
         env:
+          ONLY: ${{ matrix.only }}
           WARDRIK_TEST_SERVICES: ${{ env.SERVICES == 'true' && 'required' || '' }}
 
       # Saved from a failed leg too, since the compile it paid for is still
@@ -86,6 +104,8 @@ jobs:
   # bucket, without :ecto_sql either. See dev/hosts.sh.
   hosts:
     name: hosts
+    needs: projects
+    if: needs.projects.outputs.hosts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -101,6 +121,8 @@ jobs:
   # its tests pass, and it builds.
   sdk-typescript:
     name: sdk (typescript)
+    needs: projects
+    if: needs.projects.outputs.sdk == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -118,16 +140,12 @@ jobs:
       - run: npm run check
       - run: npm run build
 
-  # The daemon's image and its release tarball, from one build in the
-  # Dockerfile, on Ubuntu 22.04 so the tarball runs on any Linux with glibc 2.35
-  # and OpenSSL 3, once for each architecture on a runner of its own. The
-  # tarball is booted, installed on fresh distributions, run as a service and
-  # failed over; the image is booted and asked over HTTP. A push keeps each
-  # image as :sha-<commit>-<platform>, and the image job joins them.
   # The docs site builds. Its reference pages are what mix wardrik.docs writes,
-  # which the lint leg checks.
+  # which the daemon's leg checks.
   docs:
     name: docs
+    needs: projects
+    if: needs.projects.outputs.docs == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -144,8 +162,17 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  # The daemon's image and its release tarball, from one build in the
+  # Dockerfile, on Ubuntu 22.04 so the tarball runs on any Linux with glibc 2.35
+  # and OpenSSL 3, for each architecture the projects job names, each on a
+  # runner of its own. The tarball is booted, installed on fresh
+  # distributions, run as a service and failed over; the image is booted and
+  # asked over HTTP. A push keeps each image as :sha-<commit>-<platform>, and
+  # the image job joins them.
   release:
     name: release (linux-${{ matrix.arch }})
+    needs: projects
+    if: needs.projects.outputs.release == 'true'
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -155,9 +182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {arch: x86_64, platform: amd64, runner: ubuntu-24.04}
-          - {arch: aarch64, platform: arm64, runner: ubuntu-24.04-arm}
+        include: ${{ fromJSON(needs.projects.outputs.arches) }}
     outputs:
       version: ${{ steps.tarball.outputs.version }}
       name: ${{ steps.tarball.outputs.name }}
@@ -404,6 +429,25 @@ jobs:
           subject-name: ${{ steps.image.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+  # One result for branch protection to require, whichever jobs a change ran:
+  # it fails where any of them failed or was cancelled, and passes where each
+  # passed or was not needed.
+  checks:
+    name: checks
+    if: always()
+    needs: [projects, check, hosts, sdk-typescript, docs, release]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) echo "a job needed here ended $result" >&2; exit 1 ;;
+            esac
+          done
 
   # The images the release job booted, one for each platform, joined into one
   # and named once every check has passed: :sha-<commit>, with :main for a
