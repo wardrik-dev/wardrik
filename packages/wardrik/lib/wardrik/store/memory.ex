@@ -6,7 +6,9 @@ defmodule Wardrik.Store.Memory do
       config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
 
   Every write is versioned, so conditional writes behave as they do on a
-  durable adapter. It provides no `DurableServer` backend, so it cannot hold a fleet.
+  durable adapter. It holds the fleet of one node through
+  `Wardrik.Store.Durable`, and keeps nothing past it, which is what a test
+  suite wants: a package's tests boot Wardrik with no store to set up.
   """
 
   @behaviour Wardrik.Store
@@ -30,6 +32,10 @@ defmodule Wardrik.Store.Memory do
 
   @impl Wardrik.Store
   def quorum(_size), do: 1
+
+  # Its reads are current because there is only the one node.
+  @impl Wardrik.Store
+  def durable_backend(opts), do: {Wardrik.Store.Durable, [store: __MODULE__] ++ opts}
 
   @doc "Forgets everything."
   @spec clear() :: :ok

@@ -21,6 +21,7 @@ defmodule WardrikDaemon.MixProject do
       ],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      test_coverage: [summary: [threshold: 89]],
       precommit: [
         # The docs site's reference pages, written from the code.
         lint: [{["wardrik.docs"], ["wardrik.docs", "--check"]}]

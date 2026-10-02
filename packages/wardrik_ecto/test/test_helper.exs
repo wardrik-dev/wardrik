@@ -7,13 +7,6 @@ ReqLLM.model("test:model")
 :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Fleet, timeout: 10_000)
 :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Schedule.supervisor(), timeout: 10_000)
 
-# The store configured for this run, see config/test.exs, is removed with it.
-ExUnit.after_suite(fn _results ->
-  Supervisor.stop(Wardrik.Fleet.Supervisor)
-  File.rm_rf(Application.fetch_env!(:wardrik, Wardrik.Store)[:data_dir])
-  Application.stop(:os_mon)
-end)
-
 # The tests that reach real services, which dev/services.sh starts, are
 # left out where nothing answers; see Wardrik.Test.Services.
 excluded = Wardrik.Test.Services.start()

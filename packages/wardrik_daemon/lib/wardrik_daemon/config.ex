@@ -311,8 +311,10 @@ defmodule WardrikDaemon.Config do
   end
 
   @doc """
-  The application whose environment holds what `module` reads: core's for
-  `Wardrik.*`, and each package's own for its modules.
+  Where `apply/1` and a release's boot put a module's settings. Each package
+  reads its own application's environment, so what `config.yaml` says of MCP
+  goes under `:wardrik_mcp`, and what it says of the store under core's
+  `:wardrik`.
   """
   @spec application(module()) :: atom()
   def application(module) when is_atom(module),

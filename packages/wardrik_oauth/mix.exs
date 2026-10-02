@@ -20,7 +20,8 @@ defmodule WardrikOAuth.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [summary: [threshold: 88]]
     ]
   end
 
@@ -36,8 +37,6 @@ defmodule WardrikOAuth.MixProject do
       {:req, "~> 0.7"},
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

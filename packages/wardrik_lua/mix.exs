@@ -33,8 +33,6 @@ defmodule WardrikLua.MixProject do
     [
       sibling(:wardrik),
       {:lua, "~> 1.0"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

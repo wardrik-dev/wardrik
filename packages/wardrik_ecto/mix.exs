@@ -33,8 +33,6 @@ defmodule WardrikEcto.MixProject do
       sibling(:wardrik),
       {:ecto_sql, "~> 3.14"},
       {:postgrex, "~> 0.22.4"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

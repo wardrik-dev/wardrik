@@ -20,7 +20,8 @@ defmodule WardrikNotify.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [summary: [threshold: 88]]
     ]
   end
 
@@ -35,8 +36,6 @@ defmodule WardrikNotify.MixProject do
       {:req, "~> 0.7"},
       # Slack's Socket Mode.
       {:websockex, "~> 0.5.1"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

@@ -32,8 +32,6 @@ defmodule WardrikS3.MixProject do
     [
       sibling(:wardrik),
       {:req, "~> 0.7"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

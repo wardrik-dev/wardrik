@@ -383,7 +383,9 @@ defmodule WardrikOAuthTest do
     end
 
     test "a machine with nothing to open a link with says so, and the flow stands" do
-      Application.put_env(:wardrik_oauth, WardrikOAuth, redirect: [opener: "no-such-browser-command"])
+      Application.put_env(:wardrik_oauth, WardrikOAuth,
+        redirect: [opener: "no-such-browser-command"]
+      )
 
       assert {:error, :no_browser} = WardrikOAuth.Browser.open("https://example.com")
     end

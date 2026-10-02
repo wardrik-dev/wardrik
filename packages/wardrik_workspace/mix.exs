@@ -33,8 +33,6 @@ defmodule WardrikWorkspace.MixProject do
     [
       sibling(:wardrik),
       sibling(:wardrik_policy, only: :test),
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

@@ -19,7 +19,8 @@ defmodule WardrikTUI.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [summary: [threshold: 88]]
     ]
   end
 
@@ -36,8 +37,6 @@ defmodule WardrikTUI.MixProject do
       {:breeze, "0.5.1"},
       {:termite_ssh, "~> 0.1.2"},
       {:owl, "~> 0.13"},
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

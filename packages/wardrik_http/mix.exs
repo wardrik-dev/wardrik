@@ -20,7 +20,8 @@ defmodule WardrikHTTP.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [summary: [threshold: 89]]
     ]
   end
 
@@ -36,8 +37,6 @@ defmodule WardrikHTTP.MixProject do
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.6.0"},
       sibling(:wardrik_policy, only: :test),
-      # The store each test run keeps its fleet in.
-      {:ekv, "~> 0.4.3", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end
