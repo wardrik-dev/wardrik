@@ -2,6 +2,8 @@ defmodule WardrikPolicy.BudgetTest do
   use ExUnit.Case, async: false
   use Mimic
 
+  import ExUnit.CaptureLog
+
   alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Hook
@@ -230,6 +232,22 @@ defmodule WardrikPolicy.BudgetTest do
       call = Call.tool(%{id: "call_1", name: "deploy", arguments: %{}}, scope)
 
       assert %Call{state: :allowed} = Hook.check(call)
+    end
+
+    test "approving a tool call grants nothing, since no budget asked about it", context do
+      %{budget: budget, scope: scope} = context
+      call = Call.tool(%{id: "call_1", name: "deploy", arguments: %{}}, scope)
+
+      assert :ok = Budget.approved(call, nil, budget)
+    end
+
+    test "a grant the meter cannot record is logged, and the approval stands", context do
+      %{budget: budget, scope: scope, request: request} = context
+      stub(WardrikPolicy.Meter, :grant, fn _key, _usd, _tokens -> {:error, :no_capacity} end)
+
+      log = capture_log(fn -> Budget.approved(Call.model(request, scope), "day:x", budget) end)
+
+      assert log =~ "granted more budget that was not recorded"
     end
 
     test "calls settling at once each count, with nothing retried", context do
