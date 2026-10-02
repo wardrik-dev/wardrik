@@ -1,7 +1,8 @@
 defmodule Wardrik.Test.Calls do
   @moduledoc """
   Tool calls built and read the way `Wardrik.LLM.ToolRunner` builds and reads
-  them, for a test that hands a tool its call directly.
+  them, for a test that hands a tool or a resolver its call directly. A test
+  that runs a call the way a turn does uses `Wardrik.Test.call/4`.
   """
 
   alias Wardrik.Call
@@ -15,20 +16,6 @@ defmodule Wardrik.Test.Calls do
       scope: scope,
       state: :allowed
     }
-  end
-
-  @doc """
-  Hands `tool`, one `Wardrik.Tool.new!/1` built, a call with `arguments` under
-  `scope`, and says what it came to, as `result/1` does.
-  """
-  @spec run(ReqLLM.Tool.t(), map(), Wardrik.Scope.t() | nil) :: term()
-  def run(
-        %ReqLLM.Tool{callback: {Wardrik.Tool, :invoke, [handler]}} = built,
-        arguments,
-        scope \\ nil
-      ) do
-    {:ok, input} = ReqLLM.Tool.validate_input(built, arguments)
-    handler |> Wardrik.Tool.hand(tool(built.name, input, scope)) |> result()
   end
 
   @doc """
