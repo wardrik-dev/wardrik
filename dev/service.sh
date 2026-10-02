@@ -17,7 +17,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd -P)
 [ $# -eq 1 ] && [ -f "$1" ] || { echo "usage: dev/service.sh TARBALL" >&2; exit 1; }
-version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' "$repo/mix.exs")
+version=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' "$repo/release/mix.exs")
 image=wardrik-systemd:24.04
 arch=$(uname -m)
 box=wardrik-service-$$

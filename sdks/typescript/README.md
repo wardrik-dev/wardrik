@@ -125,7 +125,7 @@ its `type` (`not_found`, `conflict`, `gap` and so on), and its `requestId`.
 ## Types
 
 `src/protocol.ts` is generated from the protocol's JSON Schemas in
-`priv/protocol/v1`. After changing a schema, run `npm run generate`;
+`packages/wardrik/priv/protocol/v1`. After changing a schema, run `npm run generate`;
 `npm run check` fails while it is out of date.
 
 ```sh

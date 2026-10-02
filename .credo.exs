@@ -1,9 +1,7 @@
-# This file contains the configuration for Credo and you are probably reading
-# this after creating it with `mix credo.gen.config`.
-#
-# If you find anything wrong or unclear in this file, please report an
-# issue on GitHub: https://github.com/rrrene/credo/issues
-#
+# Credo's configuration for every Mix project in this repository. Credo reads
+# the .credo.exs of each directory above the one it runs in, so a package
+# needs none of its own. The Wardrik.Credo.Check.* checks are modules of
+# tools/precommit, which each package depends on in dev and test.
 %{
   #
   # You can have as many configs as you like in the `configs:` field.
@@ -21,31 +19,13 @@
         # You can give explicit globs or simply directories.
         # In the latter case `**/*.{ex,exs}` will be used.
         #
-        included: [
-          "lib/",
-          "src/",
-          "test/",
-          "web/",
-          "apps/*/lib/",
-          "apps/*/src/",
-          "apps/*/test/",
-          "apps/*/web/"
-        ],
+        included: ["lib/", "test/"],
         excluded: [~r"/_build/", ~r"/deps/", ~r"/node_modules/"]
       },
       #
       # Load and configure plugins here:
       #
       plugins: [{ExSlop, []}],
-      #
-      # If you create your own checks, you must specify the source files for
-      # them here, so they can be loaded by Credo before running the analysis.
-      #
-      requires: [
-        ".credo/checks/no_sleepy_tests.ex",
-        ".credo/checks/qualified_project_calls.ex",
-        ".credo/checks/no_core_process_names.ex"
-      ],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:

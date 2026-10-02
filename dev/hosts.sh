@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
-# Builds Wardrik's Hex package from this checkout, as mix hex.build has it,
-# without the TUI, and compiles it alone without its optional dependencies,
-# warnings and all. Then makes new applications that depend on that package,
-# and checks Wardrik inside each: a Phoenix app that keeps it in its own Repo
-# and starts it in its own tree, and a bare Mix app that keeps it in an S3
-# bucket. Neither depends on :ekv, and the bare one not on :ecto_sql either,
-# so each shows Wardrik compiling and running without what it leaves out.
+# Builds the Hex packages of Wardrik and of its Postgres and S3 stores from
+# this checkout, as mix hex.build has them, and compiles Wardrik's alone
+# without its optional dependencies, warnings and all. Then makes new
+# applications that depend on those packages, and checks Wardrik inside each:
+# a Phoenix app that keeps it in its own Repo and starts it in its own tree,
+# with wardrik_ecto, and a bare Mix app that keeps it in an S3 bucket, with
+# wardrik_s3. Neither depends on :ekv, and the bare one not on :ecto_sql
+# either, so each shows Wardrik compiling and running without what it leaves
+# out.
 #
 #   dev/services.sh && dev/hosts.sh     both
 #   dev/hosts.sh phoenix                one of them: phoenix or bare
@@ -37,7 +39,7 @@ export WARDRIK_TEST_S3_BUCKET=${WARDRIK_TEST_S3_BUCKET:-wardrik-test}
 # phx_new goes in an archives directory of this run's own, not the user's.
 export MIX_ARCHIVES="$dir/archives"
 export MIX_ENV=dev
-export WARDRIK_PACKAGE=$dir/wardrik
+export WARDRIK_PACKAGES=$dir/packages
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'hosts: %s\n' "$*" >&2; exit 1; }
@@ -51,13 +53,21 @@ quietly() {
   rm -f "$log"
 }
 
+# Each package is built as it would be published, naming the packages beside
+# it by version; an app depending on it overrides Wardrik with the one built
+# here.
 package() {
-  say "Building Wardrik's Hex package, and compiling it without its optional dependencies"
+  say "Building the Hex packages, and compiling Wardrik's without its optional dependencies"
   # Hex goes in this run's archives, as phx_new does.
   quietly mix local.hex --force
-  rm -rf "$WARDRIK_PACKAGE"
-  (cd "$repo" && quietly mix hex.build --unpack --output "$WARDRIK_PACKAGE")
-  cd "$WARDRIK_PACKAGE"
+  rm -rf "$WARDRIK_PACKAGES"
+
+  for package in wardrik wardrik_ecto wardrik_s3; do
+    (cd "$repo/packages/$package" &&
+      quietly env WARDRIK_HEX=1 mix hex.build --unpack --output "$WARDRIK_PACKAGES/$package")
+  done
+
+  cd "$WARDRIK_PACKAGES/wardrik"
   quietly mix deps.get
   quietly env MIX_ENV=prod mix compile --no-optional-deps --warnings-as-errors
   cd "$repo"
@@ -80,7 +90,7 @@ phoenix() {
     --no-live --no-mailer --no-install >/dev/null)
 
   cd "$dir/host"
-  perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_PACKAGE}"},\n      $1/' mix.exs
+  perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_PACKAGES}\/wardrik", override: true},\n      {:wardrik_ecto, path: "$ENV{WARDRIK_PACKAGES}\/wardrik_ecto"},\n      $1/' mix.exs
   perl -0pi -e 's/(      Host\.Repo,\n)/$1      Wardrik,\n/' lib/host/application.ex
   grep -q '^      Wardrik,$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
 
@@ -124,7 +134,7 @@ bare() {
   (cd "$dir" && mix new bare >/dev/null)
 
   cd "$dir/bare"
-  perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_PACKAGE}"},/' mix.exs
+  perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_PACKAGES}\/wardrik", override: true},\n      {:wardrik_s3, path: "$ENV{WARDRIK_PACKAGES}\/wardrik_s3"},/' mix.exs
   mkdir -p config
   cat >config/config.exs <<'EOF'
 import Config

@@ -32,7 +32,7 @@ if [ "${1:-}" = --build ] || [ ! -x "$release/bin/wardrik" ]; then
     exit 1
   fi
 
-  (cd "$root" && MIX_ENV=prod mix release --path "$release" --overwrite --quiet >/dev/null)
+  (cd "$root/release" && MIX_ENV=prod mix release --path "$release" --overwrite --quiet >/dev/null)
 fi
 
 if [ -f "$env_file" ]; then

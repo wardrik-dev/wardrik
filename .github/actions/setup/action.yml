@@ -1,12 +1,12 @@
 name: Set up Elixir
 description: >
-  Installs the Erlang and Elixir named in mise.toml, restores this job's build
-  cache, and fetches deps. The job saves the cache itself, under the `key`
-  output, with actions/cache/save.
+  Installs the Erlang and Elixir named in mise.toml, restores the build cache
+  of one Mix project, and fetches its deps. The job saves the cache itself,
+  under the `key` output, with actions/cache/save.
 
 inputs:
-  cache-key:
-    description: The job's cache, one per job, since each builds its own environment.
+  project:
+    description: The Mix project's directory, such as packages/wardrik, whose cache is the job's own.
     required: true
 
 outputs:
@@ -32,31 +32,31 @@ runs:
         elixir-version: ${{ steps.versions.outputs.elixir }}
         version-type: strict
 
-    # On main the key ends in the commit, so every run saves a fresh entry and
-    # restores the newest by prefix. Elsewhere it ends in the lockfile, so a
-    # branch's first run saves and its later runs hit it exactly.
+    # The key ends in the project's lockfile, so a project saves one entry for
+    # each set of dependencies, and every run after restores it and compiles
+    # only what changed since. What takes minutes, compiling the dependencies
+    # and building the PLTs, changes only with the lockfile; saving an entry
+    # per commit would have eighteen projects evict each other's.
     - id: key
       shell: bash
       env:
-        PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.cache-key }}
-        LOCK: ${{ hashFiles('mix.lock') }}
-        SUFFIX: ${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+        PREFIX: ${{ runner.os }}-${{ runner.arch }}-otp${{ steps.versions.outputs.otp }}-elixir${{ steps.versions.outputs.elixir }}-${{ inputs.project }}
+        LOCK: ${{ hashFiles(format('{0}/mix.lock', inputs.project)) }}
       run: |
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
-        echo "lock=$PREFIX-$LOCK" >> "$GITHUB_OUTPUT"
-        echo "key=$PREFIX-$LOCK$SUFFIX" >> "$GITHUB_OUTPUT"
+        echo "key=$PREFIX-$LOCK" >> "$GITHUB_OUTPUT"
 
     - id: restore
       uses: actions/cache/restore@v6
       with:
         path: |
-          deps
-          _build
-          priv/plts
+          ${{ inputs.project }}/deps
+          ${{ inputs.project }}/_build
+          ${{ inputs.project }}/priv/plts
         key: ${{ steps.key.outputs.key }}
         restore-keys: |
-          ${{ steps.key.outputs.lock }}-
           ${{ steps.key.outputs.prefix }}-
 
     - shell: bash
+      working-directory: ${{ inputs.project }}
       run: mix deps.get
