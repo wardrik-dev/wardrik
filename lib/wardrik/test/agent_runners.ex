@@ -119,6 +119,15 @@ defmodule Wardrik.Test.AgentRunners do
     came_to(turn, result)
   end
 
+  @doc """
+  Reports the decisions it was answered with and blocks, as a resumed turn
+  running its calls does, then comes to `result`, as `resuming/4` does.
+  """
+  def holding(test_pid, result, %Turn{} = turn, decisions) do
+    send(test_pid, {:holding, decisions, self()})
+    receive do: (:release -> came_to(turn, result))
+  end
+
   @doc "Hands the agent the turn before a batch, as a turn does, tells the test, and blocks."
   def checkpointing(test_pid, %Turn{scope: scope, context: context} = turn) do
     :ok = GenServer.call(scope.journal, {:checkpoint, checkpoint(context)})
