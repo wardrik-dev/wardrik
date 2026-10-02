@@ -60,9 +60,17 @@ public address and no open port.
 ## What a notice says
 
 **Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
-turn had read content from outside first, and its arguments, with **Approve** and **Deny** buttons. Pressing one decides the call as `wardrik approve`
-or `wardrik deny` would, and the message is changed to say who decided it and how. A call denied
-from Slack tells the model "Denied in Slack by" whoever pressed it.
+turn had read content from outside first, and its arguments, with **Approve** and **Deny** buttons.
+Pressing one decides the call as `wardrik approve` or `wardrik deny` would, and the message is
+changed to say who decided it and how.
+
+Above each call's buttons is a box for why it is denied, or what to do instead. A call denied from
+Slack tells the model "Denied in Slack by" whoever pressed it, and what they wrote there, as
+`wardrik deny` passes on a reason, so a denial can steer the agent:
+
+> Denied in Slack by jon: Deploy to staging first, and show me the diff.
+
+Approving leaves the box unsaid.
 
 A call waiting on an account to be connected has **Show link** instead of Approve, which shows the
 authorization link to whoever pressed it, and nobody else. See
