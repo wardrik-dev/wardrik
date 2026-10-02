@@ -56,7 +56,8 @@ wardrik init
 
 `wardrik init` says what it finds, then asks for a model provider, offering those whose key your
 shell already sets, a model, the provider's key, which it does not show as you type, and the first
-agent's name. It writes `agents/assistant.md` with that model and no tools, offers to let your SSH
+agent's name. It writes `agents/assistant.md` with that model and no tools, and a `config.yaml`
+whose `defaults` give that model to each agent `wardrik agent spawn` starts, offers to let your SSH
 keys in for `wardrik attach`, starts the daemon, under your systemd from boot if you like, seals
 the key in the vault, and asks the agent one short question. It writes no file that is there
 already, so it can run again.

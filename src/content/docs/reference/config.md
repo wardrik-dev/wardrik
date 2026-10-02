@@ -28,6 +28,11 @@ refused, since one of them would go unread.
 
     org: acme
 
+    defaults:
+      model: anthropic:claude-sonnet-5
+      tools: [web_search]
+      policy: careful
+
     mcp:
       linear:
         url: https://mcp.linear.app/mcp
@@ -88,6 +93,12 @@ node boots, before the vault can be, and the vault cannot unlock itself.
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
 an org. It is `default` unless set. See `Wardrik.Fleet`.
+
+`defaults` is what an agent is given where nothing else says: one
+`wardrik agent spawn` writes a file for, and one the TUI starts. It takes
+`model`, `tools`, `policy`, `timeout`, `max_iterations` and `compaction`,
+as an agent file does; see `WardrikDaemon.AgentFile`. `wardrik init`
+writes it with the model it chose.
 
 An MCP server and a notify target each serve one org's agents, the
 deployment's own, unless its `org` names another, a list of them, or `*`
