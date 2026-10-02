@@ -8,9 +8,9 @@ defmodule Wardrik.Call do
   `decided/3`. The runtime moves it through its states, and it is the same
   value whether it is being decided, waiting on a person, or answered.
 
-  A tool built with `Wardrik.Tool.new!/1` is handed the call too, and answers it
-  with `answer/2` or parks it with `park/2`, and marks with `taint/1` a call
-  whose answer holds content from outside.
+  A tool is handed the call's arguments and a `Wardrik.Tool.Context`, and what
+  it answers the runtime writes on the call with `answer/2`, `park/3` and
+  `taint/1`.
 
   What the call goes to is its `:target`, a `Wardrik.Call.Tool` or a
   `Wardrik.Call.Model`, and a hook matches on it:
@@ -65,7 +65,7 @@ defmodule Wardrik.Call do
 
   ## Gated tools
 
-  A call to a gated tool (see `c:Wardrik.Tool.gated?/1`) goes ahead only where
+  A call to a gated tool (see `Wardrik.Tool.Annotations`) goes ahead only where
   a hook allowed it by name, with `:allow`, and waits on its tool otherwise.
   While the run it belongs to has read content from outside (see
   `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, since what the
@@ -205,9 +205,9 @@ defmodule Wardrik.Call do
   Marks the call's answer as holding content from outside: a page, a message,
   an issue anyone could have written. The run it belongs to is tainted from
   then on, and a gated tool's call later in the run waits on a person unless
-  a hook allowed it after outside content. A tool built with
-  `Wardrik.Tool.new!/1` marks its own call; one that declares
-  `c:Wardrik.Tool.outside_content?/1` has it marked.
+  a hook allowed it after outside content. A tool whose annotations say its
+  answers are content from outside has its call marked; one handed its
+  context marks one answer with `{:ok, output, outside: true}`.
   """
   @spec taint(t()) :: t()
   def taint(%__MODULE__{} = call), do: %{call | tainted: true}

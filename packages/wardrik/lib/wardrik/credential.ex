@@ -2,15 +2,15 @@ defmodule Wardrik.Credential do
   @moduledoc """
   A secret a tool needs, named rather than held.
 
-  Wardrik stores no credentials. A tool names what it needs and asks for it
-  to be resolved for the `Wardrik.Call` it was handed:
+  Wardrik stores no credentials. A tool names what it needs in its
+  annotations, and the runtime resolves each name for the call it is about
+  to run and hands what it resolved to the tool in its `Wardrik.Tool.Context`:
 
-      case Wardrik.Credential.resolve(call, "github") do
-        {:ok, credential} -> Wardrik.Call.answer(call, fetch(url, credential))
-        {:error, {:authorization_required, url}} -> Wardrik.Call.park(call, "Connect GitHub: " <> url)
-        {:error, {:authorization_required, url, code}} -> Wardrik.Call.park(call, "Enter " <> code <> " at " <> url)
-        {:error, reason} -> Wardrik.Call.answer(call, Wardrik.Tool.Result.error(reason))
-      end
+      @impl true
+      def annotations(_name), do: %{credentials: ["github"]}
+
+      def run(%{url: url}, %Wardrik.Tool.Context{credentials: %{"github" => credential}}),
+        do: fetch(url, credential)
 
   A deployment names a `Wardrik.Credential` module on the scope, the way it names
   a policy, and that module decides where secrets come from. A run with no
@@ -53,8 +53,10 @@ defmodule Wardrik.Credential do
   could have this credential but has not connected yet, and connects at
   `url`. `{:error, {:authorization_required, url, code}}` says the same of a
   user who connects by entering `code` at `url`, on whatever device they have
-  to hand. A tool that parks its call with `Wardrik.Call.park/2` stops the turn
-  until they do; see `Wardrik.Tool`.
+  to hand. The runtime parks the call on the link until they do, and runs it
+  once they have. A tool whose credential the system it reaches refuses
+  answers `{:refused, name}`; the runtime tells the resolver through
+  `c:refused/2`, resolves the name again and runs the tool once more.
 
   A resolver that sends the user somewhere else to authorize keeps
   `continuation/1` alongside whatever it started, and applies it when the

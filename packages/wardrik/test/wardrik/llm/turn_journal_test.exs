@@ -189,9 +189,9 @@ defmodule Wardrik.LLM.TurnJournalTest do
         name: "research",
         description: "Hands the work to a delegate.",
         parameter_schema: [],
-        call: fn call ->
-          {:ok, answer} = Wardrik.Subagent.run(call.scope, "refund it")
-          Wardrik.Call.answer(call, {:ok, %{"answer" => answer}})
+        run: fn _input, context ->
+          {:ok, answer} = Wardrik.Subagent.run(context.scope, "refund it")
+          {:ok, %{"answer" => answer}}
         end
       )
 

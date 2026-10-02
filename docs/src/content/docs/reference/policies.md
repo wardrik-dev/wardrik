@@ -52,7 +52,7 @@ of its subjects; otherwise `:default` decides:
 
 A call an `allow` rule allows is allowed by name, with an
 `:allow` decision, which is what a gated tool's call waits for (see
-`c:Wardrik.Tool.gated?/1`). One allowed only by `default: allow` is not, so
+`Wardrik.Tool.Annotations`). One allowed only by `default: allow` is not, so
 a gated tool asks under a policy that names nothing, as it does under none.
 
 ## After content from outside

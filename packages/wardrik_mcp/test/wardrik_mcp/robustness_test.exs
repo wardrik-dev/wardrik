@@ -5,7 +5,6 @@ defmodule WardrikMCP.RobustnessTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
-  alias Wardrik.Test.Calls
   alias WardrikMCP.Connection
 
   setup %{ref: ref} do
@@ -38,8 +37,7 @@ defmodule WardrikMCP.RobustnessTest do
 
       answering =
         Task.async(fn ->
-          WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "still here"}))
-          |> Calls.result()
+          WardrikMCP.call(ref, "echo", %{"value" => "still here"}, context())
         end)
 
       assert :ok = ToolRunner.kill_call(agent_id, "call_slow")
@@ -53,8 +51,7 @@ defmodule WardrikMCP.RobustnessTest do
       assert {:ok, %{"ok" => true}} =
                Task.await(
                  Task.async(fn ->
-                   WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "done"}))
-                   |> Calls.result()
+                   WardrikMCP.call(ref, "echo", %{"value" => "done"}, context())
                  end)
                )
 
@@ -76,8 +73,7 @@ defmodule WardrikMCP.RobustnessTest do
 
     test "a call outside a turn reports none and still answers", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "done in 2"}}} =
-               WardrikMCP.call(ref, "noisy", Calls.tool("noisy", %{}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "noisy", %{}, context())
 
       refute_receive %Event{payload: {:tool_progress, _id, _name, _progress, _total}}, 100
     end
@@ -98,8 +94,7 @@ defmodule WardrikMCP.RobustnessTest do
       assert Process.alive?(connection)
 
       assert {:ok, %{"ok" => true}} =
-               WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "back"}))
-               |> Calls.result()
+               WardrikMCP.call(ref, "echo", %{"value" => "back"}, context())
     end
 
     test "a client Anubis restarts for itself keeps answering", %{ref: ref} do
@@ -141,8 +136,7 @@ defmodule WardrikMCP.RobustnessTest do
 
   defp cancelled(ref) do
     {:ok, %{"result" => %{"content" => count}}} =
-      WardrikMCP.call(ref, "cancellations", Calls.tool("cancellations", %{}))
-      |> Calls.result()
+      WardrikMCP.call(ref, "cancellations", %{}, context())
 
     String.to_integer(count)
   end

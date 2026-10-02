@@ -5,7 +5,6 @@ defmodule WardrikMCP.PerUserTest do
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
-  alias Wardrik.Test.Calls
   alias WardrikMCP.Connection
 
   # Resolves stub as a vault would: each connected user's own, and an org's
@@ -108,7 +107,7 @@ defmodule WardrikMCP.PerUserTest do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(ref, "unconnected", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To connect #{ref}, open its authorization link"
+    assert prompt =~ "To use #{ref}__echo, connect stub at its link"
     refute prompt =~ "https://"
     assert link == %{url: "https://example.com/connect", code: nil}
     refute Connection.running?(ref, {:owner, {"acme", "unconnected"}})
@@ -118,7 +117,7 @@ defmodule WardrikMCP.PerUserTest do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
              run(ref, "elsewhere", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To connect #{ref}, enter the code at its authorization link"
+    assert prompt =~ "To use #{ref}__echo, connect stub at its link"
     refute prompt =~ "WDJB-MJHT"
     assert link == %{url: "https://example.com/device", code: "WDJB-MJHT"}
   end
@@ -129,14 +128,6 @@ defmodule WardrikMCP.PerUserTest do
 
     [part] = message.content
     assert part.text =~ "not_authorized"
-  end
-
-  test "a call with no turn behind it cannot be made as anyone", %{ref: ref} do
-    assert {:ok, %{"ok" => false, "error" => error}} =
-             WardrikMCP.call(ref, "echo", Calls.tool("echo", %{"value" => "x"}))
-             |> Calls.result()
-
-    assert error["message"] =~ "this call has no one to find it for"
   end
 
   test "the deployment's own connection is not given a user's credential", %{ref: ref} do

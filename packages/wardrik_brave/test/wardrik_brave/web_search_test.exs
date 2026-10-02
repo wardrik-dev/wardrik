@@ -15,7 +15,7 @@ defmodule WardrikBrave.WebSearchTest do
     end
 
     test "answers with pages from outside, which taint a run" do
-      assert Wardrik.Tool.outside_content?(WebSearch, "web_search")
+      assert Wardrik.Tool.annotations(WebSearch, "web_search").outside
     end
 
     test "requires only a query" do

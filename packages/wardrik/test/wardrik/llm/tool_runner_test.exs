@@ -19,9 +19,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     ReqLLM.Tool.new!(name: name, description: "test tool", callback: callback)
   end
 
-  # A tool handed its call, as `Wardrik.Tool.new!/1` builds one.
+  # A tool handed its context, as `Wardrik.Tool.new!/1` builds one.
   defp handed!(name, handler) do
-    Wardrik.Tool.new!(name: name, description: "test tool", call: handler)
+    Wardrik.Tool.new!(name: name, description: "test tool", run: handler)
   end
 
   defp scope(agent_id, tools) do
@@ -37,7 +37,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   describe "a tool that parks" do
     test "stops the turn instead of answering it", %{agent_id: agent_id} do
-      tools = [handed!("connect", &Call.park(&1, "Authorize at https://example.com"))]
+      tools = [
+        handed!("connect", fn _input, _context -> {:park, "Authorize at https://example.com"} end)
+      ]
+
       scope = scope(agent_id, tools)
 
       assert %Call{
@@ -48,7 +51,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
     test "keeps where to authorize apart from the prompt", %{agent_id: agent_id} do
       link = %{url: "https://example.com/device", code: "WDJB-MJHT"}
-      tools = [handed!("connect", &Call.park(&1, "Connect it first", link: link))]
+
+      tools = [
+        handed!("connect", fn _input, _context -> {:park, "Connect it first", link: link} end)
+      ]
 
       parked = ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
 
@@ -61,7 +67,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     test "is announced as parked, not as finished", %{agent_id: agent_id} do
-      tools = [handed!("connect", &Call.park(&1, "Authorize first"))]
+      tools = [handed!("connect", fn _input, _context -> {:park, "Authorize first"} end)]
 
       ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
 
@@ -73,13 +79,13 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     test "runs again when the call is approved", %{agent_id: agent_id} do
       test = self()
 
-      handler = fn call ->
+      handler = fn _input, _context ->
         if Process.get(:connected) do
-          Call.answer(call, {:ok, %{"done" => true}})
+          {:ok, %{"done" => true}}
         else
           send(test, :parked_once)
           Process.put(:connected, true)
-          Call.park(call, "Authorize first")
+          {:park, "Authorize first"}
         end
       end
 
@@ -583,14 +589,178 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                ToolRunner.execute_many_async([call("call_3", "fetch", %{})], refused)
     end
 
-    test "a tool handed its call can taint it", %{agent_id: agent_id} do
-      tool = handed!("read_inbox", &(&1 |> Call.taint() |> Call.answer({:ok, %{"mail" => "hi"}})))
+    test "a tool handed its context can answer with content from outside", %{agent_id: agent_id} do
+      tool =
+        handed!("read_inbox", fn _input, _context -> {:ok, %{"mail" => "hi"}, outside: true} end)
 
       assert [%Call{state: :done, tainted: true}] =
                ToolRunner.execute_many_async(
                  [call("call_1", "read_inbox", %{})],
                  scope(agent_id, [tool])
                )
+    end
+  end
+
+  describe "a tool handed its context" do
+    test "reads the call and the run it is part of", %{agent_id: agent_id} do
+      tool =
+        handed!("whoami", fn _input, %Wardrik.Tool.Context{} = context ->
+          {:ok,
+           %{
+             "id" => context.call_id,
+             "key" => context.idempotency_key,
+             "user" => context.scope.user
+           }}
+        end)
+
+      scope = %{scope(agent_id, [tool]) | user: "jon"}
+      call = call("call_1", "whoami", %{})
+      key = Wardrik.Ledger.idempotency_key(scope, call)
+
+      assert %Call{
+               state: :done,
+               result: {:ok, %{"id" => "call_1", "key" => ^key, "user" => "jon"}}
+             } =
+               ToolRunner.execute(call, scope)
+    end
+  end
+
+  describe "a tool whose annotations name credentials" do
+    defmodule Vault do
+      @behaviour Wardrik.Credential
+
+      @impl true
+      def resolve("github", %Call{scope: %Scope{user: "jon"}}),
+        do: {:ok, Wardrik.Credential.secret("ghp_x", owner: "jon")}
+
+      def resolve("github", %Call{scope: %Scope{user: "new"}}),
+        do: {:error, {:authorization_required, "https://example.com/authorize"}}
+
+      def resolve("github", %Call{scope: %Scope{user: "device"}}),
+        do: {:error, {:authorization_required, "https://example.com/device", "WDJB"}}
+
+      def resolve("github", %Call{scope: %Scope{user: "later"}}) do
+        if Process.get(:authorized),
+          do: {:ok, Wardrik.Credential.secret("ghp_later", owner: "later")},
+          else: {:error, {:authorization_required, "https://example.com/authorize"}}
+      end
+
+      def resolve("github", %Call{scope: %Scope{user: "stale"}}) do
+        token = if Process.get(:refreshed), do: "ghp_fresh", else: "ghp_stale"
+        {:ok, Wardrik.Credential.secret(token, owner: "stale")}
+      end
+
+      def resolve("github", %Call{scope: %Scope{user: "revoked"}}),
+        do: {:ok, Wardrik.Credential.secret("ghp_stale", owner: "revoked")}
+
+      def resolve(_ref, _call), do: {:error, :denied}
+
+      @impl true
+      def refused("github", %Call{scope: %Scope{user: user}}) do
+        send(self(), {:refused, user})
+        Process.put(:refreshed, true)
+        :ok
+      end
+    end
+
+    defmodule Needing do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tool do
+        Wardrik.Tool.new!(
+          name: "issues",
+          description: "Searches issues.",
+          parameter_schema: [],
+          run: {__MODULE__, :run}
+        )
+      end
+
+      @impl true
+      def annotations(_name), do: %{credentials: ["github"]}
+
+      def run(_input, %Wardrik.Tool.Context{credentials: %{"github" => credential}}) do
+        case Wardrik.Credential.reveal(credential) do
+          "ghp_stale" -> {:refused, "github"}
+          token -> {:ok, %{"token" => token}}
+        end
+      end
+    end
+
+    defp needing(agent_id, user) do
+      Config.new(tools: [Needing])
+      |> Scope.root(agent_id, name: "turn", user: user, credentials: Vault)
+    end
+
+    test "is handed them resolved for the call's user, and keeps none", %{agent_id: agent_id} do
+      assert %Call{state: :done, result: {:ok, %{"token" => "ghp_x"}}} =
+               done = ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "jon"))
+
+      assert done.private[:wardrik_credentials] == nil
+    end
+
+    test "parks on the link where the user has yet to authorize, the code kept apart", %{
+      agent_id: agent_id
+    } do
+      assert %Call{state: :waiting, asks: [%Call.Ask{by: :tool, prompt: prompt, link: link}]} =
+               ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "new"))
+
+      assert prompt ==
+               "To use issues, connect github at its link. This carries on once it is connected."
+
+      assert link == %{url: "https://example.com/authorize", code: nil}
+      assert_receive %Event{payload: {:tool_parked, "call_1", "issues", ^prompt}}
+
+      assert %Call{asks: [%{link: %{url: "https://example.com/device", code: "WDJB"}}]} =
+               ToolRunner.execute(call("call_2", "issues", %{}), needing(agent_id, "device"))
+    end
+
+    test "runs once the user has authorized, when the parked call is approved", %{
+      agent_id: agent_id
+    } do
+      Process.delete(:authorized)
+      scope = needing(agent_id, "later")
+
+      assert %Call{state: :waiting} =
+               parked = ToolRunner.execute(call("call_1", "issues", %{}), scope)
+
+      Process.put(:authorized, true)
+
+      assert %Call{state: :done, result: {:ok, %{"token" => "ghp_later"}}} =
+               parked |> Call.approve() |> ToolRunner.execute(scope)
+    end
+
+    test "is answered with why where none can be resolved", %{agent_id: agent_id} do
+      assert %Call{state: :done, result: {:ok, %{"ok" => false, "error" => error}}} =
+               ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "nobody"))
+
+      assert error["code"] == "not_authorized"
+      assert error["message"] =~ "issues needs github"
+
+      resolving_nothing = %{needing(agent_id, "jon") | credentials: nil}
+
+      assert %Call{result: {:ok, %{"error" => %{"message" => message}}}} =
+               ToolRunner.execute(call("call_2", "issues", %{}), resolving_nothing)
+
+      assert message =~ "resolves no credentials"
+    end
+
+    test "one the tool reports refused is resolved afresh, and the tool run once more", %{
+      agent_id: agent_id
+    } do
+      Process.delete(:refreshed)
+
+      assert %Call{state: :done, result: {:ok, %{"token" => "ghp_fresh"}}} =
+               ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "stale"))
+
+      assert_received {:refused, "stale"}
+    end
+
+    test "refused twice, the call is answered as not authorized", %{agent_id: agent_id} do
+      assert %Call{state: :done, result: {:ok, %{"ok" => false, "error" => error}}} =
+               ToolRunner.execute(call("call_1", "issues", %{}), needing(agent_id, "revoked"))
+
+      assert error["message"] =~ "github is no longer valid"
     end
   end
 

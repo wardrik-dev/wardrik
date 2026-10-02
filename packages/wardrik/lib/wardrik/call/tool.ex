@@ -7,7 +7,7 @@ defmodule Wardrik.Call.Tool do
   before any hook is asked, so a hook reads it as data:
 
     * `:gated` - the call waits on a person unless a hook allows it by name;
-      see `c:Wardrik.Tool.gated?/1`
+      see `Wardrik.Tool.Annotations`
     * `:subjects` - what the call acts on, as its tool names it from the
       arguments; see `c:Wardrik.Tool.subjects/2`
   """

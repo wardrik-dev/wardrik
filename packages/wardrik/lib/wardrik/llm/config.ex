@@ -26,7 +26,7 @@ defmodule Wardrik.LLM.Config do
   that offers more than is wanted keeps what it declares about the rest.
 
   `:tool_timeouts` caps how long one call to a named tool may take, overriding
-  what the tool itself declares through `c:Wardrik.Tool.timeout/0`.
+  what the tool itself declares in its annotations (`Wardrik.Tool.Annotations`).
 
       Wardrik.LLM.Config.new(tools: [...], tool_timeouts: %{"deep_research" => :timer.minutes(20)})
 
@@ -136,34 +136,32 @@ defmodule Wardrik.LLM.Config do
 
   @doc """
   How long one call to the named tool may take: what `:tool_timeouts` says,
-  else what the tool declares, else `nil`.
+  else what the tool's annotations say, else `nil`.
   """
   @spec tool_timeout(t(), String.t()) :: timeout() | nil
   def tool_timeout(%__MODULE__{} = config, name) do
-    Map.get_lazy(config.tool_timeouts, name, fn -> declared(config, name) end)
+    Map.get_lazy(config.tool_timeouts, name, fn -> annotated(config, name, :timeout) end)
   end
 
   @doc """
   What a call to the named tool does when the ledger holds it as begun and
-  never finished, as the spec that builds it declares: `:rerun`, or `:ask`.
-  See `c:Wardrik.Tool.in_doubt/1` and `c:Wardrik.Tool.in_doubt/2`.
+  never finished, as its annotations say: `:rerun`, or `:ask`. See
+  `Wardrik.Tool.Annotations`.
   """
   @spec tool_in_doubt(t(), String.t()) :: :ask | :rerun
-  def tool_in_doubt(%__MODULE__{} = config, name) do
-    Enum.find_value(config.tools, :ask, fn spec ->
-      name in Tool.names(spec) and Tool.in_doubt(spec, name)
-    end)
-  end
+  def tool_in_doubt(%__MODULE__{} = config, name),
+    do: annotated(config, name, :in_doubt) || :ask
 
   @doc "The spec that builds the named tool, or `nil` for a tool this config does not name."
   @spec tool_spec(t(), String.t()) :: Tool.spec() | nil
   def tool_spec(%__MODULE__{} = config, name),
     do: Enum.find(config.tools, &(name in Tool.names(&1)))
 
-  defp declared(config, name) do
-    Enum.find_value(config.tools, fn spec ->
-      name in Tool.names(spec) and Tool.timeout(spec)
-    end)
+  defp annotated(config, name, field) do
+    case tool_spec(config, name) do
+      nil -> nil
+      spec -> Map.fetch!(Tool.annotations(spec, name), field)
+    end
   end
 
   @doc "Writes a config down as data. Tools given inline are kept only by name."

@@ -1,9 +1,8 @@
 defmodule WardrikMCP.StderrTest do
   use ExUnit.Case, async: false
 
-  import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0]
+  import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0, context: 0]
 
-  alias Wardrik.Test.Calls
   alias WardrikMCP.Server
 
   defp start(ref, opts) do
@@ -19,12 +18,7 @@ defmodule WardrikMCP.StderrTest do
     start(ref, stderr: {:file, path})
 
     assert {:ok, %{"ok" => true}} =
-             WardrikMCP.call(
-               ref,
-               "noise",
-               Calls.tool("noise", %{"line" => "npm notice hello"})
-             )
-             |> Calls.result()
+             WardrikMCP.call(ref, "noise", %{"line" => "npm notice hello"}, context())
 
     # The server writes the line before it answers, and Erlang's standard error
     # is unbuffered, so the file has it by the time the answer arrives.
@@ -36,8 +30,7 @@ defmodule WardrikMCP.StderrTest do
     start(ref, stderr: :discard)
 
     assert {:ok, %{"result" => %{"content" => "noise made"}}} =
-             WardrikMCP.call(ref, "noise", Calls.tool("noise", %{"line" => "gone"}))
-             |> Calls.result()
+             WardrikMCP.call(ref, "noise", %{"line" => "gone"}, context())
   end
 
   describe "the transport it builds" do

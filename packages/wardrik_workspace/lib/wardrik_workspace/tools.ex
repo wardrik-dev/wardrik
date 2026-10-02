@@ -23,7 +23,6 @@ defmodule WardrikWorkspace.Tools do
   twice.
   """
 
-  alias Wardrik.Call
   alias Wardrik.Tool.Result
   alias WardrikWorkspace.File
   alias WardrikWorkspace.Mount
@@ -54,7 +53,7 @@ defmodule WardrikWorkspace.Tools do
         name: name,
         description: description,
         parameter_schema: schema,
-        call: {__MODULE__, :handle, [String.to_existing_atom(name), spec]}
+        run: {__MODULE__, :handle, [String.to_existing_atom(name), spec]}
       )
     end
   end
@@ -142,18 +141,24 @@ defmodule WardrikWorkspace.Tools do
   end
 
   @doc false
-  @spec handle(atom(), Spec.t(), Call.t()) :: Call.t()
-  def handle(tool, %Spec{} = spec, %Call{target: %Call.Tool{arguments: args}} = call) do
-    case run(tool, spec, args, call) do
-      {:ok, answer, %Call{} = call} -> Call.answer(call, Result.ok(answer))
-      {:ok, answer} -> Call.answer(call, Result.ok(answer))
-      {:error, code, message} -> Call.answer(call, Result.error(code, message))
+  @spec handle(atom(), Spec.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def handle(tool, %Spec{} = spec, args, %Wardrik.Tool.Context{} = context) do
+    case run(tool, spec, args, context) do
+      {:ok, answer, outside: outside?} ->
+        {:ok, result} = Result.ok(answer)
+        {:ok, result, outside: outside?}
+
+      {:ok, answer} ->
+        Result.ok(answer)
+
+      {:error, code, message} ->
+        Result.error(code, message)
     end
   end
 
   # -- read ------------------------------------------------------------------
 
-  defp run(:read_file, spec, args, call) do
+  defp run(:read_file, spec, args, _context) do
     with {:ok, mount, path} <- resolve(spec, args.path),
          {:ok, file, version} <- existing(mount, path) do
       offset = Map.get(args, :offset, 1)
@@ -168,35 +173,35 @@ defmodule WardrikWorkspace.Tools do
          "lines" => length(lines),
          "content" => shown,
          "truncated" => cut?
-       }, taint(call, [file])}
+       }, outside: outside?([file])}
     end
   end
 
   # -- write -----------------------------------------------------------------
 
-  defp run(:write_file, spec, args, call) do
+  defp run(:write_file, spec, args, context) do
     with {:ok, mount, path} <- writable(spec, args.path),
          :ok <- fits(args.content) do
       if Map.get(args, :append, false),
-        do: append(mount, path, args.content, call, @tries),
-        else: replace(mount, path, args, call)
+        do: append(mount, path, args.content, context, @tries),
+        else: replace(mount, path, args, context)
     end
   end
 
-  defp run(:edit_file, spec, args, call) do
+  defp run(:edit_file, spec, args, context) do
     with {:ok, mount, path} <- writable(spec, args.path),
          :ok <- present(args.old) do
-      edit(mount, path, args, call, @tries)
+      edit(mount, path, args, context, @tries)
     end
   end
 
-  defp run(:delete_file, spec, args, _call) do
+  defp run(:delete_file, spec, args, _context) do
     with {:ok, mount, path} <- writable(spec, args.path), do: delete(mount, path, @tries)
   end
 
   # -- look ------------------------------------------------------------------
 
-  defp run(:list_files, spec, args, call) do
+  defp run(:list_files, spec, args, _context) do
     glob = Map.get(args, :pattern) || "**"
 
     with {:ok, files} <- view(spec) do
@@ -209,11 +214,11 @@ defmodule WardrikWorkspace.Tools do
        %{
          "files" => listed |> Enum.take(@max_listed) |> Enum.map(&listing/1),
          "truncated" => length(listed) > @max_listed
-       }, taint(call, Enum.map(listed, &elem(&1, 1)))}
+       }, outside: outside?(Enum.map(listed, &elem(&1, 1)))}
     end
   end
 
-  defp run(:search_files, spec, args, call) do
+  defp run(:search_files, spec, args, _context) do
     glob = Map.get(args, :glob) || "**"
     context = min(Map.get(args, :context, 0), @max_context)
 
@@ -229,7 +234,7 @@ defmodule WardrikWorkspace.Tools do
        %{
          "matches" => found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 0)),
          "truncated" => length(found) > @max_matches
-       }, taint(call, found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 1)))}
+       }, outside: outside?(found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 1)))}
     end
   end
 
@@ -238,25 +243,25 @@ defmodule WardrikWorkspace.Tools do
   # Over a file that exists, only with the version read; where none is, only
   # while none is. A file whose last write was this call's is this call run
   # again, answered as written.
-  defp replace(mount, path, args, call) do
-    key = Wardrik.Ledger.idempotency_key(call)
+  defp replace(mount, path, args, context) do
+    key = context.idempotency_key
 
     case read(mount, path) do
       {:ok, %File{call: ^key}, version} ->
         {:ok, written(mount, path, version)}
 
       {:ok, _file, version} ->
-        over(mount, path, args, call, version)
+        over(mount, path, args, context, version)
 
       :none ->
-        mount |> put(path, args.content, call, nil) |> lost(fn -> created(mount, path) end)
+        mount |> put(path, args.content, context, nil) |> lost(fn -> created(mount, path) end)
 
       {:error, reason} ->
         unavailable(reason)
     end
   end
 
-  defp over(mount, path, args, call, version) do
+  defp over(mount, path, args, context, version) do
     cond do
       args[:version] == nil ->
         {:error, :exists,
@@ -266,15 +271,15 @@ defmodule WardrikWorkspace.Tools do
         changed(mount, path)
 
       true ->
-        mount |> put(path, args.content, call, version) |> lost(fn -> changed(mount, path) end)
+        mount |> put(path, args.content, context, version) |> lost(fn -> changed(mount, path) end)
     end
   end
 
   # Appends commute, so one that loses to another writer reads again and
   # tries again.
-  defp append(mount, path, content, call, tries) do
-    key = Wardrik.Ledger.idempotency_key(call)
-    retry = fn -> append(mount, path, content, call, tries - 1) end
+  defp append(mount, path, content, context, tries) do
+    key = context.idempotency_key
+    retry = fn -> append(mount, path, content, context, tries - 1) end
 
     case read(mount, path) do
       {:ok, %File{call: ^key}, version} ->
@@ -282,10 +287,10 @@ defmodule WardrikWorkspace.Tools do
 
       {:ok, %File{content: old} = file, version} ->
         with :ok <- fits(old <> content),
-             do: again(put(mount, path, old <> content, {call, file}, version), retry, tries)
+             do: again(put(mount, path, old <> content, {context, file}, version), retry, tries)
 
       :none ->
-        again(put(mount, path, content, call, nil), retry, tries)
+        again(put(mount, path, content, context, nil), retry, tries)
 
       {:error, reason} ->
         unavailable(reason)
@@ -294,24 +299,24 @@ defmodule WardrikWorkspace.Tools do
 
   # An edit that loses to another writer reads again, and applies again where
   # old still matches.
-  defp edit(mount, path, args, call, tries) do
+  defp edit(mount, path, args, context, tries) do
     with {:ok, file, version} <- existing(mount, path) do
-      if file.call == Wardrik.Ledger.idempotency_key(call),
+      if file.call == context.idempotency_key,
         do: {:ok, written(mount, path, version)},
-        else: edited(mount, path, args, {call, file, version}, tries)
+        else: edited(mount, path, args, {context, file, version}, tries)
     end
   end
 
-  defp edited(mount, path, args, {call, file, version}, tries) do
+  defp edited(mount, path, args, {context, file, version}, tries) do
     all? = Map.get(args, :all, false)
 
     with {:ok, count} <- occurrences(mount, path, file.content, args.old, all?),
          content = String.replace(file.content, args.old, args.new, global: all?),
          :ok <- fits(content) do
       mount
-      |> put(path, content, {call, file}, version)
+      |> put(path, content, {context, file}, version)
       |> replaced(if(all?, do: count, else: 1))
-      |> again(fn -> edit(mount, path, args, call, tries - 1) end, tries)
+      |> again(fn -> edit(mount, path, args, context, tries - 1) end, tries)
     end
   end
 
@@ -358,19 +363,19 @@ defmodule WardrikWorkspace.Tools do
   # where the file has changed since. Content kept from the file written
   # before, by an append or an edit, keeps its mark: a file is tainted while
   # anything a tainted run wrote may still be in it.
-  defp put(mount, path, content, {call, %File{tainted: kept}}, version),
-    do: write(mount, path, content, call, version, kept)
+  defp put(mount, path, content, {context, %File{tainted: kept}}, version),
+    do: write(mount, path, content, context, version, kept)
 
-  defp put(mount, path, content, call, version),
-    do: write(mount, path, content, call, version, false)
+  defp put(mount, path, content, context, version),
+    do: write(mount, path, content, context, version, false)
 
-  defp write(mount, path, content, call, version, kept) do
+  defp write(mount, path, content, %Wardrik.Tool.Context{scope: scope} = context, version, kept) do
     file = %File{
       content: content,
-      by: call.scope.source.agent_id,
-      run: call.scope.source.trace.trace_id,
-      call: Wardrik.Ledger.idempotency_key(call),
-      tainted: call.scope.tainted or kept,
+      by: scope.source.agent_id,
+      run: scope.source.trace.trace_id,
+      call: context.idempotency_key,
+      tainted: scope.tainted or kept,
       at: DateTime.utc_now()
     }
 
@@ -533,10 +538,8 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  # A call that read what a tainted run wrote is tainted itself.
-  defp taint(call, files) do
-    if Enum.any?(files, & &1.tainted), do: Call.taint(call), else: call
-  end
+  # What a tainted run wrote is content from outside to whoever reads it.
+  defp outside?(files), do: Enum.any?(files, & &1.tainted)
 
   defp written(mount, path, version),
     do: %{"path" => shown_path(mount, path), "version" => version(version)}

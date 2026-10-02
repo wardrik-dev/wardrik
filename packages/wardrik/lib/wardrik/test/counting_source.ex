@@ -11,7 +11,7 @@ defmodule Wardrik.Test.CountingSource do
   def tools(names) when is_list(names), do: Enum.map(names, &tool/1)
 
   @impl true
-  def timeout, do: :timer.seconds(90)
+  def annotations(_count, _name), do: %{timeout: :timer.seconds(90)}
 
   defp tool(name) do
     ReqLLM.Tool.new!(

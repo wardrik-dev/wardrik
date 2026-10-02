@@ -9,9 +9,10 @@ defmodule Wardrik.Test do
 
   `scope/1` builds the scope a turn runs under, and `call/4` runs one tool
   call through the same steps a turn runs it: what its tool declares, the
-  hooks, the ledger, the tool, and what its answer says of the run. A call
-  that comes back waiting on a person is run on with `resume/2`, as a turn
-  runs it once they approve.
+  hooks, the ledger, the credentials, the tool, and what its answer says of
+  the run. A call that comes back waiting on a person is run on with
+  `resume/2`, as a turn runs it once they approve. `check/3` stops at the
+  hooks, and `context/2` hands a tool its arguments directly.
 
       scope = Wardrik.Test.scope(tools: [MyPack.Tools], hooks: hooks)
       call = Wardrik.Test.call(scope, "search", %{"query" => "otp"})
@@ -113,6 +114,19 @@ defmodule Wardrik.Test do
   @spec check(Scope.t(), String.t(), map()) :: Call.t()
   def check(%Scope{} = scope, name, arguments \\ %{}) when is_binary(name),
     do: scope |> proposed(name, arguments, []) |> Wardrik.Tool.declared() |> Wardrik.Hook.check()
+
+  @doc """
+  The context a tool built with `Wardrik.Tool.new!/1` is handed for one call
+  under `scope`, for a test that hands a tool its arguments directly.
+  `credentials:` are what the runtime would have resolved for it, by name,
+  `name:` the tool's name and `id:` the call's.
+  """
+  @spec context(Scope.t(), keyword()) :: Wardrik.Tool.Context.t()
+  def context(%Scope{} = scope, opts \\ []) do
+    {credentials, opts} = Keyword.pop(opts, :credentials, %{})
+    {name, opts} = Keyword.pop(opts, :name, "tool")
+    Wardrik.Tool.Context.new(proposed(scope, name, %{}, opts), credentials)
+  end
 
   defp proposed(scope, name, arguments, opts) do
     id = Keyword.get_lazy(opts, :id, fn -> "call_#{System.unique_integer([:positive])}" end)

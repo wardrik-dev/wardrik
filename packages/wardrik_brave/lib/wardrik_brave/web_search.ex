@@ -11,7 +11,7 @@ defmodule WardrikBrave.WebSearch do
   search results.
 
   What it answers is pages anyone could have written, so a call to it taints
-  its run; see `c:Wardrik.Tool.outside_content?/1`.
+  its run; see `Wardrik.Tool.Annotations`.
   """
 
   @behaviour Wardrik.Tool
@@ -38,7 +38,7 @@ defmodule WardrikBrave.WebSearch do
 
   @doc "The pages a search finds are content from outside."
   @impl true
-  def outside_content?(_name), do: true
+  def annotations(_name), do: %{outside: true}
 
   @impl true
   def tool do

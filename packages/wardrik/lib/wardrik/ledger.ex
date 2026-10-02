@@ -47,7 +47,7 @@ defmodule Wardrik.Ledger do
   with the calls it had rather than asking the model again, and the ledger
   answers for each one: a settled call is answered from the ledger without
   running, and a pending one parks for a person to decide, or runs again
-  under the same key where its tool declares it may (`c:Wardrik.Tool.in_doubt/1`).
+  under the same key where its tool declares it may (`Wardrik.Tool.Annotations`).
   See `Wardrik.LLM.Turn`.
 
   A tool with an effect outside Wardrik, handed its `Wardrik.Call` (see
