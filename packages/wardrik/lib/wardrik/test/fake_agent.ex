@@ -28,7 +28,6 @@ defmodule Wardrik.Test.FakeAgent do
        parked: [],
        generation: inspect(self()),
        trace_id: nil,
-       delegations: Wardrik.Delegation.new(),
        outcome: nil,
        sequence: 0
      }, owner}

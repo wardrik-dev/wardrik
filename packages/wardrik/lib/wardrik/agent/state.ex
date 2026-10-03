@@ -71,7 +71,6 @@ defmodule Wardrik.Agent.State do
   alias ReqLLM.Context
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
-  alias Wardrik.Delegation
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
@@ -194,8 +193,7 @@ defmodule Wardrik.Agent.State do
     pending: [],
     recent: [],
     outcome: nil,
-    tainted: false,
-    delegations: %Delegation{}
+    tainted: false
   ]
 
   @doc "How long an interrupted turn is given to answer before it is killed."
@@ -249,8 +247,7 @@ defmodule Wardrik.Agent.State do
           pending: [Message.t()],
           recent: [String.t()],
           outcome: outcome(),
-          tainted: boolean(),
-          delegations: Delegation.t()
+          tainted: boolean()
         }
 
   @typedoc "How the last turn ended, or `nil` before the first."
@@ -317,14 +314,12 @@ defmodule Wardrik.Agent.State do
 
   @typedoc """
   What the fleet shows for an agent: what it is doing, how much waits behind
-  it, the calls it is waiting on, how many delegations the current turn has
-  started and still has going, and how the last turn ended.
+  it, the calls it is waiting on, and how the last turn ended.
   """
   @type meta() :: %{
           status: :idle | :running | :parked,
           pending: non_neg_integer(),
           waiting_on: [String.t()],
-          delegations: %{active: non_neg_integer(), total: non_neg_integer()},
           outcome: outcome()
         }
 
@@ -414,7 +409,7 @@ defmodule Wardrik.Agent.State do
   def dump(%__MODULE__{} = state) do
     state
     |> Map.from_struct()
-    |> Map.drop([:delegations, :log])
+    |> Map.drop([:log])
     |> Map.merge(%{
       config: Config.dump(state.config),
       mode: at_rest(state.mode),
@@ -464,9 +459,8 @@ defmodule Wardrik.Agent.State do
 
   @doc """
   An atomic attachment snapshot; generation survives restarts but not
-  deletion. Carries the current turn's delegations, so a client attaching
-  mid-turn sees the work already under way, and the last sequence its log
-  has written, so the client can follow the log from there.
+  deletion. Carries the last sequence its log has written, so the client can
+  follow the log from there.
   """
   @spec snapshot(t()) :: Snapshot.t()
   def snapshot(state) do
@@ -476,7 +470,6 @@ defmodule Wardrik.Agent.State do
       context: state.context,
       parked: waiting_on(state),
       trace_id: trace_id(state.mode),
-      delegations: state.delegations,
       outcome: state.outcome,
       sequence: state.log.head
     }
@@ -549,20 +542,8 @@ defmodule Wardrik.Agent.State do
       status: activity,
       pending: pending,
       waiting_on: Enum.map(waiting_on(state), fn {call, _prompt} -> call.name end),
-      delegations: Delegation.summary(state.delegations),
       outcome: state.outcome
     }
-  end
-
-  @doc """
-  Folds one of this agent's own events into what it knows of the current
-  turn's delegations. Only `:lifecycle` events shape them.
-  """
-  @spec observe(t(), Event.t()) :: t()
-  def observe(%__MODULE__{} = state, %Event{} = event) do
-    if Event.level(Event.type(event)) == :lifecycle,
-      do: %{state | delegations: Delegation.fold(state.delegations, event)},
-      else: state
   end
 
   @doc "Records how far this agent's log has got."

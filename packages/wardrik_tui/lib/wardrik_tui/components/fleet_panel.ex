@@ -63,7 +63,13 @@ defmodule WardrikTUI.Components.FleetPanel do
           {value, Render.line(if(overlay?, do: WardrikTUI.Fleet.fill(text, width), else: text))}
         end)
 
-      opts = [ambiguous: ambiguous, unseen: Map.get(assigns.unseen, member.key), pad?: overlay?]
+      opts = [
+        ambiguous: ambiguous,
+        unseen: Map.get(assigns.unseen, member.key),
+        delegations: Delegation.summary(WardrikTUI.Fleet.followed(assigns, member.key)),
+        pad?: overlay?
+      ]
+
       [{member.key, WardrikTUI.Fleet.row(member, assigns.agent_id, width, opts)} | rows]
     end)
   end
@@ -94,7 +100,8 @@ defmodule WardrikTUI.Components.FleetPanel do
   attr :agent_id, :any, required: true
   attr :unseen, :map, required: true
   attr :filter, :any, required: true
-  attr :expanded, :map, required: true
+  attr :expanded, :any, required: true
+  attr :followed, :map, required: true
   attr :delegations, :any, default: nil
   attr :highlighted, :any, default: nil
   attr :width, :integer, required: true

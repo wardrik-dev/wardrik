@@ -2,8 +2,8 @@ defmodule Wardrik.Fleet.Member do
   @moduledoc """
   One agent as the fleet sees it: where it is, and what it is doing.
 
-  Built from the cluster registry, so `status`, `pending`, `waiting_on`,
-  `delegations` and `outcome` are what the agent last published through
+  Built from the cluster registry, so `status`, `pending`, `waiting_on` and
+  `outcome` are what the agent last published through
   `Wardrik.Agent.State.meta/1`.
   """
 
@@ -18,7 +18,6 @@ defmodule Wardrik.Fleet.Member do
     :status,
     :pending,
     :waiting_on,
-    delegations: %{active: 0, total: 0},
     outcome: nil
   ]
 
@@ -35,7 +34,6 @@ defmodule Wardrik.Fleet.Member do
           status: status(),
           pending: non_neg_integer(),
           waiting_on: [String.t()],
-          delegations: %{active: non_neg_integer(), total: non_neg_integer()},
           outcome: Wardrik.Agent.State.outcome()
         }
 
@@ -54,7 +52,6 @@ defmodule Wardrik.Fleet.Member do
       status: status,
       pending: pending,
       waiting_on: waiting_on,
-      delegations: Map.get(meta, :delegations, %{active: 0, total: 0}),
       outcome: Map.get(meta, :outcome)
     }
   end

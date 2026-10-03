@@ -18,10 +18,8 @@ defmodule WardrikTUI.App.Frames do
     assign(term, tick_due?: true)
   end
 
-  defp interval(%{assigns: %{expanded: expanded}}) when map_size(expanded) > 0,
-    do: @tick_delegating
-
-  defp interval(_term), do: @tick
+  defp interval(%{assigns: %{expanded: expanded}}),
+    do: if(MapSet.size(expanded) > 0, do: @tick_delegating, else: @tick)
 
   def frame_due(%{assigns: %{frame_due?: true}} = term), do: term
 

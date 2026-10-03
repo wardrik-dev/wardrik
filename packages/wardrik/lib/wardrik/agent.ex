@@ -110,13 +110,6 @@ defmodule Wardrik.Agent do
   on the root of a trace of their own. A client attaching mid-turn can catch
   up with `status/1` or `snapshot/1`.
 
-  ## Delegations
-
-  The agent follows its own events, so it knows which delegations the current
-  turn has started through `Wardrik.Subagent.run/3` and how each went. The fleet
-  shows the count as part of the agent's metadata, and `snapshot/1` carries
-  the whole `Wardrik.Delegation` for a client that wants to list or inspect them.
-
   ## Its log
 
   The agent is the only writer of its `Wardrik.Event.Log`. It numbers its events
@@ -493,14 +486,9 @@ defmodule Wardrik.Agent do
     end
   end
 
-  # The agent's own events, which it writes to its log, and which is how it
-  # follows the delegations its turn starts. The fleet hears of them only when
-  # the summary changes.
-  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state) do
-    next = state |> State.observe(event) |> log(event)
-
-    if State.meta(next) == State.meta(state), do: {:noreply, next}, else: stay(next)
-  end
+  # The agent's own events, which it writes to its log.
+  def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state),
+    do: {:noreply, log(state, event)}
 
   def handle_info(%Event{}, state), do: {:noreply, state}
 

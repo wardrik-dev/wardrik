@@ -19,7 +19,6 @@ defmodule WardrikTUI.FleetTest do
       status: Keyword.get(opts, :status, :idle),
       pending: Keyword.get(opts, :pending, 0),
       waiting_on: Keyword.get(opts, :waiting_on, []),
-      delegations: Keyword.get(opts, :delegations, %{active: 0, total: 0}),
       outcome: Keyword.get(opts, :outcome)
     }
   end
@@ -124,10 +123,12 @@ defmodule WardrikTUI.FleetTest do
     end
 
     test "counts the delegations of the current turn, and says when the last turn failed" do
-      assert plain(row(member(status: :running, delegations: %{active: 2, total: 4}))) =~
-               "◐ researcher sub 2/4"
+      sub = fn member, active, total ->
+        plain(row(member, "acme/@jon/mine", 30, delegations: %{active: active, total: total}))
+      end
 
-      assert plain(row(member(delegations: %{active: 0, total: 3}))) =~ "○ researcher sub 0/3"
+      assert sub.(member(status: :running), 2, 4) =~ "◐ researcher sub 2/4"
+      assert sub.(member([]), 0, 3) =~ "○ researcher sub 0/3"
       refute plain(row(member([]))) =~ "sub"
 
       assert plain(row(member(outcome: :failed))) =~ "○ researcher failed"

@@ -235,33 +235,24 @@ defmodule Wardrik.FleetTest do
       :ok
     end
 
-    test "an agent counts its turn's delegations, then how the turn ended" do
+    test "a turn's delegations are followed from its lifecycle events, and the fleet how it ended" do
       key = Wardrik.Test.Fleet.key()
       pid = start(key, runner: {Wardrik.Test.AgentRunners, :delegating, [self(), "pricing"]})
       Event.Bus.subscribe(key, level: :lifecycle)
 
-      assert %{delegations: %{active: 0, total: 0}, outcome: nil} = Fleet.lookup(key)
+      assert %{outcome: nil} = Fleet.lookup(key)
 
       Agent.ask(pid, "go")
       assert_receive {:delegating, branch}
-      assert_receive %Event{payload: {:delegation_started, "look into pricing"}}
-
-      assert Wardrik.Test.Fleet.await_update(fn ->
-               Fleet.lookup(key).delegations == %{active: 1, total: 1}
-             end)
+      assert_receive %Event{payload: {:delegation_started, "look into pricing"}} = started
 
       assert [%{name: "pricing", status: :running}] =
-               Delegation.list(Agent.snapshot(pid).delegations)
+               Delegation.list(Delegation.fold(Delegation.new(), started))
 
       send(branch, :release)
       assert_receive %Event{payload: {:turn_finished, _messages}}
 
-      assert Wardrik.Test.Fleet.await_update(fn ->
-               match?(%{delegations: %{active: 0, total: 1}, outcome: :ok}, Fleet.lookup(key))
-             end)
-
-      assert [%{status: :ok, output: "found pricing"}] =
-               Delegation.list(Agent.snapshot(pid).delegations)
+      assert Wardrik.Test.Fleet.await_update(fn -> match?(%{outcome: :ok}, Fleet.lookup(key)) end)
     end
 
     @tag capture_log: true

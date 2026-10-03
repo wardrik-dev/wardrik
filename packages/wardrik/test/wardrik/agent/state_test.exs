@@ -481,7 +481,6 @@ defmodule Wardrik.Agent.StateTest do
                status: :idle,
                pending: 0,
                waiting_on: [],
-               delegations: %{active: 0, total: 0},
                outcome: nil
              }
 

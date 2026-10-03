@@ -435,7 +435,7 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     refute text =~ "└ ✓ pricing"
     assert text =~ "○ other sub 0/1"
-    refute session.pid in Bus.subscribers(other)
+    assert session.pid in Bus.subscribers(other)
 
     # A refresh leaves a collapsed agent collapsed; l expands it again.
     Breeze.Test.info(session, :refresh_fleet)
