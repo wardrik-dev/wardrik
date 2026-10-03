@@ -372,7 +372,7 @@ defmodule WardrikHTTP.Router do
 
   defp decide(conn, key, id) do
     token = conn.assigns.token
-    by = %Wardrik.Principal{type: :token, id: token.id, name: token.name}
+    by = Wardrik.Principal.new(:token, token.id, name: token.name)
 
     with {:ok, decision} <- decision(conn.body_params),
          :ok <- Agent.decide(key, %{id => decision}, by: by) do

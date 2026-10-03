@@ -37,7 +37,7 @@ defmodule Wardrik.Event.CodecTest do
     turn = turn()
     tool = within(turn, "deploy")
     step = within(turn, "research")
-    by = %Wardrik.Principal{type: :slack, id: "U1", name: "jon"}
+    by = Wardrik.Principal.new(:slack, "U1", name: "jon")
 
     asking =
       Context.assistant("",
@@ -321,7 +321,7 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => approved}} = encode(turn(), {:call_decided, "call_1", :approve, nil})
       assert approved == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
 
-      by = %Wardrik.Principal{type: :shell, id: "wardrik"}
+      by = Wardrik.Principal.new(:shell, "wardrik")
       {:ok, %{"data" => rejected}} = encode(turn(), {:call_decided, "call_1", {:deny, "No."}, by})
 
       assert rejected["decision"] == "rejected"

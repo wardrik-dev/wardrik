@@ -369,7 +369,8 @@ defmodule WardrikTUI.AppTest do
       type(session, "approve")
       Breeze.Test.input(session, "Enter")
       assert_receive {:"$gen_cast", {:resume, %{"call_deploy" => :approve}}}
-      assert_receive {:decided_by, %Wardrik.Principal{type: :terminal}}
+      assert_receive {:decided_by, by}
+      assert Wardrik.Principal.type(by) == :terminal
     end
 
     test "several parked calls are picked by number, and Backspace steps back", ctx do

@@ -219,7 +219,7 @@ defmodule WardrikNotify.Slack do
   defp decide(payload, action, user, agent, call, name) do
     reason = reason(payload, call)
     decision = decision(action, reason, user["username"] || user["name"] || user["id"])
-    by = %Wardrik.Principal{type: :slack, id: user["id"], name: user["username"] || user["name"]}
+    by = Wardrik.Principal.new(:slack, user["id"], name: user["username"] || user["name"])
 
     case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
       :ok -> decided(payload, action, reason, user, call, name)

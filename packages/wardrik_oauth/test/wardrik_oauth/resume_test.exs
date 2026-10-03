@@ -23,7 +23,7 @@ defmodule WardrikOAuth.ResumeTest do
     do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
-  defp oauth, do: %Wardrik.Principal{type: :oauth, id: "github", name: "github authorization"}
+  defp oauth, do: Wardrik.Principal.new(:oauth, "github", name: "github authorization")
 
   # An agent holding a call parked to resolve github for `owner`, as the
   # runtime parks one whose tool names it, and the link it was sent to.

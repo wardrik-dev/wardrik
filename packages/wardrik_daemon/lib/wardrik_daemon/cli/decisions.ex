@@ -147,7 +147,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp decided(key, ids, decision) do
-    by = %Wardrik.Principal{type: :shell, id: System.get_env("USER") || "unknown"}
+    by = Wardrik.Principal.new(:shell, System.get_env("USER") || "unknown")
 
     case Agent.decide(key, Map.new(ids, &{&1, decision}), by: by) do
       :ok ->

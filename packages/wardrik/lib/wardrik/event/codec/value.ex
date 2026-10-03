@@ -13,6 +13,7 @@ defmodule Wardrik.Event.Codec.Value do
 
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.ToolCall
+  alias Wardrik.Principal
   alias Wardrik.Tool.Result
 
   @limit 64 * 1024
@@ -174,8 +175,10 @@ defmodule Wardrik.Event.Codec.Value do
   @spec principal(Wardrik.Principal.t() | nil) :: map() | nil
   def principal(nil), do: nil
 
-  def principal(%Wardrik.Principal{} = principal),
-    do: put(%{"type" => to_string(principal.type), "id" => principal.id}, "name", principal.name)
+  def principal(principal) do
+    %{"type" => to_string(Principal.type(principal)), "id" => Principal.id(principal)}
+    |> put("name", Principal.name(principal))
+  end
 
   @doc """
   A term as JSON can hold it: maps with string keys, lists, strings, numbers,

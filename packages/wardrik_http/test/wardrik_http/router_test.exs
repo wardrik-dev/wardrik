@@ -427,11 +427,9 @@ defmodule WardrikHTTP.RouterTest do
       assert body == %{"interrupt" => %{"id" => "call_1", "decision" => "approved"}}
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      assert_receive %Event{
-        payload: {:call_decided, "call_1", :approve, %Wardrik.Principal{type: :token} = by}
-      }
-
-      assert by.id == token.id
+      assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+      assert Wardrik.Principal.type(by) == :token
+      assert Wardrik.Principal.id(by) == token.id
 
       assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
                Req.post(api,

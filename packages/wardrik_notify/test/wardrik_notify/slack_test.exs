@@ -203,7 +203,7 @@ defmodule WardrikNotify.SlackTest do
     test "says so once nothing waits on a connection", %{key: key} do
       :ok =
         Agent.decide(key, %{"call_1" => {:deny, "Not now."}},
-          by: %Wardrik.Principal{type: :shell, id: "t"}
+          by: Wardrik.Principal.new(:shell, "t")
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}
@@ -261,11 +261,8 @@ defmodule WardrikNotify.SlackTest do
 
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      assert_receive %Event{
-        payload:
-          {:call_decided, "call_1", :approve,
-           %Wardrik.Principal{type: :slack, id: "U1", name: "jon"}}
-      }
+      jon = Wardrik.Principal.new(:slack, "U1", name: "jon")
+      assert_receive %Event{payload: {:call_decided, "call_1", :approve, ^jon}}
 
       assert_receive {:slack, "hooks.slack.com", "/actions/r", reply}
       assert reply["replace_original"] == true
