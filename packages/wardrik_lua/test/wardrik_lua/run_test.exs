@@ -1,9 +1,9 @@
 defmodule WardrikLua.RunTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Sandbox.Limits
   alias Wardrik.Tool.Result
   alias WardrikLua.Run
+  alias WardrikLua.Sandbox.Limits
 
   defp call(code, tool \\ Run.tool()), do: ReqLLM.Tool.execute(tool, %{"code" => code})
 

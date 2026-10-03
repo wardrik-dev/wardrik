@@ -10,11 +10,18 @@ defmodule WardrikHTTP.Config do
   unless set. `:trusted_workers` says tool workers' answers are the
   deployment's own, so a call to one does not taint its run; `false` unless
   set.
+
+      config :wardrik_http, WardrikHTTP.Access, grace: 1_000, sweep: 15_000
+
+  How `WardrikHTTP.Access` ends the holders of a revoked token, and how often
+  it reads the tokens held again, in milliseconds; those are the defaults.
   """
 
   @default_port 4747
   @default_ip {127, 0, 0, 1}
   @default_worker_timeout :timer.seconds(60)
+  @default_grace 1_000
+  @default_sweep :timer.seconds(15)
 
   @doc "The port and address to listen on."
   @spec listen() :: [port: :inet.port_number(), ip: :inet.ip_address()]
@@ -42,4 +49,21 @@ defmodule WardrikHTTP.Config do
     |> Application.get_env(WardrikHTTP, [])
     |> Keyword.get(:worker_timeout, @default_worker_timeout)
   end
+
+  @doc """
+  How long the holders of a revoked record have to end themselves, and how
+  often held records are read again, in milliseconds; see `WardrikHTTP.Access`.
+  """
+  @spec access(:grace | :sweep) :: pos_integer()
+  def access(:grace),
+    do:
+      :wardrik_http
+      |> Application.get_env(WardrikHTTP.Access, [])
+      |> Keyword.get(:grace, @default_grace)
+
+  def access(:sweep),
+    do:
+      :wardrik_http
+      |> Application.get_env(WardrikHTTP.Access, [])
+      |> Keyword.get(:sweep, @default_sweep)
 end

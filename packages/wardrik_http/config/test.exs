@@ -10,7 +10,7 @@ config :wardrik, Wardrik.Fleet, org: "default"
 config :wardrik_http, WardrikHTTP, port: 0
 
 # Tool workers join a group that core starts, as a release does.
-config :wardrik, :children, [WardrikHTTP.Workers]
+config :wardrik, :children, [WardrikHTTP.Access, WardrikHTTP.Workers]
 
 config :req_llm,
   load_dotenv: false,

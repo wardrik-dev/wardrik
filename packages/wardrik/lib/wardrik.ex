@@ -8,7 +8,6 @@ defmodule Wardrik do
       others before the fleet starts.
     * `Wardrik.Fleet.Supervisor`, with `config :wardrik, Wardrik.Fleet`, which
       starts the store first.
-    * `Wardrik.Access`.
     * What `config :wardrik, :children` names, once the fleet is up.
 
   The `:wardrik` application starts it by default. A host that starts it in
@@ -39,10 +38,7 @@ defmodule Wardrik do
         {Task.Supervisor, name: Wardrik.TaskSupervisor}
       ] ++
         Application.get_env(:wardrik, :cluster, []) ++
-        [
-          {Wardrik.Fleet.Supervisor, Application.get_env(:wardrik, Wardrik.Fleet, [])},
-          Wardrik.Access
-        ] ++
+        [{Wardrik.Fleet.Supervisor, Application.get_env(:wardrik, Wardrik.Fleet, [])}] ++
         Application.get_env(:wardrik, :children, [])
 
     Supervisor.init(children, strategy: :one_for_one)

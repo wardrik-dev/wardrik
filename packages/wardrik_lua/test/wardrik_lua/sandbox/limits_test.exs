@@ -1,7 +1,7 @@
-defmodule Wardrik.Sandbox.LimitsTest do
+defmodule WardrikLua.Sandbox.LimitsTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Sandbox.Limits
+  alias WardrikLua.Sandbox.Limits
 
   describe "new/1" do
     test "bounds an evaluation four ways by default" do

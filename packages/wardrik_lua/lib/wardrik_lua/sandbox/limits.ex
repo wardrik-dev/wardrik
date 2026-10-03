@@ -1,8 +1,8 @@
-defmodule Wardrik.Sandbox.Limits do
+defmodule WardrikLua.Sandbox.Limits do
   @moduledoc """
   What one evaluation may take from the node.
 
-      Wardrik.Sandbox.Limits.new(timeout_ms: :timer.seconds(5), max_steps: 1_000_000)
+      WardrikLua.Sandbox.Limits.new(timeout_ms: :timer.seconds(5), max_steps: 1_000_000)
 
   | Field | Default | Bounds |
   | --- | --- | --- |

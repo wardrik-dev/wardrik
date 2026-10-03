@@ -17,12 +17,9 @@ Wardrik.LLM.Config.new(tools: [WardrikLua.Run])
 
 The VM is written in Elixir and reaches nothing outside itself: no files, no
 network, no environment, and nothing else the agent has. Each run is checked,
-then evaluated in a task of its own under `Wardrik.Sandbox.Limits`, a
+then evaluated in a task of its own under `WardrikLua.Sandbox.Limits`, a
 deadline, a memory budget, a step budget and a call depth:
 
 ```elixir
-WardrikLua.Run.tool(limits: Wardrik.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
+WardrikLua.Run.tool(limits: WardrikLua.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
 ```
-
-`WardrikLua.Sandbox` implements `Wardrik.Sandbox`, so the same limits bound
-any other language a sandbox of your own implements.

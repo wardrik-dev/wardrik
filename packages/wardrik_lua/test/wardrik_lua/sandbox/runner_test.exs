@@ -1,8 +1,8 @@
-defmodule Wardrik.Sandbox.RunnerTest do
+defmodule WardrikLua.Sandbox.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Sandbox.Limits
-  alias Wardrik.Sandbox.Runner
+  alias WardrikLua.Sandbox.Limits
+  alias WardrikLua.Sandbox.Runner
 
   defp run(fun, opts \\ []), do: Runner.run(fun, Limits.new(opts))
 
@@ -66,7 +66,7 @@ defmodule Wardrik.Sandbox.RunnerTest do
     reaped = Process.monitor(evaluation)
     Process.exit(caller, :kill)
 
-    assert_receive {:DOWN, ^reaped, :process, ^evaluation, :killed}
+    assert_receive {:DOWN, ^reaped, :process, ^evaluation, :shutdown}
   end
 
   test "waits as long as it is told when nothing bounds it" do

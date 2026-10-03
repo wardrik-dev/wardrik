@@ -1,13 +1,13 @@
-defmodule Wardrik.Access.Leases do
+defmodule WardrikHTTP.Access.Leases do
   @moduledoc """
   The processes on this node holding a record, and the ending of them when it
-  is revoked. See `Wardrik.Access`.
+  is revoked. See `WardrikHTTP.Access`.
 
   A holder registers itself in a partitioned `Registry`, so holding and
   letting go never wait on this process, and the registry lets go of a holder
   that exits. This process runs on every node, joined to the group
-  `Wardrik.Access` names, so a revocation reaches each. On one it refuses the
-  record in `Wardrik.Access.Cache`, sends each holder the exit signal
+  `WardrikHTTP.Access` names, so a revocation reaches each. On one it refuses the
+  record in `WardrikHTTP.Access.Cache`, sends each holder the exit signal
   `{:shutdown, :revoked}`, and kills one still holding after the grace.
 
   Every sweep it reads each record held on this node through consensus, off
@@ -21,11 +21,13 @@ defmodule Wardrik.Access.Leases do
 
   require Logger
 
-  alias Wardrik.Access
-  alias Wardrik.Access.Cache
+  alias WardrikHTTP.Access
+  alias WardrikHTTP.Access.Cache
+  alias WardrikHTTP.Config
 
   @group "leases"
-  @registry Wardrik.Access.Holders
+  @registry WardrikHTTP.Access.Holders
+  @tasks WardrikHTTP.Access.Tasks
   @read_timeout 2_000
   @concurrency 16
 
@@ -41,6 +43,9 @@ defmodule Wardrik.Access.Leases do
   def registry_spec do
     {Registry, keys: :duplicate, name: @registry, partitions: System.schedulers_online()}
   end
+
+  @doc false
+  def tasks, do: @tasks
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(_opts), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -139,7 +144,7 @@ defmodule Wardrik.Access.Leases do
     for {_ref, pid} <- ending, do: Process.exit(pid, {:shutdown, :revoked})
 
     if ending != [],
-      do: Process.send_after(self(), {:kill, ending}, Access.config(:grace))
+      do: Process.send_after(self(), {:kill, ending}, Config.access(:grace))
 
     :ok
   end
@@ -151,7 +156,7 @@ defmodule Wardrik.Access.Leases do
 
   defp start_sweep(%{sweep: nil} = state) do
     refs = held()
-    task = Task.Supervisor.async_nolink(Wardrik.TaskSupervisor, fn -> check(refs) end)
+    task = Task.Supervisor.async_nolink(@tasks, fn -> check(refs) end)
     %{state | sweep: task.ref}
   end
 
@@ -187,6 +192,6 @@ defmodule Wardrik.Access.Leases do
 
   defp schedule(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
-    %{state | timer: Process.send_after(self(), :sweep, Access.config(:sweep))}
+    %{state | timer: Process.send_after(self(), :sweep, Config.access(:sweep))}
   end
 end

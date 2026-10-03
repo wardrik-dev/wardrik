@@ -1,30 +1,30 @@
-defmodule Wardrik.Sandbox.Runner do
+defmodule WardrikLua.Sandbox.Runner do
   @moduledoc """
   Runs one sandbox evaluation as a task of its own, bounded by
-  `Wardrik.Sandbox.Limits`.
+  `WardrikLua.Sandbox.Limits`.
 
-      Wardrik.Sandbox.Runner.run(fn -> {:ok, 4} end, Wardrik.Sandbox.Limits.new())
+      WardrikLua.Sandbox.Runner.run(fn -> {:ok, 4} end, WardrikLua.Sandbox.Limits.new())
       #=> {:ok, 4}
 
-  `Wardrik.Sandbox.run/3` is what calls it. A sandbox implements a language and
-  leaves the process to this, so every sandbox is bounded the same way.
+  `WardrikLua.Sandbox.run/2` is what calls it: the VM implements the language
+  and leaves the process to this.
 
-  The task runs under `Wardrik.TaskSupervisor` at low priority, and is killed when
-  it passes its deadline, outgrows its memory budget, or its caller dies.
-  `run/2` returns what the function returned, or a sentence naming the limit
-  that stopped it.
+  The task runs at low priority under a task supervisor of the evaluation's
+  own, and is killed when it passes its deadline, outgrows its memory budget,
+  or its caller dies. `run/2` returns what the function returned, or a
+  sentence naming the limit that stopped it.
 
   The task is not linked to its caller: the BEAM kills a process that outgrows
   its heap, and a link would carry that kill to the tool call waiting on it.
-  So the caller monitors instead, and a third process kills the evaluation if
-  the caller goes first.
+  So the caller monitors instead, and its supervisor, which is linked to the
+  caller, takes the evaluation with it if the caller goes first.
 
   The heap cap is the BEAM's; the binaries the task references are polled every
   50ms, since those live off-heap where the cap does not see them. Either
   budget can be overshot by one interval's work.
   """
 
-  alias Wardrik.Sandbox.Limits
+  alias WardrikLua.Sandbox.Limits
 
   @typedoc "What an evaluation reports, and what `run/2` hands back."
   @type result() :: {:ok, term()} | {:error, String.t()}
@@ -35,17 +35,18 @@ defmodule Wardrik.Sandbox.Runner do
   @doc "Runs `fun` under `limits`."
   @spec run((-> result()), Limits.t()) :: result()
   def run(fun, %Limits{} = limits) when is_function(fun, 0) do
-    caller = self()
+    {:ok, supervisor} = Task.Supervisor.start_link()
 
-    Wardrik.TaskSupervisor
-    |> Task.Supervisor.async_nolink(fn -> evaluate(fun, caller, limits) end)
-    |> await(deadline(limits.timeout_ms), limits)
+    result =
+      supervisor
+      |> Task.Supervisor.async_nolink(fn -> evaluate(fun, limits) end)
+      |> await(deadline(limits.timeout_ms), limits)
+
+    :ok = Supervisor.stop(supervisor)
+    result
   end
 
-  # An unlinked task outlives its caller, and the deadline is the caller's to
-  # enforce, so a caller killed mid-call would otherwise leave it running.
-  defp evaluate(fun, caller, limits) do
-    Wardrik.Tether.to(caller)
+  defp evaluate(fun, limits) do
     Process.flag(:priority, :low)
     cap_heap(limits.max_heap_bytes)
     fun.()

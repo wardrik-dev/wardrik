@@ -20,14 +20,14 @@ defmodule WardrikHTTP.Token do
   nothing a caller could present. The `id` is what `list/0` shows, what
   `revoke/1` takes, and who a decision made with the token was made by.
 
-  `verify/1` reads the token with `Wardrik.Access.get/1`: a revoked token is
+  `verify/1` reads the token with `WardrikHTTP.Access.get/1`: a revoked token is
   refused at once on every node the revocation reaches, and within a sweep on
   one it does not. `ref/1` is the record a socket or a stream holds with
-  `Wardrik.Access.hold/1`, so `revoke/1` ends it.
+  `WardrikHTTP.Access.hold/1`, so `revoke/1` ends it.
   """
 
-  alias Wardrik.Access
   alias Wardrik.Grant
+  alias WardrikHTTP.Access
 
   @ns :tokens
   @prefix "wardrik_"
@@ -72,7 +72,7 @@ defmodule WardrikHTTP.Token do
   end
 
   @doc """
-  The token a secret belongs to, read with `Wardrik.Access.get/1`: `:error` for a
+  The token a secret belongs to, read with `WardrikHTTP.Access.get/1`: `:error` for a
   secret no token has, and `{:error, :unavailable}` where the store could not
   answer.
   """
@@ -110,7 +110,7 @@ defmodule WardrikHTTP.Token do
   defp current(%__MODULE__{grant: grant} = token),
     do: %{token | grant: struct(Grant, Map.from_struct(grant))}
 
-  @doc "The record `token` is kept in, for `Wardrik.Access.hold/1`."
+  @doc "The record `token` is kept in, for `WardrikHTTP.Access.hold/1`."
   @spec ref(t()) :: Access.ref()
   def ref(%__MODULE__{id: id}), do: {@ns, id}
 

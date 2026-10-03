@@ -4,7 +4,7 @@ defmodule WardrikHTTP.Router do
 
   Every response carries a `Request-Id` header, the caller's own where it sent
   one, and the request is logged under it. Every request presents a token
-  (`WardrikHTTP.Auth`), and each route asks `Wardrik.Access.authorize/3` for the
+  (`WardrikHTTP.Auth`), and each route asks `WardrikHTTP.Access.authorize/3` for the
   action it takes: an agent outside the token's scope is answered as one that
   does not exist, `404`, and one inside it the token may not act on so,
   `403`. A stream of events, and a worker's socket, hold their token, and end
@@ -19,7 +19,6 @@ defmodule WardrikHTTP.Router do
 
   require Logger
 
-  alias Wardrik.Access
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.Event.Log
@@ -27,6 +26,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Fleet.Member
   alias Wardrik.Grant
   alias Wardrik.Schedule
+  alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
   alias WardrikHTTP.Resource
   alias WardrikHTTP.Token

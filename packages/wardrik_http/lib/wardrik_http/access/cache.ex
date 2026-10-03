@@ -1,19 +1,20 @@
-defmodule Wardrik.Access.Cache do
+defmodule WardrikHTTP.Access.Cache do
   @moduledoc """
   What this node last read of each record through consensus, and the records
-  revoked here, each kept for one sweep. See `Wardrik.Access`.
+  revoked here, each kept for one sweep. See `WardrikHTTP.Access`.
 
   An entry is `{ref, value, until}`, or `{ref, :revoked, until}` for a
   revoked record, with `until` in monotonic milliseconds. A lookup after
   `until` is a miss. `put/2` never replaces a revocation still in force;
   `revoked/1` replaces whatever is there.
 
-  The table belongs to `Wardrik.Access.Leases`, which purges what has lapsed
+  The table belongs to `WardrikHTTP.Access.Leases`, which purges what has lapsed
   every sweep, and goes with it: a node whose table is new reads every record
   through consensus again.
   """
 
-  alias Wardrik.Access
+  alias WardrikHTTP.Access
+  alias WardrikHTTP.Config
 
   @table __MODULE__
 
@@ -47,7 +48,7 @@ defmodule Wardrik.Access.Cache do
   @doc "Keeps `value` for `ref` for a sweep, unless `ref` was revoked here within one."
   @spec put(Access.ref(), term()) :: :ok
   def put(ref, value) do
-    entry = {ref, value, now() + Access.config(:sweep)}
+    entry = {ref, value, now() + Config.access(:sweep)}
 
     if not :ets.insert_new(@table, entry) do
       now = now()
@@ -63,7 +64,7 @@ defmodule Wardrik.Access.Cache do
   @doc "Refuses `ref` on this node for a sweep, whatever it held."
   @spec revoked(Access.ref()) :: :ok
   def revoked(ref) do
-    true = :ets.insert(@table, {ref, :revoked, now() + Access.config(:sweep)})
+    true = :ets.insert(@table, {ref, :revoked, now() + Config.access(:sweep)})
     :ok
   end
 

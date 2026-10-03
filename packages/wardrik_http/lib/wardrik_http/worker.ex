@@ -22,7 +22,7 @@ defmodule WardrikHTTP.Worker do
   Wardrik answers a worker's `ping`, and sends a WebSocket ping every 30 seconds
   so a socket at rest stays open.
 
-  The socket holds its token (`Wardrik.Access.hold/1`), and closes with `1008`
+  The socket holds its token (`WardrikHTTP.Access.hold/1`), and closes with `1008`
   when the token is revoked, or `1013` where the token cannot be read as the
   socket opens.
 
@@ -54,7 +54,7 @@ defmodule WardrikHTTP.Worker do
 
   @impl WebSock
   def init(%Token{} = token) do
-    case Wardrik.Access.hold(Token.ref(token)) do
+    case WardrikHTTP.Access.hold(Token.ref(token)) do
       :ok -> start(token)
       {:error, reason} -> {:stop, {:shutdown, reason}, close(reason), %__MODULE__{token: token}}
     end
