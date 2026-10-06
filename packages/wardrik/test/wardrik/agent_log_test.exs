@@ -70,7 +70,7 @@ defmodule Wardrik.AgentLogTest do
 
   test "a decision is in the log before the run it resumes", %{key: key} do
     agent = parked_agent(key)
-    by = %Wardrik.Principal{type: :shell, id: "jon"}
+    by = Wardrik.Principal.new(:shell, "jon")
 
     assert :ok = Agent.decide(agent, %{"call_1" => :approve}, by: by)
     assert_receive %Entry{event: %{"type" => "wardrik.run.completed"}}

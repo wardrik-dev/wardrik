@@ -45,7 +45,7 @@ defmodule WardrikTUI.SSH do
         agent_id: key,
         spawn_opts: spawn_opts,
         options: options,
-        principal: %Wardrik.Principal{type: :ssh, id: to_string(session.username)},
+        principal: Wardrik.Principal.new(:ssh, to_string(session.username)),
         model: model(key),
         clipboard: WardrikTUI.Clipboard.osc52(&write(session, &1)),
         editor: fn _draft, _context -> {:error, :remote} end

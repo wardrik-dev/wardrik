@@ -441,7 +441,7 @@ defmodule Wardrik.AgentTest do
     test "each decision says who made it" do
       test_pid = self()
       answer = {:ok, [Context.assistant("left it")]}
-      by = %Wardrik.Principal{type: :slack, id: "U1", name: "jon"}
+      by = Wardrik.Principal.new(:slack, "U1", name: "jon")
 
       agent =
         start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
@@ -477,7 +477,7 @@ defmodule Wardrik.AgentTest do
       answer = {:ok, [Context.assistant("opened")]}
       link = %{url: "https://github.com/login/oauth", code: nil}
       credential = %{ref: "github", owner: {"acme", "jon"}}
-      by = %Wardrik.Principal{type: :oauth, id: "github", name: "github authorization"}
+      by = Wardrik.Principal.new(:oauth, "github", name: "github authorization")
 
       agent =
         start_agent(

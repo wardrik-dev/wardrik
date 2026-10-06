@@ -545,7 +545,7 @@ defmodule WardrikOAuth do
   # the authorization that finished: whoever finished it is known only as
   # that, not as the user the token is kept for.
   defp connected(%Flight{provider: %Provider{name: name}, owner: owner}) do
-    by = %Wardrik.Principal{type: :oauth, id: name, name: "#{name} authorization"}
+    by = Wardrik.Principal.new(:oauth, name, name: "#{name} authorization")
     Credential.available(name, owner, by: by)
   end
 
