@@ -288,10 +288,9 @@ defmodule WardrikTUI.App do
   # Whether the frame should keep ticking: for the elapsed times of delegations
   # still going under an expanded agent. The running turn's own count is drawn
   # by `WardrikTUI.Elapsed` and needs no frame.
-  defp ticking?(%{assigns: %{expanded: expanded}}) do
-    Enum.any?(expanded, fn
-      {_key, %Delegation{} = delegations} -> Delegation.summary(delegations).active > 0
-      {_key, nil} -> false
+  defp ticking?(%{assigns: %{expanded: expanded} = assigns}) do
+    Enum.any?(expanded, fn key ->
+      Delegation.summary(WardrikTUI.Fleet.followed(assigns, key)).active > 0
     end)
   end
 
@@ -420,7 +419,8 @@ defmodule WardrikTUI.App do
         palette: nil,
         choices: [],
         recent: [],
-        expanded: %{},
+        expanded: MapSet.new(),
+        followed: %{},
         collapsed: MapSet.new(),
         inspecting: nil,
         delegations: Delegation.new(),
@@ -526,6 +526,7 @@ defmodule WardrikTUI.App do
           unseen={@unseen}
           filter={@filter}
           expanded={@expanded}
+          followed={@followed}
           delegations={@delegations}
           highlighted={@highlighted}
           width={@panel_width}
@@ -541,6 +542,7 @@ defmodule WardrikTUI.App do
         unseen={@unseen}
         filter={@filter}
         expanded={@expanded}
+        followed={@followed}
         delegations={@delegations}
         highlighted={@highlighted}
         width={@panel_width}
@@ -664,12 +666,12 @@ defmodule WardrikTUI.App do
     {:noreply, term |> Display.apply_event(event) |> Frames.frame_due(), invalidate: false}
   end
 
-  # A lifecycle event from an agent expanded in the panel.
+  # A lifecycle event from an agent this client follows in the panel.
   def handle_info(%Event{source: %{agent_id: id}} = event, term) do
-    case term.assigns.expanded do
-      %{^id => %Delegation{} = delegations} ->
-        expanded = Map.put(term.assigns.expanded, id, Delegation.fold(delegations, event))
-        {:noreply, term |> assign(expanded: expanded) |> Frames.frame_due(), invalidate: false}
+    case term.assigns.followed do
+      %{^id => delegations} ->
+        followed = Map.put(term.assigns.followed, id, Delegation.fold(delegations, event))
+        {:noreply, term |> assign(followed: followed) |> Frames.frame_due(), invalidate: false}
 
       _other ->
         {:noreply, term, invalidate: false}
@@ -721,8 +723,11 @@ defmodule WardrikTUI.App do
       do: {:noreply, term |> assign(editing: nil) |> Display.append(View.editor_failed(reason))}
 
   # A group event says something in the fleet changed; the refresh behind it
-  # reads the whole list once, however many events arrived.
-  def handle_info({:group, _events, _info}, term) do
+  # reads the whole list once, however many events arrived. An agent that
+  # registered is followed at once.
+  def handle_info({:group, events, _info}, term) do
+    term = Connection.follow_registered(term, events)
+
     if term.assigns.fleet_due? do
       {:noreply, term, invalidate: false}
     else

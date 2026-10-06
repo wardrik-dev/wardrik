@@ -13,18 +13,8 @@ defmodule Wardrik.Agent.Snapshot do
   """
 
   alias Wardrik.Agent.State
-  alias Wardrik.Delegation
 
-  @enforce_keys [
-    :generation,
-    :status,
-    :context,
-    :parked,
-    :trace_id,
-    :delegations,
-    :outcome,
-    :sequence
-  ]
+  @enforce_keys [:generation, :status, :context, :parked, :trace_id, :outcome, :sequence]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -33,7 +23,6 @@ defmodule Wardrik.Agent.Snapshot do
           context: ReqLLM.Context.t(),
           parked: [{Wardrik.Tool.call(), String.t()}],
           trace_id: String.t() | nil,
-          delegations: Delegation.t(),
           outcome: State.outcome(),
           sequence: non_neg_integer()
         }

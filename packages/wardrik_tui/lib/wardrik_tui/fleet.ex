@@ -34,13 +34,16 @@ defmodule WardrikTUI.Fleet do
   @delegation_colours %{running: :cyan, ok: :green, error: :red}
 
   @doc "An expanded agent's delegations, or `nil` when it is collapsed."
-  def expanded_delegations(%{expanded: expanded, agent_id: agent_id} = assigns, key) do
-    cond do
-      not Map.has_key?(expanded, key) -> nil
-      key == agent_id -> assigns.delegations
-      true -> Map.fetch!(expanded, key)
-    end
+  def expanded_delegations(%{expanded: expanded} = assigns, key) do
+    if MapSet.member?(expanded, key), do: followed(assigns, key), else: nil
   end
+
+  @doc """
+  An agent's delegations as this client has followed them: the attached
+  agent's with its conversation, any other's from its lifecycle events.
+  """
+  def followed(%{agent_id: key, delegations: delegations}, key), do: delegations
+  def followed(%{followed: followed}, key), do: Map.get(followed, key, Delegation.new())
 
   @doc """
   The heading above the list, clipped to `width`: how many agents are shown of
@@ -89,7 +92,9 @@ defmodule WardrikTUI.Fleet do
   `attached` is the key of the agent the client is watching, which is marked
   rather than listed differently. Options: `:ambiguous`, the names shared by
   several agents, which are shown as whole keys; `:unseen`, how the agent's
-  last turn ended if the client has not looked, `:ok` or `:failed`.
+  last turn ended if the client has not looked, `:ok` or `:failed`;
+  `:delegations`, how many its turn has going and has started, as
+  `Wardrik.Delegation.summary/1` counts them.
   """
   @spec row(Member.t(), String.t(), pos_integer(), keyword()) :: String.t()
   def row(%Member{} = member, attached, width, opts \\ []) do
@@ -154,7 +159,7 @@ defmodule WardrikTUI.Fleet do
       Text.tag(@glyphs[member.status], @colours[member.status]),
       " ",
       label(member, attached, Keyword.get(opts, :ambiguous, MapSet.new())),
-      suffix(member),
+      suffix(member, Keyword.get(opts, :delegations, %{active: 0, total: 0})),
       new_result(unseen)
     ]
   end
@@ -191,17 +196,21 @@ defmodule WardrikTUI.Fleet do
   # What distinguishes one row from another: what it is waiting on, its
   # delegations, how much is queued, how its last turn went, and which node it
   # is on when that is not this one.
-  defp suffix(%Member{status: :parked, waiting_on: [_ | _] = names} = member) do
-    [Text.tag([" ", Enum.join(names, ",")], :yellow), delegations(member), elsewhere(member.node)]
+  defp suffix(%Member{status: :parked, waiting_on: [_ | _] = names} = member, delegations) do
+    [
+      Text.tag([" ", Enum.join(names, ",")], :yellow),
+      delegations(delegations),
+      elsewhere(member.node)
+    ]
   end
 
-  defp suffix(%Member{} = member) do
-    [delegations(member), queued(member), failed(member), elsewhere(member.node)]
+  defp suffix(%Member{} = member, delegations) do
+    [delegations(delegations), queued(member), failed(member), elsewhere(member.node)]
   end
 
-  defp delegations(%Member{delegations: %{total: 0}}), do: []
+  defp delegations(%{total: 0}), do: []
 
-  defp delegations(%Member{delegations: %{active: active, total: total}}) do
+  defp delegations(%{active: active, total: total}) do
     Text.tag(" sub #{active}/#{total}", if(active > 0, do: :cyan, else: @faint))
   end
 
