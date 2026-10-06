@@ -1,11 +1,11 @@
 defmodule WardrikLua.SandboxTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Sandbox.Limits
   alias WardrikLua.Sandbox
+  alias WardrikLua.Sandbox.Limits
 
   # The path the tool takes: core checks, bounds the process, and calls back in.
-  defp evaluate(code, opts \\ []), do: Wardrik.Sandbox.run(Sandbox, code, Limits.new(opts))
+  defp evaluate(code, opts \\ []), do: Sandbox.run(code, Limits.new(opts))
 
   describe "check/1" do
     test "admits source within the size limit" do

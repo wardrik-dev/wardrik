@@ -14,7 +14,7 @@ defmodule WardrikLua.Run do
 
   `tool/1` builds the same tool under limits of its own:
 
-      WardrikLua.Run.tool(limits: Wardrik.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
+      WardrikLua.Run.tool(limits: WardrikLua.Sandbox.Limits.new(timeout_ms: :timer.seconds(5)))
 
   Limits longer than a minute need `:tool_timeouts` on the config to match, or
   `Wardrik.LLM.ToolRunner` stops the call first.
@@ -22,9 +22,9 @@ defmodule WardrikLua.Run do
 
   @behaviour Wardrik.Tool
 
-  alias Wardrik.Sandbox
-  alias Wardrik.Sandbox.Limits
   alias Wardrik.Tool.Result
+  alias WardrikLua.Sandbox
+  alias WardrikLua.Sandbox.Limits
 
   @description """
   Run a snippet of Lua 5.3 and get the value it returns.
@@ -50,7 +50,7 @@ defmodule WardrikLua.Run do
   @doc """
   The same tool, built with limits of your own.
 
-  Options are `:limits`, a `t:Wardrik.Sandbox.Limits.t/0`.
+  Options are `:limits`, a `t:WardrikLua.Sandbox.Limits.t/0`.
   """
   @spec tool(keyword()) :: ReqLLM.Tool.t()
   def tool(opts) do
@@ -69,7 +69,7 @@ defmodule WardrikLua.Run do
   def run(%Limits{} = limits, params) do
     code = params |> Map.new() |> Map.fetch!(:code)
 
-    WardrikLua.Sandbox |> Sandbox.run(code, limits) |> answer()
+    code |> Sandbox.run(limits) |> answer()
   end
 
   defp answer({:ok, nil}), do: Result.ok(%{"value" => nil, "note" => @returned_nothing})

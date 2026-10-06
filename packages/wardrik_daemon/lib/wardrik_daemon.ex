@@ -3,13 +3,14 @@ defmodule WardrikDaemon do
   The host a `wardrik` release runs beside core.
 
   The release names it in core's `:children`, after `WardrikPolicy.Supervisor`,
-  which keeps the budgets its agents' policies set, and `WardrikHTTP.Workers`,
-  the tool workers connected to the cluster, so all three start once the
-  fleet is up, and `WardrikDaemon.Cluster` in core's `:cluster`, which starts
-  before the fleet:
+  which keeps the budgets its agents' policies set, `WardrikHTTP.Access`,
+  which keeps what its tokens grant, and `WardrikHTTP.Workers`, the tool
+  workers connected to the cluster, so all four start once the fleet is up,
+  and `WardrikDaemon.Cluster` in core's `:cluster`, which starts before the
+  fleet:
 
       config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
-      config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers, WardrikDaemon]
+      config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Access, WardrikHTTP.Workers, WardrikDaemon]
 
   Starting, it reads `config.yaml`, or `config.yml`, from the config directory
   into the settings

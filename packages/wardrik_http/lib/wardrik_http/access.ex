@@ -1,4 +1,4 @@
-defmodule Wardrik.Access do
+defmodule WardrikHTTP.Access do
   @moduledoc """
   Whether a caller may act on an agent, and for how long what it was granted
   holds.
@@ -8,8 +8,8 @@ defmodule Wardrik.Access do
   It reads the record with `get/1`, and asks `authorize/3` before each thing
   the caller does:
 
-      with {:ok, token} <- Wardrik.Access.get({:tokens, id}),
-           :ok <- Wardrik.Access.authorize(token.grant, :message, key) do
+      with {:ok, token} <- WardrikHTTP.Access.get({:tokens, id}),
+           :ok <- WardrikHTTP.Access.authorize(token.grant, :message, key) do
         Wardrik.Agent.ask(key, text)
       end
 
@@ -20,7 +20,7 @@ defmodule Wardrik.Access do
   ## Reading records
 
   `get/1` answers what this node read of a record through consensus within
-  the last sweep, from `Wardrik.Access.Cache`, and reads it through consensus
+  the last sweep, from `WardrikHTTP.Access.Cache`, and reads it through consensus
   again where it read nothing since. A record this node does not hold at all
   is answered as not there without consensus. `fetch/2` always reads through
   consensus.
@@ -31,9 +31,9 @@ defmodule Wardrik.Access do
   with `hold/1`. `revoke/1` deletes the record, refuses it on every node the
   revocation reaches, and ends every process holding it there:
 
-      :ok = Wardrik.Access.hold({:tokens, id})
+      :ok = WardrikHTTP.Access.hold({:tokens, id})
       # ... and elsewhere, later
-      :ok = Wardrik.Access.revoke({:tokens, id})
+      :ok = WardrikHTTP.Access.revoke({:tokens, id})
 
   A holder is sent the exit signal `{:shutdown, :revoked}`. One that traps
   exits receives it as `{:EXIT, from, {:shutdown, :revoked}}` and ends itself;
@@ -48,19 +48,24 @@ defmodule Wardrik.Access do
   `holding/2` holds a record while a function runs, for a process that goes
   on after it, as a connection serving one request after another does.
 
-  ## Configuration
+  ## Starting
 
-      config :wardrik, Wardrik.Access, grace: 1_000, sweep: 15_000
+  It reads the store, so a host names it among core's children, before
+  `WardrikHTTP.Workers`:
 
-  Both are milliseconds, and those are the defaults.
+      config :wardrik, :children, [WardrikHTTP.Access, WardrikHTTP.Workers]
+
+  `config :wardrik_http, WardrikHTTP.Access, grace: 1_000, sweep: 15_000`
+  sets the grace and the sweep, in milliseconds; those are the defaults. See
+  `WardrikHTTP.Config`.
   """
 
   require Logger
 
-  alias Wardrik.Access.Cache
-  alias Wardrik.Access.Leases
   alias Wardrik.Grant
   alias Wardrik.Store
+  alias WardrikHTTP.Access.Cache
+  alias WardrikHTTP.Access.Leases
 
   # How long a consistent read for get/1 may wait. Shorter than a sweep, so a
   # revocation's refusal outlasts any read begun before it.
@@ -71,14 +76,16 @@ defmodule Wardrik.Access do
 
   @doc false
   def child_spec(_opts) do
+    children = [
+      Group.child_spec(name: __MODULE__),
+      {Task.Supervisor, name: Leases.tasks()},
+      Leases.registry_spec(),
+      Leases
+    ]
+
     %{
       id: __MODULE__,
-      start:
-        {Supervisor, :start_link,
-         [
-           [Group.child_spec(name: __MODULE__), Leases.registry_spec(), Leases],
-           [strategy: :rest_for_one]
-         ]},
+      start: {Supervisor, :start_link, [children, [strategy: :rest_for_one]]},
       type: :supervisor
     }
   end
@@ -219,12 +226,4 @@ defmodule Wardrik.Access do
         {:error, :not_found}
     end
   end
-
-  @doc false
-  @spec config(:grace | :sweep) :: pos_integer()
-  def config(:grace),
-    do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.get(:grace, 1_000)
-
-  def config(:sweep),
-    do: :wardrik |> Application.get_env(__MODULE__, []) |> Keyword.get(:sweep, 15_000)
 end

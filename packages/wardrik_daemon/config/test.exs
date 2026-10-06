@@ -40,7 +40,7 @@ config :wardrik_daemon, WardrikDaemon.SSH,
 
 # Budgets are kept by meters, and tool workers join a group, that core
 # starts as a release does.
-config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers]
+config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Access, WardrikHTTP.Workers]
 
 config :req_llm,
   load_dotenv: false,

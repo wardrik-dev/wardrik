@@ -1,10 +1,16 @@
 defmodule WardrikLua.Sandbox do
   @moduledoc """
-  A `Wardrik.Sandbox` over [lua](https://hexdocs.pm/lua), a Lua 5.3 VM written in
-  pure Elixir.
+  Runs code an agent wrote, under limits, with no way out to the node: a
+  sandbox over [lua](https://hexdocs.pm/lua), a Lua 5.3 VM written in pure
+  Elixir.
 
-      Wardrik.Sandbox.run(WardrikLua.Sandbox, "return ('%d apples'):format(3)", Wardrik.Sandbox.Limits.new())
+      WardrikLua.Sandbox.run("return ('%d apples'):format(3)", WardrikLua.Sandbox.Limits.new())
       #=> {:ok, "3 apples"}
+
+  `run/2` is the way in. It asks `check/1` whether the code can run at all,
+  then evaluates it in a task of its own under `t:WardrikLua.Sandbox.Limits.t/0`,
+  and returns the value the code produced as data a turn can put in front of
+  a model. Failure is a sentence, because the model is what reads it.
 
   The VM has no way to reach the node: `io`, `file`, `os.execute`, `os.exit`,
   `os.getenv`, `package`, `require`, `load`, `dofile`, `print` and `debug`
@@ -17,19 +23,31 @@ defmodule WardrikLua.Sandbox do
   are refused. Functions, cyclic tables and strings that are not UTF-8 cannot
   be returned as JSON and are refused too.
 
-  `Wardrik.Sandbox.Runner` carries the deadline and the memory budget. The VM
-  enforces the rest of `t:Wardrik.Sandbox.Limits.t/0` itself, and reports each as
-  a sentence: a step budget spent, a call stack too deep, a string too large
-  to build.
+  `WardrikLua.Sandbox.Runner` carries the deadline and the memory budget, and
+  `evaluate/2` runs in the process it has already bounded. The VM enforces
+  the rest of `t:WardrikLua.Sandbox.Limits.t/0` itself, and reports each as a
+  sentence: a step budget spent, a call stack too deep, a string too large to
+  build.
   """
 
-  @behaviour Wardrik.Sandbox
+  alias WardrikLua.Sandbox.Limits
+  alias WardrikLua.Sandbox.Runner
 
-  alias Wardrik.Sandbox.Limits
+  @typedoc "What an evaluation produced, or why it produced nothing."
+  @type result() :: {:ok, term()} | {:error, String.t()}
 
   @max_code_bytes 64 * 1024
 
-  @impl Wardrik.Sandbox
+  @doc "Checks `code`, then runs it under `limits`."
+  @spec run(String.t(), Limits.t()) :: result()
+  def run(code, %Limits{} = limits) do
+    with :ok <- check(code) do
+      Runner.run(fn -> evaluate(code, limits) end, limits)
+    end
+  end
+
+  @doc "Whether this code can run, without running it."
+  @spec check(term()) :: :ok | {:error, String.t()}
   def check(code) when not is_binary(code) do
     {:error, "code must be a string, got: #{inspect(code)}"}
   end
@@ -42,7 +60,8 @@ defmodule WardrikLua.Sandbox do
   # compilation and execution run under the caller's resource limits.
   def check(_code), do: :ok
 
-  @impl Wardrik.Sandbox
+  @doc "Runs `code` in the caller's process and returns the value it produced."
+  @spec evaluate(String.t(), Limits.t()) :: result()
   def evaluate(code, %Limits{} = limits) do
     {results, _lua} = Lua.eval!(vm(limits), code)
     {:ok, value(results)}

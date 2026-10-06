@@ -1,13 +1,13 @@
-defmodule Wardrik.AccessTest do
+defmodule WardrikHTTP.AccessTest do
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
-  alias Wardrik.Access
-  alias Wardrik.Access.Cache
-  alias Wardrik.Access.Leases
   alias Wardrik.Grant
   alias Wardrik.Store
+  alias WardrikHTTP.Access
+  alias WardrikHTTP.Access.Cache
+  alias WardrikHTTP.Access.Leases
 
   @ns :access_test
 
@@ -54,9 +54,9 @@ defmodule Wardrik.AccessTest do
   end
 
   defp grace(ms) do
-    previous = Application.get_env(:wardrik, Access, [])
-    Application.put_env(:wardrik, Access, Keyword.put(previous, :grace, ms))
-    on_exit(fn -> Application.put_env(:wardrik, Access, previous) end)
+    previous = Application.get_env(:wardrik_http, Access, [])
+    Application.put_env(:wardrik_http, Access, Keyword.put(previous, :grace, ms))
+    on_exit(fn -> Application.put_env(:wardrik_http, Access, previous) end)
   end
 
   describe "authorize/3" do

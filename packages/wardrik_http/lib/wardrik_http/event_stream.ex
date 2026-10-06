@@ -18,7 +18,7 @@ defmodule WardrikHTTP.EventStream do
   each event reaches the client once, in order. A comment every 15 seconds
   keeps an idle stream open through proxies, and finds a client that has
   gone. A stream whose process is sent `{:shutdown, :revoked}`, as
-  `Wardrik.Access` sends the holders of a revoked token, ends there.
+  `WardrikHTTP.Access` sends the holders of a revoked token, ends there.
   """
 
   import Plug.Conn

@@ -5,7 +5,6 @@ defmodule WardrikTest do
     ids = for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Supervisor), do: id
 
     assert Wardrik.Fleet.Supervisor in ids
-    assert Wardrik.Access in ids
   end
 
   test "a host that starts Wardrik in its own tree has the application start nothing" do
