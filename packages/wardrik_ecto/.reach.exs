@@ -1,12 +1,50 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# WardrikEcto depends on core and calls its public modules, never the internals
-# below, which only core calls.
+# WardrikEcto depends on core and calls the public modules listed below, never the
+# internals, which only core calls.
 [
   layers: [
     ecto: ["WardrikEcto", "WardrikEcto.*"]
   ],
   boundaries: [
+    public: [
+      "Wardrik",
+      "Wardrik.Agent",
+      "Wardrik.Agent.Snapshot",
+      "Wardrik.Agent.Spec",
+      "Wardrik.Call",
+      "Wardrik.Call.Ask",
+      "Wardrik.Compaction",
+      "Wardrik.Credential",
+      "Wardrik.Delegation",
+      "Wardrik.Event",
+      "Wardrik.Event.Bus",
+      "Wardrik.Event.Codec.Value",
+      "Wardrik.Event.Log",
+      "Wardrik.Event.Log.Entry",
+      "Wardrik.Fleet",
+      "Wardrik.Fleet.Member",
+      "Wardrik.Grant",
+      "Wardrik.Hook",
+      "Wardrik.LLM.Config",
+      "Wardrik.LLM.Cost",
+      "Wardrik.LLM.Message",
+      "Wardrik.LLM.Usage",
+      "Wardrik.Principal",
+      "Wardrik.Schedule",
+      "Wardrik.Scope",
+      "Wardrik.Store",
+      "Wardrik.Store.Durable",
+      "Wardrik.Subagent",
+      "Wardrik.Test",
+      "Wardrik.Test.*",
+      "Wardrik.Tool",
+      "Wardrik.Tool.Context",
+      "Wardrik.Tool.Result",
+      "Wardrik.UUID",
+      "Wardrik.Workflow",
+      "Wardrik.Workflow.Step"
+    ],
     internal: [
       "Wardrik.Agent.State",
       "Wardrik.Agent.State.*",

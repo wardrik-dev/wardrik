@@ -286,6 +286,21 @@ does not repeat the effect either.
 it does not recognise is a `:bug`, because a retry loop that assumes
 otherwise spends real money finding out.
 
+## Public modules
+
+What a package may call of core is the modules below, and each package's
+`.reach.exs` holds it to them: a call into any other `Wardrik.*` module fails
+`mix reach.check --arch`. A module not listed is core's own, and changes
+without notice.
+
+| | Modules |
+| --- | --- |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
+| Agents and the fleet | `Wardrik`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Schedule`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.Compaction` |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
+| Inside a turn | `Wardrik.Subagent`, `Wardrik.Workflow`, `Wardrik.Workflow.Step`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
+| Testing | `Wardrik.Test` and the modules under it |
+
 ## Testing
 
 Core ships what a suite built on it needs, under `Wardrik.Test`.
