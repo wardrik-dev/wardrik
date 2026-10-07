@@ -183,12 +183,12 @@ defmodule Wardrik.Event.Codec do
     do: {"message.created", "messages/" <> message.id, %{"message" => Value.user(message)}}
 
   defp agent({:agent_started, node, status, generation}, event, _opts) do
-    key = event.source.agent_id
-    name = key |> String.split("/") |> List.last()
+    id = event.source.agent_id
+    key = to_string(id)
 
     {"agent.started", "agents/" <> key,
      %{
-       "agent" => %{"id" => key, "name" => name},
+       "agent" => %{"id" => key, "name" => id.name},
        "conversation" => %{"id" => key <> "/" <> generation},
        "node" => to_string(node),
        "status" => to_string(status)
@@ -196,7 +196,7 @@ defmodule Wardrik.Event.Codec do
   end
 
   defp agent({:context_compacted, stats}, event, _opts) do
-    {"conversation.compacted", "agents/" <> event.source.agent_id,
+    {"conversation.compacted", "agents/#{event.source.agent_id}",
      %{
        "messages_before" => stats.messages_before,
        "messages_after" => stats.messages_after,
@@ -207,11 +207,10 @@ defmodule Wardrik.Event.Codec do
 
   defp agent({:context_cleared, dropped}, event, _opts),
     do:
-      {"conversation.cleared", "agents/" <> event.source.agent_id,
-       %{"messages_before" => dropped}}
+      {"conversation.cleared", "agents/#{event.source.agent_id}", %{"messages_before" => dropped}}
 
   defp agent({:schedule_fired, name, outcome}, event, _opts) do
-    {"schedule.triggered", "agents/" <> event.source.agent_id,
+    {"schedule.triggered", "agents/#{event.source.agent_id}",
      %{"schedule" => %{"name" => name}, "status" => to_string(outcome)}}
   end
 

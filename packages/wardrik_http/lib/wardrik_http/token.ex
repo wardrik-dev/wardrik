@@ -49,7 +49,7 @@ defmodule WardrikHTTP.Token do
   answers its secret, or a message saying why the grant is not one. `:ceiling`
   is the grant's ceiling, which a token that can `:define` must be given.
   """
-  @spec create(String.t(), String.t(), [Grant.action() | String.t()], keyword()) ::
+  @spec create(String.t(), Wardrik.AgentID.Prefix.t(), [Grant.action() | String.t()], keyword()) ::
           {:ok, String.t(), t()} | {:error, String.t() | term()}
   def create(name, scope, can \\ Grant.actions(), opts \\ [])
       when is_binary(name) and is_list(opts) do

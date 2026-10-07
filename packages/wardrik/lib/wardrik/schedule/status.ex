@@ -10,7 +10,7 @@ defmodule Wardrik.Schedule.Status do
   @type t() :: %__MODULE__{
           key: String.t(),
           pid: pid(),
-          agent: String.t(),
+          agent: Wardrik.AgentID.t(),
           name: String.t(),
           every: Wardrik.Schedule.every(),
           next_at: DateTime.t(),

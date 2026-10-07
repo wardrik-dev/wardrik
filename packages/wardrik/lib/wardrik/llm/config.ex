@@ -7,7 +7,7 @@ defmodule Wardrik.LLM.Config do
   read out of a file.
 
       config = Wardrik.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
-      Wardrik.Fleet.spawn("assistant", config: config)
+      Wardrik.Fleet.spawn(Wardrik.AgentID.new!("assistant", org: "acme"), config: config)
 
   `:system` is who the agent is. It is prepended to every turn rather than
   stored in the conversation, so changing it changes the agent and replaying a

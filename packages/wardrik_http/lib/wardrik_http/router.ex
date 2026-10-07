@@ -20,7 +20,7 @@ defmodule WardrikHTTP.Router do
   require Logger
 
   alias Wardrik.Agent
-  alias Wardrik.Agent.Spec
+  alias Wardrik.AgentID
   alias Wardrik.Event.Log
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
@@ -69,14 +69,14 @@ defmodule WardrikHTTP.Router do
 
     agents =
       for member <- Fleet.list(token.grant.scope),
-          Access.authorize(token.grant, :read, member.key) == :ok,
+          Access.authorize(token.grant, :read, member.id) == :ok,
           do: Resource.agent(member)
 
     json(conn, 200, %{"agents" => agents})
   end
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
-  # for a user's, and what follows its key is what is asked of it.
+  # for a user's, and what follows its ID is what is asked of it.
   match "/v1/agents/:org/*rest" do
     with {segments, rest} <- agent_path([org | rest]),
          {action, fun} <- route(conn.method, rest) do
@@ -98,7 +98,7 @@ defmodule WardrikHTTP.Router do
         Resource.error("not_found", "No such route: #{conn.method} #{conn.request_path}")
       )
 
-  # The segments of the key at the front of an agent's path, and the rest.
+  # The segments of the ID at the front of an agent's path, and the rest.
   defp agent_path([org, "@" <> _user = user, name | rest]), do: {[org, user, name], rest}
   defp agent_path([org, name | rest]), do: {[org, name], rest}
   defp agent_path(_segments), do: nil
@@ -127,27 +127,27 @@ defmodule WardrikHTTP.Router do
   def handle_errors(conn, _error),
     do: json(conn, conn.status, Resource.error("internal", "Something went wrong."))
 
-  # A path segment is one segment of the key: one that decodes to a "/" is
+  # A path segment is one segment of the ID: one that decodes to a "/" is
   # refused. An agent the token does not reach is one that does not exist,
-  # to the caller.
+  # to the caller. Every handler below is given the agent's ID as `key`.
   defp within(conn, segments, action, fun) do
-    key = Enum.join(segments, "/")
+    text = Enum.join(segments, "/")
 
-    case {Enum.find(segments, &String.contains?(&1, "/")), Fleet.cast(key)} do
-      {nil, {:ok, _parts}} ->
+    case {Enum.find(segments, &String.contains?(&1, "/")), AgentID.parse(text)} do
+      {nil, {:ok, key}} ->
         case Access.authorize(conn.assigns.token.grant, action, key) do
           :ok -> fun.(key)
           {:error, :forbidden} -> forbidden(conn, action, key)
           {:error, :not_found} -> not_found(conn, key)
         end
 
-      {nil, :error} ->
-        invalid(conn, "#{key} is not an agent key; a key is org/name or org/@user/name")
+      {nil, {:error, _message}} ->
+        invalid(conn, "#{text} is not an agent ID; an ID is org/name or org/@user/name")
 
       {segment, _key} ->
         invalid(
           conn,
-          "#{inspect(segment)} holds a /; a key's org, user and name are a path segment each"
+          "#{inspect(segment)} holds a /; an ID's org, user and name are a path segment each"
         )
     end
   end
@@ -165,10 +165,10 @@ defmodule WardrikHTTP.Router do
     with {:ok, module} <- definitions(conn, :put),
          {:ok, fields} <- object(conn.body_params),
          {:ok, spec} <- module.put(key, fields) do
-      if Spec.key(spec) == key,
+      if spec.id == key,
         do:
           put_agent(conn, key, %{spec | hooks: Grant.held(conn.assigns.token.grant, spec.hooks)}),
-        else: internal(conn, "#{inspect(module)} wrote a spec for #{Spec.key(spec)}, not #{key}")
+        else: internal(conn, "#{inspect(module)} wrote a spec for #{spec.id}, not #{key}")
     else
       :unsupported -> not_supported(conn, "This server does not define agents over HTTP.")
       {:error, :conflict, message} -> conflict(conn, message)
@@ -444,7 +444,7 @@ defmodule WardrikHTTP.Router do
 
   defp cancel(conn, key) do
     case Agent.interrupt(key) do
-      :ok -> json(conn, 202, %{"agent" => %{"id" => key}})
+      :ok -> json(conn, 202, %{"agent" => %{"id" => to_string(key)}})
       {:error, :not_found} -> not_found(conn, key)
     end
   end

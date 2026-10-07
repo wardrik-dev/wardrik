@@ -17,8 +17,8 @@ defmodule WardrikPolicy.Spend do
         }
 
   @doc "The name of `agent`'s spend in `window`, as a meter is keyed."
-  @spec key(String.t(), String.t()) :: String.t()
-  def key(agent, window), do: agent <> "|" <> window
+  @spec key(Wardrik.AgentID.t(), String.t()) :: String.t()
+  def key(%Wardrik.AgentID{} = agent, window), do: "#{agent}|#{window}"
 
   @doc "The spend with `micro_usd` and `tokens` more spent."
   @spec spend(t(), non_neg_integer(), non_neg_integer()) :: t()

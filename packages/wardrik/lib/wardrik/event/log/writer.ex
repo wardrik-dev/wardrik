@@ -74,7 +74,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   @doc "A writer for `agent_id`, whose log is known to reach `head`. Not yet open."
   @spec new(Bus.agent_id(), non_neg_integer()) :: t()
-  def new(agent_id, head \\ 0) when is_binary(agent_id) and is_integer(head) and head >= 0,
+  def new(%Wardrik.AgentID{} = agent_id, head \\ 0) when is_integer(head) and head >= 0,
     do: %__MODULE__{agent_id: agent_id, head: head}
 
   @doc """

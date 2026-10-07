@@ -23,7 +23,7 @@ defmodule Wardrik.AgentTest do
 
   defp parked_turn(call_id), do: AgentRunners.parked_turn(call_id)
 
-  defp start_agent(opts, key \\ Wardrik.Test.Fleet.key()) do
+  defp start_agent(opts, key \\ Wardrik.Test.Fleet.id()) do
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts, key)
     :ok = Event.Bus.subscribe(key)
     agent
@@ -554,7 +554,7 @@ defmodule Wardrik.AgentTest do
   describe "a turn lost part way" do
     test "comes back replaying from the batch it handed over, not asking again" do
       test_pid = self()
-      key = Wardrik.Test.Fleet.key("replay")
+      key = Wardrik.Test.Fleet.id("replay")
       answer = {:ok, [Context.assistant("deployed")]}
 
       opts = [
@@ -577,7 +577,7 @@ defmodule Wardrik.AgentTest do
 
     test "goes on with the decisions it was resumed with, not asking for them again" do
       test_pid = self()
-      key = Wardrik.Test.Fleet.key("decided")
+      key = Wardrik.Test.Fleet.id("decided")
       denied = %{"call_1" => {:deny, "Not today."}}
       answer = {:ok, [Context.assistant("left it")]}
 
@@ -625,14 +625,16 @@ defmodule Wardrik.AgentTest do
             dispatch: SomeGateway,
             timeout: 60_000
           ],
-          Wardrik.Fleet.key("seams-#{System.unique_integer([:positive])}", org: "acme", user: 7)
+          Wardrik.AgentID.new!("seams-#{System.unique_integer([:positive])}",
+            org: "acme",
+            user: 7
+          )
         )
 
       Agent.ask(agent, "hi")
 
       assert_receive {:scope, scope}
-      assert scope.user == "7"
-      assert scope.org == "acme"
+      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
       assert scope.hooks == [%Wardrik.Hook{name: "some", module: SomeHook}]
       assert scope.dispatch == SomeGateway
       assert Wardrik.Scope.remaining_ms(scope) > 55_000
@@ -648,7 +650,7 @@ defmodule Wardrik.AgentTest do
             hooks: [%Wardrik.Hook{name: "some", module: SomeHook}],
             dispatch: SomeGateway
           ],
-          Wardrik.Fleet.key("configure-#{System.unique_integer([:positive])}",
+          Wardrik.AgentID.new!("configure-#{System.unique_integer([:positive])}",
             org: "acme",
             user: 7
           )
@@ -668,13 +670,12 @@ defmodule Wardrik.AgentTest do
       assert_receive {:scope, scope}
       assert scope.hooks == [%Wardrik.Hook{name: "other", module: OtherHook}]
       assert scope.dispatch == nil
-      assert scope.org == "acme"
-      assert scope.user == "7"
+      assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
       assert Agent.status(agent).model == "anthropic:claude-sonnet-5"
     end
 
-    test "configure/2 on a key nothing holds says so" do
-      assert {:error, :not_found} = Agent.configure("nobody/here", [])
+    test "configure/2 on an ID nothing holds says so" do
+      assert {:error, :not_found} = Agent.configure(Wardrik.AgentID.parse!("nobody/here"), [])
     end
 
     test "an agent started with none of them runs under an inert scope" do
@@ -684,8 +685,7 @@ defmodule Wardrik.AgentTest do
       Agent.ask(agent, "hi")
 
       assert_receive {:scope, scope}
-      assert scope.user == nil
-      assert scope.org == "test"
+      assert %Wardrik.AgentID{org: "test", user: nil} = Wardrik.Scope.agent_id(scope)
       assert scope.hooks == []
       assert scope.dispatch == nil
       assert Wardrik.Scope.remaining_ms(scope) == :infinity

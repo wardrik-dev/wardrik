@@ -4,6 +4,8 @@ defmodule WardrikDaemon.AgentFileTest do
   alias Wardrik.Agent.Spec
   alias WardrikDaemon.AgentFile
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   @moduletag :tmp_dir
 
   defmodule Hook do
@@ -57,8 +59,8 @@ defmodule WardrikDaemon.AgentFileTest do
                context
              )
 
-    assert spec.name == "triage"
-    assert Spec.key(spec) == "acme/@jon/triage"
+    assert spec.id.name == "triage"
+    assert spec.id == ~A"acme/@jon/triage"
     assert spec.description == "Watches the queue."
     assert spec.config.model_spec == "anthropic:claude-sonnet-5"
     assert spec.config.system == "You watch the incident queue."
@@ -84,7 +86,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert text =~ "\norg: acme\ndescription: \"Says what it does.\"\nmodel: anthropic:"
     assert text =~ "\nname: \"yes\"\n---\nYou are a helpful assistant."
     assert {:ok, spec} = read("written", text, context)
-    assert Spec.key(spec) == "acme/yes"
+    assert spec.id == ~A"acme/yes"
     assert spec.description == "Says what it does."
     assert spec.config.model_spec == "anthropic:claude-sonnet-5"
     assert WardrikBrave.WebSearch in spec.config.tools
@@ -94,7 +96,7 @@ defmodule WardrikDaemon.AgentFileTest do
   test "a file with no frontmatter is all prompt, and names no tools", context do
     assert {:ok, spec} = read("helper", "Answer briefly.\n", context)
 
-    assert Spec.key(spec) == "default/helper"
+    assert spec.id == ~A"default/helper"
     assert spec.config.system == "Answer briefly."
     assert spec.config.tools == []
     assert spec.hooks == []
@@ -102,7 +104,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
   test "name in the frontmatter wins over the file's", context do
     assert {:ok, spec} = read("file-name", "---\nname: triage\n---\nHi.\n", context)
-    assert Spec.key(spec) == "default/triage"
+    assert spec.id == ~A"default/triage"
   end
 
   test "* is every shipped tool, the file tools, every server it reaches and the tool workers' tools",
@@ -114,7 +116,7 @@ defmodule WardrikDaemon.AgentFileTest do
     )
 
     assert {:ok, spec} = read("---\ntools: ['*']\n---\n", context)
-    {:ok, files} = WardrikWorkspace.Spec.new("default/triage")
+    {:ok, files} = WardrikWorkspace.Spec.new(~A"default/triage")
 
     assert spec.config.tools == [
              WardrikBrave.WebSearch,
@@ -122,7 +124,7 @@ defmodule WardrikDaemon.AgentFileTest do
              WardrikLua.Run,
              {WardrikMCP, :linear},
              {WardrikMCP, :github},
-             {WardrikHTTP.Workers, "default/triage"},
+             {WardrikHTTP.Workers, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 
@@ -141,7 +143,9 @@ defmodule WardrikDaemon.AgentFileTest do
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
 
     assert {:error, message} =
-             AgentFile.definition("default/triage", %{"tools" => ["theirs/*"]})
+             AgentFile.definition(Wardrik.AgentID.parse!("default/triage"), %{
+               "tools" => ["theirs/*"]
+             })
 
     assert message =~ "serves globex, and not default"
   end
@@ -198,13 +202,14 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "are the agent's own tree alone over HTTP, which shares nothing" do
-      assert {:ok, spec} = AgentFile.definition("acme/triage", %{"tools" => ["files"]})
+      assert {:ok, spec} =
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"tools" => ["files"]})
 
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: []} = files}] = spec.config.tools
       assert files.tree.tree == "agents/acme/triage"
 
       assert {:error, message} =
-               AgentFile.definition("acme/triage", %{
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
                  "tools" => ["files"],
                  "workspace" => %{"shared" => %{"team" => "acme"}}
                })
@@ -216,10 +221,10 @@ defmodule WardrikDaemon.AgentFileTest do
   test "workers/* is every tool the tool workers offer the agent, and * takes them too",
        context do
     assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*]\n---\n", context)
-    assert spec.config.tools == [{WardrikHTTP.Workers, "acme/triage"}]
+    assert spec.config.tools == [{WardrikHTTP.Workers, ~A"acme/triage"}]
 
     assert {:ok, spec} = read("---\ntools: [\"*\"]\n---\n", context)
-    assert {WardrikHTTP.Workers, "default/triage"} in spec.config.tools
+    assert {WardrikHTTP.Workers, ~A"default/triage"} in spec.config.tools
 
     assert {:error, message} = read("---\ntools: [workers/refund]\n---\n", context)
 
@@ -265,7 +270,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert rule.after_outside
 
     assert {:error, message} =
-             AgentFile.definition("acme/triage", %{
+             AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
                "policy" => %{"allow_after_outside" => ["github/add_labels"]}
              })
 
@@ -275,7 +280,11 @@ defmodule WardrikDaemon.AgentFileTest do
     careful = WardrikPolicy.decode!(%{"allow_after_outside" => ["github/add_labels"]}, "careful")
 
     assert {:ok, _spec} =
-             AgentFile.definition("acme/triage", %{"policy" => "careful"}, %{"careful" => careful})
+             AgentFile.definition(
+               Wardrik.AgentID.parse!("acme/triage"),
+               %{"policy" => "careful"},
+               %{"careful" => careful}
+             )
   end
 
   test "a named policy is the one policies/ holds, carried as hooks", context do
@@ -476,7 +485,9 @@ defmodule WardrikDaemon.AgentFileTest do
          context do
       properties = Map.keys(schema()["properties"])
 
-      assert Enum.sort(expected(AgentFile.definition("acme/triage", %{"?" => 1}))) ==
+      assert Enum.sort(
+               expected(AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"?" => 1}))
+             ) ==
                Enum.sort(properties)
 
       # A workspace shares trees a token's scope may not cover, so only a
@@ -495,7 +506,9 @@ defmodule WardrikDaemon.AgentFileTest do
       for example <- schema["examples"] do
         assert {:ok, _} = JSV.validate(example, root)
         assert Enum.sort(Map.keys(example)) == Enum.sort(Map.keys(schema["properties"]))
-        assert {:ok, %Spec{}} = AgentFile.definition("acme/triage", example)
+
+        assert {:ok, %Spec{}} =
+                 AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), example)
       end
     end
   end
@@ -503,7 +516,7 @@ defmodule WardrikDaemon.AgentFileTest do
   describe "definition/3" do
     test "reads a definition into the spec of the agent under its key" do
       assert {:ok, spec} =
-               AgentFile.definition("acme/triage", %{
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
                  "description" => "Watches the queue.",
                  "instructions" => "You watch the incident queue.",
                  "model" => "anthropic:claude-sonnet-5",
@@ -511,8 +524,8 @@ defmodule WardrikDaemon.AgentFileTest do
                  "timeout" => 600
                })
 
-      assert Spec.key(spec) == "acme/triage"
-      assert {spec.org, spec.user, spec.name} == {"acme", nil, "triage"}
+      assert spec.id == ~A"acme/triage"
+      assert {spec.id.org, spec.id.user, spec.id.name} == {"acme", nil, "triage"}
       assert spec.description == "Watches the queue."
       assert spec.config.system == "You watch the incident queue."
       assert spec.config.model_spec == "anthropic:claude-sonnet-5"
@@ -523,7 +536,7 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "an empty definition is an agent with no prompt and no tools" do
-      assert {:ok, spec} = AgentFile.definition("default/blank", %{})
+      assert {:ok, spec} = AgentFile.definition(Wardrik.AgentID.parse!("default/blank"), %{})
 
       assert spec.config.system == nil
       assert spec.config.tools == []
@@ -533,26 +546,34 @@ defmodule WardrikDaemon.AgentFileTest do
       careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
       assert {:ok, named} =
-               AgentFile.definition("acme/triage", %{"policy" => "careful"}, %{
-                 "careful" => careful
-               })
+               AgentFile.definition(
+                 Wardrik.AgentID.parse!("acme/triage"),
+                 %{"policy" => "careful"},
+                 %{
+                   "careful" => careful
+                 }
+               )
 
       assert named.hooks == WardrikPolicy.hooks(careful)
 
       assert {:ok, written} =
-               AgentFile.definition("acme/triage", %{"policy" => %{"ask" => ["github/*"]}})
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
+                 "policy" => %{"ask" => ["github/*"]}
+               })
 
       assert [%Wardrik.Hook{module: WardrikPolicy}] = written.hooks
     end
 
     test "never names a module" do
       assert {:error, message} =
-               AgentFile.definition("acme/triage", %{"tools" => ["WardrikLua.Run"]})
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
+                 "tools" => ["WardrikLua.Run"]
+               })
 
       assert message == "tools names WardrikLua.Run, which is not a tool the daemon ships"
 
       assert {:error, message} =
-               AgentFile.definition("acme/triage", %{
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
                  "policy" => "WardrikDaemon.AgentFileTest.Policy"
                })
 
@@ -562,17 +583,21 @@ defmodule WardrikDaemon.AgentFileTest do
 
     test "takes who the agent is from its key, and its schedules from their own routes" do
       for key <- ~w(name org user schedule notify) do
-        assert {:error, message} = AgentFile.definition("acme/triage", %{key => "x"})
+        assert {:error, message} =
+                 AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{key => "x"})
+
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end
     end
 
     test "a definition that does not read says why" do
       assert {:error, "timeout is a whole number of seconds"} =
-               AgentFile.definition("acme/triage", %{"timeout" => "soon"})
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"timeout" => "soon"})
 
       assert {:error, "instructions is a string"} =
-               AgentFile.definition("acme/triage", %{"instructions" => ["a"]})
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
+                 "instructions" => ["a"]
+               })
     end
   end
 

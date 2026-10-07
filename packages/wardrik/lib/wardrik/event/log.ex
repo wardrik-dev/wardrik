@@ -3,11 +3,11 @@ defmodule Wardrik.Event.Log do
   Each agent's events as CloudEvents, numbered and kept, so a client can
   resume from the last one it saw, on any node and across a `kill -9`.
 
-      {:ok, events} = Wardrik.Event.Log.read("acme/ops/triage", starting_after: 40)
+      {:ok, events} = Wardrik.Event.Log.read(~A"acme/triage", starting_after: 40)
 
   ## Written by the agent alone
 
-  `Wardrik.Agent` is one process per key across the cluster, and it is its log's
+  `Wardrik.Agent` is one process per ID across the cluster, and it is its log's
   only writer, through a `Wardrik.Event.Log.Writer`. It follows its own events,
   encodes each with `Wardrik.Event.Codec`, and writes the durable ones to
   `Wardrik.Store` under the next sequence number, in the order they reach it. A
@@ -15,7 +15,7 @@ defmodule Wardrik.Event.Log do
   owners of one agent can never both write it.
 
   Sequence numbers start at 1, run without a gap, and are never reused under
-  one agent, even one forgotten and started again under the same key.
+  one agent, even one forgotten and started again under the same ID.
 
   ## Following it live
 
@@ -72,7 +72,7 @@ defmodule Wardrik.Event.Log do
   dropped, where `oldest` is the first one still held.
   """
   @spec read(Bus.agent_id(), keyword()) :: {:ok, [map()]} | {:gap, pos_integer()}
-  def read(agent_id, opts \\ []) when is_binary(agent_id) do
+  def read(%Wardrik.AgentID{} = agent_id, opts \\ []) do
     next = Keyword.get(opts, :starting_after, 0) + 1
     oldest = oldest(agent_id)
 
@@ -105,14 +105,17 @@ defmodule Wardrik.Event.Log do
   as `Wardrik.Event.Log.Entry` messages.
   """
   @spec subscribe(Bus.agent_id()) :: :ok
-  def subscribe(agent_id) when is_binary(agent_id), do: Group.join(__MODULE__, agent_id, %{})
+  def subscribe(%Wardrik.AgentID{} = agent_id),
+    do: Group.join(__MODULE__, to_string(agent_id), %{})
 
   @spec unsubscribe(Bus.agent_id()) :: :ok
-  def unsubscribe(agent_id) when is_binary(agent_id), do: Group.leave(__MODULE__, agent_id)
+  def unsubscribe(%Wardrik.AgentID{} = agent_id),
+    do: Group.leave(__MODULE__, to_string(agent_id))
 
   @doc "Delivers an entry to every subscriber to its agent. A writer's to call."
   @spec publish(Bus.agent_id(), Entry.t()) :: :ok
-  def publish(agent_id, %Entry{} = entry), do: Group.dispatch(__MODULE__, agent_id, entry)
+  def publish(%Wardrik.AgentID{} = agent_id, %Entry{} = entry),
+    do: Group.dispatch(__MODULE__, to_string(agent_id), entry)
 
   @doc """
   Drops the events of `agent_id` written before `cutoff`, oldest first, and
@@ -182,9 +185,9 @@ defmodule Wardrik.Event.Log do
   @doc "The store key the event of `agent_id` at `sequence` is written under."
   @spec key(Bus.agent_id(), pos_integer()) :: Store.key()
   def key(agent_id, sequence),
-    do: agent_id <> "/" <> String.pad_leading(Integer.to_string(sequence), @padding, "0")
+    do: "#{agent_id}//" <> String.pad_leading(Integer.to_string(sequence), @padding, "0")
 
-  defp dropped_key(agent_id), do: agent_id <> "/dropped"
+  defp dropped_key(agent_id), do: "#{agent_id}//dropped"
 
   @doc "The namespace events are written under in `Wardrik.Store`."
   @spec namespace() :: Store.ns()

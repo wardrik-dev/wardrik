@@ -12,7 +12,7 @@ defmodule Wardrik.Event.LogTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = "test/log-#{System.unique_integer([:positive])}"
+    agent_id = Wardrik.Test.Fleet.id("log")
     :ok = Log.subscribe(agent_id)
 
     %{agent_id: agent_id, source: Source.root(agent_id, name: "turn")}
@@ -235,7 +235,7 @@ defmodule Wardrik.Event.LogTest do
                Log.read(agent_id, starting_after: 2, limit: 2)
 
       assert {:ok, []} = Log.read(agent_id, starting_after: 5)
-      assert {:ok, []} = Log.read("test/nobody")
+      assert {:ok, []} = Log.read(Wardrik.AgentID.parse!("test/nobody"))
     end
   end
 

@@ -8,7 +8,7 @@ defmodule Wardrik.Scope do
   written down, shared and reused, while a scope belongs to one run and carries
   the things that change per run.
 
-      scope = Wardrik.Scope.root(config, "acme/@jon/assistant", name: "turn", user: user, org: org)
+      scope = Wardrik.Scope.root(config, ~A"acme/@jon/assistant", name: "turn")
       Wardrik.Event.emit(scope.source, {:turn_started, [Wardrik.Agent.Message.new("hello")]})
 
   Work the turn spawns takes a child scope, so its events land in the same
@@ -25,10 +25,9 @@ defmodule Wardrik.Scope do
   | Field | What it decides |
   | --- | --- |
   | `:config` | which model, and what it can call |
-  | `:source` | where events go, and which span they belong to |
+  | `:source` | which agent the work is for, where its events go, and which span they belong to |
   | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
   | `:tainted` | whether the run has read content from outside, which holds a gated tool's calls for a person; see `Wardrik.Call.taint/1` |
-  | `:user`, `:org` | who the work is being done for |
   | `:deadline` | when the work must stop |
   | `:hooks` | whether a tool call may run, and a model call be made |
   | `:dispatch` | what a model call actually is, and who pays for it |
@@ -44,7 +43,7 @@ defmodule Wardrik.Scope do
   through however many layers of delegation without anyone recomputing it.
   Give one as a duration and it is resolved once:
 
-      scope = Wardrik.Scope.root(config, "acme/@jon/assistant", timeout: :timer.minutes(10))
+      scope = Wardrik.Scope.root(config, ~A"acme/@jon/assistant", timeout: :timer.minutes(10))
       Wardrik.Scope.remaining_ms(scope)
 
   `with_timeout/2` only ever narrows. Work cannot award itself more time than
@@ -89,8 +88,6 @@ defmodule Wardrik.Scope do
   defstruct [
     :config,
     :source,
-    :user,
-    :org,
     :deadline,
     :dispatch,
     :credentials,
@@ -109,8 +106,6 @@ defmodule Wardrik.Scope do
   @type t() :: %__MODULE__{
           config: Config.t(),
           source: Source.t(),
-          user: term(),
-          org: term(),
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
@@ -126,7 +121,7 @@ defmodule Wardrik.Scope do
 
   @doc """
   The `root/3` options a host supplies that an agent keeps for every turn it
-  runs. Who the work is for is named by the agent's key; everything else
+  runs. Who the work is for is named by the agent's ID; everything else
   `root/3` takes belongs to one run.
   """
   @spec seams() :: [atom()]
@@ -138,8 +133,6 @@ defmodule Wardrik.Scope do
   Options:
 
     * `:name` - what to call the span, passed to `Wardrik.Event.Source.root/2`
-    * `:user` - who the work is for, as the host's own value
-    * `:org` - which tenant it belongs to, as the host's own value
     * `:timeout` - how long the whole run may take, resolved to a deadline
     * `:deadline` - the same thing as a monotonic instant, for a caller that
       already holds one
@@ -155,12 +148,10 @@ defmodule Wardrik.Scope do
       replayed from there. `Wardrik.Agent` is one. Not inherited by `child/2`
   """
   @spec root(Config.t(), Bus.agent_id(), keyword()) :: t()
-  def root(%Config{} = config, agent_id, opts \\ []) do
+  def root(%Config{} = config, %Wardrik.AgentID{} = agent_id, opts \\ []) do
     %__MODULE__{
       config: config,
       source: Source.root(agent_id, opts),
-      user: Keyword.get(opts, :user),
-      org: Keyword.get(opts, :org),
       hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),
       credentials: Keyword.get(opts, :credentials),
@@ -202,19 +193,12 @@ defmodule Wardrik.Scope do
     do: %{scope | batch: source.trace.span_id <> "/" <> Integer.to_string(round)}
 
   @doc """
-  Puts the user this scope acts for.
+  The agent the work is for. Its org and user say who the work is done for.
 
-  Takes the host's own value, so a caller hands over the struct it already has
-  rather than translating it into something this library invented.
-
-      scope |> Wardrik.Scope.put_user(current_user) |> Wardrik.Scope.put_org(org)
+      %Wardrik.AgentID{org: org, user: user} = Wardrik.Scope.agent_id(scope)
   """
-  @spec put_user(t(), term()) :: t()
-  def put_user(%__MODULE__{} = scope, user), do: %{scope | user: user}
-
-  @doc "Puts the organisation this scope acts for, the same way as `put_user/2`."
-  @spec put_org(t(), term()) :: t()
-  def put_org(%__MODULE__{} = scope, org), do: %{scope | org: org}
+  @spec agent_id(t()) :: Bus.agent_id()
+  def agent_id(%__MODULE__{source: source}), do: source.agent_id
 
   @doc """
   Narrows this scope's deadline to at most `ms` from now.

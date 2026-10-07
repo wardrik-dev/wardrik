@@ -3,7 +3,7 @@ defmodule Wardrik.Ledger.Store do
   A `Wardrik.Ledger` over `Wardrik.Store`.
 
   Entries are written under the `:claims` namespace, one per agent and call
-  id. A claim is a write conditional on nothing being written yet, so a second
+  id, as the agent's ID, then `//`, which no ID holds, then the call id. A claim is a write conditional on nothing being written yet, so a second
   claim answers with the first one's state whatever adapter is underneath.
 
   ## Retention
@@ -22,7 +22,7 @@ defmodule Wardrik.Ledger.Store do
 
   @doc "The key an entry is written under, within the `:claims` namespace."
   @spec key(Wardrik.Ledger.key()) :: String.t()
-  def key({agent_id, call_id}), do: agent_id <> "/" <> call_id
+  def key({agent_id, call_id}), do: "#{agent_id}//#{call_id}"
 
   @impl Wardrik.Ledger
   def claim(key, call) do
@@ -74,7 +74,7 @@ defmodule Wardrik.Ledger.Store do
   @impl Wardrik.Ledger
   def forget(agent_id, trace_id) do
     @ns
-    |> Store.keys(agent_id <> "/" <> trace_id <> "/")
+    |> Store.keys("#{agent_id}//#{trace_id}/")
     |> Enum.reduce_while(:ok, fn encoded, :ok ->
       case Store.lookup(@ns, encoded) do
         {_entry, vsn} -> delete(encoded, vsn) |> continue()

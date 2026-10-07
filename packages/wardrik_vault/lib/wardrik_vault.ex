@@ -5,7 +5,7 @@ defmodule WardrikVault do
 
       config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
 
-      Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
+      Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
   Nothing else is needed: no database, no broker, no network. A single binary
   can hold its users' credentials across restarts and across the nodes the
@@ -112,7 +112,8 @@ defmodule WardrikVault do
   end
 
   # Whose credentials a scope reaches, the most specific first.
-  defp owners(%Scope{org: org, user: user}) do
+  defp owners(%Scope{} = scope) do
+    %Wardrik.AgentID{org: org, user: user} = Scope.agent_id(scope)
     Enum.reject([user && {org, user}, org], &is_nil/1) ++ [nil]
   end
 

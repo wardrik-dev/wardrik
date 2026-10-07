@@ -10,7 +10,7 @@ defmodule Wardrik.Schedule.StateTest do
     schedule =
       Schedule.new("sweep", Keyword.merge([every: "*/30 * * * *", prompt: "Look."], opts))
 
-    State.new("default/triage", schedule, @created)
+    State.new(Wardrik.AgentID.parse!("default/triage"), schedule, @created)
   end
 
   describe "new/3" do

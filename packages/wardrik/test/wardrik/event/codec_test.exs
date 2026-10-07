@@ -9,7 +9,7 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Test.ProtocolResolver
 
   @schemas Application.app_dir(:wardrik, "priv/protocol/v1")
-  @agent "acme/@ops/triage"
+  @agent Wardrik.AgentID.parse!("acme/@ops/triage")
 
   defp read(name), do: @schemas |> Path.join(name <> ".json") |> File.read!() |> JSON.decode!()
 

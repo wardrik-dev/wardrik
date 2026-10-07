@@ -95,10 +95,10 @@ defmodule WardrikDaemon.Agents do
     do: :wardrik_daemon |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
 
   @doc """
-  The options the agent under `key` starts with, as `Wardrik.Fleet.spawn/2`
-  takes them: what its file says, or `defaults/0` where no file declares it.
+  The options the agent `key` starts with, as `Wardrik.Fleet.spawn/2` takes
+  them: what its file says, or `defaults/0` where no file declares it.
   """
-  @spec options(String.t()) :: {:ok, keyword()} | {:error, String.t()}
+  @spec options(Wardrik.AgentID.t()) :: {:ok, keyword()} | {:error, String.t()}
   def options(key) do
     spec =
       case GenServer.call(__MODULE__, {:owner, key}) do
@@ -111,8 +111,8 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  The spec a definition sent to the HTTP API writes for the agent under
-  `key`, or a conflict where an agent file declares it.
+  The spec a definition sent to the HTTP API writes for the agent `key`, or
+  a conflict where an agent file declares it.
   """
   @impl WardrikHTTP.Definition
   def put(key, definition) do
@@ -134,7 +134,7 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  @doc "`:ok` where the HTTP API may change the agent under `key`, or a conflict where a file declares it."
+  @doc "`:ok` where the HTTP API may change the agent `key`, or a conflict where a file declares it."
   @impl WardrikHTTP.Definition
   def editable(key) do
     case GenServer.call(__MODULE__, {:owner, key}) do
@@ -172,7 +172,7 @@ defmodule WardrikDaemon.Agents do
   def handle_call({:owner, key}, _from, state) do
     file =
       Enum.find_value(state.files, fn
-        {path, {:ok, %Spec{} = spec}} -> if Spec.key(spec) == key, do: {:file, path, spec}
+        {path, {:ok, %Spec{} = spec}} -> if spec.id == key, do: {:file, path, spec}
         _other -> nil
       end)
 
@@ -189,7 +189,7 @@ defmodule WardrikDaemon.Agents do
   # spec of it.
   defp elsewhere(state, key) do
     Enum.find_value(state.nodes.(), fn node ->
-      case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, key) do
+      case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, to_string(key)) do
         {:ok, path} -> {:file, {path, node}, nil}
         :error -> nil
       end
@@ -220,7 +220,7 @@ defmodule WardrikDaemon.Agents do
       WardrikNotify.put_routes(
         for {_path, {:ok, spec, %WardrikNotify.Route{} = route}} <- loaded,
             into: %{},
-            do: {Spec.key(spec), route}
+            do: {spec.id, route}
       )
 
     files = policy_files ++ agent_files
@@ -257,14 +257,15 @@ defmodule WardrikDaemon.Agents do
   defp prune(state, agent_files) do
     named = for {path, result} <- agent_files, do: {Path.basename(path), result}
     unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
-    declared = for {name, {:ok, spec}} <- named, into: %{}, do: {Spec.key(spec), name}
+    declared = for {name, {:ok, spec}} <- named, into: %{}, do: {to_string(spec.id), name}
 
     previous = Store.get(@inventory, inventory(node())) || %{}
     kept = Map.filter(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
     inventory = Map.merge(kept, declared)
     {:ok, _vsn} = Store.put(@inventory, inventory(node()), inventory)
 
-    for key <- Map.keys(previous) -- Map.keys(inventory),
+    for text <- Map.keys(previous) -- Map.keys(inventory),
+        key = Wardrik.AgentID.parse!(text),
         elsewhere(state, key) == nil,
         do: retire(key)
   end
@@ -301,7 +302,7 @@ defmodule WardrikDaemon.Agents do
   defp put({:ok, spec, route}) do
     case Fleet.put(spec) do
       {:ok, _pid} -> {:ok, spec, route}
-      {:error, reason} -> {:error, "#{Spec.key(spec)} did not start: #{inspect(reason)}"}
+      {:error, reason} -> {:error, "#{spec.id} did not start: #{inspect(reason)}"}
     end
   end
 

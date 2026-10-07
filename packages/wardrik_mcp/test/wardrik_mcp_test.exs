@@ -85,7 +85,7 @@ defmodule WardrikMCPTest do
     test "a server serves the agents of the orgs it names, and refuses another org's", %{
       ref: ref
     } do
-      scope = fn org -> Wardrik.Test.scope(key: org <> "/x", org: org) end
+      scope = fn org -> Wardrik.Test.scope(id: Wardrik.AgentID.new!("x", org: org)) end
 
       assert {:ok, %{"ok" => true}} =
                WardrikMCP.call(ref, "echo", %{value: "hi"}, context(scope.("acme")))

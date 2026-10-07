@@ -21,7 +21,7 @@ defmodule Wardrik.LLM.TurnTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
@@ -265,7 +265,7 @@ defmodule Wardrik.LLM.TurnTest do
     LLMStub.stream([LLMStub.final_answer("hello")])
 
     assert %LLM.Turn{state: :done, messages: _messages} =
-             run(scope(Wardrik.Test.Fleet.key()), Context.new())
+             run(scope(Wardrik.Test.Fleet.id()), Context.new())
 
     refute_receive %Event{}
     assert Event.Bus.subscribers(agent_id) == [self()]

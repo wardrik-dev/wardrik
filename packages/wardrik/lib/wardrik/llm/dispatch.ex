@@ -8,7 +8,7 @@ defmodule Wardrik.LLM.Dispatch do
   on, or which key pays for it, does both here, once, rather than wrapping the
   runtime.
 
-      Wardrik.Fleet.spawn("assistant", config: config, dispatch: MyApp.Gateway)
+      Wardrik.Fleet.spawn(id, config: config, dispatch: MyApp.Gateway)
 
   `c:admit/2` is the only place a credential enters a call, and `c:settle/3`
   is the only place its usage leaves one. A host that enforces that rule gets a
@@ -20,14 +20,16 @@ defmodule Wardrik.LLM.Dispatch do
 
         @impl true
         def admit(request, scope) do
-          with {:ok, key, model} <- MyApp.Keys.for(scope.org, request.model_spec) do
+          org = Wardrik.Scope.agent_id(scope).org
+
+          with {:ok, key, model} <- MyApp.Keys.for(org, request.model_spec) do
             {:ok, request |> Request.put_model(model) |> Request.put_opts(api_key: key)}
           end
         end
 
         @impl true
         def settle(request, {:ok, response}, scope) do
-          MyApp.Billing.record(scope.org, request.model_spec, response.usage)
+          MyApp.Billing.record(Wardrik.Scope.agent_id(scope).org, request.model_spec, response.usage)
         end
 
         def settle(_request, _outcome, _scope), do: :ok

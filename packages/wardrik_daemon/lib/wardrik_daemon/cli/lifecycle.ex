@@ -36,6 +36,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
@@ -163,9 +165,12 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       {opts[:user], "--user #{opts[:user]} is not a user's name"}
     ]
 
-    case Enum.find(named, fn {text, _message} -> text != nil and not Fleet.segment?(text) end) do
+    case Enum.find(named, fn {text, _message} ->
+           text != nil and not AgentID.segment?(text)
+         end) do
       nil ->
-        {:ok, Fleet.key(name, org: opts[:org], user: opts[:user])}
+        {:ok,
+         AgentID.new!(name, org: opts[:org] || WardrikDaemon.Config.org(), user: opts[:user])}
 
       {_text, message} ->
         {:error, message <> ": a name holds no / or whitespace, and does not begin with @ or _"}
@@ -173,7 +178,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp restart({path, spec}, node) do
-    key = Spec.key(spec)
+    key = spec.id
 
     with :ok <- placed(key, Spec.options(spec), node) do
       case Fleet.put(spec) do
@@ -296,7 +301,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   # -- cancel and stop ------------------------------------------------------------
 
-  defp cancel([], opts), do: if(opts[:all], do: cancel_under(""), else: {:error, :usage})
+  defp cancel([], opts),
+    do: if(opts[:all], do: cancel_under(Prefix.all()), else: {:error, :usage})
 
   defp cancel([target], opts) do
     cond do
@@ -327,7 +333,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
         "with what was said so far."
 
   defp cancel_under(prefix) do
-    busy = for %{status: status, key: key} <- Fleet.list(prefix), status != :idle, do: key
+    busy = for %{status: status, id: key} <- Fleet.list(prefix), status != :idle, do: key
 
     case {Fleet.kill(prefix), busy} do
       {0, _busy} -> {:ok, "Nothing runs#{under(prefix)}."}
@@ -336,8 +342,12 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp under(""), do: ""
-  defp under(prefix), do: " under #{prefix}"
+  defp under(prefix) do
+    case to_string(prefix) do
+      "" -> ""
+      text -> " under #{text}"
+    end
+  end
 
   defp stop([key], _opts) do
     case Fleet.stop(key) do
@@ -355,12 +365,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       "Stopped #{key}, and kept its conversation. #{shown(path)} declares it, so wardrik " <>
         "reload, or #{spawn_line(key)}, starts it again."
 
-  defp spawn_line(key) do
-    {org, user, name} = Fleet.parse(key)
-
+  defp spawn_line(%AgentID{org: org, user: user, name: name}) do
     Enum.join(
       ["wardrik agent spawn", name] ++
-        if(org != Fleet.org(), do: ["--org", org], else: []) ++
+        if(org != WardrikDaemon.Config.org(), do: ["--org", org], else: []) ++
         if(user, do: ["--user", user], else: []),
       " "
     )
@@ -415,7 +423,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp targets(target) do
     cond do
-      prefix?(target) -> Enum.map(Fleet.list(target), & &1.key)
+      prefix?(target) -> Enum.map(Fleet.list(target), & &1.id)
       Fleet.stored?(target) -> [target]
       true -> []
     end
@@ -495,7 +503,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     Terminal.puts(terminal, interrupting(member))
 
     if Owl.IO.confirm(message: "Move it to #{Nodes.display(node)}?", default: false),
-      do: moved(member.key, node),
+      do: moved(member.id, node),
       else: {:ok, "Nothing was moved."}
   end
 
@@ -519,26 +527,26 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       [] ->
         {:error,
          "#{Nodes.display(member.node)} is the only node, so there is nowhere to move " <>
-           "#{member.key} to."}
+           "#{member.id} to."}
 
       others when terminal.input? ->
         {:ok,
          Owl.IO.select(others,
-           label: "Move #{member.key} from #{Nodes.display(member.node)} to which node?",
+           label: "Move #{member.id} from #{Nodes.display(member.node)} to which node?",
            render_as: &Nodes.display/1
          )}
 
       others ->
         {:error,
          "wardrik agent move asks which node only where someone can answer; name it, as in " <>
-           "#{move_line(member.key, hd(others))}. The nodes are #{nodes(others)}."}
+           "#{move_line(member.id, hd(others))}. The nodes are #{nodes(others)}."}
     end
   end
 
-  defp interrupting(%{status: :running, key: key}),
+  defp interrupting(%{status: :running, id: key}),
     do: "#{key} is taking a turn, which moving it ends; what it has said so far is kept."
 
-  defp interrupting(%{key: key}),
+  defp interrupting(%{id: key}),
     do: "#{key} is waiting on a person, and moving it abandons what it waits for."
 
   defp moved(key, node) do
@@ -554,7 +562,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   Where the file that declares the agent under `key` is, for `bin/wardrik` to
   open in an editor, or why there is none.
   """
-  @spec file(String.t()) :: {:ok, Path.t()} | {:error, String.t()}
+  @spec file(Wardrik.AgentID.t()) :: {:ok, Path.t()} | {:error, String.t()}
   def file(key) do
     case {WardrikDaemon.declared()[key], Fleet.lookup(key)} do
       {{path, _spec}, _member} ->
@@ -586,14 +594,16 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp nodes(daemons), do: daemons |> Enum.map(&Nodes.display/1) |> listed()
 
-  defp prefix?(target), do: String.ends_with?(target, "/")
+  defp prefix?(target), do: match?(%Prefix{}, target)
 
   defp shown(path), do: Path.join("agents", Path.basename(path))
 
   defp no_agent(key), do: "No agent runs under #{key}."
 
-  defp listed([only]), do: only
-
-  defp listed(items),
-    do: [Enum.intersperse(Enum.drop(items, -1), ", "), " and ", List.last(items)]
+  defp listed(items) do
+    case Enum.map(items, &to_string/1) do
+      [only] -> only
+      texts -> [Enum.intersperse(Enum.drop(texts, -1), ", "), " and ", List.last(texts)]
+    end
+  end
 end

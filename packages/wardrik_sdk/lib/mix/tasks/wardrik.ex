@@ -2,6 +2,7 @@ defmodule Mix.Tasks.Wardrik do
   @shortdoc "Boot the Wardrik TUI"
 
   @default_tools [WardrikBrave.WebSearch, WardrikResearch.Deep]
+  @org "default"
 
   @moduledoc """
   Starts an agent and attaches the full-screen `WardrikTUI.App` to it.
@@ -42,16 +43,17 @@ defmodule Mix.Tasks.Wardrik do
   a credential the user has not authorized parks the turn on a link; open it,
   then answer `y` to run the call again.
 
-  `--policy` names a `Wardrik.Hook` module, and `--user` and `--org` say who the
-  turn is for, which is what a hook reads to decide. A hook that asks about a call
+  `--policy` names a `Wardrik.Hook` module, and `--user` and `--org` place the
+  agent, which a hook reads from its ID to decide. A hook that asks about a call
   parks the turn; resume it from anywhere that can reach the
   node:
 
-      Wardrik.Agent.resume("acme/@jon/assistant", %{"call_abc" => :approve})
+      Wardrik.Agent.resume(Wardrik.AgentID.parse!("acme/@jon/assistant"), %{"call_abc" => :approve})
 
   `--timeout` bounds a whole turn, in seconds.
 
-  `--name`, with `--org` and `--user`, is the agent's key in the fleet, and the
+  `--name`, with `--org` (`#{@org}` unless given) and `--user`, is the
+  agent's ID in the fleet, and the
   fleet keeps an agent's conversation across restarts. Starting with the same
   three attaches to the same agent and shows what was said so far, which is how
   a session is resumed:
@@ -131,7 +133,8 @@ defmodule Mix.Tasks.Wardrik do
 
     config = config(opts)
     spawn_opts = [config: config] ++ scope_opts(opts)
-    agent_id = Wardrik.Fleet.key(opts[:name] || "assistant", spawn_opts)
+    org = opts[:org] || @org
+    agent_id = Wardrik.AgentID.new!(opts[:name] || "assistant", org: org, user: opts[:user])
 
     {:ok, _agent} = Wardrik.Fleet.spawn(agent_id, spawn_opts)
 
@@ -141,6 +144,7 @@ defmodule Mix.Tasks.Wardrik do
           [
             agent: agent_id,
             agent_id: agent_id,
+            org: org,
             spawn_opts: spawn_opts,
             model: config.model_spec,
             verbose: opts[:verbose] || false
@@ -189,8 +193,7 @@ defmodule Mix.Tasks.Wardrik do
   # Only what was actually given: an agent started with no policy and no
   # deadline should look exactly as it did before either existed.
   defp scope_opts(opts) do
-    opts
-    |> Keyword.take([:user, :org])
+    []
     |> put_new_option(
       :hooks,
       opts[:policy],

@@ -5,19 +5,19 @@ defmodule Wardrik.TestTest do
   alias Wardrik.Test.Tools
 
   describe "scope/1" do
-    test "is built for a key of the test's own, with what a turn is given" do
-      scope = Wardrik.Test.scope(tools: [Wardrik.Test.EchoTool], org: "acme")
+    test "is built for an agent of the test's own, with what a turn is given" do
+      scope = Wardrik.Test.scope(tools: [Wardrik.Test.EchoTool])
 
-      assert scope.source.agent_id =~ ~r"^test/agent-\d+$"
-      assert scope.org == "acme"
+      assert to_string(scope.source.agent_id) =~ ~r"^test/agent-\d+$"
       assert ["echo"] = Enum.map(Wardrik.LLM.Config.tools(scope.config), & &1.name)
     end
 
-    test "takes a key, or the whole config, instead" do
+    test "takes an ID, or the whole config, instead" do
       config = Wardrik.LLM.Config.new(tools: [Tools.Deploy], system: "Be brief.")
-      scope = Wardrik.Test.scope(config: config, key: "acme/@jon/assistant")
+      id = Wardrik.AgentID.parse!("acme/@jon/assistant")
+      scope = Wardrik.Test.scope(config: config, id: id)
 
-      assert scope.source.agent_id == "acme/@jon/assistant"
+      assert scope.source.agent_id == id
       assert scope.config.system == "Be brief."
     end
   end

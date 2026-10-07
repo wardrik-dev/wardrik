@@ -3,6 +3,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Source
@@ -13,8 +14,8 @@ defmodule WardrikTUI.App.FleetTest do
   setup do
     :ok = Fleet.watch()
     org = "tui#{System.unique_integer([:positive])}"
-    spawn_opts = [org: org, runner: {AgentRunners, :echo, [self(), "ok"]}]
-    agent_id = Fleet.key("watched", spawn_opts)
+    spawn_opts = [runner: {AgentRunners, :echo, [self(), "ok"]}]
+    agent_id = AgentID.new!("watched", org: org)
     {:ok, _pid} = Fleet.spawn(agent_id, spawn_opts)
     on_exit(fn -> Fleet.forget(agent_id) end)
 
@@ -24,6 +25,7 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
+          org: org,
           spawn_opts: spawn_opts,
           model: "test:model",
           sidebar_width: 24
@@ -104,7 +106,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "the panel keeps its width, clipping a long name rather than widening", ctx do
     %{session: session, org: org} = ctx
-    key = Fleet.key("assistant_with_a_long_name", org: org)
+    key = AgentID.new!("assistant_with_a_long_name", org: org)
     on_exit(fn -> Fleet.forget(key) end)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
 
@@ -170,7 +172,7 @@ defmodule WardrikTUI.App.FleetTest do
     session: session,
     org: org
   } do
-    key = "#{org}/helper"
+    key = AgentID.new!("helper", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/spawn helper")
@@ -182,22 +184,22 @@ defmodule WardrikTUI.App.FleetTest do
   # What a host's :options gives the agents a session starts, here a model,
   # or why one cannot start.
   @doc false
-  def given(key, test_pid) do
-    send(test_pid, {:options_for, key})
+  def given(id, test_pid) do
+    send(test_pid, {:options_for, id})
 
-    if String.ends_with?(key, "/refused"),
+    if id.name == "refused",
       do: {:error, "the defaults name no such tool"},
       else: {:ok, [config: Wardrik.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5")]}
   end
 
-  test "/spawn starts an agent with what :options gives its key", %{org: org, agent_id: agent_id} do
+  test "/spawn starts an agent with what :options gives its ID", %{org: org, agent_id: agent_id} do
     session =
       Breeze.Test.start!(App,
         size: {90, 14},
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
-          spawn_opts: [org: org],
+          org: org,
           options: {__MODULE__, :given, [self()]},
           model: "test:model"
         ],
@@ -205,7 +207,7 @@ defmodule WardrikTUI.App.FleetTest do
       )
 
     on_exit(fn -> Breeze.Test.stop(session) end)
-    key = "#{org}/helper"
+    key = AgentID.new!("helper", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/spawn helper")
@@ -215,11 +217,11 @@ defmodule WardrikTUI.App.FleetTest do
 
     submit(session, "/spawn refused")
     assert screen(session) =~ "✗ the defaults name no such tool"
-    refute Fleet.whereis("#{org}/refused")
+    refute Fleet.whereis(AgentID.new!("refused", org: org))
   end
 
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do
-    on_exit(fn -> Fleet.forget("#{org}/asked") end)
+    on_exit(fn -> Fleet.forget(AgentID.new!("asked", org: org)) end)
 
     submit(session, "/spawn asked look into it")
 
@@ -228,7 +230,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/connect moves this client onto another agent", %{session: session, org: org} do
-    key = "#{org}/other"
+    key = AgentID.new!("other", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -253,7 +255,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "attaching replays each tool call and what it returned", %{session: session, org: org} do
-    key = Fleet.key("tooled", org: org)
+    key = AgentID.new!("tooled", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
     context =
@@ -336,7 +338,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "/connect · which agent?"
-    assert text =~ other <> "  idle"
+    assert text =~ "#{other}  idle"
 
     type.("other")
     Breeze.Test.input(session, "Enter")
@@ -358,16 +360,16 @@ defmodule WardrikTUI.App.FleetTest do
     Breeze.Test.input(session, "Enter")
 
     text = screen(session)
-    assert text =~ "spawned and connected to #{Fleet.key("helper", org: org)}"
+    assert text =~ "spawned and connected to #{AgentID.new!("helper", org: org)}"
     assert text =~ "› hello there"
-    assert Fleet.whereis(Fleet.key("helper", org: org))
-    Fleet.forget(Fleet.key("helper", org: org))
+    assert Fleet.whereis(AgentID.new!("helper", org: org))
+    Fleet.forget(AgentID.new!("helper", org: org))
   end
 
   test "a tick redraws a running delegation's elapsed time, and stops once it ends", ctx do
     %{session: session, org: org} = ctx
     session = Breeze.Test.resize(session, {90, 30})
-    other = Fleet.key("other", org: org)
+    other = AgentID.new!("other", org: org)
     {:ok, pid} = Fleet.spawn(other, runner: {AgentRunners, :delegating, [self(), "pricing"]})
     on_exit(fn -> Fleet.forget(other) end)
     :ok = Bus.subscribe(other, level: :lifecycle)
@@ -393,7 +395,7 @@ defmodule WardrikTUI.App.FleetTest do
        ctx do
     %{session: session, org: org} = ctx
     session = Breeze.Test.resize(session, {90, 30})
-    other = Fleet.key("other", org: org)
+    other = AgentID.new!("other", org: org)
     runner = {AgentRunners, :delegating, [self(), "pricing"]}
     {:ok, pid} = Fleet.spawn(other, runner: runner)
     on_exit(fn -> Fleet.forget(other) end)
@@ -453,7 +455,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "an agent that finished while unwatched needs attention until connected to", ctx do
     %{session: session, org: org} = ctx
-    other = Fleet.key("other", org: org)
+    other = AgentID.new!("other", org: org)
     {:ok, pid} = Fleet.spawn(other, runner: {AgentRunners, :blocking, [self(), "found it"]})
     on_exit(fn -> Fleet.forget(other) end)
 
@@ -478,7 +480,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "a parked agent needs attention, and n in the panel moves to it", ctx do
     %{session: session, org: org} = ctx
-    parker = Fleet.key("parker", org: org)
+    parker = AgentID.new!("parker", org: org)
     {:ok, pid} = Fleet.spawn(parker, runner: {AgentRunners, :parking, [self(), "call_1"]})
     on_exit(fn -> Fleet.forget(parker) end)
 
@@ -502,8 +504,8 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "/filter narrows the panel, and alone shows every agent again", ctx do
     %{session: session, org: org} = ctx
-    alpha = Fleet.key("alpha", org: org)
-    busy = Fleet.key("busy", org: org)
+    alpha = AgentID.new!("alpha", org: org)
+    busy = AgentID.new!("busy", org: org)
     {:ok, _pid} = Fleet.spawn(alpha, runner: {AgentRunners, :echo, [self(), "ok"]})
     {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
     on_exit(fn -> Enum.each([alpha, busy], &Fleet.forget/1) end)
@@ -530,17 +532,16 @@ defmodule WardrikTUI.App.FleetTest do
     send(turn, :release)
   end
 
-  test "two agents going by one name are both shown by their whole key", ctx do
+  test "two agents going by one name are both shown by their whole ID", ctx do
     %{session: session, org: org, agent_id: agent_id} = ctx
-    twin = Fleet.key("watched", org: org <> "b")
+    twin = AgentID.new!("watched", org: org <> "b")
     {:ok, _pid} = Fleet.spawn(twin, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(twin) end)
 
     assert eventually(session, fn -> screen(session) =~ "○ #{org}b/" end)
     assert screen(session) =~ "› ○ #{org}/"
 
-    assert String.starts_with?(twin, org <> "b/") and
-             String.starts_with?(agent_id, org <> "/")
+    assert twin.org == org <> "b" and agent_id.org == org
   end
 
   test "on a narrow terminal the panel is an overlay while it is focused", %{session: session} do
@@ -584,7 +585,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "the header shows the attached agent's model and usage starts over", ctx do
     %{session: session, org: org} = ctx
-    key = Fleet.key("sonnet", org: org)
+    key = AgentID.new!("sonnet", org: org)
     config = Wardrik.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
     {:ok, _pid} = Fleet.spawn(key, config: config, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
@@ -634,7 +635,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/spawn places the agent on the node it is given", %{session: session, org: org} do
-    key = "#{org}/placed"
+    key = AgentID.new!("placed", org: org)
     on_exit(fn -> Fleet.forget(key) end)
     [short | _host] = node() |> Atom.to_string() |> String.split("@")
 
@@ -662,7 +663,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "/spawn NAME --bg starts an agent and stays here", ctx do
     %{session: session, org: org, agent_id: agent_id} = ctx
-    key = Fleet.key("worker", org: org)
+    key = AgentID.new!("worker", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/spawn worker --bg look into it")
@@ -671,7 +672,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "spawned #{key} in the background"
     assert text =~ "attaches"
     assert text =~ "sent to #{key}: look into it"
-    assert text =~ agent_id
+    assert text =~ to_string(agent_id)
     assert text =~ "› ○ watched"
     assert Fleet.whereis(key)
     assert_receive {:turn, [{:user, "look into it"}]}
@@ -712,7 +713,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert_receive {:turn, [{:user, "still there?"}]}
   end
 
-  test "a restart under the same key is followed and announced", ctx do
+  test "a restart under the same ID is followed and announced", ctx do
     %{session: session, agent_id: agent_id} = ctx
     before = Fleet.whereis(agent_id)
 
@@ -742,14 +743,14 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "/move · which agent?"
-    assert text =~ agent_id <> "  idle"
+    assert text =~ "#{agent_id}  idle"
     Breeze.Test.input(session, "Escape")
     assert Breeze.Test.focused(session) == "prompt"
   end
 
   test "/move of a busy agent shows what it would interrupt, and /confirm goes ahead", ctx do
     %{session: session, org: org} = ctx
-    busy = Fleet.key("busy", org: org)
+    busy = AgentID.new!("busy", org: org)
     {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(busy) end)
     [short | _host] = node() |> Atom.to_string() |> String.split("@")
@@ -773,7 +774,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "anything but /confirm cancels a move", ctx do
     %{session: session, org: org} = ctx
-    busy = Fleet.key("stays", org: org)
+    busy = AgentID.new!("stays", org: org)
     {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(busy) end)
     [short | _host] = node() |> Atom.to_string() |> String.split("@")
@@ -791,7 +792,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   # An agent under `org` that has already answered one question.
   defp spawn_and_ask(org, name, question) do
-    key = Fleet.key(name, org: org)
+    key = AgentID.new!(name, org: org)
     runner = {AgentRunners, :echo, [self(), "the answer"]}
     {:ok, pid} = Fleet.spawn(key, runner: runner)
     on_exit(fn -> Fleet.forget(key) end)
@@ -804,7 +805,7 @@ defmodule WardrikTUI.App.FleetTest do
     key
   end
 
-  test "/connect says so when nothing holds the key", %{session: session, org: org} do
+  test "/connect says so when nothing holds the ID", %{session: session, org: org} do
     submit(session, "/connect nobody")
 
     assert screen(session) =~ "no agent at #{org}/nobody"
@@ -816,7 +817,7 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "/connect")
     text = screen(session)
     assert text =~ "/connect · which agent?"
-    assert text =~ other <> "  idle"
+    assert text =~ "#{other}  idle"
 
     Enum.each(String.graphemes("other"), &Breeze.Test.input(session, &1))
     Breeze.Test.input(session, "Enter")
@@ -843,8 +844,8 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     assert text =~ "/connect · which agent?"
     assert text =~ "› alpha▏"
-    assert text =~ one
-    assert text =~ two
+    assert text =~ to_string(one)
+    assert text =~ to_string(two)
     refute text =~ "watched  idle"
 
     Breeze.Test.input(session, "ArrowDown")
@@ -860,12 +861,12 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "fleet · 1"
-    assert text =~ agent_id |> String.split("/") |> List.last()
+    assert text =~ agent_id.name
     assert Breeze.Test.focused(session) == "fleet"
   end
 
   test "/rm NAME shows what would go and removes it on /confirm", %{session: session, org: org} do
-    key = Fleet.key("doomed", org: org)
+    key = AgentID.new!("doomed", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -873,7 +874,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "/rm doomed removes 1 agent, and what they said, for good:"
-    assert text =~ key
+    assert text =~ to_string(key)
     assert text =~ "/confirm goes ahead"
     assert Fleet.whereis(key)
 
@@ -881,11 +882,11 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "removed #{key} and its store"
     assert Fleet.whereis(key) == nil
-    assert {:error, :not_found} = DurableServer.Supervisor.get_server_info(Fleet, key)
+    refute Fleet.stored?(key)
   end
 
   test "anything but /confirm cancels a removal", %{session: session, org: org} do
-    key = Fleet.key("spared", org: org)
+    key = AgentID.new!("spared", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -899,7 +900,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/rm NAME --yes skips the preview", %{session: session, org: org} do
-    key = Fleet.key("sure", org: org)
+    key = AgentID.new!("sure", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -922,7 +923,7 @@ defmodule WardrikTUI.App.FleetTest do
 
   test "/rm PREFIX/ lists every agent under it and skips the attached one", ctx do
     %{session: session, agent_id: agent_id, org: org} = ctx
-    keys = for name <- ["one", "two"], do: Fleet.key(name, org: org)
+    keys = for name <- ["one", "two"], do: AgentID.new!(name, org: org)
 
     for key <- keys do
       {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
@@ -933,7 +934,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     text = screen(session)
     assert text =~ "removes 2 agents"
-    assert Enum.all?(keys, &(text =~ &1))
+    assert Enum.all?(keys, &(text =~ to_string(&1)))
     assert text =~ "skipping #{agent_id} · you are attached to it"
 
     submit(session, "/confirm")
@@ -944,10 +945,10 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.whereis(agent_id)
   end
 
-  test "a target may be a full key, with or without a leading slash", ctx do
+  test "a target may be a full ID, with or without a leading slash", ctx do
     %{session: session, org: org} = ctx
     other = spawn_and_ask(org, "other", "what is up")
-    key = Fleet.key("doomed", org: org)
+    key = AgentID.new!("doomed", org: org)
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -961,20 +962,20 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "removed #{key} and its store"
     assert Fleet.whereis(key) == nil
 
-    submit(session, "/rm some/odd/shape/of/key")
-    assert screen(session) =~ "no agent at some/odd/shape/of/key"
+    submit(session, "/rm some/odd/shape/of/id")
+    assert screen(session) =~ "some/odd/shape/of/id is not an agent ID"
   end
 
-  test "/rm NAME says so when nothing holds the key", %{session: session, org: org} do
+  test "/rm NAME says so when nothing holds the ID", %{session: session, org: org} do
     submit(session, "/rm nobody")
 
     assert screen(session) =~ "no agent at #{org}/nobody"
   end
 
   test "/rm says so when a prefix matches nothing", %{session: session} do
-    submit(session, "/rm nothing/here/")
+    submit(session, "/rm nothing/@here/")
 
-    assert screen(session) =~ "nothing running under nothing/here/"
+    assert screen(session) =~ "nothing running under nothing/@here/"
   end
 
   test "/kill is gone, and says where its jobs went", %{session: session} do
@@ -987,7 +988,7 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/stop NAME interrupts another agent and leaves it running", %{session: session, org: org} do
-    key = Fleet.key("busy", org: org)
+    key = AgentID.new!("busy", org: org)
     {:ok, pid} = Fleet.spawn(key, runner: {AgentRunners, :streaming, [self()]})
     on_exit(fn -> Fleet.forget(key) end)
     :ok = Bus.subscribe(key)

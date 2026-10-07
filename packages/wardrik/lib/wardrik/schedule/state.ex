@@ -13,7 +13,7 @@ defmodule Wardrik.Schedule.State do
   defstruct [:agent, :schedule, :next_at, :last_at, :last_outcome]
 
   @type t() :: %__MODULE__{
-          agent: String.t(),
+          agent: Wardrik.AgentID.t(),
           schedule: Schedule.t(),
           next_at: DateTime.t(),
           last_at: DateTime.t() | nil,
@@ -26,8 +26,8 @@ defmodule Wardrik.Schedule.State do
   @grace_ms :timer.minutes(1)
 
   @doc "A schedule for `agent` that has not run yet."
-  @spec new(String.t(), Schedule.t(), DateTime.t()) :: t()
-  def new(agent, %Schedule{} = schedule, now) do
+  @spec new(Wardrik.AgentID.t(), Schedule.t(), DateTime.t()) :: t()
+  def new(%Wardrik.AgentID{} = agent, %Schedule{} = schedule, now) do
     %__MODULE__{agent: agent, schedule: schedule, next_at: Schedule.next(schedule, now)}
   end
 

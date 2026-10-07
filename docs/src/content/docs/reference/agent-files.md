@@ -28,7 +28,7 @@ with no frontmatter is all prompt.
 
 | Key | What it gives the agent |
 | --- | --- |
-| `name` | its name, and with `org` and `user` its key in the fleet. The file's name without `.md` when absent |
+| `name` | its name, and with `org` and `user` its ID in the fleet. The file's name without `.md` when absent |
 | `org` | the org it belongs to. `config.yaml`'s `org` when absent |
 | `user` | the user of its org it works for, if any |
 | `description` | what it is for, as `wardrik show` shows it |
@@ -43,7 +43,7 @@ with no frontmatter is all prompt.
 | `schedule` | when it is asked something on a clock; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
 
-Its key is `org/name`, or `org/@user/name` for one that works for a user:
+Its ID is `org/name`, or `org/@user/name` for one that works for a user:
 the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
 
 ## Tools
@@ -183,7 +183,7 @@ turn lost part way through runs no call twice.
 
 ## Over HTTP
 
-`definition/3` reads the body of `PUT /v1/agents/{key}` into
+`definition/3` reads the body of `PUT /v1/agents/{id}` into
 a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
     {"description": "Watches the incident queue.",
@@ -194,7 +194,7 @@ a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
 `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
-mean in a file. The key gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
+mean in a file. The ID gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
 agent's schedules as they are, and the schedules routes set them. Its
 `tools` and `policy` name what the daemon ships or configures, and never a
 module.

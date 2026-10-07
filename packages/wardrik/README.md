@@ -58,17 +58,22 @@ end
 
 ## Agents
 
-An agent is named by a key that says who it works for, and lives in the
-fleet: one process for that key anywhere in the cluster, restarted on another
-node when its own is lost.
+An agent is named by a `Wardrik.AgentID` that says who it works for, and
+lives in the fleet: one process for that ID anywhere in the cluster, restarted
+on another node when its own is lost.
 
 ```elixir
-key = Wardrik.Fleet.key("assistant", org: current_org, user: current_user)
+id = Wardrik.AgentID.new!("assistant", org: current_org, user: current_user)
 
-{:ok, _pid} = Wardrik.Fleet.spawn(key, config: Wardrik.LLM.Config.new(system: "You answer briefly."))
-:ok = Wardrik.Event.Bus.subscribe(key)
-:ok = Wardrik.Agent.ask(key, "What changed this week?")
+{:ok, _pid} = Wardrik.Fleet.spawn(id, config: Wardrik.LLM.Config.new(system: "You answer briefly."))
+:ok = Wardrik.Event.Bus.subscribe(id)
+:ok = Wardrik.Agent.ask(id, "What changed this week?")
 ```
+
+An ID is `acme/assistant` for an org's own agent, `acme/@jon/assistant` for
+one that works for a user, and either with an external ID after it, such as a
+thread in a chat, where one agent answers for many. The fleet is listed,
+watched and stopped by `Wardrik.AgentID.Prefix`.
 
 `ask/2` returns at once. The agent takes its messages one turn at a time, and
 what it does arrives as `Wardrik.Event`s: the text as it streams, each tool
@@ -158,10 +163,12 @@ persona never leaks into its caller's history.
 Core runs agents. Who an agent works for, which of its calls may run, and
 which model a call lands on and who pays for it are seams your application
 fills in. Each is inert until you give it something, so an application that
-needs none of them configures none of them.
+needs none of them configures none of them. Who the work is for is the
+agent's ID, which every `Wardrik.Scope` names: it appears in every event and
+store key, so give a user as an id rather than an email address.
 
 ```elixir
-Wardrik.Fleet.spawn(key,
+Wardrik.Fleet.spawn(id,
   config: config,
   hooks: hooks,                    # may this call run?
   dispatch: MyApp.Gateway,         # which model, whose key, what did it cost?
@@ -173,7 +180,6 @@ Wardrik.Fleet.spawn(key,
 
 | Seam | What it decides |
 | --- | --- |
-| `:org`, `:user` | Who the work is for. They are written into the agent's key, as `acme/@jon/assistant`, and carried on every `Wardrik.Scope`. Every agent has an org: a key without one is in `config :wardrik, Wardrik.Fleet, org: ...`. The key appears in every event and store key, so give a user as an id rather than an email address. |
 | `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. |
 | `:dispatch` | A `Wardrik.LLM.Dispatch`, which decides what a model call actually is just before it is made, and hears what it cost. |
 | `:credentials` | A `Wardrik.Credential` resolver, which finds the secret a tool names for the user it is working for. See [wardrik_vault](../wardrik_vault). |
@@ -221,10 +227,10 @@ A hook that asks a person **parks** the turn: nothing runs, nothing is added
 to the conversation, and the agent waits until someone answers.
 
 ```elixir
-Wardrik.Agent.parked("acme/@jon/assistant")
+Wardrik.Agent.parked(id)
 #=> [{%{id: "call_1", name: "deploy", arguments: %{}}, "This ships to production."}]
 
-Wardrik.Agent.resume("acme/@jon/assistant", %{"call_1" => :approve})
+Wardrik.Agent.resume(id, %{"call_1" => :approve})
 ```
 
 An approval, a credential the user still has to connect, and a call a person
@@ -236,9 +242,9 @@ refused, and one they ask about waits on their question instead.
 ### Stopping things
 
 ```elixir
-Wardrik.Agent.interrupt("acme/@jon/assistant")                      # the whole turn
-Wardrik.LLM.ToolRunner.kill_call("acme/@jon/assistant", "call_1")   # one tool call
-Wardrik.LLM.ToolRunner.in_flight("acme/@jon/assistant")             # what could be stopped
+Wardrik.Agent.interrupt(id)                      # the whole turn
+Wardrik.LLM.ToolRunner.kill_call(id, "call_1")   # one tool call
+Wardrik.LLM.ToolRunner.in_flight(id)             # what could be stopped
 ```
 
 A killed call is answered with an error, so the model is never left waiting
@@ -272,7 +278,7 @@ settled after. A replay then answers a call that already ran with what it
 returned, and parks one that began and never finished for a person to decide:
 
 ```elixir
-Wardrik.Fleet.spawn(key, config: config, ledger: Wardrik.Ledger.Store)
+Wardrik.Fleet.spawn(id, config: config, ledger: Wardrik.Ledger.Store)
 ```
 
 A tool with an effect outside Wardrik passes
@@ -296,7 +302,7 @@ without notice.
 | | Modules |
 | --- | --- |
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
-| Agents and the fleet | `Wardrik`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Schedule`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.Compaction` |
+| Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Schedule`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.Compaction` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.Workflow`, `Wardrik.Workflow.Step`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
@@ -314,7 +320,7 @@ scope = Wardrik.Test.scope(tools: [MyApp.Tools.Ping], hooks: hooks)
 assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(scope, "ping", %{host: "a"})
 ```
 
-`Wardrik.Test.Fleet` starts an agent under a key of each test's own and
+`Wardrik.Test.Fleet` starts an agent under an ID of each test's own and
 removes it after, `Wardrik.Test.LLMStub` answers turns with canned responses
 through Mimic, and `Wardrik.Test.Durable` and `Wardrik.Store.Conformance`
 check a store adapter of your own.

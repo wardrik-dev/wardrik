@@ -1,21 +1,17 @@
 defmodule WardrikTUI.FleetTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Fleet.Member
   alias WardrikTUI.Fleet
   alias WardrikTUI.Text
 
   defp member(opts) do
-    key = Keyword.get(opts, :key, "acme/@jon/researcher")
-    {org, user, name} = Wardrik.Fleet.parse(key)
-
     %Member{
-      key: key,
+      id: Keyword.get(opts, :id, ~A"acme/@jon/researcher"),
       pid: self(),
       node: Keyword.get(opts, :node, node()),
-      org: org,
-      user: user,
-      name: name,
       status: Keyword.get(opts, :status, :idle),
       pending: Keyword.get(opts, :pending, 0),
       waiting_on: Keyword.get(opts, :waiting_on, []),
@@ -39,7 +35,7 @@ defmodule WardrikTUI.FleetTest do
 
   # Attached, by default, to an agent in the same org and user as `member/1`
   # builds, so rows are named alone unless a test says otherwise.
-  defp row(member, attached \\ "acme/@jon/mine", width \\ 30, opts \\ []),
+  defp row(member, attached \\ ~A"acme/@jon/mine", width \\ 30, opts \\ []),
     do: Fleet.row(member, attached, width, opts)
 
   describe "heading/5" do
@@ -56,15 +52,15 @@ defmodule WardrikTUI.FleetTest do
   describe "attention?/2 and ambiguous/1" do
     test "a parked agent, or one with an unseen outcome, needs attention" do
       assert Fleet.attention?(member(status: :parked), %{})
-      assert Fleet.attention?(member([]), %{"acme/@jon/researcher" => :ok})
+      assert Fleet.attention?(member([]), %{~A"acme/@jon/researcher" => :ok})
       refute Fleet.attention?(member(status: :running), %{})
     end
 
     test "names shared by several agents are ambiguous" do
       members = [
-        member(key: "acme/@jon/x"),
-        member(key: "acme/@ann/x"),
-        member(key: "acme/@jon/y")
+        member(id: ~A"acme/@jon/x"),
+        member(id: ~A"acme/@ann/x"),
+        member(id: ~A"acme/@jon/y")
       ]
 
       assert Fleet.ambiguous(members) == MapSet.new(["x"])
@@ -73,30 +69,37 @@ defmodule WardrikTUI.FleetTest do
 
   describe "row/3" do
     test "names the agent and what it is doing" do
-      assert plain(row(member(key: "acme/@jon/one"))) =~ "○ one"
-      assert plain(row(member(key: "acme/@jon/two", status: :running))) =~ "◐ two"
+      assert plain(row(member(id: ~A"acme/@jon/one"))) =~ "○ one"
+      assert plain(row(member(id: ~A"acme/@jon/two", status: :running))) =~ "◐ two"
 
-      assert plain(row(member(key: "acme/@jon/three", status: :parked, waiting_on: ["deploy"]))) =~
+      assert plain(row(member(id: ~A"acme/@jon/three", status: :parked, waiting_on: ["deploy"]))) =~
                "? three deploy"
     end
 
-    test "names an agent alone inside the attached agent's scope, and by key elsewhere" do
-      assert plain(row(member(key: "acme/@jon/other"), "acme/@jon/mine")) =~ "○ other"
-      refute plain(row(member(key: "acme/@jon/other"), "acme/@jon/mine")) =~ "acme"
+    test "names an agent alone inside the attached agent's org and user, and by ID elsewhere" do
+      assert plain(row(member(id: ~A"acme/@jon/other"), ~A"acme/@jon/mine")) =~ "○ other"
+      refute plain(row(member(id: ~A"acme/@jon/other"), ~A"acme/@jon/mine")) =~ "acme"
 
-      assert plain(row(member(key: "default/assistant"), "acme/@jon/assistant")) =~
+      assert plain(row(member(id: ~A"default/assistant"), ~A"acme/@jon/assistant")) =~
                "○ default/assistant"
 
-      assert plain(row(member(key: "acme/@ann/assistant"), "acme/@jon/assistant")) =~
+      assert plain(row(member(id: ~A"acme/@ann/assistant"), ~A"acme/@jon/assistant")) =~
                "○ acme/@ann/assistant"
 
-      assert plain(row(member(key: "default/mine"), "default/mine")) =~ "› ○ mine"
+      assert plain(row(member(id: ~A"default/mine"), ~A"default/mine")) =~ "› ○ mine"
     end
 
-    test "shows the whole key when another agent shares the name" do
+    test "names an agent with the external ID it answers for" do
+      assert plain(row(member(id: ~A"acme/@jon/triage/1696.1234"))) =~ "○ triage/1696.1234"
+
+      assert plain(row(member(id: ~A"acme/triage/1696.1234"), ~A"acme/@jon/mine", 40)) =~
+               "○ acme/triage/1696.1234"
+    end
+
+    test "shows the whole ID when another agent shares the name" do
       shared = MapSet.new(["researcher"])
 
-      assert plain(row(member([]), "acme/@jon/mine", 40, ambiguous: shared)) =~
+      assert plain(row(member([]), ~A"acme/@jon/mine", 40, ambiguous: shared)) =~
                "○ acme/@jon/researcher"
     end
 
@@ -104,18 +107,18 @@ defmodule WardrikTUI.FleetTest do
       assert plain(row(member(status: :parked, waiting_on: ["deploy"]))) =~
                "! ? researcher deploy"
 
-      assert plain(row(member([]), "acme/@jon/mine", 40, unseen: :ok)) =~
+      assert plain(row(member([]), ~A"acme/@jon/mine", 40, unseen: :ok)) =~
                "! ○ researcher new result"
 
-      assert plain(row(member(outcome: :failed), "acme/@jon/mine", 40, unseen: :failed)) =~
+      assert plain(row(member(outcome: :failed), ~A"acme/@jon/mine", 40, unseen: :failed)) =~
                "! ○ researcher failed"
 
       refute plain(row(member([]))) =~ "!"
     end
 
     test "marks the agent this client is watching" do
-      assert plain(row(member(key: "a/@b/mine"), "a/@b/mine")) =~ "› ○ mine"
-      assert plain(row(member(key: "a/@b/theirs"), "a/@b/mine")) =~ "  ○ theirs"
+      assert plain(row(member(id: ~A"a/@b/mine"), ~A"a/@b/mine")) =~ "› ○ mine"
+      assert plain(row(member(id: ~A"a/@b/theirs"), ~A"a/@b/mine")) =~ "  ○ theirs"
     end
 
     test "counts what is queued behind an agent" do
@@ -124,7 +127,7 @@ defmodule WardrikTUI.FleetTest do
 
     test "counts the delegations of the current turn, and says when the last turn failed" do
       sub = fn member, active, total ->
-        plain(row(member, "acme/@jon/mine", 30, delegations: %{active: active, total: total}))
+        plain(row(member, ~A"acme/@jon/mine", 30, delegations: %{active: active, total: total}))
       end
 
       assert sub.(member(status: :running), 2, 4) =~ "◐ researcher sub 2/4"
@@ -141,7 +144,7 @@ defmodule WardrikTUI.FleetTest do
     end
 
     test "clips a row to the width it was given" do
-      row = row(member(key: "a/@b/an-extremely-long-agent-name-here"), "", 14)
+      row = row(member(id: ~A"a/@b/an-extremely-long-agent-name-here"), ~A"c/mine", 14)
 
       assert String.length(plain(row)) <= 14
     end
@@ -179,7 +182,7 @@ defmodule WardrikTUI.FleetTest do
       assert plain(Fleet.listing([])) =~ "no agents running"
     end
 
-    test "gives each agent its full key, state and node" do
+    test "gives each agent its full ID, state and node" do
       assert [line] = Fleet.listing([member(status: :running)])
 
       assert plain(line) =~ "acme/@jon/researcher"

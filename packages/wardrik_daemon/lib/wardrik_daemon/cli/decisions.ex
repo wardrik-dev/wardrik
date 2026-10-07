@@ -69,7 +69,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp interrupts(_words, _opts) do
     interrupts =
       for {key, call, prompt} <- waiting(),
-          do: Map.put(Value.interrupt({call, prompt}), "agent", %{"id" => key})
+          do: Map.put(Value.interrupt({call, prompt}), "agent", %{"id" => to_string(key)})
 
     {:ok, %{"interrupts" => interrupts}}
   end
@@ -123,7 +123,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp row({key, call, prompt}, every?) do
-    [Pattern.shown(call.name), if(every?, do: "  " <> key, else: []), "  ", prompt]
+    [Pattern.shown(call.name), if(every?, do: ["  ", to_string(key)], else: []), "  ", prompt]
   end
 
   defp decide([], _verb, _terminal), do: {:ok, "Nothing was decided."}
@@ -151,7 +151,7 @@ defmodule WardrikDaemon.CLI.Decisions do
 
     case Agent.decide(key, Map.new(ids, &{&1, decision}), by: by) do
       :ok ->
-        {:ok, [done(decision), " ", names(ids), " for ", key, "."]}
+        {:ok, [done(decision), " ", names(ids), " for ", to_string(key), "."]}
 
       {:error, :not_found} ->
         {:error, "No agent runs under #{key}."}
@@ -160,7 +160,7 @@ defmodule WardrikDaemon.CLI.Decisions do
         {:error, "#{key} is not waiting on anything."}
 
       {:error, :stale_decision} ->
-        {:error, [key, " is not waiting on ", names(ids), "."]}
+        {:error, [to_string(key), " is not waiting on ", names(ids), "."]}
 
       {:error, :unrecorded} ->
         {:error, "#{key} could not record the decision, so it was not taken."}
@@ -189,7 +189,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp parked_agents do
-    for %{status: :parked, key: key} <- Fleet.list(),
+    for %{status: :parked, id: key} <- Fleet.list(),
         calls = Agent.parked(key),
         is_list(calls),
         do: {key, calls}

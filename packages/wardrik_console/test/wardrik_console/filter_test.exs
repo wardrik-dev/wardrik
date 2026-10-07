@@ -1,19 +1,16 @@
 defmodule WardrikConsole.FilterTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Fleet.Member
   alias WardrikConsole.Filter
 
-  defp member(key, opts) do
-    {org, user, name} = Wardrik.Fleet.parse(key)
-
+  defp member(id, opts) do
     %Member{
-      key: key,
+      id: id,
       pid: self(),
       node: Keyword.get(opts, :node, :wardrik_a@here),
-      org: org,
-      user: user,
-      name: name,
       status: Keyword.get(opts, :status, :idle),
       pending: 0,
       waiting_on: []
@@ -29,15 +26,15 @@ defmodule WardrikConsole.FilterTest do
     filter = parse!(query)
 
     members
-    |> Enum.filter(&Filter.match?(filter, &1, &1.key in attention))
-    |> Enum.map(& &1.name)
+    |> Enum.filter(&Filter.match?(filter, &1, &1.id in attention))
+    |> Enum.map(& &1.id.name)
   end
 
   defp members do
     [
-      member("acme/@jon/researcher", status: :running),
-      member("acme/@ann/writer", node: :wardrik_b@there),
-      member("default/assistant", status: :parked)
+      member(~A"acme/@jon/researcher", status: :running),
+      member(~A"acme/@ann/writer", node: :wardrik_b@there),
+      member(~A"default/assistant", status: :parked)
     ]
   end
 
@@ -47,7 +44,7 @@ defmodule WardrikConsole.FilterTest do
     refute Filter.none?(parse!("acme"))
   end
 
-  test "plain text matches the key, ignoring case" do
+  test "plain text matches the ID, ignoring case" do
     assert matching("ACME", members()) == ["researcher", "writer"]
     assert matching("write", members()) == ["writer"]
   end
@@ -63,7 +60,7 @@ defmodule WardrikConsole.FilterTest do
   test "status and attention narrow by what the agent is doing and needs" do
     assert matching("status:running", members()) == ["researcher"]
     assert matching("status:parked", members()) == ["assistant"]
-    assert matching("attention", members(), ["acme/@ann/writer"]) == ["writer"]
+    assert matching("attention", members(), [~A"acme/@ann/writer"]) == ["writer"]
   end
 
   test "every word must match" do

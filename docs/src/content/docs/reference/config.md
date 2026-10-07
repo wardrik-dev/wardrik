@@ -92,7 +92,7 @@ node boots, before the vault can be, and the vault cannot unlock itself.
 
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
-an org. It is `default` unless set. See `Wardrik.Fleet`.
+an org. It is `default` unless set; `org/0` reads it.
 
 `defaults` is what an agent is given where nothing else says: one
 `wardrik agent spawn` writes a file for, and one the TUI starts. It takes

@@ -19,7 +19,7 @@ policy =
     "default" => "allow"
   })
 
-Wardrik.Fleet.spawn(key, config: config, hooks: WardrikPolicy.hooks(policy))
+Wardrik.Fleet.spawn(id, config: config, hooks: WardrikPolicy.hooks(policy))
 ```
 
 In the daemon, the same policy is a file in `policies/` that agents name:

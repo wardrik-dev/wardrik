@@ -18,7 +18,7 @@ defmodule WardrikOAuth do
       config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
 
       children = [WardrikOAuth.Supervisor]
-      Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
+      Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has

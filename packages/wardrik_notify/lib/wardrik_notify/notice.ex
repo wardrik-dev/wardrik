@@ -27,7 +27,7 @@ defmodule WardrikNotify.Notice do
         }
 
   @type t() :: %__MODULE__{
-          agent: String.t(),
+          agent: Wardrik.AgentID.t(),
           kind: WardrikNotify.Route.kind(),
           at: DateTime.t(),
           calls: [call()],
@@ -84,7 +84,7 @@ defmodule WardrikNotify.Notice do
   def to_map(%__MODULE__{} = notice) do
     %{
       event: "turn_#{notice.kind}",
-      agent: notice.agent,
+      agent: to_string(notice.agent),
       at: DateTime.to_iso8601(notice.at),
       calls: notice.calls,
       reason: notice.reason && reason_text(notice.reason),

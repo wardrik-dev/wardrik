@@ -104,7 +104,7 @@ defmodule WardrikNotify.Slack do
     question = section("`#{call.name}`  #{call.prompt}#{outside(call)}\n```#{arguments}```")
 
     if opts[:app_token] do
-      value = JSON.encode!(%{a: agent, c: call.id, n: call.name, t: opts[:target]})
+      value = JSON.encode!(%{a: to_string(agent), c: call.id, n: call.name, t: opts[:target]})
 
       [question] ++
         reason_box(call) ++
@@ -177,7 +177,8 @@ defmodule WardrikNotify.Slack do
       when action in ["wardrik_approve", "wardrik_deny", "wardrik_link"] do
     user = Map.get(payload, "user", %{})
 
-    with {:ok, %{"a" => agent, "c" => call, "n" => name, "t" => target}} <- JSON.decode(value),
+    with {:ok, %{"a" => text, "c" => call, "n" => name, "t" => target}} <- JSON.decode(value),
+         {:ok, agent} <- Wardrik.AgentID.parse(text),
          {:ok, {__MODULE__, opts}} <- WardrikNotify.Config.target(target) do
       reply =
         cond do

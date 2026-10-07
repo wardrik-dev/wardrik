@@ -22,14 +22,14 @@ defmodule Wardrik.Agent do
 
   ## Durable and keyed
 
-  An agent is a `DurableServer`: one process per key across the cluster, state
+  An agent is a `DurableServer`: one process per ID across the cluster, state
   written to the store on every change that matters, and restarted elsewhere
   when its node is lost. Start one with `Wardrik.Fleet.spawn/2`.
 
-  Every function here takes a pid or a fleet key, and a key nothing holds
-  answers `{:error, :not_found}`.
+  Every function here takes a pid or a `Wardrik.AgentID`, and an ID nothing
+  holds answers `{:error, :not_found}`.
 
-      Wardrik.Agent.ask("acme/@jon/researcher", "What changed this week?")
+      Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?")
 
   ## Interrupting
 
@@ -95,7 +95,7 @@ defmodule Wardrik.Agent do
   with: `:hooks` decide whether a tool call may run and a model call be made,
   `:dispatch` decides what a model call is and who pays for it, and `:timeout`
   bounds the whole turn. Each is optional and inert by default. Who the work is
-  for is read from the agent's key.
+  for is read from the agent's ID.
 
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
@@ -138,8 +138,8 @@ defmodule Wardrik.Agent do
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
 
-  @typedoc "An agent: the pid of one, or the fleet key it is registered under."
-  @type agent() :: pid() | String.t()
+  @typedoc "An agent: the pid of one, or its ID."
+  @type agent() :: pid() | Wardrik.AgentID.t()
 
   @typedoc "Whether a turn is in flight, how many messages wait behind it, and the model."
   @type status() :: State.status()
@@ -166,8 +166,8 @@ defmodule Wardrik.Agent do
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
   `{module, function, args}`; see `t:Wardrik.Agent.State.runner/0`.
   """
-  @spec initial_state(keyword(), String.t()) :: State.t()
-  def initial_state(opts, key), do: State.new(opts, key)
+  @spec initial_state(keyword(), Wardrik.AgentID.t()) :: State.t()
+  def initial_state(opts, id), do: State.new(opts, id)
 
   @doc """
   Gives the agent a new `:config` and new seams for the turns it starts from
@@ -177,7 +177,7 @@ defmodule Wardrik.Agent do
   resumed with no decisions, so its new hooks decide the calls it waits on:
   each goes ahead, is refused, or waits again on what the new hooks ask.
 
-      Wardrik.Agent.configure("acme/@jon/researcher", config: config, hooks: hooks)
+      Wardrik.Agent.configure(~A"acme/@jon/researcher", config: config, hooks: hooks)
   """
   @spec configure(agent(), keyword()) :: :ok | {:error, :not_found}
   def configure(agent, opts) when is_list(opts), do: call(agent, {:configure, opts})
@@ -241,7 +241,7 @@ defmodule Wardrik.Agent do
   and a no-op when nothing is parked. `:by` names the `Wardrik.Principal`
   deciding, as `decide/3` takes it.
 
-      Wardrik.Agent.resume("acme/@jon/researcher", %{"call_abc" => :approve})
+      Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
   @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::
@@ -271,7 +271,7 @@ defmodule Wardrik.Agent do
   end
 
   defp resolve(pid) when is_pid(pid), do: pid
-  defp resolve(key) when is_binary(key), do: Fleet.whereis(key)
+  defp resolve(%Wardrik.AgentID{} = id), do: Fleet.whereis(id)
 
   # -- durability ------------------------------------------------------------
 

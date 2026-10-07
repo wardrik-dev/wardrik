@@ -3,6 +3,7 @@ defmodule WardrikOAuth.RenewTest do
 
   import ExUnit.CaptureLog
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
@@ -24,8 +25,10 @@ defmodule WardrikOAuth.RenewTest do
     on_exit(fn -> :telemetry.detach(handler) end)
   end
 
-  defp scope(owner),
-    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
+  defp scope(owner) do
+    id = AgentID.new!("a", org: "acme", user: owner)
+    Config.new() |> Scope.root(id, credentials: WardrikVault)
+  end
 
   defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
 
@@ -47,11 +50,11 @@ defmodule WardrikOAuth.RenewTest do
     }
 
     token = struct(Token, Map.merge(fields, overrides))
-    :ok = WardrikVault.put("github", {nil, owner}, Token.encode(token), kind: :grant)
+    :ok = WardrikVault.put("github", {"acme", owner}, Token.encode(token), kind: :grant)
   end
 
   defp kept(owner) do
-    {:ok, encoded} = WardrikVault.fetch("github", {nil, owner})
+    {:ok, encoded} = WardrikVault.fetch("github", {"acme", owner})
     {:ok, token} = Token.decode(encoded)
     token
   end
@@ -165,7 +168,7 @@ defmodule WardrikOAuth.RenewTest do
   test "a token that cannot be read is asked for again, and left where it is", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    :ok = WardrikVault.put("github", {nil, owner}, "not a token", kind: :grant)
+    :ok = WardrikVault.put("github", {"acme", owner}, "not a token", kind: :grant)
 
     log =
       capture_log(fn ->
@@ -173,7 +176,7 @@ defmodule WardrikOAuth.RenewTest do
       end)
 
     assert log =~ "cannot be read (token_unreadable); asking again"
-    assert {:ok, "not a token"} = WardrikVault.fetch("github", {nil, owner})
+    assert {:ok, "not a token"} = WardrikVault.fetch("github", {"acme", owner})
   end
 
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do
@@ -229,7 +232,7 @@ defmodule WardrikOAuth.RenewTest do
     configure(providers: provider(flow: :device))
 
     assert {:error, {:authorization_required, %{code: "WDJB-MJHT"}, _owner}} = resolve(owner)
-    assert_receive {:device_done, %{owner: {nil, ^owner}, outcome: :authorized}}
+    assert_receive {:device_done, %{owner: {"acme", ^owner}, outcome: :authorized}}
 
     assert %Token{access_token: "at_first", token_endpoint: "https://auth.example.com/token"} =
              kept(owner)

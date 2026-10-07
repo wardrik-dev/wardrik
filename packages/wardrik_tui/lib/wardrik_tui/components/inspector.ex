@@ -14,14 +14,14 @@ defmodule WardrikTUI.Components.Inspector do
 
   defp inspector(%{inspecting: nil}, _width, _height), do: {"", ""}
 
-  defp inspector(%{inspecting: {:delegation, key, span_id}} = assigns, width, height) do
+  defp inspector(%{inspecting: {:delegation, id, span_id}} = assigns, width, height) do
     now = System.system_time(:millisecond)
     delegations = assigns.delegations || Delegation.new()
 
     lines =
       case Delegation.fetch(delegations, span_id) do
         nil -> [Text.tag("this delegation is no longer shown · Esc closes", @faint)]
-        record -> View.inspector(record, Delegation.activity(delegations, span_id), key, now)
+        record -> View.inspector(record, Delegation.activity(delegations, span_id), id, now)
       end
 
     inspector_box(lines, width, height)

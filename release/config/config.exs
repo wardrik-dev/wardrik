@@ -19,9 +19,6 @@ config :wardrik_daemon, WardrikDaemon.SSH,
 # store config.yaml names, rather than with its own.
 config :wardrik, start: :host
 
-# The org an agent is in where nothing names one; config.yaml's org replaces it.
-config :wardrik, Wardrik.Fleet, org: "default"
-
 # Credentials are kept in the vault, and accounts users connect through OAuth
 # are grants it holds.
 config :wardrik_vault, WardrikVault, grants: WardrikOAuth

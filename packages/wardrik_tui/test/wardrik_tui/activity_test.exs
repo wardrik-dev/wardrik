@@ -1,6 +1,8 @@
 defmodule WardrikTUI.ActivityTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Agent.Message
   alias Wardrik.Event
   alias Wardrik.Event.Source
@@ -13,7 +15,7 @@ defmodule WardrikTUI.ActivityTest do
   end
 
   setup do
-    turn = Source.root(:assistant, name: "turn")
+    turn = Source.root(~A"test/assistant", name: "turn")
     {:ok, turn: turn, tool: Source.child(turn, name: "deep_research")}
   end
 

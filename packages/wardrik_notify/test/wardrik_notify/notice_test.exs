@@ -1,18 +1,20 @@
 defmodule WardrikNotify.NoticeTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias ReqLLM.Context
   alias Wardrik.Event
   alias WardrikNotify.Notice
 
   defp event(payload) do
-    %Event{source: %{agent_id: "acme/triage"}, payload: payload, at: 1_790_000_000_000_000}
+    %Event{source: %{agent_id: ~A"acme/triage"}, payload: payload, at: 1_790_000_000_000_000}
   end
 
   test "a parked turn names each call and its question" do
     call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
 
-    assert {:ok, %Notice{kind: :parked, agent: "acme/triage", calls: [parked]} = notice} =
+    assert {:ok, %Notice{kind: :parked, agent: ~A"acme/triage", calls: [parked]} = notice} =
              Notice.from_event(event({:turn_parked, [{call, "This ships to production."}]}))
 
     assert parked == %{

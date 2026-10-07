@@ -1,6 +1,9 @@
 defmodule WardrikDaemonTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
+
   @moduletag :tmp_dir
 
   setup do
@@ -28,9 +31,14 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
 
     {:ok, secret, _token} =
-      WardrikHTTP.Token.create("daemon-test", "daemon/", Wardrik.Grant.actions(), ceiling: [])
+      WardrikHTTP.Token.create(
+        "daemon-test",
+        Prefix.parse!("daemon/"),
+        Wardrik.Grant.actions(),
+        ceiling: []
+      )
 
-    key = "daemon/defined-#{System.unique_integer([:positive])}"
+    key = AgentID.parse!("daemon/defined-#{System.unique_integer([:positive])}")
     on_exit(fn -> Wardrik.Fleet.forget(key) end)
 
     start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
@@ -132,7 +140,7 @@ defmodule WardrikDaemonTest do
 
   test "status/0 shows what a budgeted agent has spent", %{tmp_dir: dir} do
     org = "status-#{System.unique_integer([:positive])}"
-    on_exit(fn -> Wardrik.Fleet.forget_under(org <> "/") end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
 
     File.mkdir_p!(Path.join(dir, "agents"))
 
@@ -143,7 +151,10 @@ defmodule WardrikDaemonTest do
 
     start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    Wardrik.Test.Fleet.await_update(fn -> Enum.any?(Wardrik.Fleet.list(org <> "/")) end)
+    Wardrik.Test.Fleet.await_update(fn ->
+      Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")))
+    end)
+
     assert WardrikDaemon.status() =~ "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
   end
 

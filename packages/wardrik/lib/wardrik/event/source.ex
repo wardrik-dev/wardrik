@@ -7,7 +7,7 @@ defmodule Wardrik.Event.Source do
   a child span, which is what puts a subagent's events in its parent's stream
   without a second subscription.
 
-      source = Wardrik.Event.Source.root("acme/@jon/assistant", name: "turn")
+      source = Wardrik.Event.Source.root(~A"acme/@jon/assistant", name: "turn")
       branch = Wardrik.Event.Source.child(source, name: "web_search")
 
       branch.agent_id == source.agent_id
@@ -27,7 +27,7 @@ defmodule Wardrik.Event.Source do
   Options are passed to `Wardrik.Trace.root/1`.
   """
   @spec root(Wardrik.Event.Bus.agent_id(), keyword()) :: t()
-  def root(agent_id, opts \\ []) do
+  def root(%Wardrik.AgentID{} = agent_id, opts \\ []) do
     %__MODULE__{agent_id: agent_id, trace: Trace.root(opts)}
   end
 

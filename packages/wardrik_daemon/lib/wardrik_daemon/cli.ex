@@ -20,6 +20,8 @@ defmodule WardrikDaemon.CLI do
   """
 
   alias Wardrik.Agent
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Agents
@@ -250,22 +252,25 @@ defmodule WardrikDaemon.CLI do
   end
 
   # A KEY or PREFIX, first among a command's arguments, may leave out the
-  # deployment's org, as Wardrik.Fleet.expand/1 reads it. A KEY|PREFIX/ is
-  # one or the other, and never every agent at once.
+  # deployment's org, as Wardrik.AgentID.expand/2 reads it, and is handed on
+  # as the ID or prefix it names. A KEY|PREFIX/ is a prefix where it ends in
+  # /, an ID otherwise, and never every agent at once.
   defp named(%Command{arguments: arguments}, [word | rest]) do
+    org = Config.org()
+
     expanded =
       cond do
         String.starts_with?(arguments, "KEY|PREFIX/") and word == "" ->
           {:error, "Name an agent's key, or a prefix such as acme/."}
 
-        String.starts_with?(arguments, "KEY|PREFIX/") ->
-          Fleet.expand_prefix(word)
+        String.starts_with?(arguments, "KEY|PREFIX/") and String.ends_with?(word, "/") ->
+          Prefix.expand(word, org)
 
-        String.starts_with?(arguments, ["KEY", "[KEY"]) ->
-          Fleet.expand(word)
+        String.starts_with?(arguments, ["KEY", "[KEY", "KEY|PREFIX/"]) ->
+          AgentID.expand(word, org)
 
         String.starts_with?(arguments, "[PREFIX") ->
-          Fleet.expand_prefix(word)
+          Prefix.expand(word, org)
 
         true ->
           {:ok, word}
@@ -436,7 +441,7 @@ defmodule WardrikDaemon.CLI do
   # and the nodes an agent can move to.
   defp running do
     %{
-      keys: fn -> Enum.map(Fleet.list(), & &1.key) end,
+      keys: fn -> Enum.map(Fleet.list(), &to_string(&1.id)) end,
       nodes: fn -> Enum.map(daemons(), &Nodes.display/1) end,
       calls: fn key ->
         case Agent.parked(key) do
@@ -517,7 +522,7 @@ defmodule WardrikDaemon.CLI do
 
   defp watching(member) do
     Owl.Data.tag(
-      "Watching #{member.key}, #{member.status} on #{Nodes.display(member.node)}. " <>
+      "Watching #{member.id}, #{member.status} on #{Nodes.display(member.node)}. " <>
         "Ctrl-C stops watching; the agent carries on.",
       @faint
     )

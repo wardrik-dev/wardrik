@@ -79,12 +79,12 @@ defmodule WardrikDaemon.CLI.VaultTest do
                {"Sealed #{name} for acme/@jon.\n", 0}
 
       assert command(["vault", "put", "#{name}=deployment org's", "--user", "jon"]) ==
-               {"Sealed #{name} for #{Wardrik.Fleet.org()}/@jon.\n", 0}
+               {"Sealed #{name} for #{WardrikDaemon.Config.org()}/@jon.\n", 0}
 
       assert WardrikVault.fetch(name, "acme") == {:ok, "org's"}
       assert WardrikVault.fetch(name, {"acme", "jon"}) == {:ok, "jon's"}
 
-      assert WardrikVault.fetch(name, {Wardrik.Fleet.org(), "jon"}) ==
+      assert WardrikVault.fetch(name, {WardrikDaemon.Config.org(), "jon"}) ==
                {:ok, "deployment org's"}
     end
 

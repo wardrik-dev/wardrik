@@ -55,7 +55,7 @@ defmodule Wardrik.AgentLedgerTest do
   def forward(_event, _measurements, metadata, test), do: send(test, {:forgotten, metadata})
 
   setup do
-    key = Wardrik.Test.Fleet.key("ledger")
+    key = Wardrik.Test.Fleet.id("ledger")
     :ok = Event.Bus.subscribe(key)
     %{key: key}
   end
@@ -199,13 +199,13 @@ defmodule Wardrik.AgentLedgerTest do
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
     assert_receive {:began, "deploy", tool}, 5_000
-    assert [_claim] = Wardrik.Store.keys(:claims, key <> "/")
+    assert [_claim] = Wardrik.Store.keys(:claims, "#{key}//")
     send(tool, :finish)
 
     assert_receive %Event{payload: {:turn_finished, _}, source: %{trace: %{trace_id: trace_id}}},
                    5_000
 
     assert_receive {:forgotten, %{agent_id: ^key, trace_id: ^trace_id, answer: :ok}}, 5_000
-    assert Wardrik.Store.keys(:claims, key <> "/") == []
+    assert Wardrik.Store.keys(:claims, "#{key}//") == []
   end
 end

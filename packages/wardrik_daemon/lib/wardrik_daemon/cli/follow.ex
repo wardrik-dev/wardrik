@@ -26,7 +26,7 @@ defmodule WardrikDaemon.CLI.Follow do
   until the turn ends or waits on a person. What `start` answers other than
   `:ok` is answered as it is, and nothing is followed.
   """
-  @spec turn(String.t(), Terminal.t(), (-> :ok | term())) :: outcome() | term()
+  @spec turn(Wardrik.AgentID.t(), Terminal.t(), (-> :ok | term())) :: outcome() | term()
   def turn(key, %Terminal{} = terminal, start) do
     :ok = Bus.subscribe(key)
 
@@ -41,7 +41,7 @@ defmodule WardrikDaemon.CLI.Follow do
   end
 
   @doc "Writes `first` once subscribed to `key`'s events, then follows them until the terminal goes."
-  @spec events(String.t(), Terminal.t(), Owl.Data.t()) :: :gone
+  @spec events(Wardrik.AgentID.t(), Terminal.t(), Owl.Data.t()) :: :gone
   def events(key, %Terminal{} = terminal, first) do
     :ok = Bus.subscribe(key)
     Terminal.puts(terminal, first)
@@ -51,7 +51,7 @@ defmodule WardrikDaemon.CLI.Follow do
   end
 
   @doc "Writes each CloudEvent `key`'s log numbers, a line of JSON each, until the terminal goes."
-  @spec json(String.t()) :: :gone
+  @spec json(Wardrik.AgentID.t()) :: :gone
   def json(key) do
     :ok = Log.subscribe(key)
     :gone = json_lines(watched())

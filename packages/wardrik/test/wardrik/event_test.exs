@@ -5,7 +5,7 @@ defmodule Wardrik.EventTest do
   alias Wardrik.Event.Source
 
   setup do
-    {:ok, source: Source.root(Wardrik.Test.Fleet.key(), name: "turn")}
+    {:ok, source: Source.root(Wardrik.Test.Fleet.id(), name: "turn")}
   end
 
   test "new/2 wraps a payload without publishing it", %{source: source} do

@@ -1,46 +1,49 @@
 defmodule Wardrik.ScopeTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
   alias Wardrik.Test.EchoTool
   alias Wardrik.Trace
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   defp subscribed do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
     Scope.root(Config.new(), agent_id, name: "turn")
   end
 
   test "root/3 pairs a config with a fresh root span" do
     config = Config.new()
-    scope = Scope.root(config, :assistant, name: "turn")
+    scope = Scope.root(config, ~A"acme/assistant", name: "turn")
 
     assert scope.config == config
-    assert scope.source.agent_id == :assistant
+    assert scope.source.agent_id == ~A"acme/assistant"
     assert Trace.root?(scope.source.trace)
     assert scope.source.trace.name == "turn"
   end
 
   test "child/2 keeps the config and topic, and descends a span" do
-    scope = Scope.root(Config.new(), :assistant)
+    scope = Scope.root(Config.new(), ~A"acme/assistant")
     child = Scope.child(scope, name: "echo")
 
     assert child.config == scope.config
-    assert child.source.agent_id == :assistant
+    assert child.source.agent_id == ~A"acme/assistant"
     assert child.source.trace.parent_span_id == scope.source.trace.span_id
     assert child.source.trace.name == "echo"
   end
 
   test "child/2 carries the config, tools and all" do
-    scope = Scope.root(Config.new(tools: [EchoTool]), :assistant)
+    scope = Scope.root(Config.new(tools: [EchoTool]), ~A"acme/assistant")
 
     assert Scope.child(scope, name: "echo").config == scope.config
   end
 
   test "a scope's own children are siblings" do
-    scope = Scope.root(Config.new(), :assistant)
+    scope = Scope.root(Config.new(), ~A"acme/assistant")
 
     one = Scope.child(scope, name: "one")
     two = Scope.child(scope, name: "two")
@@ -132,44 +135,23 @@ defmodule Wardrik.ScopeTest do
   end
 
   describe "who the work is for" do
-    test "a scope carries the host's own user and organisation values" do
-      user = %{id: 7, email: "jon@example.com"}
-      scope = Scope.root(Config.new(), :assistant, user: user, org: "acme")
+    test "is the org and user of the agent it runs for" do
+      scope = Scope.root(Config.new(), ~A"acme/@jon/assistant")
 
-      assert scope.user == user
-      assert scope.org == "acme"
+      assert %AgentID{org: "acme", user: "jon"} = Scope.agent_id(scope)
     end
 
-    test "is nobody in particular by default" do
-      scope = Scope.root(Config.new(), :assistant)
-
-      assert scope.user == nil
-      assert scope.org == nil
-    end
-
-    test "put_user/2 and put_org/2 augment a scope that already exists" do
-      scope =
-        Config.new()
-        |> Scope.root(:assistant)
-        |> Scope.put_user(%{id: 7})
-        |> Scope.put_org("acme")
-
-      assert scope.user == %{id: 7}
-      assert scope.org == "acme"
-    end
-
-    test "delegated work acts as the same user" do
-      scope = Scope.root(Config.new(), :assistant, user: %{id: 7}, org: "acme")
+    test "delegated work runs for the same agent" do
+      scope = Scope.root(Config.new(), ~A"acme/@jon/assistant")
       child = Scope.child(scope, name: "researcher")
 
-      assert child.user == scope.user
-      assert child.org == scope.org
+      assert Scope.agent_id(child) == Scope.agent_id(scope)
     end
   end
 
   describe "deadlines" do
     test "a scope without one has all the time in the world" do
-      scope = Scope.root(Config.new(), :assistant)
+      scope = Scope.root(Config.new(), ~A"acme/assistant")
 
       assert scope.deadline == nil
       assert Scope.remaining_ms(scope) == :infinity
@@ -177,7 +159,7 @@ defmodule Wardrik.ScopeTest do
     end
 
     test ":timeout is resolved to an instant once, at the top" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 60_000)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 60_000)
 
       assert is_integer(scope.deadline)
       assert Scope.remaining_ms(scope) > 55_000
@@ -185,7 +167,7 @@ defmodule Wardrik.ScopeTest do
     end
 
     test "work cannot award itself more time than it was given" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 1_000)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 1_000)
 
       widened = Scope.with_timeout(scope, 600_000)
 
@@ -194,7 +176,7 @@ defmodule Wardrik.ScopeTest do
     end
 
     test "but it can take less" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 600_000)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 600_000)
 
       narrowed = Scope.with_timeout(scope, 1_000)
 
@@ -203,7 +185,7 @@ defmodule Wardrik.ScopeTest do
     end
 
     test "a branch narrows its own deadline without touching its parent's" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 600_000)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 600_000)
 
       branch = Scope.child(scope, name: "quick", timeout: 1_000)
 
@@ -212,14 +194,14 @@ defmodule Wardrik.ScopeTest do
     end
 
     test "a deadline that has passed reports no time left rather than a negative" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 0)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 0)
 
       assert Scope.remaining_ms(scope) == 0
       assert Scope.expired?(scope)
     end
 
     test "a child inherits the deadline it was started under" do
-      scope = Scope.root(Config.new(), :assistant, timeout: 60_000)
+      scope = Scope.root(Config.new(), ~A"acme/assistant", timeout: 60_000)
 
       assert Scope.child(scope, name: "x").deadline == scope.deadline
     end
@@ -227,13 +209,13 @@ defmodule Wardrik.ScopeTest do
 
   describe "the seams a host reaches through" do
     test "hooks and dispatch default to nothing and are inherited by children" do
-      plain = Scope.root(Config.new(), :assistant)
+      plain = Scope.root(Config.new(), ~A"acme/assistant")
 
       assert plain.hooks == []
       assert plain.dispatch == nil
 
       hooks = [%Wardrik.Hook{name: "some", module: SomeHook}]
-      wired = Scope.root(Config.new(), :assistant, hooks: hooks, dispatch: SomeGateway)
+      wired = Scope.root(Config.new(), ~A"acme/assistant", hooks: hooks, dispatch: SomeGateway)
       child = Scope.child(wired, name: "branch")
 
       assert child.hooks == hooks

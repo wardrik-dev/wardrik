@@ -30,7 +30,7 @@ defmodule Wardrik.AgentCompactionTest do
   defp config, do: Config.new(compaction: Compaction.new(window: 400, at: 0.6, keep: 0.5))
 
   defp start(opts) do
-    key = Wardrik.Test.Fleet.key("compact")
+    key = Wardrik.Test.Fleet.id("compact")
 
     {^key, agent} =
       Wardrik.Test.Fleet.start_agent([config: config(), context: history()] ++ opts, key)
@@ -78,7 +78,13 @@ defmodule Wardrik.AgentCompactionTest do
   end
 
   describe "the state" do
-    defp due, do: State.new([config: config(), context: history()], "acme/@jon/assistant")
+    defp due,
+      do:
+        State.new(
+          [config: config(), context: history()],
+          Wardrik.AgentID.parse!("acme/@jon/assistant")
+        )
+
     defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
 
     test "take/1 compacts first when the history is due, and not with nothing to do" do

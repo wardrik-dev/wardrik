@@ -11,16 +11,19 @@ defmodule Wardrik.CredentialTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve("github", %Wardrik.Call{scope: %Scope{user: "jon"}}),
-      do: {:ok, Credential.secret("ghs_real", owner: "jon")}
+    def resolve("github", %Wardrik.Call{scope: scope}) do
+      case Scope.agent_id(scope).user do
+        "jon" ->
+          {:ok, Credential.secret("ghs_real", owner: "jon")}
 
-    def resolve("github", %Wardrik.Call{scope: %Scope{user: nil}}),
-      do: {:ok, Credential.placeholder("{{org.github}}")}
+        nil ->
+          {:ok, Credential.placeholder("{{org.github}}")}
 
-    def resolve("github", %Wardrik.Call{scope: %Scope{user: user}}),
-      do:
-        {:error,
-         {:authorization_required, %{url: "https://example.com/connect", code: nil}, user}}
+        user ->
+          {:error,
+           {:authorization_required, %{url: "https://example.com/connect", code: nil}, user}}
+      end
+    end
 
     def resolve("explodes", %Wardrik.Call{scope: %Scope{}}),
       do: raise("the vault is on fire")
@@ -41,7 +44,8 @@ defmodule Wardrik.CredentialTest do
   end
 
   defp scope(opts \\ []) do
-    Config.new() |> Scope.root("acme/@jon/assistant", opts)
+    {user, opts} = Keyword.pop(opts, :user)
+    Scope.root(Config.new(), Wardrik.AgentID.new!("assistant", org: "acme", user: user), opts)
   end
 
   describe "resolve/2" do

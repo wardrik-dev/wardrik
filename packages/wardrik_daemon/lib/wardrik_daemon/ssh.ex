@@ -77,10 +77,14 @@ defmodule WardrikDaemon.SSH do
            ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
            auth: {:public_key, fn _user, key -> authorized?(keys, key) end},
            system_dir: host_key!(Path.join(data_dir, "ssh")),
-           entrypoint: entrypoint}
+           entrypoint: in_org(entrypoint)}
         ]
     end
   end
+
+  # A session finds an agent named without an org in the deployment's.
+  defp in_org({module, opts}),
+    do: {module, Keyword.put_new(opts, :org, WardrikDaemon.Config.org())}
 
   @retry :timer.seconds(5)
 

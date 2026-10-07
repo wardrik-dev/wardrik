@@ -17,7 +17,7 @@ defmodule Wardrik.Ledger do
   `Wardrik.Ledger.Store` writes to the store the fleet already runs on. A deployment
   that keeps its own system of record implements this behaviour instead.
 
-      key = {"acme/@jon/assistant", call.id}
+      key = {~A"acme/@jon/assistant", call.id}
 
       case Wardrik.Ledger.claim(Wardrik.Ledger.Store, key, call) do
         :ok -> run(call)
@@ -143,7 +143,7 @@ defmodule Wardrik.Ledger do
   @spec idempotency_key(Wardrik.Scope.t(), Tool.call()) :: String.t()
   def idempotency_key(scope, call) do
     {agent_id, call_id} = key(scope, call)
-    "#{agent_id}/#{call_id}"
+    "#{agent_id}//#{call_id}"
   end
 
   @doc """

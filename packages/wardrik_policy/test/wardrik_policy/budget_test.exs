@@ -69,10 +69,11 @@ defmodule WardrikPolicy.BudgetTest do
 
   describe "as a hook" do
     setup do
-      agent = "budget-#{System.unique_integer([:positive])}/triage"
+      agent = Wardrik.AgentID.parse!("budget-#{System.unique_integer([:positive])}/triage")
 
       on_exit(fn ->
-        for key <- Wardrik.Store.keys(:budgets, agent), do: Wardrik.Store.delete(:budgets, key)
+        for key <- Wardrik.Store.keys(:budgets, to_string(agent)),
+            do: Wardrik.Store.delete(:budgets, key)
       end)
 
       policy = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}})

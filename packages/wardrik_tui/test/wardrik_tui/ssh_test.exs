@@ -1,6 +1,9 @@
 defmodule WardrikTUI.SSHTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
+  alias Wardrik.AgentID
   alias Wardrik.Fleet
 
   # Answers termite's terminal requests the way an SSH channel does, and hands
@@ -47,37 +50,35 @@ defmodule WardrikTUI.SSHTest do
 
   test "a session draws the TUI on the channel, on the first agent the fleet runs" do
     org = "aaa-ssh-#{System.unique_integer([:positive])}"
-    key = Fleet.key("first", org: org)
-    {:ok, _pid} = Fleet.spawn(key)
-    on_exit(fn -> Fleet.forget_under(org <> "/") end)
-    Wardrik.Test.Fleet.await_update(fn -> Enum.any?(Fleet.list(), &(&1.key == key)) end)
+    id = AgentID.new!("first", org: org)
+    {:ok, _pid} = Fleet.spawn(id)
+    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.new!(org: org)) end)
+    Wardrik.Test.Fleet.await_update(fn -> Enum.any?(Fleet.list(), &(&1.id == id)) end)
 
-    [first | _rest] = Enum.sort_by(Fleet.list(), & &1.key)
+    [first | _rest] = Fleet.list()
 
-    {:ok, pid} = WardrikTUI.SSH.start_link(session: session(self()))
+    {:ok, pid} = WardrikTUI.SSH.start_link(session: session(self()), org: "default")
     on_exit(fn -> if Process.alive?(pid), do: Breeze.Server.stop(pid) end)
 
-    assert drawn(first.key) =~ first.key
+    assert drawn(to_string(first.id)) =~ to_string(first.id)
   end
 
-  test "choose/2 opens on the first agent by key, or starts one for whoever connected" do
+  test "choose/3 opens on the first agent by ID, or starts one for whoever connected" do
     members =
-      for key <- ["b/two", "a/one"],
+      for id <- [~A"b/two", ~A"a/one"],
           do: %Fleet.Member{
-            key: key,
+            id: id,
             pid: self(),
             node: node(),
-            org: nil,
-            user: nil,
-            name: "x",
             status: :idle,
             pending: 0,
             waiting_on: []
           }
 
-    assert WardrikTUI.SSH.choose(members, "jon") == {:attach, "a/one"}
-    assert WardrikTUI.SSH.choose([], ~c"jon") == {:start, "default/@jon/assistant"}
-    assert WardrikTUI.SSH.choose([], "_build") == {:start, "default/assistant"}
+    assert WardrikTUI.SSH.choose(members, "jon", nil) == {:attach, ~A"a/one"}
+    assert WardrikTUI.SSH.choose([], ~c"jon", "default") == {:start, ~A"default/@jon/assistant"}
+    assert WardrikTUI.SSH.choose([], "_build", "default") == {:start, ~A"default/assistant"}
+    assert {:error, "an agent's org is missing"} = WardrikTUI.SSH.choose([], "jon", nil)
   end
 
   test "copying goes to the client's clipboard, as OSC 52" do

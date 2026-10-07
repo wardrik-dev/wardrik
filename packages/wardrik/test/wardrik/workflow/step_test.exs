@@ -7,7 +7,7 @@ defmodule Wardrik.Workflow.StepTest do
   alias Wardrik.Workflow.Step
 
   setup do
-    {:ok, scope: Scope.root(Config.new(), Wardrik.Test.Fleet.key(), name: "turn")}
+    {:ok, scope: Scope.root(Config.new(), Wardrik.Test.Fleet.id(), name: "turn")}
   end
 
   describe "invoke/3" do

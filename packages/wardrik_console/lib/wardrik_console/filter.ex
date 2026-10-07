@@ -7,7 +7,7 @@ defmodule WardrikConsole.Filter do
 
   | Word | Matches agents |
   | --- | --- |
-  | `TEXT` | whose key contains the text |
+  | `TEXT` | whose ID contains the text |
   | `name:TEXT` | whose name contains the text |
   | `org:TEXT`, `user:TEXT` | in that org, or working for that user |
   | `node:TEXT` | on a node whose name contains the text |
@@ -82,10 +82,10 @@ defmodule WardrikConsole.Filter do
   end
 
   defp matches?(:attention, _member, attention?), do: attention?
-  defp matches?({:key, text}, member, _), do: contains?(member.key, text)
-  defp matches?({:name, text}, member, _), do: contains?(member.name, text)
-  defp matches?({:org, text}, member, _), do: scope?(member.org, text)
-  defp matches?({:user, text}, member, _), do: scope?(member.user, text)
+  defp matches?({:key, text}, member, _), do: contains?(to_string(member.id), text)
+  defp matches?({:name, text}, member, _), do: contains?(member.id.name, text)
+  defp matches?({:org, text}, member, _), do: scope?(member.id.org, text)
+  defp matches?({:user, text}, member, _), do: scope?(member.id.user, text)
   defp matches?({:node, text}, member, _), do: contains?(Atom.to_string(member.node), text)
   defp matches?({:status, status}, member, _), do: member.status == status
 

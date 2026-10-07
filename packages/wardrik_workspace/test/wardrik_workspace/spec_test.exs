@@ -7,7 +7,7 @@ defmodule WardrikWorkspace.SpecTest do
   describe "new/2" do
     test "gives an agent its own tree, and shares the trees its key reaches" do
       assert {:ok, spec} =
-               Spec.new("acme/@jon/triage", %{
+               Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{
                  "team" => "acme",
                  "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"},
                  "mine" => "acme/@jon/notes/"
@@ -23,11 +23,12 @@ defmodule WardrikWorkspace.SpecTest do
     end
 
     test "refuses a tree under a scope the agent is not under" do
-      assert Spec.new("acme/@jon/triage", %{"theirs" => "globex/findings"}) ==
+      assert Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"theirs" => "globex/findings"}) ==
                {:error,
                 "shared theirs: globex/findings belongs to globex/, which acme/@jon/triage is not under"}
 
-      assert {:error, _message} = Spec.new("acme/@jon/triage", %{"hers" => "acme/@ann/notes"})
+      assert {:error, _message} =
+               Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"hers" => "acme/@ann/notes"})
     end
 
     test "refuses a name, a tree or a setting that does not read" do
@@ -40,7 +41,7 @@ defmodule WardrikWorkspace.SpecTest do
             {%{"team" => %{"tree" => "acme", "size" => 1}}, "size is not a setting"},
             {%{"team" => 3}, "names a tree"}
           ] do
-        assert {:error, message} = Spec.new("acme/@jon/triage", shared)
+        assert {:error, message} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), shared)
         assert message =~ said
       end
     end
@@ -48,7 +49,7 @@ defmodule WardrikWorkspace.SpecTest do
 
   describe "resolve/2" do
     setup do
-      {:ok, spec} = Spec.new("acme/@jon/triage", %{"team" => "acme"})
+      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"})
       %{spec: spec}
     end
 
@@ -73,7 +74,7 @@ defmodule WardrikWorkspace.SpecTest do
 
   describe "context/2" do
     setup do
-      {:ok, spec} = Spec.new("acme/@jon/triage", %{"team" => "acme"})
+      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"})
       {:ok, spec: spec}
     end
 

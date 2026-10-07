@@ -8,7 +8,7 @@ defmodule Wardrik.WorkflowTest do
   alias Wardrik.Workflow
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
 
     {:ok, agent_id: agent_id, scope: Scope.root(Config.new(), agent_id, name: "turn")}

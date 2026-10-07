@@ -8,16 +8,16 @@ defmodule WardrikHTTP.Resource do
 
   ## An agent, listed
 
-      {"id": "acme/ops/triage", "name": "triage", "status": "parked",
+      {"id": "acme/triage", "name": "triage", "status": "parked",
        "pending": 0, "node": "wardrik@box1", "outcome": "ok"}
 
-  `id` is the agent's key, and its three segments are the agent's path under
+  `id` is the agent's ID, and its segments are the agent's path under
   `/v1/agents/`, each encoded on its own.
 
   ## An agent's snapshot
 
-      {"agent": {"id": "acme/ops/triage", "name": "triage"},
-       "conversation": {"id": "acme/ops/triage/5f1c…"},
+      {"agent": {"id": "acme/triage", "name": "triage"},
+       "conversation": {"id": "acme/triage/5f1c…"},
        "status": "parked", "pending": 0,
        "request": {"model": "claude-sonnet-5"}, "provider": {"name": "anthropic"},
        "run": {"id": "4bf92f35…"},
@@ -38,7 +38,7 @@ defmodule WardrikHTTP.Resource do
 
   ## An error
 
-      {"error": {"type": "not_found", "message": "No agent runs under acme/ops/triage."}}
+      {"error": {"type": "not_found", "message": "No agent runs under acme/triage."}}
   """
 
   alias Wardrik.Agent.Snapshot
@@ -49,8 +49,8 @@ defmodule WardrikHTTP.Resource do
   @spec agent(Member.t()) :: map()
   def agent(%Member{} = member) do
     %{
-      "id" => member.key,
-      "name" => member.name,
+      "id" => to_string(member.id),
+      "name" => member.id.name,
       "status" => to_string(member.status),
       "pending" => member.pending,
       "node" => to_string(member.node)
@@ -58,14 +58,14 @@ defmodule WardrikHTTP.Resource do
     |> Value.put("outcome", member.outcome && to_string(member.outcome))
   end
 
-  @doc "An agent's snapshot, for the agent under `key`."
-  @spec snapshot(String.t(), Snapshot.t()) :: map()
-  def snapshot(key, %Snapshot{} = snapshot) do
+  @doc "An agent's snapshot, for the agent `id`."
+  @spec snapshot(Wardrik.AgentID.t(), Snapshot.t()) :: map()
+  def snapshot(%Wardrik.AgentID{} = id, %Snapshot{} = snapshot) do
     {provider, model} = Value.model(snapshot.status.model)
 
     %{
-      "agent" => %{"id" => key, "name" => key |> String.split("/") |> List.last()},
-      "conversation" => %{"id" => key <> "/" <> snapshot.generation},
+      "agent" => %{"id" => to_string(id), "name" => id.name},
+      "conversation" => %{"id" => "#{id}/#{snapshot.generation}"},
       "status" => to_string(snapshot.status.state),
       "pending" => snapshot.status.pending,
       "request" => %{"model" => model},

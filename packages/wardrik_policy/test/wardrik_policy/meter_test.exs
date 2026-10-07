@@ -5,7 +5,13 @@ defmodule WardrikPolicy.MeterTest do
   alias WardrikPolicy.Spend
 
   setup do
-    %{key: Spend.key("meter-#{System.unique_integer([:positive])}/a", "day:2026-09-23")}
+    %{
+      key:
+        Spend.key(
+          Wardrik.AgentID.parse!("meter-#{System.unique_integer([:positive])}/a"),
+          "day:2026-09-23"
+        )
+    }
   end
 
   test "a period nothing has spent in reads as nothing", %{key: key} do

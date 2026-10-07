@@ -19,7 +19,7 @@ person first, and the ones it may not call at all.
         "default" => "allow"
       })
 
-    Wardrik.Fleet.spawn(key, config: config, hooks: WardrikPolicy.hooks(policy))
+    Wardrik.Fleet.spawn(id, config: config, hooks: WardrikPolicy.hooks(policy))
 
 A policy's rules are a `Wardrik.Hook`, named for the policy. It is plain data,
 so it is written to the store with the agent it governs and decides the

@@ -9,7 +9,7 @@ defmodule WardrikTUI.AppTest do
   # The view is driven purely by events, so a fake agent is enough. It forwards
   # `Agent.ask/2` and `Agent.interrupt/1` to this test's mailbox as casts.
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     {:ok, agent} = Wardrik.Test.FakeAgent.start_link(self())
     test = self()
 

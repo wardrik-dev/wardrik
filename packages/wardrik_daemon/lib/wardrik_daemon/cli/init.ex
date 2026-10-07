@@ -35,7 +35,6 @@ defmodule WardrikDaemon.CLI.Init do
   daemon without systemd, and `--no-ask` asks the agent nothing.
   """
 
-  alias Wardrik.Fleet
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
@@ -380,7 +379,7 @@ defmodule WardrikDaemon.CLI.Init do
           "assistant"
       end
 
-    if Fleet.segment?(name),
+    if Wardrik.AgentID.segment?(name),
       do: write_agent(%{init | agent: name}),
       else:
         {:error,

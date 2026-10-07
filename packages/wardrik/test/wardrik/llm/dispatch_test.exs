@@ -17,11 +17,12 @@ defmodule Wardrik.LLM.DispatchTest do
       {:ok,
        request
        |> Request.put_model({:anthropic, model: "claude-sonnet-5"})
-       |> Request.put_opts(api_key: "key-for-#{scope.org}")}
+       |> Request.put_opts(api_key: "key-for-#{Scope.agent_id(scope).org}")}
     end
 
     @impl true
-    def settle(request, outcome, scope), do: send(self(), {:settled, request, outcome, scope.org})
+    def settle(request, outcome, scope),
+      do: send(self(), {:settled, request, outcome, Scope.agent_id(scope).org})
   end
 
   defmodule Refusing do
@@ -75,7 +76,7 @@ defmodule Wardrik.LLM.DispatchTest do
   end
 
   defp scope(dispatch) do
-    Scope.root(Config.new(), :assistant, dispatch: dispatch, org: "acme")
+    Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"), dispatch: dispatch)
   end
 
   defp request, do: Request.new(Config.new(), Context.new())

@@ -74,7 +74,6 @@ defmodule Wardrik.Agent.State do
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
-  alias Wardrik.Fleet
   alias Wardrik.Hook
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
@@ -327,12 +326,10 @@ defmodule Wardrik.Agent.State do
   Builds the state an agent starts in. See `Wardrik.Agent.initial_state/2` for
   the options.
 
-  `agent_id` is the agent's fleet key, and names who the work is for.
+  `agent_id` names the agent, and who the work is for.
   """
   @spec new(keyword(), Event.Bus.agent_id()) :: t()
   def new(opts, agent_id) do
-    {org, user, _name} = Fleet.parse(agent_id)
-
     %__MODULE__{
       generation: generation(),
       agent_id: agent_id,
@@ -342,7 +339,7 @@ defmodule Wardrik.Agent.State do
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
-      scope_opts: [user: user, org: org] ++ Keyword.take(opts, Scope.seams()),
+      scope_opts: Keyword.take(opts, Scope.seams()),
       grace: Keyword.get(opts, :grace, @default_grace)
     }
   end
@@ -354,16 +351,14 @@ defmodule Wardrik.Agent.State do
 
   `:config` replaces the config when given. The seams in `opts`, of
   `Wardrik.Scope.seams/0`, replace every seam the agent had, so one left out is
-  one the agent no longer has. Who the work is for stays with the key.
+  one the agent no longer has. Who the work is for stays with the agent's ID.
   """
   @spec configure(t(), keyword()) :: t()
   def configure(%__MODULE__{} = state, opts) do
-    who = Keyword.take(state.scope_opts, [:user, :org])
-
     %{
       state
       | config: Keyword.get(opts, :config, state.config),
-        scope_opts: who ++ Keyword.take(opts, Scope.seams())
+        scope_opts: Keyword.take(opts, Scope.seams())
     }
   end
 

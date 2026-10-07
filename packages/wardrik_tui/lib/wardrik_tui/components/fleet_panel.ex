@@ -19,7 +19,7 @@ defmodule WardrikTUI.Components.FleetPanel do
         class="height-full scrollbar-mute-100 border-line border-surface focus:border-primary"
         item_class="selected:bg-surface selected:text-muted"
       >
-        <:item :for={{key, row} <- @fleet_rows} value={key}>{row}</:item>
+        <:item :for={{value, row} <- @fleet_rows} value={value}>{row}</:item>
       </.list>
     </box>
     """
@@ -45,8 +45,8 @@ defmodule WardrikTUI.Components.FleetPanel do
     )
   end
 
-  # One list item per agent shown, as `{key, row}`, and under an expanded
-  # agent one per delegation, as `{"key\tspan_id", row}`; each clipped to the
+  # One list item per agent shown, as `{id, row}`, and under an expanded
+  # agent one per delegation, as `{{id, span_id}, row}`; each clipped to the
   # space inside the panel's gutter, the list's border and its selection
   # column.
   defp fleet_rows(_assigns, _shown, 0, _overlay?), do: []
@@ -58,25 +58,25 @@ defmodule WardrikTUI.Components.FleetPanel do
 
     Enum.flat_map(shown, fn member ->
       rows =
-        Enum.map(delegation_texts(assigns, member.key, now), fn {value, text} ->
+        Enum.map(delegation_texts(assigns, member.id, now), fn {value, text} ->
           text = Text.truncate(text, width)
           {value, Render.line(if(overlay?, do: WardrikTUI.Fleet.fill(text, width), else: text))}
         end)
 
       opts = [
         ambiguous: ambiguous,
-        unseen: Map.get(assigns.unseen, member.key),
-        delegations: Delegation.summary(WardrikTUI.Fleet.followed(assigns, member.key)),
+        unseen: Map.get(assigns.unseen, member.id),
+        delegations: Delegation.summary(WardrikTUI.Fleet.followed(assigns, member.id)),
         pad?: overlay?
       ]
 
-      [{member.key, WardrikTUI.Fleet.row(member, assigns.agent_id, width, opts)} | rows]
+      [{member.id, WardrikTUI.Fleet.row(member, assigns.agent_id, width, opts)} | rows]
     end)
   end
 
   # The delegation rows under one agent, unclipped, as `{value, text}`.
-  defp delegation_texts(assigns, key, now) do
-    case WardrikTUI.Fleet.expanded_delegations(assigns, key) do
+  defp delegation_texts(assigns, id, now) do
+    case WardrikTUI.Fleet.expanded_delegations(assigns, id) do
       nil ->
         []
 
@@ -89,8 +89,7 @@ defmodule WardrikTUI.Components.FleetPanel do
         |> Enum.map(fn {record, index} ->
           depth = Delegation.depth(delegations, record.span_id)
 
-          {key <> "\t" <> record.span_id,
-           WardrikTUI.Fleet.delegation(record, depth, index == count, now)}
+          {{id, record.span_id}, WardrikTUI.Fleet.delegation(record, depth, index == count, now)}
         end)
     end
   end
