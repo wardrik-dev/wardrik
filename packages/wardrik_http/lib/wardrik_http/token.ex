@@ -2,8 +2,9 @@ defmodule WardrikHTTP.Token do
   @moduledoc """
   A bearer token for the HTTP API, and the `Wardrik.Grant` it carries.
 
-      {:ok, secret, token} = WardrikHTTP.Token.create("ci", "acme/", [:define], ceiling: hooks)
-      {:ok, secret, token} = WardrikHTTP.Token.create("watcher", "acme/ops/", [:read])
+      acme = Wardrik.AgentID.Prefix.new!(org: "acme")
+      {:ok, secret, token} = WardrikHTTP.Token.create("ci", acme, [:define], ceiling: hooks)
+      {:ok, secret, token} = WardrikHTTP.Token.create("watcher", Wardrik.AgentID.Prefix.parse!("acme/@jon/"), [:read])
 
   A token grants the actions it was made with, every one where none are
   named, on the agents under its scope; see `Wardrik.Grant` for both.

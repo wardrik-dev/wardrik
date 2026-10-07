@@ -147,7 +147,7 @@ export interface AgentSummary {
   outcome?: "ok" | "failed" | "interrupted";
 }
 /**
- * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
+ * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
  */
 export interface AgentDefinition {
   /**
@@ -163,9 +163,34 @@ export interface AgentDefinition {
    */
   model?: string;
   /**
-   * What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them.
+   * What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them.
    */
   tools?: string[];
+  /**
+   * The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them.
+   */
+  workspace?: {
+    /**
+     * The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read.
+     */
+    shared?: {
+      [k: string]:
+        | string
+        | {
+            tree: string;
+            mode?: "read" | "write";
+          };
+    };
+  };
+  /**
+   * The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with.
+   */
+  context?:
+    | string[]
+    | {
+        files?: string[];
+        max_bytes?: number;
+      };
   policy?: string | {};
   /**
    * How many seconds a turn may take.

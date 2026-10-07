@@ -1,6 +1,6 @@
 ---
 title: "Agent files"
-description: "Reads an agent file, one in agents/ under the config directory, into the Wardrik.Agent.Spec it writes."
+description: "Reads an agent file, one in agents/ under the config directory, into the WardrikDaemon.Definition it writes, and builds the Wardrik.Agent.Spec a definition writes."
 editUrl: false
 sidebar:
   order: 3
@@ -9,7 +9,8 @@ sidebar:
 <!-- Written by mix wardrik.docs from WardrikDaemon.AgentFile. Edit it there, not here. -->
 
 Reads an agent file, one in `agents/` under the config directory, into the
-`Wardrik.Agent.Spec` it writes.
+`WardrikDaemon.Definition` it writes, and builds the `Wardrik.Agent.Spec`
+a definition writes.
 
     ---
     name: triage
@@ -34,8 +35,8 @@ with no frontmatter is all prompt.
 | `description` | what it is for, as `wardrik show` shows it |
 | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
 | `tools` | what it may call; see below |
-| `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
-| `context` | the files read into each turn; see below. A definition over HTTP cannot say it |
+| `workspace` | the trees it shares with other agents, under `shared`; see below |
+| `context` | the files read into each turn; see below |
 | `policy` | what its tool calls may do; see below |
 | `timeout` | how many seconds a turn may take |
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
@@ -79,7 +80,8 @@ not read, and says why.
 
 A tree is reachable by the agents under the scope its name begins with, as
 `WardrikWorkspace.Spec` says, and a file naming one its agent cannot reach
-does not read.
+does not read. A conversation of the agent, one with an external ID, works
+in the agent's own tree, so what one thread keeps the next finds.
 
 As each turn begins the agent is told what its workspace holds: the files
 `context` names, up to 16 KB of them in all, and the names of the others at
@@ -183,8 +185,9 @@ turn lost part way through runs no call twice.
 
 ## Over HTTP
 
-`definition/3` reads the body of `PUT /v1/agents/{id}` into
-a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
+`define/3` reads the body of `PUT /v1/agents/{id}` into a definition, for
+`WardrikHTTP` through `WardrikDaemon.Agents`, and `spec/3` builds its spec
+as it does a file's:
 
     {"description": "Watches the incident queue.",
      "instructions": "You watch the incident queue.",
@@ -194,10 +197,12 @@ a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
 `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
-mean in a file. The ID gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
-agent's schedules as they are, and the schedules routes set them. Its
-`tools` and `policy` name what the daemon ships or configures, and never a
-module.
+mean in a file. The ID gives the agent's `name`, `org` and `user`. A
+definition has no `schedule` or `notify`: it leaves the agent's schedules
+as they are, and the schedules routes set them. Its `tools` and `policy`
+name what the daemon ships or configures, and never a module, and its
+`workspace` shares only the trees the scope of the token that sent it
+covers.
 
 ## Written by wardrik
 

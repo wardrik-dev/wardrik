@@ -1,7 +1,8 @@
 defmodule WardrikDaemon.AgentFile do
   @moduledoc """
   Reads an agent file, one in `agents/` under the config directory, into the
-  `Wardrik.Agent.Spec` it writes.
+  `WardrikDaemon.Definition` it writes, and builds the `Wardrik.Agent.Spec`
+  a definition writes.
 
       ---
       name: triage
@@ -26,8 +27,8 @@ defmodule WardrikDaemon.AgentFile do
   | `description` | what it is for, as `wardrik show` shows it |
   | `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
   | `tools` | what it may call; see below |
-  | `workspace` | the trees it shares with other agents, under `shared`; see below. A definition over HTTP cannot say it |
-  | `context` | the files read into each turn; see below. A definition over HTTP cannot say it |
+  | `workspace` | the trees it shares with other agents, under `shared`; see below |
+  | `context` | the files read into each turn; see below |
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
@@ -71,7 +72,8 @@ defmodule WardrikDaemon.AgentFile do
 
   A tree is reachable by the agents under the scope its name begins with, as
   `WardrikWorkspace.Spec` says, and a file naming one its agent cannot reach
-  does not read.
+  does not read. A conversation of the agent, one with an external ID, works
+  in the agent's own tree, so what one thread keeps the next finds.
 
   As each turn begins the agent is told what its workspace holds: the files
   `context` names, up to 16 KB of them in all, and the names of the others at
@@ -175,8 +177,9 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Over HTTP
 
-  `definition/3` reads the body of `PUT /v1/agents/{id}` into
-  a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
+  `define/3` reads the body of `PUT /v1/agents/{id}` into a definition, for
+  `WardrikHTTP` through `WardrikDaemon.Agents`, and `spec/3` builds its spec
+  as it does a file's:
 
       {"description": "Watches the incident queue.",
        "instructions": "You watch the incident queue.",
@@ -186,10 +189,12 @@ defmodule WardrikDaemon.AgentFile do
 
   `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
   the system prompt, as a file's body is, and the other keys mean what they
-  mean in a file. The ID gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
-  agent's schedules as they are, and the schedules routes set them. Its
-  `tools` and `policy` name what the daemon ships or configures, and never a
-  module.
+  mean in a file. The ID gives the agent's `name`, `org` and `user`. A
+  definition has no `schedule` or `notify`: it leaves the agent's schedules
+  as they are, and the schedules routes set them. Its `tools` and `policy`
+  name what the daemon ships or configures, and never a module, and its
+  `workspace` shares only the trees the scope of the token that sent it
+  covers.
 
   ## Written by wardrik
 
@@ -199,12 +204,14 @@ defmodule WardrikDaemon.AgentFile do
   """
 
   alias Wardrik.Agent.Spec
+  alias Wardrik.AgentID
   alias Wardrik.LLM.Config
+  alias WardrikDaemon.Definition
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
   @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify)
-  @definition_keys ~w(description instructions model tools policy timeout max_iterations compaction)
+  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
@@ -245,10 +252,25 @@ defmodule WardrikDaemon.AgentFile do
   @spec load(Path.t(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
   def load(path, policies \\ %{}) do
+    with {:ok, definition} <- parse(path) do
+      case spec(definition, definition.id, policies) do
+        {:ok, _spec, _route} = ok -> ok
+        {:error, message} -> {:error, "#{path}: #{message}"}
+      end
+    end
+  end
+
+  @doc """
+  The `WardrikDaemon.Definition` the agent file `path` writes: its frontmatter,
+  with its body as `instructions`, for the agent its `name`, `org` and `user`
+  name. What its settings say is checked as `spec/3` builds a spec from it.
+  """
+  @spec parse(Path.t()) :: {:ok, Definition.t()} | {:error, String.t()}
+  def parse(path) do
     with {:ok, text} <- File.read(path),
          {:ok, front, body} <- split(text),
          {:ok, fields} <- frontmatter(front) do
-      build(path, fields, String.trim(body), policies)
+      written(path, fields, String.trim(body))
     else
       {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
       {:error, message} -> {:error, "#{path}: #{message}"}
@@ -258,23 +280,87 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   @doc """
-  Reads a definition sent to the HTTP API for the agent `id` into its spec,
-  with `policies` as `read/2` takes them. The spec's `schedules` is `nil`, so
-  `Wardrik.Fleet.put/1` leaves the agent's schedules as they are.
+  The `WardrikDaemon.Definition` a definition sent to the HTTP API writes for
+  the agent `id`, sent by a token holding `grant`, or by none for
+  `config.yaml`'s `defaults`. What its settings say is checked as `spec/3`
+  builds a spec from it, the trees its workspace shares against the grant's
+  scope among them.
   """
-  @spec definition(Wardrik.AgentID.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
-          {:ok, Spec.t()} | {:error, String.t()}
-  def definition(%Wardrik.AgentID{} = id, fields, policies \\ %{}) when is_map(fields) do
+  @spec define(AgentID.t(), map(), Wardrik.Grant.t() | nil) ::
+          {:ok, Definition.t()} | {:error, String.t()}
+  def define(%AgentID{} = id, fields, grant) when is_map(fields) do
+    if id.external_id,
+      do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
+
     known!(fields, @definition_keys)
     held_after_outside!(fields["policy"])
-    instructions = optional_string!(fields["instructions"], "instructions") || ""
+    optional_string!(fields["instructions"], "instructions")
 
-    {:ok, spec(fields, instructions, policies, false, id, nil)}
+    {:ok, %Definition{id: id, fields: fields, source: {:api, grant}}}
+  catch
+    {:invalid, message} -> {:error, message}
+  end
+
+  @doc """
+  Reads a definition sent to the HTTP API for the agent `id` into its spec,
+  as `define/3` and `spec/3` do, sent by no token.
+  """
+  @spec definition(AgentID.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
+          {:ok, Spec.t()} | {:error, String.t()}
+  def definition(%AgentID{} = id, fields, policies \\ %{}) do
+    with {:ok, definition} <- define(id, fields, nil),
+         {:ok, spec, _route} <- spec(definition, id, policies),
+         do: {:ok, spec}
+  end
+
+  @doc """
+  The spec `definition` writes for the agent `id`, with `policies` as `read/2`
+  takes them, and where its notices go, as `load/2` answers them.
+
+  `id` is the definition's own agent, or one of its conversations: an ID with
+  an external ID, whose spec has the tools of the definition's agent, its
+  workspace tree among them, and leaves its schedules as they are. A
+  definition sent to the HTTP API names no modules, and leaves the agent's
+  schedules as they are too.
+  """
+  @spec spec(Definition.t(), AgentID.t(), %{String.t() => WardrikPolicy.t()}) ::
+          {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
+  def spec(%Definition{id: owner, fields: fields, source: source}, %AgentID{} = id, policies) do
+    if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
+
+    file? = match?({:file, _name}, source)
+    system = optional_string!(fields["instructions"], "instructions") || ""
+    schedules = if file? and id == owner, do: schedules(fields["schedule"], files?(fields))
+    spec = spec(fields, system, policies, file?, owner, schedules)
+    within!(spec, source)
+
+    {:ok, %{spec | id: id}, route(fields["notify"], owner.org)}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   catch
     {:invalid, message} -> {:error, message}
   end
+
+  @doc """
+  The definition as the HTTP API writes one, as
+  `priv/protocol/v1/agent_definition.json` describes it: what an agent file
+  says besides its `name`, `org`, `user`, `schedule` and `notify`.
+  """
+  @spec fields(Definition.t()) :: map()
+  def fields(%Definition{fields: fields}), do: Map.take(fields, @definition_keys)
+
+  defp owner(id), do: AgentID.put_external_id(id, nil)
+
+  # A definition a token sent shares only the trees the token's scope covers.
+  defp within!(%Spec{config: config}, {:api, %Wardrik.Grant{scope: scope}}) do
+    for {WardrikWorkspace, workspace} <- config.tools,
+        do: ok!(WardrikWorkspace.Spec.within(workspace, scope))
+  end
+
+  defp within!(_spec, _source), do: :ok
+
+  defp ok!(:ok), do: :ok
+  defp ok!({:error, message}), do: invalid!("workspace " <> message)
 
   # A rule that holds after content from outside loosens what a token's
   # ceiling holds, so only a policy the operator writes may say one.
@@ -304,20 +390,20 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  defp build(path, fields, body, policies) do
+  defp written(path, fields, body) do
     known!(fields, @keys)
 
     id =
-      Wardrik.AgentID.new!(
+      AgentID.new!(
         optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
         org: optional_string!(fields["org"], "org") || WardrikDaemon.Config.org(),
         user: optional_string!(fields["user"], "user")
       )
 
-    schedules = schedules(fields["schedule"], files?(fields))
-    spec = spec(fields, body, policies, true, id, schedules)
+    fields = Map.drop(fields, ~w(name org user))
+    fields = if body == "", do: fields, else: Map.put(fields, "instructions", body)
 
-    {:ok, spec, route(fields["notify"], id.org)}
+    {:ok, %Definition{id: id, fields: fields, source: {:file, Path.basename(path)}}}
   rescue
     error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
   end
@@ -329,8 +415,8 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  # Everything a file and a definition say alike, for the agent `id`, which
-  # each names its own way. `modules?` lets `tools` and `policy` name modules.
+  # Everything a file and a definition say alike, for the agent `id`. `modules?`
+  # lets `tools` and `policy` name modules.
   defp spec(fields, system, policies, modules?, id, schedules) do
     config =
       [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, id)]
@@ -505,7 +591,7 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   # Whether the agent `id` can reach the server `ref`: one serving its org.
-  defp reach(%Wardrik.AgentID{org: org}, ref, opts) do
+  defp reach(%AgentID{org: org}, ref, opts) do
     case Keyword.get(opts, :orgs, :all) do
       :all -> :ok
       orgs -> if org in orgs, do: :ok, else: {:error, not_served(ref, orgs, org)}

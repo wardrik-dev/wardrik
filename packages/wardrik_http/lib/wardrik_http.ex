@@ -88,7 +88,7 @@ defmodule WardrikHTTP do
 
   ### Agents
 
-      PUT /v1/agents/acme/ops/triage
+      PUT /v1/agents/acme/triage
       {"description": "Watches the incident queue.",
        "instructions": "You watch the incident queue.",
        "model": "anthropic:claude-sonnet-5",
@@ -98,8 +98,8 @@ defmodule WardrikHTTP do
   host reads it, with the `WardrikHTTP.Definition` the listener is given, and
   decides whether definitions are kept and who owns a key: a key it refuses
   answers `409`. A daemon reads a definition as an agent file (see
-  `WardrikDaemon.AgentFile`), keeps none, so `GET …/definition` answers `501`,
-  and refuses the keys its agent files declare. An agent brought to a new
+  `WardrikDaemon.AgentFile`), keeps it, so `GET …/definition` answers it, and
+  refuses the keys its agent files declare. An agent brought to a new
   definition keeps its conversation and its schedules. A route whose callback
   the module lacks, or every one where the listener has no module, answers
   `501`.
@@ -115,7 +115,7 @@ defmodule WardrikHTTP do
 
   ### Messages
 
-      POST /v1/agents/acme/ops/triage/messages
+      POST /v1/agents/acme/triage/messages
       {"id": "msg_01", "parts": [{"type": "text", "content": "What's on fire?"}]}
 
   `content` in place of `parts` is the text alone. `id` is optional, and a
@@ -124,7 +124,7 @@ defmodule WardrikHTTP do
 
   ### Interrupts
 
-      POST /v1/agents/acme/ops/triage/interrupts/toolu_01
+      POST /v1/agents/acme/triage/interrupts/toolu_01
       {"decision": "reject", "reason": "Not this quarter."}
 
   `decision` is `approve` or `reject`. The decision is recorded as made by
@@ -133,7 +133,7 @@ defmodule WardrikHTTP do
 
   ### Schedules
 
-      PUT /v1/agents/acme/ops/triage/schedules/sweep
+      PUT /v1/agents/acme/triage/schedules/sweep
       {"every": "*/30 * * * *", "prompt": "Check the incident queue."}
 
   `every` is a cron expression read in UTC, or a duration of at least a

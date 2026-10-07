@@ -46,7 +46,7 @@
     {
       "error": {
         "type": "not_found",
-        "message": "No agent runs under acme/ops/triage."
+        "message": "No agent runs under acme/triage."
       }
     }
   ]

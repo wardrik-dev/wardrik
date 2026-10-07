@@ -201,20 +201,30 @@ defmodule WardrikDaemon.AgentFileTest do
       assert message =~ "workspace.size is not a setting; expected shared"
     end
 
-    test "are the agent's own tree alone over HTTP, which shares nothing" do
-      assert {:ok, spec} =
-               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"tools" => ["files"]})
+    test "are shared over HTTP too, within the scope of the token that sent the definition" do
+      id = Wardrik.AgentID.parse!("acme/triage")
 
-      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: []} = files}] = spec.config.tools
+      fields = %{
+        "tools" => ["files"],
+        "workspace" => %{"shared" => %{"team" => "acme"}},
+        "context" => ["shared/team/NOTES.md"]
+      }
+
+      assert {:ok, spec} = AgentFile.definition(id, fields)
+
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: [team]} = files}] =
+               spec.config.tools
+
       assert files.tree.tree == "agents/acme/triage"
+      assert team.tree == "shared/acme"
+      assert files.context == ["shared/team/NOTES.md"]
 
-      assert {:error, message} =
-               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
-                 "tools" => ["files"],
-                 "workspace" => %{"shared" => %{"team" => "acme"}}
-               })
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(id))
+      {:ok, definition} = AgentFile.define(id, fields, grant)
 
-      assert message =~ "workspace is not a setting"
+      assert AgentFile.spec(definition, id, %{}) ==
+               {:error,
+                "workspace shared team: acme belongs to acme/, which acme/triage does not cover"}
     end
   end
 
@@ -490,13 +500,8 @@ defmodule WardrikDaemon.AgentFileTest do
              ) ==
                Enum.sort(properties)
 
-      # A workspace shares trees a token's scope may not cover, so only a
-      # file, which the operator writes, may say it.
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
-               Enum.sort(
-                 (properties -- ["instructions"]) ++
-                   ~w(name org user schedule notify workspace context)
-               )
+               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user schedule notify))
     end
 
     test "takes its example, which the reader reads" do

@@ -21,18 +21,18 @@ defmodule WardrikHTTP.RouterTest do
     @behaviour WardrikHTTP.Definition
 
     @impl true
-    def put(_key, %{"refuse" => message}), do: {:error, message}
-    def put(key, %{"owned" => true}), do: {:error, :conflict, "#{key} belongs to a file."}
+    def put(_key, %{"refuse" => message}, _grant), do: {:error, message}
+    def put(key, %{"owned" => true}, _grant), do: {:error, :conflict, "#{key} belongs to a file."}
 
-    def put(_key, %{"elsewhere" => true}),
+    def put(_key, %{"elsewhere" => true}, _grant),
       do: {:ok, Spec.new(id: Wardrik.AgentID.parse!("test/elsewhere"))}
 
-    def put(key, %{"allow" => names}) do
+    def put(key, %{"allow" => names}, _grant) do
       own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: names)]
       {:ok, Spec.new(id: key, hooks: own)}
     end
 
-    def put(key, fields) do
+    def put(key, fields, _grant) do
       config = Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
       {:ok, Spec.new(id: key, config: config, schedules: nil)}
     end
@@ -47,8 +47,8 @@ defmodule WardrikHTTP.RouterTest do
     @ns :router_test_definitions
 
     @impl true
-    def put(key, definition) do
-      with {:ok, spec} <- Definition.put(key, definition),
+    def put(key, definition, grant) do
+      with {:ok, spec} <- Definition.put(key, definition, grant),
            {:ok, _vsn} <- Wardrik.Store.put(@ns, to_string(key), definition),
            do: {:ok, spec}
     end

@@ -17,6 +17,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikConsole.Filter
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.Definition
   alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
 
@@ -89,7 +90,6 @@ defmodule WardrikDaemon.CLI.Agents do
   # A column for each thing any agent listed has, the key, status and node
   # always, under a faint heading.
   defp table(members) do
-    specs = WardrikDaemon.specs()
     headings = ["AGENT", "STATUS", "NODE", "NEXT RUN", "SPENT"]
 
     rows =
@@ -99,7 +99,7 @@ defmodule WardrikDaemon.CLI.Agents do
           status(member),
           Nodes.display(member.node),
           next(member.id),
-          Enum.join(WardrikDaemon.spent(specs[member.id], member.id), ", ")
+          Enum.join(WardrikDaemon.spent(member.id), ", ")
         ]
       end
 
@@ -155,16 +155,27 @@ defmodule WardrikDaemon.CLI.Agents do
     case {Fleet.lookup(key), Agent.snapshot(key)} do
       {nil, _snapshot} -> {:error, "No agent runs under #{key}."}
       {_member, {:error, :not_found}} -> {:error, "No agent runs under #{key}."}
-      {member, snapshot} -> {:ok, &shown(member, snapshot, WardrikDaemon.declared()[key], &1)}
+      {member, snapshot} -> {:ok, &shown(member, snapshot, defined(key), &1)}
     end
   end
 
-  defp shown(member, snapshot, file, width) do
+  # The definition the agent runs on, with the spec it writes now or why it
+  # writes none, or `nil` where none is kept.
+  defp defined(key) do
+    case Definition.of(key) do
+      {:ok, definition} -> {definition, WardrikDaemon.Agents.build(definition, key)}
+      {:error, :not_found} -> nil
+    end
+  end
+
+  defp shown(member, snapshot, defined, width) do
     rows =
       [
         {"status", doing(member, snapshot)},
         {"model", model(snapshot)}
-      ] ++ given(file, member.id) ++ asked(member.id) ++ waiting(snapshot) ++ written(file)
+      ] ++
+        given(defined, member.id) ++
+        asked(member.id) ++ waiting(snapshot) ++ written(defined, member.id)
 
     column = rows |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
 
@@ -174,7 +185,7 @@ defmodule WardrikDaemon.CLI.Agents do
       end
 
     lines
-    |> described(file)
+    |> described(defined)
     |> Enum.intersperse("\n")
     |> Owl.Box.new(
       title: Owl.Data.tag(to_string(member.id), :bright),
@@ -185,10 +196,11 @@ defmodule WardrikDaemon.CLI.Agents do
     )
   end
 
-  defp described(lines, {_path, %{description: description}}) when is_binary(description),
-    do: [description, "" | lines]
+  defp described(lines, {%Definition{fields: %{"description" => description}}, _spec})
+       when is_binary(description),
+       do: [description, "" | lines]
 
-  defp described(lines, _file), do: lines
+  defp described(lines, _defined), do: lines
 
   defp doing(member, snapshot) do
     [
@@ -215,11 +227,14 @@ defmodule WardrikDaemon.CLI.Agents do
     end
   end
 
-  # What the agent's file gives it: tools, a policy, and budgets.
+  # What the agent's definition gives it: tools, a policy, and budgets.
   defp given(nil, _key),
-    do: [{"file", Owl.Data.tag("none; it was defined over the HTTP API", @faint)}]
+    do: [{"definition", Owl.Data.tag("none kept; it was started without one", @faint)}]
 
-  defp given({_path, spec}, key) do
+  defp given({_definition, {:error, message}}, _key),
+    do: [{"definition", Owl.Data.tag("does not build: " <> message, :red)}]
+
+  defp given({_definition, {:ok, spec}}, key) do
     policies =
       for %Wardrik.Hook{module: module} = hook <- spec.hooks,
           module != WardrikPolicy.Budget,
@@ -272,8 +287,23 @@ defmodule WardrikDaemon.CLI.Agents do
            [call.id, "  ", Pattern.shown(call.name), "  ", Owl.Data.tag(prompt, @faint)]}
   end
 
-  defp written({path, _spec}), do: [{"file", path}]
-  defp written(nil), do: []
+  # Where the definition was written, and whose it is for a conversation.
+  defp written(nil, _key), do: []
+
+  defp written({%Definition{id: owner, source: source}, _spec}, key) do
+    conversation = if owner == key, do: [], else: [{"conversation", "of #{owner}"}]
+    conversation ++ [{"file", source(owner, source)}]
+  end
+
+  defp source(owner, {:file, name}) do
+    case WardrikDaemon.declared()[owner] do
+      {path, _spec} -> path
+      nil -> Path.join("agents", name)
+    end
+  end
+
+  defp source(_owner, {:api, _grant}),
+    do: Owl.Data.tag("none; it was defined over the HTTP API", @faint)
 
   # -- schedules ----------------------------------------------------------------
 

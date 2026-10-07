@@ -131,11 +131,11 @@
   "examples": [
     {
       "agent": {
-        "id": "acme/ops/triage",
+        "id": "acme/triage",
         "name": "triage"
       },
       "conversation": {
-        "id": "acme/ops/triage/5f1c2a"
+        "id": "acme/triage/5f1c2a"
       },
       "status": "parked",
       "pending": 0,

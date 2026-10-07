@@ -128,17 +128,36 @@ defmodule WardrikWorkspace.Spec do
       {:error,
        "shared #{name}: #{inspect(tree)} is not a tree; a tree is org, org/name or org/@user/name"}
 
-  # A tree is reachable by the agents under the prefix its name begins with.
   defp reaches(id, name, tree) do
-    prefix =
-      case String.split(tree, "/") do
-        [org] -> Prefix.parse!(org)
-        parts -> parts |> Enum.drop(-1) |> Enum.join("/") |> Prefix.parse!()
-      end
+    prefix = owners(tree)
 
     if Prefix.covers?(prefix, id),
       do: :ok,
       else: {:error, "shared #{name}: #{tree} belongs to #{prefix}, which #{id} is not under"}
+  end
+
+  # A tree is reachable by the agents under the prefix its name begins with.
+  defp owners(tree) do
+    case String.split(tree, "/") do
+      [org] -> Prefix.parse!(org)
+      parts -> parts |> Enum.drop(-1) |> Enum.join("/") |> Prefix.parse!()
+    end
+  end
+
+  @doc """
+  `:ok` where every tree `spec` shares is reachable only by agents under
+  `prefix`, or a message naming one that is not: what a definition sent by a
+  token whose scope is `prefix` may share.
+  """
+  @spec within(t(), Prefix.t()) :: :ok | {:error, String.t()}
+  def within(%__MODULE__{shared: shared}, prefix) do
+    Enum.find_value(shared, :ok, fn %Mount{name: name, tree: "shared/" <> tree} ->
+      owners = owners(tree)
+
+      if not Prefix.covers?(prefix, owners),
+        do:
+          {:error, "shared #{name}: #{tree} belongs to #{owners}, which #{prefix} does not cover"}
+    end)
   end
 
   @doc """

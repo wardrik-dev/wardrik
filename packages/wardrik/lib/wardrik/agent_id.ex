@@ -67,8 +67,14 @@ defmodule Wardrik.AgentID do
   @spec new!(term(), keyword()) :: t()
   def new!(name, opts), do: ok!(new(name, opts))
 
-  @doc "`id` answering for `external_id`, written down through `Wardrik.AgentID.Segment`."
+  @doc """
+  `id` answering for `external_id`, written down through
+  `Wardrik.AgentID.Segment`, or for none where it is `nil`: the agent whose
+  definition every external ID of it runs on.
+  """
   @spec put_external_id(t(), term()) :: t()
+  def put_external_id(%__MODULE__{} = id, nil), do: %{id | external_id: nil}
+
   def put_external_id(%__MODULE__{} = id, external_id),
     do: %{id | external_id: ok!(part(external_id, "external ID"))}
 

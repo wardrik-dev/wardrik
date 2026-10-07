@@ -284,6 +284,16 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "rm", "nobody/"]) == {"Nothing runs under nobody/.\n", 1}
     end
 
+    test "forgets the definition the HTTP API sent", %{org: org} do
+      defined = AgentID.parse!("#{org}/defined")
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
+      {:ok, spec} = WardrikDaemon.Agents.put(defined, %{"description" => "Defined."}, grant)
+      {:ok, _pid} = Fleet.put(spec)
+
+      assert command(["agent", "rm", defined, "--yes"]) == {"Removed #{defined}.\n", 0}
+      assert WardrikDaemon.Agents.get(defined) == {:error, :not_found}
+    end
+
     test "leaves an agent a file declares, and names the file", %{org: org} do
       {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
       helper = AgentID.parse!("#{org}/helper")

@@ -46,6 +46,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
+  alias WardrikDaemon.Definition
 
   @faint [:faint, :light_black]
 
@@ -463,7 +464,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp removed(removing, kept) do
     {gone, failed} =
       removing
-      |> Enum.map(&{&1, Fleet.forget(&1)})
+      |> Enum.map(&{&1, forget(&1)})
       |> Enum.split_with(&match?({_key, :ok}, &1))
 
     lines =
@@ -472,6 +473,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
         for {key, {:error, reason}} <- failed, do: "#{key} was not removed: #{inspect(reason)}"
 
     if failed == [], do: {:ok, Enum.join(lines, "\n")}, else: {:error, Enum.join(lines, "\n")}
+  end
+
+  defp forget(key) do
+    with :ok <- Fleet.forget(key), do: Definition.delete(key)
   end
 
   # -- move ---------------------------------------------------------------------

@@ -57,6 +57,7 @@ defmodule Wardrik.AgentIDTest do
     id = ~A"acme/books" |> AgentID.put_external_id(1696)
 
     assert id == ~A"acme/books/1696"
+    assert AgentID.put_external_id(id, nil) == ~A"acme/books"
     assert_raise ArgumentError, fn -> AgentID.put_external_id(id, "a b") end
   end
 

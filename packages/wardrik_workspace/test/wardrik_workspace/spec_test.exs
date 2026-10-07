@@ -1,8 +1,11 @@
 defmodule WardrikWorkspace.SpecTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.AgentID.Prefix
   alias WardrikWorkspace.Mount
   alias WardrikWorkspace.Spec
+
+  import Wardrik.AgentID, only: [sigil_A: 2]
 
   describe "new/2" do
     test "gives an agent its own tree, and shares the trees its key reaches" do
@@ -44,6 +47,22 @@ defmodule WardrikWorkspace.SpecTest do
         assert {:error, message} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), shared)
         assert message =~ said
       end
+    end
+  end
+
+  describe "within/2" do
+    test "answers whether every tree shared is under a prefix" do
+      {:ok, spec} =
+        Spec.new(~A"acme/@jon/triage", %{"team" => "acme", "notes" => "acme/@jon/notes"})
+
+      assert Spec.within(spec, Prefix.new!(org: "acme")) == :ok
+      assert Spec.within(spec, Prefix.all()) == :ok
+
+      assert Spec.within(spec, Prefix.new!(org: "acme", user: "jon")) ==
+               {:error, "shared team: acme belongs to acme/, which acme/@jon/ does not cover"}
+
+      {:ok, alone} = Spec.new(~A"acme/triage")
+      assert Spec.within(alone, Prefix.of(~A"acme/triage")) == :ok
     end
   end
 

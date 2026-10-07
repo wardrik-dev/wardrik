@@ -494,10 +494,26 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ~r"schedule +every 30m +next in \d+m +not run yet"
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
+    thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
+    {:ok, options} = WardrikDaemon.Agents.options(thread)
+    {:ok, _pid} = Wardrik.Fleet.spawn(thread, options)
+    {output, 0} = command(["show", thread])
+    assert output =~ "Counts what it is asked to."
+    assert output =~ ~r"conversation +of #{key}"
+    assert output =~ ~r"tools +web_search"
+
+    defined = Wardrik.AgentID.parse!("#{org}/defined")
+    {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
+    {:ok, spec} = WardrikDaemon.Agents.put(defined, %{"description" => "Defined."}, grant)
+    {:ok, _pid} = Wardrik.Fleet.put(spec)
+    {output, 0} = command(["show", defined])
+    assert output =~ "Defined."
+    assert output =~ ~r"file +none; it was defined over the HTTP API"
+
     parked = parked_agent()
     {output, 0} = command(["show", parked])
     assert output =~ ~r"waiting +call_1 +deploy +This ships to production."
-    assert output =~ "none; it was defined over the HTTP API"
+    assert output =~ ~r"definition +none kept; it was started without one"
 
     assert command(["show", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end

@@ -54,7 +54,8 @@ defmodule Deploy.HetznerTest do
     File.write!(agent, written("/home/wardrik/.config/wardrik/agents/triage.md"))
 
     with_settings(settings, fn ->
-      assert {:ok, %Wardrik.Agent.Spec{name: "triage"}} = WardrikDaemon.AgentFile.read(agent)
+      assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
+               WardrikDaemon.AgentFile.read(agent)
     end)
   end
 
