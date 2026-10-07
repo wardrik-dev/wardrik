@@ -20,7 +20,7 @@ defmodule WardrikDaemon.AgentFile do
 
   | Key | What it gives the agent |
   | --- | --- |
-  | `name` | its name, and with `org` and `user` its key in the fleet. The file's name without `.md` when absent |
+  | `name` | its name, and with `org` and `user` its ID in the fleet. The file's name without `.md` when absent |
   | `org` | the org it belongs to. `config.yaml`'s `org` when absent |
   | `user` | the user of its org it works for, if any |
   | `description` | what it is for, as `wardrik show` shows it |
@@ -35,7 +35,7 @@ defmodule WardrikDaemon.AgentFile do
   | `schedule` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
 
-  Its key is `org/name`, or `org/@user/name` for one that works for a user:
+  Its ID is `org/name`, or `org/@user/name` for one that works for a user:
   the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
 
   ## Tools
@@ -175,7 +175,7 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Over HTTP
 
-  `definition/3` reads the body of `PUT /v1/agents/{key}` into
+  `definition/3` reads the body of `PUT /v1/agents/{id}` into
   a spec the same way, for `WardrikHTTP` through `WardrikDaemon.Agents`:
 
       {"description": "Watches the incident queue.",
@@ -186,7 +186,7 @@ defmodule WardrikDaemon.AgentFile do
 
   `priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
   the system prompt, as a file's body is, and the other keys mean what they
-  mean in a file. The key gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
+  mean in a file. The ID gives the agent's `name`, `org` and `user`. A definition has no `schedule` or `notify`: it leaves the
   agent's schedules as they are, and the schedules routes set them. Its
   `tools` and `policy` name what the daemon ships or configures, and never a
   module.
@@ -258,25 +258,18 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   @doc """
-  Reads a definition sent to the HTTP API for the agent under `key` into its
-  spec, with `policies` as `read/2` takes them. The spec's `schedules` is
-  `nil`, so `Wardrik.Fleet.put/1` leaves the agent's schedules as they are.
+  Reads a definition sent to the HTTP API for the agent `id` into its spec,
+  with `policies` as `read/2` takes them. The spec's `schedules` is `nil`, so
+  `Wardrik.Fleet.put/1` leaves the agent's schedules as they are.
   """
-  @spec definition(String.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
+  @spec definition(Wardrik.AgentID.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t()} | {:error, String.t()}
-  def definition(key, fields, policies \\ %{}) when is_binary(key) and is_map(fields) do
+  def definition(%Wardrik.AgentID{} = id, fields, policies \\ %{}) when is_map(fields) do
     known!(fields, @definition_keys)
     held_after_outside!(fields["policy"])
-    {org, user, name} = Wardrik.Fleet.parse(key)
     instructions = optional_string!(fields["instructions"], "instructions") || ""
 
-    {:ok,
-     spec(fields, instructions, policies, false,
-       name: name,
-       org: org,
-       user: user,
-       schedules: nil
-     )}
+    {:ok, spec(fields, instructions, policies, false, id, nil)}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   catch
@@ -314,16 +307,17 @@ defmodule WardrikDaemon.AgentFile do
   defp build(path, fields, body, policies) do
     known!(fields, @keys)
 
-    spec =
-      spec(fields, body, policies, true,
-        name:
-          optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
-        org: optional_string!(fields["org"], "org") || Wardrik.Fleet.org(),
-        user: optional_string!(fields["user"], "user"),
-        schedules: schedules(fields["schedule"], files?(fields))
+    id =
+      Wardrik.AgentID.new!(
+        optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
+        org: optional_string!(fields["org"], "org") || WardrikDaemon.Config.org(),
+        user: optional_string!(fields["user"], "user")
       )
 
-    {:ok, spec, route(fields["notify"], spec.org)}
+    schedules = schedules(fields["schedule"], files?(fields))
+    spec = spec(fields, body, policies, true, id, schedules)
+
+    {:ok, spec, route(fields["notify"], id.org)}
   rescue
     error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
   end
@@ -335,28 +329,25 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  # Everything a file and a definition say alike, with `identity` the fields
-  # each gives its own way. `modules?` lets `tools` and `policy` name modules.
-  defp spec(fields, system, policies, modules?, identity) do
-    key = Wardrik.Fleet.key(identity[:name], org: identity[:org], user: identity[:user])
-
+  # Everything a file and a definition say alike, for the agent `id`, which
+  # each names its own way. `modules?` lets `tools` and `policy` name modules.
+  defp spec(fields, system, policies, modules?, id, schedules) do
     config =
-      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, key)]
+      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, id)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> compaction(fields)
       |> Config.new()
 
     Spec.new(
-      identity ++
-        [
-          description: optional_string!(fields["description"], "description"),
-          config: config,
-          hooks: policy(fields["policy"], policies, modules?),
-          timeout: fields["timeout"] && seconds!(fields["timeout"]),
-          credentials: WardrikVault,
-          ledger: Wardrik.Ledger.Store
-        ]
+      id: id,
+      schedules: schedules,
+      description: optional_string!(fields["description"], "description"),
+      config: config,
+      hooks: policy(fields["policy"], policies, modules?),
+      timeout: fields["timeout"] && seconds!(fields["timeout"]),
+      credentials: WardrikVault,
+      ledger: Wardrik.Ledger.Store
     )
   end
 
@@ -513,11 +504,8 @@ defmodule WardrikDaemon.AgentFile do
     end
   end
 
-  # Whether the agent under `key` can reach the server `ref`: one serving its
-  # org.
-  defp reach(key, ref, opts) do
-    {org, _user, _name} = Wardrik.Fleet.parse(key)
-
+  # Whether the agent `id` can reach the server `ref`: one serving its org.
+  defp reach(%Wardrik.AgentID{org: org}, ref, opts) do
     case Keyword.get(opts, :orgs, :all) do
       :all -> :ok
       orgs -> if org in orgs, do: :ok, else: {:error, not_served(ref, orgs, org)}

@@ -8,7 +8,7 @@ defmodule WardrikDaemon.ConfigTest do
   # Every file names the deployment's org first; what each other test reads
   # is the rest.
   defp read(yaml, context, opts \\ []) do
-    with {:ok, [{Wardrik.Fleet, _org} | settings]} <- read_all(yaml, context, opts),
+    with {:ok, [{WardrikDaemon, _org} | settings]} <- read_all(yaml, context, opts),
          do: {:ok, settings}
   end
 
@@ -35,10 +35,10 @@ defmodule WardrikDaemon.ConfigTest do
     end
 
     test "org is the deployment's org, default unless it says", context do
-      assert {:ok, [{Wardrik.Fleet, [org: "default"]}, {WardrikDaemon.SSH, _ssh}]} =
+      assert {:ok, [{WardrikDaemon, [org: "default"]}, {WardrikDaemon.SSH, _ssh}]} =
                read_all("ssh: {port: 2223}\n", context)
 
-      assert {:ok, [{Wardrik.Fleet, [org: "acme"]}]} = read_all("org: acme\n", context)
+      assert {:ok, [{WardrikDaemon, [org: "acme"]}]} = read_all("org: acme\n", context)
 
       for org <- ["_acme", "@acme", "a/b"] do
         assert {:error, message} = read_all("org: #{inspect(org)}\n", context)

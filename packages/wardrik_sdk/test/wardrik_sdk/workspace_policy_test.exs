@@ -8,13 +8,13 @@ defmodule WardrikSDK.WorkspacePolicyTest do
 
   test "a policy names a file tool's call by its path" do
     policy = WardrikPolicy.decode!(%{"deny" => ["write_file(secrets/*)", "delete_file(*)"]})
-    key = "ws#{System.unique_integer([:positive])}/agent"
-    {:ok, spec} = Spec.new(key, %{})
+    id = Wardrik.AgentID.parse!("ws#{System.unique_integer([:positive])}/agent")
+    {:ok, spec} = Spec.new(id, %{})
 
     scope =
       Wardrik.Test.scope(
         tools: [{WardrikWorkspace, spec}],
-        key: key,
+        id: id,
         name: "turn",
         hooks: WardrikPolicy.hooks(policy)
       )

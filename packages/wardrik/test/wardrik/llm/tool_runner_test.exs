@@ -10,7 +10,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   alias Wardrik.Scope
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
@@ -602,18 +602,18 @@ defmodule Wardrik.LLM.ToolRunnerTest do
   end
 
   describe "a tool handed its context" do
-    test "reads the call and the run it is part of", %{agent_id: agent_id} do
+    test "reads the call and the run it is part of" do
       tool =
         handed!("whoami", fn _input, %Wardrik.Tool.Context{} = context ->
           {:ok,
            %{
              "id" => context.call_id,
              "key" => context.idempotency_key,
-             "user" => context.scope.user
+             "user" => Wardrik.Scope.agent_id(context.scope).user
            }}
         end)
 
-      scope = %{scope(agent_id, [tool]) | user: "jon"}
+      scope = scope(Wardrik.AgentID.new!("whoami", org: "test", user: "jon"), [tool])
       call = call("call_1", "whoami", %{})
       key = Wardrik.Ledger.idempotency_key(scope, call)
 
@@ -630,36 +630,51 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       @behaviour Wardrik.Credential
 
       @impl true
-      def resolve("github", %Call{scope: %Scope{user: "jon"}}),
-        do: {:ok, Wardrik.Credential.secret("ghp_x", owner: "jon")}
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "jon"}}}
+          }),
+          do: {:ok, Wardrik.Credential.secret("ghp_x", owner: "jon")}
 
-      def resolve("github", %Call{scope: %Scope{user: "new"}}),
-        do: {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "new"}}
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "new"}}}
+          }),
+          do: {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "new"}}
 
-      def resolve("github", %Call{scope: %Scope{user: "device"}}),
-        do:
-          {:error,
-           {:authorization_required, %{url: "https://example.com/device", code: "WDJB"}, "device"}}
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "device"}}}
+          }),
+          do:
+            {:error,
+             {:authorization_required, %{url: "https://example.com/device", code: "WDJB"},
+              "device"}}
 
-      def resolve("github", %Call{scope: %Scope{user: "later"}}) do
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "later"}}}
+          }) do
         if Process.get(:authorized),
           do: {:ok, Wardrik.Credential.secret("ghp_later", owner: "later")},
           else:
             {:error, {:authorization_required, %{url: "https://example.com/authorize"}, "later"}}
       end
 
-      def resolve("github", %Call{scope: %Scope{user: "stale"}}) do
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "stale"}}}
+          }) do
         token = if Process.get(:refreshed), do: "ghp_fresh", else: "ghp_stale"
         {:ok, Wardrik.Credential.secret(token, owner: "stale")}
       end
 
-      def resolve("github", %Call{scope: %Scope{user: "revoked"}}),
-        do: {:ok, Wardrik.Credential.secret("ghp_stale", owner: "revoked")}
+      def resolve("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "revoked"}}}
+          }),
+          do: {:ok, Wardrik.Credential.secret("ghp_stale", owner: "revoked")}
 
       def resolve(_ref, _call), do: {:error, :denied}
 
       @impl true
-      def refused("github", %Call{scope: %Scope{user: user}}) do
+      def refused("github", %Call{
+            scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: user}}}
+          }) do
         send(self(), {:refused, user})
         Process.put(:refreshed, true)
         :ok
@@ -691,8 +706,9 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
 
     defp needing(agent_id, user) do
-      Config.new(tools: [Needing])
-      |> Scope.root(agent_id, name: "turn", user: user, credentials: Vault)
+      id = Wardrik.AgentID.new!(agent_id.name, org: agent_id.org, user: user)
+      :ok = Wardrik.Event.Bus.subscribe(id)
+      Scope.root(Config.new(tools: [Needing]), id, name: "turn", credentials: Vault)
     end
 
     test "is handed them resolved for the call's user, and keeps none", %{agent_id: agent_id} do
@@ -836,7 +852,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       assert [%{call_id: "call_1", name: "hang", pid: pid}] = ToolRunner.in_flight(agent_id)
       assert is_pid(pid)
-      assert ToolRunner.in_flight(Wardrik.Test.Fleet.key()) == []
+      assert ToolRunner.in_flight(Wardrik.Test.Fleet.id()) == []
 
       Task.shutdown(task, :brutal_kill)
     end

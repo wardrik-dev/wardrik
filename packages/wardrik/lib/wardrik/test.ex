@@ -81,19 +81,19 @@ defmodule Wardrik.Test do
   end
 
   @doc """
-  The scope a turn would run under, for a key of this test's own.
+  The scope a turn would run under, for an agent of this test's own.
 
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
-  gives the whole config; `key:` names the agent, in place of one no other
+  gives the whole config; `id:` names the agent, in place of one no other
   test uses. The rest is what `Wardrik.Scope.root/3` takes: the hooks, the
-  user and org, the credentials, the ledger and the dispatch.
+  credentials, the ledger and the dispatch.
   """
   @spec scope(keyword()) :: Scope.t()
   def scope(opts \\ []) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
     {config, opts} = Keyword.pop_lazy(opts, :config, fn -> Config.new(tools: tools) end)
-    {key, opts} = Keyword.pop_lazy(opts, :key, &Wardrik.Test.Fleet.key/0)
-    Scope.root(config, key, opts)
+    {id, opts} = Keyword.pop_lazy(opts, :id, &Wardrik.Test.Fleet.id/0)
+    Scope.root(config, id, opts)
   end
 
   @doc """

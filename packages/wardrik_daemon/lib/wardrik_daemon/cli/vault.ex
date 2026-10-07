@@ -27,7 +27,6 @@ defmodule WardrikDaemon.CLI.Vault do
   give the vault a key instead.
   """
 
-  alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
@@ -398,7 +397,7 @@ defmodule WardrikDaemon.CLI.Vault do
   defp segment(nil, _flag, _whose, _hint), do: :ok
 
   defp segment(text, flag, whose, hint) do
-    if Fleet.segment?(text),
+    if Wardrik.AgentID.segment?(text),
       do: :ok,
       else:
         {:error,
@@ -406,11 +405,11 @@ defmodule WardrikDaemon.CLI.Vault do
            "not begin with @ or _." <> hint}
   end
 
-  # The org and user a user's agents read their own secrets as, as their keys
+  # The org and user a user's agents read their own secrets as, as their IDs
   # carry them: without --org, the deployment's org.
   defp user(org, user) do
-    {org, user, _name} = Fleet.parse(Fleet.key("vault", org: org, user: user))
-    {org, user}
+    id = Wardrik.AgentID.new!("vault", org: org || WardrikDaemon.Config.org(), user: user)
+    {id.org, id.user}
   end
 
   defp kind(nil), do: :deployment

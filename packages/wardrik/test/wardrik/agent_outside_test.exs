@@ -13,7 +13,7 @@ defmodule Wardrik.AgentOutsideTest do
   setup :set_mimic_global
 
   setup do
-    key = Wardrik.Test.Fleet.key("outside")
+    key = Wardrik.Test.Fleet.id("outside")
 
     {^key, agent} =
       Wardrik.Test.Fleet.start_agent(

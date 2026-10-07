@@ -3,6 +3,7 @@ defmodule WardrikOAuth.DeviceTest do
 
   import ExUnit.CaptureLog
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
@@ -43,8 +44,10 @@ defmodule WardrikOAuth.DeviceTest do
   defp registered,
     do: %{client_id: "wardrik-client", client_secret: nil, redirect_uri: nil, how: :static}
 
-  defp scope(owner),
-    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
+  defp scope(owner) do
+    id = AgentID.new!("a", org: "acme", user: owner)
+    Config.new() |> Scope.root(id, credentials: WardrikVault)
+  end
 
   defp provider(opts), do: [github: [resource: resource(), scopes: ~w(repo)] ++ opts]
 
@@ -153,14 +156,14 @@ defmodule WardrikOAuth.DeviceTest do
 
       assert {:error,
               {:authorization_required,
-               %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, {nil, ^owner}}} =
+               %{url: "https://auth.example.com/activate", code: "WDJB-MJHT"}, {"acme", ^owner}}} =
                Credential.resolve(
                  Calls.tool("tool", %{}, scope(owner)),
                  "github"
                )
 
       assert_receive {:device_done,
-                      %{provider: "github", owner: {nil, ^owner}, outcome: :authorized}}
+                      %{provider: "github", owner: {"acme", ^owner}, outcome: :authorized}}
 
       assert_received {:oauth, "POST", "/token", _pending}
       assert_received {:oauth, "POST", "/token", _authorized}
@@ -201,9 +204,9 @@ defmodule WardrikOAuth.DeviceTest do
           assert_receive {:device_done, %{outcome: :access_denied}}
         end)
 
-      assert log =~ "github was not connected for #{inspect({nil, owner})}: :access_denied"
-      assert Pending.under_way("github", {nil, owner}) == :error
-      refute WardrikOAuth.connected?("github", {nil, owner})
+      assert log =~ "github was not connected for #{inspect({"acme", owner})}: :access_denied"
+      assert Pending.under_way("github", {"acme", owner}) == :error
+      refute WardrikOAuth.connected?("github", {"acme", owner})
     end
 
     test "says a server that offers no device grant cannot be asked for one", %{owner: owner} do

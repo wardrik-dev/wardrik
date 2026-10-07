@@ -1,6 +1,7 @@
 defmodule WardrikOAuth.LoopbackTest do
   use WardrikOAuth.Test.Case, async: false
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
@@ -29,7 +30,8 @@ defmodule WardrikOAuth.LoopbackTest do
       redirect: [port: port, open: false]
     )
 
-    scope = Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
+    id = AgentID.new!("a", org: "acme", user: owner)
+    scope = Config.new() |> Scope.root(id, credentials: WardrikVault)
 
     {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope), "github")
@@ -82,7 +84,7 @@ defmodule WardrikOAuth.LoopbackTest do
     assert get(context.port, "/callback/linear?code=the-code&state=#{state}") =~
              "400 Bad Request"
 
-    assert {:ok, _flight} = Pending.under_way("github", {nil, context.owner})
+    assert {:ok, _flight} = Pending.under_way("github", {"acme", context.owner})
 
     assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "200 OK"
   end
@@ -130,7 +132,7 @@ defmodule WardrikOAuth.LoopbackTest do
     assert response =~ "400 Bad Request"
     assert response =~ "access_denied: &lt;script&gt;"
     refute response =~ "<script>"
-    refute WardrikOAuth.connected?("github", {nil, context.owner})
+    refute WardrikOAuth.connected?("github", {"acme", context.owner})
   end
 
   test "a callback with no code is refused", %{port: port} do

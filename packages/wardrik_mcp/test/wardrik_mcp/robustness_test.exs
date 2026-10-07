@@ -8,7 +8,7 @@ defmodule WardrikMCP.RobustnessTest do
   alias WardrikMCP.Connection
 
   setup %{ref: ref} do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
 
     scope = Config.new(tools: [{WardrikMCP, ref}]) |> Scope.root(agent_id, name: "turn")

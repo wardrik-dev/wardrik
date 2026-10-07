@@ -1,6 +1,8 @@
 defmodule WardrikConsole.PrinterTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Event
   alias Wardrik.Event.Source
   alias WardrikConsole.Printer
@@ -11,7 +13,7 @@ defmodule WardrikConsole.PrinterTest do
   defp sequences(list) when is_list(list), do: Enum.flat_map(list, &sequences/1)
   defp sequences(_other), do: []
 
-  defp root, do: Source.root("acme/@jon/triage")
+  defp root, do: Source.root(~A"acme/@jon/triage")
 
   # Every payload through one printer, on the turn's own span unless given
   # events, and the lines they returned as plain text.

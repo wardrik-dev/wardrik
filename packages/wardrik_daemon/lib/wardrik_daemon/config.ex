@@ -84,7 +84,7 @@ defmodule WardrikDaemon.Config do
 
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
-  an org. It is `default` unless set. See `Wardrik.Fleet`.
+  an org. It is `default` unless set; `org/0` reads it.
 
   `defaults` is what an agent is given where nothing else says: one
   `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
@@ -223,6 +223,11 @@ defmodule WardrikDaemon.Config do
     "WardrikVault" => :wardrik_vault
   }
 
+  @doc "The deployment's org, as `config.yaml` names it, or `#{@org}` where it names none."
+  @spec org() :: String.t()
+  def org,
+    do: :wardrik_daemon |> Application.get_env(WardrikDaemon, []) |> Keyword.get(:org, @org)
+
   @doc "Where `config.yaml` is read from: `WARDRIK_CONFIG_DIR`, or `wardrik` under the XDG config home."
   @spec config_dir() :: Path.t()
   def config_dir, do: dir("WARDRIK_CONFIG_DIR", "XDG_CONFIG_HOME", "~/.config")
@@ -340,7 +345,7 @@ defmodule WardrikDaemon.Config do
     {org, document} = Map.pop(document, "org")
     org = org!(org)
 
-    [{Wardrik.Fleet, org: org} | sections(document, org)]
+    [{WardrikDaemon, org: org} | sections(document, org)]
   end
 
   defp sections(document, org) do
@@ -386,7 +391,7 @@ defmodule WardrikDaemon.Config do
   defp org!(nil), do: @org
 
   defp org!(org) do
-    if Wardrik.Fleet.segment?(org),
+    if Wardrik.AgentID.segment?(org),
       do: org,
       else: invalid!(["org"], "is #{inspect(org)}, which is not an org; #{@segment}")
   end
@@ -398,7 +403,7 @@ defmodule WardrikDaemon.Config do
   defp orgs(name, org, path) when is_binary(name), do: orgs([name], org, path)
 
   defp orgs([_ | _] = names, _org, path) do
-    if Enum.all?(names, &Wardrik.Fleet.segment?/1),
+    if Enum.all?(names, &Wardrik.AgentID.segment?/1),
       do: names,
       else: invalid!(path, "is an org, a list of them, or * for every org; #{@segment}")
   end

@@ -1,36 +1,23 @@
 defmodule Wardrik.Fleet.Member do
   @moduledoc """
-  One agent as the fleet sees it: where it is, and what it is doing.
+  One agent as the fleet sees it: which it is, where it is, and what it is
+  doing.
 
   Built from the cluster registry, so `status`, `pending`, `waiting_on` and
   `outcome` are what the agent last published through
   `Wardrik.Agent.State.meta/1`.
   """
 
-  @enforce_keys [:key, :pid, :node, :org, :user, :name, :status, :pending, :waiting_on]
-  defstruct [
-    :key,
-    :pid,
-    :node,
-    :org,
-    :user,
-    :name,
-    :status,
-    :pending,
-    :waiting_on,
-    outcome: nil
-  ]
+  @enforce_keys [:id, :pid, :node, :status, :pending, :waiting_on]
+  defstruct [:id, :pid, :node, :status, :pending, :waiting_on, outcome: nil]
 
   @typedoc "What an agent is doing, as last published."
   @type status() :: :idle | :running | :parked
 
   @type t() :: %__MODULE__{
-          key: String.t(),
+          id: Wardrik.AgentID.t(),
           pid: pid(),
           node: node(),
-          org: String.t() | nil,
-          user: String.t() | nil,
-          name: String.t(),
           status: status(),
           pending: non_neg_integer(),
           waiting_on: [String.t()],
@@ -38,17 +25,16 @@ defmodule Wardrik.Fleet.Member do
         }
 
   @doc false
-  @spec new(String.t(), pid(), Wardrik.Agent.State.meta()) :: t()
-  def new(key, pid, %{status: status, pending: pending, waiting_on: waiting_on} = meta) do
-    {org, user, name} = Wardrik.Fleet.parse(key)
-
+  @spec new(Wardrik.AgentID.t(), pid(), Wardrik.Agent.State.meta()) :: t()
+  def new(
+        %Wardrik.AgentID{} = id,
+        pid,
+        %{status: status, pending: pending, waiting_on: waiting_on} = meta
+      ) do
     %__MODULE__{
-      key: key,
+      id: id,
       pid: pid,
       node: node(pid),
-      org: org,
-      user: user,
-      name: name,
       status: status,
       pending: pending,
       waiting_on: waiting_on,

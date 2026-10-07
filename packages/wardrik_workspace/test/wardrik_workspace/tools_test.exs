@@ -10,7 +10,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
   # An agent of its own, sharing `shared`, with the hooks given.
   defp agent(shared \\ %{}, hooks \\ []) do
-    key = "ws#{System.unique_integer([:positive])}/agent"
+    key = Wardrik.AgentID.parse!("ws#{System.unique_integer([:positive])}/agent")
     {:ok, spec} = Spec.new(key, shared)
 
     scope =
@@ -206,7 +206,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
       assert Enum.map(files, & &1["path"]) == ["notes/b.md", "notes/a.md"]
       assert %{"size" => 10, "by" => by} = hd(files)
-      assert by == agent.key
+      assert by == to_string(agent.key)
       assert {:ok, %{"files" => [_b, _a, _todo]}} = answered(agent, "list_files", %{})
     end
 
@@ -251,7 +251,7 @@ defmodule WardrikWorkspace.ToolsTest do
       [a, b]
       |> Task.async_stream(fn agent ->
         answered(agent, "write_file", %{
-          "path" => "shared/team/findings/#{agent.key |> String.split("/") |> List.last()}.md",
+          "path" => "shared/team/findings/#{agent.key.name}.md",
           "content" => "found"
         })
       end)
@@ -266,7 +266,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
     test "a tree shared to read is not changed" do
       tree = "ws#{System.unique_integer([:positive])}"
-      key = tree <> "/reader"
+      key = Wardrik.AgentID.parse!(tree <> "/reader")
 
       {:ok, spec} =
         Spec.new(key, %{"runbooks" => %{"tree" => tree <> "/runbooks", "mode" => "read"}})
@@ -331,7 +331,7 @@ defmodule WardrikWorkspace.ToolsTest do
       assert {:ok, %WardrikWorkspace.File{tainted: true, by: by}, _version} =
                Store.read("shared/#{tree}", "finding.md")
 
-      assert by == writer.key
+      assert by == to_string(writer.key)
 
       assert {%Call{tainted: true}, {:ok, _read}} =
                call(reader, "read_file", %{"path" => "shared/team/finding.md"})
@@ -394,7 +394,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
   describe "deciding a call" do
     test "subjects are the normalised path, or the glob listed or searched" do
-      {:ok, spec} = Spec.new("acme/@jon/triage")
+      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"))
 
       assert WardrikWorkspace.subjects(spec, "read_file", %{"path" => "./notes//a.md"}) == [
                "notes/a.md"
@@ -413,7 +413,8 @@ defmodule WardrikWorkspace.ToolsTest do
 
   defp agent_under(tree, name), do: agent_at("#{tree}/#{name}", %{"team" => tree})
 
-  defp agent_at(key, shared) do
+  defp agent_at(text, shared) do
+    key = Wardrik.AgentID.parse!(text)
     {:ok, spec} = Spec.new(key, shared)
     scope = Config.new(tools: [{WardrikWorkspace, spec}]) |> Scope.root(key, name: "turn")
     %{key: key, spec: spec, scope: scope}

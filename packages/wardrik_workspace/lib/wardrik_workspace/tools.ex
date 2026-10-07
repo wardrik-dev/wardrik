@@ -372,7 +372,7 @@ defmodule WardrikWorkspace.Tools do
   defp write(mount, path, content, %Wardrik.Tool.Context{scope: scope} = context, version, kept) do
     file = %File{
       content: content,
-      by: scope.source.agent_id,
+      by: to_string(scope.source.agent_id),
       run: scope.source.trace.trace_id,
       call: context.idempotency_key,
       tainted: scope.tainted or kept,

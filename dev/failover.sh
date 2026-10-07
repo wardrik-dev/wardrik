@@ -87,7 +87,7 @@ start() {
 # nothing while no node runs it.
 running_on() {
   rpc "$1" "$2" "
-    case Enum.find(Wardrik.Fleet.list(), &(&1.key == \"$agent\")) do
+    case Enum.find(Wardrik.Fleet.list(), &(to_string(&1.id) == \"$agent\")) do
       nil -> :ok
       member -> IO.puts(member.node)
     end
@@ -150,7 +150,7 @@ EOF
   pids=("$(wardrik "$home" --node a pid)" "$(wardrik "$home" --node b pid)")
   wardrik "$home" status | grep -q "cluster of 2: a, b up" || die "a and b did not make a cluster"
 
-  rpc "$home" a "{:ok, _pid} = Wardrik.Fleet.spawn(\"$agent\")"
+  rpc "$home" a "{:ok, _pid} = Wardrik.Fleet.spawn(Wardrik.AgentID.parse!(\"$agent\"))"
   on=$(running_on "$home" a)
   [ -n "$on" ] || die "$agent did not start"
 
@@ -165,7 +165,7 @@ EOF
   await_agent "$home" "$other" "wardrik_$other@localhost"
   recalled "$home" "$other"
 
-  rpc "$home" "$other" ":ok = Wardrik.Fleet.forget(\"$agent\")" >/dev/null
+  rpc "$home" "$other" ":ok = Wardrik.Fleet.forget(Wardrik.AgentID.parse!(\"$agent\"))" >/dev/null
 }
 
 s3() {
@@ -199,7 +199,7 @@ EOF
 
   say "Starting a node on the bucket $WARDRIK_TEST_S3_BUCKET, under failover-$stamp"
   start "$old" ""
-  rpc "$old" "" "{:ok, _pid} = Wardrik.Fleet.spawn(\"$agent\")"
+  rpc "$old" "" "{:ok, _pid} = Wardrik.Fleet.spawn(Wardrik.AgentID.parse!(\"$agent\"))"
   node=$(running_on "$old" "")
   [ -n "$node" ] || die "$agent did not start"
   wardrik "$old" token create failover --all --unlimited >/dev/null
@@ -217,7 +217,7 @@ EOF
   say "The token made before the kill is listed"
   recalled "$new" ""
 
-  rpc "$new" "" ":ok = Wardrik.Fleet.forget(\"$agent\")" >/dev/null
+  rpc "$new" "" ":ok = Wardrik.Fleet.forget(Wardrik.AgentID.parse!(\"$agent\"))" >/dev/null
 }
 
 "$mode"

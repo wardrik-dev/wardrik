@@ -21,7 +21,7 @@ defmodule WardrikNotify.Dispatcher do
   def start_link(_opts), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
   @doc false
-  @spec put_routes(%{String.t() => Route.t()}) :: :ok
+  @spec put_routes(%{Wardrik.AgentID.t() => Route.t()}) :: :ok
   def put_routes(routes), do: GenServer.call(__MODULE__, {:routes, routes})
 
   @impl true
@@ -66,10 +66,8 @@ defmodule WardrikNotify.Dispatcher do
   end
 
   defp deliver(name, notice) do
-    {org, _user, _name} = Wardrik.Fleet.parse(notice.agent)
-
     with {:ok, {module, opts}} <- WardrikNotify.Config.target(name),
-         true <- WardrikNotify.Config.tells?(name, org),
+         true <- WardrikNotify.Config.tells?(name, notice.agent.org),
          :ok <- module.deliver(notice, Keyword.put(opts, :target, name)) do
       :ok
     else

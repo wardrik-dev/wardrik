@@ -14,6 +14,8 @@ defmodule WardrikTUI.View do
   shape of a turn is legible in scrollback without anything being repainted.
   """
 
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias WardrikTUI.Activity
   alias WardrikTUI.Render
   alias WardrikTUI.Text
@@ -300,15 +302,16 @@ defmodule WardrikTUI.View do
     do: [Text.tag("  ✗ #{name}", :red), Text.tag([" · ", payload(output)], @faint)]
 
   @doc "That an agent was started in the fleet, and this client attached to it."
-  @spec spawned(String.t()) :: Text.t()
-  def spawned(key), do: note(["spawned and connected to ", Text.tag(key, [:bright, :cyan])])
+  @spec spawned(AgentID.t()) :: Text.t()
+  def spawned(id),
+    do: note(["spawned and connected to ", Text.tag(to_string(id), [:bright, :cyan])])
 
   @doc "That an agent was started in the fleet and left to work, this client staying where it is."
-  @spec spawned_background(String.t(), String.t()) :: Text.t()
-  def spawned_background(key, name) do
+  @spec spawned_background(AgentID.t(), String.t()) :: Text.t()
+  def spawned_background(id, name) do
     note([
       "spawned ",
-      Text.tag(key, [:bright, :cyan]),
+      Text.tag(to_string(id), [:bright, :cyan]),
       " in the background · ",
       Text.tag("/connect #{name}", :bright),
       " attaches"
@@ -319,13 +322,14 @@ defmodule WardrikTUI.View do
   That `/spawn` named an agent already running, so nothing was started: this
   client connected to it, or, in the background, left it alone.
   """
-  @spec already_running(String.t(), String.t(), :attach | :background) :: Text.t()
-  def already_running(key, _name, :attach),
-    do: note([Text.tag(key, [:bright, :cyan]), " was already running · connected to it"])
+  @spec already_running(AgentID.t(), String.t(), :attach | :background) :: Text.t()
+  def already_running(id, _name, :attach),
+    do:
+      note([Text.tag(to_string(id), [:bright, :cyan]), " was already running · connected to it"])
 
-  def already_running(key, name, :background) do
+  def already_running(id, name, :background) do
     note([
-      Text.tag(key, :bright),
+      Text.tag(to_string(id), :bright),
       " is already running · nothing was started · ",
       Text.tag("/connect #{name}", :bright),
       " attaches"
@@ -333,16 +337,16 @@ defmodule WardrikTUI.View do
   end
 
   @doc "That a prompt was sent to an agent this client is not attached to."
-  @spec sent_to(String.t(), String.t()) :: Text.t()
-  def sent_to(key, text),
-    do: note(["sent to ", Text.tag(key, :bright), ": ", Text.tag(text, :bright)])
+  @spec sent_to(AgentID.t(), String.t()) :: Text.t()
+  def sent_to(id, text),
+    do: note(["sent to ", Text.tag(to_string(id), :bright), ": ", Text.tag(text, :bright)])
 
   @doc "That an agent was restarted on another node."
-  @spec moved(String.t(), node()) :: Text.t()
-  def moved(key, node) do
+  @spec moved(AgentID.t(), node()) :: Text.t()
+  def moved(id, node) do
     note([
       "moved ",
-      Text.tag(key, :bright),
+      Text.tag(to_string(id), :bright),
       " to ",
       Text.tag(Atom.to_string(node), :bright),
       " · restarted there with its conversation"
@@ -353,8 +357,8 @@ defmodule WardrikTUI.View do
   What `/move` would do to an agent whose turn is running or waiting, so the
   interruption is chosen rather than stumbled into.
   """
-  @spec move_preview(String.t(), node(), :running | :parked) :: Text.t()
-  def move_preview(key, node, status) do
+  @spec move_preview(AgentID.t(), node(), :running | :parked) :: Text.t()
+  def move_preview(id, node, status) do
     doing =
       case status do
         :running ->
@@ -367,7 +371,7 @@ defmodule WardrikTUI.View do
     [
       "\n",
       move_bar([
-        Text.tag("/move #{key}", [:bright, :yellow]),
+        Text.tag("/move #{id}", [:bright, :yellow]),
         Text.tag(" restarts it on ", @faint),
         Text.tag(Atom.to_string(node), :bright)
       ]),
@@ -421,10 +425,10 @@ defmodule WardrikTUI.View do
   end
 
   @doc "That some agents were not removed, and what to do about it."
-  @spec not_removed([String.t()]) :: Text.t()
-  def not_removed(keys) do
+  @spec not_removed([AgentID.t()]) :: Text.t()
+  def not_removed(ids) do
     [
-      Text.tag("\n✗ not removed: #{Enum.join(keys, ", ")} · ", :red),
+      Text.tag("\n✗ not removed: #{Enum.join(ids, ", ")} · ", :red),
       Text.tag(
         "each may be restarting on another node · /fleet shows where, then /rm again\n",
         @faint
@@ -433,16 +437,16 @@ defmodule WardrikTUI.View do
   end
 
   @doc "That this client is now watching a different agent."
-  @spec connected(String.t()) :: Text.t()
-  def connected(key), do: note(["connected to ", Text.tag(key, [:bright, :cyan])])
+  @spec connected(AgentID.t()) :: Text.t()
+  def connected(id), do: note(["connected to ", Text.tag(to_string(id), [:bright, :cyan])])
 
   @doc "That the attached agent came back under a new process, and this client followed it."
-  @spec followed(String.t(), node()) :: Text.t()
-  def followed(key, node),
+  @spec followed(AgentID.t(), node()) :: Text.t()
+  def followed(id, node),
     do:
       note([
         "reconnected to ",
-        Text.tag(key, :bright),
+        Text.tag(to_string(id), :bright),
         " on ",
         Text.tag(Atom.to_string(node), :bright)
       ])
@@ -510,22 +514,23 @@ defmodule WardrikTUI.View do
     do: Text.tag("✗ the clipboard tool exited with status #{status} · nothing was copied", :red)
 
   @doc "That an agent was asked to stop what it is doing."
-  @spec stopped(String.t()) :: Text.t()
-  def stopped(key), do: note(["asked ", Text.tag(key, :bright), " to stop"])
+  @spec stopped(AgentID.t()) :: Text.t()
+  def stopped(id), do: note(["asked ", Text.tag(to_string(id), :bright), " to stop"])
 
   @doc "That every agent under a prefix was asked to stop."
-  @spec stopped_under(String.t(), non_neg_integer()) :: Text.t()
-  def stopped_under(prefix, 0), do: note(["nothing running under ", Text.tag(prefix, :bright)])
+  @spec stopped_under(Prefix.t(), non_neg_integer()) :: Text.t()
+  def stopped_under(prefix, 0),
+    do: note(["nothing running under ", Text.tag(to_string(prefix), :bright)])
 
   def stopped_under(prefix, n),
-    do: note(["asked #{n} under ", Text.tag(prefix, :bright), " to stop"])
+    do: note(["asked #{n} under ", Text.tag(to_string(prefix), :bright), " to stop"])
 
   @doc "That an agent was shut down with its conversation kept."
-  @spec shut_down(String.t(), String.t()) :: Text.t()
-  def shut_down(key, name) do
+  @spec shut_down(AgentID.t(), String.t()) :: Text.t()
+  def shut_down(id, name) do
     note([
       "shut down ",
-      Text.tag(key, :bright),
+      Text.tag(to_string(id), :bright),
       " · its conversation is kept · ",
       Text.tag("/spawn #{name}", :bright),
       " brings it back"
@@ -535,18 +540,18 @@ defmodule WardrikTUI.View do
   @doc """
   What `/rm` is about to remove, so nothing permanent happens on one line.
   """
-  @spec removal_preview(String.t(), [String.t()], String.t() | nil) :: Text.t()
-  def removal_preview(target, keys, skipped) do
+  @spec removal_preview(String.t(), [AgentID.t()], AgentID.t() | nil) :: Text.t()
+  def removal_preview(target, ids, skipped) do
     [
       "\n",
       rm_bar([
         Text.tag("/rm #{target}", [:bright, :red]),
         Text.tag(
-          " removes #{count(keys, "agent")}, and what they said, for good:",
+          " removes #{count(ids, "agent")}, and what they said, for good:",
           @faint
         )
       ]),
-      Enum.map(keys, &rm_bar([Text.tag(["   ", &1], :bright)])),
+      Enum.map(ids, &rm_bar([Text.tag(["   ", to_string(&1)], :bright)])),
       skipped_bar(skipped),
       rm_bar([
         Text.tag("/confirm", [:bright, :red]),
@@ -558,8 +563,8 @@ defmodule WardrikTUI.View do
 
   defp skipped_bar(nil), do: []
 
-  defp skipped_bar(key),
-    do: rm_bar([Text.tag(["   skipping ", key, " · you are attached to it"], :yellow)])
+  defp skipped_bar(id),
+    do: rm_bar([Text.tag(["   skipping ", to_string(id), " · you are attached to it"], :yellow)])
 
   defp rm_bar(content), do: [Text.tag("  ▌ ", :red), content, "\n"]
 
@@ -827,13 +832,13 @@ defmodule WardrikTUI.View do
   @spec inspector(
           Wardrik.Delegation.delegation(),
           [Wardrik.Delegation.span()],
-          String.t(),
+          AgentID.t(),
           integer()
         ) ::
           [Text.t()]
-  def inspector(record, activity, key, now) do
+  def inspector(record, activity, id, now) do
     [
-      [Text.tag(record.name || "delegate", [:bright, :cyan]), Text.tag(" · #{key}", @faint)],
+      [Text.tag(record.name || "delegate", [:bright, :cyan]), Text.tag(" · #{id}", @faint)],
       state(record, now),
       "",
       Text.tag("task", :bright),
@@ -898,8 +903,8 @@ defmodule WardrikTUI.View do
     do: [Text.tag("\n✗ the editor failed · #{inspect(reason)} · the prompt is as it was\n", :red)]
 
   @doc "That nothing was sent, because the agent is not running."
-  @spec unavailable(String.t()) :: Text.t()
-  def unavailable(key), do: [Text.tag("\n✗ #{key} is not running · nothing was sent\n", :red)]
+  @spec unavailable(AgentID.t()) :: Text.t()
+  def unavailable(id), do: [Text.tag("\n✗ #{id} is not running · nothing was sent\n", :red)]
 
   @doc "The glyph in front of what a person typed: `›` sent, `»` queued behind a turn."
   @spec prompt(String.t()) :: Text.t()
@@ -927,9 +932,9 @@ defmodule WardrikTUI.View do
   @spec question(String.t()) :: Text.t()
   def question(text), do: [prompt("›"), Text.tag(text, :bright)]
 
-  @doc "That a key names nothing the fleet is holding."
-  @spec no_such_agent(String.t()) :: Text.t()
-  def no_such_agent(key), do: [Text.tag("\n✗ no agent at #{key}\n", :red)]
+  @doc "That an ID names nothing the fleet is holding."
+  @spec no_such_agent(AgentID.t()) :: Text.t()
+  def no_such_agent(id), do: [Text.tag("\n✗ no agent at #{id}\n", :red)]
 
   # Each key, where it works, and what it does. `"prompt"`, `"log"` and
   # `"fleet"` are the panes; `nil` is anywhere.
@@ -1031,13 +1036,13 @@ defmodule WardrikTUI.View do
   end
 
   @doc "That the agents named were removed with their stores."
-  @spec forgotten([String.t()]) :: Text.t()
-  def forgotten([key]), do: note(["removed ", Text.tag(key, :bright), " and its store"])
+  @spec forgotten([AgentID.t()]) :: Text.t()
+  def forgotten([id]), do: note(["removed ", Text.tag(to_string(id), :bright), " and its store"])
 
-  def forgotten(keys) do
+  def forgotten(ids) do
     note([
-      "removed #{length(keys)} agents and their stores: ",
-      Text.tag(Enum.join(keys, ", "), :bright)
+      "removed #{length(ids)} agents and their stores: ",
+      Text.tag(Enum.join(ids, ", "), :bright)
     ])
   end
 
@@ -1046,9 +1051,14 @@ defmodule WardrikTUI.View do
   def nothing_under(prefix), do: note(["nothing running under ", Text.tag(prefix, :bright)])
 
   @doc "That a removal would have taken the agent this client is attached to."
-  @spec attached(String.t()) :: Text.t()
-  def attached(key),
-    do: note(["you are attached to ", Text.tag(key, :bright), " · /connect elsewhere first"])
+  @spec attached(AgentID.t()) :: Text.t()
+  def attached(id),
+    do:
+      note([
+        "you are attached to ",
+        Text.tag(to_string(id), :bright),
+        " · /connect elsewhere first"
+      ])
 
   defp note(content), do: ["\n", Text.tag("· ", @faint), content, "\n"]
 

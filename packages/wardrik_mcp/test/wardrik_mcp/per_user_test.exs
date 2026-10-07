@@ -1,6 +1,7 @@
 defmodule WardrikMCP.PerUserTest do
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -14,36 +15,36 @@ defmodule WardrikMCP.PerUserTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: nil}}),
+    def resolve("stub", %Wardrik.Call{scope: scope}), do: stub(Scope.agent_id(scope))
+
+    defp stub(%AgentID{org: org, user: nil}),
       do: {:ok, Credential.secret("token-for-#{org}", owner: org)}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{org: "globex", user: "connected"}}),
+    defp stub(%AgentID{org: "globex", user: "connected"}),
       do: {:ok, Credential.secret("token-for-globex-connected", owner: {"globex", "connected"})}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
+    defp stub(%AgentID{org: org, user: "connected"}),
       do: {:ok, Credential.secret("token-for-connected", owner: {org, "connected"})}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "unconnected"}}),
+    defp stub(%AgentID{org: org, user: "unconnected"}),
       do:
         {:error,
          {:authorization_required, %{url: "https://example.com/connect"}, {org, "unconnected"}}}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{org: org, user: "elsewhere"}}),
+    defp stub(%AgentID{org: org, user: "elsewhere"}),
       do:
         {:error,
          {:authorization_required, %{url: "https://example.com/device", code: "WDJB-MJHT"},
           {org, "elsewhere"}}}
 
-    def resolve("stub", %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
+    defp stub(%AgentID{}), do: {:error, :denied}
   end
 
   @moduletag server_opts: [credential: "stub", credential_env: "DEMO_TOKEN"]
 
   defp scope(ref, org, user) do
-    key = if user, do: "#{org}/@#{user}/assistant", else: "#{org}/assistant"
-
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root(key, org: org, user: user, credentials: Vault)
+    |> Scope.root(AgentID.new!("assistant", org: org, user: user), credentials: Vault)
   end
 
   defp run(ref, user, tool, arguments), do: run(ref, "acme", user, tool, arguments)

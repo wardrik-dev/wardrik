@@ -18,11 +18,11 @@ defmodule WardrikTUI.App.ContextTest do
     %{parked | calls: Enum.reject(parked.calls, &Map.has_key?(decisions, &1.id))}
   end
 
-  defp session(key) do
+  defp session(id) do
     s =
       Breeze.Test.start!(App,
         size: {100, 30},
-        start_opts: [agent: key, agent_id: key],
+        start_opts: [agent: id, agent_id: id],
         global_keybindings: App.keybindings()
       )
 
@@ -39,8 +39,8 @@ defmodule WardrikTUI.App.ContextTest do
     screen(s)
   end
 
-  defp connect_sidebar(s, key) do
-    Breeze.Test.event(s, "highlight", %{value: key})
+  defp connect_sidebar(s, id) do
+    Breeze.Test.event(s, "highlight", %{value: id})
     Breeze.Test.focus(s, "fleet")
     Breeze.Test.input(s, "Enter")
     screen(s)
@@ -128,11 +128,11 @@ defmodule WardrikTUI.App.ContextTest do
 
   test "prefix deletion still previews its exact targets with --yes" do
     {a, _} = Wardrik.Test.Fleet.start_agent()
-    prefix = "review#{System.unique_integer([:positive])}/"
-    {b, _} = Wardrik.Test.Fleet.start_agent([], prefix <> "other")
+    org = "review#{System.unique_integer([:positive])}"
+    {b, _} = Wardrik.Test.Fleet.start_agent([], Wardrik.AgentID.new!("other", org: org))
     s = session(a)
-    submit(s, "/rm #{prefix} --yes")
-    assert screen(s) =~ b
+    submit(s, "/rm #{org}/ --yes")
+    assert screen(s) =~ to_string(b)
     assert screen(s) =~ "/confirm goes ahead"
     assert Fleet.whereis(b)
     submit(s, "/confirm")
@@ -140,25 +140,25 @@ defmodule WardrikTUI.App.ContextTest do
   end
 
   test "snapshot identity survives shutdown but changes after deletion" do
-    {key, pid} = Wardrik.Test.Fleet.start_agent()
+    {id, pid} = Wardrik.Test.Fleet.start_agent()
     original = Agent.snapshot(pid)
-    :ok = Fleet.stop(key)
-    {:ok, resumed} = Fleet.spawn(key)
+    :ok = Fleet.stop(id)
+    {:ok, resumed} = Fleet.spawn(id)
     assert Agent.snapshot(resumed).generation == original.generation
-    :ok = Fleet.forget(key)
-    {:ok, replaced} = Fleet.spawn(key)
+    :ok = Fleet.forget(id)
+    {:ok, replaced} = Fleet.spawn(id)
     refute Agent.snapshot(replaced).generation == original.generation
   end
 
   test "the backend rejects stale and concurrent decisions without claiming acceptance" do
-    {key, pid} =
+    {id, pid} =
       Wardrik.Test.Fleet.start_agent(
         runner: {__MODULE__, :park_two, []},
         resumer: {__MODULE__, :resume_blocked, [self()]}
       )
 
     assert Agent.decide(pid, %{"first" => :approve}) == {:error, :not_parked}
-    Event.Bus.subscribe(key)
+    Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
     assert_receive %Event{payload: {:turn_parked, _}}, 2000
     assert Agent.decide(pid, %{"absent" => :approve}) == {:error, :stale_decision}
@@ -170,20 +170,20 @@ defmodule WardrikTUI.App.ContextTest do
   end
 
   test "reconnecting refreshes a missed parked state" do
-    {key, pid} = Wardrik.Test.Fleet.start_agent(runner: {__MODULE__, :park_two, []})
-    s = session(key)
-    :ok = Fleet.stop(key)
+    {id, pid} = Wardrik.Test.Fleet.start_agent(runner: {__MODULE__, :park_two, []})
+    s = session(id)
+    :ok = Fleet.stop(id)
     Breeze.Test.info(s, :refresh_fleet)
-    {:ok, next} = Fleet.spawn(key)
+    {:ok, next} = Fleet.spawn(id)
     assert next != pid
     # Simulate a missed event during disconnection by dropping the TUI subscription.
     # Deliver a refresh after the replacement has parked without delivering its events.
     :sys.replace_state(s.pid, fn term ->
-      Event.Bus.unsubscribe(key)
+      Event.Bus.unsubscribe(id)
       term
     end)
 
-    Event.Bus.subscribe(key)
+    Event.Bus.subscribe(id)
     Agent.ask(next, "please work")
     assert_receive %Event{payload: {:turn_parked, _}}, 2000
     Breeze.Test.info(s, :refresh_fleet)
@@ -191,16 +191,16 @@ defmodule WardrikTUI.App.ContextTest do
   end
 
   test "second approval is not silently lost while first runs" do
-    {key, pid} =
+    {id, pid} =
       Wardrik.Test.Fleet.start_agent(
         runner: {__MODULE__, :park_two, []},
         resumer: {__MODULE__, :resume_blocked, [self()]}
       )
 
-    Event.Bus.subscribe(key)
+    Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
     assert_receive %Event{payload: {:turn_parked, _}}, 2000
-    s = session(key)
+    s = session(id)
     submit(s, "/approve 1")
     assert_receive {:resumer, running, %{"first" => :approve}}
     submit(s, "/approve 1")

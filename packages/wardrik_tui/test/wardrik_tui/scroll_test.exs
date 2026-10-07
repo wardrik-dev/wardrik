@@ -7,7 +7,7 @@ defmodule WardrikTUI.ScrollTest do
 
   # Forty lines of transcript in a pane that shows seven rows.
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     {:ok, agent} = Wardrik.Test.FakeAgent.start_link(self())
 
     session =

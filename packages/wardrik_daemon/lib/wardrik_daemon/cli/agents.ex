@@ -95,11 +95,11 @@ defmodule WardrikDaemon.CLI.Agents do
     rows =
       for member <- members do
         [
-          Owl.Data.tag(member.key, :bright),
+          Owl.Data.tag(to_string(member.id), :bright),
           status(member),
           Nodes.display(member.node),
-          next(member.key),
-          Enum.join(WardrikDaemon.spent(specs[member.key], member.key), ", ")
+          next(member.id),
+          Enum.join(WardrikDaemon.spent(specs[member.id], member.id), ", ")
         ]
       end
 
@@ -164,7 +164,7 @@ defmodule WardrikDaemon.CLI.Agents do
       [
         {"status", doing(member, snapshot)},
         {"model", model(snapshot)}
-      ] ++ given(file, member.key) ++ asked(member.key) ++ waiting(snapshot) ++ written(file)
+      ] ++ given(file, member.id) ++ asked(member.id) ++ waiting(snapshot) ++ written(file)
 
     column = rows |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
 
@@ -177,7 +177,7 @@ defmodule WardrikDaemon.CLI.Agents do
     |> described(file)
     |> Enum.intersperse("\n")
     |> Owl.Box.new(
-      title: Owl.Data.tag(member.key, :bright),
+      title: Owl.Data.tag(to_string(member.id), :bright),
       border_style: :solid_rounded,
       padding_x: 1,
       max_width: width,
@@ -278,15 +278,17 @@ defmodule WardrikDaemon.CLI.Agents do
   # -- schedules ----------------------------------------------------------------
 
   defp schedules(words, _opts) do
-    prefix = List.first(words, "")
+    prefix = List.first(words, Wardrik.AgentID.Prefix.all())
     now = DateTime.utc_now()
 
     rows =
       for schedule <- Wardrik.Schedule.list(prefix),
-          do: "  #{schedule.key}  #{schedule(schedule, now)}"
+          do: "  #{schedule.agent}/#{schedule.name}  #{schedule(schedule, now)}"
+
+    under = to_string(prefix)
 
     case rows do
-      [] -> {:ok, "Nothing is scheduled#{if prefix != "", do: " under #{prefix}"}."}
+      [] -> {:ok, "Nothing is scheduled#{if under != "", do: " under #{under}"}."}
       [_row] -> {:ok, Enum.join(["1 schedule:" | rows], "\n")}
       rows -> {:ok, Enum.join(["#{length(rows)} schedules:" | rows], "\n")}
     end

@@ -107,7 +107,11 @@ defmodule WardrikPolicyTest do
       hooks = WardrikPolicy.hooks(policy)
 
       scope = %{
-        Wardrik.Test.scope(tools: [Deploy], key: "acme/triage", hooks: hooks)
+        Wardrik.Test.scope(
+          tools: [Deploy],
+          id: Wardrik.AgentID.parse!("acme/triage"),
+          hooks: hooks
+        )
         | tainted: tainted
       }
 
@@ -154,7 +158,12 @@ defmodule WardrikPolicyTest do
   describe "as a Wardrik.Hook" do
     test "decides tool calls through the seam, and allows every model call" do
       policy = WardrikPolicy.decode!(%{"deny" => ["run_lua"], "ask" => ["deploy"]})
-      scope = Scope.root(Config.new(), "acme/triage", hooks: WardrikPolicy.hooks(policy))
+
+      scope =
+        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
+          hooks: WardrikPolicy.hooks(policy)
+        )
+
       check = &(&1 |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check())
       tool = &%{id: "c1", name: &1, arguments: %{}}
 

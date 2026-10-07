@@ -3,30 +3,20 @@ defmodule Wardrik.Agent.SpecTest do
 
   alias Wardrik.Agent.Spec
 
-  test "new/1 needs a name, and gives a config when none is given" do
-    spec = Spec.new(name: "triage")
+  import Wardrik.AgentID, only: [sigil_A: 2]
 
+  test "new/1 needs an ID, and gives a config when none is given" do
+    spec = Spec.new(id: ~A"acme/triage")
+
+    assert spec.id == ~A"acme/triage"
     assert spec.config == Wardrik.LLM.Config.new()
-    assert_raise ArgumentError, fn -> Spec.new(org: "acme") end
-    assert_raise KeyError, fn -> Spec.new(name: "triage", nmae: "triage") end
-  end
-
-  test "key/1 is the fleet key of its name, org and user" do
-    assert Spec.key(Spec.new(name: "triage", org: "acme", user: "jon")) == "acme/@jon/triage"
-    assert Spec.key(Spec.new(name: "triage")) == "default/triage"
-  end
-
-  test "new/1 refuses a name, org or user a key cannot hold" do
-    assert_raise ArgumentError, ~r/not a segment/, fn -> Spec.new(name: "a/b") end
-
-    assert_raise ArgumentError, ~r/not a segment/, fn ->
-      Spec.new(name: "x", org: "acme/eu")
-    end
+    assert_raise ArgumentError, fn -> Spec.new(description: "no ID") end
+    assert_raise KeyError, fn -> Spec.new(id: ~A"acme/triage", nmae: "triage") end
   end
 
   test "options/1 is the config and every seam the spec sets" do
     hooks = [%Wardrik.Hook{name: "some", module: SomeHook}]
-    spec = Spec.new(name: "triage", hooks: hooks, timeout: 60_000)
+    spec = Spec.new(id: ~A"acme/triage", hooks: hooks, timeout: 60_000)
 
     assert Spec.options(spec) == [config: spec.config, hooks: hooks, timeout: 60_000]
   end

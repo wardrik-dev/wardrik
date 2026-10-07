@@ -13,7 +13,7 @@ defmodule Wardrik.Hook do
         Wardrik.Hook.new("fridays", MyApp.NoFridayDeploys, timezone: "Europe/London")
       ]
 
-      Wardrik.Fleet.spawn("assistant", config: config, hooks: hooks)
+      Wardrik.Fleet.spawn(Wardrik.AgentID.new!("assistant", org: "acme"), config: config, hooks: hooks)
 
   The value travels with the agent: it is written to the store with the rest
   of the agent's seams and read back on whichever node holds it next, so it

@@ -1,6 +1,8 @@
 defmodule WardrikTUI.App.ConversationTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Event
   alias Wardrik.Event.Source
   alias WardrikTUI.App.Conversation
@@ -9,7 +11,7 @@ defmodule WardrikTUI.App.ConversationTest do
   @options [now: 123, verbose?: false, pinned?: true]
 
   test "a terminal-free projection renders only the root answer and flushes its last line" do
-    root = Source.root(:assistant, name: "turn")
+    root = Source.root(~A"test/assistant", name: "turn")
     child = Source.child(root, name: "research")
 
     state =

@@ -5,6 +5,7 @@ defmodule WardrikTUI.App.Connection do
   import Breeze.View, only: [assign: 2, reset: 2, put_implicit: 4]
 
   alias Wardrik.Agent
+  alias Wardrik.AgentID
   alias Wardrik.Delegation
   alias Wardrik.Event.Bus
   alias Wardrik.Fleet
@@ -18,24 +19,24 @@ defmodule WardrikTUI.App.Connection do
 
   # -- delegations -----------------------------------------------------------
 
-  # The agent a panel row belongs to: its own key, or the key before the
+  # The agent a panel row belongs to: its own ID, or the ID beside the
   # delegation's span.
-  def agent_of(nil), do: nil
+  def agent_of({id, _span_id}), do: id
 
-  def agent_of(value), do: value |> String.split("\t", parts: 2) |> hd()
+  def agent_of(id), do: id
 
   # Shows an agent's delegations under its row, as this client has followed
   # them: the attached agent's are folded with its conversation, any other's
   # from its lifecycle events; see `follow_all/2`.
   def expand(term, nil), do: term
 
-  def expand(%{assigns: %{expanded: expanded, agent_id: agent_id, fleet: fleet}} = term, key) do
+  def expand(%{assigns: %{expanded: expanded, agent_id: agent_id, fleet: fleet}} = term, id) do
     cond do
-      MapSet.member?(expanded, key) ->
+      MapSet.member?(expanded, id) ->
         term
 
-      key == agent_id or Enum.any?(fleet, &(&1.key == key)) ->
-        term |> assign(expanded: MapSet.put(expanded, key)) |> Frames.tick()
+      id == agent_id or Enum.any?(fleet, &(&1.id == id)) ->
+        term |> assign(expanded: MapSet.put(expanded, id)) |> Frames.tick()
 
       true ->
         term
@@ -45,28 +46,28 @@ defmodule WardrikTUI.App.Connection do
   # Hides an agent's delegations until `l`. The cursor lands on the agent.
   def collapse(term, nil), do: term
 
-  def collapse(%{assigns: %{expanded: expanded}} = term, key) do
-    term = assign(term, collapsed: MapSet.put(term.assigns.collapsed, key))
+  def collapse(%{assigns: %{expanded: expanded}} = term, id) do
+    term = assign(term, collapsed: MapSet.put(term.assigns.collapsed, id))
 
-    if MapSet.member?(expanded, key),
-      do: assign(term, expanded: MapSet.delete(expanded, key), highlighted: key),
+    if MapSet.member?(expanded, id),
+      do: assign(term, expanded: MapSet.delete(expanded, id), highlighted: id),
       else: term
   end
 
   # Every agent in the fleet is expanded unless it was collapsed.
   defp expand_all(term, fleet) do
-    keys = MapSet.new(fleet, & &1.key)
+    ids = MapSet.new(fleet, & &1.id)
 
     term =
       assign(term,
-        expanded: MapSet.intersection(term.assigns.expanded, keys),
-        collapsed: MapSet.intersection(term.assigns.collapsed, keys)
+        expanded: MapSet.intersection(term.assigns.expanded, ids),
+        collapsed: MapSet.intersection(term.assigns.collapsed, ids)
       )
 
     Enum.reduce(fleet, term, fn member, term ->
-      if MapSet.member?(term.assigns.collapsed, member.key),
+      if MapSet.member?(term.assigns.collapsed, member.id),
         do: term,
-        else: expand(term, member.key)
+        else: expand(term, member.id)
     end)
   end
 
@@ -78,33 +79,35 @@ defmodule WardrikTUI.App.Connection do
   # on; one gone from the fleet is let go of.
   defp follow_all(term, fleet) do
     %{followed: followed, agent_id: attached} = term.assigns
-    keys = for member <- fleet, member.key != attached, do: member.key
+    ids = for member <- fleet, member.id != attached, do: member.id
     following = Map.keys(followed)
 
-    Enum.each(keys -- following, &Bus.subscribe(&1, level: :lifecycle))
-    Enum.each((following -- keys) -- [attached], &Bus.unsubscribe/1)
+    Enum.each(ids -- following, &Bus.subscribe(&1, level: :lifecycle))
+    Enum.each((following -- ids) -- [attached], &Bus.unsubscribe/1)
 
     assign(term,
       followed:
-        Map.new(keys, &{&1, Map.get_lazy(followed, &1, fn -> kept_delegations(term, &1) end)})
+        Map.new(ids, &{&1, Map.get_lazy(followed, &1, fn -> kept_delegations(term, &1) end)})
     )
   end
 
   # Follows an agent the moment the fleet registers it, ahead of the refresh
   # behind the registration, so none of its first turn's events are missed.
+  # The fleet names each agent by its ID's text.
   def follow_registered(term, events) do
     for %Group.Event{type: :registered, key: key} <- events,
-        key != term.assigns.agent_id,
-        not Map.has_key?(term.assigns.followed, key),
+        id = AgentID.parse!(key),
+        id != term.assigns.agent_id,
+        not Map.has_key?(term.assigns.followed, id),
         reduce: term do
       term ->
-        :ok = Bus.subscribe(key, level: :lifecycle)
-        assign(term, followed: Map.put(term.assigns.followed, key, kept_delegations(term, key)))
+        :ok = Bus.subscribe(id, level: :lifecycle)
+        assign(term, followed: Map.put(term.assigns.followed, id, kept_delegations(term, id)))
     end
   end
 
-  defp kept_delegations(%{assigns: %{views: views}}, key),
-    do: views |> Map.get(key, %{}) |> Map.get(:delegations, Delegation.new())
+  defp kept_delegations(%{assigns: %{views: views}}, id),
+    do: views |> Map.get(id, %{}) |> Map.get(:delegations, Delegation.new())
 
   # Subscribes to `agent`'s events and shows its conversation: the transcript
   # kept from the last time this client watched it, brought up to date, or a
@@ -238,27 +241,27 @@ defmodule WardrikTUI.App.Connection do
     :exit, _reason -> seen
   end
 
-  def connect_key(%{assigns: %{agent_id: key}} = term, key),
-    do: Display.append(term, View.connected(key))
+  def connect_id(%{assigns: %{agent_id: id}} = term, id),
+    do: Display.append(term, View.connected(id))
 
-  def connect_key(term, key) do
-    case Fleet.whereis(key) do
+  def connect_id(term, id) do
+    case Fleet.whereis(id) do
       nil ->
-        Display.append(term, View.no_such_agent(key))
+        Display.append(term, View.no_such_agent(id))
 
       pid ->
-        term |> switch(pid, key) |> Display.append(View.connected(key))
+        term |> switch(pid, id) |> Display.append(View.connected(id))
     end
   end
 
   # Leaves the agent this client is attached to for `pid`, registered under
-  # `key`, keeping the view of the one it leaves. The agent is addressed by pid
-  # from here on: the registry is eventually consistent, so a key may not yet
+  # `id`, keeping the view of the one it leaves. The agent is addressed by pid
+  # from here on: the registry is eventually consistent, so an ID may not yet
   # resolve on this node for an agent that just started on another.
-  def switch(term, pid, key) do
+  def switch(term, pid, id) do
     Bus.unsubscribe(term.assigns.agent_id)
 
-    term |> keep() |> attach(pid, key) |> refresh_fleet()
+    term |> keep() |> attach(pid, id) |> refresh_fleet()
   end
 
   def refresh_fleet(term) do
@@ -275,16 +278,16 @@ defmodule WardrikTUI.App.Connection do
   # idle now finished a turn this client did not watch; how it ended is kept
   # until the client connects to it. An agent gone from the fleet is dropped.
   defp unseen(%{assigns: %{fleet: previous, unseen: unseen, agent_id: attached}}, fleet) do
-    before = Map.new(previous, &{&1.key, &1.status})
+    before = Map.new(previous, &{&1.id, &1.status})
 
     fleet
     |> Enum.reduce(unseen, fn member, unseen ->
-      if member.key != attached and member.status == :idle and
-           Map.get(before, member.key) in [:running, :parked],
-         do: Map.put(unseen, member.key, member.outcome || :ok),
+      if member.id != attached and member.status == :idle and
+           Map.get(before, member.id) in [:running, :parked],
+         do: Map.put(unseen, member.id, member.outcome || :ok),
          else: unseen
     end)
-    |> Map.take(Enum.map(fleet, & &1.key))
+    |> Map.take(Enum.map(fleet, & &1.id))
   end
 
   # -- attention and filtering ------------------------------------------------
@@ -292,19 +295,19 @@ defmodule WardrikTUI.App.Connection do
   def attention(%{fleet: fleet, unseen: unseen}),
     do: Enum.filter(fleet, &WardrikTUI.Fleet.attention?(&1, unseen))
 
-  # The agents the panel shows: those passing the filter, in key order.
+  # The agents the panel shows: those passing the filter, in the order of their IDs.
   def shown(%{fleet: fleet, unseen: unseen, filter: filter}) do
     Enum.filter(fleet, &Filter.match?(filter, &1, WardrikTUI.Fleet.attention?(&1, unseen)))
   end
 
   # The attached agent as the fleet has it now. A new process under the same
-  # key, after a move or a restart, is adopted; a key the fleet no longer holds
+  # ID, after a move or a restart, is adopted; an ID the fleet no longer holds
   # means the agent is not running, unless it is a local process that was never
   # in the fleet.
   defp follow(term, fleet) do
-    %{agent: agent, agent_id: key} = term.assigns
+    %{agent: agent, agent_id: id} = term.assigns
 
-    case Enum.find(fleet, &(&1.key == key)) do
+    case Enum.find(fleet, &(&1.id == id)) do
       nil ->
         assign(term, available?: alive?(agent))
 

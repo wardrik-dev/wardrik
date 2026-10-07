@@ -39,7 +39,7 @@ defmodule WardrikHTTP.EventStream do
   and `:not_found` for `:head` when no agent runs under `agent_id`, in either
   case having sent nothing.
   """
-  @spec serve(Plug.Conn.t(), String.t(), cursor()) ::
+  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(), cursor()) ::
           Plug.Conn.t() | {:gap, pos_integer()} | :not_found
   def serve(conn, agent_id, cursor) do
     :ok = Log.subscribe(agent_id)

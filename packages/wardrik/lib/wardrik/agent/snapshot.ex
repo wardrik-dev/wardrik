@@ -4,7 +4,7 @@ defmodule Wardrik.Agent.Snapshot do
   far, what the agent is doing, what it is waiting on, and the identity that
   tells a saved view from a stale one.
 
-      %Wardrik.Agent.Snapshot{} = Wardrik.Agent.snapshot("acme/@jon/assistant")
+      %Wardrik.Agent.Snapshot{} = Wardrik.Agent.snapshot(~A"acme/@jon/assistant")
 
   `generation` changes when an agent is forgotten and started again under the
   same key, and survives a restart. `trace_id` is the current turn's, or `nil`

@@ -2,11 +2,11 @@ defmodule Wardrik.Schedule do
   @moduledoc """
   A prompt an agent is asked on a clock.
 
-      Wardrik.Schedule.put("acme/ops/triage", "sweep",
+      Wardrik.Schedule.put(~A"acme/triage", "sweep",
         every: "*/30 * * * *",
         prompt: "Check the incident queue.")
 
-  Each schedule is a `DurableServer` keyed by the agent's key and the
+  Each schedule is a `DurableServer` keyed by the agent's ID and the
   schedule's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
   calls `Wardrik.Agent.ask/2`, and announces what happened on the agent's topic
@@ -39,11 +39,13 @@ defmodule Wardrik.Schedule do
 
     * `:asked` - the agent was asked
     * `:busy` - the agent was running or waiting, and `overlap: :skip` left it
-    * `:no_agent` - no agent runs under the key
+    * `:no_agent` - no agent runs under the ID
     * `:missed` - an overdue run that `missed: :skip` let go
     * `:failed` - asking the agent raised or exited
   """
 
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Schedule.Cron
   alias Wardrik.Schedule.Server
   alias Wardrik.Schedule.State
@@ -236,12 +238,12 @@ defmodule Wardrik.Schedule do
   end
 
   @doc """
-  Starts `schedule` for the agent under `agent`, or brings a running one to
+  Starts `schedule` for the agent `agent`, or brings a running one to
   it. A schedule whose `every` changes goes on from now; one that keeps it
   keeps its next run.
   """
-  @spec put(String.t(), t()) :: {:ok, pid()} | {:error, term()}
-  def put(agent, %__MODULE__{} = schedule) when is_binary(agent) do
+  @spec put(AgentID.t(), t()) :: {:ok, pid()} | {:error, term()}
+  def put(%AgentID{} = agent, %__MODULE__{} = schedule) do
     child =
       {Server, key: key(agent, schedule.name), initial_state: State.new(agent, schedule, now())}
 
@@ -252,12 +254,12 @@ defmodule Wardrik.Schedule do
   end
 
   @doc "`put/2` with `new/2`'s arguments."
-  @spec put(String.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  @spec put(AgentID.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def put(agent, name, opts), do: put(agent, new(name, opts))
 
   @doc "Stops the schedule named `name` for `agent`, and deletes it."
-  @spec delete(String.t(), String.t()) :: :ok | {:error, term()}
-  def delete(agent, name) when is_binary(agent) and is_binary(name) do
+  @spec delete(AgentID.t(), String.t()) :: :ok | {:error, term()}
+  def delete(%AgentID{} = agent, name) when is_binary(name) do
     DurableServer.Supervisor.terminate_and_delete_child(@name, key(agent, name))
   end
 
@@ -265,8 +267,8 @@ defmodule Wardrik.Schedule do
   Brings `agent`'s schedules to `schedules`: each is put, and every other
   schedule the agent has is deleted.
   """
-  @spec sync(String.t(), [t()]) :: :ok | {:error, term()}
-  def sync(agent, schedules) when is_binary(agent) and is_list(schedules) do
+  @spec sync(AgentID.t(), [t()]) :: :ok | {:error, term()}
+  def sync(%AgentID{} = agent, schedules) when is_list(schedules) do
     names = MapSet.new(schedules, & &1.name)
 
     with :ok <- put_all(agent, schedules) do
@@ -286,21 +288,23 @@ defmodule Wardrik.Schedule do
     end)
   end
 
-  @doc "The schedules of the agent under `agent`, by name."
-  @spec for_agent(String.t()) :: [Status.t()]
-  def for_agent(agent) when is_binary(agent), do: list(agent <> "/")
+  @doc "The schedules of `agent`, by name."
+  @spec for_agent(AgentID.t()) :: [Status.t()]
+  def for_agent(%AgentID{} = agent), do: Enum.filter(list(Prefix.of(agent)), &(&1.agent == agent))
 
-  @doc "Every schedule whose key starts with `prefix`, across the cluster, sorted by key."
-  @spec list(String.t()) :: [Status.t()]
-  def list(prefix \\ "") when is_binary(prefix) do
+  @doc "Every schedule of the agents under `prefix`, across the cluster, sorted by key."
+  @spec list(Prefix.t()) :: [Status.t()]
+  def list(prefix \\ Prefix.all()) do
     for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
-        String.starts_with?(key, prefix) do
+        Prefix.covers?(prefix, meta.user_meta.agent) do
       Status.new(key, pid, meta.user_meta)
     end
     |> Enum.sort_by(& &1.key)
   end
 
-  defp key(agent, name), do: agent <> "/" <> name
+  # `//` holds no ID, so an agent's schedules never mix with those of an agent
+  # whose external ID is one of its schedules' names.
+  defp key(agent, name), do: "#{agent}//#{name}"
 
   defp now, do: DateTime.utc_now()
 end

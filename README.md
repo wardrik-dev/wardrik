@@ -66,11 +66,11 @@ config =
     system: "You answer briefly."
   )
 
-key = Wardrik.Fleet.key("assistant", org: "acme", user: "42")
+id = Wardrik.AgentID.new!("assistant", org: "acme", user: "42")
 
-{:ok, _pid} = Wardrik.Fleet.spawn(key, config: config)
-:ok = Wardrik.Event.Bus.subscribe(key)
-:ok = Wardrik.Agent.ask(key, "What changed in Elixir this year?")
+{:ok, _pid} = Wardrik.Fleet.spawn(id, config: config)
+:ok = Wardrik.Event.Bus.subscribe(id)
+:ok = Wardrik.Agent.ask(id, "What changed in Elixir this year?")
 ```
 
 See [packages/wardrik](packages/wardrik) for the seams a host reaches

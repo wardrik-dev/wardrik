@@ -69,8 +69,8 @@ defmodule WardrikTUI.App.Interaction do
     )
   end
 
-  def inspect_delegation(term, key, span_id),
-    do: open_inspector(term, {:delegation, key, span_id})
+  def inspect_delegation(term, id, span_id),
+    do: open_inspector(term, {:delegation, id, span_id})
 
   def inspect_tool(term, index, origin), do: open_inspector(term, {:tool, index, origin})
 
@@ -154,25 +154,26 @@ defmodule WardrikTUI.App.Interaction do
   # terminal that is the overlay.
   def show_fleet(term), do: term |> assign(sidebar?: true) |> focus_pane("fleet")
 
-  # The agent needing attention after `key`, round the list, or `nil`.
-  defp next_needing(assigns, key) do
+  # The agent needing attention after `id` in the fleet's order, which is
+  # their IDs' text, round the list, or `nil`. With no `id`, the first.
+  defp next_needing(assigns, id) do
     case Connection.attention(assigns) do
       [] -> nil
-      needing -> Enum.find(needing, hd(needing), &(&1.key > key))
+      needing -> Enum.find(needing, hd(needing), &(to_string(&1.id) > to_string(id)))
     end
   end
 
   def next_attention(term) do
     case next_needing(term.assigns, term.assigns.agent_id) do
       nil -> flash(term, View.nothing_needs_attention())
-      member -> Connection.connect_key(term, member.key)
+      member -> Connection.connect_id(term, member.id)
     end
   end
 
   def highlight_next(term) do
-    case next_needing(term.assigns, Connection.agent_of(term.assigns.highlighted) || "") do
+    case next_needing(term.assigns, Connection.agent_of(term.assigns.highlighted)) do
       nil -> term
-      member -> assign(term, highlighted: member.key)
+      member -> assign(term, highlighted: member.id)
     end
   end
 

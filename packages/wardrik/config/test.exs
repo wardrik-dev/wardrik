@@ -13,8 +13,6 @@ config :wardrik, Wardrik.Store,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
-config :wardrik, Wardrik.Fleet, org: "default"
-
 config :req_llm,
   load_dotenv: false,
   zai_api_key: "test-zai-api-key",

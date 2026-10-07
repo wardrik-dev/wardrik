@@ -201,12 +201,12 @@ defmodule WardrikPolicy.Budget do
 
   @doc """
   What an agent has spent in `budget`'s period now, given the scope of one of
-  its turns, or its key for a budget that is not per turn.
+  its turns, or its ID for a budget that is not per turn.
   """
-  @spec spent(t(), Wardrik.Scope.t() | String.t()) :: Spend.t() | nil
-  def spent(%__MODULE__{per: :turn}, agent) when is_binary(agent), do: nil
+  @spec spent(t(), Wardrik.Scope.t() | Wardrik.AgentID.t()) :: Spend.t() | nil
+  def spent(%__MODULE__{per: :turn}, %Wardrik.AgentID{}), do: nil
 
-  def spent(%__MODULE__{} = budget, agent) when is_binary(agent),
+  def spent(%__MODULE__{} = budget, %Wardrik.AgentID{} = agent),
     do: agent |> Spend.key(window(budget, "", DateTime.utc_now())) |> read()
 
   def spent(%__MODULE__{} = budget, scope), do: scope |> spend_key(budget) |> read()
@@ -222,7 +222,7 @@ defmodule WardrikPolicy.Budget do
   What an agent has spent against `budget`, as a phrase: `$1.20 of $5.00 and
   12000 of 200000 tokens today`.
   """
-  @spec spending(t(), String.t()) :: String.t() | nil
+  @spec spending(t(), Wardrik.AgentID.t()) :: String.t() | nil
   def spending(%__MODULE__{} = budget, agent) do
     case spent(budget, agent) do
       nil -> nil

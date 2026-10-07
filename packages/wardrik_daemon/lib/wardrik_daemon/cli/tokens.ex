@@ -12,6 +12,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   `--unlimited`, which holds them to their own policies alone.
   """
 
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Grant
   alias WardrikDaemon.CLI.Command
   alias WardrikHTTP.Token
@@ -65,8 +66,8 @@ defmodule WardrikDaemon.CLI.Tokens do
   # One of --scope and --all.
   defp scope(opts) do
     case {opts[:scope], opts[:all]} do
-      {scope, nil} when is_binary(scope) -> {:ok, scope}
-      {nil, true} -> {:ok, ""}
+      {scope, nil} when is_binary(scope) -> Prefix.parse(scope)
+      {nil, true} -> {:ok, Prefix.all()}
       _neither_or_both -> {:error, :usage}
     end
   end
@@ -164,7 +165,9 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp reach(%Grant{scope: scope, can: can} = grant) do
-    agents = if scope == "", do: "every agent", else: "the agents under #{scope}"
+    agents =
+      if scope == Prefix.all(), do: "every agent", else: "the agents under #{scope}"
+
     agents <> actions(can) <> held(grant)
   end
 

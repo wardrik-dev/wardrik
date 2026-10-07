@@ -13,7 +13,7 @@ defmodule Wardrik.AgentLogTest do
   setup :verify_on_exit!
 
   setup do
-    key = Wardrik.Test.Fleet.key("log")
+    key = Wardrik.Test.Fleet.id("log")
     :ok = Log.subscribe(key)
     %{key: key}
   end

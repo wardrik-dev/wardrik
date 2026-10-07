@@ -9,7 +9,8 @@ defmodule WardrikTUI.Fleet do
   finished a turn while the client was elsewhere says it has a new result. An
   agent under the same org and user as the one the client is attached to is
   named alone, unless another agent shares its name; any other shows its whole
-  key, with the scope faint. The agent the client is attached to is marked.
+  ID, with the org and user faint. The agent the client is attached to is
+  marked.
 
   An agent needs attention when it is waiting on a person, or when it has a
   result or a failure the client has not looked at. `attention?/2` decides,
@@ -20,6 +21,8 @@ defmodule WardrikTUI.Fleet do
   taken.
   """
 
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Delegation
   alias Wardrik.Fleet.Member
   alias WardrikTUI.Render
@@ -34,16 +37,16 @@ defmodule WardrikTUI.Fleet do
   @delegation_colours %{running: :cyan, ok: :green, error: :red}
 
   @doc "An expanded agent's delegations, or `nil` when it is collapsed."
-  def expanded_delegations(%{expanded: expanded} = assigns, key) do
-    if MapSet.member?(expanded, key), do: followed(assigns, key), else: nil
+  def expanded_delegations(%{expanded: expanded} = assigns, id) do
+    if MapSet.member?(expanded, id), do: followed(assigns, id), else: nil
   end
 
   @doc """
   An agent's delegations as this client has followed them: the attached
   agent's with its conversation, any other's from its lifecycle events.
   """
-  def followed(%{agent_id: key, delegations: delegations}, key), do: delegations
-  def followed(%{followed: followed}, key), do: Map.get(followed, key, Delegation.new())
+  def followed(%{agent_id: id, delegations: delegations}, id), do: delegations
+  def followed(%{followed: followed}, id), do: Map.get(followed, id, Delegation.new())
 
   @doc """
   The heading above the list, clipped to `width`: how many agents are shown of
@@ -73,15 +76,15 @@ defmodule WardrikTUI.Fleet do
   Whether an agent needs a person: it is waiting on a call, or `unseen` holds
   how a turn ended while the client was elsewhere.
   """
-  @spec attention?(Member.t(), %{String.t() => term()}) :: boolean()
+  @spec attention?(Member.t(), %{AgentID.t() => term()}) :: boolean()
   def attention?(%Member{status: :parked}, _unseen), do: true
-  def attention?(%Member{key: key}, unseen), do: Map.has_key?(unseen, key)
+  def attention?(%Member{id: id}, unseen), do: Map.has_key?(unseen, id)
 
   @doc "The names more than one agent goes by."
   @spec ambiguous([Member.t()]) :: MapSet.t(String.t())
   def ambiguous(members) do
     members
-    |> Enum.frequencies_by(& &1.name)
+    |> Enum.frequencies_by(& &1.id.name)
     |> Enum.filter(fn {_name, count} -> count > 1 end)
     |> MapSet.new(fn {name, _count} -> name end)
   end
@@ -89,14 +92,14 @@ defmodule WardrikTUI.Fleet do
   @doc """
   One agent's row, clipped to `width`.
 
-  `attached` is the key of the agent the client is watching, which is marked
+  `attached` is the ID of the agent the client is watching, which is marked
   rather than listed differently. Options: `:ambiguous`, the names shared by
-  several agents, which are shown as whole keys; `:unseen`, how the agent's
+  several agents, which are shown as whole IDs; `:unseen`, how the agent's
   last turn ended if the client has not looked, `:ok` or `:failed`;
   `:delegations`, how many its turn has going and has started, as
   `Wardrik.Delegation.summary/1` counts them.
   """
-  @spec row(Member.t(), String.t(), pos_integer(), keyword()) :: String.t()
+  @spec row(Member.t(), AgentID.t(), pos_integer(), keyword()) :: String.t()
   def row(%Member{} = member, attached, width, opts \\ []) do
     row = Text.truncate(text(member, attached, opts), width)
     Render.line(if(Keyword.get(opts, :pad?, false), do: fill(row, width), else: row))
@@ -148,7 +151,7 @@ defmodule WardrikTUI.Fleet do
 
     marker =
       cond do
-        member.key == attached -> Text.tag("›", [:bright, :cyan])
+        member.id == attached -> Text.tag("›", [:bright, :cyan])
         member.status == :parked or unseen != nil -> Text.tag("!", [:bright, :yellow])
         true -> " "
       end
@@ -167,30 +170,23 @@ defmodule WardrikTUI.Fleet do
   defp new_result(:ok), do: Text.tag(" new result", :green)
   defp new_result(_other), do: []
 
-  # The name alone inside the attached agent's org and user; the whole key
+  # The name alone inside the attached agent's org and user; the whole ID
   # anywhere else, and wherever two agents go by the same name.
-  defp label(%Member{org: org, user: user, name: name} = member, attached, ambiguous) do
-    case scope(attached) do
-      {^org, ^user} when not is_map_key(ambiguous.map, name) ->
-        Text.tag(name, name_colour(member, attached))
+  defp label(%Member{id: id} = member, attached, ambiguous) do
+    named = Text.tag(name(id), name_colour(member, attached))
 
-      _elsewhere ->
-        [Text.tag(prefix(member), @faint), Text.tag(name, name_colour(member, attached))]
-    end
+    if {id.org, id.user} == {attached.org, attached.user} and
+         not MapSet.member?(ambiguous, id.name),
+       do: named,
+       else: [Text.tag(scope(id), @faint), named]
   end
 
-  defp scope(key) do
-    case Wardrik.Fleet.cast(key) do
-      {:ok, {org, user, _name}} -> {org, user}
-      :error -> nil
-    end
-  end
+  defp scope(%AgentID{org: org, user: user}), do: to_string(Prefix.new!(org: org, user: user))
 
-  defp prefix(%Member{key: key, name: name}) do
-    String.slice(key, 0, String.length(key) - String.length(name))
-  end
+  defp name(%AgentID{name: name, external_id: nil}), do: name
+  defp name(%AgentID{name: name, external_id: external_id}), do: name <> "/" <> external_id
 
-  defp name_colour(%Member{key: key}, key), do: [:bright]
+  defp name_colour(%Member{id: id}, id), do: [:bright]
   defp name_colour(_member, _attached), do: []
 
   # What distinguishes one row from another: what it is waiting on, its
@@ -234,7 +230,7 @@ defmodule WardrikTUI.Fleet do
     Enum.map(members, fn member ->
       [
         Text.tag("  #{@glyphs[member.status]} ", @colours[member.status]),
-        Text.tag(member.key, :bright),
+        Text.tag(to_string(member.id), :bright),
         Text.tag(" #{member.status} on #{member.node}", @faint)
       ]
     end)

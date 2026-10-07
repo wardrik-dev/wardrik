@@ -6,7 +6,7 @@ defmodule Wardrik.DelegationTest do
   alias Wardrik.Event
   alias Wardrik.Event.Source
 
-  @agent "test/delegating"
+  @agent Wardrik.AgentID.parse!("test/delegating")
 
   defp turn, do: Source.root(@agent, name: "turn")
 

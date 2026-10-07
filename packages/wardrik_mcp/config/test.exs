@@ -4,8 +4,6 @@ config :logger, level: :warning
 
 config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
 
-config :wardrik, Wardrik.Fleet, org: "default"
-
 # A connection that retries, or waits out a burst of tool changes, does so in
 # milliseconds rather than a second or a quarter of one.
 config :wardrik_mcp, WardrikMCP, first_retry: 10, refresh_after: 10

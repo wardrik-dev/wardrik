@@ -7,13 +7,13 @@ defmodule Wardrik.Event.BusTest do
   alias Wardrik.Test.Fleet
 
   setup do
-    {:ok, agent_id: Fleet.key()}
+    {:ok, agent_id: Fleet.id()}
   end
 
   defp emit(agent_id, payload), do: agent_id |> Source.root() |> Event.emit(payload)
 
   test "publish reaches every subscriber and no one else", %{agent_id: agent_id} do
-    other_agent = Fleet.key()
+    other_agent = Fleet.id()
     :ok = Bus.subscribe(agent_id)
     :ok = Bus.subscribe(other_agent)
 
@@ -49,7 +49,7 @@ defmodule Wardrik.Event.BusTest do
   end
 
   test "a dead subscriber does not affect the others" do
-    agent_id = Fleet.key()
+    agent_id = Fleet.id()
     test_pid = self()
     :ok = Bus.subscribe(agent_id)
 
@@ -148,7 +148,7 @@ defmodule Wardrik.Event.BusTest do
 
   describe "levels as topics" do
     test "a raw subscriber is sent each event once, not once per level" do
-      agent_id = Wardrik.Test.Fleet.key("levels")
+      agent_id = Wardrik.Test.Fleet.id("levels")
       :ok = Bus.subscribe(agent_id, level: :raw)
       source = Source.root(agent_id)
 
@@ -161,7 +161,7 @@ defmodule Wardrik.Event.BusTest do
     end
 
     test "unsubscribing leaves both levels" do
-      agent_id = Wardrik.Test.Fleet.key("leaving")
+      agent_id = Wardrik.Test.Fleet.id("leaving")
       :ok = Bus.subscribe(agent_id, level: :raw)
       assert Bus.subscribers(agent_id) == [self()]
 

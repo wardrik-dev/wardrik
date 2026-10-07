@@ -27,7 +27,7 @@ defmodule WardrikPolicy.CompactionTest do
 
   defp scope(opts) do
     Config.new(compaction: Compaction.new(window: 1_000, at: 0.3, keep: 0.25))
-    |> Scope.root(Wardrik.Test.Fleet.key(), [name: "compaction"] ++ opts)
+    |> Scope.root(Wardrik.Test.Fleet.id(), [name: "compaction"] ++ opts)
   end
 
   test "a summary goes through the dispatch, so a budget that has run out stops it" do

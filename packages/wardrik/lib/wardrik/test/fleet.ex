@@ -1,6 +1,6 @@
 defmodule Wardrik.Test.Fleet do
   @moduledoc """
-  Starts agents in the fleet under keys unique to the test, and forgets them
+  Starts agents in the fleet under IDs unique to the test, and forgets them
   afterwards so nothing is left in the store.
   """
 
@@ -59,18 +59,17 @@ defmodule Wardrik.Test.Fleet do
     relay(caller)
   end
 
-  @doc "Starts an agent under `key` and returns the key and pid."
-  @spec start_agent(keyword(), String.t()) :: {String.t(), pid()}
-  def start_agent(opts \\ [], key \\ key()) do
-    {:ok, pid} = Fleet.spawn(key, opts)
-    ExUnit.Callbacks.on_exit(fn -> Fleet.forget(key) end)
+  @doc "Starts an agent under `id` and returns the ID and pid."
+  @spec start_agent(keyword(), Wardrik.AgentID.t()) :: {Wardrik.AgentID.t(), pid()}
+  def start_agent(opts \\ [], id \\ id()) do
+    {:ok, pid} = Fleet.spawn(id, opts)
+    ExUnit.Callbacks.on_exit(fn -> Fleet.forget(id) end)
 
-    {key, pid}
+    {id, pid}
   end
 
-  @doc "A key nothing else in the suite will use, under the `test` org and no user."
-  @spec key(String.t()) :: String.t()
-  def key(name \\ "agent") do
-    "test/#{name}-#{System.unique_integer([:positive])}"
-  end
+  @doc "An ID nothing else in the suite will use, under the `test` org and no user."
+  @spec id(String.t()) :: Wardrik.AgentID.t()
+  def id(name \\ "agent"),
+    do: Wardrik.AgentID.new!("#{name}-#{System.unique_integer([:positive])}", org: "test")
 end

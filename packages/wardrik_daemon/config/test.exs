@@ -13,8 +13,6 @@ config :wardrik, Wardrik.Store,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
-config :wardrik, Wardrik.Fleet, org: "default"
-
 config :wardrik_brave, WardrikBrave,
   api_key: "test-brave-api-key",
   base_url: "https://brave.test",

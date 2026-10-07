@@ -43,7 +43,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
   end
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end
@@ -247,7 +247,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     scope = scope(agent_id, [])
     key = Ledger.idempotency_key(scope, call("call_1", "refund"))
 
-    assert key == "#{agent_id}/#{scope.source.trace.trace_id}/call_1"
+    assert key == "#{agent_id}//#{scope.source.trace.trace_id}/call_1"
     refute key == Ledger.idempotency_key(scope(agent_id, []), call("call_1", "refund"))
   end
 end

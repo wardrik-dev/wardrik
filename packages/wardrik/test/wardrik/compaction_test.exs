@@ -91,7 +91,7 @@ defmodule Wardrik.CompactionTest do
   describe "run/2" do
     defp scope(opts \\ [], compaction \\ roomy()) do
       Config.new(compaction: compaction)
-      |> Scope.root(Wardrik.Test.Fleet.key(), [name: "compaction"] ++ opts)
+      |> Scope.root(Wardrik.Test.Fleet.id(), [name: "compaction"] ++ opts)
     end
 
     test "replaces the older part with the model's summary, and keeps the recent part word for word" do
@@ -164,7 +164,7 @@ defmodule Wardrik.CompactionTest do
 
     test "is nothing to do for a history that has not outgrown its window" do
       reject(&ReqLLM.generate_text/3)
-      assert :keep = Compaction.run(Scope.root(Config.new(), Wardrik.Test.Fleet.key()), history())
+      assert :keep = Compaction.run(Scope.root(Config.new(), Wardrik.Test.Fleet.id()), history())
     end
 
     test "leaves the history as it was when the summary cannot be made" do

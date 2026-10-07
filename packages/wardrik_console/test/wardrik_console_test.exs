@@ -20,7 +20,7 @@ defmodule WardrikConsoleTest do
 
   test "prints each line an event completes" do
     output =
-      render(Fleet.key(), [
+      render(Fleet.id(), [
         {:thinking, "hmm"},
         {:result, "the answer"},
         {:tool_started, "call_1", "echo", %{}, "key"},
@@ -33,14 +33,14 @@ defmodule WardrikConsoleTest do
   end
 
   test "ignores events it does not render" do
-    output = render(Fleet.key(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
+    output = render(Fleet.id(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
 
     assert output == ""
   end
 
   test "only receives its own agent's events" do
-    mine = Fleet.key()
-    theirs = Fleet.key()
+    mine = Fleet.id()
+    theirs = Fleet.id()
 
     output =
       capture_io(fn ->
@@ -54,7 +54,7 @@ defmodule WardrikConsoleTest do
   end
 
   test "lays lines out to the width it is given, and ignores what is not an event" do
-    agent_id = Fleet.key()
+    agent_id = Fleet.id()
 
     output =
       capture_io(fn ->

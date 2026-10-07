@@ -6,6 +6,7 @@ defmodule WardrikMCP.BootstrapTest do
 
   use WardrikMCP.Test.Case, async: false
 
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -18,10 +19,12 @@ defmodule WardrikMCP.BootstrapTest do
     @behaviour Wardrik.Credential
 
     @impl true
-    def resolve("locked", %Wardrik.Call{scope: %Scope{org: org, user: "connected"}}),
+    def resolve("locked", %Wardrik.Call{scope: scope}), do: locked(Scope.agent_id(scope))
+
+    defp locked(%AgentID{org: org, user: "connected"}),
       do: {:ok, Credential.secret("a-token", owner: {org, "connected"})}
 
-    def resolve("locked", %Wardrik.Call{scope: %Scope{org: org, user: user}}),
+    defp locked(%AgentID{org: org, user: user}),
       do:
         {:error, {:authorization_required, %{url: "https://example.com/authorize"}, {org, user}}}
   end
@@ -36,7 +39,7 @@ defmodule WardrikMCP.BootstrapTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root("acme/@#{user}/a", org: "acme", user: user, credentials: Vault)
+    |> Scope.root(AgentID.new!("a", org: "acme", user: user), credentials: Vault)
   end
 
   defp call(ref, user, tool) do

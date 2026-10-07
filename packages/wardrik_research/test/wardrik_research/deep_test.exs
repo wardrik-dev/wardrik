@@ -15,7 +15,7 @@ defmodule WardrikResearch.DeepTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
 
     config = Config.new(tools: [SearchTool, Deep])

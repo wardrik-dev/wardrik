@@ -1,6 +1,7 @@
 defmodule WardrikHTTP.WorkerTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Grant
   alias Wardrik.Ledger
   alias Wardrik.LLM.Config
@@ -94,7 +95,9 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   setup do
-    {:ok, secret, _token} = Token.create("worker-test", "test/", Grant.actions(), ceiling: [])
+    {:ok, secret, _token} =
+      Token.create("worker-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+
     listener = :"worker-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0})
     {:ok, port} = Listener.port(listener)
@@ -113,7 +116,7 @@ defmodule WardrikHTTP.WorkerTest do
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    %{port: port, secret: secret, agent: Wardrik.Test.Fleet.key()}
+    %{port: port, secret: secret, agent: Wardrik.Test.Fleet.id()}
   end
 
   # A worker connected with `secret`, once Wardrik has offered what it listed.
@@ -146,7 +149,7 @@ defmodule WardrikHTTP.WorkerTest do
   defp annotations(agent, name), do: Wardrik.Tool.annotations({Workers, agent}, name)
 
   # The context a call to a worker's tool is handed, for the agent under `key`.
-  defp handed(key), do: Wardrik.Test.context(Wardrik.Test.scope(key: key))
+  defp handed(id), do: Wardrik.Test.context(Wardrik.Test.scope(id: id))
 
   # A worker's tool is gated unless it is read-only, so a call to echo runs
   # where a rule allows it by name.
@@ -166,7 +169,7 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("echo"), tool("not a name!")])
 
     assert names(Workers.tools(context.agent)) == ["workers__echo"]
-    assert Workers.tools("other/agent") == []
+    assert Workers.tools(Wardrik.AgentID.parse!("other/agent")) == []
   end
 
   test "a call reaches a worker with its agent, its run and its idempotency key, and is answered with what it returned",
@@ -184,8 +187,8 @@ defmodule WardrikHTTP.WorkerTest do
 
     key = Ledger.idempotency_key(scope, call)
     run = scope.source.trace.trace_id
-    agent = context.agent
-    "test/" <> name = agent
+    agent = to_string(context.agent)
+    name = context.agent.name
 
     assert_receive {:called,
                     %{
@@ -206,10 +209,16 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a call for a user's agent says whose it is, however the model called it", context do
     connect(context, [tool("echo")])
-    agent = "test/@u_42/assistant-#{System.unique_integer([:positive])}"
-    "test/@u_42/" <> name = agent
 
-    Workers.call(agent, "echo", %{"order" => "o_1", "user" => "u_7"}, handed(agent))
+    id =
+      Wardrik.AgentID.new!("assistant-#{System.unique_integer([:positive])}",
+        org: "test",
+        user: "u_42"
+      )
+
+    {agent, name} = {to_string(id), id.name}
+
+    Workers.call(id, "echo", %{"order" => "o_1", "user" => "u_7"}, handed(id))
 
     assert_receive {:called,
                     %{
@@ -258,7 +267,10 @@ defmodule WardrikHTTP.WorkerTest do
     connect(
       context,
       [tool("echo")],
-      elem(Token.create("elsewhere", "test/only/", Grant.actions(), ceiling: []), 1)
+      elem(
+        Token.create("elsewhere", Prefix.parse!("test/only/"), Grant.actions(), ceiling: []),
+        1
+      )
     )
 
     assert {:ok, %{"ok" => false, "error" => %{"code" => "no_worker"}}} =
@@ -291,12 +303,16 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
-    {:ok, elsewhere, _token} = Token.create("elsewhere", "other/", Grant.actions(), ceiling: [])
+    {:ok, elsewhere, _token} =
+      Token.create("elsewhere", Prefix.parse!("other/"), Grant.actions(), ceiling: [])
+
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
 
     assert annotations(context.agent, "workers__refund").in_doubt == :ask
-    assert annotations("other/agent", "workers__refund").in_doubt == :rerun
+
+    assert annotations(Wardrik.AgentID.parse!("other/agent"), "workers__refund").in_doubt ==
+             :rerun
   end
 
   test "a tool runs again only where every worker in reach offering it says it may", context do
@@ -336,7 +352,8 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a token that may not serve is refused the socket", %{port: port} do
-    {:ok, secret, _token} = Token.create("reader", "test/", [:read])
+    {:ok, secret, _token} =
+      Token.create("reader", Prefix.parse!("test/"), [:read])
 
     assert {:error, %WebSockex.RequestError{code: 403}} =
              FakeWorker.start_link(port, secret, self(), [tool("echo")])
@@ -344,7 +361,9 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a worker's socket closes when its token is revoked",
        context do
-    {:ok, secret, token} = Token.create("revoked", "test/", Grant.actions(), ceiling: [])
+    {:ok, secret, token} =
+      Token.create("revoked", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+
     worker = connect(context, [tool("echo")], secret)
     monitor = Process.monitor(worker)
 
@@ -363,7 +382,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker's answers are content from outside, unless the deployment trusts its workers" do
-    assert annotations("test/triage", "workers__echo").outside
+    assert annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").outside
 
     previous = Application.get_env(:wardrik_http, WardrikHTTP)
 
@@ -379,6 +398,6 @@ defmodule WardrikHTTP.WorkerTest do
         else: Application.delete_env(:wardrik_http, WardrikHTTP)
     end)
 
-    refute annotations("test/triage", "workers__echo").outside
+    refute annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").outside
   end
 end

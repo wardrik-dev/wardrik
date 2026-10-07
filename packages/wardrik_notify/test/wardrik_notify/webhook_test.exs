@@ -1,11 +1,13 @@
 defmodule WardrikNotify.WebhookTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias WardrikNotify.Notice
   alias WardrikNotify.Webhook
 
   @notice %Notice{
-    agent: "acme/triage",
+    agent: ~A"acme/triage",
     kind: :failed,
     at: ~U[2026-09-24 09:30:00Z],
     reason: :timeout

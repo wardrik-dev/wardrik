@@ -147,16 +147,16 @@ defmodule WardrikHTTP.Access do
   end
 
   @doc """
-  Whether `grants` let their holder take `action` on the agent under `key`:
+  Whether `grants` let their holder take `action` on the agent `id`:
   `:ok` where any of them does, `{:error, :forbidden}` where one reaches the
   agent and none allows it, and `{:error, :not_found}` where none reaches it.
   """
-  @spec authorize(Grant.t() | [Grant.t()], Grant.action(), String.t()) ::
+  @spec authorize(Grant.t() | [Grant.t()], Grant.action(), Wardrik.AgentID.t()) ::
           :ok | {:error, :not_found | :forbidden}
-  def authorize(%Grant{} = grant, action, key), do: authorize([grant], action, key)
+  def authorize(%Grant{} = grant, action, id), do: authorize([grant], action, id)
 
-  def authorize(grants, action, key) when is_list(grants) and is_binary(key) do
-    case Enum.filter(grants, &Grant.covers?(&1, key)) do
+  def authorize(grants, action, %Wardrik.AgentID{} = id) when is_list(grants) do
+    case Enum.filter(grants, &Grant.covers?(&1, id)) do
       [] ->
         {:error, :not_found}
 

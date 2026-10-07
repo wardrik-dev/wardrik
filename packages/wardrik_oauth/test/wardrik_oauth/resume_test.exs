@@ -2,6 +2,7 @@ defmodule WardrikOAuth.ResumeTest do
   use WardrikOAuth.Test.Case, async: false
 
   alias Wardrik.Agent
+  alias Wardrik.AgentID
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.LLM.Config
@@ -19,8 +20,10 @@ defmodule WardrikOAuth.ResumeTest do
     :ok
   end
 
-  defp scope(owner),
-    do: Config.new() |> Scope.root("acme/@#{owner}/a", user: owner, credentials: WardrikVault)
+  defp scope(owner) do
+    id = AgentID.new!("a", org: "acme", user: owner)
+    Config.new() |> Scope.root(id, credentials: WardrikVault)
+  end
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
   defp oauth, do: Wardrik.Principal.new(:oauth, "github", name: "github authorization")
@@ -31,7 +34,7 @@ defmodule WardrikOAuth.ResumeTest do
     {:error, {:authorization_required, link, whose}} =
       Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
 
-    assert whose == {nil, owner}
+    assert whose == {"acme", owner}
 
     {key, agent} =
       Fleet.start_agent(
@@ -73,7 +76,7 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all()
 
       {:error, {:authorization_required, theirs, _whose}} =
-        WardrikOAuth.hold(provider, {nil, "else"})
+        WardrikOAuth.hold(provider, {"acme", "else"})
 
       assert {:ok, "github"} = finish(theirs.url)
 
@@ -86,7 +89,7 @@ defmodule WardrikOAuth.ResumeTest do
       refuse_tokens()
 
       assert {:error, _trouble} = finish(url)
-      assert {:ok, _flight} = Pending.under_way("github", {nil, owner})
+      assert {:ok, _flight} = Pending.under_way("github", {"acme", owner})
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
 
       stub_server(cimd: true)
@@ -101,10 +104,10 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all()
 
       {:error, {:authorization_required, link, _whose}} =
-        WardrikOAuth.hold(provider, {nil, owner})
+        WardrikOAuth.hold(provider, {"acme", owner})
 
       assert {:ok, "github"} = finish(link.url)
-      assert WardrikOAuth.connected?("github", {nil, owner})
+      assert WardrikOAuth.connected?("github", {"acme", owner})
     end
   end
 end

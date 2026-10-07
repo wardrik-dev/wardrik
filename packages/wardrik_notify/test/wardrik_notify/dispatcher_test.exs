@@ -33,7 +33,7 @@ defmodule WardrikNotify.DispatcherTest do
 
     start_supervised!(WardrikNotify.Supervisor)
 
-    key = Fleet.key("notified-#{System.unique_integer([:positive])}")
+    key = Wardrik.Test.Fleet.id("notified")
     on_exit(fn -> Fleet.forget(key) end)
     %{key: key}
   end
@@ -46,7 +46,8 @@ defmodule WardrikNotify.DispatcherTest do
 
     :ok = Agent.ask(key, "Ship it.")
 
-    assert_receive {:notice, %{"event" => "turn_parked", "agent" => ^key, "calls" => [call]}}
+    assert_receive {:notice, %{"event" => "turn_parked", "agent" => agent, "calls" => [call]}}
+    assert agent == to_string(key)
     assert %{"id" => "call_1", "name" => "deploy", "prompt" => "This ships to production."} = call
   end
 
@@ -105,7 +106,8 @@ defmodule WardrikNotify.DispatcherTest do
     log =
       capture_log(fn ->
         :ok = Agent.ask(key, "Ship it.")
-        assert_receive {:notice, %{"event" => "turn_parked", "agent" => ^key}}
+        assert_receive {:notice, %{"event" => "turn_parked", "agent" => agent}}
+        assert agent == to_string(key)
         wait_for_deliveries()
       end)
 

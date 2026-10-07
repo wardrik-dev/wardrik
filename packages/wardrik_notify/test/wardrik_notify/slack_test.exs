@@ -1,6 +1,8 @@
 defmodule WardrikNotify.SlackTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.AgentID, only: [sigil_A: 2]
+
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.Fleet
@@ -33,7 +35,7 @@ defmodule WardrikNotify.SlackTest do
 
   defp parked_notice do
     %Notice{
-      agent: "acme/triage",
+      agent: ~A"acme/triage",
       kind: :parked,
       at: ~U[2026-09-24 09:30:00Z],
       calls: [
@@ -120,7 +122,7 @@ defmodule WardrikNotify.SlackTest do
   describe "a call waiting on a person to connect an account" do
     defp connecting_notice do
       %Notice{
-        agent: "acme/triage",
+        agent: ~A"acme/triage",
         kind: :parked,
         at: ~U[2026-09-24 09:30:00Z],
         calls: [
@@ -157,7 +159,7 @@ defmodule WardrikNotify.SlackTest do
 
   describe "Show link" do
     setup do
-      key = Fleet.key("slack-link-#{System.unique_integer([:positive])}")
+      key = Wardrik.Test.Fleet.id("slack-link")
       link = %{url: "https://github.com/login/device", code: "WDJB-MJHT"}
 
       {:ok, _pid} =
@@ -216,7 +218,7 @@ defmodule WardrikNotify.SlackTest do
 
   describe "answer/1" do
     setup do
-      key = Fleet.key("slack-#{System.unique_integer([:positive])}")
+      key = Wardrik.Test.Fleet.id("slack")
 
       {:ok, _pid} =
         Fleet.spawn(key,
@@ -250,7 +252,7 @@ defmodule WardrikNotify.SlackTest do
         "actions" => [
           %{
             "action_id" => action,
-            "value" => JSON.encode!(%{a: key, c: "call_1", n: "deploy", t: "ops"})
+            "value" => JSON.encode!(%{a: to_string(key), c: "call_1", n: "deploy", t: "ops"})
           }
         ]
       }

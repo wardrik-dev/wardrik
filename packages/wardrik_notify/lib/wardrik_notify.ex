@@ -48,7 +48,7 @@ defmodule WardrikNotify do
   before. An agent left out is no longer routed. Does nothing where
   `WardrikNotify.Supervisor` is not running, which no route can then need.
   """
-  @spec put_routes(%{String.t() => WardrikNotify.Route.t()}) :: :ok
+  @spec put_routes(%{Wardrik.AgentID.t() => WardrikNotify.Route.t()}) :: :ok
   def put_routes(routes) when is_map(routes) do
     if GenServer.whereis(WardrikNotify.Dispatcher),
       do: WardrikNotify.Dispatcher.put_routes(routes),

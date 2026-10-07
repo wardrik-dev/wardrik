@@ -47,14 +47,14 @@ defmodule WardrikTUI.App do
   @leader_after 1_500
 
   @doc """
-  What `:options` answers for an agent this app starts under `key`: the
+  What `:options` answers for an agent this app starts under `id`: the
   options to spawn it with ahead of `:spawn_opts`, or why it cannot start.
   Without `:options`, none.
   """
-  @spec options({module(), atom(), list()} | nil, String.t()) ::
+  @spec options({module(), atom(), list()} | nil, Wardrik.AgentID.t()) ::
           {:ok, keyword()} | {:error, String.t()}
-  def options(nil, _key), do: {:ok, []}
-  def options({module, function, args}, key), do: apply(module, function, [key | args])
+  def options(nil, _id), do: {:ok, []}
+  def options({module, function, args}, id), do: apply(module, function, [id | args])
 
   @doc "The fleet panel's width in columns, unless started with `:sidebar_width`."
   @spec default_sidebar_width() :: pos_integer()
@@ -68,6 +68,10 @@ defmodule WardrikTUI.App do
   @doc """
   What `Breeze.Server` runs this app with, `start_opts` being what `mount/2`
   is given. The terminal launcher and every SSH session run it the same way.
+
+  `:org` in `start_opts` is the org of an agent a person names without one,
+  as `/spawn triage` or `/connect @jon/triage` do. Without it, a name gives
+  its org: `/spawn acme/triage`.
   """
   @spec server_opts(keyword()) :: keyword()
   def server_opts(start_opts) do
@@ -279,9 +283,10 @@ defmodule WardrikTUI.App do
   # Enter in the panel: on an agent, connects; on a delegation, inspects it.
   @doc false
   def connect_highlighted(_event, term) do
-    case String.split(term.assigns.highlighted || "", "\t", parts: 2) do
-      [key, span_id] -> {:noreply, Interaction.inspect_delegation(term, key, span_id)}
-      [key] -> {:noreply, term |> Connection.connect_key(key) |> Interaction.focus_pane("prompt")}
+    case term.assigns.highlighted do
+      nil -> {:noreply, term}
+      {id, span_id} -> {:noreply, Interaction.inspect_delegation(term, id, span_id)}
+      id -> {:noreply, term |> Connection.connect_id(id) |> Interaction.focus_pane("prompt")}
     end
   end
 
@@ -289,8 +294,8 @@ defmodule WardrikTUI.App do
   # still going under an expanded agent. The running turn's own count is drawn
   # by `WardrikTUI.Elapsed` and needs no frame.
   defp ticking?(%{assigns: %{expanded: expanded} = assigns}) do
-    Enum.any?(expanded, fn key ->
-      Delegation.summary(WardrikTUI.Fleet.followed(assigns, key)).active > 0
+    Enum.any?(expanded, fn id ->
+      Delegation.summary(WardrikTUI.Fleet.followed(assigns, id)).active > 0
     end)
   end
 
@@ -393,6 +398,7 @@ defmodule WardrikTUI.App do
     term =
       term
       |> assign(
+        org: Keyword.get(opts, :org),
         spawn_opts: Keyword.get(opts, :spawn_opts, []),
         options: Keyword.get(opts, :options),
         principal: Keyword.get_lazy(opts, :principal, &terminal/0),
@@ -580,8 +586,8 @@ defmodule WardrikTUI.App do
     """
   end
 
-  defp inspector_delegations(%{inspecting: {:delegation, key, _span}} = assigns),
-    do: WardrikTUI.Fleet.expanded_delegations(assigns, key)
+  defp inspector_delegations(%{inspecting: {:delegation, id, _span}} = assigns),
+    do: WardrikTUI.Fleet.expanded_delegations(assigns, id)
 
   defp inspector_delegations(_assigns), do: nil
 
@@ -615,8 +621,8 @@ defmodule WardrikTUI.App do
   def handle_event("draft", %{value: value}, term),
     do: {:noreply, term |> assign(draft: value, pane: "prompt") |> Prompt.leave()}
 
-  def handle_event("highlight", %{value: key}, term),
-    do: {:noreply, assign(term, highlighted: key, pane: "fleet")}
+  def handle_event("highlight", %{value: value}, term),
+    do: {:noreply, assign(term, highlighted: value, pane: "fleet")}
 
   def handle_event("scroll", %{pinned_bottom: pinned?}, term),
     do:
@@ -645,9 +651,9 @@ defmodule WardrikTUI.App do
     do: choose(term, palette, Enum.at(term.assigns.choices, cursor))
 
   def handle_event(:input, %{"key" => "l"}, %{focused: "fleet"} = term) do
-    key = Connection.agent_of(term.assigns.highlighted)
-    collapsed = MapSet.delete(term.assigns.collapsed, key)
-    {:noreply, term |> assign(collapsed: collapsed) |> Connection.expand(key)}
+    id = Connection.agent_of(term.assigns.highlighted)
+    collapsed = MapSet.delete(term.assigns.collapsed, id)
+    {:noreply, term |> assign(collapsed: collapsed) |> Connection.expand(id)}
   end
 
   def handle_event(:input, %{"key" => "h"}, %{focused: "fleet"} = term),

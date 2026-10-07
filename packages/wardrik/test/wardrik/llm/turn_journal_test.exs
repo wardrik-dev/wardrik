@@ -21,7 +21,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
   setup :verify_on_exit!
 
   setup do
-    agent_id = Wardrik.Test.Fleet.key()
+    agent_id = Wardrik.Test.Fleet.id()
     :ok = Event.Bus.subscribe(agent_id)
     {:ok, agent_id: agent_id}
   end

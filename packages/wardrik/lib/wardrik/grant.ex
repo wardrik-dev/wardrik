@@ -1,26 +1,17 @@
 defmodule Wardrik.Grant do
   @moduledoc """
-  What its holder may do to the agents under a scope.
+  What its holder may do to the agents under a `Wardrik.AgentID.Prefix`, its
+  scope.
 
-      {:ok, grant} = Wardrik.Grant.new("acme/", [:read, :message])
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), [:read, :message])
 
-      Wardrik.Grant.allows?(grant, :message, "acme/@jon/triage")  #=> true
-      Wardrik.Grant.allows?(grant, :decide, "acme/@jon/triage")   #=> false
+      Wardrik.Grant.allows?(grant, :message, ~A"acme/@jon/triage")  #=> true
+      Wardrik.Grant.allows?(grant, :decide, ~A"acme/@jon/triage")   #=> false
 
-  A scope is a key prefix that ends at a segment, as `Wardrik.Fleet.scope/1`
-  reads it:
-
-  | Scope | Reaches |
-  | --- | --- |
-  | `""` | every agent |
-  | `"acme/"` | the agents of one org, its users' among them |
-  | `"acme/@jon/"` | one person's agents |
-  | `"acme/triage"`, `"acme/@jon/triage"` | one agent |
-
-  `new/2` writes an org or a user as the prefix it is, so `"acme"` is
-  `"acme/"`, and refuses anything that is neither a prefix nor a key.
-  `covers?/2` matches at segment boundaries: `"acme/"` never reaches
-  `acmecorp/…`, and `"acme/triage"` never reaches `acme/triage2`.
+  A scope reaches every agent, an org's, one person's, or one agent with
+  every external ID it answers for, and matches at segment boundaries:
+  `acme/` never reaches `acmecorp/…`, and `acme/triage` never reaches
+  `acme/triage2`.
 
   ## Actions
 
@@ -43,13 +34,15 @@ defmodule Wardrik.Grant do
   definition allows. An empty ceiling holds its agents to nothing but their
   own hooks.
 
-      {:ok, grant} = Wardrik.Grant.new("acme/", [:define], WardrikPolicy.hooks(careful))
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), [:define], WardrikPolicy.hooks(careful))
 
   `held/2` puts a grant's ceiling ahead of a definition's hooks. An agent
   keeps the ceiling it was defined under, as plain data, until it is defined
   again.
   """
 
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Hook
 
   @actions [:read, :message, :decide, :define, :serve]
@@ -60,7 +53,7 @@ defmodule Wardrik.Grant do
 
   @type action() :: :read | :message | :decide | :define | :serve
 
-  @type t() :: %__MODULE__{scope: String.t(), can: [action()], ceiling: [Hook.t()]}
+  @type t() :: %__MODULE__{scope: Prefix.t(), can: [action()], ceiling: [Hook.t()]}
 
   @doc "Every action, in the order a grant lists them."
   @spec actions() :: [action()]
@@ -71,12 +64,11 @@ defmodule Wardrik.Grant do
   `ceiling` over the agents it defines, or a message saying what does not
   read. Only a grant that can `:define` has a ceiling.
   """
-  @spec new(String.t(), [action() | String.t()], [Hook.t()]) ::
+  @spec new(Prefix.t(), [action() | String.t()], [Hook.t()]) ::
           {:ok, t()} | {:error, String.t()}
-  def new(scope, can \\ @actions, ceiling \\ [])
-      when is_binary(scope) and is_list(can) and is_list(ceiling) do
-    with {:ok, scope} <- Wardrik.Fleet.scope(scope),
-         {:ok, can} <- actions(can),
+  def new(%Prefix{} = scope, can \\ @actions, ceiling \\ [])
+      when is_list(can) and is_list(ceiling) do
+    with {:ok, can} <- actions(can),
          :ok <- ceiling(ceiling, can) do
       {:ok, %__MODULE__{scope: scope, can: can, ceiling: ceiling}}
     end
@@ -115,22 +107,16 @@ defmodule Wardrik.Grant do
   defp action(name) when is_binary(name), do: Map.get(@named, name)
   defp action(action), do: action
 
-  @doc """
-  Whether `grant` reaches the agent under `key`: its scope is empty, or the
-  key is the scope, or goes on from it at a `/`.
-  """
-  @spec covers?(t(), String.t()) :: boolean()
-  def covers?(%__MODULE__{scope: ""}, key) when is_binary(key), do: true
-
-  def covers?(%__MODULE__{scope: scope}, key) when is_binary(key),
-    do: String.starts_with?(key <> "/", String.trim_trailing(scope, "/") <> "/")
+  @doc "Whether `grant` reaches the agent `id`: whether its scope covers it."
+  @spec covers?(t(), AgentID.t()) :: boolean()
+  def covers?(%__MODULE__{scope: scope}, %AgentID{} = id), do: Prefix.covers?(scope, id)
 
   @doc "`hooks`, a definition's own, with `grant`'s ceiling ahead of them."
   @spec held(t(), [Hook.t()] | nil) :: [Hook.t()]
   def held(%__MODULE__{ceiling: ceiling}, hooks), do: ceiling ++ (hooks || [])
 
-  @doc "Whether `grant` lets its holder take `action` on the agent under `key`."
-  @spec allows?(t(), action(), String.t()) :: boolean()
-  def allows?(%__MODULE__{can: can} = grant, action, key),
-    do: action in can and covers?(grant, key)
+  @doc "Whether `grant` lets its holder take `action` on the agent `id`."
+  @spec allows?(t(), action(), AgentID.t()) :: boolean()
+  def allows?(%__MODULE__{can: can} = grant, action, %AgentID{} = id),
+    do: action in can and covers?(grant, id)
 end

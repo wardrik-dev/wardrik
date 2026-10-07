@@ -159,10 +159,10 @@ defmodule WardrikDaemon do
           do:
             Enum.join(
               [
-                "  #{member.key}",
+                "  #{member.id}",
                 member.status,
                 Nodes.display(member.node)
-                | spent(specs[member.key], member.key) ++ next_run(member.key)
+                | spent(specs[member.id], member.id) ++ next_run(member.id)
               ],
               "  "
             )
@@ -175,30 +175,30 @@ defmodule WardrikDaemon do
   end
 
   @doc """
-  The specs the agent files hold, by the key of the agent each declares, or
+  The specs the agent files hold, by the ID of the agent each declares, or
   those `files` hold, as `WardrikDaemon.Agents.files/0` answers them.
   """
-  @spec specs([WardrikDaemon.Agents.file()]) :: %{String.t() => Wardrik.Agent.Spec.t()}
+  @spec specs([WardrikDaemon.Agents.file()]) :: %{Wardrik.AgentID.t() => Wardrik.Agent.Spec.t()}
   def specs(files \\ agent_files()) do
     for {_path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
         into: %{},
-        do: {Wardrik.Agent.Spec.key(spec), spec}
+        do: {spec.id, spec}
   end
 
   @doc """
-  The agent files that read, by the key of the agent each declares, with its
+  The agent files that read, by the ID of the agent each declares, with its
   spec, from `files` as `WardrikDaemon.Agents.files/0` answers them.
   """
   @spec declared([WardrikDaemon.Agents.file()]) ::
-          %{String.t() => {Path.t(), Wardrik.Agent.Spec.t()}}
+          %{Wardrik.AgentID.t() => {Path.t(), Wardrik.Agent.Spec.t()}}
   def declared(files \\ agent_files()) do
     for {path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
         into: %{},
-        do: {Wardrik.Agent.Spec.key(spec), {path, spec}}
+        do: {spec.id, {path, spec}}
   end
 
-  @doc "What the agent under `key` has spent of each budget `spec` gives it, as its budgets say it."
-  @spec spent(Wardrik.Agent.Spec.t() | nil, String.t()) :: [String.t()]
+  @doc "What the agent `key` has spent of each budget `spec` gives it, as its budgets say it."
+  @spec spent(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
   def spent(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
     for %Wardrik.Hook{module: WardrikPolicy.Budget, value: budget} <- hooks,
         spent = WardrikPolicy.Budget.spending(budget, key),
@@ -208,8 +208,8 @@ defmodule WardrikDaemon do
 
   def spent(_spec, _key), do: []
 
-  @doc "How long until a schedule next asks the agent under `key`, in milliseconds, or `nil` where none does."
-  @spec next_in(String.t()) :: non_neg_integer() | nil
+  @doc "How long until a schedule next asks the agent `key`, in milliseconds, or `nil` where none does."
+  @spec next_in(Wardrik.AgentID.t()) :: non_neg_integer() | nil
   def next_in(key) do
     case Wardrik.Schedule.for_agent(key) do
       [] ->

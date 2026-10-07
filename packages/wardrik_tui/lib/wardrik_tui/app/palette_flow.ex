@@ -115,7 +115,7 @@ defmodule WardrikTUI.App.PaletteFlow do
 
   defp choices_for(%{palette: %{step: :agent, query: query}} = assigns) do
     assigns.fleet
-    |> Enum.map(&{&1.key, agent_row(&1)})
+    |> Enum.map(&{to_string(&1.id), agent_row(&1)})
     |> Palette.filter(query, &elem(&1, 0))
   end
 
@@ -195,7 +195,7 @@ defmodule WardrikTUI.App.PaletteFlow do
 
   defp agent_row(member) do
     elsewhere = if member.node == node(), do: "", else: " · @#{short_node(member.node)}"
-    [Text.tag(member.key, :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
+    [Text.tag(to_string(member.id), :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
   end
 
   defp node_row(name) do

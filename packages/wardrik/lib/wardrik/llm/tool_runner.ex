@@ -87,7 +87,7 @@ defmodule Wardrik.LLM.ToolRunner do
   Every call in flight is registered under its agent and call id, so a single
   runaway tool can be stopped without touching the turn around it:
 
-      Wardrik.LLM.ToolRunner.kill_call("acme/@jon/assistant", "call_abc")
+      Wardrik.LLM.ToolRunner.kill_call(~A"acme/@jon/assistant", "call_abc")
 
   The killed call is answered with an error result the same way a crash is, so
   the model is never left with an unanswered call. `in_flight/1` lists what

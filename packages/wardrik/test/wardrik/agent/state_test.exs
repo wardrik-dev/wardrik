@@ -12,9 +12,10 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.LLM.Turn
   alias Wardrik.Scope
 
-  defp state, do: State.new([config: Config.new()], "acme/@jon/assistant")
+  defp state, do: State.new([config: Config.new()], Wardrik.AgentID.parse!("acme/@jon/assistant"))
 
-  defp scope, do: Scope.root(Config.new(), "acme/@jon/assistant", name: "turn")
+  defp scope,
+    do: Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), name: "turn")
 
   # A task nobody runs. The state never touches the process, only its ref.
   defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
@@ -446,14 +447,20 @@ defmodule Wardrik.Agent.StateTest do
                State.interrupt(reload(state))
     end
 
-    test "who the work is for is read from the key" do
-      assert State.new([], "acme/@jon/x").scope_opts == [user: "jon", org: "acme"]
-      assert State.new([], "default/x").scope_opts == [user: nil, org: "default"]
+    test "who the work is for is the agent's ID, and no option" do
+      id = Wardrik.AgentID.parse!("acme/@jon/x")
+      state = State.new([], id)
+
+      assert state.agent_id == id
+      assert state.scope_opts == []
     end
 
     test "the runner and resumer travel" do
       state =
-        State.new([config: Config.new(), runner: {SomeHost, :run, [:arg]}], "acme/@jon/assistant")
+        State.new(
+          [config: Config.new(), runner: {SomeHost, :run, [:arg]}],
+          Wardrik.AgentID.parse!("acme/@jon/assistant")
+        )
 
       assert reload(state).runner == {SomeHost, :run, [:arg]}
     end
@@ -470,7 +477,10 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a runner that is not an MFA is refused when the state is built" do
       assert_raise ArgumentError, ~r/must be \{module, function, args\}/, fn ->
-        State.new([runner: fn _scope, _context -> :ok end], "acme/@jon/assistant")
+        State.new(
+          [runner: fn _scope, _context -> :ok end],
+          Wardrik.AgentID.parse!("acme/@jon/assistant")
+        )
       end
     end
   end

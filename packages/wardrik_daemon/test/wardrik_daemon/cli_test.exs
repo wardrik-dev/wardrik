@@ -20,8 +20,10 @@ defmodule WardrikDaemon.CLITest do
   # type `input` into.
   defp live(args, input \\ ""), do: run(&CLI.live/1, ["--terminal=80,plain,input" | args], input)
 
+  # Arguments are words on a command line, so an ID or a prefix is its text.
   defp run(entry, args, input) do
     parent = self()
+    args = Enum.map(args, &to_string/1)
 
     output =
       capture_io(input, fn ->
@@ -41,7 +43,7 @@ defmodule WardrikDaemon.CLITest do
   # as parked, and `parked` reads the fleet.
   defp await_parked(key) do
     Wardrik.Test.Fleet.await_update(fn ->
-      Enum.any?(Wardrik.Fleet.list(), &(&1.key == key and &1.status == :parked))
+      Enum.any?(Wardrik.Fleet.list(), &(&1.id == key and &1.status == :parked))
     end)
   end
 
@@ -154,7 +156,8 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ") reaches the agents under acme/, for every action, with no ceiling."
 
     assert command(["token", "create", "bad", "--scope", "acme//triage", "--unlimited"]) ==
-             {~s("acme//triage" is not a scope; a scope is org/, org/@user/ or a key\n), 1}
+             {~s("acme//triage" is not a prefix; a prefix is org/, org/@user/ or an agent ID\n),
+              1}
   end
 
   test "token create --all makes a token that reaches every agent" do
@@ -267,6 +270,7 @@ defmodule WardrikDaemon.CLITest do
   # command writes to.
   defp watching(args) do
     parent = self()
+    args = Enum.map(args, &to_string/1)
     terminal = spawn(fn -> terminal(parent) end)
 
     spawn(fn ->
@@ -313,7 +317,7 @@ defmodule WardrikDaemon.CLITest do
 
   test "watch --json writes each event of the log as a line of JSON" do
     {key, _agent} = Wardrik.Test.Fleet.start_agent()
-    :ok = Group.monitor(Wardrik.Event.Log, key)
+    :ok = Group.monitor(Wardrik.Event.Log, to_string(key))
     terminal = watching(["watch", key, "--json"])
     assert_receive {:group, [%Group.Event{type: :joined} | _events], _info}
 
@@ -392,20 +396,22 @@ defmodule WardrikDaemon.CLITest do
     {key, _agent} =
       Wardrik.Test.Fleet.start_agent(
         [runner: {AgentRunners, :echo, [test_pid, "hi"]}],
-        Wardrik.Fleet.key(name)
+        Wardrik.AgentID.new!(name, org: "default")
       )
 
-    assert key == "default/#{name}"
+    assert to_string(key) == "default/#{name}"
     assert command(["ask", name, "hello", "--no-wait"]) == {"Asked #{key}.\n", 0}
     assert_receive {:turn, [{:user, "hello"}]}
 
-    {mine, _agent} = Wardrik.Test.Fleet.start_agent([], Wardrik.Fleet.key(name, user: "jon"))
+    {mine, _agent} =
+      Wardrik.Test.Fleet.start_agent([], Wardrik.AgentID.new!(name, org: "default", user: "jon"))
+
     assert {_shown, 0} = command(["show", "@jon/#{name}"])
     assert {"Nothing has been said yet.\n", 0} = command(["history", "@jon/#{name}"])
-    assert mine == "default/@jon/#{name}"
+    assert to_string(mine) == "default/@jon/#{name}"
 
     assert {message, 1} = command(["show", "_#{name}"])
-    assert message =~ "_#{name} is not an agent key"
+    assert message =~ "_#{name} is not an agent ID"
   end
 
   test "ask and history on a key nothing holds fail" do
@@ -437,8 +443,8 @@ defmodule WardrikDaemon.CLITest do
     assert row =~ ~r"#{parked} +parked +#{node()}"
 
     {output, 0} = command(["ls", "status:parked", "test/"])
-    assert output =~ parked
-    refute output =~ idle
+    assert output =~ to_string(parked)
+    refute output =~ to_string(idle)
 
     assert command(["ls", idle, "status:parked"]) ==
              {"No agent matches #{idle} status:parked.\n", 0}
@@ -447,14 +453,15 @@ defmodule WardrikDaemon.CLITest do
              command(["ls", "status:busy"])
 
     {output, 0} = command(["ls", idle, "--json"])
-    assert %{"agents" => [%{"id" => ^idle, "status" => "idle"}]} = JSON.decode!(output)
+    id = to_string(idle)
+    assert %{"agents" => [%{"id" => ^id, "status" => "idle"}]} = JSON.decode!(output)
   end
 
   test "show gives an agent in full, and what its file gives it" do
     dir = Path.join(System.tmp_dir!(), "wardrik-cli-#{System.unique_integer([:positive])}")
     org = "show-#{System.unique_integer([:positive])}"
     on_exit(fn -> File.rm_rf!(dir) end)
-    on_exit(fn -> Wardrik.Fleet.forget_under(org <> "/") end)
+    on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
     File.mkdir_p!(Path.join(dir, "agents"))
 
     File.write!(Path.join([dir, "agents", "counter.md"]), """
@@ -474,7 +481,7 @@ defmodule WardrikDaemon.CLITest do
     """)
 
     start_supervised!({WardrikDaemon.Agents, dir: dir})
-    key = "#{org}/counter"
+    key = Wardrik.AgentID.parse!("#{org}/counter")
     Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
 
     {output, 0} = command(["show", key])
@@ -497,7 +504,7 @@ defmodule WardrikDaemon.CLITest do
 
   test "schedules lists each schedule's next run, and its last and what came of it" do
     prefix = "cli-#{System.unique_integer([:positive])}/"
-    key = prefix <> "pinger"
+    key = Wardrik.AgentID.parse!(prefix <> "pinger")
     on_exit(fn -> Wardrik.Schedule.sync(key, []) end)
 
     assert {output, 0} = command(["schedules", prefix])
@@ -547,7 +554,7 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "--json answers with the documents the HTTP API answers with" do
-    key = parked_agent()
+    key = to_string(parked_agent())
 
     {output, 0} = command(["status", "--json"])
     assert %{"agents" => agents} = JSON.decode!(output)
@@ -591,7 +598,7 @@ defmodule WardrikDaemon.CLITest do
     {key, _agent} = Wardrik.Test.Fleet.start_agent()
 
     {output, 0} = command(["__complete", "show", key])
-    assert output == key <> "\n"
+    assert output == "#{key}\n"
 
     assert command(["__complete", "statu"]) == {"status\n", 0}
     assert command(["__complete", "nothing-starts-so"]) == {"", 0}

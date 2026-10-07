@@ -30,7 +30,7 @@ config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY
 ```
 
 ```elixir
-Wardrik.Fleet.spawn(key, config: config, credentials: WardrikVault)
+Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
 WardrikVault.put("github", {"acme", "jon"}, "ghp_xxx")   # jon's, in acme
 WardrikVault.put("pagerduty", "acme", "pd_xxx")         # acme's

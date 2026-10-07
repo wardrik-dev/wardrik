@@ -52,7 +52,11 @@ defmodule WardrikVaultTest do
     Calls.tool("tool", %{}, scope([credentials: WardrikVault] ++ scope_opts))
   end
 
-  defp scope(opts), do: Config.new() |> Scope.root("acme/@jon/assistant", opts)
+  defp scope(opts) do
+    {user, opts} = Keyword.pop(opts, :user)
+    {org, opts} = Keyword.pop(opts, :org, "acme")
+    Scope.root(Config.new(), Wardrik.AgentID.new!("assistant", org: org, user: user), opts)
+  end
 
   defp keys(list), do: Application.put_env(:wardrik_vault, WardrikVault, keys: list)
 

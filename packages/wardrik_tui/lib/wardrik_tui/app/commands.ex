@@ -5,6 +5,8 @@ defmodule WardrikTUI.App.Commands do
   import Breeze.View, only: [assign: 2]
 
   alias Wardrik.Agent
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
@@ -47,7 +49,7 @@ defmodule WardrikTUI.App.Commands do
 
   defp apply_command({:stop, target}, term), do: stop(term, target)
 
-  defp apply_command({:shutdown, name}, term), do: shutdown(term, name)
+  defp apply_command({:shutdown, name}, term), do: with_id(term, name, &shutdown(term, &1, name))
 
   defp apply_command({:rm, target, confirmed?}, term), do: remove(term, target, confirmed?)
 
@@ -61,17 +63,18 @@ defmodule WardrikTUI.App.Commands do
     do: decide(term, selector, {:deny, reason || @default_denial})
 
   defp apply_command({:spawn, name, options, prompt, mode}, term),
-    do: spawn_agent(term, name, options, prompt, mode)
+    do: with_id(term, name, &spawn_agent(term, &1, name, options, prompt, mode))
 
   defp apply_command({:move, nil, _options}, term), do: Interaction.pick(term, "/move", [])
 
   defp apply_command({:move, name, options}, term) when map_size(options) == 0 do
     if Node.list() == [],
       do: Interaction.flash(term, View.only_node()),
-      else: Interaction.pick(term, "/move", [key(term, name)])
+      else: with_id(term, name, &Interaction.pick(term, "/move", [to_string(&1)]))
   end
 
-  defp apply_command({:move, name, options}, term), do: move_agent(term, name, options)
+  defp apply_command({:move, name, options}, term),
+    do: with_id(term, name, &move_agent(term, &1, options))
 
   defp apply_command({:connect, nil}, term), do: Interaction.pick(term, "/connect", [])
 
@@ -95,16 +98,14 @@ defmodule WardrikTUI.App.Commands do
   defp apply_command({:unknown, word}, term),
     do: Display.append(term, View.unknown_command(word, Command.suggest(word)))
 
-  # An agent already running under the key is connected to rather than
+  # An agent already running under the ID is connected to rather than
   # started again, or, in the background, left alone and named.
-  defp spawn_agent(term, name, options, prompt, mode) do
-    key = key(term, name)
-
+  defp spawn_agent(term, id, name, options, prompt, mode) do
     case placement(options) do
       {:ok, placement} ->
-        case Fleet.whereis(key) do
-          nil -> start_agent(term, key, name, placement, prompt, mode)
-          pid -> existing_agent(term, key, name, pid, prompt, mode)
+        case Fleet.whereis(id) do
+          nil -> start_agent(term, id, name, placement, prompt, mode)
+          pid -> existing_agent(term, id, name, pid, prompt, mode)
         end
 
       {:error, reason} ->
@@ -112,75 +113,73 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  defp start_agent(term, key, name, placement, prompt, mode) do
-    with {:ok, options} <- WardrikTUI.App.options(term.assigns.options, key),
-         {:ok, pid} <- Fleet.spawn(key, options ++ term.assigns.spawn_opts ++ placement) do
-      started(term, key, name, pid, prompt, mode)
+  defp start_agent(term, id, name, placement, prompt, mode) do
+    with {:ok, options} <- WardrikTUI.App.options(term.assigns.options, id),
+         {:ok, pid} <- Fleet.spawn(id, options ++ term.assigns.spawn_opts ++ placement) do
+      started(term, id, name, pid, prompt, mode)
     else
       {:error, reason} -> Display.append(term, fleet_error(reason, placement[:node]))
     end
   end
 
-  defp started(term, key, _name, pid, prompt, :attach),
-    do: term |> Connection.switch(pid, key) |> Display.append(View.spawned(key)) |> ask_if(prompt)
+  defp started(term, id, _name, pid, prompt, :attach),
+    do: term |> Connection.switch(pid, id) |> Display.append(View.spawned(id)) |> ask_if(prompt)
 
-  defp started(term, key, name, pid, prompt, :background) do
+  defp started(term, id, name, pid, prompt, :background) do
     term
     |> Connection.refresh_fleet()
-    |> Display.append(View.spawned_background(key, name))
-    |> ask_elsewhere(pid, key, prompt)
+    |> Display.append(View.spawned_background(id, name))
+    |> ask_elsewhere(pid, id, prompt)
   end
 
-  defp existing_agent(%{assigns: %{agent_id: key}} = term, key, name, _pid, prompt, mode),
-    do: term |> Display.append(View.already_running(key, name, mode)) |> ask_if(prompt)
+  defp existing_agent(%{assigns: %{agent_id: id}} = term, id, name, _pid, prompt, mode),
+    do: term |> Display.append(View.already_running(id, name, mode)) |> ask_if(prompt)
 
-  defp existing_agent(term, key, name, pid, prompt, :attach),
+  defp existing_agent(term, id, name, pid, prompt, :attach),
     do:
       term
-      |> Connection.switch(pid, key)
-      |> Display.append(View.already_running(key, name, :attach))
+      |> Connection.switch(pid, id)
+      |> Display.append(View.already_running(id, name, :attach))
       |> ask_if(prompt)
 
-  defp existing_agent(term, key, name, pid, prompt, :background),
+  defp existing_agent(term, id, name, pid, prompt, :background),
     do:
       term
-      |> Display.append(View.already_running(key, name, :background))
-      |> ask_elsewhere(pid, key, prompt)
+      |> Display.append(View.already_running(id, name, :background))
+      |> ask_elsewhere(pid, id, prompt)
 
   defp ask_if(term, nil), do: term
 
   defp ask_if(term, prompt), do: ask(term, prompt)
 
   # A prompt for an agent this client is not attached to.
-  defp ask_elsewhere(term, _pid, _key, nil), do: term
+  defp ask_elsewhere(term, _pid, _id, nil), do: term
 
-  defp ask_elsewhere(term, pid, key, prompt) do
+  defp ask_elsewhere(term, pid, id, prompt) do
     case Agent.ask(pid, prompt) do
-      :ok -> Display.append(term, View.sent_to(key, prompt))
-      {:error, :not_found} -> Display.append(term, View.no_such_agent(key))
+      :ok -> Display.append(term, View.sent_to(id, prompt))
+      {:error, :not_found} -> Display.append(term, View.no_such_agent(id))
     end
   catch
-    :exit, _reason -> Display.append(term, View.unavailable(key))
+    :exit, _reason -> Display.append(term, View.unavailable(id))
   end
 
   # An agent whose turn is running or waiting is not moved until `/confirm`,
   # after what the move would interrupt has been shown.
-  defp move_agent(term, name, options) do
-    key = key(term, name)
-
+  defp move_agent(term, id, options) do
     case placement(options) do
       {:ok, [node: node]} ->
-        case Fleet.lookup(key) do
+        case Fleet.lookup(id) do
           nil ->
-            Display.append(term, View.no_such_agent(key))
+            Display.append(term, View.no_such_agent(id))
 
           %{status: status} when status in [:running, :parked] ->
             term
-            |> assign(confirm: {:move, key, node})
-            |> Display.append(View.move_preview(key, node, status))
+            |> assign(confirm: {:move, id, node})
+            |> Display.append(View.move_preview(id, node, status))
 
           _idle ->
-            move_now(term, key, node)
+            move_now(term, id, node)
         end
 
       {:error, reason} ->
@@ -188,13 +187,13 @@ defmodule WardrikTUI.App.Commands do
     end
   end
 
-  defp move_now(term, key, node) do
-    case Fleet.move(key, node) do
+  defp move_now(term, id, node) do
+    case Fleet.move(id, node) do
       {:ok, pid} ->
         term
-        |> adopt(key, pid)
+        |> adopt(id, pid)
         |> Connection.refresh_fleet()
-        |> Display.append(View.moved(key, node))
+        |> Display.append(View.moved(id, node))
 
       {:error, reason} ->
         Display.append(term, fleet_error(reason, node))
@@ -212,9 +211,9 @@ defmodule WardrikTUI.App.Commands do
   defp fleet_error(reason, _node), do: View.error(reason)
 
   # The attached agent is addressed by its new process from here on.
-  defp adopt(%{assigns: %{agent_id: key}} = term, key, pid), do: Connection.reconnect(term, pid)
+  defp adopt(%{assigns: %{agent_id: id}} = term, id, pid), do: Connection.reconnect(term, pid)
 
-  defp adopt(term, _key, _pid), do: term
+  defp adopt(term, _id, _pid), do: term
 
   defp placement(%{"node" => name} = options) when map_size(options) == 1 do
     case Nodes.find(name, [node() | Node.list()]) do
@@ -227,44 +226,45 @@ defmodule WardrikTUI.App.Commands do
 
   defp placement(options), do: {:error, {:unknown_options, Map.keys(options) -- ["node"]}}
 
-  # A name that is an agent's, in this client's scope or as a whole key, is
-  # connected to. Otherwise the fleet is searched for it: one agent whose key
-  # holds it is the one meant; several are offered to pick from.
+  # A name that is an agent's, in this client's org or as a whole ID, is
+  # connected to. Otherwise the fleet is searched for it.
   defp connect(term, name) do
-    key = key(term, name)
+    case id(term, name) do
+      {:ok, id} ->
+        if id == term.assigns.agent_id or Fleet.whereis(id) != nil,
+          do: Connection.connect_id(term, id),
+          else: search(term, name, View.no_such_agent(id))
 
-    if key == term.assigns.agent_id or Fleet.whereis(key) != nil do
-      Connection.connect_key(term, key)
-    else
-      case matching(name) do
-        [] -> Display.append(term, View.no_such_agent(key))
-        [member] -> Connection.connect_key(term, member.key)
-        _several -> Interaction.pick(term, "/connect", [], String.trim_leading(name, "/"))
-      end
+      {:error, message} ->
+        search(term, name, View.error(message))
+    end
+  end
+
+  # One agent whose ID holds `name` is the one meant; several are offered to
+  # pick from. Where none does, `none` is said.
+  defp search(term, name, none) do
+    case matching(name) do
+      [] -> Display.append(term, none)
+      [member] -> Connection.connect_id(term, member.id)
+      _several -> Interaction.pick(term, "/connect", [], String.trim_leading(name, "/"))
     end
   end
 
   defp matching(name) do
     text = name |> String.trim_leading("/") |> String.downcase()
-    Enum.filter(Fleet.list(), &String.contains?(String.downcase(&1.key), text))
+    Enum.filter(Fleet.list(), &String.contains?(String.downcase(to_string(&1.id)), text))
   end
 
-  # A bare name is an agent beside this client's own, under the same org and
-  # user; any other key is read as `Wardrik.Fleet.expand/1` reads it. A leading
-  # slash is tolerated, as is a key nothing holds, which the lookup then
-  # reports.
-  defp key(term, target) do
-    target = String.trim_leading(target, "/")
+  # A name is read as `Wardrik.AgentID.expand/2` reads it, in this client's
+  # `:org`. A leading slash is tolerated, as is an ID nothing holds, which the
+  # lookup then reports.
+  defp id(term, name), do: name |> String.trim_leading("/") |> AgentID.expand(term.assigns.org)
 
-    case {String.split(target, "/"), Fleet.expand(target)} do
-      {[name], _key} ->
-        if Fleet.segment?(name), do: Fleet.key(name, term.assigns.spawn_opts), else: name
-
-      {_parts, {:ok, key}} ->
-        key
-
-      {_parts, {:error, _message}} ->
-        target
+  # Acts on the agent `name` names, or says why it names none.
+  defp with_id(term, name, act) do
+    case id(term, name) do
+      {:ok, id} -> act.(id)
+      {:error, message} -> Display.append(term, View.error(message))
     end
   end
 
@@ -273,32 +273,31 @@ defmodule WardrikTUI.App.Commands do
   defp stop(term, target) do
     target = String.trim_leading(target, "/")
 
-    if String.ends_with?(target, "/") do
-      prefix =
-        case Fleet.expand_prefix(target) do
-          {:ok, prefix} -> prefix
-          {:error, _message} -> target
-        end
+    if String.ends_with?(target, "/"),
+      do: stop_under(term, target),
+      else: with_id(term, target, &stop_one(term, &1))
+  end
 
-      Display.append(term, View.stopped_under(prefix, Fleet.kill(prefix)))
-    else
-      key = key(term, target)
+  defp stop_under(term, target) do
+    case Prefix.expand(target, term.assigns.org) do
+      {:ok, prefix} -> Display.append(term, View.stopped_under(prefix, Fleet.kill(prefix)))
+      {:error, message} -> Display.append(term, View.error(message))
+    end
+  end
 
-      case Agent.interrupt(key) do
-        :ok -> Display.append(term, View.stopped(key))
-        {:error, :not_found} -> Display.append(term, View.no_such_agent(key))
-      end
+  defp stop_one(term, id) do
+    case Agent.interrupt(id) do
+      :ok -> Display.append(term, View.stopped(id))
+      {:error, :not_found} -> Display.append(term, View.no_such_agent(id))
     end
   end
 
   # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
   # The attached agent may be shut down; the status row then says so.
-  defp shutdown(term, name) do
-    key = key(term, name)
-
-    case Fleet.stop(key) do
-      :ok -> term |> Connection.refresh_fleet() |> Display.append(View.shut_down(key, name))
-      {:error, :noproc} -> Display.append(term, View.no_such_agent(key))
+  defp shutdown(term, id, name) do
+    case Fleet.stop(id) do
+      :ok -> term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
+      {:error, :noproc} -> Display.append(term, View.no_such_agent(id))
       {:error, reason} -> Display.append(term, View.error(reason))
     end
   end
@@ -307,54 +306,59 @@ defmodule WardrikTUI.App.Commands do
   # be removed at once with `--yes`. The attached agent is left out and named.
   defp remove(term, target, confirmed?) do
     target = String.trim_leading(target, "/")
-    prefix? = String.ends_with?(target, "/")
 
-    case targets(term, target, prefix?) do
-      {[], nil} when prefix? -> Display.append(term, View.nothing_under(target))
-      {[], nil} -> Display.append(term, View.no_such_agent(key(term, target)))
-      {[], attached} -> Display.append(term, View.attached(attached))
-      {keys, _skipped} when confirmed? and not prefix? -> forget_all(term, keys)
-      {keys, skipped} -> preview(term, target, keys, skipped)
+    if String.ends_with?(target, "/"),
+      do: remove_under(term, target),
+      else: with_id(term, target, &remove_one(term, &1, target, confirmed?))
+  end
+
+  defp remove_under(%{assigns: %{agent_id: attached}} = term, target) do
+    case Prefix.expand(target, term.assigns.org) do
+      {:ok, prefix} ->
+        ids = prefix |> Fleet.list() |> Enum.map(& &1.id)
+
+        case {List.delete(ids, attached), if(attached in ids, do: attached)} do
+          {[], nil} -> Display.append(term, View.nothing_under(target))
+          {[], skipped} -> Display.append(term, View.attached(skipped))
+          {ids, skipped} -> preview(term, target, ids, skipped)
+        end
+
+      {:error, message} ->
+        Display.append(term, View.error(message))
     end
   end
 
-  defp targets(%{assigns: %{agent_id: attached}}, prefix, true) do
-    keys = prefix |> Fleet.list() |> Enum.map(& &1.key)
-    {List.delete(keys, attached), if(attached in keys, do: attached)}
-  end
-
-  defp targets(%{assigns: %{agent_id: attached}} = term, name, false) do
-    key = key(term, name)
-
+  defp remove_one(%{assigns: %{agent_id: attached}} = term, id, target, confirmed?) do
     cond do
-      key == attached -> {[], attached}
-      Fleet.whereis(key) -> {[key], nil}
-      true -> {[], nil}
+      id == attached -> Display.append(term, View.attached(attached))
+      Fleet.whereis(id) == nil -> Display.append(term, View.no_such_agent(id))
+      confirmed? -> forget_all(term, [id])
+      true -> preview(term, target, [id], nil)
     end
   end
 
-  defp preview(term, target, keys, skipped) do
+  defp preview(term, target, ids, skipped) do
     term
-    |> assign(confirm: {:rm, keys})
-    |> Display.append(View.removal_preview(target, keys, skipped))
+    |> assign(confirm: {:rm, ids})
+    |> Display.append(View.removal_preview(target, ids, skipped))
   end
 
-  defp confirm(%{assigns: %{confirm: {:rm, keys}}} = term) do
-    term |> assign(confirm: nil) |> forget_all(keys)
+  defp confirm(%{assigns: %{confirm: {:rm, ids}}} = term) do
+    term |> assign(confirm: nil) |> forget_all(ids)
   end
 
-  defp confirm(%{assigns: %{confirm: {:move, key, node}}} = term) do
-    term |> assign(confirm: nil) |> move_now(key, node)
+  defp confirm(%{assigns: %{confirm: {:move, id, node}}} = term) do
+    term |> assign(confirm: nil) |> move_now(id, node)
   end
 
   defp confirm(term), do: Interaction.flash(term, View.nothing_to_confirm())
 
-  defp forget_all(term, keys) do
-    {removed, failed} = Enum.split_with(keys, &(Fleet.forget(&1) == :ok))
+  defp forget_all(term, ids) do
+    {removed, failed} = Enum.split_with(ids, &(Fleet.forget(&1) == :ok))
     term = assign(term, views: Map.drop(term.assigns.views, removed))
 
     case failed do
-      [] -> term |> Connection.refresh_fleet() |> Display.append(View.forgotten(keys))
+      [] -> term |> Connection.refresh_fleet() |> Display.append(View.forgotten(ids))
       failed -> term |> Connection.refresh_fleet() |> Display.append(View.not_removed(failed))
     end
   end
@@ -415,8 +419,8 @@ defmodule WardrikTUI.App.Commands do
   defp decisions(calls, decision),
     do: Map.new(calls, fn {call, _prompt} -> {call.id, decision} end)
 
-  defp ask(%{assigns: %{available?: false, agent_id: key}} = term, _text),
-    do: Display.append(term, View.unavailable(key))
+  defp ask(%{assigns: %{available?: false, agent_id: id}} = term, _text),
+    do: Display.append(term, View.unavailable(id))
 
   defp ask(term, text) do
     :ok = Agent.ask(term.assigns.agent, text)

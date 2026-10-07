@@ -12,7 +12,7 @@ defmodule Wardrik.ScheduleTest do
   @every {:interval, 50}
 
   setup do
-    key = Fleet.key("scheduled-#{System.unique_integer([:positive])}")
+    key = Wardrik.Test.Fleet.id("scheduled")
     on_exit(fn -> Fleet.forget(key) end)
     %{key: key}
   end
@@ -165,8 +165,8 @@ defmodule Wardrik.ScheduleTest do
     test "put/1 brings an agent's schedules to its spec, or leaves them, and forget/1 deletes them" do
       name = "specced-#{System.unique_integer([:positive])}"
       daily = Schedule.new("sweep", every: "@daily", prompt: "Look.")
-      spec = Spec.new(name: name, schedules: [daily])
-      key = Spec.key(spec)
+      spec = Spec.new(id: Wardrik.AgentID.new!(name, org: "test"), schedules: [daily])
+      key = spec.id
 
       {:ok, _pid} = Fleet.put(spec)
       assert [%{name: "sweep"}] = Schedule.for_agent(key)

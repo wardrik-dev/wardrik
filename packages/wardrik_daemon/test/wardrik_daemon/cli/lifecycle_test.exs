@@ -5,6 +5,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   import ExUnit.CaptureIO
 
   alias Wardrik.Agent
+  alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
@@ -27,7 +28,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
     start_supervised!({WardrikDaemon.Agents, dir: dir})
     org = "life-#{System.unique_integer([:positive])}"
-    on_exit(fn -> Fleet.forget_under(org <> "/") end)
+    on_exit(fn -> Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
 
     %{dir: dir, org: org, here: Nodes.display(node())}
   end
@@ -47,8 +48,10 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     run(&CLI.live/1, [terminal | args], input)
   end
 
+  # Arguments are words on a command line, so an ID or a prefix is its text.
   defp run(entry, args, input) do
     parent = self()
+    args = Enum.map(args, &to_string/1)
 
     output =
       capture_io(input, fn ->
@@ -65,7 +68,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   defp agent(org, name, opts \\ []) do
-    {key, _pid} = Wardrik.Test.Fleet.start_agent(opts, "#{org}/#{name}")
+    {key, _pid} = Wardrik.Test.Fleet.start_agent(opts, Wardrik.AgentID.parse!("#{org}/#{name}"))
     key
   end
 
@@ -88,7 +91,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   describe "spawn" do
     test "writes the agent's file from the defaults, and starts it", context do
       %{dir: dir, org: org, here: here} = context
-      key = "#{org}/helper"
+      key = AgentID.parse!("#{org}/helper")
 
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"Wrote agents/helper.md, and started #{key} on #{here}, with " <>
@@ -107,7 +110,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     end
 
     test "puts an agent with a user, on the node named", %{dir: dir, org: org, here: here} do
-      key = "#{org}/@jon/digest"
+      key = AgentID.parse!("#{org}/@jon/digest")
 
       {output, 0} =
         command(["agent", "spawn", "digest", "--org", org, "--user", "jon", "--on", here])
@@ -135,7 +138,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     test "starts a stopped agent again, as its file declares it or as it was", context do
       %{dir: dir, org: org, here: here} = context
       {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
-      key = "#{org}/helper"
+      key = AgentID.parse!("#{org}/helper")
 
       assert command(["agent", "stop", key]) ==
                {"Stopped #{key}, and kept its conversation. agents/helper.md declares it, so " <>
@@ -283,7 +286,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
     test "leaves an agent a file declares, and names the file", %{org: org} do
       {_output, 0} = command(["agent", "spawn", "helper", "--org", org])
-      helper = "#{org}/helper"
+      helper = AgentID.parse!("#{org}/helper")
       other = agent(org, "other")
 
       declared =
@@ -304,7 +307,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       start_supervised!({WardrikDaemon.Agents, dir: dir, nodes: fn -> [other] end})
       key = agent(org, "theirs")
 
-      {:ok, _vsn} = Wardrik.Store.put(:declared, "agents/#{other}", %{key => "theirs.md"})
+      {:ok, _vsn} =
+        Wardrik.Store.put(:declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
+
       on_exit(fn -> Wardrik.Store.delete(:declared, "agents/#{other}") end)
 
       assert command(["agent", "rm", key, "--yes"]) ==

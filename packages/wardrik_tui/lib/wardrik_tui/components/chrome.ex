@@ -1,7 +1,6 @@
 defmodule WardrikTUI.Components.Chrome do
   @moduledoc "Header, activity hints, prompt hints, and usage footer."
   use Breeze.Component
-  alias Wardrik.Fleet
   alias WardrikTUI.{Activity, Render, Text, Usage, View}
   @faint [:faint, :light_black]
 
@@ -128,12 +127,10 @@ defmodule WardrikTUI.Components.Chrome do
   defp status_text(%{notice: {_ref, text}}, width),
     do: Render.line(Render.justify([" ", text], "", width))
 
-  defp status_text(%{available?: false, agent_id: key} = assigns, width) do
-    {_org, _user, name} = Fleet.parse(key)
-
+  defp status_text(%{available?: false, agent_id: id} = assigns, width) do
     left =
       Text.tag(
-        " ⏻ #{key} is not running · the fleet restarts it if it can · /spawn #{name} brings it back",
+        " ⏻ #{id} is not running · the fleet restarts it if it can · /spawn #{id} brings it back",
         :yellow
       )
 

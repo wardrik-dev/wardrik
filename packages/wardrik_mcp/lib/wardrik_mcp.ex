@@ -237,14 +237,13 @@ defmodule WardrikMCP do
   # A server serves the agents of the orgs `:orgs` names, and no others.
   defp serves(%Server{orgs: :all}, _scope), do: :ok
 
-  defp serves(%Server{} = server, %Scope{org: org}) when is_binary(org) do
+  defp serves(%Server{} = server, %Scope{} = scope) do
+    org = Scope.agent_id(scope).org
+
     if Server.for_org?(server, org),
       do: :ok,
       else: {:error, "#{server.ref} does not serve #{org}'s agents"}
   end
-
-  defp serves(%Server{} = server, _scope),
-    do: {:error, "#{server.ref} serves the agents of some orgs, and this call is from none"}
 
   # A server everyone shares is reached over the deployment's own connection.
   # One reached with a credential needs a connection for whoever the
