@@ -144,7 +144,8 @@ though it may name a policy in `policies/` that has one.
 
 ## Schedule
 
-`schedule` is one schedule or a list of them, each a `Wardrik.Schedule`:
+`schedule` is one schedule or a list of them, each a `WardrikSchedule`,
+that ask the agent, and none of its conversations, on a clock:
 
     schedule:
       - name: sweep
@@ -205,11 +206,12 @@ as it does a file's:
 `wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
 mean in a file. The ID gives the agent's `name`, `org` and `user`. A
-definition has no `schedule` or `notify`: it leaves the agent's schedules
-as they are, and the schedules routes set them. Its `tools` and `policy`
-name what the daemon ships or configures, and never a module, and its
-`workspace` shares only the trees the scope of the token that sent it
-covers.
+definition has no `notify`. Its `schedule` lists the agent's schedules as
+a file's does, and `put_schedule/3` and `delete_schedule/2` change one of
+them in a definition kept, for the schedules routes. Its `tools` and
+`policy` name what the daemon ships or configures, and never a module,
+and its `workspace` shares only the trees the scope of the token that
+sent it covers.
 
 ## Written by wardrik
 

@@ -5,7 +5,8 @@ sidebar:
   order: 1
 ---
 
-An agent can be asked something on a clock. A schedule is part of its agent file:
+An agent can be asked something on a clock. A schedule is part of the agent's definition, here its
+agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -144,17 +145,28 @@ schedules.
 
 ## Over HTTP
 
-The HTTP API puts and removes one schedule at a time, with a token that can `define`:
+An agent defined over the HTTP API lists its schedules in its definition, as a file does:
 
 ```sh
 curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/sweep \
-  -d '{"every": "30m", "prompt": "Check the incident queue."}'
-
-curl -X DELETE -H "authorization: Bearer $TOKEN" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/sweep
+  http://127.0.0.1:4747/v1/agents/acme/triage \
+  -d '{"instructions": "You watch the incident queue.", "tools": ["linear/*"],
+       "schedule": [{"name": "sweep", "every": "30m", "prompt": "Check the incident queue."}]}'
 ```
 
-The body takes `every`, `prompt`, `overlap`, `missed` and `jitter`, but not `prompt_file`. Defining
-an agent over HTTP leaves its schedules as they are. An agent a file declares has the schedules its
-file lists, and the HTTP API refuses, with `409`, to change them.
+Putting the definition again gives the agent the schedules it lists then, and removes the others.
+One schedule is set or removed at a time with a token that can `define`, which changes the
+definition the daemon keeps:
+
+```sh
+curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/digest \
+  -d '{"every": "0 17 * * 1-5", "prompt": "Write up what happened today."}'
+
+curl -X DELETE -H "authorization: Bearer $TOKEN" \
+  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/digest
+```
+
+The body is one schedule without its `name`, which is the path's. `GET .../definition` lists the
+schedules as they stand. An agent with no definition kept answers `404`, and one a file declares
+has the schedules its file lists: the HTTP API refuses, with `409`, to change them.

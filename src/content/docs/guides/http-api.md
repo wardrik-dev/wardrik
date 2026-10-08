@@ -49,11 +49,11 @@ curl -s -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/j
 It answers `201` and the agent's snapshot, and starts the agent. Putting it again answers `200` and
 gives the running agent what the definition says now, keeping its conversation.
 
-A definition takes `description`, `instructions` for the system prompt, `model`, `tools`, `policy`,
-`timeout`, `max_iterations` and `compaction`, as an [agent file](/reference/agent-files/) does. It
-names tools and policies the daemon ships or configures, never a module, and cannot share trees,
-read files into each turn or trust outside content. A key an agent file declares belongs to the
-file, and is refused with `409`.
+A definition takes `description`, `instructions` for the system prompt, `model`, `tools`,
+`workspace`, `context`, `policy`, `timeout`, `max_iterations`, `compaction` and `schedule`, as an
+[agent file](/reference/agent-files/) does. It names tools and policies the daemon ships or
+configures, never a module, shares only the trees its token's scope covers, and cannot trust outside
+content. A key an agent file declares belongs to the file, and is refused with `409`.
 
 ## Ask it something
 
@@ -120,8 +120,8 @@ conversation, and with it the mark of [content from outside](/concepts/policy/#c
 it held, answering `409` while a turn runs or waits on a person. `DELETE` stops the agent and
 removes its conversation and schedules.
 
-Schedules are put and removed at `/schedules/{name}`; see
-[Run an agent on a schedule](/guides/schedules/#over-http).
+A definition's `schedule` lists the agent's schedules, and one is put or removed at
+`/schedules/{name}`; see [Run an agent on a schedule](/guides/schedules/#over-http).
 
 ## Errors
 
