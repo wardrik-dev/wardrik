@@ -88,6 +88,7 @@ defmodule Wardrik.LLM.ToolRunner do
   @spec execute_many_async([Call.t() | Wardrik.Tool.call()], Scope.t()) :: [Call.t()]
   def execute_many_async(tool_calls, %Scope{} = scope) do
     turn = self()
+    index = Config.tool_index(scope.config)
     calls = Enum.map(tool_calls, &token/1)
 
     Wardrik.Tasks.supervisor()
@@ -95,11 +96,11 @@ defmodule Wardrik.LLM.ToolRunner do
       Enum.map(calls, &{&1, Scope.open(scope, Call.name(&1))}),
       fn {call, span} ->
         Wardrik.Tether.to(turn)
-        in_span(call, span)
+        call |> Pipeline.indexed(index) |> in_span(span)
       end,
       ordered: true,
       max_concurrency: @max_concurrency,
-      timeout: timeout(calls, scope),
+      timeout: timeout(calls, scope, index),
       on_timeout: :kill_task,
       zip_input_on_exit: true
     )
@@ -159,9 +160,12 @@ defmodule Wardrik.LLM.ToolRunner do
   The longest timeout any of them declares, never more than the scope has left.
   """
   @spec timeout([Call.t() | Wardrik.Tool.call()], Scope.t()) :: timeout()
-  def timeout(tool_calls, %Scope{config: config} = scope) do
+  def timeout(tool_calls, %Scope{config: config} = scope),
+    do: timeout(tool_calls, scope, Config.tool_index(config))
+
+  defp timeout(tool_calls, %Scope{config: config} = scope, index) do
     tool_calls
-    |> Enum.map(&(Config.tool_timeout(config, tool_name(&1)) || @tool_timeout))
+    |> Enum.map(&(Config.tool_timeout(config, tool_name(&1), index) || @tool_timeout))
     |> Enum.max(fn -> @tool_timeout end)
     |> within(Scope.remaining_ms(scope))
   end

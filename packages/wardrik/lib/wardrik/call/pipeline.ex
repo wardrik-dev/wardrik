@@ -4,7 +4,7 @@ defmodule Wardrik.Call.Pipeline do
   alike, the way a `Plug.Conn` passes through a pipeline.
 
     1. **Decide.** An unchecked call has what its tool declares written on it
-       (see `Wardrik.Tool.declared/1`), and the scope's `Wardrik.Hook`s allow
+       (see `Wardrik.Tool.declared/2`), and the scope's `Wardrik.Hook`s allow
        it, refuse it, or ask a person about it. `answer/2` writes on a call
        that waited what a person decided.
     2. **Before.** A tool call that may go ahead is claimed in the scope's
@@ -84,6 +84,7 @@ defmodule Wardrik.Call.Pipeline do
   @request :wardrik_request
   @in_doubt :wardrik_in_doubt
   @made :wardrik_made
+  @tools :wardrik_tools
 
   @typedoc "Makes a model call the steps before it let go ahead, and hands it back answered."
   @type invoke() :: (Call.t() -> Call.t())
@@ -112,15 +113,34 @@ defmodule Wardrik.Call.Pipeline do
   def request(%Call{target: %Model{}, private: %{@request => %Request{} = request}}), do: request
 
   @doc """
+  Carries `index`, `Wardrik.LLM.Config.tool_index/1` of the call's scope's
+  config, with a tool call, so its steps look its tool up there rather than
+  build the scope's tools again. A caller running many calls under one scope
+  builds it once for them all; a call run without one has it built as it
+  begins. `run/2` drops it as it ends.
+  """
+  @spec indexed(Call.t(), Config.tool_index()) :: Call.t()
+  def indexed(%Call{target: %Tool{}} = call, index) when is_map(index),
+    do: Call.put_private(call, @tools, index)
+
+  @doc """
   Decides an unchecked call, and hands any other on as it came. A call that
   does not go ahead holds nothing it was given to go ahead with.
   """
   @spec decide(Call.t()) :: Call.t()
-  def decide(%Call{state: :unchecked, target: %Tool{}} = call),
-    do: call |> Wardrik.Tool.declared() |> Hook.check() |> announced() |> held_back()
+  def decide(%Call{} = call),
+    do: call |> indexed() |> checked() |> Map.update!(:private, &Map.delete(&1, @tools))
 
-  def decide(%Call{state: :unchecked} = call), do: call |> Hook.check() |> held_back()
-  def decide(%Call{} = call), do: call
+  defp checked(%Call{state: :unchecked, target: %Tool{}} = call) do
+    call
+    |> Wardrik.Tool.declared(spec(call))
+    |> Hook.check()
+    |> announced()
+    |> held_back()
+  end
+
+  defp checked(%Call{state: :unchecked} = call), do: call |> Hook.check() |> held_back()
+  defp checked(%Call{} = call), do: call
 
   defp held_back(%Call{state: state} = call) when state in [:denied, :waiting],
     do: forgotten(call)
@@ -153,7 +173,8 @@ defmodule Wardrik.Call.Pipeline do
   @spec run(Call.t(), invoke() | nil) :: Call.t()
   def run(%Call{scope: %Scope{}} = call, invoke \\ nil) do
     call
-    |> decide()
+    |> indexed()
+    |> checked()
     |> claim()
     |> refused()
     |> resolved()
@@ -166,6 +187,31 @@ defmodule Wardrik.Call.Pipeline do
   end
 
   defp credentials(%Call{private: private}), do: Map.get(private, @credentials) || %{}
+
+  defp index(%Call{private: %{@tools => index}}), do: index
+  defp index(%Call{scope: scope}), do: Config.tool_index(scope.config)
+
+  defp indexed(%Call{target: %Tool{}} = call), do: indexed(call, index(call))
+  defp indexed(call), do: call
+
+  # The call's tool as its scope's config offers it, `nil` where it leaves it
+  # out, and the spec that builds it; `nil` for a tool the config does not
+  # name.
+  defp indexed_tool(%Call{target: %Tool{name: name}} = call), do: Map.get(index(call), name)
+
+  defp offered(call) do
+    case indexed_tool(call) do
+      nil -> nil
+      {tool, _spec} -> tool
+    end
+  end
+
+  defp spec(call) do
+    case indexed_tool(call) do
+      nil -> nil
+      {_tool, spec} -> spec
+    end
+  end
 
   # A call runs again in doubt where it came back so and runs once more, or a
   # person approved running it again.
@@ -204,8 +250,8 @@ defmodule Wardrik.Call.Pipeline do
 
   defp claim(call), do: call
 
-  defp rerun?(%Call{target: %Tool{name: name}, scope: scope}),
-    do: Config.tool_in_doubt(scope.config, name) == :rerun
+  defp rerun?(%Call{target: %Tool{name: name}, scope: scope} = call),
+    do: Config.tool_in_doubt(scope.config, name, index(call)) == :rerun
 
   # A refused tool call is answered with why, as an ordinary tool result. A
   # model call refused is the caller's to report.
@@ -271,7 +317,7 @@ defmodule Wardrik.Call.Pipeline do
   defp resolved(call), do: call
 
   defp needed(call, name) do
-    case Config.tool_spec(call.scope.config, name) do
+    case spec(call) do
       nil -> []
       spec -> Wardrik.Tool.annotations(spec, name).credentials
     end
@@ -355,7 +401,7 @@ defmodule Wardrik.Call.Pipeline do
   defp told(call), do: announced(call)
 
   defp tool(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
-    case Enum.find(Config.tools(call.scope.config), &(&1.name == name)) do
+    case offered(call) do
       nil ->
         Call.answer(call, {:error, "Unknown tool: #{name}"})
 
@@ -456,7 +502,7 @@ defmodule Wardrik.Call.Pipeline do
   # A call answered by a tool whose answers hold labels carries them, whether
   # it ran now or its answer was replayed.
   defp labelled(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
-    case Config.tool_spec(call.scope.config, name) do
+    case spec(call) do
       nil -> call
       spec -> Call.label(call, Wardrik.Tool.annotations(spec, name).labels)
     end
@@ -482,7 +528,7 @@ defmodule Wardrik.Call.Pipeline do
   # A credential is handed to the tool for the call, and a request to the
   # provider, and neither is kept.
   defp forgotten(%Call{private: private} = call),
-    do: %{call | private: Map.drop(private, [@credentials, @request, @in_doubt, @made])}
+    do: %{call | private: Map.drop(private, [@credentials, @request, @in_doubt, @made, @tools])}
 
   # -- events ------------------------------------------------------------------
 

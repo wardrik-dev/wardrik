@@ -3,7 +3,7 @@ defmodule Wardrik.Call.Tool do
   The tool a `Wardrik.Call` goes to, and what it is asked: the tool's name as the
   agent knows it, and the arguments the model gave.
 
-  What the tool declares about a call, `Wardrik.Tool.declared/1` writes here
+  What the tool declares about a call, `Wardrik.Tool.declared/2` writes here
   before any hook is asked, so a hook reads it as data:
 
     * `:gated` - the call waits on a person unless a hook allows it by name;

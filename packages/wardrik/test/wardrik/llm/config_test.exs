@@ -80,6 +80,30 @@ defmodule Wardrik.LLM.ConfigTest do
     end
   end
 
+  describe "tool_index/1" do
+    test "names each tool with its spec, the first spec winning, and leaves out what the config does" do
+      first = tool!("echo")
+
+      config =
+        Config.new(tools: [first, EchoTool, {CountingSource, 2}], except_tools: ["counted_1"])
+
+      assert Config.tool_index(config) == %{
+               "echo" => {first, first},
+               "counted_1" => {nil, {CountingSource, 2}},
+               "counted_2" => {hd(CountingSource.tools(["counted_2"])), {CountingSource, 2}}
+             }
+    end
+
+    test "is what tool_timeout/3 and tool_in_doubt/3 read, where it is given" do
+      config = Config.new(tools: [{CountingSource, 2}])
+      index = Config.tool_index(config)
+
+      assert Config.tool_timeout(config, "counted_2", index) == :timer.seconds(90)
+      assert Config.tool_timeout(config, "counted_2", %{}) == nil
+      assert Config.tool_in_doubt(config, "counted_2", index) == :ask
+    end
+  end
+
   test "new/1 raises on a tool it cannot build" do
     assert_raise ArgumentError, fn -> Config.new(tools: [:no_such_tool]) end
   end

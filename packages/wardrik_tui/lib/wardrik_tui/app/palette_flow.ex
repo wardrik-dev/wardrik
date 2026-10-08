@@ -12,6 +12,7 @@ defmodule WardrikTUI.App.PaletteFlow do
   import Breeze.View, only: [assign: 2]
 
   alias WardrikTUI.Command
+  alias WardrikTUI.Exchange
   alias WardrikTUI.Palette
   alias WardrikTUI.Text
   alias WardrikTUI.Transcript
@@ -142,6 +143,7 @@ defmodule WardrikTUI.App.PaletteFlow do
 
   defp choices_for(%{palette: %{step: :tool, query: query}} = assigns) do
     assigns.tools
+    |> Exchange.list()
     |> Enum.with_index(1)
     |> Enum.map(fn {exchange, index} -> {index, View.tool_row(exchange, index)} end)
     |> Palette.filter(query, fn {_index, row} -> Text.plain(row) end)

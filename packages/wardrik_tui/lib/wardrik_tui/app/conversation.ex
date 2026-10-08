@@ -81,7 +81,7 @@ defmodule WardrikTUI.App.Conversation do
       draft: "",
       history: History.new(),
       delegations: Delegation.new(),
-      tools: [],
+      tools: Exchange.new(),
       answer_text: "",
       seen: 0,
       parked: [],

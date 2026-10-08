@@ -29,6 +29,7 @@ defmodule WardrikTUI.App do
   alias WardrikTUI.App.Prompt
   alias WardrikTUI.App.TermState
   alias WardrikTUI.Components.Chrome
+  alias WardrikTUI.Exchange
   alias WardrikTUI.History
   alias WardrikTUI.Palette
   alias WardrikTUI.Search
@@ -413,7 +414,7 @@ defmodule WardrikTUI.App do
         editor: Keyword.get(opts, :editor, &WardrikTUI.Editor.edit/2),
         clipboard: Keyword.get(opts, :clipboard, &WardrikTUI.Clipboard.copy/1),
         notice: nil,
-        tools: [],
+        tools: Exchange.new(),
         answer_text: "",
         tail: [],
         search: nil,

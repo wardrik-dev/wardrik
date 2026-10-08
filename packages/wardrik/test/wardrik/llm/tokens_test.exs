@@ -21,6 +21,22 @@ defmodule Wardrik.LLM.TokensTest do
     assert Tokens.messages(asked ++ [Context.assistant("", tool_calls: [call])]) > 100
   end
 
+  test "every tail counts as messages/1 counts it, rounding the whole tail" do
+    call = ReqLLM.ToolCall.new("call_1", "lookup", "{}")
+
+    messages = [
+      Context.user(chars("q", 3)),
+      Context.assistant("", tool_calls: [call]),
+      Context.user(chars("r", 3)),
+      Context.assistant(chars("a", 3))
+    ]
+
+    assert Tokens.tails(messages) ==
+             for(n <- 0..3, do: Tokens.messages(Enum.drop(messages, n)))
+
+    assert Tokens.tails([]) == []
+  end
+
   test "a request counts its messages, its system prompt and its tools" do
     tool =
       ReqLLM.Tool.new!(

@@ -293,7 +293,8 @@ defmodule WardrikS3.Store do
         do: object |> String.replace_prefix(root, "") |> unescape()
   end
 
-  defp list(config, prefix, token, acc) do
+  # The pages so far are kept last first, and joined once the last is read.
+  defp list(config, prefix, token, pages) do
     query =
       [{"list-type", "2"}, {"max-keys", "#{@page_size}"}, {"prefix", prefix}] ++
         if(token, do: [{"continuation-token", token}], else: [])
@@ -301,8 +302,11 @@ defmodule WardrikS3.Store do
     case request(config, :get, nil, query: query, retry: :transient) do
       {:ok, %{status: 200, body: body}} ->
         {keys, next} = listing(body)
-        acc = acc ++ keys
-        if next, do: list(config, prefix, next, acc), else: acc
+        pages = [keys | pages]
+
+        if next,
+          do: list(config, prefix, next, pages),
+          else: pages |> Enum.reverse() |> Enum.concat()
 
       {:ok, response} ->
         raise Error.exception(response)

@@ -264,6 +264,31 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     end
   end
 
+  describe "a batch" do
+    defmodule Resolving do
+      @behaviour Wardrik.Tool
+
+      @impl true
+      def tools(test) do
+        send(test, :resolved)
+        [ReqLLM.Tool.new!(name: "counted", description: "test tool", callback: &{:ok, &1})]
+      end
+    end
+
+    test "builds its scope's tools once for every call in it", %{agent_id: agent_id} do
+      scope = scope(agent_id, [{Resolving, self()}])
+      assert_received :resolved
+
+      calls = for n <- 1..3, do: call("c#{n}", "counted", %{})
+
+      assert [%Call{state: :done}, %Call{state: :done}, %Call{state: :done}] =
+               ToolRunner.execute_many_async(calls, scope)
+
+      assert_received :resolved
+      refute_received :resolved
+    end
+  end
+
   describe "timeout/2" do
     test "defaults when no tool declares one", %{agent_id: agent_id} do
       scope = scope(agent_id, [tool!("echo", fn i -> {:ok, i} end)])

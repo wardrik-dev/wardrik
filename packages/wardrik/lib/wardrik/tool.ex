@@ -321,21 +321,17 @@ defmodule Wardrik.Tool do
   defp declared(%ReqLLM.Tool{}, _function, _args), do: nil
 
   @doc """
-  The call with what its tool declares written on it, before any hook reads
-  it: whether it is gated, and what it acts on. A call to a tool its scope's
-  config does not name is left as it is.
+  The call with what `spec`, the spec that builds its tool, declares written
+  on it, before any hook reads it: whether it is gated, and what it acts on.
+  A call to a tool its scope's config does not name, `nil`, is left as it is.
   """
-  @spec declared(Wardrik.Call.t()) :: Wardrik.Call.t()
-  def declared(%Wardrik.Call{target: %Wardrik.Call.Tool{name: name} = target} = call) do
-    case Wardrik.LLM.Config.tool_spec(call.scope.config, name) do
-      nil ->
-        call
+  @spec declared(Wardrik.Call.t(), spec() | nil) :: Wardrik.Call.t()
+  def declared(%Wardrik.Call{} = call, nil), do: call
 
-      spec ->
-        gated = annotations(spec, name).gated
-        subjects = subjects(spec, name, target.arguments)
-        %{call | target: %{target | gated: gated, subjects: subjects}}
-    end
+  def declared(%Wardrik.Call{target: %Wardrik.Call.Tool{name: name} = target} = call, spec) do
+    gated = annotations(spec, name).gated
+    subjects = subjects(spec, name, target.arguments)
+    %{call | target: %{target | gated: gated, subjects: subjects}}
   end
 
   @doc "Whether this node can build the tools a spec names."
