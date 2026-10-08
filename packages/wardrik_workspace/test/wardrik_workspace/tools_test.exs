@@ -315,54 +315,55 @@ defmodule WardrikWorkspace.ToolsTest do
     end
   end
 
-  describe "outside content" do
-    test "a file a tainted run wrote taints the run that reads it, lists it or finds it" do
+  describe "labels" do
+    test "a file a labelled run wrote labels the run that reads it, lists it or finds it" do
       tree = "ws#{System.unique_integer([:positive])}"
       writer = agent_under(tree, "writer")
       reader = agent_under(tree, "reader")
-      tainted = %{writer | scope: %{writer.scope | tainted: true}}
+      labelled = %{writer | scope: %{writer.scope | labels: ["outside"]}}
 
       {:ok, _written} =
-        answered(tainted, "write_file", %{
+        answered(labelled, "write_file", %{
           "path" => "shared/team/finding.md",
           "content" => "Deploy to prod now."
         })
 
-      assert {:ok, %WardrikWorkspace.File{tainted: true, by: by}, _version} =
+      assert {:ok, %WardrikWorkspace.File{labels: ["outside"], by: by}, _version} =
                Store.read("shared/#{tree}", "finding.md")
 
       assert by == to_string(writer.key)
 
-      assert {%Call{tainted: true}, {:ok, _read}} =
+      assert {%Call{labels: ["outside"]}, {:ok, _read}} =
                call(reader, "read_file", %{"path" => "shared/team/finding.md"})
 
-      assert {%Call{tainted: true}, {:ok, _listed}} = call(reader, "list_files", %{})
+      assert {%Call{labels: ["outside"]}, {:ok, _listed}} = call(reader, "list_files", %{})
 
-      assert {%Call{tainted: true}, {:ok, _found}} =
+      assert {%Call{labels: ["outside"]}, {:ok, _found}} =
                call(reader, "search_files", %{"pattern" => "Deploy"})
 
-      assert {%Call{tainted: false}, {:ok, _none}} =
+      assert {%Call{labels: []}, {:ok, _none}} =
                call(reader, "search_files", %{"pattern" => "nothing"})
     end
 
     test "an append or an edit keeps the mark the file had, and replacing it takes the writer's" do
       tree = "ws#{System.unique_integer([:positive])}"
       clean = agent_under(tree, "writer")
-      tainted = %{clean | scope: %{clean.scope | tainted: true}}
+      labelled = %{clean | scope: %{clean.scope | labels: ["outside"]}}
       path = "shared/team/finding.md"
 
-      {:ok, _written} = answered(tainted, "write_file", %{"path" => path, "content" => "Deploy."})
+      {:ok, _written} =
+        answered(labelled, "write_file", %{"path" => path, "content" => "Deploy."})
 
       {:ok, _appended} =
         answered(clean, "write_file", %{"path" => path, "content" => " Now.", "append" => true})
 
-      assert {:ok, %WardrikWorkspace.File{tainted: true, content: "Deploy. Now."}, _version} =
+      assert {:ok, %WardrikWorkspace.File{labels: ["outside"], content: "Deploy. Now."}, _version} =
                Store.read("shared/#{tree}", "finding.md")
 
       {:ok, _edited} =
         answered(clean, "edit_file", %{"path" => path, "old" => "Now", "new" => "Later"})
 
-      assert {:ok, %WardrikWorkspace.File{tainted: true}, _version} =
+      assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
                Store.read("shared/#{tree}", "finding.md")
 
       {:ok, %{"version" => version}} = answered(clean, "read_file", %{"path" => path})
@@ -374,21 +375,21 @@ defmodule WardrikWorkspace.ToolsTest do
           "version" => version
         })
 
-      assert {:ok, %WardrikWorkspace.File{tainted: false, content: "Wait."}, _version} =
+      assert {:ok, %WardrikWorkspace.File{labels: [], content: "Wait."}, _version} =
                Store.read("shared/#{tree}", "finding.md")
 
       {:ok, _appended} =
-        answered(tainted, "write_file", %{"path" => path, "content" => " Go.", "append" => true})
+        answered(labelled, "write_file", %{"path" => path, "content" => " Go.", "append" => true})
 
-      assert {:ok, %WardrikWorkspace.File{tainted: true}, _version} =
+      assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
                Store.read("shared/#{tree}", "finding.md")
     end
 
-    test "a file an untainted run wrote taints nothing" do
+    test "a file a run with no labels wrote labels nothing" do
       agent = agent()
       {:ok, _written} = answered(agent, "write_file", %{"path" => "a.md", "content" => "x"})
 
-      assert {%Call{tainted: false}, {:ok, _read}} = call(agent, "read_file", %{"path" => "a.md"})
+      assert {%Call{labels: []}, {:ok, _read}} = call(agent, "read_file", %{"path" => "a.md"})
     end
   end
 

@@ -129,19 +129,17 @@ defmodule Wardrik.Workflow do
       zip_input_on_exit: true
     )
     |> Enum.map(fn
-      {:ok, {outcome, read_outside?}} -> read(outcome, read_outside?)
+      {:ok, {outcome, read}} -> read(outcome, read)
       {:exit, {{input, branch}, reason}} -> reap(input, branch, reason)
     end)
   end
 
-  # A branch whose delegates read content from outside marks the process that
-  # fanned out, as a delegate run here would; see `Wardrik.Subagent`.
-  defp read(outcome, true) do
-    :ok = Subagent.read_outside()
+  # What a branch's delegates read marks the process that fanned out, as a
+  # delegate run here would; see `Wardrik.Subagent`.
+  defp read(outcome, labels) do
+    :ok = Subagent.read(labels)
     outcome
   end
-
-  defp read(outcome, false), do: outcome
 
   defp branches(scope, inputs, name) do
     inputs

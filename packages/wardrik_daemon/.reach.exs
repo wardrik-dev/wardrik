@@ -30,6 +30,7 @@
       "Wardrik.Fleet.Member",
       "Wardrik.Grant",
       "Wardrik.Hook",
+      "Wardrik.Label",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",

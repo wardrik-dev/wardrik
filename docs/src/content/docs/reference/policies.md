@@ -55,20 +55,25 @@ A call an `allow` rule allows is allowed by name, with an
 `Wardrik.Tool.Annotations`). One allowed only by `default: allow` is not, so
 a gated tool asks under a policy that names nothing, as it does under none.
 
-## After content from outside
+## After what the run has read
 
-Once a run has read content from outside, a gated tool's call waits on a
-person however the rules allowed it, since what the run read may be what
-asked for it. An `allow_after_outside` rule allows by name as `allow` does,
-and holds after that too: it is for a tool whose calls may follow what a
-stranger wrote, because the agent reaches nothing they could take, or the
-tool can do little harm.
+A run carries the `Wardrik.Label`s of what it has read. Once it carries
+`"outside"`, content nobody on the agent's side wrote, a gated tool's call
+waits on a person however the rules allowed it, since what the run read
+may be what asked for it. An `allow_after` rule allows by name as `allow`
+does, and holds after its label too: it is for a tool whose calls may
+follow what a stranger wrote, because the agent reaches nothing they could
+take, or the tool can do little harm.
 
     allow: [linear/*]
-    allow_after_outside: [github/add_labels]
+    allow_after:
+      outside: [github/add_labels]
 
-The call is allowed after outside content only where such rules allow the
-whole of it, or every one of its subjects.
+A label the policy names under `allow_after` holds a gated tool's calls the
+same way, and the call is allowed only where, for every such label the run
+carries, `allow_after` rules for it allow the whole of the call, or every
+one of its subjects. A label the policy does not name is carried and
+shown, and holds nothing.
 
 ## Written down
 
@@ -81,6 +86,6 @@ whole of it, or every one of its subjects.
     deny: [run_lua]
     default: allow
 
-`allow`, `allow_after_outside`, `ask` and `deny` each take a list of
-patterns, or a map of pattern to message. `budget` takes what
+`allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
+to message, and `allow_after` a map of label to either. `budget` takes what
 `WardrikPolicy.Budget` describes.

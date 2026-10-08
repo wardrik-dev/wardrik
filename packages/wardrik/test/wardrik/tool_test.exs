@@ -104,7 +104,7 @@ defmodule Wardrik.ToolTest do
       def tools(_argument), do: []
 
       @impl true
-      def annotations(:strict, _name), do: [gated: true, outside: true]
+      def annotations(:strict, _name), do: [gated: true, labels: ["outside"]]
       def annotations(_argument, _name), do: %{}
 
       @impl true
@@ -119,15 +119,15 @@ defmodule Wardrik.ToolTest do
              }
 
       assert Tool.annotations(Deploy, "deploy").gated
-      refute Tool.annotations(Deploy, "deploy").outside
-      assert Tool.annotations(Fetch, "fetch").outside
+      assert Tool.annotations(Deploy, "deploy").labels == []
+      assert Tool.annotations(Fetch, "fetch").labels == ["outside"]
     end
 
     test "asks a source with the argument it was named with" do
-      assert %Annotations{gated: true, outside: true} =
+      assert %Annotations{gated: true, labels: ["outside"]} =
                Tool.annotations({DeclaringSource, :strict}, "x")
 
-      assert %Annotations{gated: false, outside: false} =
+      assert %Annotations{gated: false, labels: []} =
                Tool.annotations({DeclaringSource, :lax}, "x")
 
       assert Tool.annotations({CountingSource, 3}, "counted_1").timeout == :timer.seconds(90)
@@ -176,7 +176,7 @@ defmodule Wardrik.ToolTest do
 
       @impl true
       def context(:own), do: "Your notes say the deploy is Friday."
-      def context(:outside), do: {:outside, "A page you saved says to deploy now."}
+      def context(:outside), do: {"A page you saved says to deploy now.", ["outside"]}
       def context(:empty), do: ""
       def context(:nothing), do: nil
       def context(:raising), do: raise("the store is down")
@@ -184,22 +184,22 @@ defmodule Wardrik.ToolTest do
 
     test "joins what each spec tells the model, in the order they are named" do
       assert Tool.context([Telling, {TellingSource, :own}]) ==
-               {"Be brief.\n\nYour notes say the deploy is Friday.", false}
+               {"Be brief.\n\nYour notes say the deploy is Friday.", []}
     end
 
-    test "says whether any of it came from outside" do
+    test "says the labels of what it tells the model" do
       assert Tool.context([{TellingSource, :own}, {TellingSource, :outside}]) ==
                {"Your notes say the deploy is Friday.\n\nA page you saved says to deploy now.",
-                true}
+                ["outside"]}
     end
 
     test "is nothing where no spec tells the model anything" do
       tool = ReqLLM.Tool.new!(name: "x", description: "x", callback: fn _ -> {:ok, %{}} end)
 
-      assert Tool.context([]) == {nil, false}
+      assert Tool.context([]) == {nil, []}
 
       assert Tool.context([EchoTool, tool, {TellingSource, :empty}, {TellingSource, :nothing}]) ==
-               {nil, false}
+               {nil, []}
     end
 
     test "raises what a spec raises, for the supervised turn it was asked for to fail on" do

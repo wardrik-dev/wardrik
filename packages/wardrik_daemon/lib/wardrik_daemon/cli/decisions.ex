@@ -58,7 +58,7 @@ defmodule WardrikDaemon.CLI.Decisions do
       for {key, call, prompt} <- waiting(),
           do:
             "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}" <>
-              outside(call) <> link(call)
+              read(call) <> link(call)
 
     case rows do
       [] -> {:ok, "Nothing is waiting on a person."}
@@ -74,10 +74,10 @@ defmodule WardrikDaemon.CLI.Decisions do
     {:ok, %{"interrupts" => interrupts}}
   end
 
-  defp outside(%{outside: true}),
-    do: "\n      after reading content from outside, which may be what asked for it"
+  defp read(%{labels: [_ | _] = labels}),
+    do: "\n      after reading #{Wardrik.Label.described(labels)}, which may be what asked for it"
 
-  defp outside(_call), do: ""
+  defp read(_call), do: ""
 
   # Where to authorize, for the operator reading this on the node; no notice
   # or event carries it.

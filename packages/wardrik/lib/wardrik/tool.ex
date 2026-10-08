@@ -51,7 +51,7 @@ defmodule Wardrik.Tool do
       end
 
       @impl true
-      def annotations(_name), do: %{credentials: ["github"], outside: true}
+      def annotations(_name), do: %{credentials: ["github"], labels: ["outside"]}
 
       def run(%{query: query}, %Wardrik.Tool.Context{credentials: %{"github" => github}}) do
         case search(query, github) do
@@ -90,16 +90,16 @@ defmodule Wardrik.Tool do
   form taking a source's argument first:
 
     * `c:annotations/1` - what holds for every call to the tool: whether it
-      is gated, whether its answers are content from outside, what a call
-      does in doubt, how long one may take, and the credentials it needs;
-      see `Wardrik.Tool.Annotations`
+      is gated, what its answers hold, what a call does in doubt, how long
+      one may take, and the credentials it needs; see
+      `Wardrik.Tool.Annotations`
     * `c:subjects/2` - what a call acts on, from its arguments, so a rule can
       name a call by what it does: `write_file(notes/*)`
     * `c:context/0` - what the tool tells the model as each turn begins
 
   `c:context/0` speaks for the turn rather than a call: text put after the
   system prompt as each turn begins, such as the files `WardrikWorkspace`
-  reads into it. Text from outside taints the turn from its start, as a call
+  reads into it. Text with labels labels the turn from its start, as a call
   answering with it would.
   """
 
@@ -124,8 +124,8 @@ defmodule Wardrik.Tool do
 
     * `{:ok, output}` and `{:error, reason}`, as a callback does
     * `{:ok, output, opts}` - an answer with what the runtime records of it:
-      `outside: true` for content from outside, which taints the run (see
-      `Wardrik.Call.taint/1`), and `served_by:` for what answered it, which
+      `labels:` for what it holds, which its run carries from then on (see
+      `Wardrik.Call.label/2`), and `served_by:` for what answered it, which
       the call's events name (see `t:Wardrik.Call.served/0`)
     * `{:park, prompt}` and `{:park, prompt, link: link}` - the call waits on
       a person, who is shown `prompt`, and authorizes at `link` where there
@@ -139,7 +139,7 @@ defmodule Wardrik.Tool do
   @type answer() ::
           {:ok, term()}
           | {:error, term()}
-          | {:ok, term(), [outside: boolean(), served_by: Wardrik.Call.served()]}
+          | {:ok, term(), [labels: [Wardrik.Label.t()], served_by: Wardrik.Call.served()]}
           | {:park, String.t()}
           | {:park, String.t(), link: Wardrik.Call.Ask.link()}
           | {:in_doubt, String.t()}
@@ -183,10 +183,11 @@ defmodule Wardrik.Tool do
   @callback subjects(argument :: term(), name :: String.t(), arguments :: map()) :: [String.t()]
 
   @typedoc """
-  What a tool tells the model before a turn: text, `{:outside, text}` for text
-  nobody on the agent's side wrote, or `nil` for nothing.
+  What a tool tells the model before a turn: text, `{text, labels}` for text
+  that holds what `labels` name, such as `["outside"]` for text nobody on the
+  agent's side wrote, or `nil` for nothing.
   """
-  @type context() :: String.t() | {:outside, String.t()} | nil
+  @type context() :: String.t() | {String.t(), [Wardrik.Label.t()]} | nil
 
   @doc """
   What the tool tells the model as each turn begins, put after the system
@@ -285,23 +286,23 @@ defmodule Wardrik.Tool do
 
   @doc """
   What `specs` tell the model before a turn, joined in the order they are
-  named, or `nil` where none tells it anything, and whether any of it is
-  content from outside.
+  named, or `nil` where none tells it anything, and the labels of what they
+  tell it.
   """
-  @spec context([spec()]) :: {String.t() | nil, boolean()}
+  @spec context([spec()]) :: {String.t() | nil, [Wardrik.Label.t()]}
   def context(specs) when is_list(specs) do
     told = for spec <- specs, told = told(spec), do: told
 
-    case Enum.map_join(told, "\n\n", &elem(&1, 1)) do
-      "" -> {nil, false}
-      text -> {text, Enum.any?(told, &(elem(&1, 0) == :outside))}
+    case Enum.map_join(told, "\n\n", &elem(&1, 0)) do
+      "" -> {nil, []}
+      text -> {text, Enum.reduce(told, [], &Wardrik.Label.union(&2, elem(&1, 1)))}
     end
   end
 
   defp told(spec) do
     case declared(spec, :context, []) do
-      {:outside, text} when is_binary(text) and text != "" -> {:outside, text}
-      text when is_binary(text) and text != "" -> {:own, text}
+      {text, labels} when is_binary(text) and text != "" and is_list(labels) -> {text, labels}
+      text when is_binary(text) and text != "" -> {text, []}
       _nothing -> nil
     end
   end

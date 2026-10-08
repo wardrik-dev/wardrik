@@ -456,7 +456,9 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a worker's answers are content from outside, unless the deployment trusts its workers" do
-    assert annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").outside
+    assert annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").labels == [
+             "outside"
+           ]
 
     previous = Application.get_env(:wardrik_http, WardrikHTTP)
 
@@ -472,6 +474,6 @@ defmodule WardrikHTTP.WorkerTest do
         else: Application.delete_env(:wardrik_http, WardrikHTTP)
     end)
 
-    refute annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").outside
+    assert annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").labels == []
   end
 end

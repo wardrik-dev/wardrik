@@ -106,31 +106,33 @@ policy's `default: allow` does not, so an agent with no policy, or one defined
 over HTTP with none, asks a person before every such call. An MCP server's
 tool, and a tool worker's, is gated unless the server or worker marks it
 read-only, and `gated` on an MCP server in `config.yaml` decides instead.
-Wherever a waiting call is shown, it says whether its turn had read content
-from outside first.
+Wherever a waiting call is shown, it says what its turn had read first.
 
-A turn that has read content nobody on the agent's side wrote, the results of
-`web_search` or `deep_research`, an MCP server not marked `trusted`, or a tool
-worker unless `http.trusted_workers` is set, is tainted, and every gated call
-in it waits on a person, who sees what it would do, unless an
-`allow_after_outside` rule names it. This is what stops a page or an issue
-written to be read by an agent from running a command a rule pre-approved: an
-agent may read content from outside, reach what is private, or change things,
-and a person decides where it would do all three. Only a policy the operator
-writes, in `policies/` or an agent file, may say `allow_after_outside`.
+A turn carries labels for what it has read. One that has read content nobody
+on the agent's side wrote, the results of `web_search` or `deep_research`, an
+MCP server not marked `trusted`, or a tool worker unless
+`http.trusted_workers` is set, carries `outside`, and under a policy every
+gated call in it waits on a person, who sees what it would do, unless an
+`allow_after` rule for `outside` names it. This is what stops a page or an
+issue written to be read by an agent from running a command a rule
+pre-approved: an agent may read content from outside, reach what is private,
+or change things, and a person decides where it would do all three. Only a
+policy the operator writes, in `policies/` or an agent file, may say
+`allow_after`. A gated call waits on a person under no policy at all, since
+nothing allows it by name.
 
-What a turn read stays in the agent's conversation, so every turn after it is
-tainted too, until `wardrik clear` empties the conversation; a summary of the
-conversation keeps the mark. A subagent begins tainted under a tainted caller,
-and one that reads content from outside taints the tool call that ran it. A
-file a tainted turn writes says so, an append or an edit by a turn that is not
-keeps the mark, and reading, listing or finding it taints the reader's turn,
-so a finding left in a shared tree carries what its writer read to every agent
-that reads it. One an agent file's `context` reads into every turn taints each
-turn from its start, and of the files a turn is only told the names of, a name
-is shown only where it is plain, letters, digits, `.`, `-` and `_`, since a
-name is text a tainted run may have chosen too. The taint is kept with the
-turn, so a turn carried on after its node is lost is tainted still.
+What a turn read stays in the agent's conversation, so every turn after it
+carries its labels too, until `wardrik clear` empties the conversation; a
+summary of the conversation keeps them. A subagent begins with its caller's
+labels, and the tool call that ran it carries what it read. A file keeps the
+labels of the turns that wrote it, an append or an edit keeps those it had,
+and reading, listing or finding it labels the reader's turn, so a finding
+left in a shared tree carries what its writer read to every agent that reads
+it. One an agent file's `context` reads into every turn labels each turn from
+its start, and of the files a turn is only told the names of, a name is shown
+only where it is plain, letters, digits, `.`, `-` and `_`, since a name is text
+a labelled run may have chosen too. The labels are kept with the turn, so a
+turn carried on after its node is lost carries them still.
 
 ### Notifications
 

@@ -4,9 +4,8 @@ defmodule WardrikNotify.Notice do
 
     * `:parked` - a turn stopped on `calls`, each with the question a person
       is asked about it, `authorization: true` for one waiting on a person to
-      connect an account, and `outside_content: true` where the turn had
-      read content from outside, which may be what asked for it. Where to
-      connect it is never in a notice.
+      connect an account, and the `labels` of what the turn had read, which
+      may be what asked for it. Where to connect it is never in a notice.
     * `:failed` - a turn failed, for `reason`
     * `:finished` - a turn answered, and `text` is what it said last
   """
@@ -23,7 +22,7 @@ defmodule WardrikNotify.Notice do
           arguments: map(),
           prompt: String.t(),
           authorization: boolean(),
-          outside_content: boolean()
+          labels: [Wardrik.Label.t()]
         }
 
   @type t() :: %__MODULE__{
@@ -63,7 +62,7 @@ defmodule WardrikNotify.Notice do
       arguments: Map.get(call, :arguments, %{}),
       prompt: prompt,
       authorization: Map.has_key?(call, :link),
-      outside_content: Map.get(call, :outside, false)
+      labels: Map.get(call, :labels, [])
     }
   end
 

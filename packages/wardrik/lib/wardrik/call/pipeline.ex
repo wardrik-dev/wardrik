@@ -15,7 +15,7 @@ defmodule Wardrik.Call.Pipeline do
        `Wardrik.Tool.Context`. A model call is made by the function the caller
        hands `run/2`, which streams it where the caller's events go.
     4. **After.** A claimed tool call is settled in the ledger, one whose
-       answers are content from outside taints its run, a model call is
+       tool's answers hold labels is labelled with them, a model call is
        reported to the dispatch, every hook hears what a call it let go ahead
        did (`Wardrik.Hook.settle/1`), and what was resolved for the call is
        dropped.
@@ -160,7 +160,7 @@ defmodule Wardrik.Call.Pipeline do
     |> admitted()
     |> invoked(invoke)
     |> recorded()
-    |> outside()
+    |> labelled()
     |> settled()
     |> forgotten()
   end
@@ -330,17 +330,16 @@ defmodule Wardrik.Call.Pipeline do
 
   defp invoked(call, _invoke), do: call
 
-  # A call whose work ran a delegate that read content from outside is
-  # tainted as one that read it itself is; see `Wardrik.Subagent`.
+  # A call whose work ran a delegate is labelled with what the delegate read,
+  # as one that read it itself is; see `Wardrik.Subagent`.
   defp handed(%Call{target: %Tool{name: name, arguments: args}} = call) do
     emit(
       call,
       {:tool_started, call.id, name, args, Ledger.idempotency_key(call), Call.decided_by(call)}
     )
 
-    {handed, read_outside?} = Subagent.watching(fn -> tool(call, :may_retry) end)
-    handed = Call.put_private(handed, @made, true)
-    if read_outside?, do: Call.taint(handed), else: handed
+    {handed, read} = Subagent.watching(fn -> tool(call, :may_retry) end)
+    handed |> Call.put_private(@made, true) |> Call.label(read)
   end
 
   # A call that came back in doubt runs once more where its tool says it may.
@@ -382,8 +381,10 @@ defmodule Wardrik.Call.Pipeline do
   end
 
   defp took({:ok, output, opts}, call, _retry) when is_list(opts) do
-    answered = call |> answered({:ok, output}) |> Call.served(Keyword.get(opts, :served_by))
-    if Keyword.get(opts, :outside, false), do: Call.taint(answered), else: answered
+    call
+    |> answered({:ok, output})
+    |> Call.served(Keyword.get(opts, :served_by))
+    |> Call.label(Keyword.get(opts, :labels, []))
   end
 
   defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
@@ -452,16 +453,16 @@ defmodule Wardrik.Call.Pipeline do
     end
   end
 
-  # A call answered by a tool whose answers hold content from outside taints
-  # its run, whether it ran now or its answer was replayed.
-  defp outside(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
+  # A call answered by a tool whose answers hold labels carries them, whether
+  # it ran now or its answer was replayed.
+  defp labelled(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
     case Config.tool_spec(call.scope.config, name) do
       nil -> call
-      spec -> if Wardrik.Tool.annotations(spec, name).outside, do: Call.taint(call), else: call
+      spec -> Call.label(call, Wardrik.Tool.annotations(spec, name).labels)
     end
   end
 
-  defp outside(call), do: call
+  defp labelled(call), do: call
 
   defp settled(%Call{private: %{@made => true}, target: %Model{}} = call) do
     request = request(call)

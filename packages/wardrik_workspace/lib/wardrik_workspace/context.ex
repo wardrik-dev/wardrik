@@ -27,10 +27,10 @@ defmodule WardrikWorkspace.Context do
   to rewrite it shorter, so memory the agent keeps stays within what it reads
   each turn.
 
-  ## Outside content
+  ## What a file holds
 
-  A file read in part or whole that a run which had read content from
-  outside wrote taints the turn from its start, as reading it with
+  A file read in part or whole labels the turn from its start with the
+  labels of what the runs that wrote it had read, as reading it with
   `read_file` would. The names of the others are listed without reading them,
   and a name is listed only where it is plain, letters, digits, `.`, `-` and
   `_`, since a name is text a run chose too. The rest are counted, and
@@ -77,9 +77,12 @@ defmodule WardrikWorkspace.Context do
   end
 
   defp told(text, read) do
-    if Enum.any?(read, &(&1.state in [:whole, :cut] and &1.tainted)),
-      do: {:outside, text},
-      else: text
+    shown = for %{state: state} = file <- read, state in [:whole, :cut], do: file
+
+    case Enum.reduce(shown, [], &Wardrik.Label.union(&2, &1.labels)) do
+      [] -> text
+      labels -> {text, labels}
+    end
   end
 
   # Each file `context` names, with as much of it as its share of the budget
@@ -126,7 +129,7 @@ defmodule WardrikWorkspace.Context do
       path: found.path,
       size: size,
       version: Tools.version(found.version),
-      tainted: file.tainted
+      labels: file.labels
     }
 
     if size <= share do

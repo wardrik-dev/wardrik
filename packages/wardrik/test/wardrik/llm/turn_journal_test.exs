@@ -61,9 +61,10 @@ defmodule Wardrik.LLM.TurnJournalTest do
     assert %LLM.Turn{state: :done, messages: _messages} = Task.await(task)
   end
 
-  test "a turn carried on after a lost node has read what it read, and is tainted still", %{
-    agent_id: agent_id
-  } do
+  test "a turn carried on after a lost node has read what it read, and carries its labels still",
+       %{
+         agent_id: agent_id
+       } do
     LLMStub.stream([
       LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
       LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
@@ -79,11 +80,13 @@ defmodule Wardrik.LLM.TurnJournalTest do
     journaled = %{scope | journal: self()}
     task = Task.async(fn -> run(journaled, Context.new()) end)
 
-    assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{tainted: false}}}
+    assert_receive {:"$gen_call", from, {:checkpoint, %LLM.Turn{labels: []}}}
     GenServer.reply(from, :ok)
 
     # The node is lost as the second batch is written down.
-    assert_receive {:"$gen_call", _from, {:checkpoint, %LLM.Turn{tainted: true} = checkpoint}}
+    assert_receive {:"$gen_call", _from,
+                    {:checkpoint, %LLM.Turn{labels: ["outside"]} = checkpoint}}
+
     Task.shutdown(task, :brutal_kill)
 
     assert %LLM.Turn{state: :waiting} = replayed = replay(scope, checkpoint)

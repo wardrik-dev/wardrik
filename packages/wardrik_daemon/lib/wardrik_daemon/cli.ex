@@ -101,7 +101,7 @@ defmodule WardrikDaemon.CLI do
       %Command{
         name: "clear",
         arguments: "KEY",
-        summary: "empty an agent's conversation, and the mark of what it read",
+        summary: "empty an agent's conversation, and the labels of what it read",
         details: [
           "An agent whose conversation holds content from outside asks a person",
           "before each gated call until it is cleared. Its files, schedules and",

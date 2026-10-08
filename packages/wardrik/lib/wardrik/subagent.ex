@@ -33,15 +33,15 @@ defmodule Wardrik.Subagent do
   Returns the delegate's final assistant text. For work that should outlive the
   call and hold a conversation, start a `Wardrik.Agent` instead.
 
-  ## Content from outside
+  ## What a delegate read
 
-  A delegate begins tainted where `scope` is (see `Wardrik.LLM.Turn`), and one
-  whose turn read content from outside marks the process that ran it, since
+  A delegate begins with the labels `scope` carries (see `Wardrik.Label`), and
+  marks the process that ran it with the labels its turn ended with, since
   its answer may carry what it read. The tool call whose work ran it is
-  tainted by the mark, as one that read the content itself is (see
-  `Wardrik.Call.taint/1`), and `Wardrik.Workflow.fan_out/4` carries a branch's
-  mark back to the process that fanned out. `watching/1` says whether the
-  delegates a function ran left one.
+  labelled with them, as one that read the content itself is (see
+  `Wardrik.Call.label/2`), and `Wardrik.Workflow.fan_out/4` carries a
+  branch's labels back to the process that fanned out. `watching/1` says
+  which labels the delegates a function ran left.
 
   ## Events
 
@@ -61,7 +61,7 @@ defmodule Wardrik.Subagent do
   alias Wardrik.Tool
   alias Wardrik.Trace
 
-  @read_outside :wardrik_read_outside
+  @read :wardrik_read_labels
 
   @doc "Runs `prompt` as one turn under `scope`."
   @spec run(Scope.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -81,29 +81,29 @@ defmodule Wardrik.Subagent do
   end
 
   @doc """
-  Runs `fun`, and answers what it returned with whether a delegate it ran read
-  content from outside. The mark this process held before stays, joined with
-  what `fun` left.
+  Runs `fun`, and answers what it returned with the labels of what the
+  delegates it ran read. The labels this process held before stay, joined
+  with what `fun` left.
   """
-  @spec watching((-> result)) :: {result, boolean()} when result: term()
+  @spec watching((-> result)) :: {result, [Wardrik.Label.t()]} when result: term()
   def watching(fun) when is_function(fun, 0) do
-    before = Process.delete(@read_outside) || false
+    before = Process.delete(@read) || []
     result = fun.()
-    read_outside? = Process.get(@read_outside, false)
-    if before or read_outside?, do: Process.put(@read_outside, true)
-    {result, read_outside?}
+    read = Process.get(@read, [])
+    Process.put(@read, Wardrik.Label.union(before, read))
+    {result, read}
   end
 
   @doc false
-  @spec read_outside() :: :ok
-  def read_outside do
-    Process.put(@read_outside, true)
+  @spec read([Wardrik.Label.t()]) :: :ok
+  def read(labels) when is_list(labels) do
+    Process.put(@read, Wardrik.Label.union(Process.get(@read, []), labels))
     :ok
   end
 
   defp answer(delegate, prompt) do
     turn = delegate |> Turn.new(Context.new([Context.user(prompt)])) |> Turn.run()
-    if turn.tainted, do: read_outside()
+    :ok = read(turn.labels)
 
     case turn do
       %Turn{state: :done, messages: messages} -> {:ok, final_text(messages)}
@@ -125,7 +125,7 @@ defmodule Wardrik.Subagent do
   end
 
   # The specs are kept, so what each declares of its tools, such as whether
-  # one is gated or answers with content from outside, holds in the delegate.
+  # one is gated or what its answers hold, holds in the delegate.
   defp put_tools(config, opts) do
     config =
       case Keyword.fetch(opts, :tools) do

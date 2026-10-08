@@ -138,11 +138,12 @@ defmodule Wardrik.Event.Codec.Value do
   A call a run is waiting on a person for, with the prompt it was held with.
   A model call a dispatch held is not a tool call, and says so. A call waiting
   for a person to authorize is `authorization`, and carries no link, and one
-  that may already have done what it does is `in_doubt`.
+  that may already have done what it does is `in_doubt`. `labels` are those
+  of what the run had read, which may be what asked for the call.
   """
   @spec interrupt({Wardrik.Tool.call(), String.t()}) :: map()
   def interrupt({call, _prompt} = waiting),
-    do: waiting |> interrupt_of() |> put("outside_content", if(Map.get(call, :outside), do: true))
+    do: waiting |> interrupt_of() |> put("labels", Map.get(call, :labels))
 
   defp interrupt_of({%{id: id, name: "model"}, prompt}),
     do: %{"id" => id, "reason" => "model_approval", "message" => prompt}

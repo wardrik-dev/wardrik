@@ -572,12 +572,12 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                ToolRunner.execute_many_async(calls, under(agent_id, [Deploy], allowing))
     end
 
-    test "an answer from outside taints its call, and a refused call is not", %{
+    test "an answer from outside labels its call, and a refused call is not", %{
       agent_id: agent_id
     } do
       scope = under(agent_id, [Fetch, Deploy], [])
 
-      assert [%Call{state: :done, tainted: true}, %Call{state: :waiting, tainted: false}] =
+      assert [%Call{state: :done, labels: ["outside"]}, %Call{state: :waiting, labels: []}] =
                ToolRunner.execute_many_async(
                  [call("call_1", "fetch", %{}), call("call_2", "deploy", %{})],
                  scope
@@ -585,15 +585,17 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       refused = %{scope | hooks: [Wardrik.Hook.new("no", Refusing)]}
 
-      assert [%Call{state: :done, tainted: false}] =
+      assert [%Call{state: :done, labels: []}] =
                ToolRunner.execute_many_async([call("call_3", "fetch", %{})], refused)
     end
 
-    test "a tool handed its context can answer with content from outside", %{agent_id: agent_id} do
+    test "a tool handed its context can label one answer", %{agent_id: agent_id} do
       tool =
-        handed!("read_inbox", fn _input, _context -> {:ok, %{"mail" => "hi"}, outside: true} end)
+        handed!("read_inbox", fn _input, _context ->
+          {:ok, %{"mail" => "hi"}, labels: ["outside"]}
+        end)
 
-      assert [%Call{state: :done, tainted: true}] =
+      assert [%Call{state: :done, labels: ["outside"]}] =
                ToolRunner.execute_many_async(
                  [call("call_1", "read_inbox", %{})],
                  scope(agent_id, [tool])

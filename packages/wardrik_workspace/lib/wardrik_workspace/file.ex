@@ -8,20 +8,20 @@ defmodule WardrikWorkspace.File do
     * `:run` - the run it was written in, for an agent
     * `:call` - the idempotency key of the call that wrote it, so a call run
       again after a lost node finds its own write and does not make it twice
-    * `:tainted` - whether a run that had read content from outside wrote any
-      of what it holds, so reading it taints the reader's run in turn
+    * `:labels` - the `Wardrik.Label`s of what the runs that wrote what it
+      holds had read, so reading it labels the reader's run in turn
     * `:at` - when it was written
   """
 
   @enforce_keys [:content]
-  defstruct [:content, :by, :run, :call, :at, tainted: false]
+  defstruct [:content, :by, :run, :call, :at, labels: []]
 
   @type t() :: %__MODULE__{
           content: String.t(),
           by: String.t() | nil,
           run: String.t() | nil,
           call: String.t() | nil,
-          tainted: boolean(),
+          labels: [Wardrik.Label.t()],
           at: DateTime.t() | nil
         }
 end

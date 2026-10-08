@@ -103,7 +103,7 @@ defmodule WardrikPolicyTest do
   describe "allowing by name" do
     alias Wardrik.Test.Tools.Deploy
 
-    defp checked(policy, target \\ "prod", tainted \\ false) do
+    defp checked(policy, target \\ "prod", labels \\ []) do
       hooks = WardrikPolicy.hooks(policy)
 
       scope = %{
@@ -112,7 +112,7 @@ defmodule WardrikPolicyTest do
           id: Wardrik.AgentID.parse!("acme/triage"),
           hooks: hooks
         )
-        | tainted: tainted
+        | labels: labels
       }
 
       Wardrik.Test.check(scope, "deploy", %{"target" => target})
@@ -125,24 +125,63 @@ defmodule WardrikPolicyTest do
       end
     end
 
-    test "after outside content is what an allow_after_outside rule does, whole or by subject" do
+    test "is what an allow_after rule does too, whole or by subject" do
       for allow <- ["deploy", "deploy(prod)"] do
-        assert %Wardrik.Call{allowed: ["policy"], allowed_after_outside: ["policy"]} =
-                 checked(WardrikPolicy.decode!(%{"allow_after_outside" => [allow]}))
+        assert %Wardrik.Call{state: :allowed, allowed: ["policy"]} =
+                 checked(WardrikPolicy.decode!(%{"allow_after" => %{"outside" => [allow]}}))
       end
-
-      assert %Wardrik.Call{allowed: ["policy"], allowed_after_outside: []} =
-               checked(WardrikPolicy.decode!(%{"allow" => ["deploy"]}))
     end
 
-    test "after outside content holds a gated call for a person, unless the rule says it holds" do
+    test "after outside content holds a gated call for a person, unless an allow_after rule names it" do
       for {policy, state} <- [
             {%{"allow" => ["deploy"]}, :waiting},
-            {%{"allow_after_outside" => ["deploy"]}, :allowed},
-            {%{"allow_after_outside" => ["deploy"], "ask" => ["deploy"]}, :waiting}
+            {%{"allow_after" => %{"outside" => ["deploy"]}}, :allowed},
+            {%{"allow_after" => %{"outside" => ["deploy(prod)"]}}, :allowed},
+            {%{"allow_after" => %{"outside" => ["deploy(staging)"]}, "allow" => ["deploy"]},
+             :waiting},
+            {%{"allow_after" => %{"outside" => ["deploy"]}, "ask" => ["deploy"]}, :waiting}
           ] do
-        assert %Wardrik.Call{state: ^state} = checked(WardrikPolicy.decode!(policy), "prod", true)
+        assert %Wardrik.Call{state: ^state} =
+                 checked(WardrikPolicy.decode!(policy), "prod", ["outside"])
       end
+    end
+
+    test "says what it holds a call for" do
+      assert %Wardrik.Call{asks: [%{by: "policy", prompt: prompt}]} =
+               checked(WardrikPolicy.decode!(%{"allow" => ["deploy"]}), "prod", ["outside"])
+
+      assert prompt ==
+               "deploy is allowed, but this run has read content from outside, " <>
+                 "which may be what asked for it."
+    end
+
+    test "holds after a label an allow_after rule names, and after no other" do
+      policy =
+        WardrikPolicy.decode!(%{"allow" => ["deploy"], "allow_after" => %{"books" => ["x"]}})
+
+      assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt}]} =
+               checked(policy, "prod", ["books"])
+
+      assert prompt =~ "this run has read content labelled books"
+
+      assert %Wardrik.Call{state: :allowed} = checked(policy, "prod", ["pii"])
+
+      unknown = WardrikPolicy.decode!(%{"allow" => ["deploy"]})
+      assert %Wardrik.Call{state: :allowed} = checked(unknown, "prod", ["books"])
+    end
+
+    test "holds only a gated call: an ungated one goes ahead whatever the run has read" do
+      policy = WardrikPolicy.decode!(%{"allow" => ["echo"]})
+
+      scope = %{
+        Wardrik.Test.scope(
+          hooks: WardrikPolicy.hooks(policy),
+          id: Wardrik.AgentID.parse!("acme/t")
+        )
+        | labels: ["outside"]
+      }
+
+      assert %Wardrik.Call{state: :allowed} = Wardrik.Test.check(scope, "echo")
     end
 
     test "is not what default: allow does, so a gated tool asks under it as under nothing" do
@@ -202,20 +241,34 @@ defmodule WardrikPolicyTest do
     end
 
     test "refuse a default that is not an effect" do
-      for default <- ["maybe", "allow_after_outside"] do
+      for default <- ["maybe", "allow_after"] do
         assert {:error, "default is allow, ask or deny"} =
                  WardrikPolicy.decode(%{"default" => default})
       end
     end
 
-    test "write a rule that holds after outside content under its own key" do
+    test "write rules that hold after a label under allow_after, by label" do
       written = %{
         "allow" => ["linear/*"],
-        "allow_after_outside" => ["github/add_labels"],
+        "allow_after" => %{
+          "outside" => ["github/add_labels"],
+          "books" => %{"quickbooks/read_*" => "Reading the books is fine."}
+        },
         "default" => "allow"
       }
 
       assert written |> WardrikPolicy.decode!() |> WardrikPolicy.encode() == written
+    end
+
+    test "refuse an allow_after that is not a map of label to rules" do
+      assert {:error, "allow_after is a map of label to tool patterns"} =
+               WardrikPolicy.decode(%{"allow_after" => ["github/*"]})
+
+      assert {:error, "allow_after names \"\", which is not a label"} =
+               WardrikPolicy.decode(%{"allow_after" => %{"" => ["github/*"]}})
+
+      assert {:error, "allow_after outside is a list" <> _rest} =
+               WardrikPolicy.decode(%{"allow_after" => %{"outside" => "github/*"}})
     end
 
     test "refuse a budget that sets nothing" do

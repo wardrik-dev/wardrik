@@ -83,9 +83,9 @@ defmodule WardrikMCP do
 
   @doc """
   What holds for the tool the agent knows as `name`: whether the server
-  offering it gates it (see `WardrikMCP.Server`), that its answers are content
-  from outside for every server `:trusted` does not mark as the deployment's
-  own, and for a tool no connected server offers, the credential the server
+  offering it gates it (see `WardrikMCP.Server`), that its answers are
+  labelled `"outside"` for every server `:trusted` does not mark as the
+  deployment's own, and for a tool no connected server offers, the credential the server
   is reached with, and how long a call may take unless the server says
   otherwise. The tool that connects a server is never gated, since it changes
   nothing but who is connected.
@@ -99,13 +99,13 @@ defmodule WardrikMCP do
       {server, remote, read_only?} ->
         %{
           gated: Server.gated?(server, remote, read_only?),
-          outside: not server.trusted,
+          labels: if(server.trusted, do: [], else: ["outside"]),
           credentials: List.wrap(server.credential),
           timeout: @timeout
         }
 
       nil ->
-        %{outside: true, timeout: @timeout}
+        %{labels: ["outside"], timeout: @timeout}
     end
   end
 

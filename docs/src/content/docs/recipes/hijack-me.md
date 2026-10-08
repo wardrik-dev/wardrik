@@ -107,13 +107,14 @@ its text, and nobody outside the channel has read it.
 
 ## Why it holds
 
-- **Taint.** A turn that has read content from outside, an issue from an MCP server not marked
-  `trusted`, a page from `web_search`, sends each gated call it makes after that to a person,
-  however its `allow` rules name it. What it read stays in the agent's conversation, so every sweep
-  after the first is held from its start, until `wardrik clear issues` empties it. See
+- **Labels.** A turn that has read content from outside, an issue from an MCP server not marked
+  `trusted`, a page from `web_search`, carries the label `outside`, and sends each gated call it
+  makes after that to a person, however its `allow` rules name it. What it read stays in the agent's
+  conversation, so every sweep after the first is held from its start, until `wardrik clear issues`
+  empties it. See
   [Content from outside](/concepts/policy/#content-from-outside).
-- **Files remember.** `TRIAGE.md` was written by a turn that had read issues, and keeps that mark.
-  The next sweep, which reads it in through `context`, is tainted from its start, so nothing an
+- **Files remember.** `TRIAGE.md` was written by a turn that had read issues, and keeps its label.
+  The next sweep, which reads it in through `context`, is labelled from its start, so nothing an
   issue leaves in the agent's notes is a way around the rule. See
   [Files and memory](/concepts/files-and-memory/#content-from-outside).
 - **The rules are not in the prompt.** An issue can tell the model anything, that its rules have
@@ -124,7 +125,7 @@ its text, and nobody outside the channel has read it.
 
 ## Not this
 
-`allow_after_outside: [github/issue_write]` would let labels go out without a person. It would
+`allow_after: {outside: [github/issue_write]}` would let labels go out without a person. It would
 also let a close through, since `issue_write` labels and closes alike and a rule cannot tell one
 from the other. This agent reads what strangers write and holds a token that changes the
 repository's issues, so each of its writes waits on a person. Allow a tool after outside content

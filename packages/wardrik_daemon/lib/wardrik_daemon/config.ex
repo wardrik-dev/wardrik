@@ -104,8 +104,8 @@ defmodule WardrikDaemon.Config do
   `credential_header`, `credential_scheme` and `credential_env`, `gated`,
   the tools whose calls wait on a person unless a rule allows them by name,
   every tool the server does not mark read-only unless set, and
-  `trusted: true` for a server whose answers are the deployment's own, so a
-  call to it does not taint its run. See `WardrikMCP.Server`.
+  `trusted: true` for a server whose answers are the deployment's own, so
+  they are not labelled `outside`. See `WardrikMCP.Server`.
 
   A credential is kept in the vault, sealed, and found for each call the most
   specific first: the agent's user's, sealed with `wardrik vault put NAME

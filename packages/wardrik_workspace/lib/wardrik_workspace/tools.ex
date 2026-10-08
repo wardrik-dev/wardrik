@@ -12,13 +12,12 @@ defmodule WardrikWorkspace.Tools do
   | `search_files` | `pattern`, a regular expression; `glob`; `context` | matching lines, at most 200 |
   | `delete_file` | `path` | whether it was there |
 
-  A write records who wrote it, in which run, with which call, and whether
-  that run had read content from outside. An append or an edit keeps the
-  mark the file had, since what was there before is there still, and a
-  write that replaces the whole file takes its writer's. Reading a file a
-  tainted run wrote,
-  or listing or finding one, taints the reader's call, and with it the
-  reader's run (see `Wardrik.Call.taint/1`). A call run again after a lost node
+  A write records who wrote it, in which run, with which call, and the
+  labels of what that run had read. An append or an edit keeps the labels
+  the file had, since what was there before is there still, and a write that
+  replaces the whole file takes its writer's. Reading a file, or listing or
+  finding one, labels the reader's call with its labels, and with it the
+  reader's run (see `Wardrik.Call.label/2`). A call run again after a lost node
   finds its own write on the file and answers as it did, without writing
   twice.
   """
@@ -144,9 +143,9 @@ defmodule WardrikWorkspace.Tools do
   @spec handle(atom(), Spec.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
   def handle(tool, %Spec{} = spec, args, %Wardrik.Tool.Context{} = context) do
     case run(tool, spec, args, context) do
-      {:ok, answer, outside: outside?} ->
+      {:ok, answer, labels: labels} ->
         {:ok, result} = Result.ok(answer)
-        {:ok, result, outside: outside?}
+        {:ok, result, labels: labels}
 
       {:ok, answer} ->
         Result.ok(answer)
@@ -173,7 +172,7 @@ defmodule WardrikWorkspace.Tools do
          "lines" => length(lines),
          "content" => shown,
          "truncated" => cut?
-       }, outside: outside?([file])}
+       }, labels: labels([file])}
     end
   end
 
@@ -214,7 +213,7 @@ defmodule WardrikWorkspace.Tools do
        %{
          "files" => listed |> Enum.take(@max_listed) |> Enum.map(&listing/1),
          "truncated" => length(listed) > @max_listed
-       }, outside: outside?(Enum.map(listed, &elem(&1, 1)))}
+       }, labels: labels(Enum.map(listed, &elem(&1, 1)))}
     end
   end
 
@@ -234,7 +233,7 @@ defmodule WardrikWorkspace.Tools do
        %{
          "matches" => found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 0)),
          "truncated" => length(found) > @max_matches
-       }, outside: outside?(found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 1)))}
+       }, labels: labels(found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 1)))}
     end
   end
 
@@ -361,13 +360,13 @@ defmodule WardrikWorkspace.Tools do
 
   # Writes `content` as this call's, over `version`, answering `:conflict`
   # where the file has changed since. Content kept from the file written
-  # before, by an append or an edit, keeps its mark: a file is tainted while
-  # anything a tainted run wrote may still be in it.
-  defp put(mount, path, content, {context, %File{tainted: kept}}, version),
+  # before, by an append or an edit, keeps its labels: a file holds them while
+  # anything a labelled run wrote may still be in it.
+  defp put(mount, path, content, {context, %File{labels: kept}}, version),
     do: write(mount, path, content, context, version, kept)
 
   defp put(mount, path, content, context, version),
-    do: write(mount, path, content, context, version, false)
+    do: write(mount, path, content, context, version, [])
 
   defp write(mount, path, content, %Wardrik.Tool.Context{scope: scope} = context, version, kept) do
     file = %File{
@@ -375,7 +374,7 @@ defmodule WardrikWorkspace.Tools do
       by: to_string(scope.source.agent_id),
       run: scope.source.trace.trace_id,
       call: context.idempotency_key,
-      tainted: scope.tainted or kept,
+      labels: Wardrik.Label.union(scope.labels, kept),
       at: DateTime.utc_now()
     }
 
@@ -538,8 +537,8 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  # What a tainted run wrote is content from outside to whoever reads it.
-  defp outside?(files), do: Enum.any?(files, & &1.tainted)
+  # What a labelled run wrote holds its labels for whoever reads it.
+  defp labels(files), do: Enum.reduce(files, [], &Wardrik.Label.union(&2, &1.labels))
 
   defp written(mount, path, version),
     do: %{"path" => shown_path(mount, path), "version" => version(version)}

@@ -57,8 +57,8 @@ defmodule WardrikResearch.DeepTest do
 
   defp quietly(fun), do: fun |> ExUnit.CaptureLog.with_log() |> elem(0)
 
-  test "answers with what it read on the web, which taints a run" do
-    assert Wardrik.Tool.annotations(WardrikResearch.Deep, "deep_research").outside
+  test "answers with what it read on the web, labelled outside" do
+    assert Wardrik.Tool.annotations(WardrikResearch.Deep, "deep_research").labels == ["outside"]
   end
 
   describe "run/3" do

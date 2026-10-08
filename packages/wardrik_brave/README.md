@@ -22,6 +22,6 @@ Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch])
 The agent calls it as `web_search`. Results are kept small, since each one
 becomes part of the turn that asked for it.
 
-The pages it returns are ones anyone could have written, so a search counts
-as content from outside: once a turn has read one, its gated tools wait on a
-person. See [wardrik_policy](../wardrik_policy).
+The pages it returns are ones anyone could have written, so a search is
+labelled `outside`: once a turn has read one, a policy holds its gated tools'
+calls for a person. See [wardrik_policy](../wardrik_policy).
