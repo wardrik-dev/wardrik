@@ -24,8 +24,8 @@ defmodule WardrikDaemon.MixProject do
       test_coverage: [summary: [threshold: 89]],
       precommit: [
         # The docs site's reference pages, written from this package's code
-        # and the HTTP API's, policies' and core's schemas, so checked with
-        # the tests a change to any of them runs.
+        # and the HTTP API's, policies' and the protocol's schemas, so checked
+        # with the tests a change to any of them runs.
         test: [{["wardrik.docs"], ["wardrik.docs", "--check"]}]
       ]
     ]
@@ -61,6 +61,9 @@ defmodule WardrikDaemon.MixProject do
       {:termite_ssh, "~> 0.1.2", optional: true},
       # The TUI the SSH tests serve, as a release that carries it does.
       sibling(:wardrik_tui, only: :test),
+      # The schemas the docs task writes the event and resource references
+      # from, and the tests check definitions against.
+      sibling(:wardrik_protocol, only: [:dev, :test]),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

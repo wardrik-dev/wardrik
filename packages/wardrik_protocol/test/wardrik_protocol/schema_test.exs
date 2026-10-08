@@ -1,4 +1,4 @@
-defmodule Wardrik.Event.SchemaTest do
+defmodule WardrikProtocol.SchemaTest do
   @moduledoc """
   Elasticsearch fixes a field's type per index, so a path in a CloudEvent's
   data must have one type across every event type, and a path that holds any
@@ -7,7 +7,7 @@ defmodule Wardrik.Event.SchemaTest do
 
   use ExUnit.Case, async: true
 
-  @schemas Application.app_dir(:wardrik, "priv/protocol/v1")
+  @schemas WardrikProtocol.dir()
 
   @flattened ~w(
     message.parts.arguments message.parts.response

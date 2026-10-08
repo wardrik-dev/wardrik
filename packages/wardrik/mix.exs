@@ -1,12 +1,13 @@
 defmodule Wardrik.MixProject do
   use Mix.Project
 
+  @version "0.1.0-rc.1"
   @source_url "https://github.com/wardrik-dev/wardrik"
 
   def project do
     [
       app: :wardrik,
-      version: "0.1.0-rc.1",
+      version: @version,
       elixir: "~> 1.20",
       description: "An agent runtime built on OTP.",
       source_url: @source_url,
@@ -37,7 +38,7 @@ defmodule Wardrik.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv/protocol .formatter.exs mix.exs README.md LICENSE)
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
     ]
   end
 
@@ -54,7 +55,18 @@ defmodule Wardrik.MixProject do
       {:ekv, "~> 0.4.3", optional: true},
       # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
       {:mimic, "~> 1.7", only: [:dev, :test]},
+      # The schemas the codec's tests check what it writes against.
+      sibling(:wardrik_protocol, only: :test),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  # A package beside this one in this repository: by path while it is here,
+  # and by version where this one is built for Hex, with WARDRIK_HEX=1, or
+  # fetched from it.
+  defp sibling(app, opts) do
+    if System.get_env("WARDRIK_HEX") != "1" and Path.basename(Path.dirname(__DIR__)) == "packages",
+      do: {app, [path: "../#{app}"] ++ opts},
+      else: {app, "~> #{@version}", opts}
   end
 end

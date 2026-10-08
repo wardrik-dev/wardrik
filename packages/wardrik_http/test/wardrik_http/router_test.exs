@@ -935,14 +935,14 @@ defmodule WardrikHTTP.RouterTest do
     @resources ~w(agent agent_snapshot authorization schedule schedule_definition error)
 
     defp schema(name) do
-      :wardrik
-      |> Application.app_dir("priv/protocol/v1/#{name}.json")
+      WardrikProtocol.dir()
+      |> Path.join("#{name}.json")
       |> File.read!()
       |> JSON.decode!()
     end
 
     defp conforms(value, name) do
-      root = JSV.build!(schema(name), resolver: Wardrik.Test.ProtocolResolver)
+      root = JSV.build!(schema(name), resolver: WardrikProtocol.Resolver)
       assert {:ok, _} = JSV.validate(value, root)
     end
 

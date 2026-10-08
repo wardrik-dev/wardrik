@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
   `docs/src/content/docs/reference`, from what the code already says: the
   commands `WardrikDaemon.CLI.commands/0` lists, the moduledocs of
   `config.yaml`, agent files, policies and the HTTP API, and the protocol's
-  JSON Schemas in `packages/wardrik/priv/protocol/v1`.
+  JSON Schemas in `packages/wardrik_protocol/priv/v1`.
 
       mix wardrik.docs           write them
       mix wardrik.docs --check   fail where one is not what it would write
@@ -16,7 +16,6 @@ defmodule Mix.Tasks.Wardrik.Docs do
   use Mix.Task
 
   @dir Path.expand("../../../docs/src/content/docs/reference", __DIR__)
-  @schemas Path.expand("../../wardrik/priv/protocol/v1", __DIR__)
   @events "/reference/events/"
 
   @impl Mix.Task
@@ -139,7 +138,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
       "HTTP API",
       5,
       lead(doc),
-      "WardrikHTTP and packages/wardrik/priv/protocol/v1",
+      "WardrikHTTP and packages/wardrik_protocol/priv/v1",
       [
         doc,
         "\n\n## Resources\n\nThe bodies the routes take and answer with.\n\n",
@@ -164,7 +163,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
       "Events",
       6,
       "The events an agent publishes, as CloudEvents, and the data each carries.",
-      "packages/wardrik/priv/protocol/v1",
+      "packages/wardrik_protocol/priv/v1",
       [
         "Every event is a CloudEvent: the envelope below, with the event's own data under `data`.\n\n",
         "## The envelope\n\n",
@@ -181,7 +180,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
   # -- schemas -----------------------------------------------------------------
 
   defp schemas do
-    @schemas
+    WardrikProtocol.dir()
     |> Path.join("*.json")
     |> Path.wildcard()
     |> Enum.sort()

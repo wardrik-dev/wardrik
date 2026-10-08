@@ -6,14 +6,13 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Source
-  alias Wardrik.Test.ProtocolResolver
 
-  @schemas Application.app_dir(:wardrik, "priv/protocol/v1")
+  @schemas WardrikProtocol.dir()
   @agent Wardrik.AgentID.parse!("acme/@ops/triage")
 
   defp read(name), do: @schemas |> Path.join(name <> ".json") |> File.read!() |> JSON.decode!()
 
-  defp build(name), do: JSV.build!(read(name), resolver: ProtocolResolver)
+  defp build(name), do: JSV.build!(read(name), resolver: WardrikProtocol.Resolver)
 
   defp turn, do: Source.root(@agent, name: "turn")
   defp within(source, name), do: Source.child(source, name: name)

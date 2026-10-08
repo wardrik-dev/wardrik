@@ -481,8 +481,8 @@ defmodule WardrikDaemon.AgentFileTest do
 
   describe "the definition schema" do
     defp schema do
-      :wardrik
-      |> Application.app_dir("priv/protocol/v1/agent_definition.json")
+      WardrikProtocol.dir()
+      |> Path.join("agent_definition.json")
       |> File.read!()
       |> JSON.decode!()
     end
@@ -506,7 +506,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
     test "takes its example, which the reader reads" do
       schema = schema()
-      root = JSV.build!(schema, resolver: Wardrik.Test.ProtocolResolver)
+      root = JSV.build!(schema, resolver: WardrikProtocol.Resolver)
 
       for example <- schema["examples"] do
         assert {:ok, _} = JSV.validate(example, root)

@@ -2,7 +2,7 @@ defmodule WardrikHTTP.Definition do
   @moduledoc """
   Where the HTTP API's agent definitions go: the body of
   `PUT /v1/agents/{id}`, as
-  `priv/protocol/v1/agent_definition.json` describes it, read into the
+  `wardrik_protocol`'s `agent_definition.json` describes it, read into the
   `Wardrik.Agent.Spec` it writes.
 
   `WardrikHTTP.Listener` takes the module as `:definition`. The router checks the

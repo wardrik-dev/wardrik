@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-<!-- Written by mix wardrik.docs from WardrikHTTP and packages/wardrik/priv/protocol/v1. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from WardrikHTTP and packages/wardrik_protocol/priv/v1. Edit it there, not here. -->
 
 Wardrik's agents over HTTP: a versioned JSON API, and each agent's event log
 as server-sent events a client resumes after any disconnect.
@@ -89,7 +89,7 @@ agent with is its key.
 | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
 `WardrikHTTP.Resource` shows what each answers. Each resource's JSON Schema is
-in `priv/protocol/v1`, beside the events': `agent.json` for an agent listed,
+in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
 `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
 `schedule_definition.json`, `authorization.json` and `error.json`. `sdks/typescript` generates
 its types from them.
@@ -102,7 +102,7 @@ its types from them.
      "model": "anthropic:claude-sonnet-5",
      "tools": ["web_search"]}
 
-`priv/protocol/v1/agent_definition.json` is the definition's schema. The
+`wardrik_protocol`'s `agent_definition.json` is the definition's schema. The
 host reads it, with the `WardrikHTTP.Definition` the listener is given, and
 decides whether definitions are kept and who owns a key: a key it refuses
 answers `409`. A daemon reads a definition as an agent file (see
