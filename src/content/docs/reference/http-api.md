@@ -96,7 +96,7 @@ its types from them.
 
 ### Agents
 
-    PUT /v1/agents/acme/ops/triage
+    PUT /v1/agents/acme/triage
     {"description": "Watches the incident queue.",
      "instructions": "You watch the incident queue.",
      "model": "anthropic:claude-sonnet-5",
@@ -106,8 +106,8 @@ its types from them.
 host reads it, with the `WardrikHTTP.Definition` the listener is given, and
 decides whether definitions are kept and who owns a key: a key it refuses
 answers `409`. A daemon reads a definition as an agent file (see
-`WardrikDaemon.AgentFile`), keeps none, so `GET …/definition` answers `501`,
-and refuses the keys its agent files declare. An agent brought to a new
+`WardrikDaemon.AgentFile`), keeps it, so `GET …/definition` answers it, and
+refuses the keys its agent files declare. An agent brought to a new
 definition keeps its conversation and its schedules. A route whose callback
 the module lacks, or every one where the listener has no module, answers
 `501`.
@@ -123,7 +123,7 @@ one still held; read the snapshot and follow from its `sequence`. See
 
 ### Messages
 
-    POST /v1/agents/acme/ops/triage/messages
+    POST /v1/agents/acme/triage/messages
     {"id": "msg_01", "parts": [{"type": "text", "content": "What's on fire?"}]}
 
 `content` in place of `parts` is the text alone. `id` is optional, and a
@@ -132,7 +132,7 @@ message sent again under the same id is taken once. The answer names it:
 
 ### Interrupts
 
-    POST /v1/agents/acme/ops/triage/interrupts/toolu_01
+    POST /v1/agents/acme/triage/interrupts/toolu_01
     {"decision": "reject", "reason": "Not this quarter."}
 
 `decision` is `approve` or `reject`. The decision is recorded as made by
@@ -141,7 +141,7 @@ and `503` when the agent could not record it.
 
 ### Schedules
 
-    PUT /v1/agents/acme/ops/triage/schedules/sweep
+    PUT /v1/agents/acme/triage/schedules/sweep
     {"every": "*/30 * * * *", "prompt": "Check the incident queue."}
 
 `every` is a cron expression read in UTC, or a duration of at least a
@@ -184,14 +184,17 @@ One entry of GET /v1/agents.
 
 ### `agent_definition`
 
-The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
+The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `description` | string |  | What the agent is for, in words a person reads. |
 | `instructions` | string |  | The system prompt. |
 | `model` | string |  | The model, as provider:model. |
-| `tools` | array of string |  | What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them. |
+| `tools` | array of string |  | What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them. |
+| `workspace` | object |  | The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them. |
+| `workspace.shared` | object |  | The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read. |
+| `context` | array of string or object |  | The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with. |
 | `policy` | string or object |  |  |
 | `timeout` | integer |  | How many seconds a turn may take. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
