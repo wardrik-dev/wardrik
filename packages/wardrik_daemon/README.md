@@ -97,11 +97,22 @@ node, so listen beyond loopback only on a network you trust. See
 
 ## In an application of your own
 
-The daemon is `WardrikDaemon`, started as one of core's children beside the
-budget meters, the schedules, what tokens grant and the tool workers' group:
+The daemon is `WardrikDaemon`, started after Wardrik in your tree, beside the
+budget meters, the schedules, the tokens' grants and the tool workers' group:
 
 ```elixir
-config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikSchedule, WardrikHTTP.Access, WardrikHTTP.Workers, WardrikDaemon]
+config :wardrik, start: :host
+
+children = [
+  {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
+  WardrikPolicy.Supervisor,
+  WardrikSchedule,
+  WardrikHTTP.Access,
+  WardrikHTTP.Workers,
+  WardrikDaemon
+]
+
+Supervisor.start_link(children, strategy: :rest_for_one)
 ```
 
 The [release](../../release) does exactly this, and builds the binary and the

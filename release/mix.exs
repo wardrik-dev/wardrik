@@ -9,6 +9,9 @@ defmodule Wardrikd.MixProject do
       releases: releases(),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      # The application is the daemon, so its tests read files with nothing
+      # started.
+      aliases: [test: "test --no-start"],
       # Nothing here but configuration and the release around it.
       precommit: [skip: ["ex_dna", "reach.check", "test.coverage", "crap", "dialyzer"]]
     ]

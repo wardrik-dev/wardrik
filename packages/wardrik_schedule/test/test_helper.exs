@@ -1,1 +1,1 @@
-Wardrik.Test.start(wait: [WardrikSchedule.supervisor()])
+Wardrik.Test.start(children: [WardrikSchedule], wait: [WardrikSchedule.supervisor()])

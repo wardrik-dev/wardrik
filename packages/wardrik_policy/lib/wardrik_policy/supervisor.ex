@@ -2,9 +2,9 @@ defmodule WardrikPolicy.Supervisor do
   @moduledoc """
   Runs the `WardrikPolicy.Meter`s budgets are kept in, over the store the fleet
   runs on. A host that governs agents with budgets starts it once per node,
-  after the fleet, as one of core's `:children`:
+  after Wardrik in its own tree:
 
-      config :wardrik, :children, [WardrikPolicy.Supervisor]
+      children = [Wardrik, WardrikPolicy.Supervisor]
 
   Without it a budget cannot be read, and a call it governs is refused.
   """

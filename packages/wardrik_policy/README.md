@@ -66,9 +66,9 @@ budget:
   on_exhausted: ask   # or deny
 ```
 
-Budgets are kept by meters in the fleet, so name `WardrikPolicy.Supervisor` in
-core's children:
+Budgets are kept by meters in the fleet, so start `WardrikPolicy.Supervisor`
+after Wardrik in your tree:
 
 ```elixir
-config :wardrik, :children, [WardrikPolicy.Supervisor]
+children = [Wardrik, WardrikPolicy.Supervisor]
 ```

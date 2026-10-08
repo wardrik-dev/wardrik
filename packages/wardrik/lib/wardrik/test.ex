@@ -37,8 +37,17 @@ defmodule Wardrik.Test do
   @doc """
   Starts ExUnit once the runtime is ready.
 
-  Waits for the fleet, and for every supervisor `wait:`
-  names, as `DurableServer.Supervisor.wait_until_ready/2` does. Loads the
+  Waits for the fleet, then starts what `children:` names
+  in order, as a host's tree starts them after Wardrik, then waits for every
+  supervisor `wait:` names, as `DurableServer.Supervisor.wait_until_ready/2`
+  does:
+
+      Wardrik.Test.start(
+        children: [WardrikPolicy.Supervisor],
+        wait: [WardrikPolicy.Meter.supervisor()]
+      )
+
+  Loads the
   model catalog, which the application starts loading in the background,
   so the wait for it lands on no test. Copies what `Wardrik.Test.LLMStub`
   stubs where `llm_stub: true`. Once the suite is over, removes the store's
@@ -52,22 +61,31 @@ defmodule Wardrik.Test do
   """
   @spec start(keyword()) :: :ok
   def start(opts \\ []) do
+    {children, opts} = Keyword.pop(opts, :children, [])
     {wait, opts} = Keyword.pop(opts, :wait, [])
     {llm_stub, opts} = Keyword.pop(opts, :llm_stub, false)
 
     if llm_stub, do: Wardrik.Test.LLMStub.copy()
     _loaded = ReqLLM.model("test:model")
-    Enum.each([Wardrik.Fleet | wait], &ready!/1)
+    ready!(Wardrik.Fleet)
+
+    {:ok, _pid} =
+      Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrik.Test.Supervisor)
+
+    Enum.each(wait, &ready!/1)
     ExUnit.after_suite(fn _results -> remove_store() end)
     ExUnit.start(Keyword.merge([capture_log: true, assert_receive_timeout: 1_000], opts))
   end
 
   defp ready!(name), do: :ok = DurableServer.Supervisor.wait_until_ready(name, timeout: 10_000)
 
-  # A store kept on disk for this run alone goes with it. The fleet closes it
-  # first, and the OS monitor closes its helper before the VM takes its ports.
-  # A file written while the directory goes is left where it is.
+  # A store kept on disk for this run alone goes with it. What runs on the
+  # fleet stops first, then the fleet closes the store, and the OS monitor
+  # closes its helper before the VM takes its ports. A file written while the
+  # directory goes is left where it is.
   defp remove_store do
+    Supervisor.stop(Wardrik.Test.Supervisor)
+
     case Wardrik.Store.config()[:data_dir] do
       nil ->
         :ok

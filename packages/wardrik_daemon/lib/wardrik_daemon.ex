@@ -2,16 +2,23 @@ defmodule WardrikDaemon do
   @moduledoc """
   The host a `wardrik` release runs beside core.
 
-  The release names it in core's `:children`, after `WardrikPolicy.Supervisor`,
-  which keeps the budgets its agents' policies set, `WardrikSchedule`, which
-  runs their schedules, `WardrikHTTP.Access`, which keeps what its tokens
-  grant, and `WardrikHTTP.Workers`, the tool workers connected to the
-  cluster, so all five start once the fleet is up,
-  and `WardrikDaemon.Cluster` in core's `:cluster`, which starts before the
-  fleet:
+  The release's tree starts it after core, `WardrikPolicy.Supervisor`, which
+  keeps the budgets its agents' policies set, `WardrikSchedule`, which runs
+  their schedules, `WardrikHTTP.Access`, which keeps what its tokens grant,
+  and `WardrikHTTP.Workers`, the tool workers connected to the cluster, so
+  all five start once the fleet is up. It gives core `WardrikDaemon.Cluster`
+  as its `:cluster`, which starts before the fleet:
 
-      config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
-      config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikSchedule, WardrikHTTP.Access, WardrikHTTP.Workers, WardrikDaemon]
+      children = [
+        {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
+        WardrikPolicy.Supervisor,
+        WardrikSchedule,
+        WardrikHTTP.Access,
+        WardrikHTTP.Workers,
+        WardrikDaemon
+      ]
+
+      Supervisor.init(children, strategy: :rest_for_one)
 
   Starting, it reads `config.yaml`, or `config.yml`, from the config directory
   into the settings
