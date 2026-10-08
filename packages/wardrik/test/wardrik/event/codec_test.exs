@@ -414,6 +414,13 @@ defmodule Wardrik.Event.CodecTest do
 
       assert event["data"] == %{"status" => "ok", "duration_ms" => 5}
     end
+
+    test "a step a stopped turn interrupted is cancelled" do
+      {:ok, event} = encode(within(turn(), "plan"), {:span_finished, {:error, :interrupted}, 5})
+
+      assert event["data"] == %{"status" => "cancelled", "duration_ms" => 5}
+      assert {:ok, _} = JSV.validate(event["data"], build("step.completed"))
+    end
   end
 
   test "a model is read from however it was named" do

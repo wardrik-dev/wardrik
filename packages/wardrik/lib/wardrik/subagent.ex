@@ -39,9 +39,9 @@ defmodule Wardrik.Subagent do
   marks the process that ran it with the labels its turn ended with, since
   its answer may carry what it read. The tool call whose work ran it is
   labelled with them, as one that read the content itself is (see
-  `Wardrik.Call.label/2`), and `Wardrik.Workflow.fan_out/4` carries a
-  branch's labels back to the process that fanned out. `watching/1` says
-  which labels the delegates a function ran left.
+  `Wardrik.Call.label/2`), and `read/1` carries the labels of delegates run
+  in other processes back to this one. `watching/1` says which labels the
+  delegates a function ran left.
 
   ## Events
 
@@ -94,7 +94,11 @@ defmodule Wardrik.Subagent do
     {result, read}
   end
 
-  @doc false
+  @doc """
+  Marks this process with `labels` that delegates read in another, as one run
+  here would have: for a function that runs work in tasks, such as a fan-out,
+  with what `watching/1` answered in each.
+  """
   @spec read([Wardrik.Label.t()]) :: :ok
   def read(labels) when is_list(labels) do
     Process.put(@read, Wardrik.Label.union(Process.get(@read, []), labels))

@@ -210,7 +210,7 @@ A named step ended.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `status` | string | yes | One of `ok`, `error`. |
+| `status` | string | yes | How the step ended: cancelled where a stopped turn cut it short. One of `ok`, `error`, `cancelled`. |
 | `duration_ms` | [duration_ms](#duration_ms) | yes |  |
 | `error` | [error](#error) |  |  |
 

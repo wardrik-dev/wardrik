@@ -50,6 +50,7 @@ defmodule WardrikSDK.MixProject do
       sibling(:wardrik_tui),
       sibling(:wardrik_vault),
       sibling(:wardrik_workspace),
+      sibling(:wardrik_workflow),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

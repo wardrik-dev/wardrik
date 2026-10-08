@@ -1,11 +1,10 @@
-defmodule Wardrik.WorkflowTest do
+defmodule WardrikWorkflowTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
-  alias Wardrik.Test.Steps
-  alias Wardrik.Workflow
+  alias WardrikWorkflow.Test.Steps
 
   setup do
     agent_id = Wardrik.Test.Fleet.id()
@@ -18,7 +17,8 @@ defmodule Wardrik.WorkflowTest do
 
   describe "fan_out/4" do
     test "reports one outcome per input, in input order", %{scope: scope} do
-      outcomes = Workflow.fan_out(scope, ["a", "b", "c"], ok(fn input, _scope -> input end))
+      outcomes =
+        WardrikWorkflow.fan_out(scope, ["a", "b", "c"], ok(fn input, _scope -> input end))
 
       assert outcomes == [{"a", {:ok, "a"}}, {"b", {:ok, "b"}}, {"c", {:ok, "c"}}]
     end
@@ -34,7 +34,7 @@ defmodule Wardrik.WorkflowTest do
           receive do: (:go -> input)
         end)
 
-      task = Task.async(fn -> Workflow.fan_out(scope, 1..3, barrier) end)
+      task = Task.async(fn -> WardrikWorkflow.fan_out(scope, 1..3, barrier) end)
 
       branches =
         for input <- 1..3 do
@@ -51,13 +51,13 @@ defmodule Wardrik.WorkflowTest do
       test_pid = self()
 
       step = ok(fn input, _scope -> send(test_pid, {:ran, input}) end)
-      Workflow.fan_out(scope, [:a, :b, :c], step, max_concurrency: 1)
+      WardrikWorkflow.fan_out(scope, [:a, :b, :c], step, max_concurrency: 1)
 
       assert [{:ran, :a}, {:ran, :b}, {:ran, :c}] == drain()
     end
 
     test "a branch that returns an error is one failed outcome", %{scope: scope} do
-      assert Workflow.fan_out(scope, [:only], Steps.Boom) == [{:only, {:error, :boom}}]
+      assert WardrikWorkflow.fan_out(scope, [:only], Steps.Boom) == [{:only, {:error, :boom}}]
     end
 
     test "a branch that crashes is one failed outcome, and the rest still run", %{scope: scope} do
@@ -68,7 +68,7 @@ defmodule Wardrik.WorkflowTest do
 
       {outcomes, _log} =
         ExUnit.CaptureLog.with_log(fn ->
-          Workflow.fan_out(scope, [:good, :bad, :also_good], step)
+          WardrikWorkflow.fan_out(scope, [:good, :bad, :also_good], step)
         end)
 
       assert [
@@ -85,12 +85,12 @@ defmodule Wardrik.WorkflowTest do
       end
 
       assert [{:slow, {:error, :timeout}}, {:quick, {:ok, :quick}}] =
-               Workflow.fan_out(scope, [:slow, :quick], step, timeout: 50)
+               WardrikWorkflow.fan_out(scope, [:slow, :quick], step, timeout: 50)
     end
 
     test "each branch runs under a child of the caller's span", %{scope: scope} do
       [{_input, {:ok, branch}}] =
-        Workflow.fan_out(scope, [:one], ok(fn _input, scope -> scope end))
+        WardrikWorkflow.fan_out(scope, [:one], ok(fn _input, scope -> scope end))
 
       assert branch.source.agent_id == scope.source.agent_id
       assert branch.source.trace.trace_id == scope.source.trace.trace_id
@@ -98,29 +98,34 @@ defmodule Wardrik.WorkflowTest do
     end
 
     test "branches get distinct spans", %{scope: scope} do
-      outcomes = Workflow.fan_out(scope, [:one, :two], ok(fn _input, scope -> scope end))
+      outcomes = WardrikWorkflow.fan_out(scope, [:one, :two], ok(fn _input, scope -> scope end))
       spans = for {_input, {:ok, scope}} <- outcomes, do: scope.source.trace.span_id
 
       assert spans == Enum.uniq(spans)
     end
 
     test "a string or atom input names its own span", %{scope: scope} do
-      assert [{_input, {:ok, "pricing"}}] = Workflow.fan_out(scope, ["pricing"], Steps.Named)
-      assert [{_input, {:ok, "pricing"}}] = Workflow.fan_out(scope, [:pricing], Steps.Named)
+      assert [{_input, {:ok, "pricing"}}] =
+               WardrikWorkflow.fan_out(scope, ["pricing"], Steps.Named)
+
+      assert [{_input, {:ok, "pricing"}}] =
+               WardrikWorkflow.fan_out(scope, [:pricing], Steps.Named)
     end
 
     test "anything else falls back to its position", %{scope: scope} do
       assert [{_a, {:ok, "branch_0"}}, {_b, {:ok, "branch_1"}}] =
-               Workflow.fan_out(scope, [%{a: 1}, %{b: 2}], Steps.Named)
+               WardrikWorkflow.fan_out(scope, [%{a: 1}, %{b: 2}], Steps.Named)
     end
 
     test "the name option decides the span name", %{scope: scope} do
       assert [{_input, {:ok, "pricing"}}] =
-               Workflow.fan_out(scope, [%{angle: "pricing"}], Steps.Named, name: & &1.angle)
+               WardrikWorkflow.fan_out(scope, [%{angle: "pricing"}], Steps.Named,
+                 name: & &1.angle
+               )
     end
 
     test "an empty list of inputs is an empty list of outcomes", %{scope: scope} do
-      assert Workflow.fan_out(scope, [], Steps.Boom) == []
+      assert WardrikWorkflow.fan_out(scope, [], Steps.Boom) == []
     end
   end
 
@@ -128,29 +133,29 @@ defmodule Wardrik.WorkflowTest do
     test "feeds each step the one before it", %{scope: scope} do
       steps = [ok(fn n, _scope -> n + 1 end), ok(fn n, _scope -> n * 10 end)]
 
-      assert Workflow.sequence(scope, 1, steps) == {:ok, 20}
+      assert WardrikWorkflow.sequence(scope, 1, steps) == {:ok, 20}
     end
 
     test "stops at the first error and leaves later steps unrun", %{scope: scope} do
       test_pid = self()
       later = ok(fn input, _scope -> send(test_pid, :ran_later) && input end)
 
-      assert Workflow.sequence(scope, :input, [Steps.Boom, later]) == {:error, :boom}
+      assert WardrikWorkflow.sequence(scope, :input, [Steps.Boom, later]) == {:error, :boom}
       refute_received :ran_later
     end
 
     test "each step runs under a child span named after it", %{scope: scope} do
-      assert Workflow.sequence(scope, nil, [Steps.Named]) == {:ok, "named"}
+      assert WardrikWorkflow.sequence(scope, nil, [Steps.Named]) == {:ok, "named"}
     end
 
     test "a function step's span is named for its position", %{scope: scope} do
       spy = ok(fn _input, scope -> scope.source.trace.name end)
 
-      assert Workflow.sequence(scope, nil, [spy]) == {:ok, "step_0"}
+      assert WardrikWorkflow.sequence(scope, nil, [spy]) == {:ok, "step_0"}
     end
 
     test "no steps returns the input untouched", %{scope: scope} do
-      assert Workflow.sequence(scope, :untouched, []) == {:ok, :untouched}
+      assert WardrikWorkflow.sequence(scope, :untouched, []) == {:ok, :untouched}
     end
   end
 
@@ -158,41 +163,45 @@ defmodule Wardrik.WorkflowTest do
     test "separates what landed from what did not" do
       outcomes = [{:a, {:ok, 1}}, {:b, {:error, :nope}}, {:c, {:ok, 3}}]
 
-      assert Workflow.split(outcomes) == {[{:a, 1}, {:c, 3}], [{:b, :nope}]}
+      assert WardrikWorkflow.split(outcomes) == {[{:a, 1}, {:c, 3}], [{:b, :nope}]}
     end
 
     test "keeps input order in both lists" do
       outcomes = [{:a, {:ok, 1}}, {:b, {:ok, 2}}, {:c, {:error, :x}}, {:d, {:error, :y}}]
 
-      assert {[{:a, _}, {:b, _}], [{:c, _}, {:d, _}]} = Workflow.split(outcomes)
+      assert {[{:a, _}, {:b, _}], [{:c, _}, {:d, _}]} = WardrikWorkflow.split(outcomes)
     end
 
     test "handles all of one kind" do
-      assert Workflow.split([]) == {[], []}
-      assert Workflow.split([{:a, {:ok, 1}}]) == {[{:a, 1}], []}
-      assert Workflow.split([{:a, {:error, :x}}]) == {[], [{:a, :x}]}
+      assert WardrikWorkflow.split([]) == {[], []}
+      assert WardrikWorkflow.split([{:a, {:ok, 1}}]) == {[{:a, 1}], []}
+      assert WardrikWorkflow.split([{:a, {:error, :x}}]) == {[], [{:a, :x}]}
     end
   end
 
   describe "handle/3" do
     test "runs the step under the scope of the context it is handed", %{scope: scope} do
-      assert Workflow.handle(Steps.Echo, %{topic: "pricing"}, Wardrik.Test.context(scope)) ==
+      assert WardrikWorkflow.handle(Steps.Echo, %{topic: "pricing"}, Wardrik.Test.context(scope)) ==
                {:ok, %{"ok" => true, "result" => %{topic: "pricing"}}}
     end
 
     test "accepts a step with options", %{scope: scope} do
       assert {:ok, %{"result" => {%{}, [mode: :loud]}}} =
-               Workflow.handle({Steps.Echo, [mode: :loud]}, %{}, Wardrik.Test.context(scope))
+               WardrikWorkflow.handle(
+                 {Steps.Echo, [mode: :loud]},
+                 %{},
+                 Wardrik.Test.context(scope)
+               )
     end
 
     test "a failed workflow is an answer, not a failed tool", %{scope: scope} do
       assert {:ok, %{"ok" => false, "error" => %{"code" => "boom"}}} =
-               Workflow.handle(Steps.Boom, %{}, Wardrik.Test.context(scope))
+               WardrikWorkflow.handle(Steps.Boom, %{}, Wardrik.Test.context(scope))
     end
 
     test "keyword arguments are accepted", %{scope: scope} do
       assert {:ok, %{"result" => %{topic: "pricing"}}} =
-               Workflow.handle(Steps.Echo, [topic: "pricing"], Wardrik.Test.context(scope))
+               WardrikWorkflow.handle(Steps.Echo, [topic: "pricing"], Wardrik.Test.context(scope))
     end
   end
 
@@ -202,9 +211,9 @@ defmodule Wardrik.WorkflowTest do
       {:ok, scope.source.trace}
     end
 
-    outer = fn _input, scope -> {:ok, Workflow.fan_out(scope, [:leaf], inner)} end
+    outer = fn _input, scope -> {:ok, WardrikWorkflow.fan_out(scope, [:leaf], inner)} end
 
-    [{:branch, {:ok, [{:leaf, {:ok, leaf}}]}}] = Workflow.fan_out(scope, [:branch], outer)
+    [{:branch, {:ok, [{:leaf, {:ok, leaf}}]}}] = WardrikWorkflow.fan_out(scope, [:branch], outer)
 
     assert_receive %Event{payload: {:result, "inner"}} = event
     assert event.source.agent_id == agent_id
@@ -214,7 +223,7 @@ defmodule Wardrik.WorkflowTest do
 
   describe "spans" do
     test "a branch announces both ends of its own span", %{scope: scope} do
-      Workflow.fan_out(scope, [:only], Steps.Echo)
+      WardrikWorkflow.fan_out(scope, [:only], Steps.Echo)
 
       assert_receive %Event{payload: {:span_started, "only"}} = started
       assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
@@ -224,7 +233,7 @@ defmodule Wardrik.WorkflowTest do
     end
 
     test "a branch that errors closes as a failure", %{scope: scope} do
-      Workflow.fan_out(scope, [:only], Steps.Boom)
+      WardrikWorkflow.fan_out(scope, [:only], Steps.Boom)
 
       assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
     end
@@ -234,7 +243,7 @@ defmodule Wardrik.WorkflowTest do
 
       {_outcomes, _log} =
         ExUnit.CaptureLog.with_log(fn ->
-          Workflow.fan_out(scope, [:slow], step, timeout: 20)
+          WardrikWorkflow.fan_out(scope, [:slow], step, timeout: 20)
         end)
 
       assert_receive %Event{payload: {:span_started, "slow"}} = started
@@ -244,7 +253,7 @@ defmodule Wardrik.WorkflowTest do
     end
 
     test "each stage of a sequence announces its own span", %{scope: scope} do
-      Workflow.sequence(scope, :in, [Steps.Echo, Steps.Echo])
+      WardrikWorkflow.sequence(scope, :in, [Steps.Echo, Steps.Echo])
 
       assert_receive %Event{payload: {:span_started, "echo"}}
       assert_receive %Event{payload: {:span_finished, :ok, _ms}}
@@ -253,7 +262,7 @@ defmodule Wardrik.WorkflowTest do
     end
 
     test "a sequence stops at the first failed stage", %{scope: scope} do
-      Workflow.sequence(scope, :in, [Steps.Boom, Steps.Echo])
+      WardrikWorkflow.sequence(scope, :in, [Steps.Boom, Steps.Echo])
 
       assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
       refute_receive %Event{payload: {:span_started, "echo"}}

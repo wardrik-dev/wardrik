@@ -122,6 +122,7 @@ tools that run in your own process.
 | Package | Description |
 | --- | --- |
 | [wardrik_schedule](packages/wardrik_schedule) | A prompt an agent is asked on a clock, owned by one node of the cluster and carried on by another |
+| [wardrik_workflow](packages/wardrik_workflow) | Steps run many at once or in order, each under a span of its own, and offered to an agent as a tool |
 
 ### Stores
 

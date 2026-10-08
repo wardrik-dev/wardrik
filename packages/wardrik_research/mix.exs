@@ -32,6 +32,7 @@ defmodule WardrikResearch.MixProject do
   defp deps do
     [
       sibling(:wardrik),
+      sibling(:wardrik_workflow),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

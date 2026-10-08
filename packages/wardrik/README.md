@@ -123,37 +123,9 @@ is the tool `web_search`, and `WardrikResearch.Deep` is `deep_research`. Two
 tools with the same name in one config collide, so pick names that are
 specific.
 
-A workflow is a `Wardrik.Workflow.Step`, and becomes a tool the same way when
-an agent should be able to call it:
-
-```elixir
-defmodule MyApp.Nightly do
-  @behaviour Wardrik.Tool
-  @behaviour Wardrik.Workflow.Step
-
-  @impl Wardrik.Tool
-  def tool do
-    Wardrik.Workflow.as_tool(__MODULE__,
-      name: "nightly",
-      description: "Summarise everything that changed since a date.",
-      parameter_schema: [since: [type: :string, required: true, doc: "ISO date"]]
-    )
-  end
-
-  @impl Wardrik.Workflow.Step
-  def run(%{since: since}, scope, _opts) do
-    scope
-    |> Wardrik.Workflow.fan_out(repos(), fn repo, branch ->
-      Wardrik.Subagent.run(branch, "What changed in #{repo} since #{since}?", except_tools: ["nightly"])
-    end)
-    |> report()
-  end
-end
-```
-
 `Wardrik.Subagent.run/3` delegates one bounded task to another agent and
 returns its answer. It takes `:name`, `:system`, `:tools`, `:except_tools`,
-`:model` and `:config`, so a workflow says who does the work it hands off, and
+`:model` and `:config`, so a tool says who does the work it hands off, and
 what they can use, without reaching into a scope or a config. Its events land
 in the caller's stream, under a span of their own.
 
@@ -317,7 +289,7 @@ without notice.
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
 | Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
-| Inside a turn | `Wardrik.Subagent`, `Wardrik.Workflow`, `Wardrik.Workflow.Step`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
+| Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 
 ## Testing

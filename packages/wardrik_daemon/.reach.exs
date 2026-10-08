@@ -45,9 +45,7 @@
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
-      "Wardrik.UUID",
-      "Wardrik.Workflow",
-      "Wardrik.Workflow.Step"
+      "Wardrik.UUID"
     ],
     internal: [
       "Wardrik.Agent.State",

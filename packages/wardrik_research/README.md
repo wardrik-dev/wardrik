@@ -31,7 +31,7 @@ WardrikResearch.Deep.tool(
 )
 ```
 
-It is also a `Wardrik.Workflow.Step`, so you can run it yourself, or inside a
+It is also a `WardrikWorkflow.Step`, so you can run it yourself, or inside a
 larger workflow:
 
 ```elixir

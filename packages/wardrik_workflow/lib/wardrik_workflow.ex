@@ -1,10 +1,10 @@
-defmodule Wardrik.Workflow do
+defmodule WardrikWorkflow do
   @moduledoc """
   Runs steps: many at once, or one after another.
 
-  Wardrik ships this and `Wardrik.Workflow.Step`, and no workflows. A workflow is a
-  step someone else wrote, and it reaches an agent the same way a tool does, by
-  being named in a config:
+  It ships no workflows. A workflow is a `WardrikWorkflow.Step` someone
+  writes, and it reaches an agent the same way a tool does, by being named in
+  a config:
 
       Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch, WardrikResearch.Deep])
 
@@ -20,10 +20,10 @@ defmodule Wardrik.Workflow do
   the caller decides about rather than the end of the run.
 
       scope
-      |> Wardrik.Workflow.fan_out(angles, fn angle, branch ->
+      |> WardrikWorkflow.fan_out(angles, fn angle, branch ->
         Wardrik.Subagent.run(branch, config, prompt(angle))
       end)
-      |> Wardrik.Workflow.split()
+      |> WardrikWorkflow.split()
 
   `max_concurrency: 1` runs the same branches one at a time.
 
@@ -32,7 +32,7 @@ defmodule Wardrik.Workflow do
   `sequence/3` feeds each step the previous step's result and stops at the
   first error, because a stage whose input never arrived has nothing to do.
 
-      Wardrik.Workflow.sequence(scope, input, [Fetch, {Summarise, config: config}, Publish])
+      WardrikWorkflow.sequence(scope, input, [Fetch, {Summarise, config: config}, Publish])
 
   For work that depends on more than one earlier result, write it out. The
   call graph is the dependency graph:
@@ -53,7 +53,7 @@ defmodule Wardrik.Workflow do
   alias Wardrik.Scope
   alias Wardrik.Subagent
   alias Wardrik.Tool.Result
-  alias Wardrik.Workflow.Step
+  alias WardrikWorkflow.Step
 
   @max_concurrency 5
   @timeout :timer.minutes(5)
@@ -69,7 +69,7 @@ defmodule Wardrik.Workflow do
 
       @impl Wardrik.Tool
       def tool do
-        Wardrik.Workflow.as_tool(__MODULE__,
+        WardrikWorkflow.as_tool(__MODULE__,
           name: "deep_research",
           description: "...",
           parameter_schema: [topic: [type: :string, required: true, doc: "..."]]
@@ -103,7 +103,9 @@ defmodule Wardrik.Workflow do
   @doc """
   Runs `step` over every input at once and reports what each one did.
 
-  Outcomes come back in input order, each paired with its input. Options:
+  Outcomes come back in input order, each paired with its input. The branches
+  run under a task supervisor of the fan-out's own, linked to the caller, so
+  they go with it. Options:
 
     * `:max_concurrency` - how many branches at once, `#{@max_concurrency}` by default
     * `:timeout` - how long one branch may take, five minutes by default
@@ -115,23 +117,30 @@ defmodule Wardrik.Workflow do
   @spec fan_out(Scope.t(), Enumerable.t(), Step.t(), keyword()) :: [outcome()]
   def fan_out(%Scope{} = scope, inputs, step, opts \\ []) do
     name = Keyword.get(opts, :name)
+    {:ok, supervisor} = Task.Supervisor.start_link()
 
-    Wardrik.Tasks.supervisor()
-    |> Task.Supervisor.async_stream_nolink(
-      branches(scope, inputs, name),
-      fn {input, branch} ->
-        Subagent.watching(fn -> {input, Scope.closing(branch, &Step.invoke(step, input, &1))} end)
-      end,
-      ordered: true,
-      max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
-      timeout: Keyword.get(opts, :timeout, @timeout),
-      on_timeout: :kill_task,
-      zip_input_on_exit: true
-    )
-    |> Enum.map(fn
-      {:ok, {outcome, read}} -> read(outcome, read)
-      {:exit, {{input, branch}, reason}} -> reap(input, branch, reason)
-    end)
+    outcomes =
+      supervisor
+      |> Task.Supervisor.async_stream_nolink(
+        branches(scope, inputs, name),
+        fn {input, branch} ->
+          Subagent.watching(fn ->
+            {input, Scope.closing(branch, &Step.invoke(step, input, &1))}
+          end)
+        end,
+        ordered: true,
+        max_concurrency: Keyword.get(opts, :max_concurrency, @max_concurrency),
+        timeout: Keyword.get(opts, :timeout, @timeout),
+        on_timeout: :kill_task,
+        zip_input_on_exit: true
+      )
+      |> Enum.map(fn
+        {:ok, {outcome, read}} -> read(outcome, read)
+        {:exit, {{input, branch}, reason}} -> reap(input, branch, reason)
+      end)
+
+    :ok = Supervisor.stop(supervisor)
+    outcomes
   end
 
   # What a branch's delegates read marks the process that fanned out, as a
