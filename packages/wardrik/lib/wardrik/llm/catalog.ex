@@ -12,8 +12,8 @@ defmodule Wardrik.LLM.Catalog do
   require Logger
 
   @doc "A child that loads the catalog once and exits."
-  @spec child_spec(term()) :: Supervisor.child_spec()
-  def child_spec(_arg) do
+  @spec child_spec([]) :: Supervisor.child_spec()
+  def child_spec([]) do
     Supervisor.child_spec({Task, &preload/0}, id: __MODULE__)
   end
 

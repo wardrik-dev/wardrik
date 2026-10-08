@@ -2,6 +2,11 @@
 # the .credo.exs of each directory above the one it runs in, so a package
 # needs none of its own. The Wardrik.Credo.Check.* checks are modules of
 # tools/precommit, which each package depends on in dev and test.
+
+# How processes start, find each other and keep state is checked in library
+# code; the test support a package ships under lib/*/test/ is not held to it.
+process_files = %{included: ["lib/"], excluded: [~r"lib/[^/]+/test/"]}
+
 %{
   #
   # You can have as many configs as you like in the `configs:` field.
@@ -158,7 +163,13 @@
             {Wardrik.Credo.Check.NoSleepyTests, files: %{included: ["test/"]}},
             {Wardrik.Credo.Check.QualifiedProjectCalls, files: %{included: ["lib/", "dev/"]}},
             {Wardrik.Credo.Check.NoCoreProcessNames,
-             files: %{included: ["lib/", "dev/"], excluded: ["lib/wardrik/", "lib/wardrik.ex"]}}
+             files: %{included: ["lib/", "dev/"], excluded: ["lib/wardrik/", "lib/wardrik.ex"]}},
+            {Wardrik.Credo.Check.NoSelfSend, files: process_files},
+            {Wardrik.Credo.Check.OptionsHonoured, files: process_files},
+            {Wardrik.Credo.Check.SupervisedProcesses, files: process_files},
+            {Wardrik.Credo.Check.NoScans, files: process_files},
+            {Wardrik.Credo.Check.InitDoesNoIO, files: process_files},
+            {Wardrik.Credo.Check.NoAgent, files: process_files}
           ] ++ Enum.map(ExSlop.recommended_checks(), &{&1, []}),
         disabled: [
           #

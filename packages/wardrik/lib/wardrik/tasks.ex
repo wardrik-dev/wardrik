@@ -14,8 +14,8 @@ defmodule Wardrik.Tasks do
   """
 
   @doc false
-  @spec child_spec(term()) :: Supervisor.child_spec()
-  def child_spec(_opts),
+  @spec child_spec([]) :: Supervisor.child_spec()
+  def child_spec([]),
     do: PartitionSupervisor.child_spec(child_spec: Task.Supervisor, name: __MODULE__)
 
   @doc "The task supervisor `key` falls to, the calling process's unless given."

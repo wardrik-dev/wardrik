@@ -52,7 +52,7 @@ defmodule Wardrik.Event.Bus do
   @type agent_id() :: Wardrik.AgentID.t()
 
   @doc false
-  def child_spec(_opts), do: Group.child_spec(name: @group)
+  def child_spec([]), do: Group.child_spec(name: @group)
 
   @doc """
   Subscribe the calling process to an agent's events.

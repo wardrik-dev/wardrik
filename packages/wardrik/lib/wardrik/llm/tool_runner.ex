@@ -71,7 +71,7 @@ defmodule Wardrik.LLM.ToolRunner do
         }
 
   @doc false
-  def child_spec(_opts),
+  def child_spec([]),
     do:
       Registry.child_spec(
         keys: :duplicate,

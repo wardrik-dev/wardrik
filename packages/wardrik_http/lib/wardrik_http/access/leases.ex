@@ -159,6 +159,8 @@ defmodule WardrikHTTP.Access.Leases do
   defp holding?(ref, pid),
     do: Enum.any?(Registry.lookup(@registry, ref), &match?({^pid, _id}, &1))
 
+  # The sweep visits every lease held.
+  # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
   defp held, do: @registry |> Registry.select([{{:"$1", :_, :_}, [], [:"$1"]}]) |> Enum.uniq()
 
   defp start_sweep(%{sweep: nil} = state) do

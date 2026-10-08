@@ -54,7 +54,7 @@ defmodule Wardrik.Event.Log do
   @padding 12
 
   @doc false
-  def child_spec(_opts), do: Group.child_spec(name: __MODULE__)
+  def child_spec([]), do: Group.child_spec(name: __MODULE__)
 
   @doc "How long events are kept, in days."
   @spec retention_days() :: pos_integer()

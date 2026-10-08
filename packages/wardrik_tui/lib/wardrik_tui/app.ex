@@ -465,6 +465,9 @@ defmodule WardrikTUI.App do
     height = assigns.breeze.terminal.height
 
     if TermState.wrap_width(width - sidebar_width(assigns, width)) != assigns.transcript.width do
+      # A render cannot change state or return a continue, so the rewrap it
+      # finds due is asked for as a message.
+      # credo:disable-for-next-line Wardrik.Credo.Check.NoSelfSend
       send(self(), {:rewrap, TermState.wrap_width(width - sidebar_width(assigns, width))})
     end
 
