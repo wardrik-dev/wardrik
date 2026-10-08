@@ -1,14 +1,11 @@
 # Compiled only where the application has :ekv, which is optional.
 if Code.ensure_loaded?(EKV) do
-  defmodule Wardrik.Store.EKV do
+  defmodule WardrikStore.EKV do
     @moduledoc """
-    The default `Wardrik.Store`: an `EKV` instance on this node's disk, replicated
+    The default `WardrikStore`: an `EKV` instance on this node's disk, replicated
     between connected nodes.
 
-        config :wardrik, Wardrik.Store,
-          adapter: Wardrik.Store.EKV,
-          data_dir: "/var/lib/wardrik",
-          cluster_size: 3
+        {Wardrik, store: [adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik", cluster_size: 3]}
 
     `:data_dir` falls back to `WARDRIK_DATA_DIR`, then to a directory named after
     the node in the user's data directory, `~/.local/share/wardrik` on Linux.
@@ -31,7 +28,7 @@ if Code.ensure_loaded?(EKV) do
     have it, so a cluster needs a quorum of its nodes connected.
     """
 
-    @behaviour Wardrik.Store
+    @behaviour WardrikStore
 
     @name :wardrik_store
 
@@ -39,7 +36,7 @@ if Code.ensure_loaded?(EKV) do
     @spec name() :: atom()
     def name, do: @name
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def child_spec(opts) do
       Supervisor.child_spec(
         {EKV,
@@ -51,17 +48,17 @@ if Code.ensure_loaded?(EKV) do
       )
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def durable_backend(_opts), do: {DurableServer.Backends.EKVStore, name: @name}
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def quorum(size), do: div(size, 2) + 1
 
     @doc """
     Checks that `:data_dir` is a directory this node can write to, or is not
     made yet.
     """
-    @impl Wardrik.Store
+    @impl WardrikStore
     def check(opts) do
       dir = data_dir(opts)
       where = "on this node's disk, at #{dir}"
@@ -84,7 +81,7 @@ if Code.ensure_loaded?(EKV) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def put(ns, key, value, opts) do
       case EKV.put(@name, path(ns, key), value, put_opts(opts)) do
         :ok -> {:ok, nil}
@@ -93,14 +90,14 @@ if Code.ensure_loaded?(EKV) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def get(ns, key, opts),
       do: EKV.get(@name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def lookup(ns, key), do: EKV.lookup(@name, path(ns, key))
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def delete(ns, key, opts) do
       case EKV.delete(@name, path(ns, key), delete_opts(opts)) do
         :ok -> :ok
@@ -117,7 +114,7 @@ if Code.ensure_loaded?(EKV) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def keys(ns, prefix) do
       root = path(ns, "")
 

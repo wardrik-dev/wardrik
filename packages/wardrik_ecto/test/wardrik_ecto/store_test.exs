@@ -14,7 +14,7 @@ defmodule WardrikEcto.StoreTest do
     :ok
   end
 
-  use Wardrik.Store.Conformance, adapter: WardrikEcto.Store
+  use WardrikStore.Conformance, adapter: WardrikEcto.Store
 
   defp away(table) do
     SQL.query!(Repo, "ALTER TABLE #{table} RENAME TO #{table}_away")
@@ -117,9 +117,9 @@ defmodule WardrikEcto.StoreTest do
     assert {:error, :conflict} = Store.delete(:foreign, key, if_vsn: "not a version")
   end
 
-  test "names Wardrik.Store.Durable to hold a fleet" do
+  test "names WardrikStore.Durable to hold a fleet" do
     assert Store.durable_backend([]) ==
-             {Wardrik.Store.Durable, store: Store, discovery_interval_ms: 5_000}
+             {WardrikStore.Durable, store: Store, discovery_interval_ms: 5_000}
   end
 
   describe "check/1" do

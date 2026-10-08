@@ -373,8 +373,8 @@ defmodule WardrikDaemon.AgentsTest do
       start_supervised!({Agents, dir: dir, nodes: fn -> [other] end})
       Agents.files()
 
-      {:ok, _vsn} = Wardrik.Store.put(:declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
-      on_exit(fn -> Wardrik.Store.delete(:declared, "agents/#{other}") end)
+      {:ok, _vsn} = WardrikStore.put(:declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
+      on_exit(fn -> WardrikStore.delete(:declared, "agents/#{other}") end)
 
       File.rm!(Path.join([dir, "agents", "beta.md"]))
       Agents.reload()

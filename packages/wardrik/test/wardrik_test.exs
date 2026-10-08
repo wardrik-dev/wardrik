@@ -25,11 +25,11 @@ defmodule WardrikTest do
   end
 
   test "the store's settings are kept first, and the fleet starts with them" do
-    store = [adapter: Wardrik.Store.Memory]
+    store = [adapter: WardrikStore.Memory]
 
     {:ok, {_flags, [settings | specs]}} = Wardrik.init(store: store, fleet: [log: true])
 
-    assert settings.start == {Wardrik.Store, :configure, [store]}
+    assert settings.start == {WardrikStore, :configure, [store]}
 
     assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [[store: ^store, log: true]]}} =
              Enum.find(specs, &(&1.id == Wardrik.Fleet.Supervisor))

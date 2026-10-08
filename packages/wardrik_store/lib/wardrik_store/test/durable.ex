@@ -1,11 +1,11 @@
-defmodule Wardrik.Test.Durable do
+defmodule WardrikStore.Test.Durable do
   @moduledoc """
-  Checks that a `Wardrik.Store` adapter holds a `DurableServer` through a
-  restart, through `Wardrik.Store.Durable`.
+  Checks that a `WardrikStore` adapter holds a `DurableServer` through a
+  restart, through `WardrikStore.Durable`.
 
       test "holds a DurableServer in Postgres through a restart" do
         :ignore = WardrikEcto.Store.start_link(repo: MyApp.Repo)
-        Wardrik.Test.Durable.survives_a_restart(WardrikEcto.Store, :durable_over_postgres)
+        WardrikStore.Test.Durable.survives_a_restart(WardrikEcto.Store, :durable_over_postgres)
       end
 
   `name` names the `DurableServer.Supervisor` the check starts, and the prefix
@@ -33,7 +33,7 @@ defmodule Wardrik.Test.Durable do
        name: name,
        prefix: "#{name}/",
        backend:
-         {Wardrik.Store.Durable,
+         {WardrikStore.Durable,
           store: store, discovery_interval_ms: 200, heartbeat_interval_ms: 200},
        group: [log: false]},
       id: name

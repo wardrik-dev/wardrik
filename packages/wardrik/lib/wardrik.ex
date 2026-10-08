@@ -3,7 +3,7 @@ defmodule Wardrik do
   The supervisor of everything Wardrik runs. In order:
 
     * The store's settings, kept where every read and write finds them; see
-      `Wardrik.Store.configure/1`.
+      `WardrikStore.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
@@ -19,7 +19,7 @@ defmodule Wardrik do
   The `:wardrik` application starts it by default, with the store and the
   fleet as the application's environment holds them:
 
-      config :wardrik, Wardrik.Store, adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"
+      config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
 
   A host that starts it in its own tree instead, after the repo its store is
@@ -39,8 +39,8 @@ defmodule Wardrik do
   ## Options
 
     * `:store` - the store's adapter, under `:adapter`, and its options;
-      `Wardrik.Store.EKV` with its defaults where none is given. See
-      `Wardrik.Store`.
+      `WardrikStore.EKV` with its defaults where none is given. See
+      `WardrikStore`.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
@@ -60,7 +60,7 @@ defmodule Wardrik do
 
     children =
       [
-        %{id: {Wardrik.Store, :settings}, start: {Wardrik.Store, :configure, [opts[:store]]}},
+        %{id: {WardrikStore, :settings}, start: {WardrikStore, :configure, [opts[:store]]}},
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,

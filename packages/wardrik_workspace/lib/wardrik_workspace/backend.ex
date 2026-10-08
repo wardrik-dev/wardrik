@@ -4,7 +4,7 @@ defmodule WardrikWorkspace.Backend do
   `WardrikWorkspace.Path` writes them, and a backend keeps each file as a
   `WardrikWorkspace.File` with a version of its own.
 
-  `WardrikWorkspace.Backend.Store` keeps them in `Wardrik.Store`, the default.
+  `WardrikWorkspace.Backend.Store` keeps them in `WardrikStore`, the default.
   A backend over something a team already runs, a repository or a bucket of
   its own, implements this behaviour and passes
   `WardrikWorkspace.Backend.Conformance`.

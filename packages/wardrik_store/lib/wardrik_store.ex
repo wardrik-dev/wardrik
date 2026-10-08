@@ -1,4 +1,4 @@
-defmodule Wardrik.Store do
+defmodule WardrikStore do
   @moduledoc """
   The durable key-value store core and its packages write to, behind an
   adapter.
@@ -7,18 +7,18 @@ defmodule Wardrik.Store do
   deployment names the adapter once, as `Wardrik`'s `:store`, and everything
   that stores anything goes through this module:
 
-      {Wardrik, store: [adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"]}
+      {Wardrik, store: [adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"]}
 
   | Adapter | Keeps it |
   | --- | --- |
-  | `Wardrik.Store.EKV` | on each node's disk, replicated between nodes. The default, where the application has `:ekv` |
+  | `WardrikStore.EKV` | on each node's disk, replicated between nodes. The default, where the application has `:ekv` |
   | `WardrikEcto.Store` | in a Postgres table, through an Ecto repo the host owns, where it has `:ecto_sql` and `:postgrex` |
   | `WardrikS3.Store` | in an S3 bucket |
-  | `Wardrik.Store.Memory` | in one process, for tests |
+  | `WardrikStore.Memory` | in one process, for tests |
 
   An adapter over another system implements this behaviour and passes
-  `Wardrik.Store.Conformance`. One whose reads are current on every node can
-  hold the fleet through `Wardrik.Store.Durable`.
+  `WardrikStore.Conformance`. One whose reads are current on every node can
+  hold the fleet through `WardrikStore.Durable`.
 
   ## Namespaces
 
@@ -32,7 +32,7 @@ defmodule Wardrik.Store do
   The fleet is kept by `DurableServer`, whose supervisors each write under a
   prefix of their own: `agents/<key>` for agents, and, where schedules and
   budgets run, `schedules/` and `meters/`, with each node's heartbeat under
-  `<prefix>__nodes/`. Through `Wardrik.Store.Durable` they sit in the
+  `<prefix>__nodes/`. Through `WardrikStore.Durable` they sit in the
   `:durable` namespace, so an agent in a bucket is
   `wardrik/durable/agents/acme/@jon/triage`. On EKV, DurableServer's own backend
   writes them beside the namespaces, as `agents/acme/@jon/triage`.
@@ -47,12 +47,12 @@ defmodule Wardrik.Store do
 
   ## Starting it
 
-  `Wardrik.Fleet.Supervisor` starts the store, as `Wardrik` starts. A store
+  `Wardrik` starts the store before its fleet. A store
   kept through a host's repo starts after it, so the host starts `Wardrik` in
-  its own tree; see `Wardrik`. A host that runs no fleet puts `Wardrik.Store`
+  its own tree; see `Wardrik`. A host that runs no fleet puts `WardrikStore`
   in its own tree instead, with the same settings:
 
-      children = [MyApp.Repo, {Wardrik.Store, adapter: WardrikEcto.Store, repo: MyApp.Repo}]
+      children = [MyApp.Repo, {WardrikStore, adapter: WardrikEcto.Store, repo: MyApp.Repo}]
 
   The settings are kept in `:persistent_term` as the store starts, and every
   read and write finds the adapter there; see `configure/1`.
@@ -125,7 +125,7 @@ defmodule Wardrik.Store do
 
   @optional_callbacks durable_backend: 1
 
-  @default_adapter Wardrik.Store.EKV
+  @default_adapter WardrikStore.EKV
   @settings {__MODULE__, :settings}
 
   @doc """
@@ -141,7 +141,7 @@ defmodule Wardrik.Store do
     :ignore
   end
 
-  @doc "The adapter the store was started with, `Wardrik.Store.EKV` where none was named."
+  @doc "The adapter the store was started with, `WardrikStore.EKV` where none was named."
   @spec adapter() :: module()
   def adapter, do: elem(kept(), 0)
 
@@ -205,7 +205,7 @@ defmodule Wardrik.Store do
     unless Code.ensure_loaded?(adapter) do
       "#{inspect(adapter)} is not a module this node has. WardrikEcto.Store needs " <>
         ":ecto_sql and :postgrex among the application's dependencies, and " <>
-        "Wardrik.Store.EKV, the store where no adapter is named, needs :ekv"
+        "WardrikStore.EKV, the store where no adapter is named, needs :ekv"
     end
   end
 

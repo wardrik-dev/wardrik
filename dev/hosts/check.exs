@@ -1,6 +1,6 @@
 # What dev/hosts.sh runs inside each application it makes, as
 # `mix run check.exs`, so it runs against the application as it runs: the
-# store it keeps Wardrik in passes Wardrik.Store.Conformance, an agent spawned
+# store it keeps Wardrik in passes WardrikStore.Conformance, an agent spawned
 # in its fleet is kept there, and what it leaves out of its dependencies is
 # not loaded.
 #
@@ -12,14 +12,14 @@ ExUnit.start(autorun: false)
 
 defmodule WardrikHost.StoreTest do
   use ExUnit.Case, async: false
-  use Wardrik.Store.Conformance, adapter: Wardrik.Store.adapter()
+  use WardrikStore.Conformance, adapter: WardrikStore.adapter()
 end
 
 defmodule WardrikHost.FleetTest do
   use ExUnit.Case, async: false
 
   test "the store is the one the application configured" do
-    assert inspect(Wardrik.Store.adapter()) == System.fetch_env!("WARDRIK_HOST_STORE")
+    assert inspect(WardrikStore.adapter()) == System.fetch_env!("WARDRIK_HOST_STORE")
   end
 
   test "what the application does not depend on is not loaded" do
@@ -34,7 +34,7 @@ defmodule WardrikHost.FleetTest do
 
     assert {:ok, _pid} = Wardrik.Fleet.spawn(id)
     assert id in Enum.map(Wardrik.Fleet.list(), & &1.id)
-    assert Enum.any?(Wardrik.Store.keys(:durable, Wardrik.Fleet.prefix()), &(&1 =~ name))
+    assert Enum.any?(WardrikStore.keys(:durable, Wardrik.Fleet.prefix()), &(&1 =~ name))
 
     if repo = System.get_env("WARDRIK_HOST_REPO") do
       %{rows: rows} =

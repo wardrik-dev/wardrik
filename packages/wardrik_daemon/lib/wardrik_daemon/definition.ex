@@ -16,7 +16,6 @@ defmodule WardrikDaemon.Definition do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.Store
 
   @ns :definitions
 
@@ -39,14 +38,14 @@ defmodule WardrikDaemon.Definition do
   @doc "Keeps `definition`, in place of any its agent had."
   @spec put(t()) :: :ok
   def put(%__MODULE__{id: %AgentID{external_id: nil} = id} = definition) do
-    {:ok, _vsn} = Store.put(@ns, to_string(id), definition)
+    {:ok, _vsn} = WardrikStore.put(@ns, to_string(id), definition)
     :ok
   end
 
   @doc "The definition kept for the agent `id`."
   @spec get(AgentID.t()) :: {:ok, t()} | {:error, :not_found}
   def get(%AgentID{} = id) do
-    case Store.get(@ns, to_string(id)) do
+    case WardrikStore.get(@ns, to_string(id)) do
       %__MODULE__{} = definition -> {:ok, definition}
       nil -> {:error, :not_found}
     end
@@ -62,12 +61,12 @@ defmodule WardrikDaemon.Definition do
   @doc "Every definition kept."
   @spec all() :: [t()]
   def all do
-    for key <- Store.keys(@ns, ""),
-        %__MODULE__{} = definition <- [Store.get(@ns, key)],
+    for key <- WardrikStore.keys(@ns, ""),
+        %__MODULE__{} = definition <- [WardrikStore.get(@ns, key)],
         do: definition
   end
 
   @doc "Forgets the definition kept for the agent `id`, if there is one."
   @spec delete(AgentID.t()) :: :ok
-  def delete(%AgentID{} = id), do: :ok = Store.delete(@ns, to_string(id))
+  def delete(%AgentID{} = id), do: :ok = WardrikStore.delete(@ns, to_string(id))
 end

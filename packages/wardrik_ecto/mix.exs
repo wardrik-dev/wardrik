@@ -30,7 +30,7 @@ defmodule WardrikEcto.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_store),
       {:ecto_sql, "~> 3.14"},
       {:postgrex, "~> 0.22.4"},
       {:mimic, "~> 1.7", only: :test},

@@ -19,14 +19,14 @@ defmodule Wardrik.Test do
       assert %Wardrik.Call{state: :done, result: {:ok, _found}} = call
 
   The runtime is the one `config :wardrik` names, so a suite that needs
-  nothing kept sets `config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory`
+  nothing kept sets `config :wardrik, WardrikStore, adapter: WardrikStore.Memory`
   and nothing else.
 
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
   starts an agent under a key of each test's own, `Wardrik.Test.LLMStub`
   answers turns with canned responses, `Wardrik.Test.Tools` has a gated
   tool, one that reads from outside, and a hook that decides calls by rules,
-  and `Wardrik.Test.Durable` checks a store adapter of your own.
+  and `WardrikStore.Test.Durable` checks a store adapter of your own.
   """
 
   alias Wardrik.Call
@@ -86,7 +86,7 @@ defmodule Wardrik.Test do
   defp remove_store do
     Supervisor.stop(Wardrik.Test.Supervisor)
 
-    case Wardrik.Store.config()[:data_dir] do
+    case WardrikStore.config()[:data_dir] do
       nil ->
         :ok
 

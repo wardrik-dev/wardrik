@@ -160,9 +160,9 @@ defmodule Wardrik.Event.LogTest do
     end
 
     test "an owner that finds one before it still writing moves past it", %{agent_id: agent_id} do
-      expect(Wardrik.Store, :put, fn ns, key, event, opts ->
+      expect(WardrikStore, :put, fn ns, key, event, opts ->
         {:ok, _vsn} =
-          call_original(Wardrik.Store, :put, [ns, key, %{event | "id" => "old"}, opts])
+          call_original(WardrikStore, :put, [ns, key, %{event | "id" => "old"}, opts])
 
         {:error, :conflict}
       end)
@@ -178,8 +178,8 @@ defmodule Wardrik.Event.LogTest do
     } do
       writer = open(agent_id)
 
-      expect(Wardrik.Store, :put, fn ns, key, event, opts ->
-        {:ok, _vsn} = call_original(Wardrik.Store, :put, [ns, key, event, opts])
+      expect(WardrikStore, :put, fn ns, key, event, opts ->
+        {:ok, _vsn} = call_original(WardrikStore, :put, [ns, key, event, opts])
         {:error, :unavailable}
       end)
 
@@ -199,7 +199,7 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id
     } do
       started = started(agent_id)
-      expect(Wardrik.Store, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
+      expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
       writer = Writer.open(Writer.new(agent_id), started)
       assert {:ok, []} = Log.read(agent_id)
@@ -213,7 +213,7 @@ defmodule Wardrik.Event.LogTest do
       source: source
     } do
       writer = open(agent_id)
-      expect(Wardrik.Store, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
+      expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
       assert {:error, :unavailable, writer} =
                Writer.append(writer, Event.new(source, {:turn_started, []}))
@@ -276,7 +276,7 @@ defmodule Wardrik.Event.LogTest do
     end
 
     test "leaves the events to a trim that got there first", %{agent_id: agent_id, cutoff: cutoff} do
-      expect(Wardrik.Store, :put, fn _ns, _key, _dropped, _opts -> {:error, :conflict} end)
+      expect(WardrikStore, :put, fn _ns, _key, _dropped, _opts -> {:error, :conflict} end)
 
       assert {:error, :conflict} = Log.trim(agent_id, 5, cutoff)
       assert sequences(agent_id) == [1, 2, 3, 4, 5]

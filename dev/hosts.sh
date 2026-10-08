@@ -14,7 +14,7 @@
 #   dev/hosts.sh phoenix                one of them: phoenix or bare
 #
 # In each, dev/hosts/check.exs runs against the application as it runs, in
-# its dev environment: the store passes Wardrik.Store.Conformance, and an
+# its dev environment: the store passes WardrikStore.Conformance, and an
 # agent spawned in the fleet is kept where the application keeps Wardrik.
 #
 # The apps are made under WARDRIK_HOSTS_DIR, a new temporary directory by
@@ -94,7 +94,7 @@ phoenix() {
   perl -0pi -e 's/(      Host\.Repo,\n)/$1      Wardrik,\n/' lib/host/application.ex
   grep -q '^      Wardrik,$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
 
-  perl -0pi -e 's/(# Import environment specific config)/# Wardrik, kept in the Repo and started after it.\nconfig :wardrik, start: :host\nconfig :wardrik, Wardrik.Store, adapter: WardrikEcto.Store, repo: Host.Repo\n\n$1/' config/config.exs
+  perl -0pi -e 's/(# Import environment specific config)/# Wardrik, kept in the Repo and started after it.\nconfig :wardrik, start: :host\nconfig :wardrik, WardrikStore, adapter: WardrikEcto.Store, repo: Host.Repo\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \
     "$database_url" >>config/dev.exs
 
@@ -145,7 +145,7 @@ EOF
 import Config
 
 # Wardrik, kept in a bucket under a prefix of this run's own.
-config :wardrik, Wardrik.Store,
+config :wardrik, WardrikStore,
   adapter: WardrikS3.Store,
   bucket: System.fetch_env!("WARDRIK_TEST_S3_BUCKET"),
   endpoint: System.fetch_env!("WARDRIK_TEST_S3_ENDPOINT"),

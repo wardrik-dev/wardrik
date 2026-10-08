@@ -77,7 +77,7 @@ defmodule WardrikDaemon.ClusterTest do
     end
 
     test "a node whose store is kept elsewhere waits for no other" do
-      stub(Wardrik.Store, :quorum, fn _size -> 1 end)
+      stub(WardrikStore, :quorum, fn _size -> 1 end)
       named([node(), :wardrik_b@localhost, :wardrik_c@localhost])
 
       assert Cluster.quorum() == 1

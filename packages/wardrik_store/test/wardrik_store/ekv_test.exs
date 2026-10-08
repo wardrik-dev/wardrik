@@ -1,8 +1,8 @@
-defmodule Wardrik.Store.EKVTest do
+defmodule WardrikStore.EKVTest do
   use ExUnit.Case, async: false
-  use Wardrik.Store.Conformance, adapter: Wardrik.Store.EKV
+  use WardrikStore.Conformance, adapter: WardrikStore.EKV
 
-  alias Wardrik.Store.EKV
+  alias WardrikStore.EKV
 
   describe "data_dir/1" do
     test "takes what it was configured with" do

@@ -1,7 +1,7 @@
-defmodule Wardrik.Store.MemoryInstanceTest do
+defmodule WardrikStore.MemoryInstanceTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Store.Memory
+  alias WardrikStore.Memory
 
   setup do
     name = :"memory_#{System.unique_integer([:positive])}"
@@ -44,8 +44,8 @@ defmodule Wardrik.Store.MemoryInstanceTest do
     assert Memory.quorum(3) == 1
   end
 
-  test "holds a one-node fleet through Wardrik.Store.Durable" do
+  test "holds a one-node fleet through WardrikStore.Durable" do
     assert Memory.durable_backend(discovery_interval_ms: 200) ==
-             {Wardrik.Store.Durable, store: Memory, discovery_interval_ms: 200}
+             {WardrikStore.Durable, store: Memory, discovery_interval_ms: 200}
   end
 end

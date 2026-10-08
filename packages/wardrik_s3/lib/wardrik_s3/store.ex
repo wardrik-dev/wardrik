@@ -1,15 +1,17 @@
 defmodule WardrikS3.Store do
   @moduledoc """
-  A `Wardrik.Store` in an S3 bucket: one object per key, written with S3's
+  A `WardrikStore` in an S3 bucket: one object per key, written with S3's
   conditional requests.
 
-      config :wardrik, Wardrik.Store,
-        adapter: WardrikS3.Store,
-        bucket: "wardrik",
-        endpoint: "https://<account>.r2.cloudflarestorage.com",
-        region: "auto",
-        access_key_id: "...",
-        secret_access_key: "..."
+      {Wardrik,
+       store: [
+         adapter: WardrikS3.Store,
+         bucket: "wardrik",
+         endpoint: "https://<account>.r2.cloudflarestorage.com",
+         region: "auto",
+         access_key_id: "...",
+         secret_access_key: "..."
+       ]}
 
   | Option | Default | |
   | --- | --- | --- |
@@ -57,7 +59,7 @@ defmodule WardrikS3.Store do
   `WardrikS3.Error`, since no answer would be true.
   """
 
-  @behaviour Wardrik.Store
+  @behaviour WardrikStore
 
   alias WardrikS3.Error
 
@@ -65,7 +67,7 @@ defmodule WardrikS3.Store do
   @required [:bucket, :endpoint, :access_key_id, :secret_access_key]
   @page_size 1000
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
 
   @doc """
@@ -110,7 +112,7 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def check(opts) do
     where = "the bucket #{opts[:bucket]} at #{opts[:endpoint]}"
 
@@ -132,12 +134,12 @@ defmodule WardrikS3.Store do
   defp deletes(true), do: "deletes over a version"
   defp deletes(false), do: "deletes over any version, so a delete over one writes a tombstone"
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def quorum(_size), do: 1
 
   # -- the contract ------------------------------------------------------------
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def put(ns, key, value, opts) do
     config = config!()
     object = object(config, ns, key)
@@ -194,7 +196,7 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def get(ns, key, _opts) do
     case lookup(ns, key) do
       {value, _vsn} -> value
@@ -202,7 +204,7 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def lookup(ns, key) do
     config = config!()
 
@@ -232,7 +234,7 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def delete(ns, key, opts) do
     config = config!()
     object = object(config, ns, key)
@@ -283,7 +285,7 @@ defmodule WardrikS3.Store do
 
   defp removed(error, _config, _object, _condition), do: error
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def keys(ns, prefix) do
     config = config!()
     root = object(config, ns, "")
@@ -339,9 +341,9 @@ defmodule WardrikS3.Store do
 
   defp text(node), do: node |> elem(4) |> List.to_string()
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def durable_backend(opts) do
-    {Wardrik.Store.Durable,
+    {WardrikStore.Durable,
      store: __MODULE__, discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000)}
   end
 

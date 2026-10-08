@@ -27,7 +27,7 @@ add [wardrik_s3](../wardrik_s3) and name the bucket:
 
 ```elixir
 # config/runtime.exs
-config :wardrik, Wardrik.Store,
+config :wardrik, WardrikStore,
   adapter: WardrikS3.Store,
   bucket: "wardrik",
   endpoint: "https://<account>.r2.cloudflarestorage.com",
@@ -286,7 +286,7 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
 | Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
@@ -307,5 +307,6 @@ assert %Wardrik.Call{state: :done, result: {:ok, _}} = Wardrik.Test.call(scope, 
 
 `Wardrik.Test.Fleet` starts an agent under an ID of each test's own and
 removes it after, `Wardrik.Test.LLMStub` answers turns with canned responses
-through Mimic, and `Wardrik.Test.Durable` and `Wardrik.Store.Conformance`
-check a store adapter of your own.
+through Mimic. A store adapter of your own is checked with
+[wardrik_store](../wardrik_store)'s `WardrikStore.Conformance` and
+`WardrikStore.Test.Durable`.

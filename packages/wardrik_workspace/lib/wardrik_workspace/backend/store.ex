@@ -1,6 +1,6 @@
 defmodule WardrikWorkspace.Backend.Store do
   @moduledoc """
-  The default `WardrikWorkspace.Backend`: every file a record in `Wardrik.Store`,
+  The default `WardrikWorkspace.Backend`: every file a record in `WardrikStore`,
   in the `:files` namespace under its tree and path, so a tree is wherever the
   store is, on every node, on EKV, Postgres or a bucket alike.
 
@@ -32,7 +32,7 @@ defmodule WardrikWorkspace.Backend.Store do
   @impl true
   def read(tree, path) do
     with {:ok, key} <- key(tree, path) do
-      case Wardrik.Store.lookup(@ns, key) do
+      case WardrikStore.lookup(@ns, key) do
         {%File{} = file, version} -> {:ok, file, version}
         _none -> :none
       end
@@ -41,12 +41,12 @@ defmodule WardrikWorkspace.Backend.Store do
 
   @impl true
   def write(tree, path, %File{} = file, version) do
-    with {:ok, key} <- key(tree, path), do: Wardrik.Store.put(@ns, key, file, if_vsn: version)
+    with {:ok, key} <- key(tree, path), do: WardrikStore.put(@ns, key, file, if_vsn: version)
   end
 
   @impl true
   def delete(tree, path, version) do
-    with {:ok, key} <- key(tree, path), do: Wardrik.Store.delete(@ns, key, if_vsn: version)
+    with {:ok, key} <- key(tree, path), do: WardrikStore.delete(@ns, key, if_vsn: version)
   end
 
   # Every key under `tree//` is this tree's, whatever `prefix` adds to it, so
@@ -57,7 +57,7 @@ defmodule WardrikWorkspace.Backend.Store do
       root = tree <> @between
 
       files =
-        for key <- Wardrik.Store.keys(@ns, root <> prefix),
+        for key <- WardrikStore.keys(@ns, root <> prefix),
             path = String.replace_prefix(key, root, ""),
             {:ok, file, version} <- [read(tree, path)],
             do: {path, file, version}
@@ -73,7 +73,7 @@ defmodule WardrikWorkspace.Backend.Store do
 
       {:ok,
        for(
-         key <- Wardrik.Store.keys(@ns, root <> prefix),
+         key <- WardrikStore.keys(@ns, root <> prefix),
          do: String.replace_prefix(key, root, "")
        )}
     end

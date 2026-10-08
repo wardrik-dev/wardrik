@@ -1,6 +1,6 @@
 # wardrik_ecto
 
-A [Wardrik](../wardrik) store in Postgres, through an Ecto repo your
+A [Wardrik store](../wardrik_store) in Postgres, through an Ecto repo your
 application owns. Agents, their events, schedules and sealed credentials are
 kept in one table, `wardrik_records`.
 

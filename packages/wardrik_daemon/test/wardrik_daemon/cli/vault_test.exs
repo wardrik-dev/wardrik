@@ -184,7 +184,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "says why a secret was not sealed", %{name: name} do
-      Mimic.stub(Wardrik.Store, :put, fn _ns, _key, _value -> {:error, :no_quorum} end)
+      Mimic.stub(WardrikStore, :put, fn _ns, _key, _value -> {:error, :no_quorum} end)
 
       assert command(["vault", "put", "#{name}=v"]) ==
                {"#{name} was not sealed: :no_quorum\n", 1}
@@ -293,7 +293,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "says where the vault holds nothing" do
-      Mimic.stub(Wardrik.Store, :keys, fn :vault -> [] end)
+      Mimic.stub(WardrikStore, :keys, fn :vault -> [] end)
 
       assert command(["vault", "ls"]) ==
                {"The vault holds no secrets. wardrik vault put NAME seals one.\n", 0}

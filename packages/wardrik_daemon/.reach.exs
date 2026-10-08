@@ -31,14 +31,14 @@
       "Wardrik.Grant",
       "Wardrik.Hook",
       "Wardrik.Label",
+      "Wardrik.Ledger",
+      "Wardrik.Ledger.Store",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
       "Wardrik.Principal",
       "Wardrik.Scope",
-      "Wardrik.Store",
-      "Wardrik.Store.Durable",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
@@ -55,7 +55,6 @@
       "Wardrik.LLM.ToolRunner",
       "Wardrik.LLM.Catalog",
       "Wardrik.Fleet.Supervisor",
-      "Wardrik.Ledger.Store",
       "Wardrik.Event.Source",
       "Wardrik.Trace"
     ],
@@ -67,7 +66,6 @@
       {"Wardrik.LLM.ToolRunner", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.LLM.Catalog", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
-      {"Wardrik.Ledger.Store", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]

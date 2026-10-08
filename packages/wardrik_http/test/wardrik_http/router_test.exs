@@ -37,7 +37,7 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
-  # Keeps what it is sent in Wardrik.Store, schedules beside definitions, and
+  # Keeps what it is sent in WardrikStore, schedules beside definitions, and
   # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
@@ -49,13 +49,13 @@ defmodule WardrikHTTP.RouterTest do
     @impl true
     def put(key, definition, grant) do
       with {:ok, spec} <- Definition.put(key, definition, grant),
-           {:ok, _vsn} <- Wardrik.Store.put(@ns, to_string(key), definition),
+           {:ok, _vsn} <- WardrikStore.put(@ns, to_string(key), definition),
            do: {:ok, spec}
     end
 
     @impl true
     def get(key) do
-      case Wardrik.Store.get(@ns, to_string(key)) do
+      case WardrikStore.get(@ns, to_string(key)) do
         nil -> {:error, :not_found}
         definition -> {:ok, definition}
       end
@@ -65,8 +65,8 @@ defmodule WardrikHTTP.RouterTest do
     def delete(key) do
       cond do
         String.contains?(key.name, "-owned") -> {:error, :conflict, "#{key} belongs to a file."}
-        Wardrik.Store.get(@ns, to_string(key)) == nil -> {:error, :not_found}
-        true -> Wardrik.Store.delete(@ns, to_string(key))
+        WardrikStore.get(@ns, to_string(key)) == nil -> {:error, :not_found}
+        true -> WardrikStore.delete(@ns, to_string(key))
       end
     end
 
@@ -79,7 +79,7 @@ defmodule WardrikHTTP.RouterTest do
         status = if scheduled(key, name), do: :changed, else: :created
         defaults = %{"name" => name, "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
         schedule = Map.merge(defaults, fields)
-        {:ok, _vsn} = Wardrik.Store.put(@schedules, "#{key}//#{name}", schedule)
+        {:ok, _vsn} = WardrikStore.put(@schedules, "#{key}//#{name}", schedule)
         {:ok, status, schedule}
       end
     end
@@ -88,12 +88,12 @@ defmodule WardrikHTTP.RouterTest do
     def delete_schedule(key, name) do
       with :ok <- editable(key) do
         if scheduled(key, name),
-          do: Wardrik.Store.delete(@schedules, "#{key}//#{name}"),
+          do: WardrikStore.delete(@schedules, "#{key}//#{name}"),
           else: {:error, :not_found}
       end
     end
 
-    defp scheduled(key, name), do: Wardrik.Store.get(@schedules, "#{key}//#{name}")
+    defp scheduled(key, name), do: WardrikStore.get(@schedules, "#{key}//#{name}")
 
     defp editable(key) do
       if String.contains?(key.name, "-owned"),

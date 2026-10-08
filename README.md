@@ -105,6 +105,7 @@ tools that run in your own process.
 | --- | --- |
 | [wardrik](packages/wardrik) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
 | [wardrik_protocol](packages/wardrik_protocol) | The JSON Schemas of events and the HTTP API, which every client is checked or generated against |
+| [wardrik_store](packages/wardrik_store) | Where agents and their records are kept: the store behaviour, its EKV and in-memory adapters, and the suite an adapter passes |
 | [wardrik_sdk](packages/wardrik_sdk) | Every package below in one dependency, and `mix wardrik` for trying agents in a terminal |
 
 ### Tools
@@ -189,7 +190,7 @@ A package is one of five kinds, and each kind is set up the same way:
 | Kind | For example | Depends on | Implements | Its tests |
 | --- | --- | --- | --- | --- |
 | Plugin | `wardrik_brave`, `wardrik_mcp`, `wardrik_policy`, `wardrik_vault` | core, and the library it wraps | a core behaviour, such as `Wardrik.Tool`, `Wardrik.Hook` or `Wardrik.Credential` | call its callbacks, with core's `Wardrik.Test` helpers |
-| Store | `wardrik_ecto`, `wardrik_s3` | core, and its client | `Wardrik.Store` | run `Wardrik.Store.Conformance` and `Wardrik.Test.Durable` against the real service |
+| Store | `wardrik_ecto`, `wardrik_s3` | `wardrik_store`, and its client | `WardrikStore` | run `WardrikStore.Conformance` and `WardrikStore.Test.Durable` against the real service |
 | Surface | `wardrik_http`, `wardrik_tui`, `wardrik_daemon` | core, and the packages it puts in front of people | nothing; it calls core | drive agents in the fleet |
 | Assembly | `wardrik_sdk`, `release` | the packages it gathers | nothing | — |
 | Protocol | `wardrik_protocol` | nothing here | JSON Schemas, which the other packages and the SDKs read | check the schemas themselves |
@@ -207,7 +208,7 @@ In every one that builds on core:
 
   ```elixir
   # config/test.exs
-  config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
+  config :wardrik, WardrikStore, adapter: WardrikStore.Memory
   ```
 
 To build the daemon:

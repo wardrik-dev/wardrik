@@ -134,7 +134,7 @@ defmodule WardrikDaemon.Config do
     * `s3`, with `bucket`, `endpoint`, `access_key_id` and `secret_access_key`,
       and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
-  Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
+  Without `storage`, the store is `WardrikStore.EKV`, on the node's disk under
   `WARDRIK_DATA_DIR`. A release reads `storage`, `cluster` and `http` as it
   boots, before anything starts, and the rest once the store runs; see
   `boot/1`.
@@ -294,7 +294,7 @@ defmodule WardrikDaemon.Config do
   @spec boot(settings()) :: settings()
   def boot(settings) do
     cluster = Keyword.get(settings, WardrikDaemon.Cluster, [])
-    store = Keyword.get(settings, Wardrik.Store, [])
+    store = Keyword.get(settings, WardrikStore, [])
 
     store =
       case {Keyword.has_key?(store, :adapter), cluster[:size]} do
@@ -304,7 +304,7 @@ defmodule WardrikDaemon.Config do
 
     for {module, settings} <- [
           {WardrikDaemon.Cluster, cluster},
-          {Wardrik.Store, store},
+          {WardrikStore, store},
           {WardrikHTTP, Keyword.get(settings, WardrikHTTP, [])}
         ],
         settings != [],
@@ -319,7 +319,7 @@ defmodule WardrikDaemon.Config do
   @spec apply(settings()) :: :ok
   def apply(settings) do
     settings
-    |> Keyword.delete(Wardrik.Store)
+    |> Keyword.delete(WardrikStore)
     |> Enum.each(fn {module, opts} ->
       Application.put_env(:wardrik_daemon, module, Keyword.merge(settings(module), opts))
     end)
@@ -375,7 +375,7 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
 
       {"storage", storage} ->
-        {Wardrik.Store, storage(table!(storage, ["storage"]))}
+        {WardrikStore, storage(table!(storage, ["storage"]))}
 
       {section, _value} ->
         invalid!(

@@ -10,7 +10,7 @@ defmodule Wardrik.Event.Log do
   `Wardrik.Agent` is one process per ID across the cluster, and it is its log's
   only writer, through a `Wardrik.Event.Log.Writer`. It follows its own events,
   encodes each with `Wardrik.Event.Codec`, and writes the durable ones to
-  `Wardrik.Store` under the next sequence number, in the order they reach it. A
+  `WardrikStore` under the next sequence number, in the order they reach it. A
   write is conditional on nothing being written under that number yet, so two
   owners of one agent can never both write it.
 
@@ -43,7 +43,6 @@ defmodule Wardrik.Event.Log do
 
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Log.Entry
-  alias Wardrik.Store
 
   @ns :events
 
@@ -92,7 +91,7 @@ defmodule Wardrik.Event.Log do
       {sequence, limit} ->
         key = key(agent_id, sequence)
 
-        case Store.get(@ns, key) || Store.get(@ns, key, consistent: true) do
+        case WardrikStore.get(@ns, key) || WardrikStore.get(@ns, key, consistent: true) do
           nil -> nil
           event -> {event, {sequence + 1, limit - 1}}
         end
@@ -135,7 +134,7 @@ defmodule Wardrik.Event.Log do
     next = sequence + 1
 
     with true <- next <= through,
-         %{"time" => time} <- Store.get(@ns, key(agent_id, next)),
+         %{"time" => time} <- WardrikStore.get(@ns, key(agent_id, next)),
          {:ok, at, _offset} <- DateTime.from_iso8601(time),
          :lt <- DateTime.compare(at, cutoff) do
       expired_through(agent_id, next, through, cutoff)
@@ -147,7 +146,7 @@ defmodule Wardrik.Event.Log do
   # What has been dropped is written down before the events go, so a read never
   # finds them missing without being told of the gap.
   defp put_dropped(agent_id, last, vsn) do
-    case Store.put(@ns, dropped_key(agent_id), last, if_vsn: vsn) do
+    case WardrikStore.put(@ns, dropped_key(agent_id), last, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -157,8 +156,8 @@ defmodule Wardrik.Event.Log do
     Enum.reduce_while(first..last//1, :ok, fn sequence, :ok ->
       key = key(agent_id, sequence)
 
-      case Store.lookup(@ns, key) do
-        {_event, vsn} -> Store.delete(@ns, key, if_vsn: vsn) |> continue()
+      case WardrikStore.lookup(@ns, key) do
+        {_event, vsn} -> WardrikStore.delete(@ns, key, if_vsn: vsn) |> continue()
         nil -> {:cont, :ok}
       end
     end)
@@ -173,23 +172,24 @@ defmodule Wardrik.Event.Log do
   consensus.
   """
   @spec oldest(Bus.agent_id(), keyword()) :: pos_integer()
-  def oldest(agent_id, opts \\ []), do: (Store.get(@ns, dropped_key(agent_id), opts) || 0) + 1
+  def oldest(agent_id, opts \\ []),
+    do: (WardrikStore.get(@ns, dropped_key(agent_id), opts) || 0) + 1
 
   defp lookup_dropped(agent_id) do
-    case Store.lookup(@ns, dropped_key(agent_id)) do
+    case WardrikStore.lookup(@ns, dropped_key(agent_id)) do
       {dropped, vsn} -> {dropped, vsn}
       nil -> {0, nil}
     end
   end
 
   @doc "The store key the event of `agent_id` at `sequence` is written under."
-  @spec key(Bus.agent_id(), pos_integer()) :: Store.key()
+  @spec key(Bus.agent_id(), pos_integer()) :: WardrikStore.key()
   def key(agent_id, sequence),
     do: "#{agent_id}//" <> String.pad_leading(Integer.to_string(sequence), @padding, "0")
 
   defp dropped_key(agent_id), do: "#{agent_id}//dropped"
 
-  @doc "The namespace events are written under in `Wardrik.Store`."
-  @spec namespace() :: Store.ns()
+  @doc "The namespace events are written under in `WardrikStore`."
+  @spec namespace() :: WardrikStore.ns()
   def namespace, do: @ns
 end

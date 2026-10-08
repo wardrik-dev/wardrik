@@ -27,7 +27,7 @@ defmodule Wardrikd.Application do
 
     children = [
       {Wardrik,
-       store: WardrikDaemon.Config.settings(Wardrik.Store),
+       store: WardrikDaemon.Config.settings(WardrikStore),
        cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
       WardrikPolicy.Supervisor,
       WardrikSchedule,

@@ -18,7 +18,7 @@ defmodule Wardrik.Test.EventLog do
   defp usurp(agent_id, sequence) do
     event = %{"id" => "usurper", "type" => "wardrik.agent.started"}
 
-    case Wardrik.Store.put(Log.namespace(), Log.key(agent_id, sequence), event, if_vsn: nil) do
+    case WardrikStore.put(Log.namespace(), Log.key(agent_id, sequence), event, if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> usurp(agent_id, sequence + 1)
     end

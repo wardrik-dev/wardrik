@@ -6,7 +6,7 @@ defmodule WardrikDaemon.Doctor do
       `${NAME}` this environment does not set is read from the vault, of a
       daemon that runs
     * `store` - that the store it names is there and keeps the store's
-      contract, as `Wardrik.Store.check/1` looks at it
+      contract, as `WardrikStore.check/1` looks at it
     * `vault` - that each vault key is one the vault can use, from
       `config.yaml`, `WARDRIK_VAULT_KEY` or the key file in the data home (see
       `WardrikDaemon.VaultKey`), and that there is one where OAuth providers or
@@ -167,8 +167,8 @@ defmodule WardrikDaemon.Doctor do
     {result, found} =
       settings
       |> Config.boot()
-      |> Keyword.get(Wardrik.Store, [])
-      |> Wardrik.Store.check()
+      |> Keyword.get(WardrikStore, [])
+      |> WardrikStore.check()
 
     {result, "store", found}
   end

@@ -22,9 +22,9 @@ defmodule WardrikHTTP.TokenTest do
       Token.create("hashed", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
 
     hash = :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
-    assert %Token{hash: ^hash} = Wardrik.Store.get(:tokens, token.id)
+    assert %Token{hash: ^hash} = WardrikStore.get(:tokens, token.id)
     assert String.starts_with?(hash, token.id)
-    refute secret in Wardrik.Store.keys(:tokens, "")
+    refute secret in WardrikStore.keys(:tokens, "")
   end
 
   test "a token grants every action, or the ones it was made with" do
@@ -85,8 +85,8 @@ defmodule WardrikHTTP.TokenTest do
       Token.create("older", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
 
     older = %{token | grant: Map.delete(token.grant, :ceiling)}
-    {_token, vsn} = Wardrik.Store.lookup(:tokens, token.id)
-    {:ok, _vsn} = Wardrik.Store.put(:tokens, token.id, older, if_vsn: vsn)
+    {_token, vsn} = WardrikStore.lookup(:tokens, token.id)
+    {:ok, _vsn} = WardrikStore.put(:tokens, token.id, older, if_vsn: vsn)
 
     assert {:ok, %Token{grant: %Grant{ceiling: []}}} = Token.verify(secret)
     assert Enum.find(Token.list(), &(&1.id == token.id)).grant.ceiling == []

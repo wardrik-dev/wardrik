@@ -19,7 +19,7 @@ defmodule WardrikWorkspace do
           runbooks: {tree: acme/runbooks, mode: read}
 
   A file is a `WardrikWorkspace.File` kept by the mount's
-  `WardrikWorkspace.Backend`, `Wardrik.Store` by default, so an agent finds its
+  `WardrikWorkspace.Backend`, `WardrikStore` by default, so an agent finds its
   files on whichever node holds it and after its node is lost. What each tool
   takes and answers is in `WardrikWorkspace.Tools`.
 

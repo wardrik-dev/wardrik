@@ -4,7 +4,7 @@ defmodule Wardrik.Fleet.Supervisor do
 
   Two children, in order:
 
-    * `Wardrik.Store` - the durable store agent state is written to, as the
+    * `WardrikStore` - the durable store agent state is written to, as the
       deployment configured it.
     * `DurableServer.Supervisor` - keyed processes over that store, named
       `Wardrik.Fleet`. It starts a `Group` instance under the same name, which is
@@ -13,7 +13,7 @@ defmodule Wardrik.Fleet.Supervisor do
   ## Options
 
     * `:store` - the store's adapter and its options, as `Wardrik` takes them;
-      the options belong to the adapter, see `Wardrik.Store.EKV`
+      the options belong to the adapter, see `WardrikStore.EKV`
     * `:log` - passed to `Group`, `false` by default
 
   `Wardrik` starts it with its `:store` and its `:fleet`.
@@ -30,8 +30,6 @@ defmodule Wardrik.Fleet.Supervisor do
 
   use Supervisor
 
-  alias Wardrik.Store
-
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -42,14 +40,14 @@ defmodule Wardrik.Fleet.Supervisor do
     store = Keyword.get(opts, :store, [])
 
     children = [
-      Store.child_spec(store),
+      WardrikStore.child_spec(store),
       {DurableServer.Supervisor,
        [
          name: Wardrik.Fleet,
          prefix: Wardrik.Fleet.prefix(),
-         backend: Store.durable_backend(store),
+         backend: WardrikStore.durable_backend(store),
          group: [log: Keyword.get(opts, :log, false)]
-       ] ++ Store.durable_shutdown()}
+       ] ++ WardrikStore.durable_shutdown()}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)

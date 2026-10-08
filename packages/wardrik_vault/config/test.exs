@@ -2,7 +2,7 @@ import Config
 
 config :logger, level: :warning
 
-config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
+config :wardrik, WardrikStore, adapter: WardrikStore.Memory
 
 config :req_llm,
   load_dotenv: false,

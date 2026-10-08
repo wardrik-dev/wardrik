@@ -4,7 +4,7 @@ defmodule WardrikMCP.Listing do
   for every node.
 
   A user's connection hands what it listed to `remember/2`, which writes it to
-  `Wardrik.Store` under `namespace/0` and offers it to the deployment's connection
+  `WardrikStore` under `namespace/0` and offers it to the deployment's connection
   on every other connected node. A deployment's connection that starts later
   reads it back with `recall/1`. Either way a node no user has connected
   through offers the server's own tools, and a call to one opens the calling
@@ -15,14 +15,12 @@ defmodule WardrikMCP.Listing do
   """
 
   require Logger
-
-  alias Wardrik.Store
   alias WardrikMCP.Connection
 
   @ns :mcp_tools
 
-  @doc "The namespace listings are written under in `Wardrik.Store`."
-  @spec namespace() :: Store.ns()
+  @doc "The namespace listings are written under in `WardrikStore`."
+  @spec namespace() :: WardrikStore.ns()
   def namespace, do: @ns
 
   @doc """
@@ -41,14 +39,14 @@ defmodule WardrikMCP.Listing do
   @doc "The `tools/list` entries last kept for `ref`, or `[]`."
   @spec recall(atom()) :: [map()]
   def recall(ref) when is_atom(ref) do
-    case stored(fn -> Store.get(@ns, key(ref)) end) do
+    case stored(fn -> WardrikStore.get(@ns, key(ref)) end) do
       listed when is_list(listed) -> listed
       _nothing -> []
     end
   end
 
   defp write(ref, listed) do
-    case stored(fn -> Store.put(@ns, key(ref), listed) end) do
+    case stored(fn -> WardrikStore.put(@ns, key(ref), listed) end) do
       {:ok, _vsn} ->
         :ok
 
@@ -58,7 +56,7 @@ defmodule WardrikMCP.Listing do
   end
 
   # EKV raises where its instance was never started, as a read of
-  # `Wardrik.Store.Memory` does, and a write to it exits.
+  # `WardrikStore.Memory` does, and a write to it exits.
   defp stored(fun) do
     fun.()
   rescue

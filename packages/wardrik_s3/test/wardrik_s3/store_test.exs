@@ -1,8 +1,8 @@
 defmodule WardrikS3.StoreTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Test.S3Bucket
   alias WardrikS3.Store
+  alias WardrikS3.Test.S3Bucket
 
   setup_all do
     S3Bucket.reset()
@@ -10,7 +10,7 @@ defmodule WardrikS3.StoreTest do
     :ok
   end
 
-  use Wardrik.Store.Conformance, adapter: WardrikS3.Store
+  use WardrikStore.Conformance, adapter: WardrikS3.Store
 
   describe "a write whose answer is lost" do
     test "is answered as written where it landed" do
@@ -112,17 +112,17 @@ defmodule WardrikS3.StoreTest do
     end
   end
 
-  test "names Wardrik.Store.Durable to hold a fleet" do
+  test "names WardrikStore.Durable to hold a fleet" do
     assert Store.durable_backend([]) ==
-             {Wardrik.Store.Durable, store: Store, discovery_interval_ms: 30_000}
+             {WardrikStore.Durable, store: Store, discovery_interval_ms: 30_000}
   end
 end
 
 defmodule WardrikS3.StoreTombstoneTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Test.S3Bucket
   alias WardrikS3.Store
+  alias WardrikS3.Test.S3Bucket
 
   setup_all do
     S3Bucket.reset()
@@ -130,7 +130,7 @@ defmodule WardrikS3.StoreTombstoneTest do
     :ok
   end
 
-  use Wardrik.Store.Conformance, adapter: WardrikS3.Store
+  use WardrikStore.Conformance, adapter: WardrikS3.Store
 
   test "a conditional delete leaves a tombstone that reads, lists and writes as nothing" do
     {:ok, vsn} = Store.put(:tombstones, "k", :value, [])
@@ -153,8 +153,8 @@ end
 defmodule WardrikS3.StoreStartTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Test.S3Bucket
   alias WardrikS3.Store
+  alias WardrikS3.Test.S3Bucket
 
   setup do
     S3Bucket.reset()

@@ -16,7 +16,7 @@ defmodule WardrikHTTP.Token do
   token stored before tokens had ceilings reads as one made with `[]`.
 
   The secret, `wardrik_` and 32 characters, is answered once and never kept.
-  `Wardrik.Store` holds the token in `:tokens` under its `id`, the first 12 hex
+  `WardrikStore` holds the token in `:tokens` under its `id`, the first 12 hex
   digits of the SHA-256 of its secret, with the whole hash, so the store holds
   nothing a caller could present. The `id` is what `list/0` shows, what
   `revoke/1` takes, and who a decision made with the token was made by.
@@ -67,7 +67,7 @@ defmodule WardrikHTTP.Token do
         created_at: DateTime.utc_now(:second)
       }
 
-      with {:ok, _vsn} <- Wardrik.Store.put(@ns, token.id, token, if_vsn: nil),
+      with {:ok, _vsn} <- WardrikStore.put(@ns, token.id, token, if_vsn: nil),
            do: {:ok, secret, token}
     end
   end
@@ -119,8 +119,8 @@ defmodule WardrikHTTP.Token do
   @spec list() :: [t()]
   def list do
     @ns
-    |> Wardrik.Store.keys("")
-    |> Enum.map(&Wardrik.Store.get(@ns, &1))
+    |> WardrikStore.keys("")
+    |> Enum.map(&WardrikStore.get(@ns, &1))
     |> Enum.filter(&match?(%__MODULE__{grant: %Grant{}}, &1))
     |> Enum.map(&current/1)
     |> Enum.sort_by(& &1.created_at, DateTime)

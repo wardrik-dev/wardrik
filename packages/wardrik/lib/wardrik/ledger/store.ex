@@ -1,6 +1,6 @@
 defmodule Wardrik.Ledger.Store do
   @moduledoc """
-  A `Wardrik.Ledger` over `Wardrik.Store`.
+  A `Wardrik.Ledger` over `WardrikStore`.
 
   Entries are written under the `:claims` namespace, one per agent and call
   id, as the agent's ID, then `//`, which no ID holds, then the call id. A claim is a write conditional on nothing being written yet, so a second
@@ -16,7 +16,6 @@ defmodule Wardrik.Ledger.Store do
   @behaviour Wardrik.Ledger
 
   alias Wardrik.Ledger.Entry
-  alias Wardrik.Store
 
   @ns :claims
 
@@ -26,7 +25,7 @@ defmodule Wardrik.Ledger.Store do
 
   @impl Wardrik.Ledger
   def claim(key, call) do
-    case Store.put(@ns, key(key), Entry.claimed(call), if_vsn: nil) do
+    case WardrikStore.put(@ns, key(key), Entry.claimed(call), if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> held(key)
       {:error, reason} -> {:error, reason}
@@ -37,7 +36,7 @@ defmodule Wardrik.Ledger.Store do
   def settle(key, result) do
     encoded = key(key)
 
-    case Store.lookup(@ns, encoded) do
+    case WardrikStore.lookup(@ns, encoded) do
       nil ->
         {:error, :not_claimed}
 
@@ -55,14 +54,14 @@ defmodule Wardrik.Ledger.Store do
   def release(key) do
     encoded = key(key)
 
-    case Store.lookup(@ns, encoded) do
+    case WardrikStore.lookup(@ns, encoded) do
       {%Entry{result: nil}, vsn} -> delete(encoded, vsn)
       _settled_or_gone -> :ok
     end
   end
 
   defp delete(encoded, vsn) do
-    case Store.delete(@ns, encoded, if_vsn: vsn) do
+    case WardrikStore.delete(@ns, encoded, if_vsn: vsn) do
       :ok -> :ok
       {:error, :conflict} -> :ok
       {:error, reason} -> {:error, reason}
@@ -74,9 +73,9 @@ defmodule Wardrik.Ledger.Store do
   @impl Wardrik.Ledger
   def forget(agent_id, trace_id) do
     @ns
-    |> Store.keys("#{agent_id}//#{trace_id}/")
+    |> WardrikStore.keys("#{agent_id}//#{trace_id}/")
     |> Enum.reduce_while(:ok, fn encoded, :ok ->
-      case Store.lookup(@ns, encoded) do
+      case WardrikStore.lookup(@ns, encoded) do
         {_entry, vsn} -> delete(encoded, vsn) |> continue()
         nil -> {:cont, :ok}
       end
@@ -88,21 +87,21 @@ defmodule Wardrik.Ledger.Store do
 
   @impl Wardrik.Ledger
   def fetch(key) do
-    case Store.get(@ns, key(key)) do
+    case WardrikStore.get(@ns, key(key)) do
       %Entry{} = entry -> {:ok, entry}
       _other -> :error
     end
   end
 
   defp write(encoded, entry, vsn) do
-    case Store.put(@ns, encoded, entry, if_vsn: vsn) do
+    case WardrikStore.put(@ns, encoded, entry, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp held(key) do
-    case Store.get(@ns, key(key), consistent: true) do
+    case WardrikStore.get(@ns, key(key), consistent: true) do
       %Entry{result: nil} = entry -> {:pending, entry}
       %Entry{result: result} -> {:settled, result}
       nil -> {:error, :forgotten}

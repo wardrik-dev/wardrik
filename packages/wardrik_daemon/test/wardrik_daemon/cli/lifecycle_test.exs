@@ -318,9 +318,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       key = agent(org, "theirs")
 
       {:ok, _vsn} =
-        Wardrik.Store.put(:declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
+        WardrikStore.put(:declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
 
-      on_exit(fn -> Wardrik.Store.delete(:declared, "agents/#{other}") end)
+      on_exit(fn -> WardrikStore.delete(:declared, "agents/#{other}") end)
 
       assert command(["agent", "rm", key, "--yes"]) ==
                {"#{key} is declared by agents/theirs.md on #{other}; change the file\n", 1}

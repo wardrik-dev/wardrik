@@ -1,13 +1,13 @@
-defmodule Wardrik.Store.Memory do
+defmodule WardrikStore.Memory do
   @moduledoc """
-  A `Wardrik.Store` in this node's memory, for tests and for a node that keeps
+  A `WardrikStore` in this node's memory, for tests and for a node that keeps
   nothing.
 
-      config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
+      {Wardrik, store: [adapter: WardrikStore.Memory]}
 
   Every write is versioned, so conditional writes behave as they do on a
   durable adapter. It holds the fleet of one node through
-  `Wardrik.Store.Durable`, and keeps nothing past it, which is what a test
+  `WardrikStore.Durable`, and keeps nothing past it, which is what a test
   suite wants: a package's tests boot Wardrik with no store to set up.
 
   Entries are kept in an ordered ETS table its process owns. Reads go to
@@ -20,12 +20,12 @@ defmodule Wardrik.Store.Memory do
   test that wants a store of its own. Every function takes `name:` in its
   options to work on that instance:
 
-      start_supervised!({Wardrik.Store.Memory, name: :mine})
-      Wardrik.Store.Memory.put(:ns, "a", 1, name: :mine)
-      Wardrik.Store.Memory.keys(:ns, "", name: :mine)
+      start_supervised!({WardrikStore.Memory, name: :mine})
+      WardrikStore.Memory.put(:ns, "a", 1, name: :mine)
+      WardrikStore.Memory.keys(:ns, "", name: :mine)
   """
 
-  @behaviour Wardrik.Store
+  @behaviour WardrikStore
 
   use GenServer
 
@@ -36,29 +36,29 @@ defmodule Wardrik.Store.Memory do
     GenServer.start_link(__MODULE__, name, name: name)
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def child_spec(opts),
     do: %{id: Keyword.get(opts, :name, __MODULE__), start: {__MODULE__, :start_link, [opts]}}
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def check(_opts), do: {:ok, "in this node's memory"}
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def quorum(_size), do: 1
 
   # Its reads are current because there is only the one node.
-  @impl Wardrik.Store
-  def durable_backend(opts), do: {Wardrik.Store.Durable, [store: __MODULE__] ++ opts}
+  @impl WardrikStore
+  def durable_backend(opts), do: {WardrikStore.Durable, [store: __MODULE__] ++ opts}
 
   @doc "Forgets everything."
   @spec clear(keyword()) :: :ok
   def clear(opts \\ []), do: GenServer.call(name(opts), :clear)
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def put(ns, key, value, opts),
     do: GenServer.call(name(opts), {:put, {ns, key}, value, Keyword.fetch(opts, :if_vsn)})
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def get(ns, key, opts) do
     case lookup(ns, key, opts) do
       {value, _vsn} -> value
@@ -66,7 +66,7 @@ defmodule Wardrik.Store.Memory do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def lookup(ns, key, opts \\ []) do
     case :ets.lookup(name(opts), {ns, key}) do
       [{_key, value, vsn}] -> {value, vsn}
@@ -74,7 +74,7 @@ defmodule Wardrik.Store.Memory do
     end
   end
 
-  @impl Wardrik.Store
+  @impl WardrikStore
   def delete(ns, key, opts),
     do: GenServer.call(name(opts), {:delete, {ns, key}, Keyword.fetch(opts, :if_vsn)})
 
@@ -82,7 +82,7 @@ defmodule Wardrik.Store.Memory do
   Every key in `ns` starting with `prefix`, in order. The table is walked
   from the prefix to the first key past it, so no other key is read.
   """
-  @impl Wardrik.Store
+  @impl WardrikStore
   def keys(ns, prefix, opts \\ []) do
     table = name(opts)
     from = {ns, prefix}
