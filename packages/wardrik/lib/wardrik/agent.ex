@@ -65,11 +65,13 @@ defmodule Wardrik.Agent do
 
   ## A history that grows
 
-  Before a turn, an agent whose history has outgrown its config's
-  `Wardrik.Compaction` summarises the older part first, with its own model, and
-  reports `{:context_compacted, stats}`. Messages arriving meanwhile queue for
-  the turn that follows. A summary that cannot be made leaves the history as it
-  was, and the turn runs regardless.
+  As a turn begins, its task hands the agent's history to its config's
+  `Wardrik.History`, before the messages it answers join it. The default,
+  `Wardrik.Compaction`, summarises the older part of a history that has
+  outgrown the model's window, with the agent's own model. The agent keeps
+  what it answers, and `{:context_compacted, stats}` reports it on the turn's
+  trace. A history that cannot be rewritten is kept as it was, and the turn
+  runs regardless.
 
   `clear/1` empties the history of an idle agent, and reports
   `{:context_cleared, dropped}`, with how many messages it held. It is how an
@@ -129,6 +131,8 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
   alias Wardrik.Agent.State
+  alias Wardrik.Agent.State.Stored
+  alias Wardrik.Agent.State.View
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Event.Bus
@@ -136,13 +140,14 @@ defmodule Wardrik.Agent do
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
   alias Wardrik.Fleet
+  alias Wardrik.History
   alias Wardrik.LLM.Turn
 
   @typedoc "An agent: the pid of one, or its ID."
   @type agent() :: pid() | Wardrik.AgentID.t()
 
   @typedoc "Whether a turn is in flight, how many messages wait behind it, and the model."
-  @type status() :: State.status()
+  @type status() :: View.status()
 
   @typedoc "What an interrupt stopped."
   @type stats() :: State.stats()
@@ -282,10 +287,10 @@ defmodule Wardrik.Agent do
   # -- durability ------------------------------------------------------------
 
   @impl DurableServer
-  def dump_state(%State{} = state), do: State.dump(state)
+  def dump_state(%State{} = state), do: Stored.dump(state)
 
   @impl DurableServer
-  def load_state(_old_vsn, dumped), do: State.load(dumped)
+  def load_state(_old_vsn, dumped), do: Stored.load(dumped)
 
   @impl DurableServer
   def init(%State{} = state) do
@@ -296,13 +301,13 @@ defmodule Wardrik.Agent do
     started =
       Event.new(
         Source.root(state.agent_id),
-        {:agent_started, node(), State.status(state).state, state.generation}
+        {:agent_started, node(), View.status(state).state, state.generation}
       )
 
     state = State.logged(state, Writer.open(state.log, started))
     :ok = Bus.publish(started)
 
-    {:ok, state, meta: State.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
+    {:ok, state, meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
 
   # -- messages --------------------------------------------------------------
@@ -310,12 +315,19 @@ defmodule Wardrik.Agent do
   @impl DurableServer
   def handle_call({:configure, opts}, _from, state) do
     next = state |> State.configure(opts) |> redecide()
-    {:reply, :ok, next, meta: State.meta(next), sync: true}
+    {:reply, :ok, next, meta: View.meta(next), sync: true}
   end
 
   def handle_call({:checkpoint, checkpoint}, {pid, _tag}, state) do
     case State.checkpointed(state, pid, checkpoint) do
-      {:ok, next} -> {:reply, :ok, next, meta: State.meta(next), sync: true}
+      {:ok, next} -> {:reply, :ok, next, meta: View.meta(next), sync: true}
+      :stale -> {:reply, {:error, :not_the_running_turn}, state}
+    end
+  end
+
+  def handle_call({:kept, context}, {pid, _tag}, state) do
+    case State.kept(state, pid, context) do
+      {:ok, next} -> {:reply, :ok, next, sync: true}
       :stale -> {:reply, {:error, :not_the_running_turn}, state}
     end
   end
@@ -324,7 +336,7 @@ defmodule Wardrik.Agent do
     case State.clear(state) do
       {:ok, next, effects} ->
         next = perform(next, effects)
-        {:reply, :ok, next, meta: State.meta(next), sync: true}
+        {:reply, :ok, next, meta: View.meta(next), sync: true}
 
       {:error, :busy} ->
         {:reply, {:error, :busy}, state}
@@ -332,9 +344,9 @@ defmodule Wardrik.Agent do
   end
 
   def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
-  def handle_call(:status, _from, state), do: {:reply, State.status(state), state}
+  def handle_call(:status, _from, state), do: {:reply, View.status(state), state}
   def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
-  def handle_call(:snapshot, _from, state), do: {:reply, State.snapshot(state), state}
+  def handle_call(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
 
   def handle_call({:decide, decisions, by}, _from, state) do
     ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
@@ -348,7 +360,7 @@ defmodule Wardrik.Agent do
 
       true ->
         case resume_turn(state, decisions, by) do
-          {:ok, next} -> {:reply, :ok, next, meta: State.meta(next), sync: true}
+          {:ok, next} -> {:reply, :ok, next, meta: View.meta(next), sync: true}
           {:error, next} -> {:reply, {:error, :unrecorded}, next}
         end
     end
@@ -441,9 +453,6 @@ defmodule Wardrik.Agent do
       {:resume, scope, turn, decisions, state} ->
         stay(resume_again(state, scope, turn, decisions))
 
-      {:compact, scope, state} ->
-        stay(compact(state, scope))
-
       :none ->
         stay(state)
     end
@@ -453,31 +462,19 @@ defmodule Wardrik.Agent do
   def handle_info(:maybe_run, state), do: advance(state)
 
   def handle_info({ref, result}, state) when is_reference(ref) do
-    cond do
-      State.running?(state, ref) ->
-        Process.demonitor(ref, [:flush])
-        state |> answered(result) |> advance(sync: true)
-
-      State.compacting?(state, ref) ->
-        Process.demonitor(ref, [:flush])
-        state |> settle(State.compacted(state, result)) |> advance(sync: true)
-
-      true ->
-        stay(state)
-    end
-  end
-
-  def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref) do
-    if State.compacting?(state, ref) do
-      Logger.error("Compaction crashed: #{inspect(reason)}")
-      state |> settle(State.compacted(state, {:error, reason})) |> advance(sync: true)
+    if State.running?(state, ref) do
+      Process.demonitor(ref, [:flush])
+      state |> answered(result) |> advance(sync: true)
     else
-      down(state, ref, reason)
+      stay(state)
     end
   end
 
-  def handle_info({:kill, tag}, state) do
-    case State.kill(state, tag) do
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) when is_reference(ref),
+    do: down(state, ref, reason)
+
+  def handle_info({:kill, ref}, state) do
+    case State.kill(state, ref) do
       {:kill, state, effects} -> state |> perform(effects) |> advance(sync: true)
       :stale -> stay(state)
     end
@@ -525,29 +522,42 @@ defmodule Wardrik.Agent do
   # Every return republishes this agent's metadata, which is what `Wardrik.Fleet`
   # lists. `sync: true` writes the state to the store before returning.
   defp advance(state, opts \\ []) do
-    {:noreply, state, {:continue, :maybe_run}, [meta: State.meta(state)] ++ opts}
+    {:noreply, state, {:continue, :maybe_run}, [meta: View.meta(state)] ++ opts}
   end
 
   defp stay(state, opts \\ []) do
-    {:noreply, state, [meta: State.meta(state)] ++ opts}
+    {:noreply, state, [meta: View.meta(state)] ++ opts}
   end
 
   # -- turns -----------------------------------------------------------------
 
   defp start(state, messages) do
-    context = Enum.reduce(messages, state.context, &Context.append(&2, Context.user(&1.text)))
     scope = state |> State.turn_scope() |> journaled() |> heard(messages)
 
     Event.emit(scope.source, {:turn_started, messages})
-    task = run(fn -> State.apply_runner(state, scope, context) end)
+    task = run(fn -> State.apply_runner(state, scope, kept(state, scope, messages)) end)
 
-    State.started(state, task, scope, context, System.monotonic_time())
+    State.started(state, task, scope, asked(state.context, messages), System.monotonic_time())
   end
 
-  defp compact(state, scope) do
-    task = run(fn -> Wardrik.Compaction.run(scope, state.context) end)
-    State.compacting(state, task, System.monotonic_time())
+  # What the agent's history keeps of itself, with the turn's messages after
+  # it, word for word. A history rewritten is handed to this agent to keep, as
+  # a batch is, before the turn runs on it.
+  defp kept(state, scope, messages) do
+    case History.prepare(state.config.history, state.context, scope) do
+      :keep ->
+        asked(state.context, messages)
+
+      {:ok, history, stats} ->
+        context = asked(history, messages)
+        :ok = GenServer.call(scope.journal, {:kept, context}, :timer.seconds(30))
+        Event.emit(scope.source, {:context_compacted, stats})
+        context
+    end
   end
+
+  defp asked(context, messages),
+    do: Enum.reduce(messages, context, &Context.append(&2, Context.user(&1.text)))
 
   defp replay(state, scope, checkpoint) do
     scope = journaled(scope)
@@ -617,11 +627,9 @@ defmodule Wardrik.Agent do
     state
   end
 
-  defp apply_effect({:arm_kill, ms, dropped}, state) do
-    tag = make_ref()
-    timer = Process.send_after(self(), {:kill, tag}, ms)
-
-    State.arm(state, tag, timer, dropped)
+  defp apply_effect({:arm_kill, task_ref, ms, dropped}, state) do
+    timer = Process.send_after(self(), {:kill, task_ref}, ms)
+    State.arm(state, timer, dropped)
   end
 
   defp apply_effect({:cancel_kill, timer}, state) do

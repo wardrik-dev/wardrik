@@ -41,9 +41,12 @@ defmodule Wardrik.LLM.Config do
   Which of those a model honours is the provider's business; `:tools` and
   `:system` are set from their own fields and cannot be overridden here.
 
-  `:compaction` is when the agent summarises its older history so the rest
-  still fits what the model can read, a `Wardrik.Compaction`, on by default.
-  `nil` never compacts.
+  `:history` is what the agent keeps of its history before each turn, a
+  `Wardrik.History`: by default `Wardrik.Compaction`, which summarises the
+  older history so the rest still fits what the model can read. `nil` keeps
+  every message.
+
+      Wardrik.LLM.Config.new(history: {Wardrik.Compaction, Wardrik.Compaction.new(at: 0.5)})
 
   `:max_iterations` bounds how many rounds of tool calls a turn may make,
   thirty by default. A turn that reaches it is asked to answer with what it
@@ -82,7 +85,7 @@ defmodule Wardrik.LLM.Config do
             generation: [],
             max_iterations: 30,
             retries: [1_000, 5_000],
-            compaction: %Wardrik.Compaction{}
+            history: {Wardrik.Compaction, %Wardrik.Compaction{}}
 
   @type t :: %__MODULE__{
           model_spec: {atom(), keyword()},
@@ -93,7 +96,7 @@ defmodule Wardrik.LLM.Config do
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil
+          history: Wardrik.History.t()
         }
 
   @typedoc "A config written down: its fields, with the names of the tools that could not travel."
@@ -107,7 +110,7 @@ defmodule Wardrik.LLM.Config do
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
-          compaction: Wardrik.Compaction.t() | nil
+          history: Wardrik.History.t()
         }
 
   @doc """

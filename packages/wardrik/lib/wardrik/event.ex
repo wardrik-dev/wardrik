@@ -78,7 +78,7 @@ defmodule Wardrik.Event do
           | {:call_decided, String.t(), Wardrik.LLM.Turn.decision(), Wardrik.Principal.t() | nil}
           | {:message_queued, Wardrik.Agent.Message.t()}
           | {:agent_started, node(), :idle | :running | :parked, String.t()}
-          | {:context_compacted, Wardrik.Compaction.stats()}
+          | {:context_compacted, Wardrik.History.stats()}
           | {:context_cleared, non_neg_integer()}
           | {:schedule_fired, String.t(), Wardrik.Schedule.outcome()}
           | {:span_started, String.t()}

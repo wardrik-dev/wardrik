@@ -5,7 +5,7 @@ defmodule Wardrik.Fleet.Member do
 
   Built from the cluster registry, so `status`, `pending`, `waiting_on` and
   `outcome` are what the agent last published through
-  `Wardrik.Agent.State.meta/1`.
+  `Wardrik.Agent.State.View.meta/1`.
   """
 
   @enforce_keys [:id, :pid, :node, :status, :pending, :waiting_on]
@@ -25,7 +25,7 @@ defmodule Wardrik.Fleet.Member do
         }
 
   @doc false
-  @spec new(Wardrik.AgentID.t(), pid(), Wardrik.Agent.State.meta()) :: t()
+  @spec new(Wardrik.AgentID.t(), pid(), Wardrik.Agent.State.View.meta()) :: t()
   def new(
         %Wardrik.AgentID{} = id,
         pid,

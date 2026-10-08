@@ -6,16 +6,16 @@ defmodule Wardrik.Agent.State do
   sleeps or emits: a transition takes a state and returns the next one
   alongside the `t:effect/0` values the process should carry out. That split is
   what makes the agent's behaviour testable without a process, and what lets
-  `dump/1` write it down.
+  `Wardrik.Agent.State.Stored` write it down.
 
   ## One mode, not four flags
 
-  An agent is idle, owed a turn, running one, or waiting on a person. That is a
+  An agent is idle, due a turn, running one, or waiting on a person. That is a
   single field holding one of four shapes, each carrying exactly what that
   shape needs:
 
       %State{mode: :idle}
-      %State{mode: :owed}
+      %State{mode: %Due{recovery: :owed, source: nil}}
       %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil, recovery: :owed}}
       %State{mode: %Waiting{turn: parked, source: source, started_at: at}}
 
@@ -26,17 +26,17 @@ defmodule Wardrik.Agent.State do
 
   ## Written down
 
-  `dump/1` and `load/1` carry an agent between nodes. A turn in flight is
-  written as what it comes back as, which it holds as its `recovery` from the
-  moment it starts. A turn that has handed over a batch of
-  tool calls comes back replaying from the last one, under the trace it began
-  on, so the calls keep their ids; a fresh turn that has not is `:owed` and
-  runs again against the context it already holds; a turn resumed from a park,
-  and not checkpointed since, comes back resuming with the decisions it was
-  given, so none is lost, and a `Wardrik.Ledger` answers for an approved call
-  that had begun. A waiting turn keeps its source, and the events of its
+  `Wardrik.Agent.State.Stored` carries an agent between nodes. A turn in
+  flight is written as the `Due` turn it comes back as, which it holds as its
+  `recovery` from the moment it starts. A turn that has handed over a batch
+  of tool calls comes back replaying from the last one, under the trace it
+  began on, so the calls keep their ids; a fresh turn that has not is owed,
+  and runs again against the context it already holds; a turn resumed from a
+  park, and not checkpointed since, comes back resuming with the decisions it
+  was given, so none is lost, and a `Wardrik.Ledger` answers for an approved
+  call that had begun. A waiting turn keeps its source, and the events of its
   resumption land on the trace that parked. Its budget starts over when it is
-  resumed.
+  resumed. `Wardrik.Agent.State.View` is what the agent shows of itself.
 
   Who the work is for is read from the agent's key. How far its
   `Wardrik.Event.Log` has got is written down as a sequence number, from which
@@ -53,24 +53,27 @@ defmodule Wardrik.Agent.State do
   would have then, until `clear/1` empties the history. A summary of the
   history keeps them, since it was written from what was read.
 
+  A turn's task hands its config's `Wardrik.History` the history first, and
+  the history it keeps, a summary in place of its older part, say, is the
+  agent's from then on: `kept/3` records it, so a turn that parks or is lost
+  keeps it too.
+
   ## Stopping is part of running
 
   An interrupt does not change mode. It marks the running turn as stopping and
   arms a kill, because a turn asked to stop is still a turn until it answers or
   is killed. `Stopping` therefore only exists inside `Running`.
 
-  ## Why the kill is identified by a tag
+  ## The kill names its turn
 
-  A kill is armed with a fresh `t:reference/0` that is stored in the same
-  `Stopping` that armed it. `kill/2` only fires when the tag it is given is the
-  tag the state is holding, so a timer that fired just as the turn answered,
-  or one left over from an earlier interrupt, is refused by pattern match
-  rather than by a guard someone has to remember to write.
+  A kill is armed for the running turn's task, and `kill/2` fires only while
+  that task is the one running and stopping, so a timer that fired just as
+  the turn answered, or one armed for a turn before it, is refused by pattern
+  match rather than by a guard someone has to remember to write.
   """
 
   alias ReqLLM.Context
   alias Wardrik.Agent.Message
-  alias Wardrik.Agent.Snapshot
   alias Wardrik.Event
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
@@ -83,11 +86,11 @@ defmodule Wardrik.Agent.State do
   defmodule Stopping do
     @moduledoc "A running turn that has been asked to stop, and the kill armed behind it."
 
-    @enforce_keys [:tag, :timer, :dropped]
-    defstruct [:tag, :timer, :dropped]
+    @enforce_keys [:timer, :dropped]
+    defstruct [:timer, :dropped]
 
-    @typedoc "The kill's identity, its timer, and how many queued messages it discarded."
-    @type t() :: %__MODULE__{tag: reference(), timer: reference(), dropped: non_neg_integer()}
+    @typedoc "The kill's timer, and how many queued messages it discarded."
+    @type t() :: %__MODULE__{timer: reference(), dropped: non_neg_integer()}
   end
 
   defmodule Running do
@@ -120,37 +123,20 @@ defmodule Wardrik.Agent.State do
           }
   end
 
-  defmodule Compacting do
-    @moduledoc "History being summarised before the next turn, and whether that turn was owed."
+  defmodule Due do
+    @moduledoc """
+    A turn due to run: owed again against the history the agent holds, or
+    going on from the batch it last handed over, or from the park it was
+    resumed from, under the trace it began on.
+    """
 
-    @enforce_keys [:task, :owed, :started_at]
-    defstruct [:task, :owed, :started_at]
+    @enforce_keys [:recovery]
+    defstruct [:recovery, :source]
 
-    @typedoc "The task summarising, whether a turn was owed when it began, and when."
-    @type t() :: %__MODULE__{task: Task.t(), owed: boolean(), started_at: integer()}
-  end
-
-  defmodule Replaying do
-    @moduledoc "A turn lost part way through, due to go on from its last checkpoint."
-
-    @enforce_keys [:checkpoint, :source]
-    defstruct [:checkpoint, :source]
-
-    @typedoc "The checkpoint to go on from, and where the turn's events go."
-    @type t() :: %__MODULE__{checkpoint: Turn.t(), source: Source.t()}
-  end
-
-  defmodule Resuming do
-    @moduledoc "A parked turn lost after it was resumed, due to go on with the decisions it was given."
-
-    @enforce_keys [:turn, :decisions, :source]
-    defstruct [:turn, :decisions, :source]
-
-    @typedoc "The parked turn, the decisions it resumes with, and where its events go."
+    @typedoc "What the turn goes on from, as `t:Wardrik.Agent.State.Running.recovery/0`, and where its events go."
     @type t() :: %__MODULE__{
-            turn: Turn.t(),
-            decisions: %{String.t() => Turn.decision()},
-            source: Source.t()
+            recovery: Wardrik.Agent.State.Running.recovery(),
+            source: Source.t() | nil
           }
   end
 
@@ -186,7 +172,6 @@ defmodule Wardrik.Agent.State do
     :resumer,
     :scope_opts,
     replayer: {Turn, :replay, []},
-    compaction_settled: false,
     grace: @default_grace,
     mode: :idle,
     pending: [],
@@ -202,17 +187,10 @@ defmodule Wardrik.Agent.State do
   @typedoc """
   What the agent is doing. Each shape carries its own data and nothing else's.
 
-  `:owed` is an agent loaded from a dump taken mid-turn: nothing is running,
-  and a turn is due against the context it already holds.
+  `Due` is an agent loaded from a dump taken mid-turn: nothing is running,
+  and the turn it was running is due.
   """
-  @type mode() ::
-          :idle
-          | :owed
-          | Running.t()
-          | Waiting.t()
-          | Replaying.t()
-          | Resuming.t()
-          | Compacting.t()
+  @type mode() :: :idle | Due.t() | Running.t() | Waiting.t()
 
   @typedoc """
   Runs one turn and hands it back, as `{module, function, args}`.
@@ -252,36 +230,14 @@ defmodule Wardrik.Agent.State do
   @typedoc "How the last turn ended, or `nil` before the first."
   @type outcome() :: nil | :ok | :failed | :interrupted
 
-  @typedoc "An agent written down: what it is, what it was asked, and what it is waiting on."
-  @type dumped() :: %{
-          generation: String.t(),
-          agent_id: Event.Bus.agent_id(),
-          sequence: non_neg_integer(),
-          config: Config.dumped(),
-          context: Context.t(),
-          scope_opts: keyword(),
-          grace: pos_integer(),
-          pending: [Message.t()],
-          recent: [String.t()],
-          runner: runner(),
-          resumer: resumer(),
-          outcome: outcome(),
-          labels: [Wardrik.Label.t()],
-          mode:
-            :idle
-            | :owed
-            | {:waiting, Turn.t(), Source.t()}
-            | {:replaying, Turn.t(), Source.t()}
-            | {:resuming, Turn.t(), %{String.t() => Turn.decision()}, Source.t()}
-        }
-
   @typedoc """
   Something the process should do on this state's behalf.
 
     * `{:emit, source, payload}` - publish an event
     * `{:ask_to_stop, pid}` - let a running turn finish its round, then return
     * `{:stop_now, pid}` - stop a running turn as soon as it can, mid-response
-    * `{:arm_kill, ms, dropped}` - arm a kill after `ms`, then record it with `arm/4`
+    * `{:arm_kill, task_ref, ms, dropped}` - arm a kill of the turn whose task
+      `task_ref` names after `ms`, then record it with `arm/3`
     * `{:cancel_kill, timer}` - a turn answered before its kill was needed
     * `{:shutdown, task}` - the kill fired; end the task now
     * `{:close_turn, scope}` - a turn has ended for good: its ledger claims
@@ -291,7 +247,7 @@ defmodule Wardrik.Agent.State do
           {:emit, Source.t(), tuple()}
           | {:ask_to_stop, pid()}
           | {:stop_now, pid()}
-          | {:arm_kill, pos_integer(), non_neg_integer()}
+          | {:arm_kill, reference(), pos_integer(), non_neg_integer()}
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
           | {:close_turn, Scope.t()}
@@ -302,24 +258,6 @@ defmodule Wardrik.Agent.State do
           kept: non_neg_integer(),
           resolution: :stopped | :killed | :idle | :abandoned,
           elapsed_ms: non_neg_integer()
-        }
-
-  @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
-  @type status() :: %{
-          state: :idle | :running | :parked,
-          pending: non_neg_integer(),
-          model: term()
-        }
-
-  @typedoc """
-  What the fleet shows for an agent: what it is doing, how much waits behind
-  it, the calls it is waiting on, and how the last turn ended.
-  """
-  @type meta() :: %{
-          status: :idle | :running | :parked,
-          pending: non_neg_integer(),
-          waiting_on: [String.t()],
-          outcome: outcome()
         }
 
   @doc """
@@ -362,6 +300,8 @@ defmodule Wardrik.Agent.State do
     }
   end
 
+  defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+
   defp mfa!({module, function, args}, _key)
        when is_atom(module) and is_atom(function) and is_list(args),
        do: {module, function, args}
@@ -399,95 +339,6 @@ defmodule Wardrik.Agent.State do
     apply(module, function, args ++ [Turn.under(checkpoint, scope)])
   end
 
-  @doc "Writes this agent down as data. See the module docs for what a turn in flight becomes."
-  @spec dump(t()) :: dumped()
-  def dump(%__MODULE__{} = state) do
-    state
-    |> Map.from_struct()
-    |> Map.drop([:log])
-    |> Map.merge(%{
-      config: Config.dump(state.config),
-      mode: at_rest(state.mode),
-      sequence: state.log.head
-    })
-  end
-
-  defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
-  defp at_rest(%Compacting{owed: true}), do: :owed
-  defp at_rest(%Compacting{owed: false}), do: :idle
-
-  defp at_rest(%Replaying{checkpoint: checkpoint, source: source}),
-    do: {:replaying, checkpoint, source}
-
-  defp at_rest(%Resuming{turn: turn, decisions: decisions, source: source}),
-    do: {:resuming, turn, decisions, source}
-
-  defp at_rest(%Running{recovery: :owed}), do: :owed
-
-  defp at_rest(%Running{recovery: {:replaying, checkpoint}, scope: scope}),
-    do: {:replaying, checkpoint, scope.source}
-
-  defp at_rest(%Running{recovery: {:resuming, turn, decisions}, scope: scope}),
-    do: {:resuming, turn, decisions, scope.source}
-
-  defp at_rest(mode) when mode in [:idle, :owed], do: mode
-
-  @doc "Reads an agent back from `dump/1`, with the tools this node can build."
-  @spec load(dumped()) :: t()
-  def load(%{agent_id: agent_id, config: config, mode: mode} = dumped) do
-    {sequence, dumped} = Map.pop(dumped, :sequence, 0)
-
-    dumped =
-      dumped
-      |> Map.put_new_lazy(:generation, &generation/0)
-      |> Map.update(:pending, [], &Enum.map(&1, fn message -> queued(message) end))
-      |> Map.put(:log, Writer.new(agent_id, sequence))
-
-    struct!(__MODULE__, %{dumped | config: Config.load(config), mode: reopen(mode)})
-  end
-
-  # An agent written down before messages had ids queued their text alone.
-  defp queued(%Message{} = message), do: message
-  defp queued(text) when is_binary(text), do: Message.new(text)
-
-  defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-
-  @doc """
-  An atomic attachment snapshot; generation survives restarts but not
-  deletion. Carries the last sequence its log has written, so the client can
-  follow the log from there.
-  """
-  @spec snapshot(t()) :: Snapshot.t()
-  def snapshot(state) do
-    %Snapshot{
-      generation: state.generation,
-      status: status(state),
-      context: state.context,
-      parked: waiting_on(state),
-      trace_id: trace_id(state.mode),
-      outcome: state.outcome,
-      sequence: state.log.head
-    }
-  end
-
-  defp trace_id(%Running{scope: scope}), do: scope.source.trace.trace_id
-  defp trace_id(%Waiting{source: source}), do: source.trace.trace_id
-  defp trace_id(%Replaying{source: source}), do: source.trace.trace_id
-  defp trace_id(%Resuming{source: source}), do: source.trace.trace_id
-  defp trace_id(_mode), do: nil
-
-  defp reopen({:waiting, turn, source}) do
-    %Waiting{turn: turn, source: source, started_at: System.monotonic_time()}
-  end
-
-  defp reopen({:replaying, checkpoint, source}),
-    do: %Replaying{checkpoint: checkpoint, source: source}
-
-  defp reopen({:resuming, turn, decisions, source}),
-    do: %Resuming{turn: turn, decisions: decisions, source: source}
-
-  defp reopen(mode) when mode in [:idle, :owed], do: mode
-
   @doc """
   Whether the turn this agent waits on parked under hooks other than the ones
   it has now, by `Wardrik.Hook.revision/1`.
@@ -503,42 +354,6 @@ defmodule Wardrik.Agent.State do
   def turn_scope(%__MODULE__{} = state) do
     scope = Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
     %{scope | labels: state.labels}
-  end
-
-  @doc "What this agent is doing, how much is queued behind it, and the model it runs."
-  @spec status(t()) :: status()
-  def status(%__MODULE__{} = state) do
-    %{
-      state: activity(state.mode),
-      pending: length(state.pending),
-      model: state.config.model_spec
-    }
-  end
-
-  defp activity(%Running{}), do: :running
-  defp activity(%Waiting{}), do: :parked
-  defp activity(%Replaying{}), do: :running
-  defp activity(%Resuming{}), do: :running
-  defp activity(%Compacting{}), do: :running
-  # A turn is due and will start on the next message: running, not idle.
-  defp activity(:owed), do: :running
-  defp activity(:idle), do: :idle
-
-  @doc """
-  What `Wardrik.Fleet` reports about this agent, republished on every transition.
-
-  Replicated to every node, so it holds nothing private.
-  """
-  @spec meta(t()) :: meta()
-  def meta(%__MODULE__{} = state) do
-    %{state: activity, pending: pending} = status(state)
-
-    %{
-      status: activity,
-      pending: pending,
-      waiting_on: Enum.map(waiting_on(state), fn {call, _prompt} -> call.name end),
-      outcome: state.outcome
-    }
   end
 
   @doc "Records how far this agent's log has got."
@@ -591,87 +406,32 @@ defmodule Wardrik.Agent.State do
   when nothing is queued. A waiting turn is still the current turn: anything
   behind it waits to be answered or abandoned rather than starting beside it.
 
-  An agent that is `:owed` a turn runs one with no questions at all, against
-  the context that already holds the question it was answering. One replaying
-  a turn answers `{:replay, scope, checkpoint, state}`: the turn goes on from
-  its checkpoint, under the trace it began on. One resuming a parked turn
+  An agent owed a turn runs one with no questions at all, against the context
+  that already holds the question it was answering. One due to replay a turn
+  answers `{:replay, scope, checkpoint, state}`: the turn goes on from its
+  checkpoint, under the trace it began on. One due to resume a parked turn
   answers `{:resume, scope, turn, decisions, state}`: the turn goes on with
   the decisions it was given, under the trace that parked.
-
-  Before a turn, a history that has outgrown its config's `Wardrik.Compaction`
-  answers `{:compact, scope, state}`: the history is summarised first, see
-  `compacting/3` and `compacted/2`, and the turn is taken after. Once a
-  compaction has run, whatever it managed, none runs again before that turn
-  starts, so a summary that leaves the history over its threshold still lets
-  the turn through.
   """
-
   @spec take(t()) ::
           {:run, [Message.t()], t()}
-          | {:compact, Scope.t(), t()}
           | {:replay, Scope.t(), Turn.t(), t()}
           | {:resume, Scope.t(), Turn.t(), %{String.t() => Turn.decision()}, t()}
           | :none
-  def take(%__MODULE__{mode: %Replaying{checkpoint: checkpoint, source: source}} = state) do
-    {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
-  end
+  def take(%__MODULE__{mode: %Due{recovery: {:replaying, checkpoint}, source: source}} = state),
+    do: {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
 
-  def take(%__MODULE__{mode: %Resuming{} = resuming} = state) do
-    {:resume, %{turn_scope(state) | source: resuming.source}, resuming.turn, resuming.decisions,
-     state}
-  end
+  def take(
+        %__MODULE__{mode: %Due{recovery: {:resuming, turn, decisions}, source: source}} = state
+      ),
+      do: {:resume, %{turn_scope(state) | source: source}, turn, decisions, state}
 
-  def take(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
-    cond do
-      mode == :idle and state.pending == [] ->
-        :none
-
-      compaction_due?(state) ->
-        {:compact, turn_scope(state), state}
-
-      true ->
-        {:run, Enum.reverse(state.pending),
-         %{state | pending: [], mode: :idle, compaction_settled: false}}
-    end
-  end
-
+  def take(%__MODULE__{mode: %Due{recovery: :owed}} = state), do: taken(state)
+  def take(%__MODULE__{mode: :idle, pending: []}), do: :none
+  def take(%__MODULE__{mode: :idle} = state), do: taken(state)
   def take(%__MODULE__{}), do: :none
 
-  defp compaction_due?(%__MODULE__{compaction_settled: true}), do: false
-
-  defp compaction_due?(%__MODULE__{config: config, context: context}),
-    do: Wardrik.Compaction.split(config.compaction, context, config.model_spec) != :keep
-
-  @doc "Records the task summarising this agent's history, which a `{:compact, ...}` from `take/1` led to."
-  @spec compacting(t(), Task.t(), integer()) :: t()
-  def compacting(%__MODULE__{mode: mode} = state, task, started_at) when mode in [:idle, :owed],
-    do: %{state | mode: %Compacting{task: task, owed: mode == :owed, started_at: started_at}}
-
-  @doc "Whether `task_ref` is the compaction this agent is running."
-  @spec compacting?(t(), reference()) :: boolean()
-  def compacting?(%__MODULE__{mode: %Compacting{task: %Task{ref: ref}}}, task_ref),
-    do: ref == task_ref
-
-  def compacting?(%__MODULE__{}, _task_ref), do: false
-
-  @doc """
-  Settles a compaction with what `Wardrik.Compaction.run/2` answered: the
-  summarised history in place of the old one, or the old one as it was, and
-  the turn that was waiting on it due either way.
-  """
-  @spec compacted(t(), term()) :: {t(), [effect()]}
-  def compacted(%__MODULE__{mode: %Compacting{owed: owed}} = state, result) do
-    mode = if owed, do: :owed, else: :idle
-
-    case result do
-      {:ok, %Context{} = context, stats} ->
-        {%{state | mode: mode, context: context, compaction_settled: true},
-         [{:emit, turn_scope(state).source, {:context_compacted, stats}}]}
-
-      _kept_or_failed ->
-        {%{state | mode: mode, compaction_settled: true}, []}
-    end
-  end
+  defp taken(state), do: {:run, Enum.reverse(state.pending), %{state | pending: [], mode: :idle}}
 
   @doc "Records the turn a `take/1` led to, and the context it was given."
   @spec started(t(), Task.t(), Scope.t(), Context.t(), integer()) :: t()
@@ -712,6 +472,17 @@ defmodule Wardrik.Agent.State do
       do: {:ok, %{state | mode: %{running | recovery: {:replaying, checkpoint}}}}
 
   def checkpointed(%__MODULE__{}, _pid, _checkpoint), do: :stale
+
+  @doc """
+  Records the history the running turn's `Wardrik.History` kept, with the
+  messages the turn answers after it, as the agent's from now on. `:stale`
+  when `pid` is not the running turn.
+  """
+  @spec kept(t(), pid(), Context.t()) :: {:ok, t()} | :stale
+  def kept(%__MODULE__{mode: %Running{task: %Task{pid: pid}}} = state, pid, %Context{} = context),
+    do: {:ok, %{state | context: context}}
+
+  def kept(%__MODULE__{}, _pid, _context), do: :stale
 
   @doc """
   Whether `task_ref` is the turn this agent is running.
@@ -755,14 +526,13 @@ defmodule Wardrik.Agent.State do
   @doc """
   Empties the history, and with it the labels of what it held, keeping
   everything else. `{:error, :busy}` unless the agent is idle: a turn running,
-  owed, waiting on a person or being compacted holds the history it began
-  with.
+  due, or waiting on a person holds the history it began with.
   """
   @spec clear(t()) :: {:ok, t(), [effect()]} | {:error, :busy}
   def clear(%__MODULE__{mode: :idle} = state) do
     dropped = length(state.context.messages)
 
-    {:ok, %{state | context: Context.new(), labels: [], compaction_settled: false},
+    {:ok, %{state | context: Context.new(), labels: []},
      [{:emit, Source.root(state.agent_id), {:context_cleared, dropped}}]}
   end
 
@@ -806,19 +576,11 @@ defmodule Wardrik.Agent.State do
   def interrupt(%__MODULE__{mode: %Running{} = running} = state) do
     {drained, dropped} = drain(state)
 
-    {drained, [{:stop_now, running.task.pid}, {:arm_kill, state.grace, dropped}]}
+    {drained,
+     [{:stop_now, running.task.pid}, {:arm_kill, running.task.ref, state.grace, dropped}]}
   end
 
-  def interrupt(%__MODULE__{mode: %Compacting{task: task} = compacting} = state) do
-    {drained, dropped} = drain(state)
-    stats = stats(compacting.started_at, dropped, 0, :stopped)
-
-    {idle(%{drained | outcome: :interrupted, compaction_settled: true}),
-     [{:shutdown, task}, {:emit, turn_scope(state).source, {:turn_interrupted, stats}}]}
-  end
-
-  def interrupt(%__MODULE__{mode: %mode{source: source}} = state)
-      when mode in [Replaying, Resuming] do
+  def interrupt(%__MODULE__{mode: %Due{source: %Source{} = source}} = state) do
     {drained, dropped} = drain(state)
 
     {idle(%{drained | outcome: :interrupted}),
@@ -839,7 +601,11 @@ defmodule Wardrik.Agent.State do
      ]}
   end
 
-  def interrupt(%__MODULE__{mode: mode} = state) when mode in [:idle, :owed] do
+  def interrupt(%__MODULE__{mode: %Due{recovery: :owed}} = state), do: dropped(state)
+  def interrupt(%__MODULE__{mode: :idle} = state), do: dropped(state)
+
+  # Nothing was running, so only the queue is stopped.
+  defp dropped(state) do
     {drained, dropped} = drain(state)
     stats = stats(nil, dropped, 0, :idle)
 
@@ -848,27 +614,24 @@ defmodule Wardrik.Agent.State do
 
   defp drain(state), do: {%{state | pending: []}, length(state.pending)}
 
-  @doc """
-  Records the kill an `{:arm_kill, _}` effect armed.
-
-  The tag is how `kill/2` recognises its own timer, so it is stored beside it
-  rather than inferred from anything else.
-  """
-  @spec arm(t(), reference(), reference(), non_neg_integer()) :: t()
-  def arm(%__MODULE__{mode: %Running{} = running} = state, tag, timer, dropped) do
-    stopping = %Stopping{tag: tag, timer: timer, dropped: dropped}
-
-    %{state | mode: %{running | stopping: stopping}}
-  end
+  @doc "Records the kill an `{:arm_kill, ...}` effect armed, behind the running turn."
+  @spec arm(t(), reference(), non_neg_integer()) :: t()
+  def arm(%__MODULE__{mode: %Running{} = running} = state, timer, dropped),
+    do: %{state | mode: %{running | stopping: %Stopping{timer: timer, dropped: dropped}}}
 
   @doc """
-  Fires the kill armed under `tag`, or refuses a tag that is not the live one.
+  Fires the kill armed for the turn whose task `task_ref` names, while it is
+  the turn running and stopping.
 
   `:stale` covers every timer that outlived what armed it: the turn answered,
-  was abandoned, or a later interrupt armed a kill of its own.
+  was abandoned, or was not the one running.
   """
   @spec kill(t(), reference()) :: {:kill, t(), [effect()]} | :stale
-  def kill(%__MODULE__{mode: %Running{stopping: %Stopping{tag: tag}} = running} = state, tag) do
+  def kill(
+        %__MODULE__{mode: %Running{task: %Task{ref: ref}, stopping: %Stopping{}} = running} =
+          state,
+        ref
+      ) do
     stats = stats(running.started_at, running.stopping.dropped, 0, :killed)
 
     {:kill, idle(%{state | outcome: :interrupted}),

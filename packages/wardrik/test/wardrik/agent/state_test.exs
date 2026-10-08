@@ -4,9 +4,10 @@ defmodule Wardrik.Agent.StateTest do
   alias ReqLLM.Context
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
-  alias Wardrik.Agent.State.Replaying
-  alias Wardrik.Agent.State.Resuming
+  alias Wardrik.Agent.State.Due
   alias Wardrik.Agent.State.Running
+  alias Wardrik.Agent.State.Stored
+  alias Wardrik.Agent.State.View
   alias Wardrik.Agent.State.Waiting
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
@@ -60,19 +61,22 @@ defmodule Wardrik.Agent.StateTest do
     state
   end
 
+  defp queued(state, n),
+    do: Enum.reduce(1..n, state, &elem(State.queue(&2, Message.new("m#{&1}")), 0))
+
   defp stopping do
     {state, _effects} = State.interrupt(running())
-    State.arm(state, make_ref(), make_ref(), 0)
+    State.arm(state, make_ref(), 0)
   end
 
   describe "the mode" do
     test "a fresh agent is idle with nothing queued" do
-      assert %{state: :idle, pending: 0} = State.status(state())
+      assert %{state: :idle, pending: 0} = View.status(state())
     end
 
     test "each mode reports itself" do
-      assert State.status(running()).state == :running
-      assert State.status(waiting()).state == :parked
+      assert View.status(running()).state == :running
+      assert View.status(waiting()).state == :parked
     end
 
     test "starting a turn replaces idle rather than sitting beside it" do
@@ -103,7 +107,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, effects} = State.queue(state(), Message.new("hello"))
 
       assert [{:emit, _source, {:message_queued, %Message{text: "hello"}}}] = effects
-      assert State.status(state).pending == 1
+      assert View.status(state).pending == 1
     end
 
     test "a message sent again under the same id is taken once" do
@@ -127,7 +131,7 @@ defmodule Wardrik.Agent.StateTest do
       {waiting, _} = State.queue(waiting(), Message.new("hello"))
 
       assert {:run, [%Message{text: "hello"}], drained} = State.take(idle)
-      assert State.status(drained).pending == 0
+      assert View.status(drained).pending == 0
       assert State.take(running) == :none
       assert State.take(waiting) == :none
     end
@@ -141,8 +145,8 @@ defmodule Wardrik.Agent.StateTest do
     test "a running turn is told to stop now and has a kill armed behind it" do
       {state, effects} = State.interrupt(running())
 
-      assert [{:stop_now, _pid}, {:arm_kill, 2_000, 0}] = effects
-      assert State.status(state).state == :running
+      assert [{:stop_now, _pid}, {:arm_kill, _task_ref, 2_000, 0}] = effects
+      assert View.status(state).state == :running
     end
 
     test "what was queued is dropped and counted" do
@@ -151,8 +155,8 @@ defmodule Wardrik.Agent.StateTest do
 
       {state, effects} = State.interrupt(queued)
 
-      assert {:arm_kill, _ms, 2} = List.last(effects)
-      assert State.status(state).pending == 0
+      assert {:arm_kill, _task_ref, _ms, 2} = List.last(effects)
+      assert View.status(state).pending == 0
     end
 
     test "interrupting twice keeps the kill that is already armed" do
@@ -179,12 +183,13 @@ defmodule Wardrik.Agent.StateTest do
   end
 
   describe "the kill" do
-    test "fires only for the tag that armed it" do
-      tag = make_ref()
-      {state, _} = State.interrupt(running())
-      state = State.arm(state, tag, make_ref(), 3)
+    test "is armed for the running turn's task, and fires for it" do
+      state = running()
+      ref = state.mode.task.ref
+      {state, [_stop, {:arm_kill, ^ref, _grace, 3}]} = State.interrupt(queued(state, 3))
+      state = State.arm(state, make_ref(), 3)
 
-      assert {:kill, idle, effects} = State.kill(state, tag)
+      assert {:kill, idle, effects} = State.kill(state, ref)
       assert idle.mode == :idle
 
       assert [
@@ -197,14 +202,20 @@ defmodule Wardrik.Agent.StateTest do
       assert stats.dropped == 3
     end
 
-    test "a timer from an earlier interrupt is refused" do
+    test "a timer armed for another turn is refused" do
       assert State.kill(stopping(), make_ref()) == :stale
     end
 
     test "a timer that fired after the turn answered is refused" do
-      {settled, _effects} = State.settled(stopping(), [], [])
+      stopping = stopping()
+      {settled, _effects} = State.settled(stopping, [], [])
 
-      assert State.kill(settled, make_ref()) == :stale
+      assert State.kill(settled, stopping.mode.task.ref) == :stale
+    end
+
+    test "a turn that is not stopping is not killed" do
+      running = running()
+      assert State.kill(running, running.mode.task.ref) == :stale
     end
 
     test "an idle agent cannot be killed" do
@@ -223,7 +234,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "is refused unless the agent is idle" do
       assert State.clear(running()) == {:error, :busy}
-      assert State.clear(%{state() | mode: :owed}) == {:error, :busy}
+      assert State.clear(%{state() | mode: %Due{recovery: :owed}}) == {:error, :busy}
     end
   end
 
@@ -322,7 +333,7 @@ defmodule Wardrik.Agent.StateTest do
   end
 
   describe "being written down" do
-    defp reload(state), do: state |> State.dump() |> State.load()
+    defp reload(state), do: state |> Stored.dump() |> Stored.load()
 
     defp resumed do
       {:resume, scope, turn, started_at} = State.resume(waiting())
@@ -349,22 +360,24 @@ defmodule Wardrik.Agent.StateTest do
       assert %State{mode: :idle, pending: [%Message{text: "hello"}]} = reload(state)
     end
 
-    test "a queue written down before messages had ids comes back with ids" do
-      dumped = %{State.dump(state()) | pending: ["hello"]}
-
-      assert %State{pending: [%Message{id: id, text: "hello"}]} = State.load(dumped)
-      assert is_binary(id)
-    end
-
     test "a turn in flight comes back owed, so take/1 runs it again" do
       state = reload(running())
 
-      assert state.mode == :owed
-      assert {:run, [], _state} = State.take(state)
+      assert state.mode == %Due{recovery: :owed}
+      assert %{state: :running} = View.status(state)
+      assert {:run, [], %State{mode: :idle}} = State.take(state)
     end
 
     test "an agent still owed a turn stays owed" do
-      assert reload(reload(running())).mode == :owed
+      assert reload(reload(running())).mode == %Due{recovery: :owed}
+    end
+
+    test "interrupting a turn owed drops the queue, and nothing else" do
+      {state, _effects} = State.queue(reload(running()), Message.new("hello"))
+
+      assert {%State{mode: :idle, pending: []},
+              [{:emit, _source, {:turn_interrupted, %{resolution: :idle, dropped: 1}}}]} =
+               State.interrupt(state)
     end
 
     test "a parked turn comes back parked, with the call it stopped on" do
@@ -384,10 +397,14 @@ defmodule Wardrik.Agent.StateTest do
       state = resumed()
       source = state.mode.scope.source
 
-      assert %State{mode: %Resuming{decisions: %{"call_1" => {:deny, "No."}}, source: ^source}} =
-               reopened = reload(state)
+      assert %State{
+               mode: %Due{
+                 recovery: {:resuming, _turn, %{"call_1" => {:deny, "No."}}},
+                 source: ^source
+               }
+             } = reopened = reload(state)
 
-      assert %{state: :running} = State.status(reopened)
+      assert %{state: :running} = View.status(reopened)
       assert State.waiting_on(reopened) == []
 
       assert {:resume, scope, %Turn{state: :waiting}, %{"call_1" => {:deny, "No."}}, _state} =
@@ -411,10 +428,11 @@ defmodule Wardrik.Agent.StateTest do
       source = state.mode.scope.source
       {:ok, state} = State.checkpointed(state, self(), checkpoint())
 
-      assert %State{mode: %Replaying{checkpoint: %Turn{remaining: 5}, source: ^source}} =
-               reopened = reload(state)
+      assert %State{
+               mode: %Due{recovery: {:replaying, %Turn{remaining: 5}}, source: ^source}
+             } = reopened = reload(state)
 
-      assert %{state: :running} = State.status(reopened)
+      assert %{state: :running} = View.status(reopened)
       assert {:replay, scope, %Turn{}, _state} = State.take(reopened)
       assert scope.source == source
       assert reload(reopened).mode == reopened.mode
@@ -422,7 +440,7 @@ defmodule Wardrik.Agent.StateTest do
 
     test "a checkpoint is the furthest a turn got, past the park it resumed from" do
       {:ok, state} = State.checkpointed(resumed(), self(), checkpoint())
-      assert %State{mode: %Replaying{}} = reload(state)
+      assert %State{mode: %Due{recovery: {:replaying, _checkpoint}}} = reload(state)
     end
 
     test "only the running turn may hand over a batch" do
@@ -433,7 +451,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a replay started is running, with the checkpoint it began from" do
       state = State.replayed(state(), task(), scope(), checkpoint(), System.monotonic_time())
       assert %State{mode: %Running{recovery: {:replaying, %Turn{}}}} = state
-      assert %State{mode: %Replaying{}} = reload(state)
+      assert %State{mode: %Due{recovery: {:replaying, %Turn{}}}} = reload(state)
     end
 
     test "interrupting a turn due to replay abandons it" do
@@ -469,10 +487,10 @@ defmodule Wardrik.Agent.StateTest do
       {:ok, checkpointed} = State.checkpointed(running(), self(), checkpoint())
 
       for state <- [stopping(), waiting(), resumed(), checkpointed] do
-        assert runtime_terms(State.dump(state)) == []
+        assert runtime_terms(Stored.dump(state)) == []
       end
 
-      assert State.dump(stopping()).mode == :owed
+      assert Stored.dump(stopping()).mode == %Due{recovery: :owed}
     end
 
     test "a runner that is not an MFA is refused when the state is built" do
@@ -485,23 +503,23 @@ defmodule Wardrik.Agent.StateTest do
     end
   end
 
-  describe "meta/1" do
+  describe "the view's meta/1" do
     test "reports what the fleet shows" do
-      assert State.meta(state()) == %{
+      assert View.meta(state()) == %{
                status: :idle,
                pending: 0,
                waiting_on: [],
                outcome: nil
              }
 
-      assert %{status: :running} = State.meta(running())
-      assert %{status: :parked, waiting_on: ["deploy"]} = State.meta(waiting())
+      assert %{status: :running} = View.meta(running())
+      assert %{status: :parked, waiting_on: ["deploy"]} = View.meta(waiting())
     end
 
     test "counts what is queued" do
       {state, _effects} = State.queue(state(), Message.new("hello"))
 
-      assert %{pending: 1} = State.meta(state)
+      assert %{pending: 1} = View.meta(state)
     end
   end
 end

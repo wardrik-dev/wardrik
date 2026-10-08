@@ -19,7 +19,7 @@ defmodule Wardrik.Agent.Snapshot do
 
   @type t() :: %__MODULE__{
           generation: String.t(),
-          status: State.status(),
+          status: Wardrik.Agent.State.View.status(),
           context: ReqLLM.Context.t(),
           parked: [{Wardrik.Tool.call(), String.t()}],
           trace_id: String.t() | nil,

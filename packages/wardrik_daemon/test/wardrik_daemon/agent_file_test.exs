@@ -339,13 +339,15 @@ defmodule WardrikDaemon.AgentFileTest do
 
   test "compaction is on by default, tuned or turned off by the file", context do
     assert {:ok, default} = read("---\n---\n", context)
-    assert default.config.compaction == %Wardrik.Compaction{}
+    assert default.config.history == {Wardrik.Compaction, %Wardrik.Compaction{}}
 
     assert {:ok, tuned} = read("---\ncompaction:\n  at: 0.5\n  window: 32000\n---\n", context)
-    assert tuned.config.compaction == %Wardrik.Compaction{at: 0.5, keep: 0.25, window: 32_000}
+
+    assert tuned.config.history ==
+             {Wardrik.Compaction, %Wardrik.Compaction{at: 0.5, keep: 0.25, window: 32_000}}
 
     assert {:ok, off} = read("---\ncompaction: false\n---\n", context)
-    assert off.config.compaction == nil
+    assert off.config.history == nil
 
     assert {:error, message} = read("---\ncompaction:\n  at: 2\n---\n", context)
     assert message =~ "compaction at is a share of the window"
