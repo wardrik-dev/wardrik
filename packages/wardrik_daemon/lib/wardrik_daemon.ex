@@ -20,11 +20,11 @@ defmodule WardrikDaemon do
 
       Supervisor.init(children, strategy: :rest_for_one)
 
-  Starting, it reads `config.yaml`, or `config.yml`, from the config directory
-  into the settings
-  each package reads (see `WardrikDaemon.Config`), gives the vault the key in
-  the data home where nothing else gives it one (see `WardrikDaemon.VaultKey`),
-  then starts what those settings call for:
+  As its supervisor starts, it reads `config.yaml`, or `config.yml`, from the
+  config directory into the settings it keeps (see `WardrikDaemon.Config`),
+  starts `WardrikVault` with the vault's, and the key in the data home where
+  nothing else gives it one (see `WardrikDaemon.VaultKey`), then starts what
+  those settings call for, each with its own section as options:
 
     * `WardrikMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
@@ -35,9 +35,9 @@ defmodule WardrikDaemon do
       restarts routes the agents as before.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
-    * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, to callers
-      holding a token that `wardrik token create` made, and defines agents with
-      `WardrikDaemon.Agents`.
+    * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
+      `http` says, to callers holding a token that `wardrik token create`
+      made, and defines agents with `WardrikDaemon.Agents`.
 
   A `config.yaml` that does not read stops the boot, with the reason logged.
 
@@ -81,25 +81,46 @@ defmodule WardrikDaemon do
 
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
-    config_dir = Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0)
-    state_dir = Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0)
-    data_dir = Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
+    dirs = {
+      Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0),
+      Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0),
+      Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
+    }
 
-    # The vault's key comes first, from vault.keys, the environment or the key
-    # file, so the rest of config.yaml can read from the vault what the
-    # environment does not set.
+    Supervisor.start_link(__MODULE__, dirs, name: __MODULE__)
+  end
+
+  @impl true
+  def init({config_dir, state_dir, data_dir}) do
+    case boot(config_dir, data_dir) do
+      :ok ->
+        children =
+          mcp(Path.join([state_dir, "log", "mcp.log"])) ++
+            oauth() ++
+            [{WardrikDaemon.Agents, dir: config_dir}] ++
+            notify() ++
+            WardrikDaemon.SSH.children(config_dir, data_dir) ++
+            [{WardrikHTTP.Listener, listener()}]
+
+        Supervisor.init(children, strategy: :one_for_one)
+
+      {:error, message} ->
+        Logger.error(message)
+        exit({:config, message})
+    end
+  end
+
+  # The vault's key comes first, from vault.keys, the environment or the key
+  # file, so the rest of config.yaml can read from the vault what the
+  # environment does not set.
+  defp boot(config_dir, data_dir) do
     with {:ok, file} <- Config.file(config_dir),
          {:ok, vault} <- Config.read(file, only: ["vault"]),
          :ok <- Config.apply(Keyword.take(vault, [WardrikVault])),
          :ok <- vault_key(data_dir),
          {:ok, settings} <- Config.read(file, vault: &Secrets.named/1) do
       :ok = Config.apply(settings)
-      :ok = Secrets.apply()
-      Supervisor.start_link(__MODULE__, {config_dir, state_dir, data_dir}, name: __MODULE__)
-    else
-      {:error, message} ->
-        Logger.error(message)
-        {:error, {:config, message}}
+      Secrets.apply()
     end
   end
 
@@ -114,36 +135,35 @@ defmodule WardrikDaemon do
     :ok
   end
 
-  @impl true
-  def init({config_dir, state_dir, data_dir}) do
-    children =
-      mcp(Path.join([state_dir, "log", "mcp.log"])) ++
-        oauth() ++
-        [{WardrikDaemon.Agents, dir: config_dir}] ++
-        notify() ++
-        WardrikDaemon.SSH.children(config_dir, data_dir) ++
-        [{WardrikHTTP.Listener, definition: WardrikDaemon.Agents}]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
-
   defp mcp(stderr) do
-    if WardrikMCP.configured?() do
+    settings = Config.settings(WardrikMCP)
+
+    if Keyword.get(settings, :servers, []) != [] do
       File.mkdir_p!(Path.dirname(stderr))
-      [{WardrikMCP.Supervisor, stderr: {:file, stderr}}]
+      [{WardrikMCP.Supervisor, Keyword.put(settings, :stderr, {:file, stderr})}]
     else
       []
     end
   end
 
   defp oauth do
-    if WardrikOAuth.Config.configured?(), do: [WardrikOAuth.Supervisor], else: []
+    settings = Config.settings(WardrikOAuth)
+
+    if Keyword.get(settings, :providers, []) != [],
+      do: [{WardrikOAuth.Supervisor, settings}],
+      else: []
   end
 
   defp notify do
-    if WardrikNotify.configured?(),
-      do: [{WardrikNotify.Supervisor, routes: {WardrikDaemon.Agents, :routes, []}}],
+    settings = Config.settings(WardrikNotify)
+
+    if Keyword.get(settings, :targets, []) != [],
+      do: [{WardrikNotify.Supervisor, [routes: {WardrikDaemon.Agents, :routes, []}] ++ settings}],
       else: []
+  end
+
+  defp listener do
+    [definition: WardrikDaemon.Agents] ++ Keyword.take(Config.settings(WardrikHTTP), [:port, :ip])
   end
 
   @doc """

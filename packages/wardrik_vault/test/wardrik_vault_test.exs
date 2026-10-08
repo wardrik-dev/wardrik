@@ -8,14 +8,9 @@ defmodule WardrikVaultTest do
   alias WardrikVault.Sealed
 
   setup do
-    previous = Application.get_env(:wardrik_vault, WardrikVault)
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
-        else: Application.delete_env(:wardrik_vault, WardrikVault)
-    end)
+    previous = WardrikVault.Config.settings()
+    :ignore = WardrikVault.start_link(keys: [WardrikVault.generate_key()])
+    on_exit(fn -> WardrikVault.start_link(previous) end)
 
     %{user: "jon-#{System.unique_integer([:positive])}"}
   end
@@ -43,10 +38,8 @@ defmodule WardrikVaultTest do
     end
   end
 
-  defp grants(module) do
-    settings = Application.get_env(:wardrik_vault, WardrikVault)
-    Application.put_env(:wardrik_vault, WardrikVault, Keyword.put(settings, :grants, module))
-  end
+  defp grants(module),
+    do: WardrikVault.start_link(Keyword.put(WardrikVault.Config.settings(), :grants, module))
 
   defp call(scope_opts) do
     Calls.tool("tool", %{}, scope([credentials: WardrikVault] ++ scope_opts))
@@ -58,7 +51,14 @@ defmodule WardrikVaultTest do
     Scope.root(Config.new(), Wardrik.AgentID.new!("assistant", org: org, user: user), opts)
   end
 
-  defp keys(list), do: Application.put_env(:wardrik_vault, WardrikVault, keys: list)
+  defp keys(list), do: WardrikVault.start_link(keys: list)
+
+  defp environment_variable(value) do
+    name = "WARDRIK_VAULT_TEST_#{System.unique_integer([:positive])}"
+    System.put_env(name, value)
+    on_exit(fn -> System.delete_env(name) end)
+    name
+  end
 
   describe "path/2" do
     test "writes distinct owners and names under distinct keys" do
@@ -147,7 +147,7 @@ defmodule WardrikVaultTest do
 
   describe "keys" do
     test "a rotated key still reads what the old one sealed", %{user: user} do
-      [old] = Application.get_env(:wardrik_vault, WardrikVault)[:keys]
+      [old] = WardrikVault.Config.keys()
       :ok = WardrikVault.put("github", user, "ghp_secret")
 
       keys([WardrikVault.generate_key(), old])
@@ -234,6 +234,37 @@ defmodule WardrikVaultTest do
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), "nothing")
     end
 
+    test "a name the environment sets, as :environment names it, is the deployment's where nobody holds it",
+         %{user: user} do
+      name = environment_variable("from-the-environment")
+
+      :ignore =
+        WardrikVault.start_link(Keyword.put(WardrikVault.Config.settings(), :environment, [name]))
+
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
+      assert Credential.reveal(credential) == "from-the-environment"
+      assert credential.owner == nil
+
+      :ok = WardrikVault.put(name, {"acme", user}, "sealed")
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
+      assert Credential.reveal(credential) == "sealed"
+    end
+
+    test "a name the environment sets resolves where the vault has no key", %{user: user} do
+      name = environment_variable("keyless")
+      :ignore = WardrikVault.start_link(environment: [name])
+
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
+      assert Credential.reveal(credential) == "keyless"
+      assert {:error, :no_key} = Credential.resolve(call(org: "acme", user: user), "github")
+    end
+
+    test "a name the environment sets is not read unless :environment names it", %{user: user} do
+      name = environment_variable("unnamed")
+
+      assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), name)
+    end
+
     test "a grant is handed to the grants module to answer, and to renew", %{user: user} do
       grants(Grants)
       :ok = WardrikVault.put("github", {"acme", user}, "token", kind: :grant)
@@ -291,7 +322,7 @@ defmodule WardrikVaultTest do
     test "a grant that no longer unseals is asked for again", %{user: user} do
       grants(Grants)
       :ok = WardrikVault.put("github", {"acme", user}, "token", kind: :grant)
-      [old] = Application.get_env(:wardrik_vault, WardrikVault)[:keys]
+      [old] = WardrikVault.Config.keys()
       keys([WardrikVault.generate_key()])
       grants(Grants)
 

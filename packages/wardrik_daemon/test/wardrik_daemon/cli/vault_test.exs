@@ -4,27 +4,21 @@ defmodule WardrikDaemon.CLI.VaultTest do
   import ExUnit.CaptureIO
 
   alias WardrikDaemon.CLI
+  alias WardrikDaemon.Test.Settings
   alias WardrikDaemon.VaultKey
 
   @moduletag :tmp_dir
 
   setup %{tmp_dir: dir} do
-    previous =
-      {Application.get_env(:wardrik_vault, WardrikVault), System.get_env("WARDRIK_DATA_HOME")}
-
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
+    previous = System.get_env("WARDRIK_DATA_HOME")
+    Settings.keep()
+    :ok = Settings.vault()
     System.put_env("WARDRIK_DATA_HOME", dir)
 
     on_exit(fn ->
-      case previous do
-        {nil, _home} -> Application.delete_env(:wardrik_vault, WardrikVault)
-        {settings, _home} -> Application.put_env(:wardrik_vault, WardrikVault, settings)
-      end
-
-      case previous do
-        {_settings, nil} -> System.delete_env("WARDRIK_DATA_HOME")
-        {_settings, home} -> System.put_env("WARDRIK_DATA_HOME", home)
-      end
+      if previous,
+        do: System.put_env("WARDRIK_DATA_HOME", previous),
+        else: System.delete_env("WARDRIK_DATA_HOME")
     end)
 
     %{name: "TOKEN_#{System.unique_integer([:positive])}"}
@@ -60,7 +54,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     {output, status}
   end
 
-  defp no_key, do: Application.delete_env(:wardrik_vault, WardrikVault)
+  defp no_key, do: Settings.no_vault()
 
   describe "vault put" do
     test "seals each NAME=VALUE as the deployment's", %{name: name} do
@@ -244,7 +238,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert output =~ "The vault has no key, and wardrik vault put --yes makes one.\n"
       assert output =~ "To set one instead: WARDRIK_VAULT_KEY"
-      refute WardrikVault.Config.configured?()
+      refute VaultKey.configured?()
     end
 
     test "reads a key file written since the daemon started", %{name: name, tmp_dir: dir} do
@@ -259,7 +253,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       {output, 1} = command(["vault", "put", "#{name}=v", "--yes"])
       assert output =~ "#{dir}/vault_key holds no key the vault can use"
 
-      Application.put_env(:wardrik_vault, WardrikVault, keys: ["c2hvcnQ="])
+      :ok = Settings.vault(["c2hvcnQ="])
 
       assert {"The vault's key is not one it can use, 32 bytes in base64." <> _how, 1} =
                command(["vault", "put", "#{name}=v"])

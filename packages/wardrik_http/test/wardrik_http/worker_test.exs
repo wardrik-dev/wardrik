@@ -121,6 +121,19 @@ defmodule WardrikHTTP.WorkerTest do
     %{port: port, secret: secret, agent: Wardrik.Test.Fleet.id()}
   end
 
+  # The group of workers started again with `opts` for this test, and as the
+  # suite started it after.
+  defp workers(opts) do
+    restart_workers(opts)
+    on_exit(fn -> restart_workers([]) end)
+  end
+
+  defp restart_workers(opts) do
+    :ok = Supervisor.terminate_child(Wardrik.Test.Supervisor, Workers)
+    :ok = Supervisor.delete_child(Wardrik.Test.Supervisor, Workers)
+    {:ok, _pid} = Supervisor.start_child(Wardrik.Test.Supervisor, {Workers, opts})
+  end
+
   # A worker connected with `secret`, once Wardrik has offered what it listed.
   defp connect(%{port: port} = context, tools, secret \\ nil) do
     worker =
@@ -257,10 +270,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a call not answered in time is cancelled, and left in doubt", context do
-    previous = Application.get_env(:wardrik_http, WardrikHTTP, [])
-    Application.put_env(:wardrik_http, WardrikHTTP, Keyword.put(previous, :worker_timeout, 50))
-    on_exit(fn -> Application.put_env(:wardrik_http, WardrikHTTP, previous) end)
-
+    workers(timeout: 50)
     connect(context, [tool("hang")])
 
     assert {:in_doubt, "hang did not answer in time.", served_by: _served} =
@@ -460,19 +470,7 @@ defmodule WardrikHTTP.WorkerTest do
              "outside"
            ]
 
-    previous = Application.get_env(:wardrik_http, WardrikHTTP)
-
-    Application.put_env(
-      :wardrik_http,
-      WardrikHTTP,
-      Keyword.put(previous || [], :trusted_workers, true)
-    )
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:wardrik_http, WardrikHTTP, previous),
-        else: Application.delete_env(:wardrik_http, WardrikHTTP)
-    end)
+    workers(trusted: true)
 
     assert annotations(Wardrik.AgentID.parse!("test/triage"), "workers__echo").labels == []
   end

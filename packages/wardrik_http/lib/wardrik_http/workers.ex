@@ -31,7 +31,7 @@ defmodule WardrikHTTP.Workers do
   answer each with what is theirs alone. A call made in a turn also carries
   the turn's run, as `_meta.run`, the id its events carry, and its
   `Wardrik.Ledger.idempotency_key/2` as `_meta.idempotencyKey`. It waits for
-  the worker's answer for `WardrikHTTP.Config.worker_timeout/0`. A call's
+  the worker's answer for the group's `:timeout`. A call's
   events name the token whose worker answered it.
 
   A worker gone before it answers, or one that answers late, leaves its call
@@ -51,7 +51,17 @@ defmodule WardrikHTTP.Workers do
   The group of workers is a child the host starts after Wardrik and
   `WardrikHTTP.Access` in its own tree, and before `WardrikHTTP.Listener`:
 
-      children = [Wardrik, WardrikHTTP.Access, WardrikHTTP.Workers]
+      children = [Wardrik, WardrikHTTP.Access, {WardrikHTTP.Workers, trusted: true}]
+
+  Options:
+
+    * `:timeout` - how long a call waits for a worker's answer, in
+      milliseconds, 60 seconds by default
+    * `:trusted` - whether what workers answer is the deployment's own, so it
+      is not labelled `"outside"`; `false` by default
+
+  A call is made in the process of the turn that makes it, so the group's
+  start keeps them in `:persistent_term`, where each call reads them.
   """
 
   @behaviour Wardrik.Tool
@@ -66,9 +76,24 @@ defmodule WardrikHTTP.Workers do
 
   @group "workers"
   @prefix "workers__"
+  @settings {__MODULE__, :settings}
+  @defaults [timeout: :timer.seconds(60), trusted: false]
 
   @doc false
-  def child_spec(_opts), do: Group.child_spec(name: __MODULE__)
+  def child_spec(opts) do
+    opts = Keyword.validate!(opts, @defaults)
+    group = Group.child_spec(name: __MODULE__)
+    %{group | id: __MODULE__, start: {__MODULE__, :start_link, [opts, group.start]}}
+  end
+
+  @doc false
+  @spec start_link(keyword(), {module(), atom(), [term()]}) :: Supervisor.on_start()
+  def start_link(opts, {module, function, args}) do
+    :persistent_term.put(@settings, opts)
+    apply(module, function, args)
+  end
+
+  defp setting(key), do: @settings |> :persistent_term.get(@defaults) |> Keyword.fetch!(key)
 
   @doc """
   Offers `tools` from the calling process, a worker's socket holding `token`
@@ -112,8 +137,8 @@ defmodule WardrikHTTP.Workers do
   allows it by name, unless every one marks the tool read-only, since
   anything else a worker does may change something; a call in doubt runs
   again where every one marks it read-only or idempotent; its answers are
-  labelled `"outside"` unless `WardrikHTTP.Config.trusted_workers?/0` says
-  workers are the deployment's own, since a worker can pass on anything it
+  labelled `"outside"` unless the group's `:trusted` says workers are the
+  deployment's own, since a worker can pass on anything it
   reads; and a call may take the worker's wait twice, once more in doubt,
   and a little.
   """
@@ -126,14 +151,14 @@ defmodule WardrikHTTP.Workers do
       in_doubt:
         if(offered != [] and Enum.all?(offered, &(&1.in_doubt == :rerun)), do: :rerun, else: :ask),
       labels: workers_labels(),
-      timeout: 2 * WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
+      timeout: 2 * setting(:timeout) + :timer.seconds(5)
     }
   end
 
   def annotations(_id, _name),
     do: %{gated: true, labels: workers_labels()}
 
-  defp workers_labels, do: if(WardrikHTTP.Config.trusted_workers?(), do: [], else: ["outside"])
+  defp workers_labels, do: if(setting(:trusted), do: [], else: ["outside"])
 
   @doc false
   @spec call(AgentID.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Result.t()
@@ -163,7 +188,7 @@ defmodule WardrikHTTP.Workers do
       {:DOWN, ^ref, :process, _pid, _reason} ->
         {:in_doubt, "The worker running #{name} went away before it answered.", served_by: served}
     after
-      WardrikHTTP.Config.worker_timeout() ->
+      setting(:timeout) ->
         Process.demonitor(ref, [:flush])
         send(worker, {:cancel, ref})
         {:in_doubt, "#{name} did not answer in time.", served_by: served}

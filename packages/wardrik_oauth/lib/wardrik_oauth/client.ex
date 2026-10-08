@@ -3,13 +3,13 @@ defmodule WardrikOAuth.Client do
   What Wardrik looks like to an authorization server: one identity, rendered
   however each server wants to be told about it.
 
-      config :wardrik_oauth, WardrikOAuth,
-        client: [
-          name: "Wardrik",
-          client_uri: "https://wardrik.dev",
-          logo_uri: "https://wardrik.dev/logo.png",
-          document_url: "https://wardrik.dev/oauth/client"
-        ]
+      {WardrikOAuth.Supervisor,
+       client: [
+         name: "Wardrik",
+         client_uri: "https://wardrik.dev",
+         logo_uri: "https://wardrik.dev/logo.png",
+         document_url: "https://wardrik.dev/oauth/client"
+       ]}
 
   The same fields are the CIMD document a server fetches, the body of a dynamic
   registration, and what a person types into a provider's form. Branding is one
@@ -49,7 +49,7 @@ defmodule WardrikOAuth.Client do
           req_options: keyword()
         }
 
-  @doc "Builds the client from `config :wardrik_oauth, WardrikOAuth, client: [...]`, with overrides."
+  @doc "Builds the client from the `:client` setting, see `WardrikOAuth.Config`, with overrides."
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     struct!(__MODULE__, Keyword.merge(configured(), opts))

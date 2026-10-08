@@ -7,6 +7,9 @@ defmodule WardrikNotify.Dispatcher do
   A notice is sent only by the node holding the agent at the time, so every
   node of a cluster can route the same agents and each notice goes out once.
 
+  It is started with the targets and the request options
+  `WardrikNotify.Supervisor` takes.
+
   `:routes` is where it finds the routes as it starts, so one that restarts
   routes what it routed before: a `{module, function, args}` or a function of
   no arguments returning the routes `put_routes/1` takes. It starts with none
@@ -30,8 +33,9 @@ defmodule WardrikNotify.Dispatcher do
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    opts = Keyword.validate!(opts, routes: nil)
-    GenServer.start_link(__MODULE__, opts[:routes], name: __MODULE__)
+    opts = Keyword.validate!(opts, routes: nil, targets: [], req_options: [])
+    state = %{routes: %{}, targets: opts[:targets], req_options: opts[:req_options]}
+    GenServer.start_link(__MODULE__, {state, opts[:routes]}, name: __MODULE__)
   end
 
   @doc false
@@ -39,34 +43,34 @@ defmodule WardrikNotify.Dispatcher do
   def put_routes(routes), do: GenServer.call(__MODULE__, {:routes, routes})
 
   @impl true
-  def init(nil), do: {:ok, %{}}
-  def init(source), do: {:ok, %{}, {:continue, {:load, source}}}
+  def init({state, nil}), do: {:ok, state}
+  def init({state, source}), do: {:ok, state, {:continue, {:load, source}}}
 
   @impl true
-  def handle_continue({:load, {module, function, args}}, current),
-    do: {:noreply, route(current, apply(module, function, args))}
+  def handle_continue({:load, {module, function, args}}, state),
+    do: {:noreply, route(state, apply(module, function, args))}
 
-  def handle_continue({:load, source}, current) when is_function(source, 0),
-    do: {:noreply, route(current, source.())}
-
-  @impl true
-  def handle_call({:routes, routes}, _from, current), do: {:reply, :ok, route(current, routes)}
+  def handle_continue({:load, source}, state) when is_function(source, 0),
+    do: {:noreply, route(state, source.())}
 
   @impl true
-  def handle_info(%Wardrik.Event{source: %{agent_id: agent}} = event, routes) do
-    with %Route{} = route <- Map.get(routes, agent),
+  def handle_call({:routes, routes}, _from, state), do: {:reply, :ok, route(state, routes)}
+
+  @impl true
+  def handle_info(%Wardrik.Event{source: %{agent_id: agent}} = event, state) do
+    with %Route{} = route <- Map.get(state.routes, agent),
          {:ok, %Notice{} = notice} <- Notice.from_event(event),
          true <- notice.kind in route.on,
          true <- held_here?(agent) do
-      Enum.each(route.targets, &send_to(&1, notice))
+      Enum.each(route.targets, &send_to(&1, notice, state))
     end
 
-    {:noreply, routes}
+    {:noreply, state}
   end
 
-  def handle_info(_message, routes), do: {:noreply, routes}
+  def handle_info(_message, state), do: {:noreply, state}
 
-  defp route(current, routes) when is_map(routes) do
+  defp route(%{routes: current} = state, routes) when is_map(routes) do
     for agent <- Map.keys(current),
         not Map.has_key?(routes, agent),
         do: Wardrik.Event.Bus.unsubscribe(agent)
@@ -75,7 +79,7 @@ defmodule WardrikNotify.Dispatcher do
         not Map.has_key?(current, agent),
         do: Wardrik.Event.Bus.subscribe(agent, level: :lifecycle)
 
-    routes
+    %{state | routes: routes}
   end
 
   defp held_here?(agent) do
@@ -85,14 +89,15 @@ defmodule WardrikNotify.Dispatcher do
     end
   end
 
-  defp send_to(name, notice) do
-    Task.Supervisor.start_child(@tasks, fn -> deliver(name, notice) end)
+  defp send_to(name, notice, state) do
+    Task.Supervisor.start_child(@tasks, fn -> deliver(name, notice, state) end)
   end
 
-  defp deliver(name, notice) do
-    with {:ok, {module, opts}} <- WardrikNotify.Config.target(name),
-         true <- WardrikNotify.Config.tells?(name, notice.agent.org),
-         :ok <- module.deliver(notice, Keyword.put(opts, :target, name)) do
+  defp deliver(name, notice, %{targets: targets, req_options: req_options}) do
+    with {:ok, {module, opts}} <- WardrikNotify.target(targets, name),
+         true <- WardrikNotify.tells?(targets, name, notice.agent.org),
+         opts = opts |> Keyword.put(:target, name) |> Keyword.put_new(:req_options, req_options),
+         :ok <- module.deliver(notice, opts) do
       :ok
     else
       :error ->

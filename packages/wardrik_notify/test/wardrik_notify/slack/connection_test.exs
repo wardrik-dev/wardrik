@@ -4,7 +4,12 @@ defmodule WardrikNotify.Slack.ConnectionTest do
   alias WardrikNotify.Slack.Socket
   alias WardrikNotify.Slack.Socket.Connection
 
-  @state %{token: "xapp-test", connection: nil, backoff: 1_000}
+  @state %{
+    token: "xapp-test",
+    answer: [targets: [], req_options: [plug: {Req.Test, WardrikNotify.Stub}]],
+    connection: nil,
+    backoff: 1_000
+  }
 
   describe "the connection's frames" do
     test "says hello to its owner, and closes on Slack's disconnect" do

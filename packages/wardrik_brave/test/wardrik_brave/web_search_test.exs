@@ -3,6 +3,8 @@ defmodule WardrikBrave.WebSearchTest do
 
   alias WardrikBrave.WebSearch
 
+  import Wardrik.Credential, only: [secret: 1]
+
   @body %{"grounding" => %{"generic" => [%{"url" => "https://a.test", "snippets" => ["hi"]}]}}
 
   describe "tool/0" do
@@ -11,11 +13,14 @@ defmodule WardrikBrave.WebSearchTest do
 
       assert %ReqLLM.Tool{name: "web_search"} = tool
       assert tool.description =~ "Search the web"
-      assert tool.callback == {WebSearch, :run}
     end
 
     test "answers with pages from outside, labelled so" do
       assert Wardrik.Tool.annotations(WebSearch, "web_search").labels == ["outside"]
+    end
+
+    test "needs the key, as a credential the call resolves" do
+      assert Wardrik.Tool.annotations(WebSearch, "web_search").credentials == ["BRAVE_API_KEY"]
     end
 
     test "requires only a query" do
@@ -49,26 +54,49 @@ defmodule WardrikBrave.WebSearchTest do
     end
   end
 
-  describe "run/1" do
+  describe "run/2" do
     test "a search reports its results under ok" do
       stub_json(200, @body)
 
-      assert {:ok, %{"ok" => true, "result" => result}} = WebSearch.run(%{query: "elixir"})
+      assert {:ok, %{"ok" => true, "result" => result}} =
+               WebSearch.run(%{query: "elixir"}, config())
+
       assert result["count"] == 1
     end
 
     test "a failed search is a result the model can read, not a failed tool" do
       stub_status(429)
 
-      assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "elixir"})
+      assert {:ok, %{"ok" => false, "error" => error}} =
+               WebSearch.run(%{query: "elixir"}, config())
+
       assert error["code"] == "brave_rate_limited"
     end
 
-    test "executing through the tool runs the same path" do
-      stub_json(200, @body)
+    test "a call searches with the key its credential resolved, and an empty one is none" do
+      scope = Wardrik.Test.scope(tools: [WebSearch])
+      context = Wardrik.Test.context(scope, credentials: %{"BRAVE_API_KEY" => secret("")})
 
-      assert {:ok, %{"ok" => true}} =
-               ReqLLM.Tool.execute(WebSearch.tool(), %{query: "elixir"})
+      assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
+      assert error["code"] == "missing_brave_api_key"
+      refute_received {:req, _conn, _body}
+    end
+
+    test "a call with no key resolved reports the missing key" do
+      context = Wardrik.Test.context(Wardrik.Test.scope(tools: [WebSearch]))
+
+      assert {:ok, %{"ok" => false, "error" => error}} = WebSearch.run(%{query: "x"}, context)
+      assert error["code"] == "missing_brave_api_key"
+    end
+
+    test "a scope that resolves no credentials is told why, and nothing runs" do
+      scope = Wardrik.Test.scope(tools: [WebSearch])
+
+      assert %Wardrik.Call{state: :done, result: {:ok, %{"ok" => false, "error" => error}}} =
+               Wardrik.Test.call(scope, "web_search", %{"query" => "x"})
+
+      assert error["message"] =~ "BRAVE_API_KEY"
+      refute_received {:req, _conn, _body}
     end
   end
 
@@ -138,11 +166,10 @@ defmodule WardrikBrave.WebSearchTest do
 
   test "asking for a window both ways is refused rather than half-honoured" do
     assert {:ok, %{"ok" => false, "error" => %{"message" => message}}} =
-             WardrikBrave.WebSearch.run(%{
-               query: "x",
-               freshness: "pw",
-               published_between: "2025-01-01to2025-06-30"
-             })
+             WardrikBrave.WebSearch.run(
+               %{query: "x", freshness: "pw", published_between: "2025-01-01to2025-06-30"},
+               config()
+             )
 
     assert message =~ "not both"
   end

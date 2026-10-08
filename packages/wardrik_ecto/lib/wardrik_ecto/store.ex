@@ -6,7 +6,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     A `Wardrik.Store` in a Postgres table, through a host's Ecto repo or one of
     its own.
 
-        config :wardrik, Wardrik.Store, adapter: WardrikEcto.Store, repo: MyApp.Repo
+        {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo]}
 
     The table is `wardrik_records`, which `WardrikEcto.Migration` creates. A row
     is a namespace, a key, a value written with `:erlang.term_to_binary/1` and
@@ -26,7 +26,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
 
     The store is kept through a host's repo, or through one of its own:
 
-        config :wardrik, Wardrik.Store, adapter: WardrikEcto.Store, url: "postgres://…/wardrik"
+        {Wardrik, store: [adapter: WardrikEcto.Store, url: "postgres://…/wardrik"]}
 
     | Option | Default | |
     | --- | --- | --- |

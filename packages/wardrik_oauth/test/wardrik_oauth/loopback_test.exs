@@ -17,6 +17,7 @@ defmodule WardrikOAuth.LoopbackTest do
 
     port = 4600 + System.unique_integer([:positive, :monotonic])
     start_supervised!({WardrikOAuth.Supervisor, port: port})
+    :ok = configure([])
 
     %{port: port, owner: owner}
   end

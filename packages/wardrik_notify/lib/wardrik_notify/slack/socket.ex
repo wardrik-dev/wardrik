@@ -3,7 +3,8 @@ defmodule WardrikNotify.Slack.Socket do
   A Socket Mode connection out to Slack, for one app-level token.
 
   It asks Slack for a connection URL, connects, acknowledges every envelope
-  Slack sends, and hands each button press to `WardrikNotify.Slack.answer/1`.
+  Slack sends, and hands each button press to `WardrikNotify.Slack.answer/2`,
+  with the `:targets` and `:req_options` it was started with.
   When Slack closes the connection, as it does every few hours, or the
   network drops it, it connects again, waiting longer after each failure up
   to a minute.
@@ -21,11 +22,14 @@ defmodule WardrikNotify.Slack.Socket do
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
     token = Keyword.fetch!(opts, :app_token)
-    %{id: {__MODULE__, :erlang.phash2(token)}, start: {__MODULE__, :start_link, [token]}}
+    %{id: {__MODULE__, :erlang.phash2(token)}, start: {__MODULE__, :start_link, [opts]}}
   end
 
-  @spec start_link(String.t()) :: GenServer.on_start()
-  def start_link(token), do: GenServer.start_link(__MODULE__, token)
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    opts = Keyword.validate!(opts, [:app_token, targets: [], req_options: []])
+    GenServer.start_link(__MODULE__, opts)
+  end
 
   @doc """
   What a text frame from Slack asks for: `:hello`, `:disconnect`, an
@@ -53,9 +57,16 @@ defmodule WardrikNotify.Slack.Socket do
   end
 
   @impl true
-  def init(token) do
+  def init(opts) do
     Process.flag(:trap_exit, true)
-    {:ok, %{token: token, connection: nil, backoff: @first_backoff}, {:continue, :connect}}
+
+    {:ok,
+     %{
+       token: opts[:app_token],
+       answer: Keyword.take(opts, [:targets, :req_options]),
+       connection: nil,
+       backoff: @first_backoff
+     }, {:continue, :connect}}
   end
 
   @impl true
@@ -68,7 +79,7 @@ defmodule WardrikNotify.Slack.Socket do
 
   def handle_info({:interactive, payload}, state) do
     Task.Supervisor.start_child(WardrikNotify.TaskSupervisor, fn ->
-      WardrikNotify.Slack.answer(payload)
+      WardrikNotify.Slack.answer(payload, state.answer)
     end)
 
     {:noreply, state}
@@ -81,7 +92,12 @@ defmodule WardrikNotify.Slack.Socket do
 
   defp connect(state) do
     with {:ok, %{"url" => url}} <-
-           WardrikNotify.Slack.post("apps.connections.open", state.token, %{}),
+           WardrikNotify.Slack.post(
+             "apps.connections.open",
+             state.token,
+             %{},
+             Keyword.get(state.answer, :req_options, [])
+           ),
          {:ok, connection} <- Connection.start_link(url, self()) do
       {:noreply, %{state | connection: connection}}
     else

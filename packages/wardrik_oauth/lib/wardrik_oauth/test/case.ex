@@ -2,9 +2,12 @@ defmodule WardrikOAuth.Test.Case do
   @moduledoc """
   An authorization server that answers without a socket, and a vault with a key.
 
-  Requests are routed to a `Req.Test` stub through `config :wardrik_oauth, WardrikOAuth,
-  req_options:`, so discovery, registration, exchange and refresh all run their
-  real request building against a stub that reports what it was sent.
+  Requests are routed to a `Req.Test` stub through the `:req_options` setting,
+  so discovery, registration, exchange and refresh all run their real request
+  building against a stub that reports what it was sent. Each test starts with
+  the settings `configure/1` gives, and no provider; a test that starts
+  `WardrikOAuth.Supervisor` configures again after it, since the supervisor
+  keeps the settings it was started with.
 
       use WardrikOAuth.Test.Case
 
@@ -46,21 +49,15 @@ defmodule WardrikOAuth.Test.Case do
   end
 
   setup do
-    previous = %{
-      oauth: Application.get_env(:wardrik_oauth, WardrikOAuth),
-      vault: Application.get_env(:wardrik_vault, WardrikVault)
-    }
+    previous = %{oauth: WardrikOAuth.Config.settings(), vault: WardrikVault.Config.settings()}
 
-    Application.put_env(:wardrik_vault, WardrikVault,
-      keys: [WardrikVault.generate_key()],
-      grants: WardrikOAuth
-    )
-
+    :ignore = WardrikVault.start_link(keys: [WardrikVault.generate_key()], grants: WardrikOAuth)
+    :ok = configure([])
     forget_registrations()
 
     on_exit(fn ->
-      put_back(:wardrik_oauth, WardrikOAuth, previous.oauth)
-      put_back(:wardrik_vault, WardrikVault, previous.vault)
+      :ok = WardrikOAuth.Config.put(previous.oauth)
+      :ignore = WardrikVault.start_link(previous.vault)
       forget_registrations()
     end)
 
@@ -84,7 +81,7 @@ defmodule WardrikOAuth.Test.Case do
       poll_floor: 0
     ]
 
-    Application.put_env(:wardrik_oauth, WardrikOAuth, Keyword.merge(defaults, opts))
+    WardrikOAuth.Config.put(Keyword.merge(defaults, opts))
   end
 
   @doc "The redirect URI the tests register."
@@ -271,7 +268,4 @@ defmodule WardrikOAuth.Test.Case do
       _other -> Plug.Conn.read_body(conn)
     end
   end
-
-  defp put_back(app, key, nil), do: Application.delete_env(app, key)
-  defp put_back(app, key, value), do: Application.put_env(app, key, value)
 end

@@ -55,13 +55,17 @@ defmodule WardrikNotify.Slack do
       blocks: blocks(notice, opts)
     }
 
-    with {:ok, _reply} <- post("chat.postMessage", Keyword.fetch!(opts, :token), message), do: :ok
+    token = Keyword.fetch!(opts, :token)
+
+    with {:ok, _reply} <-
+           post("chat.postMessage", token, message, Keyword.get(opts, :req_options, [])),
+         do: :ok
   end
 
-  @doc "The app-level tokens of every Slack target, each once."
-  @spec app_tokens() :: [String.t()]
-  def app_tokens do
-    for {_name, {__MODULE__, opts}} <- WardrikNotify.Config.targets(),
+  @doc "The app-level tokens of the Slack targets among `targets`, each once."
+  @spec app_tokens(WardrikNotify.targets()) :: [String.t()]
+  def app_tokens(targets) do
+    for {_name, {__MODULE__, opts}} <- targets,
         token = opts[:app_token],
         uniq: true,
         do: token
@@ -171,29 +175,41 @@ defmodule WardrikNotify.Slack do
   Socket Mode: decides the call, and replaces the message's buttons with who
   decided it; or, for Show link, tells the person pressing alone where to
   connect the account; or tells them why nothing happened.
+
+  `opts` are those `WardrikNotify.Slack.Socket` was started with: `:targets`,
+  among which the press names the target whose message it was, and
+  `:req_options`, merged into the request that answers it.
   """
-  @spec answer(map()) :: :ok | :ignored
-  def answer(%{"actions" => [%{"action_id" => action, "value" => value} | _]} = payload)
+  @spec answer(map(), keyword()) :: :ok | :ignored
+  def answer(payload, opts \\ [])
+
+  def answer(%{"actions" => [%{"action_id" => action, "value" => value} | _]} = payload, opts)
       when action in ["wardrik_approve", "wardrik_deny", "wardrik_link"] do
     user = Map.get(payload, "user", %{})
+    targets = Keyword.get(opts, :targets, [])
 
     with {:ok, %{"a" => text, "c" => call, "n" => name, "t" => target}} <- JSON.decode(value),
          {:ok, agent} <- Wardrik.AgentID.parse(text),
-         {:ok, {__MODULE__, opts}} <- WardrikNotify.Config.target(target) do
+         {:ok, {__MODULE__, target_opts}} <- WardrikNotify.target(targets, target) do
       reply =
         cond do
-          not approver?(user, opts) -> ephemeral("Only this channel's approvers can answer that.")
-          action == "wardrik_link" -> ephemeral(link(agent, call))
-          true -> decide(payload, action, user, agent, call, name)
+          not approver?(user, target_opts) ->
+            ephemeral("Only this channel's approvers can answer that.")
+
+          action == "wardrik_link" ->
+            ephemeral(link(agent, call))
+
+          true ->
+            decide(payload, action, user, agent, call, name)
         end
 
-      respond(payload["response_url"], reply)
+      respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
     else
       _unreadable -> :ignored
     end
   end
 
-  def answer(_payload), do: :ignored
+  def answer(_payload, _opts), do: :ignored
 
   defp approver?(user, opts) do
     case opts[:approvers] do
@@ -266,10 +282,10 @@ defmodule WardrikNotify.Slack do
 
   defp ephemeral(text), do: %{response_type: "ephemeral", replace_original: false, text: text}
 
-  defp respond(nil, _reply), do: :ok
+  defp respond(nil, _reply, _req_options), do: :ok
 
-  defp respond(url, reply) do
-    case Req.post(url, Keyword.merge([json: reply], WardrikNotify.Config.req_options())) do
+  defp respond(url, reply, req_options) do
+    case Req.post(url, Keyword.merge([json: reply], req_options)) do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         :ok
 
@@ -281,11 +297,13 @@ defmodule WardrikNotify.Slack do
 
   # -- the Web API -----------------------------------------------------------
 
-  @doc "Calls the Web API's `method` with `token`, answering Slack's reply."
-  @spec post(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
-  def post(method, token, body) do
-    options =
-      Keyword.merge([json: body, auth: {:bearer, token}], WardrikNotify.Config.req_options())
+  @doc """
+  Calls the Web API's `method` with `token`, answering Slack's reply.
+  `req_options` are merged into the request.
+  """
+  @spec post(String.t(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def post(method, token, body, req_options \\ []) do
+    options = Keyword.merge([json: body, auth: {:bearer, token}], req_options)
 
     case Req.post(@api <> method, options) do
       {:ok, %Req.Response{status: 200, body: %{"ok" => true} = reply}} -> {:ok, reply}

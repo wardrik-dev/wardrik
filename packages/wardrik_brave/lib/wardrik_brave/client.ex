@@ -20,7 +20,7 @@ defmodule WardrikBrave.Client do
   Runs one search.
 
   `params` are the API's own query parameters, `q` required. Returns
-  `{:error, :missing_brave_api_key}` when the build has no key, which is a
+  `{:error, :missing_brave_api_key}` when the config has no key, which is a
   configuration problem rather than a search that found nothing.
   """
   @spec search(Config.t(), map()) :: {:ok, map()} | {:error, term()}

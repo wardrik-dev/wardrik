@@ -13,18 +13,26 @@ defmodule Wardrikd.Application do
   `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
   rest. `WardrikDaemon.Cluster` connects this node to
   the others before the fleet starts.
+
+  The store, and whether tool workers' answers are the deployment's own, are
+  what `config/runtime.exs` read of `config.yaml` as the node booted; see
+  `WardrikDaemon.Config.boot/1`.
   """
 
   use Application
 
   @impl Application
   def start(_type, _args) do
+    http = WardrikDaemon.Config.settings(WardrikHTTP)
+
     children = [
-      {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
+      {Wardrik,
+       store: WardrikDaemon.Config.settings(Wardrik.Store),
+       cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
       WardrikPolicy.Supervisor,
       WardrikSchedule,
       WardrikHTTP.Access,
-      WardrikHTTP.Workers,
+      {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
       WardrikDaemon
     ]
 

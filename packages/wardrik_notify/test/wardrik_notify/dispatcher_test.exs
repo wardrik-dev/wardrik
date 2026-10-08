@@ -11,19 +11,6 @@ defmodule WardrikNotify.DispatcherTest do
   setup :set_req_test_to_shared
 
   setup do
-    previous = Application.get_env(:wardrik_notify, WardrikNotify)
-
-    Application.put_env(
-      :wardrik_notify,
-      WardrikNotify,
-      Keyword.put(previous, :targets,
-        audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"},
-        globex: {WardrikNotify.Webhook, url: "https://hooks.test/globex", orgs: ["globex"]}
-      )
-    )
-
-    on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
-
     test = self()
 
     Req.Test.stub(WardrikNotify.Stub, fn conn ->
@@ -31,7 +18,7 @@ defmodule WardrikNotify.DispatcherTest do
       Req.Test.json(conn, %{})
     end)
 
-    start_supervised!(WardrikNotify.Supervisor)
+    start_supervised!({WardrikNotify.Supervisor, settings()})
 
     key = Wardrik.Test.Fleet.id("notified")
     on_exit(fn -> Fleet.forget(key) end)
@@ -118,7 +105,10 @@ defmodule WardrikNotify.DispatcherTest do
   test "routes what its source gives as it starts", %{key: key} do
     stop_supervised!(WardrikNotify.Supervisor)
     routes = %{key => %Route{targets: [:audit]}}
-    start_supervised!({WardrikNotify.Supervisor, routes: {Function, :identity, [routes]}})
+
+    start_supervised!(
+      {WardrikNotify.Supervisor, [routes: {Function, :identity, [routes]}] ++ settings()}
+    )
 
     {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
     :ok = Agent.ask(key, "Ship it.")
@@ -129,7 +119,7 @@ defmodule WardrikNotify.DispatcherTest do
   test "a dispatcher that restarts asks its source again", %{key: key} do
     stop_supervised!(WardrikNotify.Supervisor)
     routes = %{key => %Route{targets: [:audit]}}
-    start_supervised!({WardrikNotify.Supervisor, routes: fn -> routes end})
+    start_supervised!({WardrikNotify.Supervisor, [routes: fn -> routes end] ++ settings()})
 
     dispatcher = Process.whereis(WardrikNotify.Dispatcher)
     ref = Process.monitor(dispatcher)
@@ -139,7 +129,17 @@ defmodule WardrikNotify.DispatcherTest do
     # The supervisor has restarted it once it answers, and the restarted one
     # has asked its source once it answers in turn.
     _children = Supervisor.which_children(WardrikNotify.Supervisor)
-    assert :sys.get_state(WardrikNotify.Dispatcher) == routes
+    assert :sys.get_state(WardrikNotify.Dispatcher).routes == routes
+  end
+
+  defp settings do
+    [
+      targets: [
+        audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"},
+        globex: {WardrikNotify.Webhook, url: "https://hooks.test/globex", orgs: ["globex"]}
+      ],
+      req_options: [plug: {Req.Test, WardrikNotify.Stub}]
+    ]
   end
 
   test "ignores what is not an event" do

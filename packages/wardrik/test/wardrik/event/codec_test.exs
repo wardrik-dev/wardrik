@@ -163,11 +163,8 @@ defmodule Wardrik.Event.CodecTest do
       refute Map.has_key?(event, "parentspanid")
     end
 
-    test "names the deployment it came from" do
-      Application.put_env(:wardrik, :deployment, "wardrik-demo")
-      on_exit(fn -> Application.delete_env(:wardrik, :deployment) end)
-
-      assert Codec.source(@agent) == "wardrik://wardrik-demo/agents/acme/@ops/triage"
+    test "names the agent it came from" do
+      assert Codec.source(@agent) == "wardrik://local/agents/acme/@ops/triage"
     end
   end
 

@@ -2,31 +2,22 @@ defmodule WardrikDaemon.SecretsTest do
   use ExUnit.Case, async: false
 
   alias WardrikDaemon.Secrets
+  alias WardrikDaemon.Test.Settings
 
-  @tool WardrikDaemon.SecretsTest.Search
   @variables ["ANTHROPIC_API_KEY", "SEARCH_API_KEY"]
 
   setup do
     previous = %{
-      vault: Application.get_env(:wardrik_vault, WardrikVault),
-      secrets: Application.get_env(:wardrik_daemon, Secrets),
       anthropic: Application.get_env(:req_llm, :anthropic_api_key),
       environment: Map.new(@variables, &{&1, System.get_env(&1)})
     }
 
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
-
-    Application.put_env(:wardrik_daemon, Secrets,
-      keys: %{"SEARCH_API_KEY" => {:wardrik, @tool, :api_key}}
-    )
-
+    Settings.keep()
+    :ok = Settings.vault()
     Enum.each(@variables, &System.delete_env/1)
 
     on_exit(fn ->
       Enum.each(@variables, &WardrikVault.forget(&1, nil))
-      Application.delete_env(:wardrik, @tool)
-      restore(:wardrik_vault, WardrikVault, previous.vault)
-      restore(:wardrik_daemon, Secrets, previous.secrets)
       restore(:req_llm, :anthropic_api_key, previous.anthropic)
 
       for {name, value} <- previous.environment,
@@ -37,23 +28,23 @@ defmodule WardrikDaemon.SecretsTest do
   defp restore(app, key, nil), do: Application.delete_env(app, key)
   defp restore(app, key, value), do: Application.put_env(app, key, value)
 
-  test "names each provider's key variable, and each tool's :keys names" do
+  test "names each provider's key variable, and no other" do
     variables = Secrets.variables()
 
     assert variables["ANTHROPIC_API_KEY"] == [{:req_llm, :anthropic_api_key}]
     assert {:req_llm, :zai_coding_plan_api_key} in variables["ZAI_API_KEY"]
-    assert variables["SEARCH_API_KEY"] == [{:wardrik, @tool, :api_key}]
     assert Secrets.key?("ANTHROPIC_API_KEY")
+    refute Secrets.key?("SEARCH_API_KEY")
     refute Secrets.key?("LINEAR_TOKEN")
   end
 
-  test "gives a provider and a tool the vault's key where the environment sets none" do
+  test "gives a provider the vault's key where the environment sets none" do
     :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
     :ok = WardrikVault.put("SEARCH_API_KEY", nil, "search-vault")
 
     assert Secrets.apply() == :ok
     assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-vault", :application}
-    assert Application.get_env(:wardrik, @tool)[:api_key] == "search-vault"
+    refute "search-vault" in Keyword.values(Application.get_all_env(:req_llm))
   end
 
   test "leaves a key the environment sets to the environment" do
@@ -84,7 +75,7 @@ defmodule WardrikDaemon.SecretsTest do
     assert Secrets.named("ANTHROPIC_API_KEY") == "sk-ant-vault"
     assert Secrets.named("NOT_IN_THE_VAULT") == nil
 
-    Application.delete_env(:wardrik_vault, WardrikVault)
+    :ok = Settings.no_vault()
     assert Secrets.named("ANTHROPIC_API_KEY") == nil
   end
 end

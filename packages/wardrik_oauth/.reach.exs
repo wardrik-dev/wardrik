@@ -75,16 +75,18 @@
   ],
   calls: [
     forbidden: [
-      # A package reads its own settings through one config module, never
-      # another package's key, and never core's store or supervisors by name.
+      # A package takes its settings as options of what the host starts, and
+      # reads no application environment, its own or another package's, nor
+      # core's store or supervisors by name.
       {["WardrikOAuth", "WardrikOAuth.*"],
        [
          "Application.get_env",
          "Application.fetch_env",
          "Application.fetch_env!",
+         "Application.put_env",
+         "Application.delete_env",
          "Wardrik.Fleet.Supervisor.store"
-       ],
-       except: ["WardrikOAuth.Config", "WardrikOAuth.Test.Case", "WardrikOAuth.Test.Case.*"]}
+       ]}
     ]
   ],
   checks: [

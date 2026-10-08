@@ -1,12 +1,14 @@
 defmodule WardrikHTTP.Listener do
   @moduledoc """
-  Serves `WardrikHTTP.Router` with Bandit, where `WardrikHTTP.Config` says to.
+  Serves `WardrikHTTP.Router` with Bandit, on loopback port 4747 unless told
+  otherwise.
 
   A port another process holds is tried again every five seconds, so of
   several nodes of a cluster on one machine the first to start serves the API,
   and another takes the port over when that one stops. Options:
 
-    * `:port`, `:ip` - over `WardrikHTTP.Config.listen/0`; port `0` takes any free one
+    * `:port` - the port to listen on, 4747 by default; `0` takes any free one
+    * `:ip` - the address to listen on, `{127, 0, 0, 1}` by default
     * `:definition` - the `WardrikHTTP.Definition` that
       `PUT /v1/agents/{org}/{user}/{name}` reads a definition with
     * `:retry` - milliseconds between tries, 5000 by default
@@ -18,6 +20,8 @@ defmodule WardrikHTTP.Listener do
   require Logger
 
   @retry :timer.seconds(5)
+  @port 4747
+  @ip {127, 0, 0, 1}
 
   @doc false
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -33,7 +37,7 @@ defmodule WardrikHTTP.Listener do
     # Bandit is linked to this process, and says why when it stops.
     Process.flag(:trap_exit, true)
 
-    listen = Keyword.merge(WardrikHTTP.Config.listen(), Keyword.take(opts, [:port, :ip]))
+    listen = [port: Keyword.get(opts, :port, @port), ip: Keyword.get(opts, :ip, @ip)]
 
     state = %{
       listen: listen,

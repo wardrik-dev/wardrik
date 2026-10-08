@@ -10,13 +10,13 @@ defmodule Wardrik.Fleet.Supervisor do
       `Wardrik.Fleet`. It starts a `Group` instance under the same name, which is
       the registry `Wardrik.Fleet` reads.
 
-  ## Configuration
+  ## Options
 
-      config :wardrik, Wardrik.Store, adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"
-      config :wardrik, Wardrik.Fleet, log: false
+    * `:store` - the store's adapter and its options, as `Wardrik` takes them;
+      the options belong to the adapter, see `Wardrik.Store.EKV`
+    * `:log` - passed to `Group`, `false` by default
 
-  The store's options belong to its adapter; see `Wardrik.Store.EKV`. `:log` is
-  passed to `Group`.
+  `Wardrik` starts it with its `:store` and its `:fleet`.
 
   ## Joining other nodes
 
@@ -39,13 +39,15 @@ defmodule Wardrik.Fleet.Supervisor do
 
   @impl true
   def init(opts) do
+    store = Keyword.get(opts, :store, [])
+
     children = [
-      Store.child_spec(),
+      Store.child_spec(store),
       {DurableServer.Supervisor,
        [
          name: Wardrik.Fleet,
          prefix: Wardrik.Fleet.prefix(),
-         backend: Store.durable_backend(),
+         backend: Store.durable_backend(store),
          group: [log: Keyword.get(opts, :log, false)]
        ] ++ Store.durable_shutdown()}
     ]

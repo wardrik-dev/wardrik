@@ -23,7 +23,6 @@ defmodule WardrikHTTP.Access.Leases do
 
   alias WardrikHTTP.Access
   alias WardrikHTTP.Access.Cache
-  alias WardrikHTTP.Config
 
   @group "leases"
   @registry WardrikHTTP.Access.Holders
@@ -31,9 +30,12 @@ defmodule WardrikHTTP.Access.Leases do
   @read_timeout 2_000
   @concurrency 16
 
-  defstruct sweep: nil, waiting: [], timer: nil
+  @enforce_keys [:grace, :every]
+  defstruct [:grace, :every, sweep: nil, waiting: [], timer: nil]
 
   @type t() :: %__MODULE__{
+          grace: pos_integer(),
+          every: pos_integer(),
           sweep: reference() | nil,
           waiting: [GenServer.from()],
           timer: reference() | nil
@@ -47,8 +49,12 @@ defmodule WardrikHTTP.Access.Leases do
   @doc false
   def tasks, do: @tasks
 
+  @doc """
+  Starts the leases of this node, with `:grace` and `:sweep` in
+  milliseconds, as `WardrikHTTP.Access` takes them.
+  """
   @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(_opts), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @doc """
   Registers the calling process as a holder of `ref`, and answers the id
@@ -74,10 +80,11 @@ defmodule WardrikHTTP.Access.Leases do
   def sweep, do: GenServer.call(__MODULE__, :sweep, :infinity)
 
   @impl true
-  def init([]) do
-    :ok = Cache.new()
+  def init(opts) do
+    every = Keyword.fetch!(opts, :sweep)
+    :ok = Cache.new(every)
     :ok = Group.join(Access, @group, %{})
-    {:ok, schedule(%__MODULE__{})}
+    {:ok, schedule(%__MODULE__{grace: Keyword.fetch!(opts, :grace), every: every})}
   end
 
   @impl true
@@ -86,7 +93,7 @@ defmodule WardrikHTTP.Access.Leases do
 
   @impl true
   def handle_info({:revoked, ref}, state) do
-    revoke([ref])
+    revoke([ref], state.grace)
     {:noreply, state}
   end
 
@@ -97,14 +104,14 @@ defmodule WardrikHTTP.Access.Leases do
 
     case result do
       {:gone, refs} ->
-        revoke(refs)
+        revoke(refs, state.grace)
 
       :unavailable ->
         Logger.warning(
           "Held records cannot be read through consensus, so their holders are ended"
         )
 
-        finish(held())
+        finish(held(), state.grace)
     end
 
     {:noreply, swept(state)}
@@ -115,7 +122,7 @@ defmodule WardrikHTTP.Access.Leases do
       "A sweep of held records failed, so their holders are ended: #{inspect(reason)}"
     )
 
-    finish(held())
+    finish(held(), state.grace)
     {:noreply, swept(state)}
   end
 
@@ -130,21 +137,21 @@ defmodule WardrikHTTP.Access.Leases do
 
   # A revoked record is refused here before its holders are looked up, so a
   # process that registers meanwhile either finds the refusal or is found.
-  defp revoke(refs) do
+  defp revoke(refs, grace) do
     for ref <- refs, do: Cache.revoked(ref)
-    finish(refs)
+    finish(refs, grace)
   end
 
-  defp finish([]), do: :ok
+  defp finish([], _grace), do: :ok
 
-  defp finish(refs) do
+  defp finish(refs, grace) do
     ending =
       for ref <- refs, {pid, _id} <- Registry.lookup(@registry, ref), uniq: true, do: {ref, pid}
 
     for {_ref, pid} <- ending, do: Process.exit(pid, {:shutdown, :revoked})
 
     if ending != [],
-      do: Process.send_after(self(), {:kill, ending}, Config.access(:grace))
+      do: Process.send_after(self(), {:kill, ending}, grace)
 
     :ok
   end
@@ -192,6 +199,6 @@ defmodule WardrikHTTP.Access.Leases do
 
   defp schedule(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
-    %{state | timer: Process.send_after(self(), :sweep, Config.access(:sweep))}
+    %{state | timer: Process.send_after(self(), :sweep, state.every)}
   end
 end

@@ -132,11 +132,11 @@ defmodule WardrikDaemon.DoctorTest do
       assert {:ok, "mcp zapier", "reads its url from the vault" <> _rest} =
                check(checks, "mcp zapier")
 
-      config(dir, "http:\n  ip: \"${DOCTOR_HTTP_IP}\"\n")
+      config(dir, "ssh:\n  ip: \"${DOCTOR_SSH_IP}\"\n")
 
       assert [{:error, "config", message}] = Doctor.checks(dir)
-      assert message =~ "http.ip is an address"
-      assert message =~ "It reads ${DOCTOR_HTTP_IP} from the vault, which doctor reads only"
+      assert message =~ "ssh.ip is an address"
+      assert message =~ "It reads ${DOCTOR_SSH_IP} from the vault, which doctor reads only"
     end
   end
 
