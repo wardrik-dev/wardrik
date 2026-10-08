@@ -35,10 +35,13 @@ call:
   `tool_call.completed` event says `"replayed": true`.
 - **A call that began and never finished** may have done what it does. It waits on a person:
 
-  > github__create_issue began before this agent was interrupted, and may already have done what it
-  > does. Approve to run it again, or deny to tell the agent it may have run.
+  > github__create_issue may already have done what it does. It began before this agent was
+  > interrupted. Approve to run it again, or deny to tell the agent it may have run.
 
   Denying tells the model the call may have run, so it can find out.
+
+A tool worker that goes away part way through a call, or answers late, leaves its call in doubt the
+same way, and the ledger keeps the call as begun.
 
 The file tools run again without asking, since each finds a write it made already, and so do a tool
 worker's tools where the worker marks them read-only or idempotent. Every other tool asks.

@@ -43,6 +43,11 @@ An agent file that names no `org` is in the deployment's, `default` unless `conf
 another, so a worker for such agents is made with `--scope default/`. See
 [Tokens](/operate/security/#tokens).
 
+Run as many workers under one token as you like: those offering a tool of the same name share its
+calls. A tool is bound to the token that offers it. Where workers under a second token offer the same
+name to the same agent, the agent keeps the tool of the token whose worker connected first, the
+second is refused, and the daemon logs it. A call's events name the token that served it.
+
 ## Which agents have the tools
 
 An agent is offered a worker's tools where its file lists `workers/*`, or `*`, and its key is under
@@ -75,8 +80,9 @@ of them. A worker that goes away takes its tools with it, until it connects agai
 `run` answers with an object, which the model is given as the call's result, or a string, as text.
 A thrown error is a failed call: the model is told its message, and the turn carries on.
 
-A call may take up to 60 seconds. One that takes longer is answered as timed out, the model is told
-it may already have done what it does, and `signal` aborts.
+A call may take up to 60 seconds. One that takes longer is cancelled, so `signal` aborts, and is left
+in doubt; see below. `signal` aborts too when the agent stops the call: when it is killed, when its
+turn runs out of time, or when the turn ends.
 
 ### Whose call it is
 
@@ -104,9 +110,11 @@ call can be matched with the turn it belongs to.
 Each call carries an idempotency key, the same each time the daemon runs it. Pass it on to anything
 with an effect, as a payment provider's own idempotency key, so a call run twice does it once.
 
-A call is run twice when the node holding its agent was lost while the call was running: the daemon
-cannot tell whether it finished. Where every worker offering the tool marks it `idempotent` or
-`readOnly`, the call runs again under the same key. Otherwise it waits on a person to decide. See
+A call is run twice when the daemon cannot tell whether it finished: the node holding its agent was
+lost while the call was running, or its worker went away or answered late. Where every worker
+offering the tool marks it `idempotent` or `readOnly`, the call runs again under the same key, on a
+worker connected then. Otherwise, or where it is in doubt again, it waits on a person to decide. The
+model is never told it failed, so it never runs it again under a new key. See
 [Durable runs](/concepts/durable-runs/#the-ledger).
 
 ## The connection
