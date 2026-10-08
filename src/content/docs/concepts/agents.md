@@ -120,7 +120,7 @@ An agent is one of:
 | Status | |
 | --- | --- |
 | `idle` | waiting for a message |
-| `running` | answering one, or summarising its history between turns |
+| `running` | answering one, which may begin by summarising its history |
 | `parked` | waiting on a person |
 
 `wardrik ls` shows each agent's status, the node it runs on, when it next runs and what it has
