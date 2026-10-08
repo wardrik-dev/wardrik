@@ -2,7 +2,7 @@ defmodule WardrikTUI.Components.Inspector do
   @moduledoc "Scrollable tool and delegation details."
   use Breeze.Component
   alias Wardrik.Delegation
-  alias WardrikTUI.{Text, Transcript, View}
+  alias WardrikTUI.{Exchange, Text, Transcript, View}
   @faint [:faint, :light_black]
 
   # The inspector sits centred over the panes, as tall as its lines need.
@@ -29,7 +29,7 @@ defmodule WardrikTUI.Components.Inspector do
 
   defp inspector(%{inspecting: {:tool, index, _origin}} = assigns, width, height) do
     lines =
-      case Enum.at(assigns.tools, index - 1) do
+      case Exchange.at(assigns.tools, index) do
         nil -> [Text.tag("this tool call is no longer shown · Esc closes", @faint)]
         exchange -> View.tool_inspector(exchange, index)
       end
@@ -49,7 +49,7 @@ defmodule WardrikTUI.Components.Inspector do
   end
 
   attr :inspecting, :any, required: true
-  attr :tools, :list, required: true
+  attr :tools, :any, required: true
   attr :delegations, :any, default: nil
   attr :width, :integer, required: true
   attr :height, :integer, required: true

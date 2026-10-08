@@ -137,33 +137,50 @@ defmodule Wardrik.LLM.Config do
   def tools(%__MODULE__{} = config),
     do: config.tools |> Tool.resolve!() |> Enum.reject(&(&1.name in config.except_tools))
 
+  @typedoc """
+  The tools a config names, by name: each as it is built, `nil` for one the
+  config leaves out, with the spec that builds it. Where two specs build a
+  tool of one name, the first named wins.
+  """
+  @type tool_index() :: %{String.t() => {ReqLLM.Tool.t() | nil, Tool.spec()}}
+
+  @doc """
+  Every tool this config names, built once on this node, by name, for what
+  looks tools up by name.
+  """
+  @spec tool_index(t()) :: tool_index()
+  def tool_index(%__MODULE__{} = config) do
+    for spec <- config.tools, tool <- Tool.resolve!([spec]), reduce: %{} do
+      index -> Map.put_new(index, tool.name, {offered(config, tool), spec})
+    end
+  end
+
+  defp offered(config, tool), do: if(tool.name in config.except_tools, do: nil, else: tool)
+
   @doc """
   How long one call to the named tool may take: what `:tool_timeouts` says,
-  else what the tool's annotations say, else `nil`.
+  else what the tool's annotations say, else `nil`. `index` is
+  `tool_index/1`'s, where the caller has it.
   """
-  @spec tool_timeout(t(), String.t()) :: timeout() | nil
-  def tool_timeout(%__MODULE__{} = config, name) do
-    Map.get_lazy(config.tool_timeouts, name, fn -> annotated(config, name, :timeout) end)
+  @spec tool_timeout(t(), String.t(), tool_index() | nil) :: timeout() | nil
+  def tool_timeout(%__MODULE__{} = config, name, index \\ nil) do
+    Map.get_lazy(config.tool_timeouts, name, fn -> annotated(config, index, name, :timeout) end)
   end
 
   @doc """
   What a call to the named tool does when whether it had its effect is not
   known, as its annotations say: `:rerun`, or `:ask`. See
-  `Wardrik.Tool.Annotations`.
+  `Wardrik.Tool.Annotations`. `index` is `tool_index/1`'s, where the caller
+  has it.
   """
-  @spec tool_in_doubt(t(), String.t()) :: :ask | :rerun
-  def tool_in_doubt(%__MODULE__{} = config, name),
-    do: annotated(config, name, :in_doubt) || :ask
+  @spec tool_in_doubt(t(), String.t(), tool_index() | nil) :: :ask | :rerun
+  def tool_in_doubt(%__MODULE__{} = config, name, index \\ nil),
+    do: annotated(config, index, name, :in_doubt) || :ask
 
-  @doc "The spec that builds the named tool, or `nil` for a tool this config does not name."
-  @spec tool_spec(t(), String.t()) :: Tool.spec() | nil
-  def tool_spec(%__MODULE__{} = config, name),
-    do: Enum.find(config.tools, &(name in Tool.names(&1)))
-
-  defp annotated(config, name, field) do
-    case tool_spec(config, name) do
+  defp annotated(config, index, name, field) do
+    case Map.get(index || tool_index(config), name) do
       nil -> nil
-      spec -> Map.fetch!(Tool.annotations(spec, name), field)
+      {_tool, spec} -> Map.fetch!(Tool.annotations(spec, name), field)
     end
   end
 

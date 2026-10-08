@@ -117,30 +117,29 @@ defmodule Wardrik.Compaction do
 
   def split(%__MODULE__{} = compaction, %Context{} = context, model_spec) do
     messages = Context.to_list(context)
+    tails = Tokens.tails(messages)
     window = window(compaction, model_spec)
 
-    if Tokens.messages(messages) > compaction.at * window,
-      do: cut(messages, compaction.keep * window),
+    if List.first(tails, 0) > compaction.at * window,
+      do: cut(messages, tails, compaction.keep * window),
       else: :keep
   end
 
   # The kept part is the longest tail within `keep` tokens that begins with a
-  # person's message, and at least that person's last message.
-  defp cut(messages, keep) do
-    indexed = Enum.with_index(messages)
-
+  # person's message, and at least that person's last message. Tails only
+  # shrink, so the first that fits is the longest.
+  defp cut(messages, tails, keep) do
     starts =
-      for {%{role: :user}, index} <- indexed, index > 0, do: index
+      for {{%{role: :user}, tail}, index} <- Enum.with_index(Enum.zip(messages, tails)),
+          index > 0,
+          do: {index, tail}
 
-    within =
-      Enum.filter(starts, fn index -> Tokens.messages(Enum.drop(messages, index)) <= keep end)
-
-    case within ++ Enum.take(Enum.reverse(starts), 1) do
-      [] ->
+    case Enum.find(starts, fn {_index, tail} -> tail <= keep end) || List.last(starts) do
+      nil ->
         :keep
 
-      candidates ->
-        {older, recent} = Enum.split(messages, Enum.min(candidates))
+      {index, _tail} ->
+        {older, recent} = Enum.split(messages, index)
         if summary?(older), do: :keep, else: {:ok, older, recent}
     end
   end

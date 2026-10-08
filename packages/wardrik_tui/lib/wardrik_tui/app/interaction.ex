@@ -9,6 +9,7 @@ defmodule WardrikTUI.App.Interaction do
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.PaletteFlow
   alias WardrikTUI.Command
+  alias WardrikTUI.Exchange
   alias WardrikTUI.Palette
   alias WardrikTUI.Search
   alias WardrikTUI.View
@@ -39,10 +40,11 @@ defmodule WardrikTUI.App.Interaction do
       open_palette(term, %Palette{step: :search, query: query, origin: term.focused || "prompt"})
 
   # The conversation's tool calls; Enter opens one in the inspector.
-  def open_tools(%{assigns: %{tools: []}} = term), do: flash(term, View.no_tools())
-
-  def open_tools(term),
-    do: open_palette(term, %Palette{step: :tool, origin: term.focused || "prompt"})
+  def open_tools(term) do
+    if Exchange.empty?(term.assigns.tools),
+      do: flash(term, View.no_tools()),
+      else: open_palette(term, %Palette{step: :tool, origin: term.focused || "prompt"})
+  end
 
   def close_palette(%{assigns: %{palette: %{origin: origin}}} = term),
     do: term |> assign(palette: nil, choices: []) |> focus_pane(origin)

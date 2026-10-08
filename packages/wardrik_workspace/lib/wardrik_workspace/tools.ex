@@ -203,11 +203,9 @@ defmodule WardrikWorkspace.Tools do
   defp run(:list_files, spec, args, _context) do
     glob = Map.get(args, :pattern) || "**"
 
-    with {:ok, files} <- view(spec) do
-      listed =
-        files
-        |> Enum.filter(fn {path, _file} -> Path.match?(glob, path) end)
-        |> Enum.sort_by(fn {path, file} -> {file.at, path} end, &newest/2)
+    with {:ok, paths} <- view(spec, glob),
+         {:ok, files} <- read_all(paths) do
+      listed = Enum.sort_by(files, fn {path, file} -> {file.at, path} end, &newest/2)
 
       {:ok,
        %{
@@ -222,18 +220,15 @@ defmodule WardrikWorkspace.Tools do
     context = min(Map.get(args, :context, 0), @max_context)
 
     with {:ok, regex} <- regex(args.pattern),
-         {:ok, files} <- view(spec) do
-      found =
-        files
-        |> Enum.filter(fn {path, _file} -> Path.match?(glob, path) end)
-        |> Enum.sort_by(&elem(&1, 0))
-        |> Enum.flat_map(fn {path, file} -> matches(path, file, regex, context) end)
+         {:ok, paths} <- view(spec, glob),
+         {:ok, found} <- search(Enum.sort_by(paths, &elem(&1, 0)), regex, context) do
+      shown = Enum.take(found, @max_matches)
 
       {:ok,
        %{
-         "matches" => found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 0)),
+         "matches" => Enum.map(shown, &elem(&1, 0)),
          "truncated" => length(found) > @max_matches
-       }, labels: labels(found |> Enum.take(@max_matches) |> Enum.map(&elem(&1, 1)))}
+       }, labels: labels(Enum.map(shown, &elem(&1, 1)))}
     end
   end
 
@@ -429,13 +424,14 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  # Every file of every mount, under the path the agent sees it at.
-  defp view(spec) do
+  # The path of every file of every mount that `glob` matches, as the agent
+  # sees it, with where it is kept; no file is read.
+  defp view(spec, glob) do
     spec
     |> Spec.mounts()
     |> Enum.reduce_while({:ok, []}, fn mount, {:ok, seen} ->
-      case mount.backend.list(mount.tree, "") do
-        {:ok, listed} -> {:cont, {:ok, [seen(mount, listed) | seen]}}
+      case mount.backend.paths(mount.tree, "") do
+        {:ok, paths} -> {:cont, {:ok, [seen(mount, paths, glob) | seen]}}
         {:error, reason} -> {:halt, unavailable(reason)}
       end
     end)
@@ -445,8 +441,52 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  defp seen(mount, listed),
-    do: for({path, file, _version} <- listed, do: {Mount.root(mount) <> path, file})
+  defp seen(mount, paths, glob) do
+    for path <- paths,
+        shown = Mount.root(mount) <> path,
+        Path.match?(glob, shown),
+        do: {shown, mount, path}
+  end
+
+  # Every file of `paths` still there, read in order.
+  defp read_all(paths) do
+    paths
+    |> Enum.reduce_while({:ok, []}, fn {shown, mount, path}, {:ok, files} ->
+      case read(mount, path) do
+        {:ok, file, _version} -> {:cont, {:ok, [{shown, file} | files]}}
+        :none -> {:cont, {:ok, files}}
+        {:error, reason} -> {:halt, unavailable(reason)}
+      end
+    end)
+    |> reversed()
+  end
+
+  # The matches in `paths`, in order, reading each file only while one more
+  # match than is shown is still to be found.
+  defp search(paths, regex, context) do
+    paths
+    |> Enum.reduce_while({:ok, [], 0}, fn {shown, mount, path}, {:ok, found, count} ->
+      case read(mount, path) do
+        {:ok, file, _version} -> found(matches(shown, file, regex, context), found, count)
+        :none -> {:cont, {:ok, found, count}}
+        {:error, reason} -> {:halt, unavailable(reason)}
+      end
+    end)
+    |> case do
+      {:ok, found, _count} -> reversed({:ok, found})
+      error -> error
+    end
+  end
+
+  defp found(matches, found, count) do
+    more = Enum.take(matches, @max_matches + 1 - count)
+    count = count + length(more)
+    seen = {:ok, Enum.reverse(more, found), count}
+    if count > @max_matches, do: {:halt, seen}, else: {:cont, seen}
+  end
+
+  defp reversed({:ok, reversed}), do: {:ok, Enum.reverse(reversed)}
+  defp reversed(error), do: error
 
   defp fits(content) do
     if byte_size(content) <= @max_file_bytes,
@@ -468,24 +508,25 @@ defmodule WardrikWorkspace.Tools do
   end
 
   defp matches(path, file, regex, context) do
-    lines = file.content |> lines() |> Enum.with_index(1)
-    numbered = Map.new(lines, fn {text, n} -> {n, text} end)
+    lines = lines(file.content)
+    numbered = if context > 0, do: List.to_tuple(lines)
 
-    for {text, n} <- lines, Regex.match?(regex, text) do
-      match = %{"path" => path, "line" => n, "text" => text}
+    lines
+    |> Stream.with_index(1)
+    |> Stream.filter(fn {text, _n} -> Regex.match?(regex, text) end)
+    |> Stream.map(fn {text, n} ->
+      {around(%{"path" => path, "line" => n, "text" => text}, numbered, n, context), file}
+    end)
+  end
 
-      match =
-        if context > 0,
-          do:
-            Map.merge(match, %{
-              "before" => for(m <- max(n - context, 1)..(n - 1)//1, do: numbered[m]),
-              "after" =>
-                for(m <- (n + 1)..min(n + context, map_size(numbered))//1, do: numbered[m])
-            }),
-          else: match
+  defp around(match, nil, _n, _context), do: match
 
-      {match, file}
-    end
+  defp around(match, numbered, n, context) do
+    Map.merge(match, %{
+      "before" => for(m <- max(n - context, 1)..(n - 1)//1, do: elem(numbered, m - 1)),
+      "after" =>
+        for(m <- (n + 1)..min(n + context, tuple_size(numbered))//1, do: elem(numbered, m - 1))
+    })
   end
 
   # A file's lines, where a final newline ends the last one rather than

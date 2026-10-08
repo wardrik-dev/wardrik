@@ -242,6 +242,65 @@ defmodule WardrikWorkspace.ToolsTest do
     end
   end
 
+  describe "how much is listed or found" do
+    defp put!(agent, path, content) do
+      file = %WardrikWorkspace.File{content: content, by: "someone"}
+      {:ok, _version} = Store.write(agent.spec.tree.tree, path, file, nil)
+    end
+
+    defp hits(label, n), do: Enum.map_join(1..n, "\n", &"hit #{label} #{&1}")
+
+    test "finds at most 200 matches, in path order, and says when there were more" do
+      agent = agent()
+      put!(agent, "b.md", hits("b", 50))
+      put!(agent, "a.md", hits("a", 150))
+
+      assert {:ok, %{"matches" => matches, "truncated" => false}} =
+               answered(agent, "search_files", %{"pattern" => "hit"})
+
+      assert Enum.count(matches) == 200
+      assert %{"path" => "a.md", "line" => 1} = hd(matches)
+      assert %{"path" => "b.md", "line" => 50} = List.last(matches)
+
+      put!(agent, "c.md", hits("c", 3))
+
+      assert {:ok, %{"matches" => matches, "truncated" => true}} =
+               answered(agent, "search_files", %{"pattern" => "hit"})
+
+      assert Enum.count(matches) == 200
+      assert %{"path" => "b.md", "line" => 50} = List.last(matches)
+    end
+
+    test "shows the lines around a match only as far as the file goes" do
+      agent = agent()
+      put!(agent, "a.md", "TODO one\ntwo\nTODO three\n")
+
+      assert {:ok, %{"matches" => [first, last]}} =
+               answered(agent, "search_files", %{"pattern" => "TODO", "context" => 2})
+
+      assert %{"line" => 1, "before" => [], "after" => ["two", "TODO three"]} = first
+      assert %{"line" => 3, "before" => ["TODO one", "two"], "after" => []} = last
+
+      assert {:ok, %{"matches" => [plain, _last]}} =
+               answered(agent, "search_files", %{"pattern" => "TODO"})
+
+      assert plain == %{"path" => "a.md", "line" => 1, "text" => "TODO one"}
+    end
+
+    test "lists at most 500 files, and says when there were more" do
+      agent = agent()
+      for n <- 1..501, do: put!(agent, "f#{n}.md", "x")
+
+      assert {:ok, %{"files" => files, "truncated" => true}} =
+               answered(agent, "list_files", %{"pattern" => "*.md"})
+
+      assert Enum.count(files) == 500
+
+      assert {:ok, %{"files" => [], "truncated" => false}} =
+               answered(agent, "list_files", %{"pattern" => "*.txt"})
+    end
+  end
+
   describe "shared trees" do
     test "two agents writing to one tree at once both land, and each sees the other's" do
       tree = "ws#{System.unique_integer([:positive])}"

@@ -15,6 +15,24 @@ defmodule Wardrik.LLM.Tokens do
   def messages(messages) when is_list(messages), do: messages |> messages_chars() |> tokens()
 
   @doc """
+  An estimate of every tail of `messages`, longest first: the one at index
+  `n` is what `messages/1` makes of the messages from `n` on. Each message is
+  counted once.
+  """
+  @spec tails([ReqLLM.Message.t()]) :: [non_neg_integer()]
+  def tails(messages) when is_list(messages) do
+    {tails, _chars} =
+      messages
+      |> Enum.reverse()
+      |> Enum.reduce({[], 0}, fn message, {tails, chars} ->
+        chars = chars + message_chars(message)
+        {[tokens(chars) | tails], chars}
+      end)
+
+    tails
+  end
+
+  @doc """
   An estimate of how many tokens `request` sends: its messages, its system
   prompt and the tools it offers.
   """

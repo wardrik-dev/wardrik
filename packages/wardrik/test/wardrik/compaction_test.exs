@@ -66,6 +66,21 @@ defmodule Wardrik.CompactionTest do
       assert Tokens.messages(recent) <= 0.5 * 500
     end
 
+    test "keeps the longest tail that fits, where more than one would" do
+      long =
+        Context.new([
+          Context.user(String.duplicate("x", 4_000)),
+          Context.assistant(String.duplicate("a", 200)),
+          Context.user(String.duplicate("q", 200)),
+          Context.assistant(String.duplicate("a", 200)),
+          Context.user(String.duplicate("q", 200)),
+          Context.assistant(String.duplicate("a", 200))
+        ])
+
+      assert {:ok, [_q1, _a1], [%{role: :user}, _a2, _q3, _a3]} =
+               Compaction.split(small(), long, "any:model")
+    end
+
     test "keeps at least the last question, however long it is" do
       long =
         Context.new([
