@@ -36,8 +36,8 @@ defmodule WardrikOAuth do
       flow starts, since there is a browser here; see `WardrikOAuth.Browser`
       and `WardrikOAuth.Loopback`.
     * on another device: a code to enter at the server's page, from a phone
-      or any browser at all, while a task here asks the server whether they
-      have; see `WardrikOAuth.Device`. Nothing comes back to this machine, so
+      or any browser at all, while the flow's process here asks the server
+      whether they have; see `WardrikOAuth.Device`. Nothing comes back to this machine, so
       a daemon on a server with no browser and no open port can be
       authorized from anywhere.
 
@@ -183,24 +183,14 @@ defmodule WardrikOAuth do
   its code. The token is written before the calls parked on it are told,
   through `Wardrik.Credential.available/3`, so the turn that carries on finds
   the credential it asked for. A callback that cannot be turned into a token
-  leaves the flow where it was, so the same link still works. Once one flow
-  for a user and provider finishes, any other under way for them, on any
-  node, is dropped.
+  leaves the flow where it was, so the same link still works. A flow that
+  finishes ends.
 
-  A flow is held by the node that started it. One this node did not start is
-  finished on whichever connected node did, all of them asked at once.
+  A flow is found by the state it was started with on whichever node it
+  runs; see `WardrikOAuth.Pending`.
   """
   @spec finish(String.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def finish(state, code, opts \\ []) when is_binary(state) and is_binary(code) do
-    case finish_here(state, code, opts) do
-      {:error, :no_such_flow} -> finish_elsewhere(state, code, opts)
-      finished -> finished
-    end
-  end
-
-  @doc false
-  @spec finish_here(String.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def finish_here(state, code, opts) do
     case Pending.claim(state, &answerable?(&1, opts)) do
       {:ok, %Flight{} = flight} -> complete(flight, code)
       :error -> {:error, :no_such_flow}
@@ -222,30 +212,20 @@ defmodule WardrikOAuth do
   defp issued?(%Metadata{iss_supported?: supported?}, nil), do: not supported?
   defp issued?(%Metadata{}, _other), do: false
 
-  defp finish_elsewhere(state, code, opts) do
-    Node.list()
-    |> :erpc.multicall(__MODULE__, :finish_here, [state, code, opts], :timer.seconds(20))
-    |> Enum.find_value({:error, :no_such_flow}, fn
-      {:ok, {:error, :no_such_flow}} -> nil
-      {:ok, finished} -> finished
-      _unreachable -> nil
-    end)
-  end
-
   # The flow is claimed before the token is asked for, so a flow that gets no
-  # token goes back rather than being lost.
+  # token is released rather than being lost.
   defp complete(%Flight{} = flight, code) do
     with {:ok, token} <- exchange(flight, code),
          :ok <- store(flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
-      :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
+      :ok = Pending.drop(flight.provider.name, flight.owner)
       connected(flight)
 
       {:ok, flight.provider.name}
     else
       trouble ->
         forget_client(flight, trouble)
-        {:ok, _url} = Pending.start(flight)
+        :ok = Pending.release(flight.state)
 
         trouble
     end
@@ -371,15 +351,13 @@ defmodule WardrikOAuth do
   # A flow already under way is offered again rather than restarted: an agent
   # retrying a parked call should keep showing the same link, or code. Flows
   # begin one at a time for a user and provider across the cluster, and one
-  # under way on any node is joined there, so calls parking at once, on any
-  # node, share one.
+  # under way on any node is joined, so calls parking at once, on any node,
+  # share one.
   defp begin(%Provider{} = provider, owner) do
     single_flight(provider, owner, fn ->
-      with :error <- Pending.under_way(provider.name, owner),
-           :error <- Pending.under_way_on(Node.list(), provider.name, owner) do
-        open(provider, owner)
-      else
+      case Pending.under_way(provider.name, owner) do
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
+        :error -> open(provider, owner)
       end
     end)
   end
@@ -441,10 +419,7 @@ defmodule WardrikOAuth do
           expires_after: :timer.seconds(device.expires_in)
       }
 
-      {:ok, _url} = Pending.start(flight)
-
-      {:ok, _poller} =
-        Task.Supervisor.start_child(WardrikOAuth.Tasks, fn -> poll(flight, device) end)
+      {:ok, _url} = Pending.start(flight, device: device, done: &device_done/2)
 
       Logger.info(
         "A device flow for #{flight.provider.name} started for #{inspect(flight.owner)}"
@@ -471,49 +446,17 @@ defmodule WardrikOAuth do
       else: {:ok, :browser}
   end
 
-  # Asks the token endpoint every interval the server named, and never more
-  # often than the floor, whether the user has entered the code, until they
-  # have, refused, or let it expire. A server that cannot be reached, or
-  # fails, is asked again at the next interval. The token is written down,
-  # and the calls parked on it answered, as a callback's would be.
-  defp poll(%Flight{} = flight, %Device{} = device) do
-    deadline = flight.started_at + flight.expires_after
-    poll(flight, device, max(:timer.seconds(device.interval), Config.poll_floor()), deadline)
-  end
+  # How a device flow ended: the token is written down, and the calls parked
+  # on it answered, as a callback's would be.
+  defp device_done(%Flight{} = flight, {:ok, %Token{} = token}),
+    do: done(flight, authorized(flight, token))
 
-  defp poll(%Flight{} = flight, %Device{} = device, interval, deadline) do
-    wait = min(interval, max(deadline - System.monotonic_time(:millisecond), 0))
+  defp device_done(%Flight{} = flight, {:error, reason}) do
+    Logger.warning(
+      "#{flight.provider.name} was not connected for #{inspect(flight.owner)}: #{inspect(reason)}"
+    )
 
-    receive do
-    after
-      wait -> :ok
-    end
-
-    polled =
-      if System.monotonic_time(:millisecond) >= deadline,
-        do: {:error, :expired},
-        else: Device.poll(flight.metadata, flight.registered, device)
-
-    case polled do
-      {:ok, %Token{} = token} ->
-        done(flight, authorized(flight, token))
-
-      {:retry, reason} ->
-        Logger.info("#{flight.provider.name} could not be polled (#{tag(reason)}); asking again")
-        poll(flight, device, interval, deadline)
-
-      {:error, reason} ->
-        Pending.drop(flight.state)
-
-        Logger.warning(
-          "#{flight.provider.name} was not connected for #{inspect(flight.owner)}: #{inspect(reason)}"
-        )
-
-        done(flight, reason)
-
-      waiting ->
-        poll(flight, device, Device.next_interval(waiting, interval), deadline)
-    end
+    done(flight, reason)
   end
 
   defp done(%Flight{} = flight, outcome) do
@@ -525,13 +468,12 @@ defmodule WardrikOAuth do
   end
 
   defp authorized(%Flight{} = flight, %Token{} = token) do
-    with {:ok, %Flight{} = flight} <- claim(flight.state),
-         :ok <- store(flight.provider, flight.owner, token) do
-      Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
-      :ok = Pending.drop_on(Node.list(), flight.provider.name, flight.owner)
-      connected(flight)
-      :authorized
-    else
+    case store(flight.provider, flight.owner, token) do
+      :ok ->
+        Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
+        connected(flight)
+        :authorized
+
       {:error, reason} ->
         Logger.warning(
           "#{flight.provider.name} was authorized for #{inspect(flight.owner)}, " <>
@@ -604,13 +546,6 @@ defmodule WardrikOAuth do
   end
 
   defp forget_client(_flight, _trouble), do: :ok
-
-  defp claim(state) do
-    case Pending.claim(state) do
-      {:ok, flight} -> {:ok, flight}
-      :error -> {:error, :no_such_flow}
-    end
-  end
 
   defp store(%Provider{} = provider, owner, %Token{} = token) do
     WardrikVault.put(provider.name, owner, Token.encode(token), kind: :grant)

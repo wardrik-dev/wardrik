@@ -80,8 +80,61 @@ defmodule WardrikNotify.DispatcherTest do
         wait_for_deliveries()
       end)
 
-    assert log =~ "Could not tell audit that #{key} parked: {:status, 400}"
+    assert log =~ "Could not tell audit that #{key} parked: {:status, 400}; trying again"
+    assert log =~ "Could not tell audit that #{key} parked: {:status, 400}; giving up"
     assert log =~ "#{key} routes to missing, which config.yaml does not configure"
+  end
+
+  test "tries a failed delivery again, three times in all", %{key: key} do
+    test = self()
+
+    Req.Test.stub(WardrikNotify.Stub, fn conn ->
+      send(test, :refused)
+      conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{})
+    end)
+
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
+
+    log =
+      capture_log(fn ->
+        :ok = Agent.ask(key, "Ship it.")
+        assert_receive :refused
+        wait_for_deliveries()
+      end)
+
+    for _attempt <- 2..3, do: assert_received(:refused)
+    refute_received :refused
+    assert log =~ "{:status, 403}; giving up"
+  end
+
+  test "tries a delivery that crashed again", %{key: key} do
+    test = self()
+    crashed = :counters.new(1, [])
+
+    Req.Test.stub(WardrikNotify.Stub, fn conn ->
+      if :counters.get(crashed, 1) == 0 do
+        :counters.add(crashed, 1, 1)
+        raise "the target fell over"
+      end
+
+      send(test, {:notice, JSON.decode!(Req.Test.raw_body(conn))})
+      Req.Test.json(conn, %{})
+    end)
+
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    :ok = WardrikNotify.put_routes(%{key => %Route{targets: [:audit]}})
+
+    log =
+      capture_log(fn ->
+        :ok = Agent.ask(key, "Ship it.")
+        assert_receive {:notice, %{"event" => "turn_parked"}}
+        wait_for_deliveries()
+      end)
+
+    assert log =~ "{:crashed, {%RuntimeError{message: \"the target fell over\"}"
+    assert log =~ "trying again"
+    refute_received {:notice, _second}
   end
 
   test "tells a target only of its own orgs' agents, and logs one routed to another's", %{
@@ -138,7 +191,8 @@ defmodule WardrikNotify.DispatcherTest do
         audit: {WardrikNotify.Webhook, url: "https://hooks.test/wardrik"},
         globex: {WardrikNotify.Webhook, url: "https://hooks.test/globex", orgs: ["globex"]}
       ],
-      req_options: [plug: {Req.Test, WardrikNotify.Stub}]
+      req_options: [plug: {Req.Test, WardrikNotify.Stub}],
+      backoff: 0
     ]
   end
 
@@ -147,7 +201,8 @@ defmodule WardrikNotify.DispatcherTest do
     assert :ok = WardrikNotify.put_routes(%{})
   end
 
-  # Each delivery is a task under WardrikNotify.TaskSupervisor, done once it has
+  # Each delivery is a task under WardrikNotify.TaskSupervisor, and the
+  # dispatcher holds each one, and each wait to try one again, until it has
   # logged what became of it.
   defp wait_for_deliveries do
     for pid <- Task.Supervisor.children(WardrikNotify.TaskSupervisor) do
@@ -155,6 +210,6 @@ defmodule WardrikNotify.DispatcherTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
     end
 
-    if Task.Supervisor.children(WardrikNotify.TaskSupervisor) != [], do: wait_for_deliveries()
+    if :sys.get_state(WardrikNotify.Dispatcher).deliveries != %{}, do: wait_for_deliveries()
   end
 end

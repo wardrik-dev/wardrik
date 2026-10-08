@@ -10,7 +10,9 @@ defmodule WardrikSchedule do
   schedule's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
   calls `Wardrik.Agent.ask/2`, and announces what happened on the agent's topic
-  as `{:schedule_fired, name, outcome}`.
+  as `{:schedule_fired, name, outcome}`. It also joins a group of its agent's,
+  so `for_agent/1` finds an agent's schedules by its ID rather than by
+  looking through every schedule in the cluster.
 
   A schedule writes down its next run before it asks the agent, so a firing
   lost to a crash is not made again: a schedule fires at most once for each
@@ -340,7 +342,20 @@ defmodule WardrikSchedule do
 
   @doc "The schedules of `agent`, by name."
   @spec for_agent(AgentID.t()) :: [Status.t()]
-  def for_agent(%AgentID{} = agent), do: Enum.filter(list(Prefix.of(agent)), &(&1.agent == agent))
+  def for_agent(%AgentID{} = agent) do
+    for {_pid, %{name: name}} <- Group.members(@name, group(agent)),
+        key = key(agent, name),
+        {pid, meta} <- [DurableServer.Supervisor.lookup(@name, key)] do
+      Status.new(key, pid, meta)
+    end
+    |> Enum.sort_by(& &1.key)
+  end
+
+  @doc false
+  @spec join(AgentID.t(), String.t()) :: :ok
+  def join(%AgentID{} = agent, name), do: Group.join(@name, group(agent), %{name: name})
+
+  defp group(agent), do: "agents/#{agent}"
 
   @doc "Every schedule of the agents under `prefix`, across the cluster, sorted by key."
   @spec list(Prefix.t()) :: [Status.t()]

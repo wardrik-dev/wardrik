@@ -1,8 +1,8 @@
 defmodule WardrikOAuth.Supervisor do
   @moduledoc """
-  What `WardrikOAuth` needs running: the flows under way, the tasks that ask
-  whether a user has entered a device code, and the loopback the browser
-  comes back to.
+  What `WardrikOAuth` needs running: the flows under way, each a process
+  registered across the cluster (see `WardrikOAuth.Pending`), the tasks that
+  open a browser, and the loopback the browser comes back to.
 
       children = [
         {WardrikOAuth.Supervisor,
@@ -22,7 +22,7 @@ defmodule WardrikOAuth.Supervisor do
   alias WardrikOAuth.Loopback
   alias WardrikOAuth.Pending
 
-  @doc "Keeps the settings, and starts the registry of flows and the loopback listener unless told not to."
+  @doc "Keeps the settings, and starts the flows' registry and supervisor, and the loopback listener unless told not to."
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -32,9 +32,11 @@ defmodule WardrikOAuth.Supervisor do
   def init(opts) do
     :ok = WardrikOAuth.Config.put(Keyword.take(opts, WardrikOAuth.Config.keys()))
 
-    children = [{Pending, opts}, {Task.Supervisor, name: WardrikOAuth.Tasks}] ++ loopback(opts)
+    children =
+      Pending.children() ++ [{Task.Supervisor, name: WardrikOAuth.Tasks}] ++ loopback(opts)
 
-    Supervisor.init(children, strategy: :one_for_one)
+    # A flow runs only while the registry it is found in does.
+    Supervisor.init(children, strategy: :rest_for_one)
   end
 
   defp loopback(opts) do

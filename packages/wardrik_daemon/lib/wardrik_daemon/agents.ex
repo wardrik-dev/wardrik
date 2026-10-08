@@ -44,6 +44,15 @@ defmodule WardrikDaemon.Agents do
   each of them refuses it with a conflict, so the API changes neither it nor
   its schedules.
 
+  ## Reading what was read
+
+  Files are read in its process, one reading at a time. What each reading
+  comes to is published to an ETS table the process owns, so nothing of it
+  outlives the process, and `files/0`, `dir/0`, `problems/0`, the policies a
+  spec is built under, and whether a file declares a key are read from it
+  in the caller: none of them waits behind a reading under way. Until the
+  first reading is done they wait for it.
+
   ## Agents a kept definition writes
 
   `reload/0` brings every running agent the API defined, its conversations,
@@ -79,7 +88,7 @@ defmodule WardrikDaemon.Agents do
   alias WardrikDaemon.PolicyFile
 
   @inventory :declared
-  @routes __MODULE__
+  @table __MODULE__
 
   @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
@@ -103,11 +112,11 @@ defmodule WardrikDaemon.Agents do
   the agents, each in the order of their names.
   """
   @spec files() :: [file()]
-  def files, do: GenServer.call(__MODULE__, :files)
+  def files, do: loaded().files
 
   @doc "The config directory the files are read from."
   @spec dir() :: Path.t()
-  def dir, do: GenServer.call(__MODULE__, :dir)
+  def dir, do: :ets.lookup_element(@table, :dir, 2)
 
   @doc "`config.yaml`'s `defaults`, as the file writes them, or none."
   @spec defaults() :: map()
@@ -162,7 +171,16 @@ defmodule WardrikDaemon.Agents do
   defp held(spec, _source), do: spec
 
   defp policies do
-    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, :policies), else: %{}
+    if :ets.whereis(@table) == :undefined, do: %{}, else: loaded().policies
+  end
+
+  # Published at the end of each reading. Before the first one there is
+  # nothing to read, so the process is asked, and answers once it is done.
+  defp loaded do
+    case :ets.lookup(@table, :loaded) do
+      [{:loaded, loaded}] -> loaded
+      [] -> GenServer.call(__MODULE__, :loaded, :timer.minutes(1))
+    end
   end
 
   @doc """
@@ -172,7 +190,7 @@ defmodule WardrikDaemon.Agents do
   """
   @impl WardrikHTTP.Definition
   def put(key, fields, grant) do
-    case GenServer.call(__MODULE__, {:owner, key}) do
+    case owner(key) do
       {:file, path, _spec} ->
         declared(key, path)
 
@@ -198,7 +216,7 @@ defmodule WardrikDaemon.Agents do
   """
   @impl WardrikHTTP.Definition
   def delete(key) do
-    case GenServer.call(__MODULE__, {:owner, key}) do
+    case owner(key) do
       {:file, path, _spec} ->
         declared(key, path)
 
@@ -243,7 +261,7 @@ defmodule WardrikDaemon.Agents do
   @doc "`:ok` where the HTTP API may change the agent `key`, or a conflict where a file declares it."
   @spec editable(AgentID.t()) :: :ok | {:error, :conflict, String.t()}
   def editable(key) do
-    case GenServer.call(__MODULE__, {:owner, key}) do
+    case owner(key) do
       {:file, path, _spec} -> declared(key, path)
       {:api, _policies} -> :ok
     end
@@ -270,7 +288,7 @@ defmodule WardrikDaemon.Agents do
   build, a message each.
   """
   @spec problems() :: [String.t()]
-  def problems, do: GenServer.call(__MODULE__, :problems)
+  def problems, do: loaded().problems
 
   @doc """
   The route of each agent a file routes, as the last read of the files put
@@ -280,7 +298,7 @@ defmodule WardrikDaemon.Agents do
   """
   @spec routes() :: %{AgentID.t() => WardrikNotify.Route.t()}
   def routes do
-    case :ets.lookup(@routes, :routes) do
+    case :ets.lookup(@table, :routes) do
       [{:routes, routes}] -> routes
       [] -> %{}
     end
@@ -295,9 +313,24 @@ defmodule WardrikDaemon.Agents do
     do:
       {:error, :conflict, "#{key} is declared by agents/#{Path.basename(path)}; change the file"}
 
+  # Whether a file declares `key`, here with its spec or on another node, or
+  # the policies a definition the API sends for it is read under.
+  defp owner(key) do
+    %{files: files, policies: policies} = loaded()
+
+    file =
+      Enum.find_value(files, fn
+        {path, {:ok, %Spec{} = spec}} -> if spec.id == key, do: {:file, path, spec}
+        _other -> nil
+      end)
+
+    file || elsewhere(:ets.lookup_element(@table, :nodes, 2), key) || {:api, policies}
+  end
+
   @impl true
   def init(state) do
-    @routes = :ets.new(@routes, [:named_table, read_concurrency: true])
+    :ets.new(@table, [:named_table, :protected, read_concurrency: true])
+    true = :ets.insert(@table, [{:dir, state.dir}, {:nodes, state.nodes}])
     {:ok, Map.merge(state, %{files: [], problems: []}), {:continue, :load}}
   end
 
@@ -310,20 +343,7 @@ defmodule WardrikDaemon.Agents do
     {:reply, state.files, state}
   end
 
-  def handle_call(:files, _from, state), do: {:reply, state.files, state}
-  def handle_call(:problems, _from, state), do: {:reply, state.problems, state}
-  def handle_call(:policies, _from, state), do: {:reply, policies(state), state}
-  def handle_call(:dir, _from, state), do: {:reply, state.dir, state}
-
-  def handle_call({:owner, key}, _from, state) do
-    file =
-      Enum.find_value(state.files, fn
-        {path, {:ok, %Spec{} = spec}} -> if spec.id == key, do: {:file, path, spec}
-        _other -> nil
-      end)
-
-    {:reply, file || elsewhere(state, key) || {:api, policies(state)}, state}
-  end
+  def handle_call(:loaded, _from, state), do: {:reply, published(state), state}
 
   defp policies(state) do
     for {_path, {:ok, %WardrikPolicy{} = policy}} <- state.files,
@@ -331,11 +351,14 @@ defmodule WardrikDaemon.Agents do
         do: {policy.name, policy}
   end
 
+  defp published(state),
+    do: %{files: state.files, policies: policies(state), problems: state.problems}
+
   # The file another node connected to this one declares `key` in, with the
   # node, as its inventory has it. This node has not read it, so it has no
   # spec of it.
-  defp elsewhere(state, key) do
-    Enum.find_value(state.nodes.(), fn node ->
+  defp elsewhere(nodes, key) do
+    Enum.find_value(nodes.(), fn node ->
       case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, to_string(key)) do
         {:ok, path} -> {:file, {path, node}, nil}
         :error -> nil
@@ -385,13 +408,15 @@ defmodule WardrikDaemon.Agents do
           into: %{},
           do: {spec.id, route}
 
-    true = :ets.insert(@routes, {:routes, routes})
+    true = :ets.insert(@table, {:routes, routes})
     :ok = WardrikNotify.put_routes(routes)
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
 
-    %{state | problems: problems}
+    state = %{state | problems: problems}
+    true = :ets.insert(@table, {:loaded, published(state)})
+    state
   end
 
   # Every running agent the HTTP API defined, its conversations, and the
@@ -472,7 +497,7 @@ defmodule WardrikDaemon.Agents do
 
     for text <- Map.keys(previous) -- Map.keys(inventory),
         key = Wardrik.AgentID.parse!(text),
-        elsewhere(state, key) == nil,
+        elsewhere(state.nodes, key) == nil,
         do: retire(key)
   end
 

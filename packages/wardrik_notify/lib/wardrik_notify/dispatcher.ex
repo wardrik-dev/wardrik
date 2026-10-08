@@ -14,6 +14,12 @@ defmodule WardrikNotify.Dispatcher do
   routes what it routed before: a `{module, function, args}` or a function of
   no arguments returning the routes `put_routes/1` takes. It starts with none
   without it.
+
+  A delivery a target fails, or that crashes, is tried again after a second,
+  then after two, and is given up with a warning after the third attempt.
+  A target `config.yaml` does not configure, or that does not tell the
+  agent's org, is not tried again. `:backoff` sets the first wait, in
+  milliseconds.
   """
 
   use GenServer
@@ -24,6 +30,7 @@ defmodule WardrikNotify.Dispatcher do
   alias WardrikNotify.Route
 
   @tasks WardrikNotify.TaskSupervisor
+  @attempts 3
 
   @typedoc "Each routed agent's route."
   @type routes() :: %{Wardrik.AgentID.t() => Route.t()}
@@ -33,9 +40,17 @@ defmodule WardrikNotify.Dispatcher do
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    opts = Keyword.validate!(opts, routes: nil, targets: [], req_options: [])
-    state = %{routes: %{}, targets: opts[:targets], req_options: opts[:req_options]}
-    GenServer.start_link(__MODULE__, {state, opts[:routes]}, name: __MODULE__)
+    opts = Keyword.validate!(opts, routes: nil, backoff: 1_000, targets: [], req_options: [])
+
+    state = %{
+      routes: %{},
+      deliveries: %{},
+      backoff: opts[:backoff],
+      targets: opts[:targets],
+      req_options: opts[:req_options]
+    }
+
+    GenServer.start_link(__MODULE__, {opts[:routes], state}, name: __MODULE__)
   end
 
   @doc false
@@ -43,8 +58,8 @@ defmodule WardrikNotify.Dispatcher do
   def put_routes(routes), do: GenServer.call(__MODULE__, {:routes, routes})
 
   @impl true
-  def init({state, nil}), do: {:ok, state}
-  def init({state, source}), do: {:ok, state, {:continue, {:load, source}}}
+  def init({nil, state}), do: {:ok, state}
+  def init({source, state}), do: {:ok, state, {:continue, {:load, source}}}
 
   @impl true
   def handle_continue({:load, {module, function, args}}, state),
@@ -62,10 +77,27 @@ defmodule WardrikNotify.Dispatcher do
          {:ok, %Notice{} = notice} <- Notice.from_event(event),
          true <- notice.kind in route.on,
          true <- held_here?(agent) do
-      Enum.each(route.targets, &send_to(&1, notice, state))
+      {:noreply, Enum.reduce(route.targets, state, &send_to(&2, &1, notice, 1))}
+    else
+      _not_sent -> {:noreply, state}
     end
+  end
 
-    {:noreply, state}
+  def handle_info({ref, result}, state) when is_map_key(state.deliveries, ref) do
+    Process.demonitor(ref, [:flush])
+    {delivery, state} = pop_in(state.deliveries[ref])
+    {:noreply, delivered(state, delivery, result)}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state)
+      when is_map_key(state.deliveries, ref) do
+    {delivery, state} = pop_in(state.deliveries[ref])
+    {:noreply, delivered(state, delivery, {:error, {:crashed, reason}})}
+  end
+
+  def handle_info({:retry, timer}, state) when is_map_key(state.deliveries, timer) do
+    {{target, notice, attempt}, state} = pop_in(state.deliveries[timer])
+    {:noreply, send_to(state, target, notice, attempt)}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -89,27 +121,47 @@ defmodule WardrikNotify.Dispatcher do
     end
   end
 
-  defp send_to(name, notice, state) do
-    Task.Supervisor.start_child(@tasks, fn -> deliver(name, notice, state) end)
+  # Each delivery, and each wait before one is tried again, is held under
+  # its ref until it is done.
+  defp send_to(state, name, notice, attempt) do
+    settings = Map.take(state, [:targets, :req_options])
+
+    %Task{ref: ref} =
+      Task.Supervisor.async_nolink(@tasks, fn -> deliver(name, notice, settings) end)
+
+    put_in(state.deliveries[ref], {name, notice, attempt})
   end
 
   defp deliver(name, notice, %{targets: targets, req_options: req_options}) do
     with {:ok, {module, opts}} <- WardrikNotify.target(targets, name),
-         true <- WardrikNotify.tells?(targets, name, notice.agent.org),
-         opts = opts |> Keyword.put(:target, name) |> Keyword.put_new(:req_options, req_options),
-         :ok <- module.deliver(notice, opts) do
-      :ok
+         true <- WardrikNotify.tells?(targets, name, notice.agent.org) do
+      opts = opts |> Keyword.put(:target, name) |> Keyword.put_new(:req_options, req_options)
+      module.deliver(notice, opts)
     else
-      :error ->
-        Logger.warning("#{notice.agent} routes to #{name}, which config.yaml does not configure")
-
-      false ->
-        Logger.warning("#{notice.agent} routes to #{name}, which tells another org's agents")
-
-      {:error, reason} ->
-        Logger.warning(
-          "Could not tell #{name} that #{notice.agent} #{notice.kind}: #{inspect(reason)}"
-        )
+      :error -> {:skip, "which config.yaml does not configure"}
+      false -> {:skip, "which tells another org's agents"}
     end
   end
+
+  defp delivered(state, _delivery, :ok), do: state
+
+  defp delivered(state, {name, notice, _attempt}, {:skip, why}) do
+    Logger.warning("#{notice.agent} routes to #{name}, #{why}")
+    state
+  end
+
+  defp delivered(state, {name, notice, attempt}, {:error, reason}) when attempt < @attempts do
+    Logger.warning(failed(name, notice, reason) <> "; trying again")
+    timer = make_ref()
+    Process.send_after(self(), {:retry, timer}, state.backoff * 2 ** (attempt - 1))
+    put_in(state.deliveries[timer], {name, notice, attempt + 1})
+  end
+
+  defp delivered(state, {name, notice, _attempt}, {:error, reason}) do
+    Logger.warning(failed(name, notice, reason) <> "; giving up")
+    state
+  end
+
+  defp failed(name, notice, reason),
+    do: "Could not tell #{name} that #{notice.agent} #{notice.kind}: #{inspect(reason)}"
 end

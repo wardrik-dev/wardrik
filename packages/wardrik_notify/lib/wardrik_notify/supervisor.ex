@@ -13,8 +13,9 @@ defmodule WardrikNotify.Supervisor do
       and its options; see `WardrikNotify`. None by default.
     * `:req_options` - merged into every HTTP request a target makes, unless
       the target sets its own: the seam a test routes them through.
-    * `:routes` - where the dispatcher finds its routes as it starts; see
-      `WardrikNotify.Dispatcher`.
+    * `:routes` - where the dispatcher finds its routes as it starts, and
+      `:backoff` how long it waits before trying a failed delivery again, in
+      milliseconds; see `WardrikNotify.Dispatcher`.
   """
 
   use Supervisor
@@ -24,7 +25,7 @@ defmodule WardrikNotify.Supervisor do
 
   @impl true
   def init(opts) do
-    opts = Keyword.validate!(opts, routes: nil, targets: [], req_options: [])
+    opts = Keyword.validate!(opts, [:routes, :backoff, targets: [], req_options: []])
 
     sockets =
       for token <- WardrikNotify.Slack.app_tokens(opts[:targets]),

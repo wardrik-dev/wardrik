@@ -116,7 +116,7 @@ defmodule Wardrik.Workflow do
   def fan_out(%Scope{} = scope, inputs, step, opts \\ []) do
     name = Keyword.get(opts, :name)
 
-    Wardrik.TaskSupervisor
+    Wardrik.Tasks.supervisor()
     |> Task.Supervisor.async_stream_nolink(
       branches(scope, inputs, name),
       fn {input, branch} ->

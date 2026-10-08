@@ -1,27 +1,44 @@
 defmodule WardrikOAuth.Pending do
   @moduledoc """
-  The authorizations that have been started and not yet come back.
+  The authorizations that have been started and not yet come back, one
+  process each.
 
-  One entry per `state` value: what was being authorized, for whom, the PKCE
+  A flow's process holds what is being authorized, for whom, the PKCE
   verifier the callback needs, or the code a user enters on another device,
-  and where to send the user. Entries expire after fifteen minutes, or when a
-  device code does, because a user who never finishes should not leave a
-  verifier lying around, and a second attempt should start clean.
+  and where to send the user. It is registered across the cluster in a
+  `Group` of this package's own, under its `state` value and under its
+  provider and owner, so any node finds it by key: a callback by the state it
+  carries, a parked call by who it is for. Only one flow is under way for a
+  user and provider.
 
-  A flow already under way for the same user and provider is handed back
-  rather than started again, so an agent that retries a parked call keeps
-  offering the same URL. A flow that has expired can no longer be claimed.
+  A flow ends after fifteen minutes, or when its device code does, because a
+  user who never finishes should not leave a verifier lying around, and a
+  second attempt should start clean. Dropping a flow stops its process, and
+  with it any polling; a flow that crashes takes only itself.
+
+  A device flow's process asks the token endpoint every interval the server
+  named, and never more often than `WardrikOAuth.Config.poll_floor/0`,
+  whether the user has entered the code, until they have, refused, or let it
+  expire. A server that cannot be reached, or fails, is asked again at the
+  next interval. What it found is handed to the `:done` function it was
+  started with, and the flow ends.
+
   `inspect/1` of a flow shows what it is for, never its verifier, client,
   URL or code.
   """
 
-  use GenServer
+  use GenServer, restart: :temporary
 
+  require Logger
+
+  alias WardrikOAuth.Config
+  alias WardrikOAuth.Device
   alias WardrikOAuth.Flow
   alias WardrikOAuth.Metadata
   alias WardrikOAuth.Provider
+  alias WardrikOAuth.Token
 
-  @sweep_every :timer.minutes(1)
+  @flows __MODULE__.Supervisor
 
   defmodule Flight do
     @moduledoc false
@@ -56,108 +73,191 @@ defmodule WardrikOAuth.Pending do
           }
   end
 
+  @typedoc "How a device flow ended: with a token, or why not."
+  @type outcome() :: {:ok, Token.t()} | {:error, term()}
+
+  @doc """
+  What runs the flows: the `Group` they are registered in and the supervisor
+  they run under, the registry first.
+  """
+  @spec children() :: [{module(), keyword()}]
+  def children, do: [{Group, name: __MODULE__}, {DynamicSupervisor, name: @flows}]
+
+  @doc """
+  Starts a flow, and answers with the URL the user is sent to.
+
+  A device flow is started with `:device`, the server's answer, and `:done`,
+  called in the flow's process with the flow and its `t:outcome/0` once
+  polling finds an end.
+  """
+  @spec start(Flight.t(), keyword()) :: {:ok, String.t()}
+  def start(%Flight{} = flight, opts \\ []) do
+    init = %{
+      flight: flight,
+      device: Keyword.get(opts, :device),
+      done: Keyword.get(opts, :done),
+      callers: [self() | Process.get(:"$callers", [])]
+    }
+
+    {:ok, _pid} = DynamicSupervisor.start_child(@flows, {__MODULE__, init})
+    {:ok, flight.url}
+  end
+
   @doc false
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(init), do: GenServer.start_link(__MODULE__, init)
 
-  @doc "Remembers a flow, and answers with the URL the user is sent to."
-  @spec start(Flight.t()) :: {:ok, String.t()}
-  def start(%Flight{} = flight), do: GenServer.call(__MODULE__, {:start, flight})
-
-  @doc "The flow under way for this provider and owner, if any."
+  @doc "The flow under way for this provider and owner, on any node, if any."
   @spec under_way(String.t(), term()) :: {:ok, Flight.t()} | :error
-  def under_way(provider, owner), do: GenServer.call(__MODULE__, {:under_way, provider, owner})
+  def under_way(provider, owner) do
+    case lookup(owner_key(provider, owner)) do
+      {_pid, flight} -> {:ok, flight}
+      nil -> :error
+    end
+  end
 
   @doc """
   Takes the flow a callback belongs to, which can only be claimed once, where
   it has not expired and `accept` takes it. One `accept` refuses is left
-  where it is.
+  where it is. A claimed flow is still under way until it is dropped, or
+  released to be claimed again.
   """
   @spec claim(String.t(), (Flight.t() -> boolean())) :: {:ok, Flight.t()} | :error
-  def claim(state, accept \\ fn _flight -> true end),
-    do: GenServer.call(__MODULE__, {:claim, state, accept})
-
-  @doc "Forgets a flow that will not be finished."
-  @spec drop(String.t()) :: :ok
-  def drop(state), do: GenServer.cast(__MODULE__, {:drop, state})
-
-  @doc "Forgets every flow under way for this provider and owner."
-  @spec drop(String.t(), term()) :: :ok
-  def drop(provider, owner), do: GenServer.cast(__MODULE__, {:drop, provider, owner})
-
-  @doc """
-  The flow under way for this provider and owner on any of `nodes`. A node
-  that cannot be asked, or runs no registry of flows, is passed over.
-  """
-  @spec under_way_on([node()], String.t(), term()) :: {:ok, Flight.t()} | :error
-  def under_way_on(nodes, provider, owner) do
-    nodes
-    |> :erpc.multicall(__MODULE__, :under_way, [provider, owner], :timer.seconds(5))
-    |> Enum.find_value(:error, fn
-      {:ok, {:ok, %Flight{} = flight}} -> {:ok, flight}
-      _none -> nil
-    end)
-  end
-
-  @doc "Forgets every flow under way for this provider and owner, here and on `nodes`."
-  @spec drop_on([node()], String.t(), term()) :: :ok
-  def drop_on(nodes, provider, owner) do
-    :ok = drop(provider, owner)
-    :erpc.multicast(nodes, __MODULE__, :drop, [provider, owner])
-  end
-
-  @impl GenServer
-  def init(_opts) do
-    Process.send_after(self(), :sweep, @sweep_every)
-
-    {:ok, %{}}
-  end
-
-  @impl GenServer
-  def handle_call({:start, %Flight{} = flight}, _from, flights) do
-    {:reply, {:ok, flight.url}, Map.put(flights, flight.state, flight)}
-  end
-
-  def handle_call({:under_way, provider, owner}, _from, flights) do
-    found =
-      Enum.find_value(flights, :error, fn {_state, flight} ->
-        if flight.provider.name == provider and flight.owner == owner and
-             not expired?(flight),
-           do: {:ok, flight}
-      end)
-
-    {:reply, found, flights}
-  end
-
-  def handle_call({:claim, state, accept}, _from, flights) do
-    case Map.fetch(flights, state) do
-      {:ok, flight} ->
-        if not expired?(flight) and accept.(flight),
-          do: {:reply, {:ok, flight}, Map.delete(flights, state)},
-          else: {:reply, :error, flights}
-
-      :error ->
-        {:reply, :error, flights}
+  def claim(state, accept \\ fn _flight -> true end) do
+    with {pid, flight} <- lookup(state_key(state)),
+         true <- accept.(flight) do
+      ask(pid, :claim)
+    else
+      _none -> :error
     end
   end
 
-  @impl GenServer
-  def handle_cast({:drop, state}, flights), do: {:noreply, Map.delete(flights, state)}
+  @doc "Lets a claimed flow that got no token be claimed again."
+  @spec release(String.t()) :: :ok
+  def release(state) do
+    with {pid, _flight} <- lookup(state_key(state)), do: GenServer.cast(pid, :release)
+    :ok
+  end
 
-  def handle_cast({:drop, provider, owner}, flights) do
-    {:noreply,
-     Map.reject(flights, fn {_state, flight} ->
-       flight.provider.name == provider and flight.owner == owner
-     end)}
+  @doc "Stops the flow under way for this provider and owner, wherever it runs."
+  @spec drop(String.t(), term()) :: :ok
+  def drop(provider, owner) do
+    with {pid, _flight} <- lookup(owner_key(provider, owner)),
+         do: DynamicSupervisor.terminate_child({@flows, node(pid)}, pid)
+
+    :ok
+  end
+
+  # Group forgets a process once it hears it has gone; one of this node's
+  # that has gone already is not handed out meanwhile.
+  defp lookup(key) do
+    case Group.lookup(__MODULE__, key) do
+      {pid, %Flight{}} = found when node(pid) != node() -> found
+      {pid, %Flight{}} = found -> if Process.alive?(pid), do: found
+      nil -> nil
+    end
+  end
+
+  # A flow can end, expired or dropped, between being found and being asked.
+  defp ask(pid, request) do
+    GenServer.call(pid, request)
+  catch
+    :exit, _gone -> :error
+  end
+
+  defp state_key(state), do: "state/" <> state
+
+  defp owner_key(provider, owner) do
+    key = :erlang.term_to_binary({provider, owner}, [:deterministic])
+    "owner/" <> Base.url_encode64(key, padding: false)
   end
 
   @impl GenServer
-  def handle_info(:sweep, flights) do
-    Process.send_after(self(), :sweep, @sweep_every)
+  def init(%{flight: %Flight{} = flight} = init) do
+    Process.put(:"$callers", init.callers)
+    Process.flag(:trap_exit, true)
+    :ok = Group.register(__MODULE__, state_key(flight.state), flight)
+    :ok = Group.register(__MODULE__, owner_key(flight.provider.name, flight.owner), flight)
+    Process.send_after(self(), :expire, max(deadline(flight) - now(), 0))
 
-    {:noreply, Map.reject(flights, fn {_state, flight} -> expired?(flight) end)}
+    state = %{flight: flight, claimed?: false, device: init.device, done: init.done}
+    {:ok, polling(state)}
   end
 
-  defp expired?(%Flight{started_at: started_at, expires_after: expires_after}) do
-    System.monotonic_time(:millisecond) - started_at > expires_after
+  defp polling(%{device: nil} = state), do: state
+
+  defp polling(%{device: %Device{} = device} = state) do
+    interval = max(:timer.seconds(device.interval), Config.poll_floor())
+    next_poll(Map.put(state, :interval, interval))
   end
+
+  @impl GenServer
+  def handle_call(:claim, _from, %{flight: flight, claimed?: false} = state) do
+    if now() > deadline(flight),
+      do: {:reply, :error, state},
+      else: {:reply, {:ok, flight}, %{state | claimed?: true}}
+  end
+
+  def handle_call(:claim, _from, state), do: {:reply, :error, state}
+
+  @impl GenServer
+  def handle_cast(:release, state), do: {:noreply, %{state | claimed?: false}}
+
+  @impl GenServer
+  def handle_info(:expire, %{device: nil} = state), do: {:stop, :normal, state}
+  def handle_info(:expire, state), do: ended(state, {:error, :expired})
+
+  def handle_info(:poll, %{flight: flight} = state) do
+    if now() >= deadline(flight),
+      do: ended(state, {:error, :expired}),
+      else: poll(state)
+  end
+
+  defp poll(%{flight: flight, device: device} = state) do
+    case Device.poll(flight.metadata, flight.registered, device) do
+      {:ok, %Token{} = token} ->
+        ended(state, {:ok, token})
+
+      {:error, reason} ->
+        ended(state, {:error, reason})
+
+      {:retry, reason} ->
+        Logger.info(
+          "#{flight.provider.name} could not be polled (#{inspect(reason)}); asking again"
+        )
+
+        {:noreply, next_poll(state)}
+
+      waiting ->
+        {:noreply, next_poll(%{state | interval: Device.next_interval(waiting, state.interval)})}
+    end
+  end
+
+  # The flow is no longer under way once it has ended, so whatever its end
+  # sets off finds none.
+  defp ended(%{flight: flight, done: done} = state, outcome) do
+    unregister(flight)
+    done.(flight, outcome)
+    {:stop, :normal, state}
+  end
+
+  # Dropped or expired, a flow gives its keys up as it stops, so one started
+  # for the same user and provider straight after takes them.
+  @impl GenServer
+  def terminate(_reason, %{flight: flight}), do: unregister(flight)
+
+  defp unregister(%Flight{} = flight) do
+    Group.unregister(__MODULE__, state_key(flight.state))
+    Group.unregister(__MODULE__, owner_key(flight.provider.name, flight.owner))
+    :ok
+  end
+
+  defp next_poll(%{flight: flight, interval: interval} = state) do
+    Process.send_after(self(), :poll, min(interval, max(deadline(flight) - now(), 0)))
+    state
+  end
+
+  defp deadline(%Flight{started_at: started_at, expires_after: expires_after}),
+    do: started_at + expires_after
+
+  defp now, do: System.monotonic_time(:millisecond)
 end

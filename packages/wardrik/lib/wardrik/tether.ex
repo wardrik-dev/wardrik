@@ -4,7 +4,7 @@ defmodule Wardrik.Tether do
   exits, for any reason, the caller is killed. Nothing travels the other way,
   so a caller that crashes leaves its owner running.
 
-      Task.Supervisor.async_nolink(Wardrik.TaskSupervisor, fn ->
+      Task.Supervisor.async_nolink(Wardrik.Tasks.supervisor(), fn ->
         Wardrik.Tether.to(owner)
         work()
       end)
