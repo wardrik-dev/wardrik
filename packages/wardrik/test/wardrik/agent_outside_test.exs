@@ -54,7 +54,7 @@ defmodule Wardrik.AgentOutsideTest do
     assert dropped > 0
 
     Agent.ask(agent, "Deploy.")
-    assert_receive %Event{payload: {:tool_finished, "call_3", "deploy", _result}}, 5_000
+    assert_receive %Event{payload: {:tool_finished, "call_3", "deploy", _result, _}}, 5_000
     assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
   end
 end

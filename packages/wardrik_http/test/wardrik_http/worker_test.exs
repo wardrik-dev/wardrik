@@ -1,6 +1,8 @@
 defmodule WardrikHTTP.WorkerTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Grant
   alias Wardrik.Ledger
@@ -234,33 +236,105 @@ defmodule WardrikHTTP.WorkerTest do
                     }}
   end
 
-  test "a worker's error, and its going away, reach the model as errors", context do
-    connect(context, [tool("fail"), tool("leave")])
+  test "a worker's error reaches the model as an error, naming the token that served it",
+       context do
+    connect(context, [tool("fail")])
 
-    assert Workers.call(context.agent, "fail", %{}, handed(context.agent)) ==
-             {:ok,
-              %{
-                "ok" => false,
-                "error" => %{"code" => "tool_error", "message" => "No such order."}
-              }}
-
-    assert {:ok, %{"ok" => false, "error" => %{"code" => "worker_gone", "message" => message}}} =
-             Workers.call(context.agent, "leave", %{}, handed(context.agent))
-
-    assert message =~ "may already have done what it does"
+    assert {:ok,
+            %{
+              "ok" => false,
+              "error" => %{"code" => "tool_error", "message" => "No such order."}
+            }, served_by: %{id: _id, name: "worker-test"}} =
+             Workers.call(context.agent, "fail", %{}, handed(context.agent))
   end
 
-  test "a call not answered in time is cancelled", context do
+  test "a worker going away before it answers leaves its call in doubt", context do
+    connect(context, [tool("leave")])
+
+    assert {:in_doubt, "The worker running leave went away before it answered.",
+            served_by: %{name: "worker-test"}} =
+             Workers.call(context.agent, "leave", %{}, handed(context.agent))
+  end
+
+  test "a call not answered in time is cancelled, and left in doubt", context do
     previous = Application.get_env(:wardrik_http, WardrikHTTP, [])
     Application.put_env(:wardrik_http, WardrikHTTP, Keyword.put(previous, :worker_timeout, 50))
     on_exit(fn -> Application.put_env(:wardrik_http, WardrikHTTP, previous) end)
 
     connect(context, [tool("hang")])
 
-    assert {:ok, %{"ok" => false, "error" => %{"code" => "timeout"}}} =
+    assert {:in_doubt, "hang did not answer in time.", served_by: _served} =
              Workers.call(context.agent, "hang", %{}, handed(context.agent))
 
-    assert_receive {:notified, "notifications/cancelled", %{"requestId" => _id}}
+    assert_receive {:notified, "notifications/cancelled",
+                    %{"requestId" => _id, "reason" => "The call was not answered in time."}}
+  end
+
+  test "a call whose caller is stopped is cancelled at its worker", context do
+    connect(context, [tool("hang")])
+    test = self()
+
+    {:ok, caller} =
+      Task.start(fn ->
+        Workers.call(context.agent, "hang", %{}, handed(context.agent))
+        send(test, :answered)
+      end)
+
+    assert_receive {:called, %{"name" => "hang"}}
+    Process.exit(caller, :kill)
+
+    assert_receive {:notified, "notifications/cancelled", %{"reason" => "The call was stopped."}}
+    refute_received :answered
+  end
+
+  test "a worker lost mid-call leaves the call waiting on a person, keeping its claim",
+       context do
+    connect(context, [tool("leave")])
+
+    scope =
+      [tools: [{Workers, context.agent}]]
+      |> Config.new()
+      |> Scope.root(context.agent,
+        name: "turn",
+        ledger: Ledger.Store,
+        hooks: [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["workers__leave"])]
+      )
+
+    call = %{id: "call_1", name: "workers__leave", arguments: %{}}
+
+    assert %Wardrik.Call{state: :waiting, asks: [%Wardrik.Call.Ask{by: :doubt, prompt: prompt}]} =
+             ToolRunner.execute(call, scope)
+
+    assert prompt =~ "workers__leave may already have done what it does."
+    assert prompt =~ "The worker running leave went away before it answered."
+
+    assert {:ok, %Ledger.Entry{result: nil}} =
+             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "a call run again in doubt with no worker to run it stays in doubt", context do
+    in_doubt = %{handed(context.agent) | in_doubt: true}
+
+    assert {:in_doubt, "No worker offers echo now to run it again."} =
+             Workers.call(context.agent, "echo", %{}, in_doubt)
+  end
+
+  test "a tool is bound to the token whose worker offered it first", context do
+    connect(context, [tool("echo")])
+
+    {:ok, second, _token} =
+      Token.create("second", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+
+    log =
+      capture_log(fn -> connect(context, [tool("echo", %{"readOnlyHint" => true})], second) end)
+
+    assert log =~ "token second offers echo, which token worker-test offers too"
+    assert annotations(context.agent, "workers__echo").gated
+
+    for _call <- 1..5 do
+      assert {:ok, _result, served_by: %{name: "worker-test"}} =
+               Workers.call(context.agent, "echo", %{}, handed(context.agent))
+    end
   end
 
   test "a call no worker in reach offers does not run", context do

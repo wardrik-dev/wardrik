@@ -305,7 +305,12 @@ defmodule WardrikDaemon.CLITest do
     assert watching =~ "#{key}, idle on "
 
     Wardrik.Test.Events.emit(key, {:result, "first\n"})
-    Wardrik.Test.Events.emit(key, {:tool_started, "call_1", "deploy", %{}, "key"})
+
+    Wardrik.Test.Events.emit(
+      key,
+      {:tool_started, "call_1", "deploy", %{}, "key", %{by: :default, hooks: []}}
+    )
+
     assert_receive {:written, "first\n"}
     assert_receive {:written, "  → deploy\n"}
 

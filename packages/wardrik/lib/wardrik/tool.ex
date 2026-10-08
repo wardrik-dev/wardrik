@@ -39,7 +39,7 @@ defmodule Wardrik.Tool do
   is handed its arguments, validated, and a `Wardrik.Tool.Context`: the scope
   the call runs under, the call's id and idempotency key, the credentials its
   annotations named, and a way to report progress. It answers the same way,
-  and in three more ways; see `t:answer/0`:
+  and in four more ways; see `t:answer/0`:
 
       def tool do
         Wardrik.Tool.new!(
@@ -66,6 +66,13 @@ defmodule Wardrik.Tool do
   cannot finish until something outside the turn happens. Approving a parked
   call hands the tool its arguments again, so a tool that parks must be safe
   to call twice.
+
+  A tool that cannot say how a call ended, because what it reached went
+  quiet part way, answers `{:in_doubt, reason}` rather than an error: the
+  model would retry an error under a new idempotency key, and the effect
+  might happen twice. The call runs again under the same key where the
+  tool's annotations say it may, and waits on a person otherwise; see
+  `Wardrik.Call.Pipeline`.
 
   ## Sources
 
@@ -116,11 +123,15 @@ defmodule Wardrik.Tool do
   What a tool handed its context answers.
 
     * `{:ok, output}` and `{:error, reason}`, as a callback does
-    * `{:ok, output, outside: true}` - an answer that is content from
-      outside, which taints the run; see `Wardrik.Call.taint/1`
+    * `{:ok, output, opts}` - an answer with what the runtime records of it:
+      `outside: true` for content from outside, which taints the run (see
+      `Wardrik.Call.taint/1`), and `served_by:` for what answered it, which
+      the call's events name (see `t:Wardrik.Call.served/0`)
     * `{:park, prompt}` and `{:park, prompt, link: link}` - the call waits on
       a person, who is shown `prompt`, and authorizes at `link` where there
       is one; see `Wardrik.Call.park/3`
+    * `{:in_doubt, reason}` and `{:in_doubt, reason, served_by: served}` - the
+      call may have done what it does, and the tool cannot say; see above
     * `{:refused, name}` - the system the tool reaches refused the credential
       it was handed as `name`. The runtime tells the resolver, resolves it
       again, and runs the tool once more.
@@ -128,9 +139,11 @@ defmodule Wardrik.Tool do
   @type answer() ::
           {:ok, term()}
           | {:error, term()}
-          | {:ok, term(), outside: boolean()}
+          | {:ok, term(), [outside: boolean(), served_by: Wardrik.Call.served()]}
           | {:park, String.t()}
           | {:park, String.t(), link: Wardrik.Call.Ask.link()}
+          | {:in_doubt, String.t()}
+          | {:in_doubt, String.t(), served_by: Wardrik.Call.served()}
           | {:refused, Wardrik.Credential.ref()}
 
   @doc """
@@ -237,7 +250,7 @@ defmodule Wardrik.Tool do
 
   @doc """
   What a tool `new!/1` builds answers when something other than
-  `Wardrik.LLM.ToolRunner` calls it, which has no context to hand it.
+  `Wardrik.Call.Pipeline` calls it, which has no context to hand it.
   """
   @spec invoke(handler(), map()) :: {:error, String.t()}
   def invoke(_handler, _input),

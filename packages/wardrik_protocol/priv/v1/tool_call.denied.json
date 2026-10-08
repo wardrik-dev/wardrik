@@ -10,11 +10,15 @@
     },
     "reason": {
       "type": "string"
+    },
+    "decided": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/decided"
     }
   },
   "additionalProperties": false,
   "required": [
     "tool",
-    "reason"
+    "reason",
+    "decided"
   ]
 }

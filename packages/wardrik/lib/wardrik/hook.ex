@@ -58,12 +58,17 @@ defmodule Wardrik.Hook do
   Each hook that asked hears of it through `c:approved/3`, with the memo it
   asked with.
 
-  ## Once a model call is made
+  ## Once a call is made
 
-  `c:settle/2` is handed each model call once it has been made, in state
-  `:done`, with `:result` and `:usage` set. A call that failed before the
-  provider began to answer used nothing, and is not settled. A failure there
-  is logged.
+  `c:settle/2` is handed each call once it has been made, in state `:done`
+  with `:result` set: a tool call its tool answered, and a model call with
+  `:usage` set on its target. A model call that failed before the provider
+  began to answer used nothing, and is not settled; nor is a call refused, a
+  call answered from the ledger, or one waiting on a person. A failure there
+  is logged. A hook that cares for one kind of call matches on its target:
+
+      def settle(%Wardrik.Call{target: %Wardrik.Call.Model{usage: usage}}, value), do: book(usage, value)
+      def settle(_call, _value), do: :ok
 
   ## Revisions
 
@@ -111,7 +116,7 @@ defmodule Wardrik.Hook do
   @doc "Hears that a person approved a call this hook asked about, with the memo it asked with."
   @callback approved(Call.t(), memo :: term(), value :: term()) :: any()
 
-  @doc "Hears what a model call used."
+  @doc "Hears what a call did once it was made: what a tool answered, or what a model call used."
   @callback settle(Call.t(), value :: term()) :: any()
 
   @optional_callbacks approved: 3, settle: 2
@@ -182,9 +187,9 @@ defmodule Wardrik.Hook do
     :ok
   end
 
-  @doc "Tells every hook on its scope what a model call used."
+  @doc "Tells every hook on its scope what a call did once it was made."
   @spec settle(Call.t()) :: :ok
-  def settle(%Call{target: %Call.Model{}, state: :done, scope: %Scope{hooks: hooks}} = call) do
+  def settle(%Call{state: :done, scope: %Scope{hooks: hooks}} = call) do
     Enum.each(hooks, &optional(&1, :settle, [call]))
   end
 

@@ -36,7 +36,7 @@ export interface ToolContext {
    * run again after a crash has no second effect.
    */
   idempotencyKey: string | undefined;
-  /** Aborts when Wardrik stops waiting for the call. */
+  /** Aborts when Wardrik stops waiting for the call, or stops it. */
   signal: AbortSignal;
 }
 
@@ -51,9 +51,10 @@ export interface ToolDefinition<Input extends StandardSchemaWithJSON = StandardS
   input: Input;
   /**
    * Whether running it again with the same idempotency key has no second
-   * effect. A call Wardrik cannot tell finished, because its agent was lost
-   * while the call was running, runs again where every worker offering the
-   * tool says so, and waits for a person otherwise.
+   * effect. A call Wardrik cannot tell finished, because its agent or its
+   * worker was lost while the call was running, or it answered late, runs
+   * again where every worker offering the tool says so, and waits for a
+   * person otherwise.
    */
   idempotent?: boolean;
   /**

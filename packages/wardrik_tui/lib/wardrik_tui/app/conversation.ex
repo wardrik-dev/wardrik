@@ -321,7 +321,10 @@ defmodule WardrikTUI.App.Conversation do
     end
   end
 
-  defp handle_projection(%Event{payload: {:tool_finished, id, name, result}} = event, projection) do
+  defp handle_projection(
+         %Event{payload: {:tool_finished, id, name, result, _served_by}} = event,
+         projection
+       ) do
     {output, ok?} =
       case result do
         {:ok, output} -> {output_text(output), true}
@@ -333,7 +336,10 @@ defmodule WardrikTUI.App.Conversation do
     |> trace(event)
   end
 
-  defp handle_projection(%Event{payload: {:tool_denied, id, name, reason}} = event, projection) do
+  defp handle_projection(
+         %Event{payload: {:tool_denied, id, name, reason, _decided_by}} = event,
+         projection
+       ) do
     projection
     |> assign(tools: Exchange.finish(projection.state.tools, id, name, reason, false))
     |> trace(event)

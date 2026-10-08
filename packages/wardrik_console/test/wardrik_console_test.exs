@@ -23,8 +23,8 @@ defmodule WardrikConsoleTest do
       render(Fleet.id(), [
         {:thinking, "hmm"},
         {:result, "the answer"},
-        {:tool_started, "call_1", "echo", %{}, "key"},
-        {:tool_finished, "call_1", "echo", {:ok, "done"}},
+        {:tool_started, "call_1", "echo", %{}, "key", %{by: :default, hooks: []}},
+        {:tool_finished, "call_1", "echo", {:ok, "done"}, nil},
         {:turn_failed, :rate_limited}
       ])
 
@@ -60,7 +60,12 @@ defmodule WardrikConsoleTest do
       capture_io(fn ->
         {:ok, console} = Console.start_link(agent_id: agent_id, width: 20)
         send(console, :not_an_event)
-        Events.emit(agent_id, {:tool_denied, "call_1", "shell", String.duplicate("x", 40)})
+
+        Events.emit(
+          agent_id,
+          {:tool_denied, "call_1", "shell", String.duplicate("x", 40), %{by: :default, hooks: []}}
+        )
+
         :sys.get_state(console)
       end)
 

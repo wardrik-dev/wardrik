@@ -180,11 +180,16 @@ Wardrik.Fleet.spawn(id,
 
 | Seam | What it decides |
 | --- | --- |
-| `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. |
+| `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. Each hears what a call did once it is made. |
 | `:dispatch` | A `Wardrik.LLM.Dispatch`, which decides what a model call actually is just before it is made, and hears what it cost. |
 | `:credentials` | A `Wardrik.Credential` resolver, which finds the secret a tool names for the user it is working for. See [wardrik_vault](../wardrik_vault). |
 | `:ledger` | A `Wardrik.Ledger`, which records each tool call before it runs. See [A turn lost part way](#a-turn-lost-part-way). |
 | `:timeout` | A deadline for each turn. Work under it can narrow it, never widen it. |
+
+Every call, to a tool or a model, passes the seams in one order, as
+`Wardrik.Call.Pipeline` sets out: the hooks decide it, the ledger claims it
+and its credentials are resolved, or the dispatch admits it, it is made, and
+the ledger, the dispatch and the hooks hear how it ended.
 
 The same agent written down is a `Wardrik.Agent.Spec`, which holds no process
 and no function. `Wardrik.Fleet.put/1` starts the agent a spec describes, or
@@ -275,7 +280,9 @@ the model again.
 
 With a `Wardrik.Ledger` on the scope, each call is claimed before it runs and
 settled after. A replay then answers a call that already ran with what it
-returned, and parks one that began and never finished for a person to decide:
+returned, and parks one that began and never finished for a person to decide,
+as it does a call whose tool answers `{:in_doubt, reason}` because it cannot
+say how the call ended:
 
 ```elixir
 Wardrik.Fleet.spawn(id, config: config, ledger: Wardrik.Ledger.Store)

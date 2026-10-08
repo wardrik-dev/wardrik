@@ -105,15 +105,17 @@ from what the model sent: a worker serving an agent for each customer answers
 each with what is theirs. `run` is the run the call is part of.
 
 `idempotencyKey` is the same each time the daemon runs one call. A call the
-daemon cannot tell finished, because its agent was lost while the call was
-running, runs again under the same key where every worker in reach marks the
-tool `idempotent` or `readOnly`, and waits for a person otherwise. A tool that
-is not `readOnly` is gated: a call to it waits on a person unless the agent's
-policy allows it by name.
+daemon cannot tell finished, because its agent or its worker was lost while
+the call was running, or it answered late, runs again under the same key where
+every worker in reach marks the tool `idempotent` or `readOnly`, and waits for
+a person otherwise. A tool that is not `readOnly` is gated: a call to it waits
+on a person unless the agent's policy allows it by name. A tool is bound to
+the token that offers it: workers under another token offering the same name
+to the same agent are refused.
 
 `run` answers an object as the call's result and a string as text. A thrown
 error is a failed call the model is told about. `signal` aborts when the
-daemon stops waiting for the call.
+daemon stops waiting for the call, or stops it.
 
 `examples/refund.ts` runs a worker and an agent together.
 

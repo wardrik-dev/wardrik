@@ -2,9 +2,9 @@ defmodule Wardrik.LLM.Dispatch do
   @moduledoc """
   The seam every model call passes through.
 
-  A turn does not call a provider directly. It builds a `Wardrik.LLM.Request` and
-  asks the dispatch to admit it, makes the call the dispatch hands back, and
-  reports what happened. A host that has to decide which model a call lands
+  A turn does not call a provider directly. It builds a `Wardrik.LLM.Request`,
+  and `Wardrik.Call.Pipeline` asks the dispatch to admit it, makes the call the
+  dispatch hands back, and reports what happened. A host that has to decide which model a call lands
   on, or which key pays for it, does both here, once, rather than wrapping the
   runtime.
 
@@ -41,10 +41,10 @@ defmodule Wardrik.LLM.Dispatch do
   ## Hooks first
 
   Before the dispatch sees a request, the scope's `Wardrik.Hook`s are handed it
-  as a `Wardrik.Call` to a `Wardrik.Call.Model`. A deny fails the turn as
-  `{:policy_denied, reason}` and an ask parks it, and in neither case is the
-  dispatch asked. Every hook hears what an admitted call used through
-  `Wardrik.Hook.settle/1`.
+  as a `Wardrik.Call` to a `Wardrik.Call.Model`; see `Wardrik.Call.Pipeline`. A
+  deny fails the turn as `{:policy_denied, reason}` and an ask parks it, and
+  in neither case is the dispatch asked. Every hook hears what an admitted
+  call used through `Wardrik.Hook.settle/1`.
 
   ## Refusing a call
 
@@ -60,17 +60,11 @@ defmodule Wardrik.LLM.Dispatch do
   store with the agent.
   """
 
-  alias Wardrik.Call
-  alias Wardrik.Hook
   alias Wardrik.LLM.Request
-  alias Wardrik.LLM.Usage
   alias Wardrik.Scope
 
   @typedoc "A dispatch as a scope holds it: a module, or a module and the value it reads."
   @type t() :: module() | {module(), term()}
-
-  @typedoc "What `admit/3` answers: the request to make, the call waiting on a person, or why not."
-  @type admission() :: {:ok, Request.t()} | {:park, Call.t()} | {:error, term()}
 
   @typedoc """
   How a model call ended: with its response, interrupted with the text that
@@ -109,29 +103,13 @@ defmodule Wardrik.LLM.Dispatch do
   require Logger
 
   @doc """
-  Admits `request` under `scope`: hands its call to the scope's hooks, then
-  the request to its dispatch, passing the request through where there is
-  none. A call waiting on a person is handed back with no scope, as it is
-  written down.
-
-  `decided: true` skips the hooks, for a call a person has already approved.
+  Admits `request` under `scope` through its dispatch, passing the request
+  through where there is none.
   """
-  @spec admit(Scope.t(), Request.t(), keyword()) :: admission()
-  def admit(%Scope{} = scope, %Request{} = request, opts \\ []) do
-    if Keyword.get(opts, :decided, false) do
-      dispatch(scope, request)
-    else
-      case request |> Call.model(scope) |> Hook.check() do
-        %Call{state: :allowed} -> dispatch(scope, request)
-        %Call{state: :denied, denied: denied} -> {:error, {:policy_denied, denied.reason}}
-        %Call{state: :waiting} = waiting -> {:park, Call.under(waiting, nil)}
-      end
-    end
-  end
+  @spec admit(Scope.t(), Request.t()) :: {:ok, Request.t()} | {:error, term()}
+  def admit(%Scope{dispatch: nil}, %Request{} = request), do: {:ok, request}
 
-  defp dispatch(%Scope{dispatch: nil}, request), do: {:ok, request}
-
-  defp dispatch(%Scope{dispatch: dispatch} = scope, request) do
+  def admit(%Scope{dispatch: dispatch} = scope, %Request{} = request) do
     case call(dispatch, :admit, [request, scope]) do
       {:ok, %Request{} = admitted} -> {:ok, admitted}
       {:error, reason} -> {:error, reason}
@@ -142,21 +120,17 @@ defmodule Wardrik.LLM.Dispatch do
   end
 
   @doc """
-  Reports `outcome` for `request` to the dispatch and the hooks.
+  Reports `outcome` for `request` to the dispatch.
 
   A dispatch that fails here is logged and ignored: the call already happened,
   and losing the answer to a bookkeeping error would be worse than losing the
   book entry.
   """
   @spec settle(Scope.t(), Request.t(), outcome()) :: :ok
-  def settle(%Scope{} = scope, %Request{} = request, outcome) do
-    if scope.dispatch, do: optional(scope.dispatch, :settle, [request, outcome, scope])
+  def settle(%Scope{dispatch: nil}, %Request{}, _outcome), do: :ok
 
-    case Usage.of(request, outcome) do
-      nil -> :ok
-      usage -> request |> Call.model(scope) |> Call.used(outcome, usage) |> Hook.settle()
-    end
-  end
+  def settle(%Scope{dispatch: dispatch} = scope, %Request{} = request, outcome),
+    do: optional(dispatch, :settle, [request, outcome, scope])
 
   defp optional(dispatch, function, args) do
     if implements?(dispatch, function, length(args)), do: call(dispatch, function, args)

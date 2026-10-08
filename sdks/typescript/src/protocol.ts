@@ -83,6 +83,26 @@ export interface Principal {
   name?: string;
 }
 /**
+ * Who decided a call.
+ */
+export interface Decided {
+  /**
+   * hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it.
+   */
+  by: "hook" | "person" | "default" | "ledger";
+  /**
+   * The hooks that allowed the call, refused it, or asked a person about it.
+   */
+  hooks?: string[];
+}
+/**
+ * What answered a tool call, as its tool names it: a tool worker's token, for one.
+ */
+export interface ServedBy {
+  id: string;
+  name?: string;
+}
+/**
  * A run, by the W3C trace id it runs under.
  */
 export interface Run {
@@ -115,7 +135,7 @@ export interface Tool {
  */
 export interface Interrupt {
   id: string;
-  reason: "tool_approval" | "model_approval" | "authorization";
+  reason: "tool_approval" | "model_approval" | "authorization" | "in_doubt";
   message: string;
   tool_call_id?: string;
   /**
@@ -435,6 +455,7 @@ export interface MessageStartedData {
   provider?: {
     name: string;
   };
+  decided: Decided;
 }
 /**
  * Reasoning of an assistant message as it streams. Live: never stored.
@@ -558,6 +579,7 @@ export interface ToolCallCompletedData {
   status: "ok" | "error";
   error?: ErrorInfo;
   replayed: boolean;
+  served_by?: ServedBy;
 }
 /**
  * A tool call was refused without running.
@@ -565,6 +587,7 @@ export interface ToolCallCompletedData {
 export interface ToolCallDeniedData {
   tool: Tool;
   reason: string;
+  decided: Decided;
 }
 /**
  * A tool call reported progress. Live: never stored.
@@ -579,6 +602,7 @@ export interface ToolCallProgressData {
  */
 export interface ToolCallStartedData {
   tool: Tool;
+  decided: Decided;
 }
 
 /** Each event type, and the data its events carry. */

@@ -147,7 +147,11 @@ defmodule Wardrik.DelegationTest do
   test "events that are not about delegations change nothing" do
     turn = turn()
 
-    delegations = fold([at(turn, {:result, "text"}, 0), at(turn, {:model_started, "m0", "m"}, 1)])
+    delegations =
+      fold([
+        at(turn, {:result, "text"}, 0),
+        at(turn, {:model_started, "m0", "m", %{by: :default, hooks: []}}, 1)
+      ])
 
     assert Delegation.list(delegations) == []
   end

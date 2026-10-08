@@ -6,10 +6,10 @@ defmodule WardrikPolicy.BudgetTest do
 
   alias ReqLLM.Context
   alias Wardrik.Call
+  alias Wardrik.Call.Pipeline
   alias Wardrik.Hook
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Cost
-  alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
   alias Wardrik.Scope
@@ -95,6 +95,16 @@ defmodule WardrikPolicy.BudgetTest do
 
     defp under(scope, policy), do: %{scope | hooks: WardrikPolicy.hooks(policy)}
 
+    # The model call `request` makes under `scope`, as its hooks decide it.
+    defp decide(scope, request), do: request |> Pipeline.model(scope) |> Pipeline.decide()
+
+    # A model call its hooks let go ahead under `scope`, which ended as
+    # `outcome`, and which they hear.
+    defp spend(scope, request, outcome) do
+      %{Pipeline.model(request, scope) | state: :allowed}
+      |> Pipeline.run(&Call.answer(&1, outcome))
+    end
+
     defp approve(waiting, scope),
       do: waiting |> Call.approve() |> Call.under(scope) |> Hook.approved()
 
@@ -115,14 +125,14 @@ defmodule WardrikPolicy.BudgetTest do
     test "admits calls until the period's spend reaches the limit", context do
       %{scope: scope, request: request} = context
 
-      assert {:ok, ^request} = Dispatch.admit(scope, request)
+      assert %Call{state: :allowed} = decide(scope, request)
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(0.6)})
-      assert {:ok, ^request} = Dispatch.admit(scope, request)
+      spend(scope, request, {:ok, costing(0.6)})
+      assert %Call{state: :allowed} = decide(scope, request)
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(0.6)})
+      spend(scope, request, {:ok, costing(0.6)})
 
-      assert {:park, waiting} = Dispatch.admit(scope, request)
+      assert %Call{state: :waiting} = waiting = decide(scope, request)
 
       assert [
                %Call.Ask{
@@ -137,12 +147,12 @@ defmodule WardrikPolicy.BudgetTest do
     test "approving grants more for the period the call was asked in", context do
       %{budget: budget, scope: scope, request: request} = context
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(1.2)})
-      assert {:park, waiting} = Dispatch.admit(scope, request)
+      spend(scope, request, {:ok, costing(1.2)})
+      assert %Call{state: :waiting} = waiting = decide(scope, request)
 
       :ok = approve(waiting, scope)
 
-      assert {:ok, ^request} = Dispatch.admit(scope, request)
+      assert %Call{state: :allowed} = decide(scope, request)
 
       assert %Spend{micro_usd: 1_200_000, granted_micro_usd: 500_000} =
                Budget.spent(budget, scope)
@@ -159,16 +169,19 @@ defmodule WardrikPolicy.BudgetTest do
           WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0, "on_exhausted" => "deny"}})
         )
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(1.0)})
+      spend(scope, request, {:ok, costing(1.0)})
 
-      assert {:error, {:policy_denied, "This agent has spent $1.00 of $1.00 today."}} =
-               Dispatch.admit(scope, request)
+      assert %Call{
+               state: :denied,
+               denied: %{reason: "This agent has spent $1.00 of $1.00 today."}
+             } =
+               decide(scope, request)
     end
 
     test "a call that failed before it was answered spends nothing", context do
       %{budget: budget, scope: scope, request: request} = context
 
-      :ok = Dispatch.settle(scope, request, {:error, :timeout})
+      spend(scope, request, {:error, :timeout})
 
       assert %Spend{micro_usd: 0, tokens: 0} = Budget.spent(budget, scope)
     end
@@ -188,9 +201,9 @@ defmodule WardrikPolicy.BudgetTest do
       output = Tokens.text(streamed)
       each = Budget.micro(Cost.of(model, %{input_tokens: input, output_tokens: output}))
 
-      :ok = Dispatch.settle(scope, request, {:interrupted, streamed})
-      :ok = Dispatch.settle(scope, request, {:error, :closed, streamed})
-      :ok = Dispatch.settle(scope, request, {:ok, LLMStub.final_answer(streamed)})
+      spend(scope, request, {:interrupted, streamed})
+      spend(scope, request, {:error, :closed, streamed})
+      spend(scope, request, {:ok, LLMStub.final_answer(streamed)})
 
       assert input == 1100 and output == 100 and each > 0
       assert %Spend{micro_usd: micro_usd, tokens: tokens} = Budget.spent(budget, scope)
@@ -203,29 +216,29 @@ defmodule WardrikPolicy.BudgetTest do
 
       request = Request.new(Config.new(model_spec: "nowhere:no-such-model"), Context.new())
 
-      assert {:error, {:policy_denied, "This agent's budget is in dollars" <> _}} =
-               Dispatch.admit(scope, request)
+      assert %Call{state: :denied, denied: %{reason: "This agent's budget is in dollars" <> _}} =
+               decide(scope, request)
 
       in_tokens = under(scope, WardrikPolicy.decode!(%{"budget" => %{"tokens" => 1000}}))
-      assert {:ok, ^request} = Dispatch.admit(in_tokens, request)
+      assert %Call{state: :allowed} = decide(in_tokens, request)
     end
 
     test "a token limit governs a call that costs nothing in dollars", context do
       %{scope: scope, request: request} = context
       scope = under(scope, WardrikPolicy.decode!(%{"budget" => %{"tokens" => 20}}))
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(0.0)})
-      assert {:ok, ^request} = Dispatch.admit(scope, request)
+      spend(scope, request, {:ok, costing(0.0)})
+      assert %Call{state: :allowed} = decide(scope, request)
 
-      :ok = Dispatch.settle(scope, request, {:ok, costing(0.0)})
+      spend(scope, request, {:ok, costing(0.0)})
 
-      assert {:park, waiting} = Dispatch.admit(scope, request)
+      assert %Call{state: :waiting} = waiting = decide(scope, request)
 
       assert Call.prompt(waiting) ==
                "This agent has spent 30 of 20 tokens today. Approve to allow 20 tokens more."
 
       :ok = approve(waiting, scope)
-      assert {:ok, ^request} = Dispatch.admit(scope, request)
+      assert %Call{state: :allowed} = decide(scope, request)
     end
 
     test "allows every tool call", context do
@@ -242,6 +255,14 @@ defmodule WardrikPolicy.BudgetTest do
       assert :ok = Budget.approved(call, nil, budget)
     end
 
+    test "hearing what a tool call did spends nothing", context do
+      %{budget: budget, scope: scope} = context
+      call = Call.tool(%{id: "call_1", name: "deploy", arguments: %{}}, scope)
+
+      assert :ok = Budget.settle(Call.answer(call, {:ok, "deployed"}), budget)
+      assert %Spend{micro_usd: 0, tokens: 0} = Budget.spent(budget, scope)
+    end
+
     test "a grant the meter cannot record is logged, and the approval stands", context do
       %{budget: budget, scope: scope, request: request} = context
       stub(WardrikPolicy.Meter, :grant, fn _key, _usd, _tokens -> {:error, :no_capacity} end)
@@ -256,7 +277,7 @@ defmodule WardrikPolicy.BudgetTest do
 
       1..200
       |> Task.async_stream(
-        fn _ -> Dispatch.settle(scope, request, {:ok, costing(0.01)}) end,
+        fn _ -> spend(scope, request, {:ok, costing(0.01)}) end,
         max_concurrency: 200
       )
       |> Stream.run()
@@ -269,8 +290,11 @@ defmodule WardrikPolicy.BudgetTest do
 
       stub(WardrikPolicy.Meter, :read, fn _key -> {:error, {:meter_unavailable, :no_capacity}} end)
 
-      assert {:error, {:policy_denied, "This agent's budget could not be read" <> _}} =
-               Dispatch.admit(scope, request)
+      assert %Call{
+               state: :denied,
+               denied: %{reason: "This agent's budget could not be read" <> _}
+             } =
+               decide(scope, request)
     end
   end
 

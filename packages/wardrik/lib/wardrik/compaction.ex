@@ -29,7 +29,8 @@ defmodule Wardrik.Compaction do
   """
 
   alias ReqLLM.Context
-  alias Wardrik.LLM.Dispatch
+  alias Wardrik.Call
+  alias Wardrik.Call.Pipeline
   alias Wardrik.LLM.Message
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.Tokens
@@ -161,8 +162,8 @@ defmodule Wardrik.Compaction do
   Compacts `context` under `scope`, if its config's compaction says it is due.
 
   The older part is summarised by the agent's own model, through
-  `Wardrik.LLM.Dispatch`, so the scope's hooks decide and count the call like any
-  other. The summary and an acknowledgement take the older part's place, and
+  `Wardrik.Call.Pipeline`, so the scope's hooks decide and count the call like
+  any other, and its `Wardrik.LLM.Dispatch` admits it. The summary and an acknowledgement take the older part's place, and
   the recent part follows word for word. `:keep` where nothing is due; `{:error, reason}` where
   the summary could not be made, which leaves the context as it was.
 
@@ -268,18 +269,16 @@ defmodule Wardrik.Compaction do
   defp ask(scope, messages) do
     request = Request.new(%{scope.config | tools: [], system: @summarise}, Context.new(messages))
 
-    case Dispatch.admit(scope, request) do
-      {:ok, admitted} ->
-        result = ReqLLM.generate_text(admitted.model_spec, admitted.context, admitted.opts)
-        Dispatch.settle(scope, admitted, result)
-        text(result)
-
-      {:park, waiting} ->
-        {:error, {:parked, Wardrik.Call.prompt(waiting)}}
-
-      {:error, reason} ->
-        {:error, reason}
+    case request |> Pipeline.model(scope) |> Pipeline.run(&generate/1) do
+      %Call{state: :waiting} = waiting -> {:error, {:parked, Call.prompt(waiting)}}
+      %Call{state: :denied, denied: denied} -> {:error, {:policy_denied, denied.reason}}
+      %Call{result: result} -> text(result)
     end
+  end
+
+  defp generate(call) do
+    admitted = Pipeline.request(call)
+    Call.answer(call, ReqLLM.generate_text(admitted.model_spec, admitted.context, admitted.opts))
   end
 
   defp text({:ok, response}) do

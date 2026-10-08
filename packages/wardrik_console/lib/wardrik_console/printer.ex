@@ -82,16 +82,16 @@ defmodule WardrikConsole.Printer do
 
   # The lines an event says, before which the text so far is settled; `nil`
   # for an event that neither says anything nor settles.
-  defp said({:tool_started, _id, name, arguments, _key}),
+  defp said({:tool_started, _id, name, arguments, _key, _decided_by}),
     do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]}]
 
-  defp said({:tool_finished, _id, name, {:ok, _output}}),
+  defp said({:tool_finished, _id, name, {:ok, _output}, _served_by}),
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
-  defp said({:tool_finished, _id, name, {:error, reason}}),
+  defp said({:tool_finished, _id, name, {:error, reason}, _served_by}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
 
-  defp said({:tool_denied, _id, name, reason}),
+  defp said({:tool_denied, _id, name, reason, _decided_by}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
 
   defp said({:turn_parked, calls}) do

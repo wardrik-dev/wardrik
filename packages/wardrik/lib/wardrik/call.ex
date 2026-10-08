@@ -3,14 +3,15 @@ defmodule Wardrik.Call do
   One call an agent means to make, to a tool or to a model, from the moment
   it is proposed until it has been answered.
 
-  A call is a token, the way a `Plug.Conn` is. `Wardrik.Hook`s are handed it and
-  say what they make of it, and the runtime writes what they said on it with
-  `decided/3`. The runtime moves it through its states, and it is the same
-  value whether it is being decided, waiting on a person, or answered.
+  A call is a token, the way a `Plug.Conn` is. `Wardrik.Call.Pipeline` moves
+  it through the same steps whatever it goes to: `Wardrik.Hook`s are handed it
+  and say what they make of it, the runtime writes what they said on it with
+  `decided/3`, and it is the same value whether it is being decided, waiting
+  on a person, or answered.
 
   A tool is handed the call's arguments and a `Wardrik.Tool.Context`, and what
-  it answers the runtime writes on the call with `answer/2`, `park/3` and
-  `taint/1`.
+  it answers the runtime writes on the call with `answer/2`, `park/3`,
+  `doubt/2`, `served/2` and `taint/1`.
 
   What the call goes to is its `:target`, a `Wardrik.Call.Tool` or a
   `Wardrik.Call.Model`, and a hook matches on it:
@@ -43,6 +44,8 @@ defmodule Wardrik.Call do
     * `:state` - see below
     * `:result` - what a tool answered, `{:ok, output}` or `{:error, reason}`,
       or how a model call ended, as `t:Wardrik.LLM.Dispatch.outcome/0`
+    * `:served_by` - what answered a tool call, where its tool said, as
+      `t:served/0`
     * `:tainted` - whether what it answered holds content from outside; see
       `taint/1`
 
@@ -60,10 +63,10 @@ defmodule Wardrik.Call do
   | `:done` | answered |
 
   A call waits on a hook, named by the hook's name, on its own tool, `:tool`,
-  or on `:ledger`, when it began before its agent was lost and may already
-  have done what it does. One parked to resolve a credential waits on its
-  tool, and its agent approves it once the credential is available; see
-  `Wardrik.Credential.available/3`.
+  or on `:doubt`, when it may already have done what it does: it began before
+  its agent was lost, or its tool could not say how it ended. One parked to
+  resolve a credential waits on its tool, and its agent approves it once the
+  credential is available; see `Wardrik.Credential.available/3`.
 
   ## Gated tools
 
@@ -91,6 +94,7 @@ defmodule Wardrik.Call do
     :scope,
     :denied,
     :result,
+    :served_by,
     state: :unchecked,
     asks: [],
     allowed: [],
@@ -100,6 +104,20 @@ defmodule Wardrik.Call do
   ]
 
   @type state() :: :unchecked | :allowed | :denied | :waiting | :approved | :done
+
+  @typedoc """
+  What answered a tool call, as its tool names it: an `:id` no other server
+  shares, and a `:name` a person reads, such as a tool worker's token.
+  """
+  @type served() :: %{required(:id) => String.t(), optional(:name) => String.t()}
+
+  @typedoc """
+  Who decided a call: `:hook` where hooks allowed it by name or one refused
+  it, `:person` where a person answered it, `:default` where no hook named it
+  and nothing asked, and `:ledger` where the ledger could not record it.
+  `:hooks` are the hooks that allowed it, refused it, or asked about it.
+  """
+  @type decider() :: %{by: :hook | :person | :default | :ledger, hooks: [String.t()]}
 
   @type t() :: %__MODULE__{
           id: String.t(),
@@ -112,6 +130,7 @@ defmodule Wardrik.Call do
           allowed_after_outside: [String.t()],
           tainted: boolean(),
           result: term(),
+          served_by: served() | nil,
           private: map()
         }
 
@@ -252,12 +271,27 @@ defmodule Wardrik.Call do
   def awaits?(%__MODULE__{}, _ref, _owner), do: false
 
   @doc """
-  The call waiting on `by`, `:tool` or `:ledger`, which asks `prompt`. What
+  The call waiting on `by`, `:tool` or `:doubt`, which asks `prompt`. What
   was asked of it before, and approved, is behind it.
   """
-  @spec wait(t(), :tool | :ledger, String.t()) :: t()
-  def wait(%__MODULE__{} = call, by, prompt) when by in [:tool, :ledger] and is_binary(prompt),
+  @spec wait(t(), :tool | :doubt, String.t()) :: t()
+  def wait(%__MODULE__{} = call, by, prompt) when by in [:tool, :doubt] and is_binary(prompt),
     do: %{call | state: :waiting, asks: [%Ask{by: by, prompt: prompt}]}
+
+  @doc """
+  The call waiting on a person because it may already have done what it
+  does, for `reason`: approving it runs it again under the same idempotency
+  key, and refusing it tells the model it may have run.
+  """
+  @spec doubt(t(), String.t()) :: t()
+  def doubt(%__MODULE__{} = call, reason) when is_binary(reason) do
+    wait(
+      call,
+      :doubt,
+      "#{name(call)} may already have done what it does. #{reason} " <>
+        "Approve to run it again, or deny to tell the agent it may have run."
+    )
+  end
 
   @doc """
   The call refused, with `reason`, by `by`: `:person` unless given, or
@@ -284,15 +318,22 @@ defmodule Wardrik.Call do
         allowed_after_outside: []
     }
 
-  @doc "A tool call answered with `result`, `{:ok, output}` or `{:error, reason}`."
-  @spec answer(t(), {:ok, term()} | {:error, term()}) :: t()
-  def answer(%__MODULE__{target: %Tool{}} = call, result),
-    do: %{call | state: :done, result: result}
+  @doc """
+  The call answered with `result`: a tool's `{:ok, output}` or
+  `{:error, reason}`, or how a model call ended, as
+  `t:Wardrik.LLM.Dispatch.outcome/0`.
+  """
+  @spec answer(t(), term()) :: t()
+  def answer(%__MODULE__{} = call, result), do: %{call | state: :done, result: result}
 
-  @doc "A model call that ended as `outcome`, having used `usage`."
-  @spec used(t(), term(), map()) :: t()
-  def used(%__MODULE__{target: %Model{} = model} = call, outcome, usage),
-    do: %{call | state: :done, result: outcome, target: %{model | usage: usage}}
+  @doc "A model call that used `usage`."
+  @spec used(t(), map()) :: t()
+  def used(%__MODULE__{target: %Model{} = model} = call, usage),
+    do: %{call | target: %{model | usage: usage}}
+
+  @doc "A tool call answered by `served_by`, where its tool named what answered it."
+  @spec served(t(), served() | nil) :: t()
+  def served(%__MODULE__{} = call, served_by), do: %{call | served_by: served_by}
 
   @doc "The call under `scope`, or under none for one that is written down."
   @spec under(t(), Scope.t() | nil) :: t()
@@ -313,9 +354,24 @@ defmodule Wardrik.Call do
   @spec asked_by?(t(), String.t() | atom()) :: boolean()
   def asked_by?(%__MODULE__{asks: asks}, by), do: Enum.any?(asks, &(&1.by == by))
 
-  @doc "Whether a hook, rather than its tool or the ledger, asked about the call."
+  @doc "Whether a hook, rather than its tool or a doubt, asked about the call."
   @spec asked_by_hook?(t()) :: boolean()
   def asked_by_hook?(%__MODULE__{asks: asks}), do: Enum.any?(asks, &is_binary(&1.by))
+
+  @doc "Who decided a call that went ahead or was refused; see `t:decider/0`."
+  @spec decided_by(t()) :: decider()
+  def decided_by(%__MODULE__{denied: %Denial{by: :ledger}}), do: %{by: :ledger, hooks: []}
+
+  def decided_by(%__MODULE__{denied: %Denial{by: :person}} = call),
+    do: %{by: :person, hooks: asking(call)}
+
+  def decided_by(%__MODULE__{denied: %Denial{by: hook}}), do: %{by: :hook, hooks: [hook]}
+
+  def decided_by(%__MODULE__{asks: [_ | _]} = call), do: %{by: :person, hooks: asking(call)}
+  def decided_by(%__MODULE__{allowed: []}), do: %{by: :default, hooks: []}
+  def decided_by(%__MODULE__{allowed: allowed}), do: %{by: :hook, hooks: allowed}
+
+  defp asking(%__MODULE__{asks: asks}), do: for(%Ask{by: by} <- asks, is_binary(by), do: by)
 
   @doc "What a person is shown: every prompt asked, in order."
   @spec prompt(t()) :: String.t()
