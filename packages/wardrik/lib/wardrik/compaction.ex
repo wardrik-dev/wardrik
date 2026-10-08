@@ -7,7 +7,7 @@ defmodule Wardrik.Compaction do
   part of it with a summary the model writes, and keeps the most recent part
   word for word:
 
-      Wardrik.LLM.Config.new(compaction: Wardrik.Compaction.new(at: 0.5, keep: 0.2))
+      Wardrik.LLM.Config.new(history: {Wardrik.Compaction, Wardrik.Compaction.new(at: 0.5, keep: 0.2)})
 
   | Field | What it decides |
   | --- | --- |
@@ -15,7 +15,8 @@ defmodule Wardrik.Compaction do
   | `:keep` | how much of the most recent history is kept word for word, as a share of the window, less than `:at`. `0.25` |
   | `:window` | the context window in tokens, for a model the catalog does not know. The catalog's otherwise, and #{128_000} where it has none |
 
-  A config with `compaction: nil` never compacts.
+  It is an agent's `Wardrik.History` unless its config names another, and a
+  config with `history: nil` never compacts.
 
   Sizes are estimated from the text a history holds, as `Wardrik.LLM.Tokens`
   counts it, since no provider counts tokens before a call is made. The kept
@@ -24,9 +25,11 @@ defmodule Wardrik.Compaction do
   is, and so is one whose older part is only the summary an earlier compaction
   left there.
 
-  `Wardrik.Agent` compacts between turns, never during one; see `run/2` for the
-  summary itself.
+  An agent compacts as a turn begins, before the messages it answers join
+  the history; see `prepare/3` for the summary itself.
   """
+
+  @behaviour Wardrik.History
 
   alias ReqLLM.Context
   alias Wardrik.Call
@@ -39,14 +42,6 @@ defmodule Wardrik.Compaction do
   defstruct at: 0.6, keep: 0.25, window: nil
 
   @type t() :: %__MODULE__{at: float(), keep: float(), window: pos_integer() | nil}
-
-  @typedoc "What a compaction did, as `{:context_compacted, stats}` reports it."
-  @type stats() :: %{
-          messages_before: non_neg_integer(),
-          messages_after: non_neg_integer(),
-          tokens_before: non_neg_integer(),
-          tokens_after: non_neg_integer()
-        }
 
   @default_window 128_000
 
@@ -150,7 +145,7 @@ defmodule Wardrik.Compaction do
     end
   end
 
-  # What `run/2` puts in place of an older part.
+  # What `prepare/3` puts in place of an older part.
   defp summary?([%{role: :user} = summary, %{role: :assistant} = acknowledgement]) do
     String.starts_with?(Message.text(summary), @summary_intro) and
       Message.text(acknowledgement) == @acknowledgement
@@ -159,35 +154,38 @@ defmodule Wardrik.Compaction do
   defp summary?(_older), do: false
 
   @doc """
-  Compacts `context` under `scope`, if its config's compaction says it is due.
+  Compacts `context` under `scope`, if `compaction` says it is due.
 
   The older part is summarised by the agent's own model, through
   `Wardrik.Call.Pipeline`, so the scope's hooks decide and count the call like
-  any other, and its `Wardrik.LLM.Dispatch` admits it. The summary and an acknowledgement take the older part's place, and
-  the recent part follows word for word. `:keep` where nothing is due; `{:error, reason}` where
-  the summary could not be made, which leaves the context as it was.
+  any other, and its `Wardrik.LLM.Dispatch` admits it. The summary and an
+  acknowledgement take the older part's place, and the recent part follows
+  word for word. `:keep` where nothing is due; `{:error, reason}` where the
+  summary could not be made, which leaves the context as it was.
 
   An older part that takes more than half the model's window is summarised in
   parts, oldest first: each is written out as a transcript within that half,
   and asked about together with the summary of the parts before it, so no one
   request outgrows the model.
   """
-  @spec run(Scope.t(), Context.t()) :: {:ok, Context.t(), stats()} | :keep | {:error, term()}
-  def run(%Scope{config: config} = scope, %Context{} = context) do
-    with {:ok, older, recent} <- split(config.compaction, context, config.model_spec),
-         {:ok, summary} <- summarise(scope, older) do
-      compacted =
-        Context.new([
-          Context.user(@summary_intro <> summary),
-          Context.assistant(@acknowledgement) | recent
-        ])
+  @impl Wardrik.History
+  @spec prepare(Context.t(), Scope.t(), t() | nil) ::
+          {:ok, Context.t()} | :keep | {:error, term()}
+  def prepare(%Context{} = context, %Scope{config: config} = scope, compaction) do
+    compaction = compaction || %__MODULE__{}
 
-      {:ok, compacted, stats(context, compacted)}
+    with {:ok, older, recent} <- split(compaction, context, config.model_spec),
+         {:ok, summary} <- summarise(scope, compaction, older) do
+      {:ok,
+       Context.new([
+         Context.user(@summary_intro <> summary),
+         Context.assistant(@acknowledgement) | recent
+       ])}
     end
   end
 
-  defp summarise(%Scope{config: config} = scope, older) do
-    budget = trunc(@request_share * window(config.compaction, config.model_spec))
+  defp summarise(%Scope{config: config} = scope, compaction, older) do
+    budget = trunc(@request_share * window(compaction, config.model_spec))
 
     if Tokens.messages(older) <= budget do
       ask(scope, older ++ [Context.user(@ask)])
@@ -289,16 +287,4 @@ defmodule Wardrik.Compaction do
   end
 
   defp text({:error, reason}), do: {:error, reason}
-
-  defp stats(before, compacted) do
-    before = Context.to_list(before)
-    compacted = Context.to_list(compacted)
-
-    %{
-      messages_before: length(before),
-      messages_after: length(compacted),
-      tokens_before: Tokens.messages(before),
-      tokens_after: Tokens.messages(compacted)
-    }
-  end
 end

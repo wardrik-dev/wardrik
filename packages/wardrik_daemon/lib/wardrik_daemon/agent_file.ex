@@ -775,20 +775,19 @@ defmodule WardrikDaemon.AgentFile do
     ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
   end
 
-  defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :compaction, nil)
+  defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :history, nil)
 
   defp compaction(config, %{"compaction" => %{} = fields}) do
     case Map.keys(fields) -- ~w(at keep window) do
       [] ->
-        Keyword.put(
-          config,
-          :compaction,
+        compaction =
           Wardrik.Compaction.new(
             at: share!(fields, "at", 0.6),
             keep: share!(fields, "keep", 0.25),
             window: window!(fields["window"])
           )
-        )
+
+        Keyword.put(config, :history, {Wardrik.Compaction, compaction})
 
       [key | _] ->
         invalid!("compaction #{key} is not a setting; expected at, keep or window")

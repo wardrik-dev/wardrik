@@ -25,10 +25,10 @@ defmodule WardrikPolicy.CompactionTest do
     ])
   end
 
-  defp scope(opts) do
-    Config.new(compaction: Compaction.new(window: 1_000, at: 0.3, keep: 0.25))
-    |> Scope.root(Wardrik.Test.Fleet.id(), [name: "compaction"] ++ opts)
-  end
+  defp scope(opts),
+    do: Scope.root(Config.new(), Wardrik.Test.Fleet.id(), [name: "compaction"] ++ opts)
+
+  defp compaction, do: Compaction.new(window: 1_000, at: 0.3, keep: 0.25)
 
   test "a summary goes through the dispatch, so a budget that has run out stops it" do
     reject(&ReqLLM.generate_text/3)
@@ -45,6 +45,6 @@ defmodule WardrikPolicy.CompactionTest do
         10
       )
 
-    assert {:error, {:parked, _prompt}} = Compaction.run(scope, history())
+    assert {:error, {:parked, _prompt}} = Compaction.prepare(history(), scope, compaction())
   end
 end

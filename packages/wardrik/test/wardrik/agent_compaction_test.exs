@@ -6,7 +6,6 @@ defmodule Wardrik.AgentCompactionTest do
   alias Wardrik.Agent
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.State
-  alias Wardrik.Agent.State.Compacting
   alias Wardrik.Compaction
   alias Wardrik.Event
   alias Wardrik.LLM.Config
@@ -27,7 +26,8 @@ defmodule Wardrik.AgentCompactionTest do
     ])
   end
 
-  defp config, do: Config.new(compaction: Compaction.new(window: 400, at: 0.6, keep: 0.5))
+  defp config,
+    do: Config.new(history: {Compaction, Compaction.new(window: 400, at: 0.6, keep: 0.5)})
 
   defp start(opts) do
     key = Wardrik.Test.Fleet.id("compact")
@@ -39,7 +39,7 @@ defmodule Wardrik.AgentCompactionTest do
     {key, agent}
   end
 
-  test "an outgrown history is summarised before the next turn, which runs on the summary" do
+  test "an outgrown history is summarised as the turn begins, which runs on it, and the agent keeps it" do
     stub(ReqLLM, :generate_text, fn _model, _context, _opts ->
       {:ok, LLMStub.final_answer("Two questions were asked and answered.")}
     end)
@@ -64,6 +64,30 @@ defmodule Wardrik.AgentCompactionTest do
 
     assert summary =~ "Two questions were asked and answered."
     assert_receive %Event{payload: {:turn_finished, _messages}}
+
+    assert [kept | _rest] = agent |> Agent.get_context() |> Context.to_list()
+    assert Wardrik.LLM.Message.text(kept) =~ "Two questions were asked and answered."
+  end
+
+  test "interrupting a summary interrupts the turn it began" do
+    test = self()
+
+    stub(ReqLLM, :generate_text, fn _model, _context, _opts ->
+      send(test, :summarising)
+
+      receive do
+        :never -> {:ok, LLMStub.final_answer("never")}
+      end
+    end)
+
+    {_key, agent} = start(grace: 50, runner: {AgentRunners, :echo, [self(), "third answer"]})
+    Agent.ask(agent, "third question")
+
+    assert_receive :summarising, 5_000
+    :ok = Agent.interrupt(agent)
+
+    assert_receive %Event{payload: {:turn_interrupted, %{resolution: :killed}}}, 5_000
+    refute_received {:turn, _turn}
   end
 
   test "a summary that cannot be made leaves the history, and the turn runs regardless" do
@@ -78,7 +102,7 @@ defmodule Wardrik.AgentCompactionTest do
   end
 
   describe "the state" do
-    defp due,
+    defp idle,
       do:
         State.new(
           [config: config(), context: history()],
@@ -87,34 +111,20 @@ defmodule Wardrik.AgentCompactionTest do
 
     defp task, do: %Task{pid: self(), ref: make_ref(), owner: self(), mfa: {__MODULE__, :none, 0}}
 
-    test "take/1 compacts first when the history is due, and not with nothing to do" do
-      assert :none = State.take(due())
-      {state, _effects} = State.queue(due(), Message.new("next"))
-      assert {:compact, _scope, ^state} = State.take(state)
+    test "take/1 runs the turn on whatever the history holds, and nothing with nothing to do" do
+      assert :none = State.take(idle())
+      {state, _effects} = State.queue(idle(), Message.new("next"))
+      assert {:run, [%Message{text: "next"}], _state} = State.take(state)
     end
 
-    test "a compaction at rest comes back owed where a turn was, and interrupting it stops it" do
-      state = %{due() | mode: :owed} |> State.compacting(task(), System.monotonic_time())
-      assert %State{mode: %Compacting{owed: true}} = state
-      assert %State{mode: :owed} = state |> State.dump() |> State.load()
+    test "kept/3 takes the history the running turn kept, and refuses any other process" do
+      scope = State.turn_scope(idle())
+      running = State.started(idle(), task(), scope, history(), System.monotonic_time())
+      kept = Context.new([Context.user("summary")])
 
-      assert {%State{mode: :idle, compaction_settled: true},
-              [{:shutdown, _task}, {:emit, _source, {:turn_interrupted, _}}]} =
-               State.interrupt(state)
-    end
-
-    test "no compaction runs twice before the turn, whatever the first managed" do
-      {state, _effects} = State.queue(due(), Message.new("next"))
-
-      for result <- [{:error, :timeout}, {:ok, history(), %{}}] do
-        {compacted, _effects} =
-          state
-          |> State.compacting(task(), System.monotonic_time())
-          |> State.compacted(result)
-
-        assert {:run, [%Message{text: "next"}], %State{compaction_settled: false}} =
-                 State.take(compacted)
-      end
+      assert {:ok, %State{context: ^kept}} = State.kept(running, self(), kept)
+      assert State.kept(running, spawn(fn -> :ok end), kept) == :stale
+      assert State.kept(idle(), self(), kept) == :stale
     end
   end
 end

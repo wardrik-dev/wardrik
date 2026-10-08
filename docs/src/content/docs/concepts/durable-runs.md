@@ -98,7 +98,8 @@ compaction: {window: 200000}
 compaction: false
 ```
 
-It happens between turns, before the turn that would outgrow it, and is reported as
-`wardrik.conversation.compacted`, with how many messages and tokens there were before and after. The
-summary is a model call like any other, so the agent's policy decides it and its budget counts it.
-If it fails, the history stays as it was and the turn runs regardless.
+It happens as a turn begins, before the messages it answers join the history, and is reported as
+`wardrik.conversation.compacted` on the turn's trace, with how many messages and tokens there were
+before and after. The summary is a model call of the turn's like any other, so the agent's policy
+decides it, its budget counts it, and stopping the turn stops it. If it fails, the history stays as
+it was and the turn runs regardless.
