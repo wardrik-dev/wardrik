@@ -86,9 +86,10 @@ It is YAML 1.2, the same YAML an agent file's frontmatter is written in.
 `${NAME}` in any string is replaced with that environment variable, or,
 where the environment does not set it, with the deployment's secret of that
 name in the vault, which `wardrik vault put NAME` seals. Either way the file
-itself need hold no secret. `storage`, `cluster` and `vault` read the
-environment alone: the store holds the vault, the cluster is read as the
-node boots, before the vault can be, and the vault cannot unlock itself.
+itself need hold no secret. `storage`, `cluster`, `http` and `vault` read
+the environment alone: the store holds the vault, the cluster and the HTTP
+API's settings are read as the node boots, before the vault can be, and the
+vault cannot unlock itself.
 
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
@@ -122,8 +123,8 @@ specific first: the agent's user's, sealed with `wardrik vault put NAME
 the same name, the agent's user, or its org where it has no user, is asked
 to connect an account, which is kept in the vault from then on.
 
-`oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
-describes them. `vault` takes `keys`, as `WardrikVault` does; without them,
+`oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
+takes them. `vault` takes `keys`, as `WardrikVault` does; without them,
 or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
 which the first `wardrik vault put` asks to make. `ssh` takes
 `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
@@ -142,8 +143,9 @@ describes them, and joins this daemon to others.
     and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
 Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
-`WARDRIK_DATA_DIR`. A release reads `storage` and `cluster` as it boots,
-before anything starts, and the rest once the store runs; see `boot/1`.
+`WARDRIK_DATA_DIR`. A release reads `storage`, `cluster` and `http` as it
+boots, before anything starts, and the rest once the store runs; see
+`boot/1`.
 
 `notify` names targets an agent file's `notify` routes to, each one
 `slack`, with `channel`, `token`, and optionally `app_token` and
@@ -153,3 +155,14 @@ optionally `secret`, as `WardrikNotify.Webhook` takes them.
 `read/1` refuses a file with a variable that is not set, a key nothing takes,
 a server that is neither a command nor a URL, or a server whose name or
 `prefix` holds `__`, and says where.
+
+## Where the settings go
+
+The daemon keeps what it read in its own application environment, by the
+module each section is for, and starts each package with its section as
+options: `WardrikMCP.Supervisor` with what `mcp` says, `WardrikOAuth.Supervisor`
+with `oauth`, and so on. `settings/1` reads them back. A release's own
+configuration may give a module settings of its own under `:wardrik_daemon`,
+which `config.yaml` is merged over:
+
+    config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]
