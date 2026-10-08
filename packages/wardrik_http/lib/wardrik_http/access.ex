@@ -50,10 +50,10 @@ defmodule WardrikHTTP.Access do
 
   ## Starting
 
-  It reads the store, so a host names it among core's children, before
-  `WardrikHTTP.Workers`:
+  It reads the store, so a host starts it after Wardrik in its own tree,
+  before `WardrikHTTP.Workers`:
 
-      config :wardrik, :children, [WardrikHTTP.Access, WardrikHTTP.Workers]
+      children = [Wardrik, WardrikHTTP.Access, WardrikHTTP.Workers]
 
   `config :wardrik_http, WardrikHTTP.Access, grace: 1_000, sweep: 15_000`
   sets the grace and the sweep, in milliseconds; those are the defaults. See

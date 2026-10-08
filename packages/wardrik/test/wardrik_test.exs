@@ -7,6 +7,16 @@ defmodule WardrikTest do
     assert Wardrik.Fleet.Supervisor in ids
   end
 
+  test "what connects this node to others starts before the fleet" do
+    cluster = {Agent, fn -> :connected end}
+
+    {:ok, {_flags, specs}} = Wardrik.init(cluster: [cluster])
+    ids = Enum.map(specs, & &1.id)
+
+    assert Enum.find_index(ids, &(&1 == Agent)) <
+             Enum.find_index(ids, &(&1 == Wardrik.Fleet.Supervisor))
+  end
+
   test "a host that starts Wardrik in its own tree has the application start nothing" do
     Application.put_env(:wardrik, :start, :host)
     on_exit(fn -> Application.delete_env(:wardrik, :start) end)

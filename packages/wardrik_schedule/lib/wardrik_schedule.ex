@@ -19,10 +19,9 @@ defmodule WardrikSchedule do
   `sync/2` brings an agent's schedules to a list, starting, changing and
   deleting them, and `sync(agent, [])` deletes them all; what keeps the
   agent's definition calls it as that changes. The schedules run under a
-  supervisor a host starts once per node, after the fleet, as one of core's
-  `:children`:
+  supervisor a host starts once per node, after Wardrik in its own tree:
 
-      config :wardrik, :children, [WardrikSchedule]
+      children = [Wardrik, WardrikSchedule]
 
   ## Options
 
@@ -81,7 +80,7 @@ defmodule WardrikSchedule do
   @spec supervisor() :: atom()
   def supervisor, do: @name
 
-  @doc "The supervisor the schedules run under, as one of core's `:children`."
+  @doc "The supervisor the schedules run under, started after Wardrik."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts),
     do: %{

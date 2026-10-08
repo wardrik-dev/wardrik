@@ -53,7 +53,7 @@ defmodule WardrikDaemon.Cluster do
   `WardrikDaemon.Cluster.Quorum` beside it holds the fleet back until a quorum of
   them is connected. Core starts both before the fleet, as its `:cluster`:
 
-      config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
+      {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
 
   Nodes on one machine share a config directory. Only one of them listens for
   SSH, and for OAuth's callback, at a time; see `WardrikDaemon.SSH`.

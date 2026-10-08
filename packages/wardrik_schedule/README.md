@@ -11,8 +11,8 @@ end
 ```
 
 ```elixir
-# config/config.exs
-config :wardrik, :children, [WardrikSchedule]
+# lib/my_app/application.ex
+children = [Wardrik, WardrikSchedule]
 ```
 
 ```elixir

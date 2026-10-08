@@ -48,10 +48,10 @@ defmodule WardrikHTTP.Workers do
   change something: a call to one waits on a person unless a hook allows it
   by name.
 
-  The group of workers is a child the host names among core's, with
-  `WardrikHTTP.Access`, and starts before `WardrikHTTP.Listener`:
+  The group of workers is a child the host starts after Wardrik and
+  `WardrikHTTP.Access` in its own tree, and before `WardrikHTTP.Listener`:
 
-      config :wardrik, :children, [WardrikHTTP.Access, WardrikHTTP.Workers]
+      children = [Wardrik, WardrikHTTP.Access, WardrikHTTP.Workers]
   """
 
   @behaviour Wardrik.Tool

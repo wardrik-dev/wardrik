@@ -34,10 +34,10 @@ defmodule WardrikPolicy.MeterTest do
   end
 
   test "a node running no meters answers that none is available" do
-    :ok = Supervisor.terminate_child(Wardrik.Supervisor, WardrikPolicy.Supervisor)
+    :ok = Supervisor.terminate_child(Wardrik.Test.Supervisor, WardrikPolicy.Supervisor)
 
     on_exit(fn ->
-      {:ok, _pid} = Supervisor.restart_child(Wardrik.Supervisor, WardrikPolicy.Supervisor)
+      {:ok, _pid} = Supervisor.restart_child(Wardrik.Test.Supervisor, WardrikPolicy.Supervisor)
     end)
 
     assert {:error, {:meter_unavailable, _reason}} = Meter.read("nobody|total")

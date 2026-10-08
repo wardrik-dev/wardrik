@@ -17,20 +17,9 @@ if config_env() == :prod do
   end
 end
 
-# A release is the daemon: it starts the budget meters, the schedules, the
-# tool workers' group and WardrikDaemon beside core, and logs to
+# A release is the daemon: it reads config.yaml's boot settings, and logs to
 # WARDRIK_STATE_DIR/log/wardrik.log, or to the terminal where WARDRIK_LOG is "-".
 if System.get_env("RELEASE_NAME") do
-  config :wardrik, :cluster, [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]
-
-  config :wardrik, :children, [
-    WardrikPolicy.Supervisor,
-    WardrikSchedule,
-    WardrikHTTP.Access,
-    WardrikHTTP.Workers,
-    WardrikDaemon
-  ]
-
   # config.yaml's storage and cluster are read here, since what they describe
   # starts before WardrikDaemon reads the rest of the file: the store, the
   # topologies that connect this node to the others, and the size the store
