@@ -39,7 +39,7 @@ defmodule Wardrik.LLM.ToolRunner do
 
   ## Stopping one call
 
-  Every call in flight is registered under its agent and call id, so a single
+  Every call in flight is registered under its agent, with its call id, so a single
   runaway tool can be stopped without touching the turn around it:
 
       Wardrik.LLM.ToolRunner.kill_call(~A"acme/@jon/assistant", "call_abc")
@@ -71,7 +71,13 @@ defmodule Wardrik.LLM.ToolRunner do
         }
 
   @doc false
-  def child_spec(_opts), do: Registry.child_spec(keys: :unique, name: @registry)
+  def child_spec(_opts),
+    do:
+      Registry.child_spec(
+        keys: :duplicate,
+        name: @registry,
+        partitions: System.schedulers_online()
+      )
 
   @doc """
   Runs every call at once and reports what each one did, in call order.
@@ -84,7 +90,7 @@ defmodule Wardrik.LLM.ToolRunner do
     turn = self()
     calls = Enum.map(tool_calls, &token/1)
 
-    Wardrik.TaskSupervisor
+    Wardrik.Tasks.supervisor()
     |> Task.Supervisor.async_stream_nolink(
       Enum.map(calls, &{&1, Scope.open(scope, Call.name(&1))}),
       fn {call, span} ->
@@ -201,32 +207,23 @@ defmodule Wardrik.LLM.ToolRunner do
   """
   @spec kill_call(Event.Bus.agent_id(), String.t()) :: :ok | {:error, :not_found}
   def kill_call(agent_id, call_id) do
-    case Registry.lookup(@registry, {agent_id, call_id}) do
-      [{pid, _meta}] ->
-        Process.exit(pid, :kill)
-        :ok
-
-      [] ->
-        {:error, :not_found}
+    case Registry.match(@registry, agent_id, %{call_id: call_id}) do
+      [] -> {:error, :not_found}
+      running -> Enum.each(running, fn {pid, _meta} -> Process.exit(pid, :kill) end)
     end
   end
 
   @doc "Every tool call this agent has in flight right now."
   @spec in_flight(Event.Bus.agent_id()) :: [running()]
   def in_flight(agent_id) do
-    @registry
-    |> Registry.select([
-      {{{:"$1", :"$2"}, :"$3", :"$4"}, [{:==, :"$1", {:const, agent_id}}],
-       [{{:"$2", :"$3", :"$4"}}]}
-    ])
-    |> Enum.map(fn {call_id, pid, meta} ->
+    for {pid, meta} <- Registry.lookup(@registry, agent_id) do
       %{
-        call_id: call_id,
+        call_id: meta.call_id,
         name: meta.name,
         pid: pid,
         elapsed_ms: Wardrik.Trace.elapsed_ms(meta.started_at)
       }
-    end)
+    end
   end
 
   defp token(%Call{} = call), do: call
@@ -251,23 +248,15 @@ defmodule Wardrik.LLM.ToolRunner do
   defp outcome(%Call{}), do: :ok
 
   defp run(call, scope) do
-    register(scope, call)
+    agent_id = scope.source.agent_id
+    meta = %{call_id: call.id, name: Call.name(call), started_at: System.monotonic_time()}
+    {:ok, _owner} = Registry.register(@registry, agent_id, meta)
 
     try do
       call |> Call.under(scope) |> Pipeline.run()
     after
-      Registry.unregister(@registry, {scope.source.agent_id, call.id})
+      Registry.unregister_match(@registry, agent_id, %{call_id: call.id})
     end
-  end
-
-  # Registration is best-effort bookkeeping for an operator, so a duplicate id
-  # from a provider must not fail the call it belongs to.
-  defp register(scope, call) do
-    meta = %{name: Call.name(call), started_at: System.monotonic_time()}
-    Registry.register(@registry, {scope.source.agent_id, call.id}, meta)
-    :ok
-  catch
-    _kind, _reason -> :ok
   end
 
   defp result_message(%Call{id: id, target: %Tool{name: name}}, output),

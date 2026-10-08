@@ -210,6 +210,27 @@ defmodule WardrikOAuth.DeviceTest do
       refute WardrikOAuth.connected?("github", {"acme", owner})
     end
 
+    test "stops asking the server once the flow is dropped", %{owner: owner} do
+      stub_server(cimd: true, device: true, token: %{"error" => "authorization_pending"})
+      configure(providers: provider(flow: :device))
+
+      {:error, {:authorization_required, _link, _owner}} =
+        Credential.resolve(Calls.tool("tool", %{}, scope(owner)), "github")
+
+      assert_receive {:oauth, "POST", "/token", _polled}
+      flow = flow_of({"acme", owner})
+      ref = Process.monitor(flow)
+
+      :ok = Pending.drop("github", {"acme", owner})
+
+      # Each poll is made by the flow's own process, so none comes after it is down.
+      assert_receive {:DOWN, ^ref, :process, ^flow, :shutdown}
+      flush()
+      refute_received {:oauth, "POST", "/token", _polled}
+      refute_received {:device_done, _metadata}
+      assert Pending.under_way("github", {"acme", owner}) == :error
+    end
+
     test "says a server that offers no device grant cannot be asked for one", %{owner: owner} do
       stub_server(cimd: true)
       configure(providers: provider(flow: :device))

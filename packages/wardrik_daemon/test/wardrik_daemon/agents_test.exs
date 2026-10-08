@@ -314,6 +314,26 @@ defmodule WardrikDaemon.AgentsTest do
              {:error, :conflict, message}
   end
 
+  test "answers what it last read while it is busy reading again", %{org: org} = context do
+    write(context, "alpha", "")
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    start_supervised!({Agents, dir: context.dir})
+    assert [_policy, _agent] = Agents.files()
+
+    :ok = :sys.suspend(Agents)
+    on_exit(fn -> if Process.whereis(Agents), do: :sys.resume(Agents) end)
+
+    assert [{_careful, {:ok, %WardrikPolicy{}}}, {_alpha, {:ok, _spec}}] = Agents.files()
+    assert Agents.dir() == context.dir
+    assert Agents.problems() == []
+
+    assert {:error, :conflict, _message} = Agents.editable(AgentID.parse!("#{org}/alpha"))
+    assert Agents.editable(AgentID.parse!("#{org}/beta")) == :ok
+    assert {:ok, _spec} = Agents.spec(AgentID.parse!("#{org}/alpha"))
+
+    :ok = :sys.resume(Agents)
+  end
+
   describe "an agent the files no longer declare" do
     test "stops once its file is gone, and comes back as it was with the file",
          %{dir: dir, org: org} = context do

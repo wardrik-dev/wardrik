@@ -33,6 +33,7 @@ defmodule WardrikSchedule.MixProject do
     [
       sibling(:wardrik),
       {:durable_server, "~> 0.1.5"},
+      {:group, "~> 0.2.1"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

@@ -57,8 +57,8 @@ defmodule WardrikMCP.Listing do
     end
   end
 
-  # EKV raises where its instance was never started, and `Wardrik.Store.Memory`
-  # exits.
+  # EKV raises where its instance was never started, as a read of
+  # `Wardrik.Store.Memory` does, and a write to it exits.
   defp stored(fun) do
     fun.()
   rescue

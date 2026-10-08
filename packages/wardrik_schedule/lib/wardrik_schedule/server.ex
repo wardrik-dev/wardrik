@@ -29,6 +29,7 @@ defmodule WardrikSchedule.Server do
   @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
   def init(%State{} = state) do
+    :ok = WardrikSchedule.join(state.agent, state.schedule.name)
     {:ok, state, {:continue, :wake}, meta: State.meta(state), permanent: true}
   end
 

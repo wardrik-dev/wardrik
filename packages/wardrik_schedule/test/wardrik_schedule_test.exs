@@ -187,6 +187,21 @@ defmodule WardrikScheduleTest do
       assert DateTime.compare(status.next_at, DateTime.utc_now()) == :gt
     end
 
+    test "finds an agent's schedules and none of its conversations'", %{key: key} do
+      conversation = Wardrik.AgentID.put_external_id(key, "thread-1")
+      on_exit(fn -> :ok = WardrikSchedule.sync(conversation, []) end)
+
+      {:ok, _pid} = WardrikSchedule.put(key, "b", every: "@daily", prompt: "Look.")
+      {:ok, _pid} = WardrikSchedule.put(key, "a", every: "@daily", prompt: "Look.")
+      {:ok, _pid} = WardrikSchedule.put(conversation, "c", every: "@daily", prompt: "Look.")
+
+      assert [%{name: "a"}, %{name: "b"}] = WardrikSchedule.for_agent(key)
+      assert [%{name: "c", agent: ^conversation}] = WardrikSchedule.for_agent(conversation)
+
+      :ok = WardrikSchedule.delete(key, "a")
+      assert [%{name: "b"}] = WardrikSchedule.for_agent(key)
+    end
+
     test "puts the schedules it is given and deletes the rest", %{key: key} do
       {:ok, _pid} = WardrikSchedule.put(key, "old", every: "@daily", prompt: "Look.")
       daily = WardrikSchedule.new("new", every: "@daily", prompt: "Look.")

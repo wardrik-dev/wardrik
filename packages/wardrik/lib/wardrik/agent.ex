@@ -594,7 +594,7 @@ defmodule Wardrik.Agent do
   defp run(fun) do
     agent = self()
 
-    Task.Supervisor.async_nolink(Wardrik.TaskSupervisor, fn ->
+    Task.Supervisor.async_nolink(Wardrik.Tasks.supervisor(), fn ->
       Wardrik.Tether.to(agent)
       fun.()
     end)
@@ -653,7 +653,7 @@ defmodule Wardrik.Agent do
     %{agent_id: agent_id, log: %{head: through}} = state
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
-    Task.Supervisor.start_child(Wardrik.TaskSupervisor, fn ->
+    Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
       Wardrik.Ledger.forget(scope.ledger, agent_id, scope.source.trace.trace_id)
       Log.trim(agent_id, through, cutoff)
     end)

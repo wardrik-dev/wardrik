@@ -248,6 +248,18 @@ defmodule WardrikOAuth.Test.Case do
   def state_of(url),
     do: url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
 
+  @doc "The process of the flow under way for `owner` and `provider`."
+  @spec flow_of(term(), String.t()) :: pid()
+  def flow_of(owner, provider \\ "github") do
+    [pid] =
+      for {_id, pid, _type, _modules} <-
+            DynamicSupervisor.which_children(WardrikOAuth.Pending.Supervisor),
+          %{flight: %{owner: ^owner, provider: %{name: ^provider}}} <- [:sys.get_state(pid)],
+          do: pid
+
+    pid
+  end
+
   @doc "Every query parameter of a URL."
   @spec params_of(String.t()) :: map()
   def params_of(url), do: url |> URI.parse() |> Map.get(:query, "") |> URI.decode_query()

@@ -34,6 +34,7 @@ defmodule WardrikOAuth.MixProject do
     [
       sibling(:wardrik),
       sibling(:wardrik_vault),
+      {:group, "~> 0.2.1"},
       {:req, "~> 0.7"},
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},

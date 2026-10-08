@@ -49,7 +49,11 @@ defmodule WardrikOAuth.Browser do
         {:error, :no_browser}
 
       opener ->
-        spawn(fn -> System.cmd(opener, [url], stderr_to_stdout: true) end)
+        {:ok, _pid} =
+          Task.Supervisor.start_child(WardrikOAuth.Tasks, fn ->
+            System.cmd(opener, [url], stderr_to_stdout: true)
+          end)
+
         Logger.info("Opening an authorization link with #{Path.basename(opener)}")
 
         :ok

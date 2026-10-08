@@ -97,7 +97,7 @@ defmodule WardrikOAuthTest do
     test "cannot be finished by a callback once it has expired", %{owner: owner} do
       url = connect(owner)
       {:ok, flight} = Pending.under_way("github", {"acme", owner})
-      Pending.drop(flight.state)
+      :ok = Pending.drop("github", {"acme", owner})
       {:ok, _url} = Pending.start(%{flight | started_at: flight.started_at - :timer.hours(1)})
 
       assert {:error, :no_such_flow} = WardrikOAuth.finish(state_of(url), "the-code")
@@ -117,24 +117,31 @@ defmodule WardrikOAuthTest do
       assert {:ok, _still} = Pending.under_way("github", {"acme", owner})
     end
 
-    test "on another node is found there, and dropped with the rest", %{owner: owner} do
+    test "is found by who it is for, and dropped by it", %{owner: owner} do
       url = connect(owner)
 
-      # This node stands in for the others: the flow is found by asking.
-      assert {:ok, flight} = Pending.under_way_on([node()], "github", {"acme", owner})
+      assert {:ok, flight} = Pending.under_way("github", {"acme", owner})
       assert flight.url == url
 
-      assert :error = Pending.under_way_on([node()], "github", {"acme", "nobody"})
-      assert :error = Pending.under_way_on([:nowhere@nohost], "github", {"acme", owner})
+      assert :error = Pending.under_way("github", {"acme", "nobody"})
+      assert :error = Pending.under_way("gitlab", {"acme", owner})
 
-      :ok = Pending.drop_on([node()], "github", {"acme", owner})
-      assert :error = Pending.under_way("github", {"acme", owner})
-    end
-
-    test "for a user and provider are dropped together", %{owner: owner} do
-      connect(owner)
       :ok = Pending.drop("github", {"acme", owner})
       assert :error = Pending.under_way("github", {"acme", owner})
+      assert {:error, :no_such_flow} = WardrikOAuth.finish(state_of(url), "the-code")
+    end
+
+    test "that crashes takes no other with it", %{owner: owner} do
+      connect(owner)
+      other = connect("#{owner}-other")
+      crashed = flow_of({"acme", owner})
+      ref = Process.monitor(crashed)
+
+      Process.exit(crashed, :kill)
+
+      assert_receive {:DOWN, ^ref, :process, ^crashed, :killed}
+      assert :error = Pending.under_way("github", {"acme", owner})
+      assert {:ok, %{url: ^other}} = Pending.under_way("github", {"acme", "#{owner}-other"})
     end
 
     test "says what it is for, never its verifier or client", %{owner: owner} do
