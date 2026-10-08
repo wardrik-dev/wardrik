@@ -27,6 +27,13 @@ defmodule WardrikDaemon.AgentsTest do
     )
   end
 
+  defp grant(org) when is_binary(org), do: grant(Prefix.new!(org: org))
+
+  defp grant(scope) do
+    {:ok, grant} = Wardrik.Grant.new(scope)
+    grant
+  end
+
   defp write_policy(%{dir: dir}, name, yaml) do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "#{name}.yaml"]), yaml)
@@ -97,10 +104,10 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "")
     write(context, "failing", "")
 
-    stub(WardrikDaemon.AgentFile, :load, fn path, policies ->
+    stub(WardrikDaemon.AgentFile, :parse, fn path ->
       if Path.basename(path) == "failing.md",
         do: exit(:store_timeout),
-        else: call_original(WardrikDaemon.AgentFile, :load, [path, policies])
+        else: call_original(WardrikDaemon.AgentFile, :parse, [path])
     end)
 
     start_supervised!({Agents, dir: context.dir})
@@ -123,22 +130,120 @@ defmodule WardrikDaemon.AgentsTest do
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
   end
 
-  test "reads a definition sent to the HTTP API under the policies it read",
+  test "reads a definition sent to the HTTP API under the policies it read, and keeps it",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
     start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/defined")
 
-    assert {:ok, spec} =
-             Agents.put(AgentID.parse!("#{org}/defined"), %{"policy" => "careful"})
-
+    assert {:ok, spec} = Agents.put(defined, %{"policy" => "careful"}, grant(org))
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
+    assert Agents.get(defined) == {:ok, %{"policy" => "careful"}}
+
+    assert {:error, message} = Agents.put(defined, %{"policy" => "lax"}, grant(org))
+    assert message =~ "policy names lax"
+    assert Agents.get(defined) == {:ok, %{"policy" => "careful"}}
+
+    assert Agents.delete(defined) == :ok
+    assert Agents.get(defined) == {:error, :not_found}
+    assert Agents.delete(defined) == {:error, :not_found}
+  end
+
+  test "a definition shares only the trees the scope of the token that sent it covers",
+       %{org: org} = context do
+    start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/@jon/defined")
+    fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
+
+    assert {:ok, _spec} = Agents.put(defined, fields, grant(org))
 
     assert {:error, message} =
-             Agents.put(AgentID.parse!("#{org}/defined"), %{"policy" => "lax"})
+             Agents.put(defined, fields, grant(Prefix.new!(org: org, user: "jon")))
 
-    assert message =~ "policy names lax"
+    assert message ==
+             "workspace shared team: #{org} belongs to #{org}/, which #{org}/@jon/ does not cover"
+  end
 
-    assert Agents.delete(AgentID.parse!("#{org}/defined")) == {:error, :not_found}
+  test "an agent the HTTP API defined is held to the ceiling of the token that sent it",
+       %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/defined")
+
+    ceiling = [
+      Wardrik.Hook.new("ceiling", WardrikPolicy, WardrikPolicy.decode!(%{"deny" => ["*"]}))
+    ]
+
+    {:ok, grant} = Wardrik.Grant.new(Prefix.new!(org: org), Wardrik.Grant.actions(), ceiling)
+
+    {:ok, _spec} = Agents.put(defined, %{"policy" => "careful"}, grant)
+
+    assert {:ok, spec} = Agents.spec(defined)
+    assert [%{name: "ceiling"}, %{name: "careful"}] = spec.hooks
+  end
+
+  test "a conversation runs on the definition of its agent, in the agent's tree",
+       %{org: org} = context do
+    write(context, "alpha", "model: anthropic:claude-haiku-4-5\ntools: [files]\n")
+    start_supervised!({Agents, dir: context.dir})
+    thread = AgentID.parse!("#{org}/alpha/1696.1234")
+
+    assert {:ok, spec} = Agents.spec(thread)
+    assert spec.id == thread
+    assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
+    assert spec.schedules == nil
+    assert [{WardrikWorkspace, workspace}] = spec.config.tools
+    assert workspace.tree.tree == "agents/#{org}/alpha"
+  end
+
+  test "reload brings a conversation to its file, and leaves it where the file does not read",
+       %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    write(context, "alpha", "policy: careful\n")
+    start_supervised!({Agents, dir: context.dir})
+    thread = AgentID.parse!("#{org}/alpha/1696.1234")
+    {:ok, options} = Agents.options(thread)
+    {:ok, _pid} = Fleet.spawn(thread, options)
+
+    write(context, "alpha", "policy: lax\n")
+    Agents.reload()
+
+    assert [_policy, {_alpha, {:error, message}}] = Agents.files()
+    assert message =~ "names lax"
+    assert Agents.problems() == []
+
+    File.rm!(Path.join([context.dir, "policies", "careful.yaml"]))
+    write(context, "alpha", "")
+    Agents.reload()
+
+    assert Agents.problems() == []
+    assert {:ok, %{hooks: []}} = Agents.spec(thread)
+  end
+
+  test "reload brings the agents the HTTP API defined to what their definitions write now",
+       %{org: org} = context do
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/defined")
+    {:ok, spec} = Agents.put(defined, %{"policy" => "careful"}, grant(org))
+    {:ok, _pid} = Fleet.put(spec)
+
+    Agents.reload()
+    assert Agents.problems() == []
+
+    File.rm!(Path.join([context.dir, "policies", "careful.yaml"]))
+    Agents.reload()
+
+    assert Agents.problems() == [
+             "#{defined} does not build from its definition: " <>
+               "policy names careful, which is not a policy in policies/"
+           ]
+
+    :ok = Fleet.forget(defined)
+    Agents.reload()
+
+    assert Agents.problems() == []
+    assert Agents.get(defined) == {:error, :not_found}
   end
 
   test "an agent starts with its file's options, or the defaults where no file declares it",
@@ -169,7 +274,9 @@ defmodule WardrikDaemon.AgentsTest do
     start_supervised!({Agents, dir: context.dir})
     message = "#{org}/alpha is declared by agents/alpha.md; change the file"
 
-    assert Agents.put(AgentID.parse!("#{org}/alpha"), %{}) == {:error, :conflict, message}
+    assert Agents.put(AgentID.parse!("#{org}/alpha"), %{}, grant(org)) ==
+             {:error, :conflict, message}
+
     assert Agents.delete(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
     assert Agents.editable(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
   end
@@ -244,7 +351,7 @@ defmodule WardrikDaemon.AgentsTest do
       start_supervised!({Agents, dir: context.dir})
 
       {:ok, spec} =
-        Agents.put(AgentID.parse!("#{org}/defined"), %{"instructions" => "You help."})
+        Agents.put(AgentID.parse!("#{org}/defined"), %{"instructions" => "You help."}, grant(org))
 
       {:ok, _pid} = Fleet.put(spec)
 

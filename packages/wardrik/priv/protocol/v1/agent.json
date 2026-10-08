@@ -49,7 +49,7 @@
   },
   "examples": [
     {
-      "id": "acme/ops/triage",
+      "id": "acme/triage",
       "name": "triage",
       "status": "parked",
       "pending": 0,

@@ -50,10 +50,13 @@ defmodule Wardrik.AgentID.Prefix do
   @spec of(AgentID.t()) :: t()
   def of(%AgentID{} = id), do: %__MODULE__{segments: AgentID.segments(id)}
 
-  @doc "Whether `id` is under `prefix`."
-  @spec covers?(t(), AgentID.t()) :: boolean()
+  @doc "Whether `id`, or every agent under another prefix, is under `prefix`."
+  @spec covers?(t(), AgentID.t() | t()) :: boolean()
   def covers?(%__MODULE__{segments: segments}, %AgentID{} = id),
     do: List.starts_with?(AgentID.segments(id), segments)
+
+  def covers?(%__MODULE__{segments: segments}, %__MODULE__{segments: inner}),
+    do: List.starts_with?(inner, segments)
 
   @doc """
   The prefix `text` writes: `""` for every agent, `acme` or `acme/` for an

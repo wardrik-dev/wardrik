@@ -58,10 +58,13 @@ defmodule WardrikDaemonTest do
              Req.put(api, json: %{"policy" => "careful", "instructions" => "You help."})
 
     assert Wardrik.Fleet.lookup(key)
-    assert {:ok, %{status: 501}} = Req.get(api, url: "definition")
+
+    assert {:ok, %{status: 200, body: %{"policy" => "careful", "instructions" => "You help."}}} =
+             Req.get(api, url: "definition")
 
     assert {:ok, %{status: 204}} = Req.delete(api)
     assert Wardrik.Fleet.lookup(key) == nil
+    assert {:ok, %{status: 404}} = Req.get(api, url: "definition")
   end
 
   test "puts config.yaml's settings where each package reads them", %{tmp_dir: dir} do

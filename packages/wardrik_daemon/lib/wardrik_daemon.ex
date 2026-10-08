@@ -151,9 +151,6 @@ defmodule WardrikDaemon do
         | cluster()
       ] ++ ["#{length(members)} #{agents(members)}"]
 
-    files = agent_files()
-    specs = specs(files)
-
     rows =
       for member <- members,
           do:
@@ -162,27 +159,21 @@ defmodule WardrikDaemon do
                 "  #{member.id}",
                 member.status,
                 Nodes.display(member.node)
-                | spent(specs[member.id], member.id) ++ next_run(member.id)
+                | spent(member.id) ++ next_run(member.id)
               ],
               "  "
             )
 
-    broken =
-      for {_path, {:error, message}} <- files,
-          do: "  #{message}"
+    broken = for {_path, {:error, message}} <- agent_files(), do: "  #{message}"
+    unbuilt = for message <- definition_problems(), do: "  #{message}"
 
-    Enum.join(header ++ rows ++ problems(broken), "\n")
-  end
-
-  @doc """
-  The specs the agent files hold, by the ID of the agent each declares, or
-  those `files` hold, as `WardrikDaemon.Agents.files/0` answers them.
-  """
-  @spec specs([WardrikDaemon.Agents.file()]) :: %{Wardrik.AgentID.t() => Wardrik.Agent.Spec.t()}
-  def specs(files \\ agent_files()) do
-    for {_path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
-        into: %{},
-        do: {spec.id, spec}
+    Enum.join(
+      header ++
+        rows ++
+        problems(broken, "file does not read", "files do not read") ++
+        problems(unbuilt, "definition does not build", "definitions do not build"),
+      "\n"
+    )
   end
 
   @doc """
@@ -195,6 +186,20 @@ defmodule WardrikDaemon do
     for {path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
         into: %{},
         do: {spec.id, {path, spec}}
+  end
+
+  @doc """
+  What the agent `key` has spent of each budget the spec its kept definition
+  writes gives it, as its budgets say it; nothing where none is kept.
+  """
+  @spec spent(Wardrik.AgentID.t()) :: [String.t()]
+  def spent(key) do
+    with {:ok, definition} <- WardrikDaemon.Definition.of(key),
+         {:ok, spec} <- WardrikDaemon.Agents.build(definition, key) do
+      spent(spec, key)
+    else
+      {:error, _reason} -> []
+    end
   end
 
   @doc "What the agent `key` has spent of each budget `spec` gives it, as its budgets say it."
@@ -234,6 +239,10 @@ defmodule WardrikDaemon do
     if Process.whereis(WardrikDaemon.Agents), do: WardrikDaemon.Agents.files(), else: []
   end
 
+  defp definition_problems do
+    if Process.whereis(WardrikDaemon.Agents), do: WardrikDaemon.Agents.problems(), else: []
+  end
+
   defp cluster do
     cond do
       not Cluster.configured?() ->
@@ -261,9 +270,9 @@ defmodule WardrikDaemon do
   defp nodes(nodes, prefix, state),
     do: prefix <> Enum.map_join(nodes, ", ", &Nodes.display/1) <> " " <> state
 
-  defp problems([]), do: []
-  defp problems([_one] = broken), do: ["", "1 file does not read:" | broken]
-  defp problems(broken), do: ["", "#{length(broken)} files do not read:" | broken]
+  defp problems([], _one, _many), do: []
+  defp problems([_line] = lines, one, _many), do: ["", "1 #{one}:" | lines]
+  defp problems(lines, _one, many), do: ["", "#{length(lines)} #{many}:" | lines]
 
   defp agents([_member]), do: "agent"
   defp agents(_members), do: "agents"

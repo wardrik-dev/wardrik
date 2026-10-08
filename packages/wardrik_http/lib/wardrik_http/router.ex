@@ -164,7 +164,7 @@ defmodule WardrikHTTP.Router do
   defp define(conn, key) do
     with {:ok, module} <- definitions(conn, :put),
          {:ok, fields} <- object(conn.body_params),
-         {:ok, spec} <- module.put(key, fields) do
+         {:ok, spec} <- module.put(key, fields, conn.assigns.token.grant) do
       if spec.id == key,
         do:
           put_agent(conn, key, %{spec | hooks: Grant.held(conn.assigns.token.grant, spec.hooks)}),
@@ -214,7 +214,7 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  @callbacks %{put: 2, get: 1, delete: 1, editable: 1}
+  @callbacks %{put: 3, get: 1, delete: 1, editable: 1}
 
   # The listener's definition module, where it has `callback`.
   defp definitions(conn, callback) do

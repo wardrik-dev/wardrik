@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
-  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition where the server keeps definitions. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.",
+  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -23,7 +23,72 @@
       "items": {
         "type": "string"
       },
-      "description": "What the agent may call: a tool the server ships, by name; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them."
+      "description": "What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them."
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shared": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "A tree: org, org/name or org/@user/name."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tree"
+                ],
+                "properties": {
+                  "tree": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "read",
+                      "write"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "description": "The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read."
+        }
+      },
+      "description": "The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them."
+    },
+    "context": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 262144
+            }
+          }
+        }
+      ],
+      "description": "The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with."
     },
     "policy": {
       "oneOf": [
@@ -88,9 +153,24 @@
       "description": "Watches the incident queue.",
       "instructions": "You watch the incident queue.",
       "model": "anthropic:claude-sonnet-5",
-      "tools": ["web_search", "linear/*"],
+      "tools": [
+        "web_search",
+        "linear/*",
+        "files"
+      ],
+      "workspace": {
+        "shared": {
+          "team": "acme"
+        }
+      },
+      "context": [
+        "MEMORY.md",
+        "shared/team/CONVENTIONS.md"
+      ],
       "policy": {
-        "ask": ["linear/*"]
+        "ask": [
+          "linear/*"
+        ]
       },
       "timeout": 600,
       "max_iterations": 12,

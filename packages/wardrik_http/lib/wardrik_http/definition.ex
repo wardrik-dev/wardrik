@@ -6,7 +6,7 @@ defmodule WardrikHTTP.Definition do
   `Wardrik.Agent.Spec` it writes.
 
   `WardrikHTTP.Listener` takes the module as `:definition`. The router checks the
-  token's scope, runs the spec `put/2` answers with `Wardrik.Fleet.put/1`, and
+  token's scope, runs the spec `put/3` answers with `Wardrik.Fleet.put/1`, and
   forgets the agent on `DELETE`; the module decides what a definition may say,
   the seams its agent is given, whether it is kept, and who owns an agent. Every
   spec runs under the token's ceiling, whose hooks the router puts ahead of the
@@ -14,15 +14,15 @@ defmodule WardrikHTTP.Definition do
 
   | Callback | Route | Without it |
   | --- | --- | --- |
-  | `put/2` | `PUT /v1/agents/{id}` | the listener has no module, and the route answers `501` |
+  | `put/3` | `PUT /v1/agents/{id}` | the listener has no module, and the route answers `501` |
   | `get/1` | `GET /v1/agents/{id}/definition` | `501` |
   | `delete/1` | `DELETE /v1/agents/{id}` | `501` |
   | `editable/1` | `PUT` and `DELETE /v1/agents/{id}/schedules/{schedule}` | every agent's schedules may be changed |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
-  agent file, keeps none, and refuses the agents its files declare. A
-  module that keeps definitions, in `Wardrik.Store` or elsewhere, implements all
-  three.
+  agent file, keeps it, and refuses the agents its files declare. A module
+  that keeps definitions, in `Wardrik.Store` or elsewhere, implements all of
+  them.
   """
 
   @doc """
@@ -30,10 +30,13 @@ defmodule WardrikHTTP.Definition do
   message saying what does not read. `{:error, :conflict, message}` refuses an
   agent the module does not let the API define, and answers `409`.
 
+  `grant` is the defining token's: what the definition may reach, such as
+  the trees an agent shares, is the module's to check against its scope, and
+  a module that builds the spec again later holds it under the same ceiling.
   The spec is for `id` and no other, and one whose `schedules` is `nil`
   leaves the agent's schedules as they are.
   """
-  @callback put(id :: Wardrik.AgentID.t(), definition :: map()) ::
+  @callback put(id :: Wardrik.AgentID.t(), definition :: map(), grant :: Wardrik.Grant.t()) ::
               {:ok, Wardrik.Agent.Spec.t()}
               | {:error, String.t()}
               | {:error, :conflict, String.t()}

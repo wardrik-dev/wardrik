@@ -32,6 +32,16 @@ defmodule Wardrik.AgentID.PrefixTest do
       refute Prefix.covers?(books, ~A"acme/@jon/books")
       refute Prefix.covers?(Prefix.of(~A"acme/books/t1"), ~A"acme/books")
     end
+
+    test "reaches every agent under another prefix it begins" do
+      acme = Prefix.new!(org: "acme")
+
+      assert Prefix.covers?(acme, Prefix.new!(org: "acme", user: "jon"))
+      assert Prefix.covers?(acme, acme)
+      assert Prefix.covers?(Prefix.all(), acme)
+      refute Prefix.covers?(Prefix.new!(org: "acme", user: "jon"), acme)
+      refute Prefix.covers?(Prefix.of(~A"acme/books"), acme)
+    end
   end
 
   describe "new/1" do
