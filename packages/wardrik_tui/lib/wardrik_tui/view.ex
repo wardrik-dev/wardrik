@@ -47,7 +47,7 @@ defmodule WardrikTUI.View do
 
   @doc "A low-level event as a trace line, or `nil` when it is not worth one."
   @spec trace(tuple()) :: Text.t() | nil
-  def trace({:model_started, _message_id, model_spec}),
+  def trace({:model_started, _message_id, model_spec, _decided_by}),
     do: line("model", inspect(model_spec), :cyan)
 
   def trace({:model_finished, _message_id, :ok, ms, _response}),
@@ -58,16 +58,16 @@ defmodule WardrikTUI.View do
 
   def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
 
-  def trace({:tool_started, id, name, _arguments, _key}),
+  def trace({:tool_started, id, name, _arguments, _key, _decided_by}),
     do: line("tool", "#{name} #{id}", :yellow)
 
-  def trace({:tool_finished, id, name, {:ok, output}}),
+  def trace({:tool_finished, id, name, {:ok, output}, _served_by}),
     do: line("tool", "#{name} #{id} ok #{payload(output)}", :yellow)
 
-  def trace({:tool_finished, id, name, {:error, why}}),
+  def trace({:tool_finished, id, name, {:error, why}, _served_by}),
     do: line("tool", "#{name} #{id} #{inspect(why)}", :red)
 
-  def trace({:tool_denied, id, name, reason}),
+  def trace({:tool_denied, id, name, reason, _decided_by}),
     do: line("deny", "#{name} #{id} #{reason}", :red)
 
   def trace({:tool_parked, id, name, prompt}),

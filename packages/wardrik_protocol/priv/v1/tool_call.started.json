@@ -7,10 +7,14 @@
   "properties": {
     "tool": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/tool"
+    },
+    "decided": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/decided"
     }
   },
   "additionalProperties": false,
   "required": [
-    "tool"
+    "tool",
+    "decided"
   ]
 }

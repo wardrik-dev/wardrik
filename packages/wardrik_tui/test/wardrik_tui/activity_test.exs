@@ -127,7 +127,7 @@ defmodule WardrikTUI.ActivityTest do
     test "follows the last thing it reported", %{turn: turn} do
       activity = Activity.new() |> fold(turn, {:turn_started, [Message.new("hi")]})
 
-      assert fold(activity, turn, {:model_started, "m0", :m}).spans
+      assert fold(activity, turn, {:model_started, "m0", :m, %{by: :default, hooks: []}}).spans
              |> Map.fetch!(turn.trace.span_id)
              |> Map.fetch!(:doing) == "waiting on the model"
 
@@ -144,7 +144,7 @@ defmodule WardrikTUI.ActivityTest do
       activity =
         Activity.new()
         |> fold(turn, {:turn_started, [Message.new("hi")]})
-        |> fold(turn, {:model_started, "m0", :m})
+        |> fold(turn, {:model_started, "m0", :m, %{by: :default, hooks: []}})
         |> fold(turn, {:model_finished, "m0", :ok, 12, nil})
 
       assert Activity.fetch(activity, turn.trace.span_id).doing == nil

@@ -112,7 +112,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     call = call("call_1", "refund")
     :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
 
-    assert %Call{state: :waiting, asks: [%Call.Ask{by: :ledger, prompt: prompt}]} =
+    assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
              waiting = ToolRunner.execute(call, scope)
 
     assert prompt =~ "may already have done what it does"
@@ -154,7 +154,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
         asks: [%Call.Ask{by: "careful", prompt: "Deploy?"}]
     }
 
-    assert %Call{state: :waiting, asks: [%Call.Ask{by: :ledger, prompt: prompt}]} =
+    assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
              ToolRunner.execute(approved, scope)
 
     assert prompt =~ "may already have done what it does"
@@ -189,7 +189,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
     assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, scope)
     refute_received {:ran, "refund"}
-    assert_received %Event{payload: {:tool_denied, "call_1", "refund", reason}}
+    assert_received %Event{payload: {:tool_denied, "call_1", "refund", reason, _}}
     assert reason =~ "could not record this call before running it"
   end
 
@@ -200,7 +200,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
       assert %Call{state: :done} =
                ToolRunner.refuse(call("call_1", "deploy"), scope, "Not today.")
 
-      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", "Not today."}}
+      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", "Not today.", _}}
     end
 
     test "that ran answers with what it returned", %{agent_id: agent_id} do
@@ -210,7 +210,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
       assert %Call{state: :done, result: ^ran} = ToolRunner.refuse(call, scope, "Not today.")
       assert_received %Event{payload: {:tool_replayed, "call_1", "deploy", {:ok, _result}}}
-      refute_received %Event{payload: {:tool_denied, "call_1", "deploy", _reason}}
+      refute_received %Event{payload: {:tool_denied, "call_1", "deploy", _reason, _}}
     end
 
     test "that began and never finished tells the model it may have run", %{agent_id: agent_id} do
@@ -220,7 +220,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
 
       ToolRunner.refuse(call, scope, "Not today.")
 
-      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", reason}}
+      assert_received %Event{payload: {:tool_denied, "call_1", "deploy", reason, _}}
       assert reason =~ "may already have done what it does"
       assert reason =~ "Not today."
       refute_received {:ran, "deploy"}

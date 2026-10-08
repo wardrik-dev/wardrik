@@ -199,6 +199,8 @@ defmodule WardrikPolicy.Budget do
     :ok
   end
 
+  def settle(%Call{}, %__MODULE__{}), do: :ok
+
   @doc """
   What an agent has spent in `budget`'s period now, given the scope of one of
   its turns, or its ID for a budget that is not per turn.

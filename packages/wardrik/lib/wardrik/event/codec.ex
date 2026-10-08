@@ -237,11 +237,15 @@ defmodule Wardrik.Event.Codec do
 
   # -- assistant messages --------------------------------------------------------
 
-  defp message({:model_started, message_id, spec}, _event, _opts) do
+  defp message({:model_started, message_id, spec, decided_by}, _event, _opts) do
     {provider, model} = Value.model(spec)
 
     data =
-      %{"message" => %{"id" => message_id}, "request" => %{"model" => model}}
+      %{
+        "message" => %{"id" => message_id},
+        "request" => %{"model" => model},
+        "decided" => Value.decided(decided_by)
+      }
       |> Value.put("provider", provider && %{"name" => provider})
 
     {"message.started", "messages/" <> message_id, data}
@@ -262,23 +266,28 @@ defmodule Wardrik.Event.Codec do
 
   # -- tool calls ----------------------------------------------------------------
 
-  defp tool({:tool_started, id, name, arguments, key}, _event, _opts) do
+  defp tool({:tool_started, id, name, arguments, key, decided_by}, _event, _opts) do
     call =
       %{"id" => id, "idempotency_key" => key}
       |> Value.capped("arguments", Value.json(arguments))
 
-    {"tool_call.started", "tool_calls/" <> id, %{"tool" => %{"name" => name, "call" => call}}}
+    {"tool_call.started", "tool_calls/" <> id,
+     %{"tool" => %{"name" => name, "call" => call}, "decided" => Value.decided(decided_by)}}
   end
 
-  defp tool({:tool_finished, id, name, result}, _event, _opts),
-    do: completed(id, name, result, false)
+  defp tool({:tool_finished, id, name, result, served_by}, _event, _opts),
+    do: completed(id, name, result, false, served_by)
 
   defp tool({:tool_replayed, id, name, result}, _event, _opts),
-    do: completed(id, name, result, true)
+    do: completed(id, name, result, true, nil)
 
-  defp tool({:tool_denied, id, name, reason}, _event, _opts) do
+  defp tool({:tool_denied, id, name, reason, decided_by}, _event, _opts) do
     {"tool_call.denied", "tool_calls/" <> id,
-     %{"tool" => %{"name" => name, "call" => %{"id" => id}}, "reason" => reason}}
+     %{
+       "tool" => %{"name" => name, "call" => %{"id" => id}},
+       "reason" => reason,
+       "decided" => Value.decided(decided_by)
+     }}
   end
 
   defp tool({:tool_progress, id, name, progress, total}, _event, _opts) do
@@ -328,7 +337,7 @@ defmodule Wardrik.Event.Codec do
     {type, "messages/#{message_id}", %{"message" => %{"id" => message_id}, "delta" => text}}
   end
 
-  defp completed(id, name, result, replayed?) do
+  defp completed(id, name, result, replayed?, served_by) do
     {status, value, error} = Value.result(result)
 
     call = if value == nil, do: %{"id" => id}, else: Value.capped(%{"id" => id}, "result", value)
@@ -336,6 +345,7 @@ defmodule Wardrik.Event.Codec do
     data =
       %{"tool" => %{"name" => name, "call" => call}, "status" => status, "replayed" => replayed?}
       |> Value.put("error", error)
+      |> Value.put("served_by", Value.served(served_by))
 
     {"tool_call.completed", "tool_calls/" <> id, data}
   end

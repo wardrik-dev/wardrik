@@ -144,8 +144,8 @@ defmodule Wardrik.LLM.Config do
   end
 
   @doc """
-  What a call to the named tool does when the ledger holds it as begun and
-  never finished, as its annotations say: `:rerun`, or `:ask`. See
+  What a call to the named tool does when whether it had its effect is not
+  known, as its annotations say: `:rerun`, or `:ask`. See
   `Wardrik.Tool.Annotations`.
   """
   @spec tool_in_doubt(t(), String.t()) :: :ask | :rerun

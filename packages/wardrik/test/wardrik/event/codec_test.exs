@@ -50,7 +50,12 @@ defmodule Wardrik.Event.CodecTest do
         [asking, Context.tool_result("call_1", "deploy", "done"), Context.assistant("Shipped.")]}},
       {turn, {:turn_failed, :timeout}},
       {turn, {:turn_interrupted, %{dropped: 1, kept: 0, resolution: :killed, elapsed_ms: 2_000}}},
-      {turn, {:turn_parked, [{call("call_1", "deploy"), "This ships to production."}]}},
+      {turn,
+       {:turn_parked,
+        [
+          {call("call_1", "deploy"), "This ships to production."},
+          {Map.put(call("call_2", "refund"), :in_doubt, true), "refund may already have run."}
+        ]}},
       {turn, {:turn_resumed, %{"call_1" => :approve}}},
       {turn, {:call_decided, "call_1", {:deny, "Not today."}, by}},
       {Source.root(@agent), {:message_queued, Message.new("Ship it.", "m-1")}},
@@ -64,7 +69,9 @@ defmodule Wardrik.Event.CodecTest do
       {step, {:span_finished, {:error, :timeout}, 1_200}},
       {step, {:delegation_started, "Look into the failing build."}},
       {step, {:delegation_finished, {:ok, "It was a flaky test."}, 9_000}},
-      {turn, {:model_started, "#{turn.trace.span_id}.m0", "anthropic:claude-sonnet-5"}},
+      {turn,
+       {:model_started, "#{turn.trace.span_id}.m0", "anthropic:claude-sonnet-5",
+        %{by: :default, hooks: []}}},
       {turn, {:model_finished, "#{turn.trace.span_id}.m0", :ok, 1_500, response(asking)}},
       {turn, {:result, "Shipped"}},
       {turn, {:thinking, "The build is green."}},
@@ -73,12 +80,15 @@ defmodule Wardrik.Event.CodecTest do
       {turn, {:tool_call, %{name: "deploy"}}},
       {turn, {:deadline_reached, 6}},
       {tool,
-       {:tool_started, "call_1", "deploy", %{"repo" => "wardrik"}, "acme/@ops/triage/t/call_1"}},
+       {:tool_started, "call_1", "deploy", %{"repo" => "wardrik"}, "acme/@ops/triage/t/call_1",
+        %{by: :hook, hooks: ["careful"]}}},
       {tool,
        {:tool_finished, "call_1", "deploy",
-        {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}}}},
+        {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}},
+        %{id: "w1", name: "deploys"}}},
       {tool, {:tool_replayed, "call_1", "deploy", {:ok, %{"ok" => true, "result" => "done"}}}},
-      {tool, {:tool_denied, "call_1", "deploy", "Not today."}},
+      {tool,
+       {:tool_denied, "call_1", "deploy", "Not today.", %{by: :person, hooks: ["careful"]}}},
       {tool, {:tool_parked, "call_1", "deploy", "This ships to production."}},
       {tool, {:tool_progress, "call_1", "deploy", 3, 10}}
     ]
@@ -121,7 +131,9 @@ defmodule Wardrik.Event.CodecTest do
   describe "the envelope" do
     test "carries the event's id, its agent, its time and its span" do
       source = within(turn(), "deploy")
-      event = Event.new(source, {:tool_denied, "call_1", "deploy", "No."})
+
+      event =
+        Event.new(source, {:tool_denied, "call_1", "deploy", "No.", %{by: :default, hooks: []}})
 
       assert {:ok, cloud_event} = Codec.encode(event, sequence: 41)
 
@@ -175,7 +187,7 @@ defmodule Wardrik.Event.CodecTest do
 
   describe "tool calls" do
     defp completed(result),
-      do: elem(encode(turn(), {:tool_finished, "call_1", "deploy", result}), 1)["data"]
+      do: elem(encode(turn(), {:tool_finished, "call_1", "deploy", result, nil}), 1)["data"]
 
     test "answer with what the tool returned, whichever way it said it" do
       assert %{"status" => "ok", "tool" => %{"call" => %{"result" => %{"n" => 1}}}} =
@@ -201,13 +213,45 @@ defmodule Wardrik.Event.CodecTest do
 
     test "start with the arguments and the key a tool passes on" do
       {:ok, %{"data" => data}} =
-        encode(turn(), {:tool_started, "call_1", "deploy", %{repo: :wardrik}, "key-1"})
+        encode(
+          turn(),
+          {:tool_started, "call_1", "deploy", %{repo: :wardrik}, "key-1",
+           %{by: :default, hooks: []}}
+        )
 
       assert data["tool"]["call"] == %{
                "id" => "call_1",
                "arguments" => %{"repo" => "wardrik"},
                "idempotency_key" => "key-1"
              }
+    end
+
+    test "name who decided them, and what answered them" do
+      {:ok, %{"data" => started}} =
+        encode(turn(), {:tool_started, "call_1", "deploy", %{}, "k", %{by: :default, hooks: []}})
+
+      assert started["decided"] == %{"by" => "default"}
+
+      {:ok, %{"data" => denied}} =
+        encode(
+          turn(),
+          {:tool_denied, "call_1", "deploy", "No.", %{by: :hook, hooks: ["careful"]}}
+        )
+
+      assert denied["decided"] == %{"by" => "hook", "hooks" => ["careful"]}
+
+      {:ok, %{"data" => finished}} =
+        encode(
+          turn(),
+          {:tool_finished, "call_1", "deploy", {:ok, 1}, %{id: "w1", name: "deploys"}}
+        )
+
+      assert finished["served_by"] == %{"id" => "w1", "name" => "deploys"}
+
+      {:ok, %{"data" => unserved}} =
+        encode(turn(), {:tool_finished, "call_1", "deploy", {:ok, 1}, nil})
+
+      refute Map.has_key?(unserved, "served_by")
     end
 
     test "answered from the ledger say they were replayed" do
@@ -272,7 +316,11 @@ defmodule Wardrik.Event.CodecTest do
 
     test "start with the provider and model asked" do
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_started, "s.m0", {:anthropic, model: "claude-sonnet-5"}})
+        encode(
+          turn(),
+          {:model_started, "s.m0", {:anthropic, model: "claude-sonnet-5"},
+           %{by: :default, hooks: []}}
+        )
 
       assert data["provider"] == %{"name" => "anthropic"}
       assert data["request"] == %{"model" => "claude-sonnet-5"}
@@ -296,13 +344,15 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   describe "interrupts" do
-    test "say whether a tool or the model call is waiting" do
+    test "say whether a tool or the model call is waiting, and on what" do
       model = %{id: "model_1", name: "model", arguments: %{}}
+      doubt = Map.put(call("call_2", "refund"), :in_doubt, true)
 
       {:ok, %{"data" => data}} =
         encode(
           turn(),
-          {:turn_parked, [{call("call_1", "deploy"), "Ship?"}, {model, "Over budget."}]}
+          {:turn_parked,
+           [{call("call_1", "deploy"), "Ship?"}, {model, "Over budget."}, {doubt, "Again?"}]}
         )
 
       assert data["interrupts"] == [
@@ -312,7 +362,13 @@ defmodule Wardrik.Event.CodecTest do
                  "message" => "Ship?",
                  "tool_call_id" => "call_1"
                },
-               %{"id" => "model_1", "reason" => "model_approval", "message" => "Over budget."}
+               %{"id" => "model_1", "reason" => "model_approval", "message" => "Over budget."},
+               %{
+                 "id" => "call_2",
+                 "reason" => "in_doubt",
+                 "message" => "Again?",
+                 "tool_call_id" => "call_2"
+               }
              ]
     end
 
@@ -356,7 +412,9 @@ defmodule Wardrik.Event.CodecTest do
 
   test "a model is read from however it was named" do
     started = fn spec ->
-      {:ok, %{"data" => data}} = encode(turn(), {:model_started, "s.m0", spec})
+      {:ok, %{"data" => data}} =
+        encode(turn(), {:model_started, "s.m0", spec, %{by: :default, hooks: []}})
+
       {data["provider"], data["request"]["model"]}
     end
 

@@ -31,11 +31,15 @@
       "required": [
         "name"
       ]
+    },
+    "decided": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/decided"
     }
   },
   "additionalProperties": false,
   "required": [
     "message",
-    "request"
+    "request",
+    "decided"
   ]
 }

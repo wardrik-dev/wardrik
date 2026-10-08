@@ -131,13 +131,18 @@ defmodule WardrikTUI.ViewTest do
                "1 call(s) answered"
 
       assert View.trace({:tool_parked, call.id, call.name, "Ship?"}) |> plain() =~ "Ship?"
-      denied = View.trace({:tool_denied, call.id, call.name, "Not today"})
+
+      denied =
+        View.trace({:tool_denied, call.id, call.name, "Not today", %{by: :default, hooks: []}})
+
       assert plain(denied) =~ "Not today"
       assert :red in sequences(denied)
     end
 
     test "names the model request and how it went" do
-      assert View.trace({:model_started, "m0", :m}) |> plain() =~ "model"
+      assert View.trace({:model_started, "m0", :m, %{by: :default, hooks: []}}) |> plain() =~
+               "model"
+
       assert View.trace({:model_finished, "m0", :ok, 1_200, nil}) |> plain() =~ "ok 1.2s"
 
       failed = View.trace({:model_finished, "m0", {:error, :rate_limited}, 40, nil})
@@ -147,10 +152,12 @@ defmodule WardrikTUI.ViewTest do
     end
 
     test "summarises tool calls by outcome" do
-      assert View.trace({:tool_started, "c1", "echo", %{}, "key"}) |> plain() =~ "echo c1"
-      assert View.trace({:tool_finished, "c1", "echo", {:ok, :x}}) |> plain() =~ "echo c1 ok"
+      assert View.trace({:tool_started, "c1", "echo", %{}, "key", %{by: :default, hooks: []}})
+             |> plain() =~ "echo c1"
 
-      failed = View.trace({:tool_finished, "c1", "boom", {:error, :nope}})
+      assert View.trace({:tool_finished, "c1", "echo", {:ok, :x}, nil}) |> plain() =~ "echo c1 ok"
+
+      failed = View.trace({:tool_finished, "c1", "boom", {:error, :nope}, nil})
 
       assert plain(failed) =~ ":nope"
       assert sequences(failed) |> Enum.member?(:red)
@@ -222,7 +229,7 @@ defmodule WardrikTUI.ViewTest do
     test "a successful call shows what it actually returned" do
       line =
         View.trace(
-          {:tool_finished, "call_1", "list_services", {:ok, %{"services" => ["billing"]}}}
+          {:tool_finished, "call_1", "list_services", {:ok, %{"services" => ["billing"]}}, nil}
         )
         |> plain()
 
@@ -232,21 +239,21 @@ defmodule WardrikTUI.ViewTest do
 
     test "a string result is shown as it stands rather than re-encoded" do
       line =
-        View.trace({:tool_finished, "call_1", "echo", {:ok, "plain text"}}) |> plain()
+        View.trace({:tool_finished, "call_1", "echo", {:ok, "plain text"}, nil}) |> plain()
 
       assert line =~ "plain text"
     end
 
     test "a long result is truncated to keep a trace line a line" do
       output = %{"blob" => String.duplicate("x", 2_000)}
-      line = View.trace({:tool_finished, "call_1", "dump", {:ok, output}}) |> plain()
+      line = View.trace({:tool_finished, "call_1", "dump", {:ok, output}, nil}) |> plain()
 
       assert String.length(line) < 600
     end
 
     test "newlines are folded so one result stays one row" do
       line =
-        View.trace({:tool_finished, "call_1", "read", {:ok, "one\ntwo\nthree"}})
+        View.trace({:tool_finished, "call_1", "read", {:ok, "one\ntwo\nthree"}, nil})
         |> plain()
 
       refute line |> String.trim_trailing("\n") |> String.contains?("\n")

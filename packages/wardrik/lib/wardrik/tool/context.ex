@@ -10,6 +10,9 @@ defmodule Wardrik.Tool.Context do
       the same when its turn is replayed; see `Wardrik.Ledger.idempotency_key/2`
     * `:credentials` - the credentials the tool's annotations named, resolved
       for this call, by name; see `Wardrik.Tool.Annotations`
+    * `:in_doubt` - whether the call runs again because it may already have
+      done what it does, under the same idempotency key; see
+      `Wardrik.Call.Pipeline`
     * `:progress` - reports how far the call has got; see `progress/3`
 
         def run(%{query: query}, %Wardrik.Tool.Context{} = context) do
@@ -25,19 +28,20 @@ defmodule Wardrik.Tool.Context do
   alias Wardrik.Scope
 
   @enforce_keys [:scope, :call_id, :idempotency_key, :progress]
-  defstruct [:scope, :call_id, :idempotency_key, :progress, credentials: %{}]
+  defstruct [:scope, :call_id, :idempotency_key, :progress, credentials: %{}, in_doubt: false]
 
   @type t() :: %__MODULE__{
           scope: Scope.t(),
           call_id: String.t(),
           idempotency_key: String.t(),
           credentials: %{Wardrik.Credential.ref() => Wardrik.Credential.t()},
+          in_doubt: boolean(),
           progress: (number(), number() | nil -> :ok)
         }
 
   @doc false
-  @spec new(Call.t(), %{Wardrik.Credential.ref() => Wardrik.Credential.t()}) :: t()
-  def new(%Call{id: id, scope: %Scope{source: source} = scope} = call, credentials) do
+  @spec new(Call.t(), %{Wardrik.Credential.ref() => Wardrik.Credential.t()}, keyword()) :: t()
+  def new(%Call{id: id, scope: %Scope{source: source} = scope} = call, credentials, opts \\ []) do
     name = Call.name(call)
 
     %__MODULE__{
@@ -45,6 +49,7 @@ defmodule Wardrik.Tool.Context do
       call_id: id,
       idempotency_key: Ledger.idempotency_key(call),
       credentials: credentials,
+      in_doubt: Keyword.get(opts, :in_doubt, false),
       progress: fn progress, total ->
         Event.emit(source, {:tool_progress, id, name, progress, total})
       end

@@ -150,7 +150,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:tool_started, call_id, "deploy", _, _}}, 5_000
+    assert_receive %Event{payload: {:tool_started, call_id, "deploy", _, _, _}}, 5_000
     assert_receive {:began, "deploy", tool}, 5_000
     tool_ref = Process.monitor(tool)
 
@@ -180,7 +180,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     Agent.resume(agent, %{"call_1" => {:deny, "Not today."}})
 
-    assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason}}, 5_000
+    assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason, _}}, 5_000
     assert reason =~ "may already have done what it does"
     assert reason =~ "Not today."
     assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000

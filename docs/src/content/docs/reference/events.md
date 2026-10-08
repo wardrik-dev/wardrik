@@ -119,6 +119,7 @@ The model was asked for an assistant message.
 | `request.model` | string | yes |  |
 | `provider` | object |  |  |
 | `provider.name` | string | yes |  |
+| `decided` | [decided](#decided) | yes |  |
 
 ### `wardrik.reasoning.delta`
 
@@ -267,6 +268,7 @@ A tool call answered, or was answered from the ledger when replayed.
 | `status` | string | yes | One of `ok`, `error`. |
 | `error` | [error](#error) |  |  |
 | `replayed` | boolean | yes |  |
+| `served_by` | [served_by](#served_by) |  |  |
 
 ### `wardrik.tool_call.denied`
 
@@ -276,6 +278,7 @@ A tool call was refused without running.
 | --- | --- | --- | --- |
 | `tool` | [tool](#tool) | yes |  |
 | `reason` | string | yes |  |
+| `decided` | [decided](#decided) | yes |  |
 
 ### `wardrik.tool_call.progress`
 
@@ -294,6 +297,7 @@ A tool call began.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `tool` | [tool](#tool) | yes |  |
+| `decided` | [decided](#decided) | yes |  |
 
 ## Shared types
 
@@ -367,6 +371,24 @@ Who decided.
 | `id` | string | yes |  |
 | `name` | string |  |  |
 
+### `decided`
+
+Who decided a call.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `by` | string | yes | hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it. One of `hook`, `person`, `default`, `ledger`. |
+| `hooks` | array of string |  | The hooks that allowed the call, refused it, or asked a person about it. |
+
+### `served_by`
+
+What answered a tool call, as its tool names it: a tool worker's token, for one.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | yes |  |
+| `name` | string |  |  |
+
 ### `run`
 
 A run, by the W3C trace id it runs under.
@@ -400,7 +422,7 @@ A call a run waits on a person for.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | yes |  |
-| `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`. |
+| `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`, `in_doubt`. |
 | `message` | string | yes |  |
 | `tool_call_id` | string |  |  |
 | `outside_content` | boolean |  | true where the run had read content from outside, which may be what asked for the call. |

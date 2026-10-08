@@ -40,7 +40,7 @@ defmodule Wardrik.Ledger do
 
   ## In a turn
 
-  A scope that names a ledger, as `:ledger`, has `Wardrik.LLM.ToolRunner` claim
+  A scope that names a ledger, as `:ledger`, has `Wardrik.Call.Pipeline` claim
   every call the policy allows before running it, under `key/2`, and settle it
   once it has. A turn a `Wardrik.Agent` runs hands each batch of calls to its
   agent before they run, so a turn lost part way is replayed from that batch
@@ -48,7 +48,8 @@ defmodule Wardrik.Ledger do
   answers for each one: a settled call is answered from the ledger without
   running, and a pending one parks for a person to decide, or runs again
   under the same key where its tool declares it may (`Wardrik.Tool.Annotations`).
-  See `Wardrik.LLM.Turn`.
+  A call whose tool answers in doubt keeps its claim pending, so a replay
+  asks about it too. See `Wardrik.LLM.Turn`.
 
   A tool with an effect outside Wardrik, handed its `Wardrik.Call` (see
   `Wardrik.Tool.new!/1`), passes `idempotency_key/1` along to the system it calls,

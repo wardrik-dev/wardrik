@@ -135,7 +135,7 @@ defmodule Wardrik.Event.BusTest do
     on_exit(fn -> :telemetry.detach(handler_id) end)
 
     source = Source.root(agent_id) |> Source.child()
-    Event.emit(source, {:tool_started, "call_1", "echo", %{}, "key"})
+    Event.emit(source, {:tool_started, "call_1", "echo", %{}, "key", %{by: :default, hooks: []}})
 
     assert_receive {:telemetry, [:wardrik, :agent, :tool_started], %{system_time: _}, metadata}
 
@@ -143,7 +143,7 @@ defmodule Wardrik.Event.BusTest do
     assert metadata.trace_id == source.trace.trace_id
     assert metadata.span_id == source.trace.span_id
     assert metadata.parent_span_id == source.trace.parent_span_id
-    assert %Event{payload: {:tool_started, "call_1", "echo", _, _}} = metadata.event
+    assert %Event{payload: {:tool_started, "call_1", "echo", _, _, _}} = metadata.event
   end
 
   describe "levels as topics" do

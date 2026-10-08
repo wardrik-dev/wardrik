@@ -5,7 +5,7 @@ defmodule Wardrik.Event do
   The payload stays a tuple, so subscribers match on it the way they always
   have; this struct is the envelope around it.
 
-      def handle_info(%Wardrik.Event{payload: {:tool_finished, id, name, result}}, state)
+      def handle_info(%Wardrik.Event{payload: {:tool_finished, id, name, result, _served_by}}, state)
 
   `root?/1` separates the turn's own events from work it spawned, which is
   what lets one subscription render a whole tree.
@@ -48,7 +48,8 @@ defmodule Wardrik.Event do
 
   Model calls, each answering with the assistant message `message_id` names:
 
-    * `{:model_started, message_id, model_spec}`,
+    * `{:model_started, message_id, model_spec, decided_by}`, with who let the
+      call go ahead, as `t:Wardrik.Call.decider/0`,
       `{:model_finished, message_id, outcome, duration_ms, response}`, where
       `response` is the `ReqLLM.Response` without its context, or `nil` for a
       call that did not answer
@@ -57,9 +58,12 @@ defmodule Wardrik.Event do
 
   Tool calls, on the call's span:
 
-    * `{:tool_started, call_id, name, arguments, idempotency_key}`,
-      `{:tool_finished, call_id, name, result}`
-    * `{:tool_denied, call_id, name, reason}`, `{:tool_parked, call_id, name, prompt}`
+    * `{:tool_started, call_id, name, arguments, idempotency_key, decided_by}`,
+      with who let the call go ahead, as `t:Wardrik.Call.decider/0`, again
+      for each time it runs; `{:tool_finished, call_id, name, result, served_by}`,
+      with what answered it where its tool said, as `t:Wardrik.Call.served/0`
+    * `{:tool_denied, call_id, name, reason, decided_by}`,
+      `{:tool_parked, call_id, name, prompt}`
     * `{:tool_progress, call_id, name, progress, total}`
     * `{:tool_replayed, call_id, name, result}`, a call answered from the
       ledger without running again
@@ -81,7 +85,7 @@ defmodule Wardrik.Event do
           | {:span_finished, Wardrik.Scope.outcome(), non_neg_integer()}
           | {:delegation_started, String.t()}
           | {:delegation_finished, {:ok, String.t()} | {:error, term()}, non_neg_integer()}
-          | {:model_started, String.t(), term()}
+          | {:model_started, String.t(), term(), Wardrik.Call.decider()}
           | {:model_finished, String.t(), :ok | {:error, term()}, non_neg_integer(),
              ReqLLM.Response.t() | nil}
           | {:result, String.t()}
@@ -90,10 +94,10 @@ defmodule Wardrik.Event do
           | {:chunk, term()}
           | {:tool_call, term()}
           | {:deadline_reached, non_neg_integer()}
-          | {:tool_started, String.t(), String.t(), map(), String.t()}
-          | {:tool_finished, String.t(), String.t(), term()}
+          | {:tool_started, String.t(), String.t(), map(), String.t(), Wardrik.Call.decider()}
+          | {:tool_finished, String.t(), String.t(), term(), Wardrik.Call.served() | nil}
           | {:tool_replayed, String.t(), String.t(), term()}
-          | {:tool_denied, String.t(), String.t(), String.t()}
+          | {:tool_denied, String.t(), String.t(), String.t(), Wardrik.Call.decider()}
           | {:tool_parked, String.t(), String.t(), String.t()}
           | {:tool_progress, String.t(), String.t(), number(), number() | nil}
 

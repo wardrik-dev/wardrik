@@ -85,7 +85,7 @@ defmodule Wardrik.SubagentTest do
       assert Subagent.run(scope, "Ship it.", except_tools: ["echo"]) ==
                {:error, :approval_required}
 
-      refute_received %Event{payload: {:tool_started, "call_1", _name, _args, _key}}
+      refute_received %Event{payload: {:tool_started, "call_1", _name, _args, _key, _}}
     end
 
     test "a delegate begins tainted under a tainted scope", %{scope: scope} do
@@ -157,7 +157,7 @@ defmodule Wardrik.SubagentTest do
     assert_receive %Event{payload: {:delegation_finished, {:error, :approval_required}, _}} =
                      ended
 
-    refute_receive %Event{payload: {:tool_started, "blocked", _, _, _}}
+    refute_receive %Event{payload: {:tool_started, "blocked", _, _, _, _}}
 
     delegations =
       Wardrik.Delegation.new()

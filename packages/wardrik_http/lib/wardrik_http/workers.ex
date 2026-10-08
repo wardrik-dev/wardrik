@@ -11,8 +11,15 @@ defmodule WardrikHTTP.Workers do
   An agent file or definition names it as `workers/*`. The agent is offered
   the tools of every connected worker whose token may `:serve` it, each named
   `workers__<name>`, as an MCP server's tools are named for their server, so
-  a policy governs them as `workers/*` or `workers/refund_order`. Workers that
-  offer a tool of the same name are one pool, and a call goes to any of them.
+  a policy governs them as `workers/*` or `workers/refund_order`.
+
+  A tool is bound to the token that offers it. Workers under one token that
+  offer a tool of the same name are one pool, and a call goes to any of
+  them. Where workers under another token offer that name to the same agent,
+  the agent is offered the tool of the token whose worker connected first,
+  and the others are refused, so a second token can neither take a share of
+  the calls nor change what the model is told the tool does. Their offer is
+  logged.
 
   A call says whose it is: `_meta.agent` is the agent it is made for, as the
   ID the worker's token was checked against, with its `org`, its `user`
@@ -24,12 +31,17 @@ defmodule WardrikHTTP.Workers do
   answer each with what is theirs alone. A call made in a turn also carries
   the turn's run, as `_meta.run`, the id its events carry, and its
   `Wardrik.Ledger.idempotency_key/2` as `_meta.idempotencyKey`. It waits for
-  the worker's answer for `WardrikHTTP.Config.worker_timeout/0`. A worker gone before it answers, or one
-  that answers late, fails the call, and the model is told it may already
-  have done what it does. A call that began before its agent was lost runs
-  again under the same key where every worker in the agent's reach that
-  offers the tool marks it `readOnlyHint` or `idempotentHint`, and waits for a
-  person otherwise; see `Wardrik.Tool.Annotations`.
+  the worker's answer for `WardrikHTTP.Config.worker_timeout/0`. A call's
+  events name the token whose worker answered it.
+
+  A worker gone before it answers, or one that answers late, leaves its call
+  in doubt, since it may already have done what it does. Such a call runs
+  again under the same key on a worker connected then, where every worker in
+  the agent's reach that offers the tool marks it `readOnlyHint` or
+  `idempotentHint`, and waits for a person otherwise, as a call that began
+  before its agent was lost does; see `Wardrik.Call.Pipeline`. A call the
+  agent stops, by `Wardrik.LLM.ToolRunner.kill_call/2`, its turn's deadline or
+  the turn ending, is cancelled at its worker; see `WardrikHTTP.Worker`.
 
   A worker's tool is gated unless every worker offering it marks it
   `readOnlyHint`, as a client of an MCP server asks before a tool that may
@@ -44,6 +56,8 @@ defmodule WardrikHTTP.Workers do
 
   @behaviour Wardrik.Tool
 
+  require Logger
+
   alias Wardrik.AgentID
   alias Wardrik.Tool.Result
   alias WardrikHTTP.Access
@@ -57,13 +71,30 @@ defmodule WardrikHTTP.Workers do
   def child_spec(_opts), do: Group.child_spec(name: __MODULE__)
 
   @doc """
-  Offers `tools` from the calling process, a worker's socket holding `token`,
-  in place of what it offered before, until it exits.
+  Offers `tools` from the calling process, a worker's socket holding `token`
+  that connected at `since`, in microseconds of system time, in place of
+  what it offered before, until it exits.
   """
-  @spec offer(Token.t(), [Tool.t()]) :: :ok
-  def offer(%Token{} = token, tools) when is_list(tools) do
+  @spec offer(Token.t(), [Tool.t()], integer()) :: :ok
+  def offer(%Token{} = token, tools, since) when is_list(tools) and is_integer(since) do
     _ = Group.leave(__MODULE__, @group)
-    Group.join(__MODULE__, @group, %{token: token, tools: tools})
+    contested(token, tools)
+    Group.join(__MODULE__, @group, %{token: token, tools: tools, since: since})
+  end
+
+  defp contested(token, tools) do
+    names = MapSet.new(tools, & &1.name)
+
+    for {_worker, %{token: other, tools: offered}} <- Group.members(__MODULE__, @group),
+        other.id != token.id,
+        %Tool{name: name} <- offered,
+        name in names,
+        uniq: true do
+      Logger.warning(
+        "A worker under token #{token.name} offers #{name}, which token #{other.name} offers too. " <>
+          "An agent both reach is offered the one whose worker connected first."
+      )
+    end
   end
 
   @doc "The tools the connected workers offer the agent `id`, one of each name."
@@ -71,8 +102,8 @@ defmodule WardrikHTTP.Workers do
   def tools(%AgentID{} = id) do
     id
     |> offered()
-    |> Enum.uniq_by(fn {_worker, tool} -> tool.name end)
-    |> Enum.map(fn {_worker, tool} -> build(tool, id) end)
+    |> Enum.uniq_by(& &1.tool.name)
+    |> Enum.map(&build(&1.tool, id))
   end
 
   @doc """
@@ -83,18 +114,19 @@ defmodule WardrikHTTP.Workers do
   again where every one marks it read-only or idempotent; its answers are
   content from outside unless `WardrikHTTP.Config.trusted_workers?/0` says
   workers are the deployment's own, since a worker can pass on anything it
-  reads; and a call may take the worker's wait, and a little.
+  reads; and a call may take the worker's wait twice, once more in doubt,
+  and a little.
   """
   @impl Wardrik.Tool
   def annotations(%AgentID{} = id, @prefix <> name) do
-    offered = for {_worker, tool} <- offered(id), tool.name == name, do: tool
+    offered = for %{tool: tool} <- offered(id), tool.name == name, do: tool
 
     %{
       gated: offered == [] or not Enum.all?(offered, & &1.read_only),
       in_doubt:
         if(offered != [] and Enum.all?(offered, &(&1.in_doubt == :rerun)), do: :rerun, else: :ask),
       outside: not WardrikHTTP.Config.trusted_workers?(),
-      timeout: WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
+      timeout: 2 * WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
     }
   end
 
@@ -104,36 +136,35 @@ defmodule WardrikHTTP.Workers do
   @doc false
   @spec call(AgentID.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Result.t()
   def call(%AgentID{} = id, name, input, %Wardrik.Tool.Context{} = context) do
-    case for({worker, tool} <- offered(id), tool.name == name, do: worker) do
-      [] -> Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
-      workers -> ask(Enum.random(workers), name, input, meta(id, context))
+    case for(%{tool: %Tool{name: ^name}} = offer <- offered(id), do: offer) do
+      [] -> none(name, context)
+      offers -> ask(Enum.random(offers), name, input, meta(id, context))
     end
   end
 
-  defp ask(worker, name, input, meta) do
+  defp none(name, %Wardrik.Tool.Context{in_doubt: true}),
+    do: {:in_doubt, "No worker offers #{name} now to run it again."}
+
+  defp none(name, %Wardrik.Tool.Context{}),
+    do: Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
+
+  defp ask(%{worker: worker, token: token}, name, input, meta) do
+    served = %{id: token.id, name: token.name}
     ref = Process.monitor(worker)
     send(worker, {:call, self(), ref, name, input, meta})
 
     receive do
-      {^ref, result} ->
+      {^ref, {:ok, result}} ->
         Process.demonitor(ref, [:flush])
-        result
+        {:ok, result, served_by: served}
 
       {:DOWN, ^ref, :process, _pid, _reason} ->
-        Result.error(
-          :worker_gone,
-          "The worker running #{name} went away before it answered, " <>
-            "and may already have done what it does."
-        )
+        {:in_doubt, "The worker running #{name} went away before it answered.", served_by: served}
     after
       WardrikHTTP.Config.worker_timeout() ->
         Process.demonitor(ref, [:flush])
         send(worker, {:cancel, ref})
-
-        Result.error(
-          :timeout,
-          "#{name} did not answer in time, and may already have done what it does."
-        )
+        {:in_doubt, "#{name} did not answer in time.", served_by: served}
     end
   end
 
@@ -152,11 +183,22 @@ defmodule WardrikHTTP.Workers do
     )
   end
 
+  # What the workers in reach of the agent `id` offer it: each tool under the
+  # token whose worker offering it connected first.
   defp offered(id) do
-    for {worker, %{token: token, tools: tools}} <- Group.members(__MODULE__, @group),
-        Access.authorize(token.grant, :serve, id) == :ok,
-        tool <- tools,
-        do: {worker, tool}
+    offers =
+      for {worker, %{token: token, tools: tools, since: since}} <-
+            Group.members(__MODULE__, @group),
+          Access.authorize(token.grant, :serve, id) == :ok,
+          tool <- tools,
+          do: %{worker: worker, token: token, tool: tool, since: since}
+
+    owners =
+      offers
+      |> Enum.group_by(& &1.tool.name)
+      |> Map.new(fn {name, offers} -> {name, Enum.min_by(offers, &{&1.since, &1.token.id})} end)
+
+    Enum.filter(offers, &(owners[&1.tool.name].token.id == &1.token.id))
   end
 
   defp build(%Tool{} = tool, id) do

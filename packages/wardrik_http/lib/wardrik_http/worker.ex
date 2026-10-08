@@ -16,8 +16,11 @@ defmodule WardrikHTTP.Worker do
        it is for as `_meta.agent`, its run as `_meta.run`, and its idempotency
        key as `_meta.idempotencyKey`, and the worker answers with a
        `CallToolResult`: `structuredContent` where it has any, `content`, and
-       `isError`. A call Wardrik stops waiting for is sent
-       `notifications/cancelled`.
+       `isError`. A call Wardrik stops waiting for, or stops, is sent
+       `notifications/cancelled`: one not answered in time, and one whose
+       caller ends first, as a call killed with
+       `Wardrik.LLM.ToolRunner.kill_call/2`, past its turn's deadline, or in
+       a turn that ends, does.
 
   Wardrik answers a worker's `ping`, and sends a WebSocket ping every 30 seconds
   so a socket at rest stays open.
@@ -42,12 +45,13 @@ defmodule WardrikHTTP.Worker do
   @ping :timer.seconds(30)
 
   @enforce_keys [:token]
-  defstruct [:token, next: 1, pending: %{}]
+  defstruct [:token, :since, next: 1, pending: %{}]
 
-  @typep purpose() :: :initialize | :list | {pid(), reference()}
+  @typep purpose() :: :initialize | :list | {pid(), reference(), reference()}
 
   @type t() :: %__MODULE__{
           token: Token.t(),
+          since: integer() | nil,
           next: pos_integer(),
           pending: %{pos_integer() => purpose()}
         }
@@ -65,7 +69,7 @@ defmodule WardrikHTTP.Worker do
 
     {frame, state} =
       request(
-        %__MODULE__{token: token},
+        %__MODULE__{token: token, since: System.system_time(:microsecond)},
         "initialize",
         %{
           "protocolVersion" => @protocol,
@@ -91,22 +95,16 @@ defmodule WardrikHTTP.Worker do
   @impl WebSock
   def handle_info({:call, caller, ref, name, arguments, meta}, state) do
     params = %{"name" => name, "arguments" => arguments, "_meta" => meta}
-    {frame, state} = request(state, "tools/call", params, {caller, ref})
+    {frame, state} = request(state, "tools/call", params, {caller, ref, Process.monitor(caller)})
     {:push, frame, state}
   end
 
-  def handle_info({:cancel, ref}, state) do
-    case Enum.find(state.pending, &match?({_id, {_caller, ^ref}}, &1)) do
-      {id, _purpose} ->
-        params = %{"requestId" => id, "reason" => "The call was not answered in time."}
+  def handle_info({:cancel, ref}, state),
+    do:
+      cancel(state, &match?({_caller, ^ref, _monitor}, &1), "The call was not answered in time.")
 
-        {:push, notification("notifications/cancelled", params),
-         %{state | pending: Map.delete(state.pending, id)}}
-
-      nil ->
-        {:ok, state}
-    end
-  end
+  def handle_info({:DOWN, monitor, :process, _caller, _reason}, state),
+    do: cancel(state, &match?({_caller, _ref, ^monitor}, &1), "The call was stopped.")
 
   def handle_info(:ping, state) do
     schedule_ping()
@@ -149,7 +147,7 @@ defmodule WardrikHTTP.Worker do
 
   defp answered(:list, %{"result" => %{"tools" => listed}}, state) when is_list(listed) do
     tools = for entry <- listed, {:ok, tool} <- [Tool.listed(entry)], do: tool
-    :ok = Workers.offer(state.token, tools)
+    :ok = Workers.offer(state.token, tools, state.since)
 
     :telemetry.execute([:wardrik, :workers, :listed], %{count: length(tools)}, %{
       worker: self(),
@@ -161,9 +159,24 @@ defmodule WardrikHTTP.Worker do
 
   defp answered(:list, _other, state), do: {:ok, state}
 
-  defp answered({caller, ref}, message, state) do
+  defp answered({caller, ref, monitor}, message, state) do
+    Process.demonitor(monitor, [:flush])
     send(caller, {ref, result(message)})
     {:ok, state}
+  end
+
+  defp cancel(state, call?, reason) do
+    case Enum.find(state.pending, fn {_id, purpose} -> call?.(purpose) end) do
+      {id, {_caller, _ref, monitor}} ->
+        Process.demonitor(monitor, [:flush])
+        params = %{"requestId" => id, "reason" => reason}
+
+        {:push, notification("notifications/cancelled", params),
+         %{state | pending: Map.delete(state.pending, id)}}
+
+      nil ->
+        {:ok, state}
+    end
   end
 
   defp result(%{"result" => %{"isError" => true} = result}),

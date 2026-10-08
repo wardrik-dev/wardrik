@@ -57,7 +57,10 @@ defmodule Wardrik.Event.LogTest do
          %{agent_id: agent_id, source: source} do
       agent_id
       |> open()
-      |> append!(source, {:model_started, "s1.m0", "anthropic:claude-sonnet-5"})
+      |> append!(
+        source,
+        {:model_started, "s1.m0", "anthropic:claude-sonnet-5", %{by: :default, hooks: []}}
+      )
       |> append!(source, {:chunk, "chunk"})
       |> append!(source, {:thinking, "hmm"})
       |> append!(source, {:result, "Hel"})

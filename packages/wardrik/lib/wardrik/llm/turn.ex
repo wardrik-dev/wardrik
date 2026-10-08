@@ -39,9 +39,11 @@ defmodule Wardrik.LLM.Turn do
 
   ## Where a model call actually goes
 
-  Every request passes through `Wardrik.LLM.Dispatch`, so a host can route it,
-  supply the key it runs under, or refuse it, and can book what it cost when it
-  returns. Without a dispatch the request is made exactly as configured.
+  Every request is a `Wardrik.Call` through `Wardrik.Call.Pipeline`, as every
+  tool call is: the scope's hooks decide it, and its `Wardrik.LLM.Dispatch`
+  can route it, supply the key it runs under, or refuse it, and can book what
+  it cost when it returns. Without a dispatch the request is made exactly as
+  configured.
 
   ## Stopping early
 
@@ -132,10 +134,10 @@ defmodule Wardrik.LLM.Turn do
 
   alias ReqLLM.Context
   alias Wardrik.Call
+  alias Wardrik.Call.Pipeline
   alias Wardrik.Event
   alias Wardrik.Failure
   alias Wardrik.Hook
-  alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
@@ -174,7 +176,7 @@ defmodule Wardrik.LLM.Turn do
         }
 
   @typedoc "What a person decides about one call a turn waits on."
-  @type decision() :: :approve | {:deny, String.t()}
+  @type decision() :: Pipeline.decision()
 
   @streamed :wardrik_streamed_text
   @answered :wardrik_answered
@@ -278,15 +280,11 @@ defmodule Wardrik.LLM.Turn do
       :redecide ->
         turn |> running() |> loop()
 
-      :approve ->
-        call |> Call.approve() |> Call.under(turn.scope) |> Hook.approved()
-        turn |> running() |> loop(decided: true)
-
-      {:deny, reason} ->
-        fail(turn, {:policy_denied, reason})
-
-      other ->
-        fail(turn, {:policy_denied, "Undecidable answer #{inspect(other)}"})
+      decision ->
+        case call |> Call.under(turn.scope) |> Pipeline.answer(decision) do
+          %Call{state: :approved} = approved -> turn |> running() |> loop(approved: approved)
+          %Call{denied: denied} -> fail(turn, {:policy_denied, denied.reason})
+        end
     end
   end
 
@@ -315,17 +313,9 @@ defmodule Wardrik.LLM.Turn do
   defp decide(%Call{} = call, _decisions, _scope, _stale?), do: call
 
   defp decided(call, nil, _scope), do: call
-  defp decided(call, {:deny, reason}, scope), do: ToolRunner.refuse(call, scope, reason)
 
-  defp decided(call, :approve, scope) do
-    approved = Call.approve(call)
-    approved |> Call.under(scope) |> Hook.approved()
-    ToolRunner.execute(approved, scope)
-  end
-
-  defp decided(call, other, scope),
-    do:
-      ToolRunner.refuse(call, scope, "Undecidable answer #{inspect(other)}: #{Call.prompt(call)}")
+  defp decided(call, decision, scope),
+    do: call |> Call.under(scope) |> Pipeline.answer(decision) |> ToolRunner.execute(scope)
 
   # A batch every call of which has been answered is appended, and the turn
   # goes on.
@@ -536,9 +526,10 @@ defmodule Wardrik.LLM.Turn do
   defp message_id(%__MODULE__{scope: %Scope{source: source}} = turn),
     do: "#{source.trace.span_id}.m#{rounds(turn)}"
 
-  # A call a hook parks is never made, so it has no model events. `opts` go
-  # to `Wardrik.LLM.Dispatch.admit/3` on every try. `scope` is the turn's, or one
-  # whose config is narrowed for the last request of a turn at its cap.
+  # A call a hook parks is never made, so it has no model events. `opts` hold
+  # the call a person approved, which every try goes ahead as. `scope` is the
+  # turn's, or one whose config is narrowed for the last request of a turn at
+  # its cap.
   defp request(%__MODULE__{} = turn, %Scope{config: config} = scope, opts, closing? \\ false) do
     config = %{config | system: system(config.system, turn, closing?)}
     request(%{scope | config: config}, turn.context, message_id(turn), config.retries, opts)
@@ -547,13 +538,16 @@ defmodule Wardrik.LLM.Turn do
   defp request(%Scope{} = scope, context, message_id, retries, opts) do
     request = Request.new(scope.config, context)
 
-    case Dispatch.admit(scope, request, opts) do
-      {:park, waiting} ->
+    case request |> Pipeline.model(scope, opts[:approved]) |> Pipeline.decide() do
+      %Call{state: :waiting} = waiting ->
         {:park, waiting}
 
-      admission ->
-        scope
-        |> make(request, admission, message_id)
+      %Call{state: :denied, denied: denied} ->
+        {:error, {:policy_denied, denied.reason}}
+
+      call ->
+        call
+        |> make(message_id)
         |> retry(scope, context, message_id, retries, opts)
     end
   end
@@ -576,16 +570,18 @@ defmodule Wardrik.LLM.Turn do
 
   defp retry(result, _scope, _context, _message_id, _retries, _opts), do: result
 
-  defp make(%Scope{source: source} = scope, request, admission, message_id) do
+  defp make(%Call{scope: %Scope{source: source}} = call, message_id) do
     started_at = System.monotonic_time()
-    Event.emit(source, {:model_started, message_id, request.model_spec})
+
+    Event.emit(
+      source,
+      {:model_started, message_id, call.target.model_spec, Call.decided_by(call)}
+    )
+
     Process.put(@streamed, [])
     Process.put(@answered, false)
 
-    result =
-      with {:ok, admitted} <- admission do
-        admitted |> stream(scope) |> tap(&Dispatch.settle(scope, admitted, settled(&1)))
-      end
+    result = call |> Pipeline.run(&streamed/1) |> unsettled()
 
     Event.emit(
       source,
@@ -594,6 +590,12 @@ defmodule Wardrik.LLM.Turn do
 
     result
   end
+
+  defp streamed(%Call{scope: scope} = call),
+    do: Call.answer(call, call |> Pipeline.request() |> stream(scope) |> settled())
+
+  defp unsettled(%Call{result: {:error, reason, _text}}), do: {:error, reason}
+  defp unsettled(%Call{result: result}), do: result
 
   # What the model answered, without the conversation it was answering, which
   # every subscriber already has.

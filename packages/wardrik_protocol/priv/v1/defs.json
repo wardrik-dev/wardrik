@@ -168,6 +168,49 @@
       ],
       "description": "Who decided."
     },
+    "decided": {
+      "type": "object",
+      "properties": {
+        "by": {
+          "type": "string",
+          "enum": [
+            "hook",
+            "person",
+            "default",
+            "ledger"
+          ],
+          "description": "hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it."
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The hooks that allowed the call, refused it, or asked a person about it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "by"
+      ],
+      "description": "Who decided a call."
+    },
+    "served_by": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "description": "What answered a tool call, as its tool names it: a tool worker's token, for one."
+    },
     "run": {
       "type": "object",
       "properties": {
@@ -243,7 +286,8 @@
           "enum": [
             "tool_approval",
             "model_approval",
-            "authorization"
+            "authorization",
+            "in_doubt"
           ]
         },
         "message": {

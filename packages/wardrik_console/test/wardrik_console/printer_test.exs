@@ -57,11 +57,12 @@ defmodule WardrikConsole.PrinterTest do
   test "a tool call is a line when it starts and when it ends, after the text before it" do
     assert print([
              {:result, "Looking"},
-             {:tool_started, "call_1", "github/search", %{"q" => "flaky"}, "key"},
-             {:tool_finished, "call_1", "github/search", {:ok, "3 issues"}},
-             {:tool_started, "call_2", "clock", %{}, "key"},
-             {:tool_finished, "call_2", "clock", {:error, :timeout}},
-             {:tool_denied, "call_3", "shell", "Not on a Friday."}
+             {:tool_started, "call_1", "github/search", %{"q" => "flaky"}, "key",
+              %{by: :default, hooks: []}},
+             {:tool_finished, "call_1", "github/search", {:ok, "3 issues"}, nil},
+             {:tool_started, "call_2", "clock", %{}, "key", %{by: :default, hooks: []}},
+             {:tool_finished, "call_2", "clock", {:error, :timeout}, nil},
+             {:tool_denied, "call_3", "shell", "Not on a Friday.", %{by: :default, hooks: []}}
            ]) == [
              "Looking",
              ~s(  → github/search {"q":"flaky"}),
@@ -75,7 +76,9 @@ defmodule WardrikConsole.PrinterTest do
   test "a line longer than the width is cut short" do
     [line] =
       print(
-        [{:tool_denied, "call_1", "shell", String.duplicate("x", 50)}],
+        [
+          {:tool_denied, "call_1", "shell", String.duplicate("x", 50), %{by: :default, hooks: []}}
+        ],
         Printer.new(width: 30)
       )
 

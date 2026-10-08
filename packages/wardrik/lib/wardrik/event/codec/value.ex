@@ -137,7 +137,8 @@ defmodule Wardrik.Event.Codec.Value do
   @doc """
   A call a run is waiting on a person for, with the prompt it was held with.
   A model call a dispatch held is not a tool call, and says so. A call waiting
-  for a person to authorize is `authorization`, and carries no link.
+  for a person to authorize is `authorization`, and carries no link, and one
+  that may already have done what it does is `in_doubt`.
   """
   @spec interrupt({Wardrik.Tool.call(), String.t()}) :: map()
   def interrupt({call, _prompt} = waiting),
@@ -145,6 +146,9 @@ defmodule Wardrik.Event.Codec.Value do
 
   defp interrupt_of({%{id: id, name: "model"}, prompt}),
     do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
+
+  defp interrupt_of({%{id: id, in_doubt: true}, prompt}),
+    do: %{"id" => id, "reason" => "in_doubt", "message" => prompt, "tool_call_id" => id}
 
   defp interrupt_of({%{id: id, link: %{url: _url}}, prompt}),
     do: %{"id" => id, "reason" => "authorization", "message" => prompt, "tool_call_id" => id}
@@ -170,6 +174,16 @@ defmodule Wardrik.Event.Codec.Value do
 
   def model(%{provider: provider, id: id}), do: {to_string(provider), to_string(id)}
   def model(spec), do: {nil, inspect(spec)}
+
+  @doc "Who decided a call that went ahead or was refused; see `t:Wardrik.Call.decider/0`."
+  @spec decided(Wardrik.Call.decider()) :: map()
+  def decided(%{by: by, hooks: hooks}),
+    do: put(%{"by" => Atom.to_string(by)}, "hooks", if(hooks != [], do: hooks))
+
+  @doc "What answered a tool call, where its tool said; see `t:Wardrik.Call.served/0`."
+  @spec served(Wardrik.Call.served() | nil) :: map() | nil
+  def served(nil), do: nil
+  def served(%{id: id} = served), do: put(%{"id" => id}, "name", Map.get(served, :name))
 
   @doc "Who decided something."
   @spec principal(Wardrik.Principal.t() | nil) :: map() | nil

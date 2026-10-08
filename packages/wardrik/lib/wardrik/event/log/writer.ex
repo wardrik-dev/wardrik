@@ -128,7 +128,7 @@ defmodule Wardrik.Event.Log.Writer do
     if Codec.durable?(Event.type(event)), do: durable(writer, event), else: live(writer, event)
   end
 
-  defp follow(writer, %Event{payload: {:model_started, message_id, _spec}} = event),
+  defp follow(writer, %Event{payload: {:model_started, message_id, _spec, _decided_by}} = event),
     do: %{writer | messages: Map.put(writer.messages, span(event), message_id)}
 
   defp follow(writer, %Event{payload: {:model_finished, _id, _outcome, _ms, _response}} = event),

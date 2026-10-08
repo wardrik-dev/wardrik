@@ -936,7 +936,7 @@ defmodule WardrikTUI.AppTest do
       emit(turn, [
         {:turn_started, [Message.new("hi")]},
         {:tool_call, tool_call("web_search", %{"query" => "lemonade"})},
-        {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}},
+        {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}, nil},
         {:tool_call, tool_call("deep_research", %{"topic" => "citrus"})},
         {:turn_finished, []}
       ])
@@ -963,7 +963,11 @@ defmodule WardrikTUI.AppTest do
       refute screen(session) =~ ~s("hits": 3)
       assert Breeze.Test.focused(session) == "log"
 
-      emit(turn, [{:tool_denied, "call_2", "deep_research", "not during the freeze"}])
+      emit(turn, [
+        {:tool_denied, "call_2", "deep_research", "not during the freeze",
+         %{by: :default, hooks: []}}
+      ])
+
       Breeze.Test.focus(session, "prompt")
       submit(session, "/tools")
       assert screen(session) =~ "2  ✗ deep_research"
@@ -1062,7 +1066,11 @@ defmodule WardrikTUI.AppTest do
       refute text =~ "look this up"
 
       emit(tool, [{:span_finished, :ok, 10}])
-      emit(turn, [{:model_started, "m0", "m"}, {:thinking, " and then decide"}])
+
+      emit(turn, [
+        {:model_started, "m0", "m", %{by: :default, hooks: []}},
+        {:thinking, " and then decide"}
+      ])
 
       assert screen(session) =~ "turn · I should look this up carefully and then decide"
     end
@@ -1107,8 +1115,12 @@ defmodule WardrikTUI.AppTest do
     test "adds up tokens and cost across concurrent requests", %{session: session, turn: turn} do
       branch = Source.child(turn, name: "researcher")
 
-      emit(turn, [{:turn_started, [Message.new("hi")]}, {:model_started, "m0", "m"}])
-      emit(branch, [{:model_started, "m0", "m"}])
+      emit(turn, [
+        {:turn_started, [Message.new("hi")]},
+        {:model_started, "m0", "m", %{by: :default, hooks: []}}
+      ])
+
+      emit(branch, [{:model_started, "m0", "m", %{by: :default, hooks: []}}])
       emit(turn, [{:meta, meta(%{input_tokens: 1_000, output_tokens: 100, total_cost: 0.01})}])
       emit(branch, [{:meta, meta(%{input_tokens: 500, output_tokens: 50, total_cost: 0.005})}])
 

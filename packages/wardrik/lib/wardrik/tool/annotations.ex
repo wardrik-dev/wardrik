@@ -13,12 +13,13 @@ defmodule Wardrik.Tool.Annotations do
       side wrote, such as a web page, so a call to it taints its run, and a
       gated tool's call later in the run waits on a person however its hooks
       allowed it.
-    * `:in_doubt` - what a call does when its turn is replayed and the ledger
-      holds it as begun and never finished, so whether it had its effect is
-      not known: `:ask`, the default, parks it for a person, and `:rerun`
-      runs it again under the same `Wardrik.Ledger.idempotency_key/2`.
-      Declare `:rerun` for a tool that passes that key on to the system it
-      calls, or that changes nothing.
+    * `:in_doubt` - what a call does when whether it had its effect is not
+      known: its turn is replayed and the ledger holds it as begun and never
+      finished, or the tool answered `{:in_doubt, reason}`. `:ask`, the
+      default, parks it for a person, and `:rerun` runs it again, once, under
+      the same `Wardrik.Ledger.idempotency_key/2`. Declare `:rerun` for a tool
+      that passes that key on to the system it calls, or that changes
+      nothing.
     * `:timeout` - how long one call may take, in milliseconds, for work that
       legitimately runs longer than a request; `Wardrik.LLM.ToolRunner` has a
       default.

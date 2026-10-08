@@ -113,7 +113,7 @@ defmodule Wardrik.Test do
   """
   @spec check(Scope.t(), String.t(), map()) :: Call.t()
   def check(%Scope{} = scope, name, arguments \\ %{}) when is_binary(name),
-    do: scope |> proposed(name, arguments, []) |> Wardrik.Tool.declared() |> Wardrik.Hook.check()
+    do: scope |> proposed(name, arguments, []) |> Wardrik.Call.Pipeline.decide()
 
   @doc """
   The context a tool built with `Wardrik.Tool.new!/1` is handed for one call

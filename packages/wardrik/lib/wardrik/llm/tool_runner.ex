@@ -29,58 +29,13 @@ defmodule Wardrik.LLM.ToolRunner do
 
   ## Steps
 
-  Every call passes through the same steps, in order, as a `Plug.Conn`
-  passes through a pipeline:
-
-    1. what its tool declares is written on an unchecked call: whether it is
-       gated, and what it acts on; see `Wardrik.Call.Tool`
-    2. the scope's hooks decide an unchecked call
-    3. the ledger claims an allowed or approved call
-    4. a refused call is answered with why
-    5. the credentials its tool's annotations name are resolved for an
-       allowed or approved call; one the person has yet to authorize parks
-       the call on its link, until `Wardrik.Credential.available/3` says it
-       can be resolved
-    6. the tool runs the call, handed its arguments and a
-       `Wardrik.Tool.Context`; see `Wardrik.Tool`. One whose work ran a
-       delegate that read content from outside is tainted; see
-       `Wardrik.Subagent`
-    7. the ledger records what a claimed call answered
-    8. an answered call whose tool declares its answers hold content from
-       outside is tainted; see `Wardrik.Call.taint/1`
-
-  Each step acts on the calls in the states it is for and hands every other
-  on as it came, so a call answered, refused or waiting on a person passes
-  through the steps after it.
-
-  ## Governance
-
-  Before a callback runs, an unchecked call is handed to the scope's
-  `Wardrik.Hook`s. Three things can happen, and only the first reaches the tool:
-
-    * allowed - the callback runs.
-    * denied - the callback never runs and the model is told why, as an
-      ordinary tool result. A refusal is an answer, so the turn carries on.
-    * asked - the call **parks**. Nothing runs, nothing is appended to the
-      conversation, and the batch reports it so the turn can stop and wait for
-      a person. See `Wardrik.Agent.resume/2`.
-
-  An approved call runs without the hooks being asked again.
-
-  ## Recording what ran
-
-  A scope with a `Wardrik.Ledger` has every allowed call claimed before its
-  callback runs and settled with what it returned, under `Wardrik.Ledger.key/2`.
-  A call already settled is answered with what it returned then, without
-  running, and reported as `{:tool_replayed, call_id, name, result}`. A call
-  claimed and never settled may or may not have had its effect, so it waits on
-  `:ledger`, asking a person whether to run it again, and runs once they
-  approve that, or at once, under the same key, where its tool declares it may
-  run again (see `Wardrik.Tool.Annotations`). Approving a call a hook asked
-  about runs nothing the ledger holds as begun, and refusing one tells the
-  model what the ledger holds, not that it never ran. A call whose claim the
-  ledger cannot answer does not run. A tool that stops to ask before doing
-  anything waits on `:tool`, and releases its claim.
+  Every call passes through `Wardrik.Call.Pipeline`: the scope's hooks decide
+  it, the ledger claims it and the credentials its tool needs are resolved,
+  its tool runs it, and the ledger records what it answered. A refusal is an
+  answer, so the turn carries on; a call that asks a person **parks**,
+  nothing is appended to the conversation, and the batch reports it so the
+  turn can stop and wait. See `Wardrik.Agent.resume/2`. An approved call runs
+  without the hooks being asked again.
 
   ## Stopping one call
 
@@ -93,23 +48,16 @@ defmodule Wardrik.LLM.ToolRunner do
   the model is never left with an unanswered call. `in_flight/1` lists what
   could be stopped.
   """
-  require Logger
-
   alias ReqLLM.Context
   alias Wardrik.Call
+  alias Wardrik.Call.Pipeline
   alias Wardrik.Call.Tool
-  alias Wardrik.Credential
   alias Wardrik.Event
-  alias Wardrik.Hook
-  alias Wardrik.Ledger
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
-  alias Wardrik.Subagent
   alias Wardrik.Tool.Result
 
   @registry __MODULE__.Registry
-  @claim :wardrik_ledger_key
-  @credentials :wardrik_credentials
 
   @tool_timeout :timer.seconds(60)
   @max_concurrency 8
@@ -178,7 +126,8 @@ defmodule Wardrik.LLM.ToolRunner do
 
   @doc """
   The calls in a batch waiting on a person, each with the prompt a person is
-  shown. A call whose tool named where to authorize carries it as `:link`.
+  shown. A call whose tool named where to authorize carries it as `:link`,
+  and one that may already have done what it does is marked `in_doubt: true`.
   """
   @spec parked([Call.t()]) :: [{Wardrik.Tool.call(), String.t()}]
   def parked(calls) when is_list(calls) do
@@ -186,11 +135,17 @@ defmodule Wardrik.LLM.ToolRunner do
   end
 
   defp waiting(%Call{} = call) do
-    case Call.link(call) do
-      nil -> Call.to_map(call)
-      link -> Map.put(Call.to_map(call), :link, link)
-    end
+    call
+    |> Call.to_map()
+    |> put_link(Call.link(call))
+    |> put_doubt(Call.asked_by?(call, :doubt))
   end
+
+  defp put_link(map, nil), do: map
+  defp put_link(map, link), do: Map.put(map, :link, link)
+
+  defp put_doubt(map, true), do: Map.put(map, :in_doubt, true)
+  defp put_doubt(map, false), do: map
 
   @doc """
   The longest any of `tool_calls` may take.
@@ -218,7 +173,8 @@ defmodule Wardrik.LLM.ToolRunner do
 
   An unchecked call is handed to the scope's hooks first. An approved one is
   not, since the decision has been made and asking again would park it
-  forever, and one approved after the ledger asked about it runs again.
+  forever, and one approved because it may already have run runs again. A
+  refused one is answered with why.
   """
   @spec execute(Call.t() | Wardrik.Tool.call(), Scope.t()) :: Call.t()
   def execute(call, %Scope{} = scope) do
@@ -227,44 +183,14 @@ defmodule Wardrik.LLM.ToolRunner do
   end
 
   @doc """
-  Answers a call a person refused, without running it.
-
-  What `Wardrik.LLM.Turn.resume/2` uses for a denied call, so a refusal made by a
-  person reaches the model in the same shape as one made by a hook.
-
-  A call the ledger holds is not one that never ran. A settled one is answered
-  with what it returned, as a replay is, and one claimed and never settled is
-  refused with the model told it may already have done what it does.
+  Answers a call a person refused, without running it, as
+  `Wardrik.LLM.Turn.resume/2` does for a denied call, so a refusal made by a
+  person reaches the model in the same shape as one made by a hook. See
+  `Wardrik.Call.Pipeline` for a call the ledger holds.
   """
   @spec refuse(Call.t() | Wardrik.Tool.call(), Scope.t(), String.t()) :: Call.t()
-  def refuse(call, %Scope{} = scope, reason) when is_binary(reason) do
-    call = token(call)
-    span = Scope.open(scope, Call.name(call))
-
-    call
-    |> Call.refuse(reason)
-    |> Call.under(span)
-    |> held()
-    |> refused()
-    |> tap(&Scope.close(span, outcome(&1)))
-    |> Call.under(nil)
-  end
-
-  # A refused call the ledger holds is not one that never ran.
-  defp held(%Call{scope: %Scope{ledger: nil}} = call), do: call
-
-  defp held(%Call{scope: %Scope{ledger: ledger} = scope, denied: denied} = call) do
-    case Ledger.fetch(ledger, Ledger.key(scope, Call.to_map(call))) do
-      {:ok, %Ledger.Entry{result: nil}} -> Call.refuse(call, not_run_again(call, denied.reason))
-      {:ok, %Ledger.Entry{result: result}} -> replayed(call, result)
-      :error -> call
-    end
-  end
-
-  defp not_run_again(call, reason) do
-    "#{Call.name(call)} was not run again, but it began before this agent was interrupted " <>
-      "and may already have done what it does. #{reason}"
-  end
+  def refuse(call, %Scope{} = scope, reason) when is_binary(reason),
+    do: call |> token() |> Call.refuse(reason) |> execute(scope)
 
   @doc """
   Stops one tool call that is in flight.
@@ -324,249 +250,14 @@ defmodule Wardrik.LLM.ToolRunner do
 
   defp outcome(%Call{}), do: :ok
 
-  # Each step acts on the calls in the states it is for and hands every other
-  # on as it came, so a call answered, refused or waiting on a person passes
-  # through the steps after.
   defp run(call, scope) do
     register(scope, call)
 
     try do
-      call
-      |> Call.under(scope)
-      |> declared()
-      |> check()
-      |> claim()
-      |> refused()
-      |> resolved()
-      |> invoke()
-      |> forgotten()
-      |> record()
-      |> outside()
+      call |> Call.under(scope) |> Pipeline.run()
     after
       Registry.unregister(@registry, {scope.source.agent_id, call.id})
     end
-  end
-
-  # What the tool says about an unchecked call is written on it before any
-  # hook reads it.
-  defp declared(%Call{state: :unchecked} = call), do: Wardrik.Tool.declared(call)
-  defp declared(call), do: call
-
-  # The hooks decide an unchecked call. An approved one has been decided.
-  defp check(%Call{state: :unchecked} = call), do: call |> Hook.check() |> announced()
-  defp check(call), do: call
-
-  # A call is claimed before it runs, so a replay knows it began, and settled
-  # after, so a replay knows what it returned.
-  defp claim(%Call{state: state, scope: %Scope{ledger: ledger} = scope} = call)
-       when state in [:allowed, :approved] and ledger != nil do
-    key = Ledger.key(scope, Call.to_map(call))
-
-    case Ledger.claim(ledger, key, Call.to_map(call)) do
-      :ok ->
-        Call.put_private(call, @claim, key)
-
-      {:settled, result} ->
-        replayed(call, result)
-
-      {:pending, _entry} ->
-        if rerun?(call) or Config.tool_in_doubt(scope.config, Call.name(call)) == :rerun,
-          do: Call.put_private(call, @claim, key),
-          else: call |> Call.wait(:ledger, pending_prompt(call)) |> announced()
-
-      {:error, reason} ->
-        Call.refuse(
-          call,
-          :ledger,
-          "Wardrik could not record this call before running it, so it did not run: #{inspect(reason)}"
-        )
-    end
-  end
-
-  defp claim(call), do: call
-
-  # A person approved running again a call the ledger held as begun.
-  defp rerun?(%Call{state: state} = call),
-    do: state == :approved and Call.asked_by?(call, :ledger)
-
-  defp pending_prompt(call) do
-    "#{Call.name(call)} began before this agent was interrupted, and may already have done what it does. " <>
-      "Approve to run it again, or deny to tell the agent it may have run."
-  end
-
-  # A refused call is answered with why, as an ordinary tool result.
-  defp refused(%Call{state: :denied, denied: denied} = call) do
-    emit(call, {:tool_denied, call.id, Call.name(call), denied.reason})
-    Call.answer(call, Result.error(:denied, denied.reason))
-  end
-
-  defp refused(call), do: call
-
-  # The credentials a tool's annotations name are resolved before it runs,
-  # and handed to it. One the person has yet to authorize parks the call on
-  # its link; one that cannot be resolved answers the call with why.
-  defp resolved(%Call{state: state, target: %Tool{name: name}} = call)
-       when state in [:allowed, :approved] do
-    Enum.reduce_while(needed(call, name), call, fn ref, call ->
-      case Credential.resolve(call, ref) do
-        {:ok, credential} ->
-          {:cont, put_credential(call, ref, credential)}
-
-        {:error, {:authorization_required, link, owner}} ->
-          {:halt, unauthorized(call, ref, link, owner)}
-
-        {:error, reason} ->
-          {:halt, finished(call, unresolved(name, ref, reason))}
-      end
-    end)
-  end
-
-  defp resolved(call), do: call
-
-  defp needed(call, name) do
-    case Config.tool_spec(call.scope.config, name) do
-      nil -> []
-      spec -> Wardrik.Tool.annotations(spec, name).credentials
-    end
-  end
-
-  defp unauthorized(call, ref, link, owner) do
-    prompt =
-      "To use #{Call.name(call)}, connect #{ref} at its link. " <>
-        "This carries on once it is connected."
-
-    call |> Call.park(prompt, link: link, credential: %{ref: ref, owner: owner}) |> announced()
-  end
-
-  defp unresolved(name, ref, :no_resolver),
-    do:
-      Result.error(
-        :not_authorized,
-        "#{name} needs #{ref}, and this deployment resolves no credentials."
-      )
-
-  defp unresolved(name, ref, reason),
-    do:
-      Result.error(
-        :not_authorized,
-        "#{name} needs #{ref}, which could not be resolved: #{inspect(reason)}"
-      )
-
-  defp put_credential(call, ref, credential),
-    do: Call.put_private(call, @credentials, Map.put(credentials(call), ref, credential))
-
-  defp credentials(%Call{private: private}), do: Map.get(private, @credentials) || %{}
-
-  # A call whose work ran a delegate that read content from outside is
-  # tainted as one that read it itself is; see `Wardrik.Subagent`.
-  defp invoke(%Call{state: state, target: %Tool{name: name, arguments: args}} = call)
-       when state in [:allowed, :approved] do
-    emit(call, {:tool_started, call.id, name, args, Ledger.idempotency_key(call)})
-    {invoked, read_outside?} = Subagent.watching(fn -> invoked(call, :may_retry) end)
-    if read_outside?, do: Call.taint(invoked), else: invoked
-  end
-
-  defp invoke(call), do: call
-
-  defp invoked(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
-    case Enum.find(Config.tools(call.scope.config), &(&1.name == name)) do
-      nil ->
-        finished(call, {:error, "Unknown tool: #{name}"})
-
-      %ReqLLM.Tool{callback: {Wardrik.Tool, :invoke, [handler]}} = tool ->
-        handed(call, tool, handler, retry)
-
-      tool ->
-        finished(call, ReqLLM.Tool.execute(tool, args))
-    end
-  end
-
-  # A tool built with `Wardrik.Tool.new!/1` is handed its arguments and its
-  # context, and what it answers is read as `t:Wardrik.Tool.answer/0`.
-  defp handed(%Call{target: target} = call, tool, handler, retry) do
-    case ReqLLM.Tool.validate_input(tool, target.arguments) do
-      {:ok, input} ->
-        context = Wardrik.Tool.Context.new(call, credentials(call))
-        handler |> Wardrik.Tool.hand(input, context) |> took(call, retry)
-
-      {:error, reason} ->
-        finished(call, {:error, reason})
-    end
-  end
-
-  defp took({:ok, output, opts}, call, _retry) when is_list(opts) do
-    answered = finished(call, {:ok, output})
-    if Keyword.get(opts, :outside, false), do: Call.taint(answered), else: answered
-  end
-
-  defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
-
-  defp took({:park, prompt, opts}, call, _retry) when is_binary(prompt) and is_list(opts),
-    do: call |> Call.park(prompt, link: Keyword.get(opts, :link)) |> announced()
-
-  # A credential the system refused is resolved afresh, once its resolver
-  # has heard, and the call is tried once more.
-  defp took({:refused, ref}, call, :may_retry) when is_binary(ref) do
-    :ok = Credential.refused(call, ref)
-
-    case Credential.resolve(call, ref) do
-      {:ok, credential} -> call |> put_credential(ref, credential) |> invoked(:tried)
-      {:error, reason} -> finished(call, unresolved(Call.name(call), ref, reason))
-    end
-  end
-
-  defp took({:refused, ref}, call, :tried) when is_binary(ref) do
-    finished(
-      call,
-      Result.error(
-        :not_authorized,
-        "#{ref} is no longer valid: what #{Call.name(call)} reaches refused it twice."
-      )
-    )
-  end
-
-  defp took(other, call, _retry), do: finished(call, other)
-
-  # A credential is handed to the tool for the call, and kept nowhere.
-  defp forgotten(call), do: Call.put_private(call, @credentials, nil)
-
-  # A call answered by a tool whose answers hold content from outside taints
-  # its run, whether it ran now or its answer was replayed.
-  defp outside(%Call{state: :done, denied: nil, target: %Tool{name: name}} = call) do
-    case Config.tool_spec(call.scope.config, name) do
-      nil -> call
-      spec -> if Wardrik.Tool.annotations(spec, name).outside, do: Call.taint(call), else: call
-    end
-  end
-
-  defp outside(call), do: call
-
-  # A claimed call is settled with what it answered. One whose tool stopped to
-  # ask before doing anything gives its claim back.
-  defp record(%Call{private: %{@claim => key}} = call) when key != nil do
-    %Call{scope: %Scope{ledger: ledger}} = call
-
-    case call.state do
-      :done -> settle(call, ledger, key)
-      :waiting -> _ = Ledger.release(ledger, key)
-    end
-
-    Call.put_private(call, @claim, nil)
-  end
-
-  defp record(call), do: call
-
-  defp settle(call, ledger, key) do
-    with {:error, reason} <- Ledger.settle(ledger, key, call.result) do
-      Logger.warning(
-        "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
-      )
-    end
-  end
-
-  defp replayed(call, result) do
-    emit(call, {:tool_replayed, call.id, Call.name(call), result})
-    Call.answer(call, result)
   end
 
   # Registration is best-effort bookkeeping for an operator, so a duplicate id
@@ -578,27 +269,6 @@ defmodule Wardrik.LLM.ToolRunner do
   catch
     _kind, _reason -> :ok
   end
-
-  # A tool that answers with neither `{:ok, _}` nor `{:error, _}` is a bug in
-  # the tool, and the model is told so rather than the call crashing around it.
-  defp finished(call, result) do
-    emit(call, {:tool_finished, call.id, Call.name(call), result})
-
-    case result do
-      {:ok, _output} -> Call.answer(call, result)
-      {:error, _reason} -> Call.answer(call, result)
-      other -> Call.answer(call, {:error, "Tool answered with #{inspect(other)}"})
-    end
-  end
-
-  defp announced(%Call{state: :waiting} = call) do
-    emit(call, {:tool_parked, call.id, Call.name(call), Call.prompt(call)})
-    call
-  end
-
-  defp announced(call), do: call
-
-  defp emit(%Call{scope: %Scope{source: source}}, payload), do: Event.emit(source, payload)
 
   defp result_message(%Call{id: id, target: %Tool{name: name}}, output),
     do: Context.tool_result_message(name, id, output)
