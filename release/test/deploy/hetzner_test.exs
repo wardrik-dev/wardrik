@@ -62,21 +62,18 @@ defmodule Deploy.HetznerTest do
   # The settings config.yaml makes, as the daemon applies them, put back after.
   defp with_settings(settings, fun) do
     previous =
-      for {module, _value} <- settings,
-          app = WardrikDaemon.Config.application(module),
-          do: {app, module, Application.get_env(app, module)}
+      for {module, _value} <- settings, do: {module, Application.get_env(:wardrik_daemon, module)}
 
-    for {module, value} <- settings,
-        do: Application.put_env(WardrikDaemon.Config.application(module), module, value)
+    for {module, value} <- settings, do: Application.put_env(:wardrik_daemon, module, value)
 
     try do
       fun.()
     after
-      for {app, module, value} <- previous,
+      for {module, value} <- previous,
           do:
             if(value,
-              do: Application.put_env(app, module, value),
-              else: Application.delete_env(app, module)
+              do: Application.put_env(:wardrik_daemon, module, value),
+              else: Application.delete_env(:wardrik_daemon, module)
             )
     end
   end

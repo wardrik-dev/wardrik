@@ -3,17 +3,13 @@ defmodule WardrikDaemonTest do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias WardrikDaemon.Config
+  alias WardrikDaemon.Test.Settings
 
   @moduletag :tmp_dir
 
   setup do
-    previous = Application.get_env(:wardrik_vault, WardrikVault)
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
-        else: Application.delete_env(:wardrik_vault, WardrikVault)
-    end)
+    Settings.keep()
   end
 
   test "starts with no config.yaml at all, running the agent files and the HTTP API", %{
@@ -67,14 +63,31 @@ defmodule WardrikDaemonTest do
     assert {:ok, %{status: 404}} = Req.get(api, url: "definition")
   end
 
-  test "puts config.yaml's settings where each package reads them", %{tmp_dir: dir} do
+  test "keeps config.yaml's settings, and starts the vault with its own", %{tmp_dir: dir} do
     key = WardrikVault.generate_key()
     File.write!(Path.join(dir, "config.yaml"), "vault:\n  keys: [\"#{key}\"]\n")
 
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik_vault, WardrikVault)[:keys] == [key]
+    assert Config.settings(WardrikVault)[:keys] == [key]
+    assert WardrikVault.Config.keys() == [key]
+    assert WardrikVault.Config.grants() == WardrikOAuth
+  end
+
+  test "starts what config.yaml configures with its section as options", %{tmp_dir: dir} do
+    File.write!(Path.join(dir, "config.yaml"), """
+    notify:
+      audit:
+        webhook:
+          url: https://hooks.example.com/wardrik
+    """)
+
+    assert {:ok, pid} =
+             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+
+    assert WardrikNotify.Supervisor in Enum.map(Supervisor.which_children(pid), &elem(&1, 0))
+    assert [audit: {WardrikNotify.Webhook, _opts}] = Config.settings(WardrikNotify)[:targets]
   end
 
   test "reads config.yml where that is the file there", %{tmp_dir: dir} do
@@ -84,7 +97,7 @@ defmodule WardrikDaemonTest do
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik_vault, WardrikVault)[:keys] == [key]
+    assert WardrikVault.Config.keys() == [key]
   end
 
   test "refuses a config directory holding both config.yaml and config.yml", %{tmp_dir: dir} do
@@ -98,26 +111,21 @@ defmodule WardrikDaemonTest do
   end
 
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
-    http = Application.get_env(:wardrik_http, WardrikHTTP)
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
+    :ok = Settings.vault()
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
     :ok = WardrikVault.put(name, nil, "127.0.0.1")
+    on_exit(fn -> WardrikVault.forget(name, nil) end)
 
-    on_exit(fn ->
-      WardrikVault.forget(name, nil)
-      Application.put_env(:wardrik_http, WardrikHTTP, http)
-    end)
-
-    File.write!(Path.join(dir, "config.yaml"), "http:\n  ip: \"${#{name}}\"\n")
+    File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
     assert {:ok, _pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert Application.get_env(:wardrik_http, WardrikHTTP)[:ip] == {127, 0, 0, 1}
+    assert Config.settings(WardrikDaemon.SSH)[:ip] == {127, 0, 0, 1}
   end
 
   test "reads storage from the environment alone, and says why it stops", %{tmp_dir: dir} do
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [WardrikVault.generate_key()])
+    :ok = Settings.vault()
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
     :ok = WardrikVault.put(name, nil, "postgres://localhost/wardrik")
     on_exit(fn -> WardrikVault.forget(name, nil) end)

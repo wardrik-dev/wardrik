@@ -42,12 +42,18 @@ defmodule WardrikMCP.Test.Case do
   @spec fresh_ref() :: atom()
   def fresh_ref, do: :"stub_#{System.unique_integer([:positive])}"
 
-  @doc "The options for a server that runs the stub, with `opts` merged in."
+  @doc """
+  The options for a server that runs the stub, with `opts` merged in. A
+  connection to it retries, and waits out a burst of tool changes, in
+  milliseconds rather than a second or a quarter of one.
+  """
   @spec stub_options(keyword()) :: keyword()
   def stub_options(opts \\ []) do
     {transport_opts, opts} = Keyword.pop(opts, :transport_opts, [])
 
-    Keyword.put(opts, :transport, {:stdio, [command: elixir(), args: [stub()]] ++ transport_opts})
+    [first_retry: 10, refresh_after: 10]
+    |> Keyword.merge(opts)
+    |> Keyword.put(:transport, {:stdio, [command: elixir(), args: [stub()]] ++ transport_opts})
   end
 
   @doc "Waits until a server has reported its tools, or fails the test."

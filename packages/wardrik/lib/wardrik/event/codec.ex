@@ -11,8 +11,7 @@ defmodule Wardrik.Event.Codec do
 
     * `specversion` - `"1.0"`
     * `id` - the event's UUIDv7
-    * `source` - the agent, as `wardrik://<deployment>/agents/<key>`, where the
-      deployment is `config :wardrik, :deployment`, `"local"` by default
+    * `source` - the agent, as `wardrik://local/agents/<key>`
     * `type` - `wardrik.` then a noun and a past-tense verb, the same string as
       the event's OpenTelemetry event name
     * `subject` - what the event is about: `runs/…`, `messages/…`,
@@ -94,7 +93,7 @@ defmodule Wardrik.Event.Codec do
   @doc "The CloudEvents `source` of an agent's events."
   @spec source(Event.Bus.agent_id()) :: String.t()
   def source(agent_id),
-    do: "wardrik://#{Application.get_env(:wardrik, :deployment, "local")}/agents/#{agent_id}"
+    do: "wardrik://local/agents/#{agent_id}"
 
   @doc "The URI of the JSON Schema for a CloudEvent type's data."
   @spec schema(String.t()) :: String.t()

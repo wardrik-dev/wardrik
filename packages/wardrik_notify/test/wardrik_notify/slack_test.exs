@@ -10,19 +10,10 @@ defmodule WardrikNotify.SlackTest do
   alias WardrikNotify.Notice
   alias WardrikNotify.Slack
 
-  @target [channel: "#ops", token: "xoxb-test", app_token: "xapp-test"]
+  @req_options [plug: {Req.Test, WardrikNotify.Stub}]
+  @target [channel: "#ops", token: "xoxb-test", app_token: "xapp-test", req_options: @req_options]
 
   setup do
-    previous = Application.get_env(:wardrik_notify, WardrikNotify)
-
-    Application.put_env(
-      :wardrik_notify,
-      WardrikNotify,
-      Keyword.put(previous, :targets, ops: {Slack, @target})
-    )
-
-    on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
-
     test = self()
 
     Req.Test.stub(WardrikNotify.Stub, fn conn ->
@@ -94,7 +85,12 @@ defmodule WardrikNotify.SlackTest do
 
     test "says how to answer from a shell when there is no app token" do
       assert :ok =
-               Slack.deliver(parked_notice(), target: :ops, channel: "#ops", token: "xoxb-test")
+               Slack.deliver(parked_notice(),
+                 target: :ops,
+                 channel: "#ops",
+                 token: "xoxb-test",
+                 req_options: @req_options
+               )
 
       assert_receive {:slack, _host, "/api/chat.postMessage", message}
       refute Enum.any?(message["blocks"], &(&1["type"] in ["actions", "input"]))
@@ -130,6 +126,9 @@ defmodule WardrikNotify.SlackTest do
     end
   end
 
+  defp answering(targets \\ [ops: {Slack, @target}]),
+    do: [targets: targets, req_options: @req_options]
+
   describe "a call waiting on a person to connect an account" do
     defp connecting_notice do
       %Notice{
@@ -162,7 +161,13 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "says to find the link with wardrik parked where there is no app token" do
-      assert :ok = Slack.deliver(connecting_notice(), channel: "#ops", token: "xoxb-test")
+      assert :ok =
+               Slack.deliver(connecting_notice(),
+                 channel: "#ops",
+                 token: "xoxb-test",
+                 req_options: @req_options
+               )
+
       assert_receive {:slack, _host, _path, message}
       assert JSON.encode!(message) =~ "Find the link with `wardrik parked`"
     end
@@ -188,7 +193,7 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "tells the person pressing alone where to connect, and decides nothing", %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_link"))
+      assert :ok = Slack.answer(press(key, "wardrik_link"), answering())
 
       assert_receive {:slack, "hooks.slack.com", _path, reply}
       assert reply["response_type"] == "ephemeral"
@@ -198,15 +203,9 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "is refused to someone who is not an approver", %{key: key} do
-      Application.put_env(
-        :wardrik_notify,
-        WardrikNotify,
-        Keyword.put(Application.get_env(:wardrik_notify, WardrikNotify), :targets,
-          ops: {Slack, [approvers: ["U2"]] ++ @target}
-        )
-      )
+      targets = [ops: {Slack, [approvers: ["U2"]] ++ @target}]
 
-      assert :ok = Slack.answer(press(key, "wardrik_link", "U1"))
+      assert :ok = Slack.answer(press(key, "wardrik_link", "U1"), answering(targets))
 
       assert_receive {:slack, _host, _path, %{"text" => text}}
       assert text =~ "approvers"
@@ -220,7 +219,7 @@ defmodule WardrikNotify.SlackTest do
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}
-      assert :ok = Slack.answer(press(key, "wardrik_link"))
+      assert :ok = Slack.answer(press(key, "wardrik_link"), answering())
 
       assert_receive {:slack, _host, _path, %{"text" => text}}
       assert text == "That is no longer waiting on anyone to connect."
@@ -270,7 +269,7 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "approves the call, and says who did in place of the buttons", %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_approve"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve"), answering())
 
       assert_receive {:resumed, %{"call_1" => :approve}}
 
@@ -285,14 +284,18 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "denies the call in the name of whoever pressed", %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_deny"))
+      assert :ok = Slack.answer(press(key, "wardrik_deny"), answering())
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Denied in Slack by jon."}}}
     end
 
     test "denies the call with what was written in its box, and says it in place of the box",
          %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_deny", "U1", "  Deploy to staging first.\n"))
+      assert :ok =
+               Slack.answer(
+                 press(key, "wardrik_deny", "U1", "  Deploy to staging first.\n"),
+                 answering()
+               )
 
       assert_receive {:resumed,
                       %{"call_1" => {:deny, "Denied in Slack by jon: Deploy to staging first."}}}
@@ -305,7 +308,7 @@ defmodule WardrikNotify.SlackTest do
 
     test "approves without what was written in the box, and leaves a blank box unsaid",
          %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_approve", "U1", "Fine by me."))
+      assert :ok = Slack.answer(press(key, "wardrik_approve", "U1", "Fine by me."), answering())
       assert_receive {:resumed, %{"call_1" => :approve}}
 
       assert_receive {:slack, _host, _path, reply}
@@ -313,15 +316,9 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "refuses someone who is not an approver", %{key: key} do
-      Application.put_env(
-        :wardrik_notify,
-        WardrikNotify,
-        Keyword.put(Application.get_env(:wardrik_notify, WardrikNotify), :targets,
-          ops: {Slack, [approvers: ["U2"]] ++ @target}
-        )
-      )
+      targets = [ops: {Slack, [approvers: ["U2"]] ++ @target}]
 
-      assert :ok = Slack.answer(press(key, "wardrik_approve", "U1"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve", "U1"), answering(targets))
 
       assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
       assert text =~ "approvers"
@@ -329,11 +326,11 @@ defmodule WardrikNotify.SlackTest do
     end
 
     test "says a second press finds the question answered", %{key: key} do
-      assert :ok = Slack.answer(press(key, "wardrik_approve"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve"), answering())
       assert_receive {:resumed, _decisions}
       assert_receive {:slack, _host, _path, %{"replace_original" => true}}
 
-      assert :ok = Slack.answer(press(key, "wardrik_approve"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve"), answering())
       assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
       assert text =~ "already answered"
     end
@@ -341,7 +338,7 @@ defmodule WardrikNotify.SlackTest do
     test "says so when the agent cannot record the answer", %{key: key} do
       :ok = Wardrik.Test.EventLog.usurp(key)
 
-      assert :ok = Slack.answer(press(key, "wardrik_approve"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve"), answering())
       assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
       assert text =~ "could not record"
     end
@@ -349,7 +346,7 @@ defmodule WardrikNotify.SlackTest do
     test "says so when the agent is not running", %{key: key} do
       :ok = Fleet.forget(key)
 
-      assert :ok = Slack.answer(press(key, "wardrik_approve"))
+      assert :ok = Slack.answer(press(key, "wardrik_approve"), answering())
       assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
       assert text =~ "is not running"
     end

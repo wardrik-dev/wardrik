@@ -2,9 +2,9 @@ defmodule WardrikBrave.Case do
   @moduledoc """
   Case template for the Brave client.
 
-  Requests are routed to a `Req.Test` stub through `Config.req_options`, so
-  every client function runs its real request building and response matching
-  without touching the network. `Req.Test` stubs are per-test, so cases can run
+  Requests are routed to a `Req.Test` stub through the `:req_options` of
+  `config/1`, so every client function runs its real request building and
+  response matching without touching the network. `Req.Test` stubs are per-test, so cases can run
   async.
 
   Every stub reports its `%Plug.Conn{}` and raw body to the test process, so a
@@ -12,6 +12,8 @@ defmodule WardrikBrave.Case do
   """
 
   use ExUnit.CaseTemplate
+
+  alias WardrikBrave.Config
 
   using do
     quote do
@@ -22,6 +24,20 @@ defmodule WardrikBrave.Case do
   end
 
   @stub WardrikBrave.Stub
+
+  @doc "A config that reaches the stub with the test key, with `opts` over it."
+  def config(opts \\ []) do
+    Config.new(
+      Keyword.merge(
+        [
+          api_key: "test-brave-api-key",
+          base_url: "https://brave.test",
+          req_options: [plug: {Req.Test, @stub}, retry: false]
+        ],
+        opts
+      )
+    )
+  end
 
   @doc "Answers every request with `body` as JSON under `status`."
   def stub_json(status, body) do

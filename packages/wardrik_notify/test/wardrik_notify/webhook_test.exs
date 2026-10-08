@@ -13,6 +13,8 @@ defmodule WardrikNotify.WebhookTest do
     reason: :timeout
   }
 
+  @stub [req_options: [plug: {Req.Test, WardrikNotify.Stub}]]
+
   defp capture(status) do
     test = self()
 
@@ -25,7 +27,11 @@ defmodule WardrikNotify.WebhookTest do
   test "posts the notice as JSON, naming the event" do
     capture(200)
 
-    assert :ok = Webhook.deliver(@notice, url: "https://hooks.test/wardrik", target: :audit)
+    assert :ok =
+             Webhook.deliver(
+               @notice,
+               [url: "https://hooks.test/wardrik", target: :audit] ++ @stub
+             )
 
     assert_receive {:posted, "/wardrik", headers, body}
     assert {"x-wardrik-event", "turn_failed"} in headers
@@ -36,7 +42,11 @@ defmodule WardrikNotify.WebhookTest do
   test "signs the body with a secret" do
     capture(200)
 
-    assert :ok = Webhook.deliver(@notice, url: "https://hooks.test/wardrik", secret: "s3cret")
+    assert :ok =
+             Webhook.deliver(
+               @notice,
+               [url: "https://hooks.test/wardrik", secret: "s3cret"] ++ @stub
+             )
 
     assert_receive {:posted, _path, headers, body}
     assert {"x-wardrik-signature", "sha256=" <> Webhook.hmac("s3cret", body)} in headers
@@ -45,6 +55,7 @@ defmodule WardrikNotify.WebhookTest do
   test "a receiver that refuses the notice is an error" do
     capture(400)
 
-    assert {:error, {:status, 400}} = Webhook.deliver(@notice, url: "https://hooks.test/wardrik")
+    assert {:error, {:status, 400}} =
+             Webhook.deliver(@notice, [url: "https://hooks.test/wardrik"] ++ @stub)
   end
 end

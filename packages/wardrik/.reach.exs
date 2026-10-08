@@ -32,6 +32,21 @@
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
+  calls: [
+    forbidden: [
+      # Core takes its settings as options of `Wardrik`, and reads the
+      # application environment only where its application starts it.
+      {["Wardrik", "Wardrik.*"],
+       [
+         "Application.get_env",
+         "Application.fetch_env",
+         "Application.fetch_env!",
+         "Application.put_env",
+         "Application.delete_env"
+       ],
+       except: ["Wardrik.Application"]}
+    ]
+  ],
   checks: [
     layer_coverage: [
       require_all_modules: true,

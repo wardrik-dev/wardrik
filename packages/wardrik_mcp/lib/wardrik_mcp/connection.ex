@@ -326,7 +326,7 @@ defmodule WardrikMCP.Connection do
   def handle_cast(:list_tools, %State{} = state) do
     # A server that registers its tools one at a time says so once per tool,
     # and the listing that answers waits, so a burst costs one call.
-    Process.send_after(self(), :refresh, WardrikMCP.Config.refresh_after())
+    Process.send_after(self(), :refresh, state.server.refresh_after)
 
     {:noreply, %{state | refreshing?: true}}
   end
@@ -578,7 +578,7 @@ defmodule WardrikMCP.Connection do
   # `[:wardrik_mcp, :connection, :retrying]` says a server could not be listed
   # and will be asked again, with the ref, principal and trouble in its metadata.
   defp retry(%State{} = state, trouble) do
-    delay = min((state.retry_ms || WardrikMCP.Config.first_retry()) * 2, @max_retry_ms)
+    delay = min((state.retry_ms || state.server.first_retry) * 2, @max_retry_ms)
 
     Logger.warning("MCP server #{state.server.ref} #{trouble}; asking again in #{delay}ms")
     if state.principal == :deployment, do: offer(state.server, [])

@@ -10,17 +10,17 @@ defmodule WardrikHTTP.Access.Cache do
 
   The table belongs to `WardrikHTTP.Access.Leases`, which purges what has lapsed
   every sweep, and goes with it: a node whose table is new reads every record
-  through consensus again.
+  through consensus again. It holds the sweep too, as `{#{inspect(__MODULE__)}, ms}`,
+  since entries are written from the processes reading a record.
   """
 
   alias WardrikHTTP.Access
-  alias WardrikHTTP.Config
 
   @table __MODULE__
 
   @doc false
-  @spec new() :: :ok
-  def new do
+  @spec new(pos_integer()) :: :ok
+  def new(sweep) do
     _table =
       :ets.new(@table, [
         :named_table,
@@ -30,6 +30,7 @@ defmodule WardrikHTTP.Access.Cache do
         write_concurrency: true
       ])
 
+    true = :ets.insert(@table, {__MODULE__, sweep})
     :ok
   end
 
@@ -48,7 +49,7 @@ defmodule WardrikHTTP.Access.Cache do
   @doc "Keeps `value` for `ref` for a sweep, unless `ref` was revoked here within one."
   @spec put(Access.ref(), term()) :: :ok
   def put(ref, value) do
-    entry = {ref, value, now() + Config.access(:sweep)}
+    entry = {ref, value, now() + sweep()}
 
     if not :ets.insert_new(@table, entry) do
       now = now()
@@ -64,7 +65,7 @@ defmodule WardrikHTTP.Access.Cache do
   @doc "Refuses `ref` on this node for a sweep, whatever it held."
   @spec revoked(Access.ref()) :: :ok
   def revoked(ref) do
-    true = :ets.insert(@table, {ref, :revoked, now() + Config.access(:sweep)})
+    true = :ets.insert(@table, {ref, :revoked, now() + sweep()})
     :ok
   end
 
@@ -75,6 +76,8 @@ defmodule WardrikHTTP.Access.Cache do
     _dropped = :ets.select_delete(@table, [{{:_, :_, :"$1"}, [{:<, :"$1", now}], [true]}])
     :ok
   end
+
+  defp sweep, do: :ets.lookup_element(@table, __MODULE__, 2)
 
   defp now, do: System.monotonic_time(:millisecond)
 end

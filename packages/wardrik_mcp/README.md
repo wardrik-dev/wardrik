@@ -8,27 +8,30 @@ def deps do
 end
 ```
 
-Name the servers, start `WardrikMCP.Supervisor` in your application, and give
-an agent a server the way you give it any other tool:
+Start `WardrikMCP.Supervisor` in your application with the servers it
+reaches, and give an agent a server the way you give it any other tool:
 
 ```elixir
-# config/runtime.exs
-config :wardrik_mcp, WardrikMCP,
-  servers: [
-    github: [
-      transport:
-        {:stdio,
-         command: "github-mcp-server",
-         env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
-      only: ~w(search_issues create_issue)
-    ],
-    linear: [
-      transport:
-        {:streamable_http,
-         base_url: "https://mcp.linear.app/mcp",
-         headers: %{"authorization" => "Bearer " <> System.fetch_env!("LINEAR_TOKEN")}}
-    ]
-  ]
+# lib/my_app/application.ex
+children = [
+  Wardrik,
+  {WardrikMCP.Supervisor,
+   servers: [
+     github: [
+       transport:
+         {:stdio,
+          command: "github-mcp-server",
+          env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
+       only: ~w(search_issues create_issue)
+     ],
+     linear: [
+       transport:
+         {:streamable_http,
+          base_url: "https://mcp.linear.app/mcp",
+          headers: %{"authorization" => "Bearer " <> System.fetch_env!("LINEAR_TOKEN")}}
+     ]
+   ]}
+]
 ```
 
 ```elixir
@@ -51,8 +54,8 @@ A server that acts as a user names the credential each call is made with, and
 runs over a connection of that user's own:
 
 ```elixir
-config :wardrik_mcp, WardrikMCP,
-  servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: "github"]]
+{WardrikMCP.Supervisor,
+ servers: [github: [transport: {:streamable_http, base_url: "..."}, credential: "github"]]}
 ```
 
 The credential is resolved through the agent's `:credentials` seam, such as

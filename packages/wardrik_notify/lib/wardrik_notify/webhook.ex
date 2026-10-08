@@ -30,7 +30,7 @@ defmodule WardrikNotify.Webhook do
         max_retries: 3,
         receive_timeout: @receive_timeout
       ]
-      |> Keyword.merge(WardrikNotify.Config.req_options())
+      |> Keyword.merge(Keyword.get(opts, :req_options, []))
 
     case Req.post(Keyword.fetch!(opts, :url), options) do
       {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok

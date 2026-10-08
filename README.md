@@ -197,9 +197,10 @@ In every one that builds on core:
 
 - `mix.exs` names the packages beside it with `sibling(:wardrik)`, which is a
   path here and a version on Hex.
-- Its settings live in its own application, under its top module, and one
-  module reads them: `config :wardrik_mcp, WardrikMCP, servers: [...]`, read
-  by `WardrikMCP.Config`.
+- It reads no application environment. Its settings come as the options of
+  what the host starts, `{WardrikMCP.Supervisor, servers: [...]}`, or with
+  the data the host plugs in; the daemon and the release are the hosts here,
+  and read `config.yaml` for them.
 - Its tests boot core with nothing to set up, on the store core keeps in
   memory:
 

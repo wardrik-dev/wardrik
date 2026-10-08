@@ -577,7 +577,7 @@ defmodule WardrikDaemon.AgentFile do
 
   defp tool!("*", _modules?, key) do
     servers =
-      for {ref, opts} <- WardrikMCP.Config.servers(), reach(key, ref, opts) == :ok, do: ref
+      for {ref, opts} <- servers(), reach(key, ref, opts) == :ok, do: ref
 
     @shipped ++ Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
   end
@@ -627,10 +627,10 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   defp server!(name, key) do
-    configured = Map.new(WardrikMCP.Config.refs(), &{Atom.to_string(&1), &1})
+    configured = Map.new(Keyword.keys(servers()), &{Atom.to_string(&1), &1})
 
     with {:ok, ref} <- Map.fetch(configured, name),
-         :ok <- reach(key, ref, Keyword.fetch!(WardrikMCP.Config.servers(), ref)) do
+         :ok <- reach(key, ref, Keyword.fetch!(servers(), ref)) do
       {WardrikMCP, ref}
     else
       {:error, why} ->
@@ -643,6 +643,8 @@ defmodule WardrikDaemon.AgentFile do
         )
     end
   end
+
+  defp servers, do: WardrikMCP |> WardrikDaemon.Config.settings() |> Keyword.get(:servers, [])
 
   # Whether the agent `id` can reach the server `ref`: one serving its org.
   defp reach(%AgentID{org: org}, ref, opts) do
@@ -762,7 +764,8 @@ defmodule WardrikDaemon.AgentFile do
   defp route(_other, _org), do: invalid!("notify is a target, a list of them, or to and on")
 
   defp target!(name, org) when is_binary(name) do
-    names = Enum.map(WardrikNotify.Config.targets(), fn {key, _target} -> key end)
+    targets = WardrikNotify |> WardrikDaemon.Config.settings() |> Keyword.get(:targets, [])
+    names = Keyword.keys(targets)
 
     case Enum.find(names, &(Atom.to_string(&1) == name)) do
       nil ->
@@ -774,7 +777,7 @@ defmodule WardrikDaemon.AgentFile do
         )
 
       target ->
-        if not WardrikNotify.Config.tells?(target, org),
+        if not WardrikNotify.tells?(targets, target, org),
           do: invalid!("notify names #{name}, which config.yaml's notify keeps for another org")
 
         target

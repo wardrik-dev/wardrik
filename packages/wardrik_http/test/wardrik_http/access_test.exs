@@ -53,12 +53,6 @@ defmodule WardrikHTTP.AccessTest do
     true = :ets.insert(Cache, {ref, value, System.monotonic_time(:millisecond) - 1})
   end
 
-  defp grace(ms) do
-    previous = Application.get_env(:wardrik_http, Access, [])
-    Application.put_env(:wardrik_http, Access, Keyword.put(previous, :grace, ms))
-    on_exit(fn -> Application.put_env(:wardrik_http, Access, previous) end)
-  end
-
   describe "authorize/3" do
     test "wants a grant that reaches the agent and allows the action" do
       {:ok, reader} = Grant.new(Wardrik.AgentID.Prefix.parse!("acme/"), [:read])
@@ -173,7 +167,6 @@ defmodule WardrikHTTP.AccessTest do
     end
 
     test "kills a holder still alive after the grace" do
-      grace(50)
       ref = record()
       pid = holder(ref, trap: true)
 
@@ -205,7 +198,6 @@ defmodule WardrikHTTP.AccessTest do
   end
 
   test "holding/2 lets go once its function returns, and the process is never ended for it" do
-    grace(50)
     ref = record()
     test = self()
 

@@ -9,6 +9,7 @@ defmodule WardrikOAuthTest do
 
   setup do
     start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    :ok = configure([])
 
     :ok
   end
@@ -385,9 +386,7 @@ defmodule WardrikOAuthTest do
     end
 
     test "a machine with nothing to open a link with says so, and the flow stands" do
-      Application.put_env(:wardrik_oauth, WardrikOAuth,
-        redirect: [opener: "no-such-browser-command"]
-      )
+      configure(redirect: [opener: "no-such-browser-command"])
 
       assert {:error, :no_browser} = WardrikOAuth.Browser.open("https://example.com")
     end
@@ -399,10 +398,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       # The key it was sealed with, rotated away without it.
-      Application.put_env(:wardrik_vault, WardrikVault,
-        keys: [WardrikVault.generate_key()],
-        grants: WardrikOAuth
-      )
+      :ignore = WardrikVault.start_link(keys: [WardrikVault.generate_key()], grants: WardrikOAuth)
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(

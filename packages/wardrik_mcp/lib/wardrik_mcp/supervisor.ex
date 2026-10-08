@@ -2,21 +2,22 @@ defmodule WardrikMCP.Supervisor do
   @moduledoc """
   The registry and the connections behind `WardrikMCP`.
 
-  A host starts it with the servers it wants reached, from the application
-  environment:
-
-      children = [WardrikMCP.Supervisor]
-
-  or as options, stated the way `config :wardrik_mcp, WardrikMCP` states them:
+  A host starts it with the servers it wants reached, each a ref and the
+  options `WardrikMCP.Server.new/2` takes:
 
       children = [
         {WardrikMCP.Supervisor,
          servers: [github: [transport: {:stdio, command: "github-mcp-server"}]]}
       ]
 
-  `:stderr` sets where every command's own output goes, for the servers that do
-  not say for themselves. A surface drawing on the terminal wants this: see
-  `WardrikMCP.Server`.
+  Options:
+
+    * `:servers` - the servers to connect to, none by default
+    * `:stderr` - where every command's own output goes, for the servers that
+      do not say for themselves. A surface drawing on the terminal wants this:
+      see `WardrikMCP.Server`.
+    * `:first_retry`, `:refresh_after` - the same for how long a connection
+      waits before listing a server's tools again; see `WardrikMCP.Server`
 
   Every connection starts with the supervisor and keeps trying on its own, so a
   server that is down holds up neither the others nor the node, and one that
@@ -136,10 +137,10 @@ defmodule WardrikMCP.Supervisor do
   end
 
   defp servers(opts) do
-    defaults = Keyword.take(opts, [:stderr])
+    defaults = Keyword.take(opts, [:stderr, :first_retry, :refresh_after])
 
     opts
-    |> Keyword.get_lazy(:servers, &WardrikMCP.Config.servers/0)
+    |> Keyword.get(:servers, [])
     |> Enum.map(fn {ref, server_opts} ->
       Server.new(ref, Keyword.merge(defaults, server_opts))
     end)

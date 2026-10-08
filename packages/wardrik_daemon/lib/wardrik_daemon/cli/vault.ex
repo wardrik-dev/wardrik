@@ -209,7 +209,7 @@ defmodule WardrikDaemon.CLI.Vault do
       WardrikVault.ready?() ->
         {:ok, []}
 
-      WardrikVault.Config.configured?() ->
+      VaultKey.configured?() ->
         {:error,
          "The vault's key is not one it can use, 32 bytes in base64. " <>
            "wardrik doctor says where it comes from."}

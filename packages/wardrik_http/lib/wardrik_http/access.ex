@@ -53,11 +53,11 @@ defmodule WardrikHTTP.Access do
   It reads the store, so a host starts it after Wardrik in its own tree,
   before `WardrikHTTP.Workers`:
 
-      children = [Wardrik, WardrikHTTP.Access, WardrikHTTP.Workers]
+      children = [Wardrik, {WardrikHTTP.Access, grace: 1_000, sweep: 15_000}, WardrikHTTP.Workers]
 
-  `config :wardrik_http, WardrikHTTP.Access, grace: 1_000, sweep: 15_000`
-  sets the grace and the sweep, in milliseconds; those are the defaults. See
-  `WardrikHTTP.Config`.
+  `:grace` is how long the holders of a revoked record have to end
+  themselves, and `:sweep` how often held records are read again, in
+  milliseconds; those are the defaults.
   """
 
   require Logger
@@ -75,12 +75,14 @@ defmodule WardrikHTTP.Access do
   @type ref() :: {Store.ns(), Store.key()}
 
   @doc false
-  def child_spec(_opts) do
+  def child_spec(opts) do
+    opts = Keyword.validate!(opts, grace: 1_000, sweep: :timer.seconds(15))
+
     children = [
       Group.child_spec(name: __MODULE__),
       {Task.Supervisor, name: Leases.tasks()},
       Leases.registry_spec(),
-      Leases
+      {Leases, opts}
     ]
 
     %{

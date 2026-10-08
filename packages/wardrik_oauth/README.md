@@ -12,21 +12,23 @@ end
 ```
 
 ```elixir
-# config/runtime.exs
-config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth
-
-config :wardrik_oauth, WardrikOAuth,
-  client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
-  providers: [
-    github: [
-      resource: "https://api.githubcopilot.com/mcp/",
-      issuer: "https://github.com/login/oauth",
-      client_id: System.get_env("GITHUB_CLIENT_ID"),
-      client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-      scopes: ~w(repo),
-      flow: :auto
-    ]
-  ]
+# lib/my_app/application.ex
+children = [
+  Wardrik,
+  {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth},
+  {WardrikOAuth.Supervisor,
+   client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
+   providers: [
+     github: [
+       resource: "https://api.githubcopilot.com/mcp/",
+       issuer: "https://github.com/login/oauth",
+       client_id: System.get_env("GITHUB_CLIENT_ID"),
+       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+       scopes: ~w(repo),
+       flow: :auto
+     ]
+   ]}
+]
 ```
 
 It finds the authorization server from the resource, and presents whichever

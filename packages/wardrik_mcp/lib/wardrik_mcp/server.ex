@@ -23,6 +23,8 @@ defmodule WardrikMCP.Server do
   | `:credential_header` | `authorization` | the header a resolved credential is sent in |
   | `:credential_env` | none | the variable a resolved credential is given to a command in |
   | `:stderr` | `:inherit` | where a command's own output goes: `:inherit`, `:discard`, or `{:file, path}` |
+  | `:first_retry` | 1s | how long a connection that could not list the server's tools waits before asking again the first time, doubling each time after |
+  | `:refresh_after` | 250ms | how long a connection waits after the server says its tools changed before listing them, so a burst of changes costs one listing |
   | `:inherit_env` | `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR`, `USER` | the variables a command keeps from the node's own environment, or `:all` |
 
   An HTTP transport takes the server's whole URL as `:base_url`: the path is
@@ -98,7 +100,9 @@ defmodule WardrikMCP.Server do
     credential_header: "authorization",
     credential_scheme: "Bearer",
     timeout: :timer.seconds(60),
-    max_result_bytes: 128 * 1024
+    max_result_bytes: 128 * 1024,
+    first_retry: :timer.seconds(1),
+    refresh_after: 250
   ]
 
   @typedoc "A transport as `Anubis.Client` takes it."
@@ -121,7 +125,9 @@ defmodule WardrikMCP.Server do
           stderr: :inherit | :discard | {:file, Path.t()},
           inherit_env: [String.t()] | :all,
           timeout: timeout(),
-          max_result_bytes: pos_integer() | :infinity
+          max_result_bytes: pos_integer() | :infinity,
+          first_retry: pos_integer(),
+          refresh_after: non_neg_integer()
         }
 
   @doc """

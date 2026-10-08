@@ -78,9 +78,10 @@ defmodule WardrikDaemon.Config do
   `${NAME}` in any string is replaced with that environment variable, or,
   where the environment does not set it, with the deployment's secret of that
   name in the vault, which `wardrik vault put NAME` seals. Either way the file
-  itself need hold no secret. `storage`, `cluster` and `vault` read the
-  environment alone: the store holds the vault, the cluster is read as the
-  node boots, before the vault can be, and the vault cannot unlock itself.
+  itself need hold no secret. `storage`, `cluster`, `http` and `vault` read
+  the environment alone: the store holds the vault, the cluster and the HTTP
+  API's settings are read as the node boots, before the vault can be, and the
+  vault cannot unlock itself.
 
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
@@ -114,8 +115,8 @@ defmodule WardrikDaemon.Config do
   the same name, the agent's user, or its org where it has no user, is asked
   to connect an account, which is kept in the vault from then on.
 
-  `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Config`
-  describes them. `vault` takes `keys`, as `WardrikVault` does; without them,
+  `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
+  takes them. `vault` takes `keys`, as `WardrikVault` does; without them,
   or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
   which the first `wardrik vault put` asks to make. `ssh` takes
   `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
@@ -134,8 +135,9 @@ defmodule WardrikDaemon.Config do
       and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
   Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
-  `WARDRIK_DATA_DIR`. A release reads `storage` and `cluster` as it boots,
-  before anything starts, and the rest once the store runs; see `boot/1`.
+  `WARDRIK_DATA_DIR`. A release reads `storage`, `cluster` and `http` as it
+  boots, before anything starts, and the rest once the store runs; see
+  `boot/1`.
 
   `notify` names targets an agent file's `notify` routes to, each one
   `slack`, with `channel`, `token`, and optionally `app_token` and
@@ -145,16 +147,24 @@ defmodule WardrikDaemon.Config do
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
   a server that is neither a command nor a URL, or a server whose name or
   `prefix` holds `__`, and says where.
+
+  ## Where the settings go
+
+  The daemon keeps what it read in its own application environment, by the
+  module each section is for, and starts each package with its section as
+  options: `WardrikMCP.Supervisor` with what `mcp` says, `WardrikOAuth.Supervisor`
+  with `oauth`, and so on. `settings/1` reads them back. A release's own
+  configuration may give a module settings of its own under `:wardrik_daemon`,
+  which `config.yaml` is merged over:
+
+      config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]
   """
 
   alias WardrikDaemon.Cluster.DNSPoll
   alias WardrikDaemon.Cluster.Epmd
   alias WardrikDaemon.Cluster.Topology
 
-  @typedoc """
-  Settings by the module that reads them, as
-  `Application.put_env(application(module), module, settings)` takes them.
-  """
+  @typedoc "Settings by the module they are for, which the daemon starts with them."
   @type settings() :: [{module(), keyword()}]
 
   @transport ~w(command args env cwd url headers)a
@@ -206,27 +216,23 @@ defmodule WardrikDaemon.Config do
     "storage" => "storage reads the environment alone, since the vault is kept in the store",
     "cluster" =>
       "cluster reads the environment alone, as the node boots, before the vault can be",
+    "http" => "http reads the environment alone, as the node boots, before the vault can be",
     "vault" => "vault reads the environment alone, since the vault cannot unlock itself"
   }
   @org "default"
   @segment "an org holds no / or whitespace and does not begin with @ or _"
 
-  # The namespaces of the modules a config.yaml configures, and the
-  # application each reads its settings from.
-  @applications %{
-    "Wardrik" => :wardrik,
-    "WardrikDaemon" => :wardrik_daemon,
-    "WardrikHTTP" => :wardrik_http,
-    "WardrikMCP" => :wardrik_mcp,
-    "WardrikNotify" => :wardrik_notify,
-    "WardrikOAuth" => :wardrik_oauth,
-    "WardrikVault" => :wardrik_vault
-  }
-
   @doc "The deployment's org, as `config.yaml` names it, or `#{@org}` where it names none."
   @spec org() :: String.t()
-  def org,
-    do: :wardrik_daemon |> Application.get_env(WardrikDaemon, []) |> Keyword.get(:org, @org)
+  def org, do: WardrikDaemon |> settings() |> Keyword.get(:org, @org)
+
+  @doc """
+  What the daemon keeps for `module`: what `config.yaml` says of it, merged
+  over what the release's configuration gives it. `[]` where neither says
+  anything.
+  """
+  @spec settings(module()) :: keyword()
+  def settings(module) when is_atom(module), do: Application.get_env(:wardrik_daemon, module, [])
 
   @doc "Where `config.yaml` is read from: `WARDRIK_CONFIG_DIR`, or `wardrik` under the XDG config home."
   @spec config_dir() :: Path.t()
@@ -277,14 +283,15 @@ defmodule WardrikDaemon.Config do
   end
 
   @doc """
-  What a release configures as it boots, before anything starts, by
-  application: the store `storage` names, and the cluster `cluster`
-  describes. A store kept on the nodes, as it is without `storage`, counts its
-  quorum over the cluster's size.
+  What a release keeps as it boots, before anything starts: the store
+  `storage` names, the cluster `cluster` describes, and the HTTP API's `http`,
+  for what the release starts before the daemon. A store kept on the nodes,
+  as it is without `storage`, counts its quorum over the cluster's size.
 
-      for {app, settings} <- WardrikDaemon.Config.boot(settings), do: config(app, settings)
+      for {module, settings} <- WardrikDaemon.Config.boot(settings),
+          do: config(:wardrik_daemon, module, settings)
   """
-  @spec boot(settings()) :: [{atom(), settings()}]
+  @spec boot(settings()) :: settings()
   def boot(settings) do
     cluster = Keyword.get(settings, WardrikDaemon.Cluster, [])
     store = Keyword.get(settings, Wardrik.Store, [])
@@ -295,35 +302,28 @@ defmodule WardrikDaemon.Config do
         _kept_elsewhere_or_alone -> store
       end
 
-    for {module, settings} <- [{WardrikDaemon.Cluster, cluster}, {Wardrik.Store, store}],
+    for {module, settings} <- [
+          {WardrikDaemon.Cluster, cluster},
+          {Wardrik.Store, store},
+          {WardrikHTTP, Keyword.get(settings, WardrikHTTP, [])}
+        ],
         settings != [],
-        do: {application(module), [{module, settings}]}
+        do: {module, settings}
   end
 
   @doc """
-  Merges each module's settings over what its application environment already
-  holds. The store's are left out: it is running by then, and `boot/1` gives
-  them to a release before it starts.
+  Merges each module's settings over what the daemon keeps for it; see
+  `settings/1`. The store's are left out: it is running by then, and `boot/1`
+  gives them to a release before it starts.
   """
   @spec apply(settings()) :: :ok
   def apply(settings) do
     settings
     |> Keyword.delete(Wardrik.Store)
     |> Enum.each(fn {module, opts} ->
-      app = application(module)
-      Application.put_env(app, module, Keyword.merge(Application.get_env(app, module, []), opts))
+      Application.put_env(:wardrik_daemon, module, Keyword.merge(settings(module), opts))
     end)
   end
-
-  @doc """
-  Where `apply/1` and a release's boot put a module's settings. Each package
-  reads its own application's environment, so what `config.yaml` says of MCP
-  goes under `:wardrik_mcp`, and what it says of the store under core's
-  `:wardrik`.
-  """
-  @spec application(module()) :: atom()
-  def application(module) when is_atom(module),
-    do: Map.fetch!(@applications, hd(Module.split(module)))
 
   defp decode(text, file, opts) do
     case YamlElixir.read_from_string(text) do
@@ -332,7 +332,7 @@ defmodule WardrikDaemon.Config do
 
       {:ok, document} ->
         document = document |> table!([]) |> only(opts[:only])
-        {:ok, document |> interpolate([], opts[:vault]) |> settings()}
+        {:ok, document |> interpolate([], opts[:vault]) |> sections()}
 
       {:error, error} ->
         {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
@@ -341,7 +341,7 @@ defmodule WardrikDaemon.Config do
     {:invalid, path, message} -> {:error, "#{file}: #{Enum.join(path, ".")} #{message}"}
   end
 
-  defp settings(document) do
+  defp sections(document) do
     {org, document} = Map.pop(document, "org")
     org = org!(org)
 

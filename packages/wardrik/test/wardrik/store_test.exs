@@ -8,20 +8,37 @@ defmodule Wardrik.StoreTest do
   end
 
   test "the configured adapter is the one every call goes to" do
-    settings = Application.fetch_env!(:wardrik, Store)
-
-    Application.put_env(
-      :wardrik,
-      Store,
-      Keyword.put(settings, :adapter, Wardrik.StoreTest.Configured)
-    )
-
-    on_exit(fn -> Application.put_env(:wardrik, Store, settings) end)
+    settings = kept()
+    :ignore = Store.configure(Keyword.put(settings, :adapter, Wardrik.StoreTest.Configured))
+    on_exit(fn -> Store.configure(settings) end)
 
     assert Store.adapter() == Wardrik.StoreTest.Configured
     assert Store.config() == Keyword.delete(settings, :adapter)
     assert Store.quorum(3) == 7
     assert Store.check() == {:ok, "configured"}
+  end
+
+  test "the store keeps the settings it starts with" do
+    settings = kept()
+    on_exit(fn -> Store.configure(settings) end)
+
+    spec = Store.child_spec(adapter: Wardrik.StoreTest.Elsewhere, bucket: "b")
+    {module, function, args} = spec.start
+
+    assert spec.id == Store
+    assert apply(module, function, args) == :ignore
+    assert Store.adapter() == Wardrik.StoreTest.Elsewhere
+    assert Store.config() == [bucket: "b"]
+  end
+
+  test "settings naming no adapter name the EKV one" do
+    settings = kept()
+    on_exit(fn -> Store.configure(settings) end)
+
+    :ignore = Store.configure(data_dir: "/nowhere")
+
+    assert Store.adapter() == Wardrik.Store.EKV
+    assert Store.config() == [data_dir: "/nowhere"]
   end
 
   test "config/0 is the adapter's options without the adapter" do
@@ -46,9 +63,9 @@ defmodule Wardrik.StoreTest do
   end
 
   test "an adapter this node does not have is named, with what the optional ones need" do
-    settings = Application.fetch_env!(:wardrik, Store)
-    Application.put_env(:wardrik, Store, adapter: Wardrik.StoreTest.Absent)
-    on_exit(fn -> Application.put_env(:wardrik, Store, settings) end)
+    settings = kept()
+    :ignore = Store.configure(adapter: Wardrik.StoreTest.Absent)
+    on_exit(fn -> Store.configure(settings) end)
 
     message =
       "Wardrik.StoreTest.Absent is not a module this node has. WardrikEcto.Store needs " <>
@@ -56,7 +73,10 @@ defmodule Wardrik.StoreTest do
         "Wardrik.Store.EKV, the store where no adapter is named, needs :ekv"
 
     assert Store.check() == {:error, message}
-    assert_raise ArgumentError, message, fn -> Store.child_spec() end
+
+    assert_raise ArgumentError, message, fn ->
+      Store.child_spec(adapter: Wardrik.StoreTest.Absent)
+    end
   end
 
   test "quorum/1 is the configured adapter's" do
@@ -66,6 +86,13 @@ defmodule Wardrik.StoreTest do
   test "durable_backend/0 is the adapter's" do
     assert {DurableServer.Backends.EKVStore, _opts} = Store.durable_backend()
   end
+
+  test "durable_backend/1 is that of the adapter the settings name" do
+    assert {Wardrik.Store.Durable, opts} = Store.durable_backend(adapter: Wardrik.Store.Memory)
+    assert opts[:store] == Wardrik.Store.Memory
+  end
+
+  defp kept, do: [adapter: Store.adapter()] ++ Store.config()
 end
 
 defmodule Wardrik.StoreTest.Configured do
@@ -103,4 +130,11 @@ defmodule Wardrik.StoreTest.Configured do
 
   @impl Wardrik.Store
   def quorum(_size), do: 7
+end
+
+defmodule Wardrik.StoreTest.Elsewhere do
+  @moduledoc false
+  # A store kept somewhere else, with nothing to run here.
+
+  def child_spec(_opts), do: nil
 end

@@ -28,23 +28,26 @@ defmodule WardrikMCP do
 
   ## Configuration
 
-      config :wardrik_mcp, WardrikMCP,
-        servers: [
-          github: [
-            transport:
-              {:stdio,
-               command: "npx",
-               args: ["-y", "@modelcontextprotocol/server-github"],
-               env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
-            only: ~w(search_issues create_issue)
-          ],
-          linear: [
-            transport:
-              {:streamable_http,
-               base_url: "https://mcp.linear.app/mcp",
-               headers: %{"authorization" => "Bearer " <> System.get_env("LINEAR_TOKEN")}}
-          ]
-        ]
+  The servers are options of `WardrikMCP.Supervisor`, which the host starts in
+  its own tree:
+
+      {WardrikMCP.Supervisor,
+       servers: [
+         github: [
+           transport:
+             {:stdio,
+              command: "npx",
+              args: ["-y", "@modelcontextprotocol/server-github"],
+              env: %{"GITHUB_TOKEN" => System.get_env("GITHUB_TOKEN")}},
+           only: ~w(search_issues create_issue)
+         ],
+         linear: [
+           transport:
+             {:streamable_http,
+              base_url: "https://mcp.linear.app/mcp",
+              headers: %{"authorization" => "Bearer " <> System.get_env("LINEAR_TOKEN")}}
+         ]
+       ]}
 
   See `WardrikMCP.Server` for every option a server takes. A credential is part of
   the transport: `:env` for a command, `:headers` for HTTP. Wardrik holds no token
@@ -217,10 +220,6 @@ defmodule WardrikMCP do
   @doc "The refs of every server currently connected."
   @spec servers() :: [atom()]
   def servers, do: Connection.refs()
-
-  @doc "Whether this deployment configured any server. See `WardrikMCP.Config`."
-  @spec configured?() :: boolean()
-  def configured?, do: WardrikMCP.Config.configured?()
 
   defp request(client, server, name, input, context) do
     opts = [timeout: server.timeout] ++ reporting(context)

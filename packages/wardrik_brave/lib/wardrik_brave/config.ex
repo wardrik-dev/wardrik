@@ -1,17 +1,16 @@
 defmodule WardrikBrave.Config do
   @moduledoc """
-  Where the Brave client gets its settings.
+  Where a search goes, and with what key.
 
-      config :wardrik_brave, WardrikBrave, api_key: System.fetch_env!("BRAVE_API_KEY")
+      WardrikBrave.Config.new(api_key: key)
 
-  Options are `:api_key`, `:base_url`, and `:req_options`, and each can be
-  overridden per call through `new/1`. `:req_options` is merged into every
-  request, which is the seam a test injects a transport through so no socket is
-  opened.
+  Options are `:api_key`, `:base_url`, `https://api.search.brave.com` unless
+  given, and `:req_options`, merged into every request, which is the seam a
+  test routes requests to a stub through so no socket is opened.
 
-  The key is read rather than fetched: a build with no key is a normal state,
-  and the client reports a missing key at call time rather than refusing to
-  boot.
+  `WardrikBrave.WebSearch` builds one for each call, with the key the call's
+  credential resolved. A config with no key is a normal state: the client
+  reports the missing key at call time.
   """
 
   defstruct [:base_url, :api_key, req_options: []]
@@ -24,18 +23,10 @@ defmodule WardrikBrave.Config do
 
   @default_base_url "https://api.search.brave.com"
 
-  @doc "Builds a config from application env, overridable per call."
+  @doc "Builds a config from `opts`, over the defaults."
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    env = Application.get_env(:wardrik_brave, WardrikBrave, [])
-
-    defaults = [
-      api_key: Keyword.get(env, :api_key),
-      base_url: Keyword.get(env, :base_url, @default_base_url),
-      req_options: Keyword.get(env, :req_options, [])
-    ]
-
-    struct(__MODULE__, Keyword.merge(defaults, opts))
+    struct(__MODULE__, Keyword.merge([base_url: @default_base_url], opts))
   end
 
   @doc "Whether this config can actually reach Brave."

@@ -19,9 +19,9 @@ config :wardrik_daemon, WardrikDaemon.SSH,
 # store config.yaml names, rather than with its own.
 config :wardrik, start: :host
 
-# Credentials are kept in the vault, and accounts users connect through OAuth
-# are grants it holds.
-config :wardrik_vault, WardrikVault, grants: WardrikOAuth
+# A tool's key the vault holds for nobody a call reaches is read from the
+# environment variable of its name, as the deployment's.
+config :wardrik_daemon, WardrikVault, environment: ["BRAVE_API_KEY"]
 
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

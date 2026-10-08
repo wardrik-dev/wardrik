@@ -17,7 +17,7 @@ defmodule WardrikOAuth.Egress do
   that resolves elsewhere a moment later is not followed. No request follows
   a redirect, and each gives up after 15 seconds.
 
-  `:resolver` in `WardrikOAuth.Config` names the module whose `resolve/1`
+  `WardrikOAuth.Config.resolver/0` names the module whose `resolve/1`
   answers a host's addresses, this one by default.
   """
 

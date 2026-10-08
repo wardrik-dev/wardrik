@@ -3,21 +3,22 @@ defmodule WardrikOAuth do
   Accounts users connect by authorizing: the `WardrikVault.Grants` module
   that asks a user, or an org, for a grant, and renews the grants it gave.
 
-      config :wardrik_oauth, WardrikOAuth,
-        client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
-        providers: [
-          github: [
-            resource: "https://api.githubcopilot.com/mcp/",
-            issuer: "https://github.com/login/oauth",
-            client_id: System.get_env("GITHUB_CLIENT_ID"),
-            client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-            scopes: ~w(repo)
-          ]
-        ]
+      children = [
+        Wardrik,
+        {WardrikVault, keys: [...], grants: WardrikOAuth},
+        {WardrikOAuth.Supervisor,
+         client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
+         providers: [
+           github: [
+             resource: "https://api.githubcopilot.com/mcp/",
+             issuer: "https://github.com/login/oauth",
+             client_id: System.get_env("GITHUB_CLIENT_ID"),
+             client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+             scopes: ~w(repo)
+           ]
+         ]}
+      ]
 
-      config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
-
-      children = [WardrikOAuth.Supervisor]
       Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
   A credential named `github` that the vault holds for nobody the call
