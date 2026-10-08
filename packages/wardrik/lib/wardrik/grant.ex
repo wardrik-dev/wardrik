@@ -20,7 +20,7 @@ defmodule Wardrik.Grant do
   | `:read` | list the agents, and read their snapshots, definitions and logs |
   | `:message` | send them messages, and cancel what they are doing |
   | `:decide` | approve or reject the calls they wait on |
-  | `:define` | put and delete them, and their schedules |
+  | `:define` | put and delete them, and what they are defined with, as their schedules |
   | `:serve` | offer them tools as a worker |
 
   `new/1` grants every action.

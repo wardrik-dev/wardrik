@@ -117,6 +117,12 @@ tools that run in your own process.
 | [wardrik_lua](packages/wardrik_lua) | Lua 5.3 in a sandbox, for code an agent writes and runs |
 | [wardrik_workspace](packages/wardrik_workspace) | Files: a workspace of each agent's own, trees agents share, and what they remember between turns |
 
+### Running agents
+
+| Package | Description |
+| --- | --- |
+| [wardrik_schedule](packages/wardrik_schedule) | A prompt an agent is asked on a clock, owned by one node of the cluster and carried on by another |
+
 ### Stores
 
 | Package | Description |

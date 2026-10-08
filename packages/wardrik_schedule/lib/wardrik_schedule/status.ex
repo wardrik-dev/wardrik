@@ -1,6 +1,6 @@
-defmodule Wardrik.Schedule.Status do
+defmodule WardrikSchedule.Status do
   @moduledoc """
-  One schedule as `Wardrik.Schedule.list/1` reports it: its key, the agent it
+  One schedule as `WardrikSchedule.list/1` reports it: its key, the agent it
   asks, when it runs next, and when it last fired and what came of it.
   """
 
@@ -12,10 +12,10 @@ defmodule Wardrik.Schedule.Status do
           pid: pid(),
           agent: Wardrik.AgentID.t(),
           name: String.t(),
-          every: Wardrik.Schedule.every(),
+          every: WardrikSchedule.every(),
           next_at: DateTime.t(),
           last_at: DateTime.t() | nil,
-          last_outcome: Wardrik.Schedule.outcome() | nil
+          last_outcome: WardrikSchedule.outcome() | nil
         }
 
   @doc false

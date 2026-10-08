@@ -6,6 +6,6 @@ Mimic.copy(Wardrik.Store)
 # The tests that reach real services, which dev/services.sh starts, are
 # left out where nothing answers; see WardrikEcto.Test.Services.
 Wardrik.Test.start(
-  wait: [WardrikPolicy.Meter.supervisor()],
+  wait: [WardrikPolicy.Meter.supervisor(), WardrikSchedule.supervisor()],
   exclude: WardrikEcto.Test.Services.start()
 )

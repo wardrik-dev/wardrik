@@ -1,14 +1,13 @@
-defmodule Wardrik.Schedule.StateTest do
+defmodule WardrikSchedule.StateTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Schedule
-  alias Wardrik.Schedule.State
+  alias WardrikSchedule.State
 
   @created ~U[2026-09-24 09:00:00Z]
 
   defp state(opts \\ []) do
     schedule =
-      Schedule.new("sweep", Keyword.merge([every: "*/30 * * * *", prompt: "Look."], opts))
+      WardrikSchedule.new("sweep", Keyword.merge([every: "*/30 * * * *", prompt: "Look."], opts))
 
     State.new(Wardrik.AgentID.parse!("default/triage"), schedule, @created)
   end
@@ -59,7 +58,7 @@ defmodule Wardrik.Schedule.StateTest do
 
     test "goes on from now when the clock changes" do
       state = state()
-      hourly = Schedule.new("sweep", every: "@hourly", prompt: "Look.")
+      hourly = WardrikSchedule.new("sweep", every: "@hourly", prompt: "Look.")
 
       assert State.configure(state, hourly, ~U[2026-09-24 09:20:00Z]).next_at ==
                ~U[2026-09-24 10:00:00Z]

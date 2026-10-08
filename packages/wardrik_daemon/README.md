@@ -98,10 +98,10 @@ node, so listen beyond loopback only on a network you trust. See
 ## In an application of your own
 
 The daemon is `WardrikDaemon`, started as one of core's children beside the
-budget meters and the tool workers' group:
+budget meters, the schedules, what tokens grant and the tool workers' group:
 
 ```elixir
-config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Workers, WardrikDaemon]
+config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikSchedule, WardrikHTTP.Access, WardrikHTTP.Workers, WardrikDaemon]
 ```
 
 The [release](../../release) does exactly this, and builds the binary and the

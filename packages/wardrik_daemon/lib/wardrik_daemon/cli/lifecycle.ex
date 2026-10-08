@@ -46,7 +46,6 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
-  alias WardrikDaemon.Definition
 
   @faint [:faint, :light_black]
 
@@ -476,7 +475,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp forget(key) do
-    with :ok <- Fleet.forget(key), do: Definition.delete(key)
+    with :ok <- Fleet.forget(key), do: Agents.drop(key)
   end
 
   # -- move ---------------------------------------------------------------------

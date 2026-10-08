@@ -24,8 +24,8 @@ if Code.ensure_loaded?(EKV) do
     Keys are written as `wardrik/<namespace>/<key>`. A conditional write is an EKV
     compare-and-swap, and a namespace written conditionally once stays that way.
     DurableServer's EKV backend keeps the fleet in the same instance, under
-    `agents/`, `schedules/` and `meters/`, which no key of a namespace starts
-    with.
+    `agents/` and the prefixes of packages' own, as `schedules/` and `meters/`,
+    which no key of a namespace starts with.
 
     Every member holds everything, and a write lands once more than half of them
     have it, so a cluster needs a quorum of its nodes connected.

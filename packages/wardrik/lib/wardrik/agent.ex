@@ -229,7 +229,7 @@ defmodule Wardrik.Agent do
     do: call(agent, {:decide, decisions, Keyword.get(opts, :by)})
 
   @doc """
-  Empties this agent's history, keeping its config, queue and schedules.
+  Empties this agent's history, keeping its config and queue.
   `{:error, :busy}` unless it is idle.
   """
   @spec clear(agent()) :: :ok | {:error, :not_found | :busy}

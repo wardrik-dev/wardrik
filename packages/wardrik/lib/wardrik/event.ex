@@ -32,14 +32,16 @@ defmodule Wardrik.Event do
       `{:turn_parked, calls}`, `{:turn_resumed, decisions}`,
       `{:call_decided, call_id, decision, by}`, one per call a person
       answered, with the `Wardrik.Principal` who did, or `nil` where no caller
-      said, `{:context_compacted, stats}`, `{:schedule_fired, name, outcome}`
+      said, `{:context_compacted, stats}`
 
   Agent lifecycle, each on the root of a trace of its own:
 
     * `{:message_queued, message}`, a `Wardrik.Agent.Message` the agent will
       answer, `{:agent_started, node, status, generation}`, each time the
       agent is loaded, `{:context_cleared, dropped}`, when its history is
-      emptied, with how many messages it held
+      emptied, with how many messages it held, `{:schedule_fired, name,
+      outcome}`, when a schedule came due, with what came of it, as
+      `WardrikSchedule` announces it
 
   Spans and delegations, on their own span:
 
@@ -80,7 +82,7 @@ defmodule Wardrik.Event do
           | {:agent_started, node(), :idle | :running | :parked, String.t()}
           | {:context_compacted, Wardrik.History.stats()}
           | {:context_cleared, non_neg_integer()}
-          | {:schedule_fired, String.t(), Wardrik.Schedule.outcome()}
+          | {:schedule_fired, String.t(), :asked | :busy | :no_agent | :missed | :failed}
           | {:span_started, String.t()}
           | {:span_finished, Wardrik.Scope.outcome(), non_neg_integer()}
           | {:delegation_started, String.t()}
@@ -129,6 +131,10 @@ defmodule Wardrik.Event do
   def emit(%Source{} = source, payload) do
     source |> new(payload) |> Bus.publish()
   end
+
+  @doc "Publishes `payload` on the agent `agent`'s topic, at the root of a trace of its own."
+  @spec announce(Wardrik.AgentID.t(), payload()) :: :ok
+  def announce(%Wardrik.AgentID{} = agent, payload), do: emit(Source.root(agent), payload)
 
   @doc "The name of the event, taken from the first element of its payload."
   @spec type(t()) :: atom()

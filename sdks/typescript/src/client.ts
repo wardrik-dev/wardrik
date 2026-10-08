@@ -94,7 +94,7 @@ export class Agents {
 
   /**
    * Starts the agent `definition` describes under `key`, or brings the one
-   * running to it. Schedules put on it separately are kept.
+   * running to it, its schedules to those `definition.schedule` lists.
    */
   async put(key: string, definition: AgentDefinition): Promise<Agent> {
     await this.#http.send("PUT", agentPath(key), { body: definition });

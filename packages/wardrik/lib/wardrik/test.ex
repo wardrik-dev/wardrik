@@ -37,7 +37,7 @@ defmodule Wardrik.Test do
   @doc """
   Starts ExUnit once the runtime is ready.
 
-  Waits for the fleet and the schedules, and for every supervisor `wait:`
+  Waits for the fleet, and for every supervisor `wait:`
   names, as `DurableServer.Supervisor.wait_until_ready/2` does. Loads the
   model catalog, which the application starts loading in the background,
   so the wait for it lands on no test. Copies what `Wardrik.Test.LLMStub`
@@ -57,7 +57,7 @@ defmodule Wardrik.Test do
 
     if llm_stub, do: Wardrik.Test.LLMStub.copy()
     _loaded = ReqLLM.model("test:model")
-    Enum.each([Wardrik.Fleet, Wardrik.Schedule.supervisor() | wait], &ready!/1)
+    Enum.each([Wardrik.Fleet | wait], &ready!/1)
     ExUnit.after_suite(fn _results -> remove_store() end)
     ExUnit.start(Keyword.merge([capture_log: true, assert_receive_timeout: 1_000], opts))
   end

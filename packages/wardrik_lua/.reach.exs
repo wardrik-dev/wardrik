@@ -35,7 +35,6 @@
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
       "Wardrik.Principal",
-      "Wardrik.Schedule",
       "Wardrik.Scope",
       "Wardrik.Store",
       "Wardrik.Store.Durable",

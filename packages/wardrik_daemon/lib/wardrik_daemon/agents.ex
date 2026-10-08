@@ -12,6 +12,10 @@ defmodule WardrikDaemon.Agents do
   `WardrikDaemon.Definition` is kept, and its `notify` becomes the agent's
   route with `WardrikNotify.put_routes/1`.
 
+  A definition's `schedule` is its agent's schedules, so each is brought to
+  what a definition lists as it is kept, with `WardrikSchedule.sync/2`, and
+  cleared as it is deleted.
+
   A file that does not read, or whose agent does not start, is reported by
   `files/0`, and by `wardrik status`, and every other file is read as if it were
   not there. An agent already running for it is left as it was, and an agent
@@ -34,10 +38,11 @@ defmodule WardrikDaemon.Agents do
   It is also the daemon's `WardrikHTTP.Definition`. `put/3` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.define/3`, under the
   policies it last read, and keeps it with the grant of the token that sent
-  it; `get/1` answers it, and `delete/1` forgets it. A key an agent file
+  it; `get/1` answers it, `delete/1` forgets it, and `put_schedule/3` and
+  `delete_schedule/2` change one of its schedules. A key an agent file
   declares, here or on any node connected to this one, belongs to the file:
-  `put/3`, `delete/1` and `editable/1` refuse it with a conflict, so the API
-  changes neither it nor its schedules.
+  each of them refuses it with a conflict, so the API changes neither it nor
+  its schedules.
 
   ## Agents a kept definition writes
 
@@ -68,7 +73,6 @@ defmodule WardrikDaemon.Agents do
   alias Wardrik.AgentID
   alias Wardrik.Fleet
   alias Wardrik.Grant
-  alias Wardrik.Schedule
   alias Wardrik.Store
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.Definition
@@ -174,7 +178,7 @@ defmodule WardrikDaemon.Agents do
       {:api, policies} ->
         with {:ok, definition} <- AgentFile.define(key, fields, grant),
              {:ok, spec, _route} <- AgentFile.spec(definition, key, policies) do
-          :ok = Definition.put(definition)
+          :ok = keep(definition)
           {:ok, spec}
         end
     end
@@ -198,17 +202,66 @@ defmodule WardrikDaemon.Agents do
         declared(key, path)
 
       {:api, _policies} ->
-        with {:ok, _definition} <- Definition.get(key), do: Definition.delete(key)
+        with {:ok, _definition} <- Definition.get(key), do: drop(key)
     end
   end
 
-  @doc "`:ok` where the HTTP API may change the agent `key`, or a conflict where a file declares it."
+  @doc """
+  Sets the schedule `name` in the definition the HTTP API sent for the agent
+  `key`, from `fields` as `WardrikDaemon.AgentFile.put_schedule/3` reads
+  them, and brings the agent's schedules to it: whether it was added or
+  changed, and the schedule as `WardrikSchedule.encode/1` writes it.
+  `{:error, :not_found}` where no definition is kept, or a conflict where an
+  agent file declares `key`.
+  """
   @impl WardrikHTTP.Definition
+  def put_schedule(key, name, fields) do
+    with {:ok, definition} <- defined(key),
+         {:ok, definition, status, schedule} <- AgentFile.put_schedule(definition, name, fields) do
+      :ok = keep(definition)
+      {:ok, status, WardrikSchedule.encode(schedule)}
+    end
+  end
+
+  @doc """
+  Deletes the schedule `name` from the definition the HTTP API sent for the
+  agent `key`, and stops it: `{:error, :not_found}` where neither is kept, or
+  a conflict where an agent file declares `key`.
+  """
+  @impl WardrikHTTP.Definition
+  def delete_schedule(key, name) do
+    with {:ok, definition} <- defined(key),
+         {:ok, definition} <- AgentFile.delete_schedule(definition, name),
+         do: keep(definition)
+  end
+
+  defp defined(key) do
+    with :ok <- editable(key), do: Definition.get(key)
+  end
+
+  @doc "`:ok` where the HTTP API may change the agent `key`, or a conflict where a file declares it."
+  @spec editable(AgentID.t()) :: :ok | {:error, :conflict, String.t()}
   def editable(key) do
     case GenServer.call(__MODULE__, {:owner, key}) do
       {:file, path, _spec} -> declared(key, path)
       {:api, _policies} -> :ok
     end
+  end
+
+  @doc """
+  Deletes the definition kept for the agent `key`, and the schedules it
+  lists, as `wardrik agent rm` does once it has forgotten the agent.
+  """
+  @spec drop(AgentID.t()) :: :ok
+  def drop(key) do
+    :ok = WardrikSchedule.sync(key, [])
+    Definition.delete(key)
+  end
+
+  # A schedule starts only once the definition listing it is kept.
+  defp keep(definition) do
+    :ok = Definition.put(definition)
+    WardrikSchedule.sync(definition.id, AgentFile.schedules(definition))
   end
 
   @doc """
@@ -347,7 +400,7 @@ defmodule WardrikDaemon.Agents do
   defp forget_removed do
     for %Definition{id: id, source: {:api, _grant}} <- Definition.all(),
         not Fleet.stored?(id),
-        do: :ok = Definition.delete(id)
+        do: :ok = drop(id)
   end
 
   defp rebuilt(definition, id, policies) do
@@ -407,8 +460,7 @@ defmodule WardrikDaemon.Agents do
   defp inventory(node), do: "agents/#{node}"
 
   defp retire(key) do
-    :ok = Schedule.sync(key, [])
-    :ok = Definition.delete(key)
+    :ok = drop(key)
 
     case Fleet.stop(key) do
       :ok -> :ok
@@ -437,7 +489,7 @@ defmodule WardrikDaemon.Agents do
   # The definition is kept before the agent starts, so whatever finds the
   # agent finds what it is.
   defp put({:ok, definition, spec, route}) do
-    :ok = Definition.put(definition)
+    :ok = keep(definition)
 
     case Fleet.put(spec) do
       {:ok, _pid} -> {:ok, spec, route}

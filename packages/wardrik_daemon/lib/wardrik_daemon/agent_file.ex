@@ -136,7 +136,8 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Schedule
 
-  `schedule` is one schedule or a list of them, each a `Wardrik.Schedule`:
+  `schedule` is one schedule or a list of them, each a `WardrikSchedule`,
+  that ask the agent, and none of its conversations, on a clock:
 
       schedule:
         - name: sweep
@@ -197,11 +198,12 @@ defmodule WardrikDaemon.AgentFile do
   `wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
   the system prompt, as a file's body is, and the other keys mean what they
   mean in a file. The ID gives the agent's `name`, `org` and `user`. A
-  definition has no `schedule` or `notify`: it leaves the agent's schedules
-  as they are, and the schedules routes set them. Its `tools` and `policy`
-  name what the daemon ships or configures, and never a module, and its
-  `workspace` shares only the trees the scope of the token that sent it
-  covers.
+  definition has no `notify`. Its `schedule` lists the agent's schedules as
+  a file's does, and `put_schedule/3` and `delete_schedule/2` change one of
+  them in a definition kept, for the schedules routes. Its `tools` and
+  `policy` name what the daemon ships or configures, and never a module,
+  and its `workspace` shares only the trees the scope of the token that
+  sent it covers.
 
   ## Written by wardrik
 
@@ -218,7 +220,7 @@ defmodule WardrikDaemon.AgentFile do
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
   @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify)
-  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction)
+  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction schedule)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
@@ -326,9 +328,9 @@ defmodule WardrikDaemon.AgentFile do
 
   `id` is the definition's own agent, or one of its conversations: an ID with
   an external ID, whose spec has the tools of the definition's agent, its
-  workspace tree among them, and leaves its schedules as they are. A
-  definition sent to the HTTP API names no modules, and leaves the agent's
-  schedules as they are too.
+  workspace tree among them. A definition sent to the HTTP API names no
+  modules. Its schedules are checked with the rest of it, and kept beside the
+  spec rather than in it; see `schedules/1`.
   """
   @spec spec(Definition.t(), AgentID.t(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
@@ -337,8 +339,8 @@ defmodule WardrikDaemon.AgentFile do
 
     file? = match?({:file, _name}, source)
     system = optional_string!(fields["instructions"], "instructions") || ""
-    schedules = if file? and id == owner, do: schedules(fields["schedule"], files?(fields))
-    spec = spec(fields, system, policies, file?, owner, schedules)
+    _schedules = schedules(fields["schedule"], files?(fields))
+    spec = spec(fields, system, policies, file?, owner)
     within!(spec, source)
 
     {:ok, %{spec | id: id}, route(fields["notify"], owner.org)}
@@ -351,10 +353,58 @@ defmodule WardrikDaemon.AgentFile do
   @doc """
   The definition as the HTTP API writes one, as
   `wardrik_protocol`'s `agent_definition.json` describes it: what an agent file
-  says besides its `name`, `org`, `user`, `schedule` and `notify`.
+  says besides its `name`, `org`, `user` and `notify`, with one schedule as a
+  list of one.
   """
   @spec fields(Definition.t()) :: map()
-  def fields(%Definition{fields: fields}), do: Map.take(fields, @definition_keys)
+  def fields(%Definition{fields: fields}) do
+    case Map.take(fields, @definition_keys) do
+      %{"schedule" => %{} = one} = taken -> %{taken | "schedule" => [one]}
+      taken -> taken
+    end
+  end
+
+  @doc """
+  The schedules `definition` lists, which ask its agent on a clock. They are
+  checked with the rest of the definition as `spec/3` builds its spec.
+  """
+  @spec schedules(Definition.t()) :: [WardrikSchedule.t()]
+  def schedules(%Definition{fields: fields}), do: schedules(fields["schedule"], files?(fields))
+
+  @doc """
+  `definition` with the schedule `name` set to `given`, as the body of
+  `PUT /v1/agents/{id}/schedules/{name}` writes one: whether it was added or
+  changed, and the schedule it reads into, or why it does not read.
+  """
+  @spec put_schedule(Definition.t(), String.t(), map()) ::
+          {:ok, Definition.t(), :created | :changed, WardrikSchedule.t()}
+          | {:error, String.t()}
+  def put_schedule(%Definition{fields: fields} = definition, name, given) when is_map(given) do
+    listed = named(fields["schedule"])
+    schedule = Map.put(given, "name", name)
+
+    {status, listed} =
+      if Enum.any?(listed, &(&1["name"] == name)),
+        do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: schedule, else: &1))},
+        else: {:created, listed ++ [schedule]}
+
+    read = schedules(listed, files?(fields))
+    definition = %{definition | fields: Map.put(fields, "schedule", listed)}
+    {:ok, definition, status, Enum.find(read, &(&1.name == name))}
+  catch
+    {:invalid, message} -> {:error, message}
+  end
+
+  @doc "`definition` without the schedule `name`, or `{:error, :not_found}` where it has none."
+  @spec delete_schedule(Definition.t(), String.t()) ::
+          {:ok, Definition.t()} | {:error, :not_found}
+  def delete_schedule(%Definition{fields: fields} = definition, name) do
+    case Enum.split_with(named(fields["schedule"]), &(&1["name"] == name)) do
+      {[], _kept} -> {:error, :not_found}
+      {_gone, []} -> {:ok, %{definition | fields: Map.delete(fields, "schedule")}}
+      {_gone, kept} -> {:ok, %{definition | fields: Map.put(fields, "schedule", kept)}}
+    end
+  end
 
   defp owner(id), do: AgentID.put_external_id(id, nil)
 
@@ -422,7 +472,7 @@ defmodule WardrikDaemon.AgentFile do
 
   # Everything a file and a definition say alike, for the agent `id`. `modules?`
   # lets `tools` and `policy` name modules.
-  defp spec(fields, system, policies, modules?, id, schedules) do
+  defp spec(fields, system, policies, modules?, id) do
     config =
       [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, id)]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
@@ -432,7 +482,6 @@ defmodule WardrikDaemon.AgentFile do
 
     Spec.new(
       id: id,
-      schedules: schedules,
       description: optional_string!(fields["description"], "description"),
       config: config,
       hooks: policy(fields["policy"], policies, modules?),
@@ -629,6 +678,15 @@ defmodule WardrikDaemon.AgentFile do
 
   defp schedules(_other, _files?), do: invalid!("schedule is a schedule, or a list of them")
 
+  # The schedules a checked definition lists, each with the name it is known by.
+  defp named(nil), do: []
+  defp named(%{} = one), do: named([one])
+
+  defp named(list) do
+    for {fields, index} <- Enum.with_index(list, 1),
+        do: Map.put_new(fields, "name", "schedule-#{index}")
+  end
+
   defp schedule!({%{} = fields, index}, files?) do
     case Map.keys(fields) -- @schedule_keys do
       [] ->
@@ -643,7 +701,7 @@ defmodule WardrikDaemon.AgentFile do
     name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
 
     with {:ok, fields} <- prompted(fields, name, files?),
-         {:ok, schedule} <- Wardrik.Schedule.decode(name, Map.delete(fields, "name")) do
+         {:ok, schedule} <- WardrikSchedule.decode(name, Map.delete(fields, "name")) do
       schedule
     else
       {:error, message} -> invalid!("schedule #{fields["name"] || index}: #{message}")

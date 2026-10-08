@@ -1,20 +1,18 @@
-defmodule Wardrik.Schedule.Server do
+defmodule WardrikSchedule.Server do
   @moduledoc """
-  The process behind one `Wardrik.Schedule`: it sleeps until the schedule's next
+  The process behind one `WardrikSchedule`: it sleeps until the schedule's next
   run, writes down the run after it, and then asks the agent.
 
-  Started by `Wardrik.Schedule.put/2` under the `Wardrik.Schedules` supervisor that
-  `Wardrik.Fleet.Supervisor` runs.
+  Started by `WardrikSchedule.put/2` under the supervisor `WardrikSchedule`
+  runs.
   """
 
   use DurableServer, vsn: 1
 
   alias Wardrik.Agent
   alias Wardrik.Event
-  alias Wardrik.Event.Source
   alias Wardrik.Fleet
-  alias Wardrik.Schedule
-  alias Wardrik.Schedule.State
+  alias WardrikSchedule.State
 
   # A timer is re-armed at least this often, so a clock that jumps, or a host
   # that slept, is noticed within the hour.
@@ -33,7 +31,7 @@ defmodule Wardrik.Schedule.Server do
   end
 
   @impl DurableServer
-  def handle_call({:configure, %Schedule{} = schedule}, _from, state) do
+  def handle_call({:configure, %WardrikSchedule{} = schedule}, _from, state) do
     next = State.configure(state, schedule, DateTime.utc_now())
     wake_now()
     {:reply, :ok, next, meta: State.meta(next), sync: true}
@@ -80,12 +78,12 @@ defmodule Wardrik.Schedule.Server do
     :exit, _reason -> :failed
   end
 
-  defp ask(pid, %Schedule{overlap: :queue, prompt: prompt}) do
+  defp ask(pid, %WardrikSchedule{overlap: :queue, prompt: prompt}) do
     :ok = Agent.ask(pid, prompt)
     :asked
   end
 
-  defp ask(pid, %Schedule{overlap: :skip, prompt: prompt}) do
+  defp ask(pid, %WardrikSchedule{overlap: :skip, prompt: prompt}) do
     case Agent.status(pid) do
       %{state: :idle} ->
         :ok = Agent.ask(pid, prompt)
@@ -100,7 +98,7 @@ defmodule Wardrik.Schedule.Server do
   end
 
   defp announce(%State{agent: agent, schedule: schedule}, outcome) do
-    Event.emit(Source.root(agent), {:schedule_fired, schedule.name, outcome})
+    Event.announce(agent, {:schedule_fired, schedule.name, outcome})
   end
 
   defp wake_now, do: arm(0)

@@ -3,7 +3,6 @@
 ReqLLM.model("test:model")
 
 :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Fleet, timeout: 10_000)
-:ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Schedule.supervisor(), timeout: 10_000)
 
 # The store configured for this run, see config/test.exs, is removed with it.
 ExUnit.after_suite(fn _results ->

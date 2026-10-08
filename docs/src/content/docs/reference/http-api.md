@@ -77,15 +77,15 @@ agent with is its key.
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, where the server keeps definitions |
-| `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its schedules included, `204` |
+| `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and schedules included, `204` |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
 | `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
-| `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`; `409` where something else, such as an agent file, declares the agent |
-| `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `409` as for `PUT` |
+| `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
+| `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
 | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
 `WardrikHTTP.Resource` shows what each answers. Each resource's JSON Schema is
@@ -108,9 +108,8 @@ decides whether definitions are kept and who owns a key: a key it refuses
 answers `409`. A daemon reads a definition as an agent file (see
 `WardrikDaemon.AgentFile`), keeps it, so `GET …/definition` answers it, and
 refuses the keys its agent files declare. An agent brought to a new
-definition keeps its conversation and its schedules. A route whose callback
-the module lacks, or every one where the listener has no module, answers
-`501`.
+definition keeps its conversation. A route whose callback the module
+lacks, or every one where the listener has no module, answers `501`.
 
 ### Events
 
@@ -147,7 +146,9 @@ and `503` when the agent could not record it.
 `every` is a cron expression read in UTC, or a duration of at least a
 minute, as `"30m"`. `overlap` is `skip`, the default, or `queue`; `missed`
 is `run_once`, the default, or `skip`; `jitter` is up to so many seconds
-added to each run. See `Wardrik.Schedule`. The agent has to be running.
+added to each run. A schedule is part of the agent's definition, which the
+host keeps: a definition put again lists every schedule the agent has, and
+an agent with no definition kept answers `404`.
 
 ### Tool workers
 
@@ -184,7 +185,7 @@ One entry of GET /v1/agents.
 
 ### `agent_definition`
 
-The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
+The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user and notify besides.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -199,6 +200,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `timeout` | integer |  | How many seconds a turn may take. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
+| `schedule` | array of object |  | The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. |
 
 ### `agent_snapshot`
 
@@ -258,12 +260,13 @@ A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedu
 
 ### `schedule_definition`
 
-The body of PUT /v1/agents/{key}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.
+The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `every` | string | yes | A cron expression, or a duration such as 30m. |
-| `prompt` | string | yes | What the agent is asked each time. |
+| `prompt` | string |  | What the agent is asked each time. |
+| `prompt_file` | string |  | In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with. |
 | `overlap` | string |  | What a firing does while a run is still going: skip it, or queue its prompt. One of `skip`, `queue`. |
 | `missed` | string |  | What a schedule does about the firings it missed while down. One of `run_once`, `skip`. |
 | `jitter` | integer |  | Up to this many seconds of delay, chosen at random each time. |

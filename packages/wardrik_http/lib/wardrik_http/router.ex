@@ -23,9 +23,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.AgentID
   alias Wardrik.Event.Log
   alias Wardrik.Fleet
-  alias Wardrik.Fleet.Member
   alias Wardrik.Grant
-  alias Wardrik.Schedule
   alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
   alias WardrikHTTP.Resource
@@ -194,9 +192,12 @@ defmodule WardrikHTTP.Router do
         not_supported(conn, "This server does not keep agents' definitions.")
 
       {:error, :not_found} ->
-        json(conn, 404, Resource.error("not_found", "#{key} has no definition kept."))
+        undefined(conn, key)
     end
   end
+
+  defp undefined(conn, key),
+    do: json(conn, 404, Resource.error("not_found", "#{key} has no definition kept."))
 
   # The definition module is asked first, and may refuse. An agent is
   # forgotten only where one runs, as every other route acts on running
@@ -214,7 +215,7 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  @callbacks %{put: 3, get: 1, delete: 1, editable: 1}
+  @callbacks %{put: 3, get: 1, delete: 1, put_schedule: 3, delete_schedule: 2}
 
   # The listener's definition module, where it has `callback`.
   defp definitions(conn, callback) do
@@ -233,47 +234,36 @@ defmodule WardrikHTTP.Router do
 
   # -- schedules -------------------------------------------------------------
 
+  # A schedule is part of the agent's definition, so the module keeping
+  # definitions sets it.
   defp schedule(conn, key, name) do
-    with %Member{} <- Fleet.lookup(key),
-         :ok <- editable(conn, key),
+    with {:ok, module} <- definitions(conn, :put_schedule),
          {:ok, fields} <- object(conn.body_params),
-         {:ok, schedule} <- Schedule.decode(name, fields) do
-      status = if scheduled?(key, name), do: 200, else: 201
-
-      case Schedule.put(key, schedule) do
-        {:ok, _pid} -> json(conn, status, %{"schedule" => Resource.schedule(schedule)})
-        {:error, reason} -> unavailable(conn, "#{key}'s schedule #{name} did not start", reason)
-      end
+         {:ok, status, schedule} <- module.put_schedule(key, name, fields) do
+      json(conn, if(status == :created, do: 201, else: 200), %{"schedule" => schedule})
     else
-      nil -> not_found(conn, key)
+      :unsupported -> not_supported(conn, "This server does not schedule agents over HTTP.")
+      {:error, :not_found} -> undefined(conn, key)
       {:error, :conflict, message} -> conflict(conn, message)
       {:error, message} -> invalid(conn, message)
     end
   end
 
   defp unschedule(conn, key, name) do
-    case {editable(conn, key), scheduled?(key, name)} do
-      {:ok, true} ->
-        :ok = Schedule.delete(key, name)
-        send_resp(conn, 204, "")
+    with {:ok, module} <- definitions(conn, :delete_schedule),
+         :ok <- module.delete_schedule(key, name) do
+      send_resp(conn, 204, "")
+    else
+      :unsupported ->
+        not_supported(conn, "This server does not schedule agents over HTTP.")
 
-      {:ok, false} ->
+      {:error, :not_found} ->
         json(conn, 404, Resource.error("not_found", "#{key} has no schedule #{name}."))
 
-      {{:error, :conflict, message}, _scheduled} ->
+      {:error, :conflict, message} ->
         conflict(conn, message)
     end
   end
-
-  # An agent something else declares, such as a file, is changed there.
-  defp editable(conn, key) do
-    case definitions(conn, :editable) do
-      {:ok, module} -> module.editable(key)
-      :unsupported -> :ok
-    end
-  end
-
-  defp scheduled?(key, name), do: Enum.any?(Schedule.for_agent(key), &(&1.name == name))
 
   # -- events ----------------------------------------------------------------
 
