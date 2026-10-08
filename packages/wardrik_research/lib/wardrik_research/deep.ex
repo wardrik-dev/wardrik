@@ -6,7 +6,7 @@ defmodule WardrikResearch.Deep do
       Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch, WardrikResearch.Deep])
 
   The agent reaches it as the `deep_research` tool. It is also an ordinary
-  `Wardrik.Workflow.Step`, so a deployment can run it directly or use it inside a
+  `WardrikWorkflow.Step`, so a deployment can run it directly or use it inside a
   larger workflow:
 
       WardrikResearch.Deep.run(%{topic: "the WASM component model"}, scope, [])
@@ -53,10 +53,9 @@ defmodule WardrikResearch.Deep do
   """
 
   @behaviour Wardrik.Tool
-  @behaviour Wardrik.Workflow.Step
+  @behaviour WardrikWorkflow.Step
 
   alias Wardrik.Subagent
-  alias Wardrik.Workflow
 
   @typedoc "One angle to research, and optionally what makes it different."
   @type angle() :: %{required(:angle) => String.t(), optional(:prompt) => String.t()}
@@ -94,7 +93,7 @@ defmodule WardrikResearch.Deep do
   """
   @spec tool(keyword()) :: ReqLLM.Tool.t()
   def tool(opts) when is_list(opts) do
-    Workflow.as_tool({__MODULE__, Keyword.put(opts, :angles, configured(opts))},
+    WardrikWorkflow.as_tool({__MODULE__, Keyword.put(opts, :angles, configured(opts))},
       name: "deep_research",
       description: """
       Research a topic thoroughly by splitting it across several angles, investigating each one separately and at the same time, then combining the findings into one report.
@@ -123,10 +122,10 @@ defmodule WardrikResearch.Deep do
 
   Options are those of `tool/1`.
   """
-  @impl Wardrik.Workflow.Step
+  @impl WardrikWorkflow.Step
   def run(%{topic: topic} = args, scope, opts) do
     scope
-    |> Workflow.fan_out(
+    |> WardrikWorkflow.fan_out(
       briefs(args, opts),
       fn brief, branch ->
         Subagent.run(capped(branch, opts), "Topic: #{topic}\nYour angle: #{brief.angle}",
@@ -148,7 +147,7 @@ defmodule WardrikResearch.Deep do
   end
 
   defp synthesise(outcomes, topic, scope) do
-    case Workflow.split(outcomes) do
+    case WardrikWorkflow.split(outcomes) do
       {[], gaps} ->
         {:error, {:no_findings, describe(gaps)}}
 

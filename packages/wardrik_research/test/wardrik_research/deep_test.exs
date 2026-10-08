@@ -9,7 +9,7 @@ defmodule WardrikResearch.DeepTest do
   alias Wardrik.Test.Calls
   alias Wardrik.Test.LLMStub
   alias Wardrik.Test.SearchTool
-  alias Wardrik.Workflow
+
   alias WardrikResearch.Deep
 
   setup :verify_on_exit!
@@ -371,7 +371,10 @@ defmodule WardrikResearch.DeepTest do
       tool = Deep.tool()
 
       assert tool.name == "deep_research"
-      assert {Wardrik.Tool, :invoke, [{Workflow, :handle, [{Deep, _opts}]}]} = tool.callback
+
+      assert {Wardrik.Tool, :invoke, [{WardrikWorkflow, :handle, [{Deep, _opts}]}]} =
+               tool.callback
+
       assert Keyword.fetch!(tool.parameter_schema, :topic)[:required]
       refute Keyword.fetch!(tool.parameter_schema, :angles)[:required]
     end
@@ -399,7 +402,7 @@ defmodule WardrikResearch.DeepTest do
       stub_llm()
 
       assert {:ok, %{"ok" => true, "result" => result}} =
-               Workflow.handle(
+               WardrikWorkflow.handle(
                  Deep,
                  %{topic: "widgets", angles: ["pricing"]},
                  Wardrik.Test.context(scope)
@@ -415,7 +418,7 @@ defmodule WardrikResearch.DeepTest do
 
       assert {:ok, %{"ok" => false, "error" => %{"code" => "no_findings"}}} =
                quietly(fn ->
-                 Workflow.handle(
+                 WardrikWorkflow.handle(
                    Deep,
                    %{topic: "widgets", angles: ["pricing"]},
                    Wardrik.Test.context(scope)

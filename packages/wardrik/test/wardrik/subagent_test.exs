@@ -96,16 +96,17 @@ defmodule Wardrik.SubagentTest do
                Subagent.watching(fn -> Subagent.run(%{scope | labels: ["books"]}, "Go.") end)
     end
 
-    test "a branch's labels reach the process that fanned out", %{scope: scope} do
+    test "read/1 marks this process with labels a delegate read in another", %{scope: scope} do
       stub_llm()
 
-      assert {[{:a, {:ok, "done"}}, {:b, {:ok, "done"}}], ["outside"]} =
-               Subagent.watching(fn ->
-                 Wardrik.Workflow.fan_out(%{scope | labels: ["outside"]}, [:a, :b], fn input,
-                                                                                       branch ->
-                   Subagent.run(branch, "Look into #{input}.")
-                 end)
-               end)
+      {{:ok, "done"}, labels} =
+        Task.await(
+          Task.async(fn ->
+            Subagent.watching(fn -> Subagent.run(%{scope | labels: ["outside"]}, "Go.") end)
+          end)
+        )
+
+      assert {:ok, ["outside"]} = Subagent.watching(fn -> Subagent.read(labels) end)
     end
   end
 

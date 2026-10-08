@@ -1,10 +1,10 @@
-defmodule Wardrik.Workflow.StepTest do
+defmodule WardrikWorkflow.StepTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
-  alias Wardrik.Test.Steps
-  alias Wardrik.Workflow.Step
+  alias WardrikWorkflow.Step
+  alias WardrikWorkflow.Test.Steps
 
   setup do
     {:ok, scope: Scope.root(Config.new(), Wardrik.Test.Fleet.id(), name: "turn")}

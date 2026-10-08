@@ -69,10 +69,9 @@ defmodule Wardrik.Scope do
       # in each task:   Wardrik.Scope.closing(branch, &run(input, &1))
       # in the parent:  Wardrik.Scope.close(branch, {:error, reason})
 
-  A span starts when the work is admitted, which under a bounded
-  `Wardrik.Workflow.fan_out/4` is before a concurrency slot frees: twenty queued
-  branches announce themselves as twenty, and their elapsed time runs from
-  there.
+  A span starts when the work is admitted, which under a bounded fan-out is
+  before a concurrency slot frees: twenty queued branches announce themselves
+  as twenty, and their elapsed time runs from there.
 
   Closing is at-least-once — take the first close for a span and ignore any
   later one.

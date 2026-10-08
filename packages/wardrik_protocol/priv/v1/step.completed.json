@@ -9,8 +9,10 @@
       "type": "string",
       "enum": [
         "ok",
-        "error"
-      ]
+        "error",
+        "cancelled"
+      ],
+      "description": "How the step ended: cancelled where a stopped turn cut it short."
     },
     "duration_ms": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/duration_ms"

@@ -1,4 +1,4 @@
-defmodule Wardrik.Workflow.Step do
+defmodule WardrikWorkflow.Step do
   @moduledoc """
   A unit of work: given an input and a scope, produce a result.
 
@@ -8,7 +8,7 @@ defmodule Wardrik.Workflow.Step do
   sort of work means writing a module rather than editing a runtime.
 
       defmodule MyApp.Steps.Summarise do
-        @behaviour Wardrik.Workflow.Step
+        @behaviour WardrikWorkflow.Step
 
         @impl true
         def run(text, scope, opts) do
@@ -32,8 +32,8 @@ defmodule Wardrik.Workflow.Step do
 
   ## Composing them
 
-  `Wardrik.Workflow.fan_out/4` runs a step over many inputs at once and
-  `Wardrik.Workflow.sequence/3` runs many steps in order. Both take steps and both
+  `WardrikWorkflow.fan_out/4` runs a step over many inputs at once and
+  `WardrikWorkflow.sequence/3` runs many steps in order. Both take steps and both
   can be wrapped in one, so composition is closed and a workflow that calls
   another workflow is just a step calling a step.
   """

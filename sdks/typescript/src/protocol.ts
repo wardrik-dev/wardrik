@@ -564,7 +564,10 @@ export interface ScheduleTriggeredData {
  * A named step ended.
  */
 export interface StepCompletedData {
-  status: "ok" | "error";
+  /**
+   * How the step ended: cancelled where a stopped turn cut it short.
+   */
+  status: "ok" | "error" | "cancelled";
   duration_ms: DurationMs;
   error?: ErrorInfo;
 }
