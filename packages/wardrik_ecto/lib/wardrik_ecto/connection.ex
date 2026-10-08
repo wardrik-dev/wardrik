@@ -22,6 +22,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     @spec query(keyword(), String.t(), pos_integer()) ::
             {:ok, [[String.t() | nil]]} | {:error, term()}
     def query(config, sql, timeout \\ @timeout) do
+      # Its own process, unlinked, so a connection that crashes answers why
+      # instead of taking the caller with it.
+      # credo:disable-for-lines:2 Wardrik.Credo.Check.SupervisedProcesses
       {pid, ref} =
         spawn_monitor(fn ->
           Process.flag(:trap_exit, true)
@@ -52,7 +55,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     end
 
     @impl Postgrex.SimpleConnection
-    def init(_args), do: {:ok, nil}
+    def init([]), do: {:ok, nil}
 
     @impl Postgrex.SimpleConnection
     def notify(_channel, _payload, _state), do: :ok

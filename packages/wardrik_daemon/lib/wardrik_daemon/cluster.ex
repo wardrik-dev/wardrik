@@ -65,11 +65,11 @@ defmodule WardrikDaemon.Cluster do
   alias WardrikDaemon.Cluster.Strategy
   alias WardrikDaemon.Cluster.Topology
 
-  @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts \\ []), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  @spec start_link([]) :: Supervisor.on_start()
+  def start_link([]), do: Supervisor.start_link(__MODULE__, [], name: __MODULE__)
 
   @impl true
-  def init(_opts) do
+  def init([]) do
     case topologies() do
       [] ->
         :ignore

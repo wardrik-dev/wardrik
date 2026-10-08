@@ -121,6 +121,9 @@ defmodule WardrikTUI.App.Prompt do
     view = self()
     ref = make_ref()
     context = %{terminal: term.terminal, server: term.server}
+    # The view owns the editor and hears it exit; the TUI has no tree to start
+    # it under.
+    # credo:disable-for-next-line Wardrik.Credo.Check.SupervisedProcesses
     {pid, _monitor} = spawn_monitor(fn -> send(view, {:edited, ref, editor.(draft, context)}) end)
 
     {:noreply, term |> assign(editing: {ref, agent_id, pid}) |> Interaction.focus_pane("prompt")}

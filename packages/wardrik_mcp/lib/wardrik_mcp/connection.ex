@@ -160,6 +160,8 @@ defmodule WardrikMCP.Connection do
   @spec refs() :: [atom()]
   def refs do
     @registry
+    # Every server offered is the answer.
+    # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
     |> Registry.select([{{{:offer, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
     |> Enum.flat_map(fn {ref, pid} -> if Process.alive?(pid), do: [ref], else: [] end)
     |> Enum.sort()

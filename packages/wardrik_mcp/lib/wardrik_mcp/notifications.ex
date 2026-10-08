@@ -20,8 +20,8 @@ defmodule WardrikMCP.Notifications do
   @event [:anubis_mcp, :client, :notification]
 
   @doc "Starts listening for the servers' notifications."
-  @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  @spec start_link([]) :: GenServer.on_start()
+  def start_link([]), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
 
   @doc false
   @spec handle(:telemetry.event_name(), map(), map(), term()) :: :ok
@@ -37,7 +37,7 @@ defmodule WardrikMCP.Notifications do
   def handle(_event, _measurements, _metadata, _config), do: :ok
 
   @impl GenServer
-  def init(_opts) do
+  def init([]) do
     Process.flag(:trap_exit, true)
 
     case :telemetry.attach(__MODULE__, @event, &__MODULE__.handle/4, nil) do

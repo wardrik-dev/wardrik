@@ -18,6 +18,8 @@ defmodule Wardrik.Tether do
   def to(owner) when is_pid(owner) do
     tethered = self()
 
+    # A watcher linked to neither process, so it outlives whichever exits first.
+    # credo:disable-for-next-line Wardrik.Credo.Check.SupervisedProcesses
     spawn(fn ->
       owner_ref = Process.monitor(owner)
       tethered_ref = Process.monitor(tethered)

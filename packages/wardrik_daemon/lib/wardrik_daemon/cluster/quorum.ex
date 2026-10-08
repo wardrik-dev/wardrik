@@ -27,8 +27,8 @@ defmodule WardrikDaemon.Cluster.Quorum do
   @log_every :timer.seconds(30)
 
   @doc false
-  @spec child_spec(term()) :: Supervisor.child_spec()
-  def child_spec(_arg), do: %{id: __MODULE__, start: {__MODULE__, :start_link, []}}
+  @spec child_spec([]) :: Supervisor.child_spec()
+  def child_spec([]), do: %{id: __MODULE__, start: {__MODULE__, :start_link, []}}
 
   @doc "Returns `:ignore` once a quorum is connected, or refuses a node the cluster does not name."
   @spec start_link() :: :ignore | {:error, String.t()}
