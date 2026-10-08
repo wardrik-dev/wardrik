@@ -36,7 +36,8 @@ schedule:
   every: 30m
   prompt_file: HEARTBEAT.md
 policy:
-  allow_after_outside: [workers/message_me]
+  allow_after:
+    outside: [workers/message_me]
   ask:
     write_file(SOUL.md): This changes who I am.
     edit_file(SOUL.md): This changes who I am.
@@ -119,7 +120,7 @@ It holds three things open at once:
   not start can still reach you. The agent has it because its file lists `workers/*`. A worker's
   tool that is not read-only is gated, so it asks unless the policy allows it by name; and once the
   agent has searched the web, what it read stays in its conversation, and an `allow` rule stops
-  counting for gated tools in every turn after. `allow_after_outside` allows `message_me` and keeps
+  counting for gated tools in every turn after. `allow_after` allows `message_me` and keeps
   allowing it, since it reaches no one but you.
 
 A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardrik history
@@ -138,7 +139,7 @@ A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardri
   every time. See [Policy and approvals](/concepts/policy/).
 - **One tool allowed after the web.** An agent that reads what strangers wrote, knows about you,
   and can change things needs a person for the last of those. `message_me` only reaches you, so
-  `allow_after_outside` lets it through; any gated tool you add later still asks. See
+  `allow_after` lets it through; any gated tool you add later still asks. See
   [Allowing after content from outside](/concepts/policy/#allowing-after-content-from-outside).
 - **An allowance.** Past two dollars in a day, its next model call waits on you, with "This agent
   has spent $2.01 of $2.00 today. Approve to allow $2.00 more." See

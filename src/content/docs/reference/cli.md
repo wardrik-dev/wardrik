@@ -108,7 +108,7 @@ With --json, the agent as GET /v1/agents/KEY answers with it.
 
 ## wardrik clear
 
-Empty an agent's conversation, and the mark of what it read.
+Empty an agent's conversation, and the labels of what it read.
 
 ```sh
 wardrik clear KEY

@@ -89,8 +89,8 @@ messages, and the `sequence` it was taken at.
 ## Decide what it waits on
 
 A call that waits on a person arrives as `run.interrupted`, whose `interrupts` each have an `id`, a
-`reason`, the `message` a person is asked, and `outside_content: true` where the turn had read
-content from outside first. With a token that can `decide`:
+`reason`, the `message` a person is asked, and the `labels` of what the turn had read first, such
+as `["outside"]` for content from outside. With a token that can `decide`:
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \

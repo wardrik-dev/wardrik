@@ -137,7 +137,7 @@ What an agent can do is what its tools can do, and anything a tool returns reach
 can steer it. A policy decides what an agent's calls may do, whoever asked for them. An agent may
 read content from outside, reach what is private, or change things, and a person decides where it
 would do all three: once its conversation holds content from outside, its gated tools wait on a
-person, unless an `allow_after_outside` rule the operator wrote names them, until `wardrik clear`
+person, unless an `allow_after` rule the operator wrote names them, until `wardrik clear`
 empties it. MCP servers' and tool workers' tools are gated unless they mark them read-only. See
 [Policy and approvals](/concepts/policy/).
 

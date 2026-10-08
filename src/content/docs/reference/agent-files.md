@@ -99,8 +99,9 @@ less of them into each turn, from 1,024 to 262,144 bytes:
       files: [SOUL.md, MEMORY.md]
       max_bytes: 65536
 
-A file read into the turn that a turn which had read content from outside
-wrote makes it tainted from its start. See `WardrikWorkspace.Context`.
+A file read into the turn labels it from its start with the labels of what
+the turns that wrote it had read, such as content from outside. See
+`WardrikWorkspace.Context`.
 
 ## Policy
 
@@ -127,13 +128,19 @@ approves more.
 
 Once a turn has read content from outside, from `web_search`,
 `deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
-tool worker, its `allow` rules stop counting for a gated tool's calls, there
-and in every turn after it, until `wardrik clear` empties the agent's
-conversation: each waits on a person, who sees what it would do. An
-`allow_after_outside` rule still counts, for a tool whose calls may follow
-what a stranger wrote; see `WardrikPolicy`. A definition over HTTP cannot
-write one in place, though it may name a policy in `policies/` that has
-one.
+tool worker, it carries the label `outside`, there and in every turn after
+it, until `wardrik clear` empties the agent's conversation, and its `allow`
+rules stop counting for a gated tool's calls: each waits on a person, who
+sees what it would do. An `allow_after` rule for the label still counts,
+for a tool whose calls may follow what a stranger wrote:
+
+    policy:
+      allow: [linear/*]
+      allow_after:
+        outside: [github/add_labels]
+
+See `WardrikPolicy`. A definition over HTTP cannot write one in place,
+though it may name a policy in `policies/` that has one.
 
 ## Schedule
 
