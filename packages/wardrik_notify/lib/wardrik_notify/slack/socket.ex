@@ -55,22 +55,14 @@ defmodule WardrikNotify.Slack.Socket do
   @impl true
   def init(token) do
     Process.flag(:trap_exit, true)
-    send(self(), :connect)
-    {:ok, %{token: token, connection: nil, backoff: @first_backoff}}
+    {:ok, %{token: token, connection: nil, backoff: @first_backoff}, {:continue, :connect}}
   end
 
   @impl true
-  def handle_info(:connect, state) do
-    with {:ok, %{"url" => url}} <-
-           WardrikNotify.Slack.post("apps.connections.open", state.token, %{}),
-         {:ok, connection} <- Connection.start_link(url, self()) do
-      {:noreply, %{state | connection: connection}}
-    else
-      error ->
-        Logger.warning("Slack Socket Mode could not connect: #{inspect(error)}")
-        retry(state)
-    end
-  end
+  def handle_continue(:connect, state), do: connect(state)
+
+  @impl true
+  def handle_info(:connect, state), do: connect(state)
 
   def handle_info(:hello, state), do: {:noreply, %{state | backoff: @first_backoff}}
 
@@ -86,6 +78,18 @@ defmodule WardrikNotify.Slack.Socket do
     do: retry(%{state | connection: nil})
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp connect(state) do
+    with {:ok, %{"url" => url}} <-
+           WardrikNotify.Slack.post("apps.connections.open", state.token, %{}),
+         {:ok, connection} <- Connection.start_link(url, self()) do
+      {:noreply, %{state | connection: connection}}
+    else
+      error ->
+        Logger.warning("Slack Socket Mode could not connect: #{inspect(error)}")
+        retry(state)
+    end
+  end
 
   defp retry(state) do
     Process.send_after(self(), :connect, state.backoff)

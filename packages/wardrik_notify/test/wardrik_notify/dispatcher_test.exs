@@ -115,6 +115,33 @@ defmodule WardrikNotify.DispatcherTest do
     assert log =~ "#{key} routes to globex, which tells another org's agents"
   end
 
+  test "routes what its source gives as it starts", %{key: key} do
+    stop_supervised!(WardrikNotify.Supervisor)
+    routes = %{key => %Route{targets: [:audit]}}
+    start_supervised!({WardrikNotify.Supervisor, routes: {Function, :identity, [routes]}})
+
+    {:ok, _pid} = Fleet.spawn(key, runner: {AgentRunners, :parking, [self(), "call_1"]})
+    :ok = Agent.ask(key, "Ship it.")
+
+    assert_receive {:notice, %{"event" => "turn_parked"}}
+  end
+
+  test "a dispatcher that restarts asks its source again", %{key: key} do
+    stop_supervised!(WardrikNotify.Supervisor)
+    routes = %{key => %Route{targets: [:audit]}}
+    start_supervised!({WardrikNotify.Supervisor, routes: fn -> routes end})
+
+    dispatcher = Process.whereis(WardrikNotify.Dispatcher)
+    ref = Process.monitor(dispatcher)
+    Process.exit(dispatcher, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^dispatcher, :killed}
+
+    # The supervisor has restarted it once it answers, and the restarted one
+    # has asked its source once it answers in turn.
+    _children = Supervisor.which_children(WardrikNotify.Supervisor)
+    assert :sys.get_state(WardrikNotify.Dispatcher) == routes
+  end
+
   test "ignores what is not an event" do
     send(WardrikNotify.Dispatcher, :stray)
     assert :ok = WardrikNotify.put_routes(%{})

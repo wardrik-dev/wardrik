@@ -139,6 +139,25 @@ defmodule WardrikDaemon.AgentsTest do
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
   end
 
+  test "notify started after it routes the agents its files route", %{org: org} = context do
+    previous = Application.get_env(:wardrik_notify, WardrikNotify)
+    targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
+    Application.put_env(:wardrik_notify, WardrikNotify, Keyword.put(previous, :targets, targets))
+    on_exit(fn -> Application.put_env(:wardrik_notify, WardrikNotify, previous) end)
+
+    write(context, "alpha", "notify: audit\n")
+    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({WardrikNotify.Supervisor, routes: {Agents, :routes, []}})
+    _files = Agents.files()
+
+    alpha = AgentID.parse!("#{org}/alpha")
+    assert %{^alpha => %WardrikNotify.Route{targets: [:audit]}} = Agents.routes()
+
+    stop_supervised!(WardrikNotify.Supervisor)
+    start_supervised!({WardrikNotify.Supervisor, routes: {Agents, :routes, []}})
+    assert :sys.get_state(WardrikNotify.Dispatcher) == Agents.routes()
+  end
+
   test "reads a definition sent to the HTTP API under the policies it read, and keeps it",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")

@@ -3,9 +3,9 @@ defmodule WardrikDaemon.Cluster.Topology do
   One topology of `config.yaml`'s `cluster`, and the process that keeps this
   node connected to the nodes its strategy finds.
 
-  It asks the strategy as it starts, and again every `polling_interval`
-  milliseconds, connecting to each node it finds
-  that this node is not connected to. A node that cannot be reached is tried
+  It asks the strategy once it has started, without holding up the supervisor
+  starting it, and again every `polling_interval` milliseconds, connecting to
+  each node it finds that this node is not connected to. A node that cannot be reached is tried
   again at the next poll, so nodes may start in any order and one that comes
   back rejoins. It never disconnects a node.
 
@@ -52,7 +52,7 @@ defmodule WardrikDaemon.Cluster.Topology do
   @impl true
   def init(%__MODULE__{} = topology) do
     if Node.alive?() do
-      {:ok, topology |> poll(MapSet.new()) |> schedule()}
+      {:ok, {topology, MapSet.new()}, {:continue, :poll}}
     else
       Logger.warning(
         "Cluster topology #{topology.name} is not started: this node is not distributed"
@@ -63,9 +63,12 @@ defmodule WardrikDaemon.Cluster.Topology do
   end
 
   @impl true
-  def handle_info(:poll, {topology, unreached}) do
+  def handle_continue(:poll, {topology, unreached}) do
     {:noreply, topology |> poll(unreached) |> schedule()}
   end
+
+  @impl true
+  def handle_info(:poll, state), do: handle_continue(:poll, state)
 
   @doc false
   # The nodes found that are neither this one nor already connected, each

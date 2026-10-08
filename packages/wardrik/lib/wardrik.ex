@@ -9,6 +9,12 @@ defmodule Wardrik do
     * `Wardrik.Fleet.Supervisor`, with `config :wardrik, Wardrik.Fleet`, which
       starts the store first.
 
+  Each child depends on the ones before it: an agent joins the bus as it
+  starts and writes its log from what the bus delivers, and runs its turns
+  under the task supervisor. A child that restarts restarts every child after
+  it, so an agent never holds a membership of a bus that is gone. The catalog
+  load is a task that exits once done and is not started again.
+
   The `:wardrik` application starts it by default. A host that starts it in
   its own tree instead, after the repo its store is kept in, says so:
 
@@ -50,6 +56,6 @@ defmodule Wardrik do
         opts[:cluster] ++
         [{Wardrik.Fleet.Supervisor, Application.get_env(:wardrik, Wardrik.Fleet, [])}]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :rest_for_one)
   end
 end

@@ -79,6 +79,7 @@ defmodule WardrikDaemon.Agents do
   alias WardrikDaemon.PolicyFile
 
   @inventory :declared
+  @routes __MODULE__
 
   @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
@@ -271,6 +272,20 @@ defmodule WardrikDaemon.Agents do
   @spec problems() :: [String.t()]
   def problems, do: GenServer.call(__MODULE__, :problems)
 
+  @doc """
+  The route of each agent a file routes, as the last read of the files put
+  them with `WardrikNotify.put_routes/1`, and none before the first. Read from
+  a table rather than asked of the process, so `WardrikNotify` can ask while a
+  read is putting them to it.
+  """
+  @spec routes() :: %{AgentID.t() => WardrikNotify.Route.t()}
+  def routes do
+    case :ets.lookup(@routes, :routes) do
+      [{:routes, routes}] -> routes
+      [] -> %{}
+    end
+  end
+
   defp declared(key, {path, node}),
     do:
       {:error, :conflict,
@@ -281,7 +296,10 @@ defmodule WardrikDaemon.Agents do
       {:error, :conflict, "#{key} is declared by agents/#{Path.basename(path)}; change the file"}
 
   @impl true
-  def init(state), do: {:ok, Map.merge(state, %{files: [], problems: []}), {:continue, :load}}
+  def init(state) do
+    @routes = :ets.new(@routes, [:named_table, read_concurrency: true])
+    {:ok, Map.merge(state, %{files: [], problems: []}), {:continue, :load}}
+  end
 
   @impl true
   def handle_continue(:load, state), do: {:noreply, load(state)}
@@ -362,12 +380,13 @@ defmodule WardrikDaemon.Agents do
     problems = rebuild(state, MapSet.new(for {_path, {:ok, spec}} <- agent_files, do: spec.id))
     forget_removed()
 
-    :ok =
-      WardrikNotify.put_routes(
-        for {_path, {:ok, spec, %WardrikNotify.Route{} = route}} <- loaded,
-            into: %{},
-            do: {spec.id, route}
-      )
+    routes =
+      for {_path, {:ok, spec, %WardrikNotify.Route{} = route}} <- loaded,
+          into: %{},
+          do: {spec.id, route}
+
+    true = :ets.insert(@routes, {:routes, routes})
+    :ok = WardrikNotify.put_routes(routes)
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
