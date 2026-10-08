@@ -29,8 +29,10 @@ defmodule WardrikDaemon do
     * `WardrikMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured.
-    * `WardrikNotify.Supervisor`, when a notify target is configured.
     * `WardrikDaemon.Agents`, which runs the agents `agents/` declares.
+    * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
+      `WardrikDaemon.Agents.routes/0` for the routes as it starts, so one that
+      restarts routes the agents as before.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, to callers
@@ -117,8 +119,8 @@ defmodule WardrikDaemon do
     children =
       mcp(Path.join([state_dir, "log", "mcp.log"])) ++
         oauth() ++
-        notify() ++
         [{WardrikDaemon.Agents, dir: config_dir}] ++
+        notify() ++
         WardrikDaemon.SSH.children(config_dir, data_dir) ++
         [{WardrikHTTP.Listener, definition: WardrikDaemon.Agents}]
 
@@ -139,7 +141,9 @@ defmodule WardrikDaemon do
   end
 
   defp notify do
-    if WardrikNotify.configured?(), do: [WardrikNotify.Supervisor], else: []
+    if WardrikNotify.configured?(),
+      do: [{WardrikNotify.Supervisor, routes: {WardrikDaemon.Agents, :routes, []}}],
+      else: []
   end
 
   @doc """

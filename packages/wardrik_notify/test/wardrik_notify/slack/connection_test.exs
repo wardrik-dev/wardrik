@@ -35,9 +35,10 @@ defmodule WardrikNotify.Slack.ConnectionTest do
   end
 
   describe "the socket" do
-    test "tries again, waiting longer each time, when Slack will not open a connection" do
+    test "connects as it starts, and tries again, waiting longer each time, when Slack will not open a connection" do
       Req.Test.stub(WardrikNotify.Stub, &Req.Test.json(&1, %{ok: false, error: "invalid_auth"}))
 
+      assert {:noreply, %{backoff: 2_000}} = Socket.handle_continue(:connect, @state)
       assert {:noreply, %{backoff: 2_000}} = Socket.handle_info(:connect, @state)
 
       assert {:noreply, %{backoff: 60_000}} =

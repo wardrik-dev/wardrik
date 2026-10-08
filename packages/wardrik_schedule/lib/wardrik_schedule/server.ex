@@ -24,32 +24,37 @@ defmodule WardrikSchedule.Server do
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: struct!(State, dumped)
 
+  # DurableServer's callback type leaves out the continue its server takes
+  # from `init`.
+  @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
   def init(%State{} = state) do
-    wake_now()
-    {:ok, state, meta: State.meta(state), permanent: true}
+    {:ok, state, {:continue, :wake}, meta: State.meta(state), permanent: true}
   end
 
+  # Each step after a write is a continue, so no call lands between a run
+  # written down and its delivery.
   @impl DurableServer
   def handle_call({:configure, %WardrikSchedule{} = schedule}, _from, state) do
     next = State.configure(state, schedule, DateTime.utc_now())
-    wake_now()
-    {:reply, :ok, next, meta: State.meta(next), sync: true}
+    {:reply, :ok, next, {:continue, :wake}, meta: State.meta(next), sync: true}
+  end
+
+  @impl DurableServer
+  def handle_continue(:wake, state), do: wake(state)
+
+  # Runs after the state naming the next run has been written, so a crash
+  # from here on loses this firing rather than repeating it.
+  def handle_continue(:deliver, state) do
+    outcome = deliver(state)
+    announce(state, outcome)
+    next = State.fired(state, outcome)
+    {:noreply, next, {:continue, :wake}, meta: State.meta(next), sync: true}
   end
 
   @impl DurableServer
   def handle_info({:wake, tag}, state) do
     if Process.get(:wake) == tag, do: wake(state), else: {:noreply, state}
-  end
-
-  # Runs after the state naming the next run has been written, so a crash
-  # from here on loses this firing rather than repeating it.
-  def handle_info(:deliver, state) do
-    outcome = deliver(state)
-    announce(state, outcome)
-    next = State.fired(state, outcome)
-    wake_now()
-    {:noreply, next, meta: State.meta(next), sync: true}
   end
 
   defp wake(state) do
@@ -59,13 +64,11 @@ defmodule WardrikSchedule.Server do
         {:noreply, state}
 
       {:fire, next} ->
-        send(self(), :deliver)
-        {:noreply, next, meta: State.meta(next), sync: true}
+        {:noreply, next, {:continue, :deliver}, meta: State.meta(next), sync: true}
 
       {:skip, next} ->
         announce(next, :missed)
-        wake_now()
-        {:noreply, next, meta: State.meta(next), sync: true}
+        {:noreply, next, {:continue, :wake}, meta: State.meta(next), sync: true}
     end
   end
 
@@ -100,8 +103,6 @@ defmodule WardrikSchedule.Server do
   defp announce(%State{agent: agent, schedule: schedule}, outcome) do
     Event.announce(agent, {:schedule_fired, schedule.name, outcome})
   end
-
-  defp wake_now, do: arm(0)
 
   # Only the timer armed last wakes the schedule.
   defp arm(ms) do

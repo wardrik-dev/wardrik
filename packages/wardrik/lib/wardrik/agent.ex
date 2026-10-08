@@ -292,22 +292,13 @@ defmodule Wardrik.Agent do
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: Stored.load(dumped)
 
+  # DurableServer's callback type leaves out the continue its server takes
+  # from `init`.
+  @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
   def init(%State{} = state) do
-    # `init` cannot return a continue, so the queue is drained by message.
-    send(self(), :maybe_run)
-    :ok = Bus.subscribe(state.agent_id)
-
-    started =
-      Event.new(
-        Source.root(state.agent_id),
-        {:agent_started, node(), View.status(state).state, state.generation}
-      )
-
-    state = State.logged(state, Writer.open(state.log, started))
-    :ok = Bus.publish(started)
-
-    {:ok, state, meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
+    {:ok, state, {:continue, :open},
+     meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
 
   # -- messages --------------------------------------------------------------
@@ -441,7 +432,25 @@ defmodule Wardrik.Agent do
     end)
   end
 
+  # The log opens here rather than in `init`, so the fleet's start does not
+  # wait on the store. A continue runs before any message, so nothing reads
+  # `state.log` until it is open.
   @impl DurableServer
+  def handle_continue(:open, state) do
+    :ok = Bus.subscribe(state.agent_id)
+
+    started =
+      Event.new(
+        Source.root(state.agent_id),
+        {:agent_started, node(), View.status(state).state, state.generation}
+      )
+
+    state = State.logged(state, Writer.open(state.log, started))
+    :ok = Bus.publish(started)
+
+    advance(state)
+  end
+
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
       {:run, messages, state} ->
@@ -459,8 +468,6 @@ defmodule Wardrik.Agent do
   end
 
   @impl DurableServer
-  def handle_info(:maybe_run, state), do: advance(state)
-
   def handle_info({ref, result}, state) when is_reference(ref) do
     if State.running?(state, ref) do
       Process.demonitor(ref, [:flush])

@@ -17,6 +17,13 @@ defmodule WardrikTest do
              Enum.find_index(ids, &(&1 == Wardrik.Fleet.Supervisor))
   end
 
+  test "a child that restarts restarts the fleet, which comes after every other" do
+    {:ok, {flags, specs}} = Wardrik.init([])
+
+    assert flags.strategy == :rest_for_one
+    assert List.last(specs).id == Wardrik.Fleet.Supervisor
+  end
+
   test "a host that starts Wardrik in its own tree has the application start nothing" do
     Application.put_env(:wardrik, :start, :host)
     on_exit(fn -> Application.delete_env(:wardrik, :start) end)
