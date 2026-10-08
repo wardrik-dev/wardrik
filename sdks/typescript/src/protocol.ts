@@ -167,7 +167,7 @@ export interface AgentSummary {
   outcome?: "ok" | "failed" | "interrupted";
 }
 /**
- * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.
+ * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user and notify besides.
  */
 export interface AgentDefinition {
   /**
@@ -230,6 +230,39 @@ export interface AgentDefinition {
         keep?: number;
         window?: number;
       };
+  /**
+   * The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one.
+   */
+  schedule?: {
+    /**
+     * The schedule's name, schedule-1, schedule-2 and so on by its place in the list where it is left out.
+     */
+    name?: string;
+    /**
+     * A cron expression, or a duration such as 30m.
+     */
+    every: string;
+    /**
+     * What the agent is asked each time.
+     */
+    prompt?: string;
+    /**
+     * In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.
+     */
+    prompt_file?: string;
+    /**
+     * What a firing does while a run is still going: skip it, or queue its prompt.
+     */
+    overlap?: "skip" | "queue";
+    /**
+     * What a schedule does about the firings it missed while down.
+     */
+    missed?: "run_once" | "skip";
+    /**
+     * Up to this many seconds of delay, chosen at random each time.
+     */
+    jitter?: number;
+  }[];
 }
 /**
  * The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
@@ -349,7 +382,7 @@ export interface Schedule {
   jitter: number;
 }
 /**
- * The body of PUT /v1/agents/{key}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.
+ * The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out.
  */
 export interface ScheduleDefinition {
   /**
@@ -359,7 +392,11 @@ export interface ScheduleDefinition {
   /**
    * What the agent is asked each time.
    */
-  prompt: string;
+  prompt?: string;
+  /**
+   * In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.
+   */
+  prompt_file?: string;
   /**
    * What a firing does while a run is still going: skip it, or queue its prompt.
    */

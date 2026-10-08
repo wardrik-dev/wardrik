@@ -2,15 +2,13 @@ defmodule Wardrik.Fleet.Supervisor do
   @moduledoc """
   Starts the substrate the fleet runs on.
 
-  Three children, in order:
+  Two children, in order:
 
     * `Wardrik.Store` - the durable store agent state is written to, as the
       deployment configured it.
     * `DurableServer.Supervisor` - keyed processes over that store, named
       `Wardrik.Fleet`. It starts a `Group` instance under the same name, which is
       the registry `Wardrik.Fleet` reads.
-    * `DurableServer.Supervisor` - the same for `Wardrik.Schedule`, named
-      `Wardrik.Schedules`.
 
   ## Configuration
 
@@ -47,13 +45,6 @@ defmodule Wardrik.Fleet.Supervisor do
        [
          name: Wardrik.Fleet,
          prefix: Wardrik.Fleet.prefix(),
-         backend: Store.durable_backend(),
-         group: [log: Keyword.get(opts, :log, false)]
-       ] ++ Store.durable_shutdown()},
-      {DurableServer.Supervisor,
-       [
-         name: Wardrik.Schedule.supervisor(),
-         prefix: Wardrik.Schedule.prefix(),
          backend: Store.durable_backend(),
          group: [log: Keyword.get(opts, :log, false)]
        ] ++ Store.durable_shutdown()}

@@ -17,15 +17,13 @@ defmodule Wardrik.Agent.Spec do
   A spec holds no process and no function, so it can be written to a file,
   sent to another node, or read back from either. `Wardrik.Fleet.put/1` makes the
   fleet match it: an agent is started under its ID where none runs, and given
-  the spec's config and seams where one does, and its schedules are brought to
-  the spec's. A spec whose `:schedules` is `nil` leaves them as they are.
+  the spec's config and seams where one does.
 
   | Field | What it is |
   | --- | --- |
   | `:id` | the agent's `Wardrik.AgentID` |
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Wardrik.LLM.Config` |
-  | `:schedules` | the `Wardrik.Schedule`s that ask it on a clock, `[]` by default; `nil` leaves the agent's own |
   | `:hooks`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Wardrik.Scope.seams/0` |
   """
 
@@ -34,13 +32,12 @@ defmodule Wardrik.Agent.Spec do
   alias Wardrik.Scope
 
   @enforce_keys [:id, :config]
-  defstruct [:id, :description, :config, schedules: []] ++ Scope.seams()
+  defstruct [:id, :description, :config] ++ Scope.seams()
 
   @type t() :: %__MODULE__{
           id: AgentID.t(),
           description: String.t() | nil,
           config: Config.t(),
-          schedules: [Wardrik.Schedule.t()] | nil,
           hooks: [Wardrik.Hook.t()] | nil,
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
           credentials: module() | nil,

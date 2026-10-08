@@ -56,8 +56,8 @@ API.
   running agent what its file says now. `wardrik agent spawn NAME` writes one from `config.yaml`'s
   `defaults` and starts its agent. See [Agent files](/reference/agent-files/).
 - **A definition** is sent with `PUT /v1/agents/{key}`, by a token that can
-  `define`, and takes effect at once. It says less than a file can: no schedules, notices, shared
-  trees or `context`. See [Use the HTTP API](/guides/http-api/).
+  `define`, and takes effect at once. It says less than a file can: no notices, no modules, and only
+  the trees its token's scope covers. See [Use the HTTP API](/guides/http-api/).
 
 An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
 refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running

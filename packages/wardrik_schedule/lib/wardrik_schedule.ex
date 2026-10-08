@@ -1,8 +1,8 @@
-defmodule Wardrik.Schedule do
+defmodule WardrikSchedule do
   @moduledoc """
   A prompt an agent is asked on a clock.
 
-      Wardrik.Schedule.put(~A"acme/triage", "sweep",
+      WardrikSchedule.put(~A"acme/triage", "sweep",
         every: "*/30 * * * *",
         prompt: "Check the incident queue.")
 
@@ -16,14 +16,18 @@ defmodule Wardrik.Schedule do
   lost to a crash is not made again: a schedule fires at most once for each
   time it names.
 
-  `Wardrik.Agent.Spec` carries an agent's schedules, and `Wardrik.Fleet.put/1`
-  brings them to what the spec says, starting, changing and deleting them.
-  `Wardrik.Fleet.forget/1` deletes an agent's schedules with it.
+  `sync/2` brings an agent's schedules to a list, starting, changing and
+  deleting them, and `sync(agent, [])` deletes them all; what keeps the
+  agent's definition calls it as that changes. The schedules run under a
+  supervisor a host starts once per node, after the fleet, as one of core's
+  `:children`:
+
+      config :wardrik, :children, [WardrikSchedule]
 
   ## Options
 
     * `:every` - required. A five-field cron expression read in UTC, see
-      `Wardrik.Schedule.Cron`; a duration of at least a minute, as `"30m"`,
+      `WardrikSchedule.Cron`; a duration of at least a minute, as `"30m"`,
       `"2h"` or `"1d"`; or `{:interval, ms}`
     * `:prompt` - required. What the agent is asked
     * `:overlap` - what a firing does when the agent is running or waiting
@@ -46,10 +50,10 @@ defmodule Wardrik.Schedule do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Schedule.Cron
-  alias Wardrik.Schedule.Server
-  alias Wardrik.Schedule.State
-  alias Wardrik.Schedule.Status
+  alias WardrikSchedule.Cron
+  alias WardrikSchedule.Server
+  alias WardrikSchedule.State
+  alias WardrikSchedule.Status
 
   @enforce_keys [:name, :every, :prompt]
   defstruct [:name, :every, :prompt, overlap: :skip, missed: :run_once, jitter: 0]
@@ -69,17 +73,37 @@ defmodule Wardrik.Schedule do
   @typedoc "What one firing did."
   @type outcome() :: :asked | :busy | :no_agent | :missed | :failed
 
-  @name Wardrik.Schedules
-  @prefix "schedules/"
+  @name WardrikSchedule.Schedules
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
+  @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
 
   @doc false
   @spec supervisor() :: atom()
   def supervisor, do: @name
 
-  @doc false
-  @spec prefix() :: String.t()
-  def prefix, do: @prefix
+  @doc "The supervisor the schedules run under, as one of core's `:children`."
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec(opts),
+    do: %{
+      DurableServer.Supervisor.child_spec(name: @name)
+      | start: {__MODULE__, :start_link, [opts]}
+    }
+
+  @doc """
+  Starts the supervisor the schedules run under, over the store the fleet
+  runs on. `:log` is passed to `Group`.
+  """
+  @spec start_link(keyword()) :: Supervisor.on_start()
+  def start_link(opts \\ []) do
+    DurableServer.Supervisor.start_link(
+      [
+        name: @name,
+        prefix: "schedules/",
+        backend: Wardrik.Store.durable_backend(),
+        group: [log: Keyword.get(opts, :log, false)]
+      ] ++ Wardrik.Store.durable_shutdown()
+    )
+  end
 
   @doc """
   A schedule named `name`, from the options above. Raises `ArgumentError`
@@ -154,7 +178,7 @@ defmodule Wardrik.Schedule do
   A schedule named `name`, from fields written as text, as an agent file or a
   JSON body writes them:
 
-      Wardrik.Schedule.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
+      WardrikSchedule.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
 
   `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
   `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
@@ -217,6 +241,33 @@ defmodule Wardrik.Schedule do
     do: {:ok, :timer.seconds(seconds)}
 
   defp seconds(_seconds), do: {:error, "jitter is a whole number of seconds"}
+
+  @doc """
+  `schedule` written as text, with its name, as `decode/2` reads it back:
+
+      %{"name" => "sweep", "every" => "30m", "prompt" => "Look.",
+        "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
+
+  An interval is written in the largest unit that divides it.
+  """
+  @spec encode(t()) :: %{String.t() => String.t() | non_neg_integer()}
+  def encode(%__MODULE__{} = schedule) do
+    %{
+      "name" => schedule.name,
+      "every" => text(schedule.every),
+      "prompt" => schedule.prompt,
+      "overlap" => to_string(schedule.overlap),
+      "missed" => to_string(schedule.missed),
+      "jitter" => div(schedule.jitter, 1_000)
+    }
+  end
+
+  defp text({:cron, text}), do: text
+
+  defp text({:interval, ms}) do
+    {unit, size} = Enum.find(@sizes, fn {_unit, size} -> rem(ms, size) == 0 end)
+    "#{div(ms, size)}#{unit}"
+  end
 
   @doc """
   The first time `schedule` names after `from`, with its jitter added.

@@ -2,12 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:schedule_definition",
   "title": "A schedule's definition",
-  "description": "The body of PUT /v1/agents/{key}/schedules/{schedule}. overlap is skip, missed is run_once and jitter is 0 where they are left out.",
+  "description": "The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "every",
-    "prompt"
+    "every"
   ],
   "properties": {
     "every": {
@@ -17,6 +16,10 @@
     "prompt": {
       "type": "string",
       "description": "What the agent is asked each time."
+    },
+    "prompt_file": {
+      "type": "string",
+      "description": "In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with."
     },
     "overlap": {
       "type": "string",

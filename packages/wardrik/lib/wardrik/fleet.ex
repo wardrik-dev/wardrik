@@ -39,7 +39,6 @@ defmodule Wardrik.Fleet do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Fleet.Member
-  alias Wardrik.Schedule
 
   @name __MODULE__
   @prefix "agents/"
@@ -70,8 +69,7 @@ defmodule Wardrik.Fleet do
   @doc """
   Makes the fleet match `spec`: starts the agent it describes where none runs
   under its ID, gives the one that does the spec's config and seams with
-  `Wardrik.Agent.configure/2`, and brings its schedules to the spec's, unless the
-  spec's `schedules` is `nil`. The agent keeps its conversation either way.
+  `Wardrik.Agent.configure/2`. The agent keeps its conversation either way.
 
       {:ok, pid} = Wardrik.Fleet.put(Wardrik.Agent.Spec.new(id: Wardrik.AgentID.new!("triage", org: "acme")))
   """
@@ -80,14 +78,10 @@ defmodule Wardrik.Fleet do
     options = Spec.options(spec)
 
     with {:ok, pid} <- spawn(spec.id, options),
-         :ok <- Agent.configure(pid, options),
-         :ok <- sync(spec.id, spec.schedules) do
+         :ok <- Agent.configure(pid, options) do
       {:ok, pid}
     end
   end
-
-  defp sync(_id, nil), do: :ok
-  defp sync(id, schedules), do: Schedule.sync(id, schedules)
 
   @doc """
   Stops an agent and starts it again on `node`, with the state it had.
@@ -132,13 +126,10 @@ defmodule Wardrik.Fleet do
   def stored?(%AgentID{} = id),
     do: match?({:ok, _info}, DurableServer.Supervisor.get_server_info(@name, to_string(id)))
 
-  @doc "Stops an agent and deletes everything it had, its schedules included, permanently."
+  @doc "Stops an agent and deletes everything it had, permanently."
   @spec forget(AgentID.t()) :: :ok | {:error, term()}
-  def forget(%AgentID{} = id) do
-    with :ok <- Schedule.sync(id, []) do
-      DurableServer.Supervisor.terminate_and_delete_child(@name, to_string(id))
-    end
-  end
+  def forget(%AgentID{} = id),
+    do: DurableServer.Supervisor.terminate_and_delete_child(@name, to_string(id))
 
   @doc """
   Forgets every running agent under `prefix`, and returns how many.

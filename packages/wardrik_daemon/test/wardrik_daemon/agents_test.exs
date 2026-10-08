@@ -14,7 +14,16 @@ defmodule WardrikDaemon.AgentsTest do
 
   setup %{tmp_dir: dir} do
     org = "agents-#{System.unique_integer([:positive])}"
-    on_exit(fn -> Fleet.forget_under(Prefix.parse!(org <> "/")) end)
+
+    on_exit(fn ->
+      prefix = Prefix.parse!(org <> "/")
+
+      for schedule <- WardrikSchedule.list(prefix),
+          do: WardrikSchedule.delete(schedule.agent, schedule.name)
+
+      Fleet.forget_under(prefix)
+    end)
+
     %{dir: dir, org: org}
   end
 
@@ -191,7 +200,6 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, spec} = Agents.spec(thread)
     assert spec.id == thread
     assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
-    assert spec.schedules == nil
     assert [{WardrikWorkspace, workspace}] = spec.config.tools
     assert workspace.tree.tree == "agents/#{org}/alpha"
   end
@@ -279,6 +287,12 @@ defmodule WardrikDaemon.AgentsTest do
 
     assert Agents.delete(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
     assert Agents.editable(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
+
+    assert Agents.put_schedule(AgentID.parse!("#{org}/alpha"), "sweep", %{}) ==
+             {:error, :conflict, message}
+
+    assert Agents.delete_schedule(AgentID.parse!("#{org}/alpha"), "sweep") ==
+             {:error, :conflict, message}
   end
 
   describe "an agent the files no longer declare" do
@@ -294,7 +308,7 @@ defmodule WardrikDaemon.AgentsTest do
       Agents.reload()
 
       assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/beta"))
-      assert Wardrik.Schedule.for_agent(AgentID.parse!("#{org}/beta")) == []
+      assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/beta")) == []
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
 
       write(context, "beta", "")
@@ -382,15 +396,80 @@ defmodule WardrikDaemon.AgentsTest do
     start_supervised!({Agents, dir: context.dir})
     assert [{_alpha, {:ok, _spec}}] = Agents.files()
 
-    assert [%Wardrik.Schedule.Status{name: "sweep"}] =
-             Wardrik.Schedule.for_agent(AgentID.parse!("#{org}/alpha"))
+    assert [%WardrikSchedule.Status{name: "sweep"}] =
+             WardrikSchedule.for_agent(AgentID.parse!("#{org}/alpha"))
 
     assert WardrikDaemon.status() =~ ~r"#{org}/alpha .*next run in 5\dm"
 
     write(context, "alpha", "")
     Agents.reload()
 
-    assert Wardrik.Schedule.for_agent(AgentID.parse!("#{org}/alpha")) == []
+    assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/alpha")) == []
+  end
+
+  test "brings an agent the HTTP API defined to the schedules its definition lists",
+       %{org: org} = context do
+    start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/defined")
+    sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
+
+    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
+    assert [%{name: "sweep"}] = WardrikSchedule.for_agent(defined)
+
+    {:ok, _spec} = Agents.put(defined, %{}, grant(org))
+    assert WardrikSchedule.for_agent(defined) == []
+
+    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
+    :ok = Agents.delete(defined)
+    assert WardrikSchedule.for_agent(defined) == []
+  end
+
+  test "changes one schedule in the definition the HTTP API sent", %{org: org} = context do
+    start_supervised!({Agents, dir: context.dir})
+    defined = AgentID.parse!("#{org}/defined")
+    sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
+    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
+
+    assert {:ok, :created, digest} =
+             Agents.put_schedule(defined, "digest", %{
+               "every" => "0 17 * * *",
+               "prompt" => "Sum up."
+             })
+
+    assert digest == %{
+             "name" => "digest",
+             "every" => "0 17 * * *",
+             "prompt" => "Sum up.",
+             "overlap" => "skip",
+             "missed" => "run_once",
+             "jitter" => 0
+           }
+
+    schema = WardrikProtocol.dir() |> Path.join("schedule.json") |> File.read!() |> JSON.decode!()
+    assert {:ok, _} = JSV.validate(digest, JSV.build!(schema, resolver: WardrikProtocol.Resolver))
+
+    assert {:ok, :changed, %{"every" => "2h"}} =
+             Agents.put_schedule(defined, "sweep", %{"every" => "2h", "prompt" => "Look."})
+
+    assert {:ok, %{"schedule" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
+             Agents.get(defined)
+
+    assert [%{name: "digest"}, %{name: "sweep", every: {:interval, 7_200_000}}] =
+             WardrikSchedule.for_agent(defined)
+
+    assert {:error, ~s(schedule digest: every: "10s" is shorter than a minute)} =
+             Agents.put_schedule(defined, "digest", %{"every" => "10s", "prompt" => "Sum up."})
+
+    assert :ok = Agents.delete_schedule(defined, "digest")
+    assert {:error, :not_found} = Agents.delete_schedule(defined, "digest")
+    assert [%{name: "sweep"}] = WardrikSchedule.for_agent(defined)
+
+    assert {:error, :not_found} =
+             Agents.put_schedule(
+               AgentID.parse!("#{org}/nobody"),
+               "sweep",
+               Map.delete(sweep, "name")
+             )
   end
 
   test "reads a policy written as .yml, and reports a second file of the same name",

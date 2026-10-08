@@ -51,6 +51,7 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik_policy),
       sibling(:wardrik_research),
       sibling(:wardrik_s3),
+      sibling(:wardrik_schedule),
       sibling(:wardrik_vault),
       sibling(:wardrik_workspace),
       {:yaml_elixir, "~> 2.12"},

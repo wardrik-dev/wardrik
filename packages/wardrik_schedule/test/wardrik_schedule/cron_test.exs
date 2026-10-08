@@ -1,7 +1,7 @@
-defmodule Wardrik.Schedule.CronTest do
+defmodule WardrikSchedule.CronTest do
   use ExUnit.Case, async: true
 
-  alias Wardrik.Schedule.Cron
+  alias WardrikSchedule.Cron
 
   defp next(text, from) do
     {:ok, cron} = Cron.parse(text)

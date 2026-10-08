@@ -36,9 +36,14 @@ config :wardrik_http, WardrikHTTP, port: 0
 config :wardrik_daemon, WardrikDaemon.SSH,
   entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
 
-# Budgets are kept by meters, and tool workers join a group, that core
-# starts as a release does.
-config :wardrik, :children, [WardrikPolicy.Supervisor, WardrikHTTP.Access, WardrikHTTP.Workers]
+# Budgets are kept by meters, schedules run, and tool workers join a group,
+# under what core starts as a release does.
+config :wardrik, :children, [
+  WardrikPolicy.Supervisor,
+  WardrikSchedule,
+  WardrikHTTP.Access,
+  WardrikHTTP.Workers
+]
 
 config :req_llm,
   load_dotenv: false,

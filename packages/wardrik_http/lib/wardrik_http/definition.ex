@@ -17,7 +17,8 @@ defmodule WardrikHTTP.Definition do
   | `put/3` | `PUT /v1/agents/{id}` | the listener has no module, and the route answers `501` |
   | `get/1` | `GET /v1/agents/{id}/definition` | `501` |
   | `delete/1` | `DELETE /v1/agents/{id}` | `501` |
-  | `editable/1` | `PUT` and `DELETE /v1/agents/{id}/schedules/{schedule}` | every agent's schedules may be changed |
+  | `put_schedule/3` | `PUT /v1/agents/{id}/schedules/{schedule}` | `501` |
+  | `delete_schedule/2` | `DELETE /v1/agents/{id}/schedules/{schedule}` | `501` |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps it, and refuses the agents its files declare. A module
@@ -33,8 +34,7 @@ defmodule WardrikHTTP.Definition do
   `grant` is the defining token's: what the definition may reach, such as
   the trees an agent shares, is the module's to check against its scope, and
   a module that builds the spec again later holds it under the same ceiling.
-  The spec is for `id` and no other, and one whose `schedules` is `nil`
-  leaves the agent's schedules as they are.
+  The spec is for `id` and no other.
   """
   @callback put(id :: Wardrik.AgentID.t(), definition :: map(), grant :: Wardrik.Grant.t()) ::
               {:ok, Wardrik.Agent.Spec.t()}
@@ -54,11 +54,25 @@ defmodule WardrikHTTP.Definition do
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
   @doc """
-  Whether the API may change the agent `id` other than by defining
-  it, as its schedules: `:ok`, or `{:error, :conflict, message}` where
-  something else declares the agent, which answers `409`.
+  Sets the schedule `name` of the agent `id` to `fields`, the body of the
+  route as `wardrik_protocol`'s `schedule_definition.json` describes it:
+  whether it was `:created`, which answers `201`, or `:changed`, and the
+  schedule as `schedule.json` describes it. `{:error, :not_found}` answers
+  `404` for an agent the module keeps no definition for, a message `400` for
+  fields that do not read, and a conflict `409`.
   """
-  @callback editable(id :: Wardrik.AgentID.t()) :: :ok | {:error, :conflict, String.t()}
+  @callback put_schedule(id :: Wardrik.AgentID.t(), name :: String.t(), fields :: map()) ::
+              {:ok, :created | :changed, map()}
+              | {:error, :not_found}
+              | {:error, String.t()}
+              | {:error, :conflict, String.t()}
 
-  @optional_callbacks get: 1, delete: 1, editable: 1
+  @doc """
+  Deletes the schedule `name` of the agent `id`: `:ok`, `{:error, :not_found}`
+  where it has none, or a conflict.
+  """
+  @callback delete_schedule(id :: Wardrik.AgentID.t(), name :: String.t()) ::
+              :ok | {:error, :not_found} | {:error, :conflict, String.t()}
+
+  @optional_callbacks get: 1, delete: 1, put_schedule: 3, delete_schedule: 2
 end

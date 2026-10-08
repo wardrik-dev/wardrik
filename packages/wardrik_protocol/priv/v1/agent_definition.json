@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
-  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user, schedule and notify besides.",
+  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user and notify besides.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -146,6 +146,56 @@
         }
       ],
       "description": "When the agent summarises its older history, as shares of the model's window; false never does."
+    },
+    "schedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "every"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The schedule's name, schedule-1, schedule-2 and so on by its place in the list where it is left out."
+          },
+          "every": {
+            "type": "string",
+            "description": "A cron expression, or a duration such as 30m."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "What the agent is asked each time."
+          },
+          "prompt_file": {
+            "type": "string",
+            "description": "In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with."
+          },
+          "overlap": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "queue"
+            ],
+            "description": "What a firing does while a run is still going: skip it, or queue its prompt."
+          },
+          "missed": {
+            "type": "string",
+            "enum": [
+              "run_once",
+              "skip"
+            ],
+            "description": "What a schedule does about the firings it missed while down."
+          },
+          "jitter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Up to this many seconds of delay, chosen at random each time."
+          }
+        }
+      },
+      "description": "The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one."
     }
   },
   "examples": [
@@ -177,7 +227,14 @@
       "compaction": {
         "at": 0.6,
         "keep": 0.25
-      }
+      },
+      "schedule": [
+        {
+          "name": "sweep",
+          "every": "*/30 * * * *",
+          "prompt": "Check the incident queue."
+        }
+      ]
     }
   ]
 }

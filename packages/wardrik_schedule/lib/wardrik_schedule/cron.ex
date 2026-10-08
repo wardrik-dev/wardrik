@@ -1,9 +1,9 @@
-defmodule Wardrik.Schedule.Cron do
+defmodule WardrikSchedule.Cron do
   @moduledoc """
   A five-field cron expression, read in UTC, and the times it names.
 
-      {:ok, cron} = Wardrik.Schedule.Cron.parse("*/30 9-17 * * 1-5")
-      Wardrik.Schedule.Cron.next(cron, ~U[2026-09-24 09:10:00Z])
+      {:ok, cron} = WardrikSchedule.Cron.parse("*/30 9-17 * * 1-5")
+      WardrikSchedule.Cron.next(cron, ~U[2026-09-24 09:10:00Z])
       #=> {:ok, ~U[2026-09-24 09:30:00Z]}
 
   The fields are minute (0-59), hour (0-23), day of the month (1-31), month

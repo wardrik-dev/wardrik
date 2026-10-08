@@ -526,14 +526,14 @@ defmodule WardrikDaemon.CLITest do
   test "schedules lists each schedule's next run, and its last and what came of it" do
     prefix = "cli-#{System.unique_integer([:positive])}/"
     key = Wardrik.AgentID.parse!(prefix <> "pinger")
-    on_exit(fn -> Wardrik.Schedule.sync(key, []) end)
+    on_exit(fn -> WardrikSchedule.sync(key, []) end)
 
     assert {output, 0} = command(["schedules", prefix])
     assert output == "Nothing is scheduled under #{prefix}.\n"
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
-    {:ok, _pid} = Wardrik.Schedule.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
-    {:ok, _pid} = Wardrik.Schedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
+    {:ok, _pid} = WardrikSchedule.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
+    {:ok, _pid} = WardrikSchedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
     # A schedule announces a firing before it records it, so the second
     # firing is the first that finds the one before it written down.
     assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}

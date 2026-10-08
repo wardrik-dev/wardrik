@@ -1,23 +1,21 @@
-defmodule Wardrik.Schedule.State do
+defmodule WardrikSchedule.State do
   @moduledoc """
   A running schedule as data: the agent it asks, the schedule, when it runs
   next, and when it last fired and what came of it.
 
-  Every move is a function of the state and the time, so `Wardrik.Schedule.Server`
+  Every move is a function of the state and the time, so `WardrikSchedule.Server`
   only carries out what these answer.
   """
-
-  alias Wardrik.Schedule
 
   @enforce_keys [:agent, :schedule, :next_at]
   defstruct [:agent, :schedule, :next_at, :last_at, :last_outcome]
 
   @type t() :: %__MODULE__{
           agent: Wardrik.AgentID.t(),
-          schedule: Schedule.t(),
+          schedule: WardrikSchedule.t(),
           next_at: DateTime.t(),
           last_at: DateTime.t() | nil,
-          last_outcome: Schedule.outcome() | nil
+          last_outcome: WardrikSchedule.outcome() | nil
         }
 
   # How late a run may be and still count as on time rather than missed: a
@@ -26,25 +24,25 @@ defmodule Wardrik.Schedule.State do
   @grace_ms :timer.minutes(1)
 
   @doc "A schedule for `agent` that has not run yet."
-  @spec new(Wardrik.AgentID.t(), Schedule.t(), DateTime.t()) :: t()
-  def new(%Wardrik.AgentID{} = agent, %Schedule{} = schedule, now) do
-    %__MODULE__{agent: agent, schedule: schedule, next_at: Schedule.next(schedule, now)}
+  @spec new(Wardrik.AgentID.t(), WardrikSchedule.t(), DateTime.t()) :: t()
+  def new(%Wardrik.AgentID{} = agent, %WardrikSchedule{} = schedule, now) do
+    %__MODULE__{agent: agent, schedule: schedule, next_at: WardrikSchedule.next(schedule, now)}
   end
 
   @doc """
   The state with `schedule` in place. A new `every` goes on from `now`; the
   same one keeps the next run already set.
   """
-  @spec configure(t(), Schedule.t(), DateTime.t()) :: t()
+  @spec configure(t(), WardrikSchedule.t(), DateTime.t()) :: t()
   def configure(
         %__MODULE__{schedule: %{every: every}} = state,
-        %Schedule{every: every} = schedule,
+        %WardrikSchedule{every: every} = schedule,
         _now
       ),
       do: %{state | schedule: schedule}
 
-  def configure(%__MODULE__{} = state, %Schedule{} = schedule, now),
-    do: %{state | schedule: schedule, next_at: Schedule.next(schedule, now)}
+  def configure(%__MODULE__{} = state, %WardrikSchedule{} = schedule, now),
+    do: %{state | schedule: schedule, next_at: WardrikSchedule.next(schedule, now)}
 
   @doc """
   What the schedule should do at `now`:
@@ -57,7 +55,7 @@ defmodule Wardrik.Schedule.State do
   @spec due(t(), DateTime.t()) :: {:wait, non_neg_integer()} | {:fire, t()} | {:skip, t()}
   def due(%__MODULE__{} = state, now) do
     late = DateTime.diff(now, state.next_at, :millisecond)
-    advanced = %{state | next_at: Schedule.next(state.schedule, now)}
+    advanced = %{state | next_at: WardrikSchedule.next(state.schedule, now)}
 
     cond do
       late < 0 ->
@@ -72,10 +70,10 @@ defmodule Wardrik.Schedule.State do
   end
 
   @doc "The state after a firing came to `outcome`."
-  @spec fired(t(), Schedule.outcome()) :: t()
+  @spec fired(t(), WardrikSchedule.outcome()) :: t()
   def fired(%__MODULE__{} = state, outcome), do: %{state | last_outcome: outcome}
 
-  @doc "What the registry shows for the schedule. See `Wardrik.Schedule.Status`."
+  @doc "What the registry shows for the schedule. See `WardrikSchedule.Status`."
   @spec meta(t()) :: map()
   def meta(%__MODULE__{} = state) do
     %{

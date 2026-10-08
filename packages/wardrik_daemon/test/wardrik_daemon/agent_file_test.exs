@@ -356,18 +356,25 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ ".md: a compaction keeps less than it waits for"
   end
 
-  test "reads one schedule, or a list of them, into the spec", context do
+  # The schedules the file `text` lists, once it reads.
+  defp scheduled(text, %{tmp_dir: dir} = context) do
+    with {:ok, _spec} <- read(text, context),
+         {:ok, definition} <- AgentFile.parse(Path.join(dir, "triage.md")),
+         do: {:ok, AgentFile.schedules(definition)}
+  end
+
+  test "reads one schedule, or a list of them", context do
     assert {:ok, one} =
-             read(
+             scheduled(
                "---\nschedule:\n  every: \"*/30 * * * *\"\n  prompt: Check the queue.\n---\n",
                context
              )
 
-    assert [%Wardrik.Schedule{name: "schedule-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
-             one.schedules
+    assert [%WardrikSchedule{name: "schedule-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
+             one
 
     assert {:ok, two} =
-             read(
+             scheduled(
                """
                ---
                schedule:
@@ -386,12 +393,11 @@ defmodule WardrikDaemon.AgentFileTest do
              )
 
     assert [
-             %Wardrik.Schedule{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
-             %Wardrik.Schedule{name: "digest", overlap: :queue, missed: :skip}
-           ] = two.schedules
+             %WardrikSchedule{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
+             %WardrikSchedule{name: "digest", overlap: :queue, missed: :skip}
+           ] = two
 
-    assert {:ok, none} = read("---\n---\n", context)
-    assert none.schedules == []
+    assert {:ok, []} = scheduled("---\n---\n", context)
   end
 
   test "a schedule that does not read says which and why", context do
@@ -507,7 +513,7 @@ defmodule WardrikDaemon.AgentFileTest do
                Enum.sort(properties)
 
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
-               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user schedule notify))
+               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user notify))
     end
 
     test "takes its example, which the reader reads" do
@@ -543,7 +549,6 @@ defmodule WardrikDaemon.AgentFileTest do
       assert spec.config.tools == [WardrikBrave.WebSearch, {WardrikMCP, :linear}]
       assert spec.timeout == :timer.seconds(600)
       assert spec.ledger == Wardrik.Ledger.Store
-      assert spec.schedules == nil
     end
 
     test "an empty definition is an agent with no prompt and no tools" do
@@ -592,8 +597,58 @@ defmodule WardrikDaemon.AgentFileTest do
                "policy names WardrikDaemon.AgentFileTest.Policy, which is not a policy in policies/"
     end
 
-    test "takes who the agent is from its key, and its schedules from their own routes" do
-      for key <- ~w(name org user schedule notify) do
+    test "lists the agent's schedules as a file does, and one is set or deleted in it" do
+      id = Wardrik.AgentID.parse!("acme/triage")
+      unnamed = %{"every" => "1h", "prompt" => "Look."}
+
+      assert {:ok, definition} =
+               AgentFile.define(
+                 id,
+                 %{"schedule" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]},
+                 nil
+               )
+
+      assert [%WardrikSchedule{name: "schedule-1"}, %WardrikSchedule{name: "schedule-2"}] =
+               AgentFile.schedules(definition)
+
+      assert {:ok, definition, :changed, %WardrikSchedule{every: {:interval, 7_200_000}}} =
+               AgentFile.put_schedule(definition, "schedule-1", %{unnamed | "every" => "2h"})
+
+      assert {:ok, definition, :created, %WardrikSchedule{name: "sweep"}} =
+               AgentFile.put_schedule(definition, "sweep", unnamed)
+
+      assert ~w(schedule-1 schedule-2 sweep) ==
+               Enum.map(AgentFile.schedules(definition), & &1.name)
+
+      assert {:error, "schedule sweep: prompt is a string" <> _rest} =
+               AgentFile.put_schedule(definition, "sweep", %{"every" => "1h"})
+
+      assert {:error, "schedule sweep: prompt_file names a file" <> _rest} =
+               AgentFile.put_schedule(definition, "sweep", %{
+                 "every" => "1h",
+                 "prompt_file" => "A.md"
+               })
+
+      {:ok, definition} = AgentFile.delete_schedule(definition, "schedule-2")
+      {:ok, definition} = AgentFile.delete_schedule(definition, "schedule-1")
+      assert {:error, :not_found} = AgentFile.delete_schedule(definition, "schedule-1")
+      {:ok, definition} = AgentFile.delete_schedule(definition, "sweep")
+      assert AgentFile.fields(definition) == %{}
+
+      assert {:error, "schedule 1: every: \"10s\" is shorter than a minute"} =
+               AgentFile.definition(id, %{"schedule" => %{"every" => "10s", "prompt" => "Look."}})
+    end
+
+    test "answers one schedule as a list of one", context do
+      {:ok, _spec} = read("---\nschedule: {every: 1h, prompt: Look.}\n---\n", context)
+      {:ok, definition} = AgentFile.parse(Path.join(context.tmp_dir, "triage.md"))
+
+      assert %{"schedule" => [%{"every" => "1h", "prompt" => "Look."}]} =
+               AgentFile.fields(definition)
+    end
+
+    test "takes who the agent is from its key" do
+      for key <- ~w(name org user notify) do
         assert {:error, message} =
                  AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{key => "x"})
 
@@ -670,8 +725,8 @@ defmodule WardrikDaemon.AgentFileTest do
   describe "prompt_file" do
     test "asks the agent to read and follow a file of its workspace when the schedule fires",
          context do
-      assert {:ok, spec} =
-               read(
+      assert {:ok, schedules} =
+               scheduled(
                  """
                  ---
                  tools: [files]
@@ -684,7 +739,7 @@ defmodule WardrikDaemon.AgentFileTest do
                  context
                )
 
-      assert [%Wardrik.Schedule{name: "heartbeat", prompt: prompt}] = spec.schedules
+      assert [%WardrikSchedule{name: "heartbeat", prompt: prompt}] = schedules
       assert prompt =~ "It is time for heartbeat. Read HEARTBEAT.md with read_file"
     end
 

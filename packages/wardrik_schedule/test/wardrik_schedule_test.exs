@@ -1,10 +1,8 @@
-defmodule Wardrik.ScheduleTest do
+defmodule WardrikScheduleTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Agent.Spec
   alias Wardrik.Event
   alias Wardrik.Fleet
-  alias Wardrik.Schedule
   alias Wardrik.Test.AgentRunners
 
   # Short enough to fire within an assert_receive, long enough that a test
@@ -13,7 +11,12 @@ defmodule Wardrik.ScheduleTest do
 
   setup do
     key = Wardrik.Test.Fleet.id("scheduled")
-    on_exit(fn -> Fleet.forget(key) end)
+
+    on_exit(fn ->
+      :ok = WardrikSchedule.sync(key, [])
+      Fleet.forget(key)
+    end)
+
     %{key: key}
   end
 
@@ -24,45 +27,70 @@ defmodule Wardrik.ScheduleTest do
 
   describe "new/2" do
     test "reads a duration as an interval" do
-      assert %Schedule{every: {:interval, 1_800_000}} =
-               Schedule.new("sweep", every: "30m", prompt: "Look.")
+      assert %WardrikSchedule{every: {:interval, 1_800_000}} =
+               WardrikSchedule.new("sweep", every: "30m", prompt: "Look.")
 
-      assert %Schedule{every: {:interval, 86_400_000}} =
-               Schedule.new("sweep", every: "1d", prompt: "Look.")
+      assert %WardrikSchedule{every: {:interval, 86_400_000}} =
+               WardrikSchedule.new("sweep", every: "1d", prompt: "Look.")
     end
 
     test "keeps a cron expression as the text it read" do
-      assert %Schedule{every: {:cron, "*/30 * * * *"}} =
-               Schedule.new("sweep", every: " */30 * * * * ", prompt: "Look.")
+      assert %WardrikSchedule{every: {:cron, "*/30 * * * *"}} =
+               WardrikSchedule.new("sweep", every: " */30 * * * * ", prompt: "Look.")
     end
 
     test "refuses what it cannot read" do
       assert_raise ArgumentError, ~r/shorter than a minute/, fn ->
-        Schedule.new("sweep", every: "30s", prompt: "Look.")
+        WardrikSchedule.new("sweep", every: "30s", prompt: "Look.")
       end
 
       assert_raise ArgumentError, ~r/every: .*not five fields/, fn ->
-        Schedule.new("sweep", every: "every half hour", prompt: "Look.")
+        WardrikSchedule.new("sweep", every: "every half hour", prompt: "Look.")
       end
 
       assert_raise ArgumentError, ~r/prompt is a string/, fn ->
-        Schedule.new("sweep", every: "30m")
+        WardrikSchedule.new("sweep", every: "30m")
       end
 
       assert_raise ArgumentError, ~r/may not contain "\/"/, fn ->
-        Schedule.new("a/b", every: "30m", prompt: "Look.")
+        WardrikSchedule.new("a/b", every: "30m", prompt: "Look.")
       end
 
       assert_raise ArgumentError, ~r/overlap is one of :skip, :queue/, fn ->
-        Schedule.new("sweep", every: "30m", prompt: "Look.", overlap: :interrupt)
+        WardrikSchedule.new("sweep", every: "30m", prompt: "Look.", overlap: :interrupt)
       end
+    end
+  end
+
+  describe "encode/1" do
+    test "writes a schedule as decode/2 reads it" do
+      for fields <- [
+            %{
+              "every" => "*/30 * * * *",
+              "prompt" => "Look.",
+              "overlap" => "queue",
+              "jitter" => 30
+            },
+            %{"every" => "90m", "prompt" => "Look.", "missed" => "skip"}
+          ] do
+        {:ok, schedule} = WardrikSchedule.decode("sweep", fields)
+        encoded = WardrikSchedule.encode(schedule)
+
+        assert {:ok, ^schedule} = WardrikSchedule.decode("sweep", Map.delete(encoded, "name"))
+        assert encoded["name"] == "sweep"
+      end
+
+      assert %{"every" => "2h", "overlap" => "skip", "missed" => "run_once", "jitter" => 0} =
+               WardrikSchedule.encode(
+                 WardrikSchedule.new("sweep", every: "120m", prompt: "Look.")
+               )
     end
   end
 
   describe "decode/2" do
     test "reads a schedule's fields written as text" do
       assert {:ok,
-              %Schedule{
+              %WardrikSchedule{
                 name: "sweep",
                 every: {:cron, "*/30 * * * *"},
                 prompt: "Look.",
@@ -70,7 +98,7 @@ defmodule Wardrik.ScheduleTest do
                 missed: :skip,
                 jitter: 30_000
               }} =
-               Schedule.decode("sweep", %{
+               WardrikSchedule.decode("sweep", %{
                  "every" => "*/30 * * * *",
                  "prompt" => "Look.",
                  "overlap" => "queue",
@@ -78,8 +106,8 @@ defmodule Wardrik.ScheduleTest do
                  "jitter" => 30
                })
 
-      assert {:ok, %Schedule{every: {:interval, 1_800_000}, overlap: :skip, jitter: 0}} =
-               Schedule.decode("sweep", %{"every" => "30m", "prompt" => "Look."})
+      assert {:ok, %WardrikSchedule{every: {:interval, 1_800_000}, overlap: :skip, jitter: 0}} =
+               WardrikSchedule.decode("sweep", %{"every" => "30m", "prompt" => "Look."})
     end
 
     test "says what does not read" do
@@ -95,7 +123,7 @@ defmodule Wardrik.ScheduleTest do
              "jitter is a whole number of seconds"},
             {%{"every" => "30s", "prompt" => "Look."}, ~s(every: "30s" is shorter than a minute)}
           ] do
-        assert Schedule.decode("sweep", fields) == {:error, message}
+        assert WardrikSchedule.decode("sweep", fields) == {:error, message}
       end
     end
   end
@@ -104,7 +132,7 @@ defmodule Wardrik.ScheduleTest do
     test "asks the agent, and says so on its topic", %{key: key} do
       spawn_agent(key, {AgentRunners, :echo, [self(), "done"]})
 
-      {:ok, _pid} = Schedule.put(key, "tick", every: @every, prompt: "Check the queue.")
+      {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, [user: "Check the queue."]}
       assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
@@ -113,7 +141,7 @@ defmodule Wardrik.ScheduleTest do
     test "leaves a running agent be when it skips overlaps", %{key: key} do
       spawn_agent(key, {AgentRunners, :blocking, [self(), "done"]})
 
-      {:ok, _pid} = Schedule.put(key, "tick", every: @every, prompt: "Check the queue.")
+      {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, _context, turn}
       assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
@@ -125,7 +153,11 @@ defmodule Wardrik.ScheduleTest do
       spawn_agent(key, {AgentRunners, :blocking, [self(), "done"]})
 
       {:ok, _pid} =
-        Schedule.put(key, "tick", every: @every, prompt: "Check the queue.", overlap: :queue)
+        WardrikSchedule.put(key, "tick",
+          every: @every,
+          prompt: "Check the queue.",
+          overlap: :queue
+        )
 
       assert_receive {:turn, _context, turn}
       assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
@@ -136,7 +168,7 @@ defmodule Wardrik.ScheduleTest do
     test "says there is no agent to ask when none runs under the key", %{key: key} do
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
 
-      {:ok, _pid} = Schedule.put(key, "tick", every: @every, prompt: "Check the queue.")
+      {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
     end
@@ -144,42 +176,23 @@ defmodule Wardrik.ScheduleTest do
 
   describe "list/1 and sync/2" do
     test "lists an agent's schedules with their next run", %{key: key} do
-      {:ok, _pid} = Schedule.put(key, "sweep", every: "@daily", prompt: "Look.")
+      {:ok, _pid} = WardrikSchedule.put(key, "sweep", every: "@daily", prompt: "Look.")
 
-      assert [%Schedule.Status{name: "sweep", agent: ^key, every: {:cron, "@daily"}} = status] =
-               Schedule.for_agent(key)
+      assert [
+               %WardrikSchedule.Status{name: "sweep", agent: ^key, every: {:cron, "@daily"}} =
+                 status
+             ] =
+               WardrikSchedule.for_agent(key)
 
       assert DateTime.compare(status.next_at, DateTime.utc_now()) == :gt
     end
 
     test "puts the schedules it is given and deletes the rest", %{key: key} do
-      {:ok, _pid} = Schedule.put(key, "old", every: "@daily", prompt: "Look.")
-      daily = Schedule.new("new", every: "@daily", prompt: "Look.")
+      {:ok, _pid} = WardrikSchedule.put(key, "old", every: "@daily", prompt: "Look.")
+      daily = WardrikSchedule.new("new", every: "@daily", prompt: "Look.")
 
-      assert :ok = Schedule.sync(key, [daily])
-      assert [%{name: "new"}] = Schedule.for_agent(key)
-    end
-  end
-
-  describe "the fleet" do
-    test "put/1 brings an agent's schedules to its spec, or leaves them, and forget/1 deletes them" do
-      name = "specced-#{System.unique_integer([:positive])}"
-      daily = Schedule.new("sweep", every: "@daily", prompt: "Look.")
-      spec = Spec.new(id: Wardrik.AgentID.new!(name, org: "test"), schedules: [daily])
-      key = spec.id
-
-      {:ok, _pid} = Fleet.put(spec)
-      assert [%{name: "sweep"}] = Schedule.for_agent(key)
-
-      {:ok, _pid} = Fleet.put(%{spec | schedules: nil})
-      assert [%{name: "sweep"}] = Schedule.for_agent(key)
-
-      {:ok, _pid} = Fleet.put(%{spec | schedules: []})
-      assert Schedule.for_agent(key) == []
-
-      {:ok, _pid} = Fleet.put(spec)
-      assert :ok = Fleet.forget(key)
-      assert Schedule.for_agent(key) == []
+      assert :ok = WardrikSchedule.sync(key, [daily])
+      assert [%{name: "new"}] = WardrikSchedule.for_agent(key)
     end
   end
 end

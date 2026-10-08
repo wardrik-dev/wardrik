@@ -277,7 +277,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   defp asked(key) do
     now = DateTime.utc_now()
-    for schedule <- Wardrik.Schedule.for_agent(key), do: {"schedule", schedule(schedule, now)}
+    for schedule <- WardrikSchedule.for_agent(key), do: {"schedule", schedule(schedule, now)}
   end
 
   defp waiting(snapshot) do
@@ -312,7 +312,7 @@ defmodule WardrikDaemon.CLI.Agents do
     now = DateTime.utc_now()
 
     rows =
-      for schedule <- Wardrik.Schedule.list(prefix),
+      for schedule <- WardrikSchedule.list(prefix),
           do: "  #{schedule.agent}/#{schedule.name}  #{schedule(schedule, now)}"
 
     under = to_string(prefix)

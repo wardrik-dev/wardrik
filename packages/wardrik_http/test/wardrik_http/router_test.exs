@@ -9,7 +9,6 @@ defmodule WardrikHTTP.RouterTest do
   alias Wardrik.Event.Log
   alias Wardrik.Grant
   alias Wardrik.LLM.Config
-  alias Wardrik.Schedule
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.Fleet
@@ -34,17 +33,18 @@ defmodule WardrikHTTP.RouterTest do
 
     def put(key, fields, _grant) do
       config = Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
-      {:ok, Spec.new(id: key, config: config, schedules: nil)}
+      {:ok, Spec.new(id: key, config: config)}
     end
   end
 
-  # Keeps what it is sent in Wardrik.Store, and refuses to delete an agent
-  # whose name holds "-owned".
+  # Keeps what it is sent in Wardrik.Store, schedules beside definitions, and
+  # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
     @behaviour WardrikHTTP.Definition
 
     @ns :router_test_definitions
+    @schedules :router_test_schedules
 
     @impl true
     def put(key, definition, grant) do
@@ -71,7 +71,31 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     @impl true
-    def editable(key) do
+    def put_schedule(_key, _name, %{"refuse" => message}), do: {:error, message}
+
+    def put_schedule(key, name, fields) do
+      with :ok <- editable(key),
+           {:ok, _definition} <- get(key) do
+        status = if scheduled(key, name), do: :changed, else: :created
+        defaults = %{"name" => name, "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
+        schedule = Map.merge(defaults, fields)
+        {:ok, _vsn} = Wardrik.Store.put(@schedules, "#{key}//#{name}", schedule)
+        {:ok, status, schedule}
+      end
+    end
+
+    @impl true
+    def delete_schedule(key, name) do
+      with :ok <- editable(key) do
+        if scheduled(key, name),
+          do: Wardrik.Store.delete(@schedules, "#{key}//#{name}"),
+          else: {:error, :not_found}
+      end
+    end
+
+    defp scheduled(key, name), do: Wardrik.Store.get(@schedules, "#{key}//#{name}")
+
+    defp editable(key) do
       if String.contains?(key.name, "-owned"),
         do: {:error, :conflict, "#{key} belongs to a file."},
         else: :ok
@@ -564,15 +588,6 @@ defmodule WardrikHTTP.RouterTest do
       assert Agent.status(key).model == "openai:gpt-5"
     end
 
-    test "leave the agent's schedules as they are", %{api: api} do
-      key = defined_key()
-      {:ok, %{status: 201}} = define(api, key, %{})
-      {:ok, _pid} = Schedule.put(key, "sweep", every: "30m", prompt: "Look.")
-
-      assert {:ok, %{status: 200}} = define(api, key, %{"model" => "openai:gpt-5"})
-      assert [%{name: "sweep"}] = Schedule.for_agent(key)
-    end
-
     test "that do not read, or are not an object, start nothing", %{api: api} do
       key = defined_key()
 
@@ -725,10 +740,8 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key)
     end
 
-    test "may refuse to change an agent's schedules, which are left be", %{kept: kept} do
-      {key, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
-      {:ok, _pid} = Schedule.put(key, "sweep", every: "1h", prompt: "Look.")
-      on_exit(fn -> Schedule.sync(key, []) end)
+    test "may refuse to change an agent's schedules", %{kept: kept} do
+      key = Fleet.id("kept-owned")
 
       assert {:ok, %{status: 409, body: body}} =
                Req.put(kept,
@@ -738,66 +751,60 @@ defmodule WardrikHTTP.RouterTest do
 
       assert body["error"]["message"] == "#{key} belongs to a file."
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
-      assert [%{every: {:interval, 3_600_000}}] = Schedule.for_agent(key)
     end
   end
 
   describe "schedules" do
+    setup %{api: api} do
+      kept = listener(api, definition: Kept)
+      key = Fleet.id("scheduled")
+      {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
+      on_exit(fn -> Wardrik.Fleet.forget(key) end)
+      %{kept: kept, key: key}
+    end
+
     defp schedule(api, key, name, body),
       do: Req.put(api, url: "/v1/agents/#{key}/schedules/#{name}", json: body)
 
-    test "are put on an agent, then changed", %{api: api} do
-      {key, _agent} = echo_agent()
+    test "are set in the agent's definition, then changed", %{kept: kept, key: key} do
+      assert {:ok, %{status: 201, body: %{"schedule" => %{"name" => "sweep", "every" => "1h"}}}} =
+               schedule(kept, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
-      assert {:ok, %{status: 201, body: %{"schedule" => schedule}}} =
-               schedule(api, key, "sweep", %{"every" => "60m", "prompt" => "Look."})
-
-      assert schedule == %{
-               "name" => "sweep",
-               "every" => "1h",
-               "prompt" => "Look.",
-               "overlap" => "skip",
-               "missed" => "run_once",
-               "jitter" => 0
-             }
-
-      assert {:ok, %{status: 200, body: %{"schedule" => schedule}}} =
-               schedule(api, key, "sweep", %{
-                 "every" => "*/30 * * * *",
-                 "prompt" => "Look again.",
-                 "overlap" => "queue",
-                 "jitter" => 5
-               })
-
-      assert %{"every" => "*/30 * * * *", "overlap" => "queue", "jitter" => 5} = schedule
-      assert [%{name: "sweep", every: {:cron, "*/30 * * * *"}}] = Schedule.for_agent(key)
+      assert {:ok, %{status: 200, body: %{"schedule" => %{"every" => "2h"}}}} =
+               schedule(kept, key, "sweep", %{"every" => "2h", "prompt" => "Look."})
     end
 
-    test "that do not read, or are for an agent that does not run, are refused", %{api: api} do
-      {key, _agent} = echo_agent()
-
+    test "that do not read, or are for an agent with no definition kept, are refused",
+         %{kept: kept, key: key} do
       assert {:ok, %{status: 400, body: body}} =
-               schedule(api, key, "sweep", %{"every" => "30s", "prompt" => "Look."})
+               schedule(kept, key, "sweep", %{"refuse" => "every is not a time"})
 
-      assert body["error"]["message"] == ~s(every: "30s" is shorter than a minute)
-
-      assert {:ok, %{status: 404}} =
-               schedule(api, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
-
-      assert Schedule.for_agent(key) == []
-    end
-
-    test "are deleted, and one that is not there is not found", %{api: api} do
-      {key, _agent} = echo_agent()
-      {:ok, %{status: 201}} = schedule(api, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
-
-      assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
-      assert Schedule.for_agent(key) == []
+      assert body["error"]["message"] == "every is not a time"
 
       assert {:ok, %{status: 404, body: body}} =
-               Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
+               schedule(kept, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
+
+      assert body["error"]["message"] == "test/nobody has no definition kept."
+    end
+
+    test "are deleted, and one that is not there is not found", %{kept: kept, key: key} do
+      {:ok, %{status: 201}} =
+        schedule(kept, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
+
+      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
+
+      assert {:ok, %{status: 404, body: body}} =
+               Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
 
       assert body["error"]["message"] == "#{key} has no schedule sweep."
+    end
+
+    test "are not set where the server keeps no definitions", %{api: api, key: key} do
+      assert {:ok, %{status: 501, body: body}} =
+               schedule(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
+
+      assert body["error"]["message"] == "This server does not schedule agents over HTTP."
+      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
     end
   end
 
@@ -950,8 +957,7 @@ defmodule WardrikHTTP.RouterTest do
       for name <- @resources, example <- schema(name)["examples"], do: conforms(example, name)
     end
 
-    test "describe the agents listed, their snapshots idle and parked, and a schedule",
-         %{api: api} do
+    test "describe the agents listed, and their snapshots idle and parked", %{api: api} do
       {idle, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
@@ -964,14 +970,6 @@ defmodule WardrikHTTP.RouterTest do
         {:ok, %{status: 200, body: snapshot}} = Req.get(api, url: "/v1/agents/#{key}")
         conforms(snapshot, "agent_snapshot")
       end
-
-      body = %{"every" => "*/30 * * * *", "prompt" => "Look.", "jitter" => 5}
-      conforms(body, "schedule_definition")
-
-      {:ok, %{status: 201, body: %{"schedule" => schedule}}} =
-        Req.put(api, url: "/v1/agents/#{idle}/schedules/sweep", json: body)
-
-      conforms(schedule, "schedule")
     end
 
     test "describe every error", %{api: api} do

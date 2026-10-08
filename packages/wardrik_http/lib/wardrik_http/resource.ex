@@ -28,14 +28,6 @@ defmodule WardrikHTTP.Resource do
   `run` is `null` between runs, and `sequence` is the last event the agent's
   log has written: read and follow the log from there.
 
-  ## A schedule
-
-      {"name": "sweep", "every": "*/30 * * * *", "prompt": "Check the queue.",
-       "overlap": "skip", "missed": "run_once", "jitter": 0}
-
-  `every` is a cron expression, or a duration such as `"30m"`, and `jitter`
-  is in seconds.
-
   ## An error
 
       {"error": {"type": "not_found", "message": "No agent runs under acme/triage."}}
@@ -76,28 +68,6 @@ defmodule WardrikHTTP.Resource do
       "sequence" => snapshot.sequence
     }
     |> Value.put("provider", provider && %{"name" => provider})
-  end
-
-  @doc "A schedule, as it was put."
-  @spec schedule(Wardrik.Schedule.t()) :: map()
-  def schedule(%Wardrik.Schedule{} = schedule) do
-    %{
-      "name" => schedule.name,
-      "every" => every(schedule.every),
-      "prompt" => schedule.prompt,
-      "overlap" => to_string(schedule.overlap),
-      "missed" => to_string(schedule.missed),
-      "jitter" => div(schedule.jitter, 1_000)
-    }
-  end
-
-  @units [{"d", 86_400_000}, {"h", 3_600_000}, {"m", 60_000}, {"s", 1_000}]
-
-  defp every({:cron, text}), do: text
-
-  defp every({:interval, ms}) do
-    {unit, size} = Enum.find(@units, fn {_unit, size} -> rem(ms, size) == 0 end)
-    "#{div(ms, size)}#{unit}"
   end
 
   @doc "Where a person authorizes a waiting call: the page, and the code to enter where one is needed."
