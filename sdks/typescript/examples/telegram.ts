@@ -75,7 +75,7 @@ async function follow() {
         const n = String(++buttons);
         waiting.set(n, interrupt.id);
         const call = calls.get(interrupt.tool_call_id ?? "");
-        const outside = interrupt.outside_content
+        const outside = interrupt.labels?.includes("outside")
           ? "\n\nIt has read content from outside, which may be what asked for this."
           : "";
         await say(`${interrupt.message}${outside}${call ? `\n\n${call}` : ""}`, {

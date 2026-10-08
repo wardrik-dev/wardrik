@@ -44,14 +44,14 @@ defmodule WardrikWorkspace do
       tools: [files]
       context: [SOUL.md]
 
-  ## Outside content
+  ## What a file holds
 
-  A file records whether a run that had read content from outside wrote any
-  of what it holds: an append or an edit keeps the mark the file had, and
-  only a write that replaces the whole file takes its writer's alone. Reading
-  it, or listing or finding it, taints the reader's run, so a finding a
-  tainted run left in a shared tree carries what that run read to every
-  agent that reads it.
+  A file records the `Wardrik.Label`s of what the runs that wrote it had
+  read: an append or an edit keeps the labels the file had, and only a write
+  that replaces the whole file takes its writer's alone. Reading it, or
+  listing or finding it, labels the reader's run with them, so a finding a
+  run left in a shared tree after reading content from outside carries that
+  to every agent that reads it.
   """
 
   @behaviour Wardrik.Tool

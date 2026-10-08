@@ -37,5 +37,5 @@ tree. A `MEMORY.md` it keeps there is something it finds in every turn without
 filling its context.
 
 A policy names a file tool's call by its path, as `write_file(notes/*)`. A file
-remembers whether a turn that had read content from outside wrote any of it,
-and reading it marks the reader's turn the same way.
+remembers the labels of what the turns that wrote it had read, such as content
+from outside, and reading it labels the reader's turn the same way.

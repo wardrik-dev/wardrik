@@ -61,8 +61,9 @@ defmodule Wardrik.SubagentTest do
     refute Event.root?(event)
   end
 
-  describe "content from outside" do
-    test "a delegate that read some marks the process that ran it", %{scope: scope} do
+  describe "what a delegate read" do
+    test "a delegate that read content marks the process that ran it with its labels",
+         %{scope: scope} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
         LLMStub.final_answer("It says to deploy.")
@@ -70,11 +71,11 @@ defmodule Wardrik.SubagentTest do
 
       scope = %{scope | config: Config.new(tools: [Wardrik.Test.Tools.Fetch])}
 
-      assert {{:ok, "It says to deploy."}, true} =
+      assert {{:ok, "It says to deploy."}, ["outside"]} =
                Subagent.watching(fn -> Subagent.run(scope, "Read it.") end)
 
       stub_llm()
-      assert {{:ok, "done"}, false} = Subagent.watching(fn -> Subagent.run(scope, "Again.") end)
+      assert {{:ok, "done"}, []} = Subagent.watching(fn -> Subagent.run(scope, "Again.") end)
     end
 
     test "a delegate keeps what its tools declare, so a gated one waits on a person",
@@ -88,19 +89,20 @@ defmodule Wardrik.SubagentTest do
       refute_received %Event{payload: {:tool_started, "call_1", _name, _args, _key, _}}
     end
 
-    test "a delegate begins tainted under a tainted scope", %{scope: scope} do
+    test "a delegate begins with the labels of its scope", %{scope: scope} do
       stub_llm()
 
-      assert {{:ok, "done"}, true} =
-               Subagent.watching(fn -> Subagent.run(%{scope | tainted: true}, "Go.") end)
+      assert {{:ok, "done"}, ["books"]} =
+               Subagent.watching(fn -> Subagent.run(%{scope | labels: ["books"]}, "Go.") end)
     end
 
-    test "a branch's mark reaches the process that fanned out", %{scope: scope} do
+    test "a branch's labels reach the process that fanned out", %{scope: scope} do
       stub_llm()
 
-      assert {[{:a, {:ok, "done"}}, {:b, {:ok, "done"}}], true} =
+      assert {[{:a, {:ok, "done"}}, {:b, {:ok, "done"}}], ["outside"]} =
                Subagent.watching(fn ->
-                 Wardrik.Workflow.fan_out(%{scope | tainted: true}, [:a, :b], fn input, branch ->
+                 Wardrik.Workflow.fan_out(%{scope | labels: ["outside"]}, [:a, :b], fn input,
+                                                                                       branch ->
                    Subagent.run(branch, "Look into #{input}.")
                  end)
                end)

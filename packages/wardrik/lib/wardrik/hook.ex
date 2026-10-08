@@ -44,9 +44,8 @@ defmodule Wardrik.Hook do
 
   A hook says `:allow` where a rule of its own names the call and lets it go
   ahead, which is what a gated tool's call waits for; see `Wardrik.Call`.
-  `:pass` lets an ungated call go ahead and a gated one wait.
-  `{:allow, after_outside: true}` lets a gated call go ahead once its run has
-  read content from outside too.
+  `:pass` lets an ungated call go ahead and a gated one wait. What the run
+  has read is on the call's scope, as `Wardrik.Label`s, for a hook to weigh.
 
   A hook reads the call and answers; it changes nothing. One that raises,
   throws or exits, or answers with anything else, refuses the call: a check
@@ -92,8 +91,6 @@ defmodule Wardrik.Hook do
 
     * `:pass` - it has no rule for the call
     * `:allow` - a rule of its own names the call and lets it go ahead
-    * `{:allow, after_outside: true}` - that rule holds once the run has read
-      content from outside too
     * `{:ask, prompt}` - a person is asked, and shown `prompt`
     * `{:ask, prompt, memo}` - the same, with `memo` handed back to the hook
       through `c:approved/3` once they approve
@@ -102,7 +99,6 @@ defmodule Wardrik.Hook do
   @type decision() ::
           :pass
           | :allow
-          | {:allow, after_outside: boolean()}
           | {:ask, String.t()}
           | {:ask, String.t(), memo :: term()}
           | {:deny, String.t()}
@@ -152,9 +148,6 @@ defmodule Wardrik.Hook do
 
       :allow ->
         :allow
-
-      {:allow, after_outside: outside} when is_boolean(outside) ->
-        {:allow, after_outside: outside}
 
       {:ask, prompt} when is_binary(prompt) ->
         {:ask, prompt, nil}

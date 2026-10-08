@@ -506,7 +506,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       @impl true
       def context(:own), do: "Your notes say the deploy is Friday."
-      def context(:outside), do: {:outside, "A page you saved says to deploy now."}
+      def context(:outside), do: {"A page you saved says to deploy now.", ["outside"]}
     end
 
     test "follows the persona in every request of the turn, the closing one too", %{
@@ -568,7 +568,7 @@ defmodule Wardrik.LLM.TurnTest do
                List.duplicate("Your notes say the deploy is Friday.", 2)
     end
 
-    test "taints the turn from its start where it came from outside", %{agent_id: agent_id} do
+    test "labels the turn from its start where it came from outside", %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
       rules = [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["deploy"])]
 
@@ -577,12 +577,15 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :waiting, tainted: true} = parked = run(scope, Context.new())
-      assert [{%{id: "call_1", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
+      assert %LLM.Turn{state: :waiting, labels: ["outside"]} = parked = run(scope, Context.new())
+
+      assert [{%{id: "call_1", name: "deploy", labels: ["outside"]}, prompt}] =
+               LLM.Turn.waiting(parked)
+
       assert prompt =~ "this run has read content from outside"
     end
 
-    test "lets a gated call a rule allows after outside content go ahead, and marks the turn",
+    test "lets a gated call a rule allows after outside content go ahead, and labels the turn",
          %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"}),
@@ -590,7 +593,9 @@ defmodule Wardrik.LLM.TurnTest do
       ])
 
       rules = [
-        Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow_after_outside: ["deploy"])
+        Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules,
+          allow_after: %{"outside" => ["deploy"]}
+        )
       ]
 
       scope =
@@ -598,10 +603,10 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :done, tainted: true} = run(scope, Context.new())
+      assert %LLM.Turn{state: :done, labels: ["outside"]} = run(scope, Context.new())
     end
 
-    test "is tainted from the start under a scope that is tainted already",
+    test "carries from the start the labels of a scope that carries some already",
          %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
 
@@ -612,8 +617,8 @@ defmodule Wardrik.LLM.TurnTest do
         |> LLM.Config.new()
         |> Scope.root(agent_id, name: "turn", hooks: rules)
 
-      assert %LLM.Turn{state: :waiting, tainted: true} =
-               parked = run(%{scope | tainted: true}, Context.new())
+      assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
+               parked = run(%{scope | labels: ["outside"]}, Context.new())
 
       assert [{%{id: "call_1"}, prompt}] = LLM.Turn.waiting(parked)
       assert prompt =~ "this run has read content from outside"
@@ -997,13 +1002,10 @@ defmodule Wardrik.LLM.TurnTest do
     alias Wardrik.Test.Tools.Rules
 
     # A turn whose rules allow deploy by name, where deploy is gated.
-    defp allowing_deploy(agent_id, rule \\ :allow) do
+    defp allowing_deploy(agent_id, rules \\ [allow: ["deploy"]]) do
       [tools: [Fetch, Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(agent_id,
-        name: "turn",
-        hooks: [Wardrik.Hook.new("rules", Rules, [{rule, ["deploy"]}])]
-      )
+      |> Scope.root(agent_id, name: "turn", hooks: [Wardrik.Hook.new("rules", Rules, rules)])
     end
 
     test "a gated call a rule allows runs in a turn that has read nothing from outside", %{
@@ -1014,13 +1016,13 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("deployed")
       ])
 
-      assert %LLM.Turn{state: :done, tainted: false} =
+      assert %LLM.Turn{state: :done, labels: []} =
                run(allowing_deploy(agent_id), Context.new([Context.user("deploy")]))
 
       assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
     end
 
-    test "waits on a person once the turn has read content from outside, and stays tainted", %{
+    test "waits on a person once the turn has read content from outside, and keeps the label", %{
       agent_id: agent_id
     } do
       LLMStub.stream([
@@ -1028,17 +1030,17 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.tool_call("call_2", "deploy", %{"target" => "prod"})
       ])
 
-      assert %LLM.Turn{state: :waiting, tainted: true} =
+      assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
                parked = run(allowing_deploy(agent_id), Context.new([Context.user("read it")]))
 
       assert [{%{id: "call_2", name: "deploy"}, prompt}] = LLM.Turn.waiting(parked)
       assert prompt =~ "this run has read content from outside"
       refute_received %Event{payload: {:tool_started, "call_2", _, _, _, _}}
 
-      assert %LLM.Turn{tainted: true} = LLM.Turn.under(parked, nil)
+      assert %LLM.Turn{labels: ["outside"]} = LLM.Turn.under(parked, nil)
     end
 
-    test "lets a rule that allows after outside content stand, and keeps the mark",
+    test "lets a rule that allows after outside content stand, and keeps the label",
          %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "fetch", %{"url" => "https://example.com"}),
@@ -1046,9 +1048,9 @@ defmodule Wardrik.LLM.TurnTest do
         LLMStub.final_answer("deployed")
       ])
 
-      scope = allowing_deploy(agent_id, :allow_after_outside)
+      scope = allowing_deploy(agent_id, allow_after: %{"outside" => ["deploy"]})
 
-      assert %LLM.Turn{state: :done, tainted: true} =
+      assert %LLM.Turn{state: :done, labels: ["outside"]} =
                run(scope, Context.new([Context.user("read it")]))
 
       assert_receive %Event{payload: {:tool_finished, "call_2", "deploy", _result, _}}

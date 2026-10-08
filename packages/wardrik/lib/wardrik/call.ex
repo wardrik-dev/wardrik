@@ -11,7 +11,7 @@ defmodule Wardrik.Call do
 
   A tool is handed the call's arguments and a `Wardrik.Tool.Context`, and what
   it answers the runtime writes on the call with `answer/2`, `park/3`,
-  `doubt/2`, `served/2` and `taint/1`.
+  `doubt/2`, `served/2` and `label/2`.
 
   What the call goes to is its `:target`, a `Wardrik.Call.Tool` or a
   `Wardrik.Call.Model`, and a hook matches on it:
@@ -36,8 +36,6 @@ defmodule Wardrik.Call do
     * `:denied` - the `Wardrik.Call.Denial` that refused it
     * `:asks` - the `Wardrik.Call.Ask`s it waits on, in the order they were asked
     * `:allowed` - the names of the hooks that allowed it by name
-    * `:allowed_after_outside` - those of them that allowed it after content
-      from outside too
 
   What became of it, set by the runtime:
 
@@ -46,8 +44,7 @@ defmodule Wardrik.Call do
       or how a model call ended, as `t:Wardrik.LLM.Dispatch.outcome/0`
     * `:served_by` - what answered a tool call, where its tool said, as
       `t:served/0`
-    * `:tainted` - whether what it answered holds content from outside; see
-      `taint/1`
+    * `:labels` - what its answer holds, as `Wardrik.Label`s; see `label/2`
 
   `:private` is for Wardrik and the libraries built on it.
 
@@ -72,12 +69,10 @@ defmodule Wardrik.Call do
 
   A call to a gated tool (see `Wardrik.Tool.Annotations`) goes ahead only where
   a hook allowed it by name, with `:allow`, and waits on its tool otherwise.
-  While the run it belongs to has read content from outside (see
-  `Wardrik.Scope`'s `:tainted`), it waits on its tool even so, since what the
-  run read may be what asked for it, unless a hook allowed it with
-  `{:allow, after_outside: true}`. A deny still refuses it and an ask still asks. A call
-  to a tool that is not gated goes ahead as the hooks said, allowed by name or
-  not.
+  A deny still refuses it and an ask still asks. A call to a tool that is not
+  gated goes ahead as the hooks said, allowed by name or not. What the run it
+  belongs to has read, its scope's `:labels`, is for the hooks to weigh;
+  `WardrikPolicy` holds a gated call after content from outside.
   """
 
   alias Wardrik.Call.Ask
@@ -98,8 +93,7 @@ defmodule Wardrik.Call do
     state: :unchecked,
     asks: [],
     allowed: [],
-    allowed_after_outside: [],
-    tainted: false,
+    labels: [],
     private: %{}
   ]
 
@@ -127,8 +121,7 @@ defmodule Wardrik.Call do
           denied: Denial.t() | nil,
           asks: [Ask.t()],
           allowed: [String.t()],
-          allowed_after_outside: [String.t()],
-          tainted: boolean(),
+          labels: [Wardrik.Label.t()],
           result: term(),
           served_by: served() | nil,
           private: map()
@@ -164,14 +157,6 @@ defmodule Wardrik.Call do
   def decided(%__MODULE__{} = call, by, :allow),
     do: %{call | allowed: Enum.uniq(call.allowed ++ [by])}
 
-  def decided(%__MODULE__{} = call, by, {:allow, after_outside: true}) do
-    call = decided(call, by, :allow)
-    %{call | allowed_after_outside: Enum.uniq(call.allowed_after_outside ++ [by])}
-  end
-
-  def decided(%__MODULE__{} = call, by, {:allow, after_outside: false}),
-    do: decided(call, by, :allow)
-
   def decided(%__MODULE__{} = call, by, {:ask, prompt}),
     do: decided(call, by, {:ask, prompt, nil})
 
@@ -190,8 +175,7 @@ defmodule Wardrik.Call do
 
   @doc """
   Sets the state the hooks' answers come to: denied, waiting, or allowed. A
-  gated tool's call no hook allowed by name, or one in a run that has read
-  content from outside, waits on its tool.
+  gated tool's call no hook allowed by name waits on its tool.
   """
   @spec checked(t()) :: t()
   def checked(%__MODULE__{} = call) do
@@ -206,32 +190,18 @@ defmodule Wardrik.Call do
   defp gate(%__MODULE__{target: %Tool{gated: true}, allowed: []} = call),
     do: "#{name(call)} is gated, so it asks unless a rule allows it by name, and none does."
 
-  defp gate(
-         %__MODULE__{
-           target: %Tool{gated: true},
-           scope: %Scope{tainted: true},
-           allowed_after_outside: []
-         } = call
-       ) do
-    IO.iodata_to_binary([
-      Enum.intersperse(call.allowed, ", "),
-      " allows #{name(call)}, but this run has read content from outside, ",
-      "which may be what asked for it."
-    ])
-  end
-
   defp gate(_call), do: nil
 
   @doc """
-  Marks the call's answer as holding content from outside: a page, a message,
-  an issue anyone could have written. The run it belongs to is tainted from
-  then on, and a gated tool's call later in the run waits on a person unless
-  a hook allowed it after outside content. A tool whose annotations say its
-  answers are content from outside has its call marked; one handed its
-  context marks one answer with `{:ok, output, outside: true}`.
+  Marks the call's answer as holding what `labels` name, such as `"outside"`
+  for a page or an issue anyone could have written; see `Wardrik.Label`. The
+  run it belongs to carries them from then on. A tool's annotations name the
+  labels every answer of its holds, and one handed its context labels one
+  answer with `{:ok, output, labels: labels}`.
   """
-  @spec taint(t()) :: t()
-  def taint(%__MODULE__{} = call), do: %{call | tainted: true}
+  @spec label(t(), [Wardrik.Label.t()]) :: t()
+  def label(%__MODULE__{} = call, labels) when is_list(labels),
+    do: %{call | labels: Wardrik.Label.union(call.labels, labels)}
 
   @doc """
   Parks a call a tool was handed: it waits on a person, who is shown `prompt`,
@@ -314,8 +284,7 @@ defmodule Wardrik.Call do
       | state: :unchecked,
         denied: nil,
         asks: [],
-        allowed: [],
-        allowed_after_outside: []
+        allowed: []
     }
 
   @doc """

@@ -81,6 +81,17 @@ defmodule WardrikNotify.SlackTest do
                box
     end
 
+    test "says what the turn had read, which may be what asked for the call" do
+      [call] = parked_notice().calls
+      notice = %{parked_notice() | calls: [Map.put(call, :labels, ["outside", "books"])]}
+
+      assert :ok = Slack.deliver(notice, [target: :ops] ++ @target)
+      assert_receive {:slack, _host, "/api/chat.postMessage", message}
+
+      assert JSON.encode!(message["blocks"]) =~
+               "It has read content from outside and content labelled books"
+    end
+
     test "says how to answer from a shell when there is no app token" do
       assert :ok =
                Slack.deliver(parked_notice(), target: :ops, channel: "#ops", token: "xoxb-test")

@@ -14,8 +14,8 @@ defmodule WardrikBrave.WebSearchTest do
       assert tool.callback == {WebSearch, :run}
     end
 
-    test "answers with pages from outside, which taint a run" do
-      assert Wardrik.Tool.annotations(WebSearch, "web_search").outside
+    test "answers with pages from outside, labelled so" do
+      assert Wardrik.Tool.annotations(WebSearch, "web_search").labels == ["outside"]
     end
 
     test "requires only a query" do

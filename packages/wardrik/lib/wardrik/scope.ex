@@ -27,7 +27,7 @@ defmodule Wardrik.Scope do
   | `:config` | which model, and what it can call |
   | `:source` | which agent the work is for, where its events go, and which span they belong to |
   | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
-  | `:tainted` | whether the run has read content from outside, which holds a gated tool's calls for a person; see `Wardrik.Call.taint/1` |
+  | `:labels` | what the run has read, as `Wardrik.Label`s, for its hooks to weigh; see `Wardrik.Call.label/2` |
   | `:deadline` | when the work must stop |
   | `:hooks` | whether a tool call may run, and a model call be made |
   | `:dispatch` | what a model call actually is, and who pays for it |
@@ -95,7 +95,7 @@ defmodule Wardrik.Scope do
     :journal,
     :batch,
     hooks: [],
-    tainted: false
+    labels: []
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
@@ -113,7 +113,7 @@ defmodule Wardrik.Scope do
           ledger: module() | nil,
           journal: pid() | nil,
           batch: String.t() | nil,
-          tainted: boolean()
+          labels: [Wardrik.Label.t()]
         }
 
   @typedoc "How a span ended."

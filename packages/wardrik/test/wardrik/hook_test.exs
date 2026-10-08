@@ -83,8 +83,8 @@ defmodule Wardrik.HookTest do
   end
 
   describe "a gated tool's call" do
-    defp gated(hooks, tainted \\ false) do
-      scope = %{Wardrik.Test.scope(tools: [Deploy], hooks: hooks) | tainted: tainted}
+    defp gated(hooks, labels \\ []) do
+      scope = %{Wardrik.Test.scope(tools: [Deploy], hooks: hooks) | labels: labels}
       Wardrik.Test.check(scope, "deploy", %{"target" => "prod"})
     end
 
@@ -108,22 +108,13 @@ defmodule Wardrik.HookTest do
                gated([hook("rules", :allow), hook("careful", {:ask, "Sure?"})])
     end
 
-    test "waits on its tool in a run that has read content from outside, however it was allowed" do
-      assert %Call{state: :waiting, asks: [%Ask{by: :tool, prompt: prompt}]} =
-               gated([hook("rules", :allow)], true)
-
-      assert prompt ==
-               "rules allows deploy, but this run has read content from outside, " <>
-                 "which may be what asked for it."
+    test "goes ahead where a hook allows it whatever the run has read, which is the hooks' to weigh" do
+      assert %Call{state: :allowed, allowed: ["rules"]} =
+               gated([hook("rules", :allow)], ["outside"])
     end
 
-    test "goes ahead in such a run where the hook allowed it after outside content" do
-      assert %Call{state: :allowed, allowed: ["rules"], allowed_after_outside: ["rules"]} =
-               gated([hook("rules", {:allow, after_outside: true})], true)
-    end
-
-    test "is not what an ungated call is: that goes ahead without an allow, tainted or not" do
-      scope = %{Wardrik.Test.scope(hooks: [hook("quiet", :pass)]) | tainted: true}
+    test "is not what an ungated call is: that goes ahead without an allow, whatever was read" do
+      scope = %{Wardrik.Test.scope(hooks: [hook("quiet", :pass)]) | labels: ["outside"]}
 
       assert %Call{state: :allowed, allowed: []} = Wardrik.Test.check(scope, "echo")
     end

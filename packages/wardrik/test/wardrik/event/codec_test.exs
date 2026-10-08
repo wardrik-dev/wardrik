@@ -54,7 +54,8 @@ defmodule Wardrik.Event.CodecTest do
        {:turn_parked,
         [
           {call("call_1", "deploy"), "This ships to production."},
-          {Map.put(call("call_2", "refund"), :in_doubt, true), "refund may already have run."}
+          {call("call_2", "refund") |> Map.put(:in_doubt, true) |> Map.put(:labels, ["outside"]),
+           "refund may already have run."}
         ]}},
       {turn, {:turn_resumed, %{"call_1" => :approve}}},
       {turn, {:call_decided, "call_1", {:deny, "Not today."}, by}},
@@ -370,6 +371,14 @@ defmodule Wardrik.Event.CodecTest do
                  "tool_call_id" => "call_2"
                }
              ]
+    end
+
+    test "say what the run had read, which may be what asked for them" do
+      labelled = Map.put(call("call_1", "deploy"), :labels, ["outside"])
+
+      {:ok, %{"data" => data}} = encode(turn(), {:turn_parked, [{labelled, "Ship?"}]})
+
+      assert [%{"labels" => ["outside"]}] = data["interrupts"]
     end
 
     test "are resolved by someone, approving or rejecting" do

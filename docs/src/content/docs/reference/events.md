@@ -425,4 +425,4 @@ A call a run waits on a person for.
 | `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`, `in_doubt`. |
 | `message` | string | yes |  |
 | `tool_call_id` | string |  |  |
-| `outside_content` | boolean |  | true where the run had read content from outside, which may be what asked for the call. |
+| `labels` | array of string |  | The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote. |

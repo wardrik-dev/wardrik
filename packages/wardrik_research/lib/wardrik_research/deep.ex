@@ -75,7 +75,7 @@ defmodule WardrikResearch.Deep do
 
   @doc "What its researchers found on the web is content from outside, and a sweep may take a while."
   @impl Wardrik.Tool
-  def annotations(_name), do: %{outside: true, timeout: @timeout}
+  def annotations(_name), do: %{labels: ["outside"], timeout: @timeout}
 
   @doc """
   Builds the tool with angles, or limits, of your own.

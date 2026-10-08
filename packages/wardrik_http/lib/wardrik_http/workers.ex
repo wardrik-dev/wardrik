@@ -112,7 +112,7 @@ defmodule WardrikHTTP.Workers do
   allows it by name, unless every one marks the tool read-only, since
   anything else a worker does may change something; a call in doubt runs
   again where every one marks it read-only or idempotent; its answers are
-  content from outside unless `WardrikHTTP.Config.trusted_workers?/0` says
+  labelled `"outside"` unless `WardrikHTTP.Config.trusted_workers?/0` says
   workers are the deployment's own, since a worker can pass on anything it
   reads; and a call may take the worker's wait twice, once more in doubt,
   and a little.
@@ -125,13 +125,15 @@ defmodule WardrikHTTP.Workers do
       gated: offered == [] or not Enum.all?(offered, & &1.read_only),
       in_doubt:
         if(offered != [] and Enum.all?(offered, &(&1.in_doubt == :rerun)), do: :rerun, else: :ask),
-      outside: not WardrikHTTP.Config.trusted_workers?(),
+      labels: workers_labels(),
       timeout: 2 * WardrikHTTP.Config.worker_timeout() + :timer.seconds(5)
     }
   end
 
   def annotations(_id, _name),
-    do: %{gated: true, outside: not WardrikHTTP.Config.trusted_workers?()}
+    do: %{gated: true, labels: workers_labels()}
+
+  defp workers_labels, do: if(WardrikHTTP.Config.trusted_workers?(), do: [], else: ["outside"])
 
   @doc false
   @spec call(AgentID.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Result.t()

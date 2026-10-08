@@ -9,10 +9,11 @@ defmodule Wardrik.Tool.Annotations do
     * `:gated` - a call waits on a person unless a hook allows it by name, as
       `WardrikPolicy`'s `allow` rules do; `default: allow` is not enough. For
       a tool whose call cannot be taken back.
-    * `:outside` - what the tool answers holds content nobody on the agent's
-      side wrote, such as a web page, so a call to it taints its run, and a
-      gated tool's call later in the run waits on a person however its hooks
-      allowed it.
+    * `:labels` - what every answer of the tool holds, as `Wardrik.Label`s,
+      which its run carries from then on: `["outside"]` for content nobody on
+      the agent's side wrote, such as a web page, after which `WardrikPolicy`
+      holds a gated tool's calls for a person however its rules allowed
+      them.
     * `:in_doubt` - what a call does when whether it had its effect is not
       known: its turn is replayed and the ledger holds it as begun and never
       finished, or the tool answered `{:in_doubt, reason}`. `:ask`, the
@@ -30,14 +31,14 @@ defmodule Wardrik.Tool.Annotations do
       call on its link.
 
       @impl true
-      def annotations(_name), do: %{outside: true, timeout: :timer.minutes(5)}
+      def annotations(_name), do: %{labels: ["outside"], timeout: :timer.minutes(5)}
   """
 
-  defstruct gated: false, outside: false, in_doubt: :ask, timeout: nil, credentials: []
+  defstruct gated: false, labels: [], in_doubt: :ask, timeout: nil, credentials: []
 
   @type t() :: %__MODULE__{
           gated: boolean(),
-          outside: boolean(),
+          labels: [Wardrik.Label.t()],
           in_doubt: :ask | :rerun,
           timeout: timeout() | nil,
           credentials: [Wardrik.Credential.ref()]

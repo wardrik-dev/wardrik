@@ -92,38 +92,43 @@ tool written in Elixir can say it is gated. The tools the daemon ships are not.
 
 ## Content from outside
 
-Some tools bring in content from outside the deployment:
+A turn carries labels for what it has read. Content from outside the deployment is labelled
+`outside`, and these tools bring it in:
 
 - `web_search` and `deep_research`;
 - every MCP server `config.yaml` does not mark `trusted: true`;
 - tool workers, unless `http` in `config.yaml` says `trusted_workers: true`;
 - a file a turn wrote after reading content from outside, when another turn reads it.
 
-Once a turn has read such content, a gated tool's calls wait on a person however the `allow` rules
+Once a turn carries `outside`, a gated tool's calls wait on a person however the `allow` rules
 name them, since what the turn read may be what asked for the call. It counts from the next round
 of calls the model makes. The person is told why:
 
-> careful allows github__create_issue, but this run has read content from outside, which may be what
+> github__create_issue is allowed, but this run has read content from outside, which may be what
 > asked for it.
 
-What the turn read stays in the agent's conversation, so the turns after it are held the same way,
-until `wardrik clear AGENT`, or `DELETE /v1/agents/{key}/conversation`, empties it.
+What the turn read stays in the agent's conversation, so the turns after it carry the label and are
+held the same way, until `wardrik clear AGENT`, or `DELETE /v1/agents/{key}/conversation`, empties
+it.
 
 ### Allowing after content from outside
 
 An agent may read content from outside, reach what is private, and change things: any two are
-safe, and all three need a person. So `allow_after_outside` allows a gated tool by name as `allow`
-does, and holds after the turn has read content from outside too. It is for a tool whose calls
-may follow what a stranger wrote, because the agent reaches nothing they could take, or the tool
-can do little harm:
+safe, and all three need a person. So `allow_after` allows a gated tool by name as `allow` does,
+and holds after a label too. It is for a tool whose calls may follow what a stranger wrote, because
+the agent reaches nothing they could take, or the tool can do little harm:
 
 ```yaml
 allow: [linear/*]
-allow_after_outside: [github/add_labels]
+allow_after:
+  outside: [github/add_labels]
 ```
 
 An ask or a deny still decides over it. A policy in `policies/` or an agent file may say it; a
 definition sent to the HTTP API may name such a policy, but not write the rule itself.
+
+A label `allow_after` names holds a gated tool's calls the way `outside` does. A label no rule names
+is carried and shown, and holds nothing.
 
 ## Waiting on a person
 
@@ -169,9 +174,9 @@ A call can also be decided:
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the
 [webhook](/guides/slack/#webhooks) do.
 
-Wherever a call is shown, it says whether its turn had read content from outside first, which may
-be what asked for it: `wardrik parked` and the Slack notice say so under the question, and the
-HTTP API and the webhook carry `outside_content: true`.
+Wherever a call is shown, it says what its turn had read first, which may be what asked for it:
+`wardrik parked` and the Slack notice say so under the question, and the HTTP API and the webhook
+carry the turn's labels, as `labels: ["outside"]`.
 
 A denied tool call is answered with an error the model reads, carrying the reason, and the turn
 carries on. A model call refused by a budget ends the turn.

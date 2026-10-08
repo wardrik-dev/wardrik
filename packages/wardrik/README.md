@@ -308,7 +308,7 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Store`, `Wardrik.Store.Durable` |
 | Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Schedule`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.Compaction` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.Workflow`, `Wardrik.Workflow.Step`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |

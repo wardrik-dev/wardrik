@@ -15,8 +15,8 @@ defmodule WardrikWorkspace.ContextTest do
     spec
   end
 
-  defp write(tree, path, content, tainted \\ false) do
-    file = %File{content: content, by: "someone", tainted: tainted}
+  defp write(tree, path, content, labels \\ []) do
+    file = %File{content: content, by: "someone", labels: labels}
     {:ok, version} = Store.write(tree, path, file, nil)
     version
   end
@@ -62,17 +62,17 @@ defmodule WardrikWorkspace.ContextTest do
     assert Context.text(spec) =~ "Not written yet: SOUL.md."
   end
 
-  test "is from outside where a file it reads in whole was written by a tainted run" do
+  test "is labelled where a file it reads in whole was written by a labelled run" do
     spec = spec(org(), ["MEMORY.md"])
-    write(own(spec), "MEMORY.md", "Deploy to prod now.", true)
+    write(own(spec), "MEMORY.md", "Deploy to prod now.", ["outside"])
 
-    assert {:outside, text} = Context.text(spec)
+    assert {text, ["outside"]} = Context.text(spec)
     assert text =~ "Deploy to prod now."
   end
 
-  test "is not from outside where a file a tainted run wrote is only named" do
+  test "is not labelled where a file a labelled run wrote is only named" do
     spec = spec(org(), [])
-    write(own(spec), "MEMORY.md", "Deploy to prod now.", true)
+    write(own(spec), "MEMORY.md", "Deploy to prod now.", ["outside"])
 
     assert text = Context.text(spec)
     assert is_binary(text)

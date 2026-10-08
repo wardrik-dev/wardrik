@@ -31,8 +31,8 @@ defmodule WardrikMCP.ConnectionTest do
       assert annotations(:*, "#{ref}__echo").gated
       refute annotations(ref, "#{ref}__secret").gated
 
-      assert annotations(ref, "#{ref}__echo").outside
-      assert annotations(ref, "#{ref}__nothing_it_offers").outside
+      assert annotations(ref, "#{ref}__echo").labels == ["outside"]
+      assert annotations(ref, "#{ref}__nothing_it_offers").labels == ["outside"]
     end
   end
 
@@ -40,8 +40,8 @@ defmodule WardrikMCP.ConnectionTest do
     @describetag server_opts: [trusted: true]
 
     test "answers with what is the deployment's own", %{ref: ref} do
-      refute annotations(ref, "#{ref}__echo").outside
-      refute annotations(:*, "#{ref}__echo").outside
+      assert annotations(ref, "#{ref}__echo").labels == []
+      assert annotations(:*, "#{ref}__echo").labels == []
       refute annotations(ref, "#{ref}__echo").gated
     end
   end

@@ -45,13 +45,13 @@ defmodule Wardrik.Agent.State do
   Queued messages are held newest-first and reversed when a turn takes them, so
   appending is cheap and the order a caller sees is the order they were asked.
 
-  ## Content from outside
+  ## What the history holds
 
-  A turn that read content from outside leaves what it read in the history,
-  so the agent is `tainted` from then on: every turn after it begins tainted
-  (see `Wardrik.LLM.Turn`), and a gated tool's calls wait on a person as they
-  would after reading it, until `clear/1` empties the history. A summary of
-  the history keeps the mark, since it was written from what was read.
+  A turn leaves what it read in the history, and a message what it says, so
+  the agent carries their `Wardrik.Label`s from then on: every turn after
+  begins with them (see `Wardrik.LLM.Turn`), and its hooks weigh them as they
+  would have then, until `clear/1` empties the history. A summary of the
+  history keeps them, since it was written from what was read.
 
   ## Stopping is part of running
 
@@ -192,7 +192,7 @@ defmodule Wardrik.Agent.State do
     pending: [],
     recent: [],
     outcome: nil,
-    tainted: false
+    labels: []
   ]
 
   @doc "How long an interrupted turn is given to answer before it is killed."
@@ -246,7 +246,7 @@ defmodule Wardrik.Agent.State do
           pending: [Message.t()],
           recent: [String.t()],
           outcome: outcome(),
-          tainted: boolean()
+          labels: [Wardrik.Label.t()]
         }
 
   @typedoc "How the last turn ended, or `nil` before the first."
@@ -266,7 +266,7 @@ defmodule Wardrik.Agent.State do
           runner: runner(),
           resumer: resumer(),
           outcome: outcome(),
-          tainted: boolean(),
+          labels: [Wardrik.Label.t()],
           mode:
             :idle
             | :owed
@@ -498,11 +498,11 @@ defmodule Wardrik.Agent.State do
 
   def stale?(%__MODULE__{}), do: false
 
-  @doc "The scope a turn for this agent runs under, tainted where its history is."
+  @doc "The scope a turn for this agent runs under, carrying what its history holds."
   @spec turn_scope(t()) :: Scope.t()
   def turn_scope(%__MODULE__{} = state) do
     scope = Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
-    %{scope | tainted: state.tainted}
+    %{scope | labels: state.labels}
   end
 
   @doc "What this agent is doing, how much is queued behind it, and the model it runs."
@@ -679,6 +679,7 @@ defmodule Wardrik.Agent.State do
     %{
       state
       | context: context,
+        labels: Wardrik.Label.union(state.labels, scope.labels),
         mode: %Running{task: task, scope: scope, started_at: started_at, recovery: :owed}
     }
   end
@@ -723,21 +724,21 @@ defmodule Wardrik.Agent.State do
   def running?(%__MODULE__{}, _task_ref), do: false
 
   @doc """
-  Settles a turn that answered, appending what it produced, and `tainted`
-  where it read content from outside.
+  Settles a turn that answered, appending what it produced, and the `labels`
+  of what it read.
 
   A turn that answered while stopping reports what the interrupt kept rather
   than a plain finish, so a kill switch is never silent about what it caught.
   """
-  @spec settled(t(), [ReqLLM.Message.t()], boolean()) :: {t(), [effect()]}
-  def settled(%__MODULE__{mode: %Running{} = running} = state, messages, tainted) do
+  @spec settled(t(), [ReqLLM.Message.t()], [Wardrik.Label.t()]) :: {t(), [effect()]}
+  def settled(%__MODULE__{mode: %Running{} = running} = state, messages, labels) do
     outcome = if running.stopping, do: :interrupted, else: :ok
 
     state = %{
       state
       | context: Context.append(state.context, messages),
         outcome: outcome,
-        tainted: state.tainted or tainted
+        labels: Wardrik.Label.union(state.labels, labels)
     }
 
     {idle(state),
@@ -752,7 +753,7 @@ defmodule Wardrik.Agent.State do
       {:turn_interrupted, stats(running.started_at, stopping.dropped, length(messages), :stopped)}
 
   @doc """
-  Empties the history, and with it the mark of content from outside, keeping
+  Empties the history, and with it the labels of what it held, keeping
   everything else. `{:error, :busy}` unless the agent is idle: a turn running,
   owed, waiting on a person or being compacted holds the history it began
   with.
@@ -761,7 +762,7 @@ defmodule Wardrik.Agent.State do
   def clear(%__MODULE__{mode: :idle} = state) do
     dropped = length(state.context.messages)
 
-    {:ok, %{state | context: Context.new(), tainted: false, compaction_settled: false},
+    {:ok, %{state | context: Context.new(), labels: [], compaction_settled: false},
      [{:emit, Source.root(state.agent_id), {:context_cleared, dropped}}]}
   end
 

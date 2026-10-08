@@ -32,8 +32,8 @@ defmodule Wardrik.LLM.Turn do
     * `:revision` - the `Wardrik.Hook.revision/1` of the hooks it parked under
     * `:preamble` - what the config's tools told the model as the turn began,
       put after the system prompt of every request it makes
-    * `:tainted` - whether a call it made has answered with content from
-      outside, which every batch after it is told
+    * `:labels` - what it has read, as `Wardrik.Label`s, which every batch
+      after it is told
     * `:state` - `:running`, `:waiting`, `:done` or `:failed`
     * `:error` - why a failed turn failed
 
@@ -86,21 +86,22 @@ defmodule Wardrik.LLM.Turn do
   `new/2` asks each of the config's tools what it tells the model before the
   turn (see `c:Wardrik.Tool.context/0`), once, and every request the turn
   makes carries it after the system prompt. The turn keeps it, so a turn
-  carried on after a lost node says what it began with. What a tool tells it
-  from outside taints the turn from the start.
+  carried on after a lost node says what it began with. The labels of what a
+  tool tells it are the turn's from the start.
 
-  ## Content from outside
+  ## What the turn has read
 
-  Once a call the turn made answers with content from outside (see
-  `Wardrik.Call.taint/1`), the turn is tainted, and every batch after it runs
-  under a scope that says so: a gated tool's call then waits on a person
-  unless a hook allowed it after outside content, since what the turn read
-  may be what asked for it. A turn written down carries the taint, so one
-  carried on after a lost node is tainted still.
+  Once a call the turn made answers with something labelled (see
+  `Wardrik.Call.label/2`), the turn carries the labels, and every batch after
+  it runs under a scope that says so, for its hooks to weigh:
+  `WardrikPolicy` holds a gated tool's call for a person after content from
+  outside, since what the turn read may be what asked for it. A turn written
+  down carries its labels, so one carried on after a lost node carries them
+  still.
 
   What the turn read stays in the history it leaves, so a turn begun under a
-  scope that is tainted already, as `Wardrik.Agent` begins one on a history
-  that holds content from outside, is tainted from the start.
+  scope that carries labels already, as `Wardrik.Agent` begins one on a
+  history that holds labelled content, carries them from the start.
 
   ## Surviving a lost node
 
@@ -156,7 +157,7 @@ defmodule Wardrik.LLM.Turn do
     remaining: :infinity,
     calls: [],
     state: :running,
-    tainted: false
+    labels: []
   ]
 
   @type state() :: :running | :waiting | :done | :failed
@@ -172,7 +173,7 @@ defmodule Wardrik.LLM.Turn do
           remaining: non_neg_integer() | :infinity,
           calls: [Call.t()],
           state: state(),
-          tainted: boolean()
+          labels: [Wardrik.Label.t()]
         }
 
   @typedoc "What a person decides about one call a turn waits on."
@@ -189,14 +190,14 @@ defmodule Wardrik.LLM.Turn do
   """
   @spec new(Scope.t(), Context.t()) :: t()
   def new(%Scope{config: config} = scope, %Context{} = context) do
-    {preamble, outside?} = Tool.context(config.tools)
+    {preamble, labels} = Tool.context(config.tools)
 
     %__MODULE__{
       scope: scope,
       context: context,
       remaining: config.max_iterations,
       preamble: preamble,
-      tainted: outside? or scope.tainted
+      labels: Wardrik.Label.union(scope.labels, labels)
     }
   end
 
@@ -217,17 +218,20 @@ defmodule Wardrik.LLM.Turn do
   @spec fail(t(), term()) :: t()
   def fail(%__MODULE__{} = turn, reason), do: %{turn | state: :failed, error: reason}
 
-  @doc "The calls the turn waits on, each with the prompt a person is shown."
+  @doc """
+  The calls the turn waits on, each with the prompt a person is shown, and
+  with `:labels` where the turn has read something labelled, which may be
+  what asked for it.
+  """
   @spec waiting(t()) :: [{Wardrik.Tool.call(), String.t()}]
-  def waiting(%__MODULE__{calls: calls} = turn) do
-    if turn.tainted,
-      do:
-        for(
-          {call, prompt} <- ToolRunner.parked(calls),
-          do: {Map.put(call, :outside, true), prompt}
-        ),
-      else: ToolRunner.parked(calls)
-  end
+  def waiting(%__MODULE__{calls: calls, labels: []}), do: ToolRunner.parked(calls)
+
+  def waiting(%__MODULE__{calls: calls, labels: labels}),
+    do:
+      for(
+        {call, prompt} <- ToolRunner.parked(calls),
+        do: {Map.put(call, :labels, labels), prompt}
+      )
 
   @doc """
   The ids of the calls the turn waits on that were parked to resolve `ref`
@@ -474,14 +478,13 @@ defmodule Wardrik.LLM.Turn do
     end
   end
 
-  # The scope a batch runs under: the turn's, for this round, saying whether
-  # the turn has read content from outside.
-  defp batch(turn), do: %{Scope.batch(turn.scope, rounds(turn)) | tainted: turn.tainted}
+  # The scope a batch runs under: the turn's, for this round, carrying what
+  # the turn has read.
+  defp batch(turn), do: %{Scope.batch(turn.scope, rounds(turn)) | labels: turn.labels}
 
-  # The turn, tainted where a call of `calls` answered with content from
-  # outside.
+  # The turn, carrying what `calls` answered with.
   defp read(%__MODULE__{} = turn, calls),
-    do: %{turn | tainted: turn.tainted or Enum.any?(calls, & &1.tainted)}
+    do: %{turn | labels: Enum.reduce(calls, turn.labels, &Wardrik.Label.union(&2, &1.labels))}
 
   defp continue(turn, context, messages) do
     turn = %{

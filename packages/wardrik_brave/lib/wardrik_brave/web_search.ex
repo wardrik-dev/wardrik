@@ -10,8 +10,8 @@ defmodule WardrikBrave.WebSearch do
   agent that runs three searches at 8k tokens each has spent its window on
   search results.
 
-  What it answers is pages anyone could have written, so a call to it taints
-  its run; see `Wardrik.Tool.Annotations`.
+  What it answers is pages anyone could have written, so it is labelled
+  `"outside"`; see `Wardrik.Tool.Annotations`.
   """
 
   @behaviour Wardrik.Tool
@@ -38,7 +38,7 @@ defmodule WardrikBrave.WebSearch do
 
   @doc "The pages a search finds are content from outside."
   @impl true
-  def annotations(_name), do: %{outside: true}
+  def annotations(_name), do: %{labels: ["outside"]}
 
   @impl true
   def tool do

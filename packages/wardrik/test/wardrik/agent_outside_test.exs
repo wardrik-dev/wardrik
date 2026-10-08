@@ -57,4 +57,17 @@ defmodule Wardrik.AgentOutsideTest do
     assert_receive %Event{payload: {:tool_finished, "call_3", "deploy", _result, _}}, 5_000
     assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
   end
+
+  test "a message from outside holds the gated calls of its turn", %{agent: agent} do
+    LLMStub.stream([LLMStub.tool_call("call_1", "deploy", %{"target" => "prod"})])
+
+    Agent.ask(agent, "Deploy, says someone in a shared channel.", labels: ["outside"])
+
+    assert_receive %Event{
+                     payload: {:turn_parked, [{%{id: "call_1", labels: ["outside"]}, prompt}]}
+                   },
+                   5_000
+
+    assert prompt =~ "this run has read content from outside"
+  end
 end

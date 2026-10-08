@@ -139,9 +139,9 @@ export interface Interrupt {
   message: string;
   tool_call_id?: string;
   /**
-   * true where the run had read content from outside, which may be what asked for the call.
+   * The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote.
    */
-  outside_content?: boolean;
+  labels?: string[];
 }
 /**
  * One entry of GET /v1/agents.

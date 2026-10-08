@@ -16,7 +16,7 @@ defmodule WardrikMCP.Server do
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
   | `:gated` | every tool the server does not mark `readOnlyHint` | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, `true` for all of them, or `false` for none; see `c:Wardrik.Tool.gated?/1` |
-  | `:trusted` | `false` | whether what its tools answer is the deployment's own; otherwise a call to one taints its run, see `c:Wardrik.Tool.outside_content?/1` |
+  | `:trusted` | `false` | whether what its tools answer is the deployment's own; otherwise it is labelled `"outside"`, see `Wardrik.Tool.Annotations` |
   | `:timeout` | 60s | how long one call to this server may take |
   | `:max_result_bytes` | 128 KB | how much of a result reaches the model |
   | `:credential` | none | the name of the credential each call is made with, resolved for the call |

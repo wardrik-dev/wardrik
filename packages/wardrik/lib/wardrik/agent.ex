@@ -73,8 +73,8 @@ defmodule Wardrik.Agent do
 
   `clear/1` empties the history of an idle agent, and reports
   `{:context_cleared, dropped}`, with how many messages it held. It is how an
-  agent that read content from outside is rid of it: until then, every turn
-  holds its gated tools' calls for a person. See `Wardrik.Agent.State`.
+  agent is rid of the labels of what its history held, such as content from
+  outside: until then, every turn carries them. See `Wardrik.Agent.State`.
 
   ## A turn lost part way
 
@@ -187,11 +187,17 @@ defmodule Wardrik.Agent do
 
   `:id` names the message, a new UUIDv7 when left out. The agent announces it
   as `{:message_queued, message}` and takes it once, however many times the
-  same id is sent.
+  same id is sent. `:labels` are what the message holds, as `Wardrik.Label`s,
+  which its turn carries from its start: `["outside"]` for a message from
+  someone who is not the agent's own.
   """
   @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
-  def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts),
-    do: cast(agent, {:ask, Message.new(question, Keyword.get(opts, :id))})
+  def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts) do
+    message =
+      Message.new(question, Keyword.get(opts, :id), labels: Keyword.get(opts, :labels, []))
+
+    cast(agent, {:ask, message})
+  end
 
   @spec get_context(agent()) :: Context.t() | {:error, :not_found}
   def get_context(agent), do: call(agent, :get_context)
@@ -530,7 +536,7 @@ defmodule Wardrik.Agent do
 
   defp start(state, messages) do
     context = Enum.reduce(messages, state.context, &Context.append(&2, Context.user(&1.text)))
-    scope = journaled(State.turn_scope(state))
+    scope = state |> State.turn_scope() |> journaled() |> heard(messages)
 
     Event.emit(scope.source, {:turn_started, messages})
     task = run(fn -> State.apply_runner(state, scope, context) end)
@@ -559,6 +565,12 @@ defmodule Wardrik.Agent do
   # them, which writes them down.
   defp journaled(scope), do: %{scope | journal: self()}
 
+  defp heard(scope, messages),
+    do: %{
+      scope
+      | labels: Enum.reduce(messages, scope.labels, &Wardrik.Label.union(&2, &1.labels))
+    }
+
   # A turn belongs to the agent that started it: one whose agent stopped, or
   # moved to another node, is killed rather than running a batch its successor
   # is replaying.
@@ -572,7 +584,7 @@ defmodule Wardrik.Agent do
   end
 
   defp answered(state, %Turn{state: :done, messages: messages} = turn),
-    do: settle(state, State.settled(state, messages, turn.tainted))
+    do: settle(state, State.settled(state, messages, turn.labels))
 
   # A waiting turn is held as it is written down, with no scope.
   defp answered(state, %Turn{state: :waiting} = turn),

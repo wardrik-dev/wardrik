@@ -91,8 +91,9 @@ defmodule WardrikDaemon.AgentFile do
         files: [SOUL.md, MEMORY.md]
         max_bytes: 65536
 
-  A file read into the turn that a turn which had read content from outside
-  wrote makes it tainted from its start. See `WardrikWorkspace.Context`.
+  A file read into the turn labels it from its start with the labels of what
+  the turns that wrote it had read, such as content from outside. See
+  `WardrikWorkspace.Context`.
 
   ## Policy
 
@@ -119,13 +120,19 @@ defmodule WardrikDaemon.AgentFile do
 
   Once a turn has read content from outside, from `web_search`,
   `deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
-  tool worker, its `allow` rules stop counting for a gated tool's calls, there
-  and in every turn after it, until `wardrik clear` empties the agent's
-  conversation: each waits on a person, who sees what it would do. An
-  `allow_after_outside` rule still counts, for a tool whose calls may follow
-  what a stranger wrote; see `WardrikPolicy`. A definition over HTTP cannot
-  write one in place, though it may name a policy in `policies/` that has
-  one.
+  tool worker, it carries the label `outside`, there and in every turn after
+  it, until `wardrik clear` empties the agent's conversation, and its `allow`
+  rules stop counting for a gated tool's calls: each waits on a person, who
+  sees what it would do. An `allow_after` rule for the label still counts,
+  for a tool whose calls may follow what a stranger wrote:
+
+      policy:
+        allow: [linear/*]
+        allow_after:
+          outside: [github/add_labels]
+
+  See `WardrikPolicy`. A definition over HTTP cannot write one in place,
+  though it may name a policy in `policies/` that has one.
 
   ## Schedule
 
@@ -293,7 +300,7 @@ defmodule WardrikDaemon.AgentFile do
       do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
 
     known!(fields, @definition_keys)
-    held_after_outside!(fields["policy"])
+    held_after!(fields["policy"])
     optional_string!(fields["instructions"], "instructions")
 
     {:ok, %Definition{id: id, fields: fields, source: {:api, grant}}}
@@ -362,15 +369,13 @@ defmodule WardrikDaemon.AgentFile do
   defp ok!(:ok), do: :ok
   defp ok!({:error, message}), do: invalid!("workspace " <> message)
 
-  # A rule that holds after content from outside loosens what a token's
-  # ceiling holds, so only a policy the operator writes may say one.
-  defp held_after_outside!(%{"allow_after_outside" => _rules}),
+  # A rule that holds after a label loosens what a token's ceiling holds, so
+  # only a policy the operator writes may say one.
+  defp held_after!(%{"allow_after" => _rules}),
     do:
-      invalid!(
-        "policy cannot allow_after_outside in a definition; name a policy in policies/ that does"
-      )
+      invalid!("policy cannot allow_after in a definition; name a policy in policies/ that does")
 
-  defp held_after_outside!(_policy), do: :ok
+  defp held_after!(_policy), do: :ok
 
   defp split("---\n" <> rest) do
     case String.split(rest, ~r/^---[ \t]*$\n?/m, parts: 2) do
@@ -650,7 +655,7 @@ defmodule WardrikDaemon.AgentFile do
 
   # A schedule's prompt_file is a prompt asking the agent to follow the file,
   # which it reads with read_file as the turn runs, so it reads it as it
-  # stands then, and its taint with it.
+  # stands then, and its labels with it.
   defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _name, _files?),
     do: {:error, "a schedule has a prompt or a prompt_file, not both"}
 

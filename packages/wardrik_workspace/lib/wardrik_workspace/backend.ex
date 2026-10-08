@@ -14,7 +14,7 @@ defmodule WardrikWorkspace.Backend do
   `{:error, :conflict}` where the file has changed since. That is the one
   guarantee a backend gives, and what keeps two writers from losing each
   other's changes. The decisions about a call, its policy, its gate and its
-  taint, are made before a backend is asked anything.
+  labels, are made before a backend is asked anything.
 
   A tree is named by a string the backend treats as opaque:
   `agents/<org>/<user>/<name>` for an agent's own, and `shared/<name>` for a

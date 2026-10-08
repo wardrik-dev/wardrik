@@ -115,18 +115,19 @@ it types waiting on you. Its policy allows those tools after it has read a page:
 
 ```yaml
 policy:
-  allow_after_outside:
-    - browser/browser_click
-    - browser/browser_select_option
-    - browser/browser_press_key
+  allow_after:
+    outside:
+      - browser/browser_click
+      - browser/browser_select_option
+      - browser/browser_press_key
   ask:
     browser/browser_fill_form: This fills in a form.
     browser/browser_type: This types into the page.
   budget: {usd: 3.00, per: turn, on_exhausted: ask}
 ```
 
-`allow_after_outside` allows a gated tool by name, as `allow` does, and keeps allowing it after the
-agent has read content from outside, where `allow` stops counting. It is this agent's: another
+`allow_after` allows a gated tool by name, as `allow` does, and keeps allowing it after the agent
+has read content labelled `outside`, where `allow` stops counting. It is this agent's: another
 agent given the same browser still asks before each click. The gated tools it does not name keep
 waiting on a person, and `ask` gives the ones that type questions of their own.
 

@@ -62,7 +62,7 @@ notify:
 - `gated` makes `save_comment` wait on a person unless a rule allows it by name. What an issue says
   is content from outside, written by whoever filed it, so once the agent has read one, a comment
   waits on a person however a policy allows it.
-- `trusted: true` says the runbooks are the team's own, so reading them taints nothing; `only`
+- `trusted: true` says the runbooks are the team's own, so reading them labels nothing; `only`
   gives the agent the server's reading tools alone.
 - `approvers` are the on-call engineers' Slack ids. Anyone else in the channel who presses a button
   is told only the approvers can answer.
@@ -204,7 +204,7 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
   on every node. See [Policy and approvals](/concepts/policy/).
 - **Named approvers.** A parked call reaches Slack with its arguments, and only `approvers` decide
   it. See [Approve calls from Slack](/guides/slack/).
-- **Trust by source.** The team's runbooks taint nothing; issues anyone can file do. See
+- **Trust by source.** The team's runbooks are not labelled `outside`; issues anyone can file are. See
   [Content from outside](/concepts/policy/#content-from-outside).
 - **A budget per agent.** The agent stops and asks once it has spent its day's $20. See
   [Budgets](/concepts/policy/#budgets).

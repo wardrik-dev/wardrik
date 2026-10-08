@@ -125,7 +125,7 @@ A `webhook` target is sent each notice as JSON, in a POST:
       "arguments": {"title": "Disk full on db-2"},
       "prompt": "This opens an issue on GitHub.",
       "authorization": false,
-      "outside_content": true
+      "labels": ["outside"]
     }
   ],
   "reason": null,
@@ -134,8 +134,8 @@ A `webhook` target is sent each notice as JSON, in a POST:
 ```
 
 `event` is `turn_parked`, `turn_failed` or `turn_finished`, and is in the `x-wardrik-event` header
-too. `reason` is why a turn failed, and `text` what it answered. A call's `outside_content` says
-whether its turn had read content from outside first, which may be what asked for it.
+too. `reason` is why a turn failed, and `text` what it answered. A call's `labels` say what its
+turn had read first, which may be what asked for it: `outside` for content from outside.
 
 With a `secret`, each body is signed, as `x-wardrik-signature: sha256=<hex>`: the HMAC-SHA256 of the
 raw body, keyed with the secret. Check it against the body as it arrived, before parsing it:

@@ -271,23 +271,27 @@ defmodule WardrikDaemon.AgentFileTest do
              "tools names run_lua(x); name the tool alone, and let a policy name what its calls act on"
   end
 
-  test "a file may write a rule that holds after outside content, and a definition may not",
+  test "a file may write a rule that holds after a label, and a definition may not",
        context do
     assert {:ok, spec} =
-             read("---\npolicy:\n  allow_after_outside: [github/add_labels]\n---\n", context)
+             read(
+               "---\npolicy:\n  allow_after:\n    outside: [github/add_labels]\n---\n",
+               context
+             )
 
     assert [%Wardrik.Hook{value: %WardrikPolicy{rules: [rule]}}] = spec.hooks
-    assert rule.after_outside
+    assert rule.after == "outside"
 
     assert {:error, message} =
              AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
-               "policy" => %{"allow_after_outside" => ["github/add_labels"]}
+               "policy" => %{"allow_after" => %{"outside" => ["github/add_labels"]}}
              })
 
     assert message ==
-             "policy cannot allow_after_outside in a definition; name a policy in policies/ that does"
+             "policy cannot allow_after in a definition; name a policy in policies/ that does"
 
-    careful = WardrikPolicy.decode!(%{"allow_after_outside" => ["github/add_labels"]}, "careful")
+    careful =
+      WardrikPolicy.decode!(%{"allow_after" => %{"outside" => ["github/add_labels"]}}, "careful")
 
     assert {:ok, _spec} =
              AgentFile.definition(

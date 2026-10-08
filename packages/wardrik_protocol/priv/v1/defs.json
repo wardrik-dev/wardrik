@@ -296,9 +296,12 @@
         "tool_call_id": {
           "type": "string"
         },
-        "outside_content": {
-          "type": "boolean",
-          "description": "true where the run had read content from outside, which may be what asked for the call."
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote."
         }
       },
       "additionalProperties": false,

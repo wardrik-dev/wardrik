@@ -24,7 +24,7 @@ defmodule WardrikWorkspace.Backend.Conformance do
           by: "test/writer",
           run: "4bf92f3577b34da6a3ce929d0e0e4736",
           call: "test/writer/call_1",
-          tainted: true,
+          labels: ["outside"],
           at: ~U[2026-09-30 12:00:00.000000Z]
         }
 
