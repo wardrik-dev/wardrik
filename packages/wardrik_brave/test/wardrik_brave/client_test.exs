@@ -17,7 +17,7 @@ defmodule WardrikBrave.ClientTest do
     test "posts the query and summarizes what comes back" do
       stub_json(200, @body)
 
-      assert {:ok, result} = Client.search(Config.new(), %{"q" => "elixir otp"})
+      assert {:ok, result} = Client.search(config(), %{"q" => "elixir otp"})
 
       assert result["count"] == 2
       assert [first, second] = result["results"]
@@ -39,14 +39,14 @@ defmodule WardrikBrave.ClientTest do
     test "sends the subscription token" do
       stub_json(200, @body)
 
-      {:ok, _result} = Client.search(Config.new(), %{"q" => "x"})
+      {:ok, _result} = Client.search(config(), %{"q" => "x"})
 
       assert_receive {:req, conn, _body}
       assert Plug.Conn.get_req_header(conn, "x-subscription-token") == ["test-brave-api-key"]
     end
 
     test "a build with no key reports that rather than calling out" do
-      assert Client.search(Config.new(api_key: nil), %{"q" => "x"}) ==
+      assert Client.search(config(api_key: nil), %{"q" => "x"}) ==
                {:error, :missing_brave_api_key}
 
       refute_receive {:req, _conn, _body}
@@ -55,13 +55,13 @@ defmodule WardrikBrave.ClientTest do
     test "a rate limit is named so a caller can tell it apart" do
       stub_status(429)
 
-      assert Client.search(Config.new(), %{"q" => "x"}) == {:error, :brave_rate_limited}
+      assert Client.search(config(), %{"q" => "x"}) == {:error, :brave_rate_limited}
     end
 
     test "any other failure carries the status" do
       stub_status(503)
 
-      assert {:error, message} = Client.search(Config.new(), %{"q" => "x"})
+      assert {:error, message} = Client.search(config(), %{"q" => "x"})
       assert message =~ "503"
     end
   end
@@ -99,7 +99,7 @@ defmodule WardrikBrave.ClientTest do
   end
 
   test "headers/1 carries the key and asks for JSON" do
-    assert Client.headers(Config.new()) == %{
+    assert Client.headers(config()) == %{
              "x-subscription-token" => "test-brave-api-key",
              "accept" => "application/json"
            }

@@ -39,4 +39,15 @@ over Socket Mode, a connection the daemon opens out to Slack, so it needs no
 public address and no open port.
 
 A notice is sent once from the node that holds the agent, however many nodes
-the cluster has. `WardrikNotify` describes a target of your own.
+the cluster has.
+
+Outside the daemon, a host starts it with its targets, and a target of your
+own is a module; see `WardrikNotify`:
+
+```elixir
+children = [
+  Wardrik,
+  {WardrikNotify.Supervisor,
+   targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]}
+]
+```

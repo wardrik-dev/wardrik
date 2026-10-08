@@ -3,7 +3,7 @@ defmodule WardrikOAuth.Loopback do
   The pages an authorization server redirects back to, served on loopback by
   Bandit.
 
-      config :wardrik_oauth, WardrikOAuth, redirect: [port: 4599]
+      {WardrikOAuth.Supervisor, redirect: [port: 4599]}
 
   A single binary has nowhere on the public internet to send a code, and RFC
   8252 says a native application should not need one: the browser is on the

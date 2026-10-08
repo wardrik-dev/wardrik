@@ -3,7 +3,7 @@ defmodule WardrikVault do
   Where credentials are kept, sealed with a key the deployment holds, in
   `Wardrik.Store`, and the `Wardrik.Credential` resolver that finds them.
 
-      config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
+      children = [Wardrik, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
 
       Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
@@ -26,6 +26,13 @@ defmodule WardrikVault do
   answers says whose it is as `:owner`. A name nobody holds answers
   `{:error, :not_found}`.
 
+  A name in `:environment` that the node's environment sets is the
+  deployment's where no owner the call reaches holds it here, or the vault
+  has no key: a tool's key a deployment sets as an environment variable
+  resolves so where nobody sealed one.
+
+      {WardrikVault, keys: [...], environment: ["SEARCH_API_KEY"]}
+
   A grant is an account its owner connected, and acts as them, so only its
   owner's calls reach it: a user's grant for their calls, an org's for the
   calls of its agents that have no user. A user whose org connected an
@@ -38,7 +45,7 @@ defmodule WardrikVault do
   org, gave by authorizing an account, kept here like any other and renewed by
   the module `:grants` names, such as `WardrikOAuth`:
 
-      config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
+      {WardrikVault, keys: [...], grants: WardrikOAuth}
 
   A grant `resolve/2` finds is handed to that module to answer, renewing it
   where it has run out. A name nobody holds that the module can grant is asked
@@ -58,6 +65,15 @@ defmodule WardrikVault do
 
   Without a key nothing is written and nothing is read: every call answers
   `{:error, :no_key}` rather than falling back to plaintext.
+
+  ## Starting it
+
+  Its settings are the options of `start_link/1`: `:keys`, `:grants` and
+  `:environment`, none of them by default. A host puts it in its tree before
+  anything that resolves credentials; it runs nothing, and keeps the settings
+  in `:persistent_term`, where every call reads them. Starting it again with
+  other settings replaces them, as a host does once a key is made. See
+  `WardrikVault.Config`.
 
   The key seals the value only. Which owner has a credential of which name,
   and whether it is a grant, is visible to anyone who can read the store, and
@@ -89,6 +105,25 @@ defmodule WardrikVault do
   @typedoc "A secret someone put, or a grant someone gave by authorizing."
   @type kind() :: :secret | :grant
 
+  @doc false
+  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
+
+  @doc """
+  Keeps `opts` as the vault's settings, in place of any it had, and answers
+  `:ignore`: nothing runs.
+
+    * `:keys` - the base64-encoded keys, the first of which seals
+    * `:grants` - the `WardrikVault.Grants` module that renews and asks for
+      grants
+    * `:environment` - the names read from the node's environment, as the
+      deployment's, where the vault holds them for nobody a call reaches
+  """
+  @spec start_link(keyword()) :: :ignore
+  def start_link(opts \\ []) do
+    :ok = Config.put(opts)
+    :ignore
+  end
+
   @impl Wardrik.Credential
   def resolve(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
     owners = owners(scope)
@@ -97,8 +132,18 @@ defmodule WardrikVault do
       {:ok, owner, :secret, secret} -> {:ok, Credential.secret(secret, owner: owner)}
       {:ok, owner, :grant, grant} -> Config.grants().renew(name, owner, grant)
       {:unreadable, owner} -> ask(name, owner)
-      :none -> ask(name, hd(owners))
+      :none -> environment(name) || ask(name, hd(owners))
+      {:error, :no_key} -> environment(name) || {:error, :no_key}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp environment(name) do
+    with true <- name in Config.environment(),
+         secret when is_binary(secret) <- System.get_env(name) do
+      {:ok, Credential.secret(secret, owner: nil)}
+    else
+      _unnamed_or_unset -> nil
     end
   end
 

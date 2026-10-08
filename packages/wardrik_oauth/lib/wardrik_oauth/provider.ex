@@ -3,17 +3,17 @@ defmodule WardrikOAuth.Provider do
   One thing a user can authorize Wardrik for, and what is known about it in
   advance.
 
-      config :wardrik_oauth, WardrikOAuth,
-        providers: [
-          github: [
-            resource: "https://api.githubcopilot.com/mcp/",
-            issuer: "https://github.com/login/oauth",
-            client_id: System.get_env("GITHUB_CLIENT_ID"),
-            client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-            scopes: ~w(repo read:org)
-          ],
-          linear: [resource: "https://mcp.linear.app/mcp"]
-        ]
+      {WardrikOAuth.Supervisor,
+       providers: [
+         github: [
+           resource: "https://api.githubcopilot.com/mcp/",
+           issuer: "https://github.com/login/oauth",
+           client_id: System.get_env("GITHUB_CLIENT_ID"),
+           client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+           scopes: ~w(repo read:org)
+         ],
+         linear: [resource: "https://mcp.linear.app/mcp"]
+       ]}
 
   The name is a credential's: a credential named `github` that nobody holds
   is asked for through the `:github` provider. Everything but `:resource` is optional —

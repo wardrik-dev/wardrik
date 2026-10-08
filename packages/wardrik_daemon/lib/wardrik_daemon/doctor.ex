@@ -167,7 +167,6 @@ defmodule WardrikDaemon.Doctor do
     {result, found} =
       settings
       |> Config.boot()
-      |> Keyword.get(:wardrik, [])
       |> Keyword.get(Wardrik.Store, [])
       |> Wardrik.Store.check()
 
@@ -181,7 +180,8 @@ defmodule WardrikDaemon.Doctor do
   # gives one.
   defp vault(settings) do
     keys =
-      Keyword.get(Keyword.get(settings, WardrikVault, []), :keys) || WardrikVault.Config.keys()
+      Keyword.get(Keyword.get(settings, WardrikVault, []), :keys) ||
+        Keyword.get(Config.settings(WardrikVault), :keys, [])
 
     if keys == [], do: key_file(settings), else: vault_keys(keys, settings)
   end

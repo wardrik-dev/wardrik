@@ -19,6 +19,7 @@ defmodule WardrikOAuth.DeviceTest do
 
   setup do
     start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    :ok = configure([])
 
     test = self()
     handler = {__MODULE__, make_ref()}

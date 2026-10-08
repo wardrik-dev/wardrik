@@ -6,8 +6,8 @@ defmodule WardrikDaemon.VaultKey do
 
   `vault.keys` in `config.yaml`, and `WARDRIK_VAULT_KEY`, come first: the file
   is read only where neither names a key. The daemon reads it as it starts,
-  into `WardrikVault`'s settings and never into its environment, so no command
-  an MCP server runs can inherit it.
+  into the settings it starts `WardrikVault` with and never into its
+  environment, so no command an MCP server runs can inherit it.
 
   Nothing makes it as the daemon boots. `wardrik vault put` asks to, the first
   time it finds the vault with no key, and every node it reaches reads it
@@ -43,24 +43,36 @@ defmodule WardrikDaemon.VaultKey do
   def file(data_dir \\ Config.data_dir()), do: Path.join(data_dir, "vault_key")
 
   @doc """
-  Gives the vault the key in `data_dir`'s file, where nothing else gave it one:
-  `:ok` where the vault has a key now, `:none` where the file is not there,
-  and why where it holds no key the vault can use.
+  Starts `WardrikVault` with the daemon's settings for it, `config.yaml`'s
+  `vault` over the release's, and the key in `data_dir`'s file where they give
+  it none: `:ok` where the vault has a key now, `:none` where the file is not
+  there, and why where it holds no key the vault can use. Accounts users
+  connect are grants `WardrikOAuth` renews, unless the settings name another.
 
   The file is made readable by its owner alone each time it is read, as the
   cookie is.
   """
   @spec load(Path.t()) :: :ok | :none | {:error, String.t()}
   def load(data_dir \\ Config.data_dir()) do
-    if WardrikVault.Config.configured?() do
-      :ok
-    else
-      with {:ok, key} <- read(file(data_dir)) do
-        settings = Application.get_env(:wardrik_vault, WardrikVault, [])
-        Application.put_env(:wardrik_vault, WardrikVault, Keyword.put(settings, :keys, [key]))
+    loaded =
+      if configured?() do
+        :ok
+      else
+        with {:ok, key} <- read(file(data_dir)), do: Config.apply([{WardrikVault, keys: [key]}])
       end
-    end
+
+    :ignore =
+      WardrikVault
+      |> Config.settings()
+      |> Keyword.put_new(:grants, WardrikOAuth)
+      |> WardrikVault.start_link()
+
+    loaded
   end
+
+  @doc "Whether `config.yaml`, the release, or a key file read before gives the vault a key."
+  @spec configured?() :: boolean()
+  def configured?, do: WardrikVault |> Config.settings() |> Keyword.get(:keys, []) != []
 
   @doc """
   Makes a key in `data_dir`'s file, unless one is there, and answers the file.

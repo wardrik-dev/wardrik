@@ -211,7 +211,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert opts[:command] == "from-environment"
     end
 
-    test "storage, cluster and vault never read the vault, and say why", context do
+    test "storage, cluster, http and vault never read the vault, and say why", context do
       vault = fn _name -> "from-vault" end
 
       for {yaml, why} <- [
@@ -219,6 +219,8 @@ defmodule WardrikDaemon.ConfigTest do
              "since the vault is kept in the store"},
             {"cluster:\n  dns: \"${CLUSTER_DNS}\"\n",
              "as the node boots, before the vault can be"},
+            {"http:\n  ip: \"${HTTP_IP}\"\n",
+             "http reads the environment alone, as the node boots"},
             {~s(vault:\n  keys: ["${KEY}"]\n), "since the vault cannot unlock itself"}
           ] do
         assert {:error, message} = read(yaml, context, vault: vault)
@@ -682,8 +684,8 @@ defmodule WardrikDaemon.ConfigTest do
       cluster = [nodes: [:a@box, :b@box, :c@box], size: 3]
 
       assert Config.boot([{WardrikMCP, servers: []}, {WardrikDaemon.Cluster, cluster}]) == [
-               wardrik_daemon: [{WardrikDaemon.Cluster, cluster}],
-               wardrik: [{Wardrik.Store, cluster_size: 3}]
+               {WardrikDaemon.Cluster, cluster},
+               {Wardrik.Store, cluster_size: 3}
              ]
     end
 
@@ -691,14 +693,22 @@ defmodule WardrikDaemon.ConfigTest do
       store = [adapter: WardrikS3.Store, bucket: "b"]
 
       assert Config.boot([{WardrikDaemon.Cluster, size: 3}, {Wardrik.Store, store}]) == [
-               wardrik_daemon: [{WardrikDaemon.Cluster, size: 3}],
-               wardrik: [{Wardrik.Store, store}]
+               {WardrikDaemon.Cluster, size: 3},
+               {Wardrik.Store, store}
              ]
 
-      assert Config.boot([{Wardrik.Store, store}]) == [wardrik: [{Wardrik.Store, store}]]
+      assert Config.boot([{Wardrik.Store, store}]) == [{Wardrik.Store, store}]
     end
 
-    test "is nothing where the file names neither" do
+    test "keeps the HTTP API's settings, for what starts before the daemon" do
+      http = [trusted_workers: true, port: 8080]
+
+      assert Config.boot([{WardrikMCP, servers: []}, {WardrikHTTP, http}]) == [
+               {WardrikHTTP, http}
+             ]
+    end
+
+    test "is nothing where the file names none of them" do
       assert Config.boot([{WardrikMCP, servers: []}]) == []
     end
   end
@@ -707,26 +717,28 @@ defmodule WardrikDaemon.ConfigTest do
     @describetag tmp_dir: false
 
     test "leaves the store's settings, which a release took as it booted" do
-      before = Application.get_env(:wardrik, Wardrik.Store)
+      before = Config.settings(Wardrik.Store)
       :ok = Config.apply([{Wardrik.Store, adapter: Wardrik.Store.Memory}])
-      assert Application.get_env(:wardrik, Wardrik.Store) == before
+      assert Config.settings(Wardrik.Store) == before
     end
 
-    test "merges over what the module already holds, in its own application" do
+    test "merges over what the daemon keeps for the module" do
       module = :"Elixir.WardrikDaemon.ConfigTest.Package#{System.unique_integer([:positive])}"
       Application.put_env(:wardrik_daemon, module, kept: 1, replaced: 1)
       on_exit(fn -> Application.delete_env(:wardrik_daemon, module) end)
 
       :ok = Config.apply([{module, replaced: 2}])
 
-      assert Application.get_env(:wardrik_daemon, module) == [kept: 1, replaced: 2]
+      assert Config.settings(module) == [kept: 1, replaced: 2]
     end
 
-    test "names the application each module reads from" do
-      assert Config.application(Wardrik.Store) == :wardrik
-      assert Config.application(WardrikMCP) == :wardrik_mcp
-      assert Config.application(WardrikOAuth) == :wardrik_oauth
-      assert Config.application(WardrikDaemon.SSH) == :wardrik_daemon
+    test "keeps every package's settings in the daemon's own application" do
+      WardrikDaemon.Test.Settings.keep()
+
+      :ok = Config.apply([{WardrikMCP, servers: [a: []]}])
+
+      assert Config.settings(WardrikMCP)[:servers] == [a: []]
+      assert Application.get_env(:wardrik_mcp, WardrikMCP) == nil
     end
   end
 end

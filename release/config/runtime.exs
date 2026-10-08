@@ -4,31 +4,28 @@ import Config
 # absent is a tool reporting it at call time rather than a node refusing to
 # start.
 if config_env() == :prod do
-  config :wardrik_brave, WardrikBrave, api_key: System.get_env("BRAVE_API_KEY")
-
-  # Where the environment sets none, the vault's is read; see WardrikDaemon.Secrets.
-  config :wardrik_daemon, WardrikDaemon.Secrets,
-    keys: %{"BRAVE_API_KEY" => {:wardrik_brave, WardrikBrave, :api_key}}
-
   config :req_llm, zai_api_key: System.get_env("ZAI_API_KEY")
 
+  # What the daemon starts the vault with, under what config.yaml's vault says.
   if key = System.get_env("WARDRIK_VAULT_KEY") do
-    config :wardrik_vault, WardrikVault, keys: [key]
+    config :wardrik_daemon, WardrikVault, keys: [key]
   end
 end
 
 # A release is the daemon: it reads config.yaml's boot settings, and logs to
 # WARDRIK_STATE_DIR/log/wardrik.log, or to the terminal where WARDRIK_LOG is "-".
 if System.get_env("RELEASE_NAME") do
-  # config.yaml's storage and cluster are read here, since what they describe
-  # starts before WardrikDaemon reads the rest of the file: the store, the
-  # topologies that connect this node to the others, and the size the store
-  # counts a quorum against. They alone are read, from the environment, so a
-  # ${NAME} elsewhere that only the vault sets cannot keep them from the
-  # boot. A file that does not read is left for WardrikDaemon to report.
+  # config.yaml's storage, cluster and http are read here, since what they
+  # describe starts before WardrikDaemon reads the rest of the file: the
+  # store, the topologies that connect this node to the others, the size the
+  # store counts a quorum against, and whether tool workers are trusted. They
+  # alone are read, from the environment, so a ${NAME} elsewhere that only the
+  # vault sets cannot keep them from the boot. A file that does not read is
+  # left for WardrikDaemon to report.
   with {:ok, file} <- WardrikDaemon.Config.file(WardrikDaemon.Config.config_dir()),
-       {:ok, settings} <- WardrikDaemon.Config.read(file, only: ~w(storage cluster)) do
-    for {app, settings} <- WardrikDaemon.Config.boot(settings), do: config(app, settings)
+       {:ok, settings} <- WardrikDaemon.Config.read(file, only: ~w(storage cluster http)) do
+    for {module, settings} <- WardrikDaemon.Config.boot(settings),
+        do: config(:wardrik_daemon, module, settings)
   end
 
   # WARDRIK_HTTP_IP and WARDRIK_SSH_IP move the HTTP API and the TUI off
@@ -38,7 +35,7 @@ if System.get_env("RELEASE_NAME") do
 
   for {package, variable} <- listeners, ip = System.get_env(variable), ip != "" do
     case :inet.parse_address(String.to_charlist(ip)) do
-      {:ok, address} -> config WardrikDaemon.Config.application(package), package, ip: address
+      {:ok, address} -> config :wardrik_daemon, package, ip: address
       {:error, _reason} -> raise "#{variable} is #{ip}, which is not an address such as 0.0.0.0"
     end
   end

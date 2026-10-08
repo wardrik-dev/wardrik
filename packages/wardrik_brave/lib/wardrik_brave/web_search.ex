@@ -12,6 +12,10 @@ defmodule WardrikBrave.WebSearch do
 
   What it answers is pages anyone could have written, so it is labelled
   `"outside"`; see `Wardrik.Tool.Annotations`.
+
+  Its key is the credential `BRAVE_API_KEY`, which the scope's
+  `Wardrik.Credential` resolver resolves for each call, such as `WardrikVault`
+  holding it as the deployment's secret.
   """
 
   @behaviour Wardrik.Tool
@@ -36,13 +40,15 @@ defmodule WardrikBrave.WebSearch do
   Returns each source's URL, title, extracted passages, and the page's date where it is known. An empty result means nothing relevant was found, not that the search failed.
   """
 
-  @doc "The pages a search finds are content from outside."
+  @credential "BRAVE_API_KEY"
+
+  @doc "The pages a search finds are content from outside, and a search needs the key."
   @impl true
-  def annotations(_name), do: %{labels: ["outside"]}
+  def annotations(_name), do: %{labels: ["outside"], credentials: [@credential]}
 
   @impl true
   def tool do
-    ReqLLM.Tool.new!(
+    Wardrik.Tool.new!(
       name: "web_search",
       description: @description,
       parameter_schema: [
@@ -72,7 +78,7 @@ defmodule WardrikBrave.WebSearch do
             "Approximate token budget for the whole result. Defaults to #{@default_max_tokens}. Raise it only for research."
         ]
       ],
-      callback: {__MODULE__, :run}
+      run: {__MODULE__, :run}
     )
   end
 
@@ -94,17 +100,26 @@ defmodule WardrikBrave.WebSearch do
 
   def validate_between(value), do: {:error, "expected a string, got: #{inspect(value)}"}
 
-  @doc "Runs one search and reports the outcome to the model."
-  @spec run(map() | keyword()) :: Result.t()
-  def run(params) do
+  @doc """
+  Runs one search and reports the outcome to the model: with the key the call
+  resolved, handed its `Wardrik.Tool.Context`, or as `config` says.
+  """
+  @spec run(map() | keyword(), Wardrik.Tool.Context.t() | Config.t()) :: Result.t()
+  def run(params, %Wardrik.Tool.Context{credentials: credentials}),
+    do: run(params, Config.new(api_key: key(credentials[@credential])))
+
+  def run(params, %Config{} = config) do
     case window(Map.new(params)) do
-      {:ok, _window} -> search(params)
+      {:ok, _window} -> search(params, config)
       {:error, message} -> Result.error(:conflicting_dates, message)
     end
   end
 
-  defp search(params) do
-    case Client.search(Config.new(), body(params)) do
+  defp key(nil), do: nil
+  defp key(credential), do: Wardrik.Credential.reveal(credential)
+
+  defp search(params, config) do
+    case Client.search(config, body(params)) do
       {:ok, result} -> Result.ok(result)
       {:error, reason} -> Result.error(reason)
     end

@@ -28,7 +28,7 @@ defmodule Mix.Tasks.Wardrik do
   Unnamed, the agent takes every MCP server connected on the node, as they
   stand each turn: one that connects, reconnects, or says its tools changed
   while the agent runs is picked up without restarting it. `--mcp` narrows that
-  to the servers it names, from `config :wardrik_mcp, WardrikMCP`, and is repeatable. An
+  to the servers it names, from `config :wardrik_sdk, WardrikMCP`, and is repeatable. An
   agent given `--tool` takes only what it names, so the servers an agent with a
   tool set of its own reaches are the ones `--mcp` names beside it.
 
@@ -38,9 +38,17 @@ defmodule Mix.Tasks.Wardrik do
   it has not listed yet. See `WardrikMCP` for the configuration, including how a
   token reaches a server.
 
+  The task is the host here, so it reads its own application's configuration,
+  by the module each part is for, and starts each with it:
+  `config :wardrik_sdk, WardrikMCP, servers: [...]` for `WardrikMCP.Supervisor`,
+  `config :wardrik_sdk, WardrikOAuth, providers: [...]` for
+  `WardrikOAuth.Supervisor`, and `config :wardrik_sdk, WardrikVault, keys: [...]`
+  for `WardrikVault`.
+
   `--credentials` names a `Wardrik.Credential` module. Unnamed, the agent gets
-  `WardrikVault` where the vault has a key, and none otherwise. A tool that needs
-  a credential the user has not authorized parks the turn on a link; open it,
+  `WardrikVault`, which reads a tool's key from the environment variable its
+  `:environment` names where the vault holds none. A tool that needs a
+  credential the user has not authorized parks the turn on a link; open it,
   then answer `y` to run the call again.
 
   `--policy` names a `Wardrik.Hook` module, and `--user` and `--org` place the
@@ -125,6 +133,7 @@ defmodule Mix.Tasks.Wardrik do
 
     start_mcp(opts)
     start_oauth()
+    :ignore = WardrikVault.start_link(settings(WardrikVault))
 
     # After app.start, not before: starting the :logger application installs
     # the default handler, so removing it earlier is undone.
@@ -219,7 +228,7 @@ defmodule Mix.Tasks.Wardrik do
 
   # Unnamed, the agent takes whatever is connected, read again every turn.
   defp mcp_sources(opts) do
-    configured = WardrikMCP.Config.refs()
+    configured = WardrikMCP |> settings() |> Keyword.get(:servers, []) |> Keyword.keys()
 
     case Keyword.get_values(opts, :mcp) do
       [] -> ambient(opts)
@@ -234,7 +243,7 @@ defmodule Mix.Tasks.Wardrik do
   defp configured!(configured, name) do
     Enum.find(configured, fn ref -> to_string(ref) == name end) ||
       Mix.raise(
-        "no MCP server is configured as #{name}; config :wardrik_mcp, WardrikMCP has " <>
+        "no MCP server is configured as #{name}; config :wardrik_sdk, WardrikMCP has " <>
           Enum.map_join(configured, ", ", &to_string/1)
       )
   end
@@ -242,8 +251,11 @@ defmodule Mix.Tasks.Wardrik do
   # The MCP servers are the host's to run, not core's, and an agent naming one
   # is valid whether or not it is up.
   defp start_mcp(opts) do
-    if Keyword.has_key?(opts, :mcp) or WardrikMCP.configured?() do
-      {:ok, _pid} = WardrikMCP.Supervisor.start_link(stderr: server_stderr(opts))
+    settings = settings(WardrikMCP)
+
+    if Keyword.has_key?(opts, :mcp) or Keyword.get(settings, :servers, []) != [] do
+      {:ok, _pid} =
+        WardrikMCP.Supervisor.start_link(Keyword.put(settings, :stderr, server_stderr(opts)))
     end
   end
 
@@ -257,16 +269,15 @@ defmodule Mix.Tasks.Wardrik do
   end
 
   defp start_oauth do
-    if WardrikOAuth.Config.configured?(), do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link()
+    settings = settings(WardrikOAuth)
+
+    if Keyword.get(settings, :providers, []) != [],
+      do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link(settings)
   end
 
-  # The vault, where it can unseal, so a deployment that keyed one does not
-  # also have to name it.
+  defp settings(module), do: Application.get_env(:wardrik_sdk, module, [])
+
   defp credentials(opts) do
-    cond do
-      opts[:credentials] -> Module.safe_concat([opts[:credentials]])
-      WardrikVault.ready?() -> WardrikVault
-      true -> nil
-    end
+    if opts[:credentials], do: Module.safe_concat([opts[:credentials]]), else: WardrikVault
   end
 end

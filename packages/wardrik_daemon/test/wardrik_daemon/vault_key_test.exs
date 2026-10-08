@@ -1,19 +1,14 @@
 defmodule WardrikDaemon.VaultKeyTest do
   use ExUnit.Case, async: false
 
+  alias WardrikDaemon.Test.Settings
   alias WardrikDaemon.VaultKey
 
   @moduletag :tmp_dir
 
   setup do
-    previous = Application.get_env(:wardrik_vault, WardrikVault)
-    Application.delete_env(:wardrik_vault, WardrikVault)
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:wardrik_vault, WardrikVault, previous),
-        else: Application.delete_env(:wardrik_vault, WardrikVault)
-    end)
+    Settings.keep()
+    Settings.no_vault()
   end
 
   test "makes a key once, readable by its owner alone, and keeps it", %{tmp_dir: dir} do
@@ -50,11 +45,21 @@ defmodule WardrikDaemon.VaultKeyTest do
 
   test "leaves a key configured elsewhere in place", %{tmp_dir: dir} do
     configured = WardrikVault.generate_key()
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [configured])
+    Application.put_env(:wardrik_daemon, WardrikVault, keys: [configured])
     {:ok, _file} = VaultKey.make(dir)
 
     assert VaultKey.load(dir) == :ok
     assert WardrikVault.Config.keys() == [configured]
+  end
+
+  test "starts the vault with the release's settings, and accounts as OAuth grants", %{
+    tmp_dir: dir
+  } do
+    Application.put_env(:wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"])
+
+    assert VaultKey.load(dir) == :none
+    assert WardrikVault.Config.environment() == ["SEARCH_API_KEY"]
+    assert WardrikVault.Config.grants() == WardrikOAuth
   end
 
   test "says why a file holds no key, and makes none over it", %{tmp_dir: dir} do
@@ -64,6 +69,7 @@ defmodule WardrikDaemon.VaultKeyTest do
     assert {:error, message} = VaultKey.load(dir)
     assert message =~ "#{file} holds no key the vault can use"
     assert VaultKey.make(dir) == {:error, message}
+    refute VaultKey.configured?()
     refute WardrikVault.Config.configured?()
   end
 

@@ -25,8 +25,8 @@ end
 ```
 
 ```elixir
-# config/runtime.exs
-config :wardrik_vault, WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]
+# lib/my_app/application.ex
+children = [Wardrik, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
 ```
 
 ```elixir
@@ -41,5 +41,12 @@ A credential nobody holds yet can be asked for instead, by naming a grants
 module; [wardrik_oauth](../wardrik_oauth) is one:
 
 ```elixir
-config :wardrik_vault, WardrikVault, keys: [...], grants: WardrikOAuth
+{WardrikVault, keys: [...], grants: WardrikOAuth}
+```
+
+A key a deployment sets as an environment variable can stand in for one
+nobody sealed, by naming it:
+
+```elixir
+{WardrikVault, keys: [...], environment: ["SEARCH_API_KEY"]}
 ```

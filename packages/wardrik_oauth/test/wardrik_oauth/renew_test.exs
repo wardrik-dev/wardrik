@@ -11,6 +11,7 @@ defmodule WardrikOAuth.RenewTest do
 
   setup do
     start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    :ok = configure([])
 
     test = self()
     handler = "renew-test-#{System.unique_integer([:positive])}"
@@ -182,7 +183,7 @@ defmodule WardrikOAuth.RenewTest do
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    Application.put_env(:wardrik_vault, WardrikVault, keys: [])
+    :ignore = WardrikVault.start_link(keys: [], grants: WardrikOAuth)
 
     assert {:error, :no_key} = resolve(owner)
     refute_received {:oauth, _method, _path, _body}

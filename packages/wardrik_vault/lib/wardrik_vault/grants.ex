@@ -2,7 +2,7 @@ defmodule WardrikVault.Grants do
   @moduledoc """
   What `WardrikVault` hands a grant to: a module that renews the grants it
   gave, and asks for one where nobody holds a name it can grant.
-  `WardrikOAuth` is one, and `config :wardrik_vault, WardrikVault, grants: ...` names it.
+  `WardrikOAuth` is one, and `WardrikVault`'s `:grants` option names it.
 
   A grant is kept in the vault like any other credential, sealed under its
   name and owner with `WardrikVault.put/4` and `kind: :grant`. What it holds is

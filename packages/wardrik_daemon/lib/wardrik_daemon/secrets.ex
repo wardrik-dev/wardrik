@@ -2,19 +2,15 @@ defmodule WardrikDaemon.Secrets do
   @moduledoc """
   The deployment's secrets the daemon reads from the vault where its
   environment does not set them: `${NAME}` in `config.yaml`, which
-  `WardrikDaemon.Config.read/2` reads through `named/1`, model providers'
-  keys, and the keys of the tools `:keys` names.
+  `WardrikDaemon.Config.read/2` reads through `named/1`, and model providers'
+  keys.
 
   The environment comes first, and the deployment's secret `NAME` in the vault
   second, for every one of them. `wardrik vault put NAME` seals one.
 
   A provider's key is `ReqLLM.Keys.env_var_name/1` of it, such as
-  `ANTHROPIC_API_KEY`. A tool's is whatever `:keys` maps to the setting it
-  reads its key from, as a release that reads the tool's key from the
-  environment names it:
-
-      config :wardrik_daemon, WardrikDaemon.Secrets,
-        keys: %{"SEARCH_API_KEY" => {:my_app, MyApp.Search, :api_key}}
+  `ANTHROPIC_API_KEY`. A tool's key is a credential it names, which the
+  vault resolves for each call; see `WardrikVault`.
 
   ReqLLM reads its application config ahead of the environment, so a key from
   the vault is put there only where the environment does not set the name. It
@@ -27,8 +23,8 @@ defmodule WardrikDaemon.Secrets do
   store may not have the write yet.
   """
 
-  @typedoc "Where a key is put: an application's key, or a key within an application's package settings."
-  @type setting() :: {atom(), atom()} | {atom(), module(), atom()}
+  @typedoc "Where a key is put: a key of ReqLLM's application config."
+  @type setting() :: {:req_llm, atom()}
 
   @doc "The deployment's secret `name` in the vault, or `nil` where it holds none it can read."
   @spec named(String.t()) :: String.t() | nil
@@ -42,23 +38,14 @@ defmodule WardrikDaemon.Secrets do
   @doc "The variables a key is read from, each with the settings it is put under."
   @spec variables() :: %{String.t() => [setting()]}
   def variables do
-    providers =
-      Enum.group_by(
-        ReqLLM.Providers.list(),
-        &ReqLLM.Keys.env_var_name/1,
-        &{:req_llm, ReqLLM.Keys.config_key(&1)}
-      )
-
-    tools =
-      Map.new(
-        Application.get_env(:wardrik_daemon, __MODULE__, [])[:keys] || %{},
-        fn {name, setting} -> {name, [setting]} end
-      )
-
-    Map.merge(providers, tools, fn _name, mine, theirs -> mine ++ theirs end)
+    Enum.group_by(
+      ReqLLM.Providers.list(),
+      &ReqLLM.Keys.env_var_name/1,
+      &{:req_llm, ReqLLM.Keys.config_key(&1)}
+    )
   end
 
-  @doc "Whether `name` is a key `place/2` places, a provider's or a tool's."
+  @doc "Whether `name` is a key `place/2` places, a model provider's."
   @spec key?(String.t()) :: boolean()
   def key?(name), do: Map.has_key?(variables(), name)
 
@@ -76,8 +63,8 @@ defmodule WardrikDaemon.Secrets do
 
   @doc """
   Places `secret` where the key `name` is read, unless the environment sets
-  it; `nil` clears it there. A name that is no provider's or tool's key is
-  placed nowhere.
+  it; `nil` clears it there. A name that is no provider's key is placed
+  nowhere.
   """
   @spec place(String.t(), String.t() | nil) :: :ok
   def place(name, secret) do
@@ -92,13 +79,5 @@ defmodule WardrikDaemon.Secrets do
     :ok
   end
 
-  defp put({app, key}, secret), do: Application.put_env(app, key, secret)
-
-  defp put({app, package, key}, secret),
-    do:
-      Application.put_env(
-        app,
-        package,
-        Keyword.put(Application.get_env(app, package, []), key, secret)
-      )
+  defp put({:req_llm, key}, secret), do: Application.put_env(:req_llm, key, secret)
 end

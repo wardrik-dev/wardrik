@@ -4,10 +4,10 @@ defmodule Wardrik.Store do
   adapter.
 
   Agent state, ledger claims and sealed credentials all land here. A
-  deployment names the adapter once and everything that stores anything goes
-  through this module:
+  deployment names the adapter once, as `Wardrik`'s `:store`, and everything
+  that stores anything goes through this module:
 
-      config :wardrik, Wardrik.Store, adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"
+      {Wardrik, store: [adapter: Wardrik.Store.EKV, data_dir: "/var/lib/wardrik"]}
 
   | Adapter | Keeps it |
   | --- | --- |
@@ -50,7 +50,12 @@ defmodule Wardrik.Store do
   `Wardrik.Fleet.Supervisor` starts the store, as `Wardrik` starts. A store
   kept through a host's repo starts after it, so the host starts `Wardrik` in
   its own tree; see `Wardrik`. A host that runs no fleet puts `Wardrik.Store`
-  in its own tree instead.
+  in its own tree instead, with the same settings:
+
+      children = [MyApp.Repo, {Wardrik.Store, adapter: WardrikEcto.Store, repo: MyApp.Repo}]
+
+  The settings are kept in `:persistent_term` as the store starts, and every
+  read and write finds the adapter there; see `configure/1`.
 
   `check/1` looks at a store without starting it, for `wardrik doctor`.
   """
@@ -121,37 +126,68 @@ defmodule Wardrik.Store do
   @optional_callbacks durable_backend: 1
 
   @default_adapter Wardrik.Store.EKV
+  @settings {__MODULE__, :settings}
 
-  @doc "The adapter this deployment configured, `Wardrik.Store.EKV` by default."
+  @doc """
+  Keeps `settings`, the adapter under `:adapter` and its options, as the
+  store's: every read and write, `adapter/0` and `config/0` find them from
+  then on. Answers `:ignore`, so a supervisor runs it as a child that starts
+  nothing: `Wardrik` runs one first, before what its `:cluster` names, which
+  may ask the store's quorum.
+  """
+  @spec configure(keyword()) :: :ignore
+  def configure(settings) when is_list(settings) do
+    :persistent_term.put(@settings, split(settings))
+    :ignore
+  end
+
+  @doc "The adapter the store was started with, `Wardrik.Store.EKV` where none was named."
   @spec adapter() :: module()
-  def adapter, do: settings() |> split() |> elem(0)
+  def adapter, do: elem(kept(), 0)
 
-  @doc "The adapter's options, as configured under `config :wardrik, Wardrik.Store`."
+  @doc "The adapter's options, as the store was started with them."
   @spec config() :: keyword()
-  def config, do: settings() |> split() |> elem(1)
+  def config, do: elem(kept(), 1)
 
-  defp settings, do: Application.get_env(:wardrik, __MODULE__, [])
+  defp kept, do: :persistent_term.get(@settings)
+
+  defp settings do
+    {adapter, opts} = kept()
+    [{:adapter, adapter} | opts]
+  end
+
   defp split(settings), do: Keyword.pop(settings, :adapter, @default_adapter)
 
   @doc """
-  The child that runs the configured adapter, with `opts` over its
-  configuration. Raises where the adapter is not a module this node has, as
-  one over a dependency the application leaves out is not.
+  The child that runs the adapter `settings` name, with its options, and
+  keeps them as the store's as it starts. Raises where the adapter is not a
+  module this node has, as one over a dependency the application leaves out
+  is not.
   """
   @spec child_spec(keyword()) :: Supervisor.child_spec()
-  def child_spec(opts \\ []) do
-    adapter = adapter()
+  def child_spec(settings) when is_list(settings) do
+    {adapter, opts} = split(settings)
     if message = missing(adapter), do: raise(ArgumentError, message)
 
-    case adapter.child_spec(Keyword.merge(config(), opts)) do
-      nil -> %{id: __MODULE__, start: {Function, :identity, [:ignore]}}
-      spec -> Map.put(spec, :id, __MODULE__)
-    end
+    spec =
+      case adapter.child_spec(opts) do
+        nil -> %{start: {Function, :identity, [:ignore]}}
+        spec -> Supervisor.child_spec(spec, [])
+      end
+
+    Map.merge(spec, %{id: __MODULE__, start: {__MODULE__, :start_link, [settings, spec.start]}})
+  end
+
+  @doc false
+  @spec start_link(keyword(), {module(), atom(), [term()]}) :: GenServer.on_start()
+  def start_link(settings, {module, function, args}) do
+    :ignore = configure(settings)
+    apply(module, function, args)
   end
 
   @doc """
   What the adapter `settings` name finds, as `c:check/1` answers. `settings`
-  are as `config :wardrik, Wardrik.Store` holds them, which they are by default.
+  are the store's own by default.
   """
   @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def check(settings \\ settings()) do
@@ -173,7 +209,7 @@ defmodule Wardrik.Store do
     end
   end
 
-  @doc "How many nodes of a cluster of `size` the configured adapter needs connected. See `c:quorum/1`."
+  @doc "How many nodes of a cluster of `size` the store's adapter needs connected. See `c:quorum/1`."
   @spec quorum(pos_integer()) :: pos_integer()
   def quorum(size) when is_integer(size) and size > 0, do: adapter().quorum(size)
 
@@ -188,16 +224,17 @@ defmodule Wardrik.Store do
     do: [graceful_shutdown_timeout_ms: 5_000, graceful_shutdown_total_timeout_ms: 10_000]
 
   @doc """
-  The `DurableServer` backend of the configured adapter.
+  What agents are written through by `DurableServer`, for the adapter
+  `settings` name: the store's own by default.
 
   Raises for an adapter without one, since a fleet cannot run without it.
   """
   @spec durable_backend(keyword()) :: {module(), keyword()}
-  def durable_backend(opts \\ []) do
-    adapter = adapter()
+  def durable_backend(settings \\ settings()) do
+    {adapter, opts} = split(settings)
 
     if function_exported?(adapter, :durable_backend, 1) do
-      adapter.durable_backend(Keyword.merge(config(), opts))
+      adapter.durable_backend(opts)
     else
       raise ArgumentError,
             "#{inspect(adapter)} provides no DurableServer backend, so it cannot hold a fleet"

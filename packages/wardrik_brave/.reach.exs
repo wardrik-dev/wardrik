@@ -75,16 +75,18 @@
   ],
   calls: [
     forbidden: [
-      # A package reads its own settings through one config module, never
-      # another package's key, and never core's store or supervisors by name.
+      # A package takes its settings as the options it is called with, and
+      # reads no application environment, its own or another's; nor does it
+      # reach core's store or supervisors by name.
       {["WardrikBrave", "WardrikBrave.*"],
        [
          "Application.get_env",
          "Application.fetch_env",
          "Application.fetch_env!",
+         "Application.put_env",
+         "Application.delete_env",
          "Wardrik.Fleet.Supervisor.store"
-       ],
-       except: ["WardrikBrave.Config"]}
+       ]}
     ]
   ],
   checks: [

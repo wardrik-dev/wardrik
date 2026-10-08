@@ -15,10 +15,13 @@ Start Wardrik after your repo, and name the repo as its store:
 ```elixir
 # config/config.exs
 config :wardrik, start: :host
-config :wardrik, Wardrik.Store, adapter: WardrikEcto.Store, repo: MyApp.Repo
 
 # lib/my_app/application.ex
-children = [MyApp.Repo, Wardrik, MyAppWeb.Endpoint]
+children = [
+  MyApp.Repo,
+  {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo]},
+  MyAppWeb.Endpoint
+]
 ```
 
 Create the table from a migration of your own:
