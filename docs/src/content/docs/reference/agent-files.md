@@ -195,7 +195,7 @@ as it does a file's:
      "tools": ["web_search", "linear/*"],
      "policy": {"ask": ["linear/*"]}}
 
-`priv/protocol/v1/agent_definition.json` is its schema. `instructions` is
+`wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
 mean in a file. The ID gives the agent's `name`, `org` and `user`. A
 definition has no `schedule` or `notify`: it leaves the agent's schedules

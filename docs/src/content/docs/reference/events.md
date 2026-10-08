@@ -6,7 +6,7 @@ sidebar:
   order: 6
 ---
 
-<!-- Written by mix wardrik.docs from packages/wardrik/priv/protocol/v1. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from packages/wardrik_protocol/priv/v1. Edit it there, not here. -->
 
 Every event is a CloudEvent: the envelope below, with the event's own data under `data`.
 

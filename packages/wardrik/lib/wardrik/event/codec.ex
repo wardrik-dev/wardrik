@@ -19,8 +19,8 @@ defmodule Wardrik.Event.Codec do
       `tool_calls/…`, `interrupts/…`, `steps/…` or `agents/…`
     * `time` - RFC 3339 in UTC, to the microsecond
     * `datacontenttype` - `"application/json"`
-    * `dataschema` - `urn:wardrik:schema:v1:<type>`, the JSON Schema in
-      `priv/protocol/v1/` the data follows
+    * `dataschema` - `urn:wardrik:schema:v1:<type>`, the JSON Schema the data
+      follows, which `wardrik_protocol` holds
     * `sequence` - CloudEvents' sequence extension: the event's place in its
       agent's log, zero-padded to #{12} digits, for a durable event given one
     * `traceparent` - the Distributed Tracing extension: the event's trace, a

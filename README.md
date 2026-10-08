@@ -104,6 +104,7 @@ tools that run in your own process.
 | Package | Description |
 | --- | --- |
 | [wardrik](packages/wardrik) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
+| [wardrik_protocol](packages/wardrik_protocol) | The JSON Schemas of events and the HTTP API, which every client is checked or generated against |
 | [wardrik_sdk](packages/wardrik_sdk) | Every package below in one dependency, and `mix wardrik` for trying agents in a terminal |
 
 ### Tools
@@ -176,7 +177,7 @@ mix precommit   # formatting, credo, the architecture checks, tests with coverag
 
 ### Adding a package
 
-A package is one of four kinds, and each kind is set up the same way:
+A package is one of five kinds, and each kind is set up the same way:
 
 | Kind | For example | Depends on | Implements | Its tests |
 | --- | --- | --- | --- | --- |
@@ -184,8 +185,9 @@ A package is one of four kinds, and each kind is set up the same way:
 | Store | `wardrik_ecto`, `wardrik_s3` | core, and its client | `Wardrik.Store` | run `Wardrik.Store.Conformance` and `Wardrik.Test.Durable` against the real service |
 | Surface | `wardrik_http`, `wardrik_tui`, `wardrik_daemon` | core, and the packages it puts in front of people | nothing; it calls core | drive agents in the fleet |
 | Assembly | `wardrik_sdk`, `release` | the packages it gathers | nothing | — |
+| Protocol | `wardrik_protocol` | nothing here | JSON Schemas, which the other packages and the SDKs read | check the schemas themselves |
 
-In every one:
+In every one that builds on core:
 
 - `mix.exs` names the packages beside it with `sibling(:wardrik)`, which is a
   path here and a version on Hex.
