@@ -10,7 +10,7 @@ defmodule WardrikDaemon.CLITest do
   alias WardrikDaemon.CLI
 
   @token_usage "Usage: wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
-                 "[--policy NAME | --unlimited]\n"
+                 "[--policy NAME | --unlimited] [--for NAME]\n"
 
   # Runs a command, answering what it printed and how it exited: 0, 1, or
   # :live for one that needs the terminal it came from.
@@ -149,6 +149,20 @@ defmodule WardrikDaemon.CLITest do
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
     assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
     assert :error = WardrikHTTP.Token.verify(secret)
+  end
+
+  test "token create --for issues a token to a person, whose decisions it records" do
+    {output, 0} =
+      command(["token", "create", "laptop", "--scope", "acme/", "--can", "read", "--for", "jon"])
+
+    [secret | _rest] = String.split(output, "\n")
+    assert {:ok, token} = WardrikHTTP.Token.verify(secret)
+    assert output =~ "laptop (#{token.id}), for jon, reaches the agents under acme/"
+    assert Wardrik.Principal.id(WardrikHTTP.Token.principal(token)) == "jon"
+
+    {list, 0} = command(["token", "list"])
+    assert list =~ "  #{token.id}  laptop, for jon,  the agents under acme/"
+    :ok = WardrikHTTP.Token.revoke(token.id)
   end
 
   test "token create writes a scope as the key prefix it is, and refuses one that is not" do

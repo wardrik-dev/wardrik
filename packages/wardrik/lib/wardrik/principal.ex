@@ -18,13 +18,15 @@ defmodule Wardrik.Principal do
     * `:oauth` - an authorization flow that finished, by the provider it was
       for: whoever completed it is not known
     * `:token` - a caller of the HTTP API, by the id of the token it presented
+    * `:user` - a person named where a credential was issued to them, as a
+      token made for them, or known by a sign-in
   """
 
   @enforce_keys [:type, :id]
   defstruct [:type, :id, :name]
 
   @typedoc "How a principal reached Wardrik."
-  @type type() :: :shell | :ssh | :terminal | :slack | :oauth | :token | atom()
+  @type type() :: :shell | :ssh | :terminal | :slack | :oauth | :token | :user | atom()
 
   @opaque t() :: %__MODULE__{type: type(), id: String.t(), name: String.t() | nil}
 

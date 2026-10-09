@@ -172,19 +172,25 @@ defmodule WardrikHTTP.Access do
 
   The record is read with `get/1` once it is held, so a revocation since the
   caller last read it is never missed. Answers what `get/1` did where it is
-  gone or cannot be read, and holds nothing.
+  gone or cannot be read, and holds nothing. `nil`, a caller whose credential
+  keeps no record, holds nothing and answers `:ok`.
   """
-  @spec hold(ref()) :: :ok | {:error, :not_found | :unavailable}
+  @spec hold(ref() | nil) :: :ok | {:error, :not_found | :unavailable}
+  def hold(nil), do: :ok
+
   def hold(ref) do
     with {:ok, _id} <- register(ref), do: :ok
   end
 
   @doc """
   Holds `ref` while `fun` runs, and answers what it answers, or what `hold/1`
-  did where the record could not be held and `fun` did not run.
+  did where the record could not be held and `fun` did not run. `nil` runs
+  `fun` holding nothing.
   """
-  @spec holding(ref(), (-> result)) :: result | {:error, :not_found | :unavailable}
+  @spec holding(ref() | nil, (-> result)) :: result | {:error, :not_found | :unavailable}
         when result: term()
+  def holding(nil, fun) when is_function(fun, 0), do: fun.()
+
   def holding(ref, fun) when is_function(fun, 0) do
     with {:ok, id} <- register(ref) do
       try do

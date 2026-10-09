@@ -9,7 +9,9 @@ defmodule WardrikDaemon.CLI.Tokens do
   it to some of `read,message,decide,define,serve`. A token that can define
   agents holds them to a ceiling: `--policy NAME`, a policy `policies/`
   holds, which every agent it defines is held to ahead of its own, or
-  `--unlimited`, which holds them to their own policies alone.
+  `--unlimited`, which holds them to their own policies alone. `--for NAME`
+  is the person it is issued to, whom a decision made with it is recorded
+  as made by; without it, the token itself.
   """
 
   alias Wardrik.AgentID.Prefix
@@ -24,21 +26,24 @@ defmodule WardrikDaemon.CLI.Tokens do
       %Command{
         name: "token create",
         arguments: "NAME",
-        options: "(--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]",
+        options:
+          "(--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]",
         summary: "a token for the HTTP API, printed once",
         details: [
           "--scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or",
           "org/@user/name.",
           "--can ACTIONS limits it to some of read,message,decide,define,serve.",
           "A token that can define holds the agents it defines to --policy NAME, one of",
-          "policies/, or to their own policies alone with --unlimited."
+          "policies/, or to their own policies alone with --unlimited.",
+          "--for NAME is the person it is issued to, whom its decisions are recorded as made by."
         ],
         switches: [
           scope: :string,
           all: :boolean,
           can: :string,
           policy: :string,
-          unlimited: :boolean
+          unlimited: :boolean,
+          for: :string
         ],
         count: {1, 1},
         run: &create/2
@@ -59,9 +64,12 @@ defmodule WardrikDaemon.CLI.Tokens do
 
     with {:ok, scope} <- scope(opts),
          {:ok, ceiling} <- ceiling(opts, can) do
-      make(name, scope, can, ceiling)
+      make(name, scope, can, ceiling ++ issued(opts[:for]))
     end
   end
+
+  defp issued(nil), do: []
+  defp issued(person), do: [for: Wardrik.Principal.new(:user, person)]
 
   # One of --scope and --all.
   defp scope(opts) do
@@ -125,7 +133,7 @@ defmodule WardrikDaemon.CLI.Tokens do
            [
              secret,
              "",
-             "#{token.name} (#{token.id}) reaches #{reach(token.grant)}. " <>
+             "#{token.name} (#{token.id})#{issued_to(token)} reaches #{reach(token.grant)}. " <>
                "This is the only time it is shown."
            ],
            "\n"
@@ -142,7 +150,8 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp list(_words, _opts) do
     rows =
       for token <- Token.list(),
-          do: "  #{token.id}  #{token.name}  #{reach(token.grant)}  made #{token.created_at}"
+          do:
+            "  #{token.id}  #{token.name}#{issued_to(token)}  #{reach(token.grant)}  made #{token.created_at}"
 
     case rows do
       [] ->
@@ -163,6 +172,9 @@ defmodule WardrikDaemon.CLI.Tokens do
       {:error, :not_found} -> {:error, "No token has the id #{id}."}
     end
   end
+
+  defp issued_to(%Token{principal: nil}), do: ""
+  defp issued_to(%Token{principal: person}), do: ", for #{Wardrik.Principal.id(person)},"
 
   defp reach(%Grant{scope: scope, can: can} = grant) do
     agents =

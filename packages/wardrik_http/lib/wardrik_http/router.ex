@@ -3,15 +3,15 @@ defmodule WardrikHTTP.Router do
   The HTTP API's routes; `WardrikHTTP` describes what each answers.
 
   Every response carries a `Request-Id` header, the caller's own where it sent
-  one, and the request is logged under it. Every request presents a token
-  (`WardrikHTTP.Auth`), and each route asks `WardrikHTTP.Access.authorize/3` for the
-  action it takes: an agent outside the token's scope is answered as one that
-  does not exist, `404`, and one inside it the token may not act on so,
-  `403`. A stream of events, and a worker's socket, hold their token, and end
-  when it is revoked.
+  one, and the request is logged under it. Every request comes from a
+  `WardrikHTTP.Caller` (`WardrikHTTP.Auth`), and each route asks
+  `WardrikHTTP.Access.authorize/3` for the action it takes: an agent outside
+  the caller's scope is answered as one that does not exist, `404`, and one
+  inside it the caller may not act on so, `403`. A stream of events, and a
+  worker's socket, hold the caller's credential, and end when it is revoked.
 
-  Its options are the `WardrikHTTP.Listener`'s `:definition`, assigned to each
-  request as `:options`.
+  Its options are the `WardrikHTTP.Listener`'s `:definition` and
+  `:authenticator`, assigned to each request as `:options`.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -27,7 +27,6 @@ defmodule WardrikHTTP.Router do
   alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
   alias WardrikHTTP.Resource
-  alias WardrikHTTP.Token
 
   @default_limit 100
   @max_limit 500
@@ -44,15 +43,15 @@ defmodule WardrikHTTP.Router do
   plug :dispatch
 
   get "/v1/workers" do
-    serves? = :serve in conn.assigns.token.grant.can
+    serves? = :serve in conn.assigns.caller.grant.can
 
     case WebSockAdapter.UpgradeValidation.validate_upgrade(conn) do
       :ok when not serves? ->
-        json(conn, 403, Resource.error("forbidden", "This token may not offer tools."))
+        json(conn, 403, Resource.error("forbidden", "This caller may not offer tools."))
 
       :ok ->
         conn
-        |> WebSockAdapter.upgrade(WardrikHTTP.Worker, conn.assigns.token, timeout: @idle)
+        |> WebSockAdapter.upgrade(WardrikHTTP.Worker, conn.assigns.caller, timeout: @idle)
         |> halt()
 
       {:error, _reason} ->
@@ -63,11 +62,11 @@ defmodule WardrikHTTP.Router do
   end
 
   get "/v1/agents" do
-    token = conn.assigns.token
+    grant = conn.assigns.caller.grant
 
     agents =
-      for member <- Fleet.list(token.grant.scope),
-          Access.authorize(token.grant, :read, member.id) == :ok,
+      for member <- Fleet.list(grant.scope),
+          Access.authorize(grant, :read, member.id) == :ok,
           do: Resource.agent(member)
 
     json(conn, 200, %{"agents" => agents})
@@ -126,14 +125,14 @@ defmodule WardrikHTTP.Router do
     do: json(conn, conn.status, Resource.error("internal", "Something went wrong."))
 
   # A path segment is one segment of the ID: one that decodes to a "/" is
-  # refused. An agent the token does not reach is one that does not exist,
+  # refused. An agent the caller does not reach is one that does not exist,
   # to the caller. Every handler below is given the agent's ID as `key`.
   defp within(conn, segments, action, fun) do
     text = Enum.join(segments, "/")
 
     case {Enum.find(segments, &String.contains?(&1, "/")), AgentID.parse(text)} do
       {nil, {:ok, key}} ->
-        case Access.authorize(conn.assigns.token.grant, action, key) do
+        case Access.authorize(conn.assigns.caller.grant, action, key) do
           :ok -> fun.(key)
           {:error, :forbidden} -> forbidden(conn, action, key)
           {:error, :not_found} -> not_found(conn, key)
@@ -162,10 +161,10 @@ defmodule WardrikHTTP.Router do
   defp define(conn, key) do
     with {:ok, module} <- definitions(conn, :put),
          {:ok, fields} <- object(conn.body_params),
-         {:ok, spec} <- module.put(key, fields, conn.assigns.token.grant) do
+         {:ok, spec} <- module.put(key, fields, conn.assigns.caller.grant) do
       if spec.id == key,
         do:
-          put_agent(conn, key, %{spec | hooks: Grant.held(conn.assigns.token.grant, spec.hooks)}),
+          put_agent(conn, key, %{spec | hooks: Grant.held(conn.assigns.caller.grant, spec.hooks)}),
         else: internal(conn, "#{inspect(module)} wrote a spec for #{spec.id}, not #{key}")
     else
       :unsupported -> not_supported(conn, "This server does not define agents over HTTP.")
@@ -306,9 +305,10 @@ defmodule WardrikHTTP.Router do
   defp stream?(conn),
     do: Enum.any?(get_req_header(conn, "accept"), &String.contains?(&1, "text/event-stream"))
 
-  # The stream holds its token while it runs, so revoking the token ends it.
+  # The stream holds its caller's credential while it runs, so revoking the
+  # credential ends it.
   defp stream(conn, key, cursor) do
-    Token.ref(conn.assigns.token)
+    conn.assigns.caller.ref
     |> Access.holding(fn -> EventStream.serve(conn, key, cursor) end)
     |> case do
       %Plug.Conn{} = conn ->
@@ -321,10 +321,10 @@ defmodule WardrikHTTP.Router do
         not_found(conn, key)
 
       {:error, :not_found} ->
-        json(conn, 401, Resource.error("unauthorized", "The token was revoked."))
+        json(conn, 401, Resource.error("unauthorized", "The credential was revoked."))
 
       {:error, :unavailable} ->
-        unavailable(conn, "The token cannot be checked now", :unavailable)
+        unavailable(conn, "The credential cannot be checked now", :unavailable)
     end
   end
 
@@ -361,11 +361,8 @@ defmodule WardrikHTTP.Router do
   defp identified(_message, text), do: {:ok, Wardrik.UUID.v7(), text}
 
   defp decide(conn, key, id) do
-    token = conn.assigns.token
-    by = Wardrik.Principal.new(:token, token.id, name: token.name)
-
     with {:ok, decision} <- decision(conn.body_params),
-         :ok <- Agent.decide(key, %{id => decision}, by: by) do
+         :ok <- Agent.decide(key, %{id => decision}, by: conn.assigns.caller.principal) do
       json(conn, 200, %{"interrupt" => %{"id" => id, "decision" => verdict(decision)}})
     else
       {:error, :not_found} ->
@@ -392,7 +389,7 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  # Where a person authorizes the call an interrupt waits on: only to a token
+  # Where a person authorizes the call an interrupt waits on: only to a caller
   # that may decide it, since the link is kept out of every event.
   defp authorization(conn, key, id) do
     case Agent.parked(key) do
@@ -471,7 +468,7 @@ defmodule WardrikHTTP.Router do
   }
 
   defp forbidden(conn, action, key) do
-    message = "This token may not #{Map.fetch!(@verbs, action)} #{key}."
+    message = "This caller may not #{Map.fetch!(@verbs, action)} #{key}."
     json(conn, 403, Resource.error("forbidden", message))
   end
 

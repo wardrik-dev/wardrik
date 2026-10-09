@@ -19,7 +19,13 @@ defmodule WardrikHTTP do
   does not exist, `404`, and an action the token was not granted is refused
   with `403`. A revoked token is refused, and the streams and worker sockets
   open on it are closed, at once on every node the revocation reaches and
-  within 15 seconds on one it does not.
+  within 15 seconds on one it does not. A token acts for the person it was
+  issued to, `--for` them, or for itself, and a decision made with it is
+  recorded as theirs.
+
+  A token is the credential the API knows unless its listener is given
+  another `WardrikHTTP.Authenticator`, such as a sign-in, which answers the
+  caller's grant and who they are the same way.
 
   A token that can `define` carries a ceiling: the hooks every agent it
   defines is held to, ahead of the definition's own `policy`, so a definition
@@ -32,7 +38,7 @@ defmodule WardrikHTTP do
       wardrik token create ci --scope acme/ --policy careful
       wardrik token create watcher --scope acme/@ops/ --can read
       wardrik token create one --scope acme/@jon/triage --policy careful
-      wardrik token create laptop --all --unlimited
+      wardrik token create laptop --all --unlimited --for jon
       wardrik token list
       wardrik token revoke 3f9a61c0d4e2
 
@@ -127,7 +133,7 @@ defmodule WardrikHTTP do
       {"decision": "reject", "reason": "Not this quarter."}
 
   `decision` is `approve` or `reject`. The decision is recorded as made by
-  the token, and answers `409` when the agent is not waiting on that call,
+  the caller's principal, and answers `409` when the agent is not waiting on that call,
   and `503` when the agent could not record it.
 
   ### Schedules
