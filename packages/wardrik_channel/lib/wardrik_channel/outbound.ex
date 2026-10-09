@@ -7,8 +7,8 @@ defmodule WardrikChannel.Outbound do
     * `:thread` - the thread in the room to post in, or `nil` for the room
       itself
     * `:body` - `{:notice, notice}`, a `WardrikNotify.Notice`, or
-      `{:reply, text, answering}`, what an agent answered in a thread, and
-      the ids of the messages it answers
+      `{:reply, text, answering}`, what is said in a thread, such as what
+      an agent answered, and the ids of the messages it answers, if any
     * `:approvers` - who may answer what it asks, as the channel names
       people; anyone in the room where it names nobody
   """
