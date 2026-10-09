@@ -272,7 +272,7 @@ defmodule WardrikOAuth.DeviceTest do
 
     test "is in a browser where the redirect comes back somewhere else", %{owner: owner} do
       assert {:error, {:authorization_required, %{url: url}, _owner}} =
-               resolve(owner, uri: redirect_uri())
+               resolve(owner, url: "https://wardrik.example.com/oauth")
 
       assert String.starts_with?(url, "https://auth.example.com/authorize?")
     end

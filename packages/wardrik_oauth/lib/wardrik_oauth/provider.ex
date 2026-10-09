@@ -54,7 +54,6 @@ defmodule WardrikOAuth.Provider do
     :issuer,
     :client_id,
     :client_secret,
-    :redirect_uri,
     scopes: [],
     authorization_params: %{},
     flow: :auto
@@ -67,7 +66,6 @@ defmodule WardrikOAuth.Provider do
           issuer: String.t() | nil,
           client_id: String.t() | nil,
           client_secret: String.t() | nil,
-          redirect_uri: String.t() | nil,
           scopes: [String.t()],
           authorization_params: %{optional(String.t()) => String.t()},
           flow: flow()

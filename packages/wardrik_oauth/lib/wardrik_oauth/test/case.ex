@@ -75,7 +75,7 @@ defmodule WardrikOAuth.Test.Case do
   def configure(opts) do
     defaults = [
       req_options: [plug: {Req.Test, @stub}],
-      redirect: [uri: redirect_uri()],
+      redirect: [url: "https://wardrik.example.com/oauth"],
       client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
       resolver: Resolver,
       poll_floor: 0
@@ -84,9 +84,9 @@ defmodule WardrikOAuth.Test.Case do
     WardrikOAuth.Config.put(Keyword.merge(defaults, opts))
   end
 
-  @doc "The redirect URI the tests register."
+  @doc "The redirect URI the tests register for the `github` provider."
   @spec redirect_uri() :: String.t()
-  def redirect_uri, do: "http://127.0.0.1:4599/callback"
+  def redirect_uri, do: "https://wardrik.example.com/oauth/callback/github"
 
   @doc "Where the stub authorization server lives."
   @spec resource() :: String.t()

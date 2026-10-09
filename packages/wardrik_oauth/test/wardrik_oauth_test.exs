@@ -8,7 +8,7 @@ defmodule WardrikOAuthTest do
   alias Wardrik.Test.Calls
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    start_supervised!({WardrikOAuth.Supervisor, callback: false})
     :ok = configure([])
 
     :ok

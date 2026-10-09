@@ -112,16 +112,31 @@ and offered on every node.
 
 ### In a browser
 
-The link opens the provider's page, and the provider sends the browser back to the daemon on
-loopback, at `http://127.0.0.1:4599/callback/github`. Register that as the redirect URI with the
-provider. `oauth.redirect.port` sets another port.
+The link opens the provider's page, and the provider sends the browser back to the daemon, at the
+deployment's redirect URL with `/callback/` and the provider's name after it. Register that as the
+redirect URI with a provider you registered by hand; the daemon gives it to a provider it registers
+with by itself.
 
-Loopback is the daemon's own machine, so the browser has to be there too. For a daemon on another
-machine, forward the port first:
+Without `oauth.redirect.url`, it is the daemon's own machine, on loopback:
+`http://127.0.0.1:4599/callback/github`, and the daemon opens the link in a browser there. The
+browser has to be on that machine, so for a daemon on another machine, forward the port first:
 
 ```sh
 ssh -L 4599:127.0.0.1:4599 box
 ```
+
+For people connecting from their own browsers, such as from a link in Slack, give the daemon a
+public address over HTTPS, which many providers ask for anyway:
+
+```yaml
+oauth:
+  redirect:
+    url: https://agents.example.com/oauth
+```
+
+The redirect URI is then `https://agents.example.com/oauth/callback/github`. See
+[A public address](/operate/public-address/) for putting Caddy in front of the daemon, and checking
+it with `wardrik doctor`.
 
 ### On another device
 

@@ -232,7 +232,7 @@ defmodule WardrikOAuth.Flow do
     %{
       client_id: client_id,
       client_secret: provider.client_secret,
-      redirect_uri: provider.redirect_uri || client.redirect_uri,
+      redirect_uri: client.redirect_uri,
       how: how
     }
   end

@@ -125,7 +125,11 @@ defmodule WardrikDaemon.Config do
   to connect an account, which is kept in the vault from then on.
 
   `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
-  takes them. `vault` takes `keys`, as `WardrikVault` does; without them,
+  takes them. `redirect.url` is where a provider sends the browser back to,
+  each under `callback/NAME`: an `https://` URL the deployment serves from
+  something in front of the daemon, which passes requests on to where
+  `redirect.ip` and `redirect.port` say, or, without it, this machine's
+  loopback; see `WardrikOAuth.Callback`. `vault` takes `keys`, as `WardrikVault` does; without them,
   or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
   which the first `wardrik vault put` asks to make. `ssh` takes
   `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
@@ -193,9 +197,9 @@ defmodule WardrikDaemon.Config do
   @server @transport ++
             ~w(only except prefix timeout max_result_bytes gated trusted credential credential_header credential_scheme credential_env)a
   @oauth ~w(client redirect providers)a
-  @client ~w(name document_url client_uri logo_uri policy_uri tos_uri redirect_uri)a
-  @redirect ~w(uri port open)a
-  @provider ~w(resource issuer client_id client_secret redirect_uri scopes authorization_params flow)a
+  @client ~w(name document_url client_uri logo_uri policy_uri tos_uri)a
+  @redirect ~w(url ip port open)a
+  @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @vault ~w(keys)a
   @defaults ~w(model tools policy timeout max_iterations compaction)
   @listener ~w(port ip)a
@@ -542,12 +546,48 @@ defmodule WardrikDaemon.Config do
         {:client, options(client, @client_keys, ["oauth", "client"])}
 
       {"redirect", redirect} ->
-        {:redirect, options(redirect, @redirect_keys, ["oauth", "redirect"])}
+        {:redirect, redirect(redirect)}
 
       {"providers", providers} ->
         {:providers, providers(table!(providers, ["oauth", "providers"]))}
     end)
   end
+
+  defp redirect(redirect) do
+    path = ["oauth", "redirect"]
+    redirect = table!(redirect, path)
+    known!(redirect, @redirect_keys, path)
+
+    Enum.map(redirect, fn
+      {"url", url} -> {:url, redirect_url!(url, path ++ ["url"])}
+      {"ip", ip} -> {:ip, address!(ip, path ++ ["ip"])}
+      {"port", port} when is_integer(port) and port in 1..65_535 -> {:port, port}
+      {"port", _port} -> invalid!(path ++ ["port"], "is a port number")
+      {"open", open} when is_boolean(open) -> {:open, open}
+      {"open", _open} -> invalid!(path ++ ["open"], "is true or false")
+    end)
+  end
+
+  @redirect_url "is an https:// URL, or http:// on loopback, with no query or fragment"
+
+  # Where providers send the browser back to: https, or http on this
+  # machine's own loopback, with nothing after its path.
+  defp redirect_url!(url, path) when is_binary(url) do
+    if redirect_url?(URI.parse(url)),
+      do: String.trim_trailing(url, "/"),
+      else: invalid!(path, @redirect_url)
+  end
+
+  defp redirect_url!(_url, path), do: invalid!(path, @redirect_url)
+
+  defp redirect_url?(%URI{userinfo: nil, query: nil, fragment: nil} = uri),
+    do: secure?(uri.scheme, uri.host)
+
+  defp redirect_url?(_uri), do: false
+
+  defp secure?("https", host), do: host not in [nil, ""]
+  defp secure?("http", host), do: host in ["127.0.0.1", "localhost", "::1"]
+  defp secure?(_scheme, _host), do: false
 
   defp providers(providers) do
     Enum.map(providers, fn {name, provider} ->

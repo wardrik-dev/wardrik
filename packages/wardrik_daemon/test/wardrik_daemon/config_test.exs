@@ -519,6 +519,50 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "both config.yaml and config.yml"
     end
 
+    test "oauth.redirect names where a browser comes back to, and where the daemon listens",
+         context do
+      assert {:ok, [{WardrikOAuth, oauth}]} =
+               read(
+                 "oauth:\n  redirect:\n    url: https://agents.example.com/oauth/\n" <>
+                   "    ip: 0.0.0.0\n    port: 4600\n    open: false\n",
+                 context
+               )
+
+      assert Enum.sort(oauth[:redirect]) ==
+               [
+                 ip: {0, 0, 0, 0},
+                 open: false,
+                 port: 4600,
+                 url: "https://agents.example.com/oauth"
+               ]
+
+      assert {:ok, [{WardrikOAuth, [redirect: [url: "http://localhost:4599"]]}]} =
+               read("oauth:\n  redirect:\n    url: http://localhost:4599\n", context)
+
+      for {yaml, said} <- [
+            {"url: http://agents.example.com", "url is an https:// URL, or http:// on loopback"},
+            {"url: https://agents.example.com/?a=1", "url is an https:// URL"},
+            {"url: https://agents.example.com/#top", "url is an https:// URL"},
+            {"url: 4599", "url is an https:// URL"},
+            {"ip: everywhere", "ip is an address"},
+            {"port: 70000", "port is a port number"},
+            {"open: sometimes", "open is true or false"},
+            {"uri: https://agents.example.com", "uri is not"}
+          ] do
+        assert {:error, message} = read("oauth:\n  redirect:\n    #{yaml}\n", context)
+        assert message =~ "oauth.redirect." <> said
+      end
+
+      assert {:error, message} =
+               read(
+                 "oauth:\n  providers:\n    github:\n      resource: https://x\n" <>
+                   "      redirect_uri: https://y\n",
+                 context
+               )
+
+      assert message =~ "oauth.providers.github.redirect_uri"
+    end
+
     test "a provider names how its users authorize", context do
       assert {:ok, [{WardrikOAuth, oauth}]} =
                read(

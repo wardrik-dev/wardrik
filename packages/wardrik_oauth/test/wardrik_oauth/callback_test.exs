@@ -1,4 +1,4 @@
-defmodule WardrikOAuth.LoopbackTest do
+defmodule WardrikOAuth.CallbackTest do
   use WardrikOAuth.Test.Case, async: false
 
   alias Wardrik.AgentID
@@ -6,7 +6,7 @@ defmodule WardrikOAuth.LoopbackTest do
   alias Wardrik.LLM.Config
   alias Wardrik.Scope
   alias Wardrik.Test.Calls
-  alias WardrikOAuth.Loopback
+  alias WardrikOAuth.Callback
   alias WardrikOAuth.Pending
 
   setup %{owner: owner} do
@@ -22,13 +22,14 @@ defmodule WardrikOAuth.LoopbackTest do
     %{port: port, owner: owner}
   end
 
-  # Starts a flow for `owner` against a stub server answering with `server`.
-  defp flow(%{port: port, owner: owner}, server \\ []) do
+  # Starts a flow for `owner` against a stub server answering with `server`,
+  # under the redirect settings `redirect`.
+  defp flow(%{port: port, owner: owner}, server \\ [], redirect \\ []) do
     stub_server([cimd: true] ++ server)
 
     configure(
       providers: [github: [resource: resource(), scopes: ~w(repo)]],
-      redirect: [port: port, open: false]
+      redirect: [port: port, open: false] ++ redirect
     )
 
     id = AgentID.new!("a", org: "acme", user: owner)
@@ -83,7 +84,7 @@ defmodule WardrikOAuth.LoopbackTest do
     %{state: state} = flow(context)
 
     assert get(context.port, "/callback/linear?code=the-code&state=#{state}") =~
-             "400 Bad Request"
+             "404 Not Found"
 
     assert {:ok, _flight} = Pending.under_way("github", {"acme", context.owner})
 
@@ -136,8 +137,57 @@ defmodule WardrikOAuth.LoopbackTest do
     refute WardrikOAuth.connected?("github", {"acme", context.owner})
   end
 
-  test "a callback with no code is refused", %{port: port} do
-    assert get(port, "/callback/github") =~ "400 Bad Request"
+  test "a callback with no code is refused", context do
+    flow(context)
+    assert get(context.port, "/callback/github") =~ "400 Bad Request"
+  end
+
+  test "serves the redirect URL's own path, for a front that passes requests on as they came",
+       context do
+    %{url: url, state: state} = flow(context, [], url: "https://agents.example.com/oauth/")
+    assert params_of(url)["redirect_uri"] == "https://agents.example.com/oauth/callback/github"
+    refute Callback.loopback?()
+
+    assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "404 Not Found"
+
+    assert get(context.port, "/oauth/callback/github?code=the-code&state=#{state}") =~
+             "200 OK"
+  end
+
+  test "every page is kept from caches, referrers and frames, and loads nothing", context do
+    flow(context)
+
+    for response <- [get(context.port, "/callback/github"), get(context.port, "/elsewhere")] do
+      assert response =~ "cache-control: no-store"
+      assert response =~ "referrer-policy: no-referrer"
+      assert response =~ "content-security-policy: default-src 'none'"
+      assert response =~ "x-frame-options: DENY"
+    end
+  end
+
+  test "check answers with the nonce it was sent, so the URL can be shown to reach it",
+       %{port: port} do
+    configure(redirect: [port: port])
+    assert get(port, "/check?nonce=abc-1") =~ "wardrik abc-1"
+    assert get(port, "/check?nonce=%3Cscript%3E") =~ "400 Bad Request"
+    assert get(port, "/check") =~ "400 Bad Request"
+
+    assert Callback.check("http://127.0.0.1:#{port}/") == :ok
+
+    {:ok, other} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, closed} = :inet.port(other)
+    :ok = :gen_tcp.close(other)
+    assert {:error, "http://127.0.0.1:" <> _} = Callback.check("http://127.0.0.1:#{closed}")
+  end
+
+  test "a URL on loopback is this machine's, and opens the browser here" do
+    configure(redirect: [url: "http://localhost:4599"])
+    assert Callback.loopback?()
+    assert Callback.redirect_uri("github") == "http://localhost:4599/callback/github"
+
+    configure(redirect: [port: 4700])
+    assert Callback.loopback?()
+    assert Callback.url() == "http://127.0.0.1:4700"
   end
 
   test "a path that is not a callback is not served", %{port: port} do
@@ -151,21 +201,28 @@ defmodule WardrikOAuth.LoopbackTest do
 
     {listener, log} =
       ExUnit.CaptureLog.with_log(fn ->
-        {:ok, listener} = GenServer.start_link(Loopback, port: port, retry: :timer.hours(1))
+        {:ok, listener} = GenServer.start_link(Callback, port: port, retry: :timer.hours(1))
         listener
       end)
 
-    assert log =~ "OAuth loopback could not listen on #{port}"
-    assert :error = Loopback.listening(listener)
+    assert log =~ "The OAuth callback could not listen on #{port}"
+    assert :error = Callback.listening(listener)
 
     :ok = :gen_tcp.close(held)
     send(listener, :listen)
 
-    assert {:ok, {{127, 0, 0, 1}, ^port}} = Loopback.listening(listener)
+    assert {:ok, {{127, 0, 0, 1}, ^port}} = Callback.listening(listener)
     assert get(port, "/") =~ "404 Not Found"
   end
 
-  test "it listens on loopback only", %{port: port} do
-    assert {:ok, {{127, 0, 0, 1}, ^port}} = Loopback.listening()
+  test "it listens on loopback unless told where", %{port: port} do
+    assert {:ok, {{127, 0, 0, 1}, ^port}} = Callback.listening()
+
+    {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, other} = :inet.port(held)
+    :ok = :gen_tcp.close(held)
+
+    {:ok, listener} = GenServer.start_link(Callback, ip: {0, 0, 0, 0}, port: other)
+    assert {:ok, {{0, 0, 0, 0}, ^other}} = Callback.listening(listener)
   end
 end
