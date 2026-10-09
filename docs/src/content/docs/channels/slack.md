@@ -116,6 +116,8 @@ A call waiting on an account to be connected has **Show link** instead of Approv
 authorization link to whoever pressed it, and nobody else. See
 [Connect accounts](/guides/accounts/).
 
+**Finished:** what the agent answered, as the Markdown it wrote, which Slack renders.
+
 ## Who may press the buttons
 
 `approvers` lists who may, each by `@handle`, email address or Slack user ID, and anyone else is

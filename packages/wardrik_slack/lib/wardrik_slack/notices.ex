@@ -1,7 +1,8 @@
 defmodule WardrikSlack.Notices do
   @moduledoc """
   How a `WardrikNotify.Notice` reads in Slack: a parked turn's calls, each
-  with Approve and Deny buttons, a failure, or what a turn answered.
+  with Approve and Deny buttons, a failure, or what a turn answered, as the
+  Markdown a model writes, which Slack renders.
 
   The buttons are there where the channel has an app-level token, so a
   press reaches it: without one, the message says how to answer from a shell
@@ -65,7 +66,7 @@ defmodule WardrikSlack.Notices do
   def blocks(%Notice{kind: :finished} = notice, _opts) do
     [
       section("*#{shown(notice.agent)}* answered:"),
-      section(clip(notice.text || "(nothing)", @max_text))
+      WardrikSlack.markdown(notice.text || "(nothing)")
     ]
   end
 

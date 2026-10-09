@@ -75,17 +75,25 @@ defmodule WardrikSlack do
     end
   end
 
-  # A model writes Markdown, which a markdown block renders, up to Slack's
-  # limit on one.
   defp reply(""), do: %{text: "_It answered nothing._"}
 
   defp reply(text) do
+    %{text: block} = markdown = markdown(text)
+    %{text: block, blocks: [markdown]}
+  end
+
+  @doc """
+  A block of what an agent wrote, as the Markdown a model writes, which Slack
+  renders, clipped to Slack's limit on one.
+  """
+  @spec markdown(String.t()) :: map()
+  def markdown(text) do
     clipped =
       if String.length(text) > @max_markdown,
         do: String.slice(text, 0, @max_markdown - 1) <> "…",
         else: text
 
-    %{text: clipped, blocks: [%{type: "markdown", text: clipped}]}
+    %{type: "markdown", text: clipped}
   end
 
   defp posted(message, %Outbound{room: room, thread: thread}, opts) do
