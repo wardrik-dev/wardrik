@@ -4,9 +4,9 @@ defmodule WardrikS3.LiveTest do
   @moduletag :s3
 
   setup_all do
-    :ignore = WardrikS3.Store.start_link(Wardrik.Test.Services.s3_opts())
+    :ignore = WardrikS3.Store.start_link(WardrikS3.Test.Services.s3_opts())
     :ok
   end
 
-  use Wardrik.Store.Conformance, adapter: WardrikS3.Store
+  use WardrikStore.Conformance, adapter: WardrikS3.Store
 end

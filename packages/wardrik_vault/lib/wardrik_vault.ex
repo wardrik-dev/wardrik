@@ -1,7 +1,7 @@
 defmodule WardrikVault do
   @moduledoc """
   Where credentials are kept, sealed with a key the deployment holds, in
-  `Wardrik.Store`, and the `Wardrik.Credential` resolver that finds them.
+  `WardrikStore`, and the `Wardrik.Credential` resolver that finds them.
 
       children = [Wardrik, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
 
@@ -87,7 +87,6 @@ defmodule WardrikVault do
 
   alias Wardrik.Credential
   alias Wardrik.Scope
-  alias Wardrik.Store
   alias WardrikVault.Config
   alias WardrikVault.Sealed
 
@@ -245,7 +244,7 @@ defmodule WardrikVault do
 
   @doc "Removes what is written as `name` for `owner`. Removing nothing is still `:ok`."
   @spec forget(String.t(), owner()) :: :ok | {:error, term()}
-  def forget(name, owner), do: Store.delete(@ns, path(name, owner))
+  def forget(name, owner), do: WardrikStore.delete(@ns, path(name, owner))
 
   @doc """
   The names `owner` holds credentials of.
@@ -256,7 +255,7 @@ defmodule WardrikVault do
   def names(owner) do
     prefix = segment(owner) <> "/"
 
-    for key <- Store.keys(@ns, prefix),
+    for key <- WardrikStore.keys(@ns, prefix),
         name = String.replace_prefix(key, prefix, ""),
         name != "",
         do: URI.decode(name)
@@ -272,7 +271,7 @@ defmodule WardrikVault do
   """
   @spec list() :: [{String.t(), owner() | :hashed}]
   def list do
-    for key <- Store.keys(@ns),
+    for key <- WardrikStore.keys(@ns),
         [owner, name] <- [String.split(key, "/")],
         do: {URI.decode(name), unsegment(owner)}
   end
@@ -289,8 +288,8 @@ defmodule WardrikVault do
   @spec ready?() :: boolean()
   def ready?, do: match?({:ok, _key}, sealing_key())
 
-  @doc "The namespace secrets are written under in `Wardrik.Store`."
-  @spec namespace() :: Store.ns()
+  @doc "The namespace secrets are written under in `WardrikStore`."
+  @spec namespace() :: WardrikStore.ns()
   def namespace, do: @ns
 
   @doc """
@@ -301,14 +300,14 @@ defmodule WardrikVault do
   def path(name, owner) when is_binary(name), do: segment(owner) <> "/" <> segment(name)
 
   defp write(path, %Sealed{} = sealed) do
-    case Store.put(@ns, path, sealed) do
+    case WardrikStore.put(@ns, path, sealed) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
   defp read(path) do
-    case Store.lookup(@ns, path) do
+    case WardrikStore.lookup(@ns, path) do
       {%Sealed{} = sealed, _vsn} -> {:ok, sealed}
       nil -> {:error, :not_found}
       {other, _vsn} -> {:error, {:unreadable, other}}

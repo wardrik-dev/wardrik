@@ -1,10 +1,10 @@
-defmodule Wardrik.Store.Conformance do
+defmodule WardrikStore.Conformance do
   @moduledoc """
-  The tests every `Wardrik.Store` adapter passes.
+  The tests every `WardrikStore` adapter passes.
 
       defmodule MyStore.PostgresTest do
         use ExUnit.Case, async: false
-        use Wardrik.Store.Conformance, adapter: MyStore.Postgres
+        use WardrikStore.Conformance, adapter: MyStore.Postgres
       end
 
   The adapter is expected to be running. Each test writes under a key of its
@@ -19,7 +19,7 @@ defmodule Wardrik.Store.Conformance do
 
       defp conformance_key(context), do: "#{context.test}/#{System.unique_integer([:positive])}"
 
-      describe "#{inspect(@adapter)} as a Wardrik.Store" do
+      describe "#{inspect(@adapter)} as a WardrikStore" do
         test "hands back what it was given", context do
           key = conformance_key(context)
 

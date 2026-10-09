@@ -4,7 +4,7 @@ defmodule WardrikHTTP.Access do
   holds.
 
   A surface knows its callers by a credential of its own, a bearer token or an
-  SSH key, and keeps what the credential grants in a record in `Wardrik.Store`.
+  SSH key, and keeps what the credential grants in a record in `WardrikStore`.
   It reads the record with `get/1`, and asks `authorize/3` before each thing
   the caller does:
 
@@ -63,7 +63,6 @@ defmodule WardrikHTTP.Access do
   require Logger
 
   alias Wardrik.Grant
-  alias Wardrik.Store
   alias WardrikHTTP.Access.Cache
   alias WardrikHTTP.Access.Leases
 
@@ -71,8 +70,8 @@ defmodule WardrikHTTP.Access do
   # revocation's refusal outlasts any read begun before it.
   @confirm_timeout 5_000
 
-  @typedoc "A record in `Wardrik.Store` that grants something: its namespace and key."
-  @type ref() :: {Store.ns(), Store.key()}
+  @typedoc "A record in `WardrikStore` that grants something: its namespace and key."
+  @type ref() :: {WardrikStore.ns(), WardrikStore.key()}
 
   @doc false
   def child_spec(opts) do
@@ -105,7 +104,7 @@ defmodule WardrikHTTP.Access do
     case Cache.lookup(ref) do
       {:ok, value} -> {:ok, value}
       :revoked -> {:error, :not_found}
-      :miss -> if Store.get(ns, key) == nil, do: {:error, :not_found}, else: confirm(ref)
+      :miss -> if WardrikStore.get(ns, key) == nil, do: {:error, :not_found}, else: confirm(ref)
     end
   end
 
@@ -134,7 +133,7 @@ defmodule WardrikHTTP.Access do
   @spec fetch(ref(), timeout: pos_integer()) ::
           {:ok, term()} | {:error, :not_found | :unavailable}
   def fetch({ns, key}, opts \\ []) do
-    case Store.get(ns, key, Keyword.put(opts, :consistent, true)) do
+    case WardrikStore.get(ns, key, Keyword.put(opts, :consistent, true)) do
       nil -> {:error, :not_found}
       value -> {:ok, value}
     end
@@ -217,9 +216,9 @@ defmodule WardrikHTTP.Access do
   """
   @spec revoke(ref()) :: :ok | {:error, :not_found | :conflict | term()}
   def revoke({ns, key} = ref) do
-    case Store.lookup(ns, key) do
+    case WardrikStore.lookup(ns, key) do
       {_value, vsn} ->
-        with :ok <- Store.delete(ns, key, if_vsn: vsn) do
+        with :ok <- WardrikStore.delete(ns, key, if_vsn: vsn) do
           :ok = Cache.revoked(ref)
           Leases.revoked(ref)
         end

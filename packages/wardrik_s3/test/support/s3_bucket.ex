@@ -1,10 +1,10 @@
-defmodule Wardrik.Test.S3Bucket do
+defmodule WardrikS3.Test.S3Bucket do
   @moduledoc """
   An S3 bucket in one ETS table, as a Plug for `Req.Test`: objects, ETags as
   S3 computes them, conditional PUT, GET, DELETE, and ListObjectsV2 in pages
   of two.
 
-      req_options: [plug: {Wardrik.Test.S3Bucket, conditional_delete: true}]
+      req_options: [plug: {WardrikS3.Test.S3Bucket, conditional_delete: true}]
 
   With `conditional_delete: false` a DELETE ignores `if-match`, as some
   services do, and with `conditional_put: false` a PUT ignores both

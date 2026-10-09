@@ -45,7 +45,7 @@ defmodule WardrikDaemon.Cluster do
 
   A store kept elsewhere, in Postgres or S3, needs no quorum: each node starts
   on its own, and the fleet carries on while any node is up. The store says
-  which; see `Wardrik.Store.quorum/1`.
+  which; see `WardrikStore.quorum/1`.
 
   A release reads `cluster` as it boots, before anything starts; see
   `config/runtime.exs`. This supervisor runs a `WardrikDaemon.Cluster.Topology`
@@ -97,7 +97,7 @@ defmodule WardrikDaemon.Cluster do
 
   @doc "How many of the cluster's nodes must be connected, this one among them, as the store counts them."
   @spec quorum(pos_integer()) :: pos_integer()
-  def quorum(size \\ size()), do: Wardrik.Store.quorum(size)
+  def quorum(size \\ size()), do: WardrikStore.quorum(size)
 
   @doc """
   The cluster's nodes this one is connected to, itself among them: those

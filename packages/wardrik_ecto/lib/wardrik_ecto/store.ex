@@ -3,7 +3,7 @@
 if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
   defmodule WardrikEcto.Store do
     @moduledoc """
-    A `Wardrik.Store` in a Postgres table, through a host's Ecto repo or one of
+    A `WardrikStore` in a Postgres table, through a host's Ecto repo or one of
     its own.
 
         {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo]}
@@ -46,7 +46,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     connects over TLS, checked against the system's certificates.
     """
 
-    @behaviour Wardrik.Store
+    @behaviour WardrikStore
 
     alias Ecto.Adapters.SQL
     alias WardrikEcto.Connection
@@ -57,7 +57,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     @migrations [{1, WardrikEcto.Migration}]
     @migration_lock :erlang.phash2({__MODULE__, :migration})
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def child_spec(opts) do
       spec = %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
       if Keyword.has_key?(opts, :url), do: Map.put(spec, :type, :supervisor), else: spec
@@ -140,7 +140,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     table or has it made as the store starts. With `:repo`, asks the repo, which
     must be running, for the table.
     """
-    @impl Wardrik.Store
+    @impl WardrikStore
     def check(opts) do
       case {Keyword.fetch(opts, :repo), Keyword.fetch(opts, :url)} do
         {{:ok, repo}, :error} -> check_repo(repo)
@@ -182,16 +182,16 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     defp describe(reason) when is_binary(reason), do: reason
     defp describe(reason), do: inspect(reason)
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def quorum(_size), do: 1
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def durable_backend(opts) do
-      {Wardrik.Store.Durable,
+      {WardrikStore.Durable,
        store: __MODULE__, discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 5_000)}
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def put(ns, key, value, opts) do
       vsn = vsn()
       condition = Keyword.fetch(opts, :if_vsn)
@@ -234,7 +234,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def get(ns, key, _opts) do
       case lookup(ns, key) do
         {value, _vsn} -> value
@@ -242,7 +242,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def lookup(ns, key) do
       case query!("SELECT value, vsn FROM #{@table} WHERE ns = $1 AND key = $2", [
              to_string(ns),
@@ -253,7 +253,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def delete(ns, key, opts) do
       args = [to_string(ns), key]
 
@@ -276,7 +276,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl Wardrik.Store
+    @impl WardrikStore
     def keys(ns, prefix) do
       %{rows: rows} =
         query!(

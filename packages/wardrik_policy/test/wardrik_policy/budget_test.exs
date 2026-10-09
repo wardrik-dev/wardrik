@@ -72,8 +72,8 @@ defmodule WardrikPolicy.BudgetTest do
       agent = Wardrik.AgentID.parse!("budget-#{System.unique_integer([:positive])}/triage")
 
       on_exit(fn ->
-        for key <- Wardrik.Store.keys(:budgets, to_string(agent)),
-            do: Wardrik.Store.delete(:budgets, key)
+        for key <- WardrikStore.keys(:budgets, to_string(agent)),
+            do: WardrikStore.delete(:budgets, key)
       end)
 
       policy = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}})

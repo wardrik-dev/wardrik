@@ -7,7 +7,7 @@ defmodule WardrikPolicy.Meter do
   whichever node asks for it first and found there by every node after. Every
   spend and grant for the period is a call to that one process, so they are
   counted in order, however many delegations settle at once, with no lock and
-  nothing retried. Each is written to `Wardrik.Store` before the call returns.
+  nothing retried. Each is written to `WardrikStore` before the call returns.
 
   A meter nothing has used for #{div(:timer.minutes(10), 60_000)} minutes stops, leaving its spend in
   the store, and the next call starts it again from there, on any node. So a

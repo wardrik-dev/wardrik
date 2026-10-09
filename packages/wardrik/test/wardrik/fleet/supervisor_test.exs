@@ -7,6 +7,6 @@ defmodule Wardrik.Fleet.SupervisorTest do
     assert is_pid(Process.whereis(Supervisor))
 
     children = Supervisor |> Elixir.Supervisor.which_children() |> Enum.map(&elem(&1, 0))
-    assert Wardrik.Store in children
+    assert WardrikStore in children
   end
 end

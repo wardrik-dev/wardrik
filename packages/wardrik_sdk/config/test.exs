@@ -2,7 +2,7 @@ import Config
 
 config :logger, level: :warning
 
-config :wardrik, Wardrik.Store, adapter: Wardrik.Store.Memory
+config :wardrik, WardrikStore, adapter: WardrikStore.Memory
 
 # The MCP client library logs every transport failure at error level.
 config :anubis_mcp, log: false

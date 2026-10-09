@@ -50,9 +50,10 @@ defmodule Wardrik.MixProject do
       # view of who is running.
       {:durable_server, "~> 0.1.5"},
       {:group, "~> 0.2.1"},
-      # The store where no adapter is configured. Optional, so a host that keeps
-      # its store in Postgres or S3 never compiles its SQLite NIF.
-      {:ekv, "~> 0.4.3", optional: true},
+      # Where agents and their records are kept.
+      sibling(:wardrik_store),
+      # The store core's suite keeps its fleet in, as a release does.
+      {:ekv, "~> 0.4.3", only: :test},
       # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
       {:mimic, "~> 1.7", only: [:dev, :test]},
       # The schemas the codec's tests check what it writes against.
@@ -64,7 +65,7 @@ defmodule Wardrik.MixProject do
   # A package beside this one in this repository: by path while it is here,
   # and by version where this one is built for Hex, with WARDRIK_HEX=1, or
   # fetched from it.
-  defp sibling(app, opts) do
+  defp sibling(app, opts \\ []) do
     if System.get_env("WARDRIK_HEX") != "1" and Path.basename(Path.dirname(__DIR__)) == "packages",
       do: {app, [path: "../#{app}"] ++ opts},
       else: {app, "~> #{@version}", opts}

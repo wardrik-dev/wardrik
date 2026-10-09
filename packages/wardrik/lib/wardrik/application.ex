@@ -11,7 +11,7 @@ defmodule Wardrik.Application do
     case Application.get_env(:wardrik, :start, :application) do
       :application ->
         Wardrik.start_link(
-          store: Application.get_env(:wardrik, Wardrik.Store, []),
+          store: Application.get_env(:wardrik, WardrikStore, []),
           fleet: Application.get_env(:wardrik, Wardrik.Fleet, [])
         )
 

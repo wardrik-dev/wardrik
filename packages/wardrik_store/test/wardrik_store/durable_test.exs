@@ -1,8 +1,8 @@
-defmodule Wardrik.Store.DurableTest do
+defmodule WardrikStore.DurableTest do
   use ExUnit.Case, async: false
 
-  alias Wardrik.Store.Durable
-  alias Wardrik.Store.Memory
+  alias WardrikStore.Durable
+  alias WardrikStore.Memory
 
   setup_all do
     start_supervised!(Memory.child_spec([]))
@@ -169,7 +169,7 @@ defmodule Wardrik.Store.DurableTest do
   end
 
   test "holds a DurableServer through a restart" do
-    Wardrik.Test.Durable.survives_a_restart(Memory, :durable_over_memory)
+    WardrikStore.Test.Durable.survives_a_restart(Memory, :durable_over_memory)
   end
 
   defp unique, do: "durable-test/#{System.unique_integer([:positive])}"

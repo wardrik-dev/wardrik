@@ -1,11 +1,11 @@
-defmodule Wardrik.Store.Durable do
+defmodule WardrikStore.Durable do
   @moduledoc """
-  A `DurableServer` backend over a `Wardrik.Store` adapter, so agents are kept
+  A `DurableServer` backend over a `WardrikStore` adapter, so agents are kept
   in the same store as everything else.
 
-      {Wardrik.Store.Durable, store: WardrikEcto.Store, discovery_interval_ms: 5_000}
+      {WardrikStore.Durable, store: WardrikEcto.Store, discovery_interval_ms: 5_000}
 
-  An adapter names it from its `c:Wardrik.Store.durable_backend/1`. Every
+  An adapter names it from its `c:WardrikStore.durable_backend/1`. Every
   object is a key in the `:durable` namespace, under the prefix its
   supervisor names, such as `agents/`, and its etag is the version the adapter
   wrote it with. A claim is a write where nothing is written, and an
@@ -14,7 +14,7 @@ defmodule Wardrik.Store.Durable do
 
   The adapter's reads are taken as current: `lookup/2` must answer the last
   write, on every node. `WardrikEcto.Store` and `WardrikS3.Store` do.
-  `Wardrik.Store.EKV` names DurableServer's own EKV backend instead.
+  `WardrikStore.EKV` names DurableServer's own EKV backend instead.
 
   | Option | Default | |
   | --- | --- | --- |

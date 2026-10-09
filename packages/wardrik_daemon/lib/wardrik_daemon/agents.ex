@@ -82,7 +82,6 @@ defmodule WardrikDaemon.Agents do
   alias Wardrik.AgentID
   alias Wardrik.Fleet
   alias Wardrik.Grant
-  alias Wardrik.Store
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.Definition
   alias WardrikDaemon.PolicyFile
@@ -359,7 +358,7 @@ defmodule WardrikDaemon.Agents do
   # spec of it.
   defp elsewhere(nodes, key) do
     Enum.find_value(nodes.(), fn node ->
-      case Map.fetch(Store.get(@inventory, inventory(node)) || %{}, to_string(key)) do
+      case Map.fetch(WardrikStore.get(@inventory, inventory(node)) || %{}, to_string(key)) do
         {:ok, path} -> {:file, {path, node}, nil}
         :error -> nil
       end
@@ -490,10 +489,10 @@ defmodule WardrikDaemon.Agents do
     unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
     declared = for {name, {:ok, spec}} <- named, into: %{}, do: {to_string(spec.id), name}
 
-    previous = Store.get(@inventory, inventory(node())) || %{}
+    previous = WardrikStore.get(@inventory, inventory(node())) || %{}
     kept = Map.filter(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
     inventory = Map.merge(kept, declared)
-    {:ok, _vsn} = Store.put(@inventory, inventory(node()), inventory)
+    {:ok, _vsn} = WardrikStore.put(@inventory, inventory(node()), inventory)
 
     for text <- Map.keys(previous) -- Map.keys(inventory),
         key = Wardrik.AgentID.parse!(text),

@@ -44,7 +44,6 @@ defmodule Wardrik.Event.Log.Writer do
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
-  alias Wardrik.Store
 
   @deltas [:result, :thinking]
 
@@ -152,7 +151,7 @@ defmodule Wardrik.Event.Log.Writer do
     {:ok, cloud_event} = Codec.encode(event, sequence: sequence)
     key = Log.key(writer.agent_id, sequence)
 
-    case Store.put(Log.namespace(), key, cloud_event, if_vsn: nil) do
+    case WardrikStore.put(Log.namespace(), key, cloud_event, if_vsn: nil) do
       {:ok, _vsn} ->
         entry = %Entry{event: cloud_event, sequence: sequence, follows: writer.head}
         :ok = Log.publish(writer.agent_id, entry)
@@ -172,7 +171,9 @@ defmodule Wardrik.Event.Log.Writer do
   # could not confirm, or an owner that has taken over.
   defp taken(writer, event) do
     sequence = writer.head + 1
-    written = Store.get(Log.namespace(), Log.key(writer.agent_id, sequence), consistent: true)
+
+    written =
+      WardrikStore.get(Log.namespace(), Log.key(writer.agent_id, sequence), consistent: true)
 
     if is_map(written) and written["id"] in writer.unconfirmed do
       durable(%{writer | head: sequence, unconfirmed: []}, event)
@@ -225,5 +226,5 @@ defmodule Wardrik.Event.Log.Writer do
   end
 
   defp written?(agent_id, sequence),
-    do: Store.get(Log.namespace(), Log.key(agent_id, sequence), consistent: true) != nil
+    do: WardrikStore.get(Log.namespace(), Log.key(agent_id, sequence), consistent: true) != nil
 end

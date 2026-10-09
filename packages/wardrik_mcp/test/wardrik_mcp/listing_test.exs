@@ -1,7 +1,5 @@
 defmodule WardrikMCP.ListingTest do
   use ExUnit.Case, async: true
-
-  alias Wardrik.Store
   alias WardrikMCP.Listing
 
   @listed [%{"name" => "echo", "description" => "Hands the value back."}]
@@ -22,11 +20,11 @@ defmodule WardrikMCP.ListingTest do
 
   test "does not write a listing the store already holds", %{ref: ref} do
     :ok = Listing.remember(ref, @listed)
-    {_listed, vsn} = Store.lookup(Listing.namespace(), Atom.to_string(ref))
+    {_listed, vsn} = WardrikStore.lookup(Listing.namespace(), Atom.to_string(ref))
 
     :ok = Listing.remember(ref, @listed)
 
-    assert {@listed, ^vsn} = Store.lookup(Listing.namespace(), Atom.to_string(ref))
+    assert {@listed, ^vsn} = WardrikStore.lookup(Listing.namespace(), Atom.to_string(ref))
   end
 
   test "keeps a listing that changed", %{ref: ref} do

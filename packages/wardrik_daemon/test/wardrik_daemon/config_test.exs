@@ -551,7 +551,7 @@ defmodule WardrikDaemon.ConfigTest do
     end
 
     test "storage in Postgres names the database", context do
-      assert {:ok, [{Wardrik.Store, store}]} =
+      assert {:ok, [{WardrikStore, store}]} =
                read(
                  "storage:\n  postgres:\n    url: postgres://w:secret@db.internal/w\n",
                  context
@@ -563,7 +563,7 @@ defmodule WardrikDaemon.ConfigTest do
     test "storage in S3 names the bucket, and how to reach it", context do
       key = env("key-id")
 
-      assert {:ok, [{Wardrik.Store, store}]} =
+      assert {:ok, [{WardrikStore, store}]} =
                read(
                  """
                  storage:
@@ -590,7 +590,7 @@ defmodule WardrikDaemon.ConfigTest do
     end
 
     test "empty storage leaves the store as it is", context do
-      assert {:ok, [{Wardrik.Store, []}]} = read("storage: {}\n", context)
+      assert {:ok, [{WardrikStore, []}]} = read("storage: {}\n", context)
     end
 
     test "storage that does not read says why", context do
@@ -685,19 +685,19 @@ defmodule WardrikDaemon.ConfigTest do
 
       assert Config.boot([{WardrikMCP, servers: []}, {WardrikDaemon.Cluster, cluster}]) == [
                {WardrikDaemon.Cluster, cluster},
-               {Wardrik.Store, cluster_size: 3}
+               {WardrikStore, cluster_size: 3}
              ]
     end
 
     test "leaves a store kept elsewhere as storage names it" do
       store = [adapter: WardrikS3.Store, bucket: "b"]
 
-      assert Config.boot([{WardrikDaemon.Cluster, size: 3}, {Wardrik.Store, store}]) == [
+      assert Config.boot([{WardrikDaemon.Cluster, size: 3}, {WardrikStore, store}]) == [
                {WardrikDaemon.Cluster, size: 3},
-               {Wardrik.Store, store}
+               {WardrikStore, store}
              ]
 
-      assert Config.boot([{Wardrik.Store, store}]) == [{Wardrik.Store, store}]
+      assert Config.boot([{WardrikStore, store}]) == [{WardrikStore, store}]
     end
 
     test "keeps the HTTP API's settings, for what starts before the daemon" do
@@ -717,9 +717,9 @@ defmodule WardrikDaemon.ConfigTest do
     @describetag tmp_dir: false
 
     test "leaves the store's settings, which a release took as it booted" do
-      before = Config.settings(Wardrik.Store)
-      :ok = Config.apply([{Wardrik.Store, adapter: Wardrik.Store.Memory}])
-      assert Config.settings(Wardrik.Store) == before
+      before = Config.settings(WardrikStore)
+      :ok = Config.apply([{WardrikStore, adapter: WardrikStore.Memory}])
+      assert Config.settings(WardrikStore) == before
     end
 
     test "merges over what the daemon keeps for the module" do

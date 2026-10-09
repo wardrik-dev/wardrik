@@ -1,4 +1,4 @@
-defmodule Wardrik.Test.Services do
+defmodule WardrikS3.Test.Services do
   @moduledoc """
   The bucket the `:s3` tests reach, where the environment names one or
   `dev/services.sh` started it.

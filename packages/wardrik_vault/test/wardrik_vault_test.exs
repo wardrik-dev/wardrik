@@ -111,7 +111,7 @@ defmodule WardrikVaultTest do
       :ok = WardrikVault.put("github", user, "ghp_secret")
 
       {%Sealed{} = sealed, _vsn} =
-        Wardrik.Store.lookup(WardrikVault.namespace(), WardrikVault.path("github", user))
+        WardrikStore.lookup(WardrikVault.namespace(), WardrikVault.path("github", user))
 
       refute inspect(sealed) =~ "ghp_secret"
       refute sealed.ciphertext =~ "ghp_secret"
@@ -123,11 +123,11 @@ defmodule WardrikVaultTest do
       mine = WardrikVault.path("github", user)
       theirs = WardrikVault.path("github", "thief")
 
-      {sealed, _vsn} = Wardrik.Store.lookup(WardrikVault.namespace(), mine)
-      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), theirs, sealed)
+      {sealed, _vsn} = WardrikStore.lookup(WardrikVault.namespace(), mine)
+      {:ok, _vsn} = WardrikStore.put(WardrikVault.namespace(), theirs, sealed)
       assert {:error, :grant, :undecipherable} = WardrikVault.lookup("github", "thief")
 
-      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), mine, %{sealed | kind: :secret})
+      {:ok, _vsn} = WardrikStore.put(WardrikVault.namespace(), mine, %{sealed | kind: :secret})
       assert {:error, :secret, :undecipherable} = WardrikVault.lookup("github", user)
     end
 
@@ -135,12 +135,12 @@ defmodule WardrikVaultTest do
          %{user: user} do
       path = WardrikVault.path("github", user)
 
-      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), path, "ghp_plain")
+      {:ok, _vsn} = WardrikStore.put(WardrikVault.namespace(), path, "ghp_plain")
       assert {:error, {:unreadable, "ghp_plain"}} = WardrikVault.fetch("github", user)
 
       :ok = WardrikVault.put("github", user, "ghp_secret")
-      {sealed, _vsn} = Wardrik.Store.lookup(WardrikVault.namespace(), path)
-      {:ok, _vsn} = Wardrik.Store.put(WardrikVault.namespace(), path, %{sealed | version: 99})
+      {sealed, _vsn} = WardrikStore.lookup(WardrikVault.namespace(), path)
+      {:ok, _vsn} = WardrikStore.put(WardrikVault.namespace(), path, %{sealed | version: 99})
       assert {:error, {:unknown_version, 99}} = WardrikVault.fetch("github", user)
     end
   end

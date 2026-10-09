@@ -4,8 +4,8 @@ config :logger, level: :warning
 
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
-config :wardrik, Wardrik.Store,
-  adapter: Wardrik.Store.EKV,
+config :wardrik, WardrikStore,
+  adapter: WardrikStore.EKV,
   data_dir:
     Path.join([
       System.tmp_dir!(),

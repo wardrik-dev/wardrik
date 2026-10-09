@@ -21,9 +21,9 @@ defmodule WardrikPolicy.Supervisor do
        [
          name: WardrikPolicy.Meter.supervisor(),
          prefix: "meters/",
-         backend: Wardrik.Store.durable_backend(),
+         backend: WardrikStore.durable_backend(),
          group: [log: Keyword.get(opts, :log, false)]
-       ] ++ Wardrik.Store.durable_shutdown()}
+       ] ++ WardrikStore.durable_shutdown()}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

@@ -142,7 +142,7 @@ describes them, and joins this daemon to others.
   * `s3`, with `bucket`, `endpoint`, `access_key_id` and `secret_access_key`,
     and optionally `region` and `prefix`, as `WardrikS3.Store` takes them.
 
-Without `storage`, the store is `Wardrik.Store.EKV`, on the node's disk under
+Without `storage`, the store is `WardrikStore.EKV`, on the node's disk under
 `WARDRIK_DATA_DIR`. A release reads `storage`, `cluster` and `http` as it
 boots, before anything starts, and the rest once the store runs; see
 `boot/1`.

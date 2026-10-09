@@ -22,7 +22,7 @@ defmodule WardrikHTTP.Definition do
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps it, and refuses the agents its files declare. A module
-  that keeps definitions, in `Wardrik.Store` or elsewhere, implements all of
+  that keeps definitions, in `WardrikStore` or elsewhere, implements all of
   them.
   """
 

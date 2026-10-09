@@ -4,7 +4,6 @@ defmodule WardrikHTTP.AccessTest do
   import ExUnit.CaptureLog
 
   alias Wardrik.Grant
-  alias Wardrik.Store
   alias WardrikHTTP.Access
   alias WardrikHTTP.Access.Cache
   alias WardrikHTTP.Access.Leases
@@ -14,7 +13,7 @@ defmodule WardrikHTTP.AccessTest do
   # A record written as a surface writes one, and its ref.
   defp record(value \\ :granted) do
     key = "record-#{System.unique_integer([:positive])}"
-    {:ok, _vsn} = Store.put(@ns, key, value, if_vsn: nil)
+    {:ok, _vsn} = WardrikStore.put(@ns, key, value, if_vsn: nil)
     {@ns, key}
   end
 
@@ -95,8 +94,8 @@ defmodule WardrikHTTP.AccessTest do
 
       # Gone from the store without a revocation: this node still answers
       # what it read, until the entry lapses.
-      {_value, vsn} = Store.lookup(ns, key)
-      :ok = Store.delete(ns, key, if_vsn: vsn)
+      {_value, vsn} = WardrikStore.lookup(ns, key)
+      :ok = WardrikStore.delete(ns, key, if_vsn: vsn)
       assert {:ok, :value} = Access.get(ref)
 
       lapse(ref)
@@ -244,8 +243,8 @@ defmodule WardrikHTTP.AccessTest do
     {ns, key} = ref = record()
     pid = holder(ref)
 
-    {_value, vsn} = Store.lookup(ns, key)
-    :ok = Store.delete(ns, key, if_vsn: vsn)
+    {_value, vsn} = WardrikStore.lookup(ns, key)
+    :ok = WardrikStore.delete(ns, key, if_vsn: vsn)
     refute_receive {:DOWN, _monitor, :process, ^pid, _reason}, 50
 
     :ok = Leases.sweep()

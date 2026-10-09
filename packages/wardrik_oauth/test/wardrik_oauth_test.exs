@@ -276,7 +276,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       path = WardrikVault.path("github", {"acme", owner})
-      {sealed, _vsn} = Wardrik.Store.lookup(WardrikVault.namespace(), path)
+      {sealed, _vsn} = WardrikStore.lookup(WardrikVault.namespace(), path)
 
       refute inspect(sealed) =~ "at_first"
     end
