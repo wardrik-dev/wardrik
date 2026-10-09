@@ -25,6 +25,7 @@
       "Wardrik.Event",
       "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",
+      "Wardrik.Event.Export",
       "Wardrik.Event.Log",
       "Wardrik.Event.Log.Entry",
       "Wardrik.Fleet",

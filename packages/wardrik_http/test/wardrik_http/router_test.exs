@@ -1020,8 +1020,78 @@ defmodule WardrikHTTP.RouterTest do
     {fields["id"], JSON.decode!(fields["data"])["type"]}
   end
 
+  describe "exports" do
+    # A client for the same listener, holding a token of its own.
+    defp client(api, scope, can) do
+      {:ok, secret, _token} = Token.create("export-test", scope, can, ceiling: [])
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    defp sources(events), do: events |> Enum.map(& &1["source"]) |> Enum.uniq() |> Enum.sort()
+
+    test "read the logs the caller may read, from where the export was moved to", %{api: api} do
+      user = "exp#{System.unique_integer([:positive])}"
+
+      {first, _agent} =
+        Fleet.start_agent([], Wardrik.AgentID.new!("first", org: "test", user: user))
+
+      {second, _agent} =
+        Fleet.start_agent([], Wardrik.AgentID.new!("second", org: "test", user: user))
+
+      client = client(api, Prefix.parse!("test/@#{user}/"), [:read])
+
+      assert {:ok, %{status: 200, body: %{"events" => events, "next" => next, "gaps" => []}}} =
+               Req.get(client, url: "/v1/exports/feed")
+
+      assert sources(events) == [
+               "wardrik://local/agents/#{first}",
+               "wardrik://local/agents/#{second}"
+             ]
+
+      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(client, url: "/v1/exports/feed")
+
+      assert {:ok, %{status: 204}} =
+               Req.post(client, url: "/v1/exports/feed", json: %{"next" => next})
+
+      assert {:ok, %{body: %{"events" => []}}} = Req.get(client, url: "/v1/exports/feed")
+
+      # Another caller's export of the same name is its own.
+      other = client(api, Prefix.parse!("test/@#{user}/"), [:read])
+      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(other, url: "/v1/exports/feed")
+
+      assert {:ok, %{status: 204}} = Req.delete(client, url: "/v1/exports/feed")
+      assert {:ok, %{body: %{"events" => ^events}}} = Req.get(client, url: "/v1/exports/feed")
+    end
+
+    test "read the audit for a caller that reaches every agent", %{api: api} do
+      :ok = Wardrik.Audit.record({:agent_cleared, Wardrik.AgentID.parse!("test/exported")}, nil)
+      client = client(api, Prefix.all(), [:read])
+
+      assert {:ok, %{status: 200, body: %{"events" => [event]}}} =
+               Req.get(client, url: "/v1/exports/audit?limit=1")
+
+      assert event["source"] == "wardrik://local/audit"
+    end
+
+    test "refuse a name that is not one, a caller that may not read, and a next not answered",
+         %{api: api} do
+      assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/exports/@feed")
+      assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/exports/feed?limit=0")
+
+      assert {:ok, %{status: 403}} =
+               Req.get(client(api, Prefix.parse!("test/"), [:message]), url: "/v1/exports/feed")
+
+      assert {:ok, %{status: 400, body: body}} =
+               Req.post(api, url: "/v1/exports/feed", json: %{"next" => "not a page"})
+
+      assert body["error"]["message"] == "next is not one a page of this export answered"
+      assert {:ok, %{status: 400}} = Req.post(api, url: "/v1/exports/feed", json: %{})
+      assert {:ok, %{status: 404}} = Req.put(api, url: "/v1/exports/feed", json: %{})
+    end
+  end
+
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization schedule schedule_definition error)
+    @resources ~w(agent agent_snapshot authorization schedule schedule_definition export error)
 
     defp schema(name) do
       WardrikProtocol.dir()
@@ -1052,6 +1122,18 @@ defmodule WardrikHTTP.RouterTest do
         {:ok, %{status: 200, body: snapshot}} = Req.get(api, url: "/v1/agents/#{key}")
         conforms(snapshot, "agent_snapshot")
       end
+
+      # Other tests write logs by hand, so the page is of agents of its own.
+      user = "schemas#{System.unique_integer([:positive])}"
+
+      {_key, _agent} =
+        Fleet.start_agent([], Wardrik.AgentID.new!("listed", org: "test", user: user))
+
+      reader = client(api, Prefix.parse!("test/@#{user}/"), [:read])
+
+      {:ok, %{status: 200, body: page}} = Req.get(reader, url: "/v1/exports/schemas")
+      assert [_ | _] = page["events"]
+      conforms(page, "export")
     end
 
     test "describe every error", %{api: api} do

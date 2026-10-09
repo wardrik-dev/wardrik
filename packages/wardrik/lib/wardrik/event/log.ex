@@ -37,6 +37,9 @@ defmodule Wardrik.Event.Log do
   from before what the log still holds answers `{:gap, oldest}`, and the client
   starts again from the agent's snapshot, which carries the head sequence.
 
+  `logs/0` lists every log written to, a forgotten agent's included, which
+  `Wardrik.Event.Export` reads from end to end.
+
   ## Retention
 
   Events are kept 30 days. After each run the agent drops those older than
@@ -47,6 +50,9 @@ defmodule Wardrik.Event.Log do
   alias Wardrik.Event.Log.Entry
 
   @ns :events
+
+  # Each agent whose log has been opened, by its ID's text.
+  @logs :event_logs
 
   @retention_days 30
 
@@ -73,6 +79,9 @@ defmodule Wardrik.Event.Log do
 
     * `:starting_after` - the last sequence already seen, `0` for all
     * `:limit` - how many to answer at most, #{@default_limit} by default
+    * `:consistent` - `false` reads this node's copy of the store alone, which
+      may end before the log does; `true` by default, which reads the end
+      again through consensus
 
   Answers `{:gap, oldest}` when events after `:starting_after` have been
   dropped, where `oldest` is the first one still held.
@@ -84,26 +93,47 @@ defmodule Wardrik.Event.Log do
 
     if next < oldest,
       do: {:gap, oldest},
-      else: {:ok, take(log, next, Keyword.get(opts, :limit, @default_limit))}
+      else: {:ok, take(log, next, opts)}
   end
 
   # Reads by number stop at the first one missing here. It is read again
   # through consensus before it is taken as the end, since this node's copy of
   # the store may be behind the node that wrote it.
-  defp take(log, sequence, limit) do
-    Stream.unfold({sequence, limit}, fn
+  defp take(log, sequence, opts) do
+    confirm = Keyword.get(opts, :consistent, true)
+
+    Stream.unfold({sequence, Keyword.get(opts, :limit, @default_limit)}, fn
       {_sequence, 0} ->
         nil
 
       {sequence, limit} ->
         key = key(log, sequence)
 
-        case WardrikStore.get(@ns, key) || WardrikStore.get(@ns, key, consistent: true) do
+        case WardrikStore.get(@ns, key) || confirmed(key, confirm) do
           nil -> nil
           event -> {event, {sequence + 1, limit - 1}}
         end
     end)
     |> Enum.to_list()
+  end
+
+  defp confirmed(key, true), do: WardrikStore.get(@ns, key, consistent: true)
+  defp confirmed(_key, false), do: nil
+
+  @doc """
+  Writes `agent_id` down among the logs `logs/0` lists. Its writer's to call
+  as it opens the log.
+  """
+  @spec opened(Wardrik.AgentID.t()) :: :ok | {:error, term()}
+  def opened(%Wardrik.AgentID{} = agent_id) do
+    with {:ok, _vsn} <- WardrikStore.put(@logs, to_string(agent_id), true), do: :ok
+  end
+
+  @doc "Every log written to: `:audit`, then each agent's, by its ID's text."
+  @spec logs() :: [log()]
+  def logs do
+    agents = @logs |> WardrikStore.keys() |> Enum.sort() |> Enum.map(&Wardrik.AgentID.parse!/1)
+    [:audit | agents]
   end
 
   @doc """

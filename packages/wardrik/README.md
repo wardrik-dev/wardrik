@@ -243,6 +243,19 @@ it, in one log for the whole cluster, beside each agent's own:
 Changes are CloudEvents from `wardrik://local/audit`, kept as long as
 agents' events are. `Wardrik.Audit` lists them.
 
+### Exporting every log
+
+`Wardrik.Event.Export` reads every log, the audit and each agent's, a removed
+agent's included, on from a named cursor kept in the store. A page leaves the
+cursor where it is until the reader moves it, so each event arrives at least
+once, on any node and after any restart:
+
+```elixir
+{:ok, page} = Wardrik.Event.Export.read("siem", limit: 500)
+:ok = ship(page.events)
+:ok = Wardrik.Event.Export.advance("siem", page.next)
+```
+
 ### A history that grows
 
 An agent that runs for weeks keeps adding to one conversation. Before the
@@ -302,7 +315,7 @@ without notice.
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
 | Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
 | What people changed | `Wardrik.Audit` |
-| Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
+| Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |
 

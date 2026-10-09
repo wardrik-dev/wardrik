@@ -254,3 +254,29 @@ describe("ask", () => {
     await server.close();
   });
 });
+
+describe("exports", () => {
+  test("read a page, move past it, and start over", async () => {
+    const started = event("wardrik.agent.started", {}, { sequence: 1 });
+    const page = { events: [started], next: "e30", gaps: [] };
+    server.on("GET", "/v1/exports/siem", (_request, response) => json(response, 200, page));
+    server.on("POST", "/v1/exports/siem", (_request, response) => json(response, 204));
+    server.on("DELETE", "/v1/exports/siem", (_request, response) => json(response, 204));
+
+    const siem = wardrik.export("siem");
+    assert.deepEqual(await siem.read({ limit: 500 }), page);
+    await siem.advance(page.next);
+    await siem.delete();
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path, request.body]),
+      [
+        ["GET", "/v1/exports/siem?limit=500", undefined],
+        ["POST", "/v1/exports/siem", { next: "e30" }],
+        ["DELETE", "/v1/exports/siem", undefined],
+      ],
+    );
+
+    await server.close();
+  });
+});
