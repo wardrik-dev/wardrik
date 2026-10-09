@@ -620,10 +620,11 @@ export interface MessageCompletedData {
   duration_ms: DurationMs;
 }
 /**
- * Someone sent the agent a message, which it will answer.
+ * Someone sent the agent a message, which it will answer; sender says who, where that is known.
  */
 export interface MessageCreatedData {
   message: Message;
+  sender?: Principal;
 }
 /**
  * Text of an assistant message as it streams. Live: never stored.

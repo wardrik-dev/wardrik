@@ -195,8 +195,12 @@ defmodule Wardrik.Event.Codec do
 
   # -- the agent and its conversation --------------------------------------------
 
-  defp agent({:message_queued, message}, _event, _opts),
-    do: {"message.created", "messages/" <> message.id, %{"message" => Value.user(message)}}
+  defp agent({:message_queued, message}, _event, _opts) do
+    data =
+      Value.put(%{"message" => Value.user(message)}, "sender", Value.principal(message.sender))
+
+    {"message.created", "messages/" <> message.id, data}
+  end
 
   defp agent({:agent_started, node, status, generation}, event, _opts) do
     id = event.source.agent_id
