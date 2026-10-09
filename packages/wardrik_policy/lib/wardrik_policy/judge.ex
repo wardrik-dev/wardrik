@@ -75,13 +75,18 @@ defmodule WardrikPolicy.Judge do
 
   @impl Wardrik.Hook
   def call(%Call{target: %Call.Tool{name: name, arguments: arguments}, scope: scope}, judge) do
-    case Enum.filter(judge.questions, &names?(&1, name)) do
+    case asked(judge, name) do
       [] -> :pass
       asked -> asked |> judged(evaluate(judge.model, name, arguments, asked)) |> held(scope)
     end
   end
 
   def call(%Call{}, %__MODULE__{}), do: :pass
+
+  @doc "The questions `judge` asks about a call to the tool `name`, in their order."
+  @spec asked(t(), String.t()) :: [question()]
+  def asked(%__MODULE__{questions: questions}, name),
+    do: Enum.filter(questions, &names?(&1, name))
 
   defp names?(%{tools: []}, _name), do: true
   defp names?(%{tools: tools}, name), do: Enum.any?(tools, &Pattern.match?(&1, name))

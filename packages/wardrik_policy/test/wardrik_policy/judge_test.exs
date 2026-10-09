@@ -133,6 +133,8 @@ defmodule WardrikPolicy.JudgeTest do
     assert %Wardrik.Call{state: :waiting, asks: asks} = checked(policy)
     refute Enum.any?(asks, &(&1.by == "careful/judge"))
     assert Judge.call(%Wardrik.Call{id: "m", target: :model}, policy.judge) == :pass
+    assert Judge.asked(policy.judge, "deploy") == []
+    assert [%{question: @books}] = Judge.asked(policy.judge, "books__create_bill")
   end
 
   describe "written down" do
