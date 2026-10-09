@@ -93,8 +93,9 @@ channel starts a thread. See [Channels](/channels/#threads) for how a thread is 
 
 The app marks each message the agent was asked with :eyes:, and changes it to :white_check_mark:
 once the agent has answered. A call the agent may not make alone is asked in the thread, with
-**Approve** and **Deny**, for the channel's `approvers`; a turn that fails says why there. A message
-the agent could not be asked gets a reply saying why.
+**Approve** and **Deny**, for the channel's `approvers`. A call waiting on an account to be connected
+has **Show link** instead, and the thread says "Connected github." once someone has. A turn that
+fails says why there. A message the agent could not be asked gets a reply saying why.
 
 The agent reads each message as from whoever posted it, by the name Slack shows for them and their
 member ID. It passes over edits, deletions, other bots, and anyone from another workspace in a Slack

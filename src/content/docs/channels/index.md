@@ -68,8 +68,9 @@ are shared among them all. Every thread runs on the agent's one definition, and 
 agent reads names who sent it.
 
 What the agent answers is posted in the thread, and so is anything it asks before a call its
-[policy](/concepts/policy/) holds for a person, with buttons to answer it. A turn that fails says
-why there. Replies are taken from the agent's [event log](/concepts/events/), so one held up by a
+[policy](/concepts/policy/) holds for a person, with buttons to answer it. A call waiting on
+someone to [connect an account](/guides/accounts/) says so once they have, and carries on. A turn
+that fails says why there. Replies are taken from the agent's [event log](/concepts/events/), so one held up by a
 restart, or refused by the channel for a while, is posted when the daemon can.
 
 While the agent waits on a person, a new message in the thread waits behind the question, and the
