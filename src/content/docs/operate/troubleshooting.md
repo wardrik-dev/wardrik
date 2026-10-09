@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Find out what the daemon is doing, whether what it reads will do, and what its log says.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Three commands answer most questions: `wardrik status` for what the daemon is running,

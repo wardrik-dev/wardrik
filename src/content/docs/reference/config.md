@@ -133,7 +133,11 @@ the same name, the agent's user, or its org where it has no user, is asked
 to connect an account, which is kept in the vault from then on.
 
 `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
-takes them. `vault` takes `keys`, as `WardrikVault` does; without them,
+takes them. `redirect.url` is where a provider sends the browser back to,
+each under `callback/NAME`: an `https://` URL the deployment serves from
+something in front of the daemon, which passes requests on to where
+`redirect.ip` and `redirect.port` say, or, without it, this machine's
+loopback; see `WardrikOAuth.Callback`. `vault` takes `keys`, as `WardrikVault` does; without them,
 or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
 which the first `wardrik vault put` asks to make. `ssh` takes
 `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`

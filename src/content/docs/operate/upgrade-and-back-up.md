@@ -2,7 +2,7 @@
 title: Upgrade and back up
 description: Install a new release beside the old one, go back to the one before, and keep a copy of what the daemon cannot make again.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 ## Upgrade
