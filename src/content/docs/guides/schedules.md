@@ -128,7 +128,7 @@ answer to a target in `config.yaml`:
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
-See [Approve calls from Slack](/guides/slack/) for the targets.
+See [Send notices](/guides/notices/) for the targets.
 
 ## In a cluster
 

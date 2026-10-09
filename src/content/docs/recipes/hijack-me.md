@@ -21,7 +21,7 @@ judgement but where its calls are decided: outside it.
 - a public repository, and a fine-grained GitHub token for it alone, with read and write access to
   its issues and nothing else. Whatever someone approves by mistake can reach no further than that;
 - a Slack app with a bot token and an app-level token, made as
-  [Approve calls from Slack](/guides/slack/#a-slack-app) makes one.
+  [Slack](/channels/slack/#a-slack-app) makes one.
 
 ## The server and the channel
 

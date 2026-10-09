@@ -1,13 +1,14 @@
 ---
-title: Approve calls from Slack
-description: Have agents tell a Slack channel when they wait on a person, fail or answer, with Approve and Deny buttons, or send the same notices to a signed webhook.
+title: Send notices
+description: Have agents tell people when they wait on a person, fail or answer, in a room of a channel such as Slack, or at a signed webhook.
 sidebar:
   order: 4
 ---
 
 An agent nobody is watching can tell someone when it parks on a question, fails, or answers.
 `config.yaml` names the targets under `notify`, and each agent file routes its notices to them. A
-target in Slack is a room in a channel `channels` names, here one Slack app called `slack`:
+target is a room in one of [`channels`](/channels/), here one Slack app called `slack`, or a
+webhook:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -37,51 +38,10 @@ notify: {to: [ops], on: [parked, failed, finished]}
 `on` is what is sent: `parked`, `failed`, and `finished` for what a turn answered. It is
 `[parked, failed]` unless set. A notice is sent once, from the node holding the agent.
 
-## A Slack app
-
-Give the daemon a Slack app of its own. Slack shares an app's button presses among every connection
-the app has, so another service connected with the same app would receive some of them.
-
-1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), from scratch, in your
-   workspace.
-2. Under **OAuth & Permissions**, add the bot token scope `chat:write`, install the app, and copy the
-   **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`.
-3. Under **Socket Mode**, turn it on, and make an app-level token with the scope
-   `connections:write`, `xapp-...`. This is the channel's `app_token`.
-4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
-5. Invite the app to the channel: `/invite @yourapp`.
-
-Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
-
-```sh
-wardrik vault put SLACK_BOT_TOKEN    # xoxb-...
-wardrik vault put SLACK_APP_TOKEN    # xapp-...
-systemctl --user restart wardrik
-```
-
-The buttons arrive over Socket Mode, a connection the daemon opens out to Slack, so it needs no
-public address and no open port.
-
-## What a notice says
-
 **Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
-turn had read content from outside first, and its arguments, with **Approve** and **Deny** buttons.
-Pressing one decides the call as `wardrik approve` or `wardrik deny` would, and the message is
-changed to say who decided it and how.
-
-Above each call's buttons is a box for why it is denied, or what to do instead. A call denied from
-Slack tells the model "Denied in Slack by" whoever pressed it, and what they wrote there, as
-`wardrik deny` passes on a reason, so a denial can steer the agent:
-
-> Denied in Slack by jon: Deploy to staging first, and show me the diff.
-
-Approving leaves the box unsaid.
-
-A call waiting on an account to be connected has **Show link** instead of Approve, which shows the
-authorization link to whoever pressed it, and nobody else. See
-[Connect accounts](/guides/accounts/).
-
-**Failed:** why the turn failed. **Finished:** what the turn answered, which suits an agent on a
+turn had read content from outside first, and its arguments. In Slack, each call has
+[Approve and Deny](/channels/slack/#what-a-notice-says-in-slack) buttons. **Failed:** why the turn
+failed. **Finished:** what the turn answered, which suits an agent on a
 [schedule](/guides/schedules/).
 
 A turn waiting on several calls sends a notice again when some are decided and others still wait.
@@ -106,22 +66,8 @@ notify:
     room: "#globex-ops"
 ```
 
-Each Slack workspace is a channel of its own, with an app of its own.
-
 An agent file that routes to another org's target does not read, so one org's calls never reach
 another's channel, where its people could approve them.
-
-## Who may press the buttons
-
-`approvers` lists who may, each by `@handle`, email address or Slack user ID, and anyone else is
-told only the channel's approvers can answer. Without `approvers`, anyone in the channel may. An
-email address needs the bot token scope `users:read.email`. A member's ID is under **Copy member
-ID** in their Slack profile.
-
-## Without buttons
-
-Without the channel's `app_token`, a parked notice says which `wardrik approve` or `wardrik deny` to run instead.
-The bot token alone is enough to post.
 
 ## Webhooks
 

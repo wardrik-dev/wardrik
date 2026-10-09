@@ -43,6 +43,7 @@ with no frontmatter is all prompt.
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
 | `schedule` | when it is asked something on a clock; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
+| `channels` | the chat channels it may be chosen to answer in; see below |
 
 Its ID is `org/name`, or `org/@user/name` for one that works for a user:
 the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
@@ -171,6 +172,14 @@ that ask the agent, and none of its conversations, on a clock:
   * `missed` - `run_once`, the default, fires once for runs missed while
     the daemon was down, and `skip` lets them go
   * `jitter` - up to this many seconds added to each run
+
+## Channels
+
+`channels` lists the channels of `config.yaml`'s `channels` the agent is
+offered in. Inviting a channel's bot into a room then offers it there, as
+`WardrikChannel.Rooms` describes, where the channel serves the agent's org:
+
+    channels: [slack]
 
 ## Notify
 

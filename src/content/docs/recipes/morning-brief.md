@@ -15,7 +15,7 @@ lines of `config.yaml`, and the quickest of these recipes to have running.
   [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
 - a key for `web_search`, where the daemon reads its keys. A search made without one tells the
   agent which key it lacks;
-- a Slack app with a bot token, made as [Approve calls from Slack](/guides/slack/#a-slack-app) makes
+- a Slack app with a bot token, made as [Slack](/channels/slack/#a-slack-app) makes
   one. This recipe only posts, so it needs no app-level token;
 - for the GitHub part, a personal access token that can read your repositories.
 
@@ -99,7 +99,7 @@ what each morning brings. `wardrik schedules` says when it runs next.
 - **A schedule.** `every` is cron, in UTC, and a run missed while the daemon was down runs once
   when it comes back. See [Run an agent on a schedule](/guides/schedules/).
 - **Notices.** `finished` sends what each turn answered to the target, which suits an agent whose
-  answers someone reads elsewhere. See [Approve calls from Slack](/guides/slack/).
+  answers someone reads elsewhere. See [Send notices](/guides/notices/).
 - **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you can change by telling the
   agent, rather than in its system prompt. See [Files and memory](/concepts/files-and-memory/).
 - **A budget.** Once the agent has spent a dollar in a day, `on_exhausted: deny` refuses its next

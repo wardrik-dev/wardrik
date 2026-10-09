@@ -19,7 +19,7 @@ The browser is Playwright's MCP server, which the daemon runs as a command.
 - Node, for `npx`, and Chrome, which `npx playwright install chrome` installs where it is not
   already;
 - somewhere to approve from: `wardrik approve` in a shell, the
-  [terminal client](/guides/tui/), Slack with [buttons](/guides/slack/), or the
+  [terminal client](/guides/tui/), Slack with [buttons](/channels/slack/), or the
   [Telegram bridge](/recipes/telegram-assistant/).
 
 ## The browser
