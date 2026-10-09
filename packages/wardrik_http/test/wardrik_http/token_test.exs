@@ -17,6 +17,19 @@ defmodule WardrikHTTP.TokenTest do
     assert byte_size(token.id) == 12
   end
 
+  test "a token acts for itself, or for the principal it was made for" do
+    {:ok, _secret, ci} = Token.create("ci", Prefix.parse!("acme/"), [:read])
+    assert Wardrik.Principal.type(Token.principal(ci)) == :token
+    assert Wardrik.Principal.id(Token.principal(ci)) == ci.id
+
+    jon = Wardrik.Principal.new(:user, "jon")
+    {:ok, secret, for_jon} = Token.create("laptop", Prefix.parse!("acme/"), [:read], for: jon)
+
+    assert Token.principal(for_jon) == jon
+    assert {:ok, read} = Token.verify(secret)
+    assert %WardrikHTTP.Caller{principal: ^jon, id: id, ref: {:tokens, id}} = Token.caller(read)
+  end
+
   test "the store holds a hash of the secret under its id, never the secret" do
     {:ok, secret, token} =
       Token.create("hashed", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])

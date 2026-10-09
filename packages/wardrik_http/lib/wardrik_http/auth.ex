@@ -1,11 +1,12 @@
 defmodule WardrikHTTP.Auth do
   @moduledoc """
-  Lets through a request that presents a `WardrikHTTP.Token`, as
-  `Authorization: Bearer wardrik_…`, and assigns the token as `:token`.
+  Lets through a request its `WardrikHTTP.Authenticator` knows, the listener's
+  `:authenticator` or `WardrikHTTP.Token`, and assigns its
+  `WardrikHTTP.Caller` as `:caller`.
 
-  A request with no token the API knows is answered 401, with
-  `WWW-Authenticate: Bearer`, and one whose token could not be read, the
-  store having no quorum, is answered 503. Neither goes further.
+  A request from no caller the authenticator knows is answered 401, with the
+  authenticator's challenge as `WWW-Authenticate`, and one whose credential
+  could not be checked is answered 503. Neither goes further.
   """
 
   @behaviour Plug
@@ -13,32 +14,34 @@ defmodule WardrikHTTP.Auth do
   import Plug.Conn
 
   alias WardrikHTTP.Resource
-  alias WardrikHTTP.Token
 
   @impl Plug
   def init(opts), do: opts
 
   @impl Plug
   def call(conn, _opts) do
-    with [header] <- get_req_header(conn, "authorization"),
-         [scheme, secret] <- String.split(header, " ", parts: 2, trim: true),
-         "bearer" <- String.downcase(scheme),
-         {:ok, token} <- Token.verify(String.trim(secret)) do
-      assign(conn, :token, token)
-    else
+    {module, opts} = authenticator(conn.assigns.options[:authenticator])
+
+    case module.authenticate(conn, opts) do
+      {:ok, caller} ->
+        assign(conn, :caller, caller)
+
       {:error, :unavailable} ->
-        body = Resource.error("unavailable", "Tokens cannot be checked now. Try again.")
+        body = Resource.error("unavailable", "Credentials cannot be checked now. Try again.")
         refuse(conn, 503, body)
 
-      _unknown ->
-        body =
-          Resource.error("unauthorized", "Present a token as Authorization: Bearer wardrik_…")
+      {:error, :unauthorized} ->
+        body = Resource.error("unauthorized", "No credential this server knows was presented.")
 
         conn
-        |> put_resp_header("www-authenticate", ~s(Bearer realm="wardrik"))
+        |> put_resp_header("www-authenticate", module.challenge(opts))
         |> refuse(401, body)
     end
   end
+
+  defp authenticator(nil), do: {WardrikHTTP.Token, []}
+  defp authenticator({module, opts}), do: {module, opts}
+  defp authenticator(module) when is_atom(module), do: {module, []}
 
   defp refuse(conn, status, body) do
     conn

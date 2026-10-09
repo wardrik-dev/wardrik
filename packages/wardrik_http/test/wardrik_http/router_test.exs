@@ -102,6 +102,35 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  # Knows a request by its x-user header, as a person who may do anything
+  # under test/; a sign-in would answer a caller the same way.
+  defmodule Signed do
+    @moduledoc false
+    @behaviour WardrikHTTP.Authenticator
+
+    @impl true
+    def authenticate(conn, _opts) do
+      case Plug.Conn.get_req_header(conn, "x-user") do
+        [user] ->
+          {:ok, grant} = Grant.new(Prefix.parse!("test/"))
+
+          {:ok,
+           %WardrikHTTP.Caller{
+             id: "session-#{user}",
+             name: user,
+             principal: Wardrik.Principal.new(:user, user),
+             grant: grant
+           }}
+
+        [] ->
+          {:error, :unauthorized}
+      end
+    end
+
+    @impl true
+    def challenge(_opts), do: ~s(Signed realm="test")
+  end
+
   setup do
     {:ok, secret, token} =
       Token.create("router-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
@@ -178,6 +207,27 @@ defmodule WardrikHTTP.RouterTest do
       end
     end
 
+    test "another authenticator knows the caller, and decisions are its principal's", %{
+      api: api
+    } do
+      signed = listener(api, authenticator: Signed)
+
+      assert {:ok, %{status: 401} = response} = Req.get(signed, url: "/v1/agents")
+      assert Req.Response.get_header(response, "www-authenticate") == [~s(Signed realm="test")]
+
+      jon = Req.merge(signed, auth: nil, headers: [{"x-user", "jon"}])
+      {key, _agent} = parked_agent()
+
+      assert {:ok, %{status: 200}} =
+               Req.post(jon,
+                 url: "/v1/agents/#{key}/interrupts/call_1",
+                 json: %{"decision" => "approve"}
+               )
+
+      assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+      assert {Wardrik.Principal.type(by), Wardrik.Principal.id(by)} == {:user, "jon"}
+    end
+
     test "a token for one agent lists that agent, and none whose key it begins", %{api: api} do
       {key, _agent} = Fleet.start_agent([], Fleet.id("scoped"))
       longer_id = Wardrik.AgentID.new!(key.name <> "0", org: key.org)
@@ -236,7 +286,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert body["error"] == %{
                "type" => "forbidden",
-               "message" => "This token may not send messages to #{key}."
+               "message" => "This caller may not send messages to #{key}."
              }
 
       for {method, path, body} <- [

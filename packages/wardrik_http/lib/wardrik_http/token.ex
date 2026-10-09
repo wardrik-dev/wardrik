@@ -7,7 +7,13 @@ defmodule WardrikHTTP.Token do
       {:ok, secret, token} = WardrikHTTP.Token.create("watcher", Wardrik.AgentID.Prefix.parse!("acme/@jon/"), [:read])
 
   A token grants the actions it was made with, every one where none are
-  named, on the agents under its scope; see `Wardrik.Grant` for both.
+  named, on the agents under its scope; see `Wardrik.Grant` for both. It acts
+  for the `Wardrik.Principal` it was made `:for`, such as a person, and for
+  itself where it names none: a decision made with it is recorded as that
+  principal's.
+
+  It is the `WardrikHTTP.Authenticator` the API uses unless told otherwise,
+  reading `Authorization: Bearer wardrik_…` into a `WardrikHTTP.Caller`.
 
   A token that can `:define` is made with a `:ceiling`, the hooks every agent
   it defines is held to ahead of the definition's own, or with `ceiling: []`
@@ -18,8 +24,8 @@ defmodule WardrikHTTP.Token do
   The secret, `wardrik_` and 32 characters, is answered once and never kept.
   `WardrikStore` holds the token in `:tokens` under its `id`, the first 12 hex
   digits of the SHA-256 of its secret, with the whole hash, so the store holds
-  nothing a caller could present. The `id` is what `list/0` shows, what
-  `revoke/1` takes, and who a decision made with the token was made by.
+  nothing a caller could present. The `id` is what `list/0` shows and what
+  `revoke/1` takes.
 
   `verify/1` reads the token with `WardrikHTTP.Access.get/1`: a revoked token is
   refused at once on every node the revocation reaches, and within a sweep on
@@ -27,28 +33,34 @@ defmodule WardrikHTTP.Token do
   `WardrikHTTP.Access.hold/1`, so `revoke/1` ends it.
   """
 
+  @behaviour WardrikHTTP.Authenticator
+
   alias Wardrik.Grant
+  alias Wardrik.Principal
   alias WardrikHTTP.Access
+  alias WardrikHTTP.Caller
 
   @ns :tokens
   @prefix "wardrik_"
   @id_length 12
 
   @enforce_keys [:id, :name, :grant, :hash, :created_at]
-  defstruct [:id, :name, :grant, :hash, :created_at]
+  defstruct [:id, :name, :grant, :hash, :created_at, :principal]
 
   @type t() :: %__MODULE__{
           id: String.t(),
           name: String.t(),
           grant: Grant.t(),
           hash: String.t(),
-          created_at: DateTime.t()
+          created_at: DateTime.t(),
+          principal: Principal.t() | nil
         }
 
   @doc """
   Makes a token named `name` granting `can` on the agents under `scope`, and
   answers its secret, or a message saying why the grant is not one. `:ceiling`
-  is the grant's ceiling, which a token that can `:define` must be given.
+  is the grant's ceiling, which a token that can `:define` must be given, and
+  `:for` the `Wardrik.Principal` it acts for.
   """
   @spec create(String.t(), Wardrik.AgentID.Prefix.t(), [Grant.action() | String.t()], keyword()) ::
           {:ok, String.t(), t()} | {:error, String.t() | term()}
@@ -64,7 +76,8 @@ defmodule WardrikHTTP.Token do
         name: name,
         grant: grant,
         hash: hash,
-        created_at: DateTime.utc_now(:second)
+        created_at: DateTime.utc_now(:second),
+        principal: Keyword.get(opts, :for)
       }
 
       with {:ok, _vsn} <- WardrikStore.put(@ns, token.id, token, if_vsn: nil),
@@ -107,9 +120,46 @@ defmodule WardrikHTTP.Token do
       else: :ok
   end
 
-  # A grant stored before grants had ceilings has none.
+  # A grant stored before grants had ceilings has none, and a token stored
+  # before tokens acted for anyone acts for itself.
   defp current(%__MODULE__{grant: grant} = token),
-    do: %{token | grant: struct(Grant, Map.from_struct(grant))}
+    do:
+      struct(__MODULE__, %{Map.from_struct(token) | grant: struct(Grant, Map.from_struct(grant))})
+
+  @doc "Whom `token` acts for: the principal it was made for, or itself."
+  @spec principal(t()) :: Principal.t()
+  def principal(%__MODULE__{principal: nil} = token),
+    do: Principal.new(:token, token.id, name: token.name)
+
+  def principal(%__MODULE__{principal: principal}), do: principal
+
+  @doc "The caller a request presenting `token` comes from."
+  @spec caller(t()) :: Caller.t()
+  def caller(%__MODULE__{} = token) do
+    %Caller{
+      id: token.id,
+      name: token.name,
+      principal: principal(token),
+      grant: token.grant,
+      ref: ref(token)
+    }
+  end
+
+  @impl WardrikHTTP.Authenticator
+  def authenticate(conn, _opts) do
+    with [header] <- Plug.Conn.get_req_header(conn, "authorization"),
+         [scheme, secret] <- String.split(header, " ", parts: 2, trim: true),
+         "bearer" <- String.downcase(scheme),
+         {:ok, token} <- verify(String.trim(secret)) do
+      {:ok, caller(token)}
+    else
+      {:error, :unavailable} = unavailable -> unavailable
+      _unknown -> {:error, :unauthorized}
+    end
+  end
+
+  @impl WardrikHTTP.Authenticator
+  def challenge(_opts), do: ~s(Bearer realm="wardrik")
 
   @doc "The record `token` is kept in, for `WardrikHTTP.Access.hold/1`."
   @spec ref(t()) :: Access.ref()

@@ -9,20 +9,20 @@ defmodule WardrikHTTP.Workers do
       Wardrik.LLM.Config.new(tools: [{WardrikHTTP.Workers, id}])
 
   An agent file or definition names it as `workers/*`. The agent is offered
-  the tools of every connected worker whose token may `:serve` it, each named
-  `workers__<name>`, as an MCP server's tools are named for their server, so
-  a policy governs them as `workers/*` or `workers/refund_order`.
+  the tools of every connected worker whose credential may `:serve` it, each
+  named `workers__<name>`, as an MCP server's tools are named for their
+  server, so a policy governs them as `workers/*` or `workers/refund_order`.
 
-  A tool is bound to the token that offers it. Workers under one token that
-  offer a tool of the same name are one pool, and a call goes to any of
-  them. Where workers under another token offer that name to the same agent,
-  the agent is offered the tool of the token whose worker connected first,
-  and the others are refused, so a second token can neither take a share of
-  the calls nor change what the model is told the tool does. Their offer is
-  logged.
+  A tool is bound to the credential that offers it. Workers under one
+  credential that offer a tool of the same name are one pool, and a call goes
+  to any of them. Where workers under another credential offer that name to
+  the same agent, the agent is offered the tool of the credential whose worker
+  connected first, and the others are refused, so a second credential can
+  neither take a share of the calls nor change what the model is told the
+  tool does. Their offer is logged.
 
   A call says whose it is: `_meta.agent` is the agent it is made for, as the
-  ID the worker's token was checked against, with its `org`, its `user`
+  ID the worker's credential was checked against, with its `org`, its `user`
   where it works for one, and its `name`:
 
       {"key": "acme/@jon/assistant", "org": "acme", "user": "jon", "name": "assistant"}
@@ -32,7 +32,7 @@ defmodule WardrikHTTP.Workers do
   the turn's run, as `_meta.run`, the id its events carry, and its
   `Wardrik.Ledger.idempotency_key/2` as `_meta.idempotencyKey`. It waits for
   the worker's answer for the group's `:timeout`. A call's
-  events name the token whose worker answered it.
+  events name the credential whose worker answered it.
 
   A worker gone before it answers, or one that answers late, leaves its call
   in doubt, since it may already have done what it does. Such a call runs
@@ -71,7 +71,7 @@ defmodule WardrikHTTP.Workers do
   alias Wardrik.AgentID
   alias Wardrik.Tool.Result
   alias WardrikHTTP.Access
-  alias WardrikHTTP.Token
+  alias WardrikHTTP.Caller
   alias WardrikHTTP.Worker.Tool
 
   @group "workers"
@@ -96,27 +96,27 @@ defmodule WardrikHTTP.Workers do
   defp setting(key), do: @settings |> :persistent_term.get(@defaults) |> Keyword.fetch!(key)
 
   @doc """
-  Offers `tools` from the calling process, a worker's socket holding `token`
+  Offers `tools` from the calling process, a worker's socket holding `caller`
   that connected at `since`, in microseconds of system time, in place of
   what it offered before, until it exits.
   """
-  @spec offer(Token.t(), [Tool.t()], integer()) :: :ok
-  def offer(%Token{} = token, tools, since) when is_list(tools) and is_integer(since) do
+  @spec offer(Caller.t(), [Tool.t()], integer()) :: :ok
+  def offer(%Caller{} = caller, tools, since) when is_list(tools) and is_integer(since) do
     _ = Group.leave(__MODULE__, @group)
-    contested(token, tools)
-    Group.join(__MODULE__, @group, %{token: token, tools: tools, since: since})
+    contested(caller, tools)
+    Group.join(__MODULE__, @group, %{caller: caller, tools: tools, since: since})
   end
 
-  defp contested(token, tools) do
+  defp contested(caller, tools) do
     names = MapSet.new(tools, & &1.name)
 
-    for {_worker, %{token: other, tools: offered}} <- Group.members(__MODULE__, @group),
-        other.id != token.id,
+    for {_worker, %{caller: other, tools: offered}} <- Group.members(__MODULE__, @group),
+        other.id != caller.id,
         %Tool{name: name} <- offered,
         name in names,
         uniq: true do
       Logger.warning(
-        "A worker under token #{token.name} offers #{name}, which token #{other.name} offers too. " <>
+        "A worker under #{caller.name} offers #{name}, which #{other.name} offers too. " <>
           "An agent both reach is offered the one whose worker connected first."
       )
     end
@@ -175,8 +175,8 @@ defmodule WardrikHTTP.Workers do
   defp none(name, %Wardrik.Tool.Context{}),
     do: Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
 
-  defp ask(%{worker: worker, token: token}, name, input, meta) do
-    served = %{id: token.id, name: token.name}
+  defp ask(%{worker: worker, caller: caller}, name, input, meta) do
+    served = %{id: caller.id, name: caller.name}
     ref = Process.monitor(worker)
     send(worker, {:call, self(), ref, name, input, meta})
 
@@ -211,21 +211,21 @@ defmodule WardrikHTTP.Workers do
   end
 
   # What the workers in reach of the agent `id` offer it: each tool under the
-  # token whose worker offering it connected first.
+  # credential whose worker offering it connected first.
   defp offered(id) do
     offers =
-      for {worker, %{token: token, tools: tools, since: since}} <-
+      for {worker, %{caller: caller, tools: tools, since: since}} <-
             Group.members(__MODULE__, @group),
-          Access.authorize(token.grant, :serve, id) == :ok,
+          Access.authorize(caller.grant, :serve, id) == :ok,
           tool <- tools,
-          do: %{worker: worker, token: token, tool: tool, since: since}
+          do: %{worker: worker, caller: caller, tool: tool, since: since}
 
     owners =
       offers
       |> Enum.group_by(& &1.tool.name)
-      |> Map.new(fn {name, offers} -> {name, Enum.min_by(offers, &{&1.since, &1.token.id})} end)
+      |> Map.new(fn {name, offers} -> {name, Enum.min_by(offers, &{&1.since, &1.caller.id})} end)
 
-    Enum.filter(offers, &(owners[&1.tool.name].token.id == &1.token.id))
+    Enum.filter(offers, &(owners[&1.tool.name].caller.id == &1.caller.id))
   end
 
   defp build(%Tool{} = tool, id) do

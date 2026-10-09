@@ -338,7 +338,7 @@ defmodule WardrikHTTP.WorkerTest do
     log =
       capture_log(fn -> connect(context, [tool("echo", %{"readOnlyHint" => true})], second) end)
 
-    assert log =~ "token second offers echo, which token worker-test offers too"
+    assert log =~ "under second offers echo, which worker-test offers too"
     assert annotations(context.agent, "workers__echo").gated
 
     for _call <- 1..5 do
@@ -453,7 +453,7 @@ defmodule WardrikHTTP.WorkerTest do
 
     :ok = Token.revoke(token.id)
 
-    assert_receive {:disconnected, {:remote, 1008, "The token was revoked."}}, 2_000
+    assert_receive {:disconnected, {:remote, 1008, "The credential was revoked."}}, 2_000
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}
   end
 

@@ -3,14 +3,14 @@ defmodule WardrikHTTP.Worker do
   One tool worker's WebSocket, `GET /v1/workers`, and the MCP client Wardrik is
   over it.
 
-  A worker is an MCP server that dials in. It opens the socket with a token,
+  A worker is an MCP server that dials in. It opens the socket with a credential,
   as `Authorization: Bearer wardrik_…`, and Wardrik speaks MCP to it: JSON-RPC 2.0,
   one message to a text frame, protocol version `2025-06-18`.
 
     1. Wardrik sends `initialize`, then `notifications/initialized` once the
        worker answers.
     2. Wardrik sends `tools/list`, and offers what the worker lists to the agents
-       its token reaches (see `WardrikHTTP.Workers`). The worker sends
+       its credential reaches (see `WardrikHTTP.Workers`). The worker sends
        `notifications/tools/list_changed` to be listed again.
     3. Wardrik sends `tools/call` for each call an agent makes, with the agent
        it is for as `_meta.agent`, its run as `_meta.run`, and its idempotency
@@ -25,8 +25,8 @@ defmodule WardrikHTTP.Worker do
   Wardrik answers a worker's `ping`, and sends a WebSocket ping every 30 seconds
   so a socket at rest stays open.
 
-  The socket holds its token (`WardrikHTTP.Access.hold/1`), and closes with `1008`
-  when the token is revoked, or `1013` where the token cannot be read as the
+  The socket holds its credential (`WardrikHTTP.Access.hold/1`), and closes with `1008`
+  when it is revoked, or `1013` where it cannot be read as the
   socket opens.
 
   `[:wardrik, :workers, :listed]` is emitted each time a worker's tools are
@@ -37,39 +37,39 @@ defmodule WardrikHTTP.Worker do
   @behaviour WebSock
 
   alias Wardrik.Tool.Result
-  alias WardrikHTTP.Token
+  alias WardrikHTTP.Caller
   alias WardrikHTTP.Worker.Tool
   alias WardrikHTTP.Workers
 
   @protocol "2025-06-18"
   @ping :timer.seconds(30)
 
-  @enforce_keys [:token]
-  defstruct [:token, :since, next: 1, pending: %{}]
+  @enforce_keys [:caller]
+  defstruct [:caller, :since, next: 1, pending: %{}]
 
   @typep purpose() :: :initialize | :list | {pid(), reference(), reference()}
 
   @type t() :: %__MODULE__{
-          token: Token.t(),
+          caller: Caller.t(),
           since: integer() | nil,
           next: pos_integer(),
           pending: %{pos_integer() => purpose()}
         }
 
   @impl WebSock
-  def init(%Token{} = token) do
-    case WardrikHTTP.Access.hold(Token.ref(token)) do
-      :ok -> start(token)
-      {:error, reason} -> {:stop, {:shutdown, reason}, close(reason), %__MODULE__{token: token}}
+  def init(%Caller{} = caller) do
+    case WardrikHTTP.Access.hold(caller.ref) do
+      :ok -> start(caller)
+      {:error, reason} -> {:stop, {:shutdown, reason}, close(reason), %__MODULE__{caller: caller}}
     end
   end
 
-  defp start(token) do
+  defp start(caller) do
     schedule_ping()
 
     {frame, state} =
       request(
-        %__MODULE__{token: token, since: System.system_time(:microsecond)},
+        %__MODULE__{caller: caller, since: System.system_time(:microsecond)},
         "initialize",
         %{
           "protocolVersion" => @protocol,
@@ -147,7 +147,7 @@ defmodule WardrikHTTP.Worker do
 
   defp answered(:list, %{"result" => %{"tools" => listed}}, state) when is_list(listed) do
     tools = for entry <- listed, {:ok, tool} <- [Tool.listed(entry)], do: tool
-    :ok = Workers.offer(state.token, tools, state.since)
+    :ok = Workers.offer(state.caller, tools, state.since)
 
     :telemetry.execute([:wardrik, :workers, :listed], %{count: length(tools)}, %{
       worker: self(),
@@ -218,8 +218,8 @@ defmodule WardrikHTTP.Worker do
 
   defp schedule_ping, do: Process.send_after(self(), :ping, @ping)
 
-  defp close(:not_found), do: {1008, "The token was revoked."}
-  defp close(:unavailable), do: {1013, "The token cannot be checked now. Try again."}
+  defp close(:not_found), do: {1008, "The credential was revoked."}
+  defp close(:unavailable), do: {1013, "The credential cannot be checked now. Try again."}
 
   defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
 end

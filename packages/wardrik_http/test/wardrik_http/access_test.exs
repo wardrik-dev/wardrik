@@ -80,6 +80,11 @@ defmodule WardrikHTTP.AccessTest do
     end
   end
 
+  test "a caller with no record holds nothing" do
+    assert Access.hold(nil) == :ok
+    assert Access.holding(nil, fn -> :ran end) == :ran
+  end
+
   test "fetch/2 reads a record through consensus, or says it is not there" do
     ref = record(:value)
     assert {:ok, :value} = Access.fetch(ref)
