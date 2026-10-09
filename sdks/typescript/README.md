@@ -77,6 +77,20 @@ reconnect; `wardrik.message.completed` carries the whole text. When the log no
 longer holds what comes after the cursor, the stream throws a `WardrikError` of
 type `gap`: read `agent.snapshot()` and follow from its `sequence`.
 
+## Exports
+
+An export reads every log the token may read, each agent's and, for a token
+that reaches every agent, the audit of what people changed, on from a cursor
+the server keeps under a name of the token's own. A page leaves the cursor
+where it is until `advance` moves it, so each event arrives at least once:
+
+```ts
+const siem = wardrik.export("siem");
+const page = await siem.read({ limit: 500 });
+await ship(page.events);
+await siem.advance(page.next);
+```
+
 ## Tools
 
 ```ts

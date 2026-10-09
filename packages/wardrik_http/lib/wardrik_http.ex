@@ -84,12 +84,16 @@ defmodule WardrikHTTP do
   | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
   | `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
   | `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
+  | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
+  | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
+  | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
   `WardrikHTTP.Resource` shows what each answers. Each resource's JSON Schema is
   in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
   `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
-  `schedule_definition.json`, `authorization.json` and `error.json`. `sdks/typescript` generates
+  `schedule_definition.json`, `authorization.json`, `export.json` and
+  `error.json`. `sdks/typescript` generates
   its types from them.
 
   ### Agents
@@ -117,6 +121,21 @@ defmodule WardrikHTTP do
   after the sequence have been dropped, either answers `410` with the oldest
   one still held; read the snapshot and follow from its `sequence`. See
   `WardrikHTTP.EventStream`.
+
+  ### Exports
+
+      GET /v1/exports/siem?limit=500
+      POST /v1/exports/siem
+      {"next": "eyJhY21lL3RyaWFnZSI6NDF9"}
+
+  An export is a cursor of the caller's own, kept on the server under the
+  name it gives, over every log it may read: each agent's it may `read`, a
+  removed agent's included, and the audit of what people changed where it
+  reaches every agent. A page answers the events after the cursor and leaves
+  it there, so reading again answers them again; posting the page's `next`
+  moves it past them, once they are safely kept. `gaps` names each log
+  trimmed past the cursor, which was read from its oldest event. See
+  `Wardrik.Event.Export`.
 
   ### Messages
 

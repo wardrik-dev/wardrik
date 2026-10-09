@@ -24,7 +24,9 @@ defmodule WardrikHTTP.Router do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Event.Export
   alias Wardrik.Event.Log
   alias Wardrik.Fleet
   alias Wardrik.Grant
@@ -74,6 +76,24 @@ defmodule WardrikHTTP.Router do
           do: Resource.agent(member)
 
     json(conn, 200, %{"agents" => agents})
+  end
+
+  # An export is a cursor of the caller's own, over every log it may read.
+  match "/v1/exports/:name" do
+    cond do
+      not AgentID.segment?(name) ->
+        invalid(
+          conn,
+          "#{inspect(name)} is not an export's name: a name holds no / or whitespace, " <>
+            "and does not begin with @ or _"
+        )
+
+      :read not in conn.assigns.caller.grant.can ->
+        json(conn, 403, Resource.error("forbidden", "This caller may not read events."))
+
+      true ->
+        export(conn, conn.method, "#{conn.assigns.caller.id}/#{name}")
+    end
   end
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
@@ -349,6 +369,46 @@ defmodule WardrikHTTP.Router do
       {:gap, oldest} -> gone(conn, oldest)
     end
   end
+
+  # -- exports ---------------------------------------------------------------
+
+  defp export(conn, "GET", cursor) do
+    grant = conn.assigns.caller.grant
+
+    case limit(conn.query_params) do
+      {:ok, limit} ->
+        {:ok, page} = Export.read(cursor, limit: limit, logs: &exported?(grant, &1))
+        json(conn, 200, Resource.export(page))
+
+      {:error, message} ->
+        invalid(conn, message)
+    end
+  end
+
+  defp export(conn, "POST", cursor) do
+    with %{"next" => next} when is_binary(next) <- conn.body_params,
+         :ok <- Export.advance(cursor, next) do
+      send_resp(conn, 204, "")
+    else
+      {:error, :invalid} -> invalid(conn, "next is not one a page of this export answered")
+      {:error, reason} -> unavailable(conn, "The export did not move", reason)
+      _body -> invalid(conn, "The body is a page's next, as {\"next\": …}")
+    end
+  end
+
+  defp export(conn, "DELETE", cursor) do
+    case Export.forget(cursor) do
+      :ok -> send_resp(conn, 204, "")
+      {:error, reason} -> unavailable(conn, "The export was not deleted", reason)
+    end
+  end
+
+  defp export(conn, _method, _cursor), do: no_route(conn)
+
+  # The audit is read by a caller that reaches every agent, and an agent's
+  # log by one that may read the agent.
+  defp exported?(grant, :audit), do: Prefix.covers?(grant.scope, Prefix.all())
+  defp exported?(grant, id), do: Access.authorize(grant, :read, id) == :ok
 
   # -- messages, decisions and cancelling -----------------------------------
 

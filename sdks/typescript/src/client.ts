@@ -1,5 +1,6 @@
 import type { StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { Agent } from "./agent.ts";
+import { Export } from "./export.ts";
 import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
@@ -49,6 +50,11 @@ export class Wardrik {
   /** The agent under `key`, `org/name` or `org/@user/name`. */
   agent(key: string): Agent {
     return new Agent(this.#http, key);
+  }
+
+  /** The export under `name`: a cursor of this token's own over every log it may read. */
+  export(name: string): Export {
+    return new Export(this.#http, name);
   }
 
   /**
