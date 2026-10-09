@@ -28,15 +28,16 @@ the app has, so another service connected with the same app would receive some o
 2. Under **OAuth & Permissions**, add the bot token scopes `chat:write`, `channels:read`,
    `groups:read`, `channels:history`, `groups:history`, `users:read` and `reactions:write`, install
    the app, and copy the **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`. An
-   app installed before it had a scope is installed again to take it.
-3. Under **Socket Mode**, turn it on, and make an app-level token with the scope
-   `connections:write`, `xapp-...`. This is the channel's `app_token`.
+   app installed before it had a scope is installed again to take it. The app needs no user token
+   scopes: it acts as itself, never as whoever installed it.
+3. Under **Basic Information**, in **App-Level Tokens**, make a token with the scope
+   `connections:write`, `xapp-...`. This is the channel's `app_token`. Then, under **Socket Mode**,
+   turn it on.
 4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
 5. Under **Event Subscriptions**, turn events on and subscribe to the bot events
    `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears when the app is
    invited into a Slack channel or taken out of one, and `message.channels` and `message.groups`,
    so it hears what is posted there.
-6. Invite the app to the channel: `/invite @yourapp`.
 
 Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
 
@@ -45,6 +46,15 @@ wardrik vault put SLACK_BOT_TOKEN    # xoxb-...
 wardrik vault put SLACK_APP_TOKEN    # xapp-...
 systemctl --user restart wardrik
 ```
+
+Then, with the daemon running, invite the app to a Slack channel: `/invite @yourapp`. The daemon
+binds the channel as it hears the app arrive, so an app invited while the daemon was not running,
+or before Event Subscriptions were on, is there without an agent: take it out with
+`/remove @yourapp` and invite it again.
+
+The app always says something when it is invited: that an agent answers there, which agents to
+choose among, or why none does. If it says nothing, the daemon did not hear the invitation: check
+that events are on, with the bot events above, and that the daemon's log shows no Socket Mode error.
 
 Messages and buttons arrive over Socket Mode, a connection the daemon opens out to Slack, so it
 needs no public address and no open port.
