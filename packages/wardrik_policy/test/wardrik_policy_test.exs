@@ -100,6 +100,60 @@ defmodule WardrikPolicyTest do
     end
   end
 
+  describe "decide/4" do
+    setup do
+      policy =
+        WardrikPolicy.decode!(%{
+          "allow" => ["books/list_*", "books/create_bill(amount < 100)"],
+          "ask" => ["books/create_bill(amount >= 100)"],
+          "deny" => %{"books/*(account: Payroll)" => "Payroll is not for this agent."},
+          "default" => "ask"
+        })
+
+      %{policy: policy}
+    end
+
+    test "lets a rule's conditions on the arguments say which calls it speaks for", %{
+      policy: policy
+    } do
+      assert WardrikPolicy.decide(policy, "books__create_bill", [], %{"amount" => 50}) == :allow
+
+      assert {:ask, _prompt} =
+               WardrikPolicy.decide(policy, "books__create_bill", [], %{"amount" => 500})
+
+      assert {:deny, "Payroll is not for this agent."} =
+               WardrikPolicy.decide(policy, "books__create_bill", [], %{
+                 "amount" => 50,
+                 "account" => "payroll"
+               })
+    end
+
+    test "leaves a call that gives no such argument to the other rules", %{policy: policy} do
+      assert WardrikPolicy.decide(policy, "books__list_bills", [], %{}) == :allow
+      assert {:ask, _prompt} = WardrikPolicy.decide(policy, "books__create_bill", [], %{})
+    end
+
+    test "asks or denies a call it cannot check, and never allows one" do
+      policy =
+        WardrikPolicy.decode!(%{
+          "allow" => ["books/create_bill(amount < 100)"],
+          "deny" => ["books/pay(amount > 1000)"],
+          "default" => "ask"
+        })
+
+      for amount <- ["fifty", "$50", true] do
+        assert {:ask, _prompt} =
+                 WardrikPolicy.decide(policy, "books__create_bill", [], %{"amount" => amount})
+
+        assert {:deny, _reason} =
+                 WardrikPolicy.decide(policy, "books__pay", [], %{"amount" => amount})
+      end
+
+      assert {:deny, _reason} =
+               WardrikPolicy.decide(policy, "books__pay", [], %{"amount" => [5, 5000]})
+    end
+  end
+
   describe "allowing by name" do
     alias Wardrik.Test.Tools.Deploy
 
@@ -210,6 +264,21 @@ defmodule WardrikPolicyTest do
       assert %Wardrik.Call{state: :waiting, asks: [%{by: "policy"}]} = check.(tool.("deploy"))
       assert %Wardrik.Call{state: :allowed} = check.(tool.("web_search"))
 
+      policy = WardrikPolicy.decode!(%{"deny" => ["books/pay(amount > 1000)"]})
+
+      scope =
+        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/triage"),
+          hooks: WardrikPolicy.hooks(policy)
+        )
+
+      pay = &%{id: "c2", name: "books__pay", arguments: %{"amount" => &1}}
+
+      assert %Wardrik.Call{state: :denied} =
+               pay.(5000) |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check()
+
+      assert %Wardrik.Call{state: :allowed} =
+               pay.(50) |> Wardrik.Call.tool(scope) |> Wardrik.Hook.check()
+
       model =
         Wardrik.Call.model(Wardrik.LLM.Request.new(Config.new(), ReqLLM.Context.new()), scope)
 
@@ -233,6 +302,11 @@ defmodule WardrikPolicyTest do
 
       assert policy.name == "careful"
       assert WardrikPolicy.encode(policy) == @written
+    end
+
+    test "round-trip conditions on the arguments as written" do
+      written = %{"deny" => ["books/*(amount >= 1e3, memo: \"a, b\")"], "default" => "allow"}
+      assert written |> WardrikPolicy.decode!() |> WardrikPolicy.encode() == written
     end
 
     test "refuse a key they do not know" do
