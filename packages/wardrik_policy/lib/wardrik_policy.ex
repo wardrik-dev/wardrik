@@ -80,7 +80,17 @@ defmodule WardrikPolicy do
 
   `allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
   to message, and `allow_after` a map of label to either. `budget` takes what
-  `WardrikPolicy.Budget` describes.
+  `WardrikPolicy.Budget` describes, and `judge` what `WardrikPolicy.Judge`
+  does.
+
+  ## Judged
+
+  A policy with a `WardrikPolicy.Judge` asks a model questions about each
+  call its questions name, and decides by the probability of yes: refuses
+  it, asks a person first, or allows it by name where the run has read
+  nothing from outside. `hooks/1` gives the judge a hook of its own, after
+  the rules, named for the policy with `/judge` added, so its allow never
+  lifts a call a rule asks about or denies.
   """
 
   @behaviour Wardrik.Hook
@@ -88,39 +98,42 @@ defmodule WardrikPolicy do
   alias Wardrik.Call
   alias Wardrik.Hook
   alias WardrikPolicy.Budget
+  alias WardrikPolicy.Judge
   alias WardrikPolicy.Pattern
   alias WardrikPolicy.Rule
 
-  defstruct name: nil, rules: [], default: :allow, budget: nil
+  defstruct name: nil, rules: [], default: :allow, budget: nil, judge: nil
 
   @type t() :: %__MODULE__{
           name: String.t() | nil,
           rules: [Rule.t()],
           default: Rule.effect(),
-          budget: Budget.t() | nil
+          budget: Budget.t() | nil,
+          judge: Judge.t() | nil
         }
 
   @typedoc "What a policy says about one tool."
   @type decision() :: :allow | {:ask, String.t()} | {:deny, String.t()}
 
   @effects ~w(allow ask deny)
-  @keys @effects ++ ["allow_after", "default", "budget"]
+  @keys @effects ++ ["allow_after", "default", "budget", "judge"]
   @outside "outside"
   @strictness %{deny: 2, ask: 1, allow: 0}
 
   @doc """
   The hooks `policy` is: its rules, named for the policy or `policy` where it
-  has no name, then its budget where it has one.
+  has no name, then its judge and its budget where it has them.
   """
   @spec hooks(t()) :: [Hook.t()]
   def hooks(%__MODULE__{} = policy) do
     name = policy.name || "policy"
-    rules = Hook.new(name, __MODULE__, %{policy | budget: nil})
 
-    case policy.budget do
-      nil -> [rules]
-      budget -> [rules, Hook.new(name <> "/budget", Budget, budget)]
-    end
+    [
+      Hook.new(name, __MODULE__, %{policy | budget: nil, judge: nil}),
+      policy.judge && Hook.new(name <> "/judge", Judge, policy.judge),
+      policy.budget && Hook.new(name <> "/budget", Budget, policy.budget)
+    ]
+    |> Enum.filter(& &1)
   end
 
   @doc """
@@ -225,8 +238,10 @@ defmodule WardrikPolicy do
       [] ->
         with {:ok, rules} <- rules(fields),
              {:ok, default} <- effect(Map.get(fields, "default", "allow"), "default"),
-             {:ok, budget} <- budget(Map.fetch(fields, "budget")) do
-          {:ok, %__MODULE__{name: name, rules: rules, default: default, budget: budget}}
+             {:ok, budget} <- budget(Map.fetch(fields, "budget")),
+             {:ok, judge} <- judge(Map.fetch(fields, "judge")) do
+          {:ok,
+           %__MODULE__{name: name, rules: rules, default: default, budget: budget, judge: judge}}
         end
 
       [key | _] ->
@@ -270,10 +285,14 @@ defmodule WardrikPolicy do
     |> then(&if(after_labels == %{}, do: &1, else: Map.put(&1, "allow_after", after_labels)))
     |> Map.put("default", Atom.to_string(policy.default))
     |> then(&if(policy.budget, do: Map.put(&1, "budget", Budget.encode(policy.budget)), else: &1))
+    |> then(&if(policy.judge, do: Map.put(&1, "judge", Judge.encode(policy.judge)), else: &1))
   end
 
   defp budget(:error), do: {:ok, nil}
   defp budget({:ok, fields}), do: Budget.decode(fields)
+
+  defp judge(:error), do: {:ok, nil}
+  defp judge({:ok, fields}), do: Judge.decode(fields)
 
   defp written(rules) do
     if Enum.all?(rules, &is_nil(&1.message)),
