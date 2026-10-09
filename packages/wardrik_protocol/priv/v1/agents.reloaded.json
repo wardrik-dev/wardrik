@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agents.reloaded",
+  "title": "wardrik.agents.reloaded",
+  "description": "Someone had the files that declare agents read again.",
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "The node, by its Erlang name."
+      },
+      "description": "The nodes that read them."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "nodes"
+  ]
+}

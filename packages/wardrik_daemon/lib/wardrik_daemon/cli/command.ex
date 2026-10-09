@@ -11,6 +11,10 @@ defmodule WardrikDaemon.CLI.Command do
   A command with `:json` also takes `--json`, and answers with one JSON
   document in place of its text.
 
+  What runs a command is handed the words it was given, and its options: the
+  switches given, and `:by`, the `Wardrik.Principal` who typed it, or `nil`,
+  which a change it makes is recorded under in `Wardrik.Audit`.
+
   A command whose `:run` answers `:live` needs the terminal it came from,
   to write as it goes or to ask something: `bin/wardrik` runs it again over
   `bin/wardrikd rpc`, where `:live` runs it with that terminal.

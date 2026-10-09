@@ -9,10 +9,12 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   alias Wardrik.Event
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Audit
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI
 
   @moduletag :tmp_dir
+  @ops %{"type" => "shell", "id" => "ops"}
   @defaults %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know.\n"
 
@@ -35,15 +37,17 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
   # Runs a command as over erl_call, answering what it printed and how it
   # exited: 0, 1, or :live for one that needs the terminal it came from.
-  defp command(args), do: run(&CLI.main/1, args, "")
+  # Each is typed by the account ops, unless it says otherwise.
+  defp command(["--terminal=" <> _described | _args] = args), do: run(&CLI.main/1, args, "")
+  defp command(args), do: command(["--terminal=80,plain,no-input,user=ops" | args])
 
   # Runs a command live, as over bin/wardrikd rpc, from a terminal someone can
   # type `input` into, or, with `input?: false`, one nobody can.
   defp live(args, input \\ "", opts \\ []) do
     terminal =
       if Keyword.get(opts, :input?, true),
-        do: "--terminal=80,plain,input",
-        else: "--terminal=80,plain,no-input"
+        do: "--terminal=80,plain,input,user=ops",
+        else: "--terminal=80,plain,no-input,user=ops"
 
     run(&CLI.live/1, [terminal | args], input)
   end
@@ -107,6 +111,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"#{key} runs already, on #{here}.\n", 0}
+
+      assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
     end
 
     test "puts an agent with a user, on the node named", %{dir: dir, org: org, here: here} do
@@ -167,6 +173,11 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "stop", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
+
+      assert Audit.about("agents/#{key}") ==
+               [{"agent.spawned", @ops}, {"agent.stopped", @ops}, {"agent.spawned", @ops}]
+
+      assert Audit.about("agents/#{loose}") == [{"agent.stopped", @ops}, {"agent.spawned", @ops}]
     end
 
     test "keeps a file that is there, and writes none the defaults make no agent of", context do
@@ -230,6 +241,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "cancel", ""]) ==
                {"Name an agent's key, or a prefix such as acme/.\n", 1}
+
+      assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
+
+      assert [%{"data" => %{"prefix" => prefix, "count" => 1, "actor" => @ops}}] =
+               for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{org}/", do: e)
+
+      assert prefix == org <> "/"
     end
   end
 
@@ -267,6 +285,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert output =~ "Removed #{first} and #{second}."
       refute Fleet.stored?(first)
       refute Fleet.stored?(second)
+      assert Audit.about("agents/#{first}") == [{"agent.forgotten", @ops}]
+      assert Audit.about("agents/#{second}") == [{"agent.forgotten", @ops}]
     end
 
     test "needs --yes where nobody can answer, and removes a stopped agent", %{org: org} do
@@ -359,6 +379,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       {output, 0} = live(["agent", "move", key], "1\n")
       assert output =~ "Move #{key} from #{Nodes.display(node())} to which node?"
       assert output =~ "Moved #{key} to b, with its conversation."
+
+      moved =
+        for %{"subject" => subject, "type" => type, "data" => data} <- Audit.all(),
+            subject == "agents/#{key}",
+            do: {type, data["node"], data["actor"]}
+
+      assert moved == List.duplicate({"wardrik.agent.moved", "wardrik_b@localhost", @ops}, 2)
 
       {output, 1} = live(["agent", "move", key], "", input?: false)
 

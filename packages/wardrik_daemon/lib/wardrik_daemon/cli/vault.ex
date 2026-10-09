@@ -27,6 +27,8 @@ defmodule WardrikDaemon.CLI.Vault do
   give the vault a key instead.
   """
 
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
@@ -93,7 +95,7 @@ defmodule WardrikDaemon.CLI.Vault do
     with {:ok, owner} <- owner(opts),
          {:ok, pairs} when is_list(pairs) <- given(words),
          {:ok, notes} <- key(opts, nil) do
-      seal(pairs, owner, notes)
+      seal(pairs, owner, notes, opts[:by])
     else
       {:ok, {:ask, _name}} -> :live
       other -> other
@@ -106,7 +108,7 @@ defmodule WardrikDaemon.CLI.Vault do
          {:ok, notes} <- key(opts, terminal),
          :ok <- Enum.each(notes, &Terminal.puts(terminal, &1)),
          {:ok, pairs} <- value(given, terminal) do
-      seal(pairs, owner, [])
+      seal(pairs, owner, [], opts[:by])
     else
       :declined -> {:ok, "Nothing was sealed."}
       other -> other
@@ -163,14 +165,18 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp seal([], _owner, _notes), do: {:ok, "Nothing was sealed."}
+  defp seal([], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
 
-  defp seal(pairs, {kind, owner}, notes) do
+  defp seal(pairs, {kind, owner}, notes, by) do
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
       case WardrikVault.put(name, owner, value) do
-        :ok -> {:cont, [sealed(kind, name, owner, value) | lines]}
-        {:error, reason} -> {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
+        :ok ->
+          :ok = Audit.record({:secret_stored, name, prefix(owner)}, by)
+          {:cont, [sealed(kind, name, owner, value) | lines]}
+
+        {:error, reason} ->
+          {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
       end
     end)
     |> case do
@@ -361,6 +367,7 @@ defmodule WardrikDaemon.CLI.Vault do
 
       if name in WardrikVault.names(owner) do
         :ok = removed(kind, name, owner)
+        :ok = Audit.record({:secret_removed, name, prefix(owner)}, opts[:by])
         {:ok, "Removed #{name}#{for_owner}."}
       else
         {:error, "The vault holds no #{name}#{for_owner}."}
@@ -411,6 +418,11 @@ defmodule WardrikDaemon.CLI.Vault do
     id = Wardrik.AgentID.new!("vault", org: org || WardrikDaemon.Config.org(), user: user)
     {id.org, id.user}
   end
+
+  # The agents whose secret it is, the deployment's being every agent's.
+  defp prefix(nil), do: Prefix.all()
+  defp prefix(org) when is_binary(org), do: Prefix.new!(org: org)
+  defp prefix({org, user}), do: Prefix.new!(org: org, user: user)
 
   defp kind(nil), do: :deployment
   defp kind(owner) when is_binary(owner), do: :org

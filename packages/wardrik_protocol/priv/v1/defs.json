@@ -152,7 +152,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "shell, ssh, terminal, slack, oauth or token."
+          "description": "shell, ssh, terminal, slack, oauth, token or user."
         },
         "id": {
           "type": "string"
@@ -166,7 +166,7 @@
         "type",
         "id"
       ],
-      "description": "Who decided."
+      "description": "Who did something, and how they were known."
     },
     "decided": {
       "type": "object",

@@ -16,7 +16,7 @@ Every event is a CloudEvent: the envelope below, with the event's own data under
 | --- | --- | --- | --- |
 | `specversion` | `"1.0"` | yes |  |
 | `id` | string | yes | A UUIDv7. |
-| `source` | string | yes |  |
+| `source` | string | yes | The agent, or audit for a change people made. |
 | `type` | string | yes |  |
 | `subject` | string | yes |  |
 | `time` | string (date-time) | yes |  |
@@ -29,6 +29,68 @@ Every event is a CloudEvent: the envelope below, with the event's own data under
 | `data` | object | yes |  |
 
 ## Events
+
+### `wardrik.agent.cancelled`
+
+Someone dropped the turn an agent was taking, and what was queued behind it.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agent.cleared`
+
+Someone emptied an agent's conversation.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agent.defined`
+
+Someone wrote an agent's definition, and the agent was started, or brought to it.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agent.forgotten`
+
+Someone removed an agent, with everything it had.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agent.moved`
+
+Someone started an agent again on another node.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `node` | string | yes | The node it moved to, by its Erlang name. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agent.spawned`
+
+Someone started an agent.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `node` | string | yes | The node, by its Erlang name. |
+| `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.agent.started`
 
@@ -43,6 +105,35 @@ The agent was loaded: started, restarted, or moved to another node.
 | `conversation.id` | string | yes |  |
 | `node` | string | yes |  |
 | `status` | string | yes | One of `idle`, `running`, `parked`. |
+
+### `wardrik.agent.stopped`
+
+Someone stopped an agent, which kept its conversation.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agents.cancelled`
+
+Someone dropped the turns of every agent under a prefix, and what was queued behind them.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `prefix` | string | yes | The prefix, as acme/; empty for every agent. |
+| `count` | integer | yes | How many agents were told. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.agents.reloaded`
+
+Someone had the files that declare agents read again.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `nodes` | array of string | yes | The nodes that read them. |
+| `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.conversation.cleared`
 
@@ -194,6 +285,30 @@ A run began, answering the messages it lists. None for a run carried on after a 
 | --- | --- | --- | --- |
 | `run` | [run](#run) | yes |  |
 
+### `wardrik.schedule.removed`
+
+Someone removed one of an agent's schedules.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `schedule` | object | yes |  |
+| `schedule.name` | string | yes |  |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.schedule.set`
+
+Someone set one of an agent's schedules.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `schedule` | object | yes |  |
+| `schedule.name` | string | yes |  |
+| `actor` | [principal](#principal) |  |  |
+
 ### `wardrik.schedule.triggered`
 
 A schedule came due.
@@ -203,6 +318,28 @@ A schedule came due.
 | `schedule` | object | yes |  |
 | `schedule.name` | string | yes |  |
 | `status` | string | yes | One of `asked`, `busy`, `no_agent`, `missed`, `failed`. |
+
+### `wardrik.secret.removed`
+
+Someone took a secret out of the vault.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `secret` | object | yes |  |
+| `secret.name` | string | yes |  |
+| `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.secret.stored`
+
+Someone sealed a secret in the vault.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `secret` | object | yes |  |
+| `secret.name` | string | yes |  |
+| `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
+| `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.step.completed`
 
@@ -257,6 +394,30 @@ A subagent was handed a task.
 | `agent.id` | string |  |  |
 | `agent.name` | string |  |  |
 | `prompt` | string | yes |  |
+
+### `wardrik.token.created`
+
+Someone made an API token.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `token` | object | yes |  |
+| `token.id` | string | yes |  |
+| `token.name` | string | yes |  |
+| `scope` | string | yes | The prefix of the agents it reaches, as acme/; empty for every agent. |
+| `can` | array of string | yes | What it may do to them. |
+| `for` | [principal](#principal) |  |  |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.token.revoked`
+
+Someone revoked an API token.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `token` | object | yes |  |
+| `token.id` | string | yes |  |
+| `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.tool_call.completed`
 
@@ -363,11 +524,11 @@ Token usage, as gen_ai.usage.* without the prefix.
 
 ### `principal`
 
-Who decided.
+Who did something, and how they were known.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | string | yes | shell, ssh, terminal, slack, oauth or token. |
+| `type` | string | yes | shell, ssh, terminal, slack, oauth, token or user. |
 | `id` | string | yes |  |
 | `name` | string |  |  |
 

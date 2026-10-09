@@ -1,7 +1,7 @@
 defmodule Wardrik.Event.Codec do
   @moduledoc """
-  A `Wardrik.Event` as a CloudEvent: the map, with string keys, that the event
-  log stores and the HTTP API sends.
+  A `Wardrik.Event`, or a `Wardrik.Audit` change, as a CloudEvent: the map,
+  with string keys, that the event log stores and the HTTP API sends.
 
       {:ok, cloud_event} = Wardrik.Event.Codec.encode(event, sequence: 41)
 
@@ -11,17 +11,20 @@ defmodule Wardrik.Event.Codec do
 
     * `specversion` - `"1.0"`
     * `id` - the event's UUIDv7
-    * `source` - the agent, as `wardrik://local/agents/<key>`
+    * `source` - the agent, as `wardrik://local/agents/<key>`, or
+      `wardrik://local/audit` for a change people made
     * `type` - `wardrik.` then a noun and a past-tense verb, the same string as
       the event's OpenTelemetry event name
     * `subject` - what the event is about: `runs/…`, `messages/…`,
-      `tool_calls/…`, `interrupts/…`, `steps/…` or `agents/…`
+      `tool_calls/…`, `interrupts/…`, `steps/…` or `agents/…`, and for a
+      change, `agents/…`, an agent or a prefix, `agents`, every one,
+      `tokens/…` or `secrets/…`
     * `time` - RFC 3339 in UTC, to the microsecond
     * `datacontenttype` - `"application/json"`
     * `dataschema` - `urn:wardrik:schema:v1:<type>`, the JSON Schema the data
       follows, which `wardrik_protocol` holds
     * `sequence` - CloudEvents' sequence extension: the event's place in its
-      agent's log, zero-padded to #{12} digits, for a durable event given one
+      log, zero-padded to #{12} digits, for a durable event given one
     * `traceparent` - the Distributed Tracing extension: the event's trace, a
       run, and its span, in W3C Trace Context form
     * `parentspanid` - the span that holds the event's span, where there is one
@@ -44,8 +47,15 @@ defmodule Wardrik.Event.Codec do
   Provider stream records, `:chunk`, `:meta` and `:tool_call`, and the
   per-call `:tool_parked`, which `run.interrupted` lists, are not sent:
   `encode/2` answers `:skip`.
+
+  ## Changes
+
+  A `Wardrik.Audit` change is durable, at the root of a trace of its own,
+  and its data says who made it, as `actor`, where that is known.
   """
 
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
 
@@ -73,39 +83,46 @@ defmodule Wardrik.Event.Codec do
 
   Options:
 
-    * `:sequence` - the event's place in its agent's log
+    * `:sequence` - the event's place in its log
     * `:message_id` - the message a text or reasoning delta belongs to
   """
-  @spec encode(Event.t(), keyword()) :: {:ok, map()} | :skip
-  def encode(%Event{} = event, opts \\ []) do
+  @spec encode(Event.t() | Audit.t(), keyword()) :: {:ok, map()} | :skip
+  def encode(event, opts \\ [])
+
+  def encode(%Event{} = event, opts) do
     if Event.type(event) in @skipped do
       :skip
     else
       {type, subject, data} = describe(Event.type(event), event, opts)
-      {:ok, envelope(event, type, subject, data, opts)}
+      source = source(event.source.agent_id)
+      {:ok, envelope(event, source, event.source.trace, {type, subject, data}, opts)}
     end
+  end
+
+  def encode(%Audit{} = audit, opts) do
+    {type, subject, data} = change(audit.action)
+    data = Value.put(data, "actor", Value.principal(audit.by))
+    {:ok, envelope(audit, source(:audit), audit.trace, {type, subject, data}, opts)}
   end
 
   @doc "Whether events of an internal type go in the log, rather than being streamed alone."
   @spec durable?(atom()) :: boolean()
   def durable?(type) when is_atom(type), do: type not in @live and type not in @skipped
 
-  @doc "The CloudEvents `source` of an agent's events."
-  @spec source(Event.Bus.agent_id()) :: String.t()
-  def source(agent_id),
-    do: "wardrik://local/agents/#{agent_id}"
+  @doc "The CloudEvents `source` of a log's events: an agent's, or `:audit`."
+  @spec source(Event.Log.log()) :: String.t()
+  def source(:audit), do: "wardrik://local/audit"
+  def source(agent_id), do: "wardrik://local/agents/#{agent_id}"
 
   @doc "The URI of the JSON Schema for a CloudEvent type's data."
   @spec schema(String.t()) :: String.t()
   def schema("wardrik." <> type), do: "urn:wardrik:schema:v1:" <> type
 
-  defp envelope(event, type, subject, data, opts) do
-    trace = event.source.trace
-
+  defp envelope(event, source, trace, {type, subject, data}, opts) do
     %{
       "specversion" => "1.0",
       "id" => event.id,
-      "source" => source(event.source.agent_id),
+      "source" => source,
       "type" => "wardrik." <> type,
       "subject" => subject,
       "time" => event.at |> DateTime.from_unix!(:microsecond) |> DateTime.to_iso8601(),
@@ -295,6 +312,67 @@ defmodule Wardrik.Event.Codec do
       |> Value.put("total", total)
 
     {"tool_call.progress", "tool_calls/" <> id, data}
+  end
+
+  # -- changes people made -------------------------------------------------------
+
+  defp change({:agent_defined, id}), do: agent_change("agent.defined", id, %{})
+
+  defp change({:agent_spawned, id, node}),
+    do: agent_change("agent.spawned", id, %{"node" => to_string(node)})
+
+  defp change({:agent_stopped, id}), do: agent_change("agent.stopped", id, %{})
+  defp change({:agent_forgotten, id}), do: agent_change("agent.forgotten", id, %{})
+
+  defp change({:agent_moved, id, node}),
+    do: agent_change("agent.moved", id, %{"node" => to_string(node)})
+
+  defp change({:agent_cancelled, id}), do: agent_change("agent.cancelled", id, %{})
+
+  defp change({:agents_cancelled, prefix, count}),
+    do:
+      {"agents.cancelled", "agents/#{prefix}", %{"prefix" => to_string(prefix), "count" => count}}
+
+  defp change({:agent_cleared, id}), do: agent_change("agent.cleared", id, %{})
+
+  defp change({:schedule_set, id, name}),
+    do: agent_change("schedule.set", id, %{"schedule" => %{"name" => name}})
+
+  defp change({:schedule_removed, id, name}),
+    do: agent_change("schedule.removed", id, %{"schedule" => %{"name" => name}})
+
+  defp change({:agents_reloaded, nodes}),
+    do: {"agents.reloaded", "agents", %{"nodes" => Enum.map(nodes, &to_string/1)}}
+
+  defp change({:token_created, id, name, grant, for}) do
+    data =
+      %{
+        "token" => %{"id" => id, "name" => name},
+        "scope" => to_string(grant.scope),
+        "can" => Enum.map(grant.can, &to_string/1)
+      }
+      |> Value.put("for", Value.principal(for))
+
+    {"token.created", "tokens/" <> id, data}
+  end
+
+  defp change({:token_revoked, id}),
+    do: {"token.revoked", "tokens/" <> id, %{"token" => %{"id" => id}}}
+
+  defp change({:secret_stored, name, owner}), do: secret("secret.stored", name, owner)
+  defp change({:secret_removed, name, owner}), do: secret("secret.removed", name, owner)
+
+  defp agent_change(type, id, data),
+    do: {type, "agents/#{id}", Map.put(data, "agent", %{"id" => to_string(id)})}
+
+  # A deployment's secret is every agent's, and its owner goes unsaid.
+  defp secret(type, name, owner) do
+    data = Value.put(%{"secret" => %{"name" => name}}, "owner", owned_by(owner))
+    {type, "secrets/" <> name, data}
+  end
+
+  defp owned_by(owner) do
+    if owner == Prefix.all(), do: nil, else: to_string(owner)
   end
 
   # -- helpers -------------------------------------------------------------------

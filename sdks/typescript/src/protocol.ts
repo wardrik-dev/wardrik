@@ -72,11 +72,11 @@ export interface Usage {
   cost_usd?: number;
 }
 /**
- * Who decided.
+ * Who did something, and how they were known.
  */
 export interface Principal {
   /**
-   * shell, ssh, terminal, slack, oauth or token.
+   * shell, ssh, terminal, slack, oauth, token or user.
    */
   type: string;
   id: string;
@@ -320,6 +320,9 @@ export interface Envelope {
    * A UUIDv7.
    */
   id: string;
+  /**
+   * The agent, or audit for a change people made.
+   */
   source: string;
   type: string;
   subject: string;
@@ -411,6 +414,86 @@ export interface ScheduleDefinition {
   jitter?: number;
 }
 /**
+ * Someone dropped the turn an agent was taking, and what was queued behind it.
+ */
+export interface AgentCancelledData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone emptied an agent's conversation.
+ */
+export interface AgentClearedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone wrote an agent's definition, and the agent was started, or brought to it.
+ */
+export interface AgentDefinedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone removed an agent, with everything it had.
+ */
+export interface AgentForgottenData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone started an agent again on another node.
+ */
+export interface AgentMovedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  /**
+   * The node it moved to, by its Erlang name.
+   */
+  node: string;
+  actor?: Principal;
+}
+/**
+ * Someone started an agent.
+ */
+export interface AgentSpawnedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  /**
+   * The node, by its Erlang name.
+   */
+  node: string;
+  actor?: Principal;
+}
+/**
  * The agent was loaded: started, restarted, or moved to another node.
  */
 export interface AgentStartedData {
@@ -423,6 +506,44 @@ export interface AgentStartedData {
   };
   node: string;
   status: "idle" | "running" | "parked";
+}
+/**
+ * Someone stopped an agent, which kept its conversation.
+ */
+export interface AgentStoppedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone dropped the turns of every agent under a prefix, and what was queued behind them.
+ */
+export interface AgentsCancelledData {
+  /**
+   * The prefix, as acme/; empty for every agent.
+   */
+  prefix: string;
+  /**
+   * How many agents were told.
+   */
+  count: number;
+  actor?: Principal;
+}
+/**
+ * Someone had the files that declare agents read again.
+ */
+export interface AgentsReloadedData {
+  /**
+   * The nodes that read them.
+   *
+   * Items: The node, by its Erlang name.
+   */
+  nodes: string[];
+  actor?: Principal;
 }
 /**
  * The conversation was emptied, and with it the mark of content from outside it held.
@@ -552,6 +673,36 @@ export interface RunStartedData {
   run: Run;
 }
 /**
+ * Someone removed one of an agent's schedules.
+ */
+export interface ScheduleRemovedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  schedule: {
+    name: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone set one of an agent's schedules.
+ */
+export interface ScheduleSetData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  schedule: {
+    name: string;
+  };
+  actor?: Principal;
+}
+/**
  * A schedule came due.
  */
 export interface ScheduleTriggeredData {
@@ -559,6 +710,32 @@ export interface ScheduleTriggeredData {
     name: string;
   };
   status: "asked" | "busy" | "no_agent" | "missed" | "failed";
+}
+/**
+ * Someone took a secret out of the vault.
+ */
+export interface SecretRemovedData {
+  secret: {
+    name: string;
+  };
+  /**
+   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   */
+  owner?: string;
+  actor?: Principal;
+}
+/**
+ * Someone sealed a secret in the vault.
+ */
+export interface SecretStoredData {
+  secret: {
+    name: string;
+  };
+  /**
+   * The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's.
+   */
+  owner?: string;
+  actor?: Principal;
 }
 /**
  * A named step ended.
@@ -612,6 +789,34 @@ export interface SubagentStartedData {
   prompt: string;
 }
 /**
+ * Someone made an API token.
+ */
+export interface TokenCreatedData {
+  token: {
+    id: string;
+    name: string;
+  };
+  /**
+   * The prefix of the agents it reaches, as acme/; empty for every agent.
+   */
+  scope: string;
+  /**
+   * What it may do to them.
+   */
+  can: string[];
+  for?: Principal;
+  actor?: Principal;
+}
+/**
+ * Someone revoked an API token.
+ */
+export interface TokenRevokedData {
+  token: {
+    id: string;
+  };
+  actor?: Principal;
+}
+/**
  * A tool call answered, or was answered from the ledger when replayed.
  */
 export interface ToolCallCompletedData {
@@ -647,7 +852,16 @@ export interface ToolCallStartedData {
 
 /** Each event type, and the data its events carry. */
 export interface EventData {
+  "wardrik.agent.cancelled": AgentCancelledData;
+  "wardrik.agent.cleared": AgentClearedData;
+  "wardrik.agent.defined": AgentDefinedData;
+  "wardrik.agent.forgotten": AgentForgottenData;
+  "wardrik.agent.moved": AgentMovedData;
+  "wardrik.agent.spawned": AgentSpawnedData;
   "wardrik.agent.started": AgentStartedData;
+  "wardrik.agent.stopped": AgentStoppedData;
+  "wardrik.agents.cancelled": AgentsCancelledData;
+  "wardrik.agents.reloaded": AgentsReloadedData;
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;
   "wardrik.interrupt.resolved": InterruptResolvedData;
@@ -663,12 +877,18 @@ export interface EventData {
   "wardrik.run.interrupted": RunInterruptedData;
   "wardrik.run.resumed": RunResumedData;
   "wardrik.run.started": RunStartedData;
+  "wardrik.schedule.removed": ScheduleRemovedData;
+  "wardrik.schedule.set": ScheduleSetData;
   "wardrik.schedule.triggered": ScheduleTriggeredData;
+  "wardrik.secret.removed": SecretRemovedData;
+  "wardrik.secret.stored": SecretStoredData;
   "wardrik.step.completed": StepCompletedData;
   "wardrik.step.started": StepStartedData;
   "wardrik.subagent.completed": SubagentCompletedData;
   "wardrik.subagent.failed": SubagentFailedData;
   "wardrik.subagent.started": SubagentStartedData;
+  "wardrik.token.created": TokenCreatedData;
+  "wardrik.token.revoked": TokenRevokedData;
   "wardrik.tool_call.completed": ToolCallCompletedData;
   "wardrik.tool_call.denied": ToolCallDeniedData;
   "wardrik.tool_call.progress": ToolCallProgressData;

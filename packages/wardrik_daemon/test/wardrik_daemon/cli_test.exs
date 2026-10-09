@@ -7,18 +7,24 @@ defmodule WardrikDaemon.CLITest do
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Audit
   alias WardrikDaemon.CLI
 
   @token_usage "Usage: wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] " <>
                  "[--policy NAME | --unlimited] [--for NAME]\n"
 
+  @ops %{"type" => "shell", "id" => "ops"}
+
   # Runs a command, answering what it printed and how it exited: 0, 1, or
   # :live for one that needs the terminal it came from.
-  defp command(args), do: run(&CLI.main/1, args, "")
+  # Each is typed by the account ops, unless it says otherwise.
+  defp command(["--terminal=" <> _described | _args] = args), do: run(&CLI.main/1, args, "")
+  defp command(args), do: command(["--terminal=80,plain,no-input,user=ops" | args])
 
   # Runs a command live, as over bin/wardrikd rpc, from a terminal someone can
   # type `input` into.
-  defp live(args, input \\ ""), do: run(&CLI.live/1, ["--terminal=80,plain,input" | args], input)
+  defp live(args, input \\ ""),
+    do: run(&CLI.live/1, ["--terminal=80,plain,input,user=ops" | args], input)
 
   # Arguments are words on a command line, so an ID or a prefix is its text.
   defp run(entry, args, input) do
@@ -101,7 +107,7 @@ defmodule WardrikDaemon.CLITest do
     assert_receive {:resumed, %{"call_1" => :approve}}
 
     assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
-    assert Wardrik.Principal.type(by) == :shell
+    assert by == Wardrik.Principal.new(:shell, "ops")
   end
 
   test "deny refuses the call with the reason given" do
@@ -149,6 +155,19 @@ defmodule WardrikDaemon.CLITest do
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
     assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
     assert :error = WardrikHTTP.Token.verify(secret)
+
+    assert [
+             %{"type" => "wardrik.token.created", "data" => created},
+             %{"type" => "wardrik.token.revoked", "data" => %{"actor" => @ops}}
+           ] =
+             for(
+               %{"subject" => subject} = e <- Audit.all(),
+               subject == "tokens/#{token.id}",
+               do: e
+             )
+
+    assert %{"token" => %{"name" => ^name}, "scope" => "acme/", "actor" => @ops} = created
+    refute Map.has_key?(created, "for")
   end
 
   test "token create --for issues a token to a person, whose decisions it records" do
@@ -163,6 +182,13 @@ defmodule WardrikDaemon.CLITest do
     {list, 0} = command(["token", "list"])
     assert list =~ "  #{token.id}  laptop, for jon,  the agents under acme/"
     :ok = WardrikHTTP.Token.revoke(token.id)
+
+    assert [%{"data" => %{"for" => %{"type" => "user", "id" => "jon"}, "can" => ["read"]}}] =
+             for(
+               %{"subject" => subject} = e <- Audit.all(),
+               subject == "tokens/#{token.id}",
+               do: e
+             )
   end
 
   test "token create writes a scope as the key prefix it is, and refuses one that is not" do
@@ -375,7 +401,7 @@ defmodule WardrikDaemon.CLITest do
     assert command(["approve", key]) == {"", :live}
 
     assert {"wardrik approve asks which call only where someone can answer" <> _rest, 1} =
-             run(&CLI.live/1, ["--terminal=80,plain,no-input", "approve", key], "")
+             run(&CLI.live/1, ["--terminal=80,plain,no-input,user=ops", "approve", key], "")
 
     assert live(["approve", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
@@ -406,6 +432,8 @@ defmodule WardrikDaemon.CLITest do
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
     assert command(["clear", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
+    assert Audit.about("agents/#{key}") == [{"agent.cleared", @ops}]
+    assert Audit.about("agents/nobody/here") == []
   end
 
   test "a KEY in the deployment's org may leave the org out, and one that is not a key is refused" do
@@ -450,6 +478,7 @@ defmodule WardrikDaemon.CLITest do
     assert status =~ "on #{node()}"
     assert {reloaded, 0} = command(["reload"])
     assert reloaded =~ "on #{node()}"
+    assert {"agents.reloaded", @ops} in Audit.about("agents")
   end
 
   test "ls lists the agents a query picks, with what each is doing and where" do

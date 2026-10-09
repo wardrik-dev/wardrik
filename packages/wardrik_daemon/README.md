@@ -44,6 +44,10 @@ full. `status`, `ls`, `history`, `parked` and `vault ls` take `--json`.
 `wardrik completion bash`, `zsh` or `fish` completes commands, options and the
 agents running.
 
+A command that changes something, and the same change made in the TUI or over
+the HTTP API, is recorded in `Wardrik.Audit` with who made it: the account
+that ran `wardrik`, the SSH user, or the token or the person it was made for.
+
 ## Where it keeps things
 
 | Path | What it holds |

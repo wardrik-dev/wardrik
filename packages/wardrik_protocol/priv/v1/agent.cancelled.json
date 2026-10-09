@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agent.cancelled",
+  "title": "wardrik.agent.cancelled",
+  "description": "Someone dropped the turn an agent was taking, and what was queued behind it.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's ID."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agent"
+  ]
+}

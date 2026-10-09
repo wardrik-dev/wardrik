@@ -10,6 +10,7 @@ defmodule WardrikHTTP.RouterTest do
   alias Wardrik.Grant
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Audit
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.Fleet
   alias WardrikHTTP.Listener
@@ -575,7 +576,10 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
-  test "cancel stops what the agent is doing", %{api: api} do
+  # The actor a change made through the API names: its token.
+  defp actor(token), do: %{"type" => "token", "id" => token.id, "name" => "router-test"}
+
+  test "cancel stops what the agent is doing", %{api: api, token: token} do
     {key, agent} =
       Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
 
@@ -585,11 +589,15 @@ defmodule WardrikHTTP.RouterTest do
 
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
     assert_receive %Event{payload: {:turn_interrupted, _stats}}
+    assert Audit.about("agents/#{key}") == [{"agent.cancelled", actor(token)}]
 
     assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/cancel")
   end
 
-  test "clearing the conversation empties it, and waits while a turn runs", %{api: api} do
+  test "clearing the conversation empties it, and waits while a turn runs", %{
+    api: api,
+    token: token
+  } do
     {key, agent} =
       Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
 
@@ -600,12 +608,14 @@ defmodule WardrikHTTP.RouterTest do
     assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
              Req.delete(api, url: "/v1/agents/#{key}/conversation")
 
+    assert Audit.about("agents/#{key}") == []
     send(turn, :release)
     assert_receive %Event{payload: {:turn_finished, _messages}}
 
     assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/conversation")
     assert_receive %Event{payload: {:context_cleared, 2}}
     assert Agent.get_context(agent).messages == []
+    assert Audit.about("agents/#{key}") == [{"agent.cleared", actor(token)}]
 
     assert {:ok, %{status: 404}} = Req.delete(api, url: "/v1/agents/test/nobody/conversation")
   end
@@ -619,7 +629,7 @@ defmodule WardrikHTTP.RouterTest do
       key
     end
 
-    test "start the agent they describe, then bring it to a new one", %{api: api} do
+    test "start the agent they describe, then bring it to a new one", %{api: api, token: token} do
       key = defined_key()
 
       assert {:ok, %{status: 201, body: snapshot}} = define(api, key, %{})
@@ -636,6 +646,9 @@ defmodule WardrikHTTP.RouterTest do
 
       assert snapshot["request"]["model"] == "gpt-5"
       assert Agent.status(key).model == "openai:gpt-5"
+
+      assert Audit.about("agents/#{key}") ==
+               [{"agent.defined", actor(token)}, {"agent.defined", actor(token)}]
     end
 
     test "that do not read, or are not an object, start nothing", %{api: api} do
@@ -750,7 +763,10 @@ defmodule WardrikHTTP.RouterTest do
   describe "a definition module that keeps definitions" do
     setup %{api: api}, do: %{kept: listener(api, definition: Kept)}
 
-    test "answers one back as it was sent, and forgets it with its agent", %{kept: kept} do
+    test "answers one back as it was sent, and forgets it with its agent", %{
+      kept: kept,
+      token: token
+    } do
       key = defined_key()
       definition = %{"model" => "openai:gpt-5"}
 
@@ -763,6 +779,9 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key) == nil
       assert {:ok, %{status: 404}} = Req.get(kept, url: "/v1/agents/#{key}/definition")
       assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
+
+      assert Audit.about("agents/#{key}") ==
+               [{"agent.defined", actor(token)}, {"agent.forgotten", actor(token)}]
     end
 
     test "forgets an agent it kept no definition for", %{kept: kept} do
@@ -788,6 +807,7 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}")
       assert Wardrik.Fleet.lookup(key)
+      assert Audit.about("agents/#{key}") == []
     end
 
     test "may refuse to change an agent's schedules", %{kept: kept} do
@@ -816,12 +836,14 @@ defmodule WardrikHTTP.RouterTest do
     defp schedule(api, key, name, body),
       do: Req.put(api, url: "/v1/agents/#{key}/schedules/#{name}", json: body)
 
-    test "are set in the agent's definition, then changed", %{kept: kept, key: key} do
+    test "are set in the agent's definition, then changed", %{kept: kept, key: key, token: token} do
       assert {:ok, %{status: 201, body: %{"schedule" => %{"name" => "sweep", "every" => "1h"}}}} =
                schedule(kept, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
       assert {:ok, %{status: 200, body: %{"schedule" => %{"every" => "2h"}}}} =
                schedule(kept, key, "sweep", %{"every" => "2h", "prompt" => "Look."})
+
+      assert {"schedule.set", actor(token)} in Audit.about("agents/#{key}")
     end
 
     test "that do not read, or are for an agent with no definition kept, are refused",
@@ -837,7 +859,11 @@ defmodule WardrikHTTP.RouterTest do
       assert body["error"]["message"] == "test/nobody has no definition kept."
     end
 
-    test "are deleted, and one that is not there is not found", %{kept: kept, key: key} do
+    test "are deleted, and one that is not there is not found", %{
+      kept: kept,
+      key: key,
+      token: token
+    } do
       {:ok, %{status: 201}} =
         schedule(kept, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
 
@@ -847,6 +873,12 @@ defmodule WardrikHTTP.RouterTest do
                Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
 
       assert body["error"]["message"] == "#{key} has no schedule sweep."
+
+      assert Audit.about("agents/#{key}") == [
+               {"agent.defined", actor(token)},
+               {"schedule.set", actor(token)},
+               {"schedule.removed", actor(token)}
+             ]
     end
 
     test "are not set where the server keeps no definitions", %{api: api, key: key} do

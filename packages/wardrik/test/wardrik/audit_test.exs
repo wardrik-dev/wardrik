@@ -1,0 +1,137 @@
+defmodule Wardrik.AuditTest do
+  # One audit log for the node, emptied before each test.
+  use ExUnit.Case, async: false
+  use Mimic
+
+  import ExUnit.CaptureLog
+
+  alias Wardrik.Audit
+  alias Wardrik.Event.Log
+  alias Wardrik.Event.Log.Entry
+  alias Wardrik.Principal
+
+  setup :verify_on_exit!
+
+  setup do
+    empty()
+    :ok = Log.subscribe(:audit)
+    on_exit(fn -> Log.unsubscribe(:audit) end)
+
+    %{
+      by: Principal.new(:shell, "jon"),
+      id: Wardrik.AgentID.parse!("acme/triage")
+    }
+  end
+
+  defp empty do
+    for key <- WardrikStore.keys(Log.namespace(), "audit//") do
+      {_value, vsn} = WardrikStore.lookup(Log.namespace(), key)
+      :ok = WardrikStore.delete(Log.namespace(), key, if_vsn: vsn)
+    end
+
+    restart()
+  end
+
+  defp restart do
+    :ok = Supervisor.terminate_child(Wardrik.Supervisor, Audit)
+    {:ok, _pid} = Supervisor.restart_child(Wardrik.Supervisor, Audit)
+  end
+
+  defp allow_store, do: Mimic.allow(WardrikStore, self(), Process.whereis(Audit))
+
+  defp sequences do
+    {:ok, events} = Log.read(:audit, starting_after: Log.oldest(:audit) - 1)
+    Enum.map(events, &String.to_integer(&1["sequence"]))
+  end
+
+  defp written(sequence, at) do
+    event = %{"id" => "elsewhere", "time" => DateTime.to_iso8601(at)}
+
+    {:ok, _vsn} =
+      WardrikStore.put(Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil)
+  end
+
+  test "numbers each change, says who made it, and tells those following", %{by: by, id: id} do
+    assert :ok = Audit.record({:agent_forgotten, id}, by)
+    assert :ok = Audit.record({:agent_cleared, id}, nil)
+
+    assert {:ok,
+            [
+              %{
+                "type" => "wardrik.agent.forgotten",
+                "sequence" => "000000000001",
+                "data" => %{"actor" => %{"type" => "shell", "id" => "jon"}}
+              },
+              %{"type" => "wardrik.agent.cleared", "sequence" => "000000000002", "data" => data}
+            ]} = Log.read(:audit)
+
+    refute Map.has_key?(data, "actor")
+
+    assert_receive %Entry{sequence: 1, follows: 0, event: %{"type" => "wardrik.agent.forgotten"}}
+    assert_receive %Entry{sequence: 2, follows: 1, event: %{"type" => "wardrik.agent.cleared"}}
+  end
+
+  test "carries on from the end, after starting again", %{by: by, id: id} do
+    :ok = Audit.record({:agent_stopped, id}, by)
+    restart()
+    :ok = Audit.record({:agent_spawned, id, node()}, by)
+
+    assert sequences() == [1, 2]
+  end
+
+  test "writes past what another node wrote first", %{by: by, id: id} do
+    :ok = Audit.record({:agent_stopped, id}, by)
+    written(2, DateTime.utc_now())
+    written(3, DateTime.utc_now())
+
+    :ok = Audit.record({:agent_spawned, id, node()}, by)
+
+    assert {:ok, [_, %{"id" => "elsewhere"}, %{"id" => "elsewhere"}, spawned]} =
+             Log.read(:audit)
+
+    assert %{"type" => "wardrik.agent.spawned", "sequence" => "000000000004"} = spawned
+  end
+
+  test "leaves the number of a change the store failed to the next", %{by: by, id: id} do
+    allow_store()
+    expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
+
+    assert capture_log(fn -> assert :ok = Audit.record({:agent_stopped, id}, by) end) =~
+             "Could not write wardrik.agent.stopped to the audit log: :unavailable"
+
+    :ok = Audit.record({:agent_spawned, id, node()}, by)
+
+    assert {:ok, [%{"type" => "wardrik.agent.spawned", "sequence" => "000000000001"}]} =
+             Log.read(:audit)
+  end
+
+  test "drops what is older than the log keeps", %{by: by, id: id} do
+    written(1, DateTime.add(DateTime.utc_now(), -31, :day))
+    written(2, DateTime.add(DateTime.utc_now(), -31, :day))
+
+    :ok = Audit.record({:agent_stopped, id}, by)
+    # Trimmed after the reply; a second call waits for it.
+    _state = :sys.get_state(Audit)
+
+    assert {:gap, 3} = Log.read(:audit)
+    assert sequences() == [3]
+  end
+
+  test "leaves a trim to another node that got there first", %{by: by, id: id} do
+    written(1, DateTime.add(DateTime.utc_now(), -31, :day))
+    allow_store()
+
+    stub(WardrikStore, :put, fn
+      _ns, "audit//dropped", _last, _opts ->
+        {:error, :conflict}
+
+      ns, key, value, opts ->
+        call_original(WardrikStore, :put, [ns, key, value, opts])
+    end)
+
+    assert capture_log(fn ->
+             :ok = Audit.record({:agent_stopped, id}, by)
+             _state = :sys.get_state(Audit)
+           end) == ""
+  end
+end

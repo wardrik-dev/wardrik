@@ -5,7 +5,7 @@ defmodule Wardrik do
     * The store's settings, kept where every read and write finds them; see
       `WardrikStore.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
-      `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
+      `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
       fleet starts.
     * `Wardrik.Fleet.Supervisor`, with `:fleet`, which starts the store first.
@@ -64,6 +64,7 @@ defmodule Wardrik do
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
+        Wardrik.Audit,
         Wardrik.LLM.ToolRunner,
         Wardrik.Tasks
       ] ++

@@ -17,11 +17,15 @@ defmodule WardrikDaemon.CLI do
 
   A node waiting for a quorum of its cluster answers every command with what
   it is waiting for; see `WardrikDaemon.Cluster.waiting/0`.
+
+  A command that changes something records it in `Wardrik.Audit` once it
+  has, for the account `bin/wardrik` says typed it.
   """
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Agents
@@ -283,6 +287,7 @@ defmodule WardrikDaemon.CLI do
 
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
+    opts = Keyword.put(opts, :by, Terminal.principal(terminal))
 
     case respond(command, words, opts, terminal, json?) do
       {:ok, document} when json? -> IO.puts(JSON.encode!(document))
@@ -463,11 +468,19 @@ defmodule WardrikDaemon.CLI do
 
   defp agents(_words, _opts), do: {:ok, %{"agents" => Enum.map(Fleet.list(), &Resource.agent/1)}}
 
-  defp reload(_words, _opts) do
-    for daemon <- daemons(),
-        do: :erpc.call(daemon, WardrikDaemon.Agents, :reload, [], :timer.minutes(1))
-
+  defp reload(_words, opts) do
+    reloaded = reload_all()
+    :ok = Audit.record({:agents_reloaded, reloaded}, opts[:by])
     {:ok, WardrikDaemon.status()}
+  end
+
+  @doc "Has every node running a daemon read the agent and policy files again, and answers which did."
+  @spec reload_all() :: [node()]
+  def reload_all do
+    for daemon <- daemons() do
+      _files = :erpc.call(daemon, WardrikDaemon.Agents, :reload, [], :timer.minutes(1))
+      daemon
+    end
   end
 
   @doc "This node and every node connected to it that runs a daemon of its own."
@@ -542,9 +555,10 @@ defmodule WardrikDaemon.CLI do
     end
   end
 
-  defp clear([key], _opts) do
+  defp clear([key], opts) do
     case Agent.clear(key) do
       :ok ->
+        :ok = Audit.record({:agent_cleared, key}, opts[:by])
         {:ok, "Cleared #{key}'s conversation."}
 
       {:error, :busy} ->

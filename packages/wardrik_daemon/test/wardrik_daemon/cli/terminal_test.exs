@@ -18,6 +18,18 @@ defmodule WardrikDaemon.CLI.TerminalTest do
     assert {%Terminal{input?: false}, []} = Terminal.read(["--terminal=90,colour,no-input"])
   end
 
+  test "says who typed the command, where the script says" do
+    {terminal, ["agent", "rm"]} =
+      Terminal.read(["--terminal=90,plain,input,user=jon", "agent", "rm"])
+
+    assert terminal.user == "jon"
+    assert Terminal.principal(terminal) == Wardrik.Principal.new(:shell, "jon")
+
+    assert {%Terminal{user: nil} = nobody, []} = Terminal.read(["--terminal=90,plain,user="])
+    assert Terminal.principal(nobody) == nil
+    assert Terminal.principal(%Terminal{}) == nil
+  end
+
   test "is plain and 80 wide where none is described, or its width does not read" do
     assert Terminal.read(["status"]) == {%Terminal{width: 80, colour?: false}, ["status"]}
     assert {%Terminal{width: 80}, []} = Terminal.read(["--terminal=wide,colour"])

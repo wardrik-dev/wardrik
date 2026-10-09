@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:token.revoked",
+  "title": "wardrik.token.revoked",
+  "description": "Someone revoked an API token.",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "token"
+  ]
+}

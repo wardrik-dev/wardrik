@@ -48,8 +48,9 @@ done
 
 # The terminal this command writes to, for the node, which has none of its own:
 # how wide it is, whether it takes colour, which it does where standard output
-# is a terminal and NO_COLOR is not set, and whether someone can type into it.
-# See WardrikDaemon.CLI.Terminal.
+# is a terminal and NO_COLOR is not set, whether someone can type into it, and
+# the account typing, whom what the command changes is recorded for. See
+# WardrikDaemon.CLI.Terminal.
 colour=plain
 input=no-input
 width="${COLUMNS:-}"
@@ -58,7 +59,8 @@ if [ -t 1 ]; then
   [ -n "$width" ] || width="$(stty size 2> /dev/null < /dev/tty | cut -d' ' -f2)" || width=""
 fi
 [ ! -t 0 ] || input=input
-terminal="--terminal=${width:-80},$colour,$input"
+user="${USER:-$(id -un 2> /dev/null)}"
+terminal="--terminal=${width:-80},$colour,$input,user=$user"
 
 # -h or --help, anywhere, is help for the command it follows, except among the
 # words a shell asks completions for.
