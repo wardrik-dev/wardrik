@@ -184,11 +184,12 @@ The model answered, failed, or was stopped.
 
 ### `wardrik.message.created`
 
-Someone sent the agent a message, which it will answer.
+Someone sent the agent a message, which it will answer; sender says who, where that is known.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `message` | [message](#message) | yes |  |
+| `sender` | [principal](#principal) |  |  |
 
 ### `wardrik.message.delta`
 
