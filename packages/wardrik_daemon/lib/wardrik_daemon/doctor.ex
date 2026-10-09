@@ -2,6 +2,8 @@ defmodule WardrikDaemon.Doctor do
   @moduledoc """
   What `wardrik doctor` checks, each a line:
 
+    * `env` - that the env file `bin/wardrik` reads is its user's alone, and
+      that each line of it sets a variable; see `WardrikDaemon.Config.env_file/1`
     * `config` - that `config.yaml` reads, as the daemon reads it: a
       `${NAME}` this environment does not set is read from the vault, of a
       daemon that runs
@@ -24,6 +26,7 @@ defmodule WardrikDaemon.Doctor do
   the vault reads as itself, `${NAME}`, and doctor says it could not check.
 
       $ wardrik doctor
+      ok    env         /home/me/.config/wardrik/env sets 3 variables
       ok    config      /home/me/.config/wardrik/config.yaml reads
       ok    store       on this node's disk, at /home/me/.local/share/wardrik/store
       ok    vault       1 key, which seals
@@ -32,7 +35,7 @@ defmodule WardrikDaemon.Doctor do
       ok    agents      2 agent files and 1 policy read
 
   It exits with status 1 where a check fails. Where `config.yaml` does not
-  read, it is the only check.
+  read, no check after it runs.
   """
 
   alias WardrikDaemon.Agents
@@ -105,10 +108,46 @@ defmodule WardrikDaemon.Doctor do
   def checks(config_dir, vault \\ nil) do
     with {:ok, file} <- Config.file(config_dir),
          {:ok, settings, from_vault} <- read(file, vault) do
-      [config(file, from_vault, vault), store(settings), vault(settings)] ++
+      [env(config_dir), config(file, from_vault, vault), store(settings), vault(settings)] ++
         servers(settings) ++ agents(config_dir)
     else
-      {:error, message} -> [{:error, "config", message}]
+      {:error, message} -> [env(config_dir), {:error, "config", message}]
+    end
+  end
+
+  # -- env ---------------------------------------------------------------------
+
+  defp env(config_dir) do
+    file = Config.env_file(config_dir)
+
+    case File.stat(file) do
+      {:ok, %File.Stat{mode: mode}} when Bitwise.band(mode, 0o044) != 0 ->
+        {:error, "env", "#{file} can be read by others; chmod 600 it"}
+
+      {:ok, _stat} ->
+        file |> File.read!() |> assignments(file)
+
+      {:error, :enoent} ->
+        {:ok, "env", "no #{file}; config.yaml reads this environment and the vault"}
+
+      {:error, reason} ->
+        {:error, "env", "#{file}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # bin/wardrik sets a line NAME=value, after an optional export, and passes
+  # over blank lines and comments.
+  defp assignments(text, file) do
+    lines =
+      text
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.map(fn {line, n} -> {String.trim(line), n} end)
+      |> Enum.reject(fn {line, _n} -> line == "" or String.starts_with?(line, "#") end)
+
+    case Enum.reject(lines, fn {line, _n} -> line =~ ~r/^(export )?[A-Za-z_][A-Za-z0-9_]*=/ end) do
+      [] -> {:ok, "env", "#{file} sets #{count(length(lines), "variable")}"}
+      [{_line, n} | _rest] -> {:error, "env", "#{file} line #{n} is not NAME=value"}
     end
   end
 

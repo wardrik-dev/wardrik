@@ -12,6 +12,7 @@ defmodule WardrikDaemon.Config do
   | `WARDRIK_COOKIE_FILE` | `$XDG_DATA_HOME/wardrik/cookie`, `~/.local/share/wardrik/cookie` | the node's distribution cookie |
   | `WARDRIK_DATA_HOME` | `$XDG_DATA_HOME/wardrik`, `~/.local/share/wardrik` | `vault_key`, the vault's key where none is configured; see `WardrikDaemon.VaultKey` |
   | `WARDRIK_STATE_DIR` | `$XDG_STATE_HOME/wardrik`, `~/.local/state/wardrik` | `log/wardrik.log`, and `log/mcp.log` for what MCP commands write to stderr |
+  | `WARDRIK_ENV_FILE` | `env` in `WARDRIK_CONFIG_DIR` | the variables `bin/wardrik` sets, one `NAME=value` a line, where its environment does not set them |
 
   ## config.yaml
 
@@ -86,6 +87,10 @@ defmodule WardrikDaemon.Config do
   the environment alone: the store holds the vault, the cluster and the HTTP
   API's settings are read as the node boots, before the vault can be, and the
   vault cannot unlock itself.
+
+  The environment is the one `bin/wardrik` runs in, with what the env file
+  sets where that environment does not; see `env_file/1`. A variable that is
+  not set is refused with where to set it.
 
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
@@ -261,6 +266,13 @@ defmodule WardrikDaemon.Config do
   end
 
   @doc """
+  The file `bin/wardrik` reads variables from, beside `config.yaml` in
+  `config_dir` unless `WARDRIK_ENV_FILE` names another.
+  """
+  @spec env_file(Path.t()) :: Path.t()
+  def env_file(config_dir), do: System.get_env("WARDRIK_ENV_FILE") || Path.join(config_dir, "env")
+
+  @doc """
   The config file in `config_dir`: `config.yaml`, or `config.yml` where that
   is the one there. Where neither is, `config.yaml`, which `read/1` finds
   empty.
@@ -342,7 +354,9 @@ defmodule WardrikDaemon.Config do
 
       {:ok, document} ->
         document = document |> table!([]) |> only(opts[:only])
-        {:ok, document |> interpolate([], opts[:vault]) |> sections()}
+        env = env_file(Path.dirname(file))
+        secret = &secret(&1, &2, opts[:vault], env)
+        {:ok, document |> interpolate([], secret) |> sections()}
 
       {:error, error} ->
         {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
@@ -901,29 +915,30 @@ defmodule WardrikDaemon.Config do
 
   # The path is built innermost first and turned around only when it is
   # reported.
-  defp interpolate(value, path, vault) when is_map(value),
-    do: Map.new(value, fn {key, value} -> {key, interpolate(value, [key | path], vault)} end)
+  defp interpolate(value, path, secret) when is_map(value),
+    do: Map.new(value, fn {key, value} -> {key, interpolate(value, [key | path], secret)} end)
 
-  defp interpolate(value, path, vault) when is_list(value) do
+  defp interpolate(value, path, secret) when is_list(value) do
     value
     |> Enum.with_index()
-    |> Enum.map(fn {value, i} -> interpolate(value, ["#{i}" | path], vault) end)
+    |> Enum.map(fn {value, i} -> interpolate(value, ["#{i}" | path], secret) end)
   end
 
-  defp interpolate(value, path, vault) when is_binary(value) do
+  defp interpolate(value, path, secret) when is_binary(value) do
     Regex.replace(~r/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/, value, fn _match, name ->
-      System.get_env(name) || secret(name, Enum.reverse(path), vault)
+      System.get_env(name) || secret.(name, Enum.reverse(path))
     end)
   end
 
-  defp interpolate(value, _path, _vault), do: value
+  defp interpolate(value, _path, _secret), do: value
 
-  defp secret(name, path, nil), do: invalid!(path, "names ${#{name}}, which is not set")
+  defp secret(name, path, nil, env),
+    do: invalid!(path, "names ${#{name}}, which is not set; #{set(name, env)}")
 
-  defp secret(name, [section | _rest] = path, vault) do
+  defp secret(name, [section | _rest] = path, vault, env) do
     cond do
       reason = @environment_only[section] ->
-        invalid!(path, "names ${#{name}}, which is not set; #{reason}")
+        invalid!(path, "names ${#{name}}, which is not set; #{reason}, so #{set(name, env)}")
 
       value = vault.(name) ->
         value
@@ -932,9 +947,16 @@ defmodule WardrikDaemon.Config do
         invalid!(
           path,
           "names ${#{name}}, which neither the environment nor the vault sets; " <>
-            "wardrik vault put #{name} seals it"
+            "wardrik vault put #{name} seals it, or #{set(name, env)}"
         )
     end
+  end
+
+  # Where to set a variable that is not set: the env file, where there is one.
+  defp set(name, env) do
+    if File.exists?(env),
+      do: "add #{name}=... to #{env}, or set it in the environment wardrik runs in",
+      else: "set it in the environment wardrik runs in, or create #{env} with a line #{name}=..."
   end
 
   defp only(document, nil), do: document

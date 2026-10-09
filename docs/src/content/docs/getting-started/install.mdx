@@ -89,11 +89,14 @@ wardrik doctor             # whether what it reads will do
 ```
 
 `wardrik service install` writes `wardrik.service` under `~/.config/systemd/user`, starts it, and
-lets your systemd run from boot rather than from your first login. It reads anything set in
-`~/.config/wardrik/env`, which may set what the daemon would otherwise read from the vault.
+lets your systemd run from boot rather than from your first login.
 
-`wardrik doctor` checks `config.yaml`, the store, the vault, each MCP server and every agent file,
-whether the daemon runs or not.
+`~/.config/wardrik/env` sets variables for every `wardrik` command and the daemon it starts, one
+`NAME=value` a line, such as a key `config.yaml` names as `${NAME}`. A variable the shell sets
+already wins. Keep the file readable by you alone: `chmod 600 ~/.config/wardrik/env`.
+
+`wardrik doctor` checks the env file, `config.yaml`, the store, the vault, each MCP server and every
+agent file, whether the daemon runs or not.
 
 ## Keep secrets in the vault
 

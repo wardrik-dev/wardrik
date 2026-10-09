@@ -177,6 +177,42 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "vault.keys.0 names ${WARDRIK_CONFIG_TEST_UNSET}, which is not set"
     end
 
+    test "a variable that is not set says to set it in the env file", %{tmp_dir: dir} = context do
+      yaml = ~s(mcp:\n  a: {command: "${WARDRIK_CONFIG_TEST_UNSET}"}\n)
+      env = Path.join(dir, "env")
+
+      assert {:error, message} = read(yaml, context)
+
+      assert message =~
+               "set it in the environment wardrik runs in, or create #{env} with a line " <>
+                 "WARDRIK_CONFIG_TEST_UNSET=..."
+
+      File.write!(env, "OTHER=1\n")
+
+      assert {:error, message} = read(yaml, context, vault: fn _name -> nil end)
+
+      assert message =~
+               "wardrik vault put WARDRIK_CONFIG_TEST_UNSET seals it, or add " <>
+                 "WARDRIK_CONFIG_TEST_UNSET=... to #{env}, or set it in the environment"
+
+      assert {:error, message} =
+               read(~s(vault:\n  keys: ["${WARDRIK_CONFIG_TEST_UNSET}"]\n), context,
+                 vault: fn _name -> "from-vault" end
+               )
+
+      assert message =~
+               "since the vault cannot unlock itself, so add WARDRIK_CONFIG_TEST_UNSET=... to #{env}"
+    end
+
+    test "the env file is WARDRIK_ENV_FILE where that is set", %{tmp_dir: dir} do
+      System.put_env("WARDRIK_ENV_FILE", "/elsewhere/env")
+      on_exit(fn -> System.delete_env("WARDRIK_ENV_FILE") end)
+
+      assert Config.env_file(dir) == "/elsewhere/env"
+      System.delete_env("WARDRIK_ENV_FILE")
+      assert Config.env_file(dir) == Path.join(dir, "env")
+    end
+
     test "${NAME} the environment does not set is read from the vault, if it is given one",
          context do
       yaml =

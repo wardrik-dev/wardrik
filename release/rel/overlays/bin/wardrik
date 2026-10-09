@@ -19,6 +19,40 @@ config_dir="${WARDRIK_CONFIG_DIR:-"${XDG_CONFIG_HOME:-"$HOME/.config"}/wardrik"}
 state_dir="${WARDRIK_STATE_DIR:-"${XDG_STATE_HOME:-"$HOME/.local/state"}/wardrik"}"
 data_home="${WARDRIK_DATA_HOME:-"${XDG_DATA_HOME:-"$HOME/.local/share"}/wardrik"}"
 
+# The env file: one NAME=value a line, after an optional export, for the keys
+# and tokens config.yaml names. Each variable this environment does not set
+# already is set from it, for every command and the node they start, so a
+# shell and the service read the same. Blank lines and comments are passed
+# over, and wardrik doctor names any other line that sets no variable.
+WARDRIK_ENV_FILE="${WARDRIK_ENV_FILE:-"$config_dir/env"}"
+export WARDRIK_ENV_FILE
+if [ -r "$WARDRIK_ENV_FILE" ]; then
+  while read -r line || [ -n "$line" ]; do
+    line="${line#export }"
+    name="${line%%=*}"
+    case "$line" in
+      "$name" | [!A-Za-z_]*) continue ;;
+    esac
+    case "$name" in
+      *[!A-Za-z0-9_]*) continue ;;
+    esac
+    eval "[ -z \"\${$name+set}\" ]" || continue
+    if (eval "export $line") 2> /dev/null; then
+      eval "export $line"
+    else
+      echo "wardrik: $WARDRIK_ENV_FILE sets $name to what sh cannot read; check its quoting" >&2
+    fi
+  done < "$WARDRIK_ENV_FILE"
+fi
+
+# Says so where others can read the env file, as the node starts.
+env_file_private () {
+  if [ -n "$(find "$WARDRIK_ENV_FILE" \( -perm -040 -o -perm -004 \) 2> /dev/null)" ]; then
+    echo "wardrik: $WARDRIK_ENV_FILE can be read by others; chmod 600 it" >&2
+  fi
+  return 0
+}
+
 # --node NAME, anywhere among the arguments, is WARDRIK_NODE for this command:
 # which of the cluster's nodes it starts, stops or asks. Everything else keeps
 # its order.
@@ -293,8 +327,8 @@ launcher () {
 }
 
 # The units install writes, each as `==> NAME` and its text. The directories
-# are this command's, so the service reads and keeps what this install does,
-# and the keys the daemon reads are the env file's in the config directory.
+# and the env file are this command's, so the service reads and keeps what
+# this install does.
 units () {
   unit_name > /dev/null
   wardrik="$(launcher)"
@@ -346,6 +380,7 @@ Environment="WARDRIK_CONFIG_DIR=$config_dir"
 Environment="WARDRIK_DATA_HOME=$data_home"
 Environment="WARDRIK_STATE_DIR=$state_dir"
 Environment="WARDRIK_LOG=$3"
+Environment="WARDRIK_ENV_FILE=$WARDRIK_ENV_FILE"
 UNIT
 
   if [ -n "$2" ]; then
@@ -353,7 +388,6 @@ UNIT
   fi
 
   cat << UNIT
-EnvironmentFile=-$config_dir/env
 ExecStart="$wardrik" serve
 ExecStop="$wardrik" stop
 TimeoutStopSec=90
@@ -453,10 +487,12 @@ log="${WARDRIK_LOG:-"$(node_state_dir)/log/wardrik.log"}"
 
 case "${1:-}" in
   serve)
+    env_file_private
     WARDRIK_LOG="${WARDRIK_LOG:--}" exec "$node" start
     ;;
   start)
     if running; then echo "wardrik is already running" >&2; exit 1; fi
+    env_file_private
     "$node" daemon
     # Started once the agent files have been read, or once the node is up and
     # waiting for enough of its cluster to start them: WardrikDaemon.CLI.started/0

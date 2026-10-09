@@ -109,8 +109,8 @@ subsystems or forwarding: only the client. See [The terminal client](/guides/tui
 - **Provider keys and tokens** come from the environment, and, for a name it does not set, from the
   vault, which `wardrik vault put` seals. `${NAME}` in `config.yaml` reads one, so the file need
   hold no secret; `storage`, `cluster`, `http` and `vault` read the environment alone. A key from the vault
-  goes into the daemon's settings, never its environment. The service reads
-  `~/.config/wardrik/env`; keep it readable by the daemon's user only.
+  goes into the daemon's settings, never its environment. Every `wardrik` command reads
+  `~/.config/wardrik/env`; keep it readable by the daemon's user only, which `wardrik doctor` checks.
 - **Credentials and OAuth tokens** are sealed with AES-256-GCM by the vault, before they are stored.
   Where no key is configured, the first `wardrik vault put` makes `vault_key` beside the store, and
   anyone who can read both reads every secret; `WARDRIK_VAULT_KEY` or `vault.keys` keeps the key

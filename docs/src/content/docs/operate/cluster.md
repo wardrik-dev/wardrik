@@ -114,8 +114,8 @@ agent runs while any connected node's files declare it, and stops once none do, 
 one machine keeps its agent running. The HTTP API refuses to change an agent any node's files
 declare.
 
-The service reads `~/.config/wardrik/env`; export the same variables in your shell for `wardrik`
-commands to reach the node. Then install the service on each machine with `wardrik service install`.
+Every `wardrik` command reads `~/.config/wardrik/env`, as the service does, so commands run in a
+shell reach the node. Then install the service on each machine with `wardrik service install`.
 
 Distribution uses Erlang's port mapper, epmd, on port 4369, and a port it chooses for each node.
 Let the nodes reach each other on both over the private network.
