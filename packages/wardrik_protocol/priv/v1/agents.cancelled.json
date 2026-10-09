@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:agents.cancelled",
+  "title": "wardrik.agents.cancelled",
+  "description": "Someone dropped the turns of every agent under a prefix, and what was queued behind them.",
+  "type": "object",
+  "properties": {
+    "prefix": {
+      "type": "string",
+      "description": "The prefix, as acme/; empty for every agent."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many agents were told."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "prefix",
+    "count"
+  ]
+}

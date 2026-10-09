@@ -7,6 +7,7 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
@@ -116,6 +117,7 @@ defmodule WardrikTUI.App.Commands do
   defp start_agent(term, id, name, placement, prompt, mode) do
     with {:ok, options} <- WardrikTUI.App.options(term.assigns.options, id),
          {:ok, pid} <- Fleet.spawn(id, options ++ term.assigns.spawn_opts ++ placement) do
+      :ok = record(term, {:agent_spawned, id, node(pid)})
       started(term, id, name, pid, prompt, mode)
     else
       {:error, reason} -> Display.append(term, fleet_error(reason, placement[:node]))
@@ -190,6 +192,8 @@ defmodule WardrikTUI.App.Commands do
   defp move_now(term, id, node) do
     case Fleet.move(id, node) do
       {:ok, pid} ->
+        :ok = record(term, {:agent_moved, id, node})
+
         term
         |> adopt(id, pid)
         |> Connection.refresh_fleet()
@@ -280,15 +284,24 @@ defmodule WardrikTUI.App.Commands do
 
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
-      {:ok, prefix} -> Display.append(term, View.stopped_under(prefix, Fleet.kill(prefix)))
-      {:error, message} -> Display.append(term, View.error(message))
+      {:ok, prefix} ->
+        count = Fleet.kill(prefix)
+        if count > 0, do: :ok = record(term, {:agents_cancelled, prefix, count})
+        Display.append(term, View.stopped_under(prefix, count))
+
+      {:error, message} ->
+        Display.append(term, View.error(message))
     end
   end
 
   defp stop_one(term, id) do
     case Agent.interrupt(id) do
-      :ok -> Display.append(term, View.stopped(id))
-      {:error, :not_found} -> Display.append(term, View.no_such_agent(id))
+      :ok ->
+        :ok = record(term, {:agent_cancelled, id})
+        Display.append(term, View.stopped(id))
+
+      {:error, :not_found} ->
+        Display.append(term, View.no_such_agent(id))
     end
   end
 
@@ -296,9 +309,15 @@ defmodule WardrikTUI.App.Commands do
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
     case Fleet.stop(id) do
-      :ok -> term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
-      {:error, :noproc} -> Display.append(term, View.no_such_agent(id))
-      {:error, reason} -> Display.append(term, View.error(reason))
+      :ok ->
+        :ok = record(term, {:agent_stopped, id})
+        term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
+
+      {:error, :noproc} ->
+        Display.append(term, View.no_such_agent(id))
+
+      {:error, reason} ->
+        Display.append(term, View.error(reason))
     end
   end
 
@@ -355,6 +374,7 @@ defmodule WardrikTUI.App.Commands do
 
   defp forget_all(term, ids) do
     {removed, failed} = Enum.split_with(ids, &(Fleet.forget(&1) == :ok))
+    Enum.each(removed, &(:ok = record(term, {:agent_forgotten, &1})))
     term = assign(term, views: Map.drop(term.assigns.views, removed))
 
     case failed do
@@ -440,6 +460,10 @@ defmodule WardrikTUI.App.Commands do
 
   def interrupt(term) do
     Agent.interrupt(term.assigns.agent)
+    :ok = record(term, {:agent_cancelled, term.assigns.agent_id})
     term
   end
+
+  # A change this client made, recorded for the person using it.
+  defp record(term, action), do: Audit.record(action, term.assigns.principal)
 end

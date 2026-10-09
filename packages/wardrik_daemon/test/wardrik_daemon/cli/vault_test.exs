@@ -3,6 +3,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   import ExUnit.CaptureIO
 
+  alias Wardrik.Test.Audit
   alias WardrikDaemon.CLI
   alias WardrikDaemon.Test.Settings
   alias WardrikDaemon.VaultKey
@@ -26,13 +27,17 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   # Runs a command as over erl_call, answering what it printed and how it
   # exited: 0, 1, or :live for one that needs the terminal it came from.
-  defp command(args), do: run(&CLI.main/1, args, "")
+  # Each is typed by the account ops, unless it says otherwise.
+  defp command(["--terminal=" <> _described | _args] = args), do: run(&CLI.main/1, args, "")
+  defp command(args), do: command(["--terminal=80,plain,no-input,user=ops" | args])
 
   # Runs a command live from a terminal someone types `input` into, or, with
   # `piped: true`, with `input` on standard input.
   defp live(args, input, opts \\ []) do
     terminal =
-      if opts[:piped], do: "--terminal=80,plain,no-input", else: "--terminal=80,plain,input"
+      if opts[:piped],
+        do: "--terminal=80,plain,no-input,user=ops",
+        else: "--terminal=80,plain,input,user=ops"
 
     run(&CLI.live/1, [terminal | args], input)
   end
@@ -56,6 +61,13 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   defp no_key, do: Settings.no_vault()
 
+  # What the audit log says of the secret `name`: each change, and whose it was.
+  defp changes(name) do
+    for %{"subject" => "secrets/" <> ^name, "type" => "wardrik." <> type, "data" => data} <-
+          Audit.all(),
+        do: {type, data["owner"], data["actor"]["id"]}
+  end
+
   describe "vault put" do
     test "seals each NAME=VALUE as the deployment's", %{name: name} do
       assert command(["vault", "put", "#{name}=one", "#{name}_B=two=three"]) ==
@@ -63,6 +75,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert WardrikVault.fetch(name, nil) == {:ok, "one"}
       assert WardrikVault.fetch(name <> "_B", nil) == {:ok, "two=three"}
+      assert changes(name) == [{"secret.stored", nil, "ops"}]
     end
 
     test "seals for an org, or for a user within one", %{name: name} do
@@ -342,6 +355,12 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert command(["vault", "rm", name]) == {"Removed #{name}.\n", 0}
       assert command(["vault", "rm", name]) == {"The vault holds no #{name}.\n", 1}
+
+      assert changes(name) == [
+               {"secret.removed", "acme/", "ops"},
+               {"secret.removed", "acme/@jon/", "ops"},
+               {"secret.removed", nil, "ops"}
+             ]
     end
   end
 end

@@ -161,6 +161,8 @@ defmodule WardrikHTTP do
   ## Every response
 
   Carries a `Request-Id` header, the caller's own where it sent one, and is
-  logged under it. An error is `{"error": {"type": …, "message": …}}`.
+  logged under it. An error is `{"error": {"type": …, "message": …}}`. A
+  request that changes something, defining, deleting, scheduling, cancelling
+  or clearing, is recorded in `Wardrik.Audit` with the caller's principal.
   """
 end

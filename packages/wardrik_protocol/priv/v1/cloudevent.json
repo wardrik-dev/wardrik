@@ -27,7 +27,8 @@
     },
     "source": {
       "type": "string",
-      "pattern": "^wardrik://[^/]+/agents/.+$"
+      "pattern": "^wardrik://[^/]+/(agents/.+|audit)$",
+      "description": "The agent, or audit for a change people made."
     },
     "type": {
       "type": "string",

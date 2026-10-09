@@ -83,7 +83,7 @@ defmodule Wardrik.Event.Log.Writer do
   @spec open(t(), Event.t()) :: t()
   def open(%__MODULE__{} = writer, %Event{payload: {:agent_started, _, _, _}} = started) do
     known = max(writer.head, Log.oldest(writer.agent_id, consistent: true) - 1)
-    start(%{writer | head: probe(writer.agent_id, known)}, started)
+    start(%{writer | head: Log.head(writer.agent_id, known)}, started)
   end
 
   defp start(writer, started) do
@@ -92,7 +92,7 @@ defmodule Wardrik.Event.Log.Writer do
         ahead(writer, started)
 
       {:conflict, writer} ->
-        start(%{writer | head: probe(writer.agent_id, writer.head + 1)}, started)
+        start(%{writer | head: Log.head(writer.agent_id, writer.head + 1)}, started)
 
       {:error, _reason, writer} ->
         writer
@@ -201,30 +201,4 @@ defmodule Wardrik.Event.Log.Writer do
 
     {:ok, writer}
   end
-
-  # -- the head --------------------------------------------------------------
-
-  # The last number written above `known`, which is written or dropped. The
-  # numbers the log holds are written without a gap, so a gallop forward finds
-  # a number past the head, and a bisection back finds the head.
-  defp probe(agent_id, known), do: gallop(agent_id, known, 1)
-
-  defp gallop(agent_id, known, step) do
-    if written?(agent_id, known + step),
-      do: gallop(agent_id, known + step, step * 2),
-      else: bisect(agent_id, known, known + step)
-  end
-
-  defp bisect(_agent_id, known, missing) when missing - known <= 1, do: known
-
-  defp bisect(agent_id, known, missing) do
-    middle = div(known + missing, 2)
-
-    if written?(agent_id, middle),
-      do: bisect(agent_id, middle, missing),
-      else: bisect(agent_id, known, middle)
-  end
-
-  defp written?(agent_id, sequence),
-    do: WardrikStore.get(Log.namespace(), Log.key(agent_id, sequence), consistent: true) != nil
 end

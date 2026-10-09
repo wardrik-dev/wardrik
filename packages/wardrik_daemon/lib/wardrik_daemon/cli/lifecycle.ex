@@ -38,6 +38,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
@@ -144,10 +145,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
           {:ok, "#{key} runs already, on #{Nodes.display(member.node)}."}
 
         file = WardrikDaemon.declared()[key] ->
-          restart(file, node)
+          restart(file, node, opts[:by])
 
         Fleet.stored?(key) ->
-          resume(key, node)
+          resume(key, node, opts[:by])
 
         File.exists?(path) ->
           taken(path)
@@ -177,13 +178,15 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp restart({path, spec}, node) do
+  defp restart({path, spec}, node, by) do
     key = spec.id
 
     with :ok <- placed(key, Spec.options(spec), node) do
       case Fleet.put(spec) do
         {:ok, pid} ->
-          {:ok, "Started #{key} on #{Nodes.display(node(pid))}, as #{shown(path)} declares it."}
+          on = node(pid)
+          :ok = Audit.record({:agent_spawned, key, on}, by)
+          {:ok, "Started #{key} on #{Nodes.display(on)}, as #{shown(path)} declares it."}
 
         {:error, reason} ->
           {:error, "#{key} did not start: #{inspect(reason)}"}
@@ -192,10 +195,12 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   # An agent stopped with no file declaring it starts from what it had.
-  defp resume(key, node) do
+  defp resume(key, node, by) do
     case Fleet.spawn(key, if(node, do: [node: node], else: [])) do
       {:ok, pid} ->
-        {:ok, "Started #{key} on #{Nodes.display(node(pid))} again, with its conversation."}
+        on = node(pid)
+        :ok = Audit.record({:agent_spawned, key, on}, by)
+        {:ok, "Started #{key} on #{Nodes.display(on)} again, with its conversation."}
 
       {:error, reason} ->
         {:error, not_started(key, reason, node)}
@@ -220,10 +225,8 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     with {:ok, options} <- defaults(key),
          :ok <- create(path, AgentFile.text(fields(opts))),
          :ok <- placed(key, options, node) do
-      for daemon <- CLI.daemons(),
-          do: :erpc.call(daemon, Agents, :reload, [], :timer.minutes(1))
-
-      written(key, path)
+      _reloaded = CLI.reload_all()
+      written(key, path, opts[:by])
     end
   end
 
@@ -254,12 +257,15 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       for key <- @defaults, Map.has_key?(defaults, key), do: {key, defaults[key]}
   end
 
-  defp written(key, path) do
+  defp written(key, path, by) do
     case List.keyfind(Agents.files(), path, 0) do
       {^path, {:ok, spec}} ->
+        on = running_on(key)
+        :ok = Audit.record({:agent_spawned, key, on}, by)
+
         {:ok,
          [
-           "Wrote #{shown(path)}, and started #{key} on #{Nodes.display(running_on(key))}, ",
+           "Wrote #{shown(path)}, and started #{key} on #{Nodes.display(on)}, ",
            "with #{model(spec)}.\n",
            Owl.Data.tag("wardrik agent edit #{key} changes what it is for.", @faint)
          ]}
@@ -302,19 +308,20 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # -- cancel and stop ------------------------------------------------------------
 
   defp cancel([], opts),
-    do: if(opts[:all], do: cancel_under(Prefix.all()), else: {:error, :usage})
+    do: if(opts[:all], do: cancel_under(Prefix.all(), opts[:by]), else: {:error, :usage})
 
   defp cancel([target], opts) do
     cond do
       opts[:all] -> {:error, :usage}
-      prefix?(target) -> cancel_under(target)
-      true -> cancel_one(target)
+      prefix?(target) -> cancel_under(target, opts[:by])
+      true -> cancel_one(target, opts[:by])
     end
   end
 
-  defp cancel_one(key) do
+  defp cancel_one(key, by) do
     with %{status: status} when status != :idle <- Fleet.lookup(key),
          :ok <- Agent.interrupt(key) do
+      :ok = Audit.record({:agent_cancelled, key}, by)
       {:ok, cancelled(key, status)}
     else
       %{status: :idle} -> {:ok, "#{key} is taking no turn, so there is none to cancel."}
@@ -332,13 +339,19 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       "Cancelled #{key}'s turn, and the messages waiting behind it. It keeps running, " <>
         "with what was said so far."
 
-  defp cancel_under(prefix) do
+  defp cancel_under(prefix, by) do
     busy = for %{status: status, id: key} <- Fleet.list(prefix), status != :idle, do: key
 
     case {Fleet.kill(prefix), busy} do
-      {0, _busy} -> {:ok, "Nothing runs#{under(prefix)}."}
-      {_count, []} -> {:ok, "No agent#{under(prefix)} is taking a turn."}
-      {_count, busy} -> {:ok, "Cancelled the turns of #{listed(busy)}. They keep running."}
+      {0, _busy} ->
+        {:ok, "Nothing runs#{under(prefix)}."}
+
+      {_count, []} ->
+        {:ok, "No agent#{under(prefix)} is taking a turn."}
+
+      {count, busy} ->
+        :ok = Audit.record({:agents_cancelled, prefix, count}, by)
+        {:ok, "Cancelled the turns of #{listed(busy)}. They keep running."}
     end
   end
 
@@ -349,11 +362,17 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp stop([key], _opts) do
+  defp stop([key], opts) do
     case Fleet.stop(key) do
-      :ok -> {:ok, stopped(key, WardrikDaemon.declared()[key])}
-      {:error, :noproc} -> {:error, no_agent(key)}
-      {:error, reason} -> {:error, "#{key} did not stop: #{inspect(reason)}"}
+      :ok ->
+        :ok = Audit.record({:agent_stopped, key}, opts[:by])
+        {:ok, stopped(key, WardrikDaemon.declared()[key])}
+
+      {:error, :noproc} ->
+        {:error, no_agent(key)}
+
+      {:error, reason} ->
+        {:error, "#{key} did not stop: #{inspect(reason)}"}
     end
   end
 
@@ -378,14 +397,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp rm([target], opts) do
     with {:ok, removing, kept} <- removal(target) do
-      if opts[:yes], do: removed(removing, kept), else: :live
+      if opts[:yes], do: removed(removing, kept, opts[:by]), else: :live
     end
   end
 
-  defp rm_asked([target], _opts, terminal) do
+  defp rm_asked([target], opts, terminal) do
     with {:ok, removing, kept} <- removal(target) do
       if terminal.input?,
-        do: rm_confirmed(removing, kept, terminal),
+        do: rm_confirmed(removing, kept, terminal, opts[:by]),
         else:
           {:error,
            [
@@ -396,11 +415,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp rm_confirmed(removing, kept, terminal) do
+  defp rm_confirmed(removing, kept, terminal, by) do
     Terminal.puts(terminal, removing(removing, kept))
 
     if Owl.IO.confirm(message: "Remove #{them(removing)}?", default: false),
-      do: removed(removing, kept),
+      do: removed(removing, kept, by),
       else: {:ok, "Nothing was removed."}
   end
 
@@ -460,10 +479,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp them([_one]), do: "it"
   defp them(_keys), do: "them"
 
-  defp removed(removing, kept) do
+  defp removed(removing, kept, by) do
     {gone, failed} =
       removing
-      |> Enum.map(&{&1, forget(&1)})
+      |> Enum.map(&{&1, forget(&1, by)})
       |> Enum.split_with(&match?({_key, :ok}, &1))
 
     lines =
@@ -474,8 +493,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     if failed == [], do: {:ok, Enum.join(lines, "\n")}, else: {:error, Enum.join(lines, "\n")}
   end
 
-  defp forget(key) do
-    with :ok <- Fleet.forget(key), do: Agents.drop(key)
+  defp forget(key, by) do
+    with :ok <- Fleet.forget(key),
+         :ok <- Audit.record({:agent_forgotten, key}, by),
+         do: Agents.drop(key)
   end
 
   # -- move ---------------------------------------------------------------------
@@ -485,7 +506,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
          {:ok, node} <- destination(member, named, nil) do
       cond do
         node == member.node -> {:ok, "#{key} runs on #{Nodes.display(node)} already."}
-        member.status == :idle or opts[:yes] -> moved(key, node)
+        member.status == :idle or opts[:yes] -> moved(key, node, opts[:by])
         true -> :live
       end
     end
@@ -496,18 +517,18 @@ defmodule WardrikDaemon.CLI.Lifecycle do
          {:ok, node} <- destination(member, named, terminal) do
       cond do
         node == member.node -> {:ok, "#{key} runs on #{Nodes.display(node)} already."}
-        member.status == :idle or opts[:yes] -> moved(key, node)
-        terminal.input? -> confirmed(member, node, terminal)
+        member.status == :idle or opts[:yes] -> moved(key, node, opts[:by])
+        terminal.input? -> confirmed(member, node, terminal, opts[:by])
         true -> {:error, "#{interrupting(member)} #{move_line(key, node)} --yes moves it anyway."}
       end
     end
   end
 
-  defp confirmed(member, node, terminal) do
+  defp confirmed(member, node, terminal, by) do
     Terminal.puts(terminal, interrupting(member))
 
     if Owl.IO.confirm(message: "Move it to #{Nodes.display(node)}?", default: false),
-      do: moved(member.id, node),
+      do: moved(member.id, node, by),
       else: {:ok, "Nothing was moved."}
   end
 
@@ -553,10 +574,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp interrupting(%{id: key}),
     do: "#{key} is waiting on a person, and moving it abandons what it waits for."
 
-  defp moved(key, node) do
+  defp moved(key, node, by) do
     case Fleet.move(key, node) do
-      {:ok, _pid} -> {:ok, "Moved #{key} to #{Nodes.display(node)}, with its conversation."}
-      {:error, reason} -> {:error, "#{key} was not moved: #{inspect(reason)}"}
+      {:ok, _pid} ->
+        :ok = Audit.record({:agent_moved, key, node}, by)
+        {:ok, "Moved #{key} to #{Nodes.display(node)}, with its conversation."}
+
+      {:error, reason} ->
+        {:error, "#{key} was not moved: #{inspect(reason)}"}
     end
   end
 

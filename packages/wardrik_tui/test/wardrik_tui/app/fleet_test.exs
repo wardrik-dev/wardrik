@@ -9,6 +9,7 @@ defmodule WardrikTUI.App.FleetTest do
   alias Wardrik.Event.Source
   alias Wardrik.Fleet
   alias Wardrik.Test.AgentRunners
+  alias Wardrik.Test.Audit
   alias WardrikTUI.App
 
   setup do
@@ -28,7 +29,8 @@ defmodule WardrikTUI.App.FleetTest do
           org: org,
           spawn_opts: spawn_opts,
           model: "test:model",
-          sidebar_width: 24
+          sidebar_width: 24,
+          principal: Wardrik.Principal.new(:ssh, "ops")
         ],
         global_keybindings: App.keybindings()
       )
@@ -38,6 +40,8 @@ defmodule WardrikTUI.App.FleetTest do
 
     {:ok, session: session, org: org, agent_id: agent_id}
   end
+
+  @ops %{"type" => "ssh", "id" => "ops"}
 
   defp screen(session), do: Breeze.Test.render_text!(session)
 
@@ -179,6 +183,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "spawned and connected to #{key}"
     assert Fleet.whereis(key)
+    assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
   end
 
   # What a host's :options gives the agents a session starts, here a model,
@@ -706,6 +711,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "moved #{agent_id} to #{node()}"
     assert Fleet.whereis(agent_id) != before
+    assert Audit.about("agents/#{agent_id}") == [{"agent.moved", @ops}]
     assert screen(session) =~ "› ○ watched"
 
     # The client follows the agent to its new process.
@@ -908,6 +914,7 @@ defmodule WardrikTUI.App.FleetTest do
 
     assert screen(session) =~ "removed #{key} and its store"
     assert Fleet.whereis(key) == nil
+    assert Audit.about("agents/#{key}") == [{"agent.forgotten", @ops}]
   end
 
   test "/rm never removes the agent this client is attached to, and says so", ctx do
@@ -1000,12 +1007,14 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "asked #{key} to stop"
     assert_receive %Event{payload: {:turn_interrupted, _stats}}, 5_000
     assert Fleet.whereis(key)
+    assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
   end
 
   test "/stop PREFIX/ interrupts every agent under it", %{session: session, org: org} do
     submit(session, "/stop #{org}/")
 
     assert screen(session) =~ "asked 1 under #{org}/ to stop"
+    assert Audit.about("agents/#{org}/") == [{"agents.cancelled", @ops}]
   end
 
   test "/shutdown NAME stops an agent and keeps its conversation for /spawn", ctx do
@@ -1018,6 +1027,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "shut down #{key}"
     assert text =~ "its conversation is kept"
     assert Fleet.whereis(key) == nil
+    assert Audit.about("agents/#{key}") == [{"agent.stopped", @ops}]
 
     submit(session, "/spawn sleeper")
 

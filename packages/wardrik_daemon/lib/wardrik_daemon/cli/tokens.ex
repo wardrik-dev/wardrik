@@ -15,6 +15,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   """
 
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Grant
   alias WardrikDaemon.CLI.Command
   alias WardrikHTTP.Token
@@ -64,7 +65,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
     with {:ok, scope} <- scope(opts),
          {:ok, ceiling} <- ceiling(opts, can) do
-      make(name, scope, can, ceiling ++ issued(opts[:for]))
+      make(name, scope, can, ceiling ++ issued(opts[:for]), opts[:by])
     end
   end
 
@@ -125,9 +126,12 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy_names([]), do: ""
   defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
-  defp make(name, scope, can, opts) do
+  defp make(name, scope, can, opts, by) do
     case Token.create(name, scope, can, opts) do
       {:ok, secret, token} ->
+        :ok =
+          Audit.record({:token_created, token.id, token.name, token.grant, token.principal}, by)
+
         {:ok,
          Enum.join(
            [
@@ -166,10 +170,14 @@ defmodule WardrikDaemon.CLI.Tokens do
     end
   end
 
-  defp revoke([id], _opts) do
+  defp revoke([id], opts) do
     case Token.revoke(id) do
-      :ok -> {:ok, "Revoked #{id}."}
-      {:error, :not_found} -> {:error, "No token has the id #{id}."}
+      :ok ->
+        :ok = Audit.record({:token_revoked, id}, opts[:by])
+        {:ok, "Revoked #{id}."}
+
+      {:error, :not_found} ->
+        {:error, "No token has the id #{id}."}
     end
   end
 

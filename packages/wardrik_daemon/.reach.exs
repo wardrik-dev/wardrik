@@ -16,6 +16,7 @@
       "Wardrik.AgentID",
       "Wardrik.AgentID.Prefix",
       "Wardrik.AgentID.Segment",
+      "Wardrik.Audit",
       "Wardrik.Call",
       "Wardrik.Call.Ask",
       "Wardrik.Compaction",

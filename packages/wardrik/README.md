@@ -230,6 +230,19 @@ Wardrik.LLM.ToolRunner.in_flight(id)             # what could be stopped
 A killed call is answered with an error, so the model is never left waiting
 on a call nobody answered.
 
+### What people changed
+
+A surface people act through records each change it makes, with who made
+it, in one log for the whole cluster, beside each agent's own:
+
+```elixir
+:ok = Wardrik.Audit.record({:agent_forgotten, id}, Wardrik.Principal.new(:user, "jon"))
+{:ok, changes} = Wardrik.Event.Log.read(:audit, starting_after: 0)
+```
+
+Changes are CloudEvents from `wardrik://local/audit`, kept as long as
+agents' events are. `Wardrik.Audit` lists them.
+
 ### A history that grows
 
 An agent that runs for weeks keeps adding to one conversation. Before the
@@ -288,6 +301,7 @@ without notice.
 | --- | --- |
 | Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
 | Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
+| What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |
 | Testing | `Wardrik.Test` and the modules under it |

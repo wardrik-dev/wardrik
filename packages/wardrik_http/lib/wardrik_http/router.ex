@@ -10,6 +10,9 @@ defmodule WardrikHTTP.Router do
   inside it the caller may not act on so, `403`. A stream of events, and a
   worker's socket, hold the caller's credential, and end when it is revoked.
 
+  Each change a route makes is recorded in `Wardrik.Audit` once it is made,
+  with the caller's principal.
+
   Its options are the `WardrikHTTP.Listener`'s `:definition` and
   `:authenticator`, assigned to each request as `:options`.
   """
@@ -21,6 +24,7 @@ defmodule WardrikHTTP.Router do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
+  alias Wardrik.Audit
   alias Wardrik.Event.Log
   alias Wardrik.Fleet
   alias Wardrik.Grant
@@ -177,8 +181,12 @@ defmodule WardrikHTTP.Router do
     status = if Fleet.lookup(key), do: 200, else: 201
 
     case Fleet.put(spec) do
-      {:ok, _pid} -> json(conn, status, Resource.snapshot(key, Agent.snapshot(key)))
-      {:error, reason} -> unavailable(conn, "#{key} did not start", reason)
+      {:ok, _pid} ->
+        :ok = record(conn, {:agent_defined, key})
+        json(conn, status, Resource.snapshot(key, Agent.snapshot(key)))
+
+      {:error, reason} ->
+        unavailable(conn, "#{key} did not start", reason)
     end
   end
 
@@ -207,7 +215,12 @@ defmodule WardrikHTTP.Router do
       running = Fleet.lookup(key)
       if running, do: :ok = Fleet.forget(key)
 
-      if running || kept == :ok, do: send_resp(conn, 204, ""), else: not_found(conn, key)
+      if running || kept == :ok do
+        :ok = record(conn, {:agent_forgotten, key})
+        send_resp(conn, 204, "")
+      else
+        not_found(conn, key)
+      end
     else
       :unsupported -> not_supported(conn, "This server does not delete agents over HTTP.")
       {:error, :conflict, message} -> conflict(conn, message)
@@ -239,6 +252,7 @@ defmodule WardrikHTTP.Router do
     with {:ok, module} <- definitions(conn, :put_schedule),
          {:ok, fields} <- object(conn.body_params),
          {:ok, status, schedule} <- module.put_schedule(key, name, fields) do
+      :ok = record(conn, {:schedule_set, key, name})
       json(conn, if(status == :created, do: 201, else: 200), %{"schedule" => schedule})
     else
       :unsupported -> not_supported(conn, "This server does not schedule agents over HTTP.")
@@ -251,6 +265,7 @@ defmodule WardrikHTTP.Router do
   defp unschedule(conn, key, name) do
     with {:ok, module} <- definitions(conn, :delete_schedule),
          :ok <- module.delete_schedule(key, name) do
+      :ok = record(conn, {:schedule_removed, key, name})
       send_resp(conn, 204, "")
     else
       :unsupported ->
@@ -431,14 +446,19 @@ defmodule WardrikHTTP.Router do
 
   defp cancel(conn, key) do
     case Agent.interrupt(key) do
-      :ok -> json(conn, 202, %{"agent" => %{"id" => to_string(key)}})
-      {:error, :not_found} -> not_found(conn, key)
+      :ok ->
+        :ok = record(conn, {:agent_cancelled, key})
+        json(conn, 202, %{"agent" => %{"id" => to_string(key)}})
+
+      {:error, :not_found} ->
+        not_found(conn, key)
     end
   end
 
   defp clear(conn, key) do
     case Agent.clear(key) do
       :ok ->
+        :ok = record(conn, {:agent_cleared, key})
         send_resp(conn, 204, "")
 
       {:error, :busy} ->
@@ -448,6 +468,8 @@ defmodule WardrikHTTP.Router do
         not_found(conn, key)
     end
   end
+
+  defp record(conn, action), do: Audit.record(action, conn.assigns.caller.principal)
 
   # -- answers ---------------------------------------------------------------
 

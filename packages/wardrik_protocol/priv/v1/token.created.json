@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:token.created",
+  "title": "wardrik.token.created",
+  "description": "Someone made an API token.",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "description": "The prefix of the agents it reaches, as acme/; empty for every agent."
+    },
+    "can": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What it may do to them."
+    },
+    "for": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "token",
+    "scope",
+    "can"
+  ]
+}

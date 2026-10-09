@@ -1,35 +1,49 @@
 defmodule WardrikDaemon.CLI.Terminal do
   @moduledoc """
   The terminal a command was typed in, as `bin/wardrik` describes it: how
-  wide it is, whether it takes colour, and whether a person can type into it.
+  wide it is, whether it takes colour, whether a person can type into it, and
+  who did.
 
   The node answering a command has no terminal of its own, so the script puts
   one argument ahead of the command's, such as `--terminal=120,colour,input`.
   It takes colour where standard output is a terminal and `NO_COLOR` is not
   set, and says `input` where standard input is a terminal too, and
-  `no-input` where not. A command given no such argument, as from a test or
-  `wardrik remote`, writes plain text 80 columns wide and reads nothing.
+  `no-input` where not, then `user=NAME`, the account that ran it. A command
+  given no such argument, as from a test or `wardrik remote`, writes plain
+  text 80 columns wide, reads nothing, and is run for nobody known.
 
   `live?` is whether the command runs live, over `bin/wardrikd rpc`, where it
   writes each line to the terminal as it goes and can read what is typed
   there. Over `erl_call` it can do neither; see `WardrikDaemon.CLI.live/1`.
   """
 
-  @typedoc "How wide the terminal is, whether it takes colour and input, and whether the command runs live."
+  @typedoc """
+  How wide the terminal is, whether it takes colour and input, whether the
+  command runs live, and the account that typed it.
+  """
   @type t() :: %__MODULE__{
           width: pos_integer(),
           colour?: boolean(),
           input?: boolean(),
-          live?: boolean()
+          live?: boolean(),
+          user: String.t() | nil
         }
 
-  defstruct width: 80, colour?: false, input?: false, live?: false
+  defstruct width: 80, colour?: false, input?: false, live?: false, user: nil
 
   @doc "The terminal `args` open with, if they do, and the command's own arguments after it."
   @spec read([String.t()]) :: {t(), [String.t()]}
   def read(["--terminal=" <> described | args]) do
     [width | facts] = String.split(described, ",")
-    {%__MODULE__{width: width(width), colour?: "colour" in facts, input?: "input" in facts}, args}
+
+    terminal = %__MODULE__{
+      width: width(width),
+      colour?: "colour" in facts,
+      input?: "input" in facts,
+      user: Enum.find_value(facts, fn fact -> user(fact) end)
+    }
+
+    {terminal, args}
   end
 
   def read(args), do: {%__MODULE__{}, args}
@@ -42,6 +56,17 @@ defmodule WardrikDaemon.CLI.Terminal do
       _other -> 80
     end
   end
+
+  defp user("user=" <> name) when name != "", do: name
+  defp user(_fact), do: nil
+
+  @doc """
+  Who a command typed here is run for: the account that ran `bin/wardrik`,
+  as a `:shell` principal, or `nil` where none was said.
+  """
+  @spec principal(t()) :: Wardrik.Principal.t() | nil
+  def principal(%__MODULE__{user: nil}), do: nil
+  def principal(%__MODULE__{user: user}), do: Wardrik.Principal.new(:shell, user)
 
   @doc """
   Writes `data` and a newline to `device`, in colour where the terminal takes

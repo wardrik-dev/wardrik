@@ -3,9 +3,13 @@ defmodule Wardrik.Event.CodecTest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent.Message
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Audit
   alias Wardrik.Event
   alias Wardrik.Event.Codec
   alias Wardrik.Event.Source
+  alias Wardrik.Grant
+  alias Wardrik.Principal
 
   @schemas WardrikProtocol.dir()
   @agent Wardrik.AgentID.parse!("acme/@ops/triage")
@@ -36,7 +40,7 @@ defmodule Wardrik.Event.CodecTest do
     turn = turn()
     tool = within(turn, "deploy")
     step = within(turn, "research")
-    by = Wardrik.Principal.new(:slack, "U1", name: "jon")
+    by = Principal.new(:slack, "U1", name: "jon")
 
     asking =
       Context.assistant("",
@@ -95,14 +99,49 @@ defmodule Wardrik.Event.CodecTest do
     ]
   end
 
-  # The first element of every tuple the payload type lists.
-  defp payload_types do
-    {:ok, types} = Code.Typespec.fetch_types(Event)
+  # One change of every shape `Audit.action/0` lists.
+  defp changes do
+    id = @agent
+    prefix = Prefix.new!(org: "acme")
+    {:ok, grant} = Grant.new(prefix, [:read, :define])
 
-    {:type, {:payload, {:type, _, :union, members}, []}} =
-      Enum.find(types, &match?({:type, {:payload, _, _}}, &1))
+    [
+      {:agent_defined, id},
+      {:agent_spawned, id, :wardrik_b@localhost},
+      {:agent_stopped, id},
+      {:agent_forgotten, id},
+      {:agent_moved, id, :wardrik_b@localhost},
+      {:agent_cancelled, id},
+      {:agents_cancelled, prefix, 3},
+      {:agent_cleared, id},
+      {:schedule_set, id, "sweep"},
+      {:schedule_removed, id, "sweep"},
+      {:agents_reloaded, [:wardrik_a@localhost, :wardrik_b@localhost]},
+      {:token_created, "tok_1", "ci", grant, Principal.new(:user, "jon")},
+      {:token_revoked, "tok_1"},
+      {:secret_stored, "GITHUB_TOKEN", Prefix.all()},
+      {:secret_removed, "GITHUB_TOKEN", Prefix.new!(org: "acme", user: "jon")}
+    ]
+  end
+
+  # The first element of every tuple a union type of `module` lists.
+  defp tags(module, name) do
+    {:ok, types} = Code.Typespec.fetch_types(module)
+
+    {:type, {^name, {:type, _, :union, members}, []}} =
+      Enum.find(types, &match?({:type, {^name, _, _}}, &1))
 
     for {:type, _, :tuple, [{:atom, _, tag} | _]} <- members, do: tag
+  end
+
+  defp valid!(event) do
+    assert {:ok, _} = JSV.validate(event, build("cloudevent")), "envelope of #{event["type"]}"
+
+    "wardrik." <> type = event["type"]
+    data = JSV.validate(event["data"], build(type))
+    assert {:ok, _} = data, "#{type}: #{inspect(data)}"
+
+    assert event == event |> JSON.encode!() |> JSON.decode!()
   end
 
   defp encode(source, payload, opts \\ [sequence: 41, message_id: "m0"]),
@@ -110,22 +149,67 @@ defmodule Wardrik.Event.CodecTest do
 
   describe "every payload" do
     test "has a fixture here" do
-      assert Enum.sort(payload_types()) == Enum.sort(Enum.map(fixtures(), &elem(elem(&1, 1), 0)))
+      assert Enum.sort(tags(Event, :payload)) ==
+               Enum.sort(Enum.map(fixtures(), &elem(elem(&1, 1), 0)))
     end
 
     test "encodes to a CloudEvent the envelope schema takes, with data its type's schema takes" do
-      envelope = build("cloudevent")
+      for {source, payload} <- fixtures(),
+          {:ok, event} <- [encode(source, payload)],
+          do: valid!(event)
+    end
+  end
 
-      for {source, payload} <- fixtures(), {:ok, event} <- [encode(source, payload)] do
-        assert {:ok, _} = JSV.validate(event, envelope),
-               "envelope of #{inspect(elem(payload, 0))}"
+  describe "every change" do
+    test "has a fixture here" do
+      assert Enum.sort(tags(Audit, :action)) ==
+               Enum.sort(Enum.map(changes(), &elem(&1, 0)))
+    end
 
-        "wardrik." <> type = event["type"]
-        data = JSV.validate(event["data"], build(type))
-        assert {:ok, _} = data, "#{type}: #{inspect(data)}"
+    test "encodes to a CloudEvent the envelope schema takes, with data its type's schema takes" do
+      by = Principal.new(:shell, "jon")
 
-        assert event == event |> JSON.encode!() |> JSON.decode!()
+      for action <- changes(), anyone <- [by, nil] do
+        assert {:ok, event} = Codec.encode(Audit.new(action, anyone), sequence: 7)
+        valid!(event)
       end
+    end
+
+    test "comes from the audit, at the root of a trace of its own, and names who made it" do
+      by = Principal.new(:token, "tok_9", name: "ci")
+      audit = Audit.new({:agent_forgotten, @agent}, by)
+
+      assert {:ok, event} = Codec.encode(audit, sequence: 7)
+
+      assert %{
+               "id" => id,
+               "source" => "wardrik://local/audit",
+               "type" => "wardrik.agent.forgotten",
+               "subject" => "agents/acme/@ops/triage",
+               "sequence" => "000000000007",
+               "data" => %{
+                 "agent" => %{"id" => "acme/@ops/triage"},
+                 "actor" => %{"type" => "token", "id" => "tok_9", "name" => "ci"}
+               }
+             } = event
+
+      assert id == audit.id
+      assert event["traceparent"] == "00-#{audit.trace.trace_id}-#{audit.trace.span_id}-01"
+      refute Map.has_key?(event, "parentspanid")
+    end
+
+    test "says nothing of an actor none is known for, or the owner of a deployment's secret" do
+      all = Prefix.all()
+
+      assert {:ok, %{"data" => data}} =
+               Codec.encode(Audit.new({:secret_stored, "KEY", all}, nil))
+
+      assert data == %{"secret" => %{"name" => "KEY"}}
+
+      jon = Prefix.new!(org: "acme", user: "jon")
+
+      assert {:ok, %{"data" => %{"owner" => "acme/@jon/"}}} =
+               Codec.encode(Audit.new({:secret_removed, "KEY", jon}, nil))
     end
   end
 
@@ -163,8 +247,9 @@ defmodule Wardrik.Event.CodecTest do
       refute Map.has_key?(event, "parentspanid")
     end
 
-    test "names the agent it came from" do
+    test "names the log it came from" do
       assert Codec.source(@agent) == "wardrik://local/agents/acme/@ops/triage"
+      assert Codec.source(:audit) == "wardrik://local/audit"
     end
   end
 
@@ -382,7 +467,7 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => approved}} = encode(turn(), {:call_decided, "call_1", :approve, nil})
       assert approved == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
 
-      by = Wardrik.Principal.new(:shell, "wardrik")
+      by = Principal.new(:shell, "wardrik")
       {:ok, %{"data" => rejected}} = encode(turn(), {:call_decided, "call_1", {:deny, "No."}, by})
 
       assert rejected["decision"] == "rejected"
