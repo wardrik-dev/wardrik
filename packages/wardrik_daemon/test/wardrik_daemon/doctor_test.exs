@@ -222,6 +222,51 @@ defmodule WardrikDaemon.DoctorTest do
     end
   end
 
+  describe "the OAuth callback" do
+    @provider "  providers:\n    github: {resource: https://api.githubcopilot.com/mcp/}\n"
+
+    defp free_port do
+      {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, port} = :inet.port(held)
+      :ok = :gen_tcp.close(held)
+      port
+    end
+
+    test "is not checked where no provider is configured", %{tmp_dir: dir} do
+      refute check(Doctor.checks(dir), "oauth")
+    end
+
+    test "says a browser comes back to this machine alone without a URL", %{tmp_dir: dir} do
+      config(dir, "oauth:\n" <> @provider)
+
+      assert {:ok, "oauth",
+              "a browser comes back to http://127.0.0.1:4599, so on this machine" <> _} =
+               check(Doctor.checks(dir), "oauth")
+    end
+
+    test "reaches the daemon's callback at its URL, and says why not", %{tmp_dir: dir} do
+      port = free_port()
+      url = "http://127.0.0.1:#{port}/oauth"
+      config(dir, "oauth:\n  redirect: {url: \"#{url}\", port: #{port}}\n" <> @provider)
+      vault = fn _name -> nil end
+
+      assert {:error, "oauth", message} = check(Doctor.checks(dir, vault), "oauth")
+      assert message =~ "#{url}/check?nonce="
+      assert message =~ "did not answer"
+
+      previous = WardrikOAuth.Config.settings()
+      on_exit(fn -> WardrikOAuth.Config.put(previous) end)
+      WardrikOAuth.Config.put(redirect: [url: url, port: port])
+      start_supervised!({WardrikOAuth.Callback, port: port})
+
+      assert check(Doctor.checks(dir, vault), "oauth") ==
+               {:ok, "oauth", "#{url} reaches the daemon's callback"}
+
+      assert check(Doctor.checks(dir), "oauth") ==
+               {:ok, "oauth", "#{url} is not checked: no daemon runs to answer it"}
+    end
+  end
+
   describe "each MCP server" do
     test "runs a program this machine has, and fails one it does not", %{tmp_dir: dir} do
       config(dir, """

@@ -32,9 +32,10 @@ defmodule WardrikOAuth do
   `WardrikOAuth.Provider`:
 
     * in a browser: a link that comes back to this deployment's redirect
-      URI. Where that is this machine's loopback the link is opened as the
-      flow starts, since there is a browser here; see `WardrikOAuth.Browser`
-      and `WardrikOAuth.Loopback`.
+      URL. Where that is this machine's loopback the link is opened as the
+      flow starts, since there is a browser here; where it is a URL the
+      deployment serves over HTTPS, a browser anywhere comes back to it. See
+      `WardrikOAuth.Browser` and `WardrikOAuth.Callback`.
     * on another device: a code to enter at the server's page, from a phone
       or any browser at all, while the flow's process here asks the server
       whether they have; see `WardrikOAuth.Device`. Nothing comes back to this machine, so
@@ -82,12 +83,12 @@ defmodule WardrikOAuth do
 
   alias Wardrik.Credential
   alias WardrikOAuth.Browser
+  alias WardrikOAuth.Callback
   alias WardrikOAuth.Client
   alias WardrikOAuth.Config
   alias WardrikOAuth.Device
   alias WardrikOAuth.Egress
   alias WardrikOAuth.Flow
-  alias WardrikOAuth.Loopback
   alias WardrikOAuth.Metadata
   alias WardrikOAuth.Pending
   alias WardrikOAuth.Pending.Flight
@@ -171,7 +172,7 @@ defmodule WardrikOAuth do
   @doc """
   Finishes the flow a callback belongs to and writes the token down.
 
-  `WardrikOAuth.Loopback` calls this; a deployment serving its own redirect URI
+  `WardrikOAuth.Callback` calls this; a deployment serving its own redirect URI
   calls it from there instead, with what the callback carried:
 
     * `:provider` - the provider the callback's path names; a flow for
@@ -441,7 +442,7 @@ defmodule WardrikOAuth do
   end
 
   defp flow(%Provider{flow: :auto}, %Metadata{} = metadata) do
-    if Device.offered?(metadata) and loopback?() and not Browser.available?(),
+    if Device.offered?(metadata) and Callback.loopback?() and not Browser.available?(),
       do: {:ok, :device},
       else: {:ok, :browser}
   end
@@ -496,11 +497,10 @@ defmodule WardrikOAuth do
   # answering somewhere else does not, and opens nothing. Only a URL Egress
   # allows is opened, so a server cannot have another program launched.
   defp opened(url, trust) do
-    if Keyword.get(Config.redirect(), :open, loopback?()) and Egress.check(url, trust) == :ok,
-      do: Browser.open(url)
+    if Keyword.get(Config.redirect(), :open, Callback.loopback?()) and
+         Egress.check(url, trust) == :ok,
+       do: Browser.open(url)
   end
-
-  defp loopback?, do: is_nil(Keyword.get(Config.redirect(), :uri))
 
   # A client registered dynamically before, for this issuer and redirect URI,
   # is used again; a new one is kept.
@@ -560,10 +560,5 @@ defmodule WardrikOAuth do
 
   defp scopes(%Provider{} = provider, %Metadata{} = metadata), do: Flow.scopes(provider, metadata)
 
-  # A provider's own redirect URI where it names one, the deployment's where
-  # it serves one, and otherwise the loopback path of the provider's own.
-  defp redirect(%Provider{redirect_uri: uri}) when is_binary(uri), do: uri
-
-  defp redirect(%Provider{name: name}),
-    do: Keyword.get(Config.redirect(), :uri) || Loopback.redirect_uri(name)
+  defp redirect(%Provider{name: name}), do: Callback.redirect_uri(name)
 end

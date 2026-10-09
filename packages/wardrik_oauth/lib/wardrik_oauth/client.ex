@@ -20,7 +20,7 @@ defmodule WardrikOAuth.Client do
   | `:name` | the name on the consent screen |
   | `:client_uri`, `:logo_uri`, `:policy_uri`, `:tos_uri` | the rest of what a consent screen shows |
   | `:document_url` | where the CIMD document is served, which is also the `client_id` under CIMD |
-  | `:redirect_uri` | where a code comes back to |
+  | `:redirect_uri` | where a code comes back to, set for each flow from `WardrikOAuth.Callback` |
   | `:req_options` | merged into every request, which is how a test answers without a socket |
   """
 

@@ -2,7 +2,7 @@ defmodule WardrikOAuth.Browser do
   @moduledoc """
   Opens an authorization link in whatever browser this machine has.
 
-  Used where the callback comes back to `WardrikOAuth.Loopback`: the browser is
+  Used where the callback comes back to this machine's loopback: the browser is
   on the same machine by definition, so there is somewhere to send the person
   and no reason to make them copy a URL out of a terminal. A deployment
   serving its own redirect URI opens nothing.

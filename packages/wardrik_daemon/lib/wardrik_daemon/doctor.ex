@@ -13,6 +13,10 @@ defmodule WardrikDaemon.Doctor do
       `config.yaml`, `WARDRIK_VAULT_KEY` or the key file in the data home (see
       `WardrikDaemon.VaultKey`), and that there is one where OAuth providers or
       servers' credentials need it
+    * `oauth` - where OAuth providers are configured, where a browser comes
+      back to once someone connects an account: with `redirect.url`, that the
+      URL reaches the callback of a daemon that runs, through whatever is in
+      front of it
     * `mcp NAME` - for each MCP server, that the program a command server
       runs is on this machine, and that the host an HTTP server is reached at
       answers
@@ -30,6 +34,7 @@ defmodule WardrikDaemon.Doctor do
       ok    config      /home/me/.config/wardrik/config.yaml reads
       ok    store       on this node's disk, at /home/me/.local/share/wardrik/store
       ok    vault       1 key, which seals
+      ok    oauth       https://agents.example.com/oauth reaches the daemon's callback
       ok    mcp github  answers at api.githubcopilot.com:443; each user authorizes it
       FAIL  mcp files   runs npx, which is not on this machine's PATH
       ok    agents      2 agent files and 1 policy read
@@ -109,7 +114,7 @@ defmodule WardrikDaemon.Doctor do
     with {:ok, file} <- Config.file(config_dir),
          {:ok, settings, from_vault} <- read(file, vault) do
       [env(config_dir), config(file, from_vault, vault), store(settings), vault(settings)] ++
-        servers(settings) ++ agents(config_dir)
+        callback(settings, vault) ++ servers(settings) ++ agents(config_dir)
     else
       {:error, message} -> [env(config_dir), {:error, "config", message}]
     end
@@ -269,6 +274,42 @@ defmodule WardrikDaemon.Doctor do
 
       true ->
         nil
+    end
+  end
+
+  # -- oauth -------------------------------------------------------------------
+
+  # A daemon that runs answers the vault's names; one that does not cannot
+  # answer the callback either.
+  defp callback(settings, vault) do
+    oauth = Keyword.get(settings, WardrikOAuth, [])
+    url = oauth |> Keyword.get(:redirect, []) |> Keyword.get(:url)
+
+    cond do
+      Keyword.get(oauth, :providers, []) == [] ->
+        []
+
+      is_nil(url) ->
+        port = oauth |> Keyword.get(:redirect, []) |> Keyword.get(:port, 4599)
+
+        [
+          {:ok, "oauth",
+           "a browser comes back to http://127.0.0.1:#{port}, so on this machine alone; " <>
+             "oauth.redirect.url serves it to browsers elsewhere"}
+        ]
+
+      is_nil(vault) ->
+        [{:ok, "oauth", "#{url} is not checked: no daemon runs to answer it"}]
+
+      true ->
+        [reached(url)]
+    end
+  end
+
+  defp reached(url) do
+    case WardrikOAuth.Callback.check(url) do
+      :ok -> {:ok, "oauth", "#{url} reaches the daemon's callback"}
+      {:error, message} -> {:error, "oauth", message}
     end
   end
 

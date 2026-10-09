@@ -7,14 +7,14 @@ defmodule WardrikOAuth.Config do
       {WardrikOAuth.Supervisor,
        client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
        providers: [github: [resource: "https://api.githubcopilot.com/mcp/"]],
-       redirect: [port: 4599, open: true],
+       redirect: [url: "https://agents.example.com/oauth", port: 4599],
        req_options: []}
 
   | Key | What it is |
   | --- | --- |
   | `:client` | the identity this deployment presents, see `WardrikOAuth.Client` |
   | `:providers` | what a user can authorize, see `WardrikOAuth.Provider` |
-  | `:redirect` | where a code comes back to: `:uri`, `:port`, `:open`, `:opener` |
+  | `:redirect` | where a code comes back to: `:url`, `:ip`, `:port`, `:open`, `:opener`; see `WardrikOAuth.Callback` |
   | `:req_options` | merged into every request |
   | `:resolver` | the module whose `resolve/1` answers a host's addresses, `WardrikOAuth.Egress` by default |
   | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |

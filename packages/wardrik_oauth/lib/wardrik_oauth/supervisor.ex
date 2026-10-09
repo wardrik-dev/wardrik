@@ -2,7 +2,8 @@ defmodule WardrikOAuth.Supervisor do
   @moduledoc """
   What `WardrikOAuth` needs running: the flows under way, each a process
   registered across the cluster (see `WardrikOAuth.Pending`), the tasks that
-  open a browser, and the loopback the browser comes back to.
+  open a browser, and the callback the browser comes back to (see
+  `WardrikOAuth.Callback`).
 
       children = [
         {WardrikOAuth.Supervisor,
@@ -13,16 +14,16 @@ defmodule WardrikOAuth.Supervisor do
   `:client`, `:providers`, `:redirect`, `:req_options`, `:resolver` and
   `:poll_floor` are the settings every flow reads, as `WardrikOAuth.Config`
   describes them; it keeps them as it starts. A deployment serving its own
-  redirect URI starts it with `loopback: false` and calls
+  redirect URI starts it with `callback: false` and calls
   `WardrikOAuth.finish/2` from its own controller.
   """
 
   use Supervisor
 
-  alias WardrikOAuth.Loopback
+  alias WardrikOAuth.Callback
   alias WardrikOAuth.Pending
 
-  @doc "Keeps the settings, and starts the flows' registry and supervisor, and the loopback listener unless told not to."
+  @doc "Keeps the settings, and starts the flows' registry and supervisor, and the callback listener unless told not to."
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -40,6 +41,6 @@ defmodule WardrikOAuth.Supervisor do
   end
 
   defp loopback(opts) do
-    if Keyword.get(opts, :loopback, true), do: [{Loopback, opts}], else: []
+    if Keyword.get(opts, :callback, true), do: [{Callback, opts}], else: []
   end
 end
