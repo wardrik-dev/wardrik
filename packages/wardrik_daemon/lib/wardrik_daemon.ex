@@ -33,6 +33,8 @@ defmodule WardrikDaemon do
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
       `WardrikDaemon.Agents.routes/0` for the routes as it starts, so one that
       restarts routes the agents as before.
+    * `WardrikChannel.Supervisor`, when a channel is configured, which runs
+      what each channel's adapter runs, such as its connection to the medium.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
@@ -98,6 +100,7 @@ defmodule WardrikDaemon do
           mcp(Path.join([state_dir, "log", "mcp.log"])) ++
             oauth() ++
             [{WardrikDaemon.Agents, dir: config_dir}] ++
+            channels() ++
             notify() ++
             WardrikDaemon.SSH.children(config_dir, data_dir) ++
             [{WardrikHTTP.Listener, listener()}]
@@ -160,6 +163,13 @@ defmodule WardrikDaemon do
     if Keyword.get(settings, :targets, []) != [],
       do: [{WardrikNotify.Supervisor, [routes: {WardrikDaemon.Agents, :routes, []}] ++ settings}],
       else: []
+  end
+
+  defp channels do
+    case Keyword.get(Config.settings(WardrikChannel), :channels, []) do
+      [] -> []
+      channels -> [{WardrikChannel.Supervisor, channels: channels}]
+    end
   end
 
   defp listener do

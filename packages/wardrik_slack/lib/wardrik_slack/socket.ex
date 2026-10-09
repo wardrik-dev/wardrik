@@ -1,10 +1,11 @@
-defmodule WardrikNotify.Slack.Socket do
+defmodule WardrikSlack.Socket do
   @moduledoc """
-  A Socket Mode connection out to Slack, for one app-level token.
+  A Socket Mode connection out to Slack, for one channel's app-level token.
 
   It asks Slack for a connection URL, connects, acknowledges every envelope
-  Slack sends, and hands each button press to `WardrikNotify.Slack.answer/2`,
-  with the `:targets` and `:req_options` it was started with.
+  Slack sends, and hands each button press to `WardrikSlack.Answers.answer/2`,
+  with the channel's `:token` and `:req_options`. It starts nothing for a
+  channel with no app-level token.
   When Slack closes the connection, as it does every few hours, or the
   network drops it, it connects again, waiting longer after each failure up
   to a minute.
@@ -14,21 +15,19 @@ defmodule WardrikNotify.Slack.Socket do
 
   require Logger
 
-  alias WardrikNotify.Slack.Socket.Connection
+  alias WardrikSlack.Socket.Connection
 
   @first_backoff 1_000
   @max_backoff 60_000
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
-  def child_spec(opts) do
-    token = Keyword.fetch!(opts, :app_token)
-    %{id: {__MODULE__, :erlang.phash2(token)}, start: {__MODULE__, :start_link, [opts]}}
-  end
+  def child_spec(opts),
+    do: %{id: {__MODULE__, opts[:name]}, start: {__MODULE__, :start_link, [opts]}}
 
-  @spec start_link(keyword()) :: GenServer.on_start()
+  @spec start_link(keyword()) :: GenServer.on_start() | :ignore
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:app_token, targets: [], req_options: []])
-    GenServer.start_link(__MODULE__, opts)
+    opts = Keyword.validate!(opts, [:name, :app_token, :token, req_options: []])
+    if opts[:app_token], do: GenServer.start_link(__MODULE__, opts), else: :ignore
   end
 
   @doc """
@@ -63,7 +62,7 @@ defmodule WardrikNotify.Slack.Socket do
     {:ok,
      %{
        token: opts[:app_token],
-       answer: Keyword.take(opts, [:targets, :req_options]),
+       answer: Keyword.take(opts, [:token, :req_options]),
        connection: nil,
        backoff: @first_backoff
      }, {:continue, :connect}}
@@ -78,8 +77,8 @@ defmodule WardrikNotify.Slack.Socket do
   def handle_info(:hello, state), do: {:noreply, %{state | backoff: @first_backoff}}
 
   def handle_info({:interactive, payload}, state) do
-    Task.Supervisor.start_child(WardrikNotify.TaskSupervisor, fn ->
-      WardrikNotify.Slack.answer(payload, state.answer)
+    Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
+      WardrikSlack.Answers.answer(payload, state.answer)
     end)
 
     {:noreply, state}
@@ -92,7 +91,7 @@ defmodule WardrikNotify.Slack.Socket do
 
   defp connect(state) do
     with {:ok, %{"url" => url}} <-
-           WardrikNotify.Slack.post(
+           WardrikSlack.post(
              "apps.connections.open",
              state.token,
              %{},
@@ -113,7 +112,7 @@ defmodule WardrikNotify.Slack.Socket do
   end
 end
 
-defmodule WardrikNotify.Slack.Socket.Connection do
+defmodule WardrikSlack.Socket.Connection do
   @moduledoc false
 
   use WebSockex
@@ -123,7 +122,7 @@ defmodule WardrikNotify.Slack.Socket.Connection do
 
   @impl true
   def handle_frame({:text, text}, owner) do
-    case WardrikNotify.Slack.Socket.envelope(text) do
+    case WardrikSlack.Socket.envelope(text) do
       :hello ->
         send(owner, :hello)
         {:ok, owner}

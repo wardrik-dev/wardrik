@@ -24,14 +24,19 @@ lines of `config.yaml`, and the quickest of these recipes to have running.
 
 ## Where it posts
 
-Name the channel in `config.yaml`, and GitHub's MCP server beside it:
+Name the Slack channel in `config.yaml`, as a room of the Slack app, and GitHub's MCP server
+beside it:
 
 ```yaml title="~/.config/wardrik/config.yaml"
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+
 notify:
   brief:
-    slack:
-      channel: "#brief"
-      token: ${SLACK_BOT_TOKEN}
+    channel: slack
+    room: "#brief"
 
 mcp:
   github:

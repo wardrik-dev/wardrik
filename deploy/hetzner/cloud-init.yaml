@@ -130,12 +130,16 @@ write_files:
       vault:
         keys: ["${WARDRIK_VAULT_KEY}"]
 
+      channels:
+        slack:
+          type: slack
+          token: ${SLACK_BOT_TOKEN}
+          app_token: ${SLACK_APP_TOKEN}
+
       notify:
         demo:
-          slack:
-            channel: ${SLACK_CHANNEL}
-            token: ${SLACK_BOT_TOKEN}
-            app_token: ${SLACK_APP_TOKEN}
+          channel: slack
+          room: ${SLACK_CHANNEL}
 
   - path: /home/wardrik/.config/wardrik/agents/triage.md
     owner: wardrik:wardrik

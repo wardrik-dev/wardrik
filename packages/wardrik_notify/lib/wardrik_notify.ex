@@ -4,14 +4,14 @@ defmodule WardrikNotify do
   parked on a question, one that failed, and, when asked for, what a turn
   answered.
 
-  `config.yaml` names targets, and an agent file routes its agent to them:
+  `config.yaml` names targets, and an agent file routes its agent to them. A
+  target in a chat medium is a room in one of `config.yaml`'s `channels`:
 
       notify:
         ops:
-          slack:
-            channel: "#ops"
-            token: ${SLACK_BOT_TOKEN}
-            app_token: ${SLACK_APP_TOKEN}
+          channel: slack
+          room: "#ops"
+          approvers: ["@maria"]
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
@@ -21,12 +21,13 @@ defmodule WardrikNotify do
       notify: {to: [ops], on: [parked, failed, finished]}
 
   A target is a module implementing this behaviour and its options.
-  `WardrikNotify.Slack` and `WardrikNotify.Webhook` ship with the package, and a
-  host names its own beside them, as it starts `WardrikNotify.Supervisor`:
+  `WardrikNotify.Webhook` ships with the package, `WardrikChannel.Notices`
+  with `wardrik_channel`, and a host names its own beside them, as it starts
+  `WardrikNotify.Supervisor`:
 
       {WardrikNotify.Supervisor,
        targets: [
-         ops: {WardrikNotify.Slack, channel: "#ops", token: "xoxb-…", app_token: "xapp-…"},
+         ops: {WardrikChannel.Notices, channel: {WardrikSlack, token: "xoxb-…"}, room: "#ops"},
          pager: {MyApp.Pager, opts}
        ]}
 

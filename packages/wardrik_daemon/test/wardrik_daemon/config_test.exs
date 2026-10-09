@@ -365,33 +365,57 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "http.trusted_workers is true or false"
     end
 
-    test "notify names targets, each Slack or a webhook", context do
+    test "channels names chat media, each of a type its adapter reads", context do
       yaml = """
+      channels:
+        chat:
+          type: test
+          room_prefix: wardrik-
+        other:
+          type: test
+      """
+
+      assert {:ok, [{WardrikChannel, channels: channels}]} = read(yaml, context)
+
+      assert Enum.sort(channels) == [
+               chat: {WardrikDaemon.Test.Channel, [room_prefix: "wardrik-"]},
+               other: {WardrikDaemon.Test.Channel, []}
+             ]
+
+      assert {:error, message} = read("channels:\n  chat: {type: pigeon}\n", context)
+      assert message =~ "channels.chat.type is the kind of channel: test"
+
+      assert {:error, message} = read("channels:\n  chat: {type: test, colour: red}\n", context)
+      assert message =~ "channels.chat.room_prefix is the only setting"
+    end
+
+    test "notify names targets, each a room in a channel or a webhook", context do
+      yaml = """
+      channels:
+        chat: {type: test}
       notify:
         ops:
-          slack:
-            channel: "#ops"
-            token: xoxb-1
-            app_token: xapp-1
-            approvers: [U1]
+          channel: chat
+          room: "#ops"
+          approvers: ["@maria"]
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
       """
 
-      assert {:ok, [{WardrikNotify, notify}]} = read(yaml, context)
+      assert {:ok, sections} = read(yaml, context)
+      notify = sections[WardrikNotify]
 
       assert Enum.sort(notify[:targets]) == [
                audit:
                  {WardrikNotify.Webhook,
                   [url: "https://hooks.example.com/wardrik", orgs: ["default"]]},
                ops:
-                 {WardrikNotify.Slack,
+                 {WardrikChannel.Notices,
                   [
-                    app_token: "xapp-1",
-                    approvers: ["U1"],
-                    channel: "#ops",
-                    token: "xoxb-1",
+                    channel: {WardrikDaemon.Test.Channel, []},
+                    room: "#ops",
+                    approvers: ["@maria"],
                     orgs: ["default"]
                   ]}
              ]
@@ -399,10 +423,18 @@ defmodule WardrikDaemon.ConfigTest do
 
     test "a notify target that does not read says where", context do
       assert {:error, message} = read("notify:\n  ops:\n    email: {to: a}\n", context)
-      assert message =~ "notify.ops is one of slack or webhook"
+      assert message =~ "notify.ops is a webhook, or a channel and a room in it"
 
-      assert {:error, message} = read("notify:\n  ops:\n    slack: {channel: x}\n", context)
-      assert message =~ "notify.ops.slack.token is required"
+      assert {:error, message} = read("notify:\n  ops: {channel: chat, room: x}\n", context)
+      assert message =~ "notify.ops.channel is chat, which config.yaml's channels does not name"
+
+      assert {:error, message} = read("notify:\n  ops: {channel: chat}\n", context)
+      assert message =~ "notify.ops.room is required"
+
+      assert {:error, message} =
+               read("notify:\n  ops: {channel: chat, room: x, approvers: maria}\n", context)
+
+      assert message =~ "notify.ops.approvers is a list"
 
       assert {:error, message} =
                read("notify:\n  ops:\n    webhook: {url: x, colour: red}\n", context)

@@ -1,7 +1,7 @@
-defmodule WardrikNotify.Slack.SocketTest do
+defmodule WardrikSlack.SocketTest do
   use ExUnit.Case, async: true
 
-  alias WardrikNotify.Slack.Socket
+  alias WardrikSlack.Socket
 
   test "reads Slack's hello and disconnect" do
     assert Socket.envelope(~s({"type":"hello","num_connections":1})) == :hello

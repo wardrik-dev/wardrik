@@ -2,8 +2,9 @@
 
 Tells people what [Wardrik](../wardrik) agents are doing when nobody is
 watching: a turn that waits on a question, one that failed, and, if you ask
-for it, what a turn answered. It sends to Slack and to webhooks, and a target
-of your own is a module.
+for it, what a turn answered. It sends to webhooks, to a room in a chat
+channel such as Slack through [wardrik_channel](../wardrik_channel), and a
+target of your own is a module.
 
 ```elixir
 def deps do
@@ -16,12 +17,17 @@ agent to them:
 
 ```yaml
 # ~/.config/wardrik/config.yaml
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}       # the Slack app's bot token
+    app_token: ${SLACK_APP_TOKEN}   # Socket Mode, for Approve and Deny buttons
+
 notify:
   ops:
-    slack:
-      channel: "#ops"
-      token: ${SLACK_BOT_TOKEN}         # a bot token with chat:write
-      app_token: ${SLACK_APP_TOKEN}     # Socket Mode, for Approve and Deny buttons
+    channel: slack
+    room: "#ops"
+    approvers: ["@maria"]           # who may press them; anyone in #ops without it
   audit:
     webhook:
       url: https://hooks.example.com/wardrik
@@ -32,11 +38,6 @@ notify:
 # in an agent file
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
-
-A call that waits on a person reaches Slack with its arguments and the
-policy's question, and pressing Approve or Deny answers it. The buttons arrive
-over Socket Mode, a connection the daemon opens out to Slack, so it needs no
-public address and no open port.
 
 A notice is sent once from the node that holds the agent, however many nodes
 the cluster has.

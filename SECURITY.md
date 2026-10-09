@@ -136,10 +136,13 @@ turn carried on after its node is lost carries them still.
 
 ### Notifications
 
-A Slack target posts a parked call's name, arguments and question to its
-channel. With an `app_token`, anyone in that channel can press Approve or
-Deny, and the press decides the call as `wardrik approve` would, unless
-`approvers` lists the Slack user ids that may. Slack delivers presses over a
+A target in Slack posts a parked call's name, arguments and question to its
+room. With the Slack channel's `app_token`, anyone in that room can press
+Approve or Deny, and the press decides the call as `wardrik approve` would,
+unless `approvers` lists who may, by `@handle`, email address or Slack user
+id. A user id never changes; a handle, and in many workspaces an email
+address, can be changed by its owner, so name approvers by id where that
+matters. Slack delivers presses over a
 Socket Mode connection the daemon opens, so no port is opened for them. A
 webhook target posts the same notice to its URL, signed with HMAC-SHA256 when
 it has a `secret`; nothing comes back through a webhook.
