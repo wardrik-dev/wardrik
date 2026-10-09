@@ -188,6 +188,91 @@ a rule asked about: a call they allow runs without a person, one they deny is re
 ask about waits on what they ask now. A gated call, and one waiting on an account to be connected,
 keeps waiting.
 
+## Judged calls
+
+Rules name tools, and what file tools act on. Some decisions turn on what a call means instead:
+whether it changes the books, whether it sends money out. A policy's `judge` asks a model about each
+call, in words, and decides by how likely the answer is yes:
+
+```yaml title="~/.config/wardrik/policies/books.yaml"
+ask: [books/delete_*]
+judge:
+  model: typesafe:jev-latest
+  questions:
+    - question: Does this call record, change or delete anything in the company's books?
+      tools: [books/*]
+      ask: 0.5
+      allow: 0.05
+    - question: Does this call send money to a person or an account outside the company?
+      ask: 0.5
+      deny: 0.9
+      message: Money leaves the company only with a person's say-so.
+```
+
+For each tool call, the questions whose `tools` name it, every tool's where they name none, are
+asked together in one request, with the tool's name and its arguments. Each answer is the
+probability of yes, and a question decides by it:
+
+| | When the probability is | The call |
+| --- | --- | --- |
+| `deny` | at or above it | is refused, with `message` or the question as the reason |
+| `ask` | at or above it | waits on a person, who is shown `message` or the question and how likely it was |
+| `allow` | below it | is allowed by name, as an `allow` rule allows one, where every question with an `allow` is below its own |
+
+Anything in between leaves the call to the rules, as if there were no judge: a gated tool's call
+still waits on a person. The judge is a hook after the rules, so the strictest answer decides: its
+allow never lifts a call a rule asks about or denies, and its ask or deny holds whatever the rules
+allow. A judge that cannot answer, because the model is unreachable or answers nothing it can use,
+asks a person where one of its questions could have asked or denied, and otherwise says nothing.
+
+`model` is any evaluation model, `typesafe:jev-latest` by default. Its key is a model key, kept as
+the others are: `wardrik vault put TYPESAFE_API_KEY`.
+
+:::caution
+A judge is a second opinion beside the rules, not a replacement for them.
+
+- **Its allow holds only while the run has read nothing from outside.** A call's arguments may have
+  been written by a web page or an email the agent read, to look harmless to the judge. Once the run
+  carries the `outside` label, the judge can still ask and deny, but never allow.
+- **Its probabilities are not yet yours.** The model is calibrated in general, not on your agents'
+  calls. Start with `ask` and `deny`, watch what it decides on calls like the agent's, and add an
+  `allow` only well below where it asked, for questions whose answer the call's arguments settle.
+- **Ask one thing per question.** "Does it change the books and send money?" is two questions;
+  write two, and let each decide.
+- **Rules for exact matters.** A tool's name, or the file a call writes, is a rule's to decide: a
+  judge is for what a call means.
+:::
+
+### Tuning a judge
+
+A judge's answers are probabilities, and a call that could be read two ways lands in the middle. Asked
+"Does this call send money to a person or an account outside the company?", one model gave a call
+listing unpaid invoices 0.04, a call creating a $1,200 bill 0.52, and a call paying that bill 0.72.
+The listing is clear, but the bill, which records money owed rather than paying it, is not, and the
+payment fell short of a `deny` set at 0.8. Some gotchas, and what to do about each:
+
+- **For critical things, widen the band a person sees.** Set `ask` low, 0.3 or below, and `deny`
+  high, so everything uncertain waits on a person, and only what the judge is sure of is refused
+  without one. Better still, name the tool in a rule: `ask: [bank/send_*]` holds whatever the judge
+  thinks, and the judge is left to catch what the names miss.
+- **Leave a margin under `allow`.** Allow only well below where calls you would want to see land:
+  if harmless calls score 0.04 and risky ones 0.3 or more, an `allow` of 0.01 to 0.02 is safer than
+  0.05. A probability just under the line is not much surer than one just over it.
+- **Say what counts in the question.** The judge sees the question, the tool's name and its
+  arguments, not the tool's description or the conversation. "Does this call pay money out of the
+  company's accounts now? Recording a bill or an invoice does not count." took the bill from 0.52
+  to 0.05, and the payment to 0.77: clearer, though still short of a `deny` at 0.8, which is why
+  the band a person sees matters.
+- **Ask one thing per question.** "Does it change the books and send money?" judges both at once;
+  write two questions, and let each decide.
+- **Name the tools a question is about.** A question without `tools` is asked of every call, which
+  adds a request, and its wait, to each one. `tools: [books/*]` keeps it to the calls it is for.
+- **Expect a judge that cannot answer.** When the model is unreachable, a judge with an `ask` or a
+  `deny` asks a person, so the agent waits rather than acting; one with only `allow` falls back to the
+  rules. Watch for a run of asks that say the judge could not answer.
+- **Check again when the model changes.** A model named `latest` can move. Try the judge on calls
+  like the agent's after an update, and before raising any threshold.
+
 ## Budgets
 
 A policy may hold a budget for what the agent spends on model calls, in dollars, in tokens, or

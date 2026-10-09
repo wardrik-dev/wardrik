@@ -88,4 +88,14 @@ shown, and holds nothing.
 
 `allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
 to message, and `allow_after` a map of label to either. `budget` takes what
-`WardrikPolicy.Budget` describes.
+`WardrikPolicy.Budget` describes, and `judge` what `WardrikPolicy.Judge`
+does.
+
+## Judged
+
+A policy with a `WardrikPolicy.Judge` asks a model questions about each
+call its questions name, and decides by the probability of yes: refuses
+it, asks a person first, or allows it by name where the run has read
+nothing from outside. `hooks/1` gives the judge a hook of its own, after
+the rules, named for the policy with `/judge` added, so its allow never
+lifts a call a rule asks about or denies.
