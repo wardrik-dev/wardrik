@@ -20,8 +20,8 @@ const pascal = (text: string): string =>
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join("");
 
-// Points a reference to a shared definition at the one root's $defs, and
-// drops what only a validator reads.
+// Points a reference to a shared definition, or to another resource, at the
+// one root's $defs, and drops what only a validator reads.
 const local = (node: unknown): unknown => {
   if (Array.isArray(node)) return node.map(local);
   if (node === null || typeof node !== "object") return node;
@@ -31,6 +31,8 @@ const local = (node: unknown): unknown => {
     if (key === "$schema" || key === "$id" || key === "examples") continue;
     if (key === "$ref" && typeof value === "string" && value.startsWith(defsRef)) {
       out[key] = "#/$defs/" + value.slice(defsRef.length);
+    } else if (key === "$ref" && typeof value === "string" && resourceOf(value)) {
+      out[key] = "#/$defs/" + resourceOf(value);
     } else {
       out[key] = local(value);
     }
@@ -46,9 +48,14 @@ const resources: Record<string, string> = {
   "authorization.json": "Authorization",
   "cloudevent.json": "Envelope",
   "error.json": "ErrorBody",
+  "export.json": "ExportPage",
   "schedule.json": "Schedule",
   "schedule_definition.json": "ScheduleDefinition",
 };
+
+// The title of the resource a reference names, where it names one.
+const resourceOf = (ref: string): string | undefined =>
+  resources[ref.replace(/^urn:wardrik:schema:v1:/, "") + ".json"];
 
 const files = readdirSync(schemas).filter((file) => file.endsWith(".json")).sort();
 const events = files.filter((file) => /^[a-z_]+\.[a-z_]+\.json$/.test(file));

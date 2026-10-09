@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:export",
+  "title": "A page of an export",
+  "description": "What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "events",
+    "next",
+    "gaps"
+  ],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wardrik:schema:v1:cloudevent"
+      },
+      "description": "Oldest first within each log; each event's source names its log, and its sequence its place there."
+    },
+    "next": {
+      "type": "string",
+      "description": "What POST /v1/exports/{name} takes, as {\"next\": \u2026}, to move the cursor past these events."
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Each log trimmed past the cursor, which was read from its oldest event.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "log",
+          "after",
+          "oldest"
+        ],
+        "properties": {
+          "log": {
+            "type": "string",
+            "description": "audit, or the agent's ID."
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The sequence the cursor was at."
+          },
+          "oldest": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The oldest sequence the log still held."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "events": [],
+      "next": "eyJhY21lL3RyaWFnZSI6NDF9",
+      "gaps": [
+        {
+          "log": "acme/triage",
+          "after": 12,
+          "oldest": 30
+        }
+      ]
+    }
+  ]
+}

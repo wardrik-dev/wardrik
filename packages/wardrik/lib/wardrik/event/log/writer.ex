@@ -18,7 +18,8 @@ defmodule Wardrik.Event.Log.Writer do
 
   ## Owners
 
-  `open/2` finds the head. From the sequence the agent last wrote down, it
+  `open/2` writes the log down among `Wardrik.Event.Log.logs/0`, and finds
+  the head. From the sequence the agent last wrote down, it
   reads forward through consensus to the first number nobody has written, and
   writes `agent.started` there. A conflict while it does is an owner before it
   still writing, so it moves to the new end and tries again.
@@ -82,6 +83,9 @@ defmodule Wardrik.Event.Log.Writer do
   """
   @spec open(t(), Event.t()) :: t()
   def open(%__MODULE__{} = writer, %Event{payload: {:agent_started, _, _, _}} = started) do
+    with {:error, reason} <- Log.opened(writer.agent_id),
+         do: Logger.warning("Could not list #{writer.agent_id}'s log: #{inspect(reason)}")
+
     known = max(writer.head, Log.oldest(writer.agent_id, consistent: true) - 1)
     start(%{writer | head: Log.head(writer.agent_id, known)}, started)
   end

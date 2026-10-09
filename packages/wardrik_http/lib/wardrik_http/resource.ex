@@ -79,6 +79,23 @@ defmodule WardrikHTTP.Resource do
     end
   end
 
+  @doc """
+  A page of an export: its events, the `next` that moves the export past
+  them, and where a log was trimmed before the export got to it.
+  """
+  @spec export(Wardrik.Event.Export.t()) :: map()
+  def export(%Wardrik.Event.Export{} = page) do
+    %{
+      "events" => page.events,
+      "next" => page.next,
+      "gaps" =>
+        for(
+          gap <- page.gaps,
+          do: %{"log" => to_string(gap.log), "after" => gap.after, "oldest" => gap.oldest}
+        )
+    }
+  end
+
   @doc "An error of `type`, saying what went wrong, with any other fields beside."
   @spec error(String.t(), String.t(), map()) :: map()
   def error(type, message, fields \\ %{}),

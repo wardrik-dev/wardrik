@@ -359,6 +359,36 @@ export interface ErrorBody {
   };
 }
 /**
+ * What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.
+ */
+export interface ExportPage {
+  /**
+   * Oldest first within each log; each event's source names its log, and its sequence its place there.
+   */
+  events: Envelope[];
+  /**
+   * What POST /v1/exports/{name} takes, as {"next": …}, to move the cursor past these events.
+   */
+  next: string;
+  /**
+   * Each log trimmed past the cursor, which was read from its oldest event.
+   */
+  gaps: {
+    /**
+     * audit, or the agent's ID.
+     */
+    log: string;
+    /**
+     * The sequence the cursor was at.
+     */
+    after: number;
+    /**
+     * The oldest sequence the log still held.
+     */
+    oldest: number;
+  }[];
+}
+/**
  * A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.
  */
 export interface Schedule {
