@@ -47,13 +47,17 @@ mcp:
     only: [read_text_file, list_directory, search_files]
     trusted: true
 
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+
 notify:
   oncall:
-    slack:
-      channel: "#oncall"
-      token: ${SLACK_BOT_TOKEN}
-      app_token: ${SLACK_APP_TOKEN}
-      approvers: [U012ABCDEF, U034GHIJKL, U056MNOPQR]
+    channel: slack
+    room: "#oncall"
+    approvers: ["@maria", "@jon", "@priya"]
 ```
 
 - `only` gives the agent the tools it needs and no others: Linear's reading tools and
@@ -174,7 +178,8 @@ mcp:
 notify:
   globex-oncall:
     org: globex
-    slack: {channel: "#globex-oncall", token: "${SLACK_BOT_TOKEN}", app_token: "${SLACK_APP_TOKEN}"}
+    channel: slack
+    room: "#globex-oncall"
 ```
 
 An agent of `globex` cannot be given acme's servers or route its notices to acme's channel: its file

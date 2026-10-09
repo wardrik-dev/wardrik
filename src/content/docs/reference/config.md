@@ -61,13 +61,17 @@ refused, since one of them would go unread.
     vault:
       keys: ["${WARDRIK_VAULT_KEY}"]
 
+    channels:
+      slack:
+        type: slack
+        token: ${SLACK_BOT_TOKEN}
+        app_token: ${SLACK_APP_TOKEN}
+
     notify:
       ops:
-        slack:
-          channel: "#ops"
-          token: ${SLACK_BOT_TOKEN}
-          app_token: ${SLACK_APP_TOKEN}
-          approvers: [U012ABCDEF]
+        channel: slack
+        room: "#ops"
+        approvers: ["@maria"]
       audit:
         webhook:
           url: https://hooks.example.com/wardrik
@@ -147,10 +151,15 @@ Without `storage`, the store is `WardrikStore.EKV`, on the node's disk under
 boots, before anything starts, and the rest once the store runs; see
 `boot/1`.
 
-`notify` names targets an agent file's `notify` routes to, each one
-`slack`, with `channel`, `token`, and optionally `app_token` and
-`approvers`, as `WardrikNotify.Slack` takes them; or `webhook`, with `url` and
-optionally `secret`, as `WardrikNotify.Webhook` takes them.
+`channels` names the chat media agents are reached through, each by a name
+of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
+finds those the release holds. The rest of a channel's settings are its
+adapter's, which reads them; see `WardrikChannel`.
+
+`notify` names targets an agent file's `notify` routes to, each one a
+`channel` of `channels` and a `room` in it, with who may answer it as
+`approvers`, as `WardrikChannel.Notices` takes them; or a `webhook`, with
+`url` and optionally `secret`, as `WardrikNotify.Webhook` takes them.
 
 `read/1` refuses a file with a variable that is not set, a key nothing takes,
 a server that is neither a command nor a URL, or a server whose name or
