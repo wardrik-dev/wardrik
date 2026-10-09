@@ -17,12 +17,17 @@ defmodule Wardrikd.Application do
   The store, and whether tool workers' answers are the deployment's own, are
   what `config/runtime.exs` read of `config.yaml` as the node booted; see
   `WardrikDaemon.Config.boot/1`.
+
+  `DurableServer`, which runs the fleet, the schedules and the budgets, logs
+  its warnings and errors alone: at `info` it writes a line every few seconds
+  for each of its supervisors, which buries the daemon's own.
   """
 
   use Application
 
   @impl Application
   def start(_type, _args) do
+    :ok = Logger.put_application_level(:durable_server, :warning)
     http = WardrikDaemon.Config.settings(WardrikHTTP)
 
     children = [
