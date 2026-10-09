@@ -22,7 +22,7 @@ teams on the same daemon kept apart.
   to comment;
 - the team's runbooks as Markdown files in a directory on the daemon's machine;
 - a Slack app with a bot token and an app-level token, made as
-  [Approve calls from Slack](/guides/slack/#a-slack-app) makes one, in the on-call channel.
+  [Slack](/channels/slack/#a-slack-app) makes one, in the on-call channel.
 
 ## The servers and the channel
 
@@ -208,7 +208,7 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 - **Rules as data.** The policy is a file outside the agent, decided before each call, and the same
   on every node. See [Policy and approvals](/concepts/policy/).
 - **Named approvers.** A parked call reaches Slack with its arguments, and only `approvers` decide
-  it. See [Approve calls from Slack](/guides/slack/).
+  it. See [Who may press the buttons](/channels/slack/#who-may-press-the-buttons).
 - **Trust by source.** The team's runbooks are not labelled `outside`; issues anyone can file are. See
   [Content from outside](/concepts/policy/#content-from-outside).
 - **A budget per agent.** The agent stops and asks once it has spent its day's $20. See

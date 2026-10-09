@@ -165,14 +165,14 @@ to answer.
 A call can also be decided:
 
 - from Slack, where the notice shows the call's arguments, with Approve and Deny buttons. See
-  [Approve calls from Slack](/guides/slack/);
+  [Slack](/channels/slack/);
 - over the HTTP API, with a token that can `decide`:
   `POST /v1/agents/{key}/interrupts/{id}` with `{"decision": "approve"}`, or
   `{"decision": "reject", "reason": "..."}`;
 - in the [terminal client](/guides/tui/), with Ctrl-Y and Ctrl-N.
 
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the
-[webhook](/guides/slack/#webhooks) do.
+[webhook](/guides/notices/#webhooks) do.
 
 Wherever a call is shown, it says what its turn had read first, which may be what asked for it:
 `wardrik parked` and the Slack notice say so under the question, and the HTTP API and the webhook
