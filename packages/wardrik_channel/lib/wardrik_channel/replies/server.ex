@@ -59,6 +59,18 @@ defmodule WardrikChannel.Replies.Server do
   end
 
   @impl DurableServer
+  def handle_cast({:remind, thread}, state) do
+    with true <- State.followed?(state, thread),
+         {:error, reason} <- post(state, thread, {:parked, :all}) do
+      Logger.warning(
+        "#{state.channel} could not remind #{state.room} what waits: #{inspect(reason)}"
+      )
+    end
+
+    {:noreply, state}
+  end
+
+  @impl DurableServer
   def handle_info(%Entry{sequence: nil}, state), do: {:noreply, state}
 
   def handle_info(%Entry{event: %{"source" => @source <> id}, sequence: sequence}, state) do
@@ -136,12 +148,15 @@ defmodule WardrikChannel.Replies.Server do
     agent = state.threads[thread].agent
 
     with parked when is_list(parked) <- Agent.parked(agent),
-         [_ | _] = calls <- Enum.filter(parked, fn {call, _prompt} -> call.id in ids end) do
+         [_ | _] = calls <- Enum.filter(parked, &waiting?(&1, ids)) do
       deliver(state, thread, {:notice, Notice.parked(agent, calls)})
     else
       _none_waiting -> :ok
     end
   end
+
+  defp waiting?(_parked, :all), do: true
+  defp waiting?({call, _prompt}, ids), do: call.id in ids
 
   defp deliver(state, thread, body) do
     case WardrikChannel.channel(state.channel) do

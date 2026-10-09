@@ -109,7 +109,9 @@ defmodule WardrikChannel do
   @doc """
   A message was posted in a room of the context's channel: asks the agent of
   its thread, starting it where it is not running, and has
-  `WardrikChannel.Replies` post what it answers. Answers the agent asked, or
+  `WardrikChannel.Replies` post what it answers. Where the agent waits on a
+  person, the message waits behind the calls it waits on, and they are posted
+  in the thread again. Answers the agent asked, or
   `:ignored` for a message in a room no agent answers in, or one the room's
   agent does not answer.
   """
@@ -127,10 +129,14 @@ defmodule WardrikChannel do
     end
   end
 
+  # Whether the agent waited on a person is asked before the message, so a
+  # turn the message starts, and parks, is not taken for one already waiting.
   defp ask(context, inbound, thread, agent) do
     with {:ok, _pid} <- Context.start(context, agent),
          :ok <- Replies.follow(context.channel, inbound.room, thread, agent),
+         waiting? = match?([_ | _], Wardrik.Agent.parked(agent)),
          :ok <- Wardrik.Agent.ask(agent, inbound.text, id: inbound.id, sender: inbound.sender) do
+      if waiting?, do: Replies.remind(context.channel, inbound.room, thread)
       {:asked, agent}
     else
       {:error, :not_found} -> {:error, "#{agent} stopped before it could be asked."}

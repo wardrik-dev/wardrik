@@ -14,6 +14,10 @@ defmodule WardrikChannel.Replies do
       still waiting as it posts
     * why a run failed
 
+  `remind/3` posts again the calls a thread's agent still waits on, for a
+  message that arrived behind them, which the agent will not read until
+  they are answered.
+
   It writes down the last event of each log it has posted, so after a
   restart it posts from there: each at least once. A post the channel
   refuses is tried again, waiting longer each time up to a minute, and given
@@ -63,6 +67,18 @@ defmodule WardrikChannel.Replies do
     child = {Server, key: key(channel, room), initial_state: State.new(channel, room)}
     {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(@name, child)
     GenServer.call(pid, {:follow, thread, agent})
+  end
+
+  @doc """
+  Posts again in `thread` of `room` the calls its agent waits on. A post
+  refused is not tried again.
+  """
+  @spec remind(String.t(), String.t(), String.t()) :: :ok
+  def remind(channel, room, thread) do
+    case DurableServer.Supervisor.lookup(@name, key(channel, room)) do
+      {pid, _meta} -> GenServer.cast(pid, {:remind, thread})
+      nil -> :ok
+    end
   end
 
   @doc "Posts nothing more in `room`, and forgets its threads."
