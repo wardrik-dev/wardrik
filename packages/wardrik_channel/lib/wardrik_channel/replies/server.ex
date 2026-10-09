@@ -136,6 +136,9 @@ defmodule WardrikChannel.Replies.Server do
   defp post(state, thread, {:reply, text, answering}),
     do: deliver(state, thread, {:reply, text, answering})
 
+  defp post(state, thread, {:connected, provider}),
+    do: deliver(state, thread, {:reply, "Connected #{provider}.", []})
+
   defp post(state, thread, {:failed, reason}) do
     agent = state.threads[thread].agent
     notice = %Notice{agent: agent, kind: :failed, at: DateTime.utc_now(), reason: reason}

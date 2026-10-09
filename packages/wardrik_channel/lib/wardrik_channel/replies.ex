@@ -13,6 +13,7 @@ defmodule WardrikChannel.Replies do
     * the calls a run waits on, with buttons to answer them, where they are
       still waiting as it posts
     * why a run failed
+    * that someone connected an account a call waited on
 
   `remind/3` posts again the calls a thread's agent still waits on, for a
   message that arrived behind them, which the agent will not read until

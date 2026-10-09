@@ -27,13 +27,15 @@ defmodule WardrikChannel.Replies.State do
 
   @typedoc """
   What an event asks to be posted in its thread: what a run answered, and
-  the messages it answers; the calls a run waits on; why a run failed; or
+  the messages it answers; the calls a run waits on; why a run failed; that
+  someone connected an account a call waited on, by the provider's name; or
   nothing.
   """
   @type post() ::
           {:reply, String.t(), [String.t()]}
           | {:parked, [String.t()]}
           | {:failed, String.t()}
+          | {:connected, String.t()}
           | :none
 
   @spec new(String.t(), String.t()) :: t()
@@ -95,6 +97,17 @@ defmodule WardrikChannel.Replies.State do
 
   defp post(%{"type" => "wardrik.run.cancelled", "data" => data}, runs),
     do: {:none, Map.delete(runs, data["run"]["id"])}
+
+  # A call is decided by an authorization, rather than by a person, where an
+  # account it waited on was connected.
+  defp post(
+         %{
+           "type" => "wardrik.interrupt.resolved",
+           "data" => %{"resolved_by" => %{"type" => "oauth", "id" => provider}}
+         },
+         runs
+       ),
+       do: {{:connected, provider}, runs}
 
   defp post(_event, runs), do: {:none, runs}
 

@@ -20,20 +20,20 @@ defmodule WardrikChannel.ThreadsTest do
   def offering(agent, _channel), do: [%Offer{agent: agent}]
 
   @doc false
-  def starting(runner, _channel, agent), do: Fleet.spawn(agent, runner: runner)
+  def starting(options, _channel, agent), do: Fleet.spawn(agent, options)
 
   @doc false
   def approving(approvers, _channel), do: approvers
 
   # A channel of its own, delivering to the test, with a room bound to an
-  # agent whose threads run on `runner`.
+  # agent whose threads run on `runner`, and resume on `:resumer`.
   defp bound(runner, opts \\ []) do
     agent = Wardrik.Test.Fleet.id("books")
 
     context = %Context{
       channel: "chat-#{System.unique_integer([:positive])}",
       offered: {__MODULE__, :offering, [agent]},
-      start: {__MODULE__, :starting, [runner]},
+      start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
       approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]}
     }
 
@@ -153,6 +153,35 @@ defmodule WardrikChannel.ThreadsTest do
 
     assert Replies.remind(context.channel, "C1", "9.9") == :ok
     refute_receive {:delivered, _outbound, _channel}, 200
+  end
+
+  test "says in the thread that an account a call waited on was connected, and carries on" do
+    link = %{url: "https://github.com/login/oauth", code: nil}
+    credential = %{ref: "github", owner: {"test", nil}}
+    answer = {:ok, [ReqLLM.Context.assistant("Opened.")]}
+
+    {context, _room} =
+      bound({AgentRunners, :connecting, [self(), "call_1", link, credential]},
+        resumer: {AgentRunners, :resuming, [self(), answer]}
+      )
+
+    assert {:asked, _agent} =
+             WardrikChannel.received(context, inbound(context, id: "9.1", text: "File it."))
+
+    assert_receive {:delivered,
+                    %Outbound{body: {:notice, %Notice{kind: :parked, calls: [connecting]}}},
+                    _channel}
+
+    assert connecting.authorization
+
+    by = Wardrik.Principal.new(:oauth, "github", name: "github authorization")
+    :ok = Wardrik.Credential.available("github", {"test", nil}, by: by)
+
+    assert_receive {:delivered, %Outbound{thread: "9.1", body: {:reply, "Connected github.", []}},
+                    _channel}
+
+    assert_receive {:delivered, %Outbound{thread: "9.1", body: {:reply, "Opened.", ["9.1"]}},
+                    _channel}
   end
 
   test "posts why a thread's run failed" do

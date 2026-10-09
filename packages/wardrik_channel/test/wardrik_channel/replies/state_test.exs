@@ -68,6 +68,26 @@ defmodule WardrikChannel.Replies.StateTest do
     assert {{:failed, "Locked."}, _state} = State.take(state, "1.1", failed)
   end
 
+  test "says an account a call waited on was connected, and nothing of a call a person decided" do
+    connected =
+      event(1, "wardrik.interrupt.resolved", %{
+        "interrupt" => %{"id" => "c1"},
+        "decision" => "approved",
+        "resolved_by" => %{"type" => "oauth", "id" => "github", "name" => "github authorization"}
+      })
+
+    assert {{:connected, "github"}, state} = State.take(followed(), "1.1", connected)
+
+    approved =
+      event(2, "wardrik.interrupt.resolved", %{
+        "interrupt" => %{"id" => "c2"},
+        "decision" => "approved",
+        "resolved_by" => %{"type" => "slack", "id" => "U1"}
+      })
+
+    assert {:none, _state} = State.take(state, "1.1", approved)
+  end
+
   test "follows a thread once, from where it was first followed" do
     state = followed(7)
     assert State.followed?(state, "1.1")
