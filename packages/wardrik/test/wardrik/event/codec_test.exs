@@ -63,7 +63,7 @@ defmodule Wardrik.Event.CodecTest do
         ]}},
       {turn, {:turn_resumed, %{"call_1" => :approve}}},
       {turn, {:call_decided, "call_1", {:deny, "Not today."}, by}},
-      {Source.root(@agent), {:message_queued, Message.new("Ship it.", "m-1")}},
+      {Source.root(@agent), {:message_queued, Message.new("Ship it.", "m-1", sender: by)}},
       {Source.root(@agent), {:agent_started, :wardrik_b@localhost, :parked, "9f2c1e7a"}},
       {turn,
        {:context_compacted,
@@ -474,6 +474,18 @@ defmodule Wardrik.Event.CodecTest do
       assert rejected["reason"] == "No."
       assert rejected["resolved_by"] == %{"type" => "shell", "id" => "wardrik"}
     end
+  end
+
+  test "a message created names who sent it, where anyone is named" do
+    by = Principal.new(:slack, "U1", name: "jon")
+
+    assert {:ok, %{"data" => %{"sender" => %{"type" => "slack", "id" => "U1", "name" => "jon"}}}} =
+             encode(Source.root(@agent), {:message_queued, Message.new("Hi.", "m-1", sender: by)})
+
+    assert {:ok, %{"data" => data}} =
+             encode(Source.root(@agent), {:message_queued, Message.new("Hi.", "m-1")})
+
+    refute Map.has_key?(data, "sender")
   end
 
   test "a run names the messages it answers" do

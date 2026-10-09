@@ -47,6 +47,16 @@ defmodule Wardrik.AgentTest do
     assert roles(agent) == [:user, :assistant]
   end
 
+  test "a message names who sent it, to the model and in its event" do
+    agent = start_agent(runner: runner(self()))
+    maria = Wardrik.Principal.new(:slack, "U024BE7LH", name: "Maria Chen")
+
+    :ok = Agent.ask(agent, "Reconcile last week.", id: "m-1", sender: maria)
+
+    assert_receive %Event{payload: {:message_queued, %{id: "m-1", sender: ^maria}}}
+    assert_receive {:turn, [{:user, "From Maria Chen (slack U024BE7LH):\nReconcile last week."}]}
+  end
+
   test "a second turn sees the first turn's result — turns never overlap" do
     agent = start_agent(runner: blocking_runner(self()))
 

@@ -2,11 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:message.created",
   "title": "wardrik.message.created",
-  "description": "Someone sent the agent a message, which it will answer.",
+  "description": "Someone sent the agent a message, which it will answer; sender says who, where that is known.",
   "type": "object",
   "properties": {
     "message": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
+    },
+    "sender": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
     }
   },
   "additionalProperties": false,

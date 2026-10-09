@@ -192,14 +192,19 @@ defmodule Wardrik.Agent do
 
   `:id` names the message, a new UUIDv7 when left out. The agent announces it
   as `{:message_queued, message}` and takes it once, however many times the
-  same id is sent. `:labels` are what the message holds, as `Wardrik.Label`s,
-  which its turn carries from its start: `["outside"]` for a message from
-  someone who is not the agent's own.
+  same id is sent. `:sender` is the `Wardrik.Principal` who sent it, which
+  its event carries and the model reads; see `Wardrik.Agent.Message`.
+  `:labels` are what the message holds, as `Wardrik.Label`s, which its turn
+  carries from its start: `["outside"]` for a message from someone who is not
+  the agent's own.
   """
   @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
   def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts) do
     message =
-      Message.new(question, Keyword.get(opts, :id), labels: Keyword.get(opts, :labels, []))
+      Message.new(question, Keyword.get(opts, :id),
+        sender: Keyword.get(opts, :sender),
+        labels: Keyword.get(opts, :labels, [])
+      )
 
     cast(agent, {:ask, message})
   end
@@ -564,7 +569,7 @@ defmodule Wardrik.Agent do
   end
 
   defp asked(context, messages),
-    do: Enum.reduce(messages, context, &Context.append(&2, Context.user(&1.text)))
+    do: Enum.reduce(messages, context, &Context.append(&2, Context.user(Message.content(&1))))
 
   defp replay(state, scope, checkpoint) do
     scope = journaled(scope)

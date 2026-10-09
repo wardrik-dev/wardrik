@@ -37,8 +37,9 @@ defmodule Wardrik.Event do
   Agent lifecycle, each on the root of a trace of its own:
 
     * `{:message_queued, message}`, a `Wardrik.Agent.Message` the agent will
-      answer, `{:agent_started, node, status, generation}`, each time the
-      agent is loaded, `{:context_cleared, dropped}`, when its history is
+      answer, with who sent it where that is known, `{:agent_started, node,
+      status, generation}`, each time the agent is loaded,
+      `{:context_cleared, dropped}`, when its history is
       emptied, with how many messages it held, `{:schedule_fired, name,
       outcome}`, when a schedule came due, with what came of it, as
       `WardrikSchedule` announces it
