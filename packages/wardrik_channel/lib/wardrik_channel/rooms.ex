@@ -15,7 +15,8 @@ defmodule WardrikChannel.Rooms do
 
   `answers/4` changes when the room's agent answers: when mentioned,
   `:mentions`, or to every message, `:everything`. `left/3` unbinds the room,
-  as taking the bot out of it, or asking it to stop answering there, does.
+  as taking the bot out of it, or asking it to stop answering there, does,
+  and `WardrikChannel.Replies` posts nothing more in its threads.
 
   Each binding is a `WardrikChannel.Room` kept in `WardrikStore`, and each
   change is recorded in `Wardrik.Audit` with the person who made it.
@@ -123,6 +124,7 @@ defmodule WardrikChannel.Rooms do
     case get(context, room) do
       %Room{} ->
         :ok = WardrikStore.delete(@ns, key(channel, room))
+        :ok = WardrikChannel.Replies.forget(channel, room)
         Audit.record({:room_unbound, channel, room}, by)
 
       nil ->

@@ -49,11 +49,29 @@ defmodule WardrikChannel do
   channel's context. See `WardrikChannel.Rooms` for how a room comes to have
   an agent.
 
+  ## Threads
+
+  An adapter hands each message posted in a room to `received/2`. Each
+  thread in a room is a conversation of its own with the room's agent: an
+  agent under the room's agent's ID, answering for the room and the thread,
+  so every thread runs on one definition and no two rooms share one. A
+  message posted in the room itself starts a thread where it mentions the
+  bot, or where the room's agent answers everything; a reply in a thread
+  reaches its agent where that thread has one already, or mentions the bot,
+  or the room's agent answers everything. What the agent answers is posted
+  in the thread by `WardrikChannel.Replies`.
+
   `WardrikChannel.Notices` is a `WardrikNotify` target that posts notices in
   a room through a channel's adapter.
   """
 
+  alias Wardrik.AgentID
+  alias WardrikChannel.Context
+  alias WardrikChannel.Inbound
   alias WardrikChannel.Outbound
+  alias WardrikChannel.Replies
+  alias WardrikChannel.Room
+  alias WardrikChannel.Rooms
 
   @typedoc "A channel: its adapter, and the options its `config/1` answered."
   @type channel() :: {module(), keyword()}
@@ -87,4 +105,64 @@ defmodule WardrikChannel do
   @doc "The task supervisor a channel runs its work under."
   @spec tasks() :: atom()
   def tasks, do: WardrikChannel.TaskSupervisor
+
+  @doc """
+  A message was posted in a room of the context's channel: asks the agent of
+  its thread, starting it where it is not running, and has
+  `WardrikChannel.Replies` post what it answers. Answers the agent asked, or
+  `:ignored` for a message in a room no agent answers in, or one the room's
+  agent does not answer.
+  """
+  @spec received(Context.t(), Inbound.t()) ::
+          {:asked, AgentID.t()} | :ignored | {:error, String.t()}
+  def received(%Context{} = context, %Inbound{} = inbound) do
+    thread = inbound.thread || inbound.id
+
+    with %Room{} = room <- Rooms.get(context, inbound.room),
+         agent = conversation(room, thread),
+         true <- answers?(room, inbound, agent) do
+      ask(context, inbound, thread, agent)
+    else
+      _unanswered -> :ignored
+    end
+  end
+
+  defp ask(context, inbound, thread, agent) do
+    with {:ok, _pid} <- Context.start(context, agent),
+         :ok <- Replies.follow(context.channel, inbound.room, thread, agent),
+         :ok <- Wardrik.Agent.ask(agent, inbound.text, id: inbound.id, sender: inbound.sender) do
+      {:asked, agent}
+    else
+      {:error, :not_found} -> {:error, "#{agent} stopped before it could be asked."}
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  @doc "The agent that answers in `thread` of the room `room` is bound as."
+  @spec conversation(Room.t(), String.t()) :: AgentID.t()
+  def conversation(%Room{room: room, agent: agent}, thread),
+    do: AgentID.put_external_id(agent, room <> "-" <> thread)
+
+  defp answers?(_room, %Inbound{mentioned?: true}, _agent), do: true
+  defp answers?(%Room{answers: :everything}, _inbound, _agent), do: true
+  defp answers?(_room, %Inbound{thread: nil}, _agent), do: false
+  defp answers?(_room, _inbound, agent), do: Wardrik.Fleet.stored?(agent)
+
+  @doc """
+  The channel named `name` among those `WardrikChannel.Supervisor` runs on
+  this node: its adapter, the options its `config/1` answered, and its
+  `WardrikChannel.Context`.
+  """
+  @spec channel(String.t()) :: {:ok, {module(), keyword(), Context.t()}} | :error
+  def channel(name) when is_binary(name) do
+    case :persistent_term.get({__MODULE__, name}, nil) do
+      nil -> :error
+      channel -> {:ok, channel}
+    end
+  end
+
+  @doc false
+  @spec put_channel(module(), keyword(), Context.t()) :: :ok
+  def put_channel(adapter, options, %Context{channel: name} = context),
+    do: :persistent_term.put({__MODULE__, name}, {adapter, options, context})
 end

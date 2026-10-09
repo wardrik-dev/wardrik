@@ -154,7 +154,9 @@ defmodule WardrikDaemon.Config do
   in a room: the deployment's own unless it says, or `*` for every org's.
   Someone in a room no agent is offered in may create one there, from
   `defaults`, where `defaults` name a policy, unless the channel's `create`
-  is `false`.
+  is `false`. A channel's `approvers` may answer what an agent asks in its
+  threads, as the channel names people; anyone in the room where it names
+  nobody.
   The rest of a channel's settings are its adapter's, which reads them; see
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.
@@ -670,10 +672,7 @@ defmodule WardrikDaemon.Config do
         do: invalid!(path ++ [key], "is required")
 
     approvers = Map.get(target, "approvers", [])
-
-    unless is_list(approvers) and Enum.all?(approvers, &is_binary/1),
-      do:
-        invalid!(path ++ ["approvers"], "is a list of who may answer, as the channel names them")
+    approvers!(approvers, path ++ ["approvers"])
 
     {WardrikChannel.Notices,
      channel: target["channel"], room: target["room"], approvers: approvers}
@@ -714,14 +713,23 @@ defmodule WardrikDaemon.Config do
         {type, settings} = Map.pop(table!(channel, path), "type")
         {orgs, settings} = Map.pop(settings, "org")
         {creates, settings} = Map.pop(settings, "create", true)
+        {approvers, settings} = Map.pop(settings, "approvers", [])
         adapter = adapter!(type, path ++ ["type"])
 
         unless is_boolean(creates),
           do: invalid!(path ++ ["create"], "is true or false")
 
+        approvers!(approvers, path ++ ["approvers"])
+
         case adapter.config(settings) do
           {:ok, options} ->
-            {name(name), {adapter, options}, orgs(orgs, org, path ++ ["org"]), creates}
+            {name(name),
+             %{
+               channel: {adapter, options},
+               orgs: orgs(orgs, org, path ++ ["org"]),
+               creates: creates,
+               approvers: approvers
+             }}
 
           {:error, at, message} ->
             invalid!(path ++ at, message)
@@ -729,10 +737,16 @@ defmodule WardrikDaemon.Config do
       end)
 
     [
-      channels: for({name, channel, _orgs, _creates} <- read, do: {name, channel}),
-      orgs: for({name, _channel, orgs, _creates} <- read, do: {name, orgs}),
-      creates: for({name, _channel, _orgs, creates} <- read, do: {name, creates})
+      channels: for({name, channel} <- read, do: {name, channel.channel}),
+      orgs: for({name, channel} <- read, do: {name, channel.orgs}),
+      creates: for({name, channel} <- read, do: {name, channel.creates}),
+      approvers: for({name, channel} <- read, do: {name, channel.approvers})
     ]
+  end
+
+  defp approvers!(approvers, path) do
+    unless is_list(approvers) and Enum.all?(approvers, &is_binary/1),
+      do: invalid!(path, "is a list of who may answer, as the channel names them")
   end
 
   defp adapter!(type, path) do

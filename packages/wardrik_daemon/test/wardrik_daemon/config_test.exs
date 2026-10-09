@@ -411,8 +411,11 @@ defmodule WardrikDaemon.ConfigTest do
           type: test
       """
 
-      assert {:ok, [{WardrikChannel, [channels: channels, orgs: orgs, creates: _creates]}]} =
-               read(yaml, context)
+      assert {:ok,
+              [
+                {WardrikChannel,
+                 [channels: channels, orgs: orgs, creates: _creates, approvers: approvers]}
+              ]} = read(yaml, context)
 
       assert Enum.sort(channels) == [
                chat: {WardrikDaemon.Test.Channel, [room_prefix: "wardrik-"]},
@@ -420,6 +423,17 @@ defmodule WardrikDaemon.ConfigTest do
              ]
 
       assert Enum.sort(orgs) == [chat: ["default"], other: ["default"]]
+      assert Enum.sort(approvers) == [chat: [], other: []]
+
+      assert {:ok, [{WardrikChannel, settings}]} =
+               read("channels:\n  chat: {type: test, approvers: [\"@maria\"]}\n", context)
+
+      assert settings[:approvers] == [chat: ["@maria"]]
+
+      assert {:error, message} =
+               read("channels:\n  chat: {type: test, approvers: maria}\n", context)
+
+      assert message =~ "channels.chat.approvers is a list of who may answer"
 
       yaml = "channels:\n  chat: {type: test, org: \"*\"}\n  acme: {type: test, org: [acme]}\n"
       assert {:ok, [{WardrikChannel, settings}]} = read(yaml, context)
