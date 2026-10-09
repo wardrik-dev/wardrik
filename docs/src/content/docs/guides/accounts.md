@@ -68,7 +68,7 @@ systemctl --user restart wardrik
 ```
 
 To keep the key apart from the store, set `WARDRIK_VAULT_KEY` where the daemon reads its
-environment, such as `~/.config/wardrik/env` under the service, or `vault.keys` in `config.yaml`.
+environment, such as `~/.config/wardrik/env`, or `vault.keys` in `config.yaml`.
 Either is used in place of the file. Without a key nothing is sealed or read, and every call needing
 a connected account fails; nothing falls back to plain text.
 

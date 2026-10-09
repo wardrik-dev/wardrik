@@ -8,10 +8,18 @@ defmodule WardrikDaemon.DoctorTest do
 
   defp config(dir, yaml), do: File.write!(Path.join(dir, "config.yaml"), yaml)
 
+  defp env_file(dir, text, mode) do
+    file = Path.join(dir, "env")
+    File.write!(file, text)
+    File.chmod!(file, mode)
+    file
+  end
+
   setup %{tmp_dir: dir} do
     for {variable, value} <- [
           {"WARDRIK_DATA_DIR", Path.join(dir, "store")},
-          {"WARDRIK_DATA_HOME", dir}
+          {"WARDRIK_DATA_HOME", dir},
+          {"WARDRIK_ENV_FILE", Path.join(dir, "env")}
         ] do
       previous = System.get_env(variable)
       System.put_env(variable, value)
@@ -31,6 +39,7 @@ defmodule WardrikDaemon.DoctorTest do
     File.mkdir_p!(Path.join(dir, "store"))
 
     assert Doctor.checks(dir) == [
+             {:ok, "env", "no #{dir}/env; config.yaml reads this environment and the vault"},
              {:ok, "config", "#{dir}/config.yaml reads"},
              {:ok, "store", "on this node's disk, at #{dir}/store"},
              {:ok, "vault", "no key, and nothing configured needs one"},
@@ -38,10 +47,10 @@ defmodule WardrikDaemon.DoctorTest do
            ]
   end
 
-  test "a config.yaml that does not read is the only check", %{tmp_dir: dir} do
+  test "a config.yaml that does not read is the last check", %{tmp_dir: dir} do
     config(dir, "storage:\n  s3: {}\n")
 
-    assert [{:error, "config", message}] = Doctor.checks(dir)
+    assert [{:ok, "env", _none}, {:error, "config", message}] = Doctor.checks(dir)
     assert message =~ "storage.s3.bucket is required"
   end
 
@@ -49,7 +58,7 @@ defmodule WardrikDaemon.DoctorTest do
     config(dir, "")
     File.write!(Path.join(dir, "config.yml"), "")
 
-    assert [{:error, "config", message}] = Doctor.checks(dir)
+    assert [_env, {:error, "config", message}] = Doctor.checks(dir)
     assert message =~ "holds both config.yaml and config.yml"
   end
 
@@ -57,13 +66,13 @@ defmodule WardrikDaemon.DoctorTest do
   test "reaches the database storage names, and says why it cannot", %{tmp_dir: dir} do
     config(dir, "storage:\n  postgres:\n    url: #{Services.database_url()}\n")
 
-    assert [{:ok, "config", _read}, {:ok, "store", found} | _rest] = Doctor.checks(dir)
+    assert [_env, {:ok, "config", _read}, {:ok, "store", found} | _rest] = Doctor.checks(dir)
     assert found =~ "holds wardrik_records"
 
     wrong = String.replace(Services.database_url(), ":postgres@", ":wrong@")
     config(dir, "storage:\n  postgres:\n    url: #{wrong}\n")
 
-    assert [{:ok, "config", _read}, {:error, "store", found} | _rest] = Doctor.checks(dir)
+    assert [_env, {:ok, "config", _read}, {:error, "store", found} | _rest] = Doctor.checks(dir)
     assert found =~ "password authentication failed"
   end
 
@@ -117,7 +126,7 @@ defmodule WardrikDaemon.DoctorTest do
         _other -> nil
       end
 
-      assert [{:error, "config", message}] = Doctor.checks(dir, vault)
+      assert [_env, {:error, "config", message}] = Doctor.checks(dir, vault)
 
       assert message =~
                "names ${DOCTOR_ZAPIER_PATH}, which neither the environment nor the vault sets"
@@ -134,9 +143,38 @@ defmodule WardrikDaemon.DoctorTest do
 
       config(dir, "ssh:\n  ip: \"${DOCTOR_SSH_IP}\"\n")
 
-      assert [{:error, "config", message}] = Doctor.checks(dir)
+      assert [_env, {:error, "config", message}] = Doctor.checks(dir)
       assert message =~ "ssh.ip is an address"
       assert message =~ "It reads ${DOCTOR_SSH_IP} from the vault, which doctor reads only"
+    end
+  end
+
+  describe "the env file" do
+    test "sets a variable a line, past blank lines and comments", %{tmp_dir: dir} do
+      file = env_file(dir, "# keys\n\nA=1\nexport B=\"two words\"\n", 0o600)
+
+      assert check(Doctor.checks(dir), "env") == {:ok, "env", "#{file} sets 2 variables"}
+    end
+
+    test "fails where others can read it", %{tmp_dir: dir} do
+      file = env_file(dir, "A=1\n", 0o644)
+
+      assert check(Doctor.checks(dir), "env") ==
+               {:error, "env", "#{file} can be read by others; chmod 600 it"}
+    end
+
+    test "fails a line that sets no variable", %{tmp_dir: dir} do
+      file = env_file(dir, "A=1\nB = 2\n", 0o600)
+
+      assert check(Doctor.checks(dir), "env") ==
+               {:error, "env", "#{file} line 2 is not NAME=value"}
+    end
+
+    test "is checked where config.yaml does not read", %{tmp_dir: dir} do
+      env_file(dir, "A=1\n", 0o640)
+      config(dir, "storage:\n  s3: {}\n")
+
+      assert [{:error, "env", _readable}, {:error, "config", _message}] = Doctor.checks(dir)
     end
   end
 

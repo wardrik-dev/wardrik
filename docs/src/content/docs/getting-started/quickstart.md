@@ -17,8 +17,7 @@ agent one question. [Install](/getting-started/install/) covers Docker, and the 
 
 An agent's model is named as `provider:model`, and the daemon reads the provider's key from the
 vault. `wardrik vault put ANTHROPIC_API_KEY` seals another, which every node uses at once. A key set
-in the daemon's environment, such as in `~/.config/wardrik/env` for the service, is read before the
-vault's.
+in the daemon's environment, such as in `~/.config/wardrik/env`, is read before the vault's.
 
 ## Write an agent
 
