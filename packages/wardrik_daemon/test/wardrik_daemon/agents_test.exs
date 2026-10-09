@@ -544,15 +544,68 @@ defmodule WardrikDaemon.AgentsTest do
     # Answered once the files have been read.
     _files = Agents.files()
 
-    assert Agents.offered("slack") ==
+    assert Enum.map(Agents.offered("slack"), & &1.agent) ==
              [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
 
-    assert AgentID.parse!("#{org}/triage") in Agents.offered("everyone")
-    refute AgentID.parse!("#{org}/books") in Agents.offered("everyone")
+    everyone = Enum.map(Agents.offered("everyone"), & &1.agent)
+    assert AgentID.parse!("#{org}/triage") in everyone
+    refute AgentID.parse!("#{org}/books") in everyone
 
     Application.put_env(:wardrik_daemon, WardrikChannel, orgs: [slack: ["elsewhere"]])
     assert Agents.offered("slack") == []
     assert Agents.offered("nowhere") == []
+  end
+
+  test "creates an agent for a room from the defaults, where they name a policy and the channel lets it",
+       %{org: org} = context do
+    Application.put_env(:wardrik_daemon, WardrikChannel,
+      orgs: [slack: [org], closed: [org]],
+      creates: [slack: true, closed: false]
+    )
+
+    Application.put_env(:wardrik_daemon, Agents,
+      defaults: %{"model" => "anthropic:claude-sonnet-5"}
+    )
+
+    previous = Application.get_env(:wardrik_daemon, Agents)
+
+    on_exit(fn ->
+      Application.delete_env(:wardrik_daemon, WardrikChannel)
+      Application.put_env(:wardrik_daemon, Agents, previous || [])
+    end)
+
+    write_policy(context, "careful", "deny: [run_lua]\n")
+    start_supervised!({Agents, dir: context.dir})
+    _files = Agents.files()
+    maria = Wardrik.Principal.new(:slack, "U1", name: "maria")
+
+    refute Agents.creatable?("slack")
+
+    assert {:error, "Agents are not created from here" <> _} =
+             Agents.create("slack", "books", maria)
+
+    Application.put_env(:wardrik_daemon, Agents,
+      defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
+    )
+
+    assert Agents.creatable?("slack")
+    refute Agents.creatable?("closed")
+
+    assert {:ok, %WardrikChannel.Offer{agent: id, description: "Answers in #Books & Bills."}} =
+             Agents.create("slack", "Books & Bills", maria)
+
+    assert id == AgentID.parse!("#{org}/books-bills")
+    assert Fleet.lookup(id)
+    assert id in Enum.map(Agents.offered("slack"), & &1.agent)
+
+    assert Wardrik.Test.Audit.about("agents/#{id}") ==
+             [{"agent.defined", %{"type" => "slack", "id" => "U1", "name" => "maria"}}]
+
+    assert {:error, message} = Agents.create("slack", "books-bills", maria)
+    assert message =~ "#{org}/books-bills is there already"
+
+    assert {:error, "Agents are not created from here" <> _} = Agents.create("closed", "x", maria)
+    assert {:error, ~s("!!!" makes no agent's name.)} = Agents.create("slack", "!!!", maria)
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do

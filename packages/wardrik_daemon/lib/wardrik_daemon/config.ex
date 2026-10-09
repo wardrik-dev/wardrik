@@ -147,6 +147,9 @@ defmodule WardrikDaemon.Config do
   of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
   finds those the release holds, and its `org`, whose agents it may offer
   in a room: the deployment's own unless it says, or `*` for every org's.
+  Someone in a room no agent is offered in may create one there, from
+  `defaults`, where `defaults` name a policy, unless the channel's `create`
+  is `false`.
   The rest of a channel's settings are its adapter's, which reads them; see
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.
@@ -696,17 +699,25 @@ defmodule WardrikDaemon.Config do
         path = ["channels", name]
         {type, settings} = Map.pop(table!(channel, path), "type")
         {orgs, settings} = Map.pop(settings, "org")
+        {creates, settings} = Map.pop(settings, "create", true)
         adapter = adapter!(type, path ++ ["type"])
 
+        unless is_boolean(creates),
+          do: invalid!(path ++ ["create"], "is true or false")
+
         case adapter.config(settings) do
-          {:ok, options} -> {name(name), {adapter, options}, orgs(orgs, org, path ++ ["org"])}
-          {:error, at, message} -> invalid!(path ++ at, message)
+          {:ok, options} ->
+            {name(name), {adapter, options}, orgs(orgs, org, path ++ ["org"]), creates}
+
+          {:error, at, message} ->
+            invalid!(path ++ at, message)
         end
       end)
 
     [
-      channels: for({name, channel, _orgs} <- read, do: {name, channel}),
-      orgs: for({name, _channel, orgs} <- read, do: {name, orgs})
+      channels: for({name, channel, _orgs, _creates} <- read, do: {name, channel}),
+      orgs: for({name, _channel, orgs, _creates} <- read, do: {name, orgs}),
+      creates: for({name, _channel, _orgs, creates} <- read, do: {name, creates})
     ]
   end
 

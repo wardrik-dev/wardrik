@@ -42,11 +42,21 @@ channels:
 
 ## A room's agent
 
-Inviting a channel's bot into a room binds the room to an agent: the one the channel offers, or the
-one chosen among several. It answers there when mentioned, or to every message, which makes the
-room the agent's own. Taking the bot out of the room unbinds it. Each binding, and each change to
-it, is recorded in the audit log as `wardrik.room.bound` and `wardrik.room.unbound`
-[events](/reference/events/), with who made it.
+Inviting a channel's bot into a room gives the room an agent, and the bot always says where things
+stand:
+
+- **One agent offered:** it answers there at once, when mentioned. The bot says what the agent is
+  for, from its `description`, and how to reach it, with a button to have it answer every message
+  instead, which makes the room the agent's own, and a menu to use another agent or stop.
+- **Several offered:** each with what it is for, and a button to use it.
+- **None offered:** a button to create one for the room, from `config.yaml`'s `defaults`, where
+  they name a policy. It is named after the room, offered in the channel, and kept as an agent the
+  [HTTP API](/guides/http-api/) defined is, so whoever runs Wardrik can change it later. A channel's
+  `create: false` turns this off; the bot then says who can offer an agent.
+
+Taking the bot out of the room unbinds it. Each binding, each change to it, and each agent created
+is recorded in the audit log, as `wardrik.room.bound`, `wardrik.room.unbound` and
+`wardrik.agent.defined` [events](/reference/events/), with who made it.
 
 ## Notices in a room
 

@@ -56,12 +56,19 @@ An agent is offered in Slack where its file names the channel:
 channels: [slack]
 ```
 
-Inviting the app into a Slack channel then has an agent answer there. Where one agent is offered,
-the app binds the Slack channel to it at once; where several are, it asks which, with a button for
-each. Either way its message says when the agent answers, with a button for each: **When mentioned**,
-as it starts, or **Every message**, which makes the Slack channel the agent's own. Taking the app
-out of the Slack channel unbinds it. Where no agent is offered, the app says nothing, so a Slack
-channel it only posts notices in stays as it was.
+Inviting the app into a Slack channel then has an agent answer there, and the app says so:
+
+> :wave: **acme/books** answers here now.
+> _Keeps the books: reconciles Square deposits and posts to QuickBooks._
+> Mention @Wardrik and it answers in a thread under your message. A call that needs approval waits
+> here for someone to approve it.
+> `[Answer every message]` `[⋯]`
+
+**Answer every message** makes the Slack channel the agent's own; the ⋯ menu uses another agent, or
+stops it answering there. Where several agents are offered, the app lists each with what it is for,
+and a **Use** button. Where none is, it offers to **Create an agent for #books**, from the
+deployment's defaults; see [Channels](/channels/#a-rooms-agent). Taking the app out of the Slack
+channel unbinds it.
 
 Each binding, and each change to when it answers, is recorded in the audit log, as
 `wardrik.room.bound` and `wardrik.room.unbound` [events](/reference/events/), with

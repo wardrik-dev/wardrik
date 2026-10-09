@@ -173,7 +173,10 @@ defmodule WardrikDaemon do
       channels ->
         [
           {WardrikChannel.Supervisor,
-           channels: channels, offered: {WardrikDaemon.Agents, :offered, []}}
+           channels: channels,
+           offered: {WardrikDaemon.Agents, :offered, []},
+           creatable: {WardrikDaemon.Agents, :creatable?, []},
+           create: {WardrikDaemon.Agents, :create, []}}
         ]
     end
   end

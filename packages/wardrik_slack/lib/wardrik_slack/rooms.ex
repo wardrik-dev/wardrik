@@ -1,22 +1,27 @@
 defmodule WardrikSlack.Rooms do
   @moduledoc """
   A Slack channel coming to have an agent answer in it, as
-  `WardrikChannel.Rooms` sets out.
+  `WardrikChannel.Rooms` sets out, and what the bot says there as it does.
 
-  When the bot is invited into a Slack channel, it says which agent answers
-  there: the one the channel offers, or a button for each to choose among.
-  Where the channel offers none, it says nothing, so a Slack channel it only
-  posts notices in stays as it was.
-  Either way the message then says when it answers, with a button to answer
-  when mentioned and one to answer every message. Taking the bot out of the
-  Slack channel unbinds it.
+  Invited into a Slack channel, the bot always says where things stand:
 
-  Whoever invited the bot, chose the agent, or took the bot out is who the
-  change is recorded as made by, as a `:slack` principal.
+    * the one agent offered answers there now: what it is for, how to reach
+      it, a button to have it answer every message or only when mentioned,
+      and a menu to use another agent or stop it answering there
+    * several are offered: each with what it is for, and a button to use it
+    * none is, and one may be created: a button to create one for the Slack
+      channel, from the deployment's defaults
+    * none is, and none may be created: who can offer one, and a button to
+      look again once they have
+
+  Taking the bot out of the Slack channel unbinds it. Whoever invited the
+  bot, chose, or pressed is who each change is recorded as made by, as a
+  `:slack` principal.
   """
 
   alias Wardrik.AgentID
   alias Wardrik.Principal
+  alias WardrikChannel.Offer
   alias WardrikChannel.Room
 
   @max_buttons 5
@@ -33,11 +38,10 @@ defmodule WardrikSlack.Rooms do
     if bot == opts[:bot] do
       context = Keyword.fetch!(opts, :context)
 
-      case WardrikChannel.Rooms.joined(context, room, slack(event["inviter"])) do
-        {:bound, bound} -> post(room, bound(bound), opts)
-        {:choose, []} -> :ignored
-        {:choose, agents} -> post(room, choose(agents), opts)
-      end
+      context
+      |> WardrikChannel.Rooms.joined(room, name(room, opts), slack(event["inviter"]))
+      |> message(context, opts)
+      |> post(room, opts)
     else
       :ignored
     end
@@ -51,24 +55,25 @@ defmodule WardrikSlack.Rooms do
   def event(_event, _opts), do: :ignored
 
   @doc """
-  Answers a press of a button this posted: binds the room to the agent
-  chosen, or changes when it answers, and replaces the message with what it
-  now says.
+  Answers a press of a button, or a choice from a menu, this posted, and
+  replaces the message with what the Slack channel shows now.
   """
   @spec answer(map(), keyword()) :: :ok | :ignored
-  def answer(%{"actions" => [%{"action_id" => action} = pressed | _]} = payload, opts)
-      when action in ["wardrik_room_agent", "wardrik_room_answers"] do
+  def answer(
+        %{"actions" => [%{"action_id" => "wardrik_room_" <> action} = pressed | _]} = payload,
+        opts
+      )
+      when action in ["agent", "answers", "create", "more"] do
     context = Keyword.fetch!(opts, :context)
-    room = get_in(payload, ["channel", "id"])
+    %{"id" => room} = channel = Map.get(payload, "channel", %{})
     user = Map.get(payload, "user", %{})
     by = slack(user["id"], user["username"] || user["name"])
+    name = channel["name"] || room
 
     reply =
-      case act(action, value(pressed), context, room, by) do
-        {:ok, bound} -> Map.merge(%{replace_original: true}, bound(bound))
-        {:error, :not_offered} -> WardrikSlack.ephemeral("That agent is no longer offered here.")
-        {:error, :not_bound} -> WardrikSlack.ephemeral("No agent answers here; invite me again.")
-        :error -> WardrikSlack.ephemeral("That does not read as an agent.")
+      case act(action, value(pressed), context, {room, name}, by) do
+        {:error, message} when is_binary(message) -> WardrikSlack.ephemeral(message)
+        shown -> Map.put(message(shown, context, opts), :replace_original, true)
       end
 
     WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
@@ -76,18 +81,37 @@ defmodule WardrikSlack.Rooms do
 
   def answer(_payload, _opts), do: :ignored
 
-  defp act("wardrik_room_agent", text, context, room, by) do
-    case AgentID.parse(to_string(text)) do
-      {:ok, agent} -> WardrikChannel.Rooms.chose(context, room, agent, by)
-      {:error, _message} -> :error
+  defp act("agent", text, context, {room, _name}, by) do
+    with {:ok, agent} <- AgentID.parse(to_string(text)),
+         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(context, room, agent, by) do
+      {:bound, bound, offer}
+    else
+      {:error, :not_offered} -> {:error, "That agent is no longer offered here."}
+      {:error, _not_an_id} -> {:error, "That does not read as an agent."}
     end
   end
 
-  defp act("wardrik_room_answers", "everything", context, room, by),
-    do: WardrikChannel.Rooms.answers(context, room, :everything, by)
+  defp act("answers", answers, context, {room, name}, by) do
+    answers = if answers == "everything", do: :everything, else: :mentions
 
-  defp act("wardrik_room_answers", _mentions, context, room, by),
-    do: WardrikChannel.Rooms.answers(context, room, :mentions, by)
+    case WardrikChannel.Rooms.answers(context, room, answers, by) do
+      {:ok, bound, offer} -> {:bound, bound, offer}
+      {:error, :not_bound} -> WardrikChannel.Rooms.choices(context, name)
+    end
+  end
+
+  defp act("create", name, context, {room, _name}, by) do
+    with {:ok, bound, offer} <- WardrikChannel.Rooms.create(context, room, to_string(name), by),
+         do: {:bound, bound, offer}
+  end
+
+  defp act("more", "stop", context, {room, _name}, by) do
+    :ok = WardrikChannel.Rooms.left(context, room, by)
+    :stopped
+  end
+
+  defp act("more", _choose, context, {_room, name}, _by),
+    do: WardrikChannel.Rooms.choices(context, name)
 
   # A button carries its value; a menu, the option chosen.
   defp value(%{"value" => value}), do: value
@@ -97,64 +121,141 @@ defmodule WardrikSlack.Rooms do
   # -- messages --------------------------------------------------------------
 
   @doc false
-  @spec bound(Room.t()) :: %{text: String.t(), blocks: [map()]}
-  def bound(%Room{agent: agent, answers: answers}) do
-    when_ = if answers == :everything, do: "to every message", else: "when mentioned"
-    text = "I'll answer here as *#{agent}*, #{when_}."
+  @spec message(WardrikChannel.Rooms.shown() | :stopped, WardrikChannel.Context.t(), keyword()) ::
+          %{text: String.t(), blocks: [map()]}
+  def message({:bound, %Room{agent: agent, answers: answers}, offer}, _context, opts) do
+    text = ":wave: *#{agent}* answers here now."
+
+    {how, toggle} =
+      if answers == :everything,
+        do:
+          {"It answers every message here, each in a thread of its own.",
+           button("Answer only when mentioned", "wardrik_room_answers", "mentions")},
+        else:
+          {"Mention <@#{opts[:bot]}> and it answers in a thread under your message.",
+           button("Answer every message", "wardrik_room_answers", "everything")}
+
+    %{
+      text: text,
+      blocks:
+        [section(text)] ++
+          described(offer) ++
+          [
+            section(how <> " A call that needs approval waits here for someone to approve it."),
+            WardrikSlack.actions("wardrik_room", [toggle, more()])
+          ]
+    }
+  end
+
+  def message({:choose, offers}, _context, _opts) do
+    text = "Which agent should answer here? It answers when mentioned; you can change that after."
+    %{text: text, blocks: [section(text) | choose(offers)]}
+  end
+
+  def message({:create, name}, context, _opts) do
+    text = "No agent answers in Slack here yet."
 
     %{
       text: text,
       blocks: [
         section(text),
         WardrikSlack.actions("wardrik_room", [
-          answers_button("When mentioned", "mentions", answers == :mentions),
-          answers_button("Every message", "everything", answers == :everything)
+          button("Create an agent for ##{name}", "wardrik_room_create", name, "primary")
         ]),
-        context_line("Take me out of this channel to stop.")
+        context_line(
+          "It starts from this deployment's defaults, and answers when mentioned. Whoever runs " <>
+            "Wardrik can change what it does later, or offer an agent they have here by adding " <>
+            "`channels: [#{context.channel}]` to its file."
+        )
       ]
     }
   end
 
-  @doc false
-  @spec choose([AgentID.t()]) :: %{text: String.t(), blocks: [map()]}
-  def choose(agents) do
-    text = "Which agent should answer here?"
-    %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", picker(agents))]}
+  def message(:none, context, _opts) do
+    text =
+      "No agent answers in Slack here yet. Whoever runs Wardrik can offer one by adding " <>
+        "`channels: [#{context.channel}]` to its agent file."
+
+    look_again = button("Look again", "wardrik_room_more", "choose")
+    %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", [look_again])]}
   end
 
-  defp picker(agents) when length(agents) <= @max_buttons,
-    do:
-      Enum.map(agents, fn agent ->
-        button(to_string(agent), "wardrik_room_agent", to_string(agent), nil)
-      end)
+  def message(:stopped, _context, _opts) do
+    text = "No agent answers here now."
+    choose = button("Choose an agent", "wardrik_room_more", "choose")
+    %{text: text, blocks: [section(text), WardrikSlack.actions("wardrik_room", [choose])]}
+  end
 
-  defp picker(agents) do
+  defp described(%Offer{description: description}) when is_binary(description),
+    do: [context_line("_#{description}_")]
+
+  defp described(_offer), do: []
+
+  defp choose(offers) when length(offers) <= @max_buttons do
+    for %Offer{agent: agent, description: description} <- offers do
+      line = if description, do: "*#{agent}*\n#{description}", else: "*#{agent}*"
+      Map.put(section(line), :accessory, button("Use", "wardrik_room_agent", to_string(agent)))
+    end
+  end
+
+  defp choose(offers) do
     options =
-      Enum.map(agents, &%{text: plain(to_string(&1)), value: to_string(&1)})
+      for %Offer{agent: agent, description: description} <- offers do
+        option = %{text: plain(to_string(agent)), value: to_string(agent)}
+        if description, do: Map.put(option, :description, plain(clip(description))), else: option
+      end
 
-    [
-      %{
-        type: "static_select",
-        action_id: "wardrik_room_agent",
-        placeholder: plain("Choose an agent"),
-        options: options
-      }
-    ]
+    select = %{
+      type: "static_select",
+      action_id: "wardrik_room_agent",
+      placeholder: plain("Choose an agent"),
+      options: options
+    }
+
+    [WardrikSlack.actions("wardrik_room", [select])]
   end
 
-  defp answers_button(label, value, current?),
-    do: button(label, "wardrik_room_answers", value, if(current?, do: "primary"))
-
-  defp button(label, action, value, style) do
-    %{type: "button", text: plain(label), action_id: action, value: value}
-    |> then(fn button -> if style, do: Map.put(button, :style, style), else: button end)
+  defp more do
+    %{
+      type: "overflow",
+      action_id: "wardrik_room_more",
+      options: [
+        %{text: plain("Use another agent"), value: "choose"},
+        %{text: plain("Stop answering here"), value: "stop"}
+      ]
+    }
   end
+
+  defp button(label, action, value, style \\ nil) do
+    button = %{type: "button", text: plain(label), action_id: action, value: value}
+    if style, do: Map.put(button, :style, style), else: button
+  end
+
+  # An option's description is at most 75 characters.
+  defp clip(text),
+    do: if(String.length(text) > 75, do: String.slice(text, 0, 74) <> "…", else: text)
 
   defp plain(text), do: %{type: "plain_text", text: text}
   defp section(text), do: %{type: "section", text: %{type: "mrkdwn", text: text}}
   defp context_line(text), do: %{type: "context", elements: [%{type: "mrkdwn", text: text}]}
 
-  defp post(room, message, opts) do
+  # -- Slack -----------------------------------------------------------------
+
+  # The Slack channel's name, for an agent created for it, or its id where
+  # Slack does not say.
+  defp name(room, opts) do
+    case WardrikSlack.post(
+           "conversations.info",
+           Keyword.fetch!(opts, :token),
+           %{channel: room},
+           Keyword.get(opts, :req_options, [])
+         ) do
+      {:ok, %{"channel" => %{"name" => name}}} -> name
+      _unknown -> room
+    end
+  end
+
+  defp post(message, room, opts) do
     case WardrikSlack.post(
            "chat.postMessage",
            Keyword.fetch!(opts, :token),

@@ -155,6 +155,9 @@ boots, before anything starts, and the rest once the store runs; see
 of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
 finds those the release holds, and its `org`, whose agents it may offer
 in a room: the deployment's own unless it says, or `*` for every org's.
+Someone in a room no agent is offered in may create one there, from
+`defaults`, where `defaults` name a policy, unless the channel's `create`
+is `false`.
 The rest of a channel's settings are its adapter's, which reads them; see
 `WardrikChannel`. An agent is offered in a channel's rooms where its file
 names the channel; see `WardrikDaemon.AgentFile`.
