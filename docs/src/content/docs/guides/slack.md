@@ -44,12 +44,16 @@ the app has, so another service connected with the same app would receive some o
 
 1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), from scratch, in your
    workspace.
-2. Under **OAuth & Permissions**, add the bot token scope `chat:write`, install the app, and copy the
-   **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`.
+2. Under **OAuth & Permissions**, add the bot token scopes `chat:write`, `channels:read` and
+   `groups:read`, install the app, and copy the **Bot User OAuth Token**, `xoxb-...`. This is the
+   channel's `token`.
 3. Under **Socket Mode**, turn it on, and make an app-level token with the scope
    `connections:write`, `xapp-...`. This is the channel's `app_token`.
 4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
-5. Invite the app to the channel: `/invite @yourapp`.
+5. Under **Event Subscriptions**, turn events on and subscribe to the bot events
+   `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears when the app is
+   invited into a Slack channel or taken out of one.
+6. Invite the app to the channel: `/invite @yourapp`.
 
 Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
 
@@ -61,6 +65,34 @@ systemctl --user restart wardrik
 
 The buttons arrive over Socket Mode, a connection the daemon opens out to Slack, so it needs no
 public address and no open port.
+
+## An agent in a Slack channel
+
+An agent is offered in Slack where its file names the channel:
+
+```yaml
+# in an agent file
+channels: [slack]
+```
+
+Inviting the app into a Slack channel then has an agent answer there. Where one agent is offered,
+the app binds the Slack channel to it at once; where several are, it asks which, with a button for
+each. Either way its message says when the agent answers, with a button for each: **When mentioned**,
+as it starts, or **Every message**, which makes the Slack channel the agent's own. Taking the app
+out of the Slack channel unbinds it. Where no agent is offered, the app says nothing, so a Slack
+channel it only posts notices in stays as it was.
+
+Each binding, and each change to when it answers, is recorded in the audit log, as
+`wardrik.room.bound` and `wardrik.room.unbound` [events](/reference/events/), with
+the Slack user who made it.
+
+A channel offers the agents of the deployment's org unless its `org` names others, or `*` for every
+org's:
+
+```yaml
+channels:
+  globex-slack: {type: slack, org: globex, token: "${GLOBEX_SLACK_BOT_TOKEN}", app_token: "${GLOBEX_SLACK_APP_TOKEN}"}
+```
 
 ## What a notice says
 

@@ -153,8 +153,11 @@ boots, before anything starts, and the rest once the store runs; see
 
 `channels` names the chat media agents are reached through, each by a name
 of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
-finds those the release holds. The rest of a channel's settings are its
-adapter's, which reads them; see `WardrikChannel`.
+finds those the release holds, and its `org`, whose agents it may offer
+in a room: the deployment's own unless it says, or `*` for every org's.
+The rest of a channel's settings are its adapter's, which reads them; see
+`WardrikChannel`. An agent is offered in a channel's rooms where its file
+names the channel; see `WardrikDaemon.AgentFile`.
 
 `notify` names targets an agent file's `notify` routes to, each one a
 `channel` of `channels` and a `room` in it, with who may answer it as

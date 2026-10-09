@@ -532,6 +532,29 @@ defmodule WardrikDaemon.AgentsTest do
     assert [_member] = Fleet.list(Prefix.parse!(org <> "/"))
   end
 
+  test "offers in a channel the agents whose files name it, of the orgs it serves",
+       %{org: org} = context do
+    Application.put_env(:wardrik_daemon, WardrikChannel, orgs: [slack: [org], everyone: :all])
+    on_exit(fn -> Application.delete_env(:wardrik_daemon, WardrikChannel) end)
+
+    write(context, "books", "channels: [slack]\n")
+    write(context, "triage", "channels: [slack, everyone]\n")
+    write(context, "quiet", "")
+    start_supervised!({Agents, dir: context.dir})
+    # Answered once the files have been read.
+    _files = Agents.files()
+
+    assert Agents.offered("slack") ==
+             [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
+
+    assert AgentID.parse!("#{org}/triage") in Agents.offered("everyone")
+    refute AgentID.parse!("#{org}/books") in Agents.offered("everyone")
+
+    Application.put_env(:wardrik_daemon, WardrikChannel, orgs: [slack: ["elsewhere"]])
+    assert Agents.offered("slack") == []
+    assert Agents.offered("nowhere") == []
+  end
+
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
     start_supervised!({Agents, dir: Path.join(dir, "missing")})
     assert Agents.files() == []

@@ -167,8 +167,14 @@ defmodule WardrikDaemon do
 
   defp channels do
     case Keyword.get(Config.settings(WardrikChannel), :channels, []) do
-      [] -> []
-      channels -> [{WardrikChannel.Supervisor, channels: channels}]
+      [] ->
+        []
+
+      channels ->
+        [
+          {WardrikChannel.Supervisor,
+           channels: channels, offered: {WardrikDaemon.Agents, :offered, []}}
+        ]
     end
   end
 

@@ -60,6 +60,13 @@ defmodule Wardrik.Audit do
     * `{:agents_reloaded, nodes}` - the files that declare agents were read
       again on `nodes`
 
+  Rooms, by the channel they are in and their id there:
+
+    * `{:room_bound, channel, room, agent, answers}` - the agent `agent`
+      answers in the room from now on: when mentioned, `:mentions`, or to
+      every message, `:everything`
+    * `{:room_unbound, channel, room}` - no agent answers in it any longer
+
   Credentials:
 
     * `{:token_created, token_id, name, grant, for}` - an API token was made,
@@ -82,6 +89,8 @@ defmodule Wardrik.Audit do
           | {:schedule_set, AgentID.t(), String.t()}
           | {:schedule_removed, AgentID.t(), String.t()}
           | {:agents_reloaded, [node()]}
+          | {:room_bound, String.t(), String.t(), AgentID.t(), :mentions | :everything}
+          | {:room_unbound, String.t(), String.t()}
           | {:token_created, String.t(), String.t(), Wardrik.Grant.t(), Principal.t() | nil}
           | {:token_revoked, String.t()}
           | {:secret_stored, String.t(), Prefix.t()}

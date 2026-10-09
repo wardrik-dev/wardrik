@@ -2,10 +2,13 @@ defmodule WardrikSlack.Socket do
   @moduledoc """
   A Socket Mode connection out to Slack, for one channel's app-level token.
 
-  It asks Slack for a connection URL, connects, acknowledges every envelope
-  Slack sends, and hands each button press to `WardrikSlack.Answers.answer/2`,
-  with the channel's `:token` and `:req_options`. It starts nothing for a
-  channel with no app-level token.
+  It finds the bot it posts as, asks Slack for a connection URL, connects,
+  and acknowledges every envelope Slack sends. A button press goes to
+  `WardrikSlack.Rooms` where it binds a room, and to `WardrikSlack.Answers`
+  otherwise; an event, such as the bot being invited into a room, to
+  `WardrikSlack.Rooms`. Each is handled in a task of its own, with the
+  channel's `:token`, `:context` and `:req_options`, and the bot's user id as
+  `:bot`. It starts nothing for a channel with no app-level token.
   When Slack closes the connection, as it does every few hours, or the
   network drops it, it connects again, waiting longer after each failure up
   to a minute.
@@ -26,7 +29,7 @@ defmodule WardrikSlack.Socket do
 
   @spec start_link(keyword()) :: GenServer.on_start() | :ignore
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:name, :app_token, :token, req_options: []])
+    opts = Keyword.validate!(opts, [:name, :app_token, :token, :context, req_options: []])
     if opts[:app_token], do: GenServer.start_link(__MODULE__, opts), else: :ignore
   end
 
@@ -47,6 +50,9 @@ defmodule WardrikSlack.Socket do
       {:ok, %{"envelope_id" => id, "type" => "interactive", "payload" => payload}} ->
         {:ack, id, {:interactive, payload}}
 
+      {:ok, %{"envelope_id" => id, "type" => "events_api", "payload" => %{"event" => event}}} ->
+        {:ack, id, {:event, event}}
+
       {:ok, %{"envelope_id" => id}} ->
         {:ack, id, :ignore}
 
@@ -62,7 +68,7 @@ defmodule WardrikSlack.Socket do
     {:ok,
      %{
        token: opts[:app_token],
-       answer: Keyword.take(opts, [:token, :req_options]),
+       answer: Keyword.take(opts, [:token, :context, :req_options]),
        connection: nil,
        backoff: @first_backoff
      }, {:continue, :connect}}
@@ -77,8 +83,22 @@ defmodule WardrikSlack.Socket do
   def handle_info(:hello, state), do: {:noreply, %{state | backoff: @first_backoff}}
 
   def handle_info({:interactive, payload}, state) do
+    handler =
+      case payload do
+        %{"actions" => [%{"action_id" => "wardrik_room" <> _} | _]} -> WardrikSlack.Rooms
+        _other -> WardrikSlack.Answers
+      end
+
     Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
-      WardrikSlack.Answers.answer(payload, state.answer)
+      handler.answer(payload, state.answer)
+    end)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:event, event}, state) do
+    Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
+      WardrikSlack.Rooms.event(event, state.answer)
     end)
 
     {:noreply, state}
@@ -89,7 +109,25 @@ defmodule WardrikSlack.Socket do
 
   def handle_info(_message, state), do: {:noreply, state}
 
+  # The bot's own user id is found once, before the first connection.
   defp connect(state) do
+    if Keyword.has_key?(state.answer, :bot), do: open(state), else: find_bot(state)
+  end
+
+  defp find_bot(state) do
+    req_options = Keyword.get(state.answer, :req_options, [])
+
+    case WardrikSlack.post("auth.test", state.answer[:token], %{}, req_options) do
+      {:ok, %{"user_id" => bot}} ->
+        open(%{state | answer: Keyword.put(state.answer, :bot, bot)})
+
+      error ->
+        Logger.warning("Slack did not say which bot this channel posts as: #{inspect(error)}")
+        retry(state)
+    end
+  end
+
+  defp open(state) do
     with {:ok, %{"url" => url}} <-
            WardrikSlack.post(
              "apps.connections.open",

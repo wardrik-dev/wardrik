@@ -18,7 +18,7 @@ defmodule Wardrik.Event.Codec do
     * `subject` - what the event is about: `runs/…`, `messages/…`,
       `tool_calls/…`, `interrupts/…`, `steps/…` or `agents/…`, and for a
       change, `agents/…`, an agent or a prefix, `agents`, every one,
-      `tokens/…` or `secrets/…`
+      `rooms/…`, `tokens/…` or `secrets/…`
     * `time` - RFC 3339 in UTC, to the microsecond
     * `datacontenttype` - `"application/json"`
     * `dataschema` - `urn:wardrik:schema:v1:<type>`, the JSON Schema the data
@@ -347,6 +347,20 @@ defmodule Wardrik.Event.Codec do
 
   defp change({:agents_reloaded, nodes}),
     do: {"agents.reloaded", "agents", %{"nodes" => Enum.map(nodes, &to_string/1)}}
+
+  defp change({:room_bound, channel, room, agent, answers}) do
+    data = %{
+      "channel" => channel,
+      "room" => room,
+      "agent" => %{"id" => to_string(agent)},
+      "answers" => to_string(answers)
+    }
+
+    {"room.bound", "rooms/#{channel}/#{room}", data}
+  end
+
+  defp change({:room_unbound, channel, room}),
+    do: {"room.unbound", "rooms/#{channel}/#{room}", %{"channel" => channel, "room" => room}}
 
   defp change({:token_created, id, name, grant, for}) do
     data =

@@ -426,6 +426,33 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "schedule names a twice"
   end
 
+  # config.yaml's channels, by the orgs each serves.
+  defp in_channels(orgs) do
+    Application.put_env(:wardrik_daemon, WardrikChannel, orgs: orgs)
+    on_exit(fn -> Application.delete_env(:wardrik_daemon, WardrikChannel) end)
+  end
+
+  describe "channels" do
+    setup do: in_channels(slack: ["default"], acme: ["acme"], every: :all)
+
+    test "offers the agent in the channels it names", context do
+      assert {:ok, %Spec{}} = read("---\nchannels: [slack, every]\n---\n", context)
+      assert AgentFile.channels(%{"channels" => ["slack"]}) == ["slack"]
+      assert AgentFile.channels(%{}) == []
+    end
+
+    test "refuses a channel config.yaml does not name, or keeps for another org", context do
+      assert {:error, message} = read("---\nchannels: [teams]\n---\n", context)
+      assert message =~ ~s(channels names "teams", but config.yaml's channels has no such channel)
+
+      assert {:error, message} = read("---\nchannels: [acme]\n---\n", context)
+      assert message =~ "channels names acme, which config.yaml keeps for another org"
+
+      assert {:error, message} = read("---\nchannels: slack\n---\n", context)
+      assert message =~ "channels is a list"
+    end
+  end
+
   describe "notify" do
     setup do
       Application.put_env(:wardrik_daemon, WardrikNotify,
@@ -504,6 +531,7 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "takes its example, which the reader reads" do
+      in_channels(slack: ["acme"])
       schema = schema()
       root = JSV.build!(schema, resolver: WardrikProtocol.Resolver)
 

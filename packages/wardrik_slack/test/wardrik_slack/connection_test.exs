@@ -50,10 +50,26 @@ defmodule WardrikSlack.ConnectionTest do
                Socket.handle_info(:connect, %{@state | backoff: 60_000})
     end
 
-    test "tries again when the connection it was given cannot be reached" do
-      Req.Test.stub(WardrikSlack.Stub, &Req.Test.json(&1, %{ok: true, url: "ws://127.0.0.1:1/"}))
+    test "finds the bot it posts as once, and tries again when the connection cannot be reached" do
+      test = self()
 
-      assert {:noreply, %{connection: nil, backoff: 2_000}} = Socket.handle_info(:connect, @state)
+      Req.Test.stub(WardrikSlack.Stub, fn conn ->
+        send(test, {:asked, conn.request_path})
+
+        case conn.request_path do
+          "/api/auth.test" -> Req.Test.json(conn, %{ok: true, user_id: "UBOT"})
+          _open -> Req.Test.json(conn, %{ok: true, url: "ws://127.0.0.1:1/"})
+        end
+      end)
+
+      assert {:noreply, %{connection: nil, backoff: 2_000} = state} =
+               Socket.handle_info(:connect, @state)
+
+      assert state.answer[:bot] == "UBOT"
+      assert_received {:asked, "/api/auth.test"}
+
+      assert {:noreply, _state} = Socket.handle_info(:connect, state)
+      refute_received {:asked, "/api/auth.test"}
     end
 
     test "starts over after a hello, and reconnects when its connection ends" do
@@ -69,10 +85,16 @@ defmodule WardrikSlack.ConnectionTest do
                Socket.handle_info({:EXIT, spawn(fn -> :ok end), :normal}, @state)
     end
 
-    test "answers a button press in a task of its own" do
+    test "answers a button press, and acts on an event, each in a task of its own" do
       start_supervised!({Task.Supervisor, name: WardrikChannel.tasks()})
 
       assert {:noreply, @state} = Socket.handle_info({:interactive, %{"actions" => []}}, @state)
+
+      room_press = %{"actions" => [%{"action_id" => "wardrik_room_answers", "value" => "x"}]}
+      assert {:noreply, @state} = Socket.handle_info({:interactive, room_press}, @state)
+
+      assert {:noreply, @state} =
+               Socket.handle_info({:event, %{"type" => "reaction_added"}}, @state)
     end
   end
 end

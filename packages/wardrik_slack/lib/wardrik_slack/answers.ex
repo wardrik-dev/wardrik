@@ -8,8 +8,6 @@ defmodule WardrikSlack.Answers do
   `users:read.email` scope.
   """
 
-  require Logger
-
   @doc """
   Answers a button press, from the `block_actions` payload Slack sends over
   Socket Mode: decides the call, and replaces the message's buttons with who
@@ -32,16 +30,16 @@ defmodule WardrikSlack.Answers do
       reply =
         cond do
           not approver?(user, approvers, opts) ->
-            ephemeral("Only this channel's approvers can answer that.")
+            WardrikSlack.ephemeral("Only this channel's approvers can answer that.")
 
           action == "wardrik_link" ->
-            ephemeral(link(agent, call))
+            WardrikSlack.ephemeral(link(agent, call))
 
           true ->
             decide(payload, action, user, agent, call, name)
         end
 
-      respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
+      WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
     else
       _unreadable -> :ignored
     end
@@ -96,10 +94,17 @@ defmodule WardrikSlack.Answers do
     by = Wardrik.Principal.new(:slack, user["id"], name: user["username"] || user["name"])
 
     case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
-      :ok -> decided(payload, action, reason, user, call, name)
-      {:error, :not_found} -> ephemeral("#{agent} is not running.")
-      {:error, :unrecorded} -> ephemeral("#{agent} could not record that, so it was not taken.")
-      {:error, _not_waiting} -> ephemeral("That was already answered.")
+      :ok ->
+        decided(payload, action, reason, user, call, name)
+
+      {:error, :not_found} ->
+        WardrikSlack.ephemeral("#{agent} is not running.")
+
+      {:error, :unrecorded} ->
+        WardrikSlack.ephemeral("#{agent} could not record that, so it was not taken.")
+
+      {:error, _not_waiting} ->
+        WardrikSlack.ephemeral("That was already answered.")
     end
   end
 
@@ -141,20 +146,5 @@ defmodule WardrikSlack.Answers do
       end)
 
     %{replace_original: true, text: "#{verb} #{name}", blocks: blocks}
-  end
-
-  defp ephemeral(text), do: %{response_type: "ephemeral", replace_original: false, text: text}
-
-  defp respond(nil, _reply, _req_options), do: :ok
-
-  defp respond(url, reply, req_options) do
-    case Req.post(url, Keyword.merge([json: reply], req_options)) do
-      {:ok, %Req.Response{status: status}} when status in 200..299 ->
-        :ok
-
-      other ->
-        Logger.warning("Could not update a Slack message: #{inspect(other)}")
-        :ok
-    end
   end
 end

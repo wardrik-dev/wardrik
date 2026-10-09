@@ -1126,8 +1126,11 @@ defmodule WardrikHTTP.RouterTest do
       # Other tests write logs by hand, so the page is of agents of its own.
       user = "schemas#{System.unique_integer([:positive])}"
 
-      {_key, _agent} =
-        Fleet.start_agent([], Wardrik.AgentID.new!("listed", org: "test", user: user))
+      listed = Wardrik.AgentID.new!("listed", org: "test", user: user)
+      :ok = Log.subscribe(listed)
+      {_key, _agent} = Fleet.start_agent([], listed)
+      # Its log holds its start once the start is delivered.
+      assert_receive %Wardrik.Event.Log.Entry{sequence: 1}
 
       reader = client(api, Prefix.parse!("test/@#{user}/"), [:read])
 

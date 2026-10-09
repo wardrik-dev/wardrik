@@ -123,6 +123,27 @@ defmodule WardrikDaemon.Agents do
     do: :wardrik_daemon |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
 
   @doc """
+  The agents offered in the rooms of the channel `channel`, as
+  `WardrikChannel.Context` asks: those whose definitions name the channel,
+  of the orgs `config.yaml` has the channel serve. Sorted by ID.
+  """
+  @spec offered(String.t()) :: [AgentID.t()]
+  def offered(channel) when is_binary(channel) do
+    orgs =
+      WardrikChannel
+      |> WardrikDaemon.Config.settings()
+      |> Keyword.get(:orgs, [])
+      |> Enum.find_value([], fn {name, orgs} -> if Atom.to_string(name) == channel, do: orgs end)
+
+    for %Definition{id: id, fields: fields} <- Definition.all(),
+        channel in AgentFile.channels(fields),
+        orgs == :all or id.org in orgs do
+      id
+    end
+    |> Enum.sort_by(&to_string/1)
+  end
+
+  @doc """
   The options the agent `key` starts with, as `Wardrik.Fleet.spawn/2` takes
   them: those of `spec/1`.
   """

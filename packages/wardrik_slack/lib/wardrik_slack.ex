@@ -28,6 +28,8 @@ defmodule WardrikSlack do
 
   @behaviour WardrikChannel
 
+  require Logger
+
   alias WardrikChannel.Outbound
 
   @api "https://slack.com/api/"
@@ -67,6 +69,33 @@ defmodule WardrikSlack do
       Map.put(message, :channel, room),
       Keyword.get(opts, :req_options, [])
     )
+  end
+
+  @doc "A row of buttons, or other elements, under `block_id`."
+  @spec actions(String.t(), [map()]) :: map()
+  def actions(block_id, elements), do: %{type: "actions", block_id: block_id, elements: elements}
+
+  @doc "A reply the person who pressed a button sees alone."
+  @spec ephemeral(String.t()) :: map()
+  def ephemeral(text), do: %{response_type: "ephemeral", replace_original: false, text: text}
+
+  @doc """
+  Answers a button press at its `response_url` with `reply`, which replaces
+  the message or is seen by the presser alone, as it says. A failure is
+  logged, since the press has been acted on either way.
+  """
+  @spec respond(String.t() | nil, map(), keyword()) :: :ok
+  def respond(nil, _reply, _req_options), do: :ok
+
+  def respond(url, reply, req_options) do
+    case Req.post(url, Keyword.merge([json: reply], req_options)) do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        :ok
+
+      other ->
+        Logger.warning("Could not update a Slack message: #{inspect(other)}")
+        :ok
+    end
   end
 
   @doc """
