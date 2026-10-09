@@ -1,6 +1,6 @@
 ---
 title: Slack
-description: A Slack app of Wardrik's own, invited into a Slack channel to have an agent answer there, and to post notices with Approve and Deny buttons.
+description: A Slack app of Wardrik's own, invited into a Slack channel to have an agent answer there in threads, and to post notices with Approve and Deny buttons.
 sidebar:
   order: 2
 ---
@@ -25,15 +25,17 @@ the app has, so another service connected with the same app would receive some o
 
 1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), from scratch, in your
    workspace.
-2. Under **OAuth & Permissions**, add the bot token scopes `chat:write`, `channels:read` and
-   `groups:read`, install the app, and copy the **Bot User OAuth Token**, `xoxb-...`. This is the
-   channel's `token`.
+2. Under **OAuth & Permissions**, add the bot token scopes `chat:write`, `channels:read`,
+   `groups:read`, `channels:history`, `groups:history`, `users:read` and `reactions:write`, install
+   the app, and copy the **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`. An
+   app installed before it had a scope is installed again to take it.
 3. Under **Socket Mode**, turn it on, and make an app-level token with the scope
    `connections:write`, `xapp-...`. This is the channel's `app_token`.
 4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
 5. Under **Event Subscriptions**, turn events on and subscribe to the bot events
    `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears when the app is
-   invited into a Slack channel or taken out of one.
+   invited into a Slack channel or taken out of one, and `message.channels` and `message.groups`,
+   so it hears what is posted there.
 6. Invite the app to the channel: `/invite @yourapp`.
 
 Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
@@ -44,8 +46,8 @@ wardrik vault put SLACK_APP_TOKEN    # xapp-...
 systemctl --user restart wardrik
 ```
 
-The buttons arrive over Socket Mode, a connection the daemon opens out to Slack, so it needs no
-public address and no open port.
+Messages and buttons arrive over Socket Mode, a connection the daemon opens out to Slack, so it
+needs no public address and no open port.
 
 ## An agent in a Slack channel
 
@@ -69,6 +71,24 @@ stops it answering there. Where several agents are offered, the app lists each w
 and a **Use** button. Where none is, it offers to **Create an agent for #books**, from the
 deployment's defaults; see [Channels](/channels/#a-rooms-agent). Taking the app out of the Slack
 channel unbinds it.
+
+## Threads in Slack
+
+Mention the app and the agent answers in a thread under your message; reply in the thread and it
+answers again, without a mention. Where it answers every message, each message posted in the Slack
+channel starts a thread. See [Channels](/channels/#threads) for how a thread is a conversation.
+
+> **maria:** @Wardrik how much Barolo is left? :eyes:
+> ↳ **Wardrik:** Two cases, both 2019.
+
+The app marks each message the agent was asked with :eyes:, and changes it to :white_check_mark:
+once the agent has answered. A call the agent may not make alone is asked in the thread, with
+**Approve** and **Deny**, for the channel's `approvers`; a turn that fails says why there. A message
+the agent could not be asked gets a reply saying why.
+
+The agent reads each message as from whoever posted it, by the name Slack shows for them and their
+member ID. It passes over edits, deletions, other bots, and anyone from another workspace in a Slack
+channel shared with one; direct messages to the app are not answered.
 
 Each binding, and each change to when it answers, is recorded in the audit log, as
 `wardrik.room.bound` and `wardrik.room.unbound` [events](/reference/events/), with

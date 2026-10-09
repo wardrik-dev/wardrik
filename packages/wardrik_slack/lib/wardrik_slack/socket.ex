@@ -2,13 +2,18 @@ defmodule WardrikSlack.Socket do
   @moduledoc """
   A Socket Mode connection out to Slack, for one channel's app-level token.
 
-  It finds the bot it posts as, asks Slack for a connection URL, connects,
-  and acknowledges every envelope Slack sends. A button press goes to
-  `WardrikSlack.Rooms` where it binds a room, and to `WardrikSlack.Answers`
-  otherwise; an event, such as the bot being invited into a room, to
-  `WardrikSlack.Rooms`. Each is handled in a task of its own, with the
-  channel's `:token`, `:context` and `:req_options`, and the bot's user id as
-  `:bot`. It starts nothing for a channel with no app-level token.
+  It finds the bot it posts as, and its workspace, asks Slack for a
+  connection URL, connects, and acknowledges every envelope Slack sends. A
+  button press goes to `WardrikSlack.Rooms` where it binds a room, and to
+  `WardrikSlack.Answers` otherwise; a message posted in a Slack channel to
+  `WardrikSlack.Threads`; any other event, such as the bot being invited into
+  a room, to `WardrikSlack.Rooms`. Each is handled in a task of its own, with
+  the channel's `:token`, `:context` and `:req_options`, the bot's user id as
+  `:bot`, its workspace's id as `:team`, and `:people`, the table the names
+  of those who post are kept in while the connection stays open. A message
+  is acknowledged once its agent has been asked, so one lost to a crash
+  before then is sent again by Slack, and asked once. It starts nothing for
+  a channel with no app-level token.
   When Slack closes the connection, as it does every few hours, or the
   network drops it, it connects again, waiting longer after each failure up
   to a minute.
@@ -35,10 +40,15 @@ defmodule WardrikSlack.Socket do
 
   @doc """
   What a text frame from Slack asks for: `:hello`, `:disconnect`, an
-  envelope to acknowledge with what it carries, or `:ignore`.
+  envelope to acknowledge with what it carries, a message to acknowledge
+  once it has been handled, or `:ignore`.
   """
   @spec envelope(String.t()) ::
-          :hello | :disconnect | {:ack, String.t(), {:interactive, map()} | :ignore} | :ignore
+          :hello
+          | :disconnect
+          | {:ack, String.t(), {:interactive, map()} | {:event, map()} | :ignore}
+          | {:ack_after, String.t(), {:message, map()}}
+          | :ignore
   def envelope(text) do
     case JSON.decode(text) do
       {:ok, %{"type" => "hello"}} ->
@@ -49,6 +59,14 @@ defmodule WardrikSlack.Socket do
 
       {:ok, %{"envelope_id" => id, "type" => "interactive", "payload" => payload}} ->
         {:ack, id, {:interactive, payload}}
+
+      {:ok,
+       %{
+         "envelope_id" => id,
+         "type" => "events_api",
+         "payload" => %{"event" => %{"type" => "message"} = message}
+       }} ->
+        {:ack_after, id, {:message, message}}
 
       {:ok, %{"envelope_id" => id, "type" => "events_api", "payload" => %{"event" => event}}} ->
         {:ack, id, {:event, event}}
@@ -64,11 +82,12 @@ defmodule WardrikSlack.Socket do
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
+    people = :ets.new(__MODULE__, [:public, read_concurrency: true])
 
     {:ok,
      %{
        token: opts[:app_token],
-       answer: Keyword.take(opts, [:token, :context, :req_options]),
+       answer: [people: people] ++ Keyword.take(opts, [:token, :context, :req_options]),
        connection: nil,
        backoff: @first_backoff
      }, {:continue, :connect}}
@@ -96,6 +115,15 @@ defmodule WardrikSlack.Socket do
     {:noreply, state}
   end
 
+  def handle_info({:message, message, {connection, id}}, state) do
+    Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
+      WardrikSlack.Threads.message(message, state.answer)
+      Connection.ack(connection, id)
+    end)
+
+    {:noreply, state}
+  end
+
   def handle_info({:event, event}, state) do
     Task.Supervisor.start_child(WardrikChannel.tasks(), fn ->
       WardrikSlack.Rooms.event(event, state.answer)
@@ -109,7 +137,8 @@ defmodule WardrikSlack.Socket do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  # The bot's own user id is found once, before the first connection.
+  # The bot's own user id and workspace are found once, before the first
+  # connection.
   defp connect(state) do
     if Keyword.has_key?(state.answer, :bot), do: open(state), else: find_bot(state)
   end
@@ -118,8 +147,8 @@ defmodule WardrikSlack.Socket do
     req_options = Keyword.get(state.answer, :req_options, [])
 
     case WardrikSlack.post("auth.test", state.answer[:token], %{}, req_options) do
-      {:ok, %{"user_id" => bot}} ->
-        open(%{state | answer: Keyword.put(state.answer, :bot, bot)})
+      {:ok, %{"user_id" => bot} = found} ->
+        open(%{state | answer: [bot: bot, team: found["team_id"]] ++ state.answer})
 
       error ->
         Logger.warning("Slack did not say which bot this channel posts as: #{inspect(error)}")
@@ -170,7 +199,11 @@ defmodule WardrikSlack.Socket.Connection do
 
       {:ack, id, work} ->
         if work != :ignore, do: send(owner, work)
-        {:reply, {:text, JSON.encode!(%{envelope_id: id})}, owner}
+        {:reply, ack_frame(id), owner}
+
+      {:ack_after, id, {:message, message}} ->
+        send(owner, {:message, message, {self(), id}})
+        {:ok, owner}
 
       :ignore ->
         {:ok, owner}
@@ -178,4 +211,10 @@ defmodule WardrikSlack.Socket.Connection do
   end
 
   def handle_frame(_frame, owner), do: {:ok, owner}
+
+  @doc false
+  @spec ack(pid(), String.t()) :: :ok | {:error, term()}
+  def ack(connection, id), do: WebSockex.send_frame(connection, ack_frame(id))
+
+  defp ack_frame(id), do: {:text, JSON.encode!(%{envelope_id: id})}
 end

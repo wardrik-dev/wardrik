@@ -14,6 +14,7 @@ defmodule WardrikSlack.Notices do
   pressing, and no one else, with the link and any code to enter there, read
   from the agent as they press it; the channel's history never holds it.
 
+  An agent answering in a thread is named as the agent the thread is under.
   Each button carries the call it answers and who may press it, which
   `WardrikSlack.Answers` reads back: Slack hands back a button as the bot
   posted it, and nobody else can change a bot's message.
@@ -40,28 +41,32 @@ defmodule WardrikSlack.Notices do
   # -- messages --------------------------------------------------------------
 
   defp summary(%Notice{kind: :parked} = notice),
-    do: "#{notice.agent} is waiting on you: " <> Enum.map_join(notice.calls, ", ", & &1.name)
+    do:
+      "#{shown(notice.agent)} is waiting on you: " <> Enum.map_join(notice.calls, ", ", & &1.name)
 
-  defp summary(%Notice{kind: :failed} = notice), do: "#{notice.agent} failed"
-  defp summary(%Notice{kind: :finished} = notice), do: "#{notice.agent} answered"
+  defp summary(%Notice{kind: :failed} = notice), do: "#{shown(notice.agent)} failed"
+  defp summary(%Notice{kind: :finished} = notice), do: "#{shown(notice.agent)} answered"
 
   @doc false
   @spec blocks(Notice.t(), keyword()) :: [map()]
   def blocks(%Notice{kind: :parked} = notice, opts) do
-    [section("*#{notice.agent}* is waiting on you.")] ++
+    [section("*#{shown(notice.agent)}* is waiting on you.")] ++
       Enum.flat_map(notice.calls, &call_blocks(&1, notice.agent, opts))
   end
 
   def blocks(%Notice{kind: :failed} = notice, _opts) do
     [
       section(
-        "*#{notice.agent}* failed:\n```#{clip(Notice.reason_text(notice.reason), @max_text)}```"
+        "*#{shown(notice.agent)}* failed:\n```#{clip(Notice.reason_text(notice.reason), @max_text)}```"
       )
     ]
   end
 
   def blocks(%Notice{kind: :finished} = notice, _opts) do
-    [section("*#{notice.agent}* answered:"), section(clip(notice.text || "(nothing)", @max_text))]
+    [
+      section("*#{shown(notice.agent)}* answered:"),
+      section(clip(notice.text || "(nothing)", @max_text))
+    ]
   end
 
   defp read(%{labels: [_ | _] = labels}),
@@ -122,6 +127,10 @@ defmodule WardrikSlack.Notices do
 
   defp from_a_shell(call, agent),
     do: "Answer with `wardrik approve #{agent} #{call.id}` or `wardrik deny #{agent} #{call.id}`."
+
+  # An agent answering in a thread is named as the one the thread is under;
+  # its buttons and commands carry the thread's own.
+  defp shown(agent), do: Wardrik.AgentID.put_external_id(agent, nil)
 
   defp section(text), do: %{type: "section", text: %{type: "mrkdwn", text: text}}
 

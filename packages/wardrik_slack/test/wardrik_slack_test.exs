@@ -50,4 +50,57 @@ defmodule WardrikSlackTest do
     assert {:error, %Req.TransportError{reason: :econnrefused}} =
              WardrikSlack.post("chat.postMessage", "x", %{}, @req_options)
   end
+
+  defp posting do
+    test = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test, {:slack, conn.request_path, JSON.decode!(Req.Test.raw_body(conn))})
+      Req.Test.json(conn, %{ok: true, ts: "9.9"})
+    end)
+
+    [token: "xoxb-1", req_options: @req_options]
+  end
+
+  test "posts an answer in its thread, saying so where it answered nothing, and clipped to fit" do
+    opts = posting()
+    nothing = %WardrikChannel.Outbound{room: "C1", thread: "1.1", body: {:reply, "", []}}
+
+    assert {:ok, _posted} = WardrikSlack.deliver(nothing, opts)
+
+    assert_receive {:slack, "/api/chat.postMessage",
+                    %{"thread_ts" => "1.1", "text" => "_It answered nothing._"} = posted}
+
+    refute Map.has_key?(posted, "blocks")
+
+    long = %{nothing | body: {:reply, String.duplicate("a", 13_000), []}}
+    assert {:ok, _posted} = WardrikSlack.deliver(long, opts)
+    assert_receive {:slack, "/api/chat.postMessage", %{"blocks" => [%{"text" => text}]}}
+    assert String.length(text) == 12_000
+    assert String.ends_with?(text, "…")
+  end
+
+  test "posts a notice in a thread, naming the agent the thread is under" do
+    opts = posting()
+    agent = Wardrik.AgentID.parse!("acme/books/C1-1.1")
+
+    notice = %WardrikNotify.Notice{
+      agent: agent,
+      kind: :failed,
+      at: DateTime.utc_now(),
+      reason: "x"
+    }
+
+    failed = %WardrikChannel.Outbound{room: "C1", thread: "1.1", body: {:notice, notice}}
+
+    assert {:ok, _posted} = WardrikSlack.deliver(failed, opts)
+
+    assert_receive {:slack, "/api/chat.postMessage",
+                    %{"thread_ts" => "1.1", "text" => "acme/books failed"}}
+
+    in_room = %{failed | thread: nil}
+    assert {:ok, _posted} = WardrikSlack.deliver(in_room, opts)
+    assert_receive {:slack, "/api/chat.postMessage", posted}
+    refute Map.has_key?(posted, "thread_ts")
+  end
 end

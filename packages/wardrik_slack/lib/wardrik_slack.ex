@@ -16,8 +16,10 @@ defmodule WardrikSlack do
   `WardrikSlack.Socket` holds the connection, and `WardrikSlack.Answers`
   answers each button press.
 
-  A room is a Slack channel, by its name, `#ops`, or its id. A notice reads
-  as `WardrikSlack.Notices` lays it out.
+  A room is a Slack channel, by its name, `#ops`, or its id, and a thread one
+  under a message there. A notice reads as `WardrikSlack.Notices` lays it
+  out; what an agent answers in a thread is posted as Markdown, which Slack
+  renders, and `WardrikSlack.Threads` marks the messages it answers.
 
   Each workspace is a channel of its own, with an app of its own. The app
   should be Wardrik's alone: Slack spreads an app's Socket Mode envelopes
@@ -33,6 +35,7 @@ defmodule WardrikSlack do
   alias WardrikChannel.Outbound
 
   @api "https://slack.com/api/"
+  @max_markdown 12_000
 
   @impl WardrikChannel
   def config(settings) do
@@ -56,17 +59,43 @@ defmodule WardrikSlack do
   def child_spec(opts), do: WardrikSlack.Socket.child_spec(opts)
 
   @impl WardrikChannel
-  def deliver(%Outbound{room: room, body: {:notice, notice}} = outbound, opts) do
-    message =
-      WardrikSlack.Notices.message(notice,
-        buttons: opts[:app_token] != nil,
-        approvers: outbound.approvers
-      )
+  def deliver(%Outbound{body: {:notice, notice}} = outbound, opts) do
+    notice
+    |> WardrikSlack.Notices.message(
+      buttons: opts[:app_token] != nil,
+      approvers: outbound.approvers
+    )
+    |> posted(outbound, opts)
+  end
+
+  def deliver(%Outbound{room: room, body: {:reply, text, answering}} = outbound, opts) do
+    with {:ok, posted} <- posted(reply(text), outbound, opts) do
+      :ok = WardrikSlack.Threads.answered(room, answering, opts)
+      {:ok, posted}
+    end
+  end
+
+  # A model writes Markdown, which a markdown block renders, up to Slack's
+  # limit on one.
+  defp reply(""), do: %{text: "_It answered nothing._"}
+
+  defp reply(text) do
+    clipped =
+      if String.length(text) > @max_markdown,
+        do: String.slice(text, 0, @max_markdown - 1) <> "…",
+        else: text
+
+    %{text: clipped, blocks: [%{type: "markdown", text: clipped}]}
+  end
+
+  defp posted(message, %Outbound{room: room, thread: thread}, opts) do
+    message = Map.put(message, :channel, room)
+    message = if thread, do: Map.put(message, :thread_ts, thread), else: message
 
     post(
       "chat.postMessage",
       Keyword.fetch!(opts, :token),
-      Map.put(message, :channel, room),
+      message,
       Keyword.get(opts, :req_options, [])
     )
   end
