@@ -430,7 +430,7 @@ defmodule WardrikDaemon.AgentFileTest do
     setup do
       Application.put_env(:wardrik_daemon, WardrikNotify,
         targets: [
-          ops: {WardrikNotify.Slack, channel: "#ops", token: "x"},
+          ops: {WardrikChannel.Notices, channel: {WardrikDaemon.Test.Channel, []}, room: "#ops"},
           audit: {WardrikNotify.Webhook, url: "https://hooks.test"},
           globex: {WardrikNotify.Webhook, url: "https://hooks.test/globex", orgs: ["globex"]}
         ]

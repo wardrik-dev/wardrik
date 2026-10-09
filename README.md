@@ -141,7 +141,9 @@ Core keeps them on each node's disk with EKV where neither is configured.
 | [wardrik_vault](packages/wardrik_vault) | Credentials sealed with a key you hold, kept per user, per org or for everyone |
 | [wardrik_oauth](packages/wardrik_oauth) | Accounts a user connects by authorizing, in a browser or on another device, renewed as they expire |
 | [wardrik_policy](packages/wardrik_policy) | Policies written as data: what an agent may call, what asks a person first, and what it may spend |
-| [wardrik_notify](packages/wardrik_notify) | Tells people when an agent waits on them, fails or answers, on Slack or a webhook |
+| [wardrik_notify](packages/wardrik_notify) | Tells people when an agent waits on them, fails or answers, on a webhook or in a channel |
+| [wardrik_channel](packages/wardrik_channel) | Chat media agents are reached through, such as Slack: the adapter behaviour, and notices posted in a room |
+| [wardrik_slack](packages/wardrik_slack) | The Slack channel: notices in a room, with buttons that answer the calls an agent waits on |
 
 ### Surfaces
 

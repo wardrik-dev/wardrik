@@ -34,13 +34,17 @@ mcp:
     only: [list_issues, search_issues, issue_read, issue_write, add_issue_comment]
     gated: [issue_write, add_issue_comment]
 
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+
 notify:
   triage:
-    slack:
-      channel: "#triage"
-      token: ${SLACK_BOT_TOKEN}
-      app_token: ${SLACK_APP_TOKEN}
-      approvers: [U012ABCDEF]
+    channel: slack
+    room: "#triage"
+    approvers: ["@maria"]
 ```
 
 `issue_write` and `add_issue_comment` are gated: each runs only where a rule allows it by name, and

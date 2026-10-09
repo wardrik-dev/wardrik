@@ -53,13 +53,17 @@ defmodule WardrikDaemon.Config do
       vault:
         keys: ["${WARDRIK_VAULT_KEY}"]
 
+      channels:
+        slack:
+          type: slack
+          token: ${SLACK_BOT_TOKEN}
+          app_token: ${SLACK_APP_TOKEN}
+
       notify:
         ops:
-          slack:
-            channel: "#ops"
-            token: ${SLACK_BOT_TOKEN}
-            app_token: ${SLACK_APP_TOKEN}
-            approvers: [U012ABCDEF]
+          channel: slack
+          room: "#ops"
+          approvers: ["@maria"]
         audit:
           webhook:
             url: https://hooks.example.com/wardrik
@@ -139,10 +143,15 @@ defmodule WardrikDaemon.Config do
   boots, before anything starts, and the rest once the store runs; see
   `boot/1`.
 
-  `notify` names targets an agent file's `notify` routes to, each one
-  `slack`, with `channel`, `token`, and optionally `app_token` and
-  `approvers`, as `WardrikNotify.Slack` takes them; or `webhook`, with `url` and
-  optionally `secret`, as `WardrikNotify.Webhook` takes them.
+  `channels` names the chat media agents are reached through, each by a name
+  of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
+  finds those the release holds. The rest of a channel's settings are its
+  adapter's, which reads them; see `WardrikChannel`.
+
+  `notify` names targets an agent file's `notify` routes to, each one a
+  `channel` of `channels` and a `room` in it, with who may answer it as
+  `approvers`, as `WardrikChannel.Notices` takes them; or a `webhook`, with
+  `url` and optionally `secret`, as `WardrikNotify.Webhook` takes them.
 
   `read/1` refuses a file with a variable that is not set, a key nothing takes,
   a server that is neither a command nor a URL, or a server whose name or
@@ -184,9 +193,10 @@ defmodule WardrikDaemon.Config do
        ~w(bucket endpoint access_key_id secret_access_key)}
   }
   @notifiers %{
-    "slack" => {WardrikNotify.Slack, ~w(channel token app_token approvers), ~w(channel token)},
     "webhook" => {WardrikNotify.Webhook, ~w(url secret), ~w(url)}
   }
+
+  @target "is a webhook, or a channel and a room in it, with the org it tells"
 
   @store_settings ~w(url bucket endpoint region prefix access_key_id secret_access_key)a
   @store_urls %{
@@ -345,7 +355,7 @@ defmodule WardrikDaemon.Config do
     {org, document} = Map.pop(document, "org")
     org = org!(org)
 
-    [{WardrikDaemon, org: org} | sections(document, org)]
+    [{WardrikDaemon, org: org} | document |> sections(org) |> through_channels()]
   end
 
   defp sections(document, org) do
@@ -371,6 +381,9 @@ defmodule WardrikDaemon.Config do
       {"notify", targets} ->
         {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
 
+      {"channels", channels} ->
+        {WardrikChannel, channels: channels(table!(channels, ["channels"]))}
+
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
 
@@ -380,8 +393,8 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, defaults, mcp, oauth, vault, ssh, http, notify, " <>
-            "cluster or storage"
+          "is not a section; expected org, defaults, mcp, oauth, vault, ssh, http, channels, " <>
+            "notify, cluster or storage"
         )
     end)
   end
@@ -623,16 +636,34 @@ defmodule WardrikDaemon.Config do
     Enum.map(targets, fn {name, target} ->
       path = ["notify", name]
       {orgs, target} = Map.pop(table!(target, path), "org")
-
-      case Map.to_list(target) do
-        [{kind, options}] ->
-          {module, options} = notifier(kind, options, path ++ [kind])
-          {name(name), {module, options ++ [orgs: orgs(orgs, org, path ++ ["org"])]}}
-
-        _other ->
-          invalid!(path, "is one of slack or webhook, with the org it tells")
-      end
+      {module, options} = target(target, path)
+      {name(name), {module, options ++ [orgs: orgs(orgs, org, path ++ ["org"])]}}
     end)
+  end
+
+  # A room in a channel, which `through_channels/1` finds by its name.
+  defp target(%{"channel" => _} = target, path) do
+    known!(target, ~w(channel room approvers), path)
+
+    for key <- ~w(channel room),
+        not (is_binary(target[key]) and target[key] != ""),
+        do: invalid!(path ++ [key], "is required")
+
+    approvers = Map.get(target, "approvers", [])
+
+    unless is_list(approvers) and Enum.all?(approvers, &is_binary/1),
+      do:
+        invalid!(path ++ ["approvers"], "is a list of who may answer, as the channel names them")
+
+    {WardrikChannel.Notices,
+     channel: target["channel"], room: target["room"], approvers: approvers}
+  end
+
+  defp target(target, path) do
+    case Map.to_list(target) do
+      [{kind, options}] -> notifier(kind, options, path ++ [kind])
+      _other -> invalid!(path, @target)
+    end
   end
 
   defp notifier(kind, options, path) do
@@ -649,9 +680,68 @@ defmodule WardrikDaemon.Config do
         {module, Enum.map(options, fn {key, value} -> {String.to_atom(key), value} end)}
 
       :error ->
-        invalid!(Enum.drop(path, -1), "is one of slack or webhook")
+        invalid!(Enum.drop(path, -1), @target)
     end
   end
+
+  # -- channels --------------------------------------------------------------
+
+  defp channels(channels) do
+    Enum.map(channels, fn {name, channel} ->
+      path = ["channels", name]
+      {type, settings} = Map.pop(table!(channel, path), "type")
+      adapter = adapter!(type, path ++ ["type"])
+
+      case adapter.config(settings) do
+        {:ok, options} -> {name(name), {adapter, options}}
+        {:error, at, message} -> invalid!(path ++ at, message)
+      end
+    end)
+  end
+
+  defp adapter!(type, path) do
+    with true <- is_binary(type),
+         {:ok, adapter} <- WardrikChannel.adapter(type) do
+      adapter
+    else
+      _unknown ->
+        case WardrikChannel.adapters() |> Map.keys() |> Enum.sort() do
+          [] -> invalid!(path, "is the kind of channel, and this release has none")
+          types -> invalid!(path, "is the kind of channel: #{Enum.join(types, ", ")}")
+        end
+    end
+  end
+
+  # A notify target in a channel posts through it, as `channels` holds it.
+  defp through_channels(sections) do
+    channels = sections |> Keyword.get(WardrikChannel, []) |> Keyword.get(:channels, [])
+
+    Enum.map(sections, fn
+      {WardrikNotify, notify} ->
+        {WardrikNotify,
+         Keyword.update!(notify, :targets, &Enum.map(&1, fn t -> through(t, channels) end))}
+
+      section ->
+        section
+    end)
+  end
+
+  defp through({name, {WardrikChannel.Notices, options}}, channels) do
+    named = options[:channel]
+
+    case Enum.find(channels, fn {channel, _adapter} -> Atom.to_string(channel) == named end) do
+      {_name, channel} ->
+        {name, {WardrikChannel.Notices, Keyword.put(options, :channel, channel)}}
+
+      nil ->
+        invalid!(
+          ["notify", Atom.to_string(name), "channel"],
+          "is #{named}, which config.yaml's channels does not name"
+        )
+    end
+  end
+
+  defp through(target, _channels), do: target
 
   # -- cluster ---------------------------------------------------------------
 
@@ -793,8 +883,8 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: org, defaults, mcp, oauth, vault, ssh, http, notify, cluster, " <>
-          "storage"
+        "is a set of sections: org, defaults, mcp, oauth, vault, ssh, http, channels, " <>
+          "notify, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

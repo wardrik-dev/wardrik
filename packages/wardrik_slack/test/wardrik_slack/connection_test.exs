@@ -1,12 +1,12 @@
-defmodule WardrikNotify.Slack.ConnectionTest do
+defmodule WardrikSlack.ConnectionTest do
   use ExUnit.Case, async: false
 
-  alias WardrikNotify.Slack.Socket
-  alias WardrikNotify.Slack.Socket.Connection
+  alias WardrikSlack.Socket
+  alias WardrikSlack.Socket.Connection
 
   @state %{
     token: "xapp-test",
-    answer: [targets: [], req_options: [plug: {Req.Test, WardrikNotify.Stub}]],
+    answer: [token: "xoxb-test", req_options: [plug: {Req.Test, WardrikSlack.Stub}]],
     connection: nil,
     backoff: 1_000
   }
@@ -41,7 +41,7 @@ defmodule WardrikNotify.Slack.ConnectionTest do
 
   describe "the socket" do
     test "connects as it starts, and tries again, waiting longer each time, when Slack will not open a connection" do
-      Req.Test.stub(WardrikNotify.Stub, &Req.Test.json(&1, %{ok: false, error: "invalid_auth"}))
+      Req.Test.stub(WardrikSlack.Stub, &Req.Test.json(&1, %{ok: false, error: "invalid_auth"}))
 
       assert {:noreply, %{backoff: 2_000}} = Socket.handle_continue(:connect, @state)
       assert {:noreply, %{backoff: 2_000}} = Socket.handle_info(:connect, @state)
@@ -51,7 +51,7 @@ defmodule WardrikNotify.Slack.ConnectionTest do
     end
 
     test "tries again when the connection it was given cannot be reached" do
-      Req.Test.stub(WardrikNotify.Stub, &Req.Test.json(&1, %{ok: true, url: "ws://127.0.0.1:1/"}))
+      Req.Test.stub(WardrikSlack.Stub, &Req.Test.json(&1, %{ok: true, url: "ws://127.0.0.1:1/"}))
 
       assert {:noreply, %{connection: nil, backoff: 2_000}} = Socket.handle_info(:connect, @state)
     end
@@ -70,7 +70,7 @@ defmodule WardrikNotify.Slack.ConnectionTest do
     end
 
     test "answers a button press in a task of its own" do
-      start_supervised!({Task.Supervisor, name: WardrikNotify.TaskSupervisor})
+      start_supervised!({Task.Supervisor, name: WardrikChannel.tasks()})
 
       assert {:noreply, @state} = Socket.handle_info({:interactive, %{"actions" => []}}, @state)
     end

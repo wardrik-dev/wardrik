@@ -6,16 +6,21 @@ sidebar:
 ---
 
 An agent nobody is watching can tell someone when it parks on a question, fails, or answers.
-`config.yaml` names the targets under `notify`, and each agent file routes its notices to them:
+`config.yaml` names the targets under `notify`, and each agent file routes its notices to them. A
+target in Slack is a room in a channel `channels` names, here one Slack app called `slack`:
 
 ```yaml title="~/.config/wardrik/config.yaml"
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+
 notify:
   ops:
-    slack:
-      channel: "#ops"
-      token: ${SLACK_BOT_TOKEN}
-      app_token: ${SLACK_APP_TOKEN}
-      approvers: [U012ABCDEF]
+    channel: slack
+    room: "#ops"
+    approvers: ["@maria", jon@example.com]
   audit:
     webhook:
       url: https://hooks.example.com/wardrik
@@ -40,9 +45,9 @@ the app has, so another service connected with the same app would receive some o
 1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), from scratch, in your
    workspace.
 2. Under **OAuth & Permissions**, add the bot token scope `chat:write`, install the app, and copy the
-   **Bot User OAuth Token**, `xoxb-...`. This is `token`.
+   **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`.
 3. Under **Socket Mode**, turn it on, and make an app-level token with the scope
-   `connections:write`, `xapp-...`. This is `app_token`.
+   `connections:write`, `xapp-...`. This is the channel's `app_token`.
 4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
 5. Invite the app to the channel: `/invite @yourapp`.
 
@@ -87,26 +92,35 @@ A target tells the agents of the deployment's [org](/concepts/agents/#keys-and-o
 `org` names others, or `*` for every org:
 
 ```yaml
+channels:
+  slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: "${SLACK_APP_TOKEN}"}
+  globex-slack: {type: slack, token: "${GLOBEX_SLACK_BOT_TOKEN}", app_token: "${GLOBEX_SLACK_APP_TOKEN}"}
+
 notify:
   ops:
-    slack: {channel: "#ops", token: "${SLACK_BOT_TOKEN}"}
+    channel: slack
+    room: "#ops"
   globex-ops:
     org: globex
-    slack: {channel: "#globex-ops", token: "${GLOBEX_SLACK_BOT_TOKEN}"}
+    channel: globex-slack
+    room: "#globex-ops"
 ```
+
+Each Slack workspace is a channel of its own, with an app of its own.
 
 An agent file that routes to another org's target does not read, so one org's calls never reach
 another's channel, where its people could approve them.
 
 ## Who may press the buttons
 
-`approvers` lists the Slack user IDs that may, and anyone else is told only the channel's approvers
-can answer. Without `approvers`, anyone in the channel may. A member's ID is under **Copy member
+`approvers` lists who may, each by `@handle`, email address or Slack user ID, and anyone else is
+told only the channel's approvers can answer. Without `approvers`, anyone in the channel may. An
+email address needs the bot token scope `users:read.email`. A member's ID is under **Copy member
 ID** in their Slack profile.
 
 ## Without buttons
 
-Without `app_token`, a parked notice says which `wardrik approve` or `wardrik deny` to run instead.
+Without the channel's `app_token`, a parked notice says which `wardrik approve` or `wardrik deny` to run instead.
 The bot token alone is enough to post.
 
 ## Webhooks

@@ -1,8 +1,8 @@
 defmodule WardrikNotify.Supervisor do
   @moduledoc """
-  Runs `WardrikNotify`: the tasks deliveries run in, `WardrikNotify.Dispatcher`,
-  and a `WardrikNotify.Slack.Socket` for each app-level token a Slack target
-  holds. The daemon starts it when `config.yaml` names a target.
+  Runs `WardrikNotify`: the tasks deliveries run in, and
+  `WardrikNotify.Dispatcher`. The daemon starts it when `config.yaml` names a
+  target.
 
       {WardrikNotify.Supervisor,
        targets: [audit: {WardrikNotify.Webhook, url: "https://hooks.example.com/wardrik"}]}
@@ -27,17 +27,10 @@ defmodule WardrikNotify.Supervisor do
   def init(opts) do
     opts = Keyword.validate!(opts, [:routes, :backoff, targets: [], req_options: []])
 
-    sockets =
-      for token <- WardrikNotify.Slack.app_tokens(opts[:targets]),
-          do:
-            {WardrikNotify.Slack.Socket,
-             [app_token: token] ++ Keyword.take(opts, [:targets, :req_options])}
-
-    children =
-      [
-        {Task.Supervisor, name: WardrikNotify.TaskSupervisor},
-        {WardrikNotify.Dispatcher, opts}
-      ] ++ sockets
+    children = [
+      {Task.Supervisor, name: WardrikNotify.TaskSupervisor},
+      {WardrikNotify.Dispatcher, opts}
+    ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end

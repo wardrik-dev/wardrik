@@ -47,6 +47,7 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik_lua),
       sibling(:wardrik_mcp),
       sibling(:wardrik_notify),
+      sibling(:wardrik_channel),
       sibling(:wardrik_oauth),
       sibling(:wardrik_policy),
       sibling(:wardrik_research),

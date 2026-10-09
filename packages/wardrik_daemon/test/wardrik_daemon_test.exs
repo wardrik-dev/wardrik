@@ -77,17 +77,29 @@ defmodule WardrikDaemonTest do
 
   test "starts what config.yaml configures with its section as options", %{tmp_dir: dir} do
     File.write!(Path.join(dir, "config.yaml"), """
+    channels:
+      chat:
+        type: test
     notify:
       audit:
         webhook:
           url: https://hooks.example.com/wardrik
+      ops:
+        channel: chat
+        room: "#ops"
     """)
 
     assert {:ok, pid} =
              start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
 
-    assert WardrikNotify.Supervisor in Enum.map(Supervisor.which_children(pid), &elem(&1, 0))
-    assert [audit: {WardrikNotify.Webhook, _opts}] = Config.settings(WardrikNotify)[:targets]
+    children = Enum.map(Supervisor.which_children(pid), &elem(&1, 0))
+    assert WardrikNotify.Supervisor in children
+    assert WardrikChannel.Supervisor in children
+
+    assert [audit: {WardrikNotify.Webhook, _opts}, ops: {WardrikChannel.Notices, ops}] =
+             Enum.sort(Config.settings(WardrikNotify)[:targets])
+
+    assert ops[:channel] == {WardrikDaemon.Test.Channel, []}
   end
 
   test "reads config.yml where that is the file there", %{tmp_dir: dir} do

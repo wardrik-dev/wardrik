@@ -34,8 +34,6 @@ defmodule WardrikNotify.MixProject do
     [
       sibling(:wardrik),
       {:req, "~> 0.7"},
-      # Slack's Socket Mode.
-      {:websockex, "~> 0.5.1"},
       {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
