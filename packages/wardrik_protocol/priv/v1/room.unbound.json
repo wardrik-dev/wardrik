@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:room.unbound",
+  "title": "wardrik.room.unbound",
+  "description": "Someone had the agent that answered in a room of a channel stop.",
+  "type": "object",
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "The channel, by the name config.yaml gives it."
+    },
+    "room": {
+      "type": "string",
+      "description": "The room, as the channel knows it, such as a Slack channel's id."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "channel",
+    "room"
+  ]
+}

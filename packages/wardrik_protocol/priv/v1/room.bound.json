@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:room.bound",
+  "title": "wardrik.room.bound",
+  "description": "Someone had an agent answer in a room of a channel.",
+  "type": "object",
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "The channel, by the name config.yaml gives it."
+    },
+    "room": {
+      "type": "string",
+      "description": "The room, as the channel knows it, such as a Slack channel's id."
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The agent's ID."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ]
+    },
+    "answers": {
+      "type": "string",
+      "enum": [
+        "mentions",
+        "everything"
+      ],
+      "description": "When it answers: when mentioned, or to every message."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "channel",
+    "room",
+    "agent",
+    "answers"
+  ]
+}

@@ -13,6 +13,8 @@ export default defineConfig({
 	site: 'https://docs.wardrik.dev',
 	// Flags such as --node stay two hyphens, not a dash.
 	markdown: { smartypants: false },
+	// Pages that moved, from where links to them may still point.
+	redirects: { '/guides/slack/': '/channels/slack/' },
 	integrations: [
 		starlight({
 			title: 'Wardrik',
@@ -48,6 +50,7 @@ export default defineConfig({
 						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
 					],
 				},
+				{ label: 'Channels', items: [{ autogenerate: { directory: 'channels' } }] },
 				{ label: 'Recipes', items: [{ autogenerate: { directory: 'recipes' } }] },
 				{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
 				{ label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },

@@ -117,6 +117,8 @@ defmodule Wardrik.Event.CodecTest do
       {:schedule_set, id, "sweep"},
       {:schedule_removed, id, "sweep"},
       {:agents_reloaded, [:wardrik_a@localhost, :wardrik_b@localhost]},
+      {:room_bound, "slack", "C0123", id, :mentions},
+      {:room_unbound, "slack", "C0123"},
       {:token_created, "tok_1", "ci", grant, Principal.new(:user, "jon")},
       {:token_revoked, "tok_1"},
       {:secret_stored, "GITHUB_TOKEN", Prefix.all()},

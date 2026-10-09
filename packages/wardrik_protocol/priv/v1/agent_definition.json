@@ -196,6 +196,13 @@
         }
       },
       "description": "The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one."
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The chat channels, as config.yaml names them, it may be chosen to answer in."
     }
   },
   "examples": [
@@ -234,6 +241,9 @@
           "every": "*/30 * * * *",
           "prompt": "Check the incident queue."
         }
+      ],
+      "channels": [
+        "slack"
       ]
     }
   ]

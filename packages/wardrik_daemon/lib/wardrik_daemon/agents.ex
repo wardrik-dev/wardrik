@@ -123,6 +123,104 @@ defmodule WardrikDaemon.Agents do
     do: :wardrik_daemon |> Application.get_env(__MODULE__, []) |> Keyword.get(:defaults, %{})
 
   @doc """
+  The agents offered in the rooms of the channel `channel`, as
+  `WardrikChannel.Context` asks: those whose definitions name the channel,
+  of the orgs `config.yaml` has the channel serve, each with its
+  `description`. Sorted by ID.
+  """
+  @spec offered(String.t()) :: [WardrikChannel.Offer.t()]
+  def offered(channel) when is_binary(channel) do
+    orgs = channel_setting(:orgs, channel, [])
+
+    for %Definition{id: id, fields: fields} <- Definition.all(),
+        channel in AgentFile.channels(fields),
+        orgs == :all or id.org in orgs do
+      %WardrikChannel.Offer{agent: id, description: fields["description"]}
+    end
+    |> Enum.sort_by(&to_string(&1.agent))
+  end
+
+  @doc """
+  Whether someone in a room of the channel `channel` may create an agent to
+  answer there: where the channel's `create` is not `false`, and
+  `config.yaml`'s `defaults`, which such an agent starts from, name a policy
+  its calls are held to.
+  """
+  @spec creatable?(String.t()) :: boolean()
+  def creatable?(channel) when is_binary(channel),
+    do: channel_setting(:creates, channel, true) and is_map_key(defaults(), "policy")
+
+  @doc """
+  Creates an agent for the room `room` of the channel `channel`, as `by`
+  asked: named after the room, in the channel's org, from `config.yaml`'s
+  `defaults`, offered in the channel. It is kept as a definition the HTTP API
+  sent is, and recorded in `Wardrik.Audit` as defined by `by`.
+  """
+  @spec create(String.t(), String.t(), Wardrik.Principal.t() | nil) ::
+          {:ok, WardrikChannel.Offer.t()} | {:error, String.t()}
+  def create(channel, room, by) when is_binary(channel) and is_binary(room) do
+    description = "Answers in ##{room}."
+    fields = Map.merge(defaults(), %{"channels" => [channel], "description" => description})
+
+    with :ok <- creates(channel),
+         {:ok, id} <- created_id(room, channel),
+         :ok <- unkept(id, channel),
+         {:ok, spec} <- put(id, fields, nil),
+         {:ok, _pid} <- Fleet.put(spec) do
+      :ok = Wardrik.Audit.record({:agent_defined, id}, by)
+      {:ok, %WardrikChannel.Offer{agent: id, description: description}}
+    else
+      {:error, :conflict, message} -> {:error, message}
+      {:error, message} when is_binary(message) -> {:error, message}
+      {:error, reason} -> {:error, "The agent did not start: #{inspect(reason)}"}
+    end
+  end
+
+  defp creates(channel) do
+    if creatable?(channel),
+      do: :ok,
+      else: {:error, "Agents are not created from here; whoever runs Wardrik can offer one."}
+  end
+
+  # An agent's name, from the room's, in the channel's own org.
+  defp created_id(room, channel) do
+    name = room |> String.downcase() |> String.replace(~r/[^a-z0-9_-]+/u, "-") |> String.trim("-")
+
+    org =
+      case channel_setting(:orgs, channel, :all) do
+        [org | _] -> org
+        _every -> WardrikDaemon.Config.org()
+      end
+
+    case AgentID.new(name, org: org) do
+      {:ok, id} -> {:ok, id}
+      {:error, _message} -> {:error, "#{inspect(room)} makes no agent's name."}
+    end
+  end
+
+  defp unkept(id, channel) do
+    case Definition.get(id) do
+      {:error, :not_found} ->
+        :ok
+
+      {:ok, _definition} ->
+        {:error,
+         "#{id} is there already. Whoever runs Wardrik can offer it here by adding " <>
+           "`channels: [#{channel}]` to it."}
+    end
+  end
+
+  # What config.yaml says of the channel `channel` under `key`.
+  defp channel_setting(key, channel, default) do
+    settings = WardrikChannel |> WardrikDaemon.Config.settings() |> Keyword.get(key, [])
+
+    case Enum.find(settings, fn {name, _value} -> Atom.to_string(name) == channel end) do
+      {_name, value} -> value
+      nil -> default
+    end
+  end
+
+  @doc """
   The options the agent `key` starts with, as `Wardrik.Fleet.spawn/2` takes
   them: those of `spec/1`.
   """

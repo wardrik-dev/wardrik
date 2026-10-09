@@ -150,8 +150,14 @@ defmodule WardrikDaemon.Config do
 
   `channels` names the chat media agents are reached through, each by a name
   of the deployment's own, with its `type`: the adapter, as `WardrikChannel`
-  finds those the release holds. The rest of a channel's settings are its
-  adapter's, which reads them; see `WardrikChannel`.
+  finds those the release holds, and its `org`, whose agents it may offer
+  in a room: the deployment's own unless it says, or `*` for every org's.
+  Someone in a room no agent is offered in may create one there, from
+  `defaults`, where `defaults` name a policy, unless the channel's `create`
+  is `false`.
+  The rest of a channel's settings are its adapter's, which reads them; see
+  `WardrikChannel`. An agent is offered in a channel's rooms where its file
+  names the channel; see `WardrikDaemon.AgentFile`.
 
   `notify` names targets an agent file's `notify` routes to, each one a
   `channel` of `channels` and a `room` in it, with who may answer it as
@@ -396,7 +402,7 @@ defmodule WardrikDaemon.Config do
         {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
 
       {"channels", channels} ->
-        {WardrikChannel, channels: channels(table!(channels, ["channels"]))}
+        {WardrikChannel, channels(table!(channels, ["channels"]), org)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -700,17 +706,33 @@ defmodule WardrikDaemon.Config do
 
   # -- channels --------------------------------------------------------------
 
-  defp channels(channels) do
-    Enum.map(channels, fn {name, channel} ->
-      path = ["channels", name]
-      {type, settings} = Map.pop(table!(channel, path), "type")
-      adapter = adapter!(type, path ++ ["type"])
+  # Each channel, and the orgs whose agents it may offer.
+  defp channels(channels, org) do
+    read =
+      Enum.map(channels, fn {name, channel} ->
+        path = ["channels", name]
+        {type, settings} = Map.pop(table!(channel, path), "type")
+        {orgs, settings} = Map.pop(settings, "org")
+        {creates, settings} = Map.pop(settings, "create", true)
+        adapter = adapter!(type, path ++ ["type"])
 
-      case adapter.config(settings) do
-        {:ok, options} -> {name(name), {adapter, options}}
-        {:error, at, message} -> invalid!(path ++ at, message)
-      end
-    end)
+        unless is_boolean(creates),
+          do: invalid!(path ++ ["create"], "is true or false")
+
+        case adapter.config(settings) do
+          {:ok, options} ->
+            {name(name), {adapter, options}, orgs(orgs, org, path ++ ["org"]), creates}
+
+          {:error, at, message} ->
+            invalid!(path ++ at, message)
+        end
+      end)
+
+    [
+      channels: for({name, channel, _orgs, _creates} <- read, do: {name, channel}),
+      orgs: for({name, _channel, orgs, _creates} <- read, do: {name, orgs}),
+      creates: for({name, _channel, _orgs, creates} <- read, do: {name, creates})
+    ]
   end
 
   defp adapter!(type, path) do

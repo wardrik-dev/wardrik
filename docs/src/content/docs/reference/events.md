@@ -222,6 +222,29 @@ Reasoning of an assistant message as it streams. Live: never stored.
 | `message` | [message_ref](#message_ref) | yes |  |
 | `delta` | string | yes |  |
 
+### `wardrik.room.bound`
+
+Someone had an agent answer in a room of a channel.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `channel` | string | yes | The channel, by the name config.yaml gives it. |
+| `room` | string | yes | The room, as the channel knows it, such as a Slack channel's id. |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `answers` | string | yes | When it answers: when mentioned, or to every message. One of `mentions`, `everything`. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.room.unbound`
+
+Someone had the agent that answered in a room of a channel stop.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `channel` | string | yes | The channel, by the name config.yaml gives it. |
+| `room` | string | yes | The room, as the channel knows it, such as a Slack channel's id. |
+| `actor` | [principal](#principal) |  |  |
+
 ### `wardrik.run.cancelled`
 
 A person stopped a run.

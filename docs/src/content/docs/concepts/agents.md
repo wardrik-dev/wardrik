@@ -23,7 +23,7 @@ An org is the boundary between agents. A [token](/operate/security/#tokens) reac
 an org, `acme/`, or of one of its users, `acme/@jon/`. A
 [shared tree](/concepts/files-and-memory/#sharing-trees) belongs to an org or a user, and an
 [MCP server](/guides/mcp/#which-orgs-a-server-serves) and a
-[notice target](/guides/slack/#which-orgs-a-target-tells) serve one org unless `config.yaml` says
+[notice target](/guides/notices/#which-orgs-a-target-tells) serve one org unless `config.yaml` says
 others.
 
 The deployment has an org of its own, `default` unless `config.yaml` names another:

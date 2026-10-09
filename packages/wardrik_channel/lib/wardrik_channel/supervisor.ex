@@ -9,8 +9,15 @@ defmodule WardrikChannel.Supervisor do
   Options:
 
     * `:channels` - each channel by name, as its adapter and the options its
-      `config/1` answered; each is started with `:name` added
+      `config/1` answered; each is started with `:name` and `:context`, its
+      `WardrikChannel.Context`, added
+    * `:offered`, `:creatable` and `:create` - the host's answers to which
+      agents may answer in a channel's rooms, and to creating one, as
+      `WardrikChannel.Context` takes them; none, and none created, by
+      default
   """
+
+  alias WardrikChannel.Context
 
   use Supervisor
 
@@ -19,14 +26,26 @@ defmodule WardrikChannel.Supervisor do
 
   @impl true
   def init(opts) do
-    opts = Keyword.validate!(opts, channels: [])
+    opts =
+      Keyword.validate!(opts,
+        channels: [],
+        offered: {Context, :none, []},
+        creatable: {Context, :no, []},
+        create: {Context, :refuse, []}
+      )
 
     channels =
-      for {name, {adapter, channel}} <- opts[:channels],
-          do:
-            Supervisor.child_spec(adapter.child_spec([name: name] ++ channel),
-              id: {:channel, name}
-            )
+      for {name, {adapter, channel}} <- opts[:channels] do
+        context = %Context{
+          channel: to_string(name),
+          offered: opts[:offered],
+          creatable: opts[:creatable],
+          create: opts[:create]
+        }
+
+        spec = adapter.child_spec([name: name, context: context] ++ channel)
+        Supervisor.child_spec(spec, id: {:channel, name})
+      end
 
     Supervisor.init([{Task.Supervisor, name: WardrikChannel.tasks()} | channels],
       strategy: :one_for_one

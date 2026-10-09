@@ -35,6 +35,7 @@ defmodule WardrikDaemon.AgentFile do
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
   | `schedule` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
+  | `channels` | the chat channels it may be chosen to answer in; see below |
 
   Its ID is `org/name`, or `org/@user/name` for one that works for a user:
   the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
@@ -164,6 +165,14 @@ defmodule WardrikDaemon.AgentFile do
       the daemon was down, and `skip` lets them go
     * `jitter` - up to this many seconds added to each run
 
+  ## Channels
+
+  `channels` lists the channels of `config.yaml`'s `channels` the agent is
+  offered in. Inviting a channel's bot into a room then offers it there, as
+  `WardrikChannel.Rooms` describes, where the channel serves the agent's org:
+
+      channels: [slack]
+
   ## Notify
 
   `notify` routes the agent's notices to targets `config.yaml`'s `notify`
@@ -219,8 +228,8 @@ defmodule WardrikDaemon.AgentFile do
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify)
-  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction schedule)
+  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify channels)
+  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction schedule channels)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
@@ -340,6 +349,7 @@ defmodule WardrikDaemon.AgentFile do
     file? = match?({:file, _name}, source)
     system = optional_string!(fields["instructions"], "instructions") || ""
     _schedules = schedules(fields["schedule"], files?(fields))
+    _channels = channels!(fields["channels"], owner.org)
     spec = spec(fields, system, policies, file?, owner)
     within!(spec, source)
 
@@ -785,6 +795,41 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   defp target!(name, _org), do: invalid!("notify names #{inspect(name)}, which is not a target")
+
+  # -- channels ----------------------------------------------------------------
+
+  @doc "The channels a definition's fields offer its agent in, by name."
+  @spec channels(map()) :: [String.t()]
+  def channels(fields), do: Map.get(fields, "channels") || []
+
+  defp channels!(nil, _org), do: []
+
+  defp channels!(names, org) when is_list(names) do
+    settings = WardrikDaemon.Config.settings(WardrikChannel)
+    orgs = Keyword.get(settings, :orgs, [])
+
+    for name <- names, do: channel!(name, org, orgs)
+  end
+
+  defp channels!(_other, _org),
+    do: invalid!("channels is a list of the channels it is offered in")
+
+  defp channel!(name, org, orgs) do
+    case Enum.find(orgs, fn {channel, _orgs} -> Atom.to_string(channel) == name end) do
+      nil ->
+        invalid!(
+          "channels names #{inspect(name)}, but config.yaml's channels has no such channel"
+        )
+
+      {_channel, :all} ->
+        name
+
+      {_channel, served} ->
+        if org in served,
+          do: name,
+          else: invalid!("channels names #{name}, which config.yaml keeps for another org")
+    end
+  end
 
   defp known_targets([]), do: []
 

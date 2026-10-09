@@ -263,6 +263,10 @@ export interface AgentDefinition {
      */
     jitter?: number;
   }[];
+  /**
+   * The chat channels, as config.yaml names them, it may be chosen to answer in.
+   */
+  channels?: string[];
 }
 /**
  * The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.
@@ -654,6 +658,44 @@ export interface ReasoningDeltaData {
   delta: string;
 }
 /**
+ * Someone had an agent answer in a room of a channel.
+ */
+export interface RoomBoundData {
+  /**
+   * The channel, by the name config.yaml gives it.
+   */
+  channel: string;
+  /**
+   * The room, as the channel knows it, such as a Slack channel's id.
+   */
+  room: string;
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  /**
+   * When it answers: when mentioned, or to every message.
+   */
+  answers: "mentions" | "everything";
+  actor?: Principal;
+}
+/**
+ * Someone had the agent that answered in a room of a channel stop.
+ */
+export interface RoomUnboundData {
+  /**
+   * The channel, by the name config.yaml gives it.
+   */
+  channel: string;
+  /**
+   * The room, as the channel knows it, such as a Slack channel's id.
+   */
+  room: string;
+  actor?: Principal;
+}
+/**
  * A person stopped a run.
  */
 export interface RunCancelledData {
@@ -901,6 +943,8 @@ export interface EventData {
   "wardrik.message.delta": MessageDeltaData;
   "wardrik.message.started": MessageStartedData;
   "wardrik.reasoning.delta": ReasoningDeltaData;
+  "wardrik.room.bound": RoomBoundData;
+  "wardrik.room.unbound": RoomUnboundData;
   "wardrik.run.cancelled": RunCancelledData;
   "wardrik.run.completed": RunCompletedData;
   "wardrik.run.deadline_exceeded": RunDeadlineExceededData;

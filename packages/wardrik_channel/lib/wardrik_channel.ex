@@ -39,8 +39,15 @@ defmodule WardrikChannel do
       callbacks take, or where they do not read.
     * `child_spec/1` is what a channel runs, such as its connection to the
       medium, started by `WardrikChannel.Supervisor` with the channel's
-      options and its `:name`.
+      options, its `:name`, and its `WardrikChannel.Context`.
     * `deliver/2` posts a `WardrikChannel.Outbound` in a room.
+
+  ## Rooms
+
+  An adapter tells `WardrikChannel.Rooms` when its bot is invited into a
+  room or taken out of one, and what was chosen there, handing it the
+  channel's context. See `WardrikChannel.Rooms` for how a room comes to have
+  an agent.
 
   `WardrikChannel.Notices` is a `WardrikNotify` target that posts notices in
   a room through a channel's adapter.
@@ -58,7 +65,7 @@ defmodule WardrikChannel do
   """
   @callback config(settings :: map()) :: {:ok, keyword()} | {:error, [String.t()], String.t()}
 
-  @doc "What the channel runs, given its options and its `:name`."
+  @doc "What the channel runs, given its options, its `:name` and its `:context`."
   @callback child_spec(keyword()) :: Supervisor.child_spec()
 
   @doc "Posts `outbound` in its room, as the channel whose options these are."

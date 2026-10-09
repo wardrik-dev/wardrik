@@ -411,12 +411,28 @@ defmodule WardrikDaemon.ConfigTest do
           type: test
       """
 
-      assert {:ok, [{WardrikChannel, channels: channels}]} = read(yaml, context)
+      assert {:ok, [{WardrikChannel, [channels: channels, orgs: orgs, creates: _creates]}]} =
+               read(yaml, context)
 
       assert Enum.sort(channels) == [
                chat: {WardrikDaemon.Test.Channel, [room_prefix: "wardrik-"]},
                other: {WardrikDaemon.Test.Channel, []}
              ]
+
+      assert Enum.sort(orgs) == [chat: ["default"], other: ["default"]]
+
+      yaml = "channels:\n  chat: {type: test, org: \"*\"}\n  acme: {type: test, org: [acme]}\n"
+      assert {:ok, [{WardrikChannel, settings}]} = read(yaml, context)
+      assert Enum.sort(settings[:orgs]) == [acme: ["acme"], chat: :all]
+      assert Enum.sort(settings[:creates]) == [acme: true, chat: true]
+
+      assert {:ok, [{WardrikChannel, settings}]} =
+               read("channels:\n  chat: {type: test, create: false}\n", context)
+
+      assert settings[:creates] == [chat: false]
+
+      assert {:error, message} = read("channels:\n  chat: {type: test, create: maybe}\n", context)
+      assert message =~ "channels.chat.create is true or false"
 
       assert {:error, message} = read("channels:\n  chat: {type: pigeon}\n", context)
       assert message =~ "channels.chat.type is the kind of channel: test"

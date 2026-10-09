@@ -84,7 +84,7 @@ defmodule WardrikSlack.Notices do
 
       [question] ++
         reason_box(call) ++
-        [%{type: "actions", block_id: "wardrik:" <> call.id, elements: buttons(call, value)}]
+        [WardrikSlack.actions("wardrik:" <> call.id, buttons(call, value))]
     else
       [question, context(from_a_shell(call, agent))]
     end
