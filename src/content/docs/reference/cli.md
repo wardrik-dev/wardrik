@@ -233,10 +233,10 @@ wardrik deny [KEY [CALL [REASON]]]
 A token for the HTTP API, printed once.
 
 ```sh
-wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]
+wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]
 ```
 
---scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or org/@user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited.
+--scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or org/@user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited. --for NAME is the person it is issued to, whom its decisions are recorded as made by.
 
 ## wardrik token list
 
