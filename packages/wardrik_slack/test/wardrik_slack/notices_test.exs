@@ -110,7 +110,7 @@ defmodule WardrikSlack.NoticesTest do
       assert_receive {:slack, _host, _path,
                       %{"text" => "acme/triage answered", "blocks" => [_title, body]}}
 
-      assert body["text"]["text"] == "Two incidents need you."
+      assert body == %{"type" => "markdown", "text" => "Two incidents need you."}
     end
 
     test "reports what Slack refused" do

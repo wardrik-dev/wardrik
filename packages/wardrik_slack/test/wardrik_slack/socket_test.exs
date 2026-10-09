@@ -30,6 +30,17 @@ defmodule WardrikSlack.SocketTest do
     assert {:ack, "e-3", {:event, %{"type" => "member_joined_channel"}}} = Socket.envelope(frame)
   end
 
+  test "hands on a message, to be acknowledged once it has been handled" do
+    frame =
+      JSON.encode!(%{
+        envelope_id: "e-4",
+        type: "events_api",
+        payload: %{event: %{type: "message", text: "hi"}}
+      })
+
+    assert {:ack_after, "e-4", {:message, %{"text" => "hi"}}} = Socket.envelope(frame)
+  end
+
   test "acknowledges any other envelope, and ignores what is not one" do
     assert Socket.envelope(~s({"envelope_id":"e-2","type":"events_api","payload":{}})) ==
              {:ack, "e-2", :ignore}

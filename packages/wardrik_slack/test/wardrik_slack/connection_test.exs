@@ -33,6 +33,34 @@ defmodule WardrikSlack.ConnectionTest do
       refute_received {:interactive, _payload}
     end
 
+    test "hands on a message unacknowledged, and acknowledges it when asked" do
+      message =
+        JSON.encode!(%{
+          envelope_id: "e-3",
+          type: "events_api",
+          payload: %{event: %{type: "message"}}
+        })
+
+      assert {:ok, _owner} = Connection.handle_frame({:text, message}, self())
+      assert_received {:message, %{"type" => "message"}, {connection, "e-3"}}
+      assert connection == self()
+
+      test = self()
+
+      fake =
+        spawn(fn ->
+          receive do
+            {:"$websockex_send", from, frame} ->
+              send(test, {:sent, frame})
+              :gen.reply(from, :ok)
+          end
+        end)
+
+      assert Connection.ack(fake, "e-3") == :ok
+      assert_receive {:sent, {:text, ack}}
+      assert JSON.decode!(ack) == %{"envelope_id" => "e-3"}
+    end
+
     test "passes over anything else" do
       assert {:ok, _owner} = Connection.handle_frame({:text, "not json"}, self())
       assert {:ok, _owner} = Connection.handle_frame({:binary, <<1>>}, self())
@@ -57,7 +85,7 @@ defmodule WardrikSlack.ConnectionTest do
         send(test, {:asked, conn.request_path})
 
         case conn.request_path do
-          "/api/auth.test" -> Req.Test.json(conn, %{ok: true, user_id: "UBOT"})
+          "/api/auth.test" -> Req.Test.json(conn, %{ok: true, user_id: "UBOT", team_id: "T1"})
           _open -> Req.Test.json(conn, %{ok: true, url: "ws://127.0.0.1:1/"})
         end
       end)
@@ -66,6 +94,7 @@ defmodule WardrikSlack.ConnectionTest do
                Socket.handle_info(:connect, @state)
 
       assert state.answer[:bot] == "UBOT"
+      assert state.answer[:team] == "T1"
       assert_received {:asked, "/api/auth.test"}
 
       assert {:noreply, _state} = Socket.handle_info(:connect, state)
@@ -95,6 +124,22 @@ defmodule WardrikSlack.ConnectionTest do
 
       assert {:noreply, @state} =
                Socket.handle_info({:event, %{"type" => "reaction_added"}}, @state)
+
+      test = self()
+
+      fake =
+        spawn(fn ->
+          receive do
+            {:"$websockex_send", from, frame} ->
+              send(test, {:sent, frame})
+              :gen.reply(from, :ok)
+          end
+        end)
+
+      assert {:noreply, @state} =
+               Socket.handle_info({:message, %{"type" => "message"}, {fake, "e-5"}}, @state)
+
+      assert_receive {:sent, {:text, ~s({"envelope_id":"e-5"})}}
     end
   end
 end

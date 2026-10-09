@@ -31,6 +31,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 		Allow, ask or deny a tool call by its name and by what it acts on. A call that waits on a
 		person reaches Slack with Approve and Deny.
 	</Card>
+	<Card title="Answers in Slack threads" icon="comment-alt">
+		Invite an agent's bot into a Slack channel and it answers there, each conversation in a
+		thread of its own, asking in the thread before a call it may not make alone.
+	</Card>
 	<Card title="Your tools, in your process" icon="puzzle">
 		Tools written with the TypeScript SDK run in your own app. Wardrik calls them over a socket,
 		each call with an idempotency key.

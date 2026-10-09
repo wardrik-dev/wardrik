@@ -1,6 +1,6 @@
 ---
 title: Channels
-description: The chat media agents are reached through, such as Slack. A channel is configured once, a room in it is bound to an agent by inviting its bot, and notices are posted in a room.
+description: The chat media agents are reached through, such as Slack. A channel is configured once, a room in it is bound to an agent by inviting its bot, the agent answers each conversation in a thread, and notices are posted in a room.
 sidebar:
   order: 1
 ---
@@ -57,6 +57,35 @@ stand:
 Taking the bot out of the room unbinds it. Each binding, each change to it, and each agent created
 is recorded in the audit log, as `wardrik.room.bound`, `wardrik.room.unbound` and
 `wardrik.agent.defined` [events](/reference/events/), with who made it.
+
+## Threads
+
+The room's agent answers in threads. A message posted in the room starts a thread of its own where
+it mentions the bot, or where the agent answers every message; a reply in that thread reaches the
+agent without a mention. Each thread is a conversation of its own: the agent reads what was said in
+the thread, and not what was said in another, though its [files and memory](/concepts/files-and-memory/)
+are shared among them all. Every thread runs on the agent's one definition, and every message the
+agent reads names who sent it.
+
+What the agent answers is posted in the thread, and so is anything it asks before a call its
+[policy](/concepts/policy/) holds for a person, with buttons to answer it. A turn that fails says
+why there. Replies are taken from the agent's [event log](/concepts/events/), so one held up by a
+restart, or refused by the channel for a while, is posted when the daemon can.
+
+While the agent waits on a person, a new message in the thread waits behind the question, and the
+question is posted again, so the thread never goes quiet.
+
+A channel's `approvers` may answer what an agent asks in its threads, each as the channel names
+people; without them, anyone in the room may:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    token: ${SLACK_BOT_TOKEN}
+    app_token: ${SLACK_APP_TOKEN}
+    approvers: ["@maria", "finance-lead@example.com"]
+```
 
 ## Notices in a room
 
