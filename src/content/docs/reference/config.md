@@ -20,6 +20,7 @@ apart from what the daemon writes:
 | `WARDRIK_COOKIE_FILE` | `$XDG_DATA_HOME/wardrik/cookie`, `~/.local/share/wardrik/cookie` | the node's distribution cookie |
 | `WARDRIK_DATA_HOME` | `$XDG_DATA_HOME/wardrik`, `~/.local/share/wardrik` | `vault_key`, the vault's key where none is configured; see `WardrikDaemon.VaultKey` |
 | `WARDRIK_STATE_DIR` | `$XDG_STATE_HOME/wardrik`, `~/.local/state/wardrik` | `log/wardrik.log`, and `log/mcp.log` for what MCP commands write to stderr |
+| `WARDRIK_ENV_FILE` | `env` in `WARDRIK_CONFIG_DIR` | the variables `bin/wardrik` sets, one `NAME=value` a line, where its environment does not set them |
 
 ## config.yaml
 
@@ -94,6 +95,10 @@ itself need hold no secret. `storage`, `cluster`, `http` and `vault` read
 the environment alone: the store holds the vault, the cluster and the HTTP
 API's settings are read as the node boots, before the vault can be, and the
 vault cannot unlock itself.
+
+The environment is the one `bin/wardrik` runs in, with what the env file
+sets where that environment does not; see `env_file/1`. A variable that is
+not set is refused with where to set it.
 
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
