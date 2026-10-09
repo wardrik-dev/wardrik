@@ -176,6 +176,24 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
+  @doc """
+  Starts `agent`, which answers in a thread of the channel `channel`, on the
+  spec its definition writes, where it is not running.
+  """
+  @spec start(String.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
+  def start(channel, %AgentID{} = agent) when is_binary(channel) do
+    with {:ok, options} <- options(agent) do
+      case Fleet.spawn(agent, options) do
+        {:ok, pid} -> {:ok, pid}
+        {:error, reason} -> {:error, "#{agent} did not start: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  @doc "Who may answer what an agent asks in the channel `channel`'s threads."
+  @spec approvers(String.t()) :: [String.t()]
+  def approvers(channel) when is_binary(channel), do: channel_setting(:approvers, channel, [])
+
   defp creates(channel) do
     if creatable?(channel),
       do: :ok,

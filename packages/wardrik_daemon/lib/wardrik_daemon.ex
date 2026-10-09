@@ -34,7 +34,9 @@ defmodule WardrikDaemon do
       `WardrikDaemon.Agents.routes/0` for the routes as it starts, so one that
       restarts routes the agents as before.
     * `WardrikChannel.Supervisor`, when a channel is configured, which runs
-      what each channel's adapter runs, such as its connection to the medium.
+      what each channel's adapter runs, such as its connection to the medium,
+      after `WardrikChannel.Replies`, which posts what agents answer in its
+      rooms' threads.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
@@ -172,11 +174,14 @@ defmodule WardrikDaemon do
 
       channels ->
         [
+          WardrikChannel.Replies,
           {WardrikChannel.Supervisor,
            channels: channels,
            offered: {WardrikDaemon.Agents, :offered, []},
            creatable: {WardrikDaemon.Agents, :creatable?, []},
-           create: {WardrikDaemon.Agents, :create, []}}
+           create: {WardrikDaemon.Agents, :create, []},
+           start: {WardrikDaemon.Agents, :start, []},
+           approvers: {WardrikDaemon.Agents, :approvers, []}}
         ]
     end
   end

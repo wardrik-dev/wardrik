@@ -29,6 +29,16 @@ defmodule WardrikNotify.NoticeTest do
     assert notice.at == DateTime.from_unix!(1_790_000_000_000_000, :microsecond)
   end
 
+  test "the calls an agent waits on, as it answers them, make a notice of now" do
+    call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
+    before = DateTime.utc_now()
+
+    assert %Notice{kind: :parked, agent: ~A"acme/triage", calls: [%{id: "call_1"}], at: at} =
+             Notice.parked(~A"acme/triage", [{call, "This ships to production."}])
+
+    assert DateTime.compare(at, before) != :lt
+  end
+
   test "a call a turn made after reading content from outside says so" do
     call = %{id: "call_1", name: "deploy", arguments: %{}, labels: ["outside"]}
 

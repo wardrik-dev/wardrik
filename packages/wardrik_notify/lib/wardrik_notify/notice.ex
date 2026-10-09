@@ -41,8 +41,7 @@ defmodule WardrikNotify.Notice do
 
     case payload do
       {:turn_parked, calls} ->
-        {:ok,
-         struct!(__MODULE__, Map.merge(base, %{kind: :parked, calls: Enum.map(calls, &call/1)}))}
+        {:ok, %{parked(source.agent_id, calls) | at: base.at}}
 
       {:turn_failed, reason} ->
         {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :failed, reason: reason}))}
@@ -54,6 +53,19 @@ defmodule WardrikNotify.Notice do
         :none
     end
   end
+
+  @doc """
+  The notice that `agent` waits on `calls`, as `Wardrik.Agent.parked/1`
+  answers them, now.
+  """
+  @spec parked(Wardrik.AgentID.t(), [{Wardrik.Tool.call(), String.t()}]) :: t()
+  def parked(%Wardrik.AgentID{} = agent, calls) when is_list(calls),
+    do: %__MODULE__{
+      agent: agent,
+      kind: :parked,
+      at: DateTime.utc_now(),
+      calls: Enum.map(calls, &call/1)
+    }
 
   defp call({call, prompt}) do
     %{

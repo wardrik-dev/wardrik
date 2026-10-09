@@ -13,8 +13,15 @@ defmodule WardrikChannel.Context do
     * `:create` - given the channel, the room's name and who asked, creates
       an agent offered in the channel, answering `{:ok, offer}` or
       `{:error, message}`
+    * `:start` - given the channel and the ID of one of its threads' agents,
+      starts it where it is not running, answering `{:ok, pid}` or
+      `{:error, message}`; none is started by default
+    * `:approvers` - given the channel, who may answer what an agent asks in
+      its threads, as the channel names people; anyone in the room by
+      default
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.Principal
   alias WardrikChannel.Offer
 
@@ -23,7 +30,9 @@ defmodule WardrikChannel.Context do
     :channel,
     offered: {__MODULE__, :none, []},
     creatable: {__MODULE__, :no, []},
-    create: {__MODULE__, :refuse, []}
+    create: {__MODULE__, :refuse, []},
+    start: {__MODULE__, :unstarted, []},
+    approvers: {__MODULE__, :none, []}
   ]
 
   @type host() :: {module(), atom(), [term()]}
@@ -32,7 +41,9 @@ defmodule WardrikChannel.Context do
           channel: String.t(),
           offered: host(),
           creatable: host(),
-          create: host()
+          create: host(),
+          start: host(),
+          approvers: host()
         }
 
   @doc "The agents that may answer in a room of the context's channel."
@@ -48,6 +59,15 @@ defmodule WardrikChannel.Context do
   def create(%__MODULE__{channel: channel, create: host}, name, by),
     do: call(host, [channel, name, by])
 
+  @doc "Starts `agent`, which answers in a thread of the channel's, where it is not running."
+  @spec start(t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
+  def start(%__MODULE__{channel: channel, start: host}, %AgentID{} = agent),
+    do: call(host, [channel, agent])
+
+  @doc "Who may answer what an agent asks in the channel's threads."
+  @spec approvers(t()) :: [String.t()]
+  def approvers(%__MODULE__{channel: channel, approvers: host}), do: call(host, [channel])
+
   defp call({module, function, args}, more), do: apply(module, function, args ++ more)
 
   @doc false
@@ -61,4 +81,8 @@ defmodule WardrikChannel.Context do
   @doc false
   @spec refuse(String.t(), String.t(), Principal.t() | nil) :: {:error, String.t()}
   def refuse(_channel, _name, _by), do: {:error, "This channel creates no agents."}
+
+  @doc false
+  @spec unstarted(String.t(), AgentID.t()) :: {:error, String.t()}
+  def unstarted(_channel, agent), do: {:error, "#{agent} is not running."}
 end

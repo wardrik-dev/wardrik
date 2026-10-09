@@ -608,6 +608,29 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:error, ~s("!!!" makes no agent's name.)} = Agents.create("slack", "!!!", maria)
   end
 
+  test "starts the agent of a room's thread on its definition, and names the channel's approvers",
+       %{org: org} = context do
+    Application.put_env(:wardrik_daemon, WardrikChannel,
+      orgs: [slack: [org]],
+      approvers: [slack: ["@maria"]]
+    )
+
+    on_exit(fn -> Application.delete_env(:wardrik_daemon, WardrikChannel) end)
+
+    write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
+    start_supervised!({Agents, dir: context.dir})
+    _files = Agents.files()
+
+    thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
+    assert {:ok, pid} = Agents.start("slack", thread)
+    assert Fleet.whereis(thread) == pid
+    assert Agents.start("slack", thread) == {:ok, pid}
+    assert Agent.status(thread).model == Agent.status(AgentID.parse!("#{org}/books")).model
+
+    assert Agents.approvers("slack") == ["@maria"]
+    assert Agents.approvers("other") == []
+  end
+
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
     start_supervised!({Agents, dir: Path.join(dir, "missing")})
     assert Agents.files() == []
