@@ -159,8 +159,8 @@ defmodule WardrikDaemon.Config do
   Someone in a room no agent is offered in may create one there, from
   `defaults`, where `defaults` name a policy, unless the channel's `create`
   is `false`. A channel's `approvers` may answer what an agent asks in its
-  threads, as the channel names people; anyone in the room where it names
-  nobody.
+  threads, as the channel names people, and are asked it directly where the
+  channel can reach a person; anyone in the room may where it names nobody.
   The rest of a channel's settings are its adapter's, which reads them; see
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.

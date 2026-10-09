@@ -99,10 +99,24 @@ defmodule WardrikSlack.RoomsTest do
     text = JSON.encode!(message["blocks"])
     assert text =~ "Keeps the books."
     assert text =~ "Mention <@UBOT> and it answers in a thread under your message."
+    assert text =~ "waits here for someone to approve it."
     assert buttons(message) == ["everything", "wardrik_room_more"]
 
     assert Audit.about("rooms/#{opts[:context].channel}/C1") ==
              [{"room.bound", %{"type" => "slack", "id" => "U1"}}]
+  end
+
+  @doc false
+  def approving(approvers, _channel), do: approvers
+
+  test "says who approves, where the channel names approvers" do
+    opts = opts([books()])
+    context = %{opts[:context] | approvers: {__MODULE__, :approving, [["@maria", "U5"]]}}
+
+    assert :ok = Rooms.event(joined("C1"), Keyword.put(opts, :context, context))
+
+    assert JSON.encode!(posted()["blocks"]) =~
+             "A call that needs approval is sent to @maria or <@U5> to approve"
   end
 
   test "offers each agent with what it is for, and binds the one used" do

@@ -77,7 +77,8 @@ While the agent waits on a person, a new message in the thread waits behind the 
 question is posted again, so the thread never goes quiet.
 
 A channel's `approvers` may answer what an agent asks in its threads, each as the channel names
-people; without them, anyone in the room may:
+people, and are asked it directly, where the channel can reach a person, with the thread saying who
+it waits on; without them, anyone in the room may, in the thread:
 
 ```yaml
 channels:

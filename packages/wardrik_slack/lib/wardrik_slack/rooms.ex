@@ -21,6 +21,7 @@ defmodule WardrikSlack.Rooms do
 
   alias Wardrik.AgentID
   alias Wardrik.Principal
+  alias WardrikChannel.Context
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
 
@@ -123,7 +124,7 @@ defmodule WardrikSlack.Rooms do
   @doc false
   @spec message(WardrikChannel.Rooms.shown() | :stopped, WardrikChannel.Context.t(), keyword()) ::
           %{text: String.t(), blocks: [map()]}
-  def message({:bound, %Room{agent: agent, answers: answers}, offer}, _context, opts) do
+  def message({:bound, %Room{agent: agent, answers: answers}, offer}, context, opts) do
     text = ":wave: *#{agent}* answers here now."
 
     {how, toggle} =
@@ -141,7 +142,7 @@ defmodule WardrikSlack.Rooms do
         [section(text)] ++
           described(offer) ++
           [
-            section(how <> " A call that needs approval waits here for someone to approve it."),
+            section(how <> " " <> approving(Context.approvers(context))),
             WardrikSlack.actions("wardrik_room", [toggle, more()])
           ]
     }
@@ -270,4 +271,11 @@ defmodule WardrikSlack.Rooms do
   defp slack(id, name \\ nil)
   defp slack(nil, _name), do: nil
   defp slack(id, name), do: Principal.new(:slack, id, name: name)
+
+  defp approving([]), do: "A call that needs approval waits here for someone to approve it."
+
+  defp approving(approvers),
+    do:
+      "A call that needs approval is sent to #{WardrikSlack.Approvers.named(approvers)} " <>
+        "to approve, and the thread says so."
 end

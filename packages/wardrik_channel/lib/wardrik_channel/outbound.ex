@@ -11,10 +11,13 @@ defmodule WardrikChannel.Outbound do
       an agent answered, and the ids of the messages it answers, if any
     * `:approvers` - who may answer what it asks, as the channel names
       people; anyone in the room where it names nobody
+    * `:to` - `:room`, to post it in the room, or `:approvers`, to ask each
+      of them directly what it asks, and say in the thread who it waits on;
+      a channel that cannot reach a person directly posts it in the room
   """
 
   @enforce_keys [:room, :body]
-  defstruct [:room, :thread, :body, approvers: []]
+  defstruct [:room, :thread, :body, approvers: [], to: :room]
 
   @type body() :: {:notice, WardrikNotify.Notice.t()} | {:reply, String.t(), [String.t()]}
 
@@ -22,6 +25,7 @@ defmodule WardrikChannel.Outbound do
           room: String.t(),
           thread: String.t() | nil,
           body: body(),
-          approvers: [String.t()]
+          approvers: [String.t()],
+          to: :room | :approvers
         }
 end

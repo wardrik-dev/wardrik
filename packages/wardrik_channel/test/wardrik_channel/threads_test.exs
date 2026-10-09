@@ -107,7 +107,7 @@ defmodule WardrikChannel.ThreadsTest do
     assert_receive {:delivered, %Outbound{thread: "2.2", body: {:reply, "Here.", ["2.2"]}}, _}
   end
 
-  test "posts the calls a thread's run waits on, for the channel's approvers to answer" do
+  test "asks the channel's approvers directly the calls a thread's run waits on" do
     {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]}, approvers: ["@maria"])
 
     assert {:asked, agent} =
@@ -117,10 +117,17 @@ defmodule WardrikChannel.ThreadsTest do
                     %Outbound{
                       thread: "3.1",
                       body: {:notice, %Notice{kind: :parked, agent: ^agent, calls: [call]}},
-                      approvers: ["@maria"]
+                      approvers: ["@maria"],
+                      to: :approvers
                     }, _channel}
 
     assert %{id: "call_1", name: "deploy"} = call
+
+    nudge = inbound(context, thread: "3.1", id: "3.2", text: "Well?", mentioned?: false)
+    assert WardrikChannel.received(context, nudge) == {:asked, agent}
+
+    assert_receive {:delivered,
+                    %Outbound{thread: "3.1", body: {:notice, _parked}, to: :approvers}, _channel}
   end
 
   test "posts again what a thread's agent waits on, for a message that waits behind it" do
@@ -130,7 +137,10 @@ defmodule WardrikChannel.ThreadsTest do
              WardrikChannel.received(context, inbound(context, id: "3.1", text: "Ship it."))
 
     assert_receive :asked
-    assert_receive {:delivered, %Outbound{body: {:notice, %Notice{kind: :parked}}}, _channel}
+
+    assert_receive {:delivered,
+                    %Outbound{body: {:notice, %Notice{kind: :parked}}, approvers: [], to: :room},
+                    _channel}
 
     nudge = inbound(context, thread: "3.1", id: "3.2", text: "Well?", mentioned?: false)
     assert WardrikChannel.received(context, nudge) == {:asked, agent}

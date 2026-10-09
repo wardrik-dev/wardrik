@@ -38,6 +38,8 @@ the app has, so another service connected with the same app would receive some o
    `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears when the app is
    invited into a Slack channel or taken out of one, and `message.channels` and `message.groups`,
    so it hears what is posted there.
+6. Under **App Home**, turn on the **Messages Tab**, where the app asks a channel's
+   [approvers](#who-approves) what a thread waits on.
 
 Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
 
@@ -74,6 +76,8 @@ Inviting the app into a Slack channel then has an agent answer there, and the ap
 > _Keeps the books: reconciles Square deposits and posts to QuickBooks._
 > Mention @Wardrik and it answers in a thread under your message. A call that needs approval waits
 > here for someone to approve it.
+
+Where the channel names [approvers](#who-approves), the last line says who they are instead.
 > `[Answer every message]` `[⋯]`
 
 **Answer every message** makes the Slack channel the agent's own; the ⋯ menu uses another agent, or
@@ -92,10 +96,12 @@ channel starts a thread. See [Channels](/channels/#threads) for how a thread is 
 > ↳ **Wardrik:** Two cases, both 2019.
 
 The app marks each message the agent was asked with :eyes:, and changes it to :white_check_mark:
-once the agent has answered. A call the agent may not make alone is asked in the thread, with
-**Approve** and **Deny**, for the channel's `approvers`. A call waiting on an account to be connected
-has **Show link** instead, and the thread says "Connected github." once someone has. A turn that
-fails says why there. A message the agent could not be asked gets a reply saying why.
+once the agent has answered. A call the agent may not make alone is asked with **Approve** and
+**Deny**: of the channel's [approvers](#who-approves), each in the app's messages with them, where
+the channel names any, and in the thread, of anyone there, where it names none. A call waiting on an
+account to be connected has **Show link** instead, and the thread says "Connected github." once
+someone has. A turn that fails says why there. A message the agent could not be asked gets a reply
+saying why.
 
 The agent reads each message as from whoever posted it, by the name Slack shows for them and their
 member ID. It passes over edits, deletions, other bots, and anyone from another workspace in a Slack
@@ -129,12 +135,29 @@ authorization link to whoever pressed it, and nobody else. See
 
 **Finished:** what the agent answered, as the Markdown it wrote, which Slack renders.
 
-## Who may press the buttons
+## Who approves
 
-`approvers` lists who may, each by `@handle`, email address or Slack user ID, and anyone else is
-told only the channel's approvers can answer. Without `approvers`, anyone in the channel may. An
-email address needs the bot token scope `users:read.email`. A member's ID is under **Copy member
-ID** in their Slack profile.
+A channel's `approvers` lists who may press the buttons, each by `@handle`, email address or Slack
+user ID, and anyone else is told only the channel's approvers can answer. Without `approvers`,
+anyone in the channel may. An email address needs the bot token scope `users:read.email`. A
+member's ID is under **Copy member ID** in their Slack profile.
+
+Where a channel names approvers, what a thread's agent waits on is sent to each of them in the
+app's messages with them, under the app in Slack's sidebar, with a link to the thread, and the
+thread says who it waits on:
+
+> ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
+
+The first to answer decides; anyone pressing after is told it was already answered, and what the
+agent then answers is posted in the thread. A message that waits behind the question sends it to
+them again.
+
+The app finds each approver as a member of the workspace: a `@handle` among its members, an email
+address by the address, a user ID as it is. One it cannot find is still named in the thread, and the
+daemon's log says so. Where it can message none of them, as when the **Messages Tab** is off, it asks
+in the thread instead.
+
+A [notice target](/guides/notices/)'s `approvers` answer in the room it posts in.
 
 ## Without buttons
 
