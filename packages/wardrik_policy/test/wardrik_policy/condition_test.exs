@@ -15,10 +15,10 @@ defmodule WardrikPolicy.ConditionTest do
                Condition.parse("amount > 500")
 
       assert {:ok, [%Condition{path: ["vendor", "name"], test: {:is, ["acme", ""], nil}}]} =
-               Condition.parse("vendor.name: Acme*")
+               Condition.parse("vendor.name = Acme*")
 
       assert {:ok, [%{test: {:ge, 1.5}}, %{test: {:is, ["payroll"], nil}}]} =
-               Condition.parse("amount >= 1.5, account: \"Payroll\"")
+               Condition.parse("amount >= 1.5, account = \"Payroll\"")
 
       for subject <- [
             "notes/*",
@@ -35,9 +35,9 @@ defmodule WardrikPolicy.ConditionTest do
     end
 
     test "reads a value in double quotes whole, commas and spaces too" do
-      assert {:ok, [%{test: {:is, [" a, b "], nil}}]} = Condition.parse(~s(memo: " a, b "))
-      assert {:ok, [%{test: {:is, ["500"], nil}}]} = Condition.parse(~s(code: "500"))
-      assert {:ok, [%{test: {:is, ["500"], 500}}]} = Condition.parse("code: 500")
+      assert {:ok, [%{test: {:is, [" a, b "], nil}}]} = Condition.parse(~s(memo = " a, b "))
+      assert {:ok, [%{test: {:is, ["500"], nil}}]} = Condition.parse(~s(code = "500"))
+      assert {:ok, [%{test: {:is, ["500"], 500}}]} = Condition.parse("code = 500")
 
       assert {:ok, [%{test: {:is_not, ["", "@acme.com"], nil}}]} =
                Condition.parse("to != *@acme.com")
@@ -47,10 +47,15 @@ defmodule WardrikPolicy.ConditionTest do
       for {text, said} <- [
             {"amount > lots", "compares amount with \"lots\", which is not a number"},
             {"amount <", "compares amount with \"\""},
-            {"account:", "gives account no value"},
+            {"account =", "gives account no value"},
+            {"account: Payroll",
+             "writes account: Payroll; a condition on a value is account = Payroll"},
+            {~s(memo: "a, b"), ~s(writes memo: "a, b"; a condition on a value is memo = "a, b")},
+            {"amount == 5", "writes amount == 5; a condition on a value is amount = 5"},
+            {"amount > 5, account: Payroll", "writes account: Payroll"},
             {"cc !=", "gives cc no value"},
-            {~s(memo: "a" b"), "is not one value in double quotes"},
-            {~s(memo: a"b), "a value in double quotes is quoted whole"},
+            {~s(memo = "a" b"), "is not one value in double quotes"},
+            {~s(memo = a"b), "a value in double quotes is quoted whole"},
             {"amount > 5, notes/*", "puts conditions beside what a call acts on"}
           ] do
         assert {:error, message} = Condition.parse(text)
@@ -69,13 +74,13 @@ defmodule WardrikPolicy.ConditionTest do
     end
 
     test "matches a value with * and ignoring case, and a number as a number" do
-      assert held("account: Payroll", %{"account" => "PAYROLL"})
-      refute held("account: Payroll", %{"account" => "Payroll 2"})
-      assert held("memo: refund*", %{"memo" => "Refund for March"})
-      assert held("code: 500", %{"code" => 500.0})
-      assert held("code: 500", %{"code" => "500"})
-      assert held("paid: true", %{"paid" => true})
-      assert held("count: 3*", %{"count" => 31})
+      assert held("account = Payroll", %{"account" => "PAYROLL"})
+      refute held("account = Payroll", %{"account" => "Payroll 2"})
+      assert held("memo = refund*", %{"memo" => "Refund for March"})
+      assert held("code = 500", %{"code" => 500.0})
+      assert held("code = 500", %{"code" => "500"})
+      assert held("paid = true", %{"paid" => true})
+      assert held("count = 3*", %{"count" => 31})
     end
 
     test "!= holds where : does not, and for a number, where it is another" do
@@ -102,22 +107,22 @@ defmodule WardrikPolicy.ConditionTest do
     test "is false for an argument the call leaves out or gives as null" do
       refute held("amount > 500", %{})
       refute held("amount > 500", %{"amount" => nil})
-      refute held("vendor.name: Acme", %{"vendor" => %{}})
+      refute held("vendor.name = Acme", %{"vendor" => %{}})
     end
 
     test "may hold for an argument it cannot be checked against" do
       assert held("amount > 500", %{"amount" => "six hundred"}) == :maybe
       assert held("amount > 500", %{"amount" => "$600"}) == :maybe
       assert held("amount > 500", %{"amount" => true}) == :maybe
-      assert held("vendor: Acme", %{"vendor" => %{"name" => "Acme"}}) == :maybe
-      assert held("vendor.name: Acme", %{"vendor" => "Acme"}) == :maybe
+      assert held("vendor = Acme", %{"vendor" => %{"name" => "Acme"}}) == :maybe
+      assert held("vendor.name = Acme", %{"vendor" => "Acme"}) == :maybe
     end
 
     test "holds for a list where every item does, and may where some do" do
-      assert held("to: *@acme.com", %{"to" => ["a@acme.com", "b@ACME.com"]})
-      refute held("to: *@acme.com", %{"to" => ["a@other.com"]})
-      refute held("to: *@acme.com", %{"to" => []})
-      assert held("to: *@acme.com", %{"to" => ["a@acme.com", "b@other.com"]}) == :maybe
+      assert held("to = *@acme.com", %{"to" => ["a@acme.com", "b@ACME.com"]})
+      refute held("to = *@acme.com", %{"to" => ["a@other.com"]})
+      refute held("to = *@acme.com", %{"to" => []})
+      assert held("to = *@acme.com", %{"to" => ["a@acme.com", "b@other.com"]}) == :maybe
 
       lines = %{"lines" => [%{"amount" => 10}, %{"amount" => 900}]}
       assert held("lines.amount > 500", lines) == :maybe
@@ -127,9 +132,9 @@ defmodule WardrikPolicy.ConditionTest do
     test "holds where every condition does" do
       call = %{"amount" => 900, "account" => "Payroll"}
 
-      assert held("amount > 500, account: Payroll", call)
-      refute held("amount > 500, account: Rent", call)
-      assert held("amount > 500, account: Payroll, memo: x", call) == false
+      assert held("amount > 500, account = Payroll", call)
+      refute held("amount > 500, account = Rent", call)
+      assert held("amount > 500, account = Payroll, memo = x", call) == false
       assert held("amount > 500, note > 1", Map.put(call, "note", "x")) == :maybe
       refute held("amount > 1000, note > 1", Map.put(call, "note", "x"))
     end
@@ -145,7 +150,7 @@ defmodule WardrikPolicy.ConditionTest do
       refute Pattern.whole(pattern, "books__pay", %{"amount" => 600})
       refute Pattern.match?(pattern, "books__create_bill")
       refute Pattern.match?(pattern, "books__create_bill", "600")
-      assert Pattern.server(Pattern.parse!("books/*(account: Payroll)")) == nil
+      assert Pattern.server(Pattern.parse!("books/*(account = Payroll)")) == nil
     end
 
     test "says what does not read, after the pattern" do

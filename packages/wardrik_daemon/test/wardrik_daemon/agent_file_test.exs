@@ -309,6 +309,37 @@ defmodule WardrikDaemon.AgentFileTest do
     assert {:ask, _prompt} = WardrikPolicy.decide(policy, "github__create_issue")
   end
 
+  test "a policy written in place may hold conditions on a call's arguments", context do
+    assert {:ok, spec} =
+             read(
+               """
+               ---
+               policy:
+                 deny:
+                   write_file(content = *password*): No secrets in files.
+                 ask: ["books/create_bill(amount >= 100, account != Payroll)"]
+               ---
+               """,
+               context
+             )
+
+    assert [%Wardrik.Hook{module: WardrikPolicy, value: policy}] = spec.hooks
+
+    assert {:deny, "No secrets in files."} =
+             WardrikPolicy.decide(policy, "write_file", [], %{"content" => "the password"})
+
+    assert {:ask, _prompt} =
+             WardrikPolicy.decide(policy, "books__create_bill", [], %{
+               "amount" => 500,
+               "account" => "Rent"
+             })
+
+    assert {:error, message} =
+             read("---\npolicy:\n  ask: [books/pay(amount > 5, to = x)]\n---\n", context)
+
+    assert message =~ "which opens a parenthesis it never closes; a [ ] list splits a rule"
+  end
+
   test "a policy with a budget gives the budget a hook of its own", context do
     assert {:ok, spec} = read("---\npolicy:\n  budget:\n    usd: 5\n---\n", context)
 

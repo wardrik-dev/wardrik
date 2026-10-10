@@ -62,10 +62,15 @@ defmodule WardrikPolicy.PatternTest do
       assert {:error, message} = Pattern.parse("shell(git status")
 
       assert message ==
-               "\"shell(git status\", which is not a tool pattern; what a call acts on goes in " <>
-                 "parentheses after the tool, as shell(git status)"
+               "\"shell(git status\", which opens a parenthesis it never closes; a [ ] list " <>
+                 "splits a rule at its commas, so quote a rule with several conditions there, " <>
+                 "as \"tool(a > 1, b = 2)\", or write the rules one to a line, each after a -"
 
-      assert {:error, _message} = Pattern.parse("(x)")
+      assert {:error, message} = Pattern.parse("b = 2)")
+      assert message =~ "closes a parenthesis it never opens; a [ ] list splits a rule"
+
+      assert {:error, message} = Pattern.parse("(x)")
+      assert message =~ "which is not a tool pattern; what a call acts on goes in parentheses"
       assert to_string(Pattern.parse!("shell(git status)")) == "shell(git status)"
     end
   end

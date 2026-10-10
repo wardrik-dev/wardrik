@@ -19,9 +19,9 @@ defmodule WardrikPolicy.Pattern do
 
   Or the parentheses may hold conditions on the call's arguments, which
   `WardrikPolicy.Condition` describes: `books/create_bill(amount > 500)`,
-  `books/*(account: Payroll)`. They hold conditions where each of their
-  comma-separated parts begins with an argument's name and then `:` and a
-  space, `!=`, or a comparison, and what a call acts on where none does. A
+  `books/*(account = Payroll)`. They hold conditions where each of their
+  comma-separated parts begins with an argument's name and then `=`, `!=`
+  or a comparison, and what a call acts on where none does. A
   pattern with conditions names a whole call, `whole/3`, never a tool by
   its name alone.
 
@@ -55,16 +55,31 @@ defmodule WardrikPolicy.Pattern do
         end
 
       nil ->
-        if String.contains?(source, ["(", ")"]),
-          do:
-            {:error,
-             "#{inspect(source)}, which is not a tool pattern; what a call acts on goes in " <>
-               "parentheses after the tool, as shell(git status)"},
-          else: {:ok, %__MODULE__{source: source, parts: String.split(source, "*")}}
+        unparsed(source)
     end
   end
 
   def parse(source), do: {:error, "#{inspect(source)} is not a tool pattern"}
+
+  defp unparsed(source) do
+    case {count(source, "("), count(source, ")")} do
+      {0, 0} ->
+        {:ok, %__MODULE__{source: source, parts: String.split(source, "*")}}
+
+      {same, same} ->
+        {:error,
+         "#{inspect(source)}, which is not a tool pattern; what a call acts on goes in " <>
+           "parentheses after the tool, as shell(git status)"}
+
+      {opened, closed} ->
+        {:error,
+         "#{inspect(source)}, which #{if opened > closed, do: "opens a parenthesis it never closes", else: "closes a parenthesis it never opens"}; " <>
+           "a [ ] list splits a rule at its commas, so quote a rule with several conditions " <>
+           "there, as \"tool(a > 1, b = 2)\", or write the rules one to a line, each after a -"}
+    end
+  end
+
+  defp count(source, character), do: source |> :binary.matches(character) |> length()
 
   @doc "The pattern `source` writes, raising where it writes none."
   @spec parse!(String.t()) :: t()

@@ -1,24 +1,27 @@
 defmodule WardrikPolicy.Condition do
   @moduledoc """
   What a rule says a call's arguments hold, in parentheses after the tool:
-  `books/create_bill(amount > 500)`, `books/*(account: Payroll)`, and
+  `books/create_bill(amount > 500)`, `books/*(account = Payroll)`, and
   several, comma-separated, that must all hold:
-  `books/create_bill(amount >= 1000, vendor.name: Acme*)`.
+  `books/create_bill(amount >= 1000, vendor.name = Acme*)`.
 
   An argument is named by its key, or by keys joined with dots into nested
   ones, `vendor.name`. Through a list, the path names each item's:
   `lines.amount` is the amount of each of `lines`.
 
-    * `name: value` holds where the argument is the value, ignoring case,
+    * `name = value` holds where the argument is the value, ignoring case,
       with `*` for any run of characters. A value in double quotes may hold
-      commas, and spaces at its ends. An unquoted number, `amount: 500`,
+      commas, and spaces at its ends. An unquoted number, `amount = 500`,
       compares as a number with a number.
-    * `name != value` holds where `name: value` does not, as `to != *@acme.com`
+    * `name != value` holds where `name = value` does not, as `to != *@acme.com`
       for an address outside, or `amount != 0`.
     * `name > number`, `>=`, `<` and `<=` hold where the argument is a number
       that compares so.
 
   Text that reads whole as a number, `"600"` or `" 600.5 "`, counts as one.
+
+  `name: value` is refused rather than read as what a call acts on: YAML
+  reads `: ` as the end of a key, so a condition is never written so.
 
   ## What a call cannot be checked against
 
@@ -46,7 +49,7 @@ defmodule WardrikPolicy.Condition do
   @enforce_keys [:path, :test]
   defstruct [:path, :test]
 
-  @typedoc "`{:is, glob, number}` for `name: value`, the number where the value is one."
+  @typedoc "`{:is, glob, number}` for `name = value`, the number where the value is one."
   @type test() ::
           {:is | :is_not, [String.t()], number() | nil}
           | {:gt | :ge | :lt | :le, number()}
@@ -56,10 +59,10 @@ defmodule WardrikPolicy.Condition do
   @typedoc "Whether conditions hold for a call."
   @type held() :: boolean() | :maybe
 
-  @condition ~r/\A([A-Za-z_][\w-]*(?:\.[\w-]+)*)\s*(>=|<=|!=|>|<|:(?=\s|"|\z))\s*(.*)\z/su
+  @condition ~r/\A([A-Za-z_][\w-]*(?:\.[\w-]+)*)\s*(==|>=|<=|!=|=|>|<|:(?=\s|"|\z))\s*(.*)\z/su
   @comparisons %{">" => :gt, ">=" => :ge, "<" => :lt, "<=" => :le}
-  @syntax "conditions go as name: value, name != value or name > number, comma-separated, as " <>
-            "books/create_bill(amount > 500, account: Payroll)"
+  @syntax "conditions go as name = value, name != value or name > number, comma-separated, as " <>
+            "books/create_bill(amount > 500, account = Payroll)"
 
   @doc """
   The conditions `text`, what is in a pattern's parentheses, writes;
@@ -94,11 +97,17 @@ defmodule WardrikPolicy.Condition do
     end
   end
 
-  defp condition(path, operator, value) when operator in [":", "!="] do
+  defp condition(path, ":", value),
+    do: {:error, "writes #{path}: #{value}; a condition on a value is #{path} = #{value}"}
+
+  defp condition(path, "==", value),
+    do: {:error, "writes #{path} == #{value}; a condition on a value is #{path} = #{value}"}
+
+  defp condition(path, operator, value) when operator in ["=", "!="] do
     with {:ok, text} <- value(path, value) do
       quoted? = String.starts_with?(value, "\"")
       number = if quoted?, do: nil, else: number(text)
-      is = if operator == ":", do: :is, else: :is_not
+      is = if operator == "=", do: :is, else: :is_not
       test = {is, text |> String.downcase() |> String.split("*"), number}
       {:ok, %__MODULE__{path: String.split(path, "."), test: test}}
     end

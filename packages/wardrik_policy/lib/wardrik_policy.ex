@@ -48,7 +48,7 @@ defmodule WardrikPolicy do
   rule speaks for:
 
       allow: [books/list_*, books/create_bill(amount < 100)]
-      deny: [books/*(account: Payroll)]
+      deny: [books/*(account = Payroll)]
 
   ## Allowing by name
 
@@ -355,6 +355,14 @@ defmodule WardrikPolicy do
   defp entries(patterns) when is_list(patterns), do: Enum.map(patterns, &{&1, nil})
   defp entries(patterns) when is_map(patterns), do: Enum.to_list(patterns)
   defp entries(other), do: [{other, :not_a_list}]
+
+  defp rule(key, _label, {%{} = read, nil}) when map_size(read) == 1 do
+    [{before, rest}] = Map.to_list(read)
+
+    {:error,
+     "#{key} lists #{before}: #{rest}, which YAML reads as a key and its value; a condition " <>
+       "on a value is written with =, and a rule with \": \" in it is quoted whole"}
+  end
 
   defp rule(key, _label, {_pattern, :not_a_list}),
     do: {:error, "#{key} is a list of tool patterns, or a map of pattern to message"}
