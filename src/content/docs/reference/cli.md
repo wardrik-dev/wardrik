@@ -214,10 +214,10 @@ With --json, each call as an interrupt, with the agent it is for.
 
 ## wardrik approve
 
-Run a parked call, asking which where not named.
+Run a parked call, with a note for the agent.
 
 ```sh
-wardrik approve [KEY [CALL]]
+wardrik approve [KEY [CALL [NOTE]]]
 ```
 
 ## wardrik deny

@@ -207,10 +207,11 @@ decided on its own, in any order, and the model has the round's answers once eve
   acme/triage  call_1  github/create_issue  This opens an issue on GitHub.
 ```
 
-`approve` and `deny` decide one call, and `deny` takes a reason for the model:
+`approve` and `deny` decide one call. `approve` takes a note for the model, and `deny` a reason:
 
 ```sh
 wardrik approve acme/triage call_1
+wardrik approve acme/triage call_1 Label it for the next sprint, not this one.
 wardrik deny acme/triage call_1 Not on a Friday.
 ```
 
@@ -222,8 +223,8 @@ A call can also be decided:
 - from Slack, where the notice shows the call's arguments, with Approve and Deny buttons. See
   [Slack](/channels/slack/);
 - over the HTTP API, with a token that can `decide`:
-  `POST /v1/agents/{key}/interrupts/{id}` with `{"decision": "approve"}`, or
-  `{"decision": "reject", "reason": "..."}`;
+  `POST /v1/agents/{key}/interrupts/{id}` with `{"decision": "approve"}`,
+  `{"decision": "approve", "note": "..."}`, or `{"decision": "reject", "reason": "..."}`;
 - in the [terminal client](/guides/tui/), with Ctrl-Y and Ctrl-N.
 
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the
@@ -235,6 +236,18 @@ carry the turn's labels, as `labels: ["outside"]`.
 
 A denied tool call is answered with an error the model reads, carrying the reason, and the turn
 carries on. A model call refused by a budget ends the turn.
+
+An approved tool call runs, and where the person approving wrote a note, the model reads it beside
+the call's answer, as `"note"`:
+
+```json
+{"ok": true, "result": {"number": 412}, "note": "Label it for the next sprint, not this one."}
+```
+
+A note cannot change the call: it runs with the arguments the model wrote, whatever the note says.
+The note steers what the agent does next. To change the call itself, deny it and say what to do
+instead, and the model can make the call again as asked. A note on a model call a budget asked
+about is recorded, and not read by the model.
 
 ### Changing the policy while it waits
 

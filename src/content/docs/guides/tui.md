@@ -72,7 +72,7 @@ A bare `y` or `n` at the prompt answers a waiting call too.
 | `/spawn NAME [node=N] [--bg] [-- prompt]` | start an agent and attach to it |
 | `/connect [NAME]` | attach to an agent, or pick one from a list |
 | `/next` | attach to the next agent waiting on a person |
-| `/approve [N \| all]` | approve the waiting call, one by number, or all |
+| `/approve [N \| all] [note]` | approve the waiting call, one by number, or all, with a note for the agent |
 | `/deny [N \| all] [reason]` | deny it, saying why |
 | `/stop [NAME \| PREFIX/]` | stop this agent's turn, another's, or every agent's under a prefix |
 | `/move [NAME [node=N]]` | start an agent again on another node, as it was |
