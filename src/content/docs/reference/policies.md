@@ -48,6 +48,16 @@ of its subjects; otherwise `:default` decides:
     allow: [shell(git status), shell(git diff *)]
     deny: [shell(git push *)]
 
+A rule may instead hold conditions on what a call's arguments are, which
+`WardrikPolicy.Condition` describes, and speaks then for the whole of each
+call they hold for. A deny or an ask speaks too for a call it cannot
+check, one that gives an argument it names in a form it cannot compare,
+and an allow does not; a call that leaves the argument out is one no such
+rule speaks for:
+
+    allow: [books/list_*, books/create_bill(amount < 100)]
+    deny: [books/*(account = Payroll)]
+
 ## Allowing by name
 
 A call an `allow` rule allows is allowed by name, with an

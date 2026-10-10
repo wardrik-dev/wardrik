@@ -71,26 +71,39 @@ A rule may say instead what a call's arguments must be, in the same parentheses,
 MCP server's tools above all:
 
 ```yaml
-allow: [books/list_*, books/create_bill(amount < 100)]
+allow:
+  - books/list_*
+  - books/create_bill(amount < 100)
 ask: [books/create_bill(amount >= 100)]
 deny:
-  books/*(account: Payroll): Payroll is not for this agent.
-  bank/transfer(amount > 5000, currency: USD): Large transfers go through finance.
+  books/*(account = Payroll): Payroll is not for this agent.
+  bank/transfer(amount > 5000, currency = USD): Large transfers go through finance.
   email/send(to != *@example.com): Mail leaves the company only with a person's say-so.
 ```
 
-- `name: value` holds where the argument is the value, ignoring case, with `*` for any run of
-  characters: `memo: refund*`. A value in double quotes may hold commas, and spaces at its ends.
-- `name != value` holds where `name: value` does not: `to != *@example.com` for an address outside,
+- `name = value` holds where the argument is the value, ignoring case, with `*` for any run of
+  characters: `memo = refund*`. A value in double quotes may hold commas, and spaces at its ends.
+- `name != value` holds where `name = value` does not: `to != *@example.com` for an address outside,
   `amount != 0`.
 - `name > number`, `>=`, `<` and `<=` compare numbers: `amount > 500`.
 - `vendor.name` names a key inside an object. Through a list it names each item's: `lines.amount`
   is the amount on every line.
 - Several conditions, comma-separated, must all hold.
 
-The parentheses hold conditions where each part begins with an argument's name and then `: `, `!=`
-or a comparison, and what a call acts on otherwise, so `write_file(notes/*)` keeps its meaning, as does a
-path or a URL with a colon in it.
+The parentheses hold conditions where each part begins with an argument's name and then `=`, `!=` or
+a comparison, and what a call acts on otherwise, so `write_file(notes/*)` keeps its meaning, as does
+a path or a URL with a colon in it. A part written `name: value` is refused, with the `=` to write
+instead.
+
+YAML reads a few things in a rule before the policy does:
+
+- **A `[ ]` list splits a rule at its commas**, quoted values' too. Write a rule with several
+  conditions on a line of its own after a `-`, as a key with its message, or in quotes:
+  `deny: ["bank/transfer(amount > 5000, currency = USD)"]`.
+- **A `#` after a space starts a comment**, so put a value that starts with `#` in double quotes:
+  `books/*(memo = "#123")`.
+- **`: ` ends a key, or makes a list item a key**, even in a value's double quotes. Put the whole
+  rule in single quotes: `- 'books/*(memo = "re: invoice")'`.
 
 A rule with conditions speaks for the whole of each call they hold for. Arguments are written by the
 model, so they come in forms a rule did not foresee, and a rule decides those this way:
