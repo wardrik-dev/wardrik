@@ -117,11 +117,14 @@ defmodule WardrikChannel.Replies.State do
          },
          runs
        ),
-       do: {{:decided, decided(data["decision"], by["name"] || id, data["reason"])}, runs}
+       do:
+         {{:decided, decided(data["decision"], by["name"] || id, data["note"] || data["reason"])},
+          runs}
 
   defp post(_event, runs), do: {:none, runs}
 
-  defp decided("approved", name, _reason), do: "Approved by #{name}."
+  defp decided("approved", name, nil), do: "Approved by #{name}."
+  defp decided("approved", name, note), do: "Approved by #{name}: #{note}"
   defp decided(_rejected, name, nil), do: "Denied by #{name}."
 
   # A reason that says who denied the call, as a channel's own does, is said

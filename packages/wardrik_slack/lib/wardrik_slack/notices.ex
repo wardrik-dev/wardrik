@@ -6,9 +6,12 @@ defmodule WardrikSlack.Notices do
 
   The buttons are there where the channel has an app-level token, so a
   press reaches it: without one, the message says how to answer from a shell
-  instead. Each call waiting on approval has a box above its buttons, for why
-  it is denied or what to do instead: Deny tells the agent what was written
-  there, as `wardrik deny` tells it a reason, so a denial can steer it.
+  instead. Each call waiting on approval has a box above its buttons for a
+  note to the agent, sent with either button: Approve hands it to the agent
+  with the call's answer, as `wardrik approve` does a note, and Deny tells
+  it the note as why, as `wardrik deny` does a reason, so either can steer
+  what it does next. A note never changes the call, which runs as it was
+  written.
 
   A call waiting on a person to connect an account is posted without where to
   connect it, with Show link and Deny buttons. Show link answers the person
@@ -23,7 +26,7 @@ defmodule WardrikSlack.Notices do
 
   alias WardrikNotify.Notice
 
-  @reason "wardrik-reason:"
+  @note "wardrik-note:"
   @max_arguments 1_500
   @max_text 2_900
 
@@ -35,9 +38,9 @@ defmodule WardrikSlack.Notices do
   def message(%Notice{} = notice, opts),
     do: %{text: summary(notice), blocks: blocks(notice, opts)}
 
-  @doc "The id of the box a parked call's denial reason is written in."
-  @spec reason_block(String.t()) :: String.t()
-  def reason_block(call_id), do: @reason <> call_id
+  @doc "The id of the box a note on a parked call's decision is written in."
+  @spec note_block(String.t()) :: String.t()
+  def note_block(call_id), do: @note <> call_id
 
   # -- messages --------------------------------------------------------------
 
@@ -89,7 +92,7 @@ defmodule WardrikSlack.Notices do
         })
 
       [question] ++
-        reason_box(call) ++
+        note_box(call) ++
         [WardrikSlack.actions("wardrik:" <> call.id, buttons(call, value))]
     else
       [question, context(from_a_shell(call, agent))]
@@ -97,16 +100,16 @@ defmodule WardrikSlack.Notices do
   end
 
   # A call waiting on a connection has no approval to steer.
-  defp reason_box(%{authorization: true}), do: []
+  defp note_box(%{authorization: true}), do: []
 
-  defp reason_box(call) do
+  defp note_box(call) do
     [
       %{
         type: "input",
-        block_id: reason_block(call.id),
+        block_id: note_block(call.id),
         optional: true,
-        label: %{type: "plain_text", text: "Why, or what to do instead (sent with Deny)"},
-        element: %{type: "plain_text_input", action_id: "reason", multiline: true}
+        label: %{type: "plain_text", text: "A note for the agent, sent with either button"},
+        element: %{type: "plain_text_input", action_id: "note", multiline: true}
       }
     ]
   end

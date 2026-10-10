@@ -236,7 +236,7 @@ defmodule WardrikTUI.View do
   """
   @spec decided(
           [{Wardrik.Tool.call(), String.t()}],
-          :approve | {:deny, String.t()},
+          :approve | {:approve, String.t()} | {:deny, String.t()},
           non_neg_integer()
         ) ::
           Text.t()
@@ -246,6 +246,7 @@ defmodule WardrikTUI.View do
     line =
       case decision do
         :approve -> Text.tag(["  ▌ approved ", names], :green)
+        {:approve, note} -> Text.tag(["  ▌ approved ", names, " · ", note], :green)
         {:deny, reason} -> Text.tag(["  ▌ denied ", names, " · ", reason], :red)
       end
 

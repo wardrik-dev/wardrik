@@ -56,6 +56,7 @@ defmodule Wardrik.Event.Codec do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Call.Pipeline
   alias Wardrik.Event
   alias Wardrik.Event.Codec.Value
 
@@ -179,15 +180,16 @@ defmodule Wardrik.Event.Codec do
     do: in_run("run.deadline_exceeded", event, %{}, %{"message_count" => count})
 
   defp run({:call_decided, call_id, decision, by}, _event, _opts) do
-    {verdict, reason} =
+    {verdict, key, said} =
       case decision do
-        :approve -> {"approved", nil}
-        {:deny, reason} -> {"rejected", reason}
+        :approve -> {"approved", "note", nil}
+        {:approve, note} -> {"approved", "note", Pipeline.note(note)}
+        {:deny, reason} -> {"rejected", "reason", reason}
       end
 
     data =
       %{"interrupt" => %{"id" => call_id}, "decision" => verdict}
-      |> Value.put("reason", reason)
+      |> Value.put(key, said)
       |> Value.put("resolved_by", Value.principal(by))
 
     {"interrupt.resolved", "interrupts/" <> call_id, data}

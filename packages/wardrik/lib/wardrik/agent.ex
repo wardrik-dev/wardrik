@@ -252,12 +252,15 @@ defmodule Wardrik.Agent do
   @doc """
   Answers the calls a parked turn stopped on and carries it on.
 
-  `decisions` maps a tool call id to `:approve` or `{:deny, reason}`. Calls left
-  out stay parked, so several people can answer one call each. Non-blocking,
-  and a no-op when nothing is parked. `:by` names the `Wardrik.Principal`
-  deciding, as `decide/3` takes it.
+  `decisions` maps a tool call id to `:approve`, `{:approve, note}` or
+  `{:deny, reason}`: the model reads a note beside the call's answer, and a
+  reason in place of it. A note never changes the call, which runs as the
+  model wrote it. Calls left out stay parked, so several people can answer
+  one call each. Non-blocking, and a no-op when nothing is parked. `:by`
+  names the `Wardrik.Principal` deciding, as `decide/3` takes it.
 
       Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
+      Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:deny, "Not this quarter."}})
   """
   @spec resume(agent(), %{String.t() => Turn.decision()}, keyword()) ::

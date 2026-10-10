@@ -164,6 +164,7 @@ A person answered an interrupt.
 | `interrupt.id` | string | yes |  |
 | `decision` | string | yes | One of `approved`, `rejected`. |
 | `reason` | string |  |  |
+| `note` | string |  |  |
 | `resolved_by` | [principal](#principal) |  |  |
 
 ### `wardrik.message.completed`

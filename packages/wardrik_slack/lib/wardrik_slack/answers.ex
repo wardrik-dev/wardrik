@@ -89,13 +89,13 @@ defmodule WardrikSlack.Answers do
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
   defp decide(payload, action, user, agent, call, name) do
-    reason = reason(payload, call)
-    decision = decision(action, reason, user["username"] || user["name"] || user["id"])
+    note = note(payload, call)
+    decision = decision(action, note, user["username"] || user["name"] || user["id"])
     by = Wardrik.Principal.new(:slack, user["id"], name: user["username"] || user["name"])
 
     case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
       :ok ->
-        decided(payload, action, reason, user, call, name)
+        decided(payload, action, note, user, call, name)
 
       {:error, :not_found} ->
         WardrikSlack.ephemeral("#{agent} is not running.")
@@ -108,18 +108,19 @@ defmodule WardrikSlack.Answers do
     end
   end
 
-  defp decision("wardrik_approve", _reason, _who), do: :approve
+  defp decision("wardrik_approve", nil, _who), do: :approve
+  defp decision("wardrik_approve", note, _who), do: {:approve, note}
   defp decision(_deny, nil, who), do: {:deny, "Denied in Slack by #{who}."}
-  defp decision(_deny, reason, who), do: {:deny, "Denied in Slack by #{who}: #{reason}"}
+  defp decision(_deny, note, who), do: {:deny, "Denied in Slack by #{who}: #{note}"}
 
   # What was written in the call's box as the button was pressed, where
   # anything was.
-  defp reason(payload, call) do
+  defp note(payload, call) do
     case get_in(payload, [
            "state",
            "values",
-           WardrikSlack.Notices.reason_block(call),
-           "reason",
+           WardrikSlack.Notices.note_block(call),
+           "note",
            "value"
          ]) do
       text when is_binary(text) -> if String.trim(text) == "", do: nil, else: String.trim(text)
@@ -129,11 +130,11 @@ defmodule WardrikSlack.Answers do
 
   # The message keeps what it asked, and the answered call's box and buttons
   # give way to who answered it, and what they said.
-  defp decided(payload, action, reason, user, call, name) do
+  defp decided(payload, action, note, user, call, name) do
     verb = if action == "wardrik_approve", do: "Approved", else: "Denied"
-    why = if verb == "Denied" and reason, do: ": " <> reason, else: ""
-    line = WardrikSlack.Notices.context("#{verb} `#{name}` — <@#{user["id"]}>#{why}")
-    box = WardrikSlack.Notices.reason_block(call)
+    said = if note, do: ": " <> note, else: ""
+    line = WardrikSlack.Notices.context("#{verb} `#{name}` — <@#{user["id"]}>#{said}")
+    box = WardrikSlack.Notices.note_block(call)
 
     blocks =
       payload

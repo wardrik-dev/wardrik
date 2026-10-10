@@ -45,6 +45,8 @@ defmodule Wardrik.Call do
     * `:served_by` - what answered a tool call, where its tool said, as
       `t:served/0`
     * `:labels` - what its answer holds, as `Wardrik.Label`s; see `label/2`
+    * `:note` - what the person who approved it said, which the model reads
+      with its answer; see `approve/2`
 
   `:private` is for Wardrik and the libraries built on it.
 
@@ -90,6 +92,7 @@ defmodule Wardrik.Call do
     :denied,
     :result,
     :served_by,
+    :note,
     state: :unchecked,
     asks: [],
     allowed: [],
@@ -124,6 +127,7 @@ defmodule Wardrik.Call do
           labels: [Wardrik.Label.t()],
           result: term(),
           served_by: served() | nil,
+          note: String.t() | nil,
           private: map()
         }
 
@@ -272,9 +276,15 @@ defmodule Wardrik.Call do
       when by in [:person, :ledger] and is_binary(reason),
       do: %{call | state: :denied, denied: %Denial{by: by, reason: reason}}
 
-  @doc "The call a person approved."
-  @spec approve(t()) :: t()
-  def approve(%__MODULE__{state: :waiting} = call), do: %{call | state: :approved}
+  @doc """
+  The call a person approved, with what they said in `note`, if anything,
+  which the model reads beside the call's answer. The call runs as it was
+  proposed whatever the note says.
+  """
+  @spec approve(t(), String.t() | nil) :: t()
+  def approve(%__MODULE__{state: :waiting} = call, note \\ nil)
+      when is_binary(note) or is_nil(note),
+      do: %{call | state: :approved, note: note}
 
   @doc "The call as it was proposed, to be asked about again."
   @spec reset(t()) :: t()
@@ -284,7 +294,8 @@ defmodule Wardrik.Call do
       | state: :unchecked,
         denied: nil,
         asks: [],
-        allowed: []
+        allowed: [],
+        note: nil
     }
 
   @doc """

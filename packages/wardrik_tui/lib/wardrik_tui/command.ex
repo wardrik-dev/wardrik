@@ -80,7 +80,7 @@ defmodule WardrikTUI.Command do
           | {:stop, String.t() | nil}
           | {:shutdown, String.t()}
           | {:rm, String.t(), boolean()}
-          | {:approve, selector()}
+          | {:approve, selector(), String.t() | nil}
           | {:deny, selector(), String.t() | nil}
           | {:spawn, String.t(), options(), String.t() | nil, :attach | :background}
           | {:move, String.t() | nil, options()}
@@ -206,8 +206,8 @@ defmodule WardrikTUI.Command do
         arguments: [:call],
         available: &(&1.parked > 0),
         aliases: ["/y"],
-        usage: "/approve [N | all]",
-        summary: "approve the parked call, one by number, or all; y does too",
+        usage: "/approve [N | all] [note]",
+        summary: "approve the parked call, or one by number, with a note; y too",
         parse: &approve/1
       },
       %__MODULE__{
@@ -338,27 +338,29 @@ defmodule WardrikTUI.Command do
     end
   end
 
-  defp approve(nil), do: {:approve, nil}
-
+  # `/approve 2 only this once` approves the second call with a note for the
+  # agent, and `/deny 2 too risky` denies it saying why; without a number or
+  # `all`, they answer the only one, and the rest is the note or the reason.
   defp approve(argument) do
-    case selector(argument) do
-      nil -> :usage
-      selector -> {:approve, selector}
-    end
+    {selector, note} = said(argument)
+    {:approve, selector, note}
   end
-
-  # `/deny 2 too risky` denies the second call; `/deny too risky` denies the
-  # only one. A number or `all` is a selector, and anything else is a reason.
-  defp deny(nil), do: {:deny, nil, nil}
 
   defp deny(argument) do
+    {selector, reason} = said(argument)
+    {:deny, selector, reason}
+  end
+
+  defp said(nil), do: {nil, nil}
+
+  defp said(argument) do
     case String.split(argument, " ", parts: 2) do
-      [word] -> deny_with(selector(word), if(selector(word), do: nil, else: word))
-      [word, rest] -> deny_with(selector(word), if(selector(word), do: rest, else: argument))
+      [word] -> said(selector(word), if(selector(word), do: nil, else: word))
+      [word, rest] -> said(selector(word), if(selector(word), do: rest, else: argument))
     end
   end
 
-  defp deny_with(selector, reason), do: {:deny, selector, reason && String.trim(reason)}
+  defp said(selector, text), do: {selector, text && String.trim(text)}
 
   defp selector("all"), do: :all
   defp selector(word), do: if(word =~ ~r/^\d+$/, do: word, else: nil)
@@ -444,10 +446,10 @@ defmodule WardrikTUI.Command do
   defp bare_answer(word, rest, text) do
     case {String.downcase(word), rest} do
       {yes, nil} when yes in ["y", "yes"] ->
-        {:approve, nil}
+        {:approve, nil, nil}
 
       {yes, rest} when yes in ["y", "yes"] ->
-        if(selector(rest), do: {:approve, selector(rest)}, else: {:ask, text})
+        if(selector(rest), do: {:approve, selector(rest), nil}, else: {:ask, text})
 
       {no, rest} when no in ["n", "no"] ->
         deny(rest)

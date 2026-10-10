@@ -944,6 +944,34 @@ defmodule Wardrik.LLM.TurnTest do
       assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
     end
 
+    test "approving with a note hands the model the note beside the call's answer", %{
+      agent_id: agent_id
+    } do
+      calls = for id <- ["call_1", "call_2"], do: ReqLLM.ToolCall.new(id, "deploy", "{}")
+
+      LLMStub.stream([
+        LLMStub.response(ReqLLM.Context.assistant("", tool_calls: calls), :tool_calls),
+        LLMStub.final_answer("shipped")
+      ])
+
+      scope = governed(agent_id, [deploy_tool()])
+
+      assert %LLM.Turn{state: :waiting} =
+               parked = run(scope, Context.new([Context.user("ship it twice")]))
+
+      assert %LLM.Turn{state: :done, messages: messages} =
+               resume(scope, parked, %{
+                 "call_1" => {:approve, " Only to staging. "},
+                 "call_2" => {:approve, "  "}
+               })
+
+      [first, second] =
+        for %{role: :tool, content: [part]} <- messages, do: JSON.decode!(part.text)
+
+      assert first == %{"shipped" => true, "note" => "Only to staging."}
+      assert second == %{"shipped" => true}
+    end
+
     test "denying tells the model why and carries on", %{agent_id: agent_id} do
       LLMStub.stream([
         LLMStub.tool_call("call_1", "deploy", %{}),

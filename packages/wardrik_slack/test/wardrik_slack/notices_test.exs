@@ -67,12 +67,12 @@ defmodule WardrikSlack.NoticesTest do
 
       ids = Enum.map(message["blocks"], & &1["block_id"])
 
-      assert Enum.find_index(ids, &(&1 == "wardrik-reason:call_1")) ==
+      assert Enum.find_index(ids, &(&1 == "wardrik-note:call_1")) ==
                Enum.find_index(ids, &(&1 == "wardrik:call_1")) - 1
 
-      box = Enum.find(message["blocks"], &(&1["block_id"] == "wardrik-reason:call_1"))
+      box = Enum.find(message["blocks"], &(&1["block_id"] == "wardrik-note:call_1"))
 
-      assert %{"type" => "input", "optional" => true, "element" => %{"action_id" => "reason"}} =
+      assert %{"type" => "input", "optional" => true, "element" => %{"action_id" => "note"}} =
                box
     end
 

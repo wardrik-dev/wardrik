@@ -54,7 +54,10 @@ defmodule WardrikTUI.App.Commands do
 
   defp apply_command({:rm, target, confirmed?}, term), do: remove(term, target, confirmed?)
 
-  defp apply_command({:approve, selector}, term), do: decide(term, selector, :approve)
+  defp apply_command({:approve, selector, nil}, term), do: decide(term, selector, :approve)
+
+  defp apply_command({:approve, selector, note}, term),
+    do: decide(term, selector, {:approve, note})
 
   defp apply_command(:fleet, term), do: Interaction.show_fleet(term)
 

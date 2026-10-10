@@ -263,16 +263,28 @@ defmodule Wardrik.LLM.ToolRunner do
     end
   end
 
-  defp result_message(%Call{id: id, target: %Tool{name: name}}, output),
-    do: Context.tool_result_message(name, id, output)
+  defp result_message(%Call{id: id, target: %Tool{name: name}, note: note}, output),
+    do: Context.tool_result_message(name, id, noted(output, note))
+
+  # A note from whoever approved the call goes in the output itself, which
+  # some providers send in place of its text.
+  defp noted(output, nil), do: output
+
+  defp noted(output, note)
+       when is_map(output) and not is_struct(output) and
+              not is_map_key(output, "note"),
+       do: Map.put(output, "note", note)
+
+  defp noted(output, note), do: %{"result" => output, "note" => note}
 
   defp reap(call, span, reason) do
     Scope.close(span, {:error, reason})
     Call.answer(call, {:error, "Tool crashed: #{inspect(reason)}"})
   end
 
-  defp error_message(%Call{id: id, target: %Tool{name: name}}, reason) when is_binary(reason) do
-    Context.tool_result_message(name, id, %{error: reason}, %{is_error: true})
+  defp error_message(%Call{id: id, target: %Tool{name: name}} = call, reason)
+       when is_binary(reason) do
+    Context.tool_result_message(name, id, noted(%{error: reason}, call.note), %{is_error: true})
   end
 
   defp error_message(call, reason), do: error_message(call, message(reason))

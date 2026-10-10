@@ -110,6 +110,15 @@ defmodule WardrikDaemon.CLITest do
     assert by == Wardrik.Principal.new(:shell, "ops")
   end
 
+  test "approve hands the agent the note given" do
+    key = parked_agent()
+
+    assert command(["approve", key, "call_1", "Only", "staging."]) ==
+             {"Approved call_1 for #{key}.\n", 0}
+
+    assert_receive {:resumed, %{"call_1" => {:approve, "Only staging."}}}
+  end
+
   test "deny refuses the call with the reason given" do
     key = parked_agent()
 
