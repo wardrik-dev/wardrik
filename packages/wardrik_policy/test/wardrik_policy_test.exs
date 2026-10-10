@@ -106,7 +106,7 @@ defmodule WardrikPolicyTest do
         WardrikPolicy.decode!(%{
           "allow" => ["books/list_*", "books/create_bill(amount < 100)"],
           "ask" => ["books/create_bill(amount >= 100)"],
-          "deny" => %{"books/*(account: Payroll)" => "Payroll is not for this agent."},
+          "deny" => %{"books/*(account = Payroll)" => "Payroll is not for this agent."},
           "default" => "ask"
         })
 
@@ -330,7 +330,7 @@ defmodule WardrikPolicyTest do
     end
 
     test "round-trip conditions on the arguments as written" do
-      written = %{"deny" => ["books/*(amount >= 1e3, memo: \"a, b\")"], "default" => "allow"}
+      written = %{"deny" => ["books/*(amount >= 1e3, memo = \"a, b\")"], "default" => "allow"}
       assert written |> WardrikPolicy.decode!() |> WardrikPolicy.encode() == written
     end
 
@@ -383,6 +383,9 @@ defmodule WardrikPolicyTest do
 
       assert {:error, "ask gives x a message" <> _rest} =
                WardrikPolicy.decode(%{"ask" => %{"x" => 1}})
+
+      assert {:error, "deny lists books/*(account: Payroll), which YAML reads as a key" <> _rest} =
+               WardrikPolicy.decode(%{"deny" => [%{"books/*(account" => "Payroll)"}]})
     end
   end
 end
