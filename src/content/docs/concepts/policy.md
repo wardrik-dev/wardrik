@@ -65,6 +65,48 @@ The file tools say what their calls act on: the path, or the glob for `list_file
 call run only where the rule names everything the call acts on, and otherwise `default` decides.
 Here, as in every rule, `*` matches across folders: `notes/*` names `notes/2026/10.md`.
 
+### What a call's arguments are
+
+A rule may say instead what a call's arguments must be, in the same parentheses, for any tool and an
+MCP server's tools above all:
+
+```yaml
+allow: [books/list_*, books/create_bill(amount < 100)]
+ask: [books/create_bill(amount >= 100)]
+deny:
+  books/*(account: Payroll): Payroll is not for this agent.
+  bank/transfer(amount > 5000, currency: USD): Large transfers go through finance.
+  email/send(to != *@example.com): Mail leaves the company only with a person's say-so.
+```
+
+- `name: value` holds where the argument is the value, ignoring case, with `*` for any run of
+  characters: `memo: refund*`. A value in double quotes may hold commas, and spaces at its ends.
+- `name != value` holds where `name: value` does not: `to != *@example.com` for an address outside,
+  `amount != 0`.
+- `name > number`, `>=`, `<` and `<=` compare numbers: `amount > 500`.
+- `vendor.name` names a key inside an object. Through a list it names each item's: `lines.amount`
+  is the amount on every line.
+- Several conditions, comma-separated, must all hold.
+
+The parentheses hold conditions where each part begins with an argument's name and then `: `, `!=`
+or a comparison, and what a call acts on otherwise, so `write_file(notes/*)` keeps its meaning, as does a
+path or a URL with a colon in it.
+
+A rule with conditions speaks for the whole of each call they hold for. Arguments are written by the
+model, so they come in forms a rule did not foresee, and a rule decides those this way:
+
+- **A number written as text** counts as the number: `"600"` is more than 500.
+- **An argument a call leaves out**, or gives as null or as an empty list, is one no condition on it
+  holds for, `!=` included. A deny on `cc != *@example.com` does not stop a message with no cc, which
+  is what it is for; but a deny or an ask on `amount > 1000` does not stop a call with no amount
+  either, so name the tool in a broader rule, or let `default` ask, where that matters.
+- **An argument a rule cannot compare**, `"six hundred"` or `"$600"` against a number, or an object
+  where it names a value, may be anything. A deny or an ask speaks for that call, and an allow does
+  not.
+- **A list** holds where every item does. A deny or an ask speaks where any item holds, so a deny on
+  `to != *@example.com` stops a message with one outside address among many, and an allow speaks
+  only where every item holds.
+
 ### Without a policy
 
 An agent with no policy may make every call its tools allow, apart from a gated tool's.
@@ -190,9 +232,9 @@ keeps waiting.
 
 ## Judged calls
 
-Rules name tools, and what file tools act on. Some decisions turn on what a call means instead:
-whether it changes the books, whether it sends money out. A policy's `judge` asks a model about each
-call, in words, and decides by how likely the answer is yes:
+Rules name tools, what file tools act on, and what a call's arguments are. Some decisions turn on
+what a call means instead: whether it changes the books, whether it sends money out. A policy's
+`judge` asks a model about each call, in words, and decides by how likely the answer is yes:
 
 ```yaml title="~/.config/wardrik/policies/books.yaml"
 ask: [books/delete_*]
