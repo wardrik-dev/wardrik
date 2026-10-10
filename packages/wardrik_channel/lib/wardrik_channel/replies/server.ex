@@ -139,6 +139,8 @@ defmodule WardrikChannel.Replies.Server do
   defp post(state, thread, {:connected, provider}),
     do: deliver(state, thread, {:reply, "Connected #{provider}.", []})
 
+  defp post(state, thread, {:decided, line}), do: deliver(state, thread, {:reply, line, []})
+
   defp post(state, thread, {:failed, reason}) do
     agent = state.threads[thread].agent
     notice = %Notice{agent: agent, kind: :failed, at: DateTime.utc_now(), reason: reason}
@@ -152,7 +154,7 @@ defmodule WardrikChannel.Replies.Server do
 
     with parked when is_list(parked) <- Agent.parked(agent),
          [_ | _] = calls <- Enum.filter(parked, &waiting?(&1, ids)) do
-      deliver(state, thread, {:notice, Notice.parked(agent, calls)})
+      deliver(state, thread, {:notice, Notice.parked(agent, calls)}, :approvers)
     else
       _none_waiting -> :ok
     end
@@ -161,14 +163,17 @@ defmodule WardrikChannel.Replies.Server do
   defp waiting?(_parked, :all), do: true
   defp waiting?({call, _prompt}, ids), do: call.id in ids
 
-  defp deliver(state, thread, body) do
+  defp deliver(state, thread, body, to \\ :room) do
     case WardrikChannel.channel(state.channel) do
       {:ok, {adapter, options, context}} ->
+        approvers = Context.approvers(context)
+
         outbound = %Outbound{
           room: state.room,
           thread: thread,
           body: body,
-          approvers: Context.approvers(context)
+          approvers: approvers,
+          to: if(approvers == [], do: :room, else: to)
         }
 
         with {:ok, _posted} <- adapter.deliver(outbound, options), do: :ok

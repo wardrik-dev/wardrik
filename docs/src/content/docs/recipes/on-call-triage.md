@@ -208,7 +208,7 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 - **Rules as data.** The policy is a file outside the agent, decided before each call, and the same
   on every node. See [Policy and approvals](/concepts/policy/).
 - **Named approvers.** A parked call reaches Slack with its arguments, and only `approvers` decide
-  it. See [Who may press the buttons](/channels/slack/#who-may-press-the-buttons).
+  it. See [Who approves](/channels/slack/#who-approves).
 - **Trust by source.** The team's runbooks are not labelled `outside`; issues anyone can file are. See
   [Content from outside](/concepts/policy/#content-from-outside).
 - **A budget per agent.** The agent stops and asks once it has spent its day's $20. See

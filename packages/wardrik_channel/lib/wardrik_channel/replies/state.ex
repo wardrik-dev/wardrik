@@ -28,14 +28,15 @@ defmodule WardrikChannel.Replies.State do
   @typedoc """
   What an event asks to be posted in its thread: what a run answered, and
   the messages it answers; the calls a run waits on; why a run failed; that
-  someone connected an account a call waited on, by the provider's name; or
-  nothing.
+  someone connected an account a call waited on, by the provider's name; who
+  decided a call, and how; or nothing.
   """
   @type post() ::
           {:reply, String.t(), [String.t()]}
           | {:parked, [String.t()]}
           | {:failed, String.t()}
           | {:connected, String.t()}
+          | {:decided, String.t()}
           | :none
 
   @spec new(String.t(), String.t()) :: t()
@@ -109,7 +110,24 @@ defmodule WardrikChannel.Replies.State do
        ),
        do: {{:connected, provider}, runs}
 
+  defp post(
+         %{
+           "type" => "wardrik.interrupt.resolved",
+           "data" => %{"resolved_by" => %{"id" => id} = by} = data
+         },
+         runs
+       ),
+       do: {{:decided, decided(data["decision"], by["name"] || id, data["reason"])}, runs}
+
   defp post(_event, runs), do: {:none, runs}
+
+  defp decided("approved", name, _reason), do: "Approved by #{name}."
+  defp decided(_rejected, name, nil), do: "Denied by #{name}."
+
+  # A reason that says who denied the call, as a channel's own does, is said
+  # as it is.
+  defp decided(_rejected, _name, "Denied " <> _said = reason), do: reason
+  defp decided(_rejected, name, reason), do: "Denied by #{name}: #{reason}"
 
   defp last_said(messages) do
     messages
