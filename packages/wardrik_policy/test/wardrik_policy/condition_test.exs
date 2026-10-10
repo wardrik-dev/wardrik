@@ -20,7 +20,16 @@ defmodule WardrikPolicy.ConditionTest do
       assert {:ok, [%{test: {:ge, 1.5}}, %{test: {:is, ["payroll"], nil}}]} =
                Condition.parse("amount >= 1.5, account: \"Payroll\"")
 
-      for subject <- ["notes/*", "git diff *", "https://acme.com/*", "C:\\notes", "a, b", "", "*"] do
+      for subject <- [
+            "notes/*",
+            "git diff *",
+            "test a != b",
+            "https://acme.com/*",
+            "C:\\notes",
+            "a, b",
+            "",
+            "*"
+          ] do
         assert Condition.parse(subject) == :subject, subject
       end
     end
@@ -29,6 +38,9 @@ defmodule WardrikPolicy.ConditionTest do
       assert {:ok, [%{test: {:is, [" a, b "], nil}}]} = Condition.parse(~s(memo: " a, b "))
       assert {:ok, [%{test: {:is, ["500"], nil}}]} = Condition.parse(~s(code: "500"))
       assert {:ok, [%{test: {:is, ["500"], 500}}]} = Condition.parse("code: 500")
+
+      assert {:ok, [%{test: {:is_not, ["", "@acme.com"], nil}}]} =
+               Condition.parse("to != *@acme.com")
     end
 
     test "says what does not read" do
@@ -36,6 +48,7 @@ defmodule WardrikPolicy.ConditionTest do
             {"amount > lots", "compares amount with \"lots\", which is not a number"},
             {"amount <", "compares amount with \"\""},
             {"account:", "gives account no value"},
+            {"cc !=", "gives cc no value"},
             {~s(memo: "a" b"), "is not one value in double quotes"},
             {~s(memo: a"b), "a value in double quotes is quoted whole"},
             {"amount > 5, notes/*", "puts conditions beside what a call acts on"}
@@ -63,6 +76,27 @@ defmodule WardrikPolicy.ConditionTest do
       assert held("code: 500", %{"code" => "500"})
       assert held("paid: true", %{"paid" => true})
       assert held("count: 3*", %{"count" => 31})
+    end
+
+    test "!= holds where : does not, and for a number, where it is another" do
+      assert held("to != *@acme.com", %{"to" => "a@other.com"})
+      refute held("to != *@acme.com", %{"to" => "A@ACME.com"})
+      assert held("amount != 0", %{"amount" => 5})
+      refute held("amount != 0", %{"amount" => "0.0"})
+      assert held("paid != true", %{"paid" => false})
+    end
+
+    test "!= holds for no argument a call leaves out, and may for one it cannot check" do
+      refute held("cc != *@acme.com", %{})
+      refute held("cc != *@acme.com", %{"cc" => nil})
+      refute held("cc != *@acme.com", %{"cc" => []})
+      assert held("cc != *@acme.com", %{"cc" => %{"address" => "a@other.com"}}) == :maybe
+    end
+
+    test "!= on a list holds where every item does, and may where some do" do
+      assert held("to != *@acme.com", %{"to" => ["a@other.com", "b@else.com"]})
+      refute held("to != *@acme.com", %{"to" => ["a@acme.com"]})
+      assert held("to != *@acme.com", %{"to" => ["a@acme.com", "b@other.com"]}) == :maybe
     end
 
     test "is false for an argument the call leaves out or gives as null" do

@@ -13,6 +13,8 @@ defmodule WardrikPolicy.Condition do
       with `*` for any run of characters. A value in double quotes may hold
       commas, and spaces at its ends. An unquoted number, `amount: 500`,
       compares as a number with a number.
+    * `name != value` holds where `name: value` does not, as `to != *@acme.com`
+      for an address outside, or `amount != 0`.
     * `name > number`, `>=`, `<` and `<=` hold where the argument is a number
       that compares so.
 
@@ -46,7 +48,7 @@ defmodule WardrikPolicy.Condition do
 
   @typedoc "`{:is, glob, number}` for `name: value`, the number where the value is one."
   @type test() ::
-          {:is, [String.t()], number() | nil}
+          {:is | :is_not, [String.t()], number() | nil}
           | {:gt | :ge | :lt | :le, number()}
 
   @type t() :: %__MODULE__{path: [String.t()], test: test()}
@@ -54,9 +56,9 @@ defmodule WardrikPolicy.Condition do
   @typedoc "Whether conditions hold for a call."
   @type held() :: boolean() | :maybe
 
-  @condition ~r/\A([A-Za-z_][\w-]*(?:\.[\w-]+)*)\s*(>=|<=|>|<|:(?=\s|"|\z))\s*(.*)\z/su
+  @condition ~r/\A([A-Za-z_][\w-]*(?:\.[\w-]+)*)\s*(>=|<=|!=|>|<|:(?=\s|"|\z))\s*(.*)\z/su
   @comparisons %{">" => :gt, ">=" => :ge, "<" => :lt, "<=" => :le}
-  @syntax "conditions go as name: value or name > number, comma-separated, as " <>
+  @syntax "conditions go as name: value, name != value or name > number, comma-separated, as " <>
             "books/create_bill(amount > 500, account: Payroll)"
 
   @doc """
@@ -92,11 +94,12 @@ defmodule WardrikPolicy.Condition do
     end
   end
 
-  defp condition(path, ":", value) do
+  defp condition(path, operator, value) when operator in [":", "!="] do
     with {:ok, text} <- value(path, value) do
       quoted? = String.starts_with?(value, "\"")
       number = if quoted?, do: nil, else: number(text)
-      test = {:is, text |> String.downcase() |> String.split("*"), number}
+      is = if operator == ":", do: :is, else: :is_not
+      test = {is, text |> String.downcase() |> String.split("*"), number}
       {:ok, %__MODULE__{path: String.split(path, "."), test: test}}
     end
   end
@@ -189,6 +192,10 @@ defmodule WardrikPolicy.Condition do
       true -> :maybe
     end
   end
+
+  defp test({:is_not, glob, number}, value)
+       when is_binary(value) or is_number(value) or is_boolean(value),
+       do: not test({:is, glob, number}, value)
 
   defp test({:is, _glob, number}, value) when is_number(value) and is_number(number),
     do: value == number

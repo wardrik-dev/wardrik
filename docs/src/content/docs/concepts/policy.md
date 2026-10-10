@@ -76,32 +76,36 @@ ask: [books/create_bill(amount >= 100)]
 deny:
   books/*(account: Payroll): Payroll is not for this agent.
   bank/transfer(amount > 5000, currency: USD): Large transfers go through finance.
+  email/send(to != *@example.com): Mail leaves the company only with a person's say-so.
 ```
 
 - `name: value` holds where the argument is the value, ignoring case, with `*` for any run of
   characters: `memo: refund*`. A value in double quotes may hold commas, and spaces at its ends.
+- `name != value` holds where `name: value` does not: `to != *@example.com` for an address outside,
+  `amount != 0`.
 - `name > number`, `>=`, `<` and `<=` compare numbers: `amount > 500`.
 - `vendor.name` names a key inside an object. Through a list it names each item's: `lines.amount`
   is the amount on every line.
 - Several conditions, comma-separated, must all hold.
 
-The parentheses hold conditions where each part begins with an argument's name and then `: ` or a
-comparison, and what a call acts on otherwise, so `write_file(notes/*)` keeps its meaning, as does a
+The parentheses hold conditions where each part begins with an argument's name and then `: `, `!=`
+or a comparison, and what a call acts on otherwise, so `write_file(notes/*)` keeps its meaning, as does a
 path or a URL with a colon in it.
 
 A rule with conditions speaks for the whole of each call they hold for. Arguments are written by the
 model, so they come in forms a rule did not foresee, and a rule decides those this way:
 
 - **A number written as text** counts as the number: `"600"` is more than 500.
-- **An argument a call leaves out**, or gives as null, is one no condition on it holds for. A deny
-  or an ask on `amount > 1000` does not stop a call with no amount, so name the tool in a broader
-  rule, or let `default` ask, where that matters.
+- **An argument a call leaves out**, or gives as null or as an empty list, is one no condition on it
+  holds for, `!=` included. A deny on `cc != *@example.com` does not stop a message with no cc, which
+  is what it is for; but a deny or an ask on `amount > 1000` does not stop a call with no amount
+  either, so name the tool in a broader rule, or let `default` ask, where that matters.
 - **An argument a rule cannot compare**, `"six hundred"` or `"$600"` against a number, or an object
   where it names a value, may be anything. A deny or an ask speaks for that call, and an allow does
   not.
 - **A list** holds where every item does. A deny or an ask speaks where any item holds, so a deny on
-  `to: *@outside.com` stops a message with one outside address among many, and an allow speaks only
-  where every item holds.
+  `to != *@example.com` stops a message with one outside address among many, and an allow speaks
+  only where every item holds.
 
 ### Without a policy
 

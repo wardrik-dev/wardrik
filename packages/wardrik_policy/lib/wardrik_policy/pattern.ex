@@ -21,7 +21,7 @@ defmodule WardrikPolicy.Pattern do
   `WardrikPolicy.Condition` describes: `books/create_bill(amount > 500)`,
   `books/*(account: Payroll)`. They hold conditions where each of their
   comma-separated parts begins with an argument's name and then `:` and a
-  space, or a comparison, and what a call acts on where none does. A
+  space, `!=`, or a comparison, and what a call acts on where none does. A
   pattern with conditions names a whole call, `whole/3`, never a tool by
   its name alone.
 

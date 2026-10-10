@@ -152,6 +152,31 @@ defmodule WardrikPolicyTest do
       assert {:deny, _reason} =
                WardrikPolicy.decide(policy, "books__pay", [], %{"amount" => [5, 5000]})
     end
+
+    test "denies a message with one recipient outside, and no message without a cc" do
+      policy =
+        WardrikPolicy.decode!(%{
+          "deny" => ["email/send(to != *@example.com)", "email/send(cc != *@example.com)"],
+          "default" => "ask"
+        })
+
+      inside = %{"to" => ["a@example.com"]}
+
+      assert {:ask, _prompt} = WardrikPolicy.decide(policy, "email__send", [], inside)
+
+      assert {:deny, _reason} =
+               WardrikPolicy.decide(policy, "email__send", [], %{
+                 "to" => ["a@example.com", "b@elsewhere.com"]
+               })
+
+      assert {:deny, _reason} =
+               WardrikPolicy.decide(
+                 policy,
+                 "email__send",
+                 [],
+                 Map.put(inside, "cc", "c@else.com")
+               )
+    end
   end
 
   describe "allowing by name" do
