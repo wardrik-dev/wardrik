@@ -228,6 +228,16 @@ Refuse a parked call, saying why.
 wardrik deny [KEY [CALL [REASON]]]
 ```
 
+## wardrik policy judge
+
+Try a policy's judge on the calls agents have made.
+
+```sh
+wardrik policy judge NAME [--agent KEY|PREFIX/] [--last N]
+```
+
+Its model answers each question again, and what that decides is set beside how the call was decided; ! marks where they differ. The policy is read from its file as it is now, and nothing is decided or changed. The calls are those of the agents that run under the policy, or those under --agent, newest first, --last 20 by default. Only calls that ran are kept with their arguments, so a call refused, or waiting on a person, is not tried. With --json, each call with its answers, what they decide, and how it was decided.
+
 ## wardrik token create
 
 A token for the HTTP API, printed once.
