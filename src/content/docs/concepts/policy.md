@@ -273,6 +273,43 @@ payment fell short of a `deny` set at 0.8. Some gotchas, and what to do about ea
 - **Check again when the model changes.** A model named `latest` can move. Try the judge on calls
   like the agent's after an update, and before raising any threshold.
 
+`wardrik policy judge NAME` tries a policy's judge on the calls agents have made, without deciding
+or changing anything. It reads the policy from its file as it is now, so a threshold or a question
+can be changed and tried again before `wardrik reload`. Its model answers each question again, and
+what that decides is set beside how the call was decided when it was made, with `!` where they
+differ:
+
+```sh
+$ wardrik policy judge books
+books's judge on 2 calls of the agents under books, newest first; 1 decided otherwise than it would.
+
+! books/send_payment  acme/books  2026-10-09 14:02:11Z
+    arguments  {"amount":1200,"to":"Northwind"}
+    0.81       Does this call record, change or delete anything in the company's books?
+    0.72       Does this call send money to a person or an account outside the company?
+    judge      asks a person: Judged 81% likely: Does this call record, change or delete anything in the company's books?
+    decided    allowed by books
+
+  books/list_invoices  acme/books  2026-10-09 13:58:40Z
+    arguments  {"status":"unpaid"}
+    0.03       Does this call record, change or delete anything in the company's books?
+    0.04       Does this call send money to a person or an account outside the company?
+    judge      allows it
+    decided    allowed by books
+
+Only calls that ran are tried. Its allow holds only where the run had read nothing from outside, which the log does not say.
+```
+
+The calls are those of the agents whose definitions name the policy, with their conversations, or
+those under `--agent`: an agent, as `acme/books`, or every agent of an org, as `acme/`, whatever
+policy they run under, so a judge can be tried before any agent is held to it. `--last N` is how
+many, newest first, 20 by default, and `--json` answers with each call's answers, what they decide,
+and how it was decided.
+
+Only calls that ran are tried: a log keeps no arguments of a call that was refused, or that is still
+waiting on a person. Nor does it say whether the run had read anything from outside by then, so a
+judge's allow is shown as it would be for a run that had not.
+
 ## Budgets
 
 A policy may hold a budget for what the agent spends on model calls, in dollars, in tokens, or
