@@ -6,17 +6,18 @@
 # its own, runs it under that user's systemd, and puts Caddy in front of it for
 # the address people's browsers come back to when they connect an account.
 #
-#   WARDRIK_HOST=root@203.0.113.7 WARDRIK_DOMAIN=agents.example.com \
+#   WARDRIK_HOST=root@203.0.113.7 WARDRIK_DOMAIN=acme.example.com \
 #   WARDRIK_ENV_FILE=~/customers/acme/env deploy/single/up.sh
 #
-# The server is any Ubuntu 24.04 or Debian 12 machine SSH reaches, as root or
-# as a user sudo lets do anything without a password, with WARDRIK_DOMAIN
-# pointing at it and ports 22, 80 and 443 open to it. Run again, it builds the
+# Each customer has a server rented for them, a subdomain of a domain of yours
+# pointing at it, and an env file of its own here. The server is any Ubuntu
+# 24.04 or Debian 12 machine SSH reaches, as root or as a user sudo lets do
+# anything without a password, with ports 22, 80 and 443 open to it. Run again, it builds the
 # release again and puts it in place, keeping the store, the vault and the
 # config the server has.
 #
 #   WARDRIK_HOST           the server, as ssh names it: root@203.0.113.7
-#   WARDRIK_DOMAIN         the name pointing at it, which Caddy gets a certificate for
+#   WARDRIK_DOMAIN         the customer's subdomain, which Caddy gets a certificate for
 #   WARDRIK_ENV_FILE       the customer's env file: SLACK_BOT_TOKEN, SLACK_APP_TOKEN and
 #                          the model's key. It replaces the server's on every run.
 #   WARDRIK_TARBALL        a release tarball to install, rather than building one

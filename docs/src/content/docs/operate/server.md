@@ -9,13 +9,18 @@ One daemon on one server serves one team: its agents, its Slack workspace, the a
 `deploy/single/up.sh`, in a checkout, puts it there from your machine over SSH, and puts it there
 again with each new release.
 
+Rent a server for each team, and give each one a subdomain of a domain of yours, such as
+`acme.example.com`. Nothing is then asked of the team's own DNS, and the address their browsers come
+back to when they connect an account stays yours. Keep each team's secrets in an env file of its
+own on your machine, which every run copies to the server in place of what is there.
+
 ## What the server needs
 
 - Ubuntu 24.04 or Debian 12, on x86_64 or aarch64, which SSH reaches as root or as a user sudo lets
   do anything without a password.
-- A domain name pointing at it, such as `agents.example.com`, and ports 22, 80 and 443 open to it.
-  Caddy gets the name a certificate, so that people's browsers come back to the daemon over HTTPS
-  when they [connect an account](/guides/accounts/); see [A public address](/operate/public-address/).
+- The team's subdomain pointing at it, and ports 22, 80 and 443 open to it. Caddy gets the name a
+  certificate, so that people's browsers come back to the daemon over HTTPS when they
+  [connect an account](/guides/accounts/); see [A public address](/operate/public-address/).
 - Nothing else: the script makes the user the daemon runs as, and installs Caddy.
 
 Your own machine needs the checkout, SSH, and Docker, which builds the release in the Dockerfile's
@@ -28,7 +33,7 @@ machine is.
    tokens.
 2. Write the team's env file, readable by you alone, with those tokens and the model's key:
 
-   ```sh title="~/teams/acme/env"
+   ```sh title="~/customers/acme/env"
    SLACK_BOT_TOKEN=xoxb-...
    SLACK_APP_TOKEN=xapp-...
    ANTHROPIC_API_KEY=sk-ant-...
@@ -38,8 +43,8 @@ machine is.
 
    ```sh
    WARDRIK_HOST=root@203.0.113.7 \
-   WARDRIK_DOMAIN=agents.example.com \
-   WARDRIK_ENV_FILE=~/teams/acme/env \
+   WARDRIK_DOMAIN=acme.example.com \
+   WARDRIK_ENV_FILE=~/customers/acme/env \
    WARDRIK_ORG=acme \
    WARDRIK_APPROVERS="@maria, jon@example.com" \
      deploy/single/up.sh
@@ -51,7 +56,7 @@ machine is.
    channel's approvers are asked what it waits on.
 5. Give the agents the team's tools: their [MCP servers](/guides/mcp/) in `config.yaml`, and under
    `oauth.providers` each account those servers sign in with, as
-   [Connect accounts](/guides/accounts/) says. The daemon serves `agents.example.com/oauth` once a
+   [Connect accounts](/guides/accounts/) says. The daemon serves `acme.example.com/oauth` once a
    provider is named, and `wardrik doctor` says whether it reaches the daemon.
 
 ## What it leaves on the server
@@ -91,7 +96,8 @@ and the config. The release before stays installed, to go back to; see
 ## Backing it up
 
 Everything the team has, its conversations, connected accounts and the vault, is in
-`~wardrik/.local/share/wardrik` on the server, with the vault's key beside the store. Back up the
+`~wardrik/.local/share/wardrik` on the server, with the vault's key beside the store. On a rented
+server that is the server's own disk, which goes when the server does. Back up the
 directory, or keep the store elsewhere with [Storage](/operate/storage/), and give the vault a key of
 its own in the env file, so that a server made again over the same store reads what the last one
 sealed.
