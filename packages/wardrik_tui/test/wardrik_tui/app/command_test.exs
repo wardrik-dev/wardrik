@@ -8,8 +8,8 @@ defmodule WardrikTUI.CommandTest do
   # proves nothing.
 
   test "the decision vocabulary only exists while a turn is parked" do
-    assert Command.parse("y", true) == {:approve, nil}
-    assert Command.parse("Yes", true) == {:approve, nil}
+    assert Command.parse("y", true) == {:approve, nil, nil}
+    assert Command.parse("Yes", true) == {:approve, nil, nil}
     assert Command.parse("n", true) == {:deny, nil, nil}
     assert Command.parse("no", true) == {:deny, nil, nil}
     assert Command.parse("n not during the freeze", true) == {:deny, nil, "not during the freeze"}
@@ -22,8 +22,8 @@ defmodule WardrikTUI.CommandTest do
   end
 
   test "a bare answer can pick one of several parked calls, or all of them" do
-    assert Command.parse("y 2", true) == {:approve, "2"}
-    assert Command.parse("y all", true) == {:approve, :all}
+    assert Command.parse("y 2", true) == {:approve, "2", nil}
+    assert Command.parse("y all", true) == {:approve, :all, nil}
     assert Command.parse("n 2", true) == {:deny, "2", nil}
     assert Command.parse("n 2 too risky", true) == {:deny, "2", "too risky"}
     assert Command.parse("n all not today", true) == {:deny, :all, "not today"}
@@ -38,10 +38,17 @@ defmodule WardrikTUI.CommandTest do
 
   test "a decision can always be spelled out, parked or not" do
     for parked? <- [true, false] do
-      assert Command.parse("/approve", parked?) == {:approve, nil}
-      assert Command.parse("/y", parked?) == {:approve, nil}
-      assert Command.parse("/approve 1", parked?) == {:approve, "1"}
-      assert Command.parse("/approve all", parked?) == {:approve, :all}
+      assert Command.parse("/approve", parked?) == {:approve, nil, nil}
+      assert Command.parse("/y", parked?) == {:approve, nil, nil}
+      assert Command.parse("/approve 1", parked?) == {:approve, "1", nil}
+      assert Command.parse("/approve all", parked?) == {:approve, :all, nil}
+
+      assert Command.parse("/approve only this once", parked?) ==
+               {:approve, nil, "only this once"}
+
+      assert Command.parse("/approve 2 only this once", parked?) ==
+               {:approve, "2", "only this once"}
+
       assert Command.parse("/deny", parked?) == {:deny, nil, nil}
       assert Command.parse("/n", parked?) == {:deny, nil, nil}
       assert Command.parse("/deny too risky", parked?) == {:deny, nil, "too risky"}
@@ -51,8 +58,8 @@ defmodule WardrikTUI.CommandTest do
     end
   end
 
-  test "a selector is a number or `all`, so a reason is never mistaken for one" do
-    assert Command.parse("/approve deploy") == {:usage, "/approve"}
+  test "a selector is a number or `all`, so a note or a reason is never mistaken for one" do
+    assert Command.parse("/approve deploy") == {:approve, nil, "deploy"}
     assert Command.parse("/deny deploy is wrong") == {:deny, nil, "deploy is wrong"}
   end
 

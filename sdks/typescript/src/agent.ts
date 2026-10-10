@@ -136,9 +136,13 @@ export class Agent {
     return page.events;
   }
 
-  /** Approves a call the agent is waiting on. */
-  async approve(interrupt: string): Promise<void> {
-    await this.#decide(interrupt, { decision: "approve" });
+  /**
+   * Approves a call the agent is waiting on; the model reads `note` beside
+   * the call's answer. The call runs as the model wrote it, whatever the note
+   * says.
+   */
+  async approve(interrupt: string, note?: string): Promise<void> {
+    await this.#decide(interrupt, { decision: "approve", ...(note ? { note } : {}) });
   }
 
   /**

@@ -121,13 +121,15 @@ turn had read content from outside first, and its arguments, with **Approve** an
 Pressing one decides the call as `wardrik approve` or `wardrik deny` would, and the message is
 changed to say who decided it and how.
 
-Above each call's buttons is a box for why it is denied, or what to do instead. A call denied from
-Slack tells the model "Denied in Slack by" whoever pressed it, and what they wrote there, as
-`wardrik deny` passes on a reason, so a denial can steer the agent:
+Above each call's buttons is a box for a note to the agent, sent with either button. A call denied
+from Slack tells the model "Denied in Slack by" whoever pressed it, and what they wrote there, as
+`wardrik deny` passes on a reason:
 
 > Denied in Slack by jon: Deploy to staging first, and show me the diff.
 
-Approving leaves the box unsaid.
+A call approved with a note runs, and the model reads the note beside its answer, as
+`wardrik approve` passes one on. A note cannot change the call, which runs with the arguments the
+model wrote; to change it, deny it and say what to do instead.
 
 A call waiting on an account to be connected has **Show link** instead of Approve, which shows the
 authorization link to whoever pressed it, and nobody else. See
@@ -149,7 +151,7 @@ thread says who it waits on:
 > ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
 
 The first to answer decides; anyone pressing after is told it was already answered. The thread
-says who decided, "Approved by maria." or "Denied in Slack by jon: Staging first.", wherever they did, in
+says who decided, and what they wrote, "Approved by maria: Only this once." or "Denied in Slack by jon: Staging first.", wherever they did, in
 Slack or with `wardrik approve`, and then what the agent answers. A message that waits behind the question sends it to
 them again.
 

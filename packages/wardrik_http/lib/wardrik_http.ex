@@ -151,8 +151,11 @@ defmodule WardrikHTTP do
       POST /v1/agents/acme/triage/interrupts/toolu_01
       {"decision": "reject", "reason": "Not this quarter."}
 
-  `decision` is `approve` or `reject`. The decision is recorded as made by
-  the caller's principal, and answers `409` when the agent is not waiting on that call,
+  `decision` is `approve` or `reject`. A rejection's `reason` is what the
+  model is told in place of the call's answer; an approval's `note`, as in
+  `{"decision": "approve", "note": "Only this once."}`, is what it reads
+  beside the answer, and never changes the call, which runs as the model
+  wrote it. The decision is recorded as made by the caller's principal, and answers `409` when the agent is not waiting on that call,
   and `503` when the agent could not record it.
 
   ### Schedules

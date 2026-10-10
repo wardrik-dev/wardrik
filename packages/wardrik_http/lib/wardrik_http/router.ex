@@ -490,7 +490,12 @@ defmodule WardrikHTTP.Router do
   defp authorization_answer(:not_waiting, conn, key, id),
     do: json(conn, 404, Resource.error("not_found", "#{key} is not waiting on #{id}."))
 
-  defp decision(%{"decision" => "approve"}), do: {:ok, :approve}
+  defp decision(%{"decision" => "approve"} = body) do
+    case body["note"] do
+      note when is_binary(note) -> {:ok, {:approve, note}}
+      _none -> {:ok, :approve}
+    end
+  end
 
   defp decision(%{"decision" => "reject"} = body) do
     case body["reason"] do
@@ -502,6 +507,7 @@ defmodule WardrikHTTP.Router do
   defp decision(_body), do: {:error, "decision is approve or reject"}
 
   defp verdict(:approve), do: "approved"
+  defp verdict({:approve, _note}), do: "approved"
   defp verdict({:deny, _reason}), do: "rejected"
 
   defp cancel(conn, key) do

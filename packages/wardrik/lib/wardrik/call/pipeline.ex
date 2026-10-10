@@ -89,8 +89,11 @@ defmodule Wardrik.Call.Pipeline do
   @typedoc "Makes a model call the steps before it let go ahead, and hands it back answered."
   @type invoke() :: (Call.t() -> Call.t())
 
-  @typedoc "What a person decides about a call that waits on them."
-  @type decision() :: :approve | {:deny, String.t()}
+  @typedoc """
+  What a person decides about a call that waits on them: approved, with a
+  note for the model where they wrote one, or refused for a reason.
+  """
+  @type decision() :: :approve | {:approve, String.t()} | {:deny, String.t()}
 
   @doc """
   The call `request` makes under `scope`, holding the request until `run/2`
@@ -149,21 +152,38 @@ defmodule Wardrik.Call.Pipeline do
 
   @doc """
   Writes on a call that waits what a person decided: approved, which each
-  hook that asked hears through `Wardrik.Hook.approved/1`, or refused for the
-  reason they gave. Anything else refuses it, saying so.
+  hook that asked hears through `Wardrik.Hook.approved/1`, with the note they
+  wrote, a blank one being none, or refused for the reason they gave.
+  Anything else refuses it, saying so.
   """
   @spec answer(Call.t(), decision() | term()) :: Call.t()
-  def answer(%Call{state: :waiting} = call, :approve) do
-    approved = Call.approve(call)
-    :ok = Hook.approved(approved)
-    approved
-  end
+  def answer(%Call{state: :waiting} = call, :approve), do: approved(call, nil)
+
+  def answer(%Call{state: :waiting} = call, {:approve, note}) when is_binary(note),
+    do: approved(call, note(note))
 
   def answer(%Call{state: :waiting} = call, {:deny, reason}) when is_binary(reason),
     do: Call.refuse(call, reason)
 
   def answer(%Call{state: :waiting} = call, other),
     do: Call.refuse(call, "Undecidable answer #{inspect(other)}: #{Call.prompt(call)}")
+
+  defp approved(call, note) do
+    approved = Call.approve(call, note)
+    :ok = Hook.approved(approved)
+    approved
+  end
+
+  @doc "`note` with its ends trimmed, or `nil` where it says nothing."
+  @spec note(String.t() | nil) :: String.t() | nil
+  def note(nil), do: nil
+
+  def note(note) when is_binary(note) do
+    case String.trim(note) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
 
   @doc """
   Runs `call` through every step. A tool call is handed to its tool; a model

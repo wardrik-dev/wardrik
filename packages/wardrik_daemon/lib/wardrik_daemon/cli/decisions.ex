@@ -3,7 +3,9 @@ defmodule WardrikDaemon.CLI.Decisions do
   `wardrik parked`, `approve` and `deny`: the calls agents are waiting on a
   person for, and deciding them.
 
-  `approve KEY CALL` and `deny KEY CALL [REASON]` decide one call. Without
+  `approve KEY CALL [NOTE]` and `deny KEY CALL [REASON]` decide one call:
+  the model reads the note beside the call's answer, and the reason in place
+  of it. A note never changes the call, which runs as the model wrote it. Without
   the call they run live and ask: `approve KEY` approves the one call `KEY`
   waits on, and asks which where it waits on several, and `approve` alone
   asks among every call waiting. `deny` asks why as well. Where nobody can
@@ -36,9 +38,9 @@ defmodule WardrikDaemon.CLI.Decisions do
       },
       %Command{
         name: "approve",
-        arguments: "[KEY [CALL]]",
-        summary: "run a parked call, asking which where not named",
-        count: {0, 2},
+        arguments: "[KEY [CALL [NOTE]]]",
+        summary: "run a parked call, with a note for the agent",
+        count: {0, :any},
         run: &approve/2,
         live: &approve_chosen/3
       },
@@ -88,6 +90,10 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp link(_call), do: ""
 
   defp approve([key, call], opts), do: decided(key, [call], :approve, opts[:by])
+
+  defp approve([key, call | note], opts),
+    do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:by])
+
   defp approve(_words, _opts), do: :live
 
   defp deny([key, call | reason], opts),
@@ -168,6 +174,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp done(:approve), do: "Approved"
+  defp done({:approve, _note}), do: "Approved"
   defp done({:deny, _reason}), do: "Denied"
 
   defp names([only]), do: only

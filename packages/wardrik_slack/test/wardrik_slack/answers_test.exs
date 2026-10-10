@@ -99,10 +99,10 @@ defmodule WardrikSlack.AnswersTest do
       %{key: key}
     end
 
-    defp press(key, action, user \\ "U1", reason \\ nil, approvers \\ []) do
+    defp press(key, action, user \\ "U1", note \\ nil, approvers \\ []) do
       %{
         "state" => %{
-          "values" => %{"wardrik-reason:call_1" => %{"reason" => %{"value" => reason}}}
+          "values" => %{"wardrik-note:call_1" => %{"note" => %{"value" => note}}}
         },
         "type" => "block_actions",
         "user" => %{"id" => user, "username" => "jon"},
@@ -110,7 +110,7 @@ defmodule WardrikSlack.AnswersTest do
         "message" => %{
           "blocks" => [
             %{"type" => "section"},
-            %{"type" => "input", "block_id" => "wardrik-reason:call_1"},
+            %{"type" => "input", "block_id" => "wardrik-note:call_1"},
             %{"type" => "actions", "block_id" => "wardrik:call_1"}
           ]
         },
@@ -161,13 +161,25 @@ defmodule WardrikSlack.AnswersTest do
       assert JSON.encode!(line) =~ "Deploy to staging first."
     end
 
-    test "approves without what was written in the box, and leaves a blank box unsaid",
+    test "approves the call with what was written in its box, and says it in place of the box",
          %{key: key} do
-      assert :ok = Answers.answer(press(key, "wardrik_approve", "U1", "Fine by me."), answering())
-      assert_receive {:resumed, %{"call_1" => :approve}}
+      assert :ok =
+               Answers.answer(
+                 press(key, "wardrik_approve", "U1", " Only this once.\n"),
+                 answering()
+               )
+
+      assert_receive {:resumed, %{"call_1" => {:approve, "Only this once."}}}
 
       assert_receive {:slack, _host, _path, reply}
-      refute JSON.encode!(reply) =~ "Fine by me."
+      assert [%{"type" => "section"}, %{"type" => "context"} = line] = reply["blocks"]
+      assert JSON.encode!(line) =~ "Approved `deploy`"
+      assert JSON.encode!(line) =~ "Only this once."
+    end
+
+    test "approves without a note where the box is blank", %{key: key} do
+      assert :ok = Answers.answer(press(key, "wardrik_approve", "U1", "  \n"), answering())
+      assert_receive {:resumed, %{"call_1" => :approve}}
     end
 
     test "refuses someone who is not an approver", %{key: key} do

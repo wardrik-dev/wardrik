@@ -585,10 +585,15 @@ defmodule Wardrik.AgentTest do
       assert roles(key) == [:user, :assistant]
     end
 
-    test "goes on with the decisions it was resumed with, not asking for them again" do
+    for {name, decision} <- [denied: {:deny, "Not today."}, noted: {:approve, "Only staging."}] do
+      test "goes on with the decisions it was resumed with, not asking for them again: #{name}" do
+        resumes_after_loss(%{"call_1" => unquote(Macro.escape(decision))})
+      end
+    end
+
+    defp resumes_after_loss(decisions) do
       test_pid = self()
       key = Wardrik.Test.Fleet.id("decided")
-      denied = %{"call_1" => {:deny, "Not today."}}
       answer = {:ok, [Context.assistant("left it")]}
 
       opts = [
@@ -599,15 +604,15 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(opts, key)
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: {:turn_parked, _calls}}
-      :ok = Agent.decide(agent, denied)
-      assert_receive {:holding, ^denied, _lost}
-      assert_receive %Event{payload: {:turn_resumed, ^denied}}
+      :ok = Agent.decide(agent, decisions)
+      assert_receive {:holding, ^decisions, _lost}
+      assert_receive %Event{payload: {:turn_resumed, ^decisions}}
 
       :ok = Wardrik.Fleet.stop(key)
       {:ok, _agent} = Wardrik.Fleet.spawn(key, opts)
 
-      assert_receive {:holding, ^denied, resumed}, 5_000
-      assert_receive %Event{payload: {:turn_resumed, ^denied}}
+      assert_receive {:holding, ^decisions, resumed}, 5_000
+      assert_receive %Event{payload: {:turn_resumed, ^decisions}}
       send(resumed, :release)
 
       assert_receive %Event{payload: {:turn_finished, _messages}}

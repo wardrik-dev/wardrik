@@ -540,6 +540,18 @@ defmodule WardrikHTTP.RouterTest do
                )
     end
 
+    test "an approval carries the note given with it", %{api: api} do
+      {key, _agent} = parked_agent()
+
+      assert {:ok, %{status: 200, body: %{"interrupt" => %{"decision" => "approved"}}}} =
+               Req.post(api,
+                 url: "/v1/agents/#{key}/interrupts/call_1",
+                 json: %{"decision" => "approve", "note" => "Only staging."}
+               )
+
+      assert_receive %Event{payload: {:call_decided, "call_1", {:approve, "Only staging."}, _by}}
+    end
+
     test "rejects a call, with the reason given", %{api: api} do
       {key, _agent} = parked_agent()
 

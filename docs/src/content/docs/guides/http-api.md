@@ -95,12 +95,16 @@ as `["outside"]` for content from outside. With a token that can `decide`:
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
-  -d '{"decision": "approve"}'
+  -d '{"decision": "approve", "note": "Label it for the next sprint."}'
 
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
   -d '{"decision": "reject", "reason": "Not on a Friday."}'
 ```
+
+A `note` with an approval is what the model reads beside the call's answer; it never changes the
+call, which runs as the model wrote it. A `reason` with a rejection is what it reads in place of
+the answer.
 
 An interrupt with the reason `authorization` waits on a person to connect an account.
 `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`, and the call

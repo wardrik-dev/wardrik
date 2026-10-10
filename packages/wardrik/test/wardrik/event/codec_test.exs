@@ -475,6 +475,16 @@ defmodule Wardrik.Event.CodecTest do
       assert rejected["decision"] == "rejected"
       assert rejected["reason"] == "No."
       assert rejected["resolved_by"] == %{"type" => "shell", "id" => "wardrik"}
+
+      {:ok, %{"data" => noted}} =
+        encode(turn(), {:call_decided, "call_1", {:approve, " Only once. "}, by})
+
+      assert noted["decision"] == "approved"
+      assert noted["note"] == "Only once."
+      refute Map.has_key?(noted, "reason")
+
+      {:ok, %{"data" => blank}} = encode(turn(), {:call_decided, "call_1", {:approve, " "}, nil})
+      assert blank == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
     end
   end
 

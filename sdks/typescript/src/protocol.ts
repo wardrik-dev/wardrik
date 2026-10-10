@@ -606,6 +606,7 @@ export interface InterruptResolvedData {
   };
   decision: "approved" | "rejected";
   reason?: string;
+  note?: string;
   resolved_by?: Principal;
 }
 /**

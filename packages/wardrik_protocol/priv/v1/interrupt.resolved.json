@@ -27,6 +27,9 @@
     "reason": {
       "type": "string"
     },
+    "note": {
+      "type": "string"
+    },
     "resolved_by": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
     }

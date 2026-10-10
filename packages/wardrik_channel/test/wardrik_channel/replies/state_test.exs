@@ -79,19 +79,24 @@ defmodule WardrikChannel.Replies.StateTest do
     assert {{:connected, "github"}, _state} = State.take(followed(), "1.1", connected)
   end
 
-  defp decided(decision, by, reason \\ nil) do
+  defp decided(decision, by, said \\ nil) do
     data = %{"interrupt" => %{"id" => "c1"}, "decision" => decision, "resolved_by" => by}
-    data = if reason, do: Map.put(data, "reason", reason), else: data
+    key = if decision == "approved", do: "note", else: "reason"
+    data = if said, do: Map.put(data, key, said), else: data
     {post, _state} = State.take(followed(), "1.1", event(1, "wardrik.interrupt.resolved", data))
     post
   end
 
-  test "says who decided a call, and why where they denied it" do
+  test "says who decided a call, and what they said with it" do
     maria = %{"type" => "slack", "id" => "U1", "name" => "maria"}
     jon = %{"type" => "user", "id" => "jon"}
 
     assert decided("approved", maria) == {:decided, "Approved by maria."}
     assert decided("approved", jon) == {:decided, "Approved by jon."}
+
+    assert decided("approved", jon, "Only this once.") ==
+             {:decided, "Approved by jon: Only this once."}
+
     assert decided("rejected", jon) == {:decided, "Denied by jon."}
 
     assert decided("rejected", jon, "Not on Fridays.") ==
