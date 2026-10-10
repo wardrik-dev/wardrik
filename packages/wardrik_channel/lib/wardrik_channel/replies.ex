@@ -16,6 +16,7 @@ defmodule WardrikChannel.Replies do
       names approvers
     * why a run failed
     * that someone connected an account a call waited on
+    * who decided a call, and how, wherever they decided it
 
   `remind/3` posts again the calls a thread's agent still waits on, for a
   message that arrived behind them, which the agent will not read until

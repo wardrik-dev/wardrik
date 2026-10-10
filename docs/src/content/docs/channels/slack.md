@@ -148,8 +148,9 @@ thread says who it waits on:
 
 > ↳ **Wardrik:** Waiting on @maria or @jon to approve `create_bill`.
 
-The first to answer decides; anyone pressing after is told it was already answered, and what the
-agent then answers is posted in the thread. A message that waits behind the question sends it to
+The first to answer decides; anyone pressing after is told it was already answered. The thread
+says who decided, "Approved by maria." or "Denied in Slack by jon: Staging first.", wherever they did, in
+Slack or with `wardrik approve`, and then what the agent answers. A message that waits behind the question sends it to
 them again.
 
 The app finds each approver as a member of the workspace: a `@handle` among its members, an email

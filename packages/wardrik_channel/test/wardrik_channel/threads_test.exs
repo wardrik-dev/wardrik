@@ -194,6 +194,24 @@ defmodule WardrikChannel.ThreadsTest do
                     _channel}
   end
 
+  test "says in the thread who decided a call it waited on" do
+    {context, _room} = bound({AgentRunners, :parking, [self(), "call_1"]})
+
+    assert {:asked, agent} =
+             WardrikChannel.received(context, inbound(context, id: "5.1", text: "Ship it."))
+
+    assert_receive {:delivered, %Outbound{body: {:notice, %Notice{kind: :parked}}}, _channel}
+
+    by = Wardrik.Principal.new(:slack, "U1", name: "maria")
+    :ok = Wardrik.Agent.decide(agent, %{"call_1" => {:deny, "Not on Fridays."}}, by: by)
+
+    assert_receive {:delivered,
+                    %Outbound{
+                      thread: "5.1",
+                      body: {:reply, "Denied by maria: Not on Fridays.", []}
+                    }, _channel}
+  end
+
   test "posts why a thread's run failed" do
     {context, _room} = bound({AgentRunners, :failing, ["The cellar is locked."]})
 

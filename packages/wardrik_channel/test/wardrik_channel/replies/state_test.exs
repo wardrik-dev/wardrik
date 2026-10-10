@@ -68,7 +68,7 @@ defmodule WardrikChannel.Replies.StateTest do
     assert {{:failed, "Locked."}, _state} = State.take(state, "1.1", failed)
   end
 
-  test "says an account a call waited on was connected, and nothing of a call a person decided" do
+  test "says an account a call waited on was connected" do
     connected =
       event(1, "wardrik.interrupt.resolved", %{
         "interrupt" => %{"id" => "c1"},
@@ -76,16 +76,36 @@ defmodule WardrikChannel.Replies.StateTest do
         "resolved_by" => %{"type" => "oauth", "id" => "github", "name" => "github authorization"}
       })
 
-    assert {{:connected, "github"}, state} = State.take(followed(), "1.1", connected)
+    assert {{:connected, "github"}, _state} = State.take(followed(), "1.1", connected)
+  end
 
-    approved =
-      event(2, "wardrik.interrupt.resolved", %{
-        "interrupt" => %{"id" => "c2"},
-        "decision" => "approved",
-        "resolved_by" => %{"type" => "slack", "id" => "U1"}
-      })
+  defp decided(decision, by, reason \\ nil) do
+    data = %{"interrupt" => %{"id" => "c1"}, "decision" => decision, "resolved_by" => by}
+    data = if reason, do: Map.put(data, "reason", reason), else: data
+    {post, _state} = State.take(followed(), "1.1", event(1, "wardrik.interrupt.resolved", data))
+    post
+  end
 
-    assert {:none, _state} = State.take(state, "1.1", approved)
+  test "says who decided a call, and why where they denied it" do
+    maria = %{"type" => "slack", "id" => "U1", "name" => "maria"}
+    jon = %{"type" => "user", "id" => "jon"}
+
+    assert decided("approved", maria) == {:decided, "Approved by maria."}
+    assert decided("approved", jon) == {:decided, "Approved by jon."}
+    assert decided("rejected", jon) == {:decided, "Denied by jon."}
+
+    assert decided("rejected", jon, "Not on Fridays.") ==
+             {:decided, "Denied by jon: Not on Fridays."}
+
+    assert decided("rejected", maria, "Denied in Slack by maria: Staging first.") ==
+             {:decided, "Denied in Slack by maria: Staging first."}
+
+    assert {:none, _state} =
+             State.take(
+               followed(),
+               "1.1",
+               event(1, "wardrik.interrupt.resolved", %{"decision" => "approved"})
+             )
   end
 
   test "follows a thread once, from where it was first followed" do
