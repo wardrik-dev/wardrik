@@ -20,12 +20,22 @@ defmodule WardrikPolicy.Rule do
           after: Wardrik.Label.t() | nil
         }
 
-  @doc "Whether the rule speaks for the whole of a call to the tool the agent knows as `name`."
-  @spec match?(t(), String.t()) :: boolean()
-  def match?(%__MODULE__{pattern: pattern}, name), do: Pattern.match?(pattern, name)
+  @doc """
+  Whether the rule speaks for the whole of a call to the tool the agent
+  knows as `name`, with `arguments`. Where its conditions may hold for the
+  call, a rule that asks or denies speaks for it, and one that allows does
+  not (see `WardrikPolicy.Condition`).
+  """
+  @spec whole?(t(), String.t(), map()) :: boolean()
+  def whole?(%__MODULE__{pattern: pattern, effect: effect}, name, arguments) do
+    case Pattern.whole(pattern, name, arguments) do
+      :maybe -> effect != :allow
+      held -> held
+    end
+  end
 
   @doc "Whether the rule speaks for `subject` of a call to the tool the agent knows as `name`."
-  @spec match?(t(), String.t(), String.t()) :: boolean()
-  def match?(%__MODULE__{pattern: pattern}, name, subject),
+  @spec subject?(t(), String.t(), String.t()) :: boolean()
+  def subject?(%__MODULE__{pattern: pattern}, name, subject),
     do: Pattern.match?(pattern, name, subject)
 end

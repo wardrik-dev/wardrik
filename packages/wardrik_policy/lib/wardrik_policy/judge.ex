@@ -257,9 +257,13 @@ defmodule WardrikPolicy.Judge do
 
   defp tool(source, where) do
     case Pattern.parse(source) do
-      {:ok, %Pattern{argument: nil} = pattern} -> {:ok, pattern}
-      {:ok, _acting_on} -> {:error, "#{where}.tools names tools alone, not what they act on"}
-      {:error, message} -> {:error, "#{where}.tools: #{message}"}
+      {:ok, pattern} ->
+        if Pattern.argument?(pattern),
+          do: {:error, "#{where}.tools names tools alone, not what their calls act on or hold"},
+          else: {:ok, pattern}
+
+      {:error, message} ->
+        {:error, "#{where}.tools: #{message}"}
     end
   end
 

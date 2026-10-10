@@ -164,6 +164,11 @@ defmodule WardrikPolicy.JudgeTest do
             {%{
                "questions" => [%{"question" => "Q?", "ask" => 0.5, "tools" => ["write_file(x)"]}]
              }, "judge.questions[1].tools names tools alone"},
+            {%{
+               "questions" => [
+                 %{"question" => "Q?", "ask" => 0.5, "tools" => ["books/pay(amount > 5)"]}
+               ]
+             }, "judge.questions[1].tools names tools alone"},
             {%{"questions" => [%{"question" => "Q?", "ask" => 0.5, "when" => "x"}]},
              "judge.questions[1].when is not a setting"},
             {%{"model" => "", "questions" => [%{"question" => "Q?", "ask" => 0.5}]},
