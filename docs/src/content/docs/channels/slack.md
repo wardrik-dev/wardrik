@@ -23,23 +23,67 @@ Each Slack workspace is a channel of its own, with an app of its own.
 Give the daemon a Slack app of its own. Slack shares an app's button presses among every connection
 the app has, so another service connected with the same app would receive some of them.
 
-1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), from scratch, in your
-   workspace.
-2. Under **OAuth & Permissions**, add the bot token scopes `chat:write`, `channels:read`,
-   `groups:read`, `channels:history`, `groups:history`, `users:read` and `reactions:write`, install
-   the app, and copy the **Bot User OAuth Token**, `xoxb-...`. This is the channel's `token`. An
-   app installed before it had a scope is installed again to take it. The app needs no user token
-   scopes: it acts as itself, never as whoever installed it.
+1. At [api.slack.com/apps](https://api.slack.com/apps), **Create New App**, **From a manifest**,
+   choose your workspace, and give it the manifest below, with the name your team will see in
+   place of `Wardrik`.
+2. **Install to Workspace**, and copy the **Bot User OAuth Token**, `xoxb-...`, from **OAuth &
+   Permissions**. This is the channel's `token`.
 3. Under **Basic Information**, in **App-Level Tokens**, make a token with the scope
-   `connections:write`, `xapp-...`. This is the channel's `app_token`. Then, under **Socket Mode**,
-   turn it on.
-4. Under **Interactivity & Shortcuts**, turn interactivity on. Socket Mode needs no request URL.
-5. Under **Event Subscriptions**, turn events on and subscribe to the bot events
-   `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears when the app is
-   invited into a Slack channel or taken out of one, and `message.channels` and `message.groups`,
-   so it hears what is posted there.
-6. Under **App Home**, turn on the **Messages Tab**, where the app asks a channel's
-   [approvers](#who-approves) what a thread waits on.
+   `connections:write`, `xapp-...`. This is the channel's `app_token`.
+
+```yaml title="Slack app manifest"
+display_information:
+  name: Wardrik
+  description: Agents that answer in threads, and ask before they act.
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: true
+  bot_user:
+    display_name: Wardrik
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - channels:history
+      - channels:read
+      - chat:write
+      - groups:history
+      - groups:read
+      - reactions:write
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    bot_events:
+      - channel_left
+      - group_left
+      - member_joined_channel
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+```
+
+What it asks for, and why:
+
+- **Socket Mode and interactivity**, so messages and button presses come over a connection the
+  daemon opens, with no request URL.
+- **The bot events** `member_joined_channel`, `channel_left` and `group_left`, so the daemon hears
+  when the app is invited into a Slack channel or taken out of one, and `message.channels` and
+  `message.groups`, so it hears what is posted there.
+- **The bot scopes** to read those channels and post in them, to mark a message it answers, and to
+  find people by `@handle`, or by email address with `users:read.email`, which a channel whose
+  [approvers](#who-approves) are named by email needs and any other may leave out.
+- **The Messages Tab**, where the app asks a channel's approvers what a thread waits on. People
+  cannot write to the app there, since direct messages to it are not answered.
+
+The app needs no user token scopes: it acts as itself, never as whoever installed it. An app
+changed to take a scope after it was installed is installed again to have it.
 
 Seal both tokens in the vault, and restart the daemon, which reads `config.yaml` as it starts:
 

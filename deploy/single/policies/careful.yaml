@@ -1,0 +1,11 @@
+# The deployment's policy, which config.yaml's defaults give every agent that
+# names none. An MCP server's tools that may change something ask a person
+# first unless a rule here allows them by name; the rest run. Add rules for
+# what this customer's agents must never do, or must always ask about:
+#
+#   ask:
+#     books/create_*: This records something in the books.
+#   deny: [books/delete_*]
+#
+# See Policies in the docs. wardrik reload reads this file again.
+default: allow
