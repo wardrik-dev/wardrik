@@ -16,7 +16,8 @@ defmodule WardrikHTTP.Worker do
        it is for as `_meta.agent`, its run as `_meta.run`, and its idempotency
        key as `_meta.idempotencyKey`, and the worker answers with a
        `CallToolResult`: `structuredContent` where it has any, `content`, and
-       `isError`. A call Wardrik stops waiting for, or stops, is sent
+       `isError`, and what the call cost in US dollars as `_meta.costUsd`
+       where it costs money. A call Wardrik stops waiting for, or stops, is sent
        `notifications/cancelled`: one not answered in time, and one whose
        caller ends first, as a call killed with
        `Wardrik.LLM.ToolRunner.kill_call/2`, past its turn's deadline, or in
@@ -182,14 +183,21 @@ defmodule WardrikHTTP.Worker do
   defp result(%{"result" => %{"isError" => true} = result}),
     do: Result.error(:tool_error, text(result))
 
-  defp result(%{"result" => %{"structuredContent" => structured}}) when is_map(structured),
-    do: Result.ok(structured)
+  defp result(%{"result" => %{"structuredContent" => structured} = result})
+       when is_map(structured),
+       do: Result.ok(structured, cost: cost(result))
 
-  defp result(%{"result" => result}), do: Result.ok(%{"content" => text(result)})
+  defp result(%{"result" => result}),
+    do: Result.ok(%{"content" => text(result)}, cost: cost(result))
+
   defp result(%{"error" => %{"message" => message}}), do: Result.error(:worker_error, message)
 
   defp result(_other),
     do: Result.error(:worker_error, "The worker answered with neither a result nor an error.")
+
+  # What a worker says a call cost, in US dollars, as `_meta.costUsd`.
+  defp cost(%{"_meta" => %{"costUsd" => usd}}) when is_number(usd) and usd >= 0, do: usd
+  defp cost(_result), do: nil
 
   defp text(%{"content" => content}) when is_list(content),
     do: Enum.map_join(content, "\n", &part/1)

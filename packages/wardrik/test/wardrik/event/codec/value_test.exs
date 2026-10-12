@@ -93,8 +93,15 @@ defmodule Wardrik.Event.Codec.ValueTest do
     assert Value.principal(nil) == nil
   end
 
-  test "usage names reasoning tokens and cost as OpenTelemetry's conventions do" do
+  test "usage names reasoning tokens as OpenTelemetry's conventions do, and leaves cost to cost" do
     assert Value.usage(%{input_tokens: 1, reasoning_tokens: 2, total_cost: 0.1}) ==
-             %{"input_tokens" => 1, "reasoning" => %{"output_tokens" => 2}, "cost_usd" => 0.1}
+             %{"input_tokens" => 1, "reasoning" => %{"output_tokens" => 2}}
+  end
+
+  test "a cost is whole micro-dollars and what priced it" do
+    assert Value.cost(%{micro_usd: 4_200, source: :catalog}) ==
+             %{"micro_usd" => 4_200, "source" => "catalog"}
+
+    assert Value.cost(nil) == nil
   end
 end

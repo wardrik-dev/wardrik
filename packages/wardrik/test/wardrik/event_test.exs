@@ -21,7 +21,7 @@ defmodule Wardrik.EventTest do
   test "type/1 names the event from its payload", %{source: source} do
     assert Event.new(source, {:chunk, "a"}) |> Event.type() == :chunk
 
-    assert Event.new(source, {:tool_finished, "1", "echo", :ok, nil}) |> Event.type() ==
+    assert Event.new(source, {:tool_finished, "1", "echo", :ok, nil, nil}) |> Event.type() ==
              :tool_finished
   end
 

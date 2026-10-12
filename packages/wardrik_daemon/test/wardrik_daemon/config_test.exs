@@ -302,6 +302,20 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "defaults.idle_timeout is a whole number of seconds, or infinity"
     end
 
+    test "tools sets what a tool the daemon ships takes", context do
+      assert {:ok, [{WardrikDaemon.AgentFile, tools: %{"web_search" => [price: 0.005]}}]} =
+               read("tools:\n  web_search:\n    price: 0.005\n", context)
+
+      assert {:error, message} = read("tools:\n  web_search:\n    price: cheap\n", context)
+      assert message =~ "tools.web_search.price is a price in US dollars"
+
+      assert {:error, message} = read("tools:\n  web_search:\n    cost: 1\n", context)
+      assert message =~ "tools.web_search.cost is not a setting; expected one of price"
+
+      assert {:error, message} = read("tools:\n  run_lua:\n    price: 1\n", context)
+      assert message =~ "tools.run_lua is not a tool that takes settings"
+    end
+
     test "a key nothing takes is refused", context do
       assert {:error, message} =
                read("mcp:\n  notes:\n    command: npx\n    comand: typo\n", context)

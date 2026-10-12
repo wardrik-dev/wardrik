@@ -125,8 +125,10 @@ defmodule Wardrik.Tool do
     * `{:ok, output}` and `{:error, reason}`, as a callback does
     * `{:ok, output, opts}` - an answer with what the runtime records of it:
       `labels:` for what it holds, which its run carries from then on (see
-      `Wardrik.Call.label/2`), and `served_by:` for what answered it, which
-      the call's events name (see `t:Wardrik.Call.served/0`)
+      `Wardrik.Call.label/2`), `served_by:` for what answered it, which
+      the call's events name (see `t:Wardrik.Call.served/0`), and `cost:`
+      for what the call cost in US dollars, which its `tool_call.completed`
+      event carries and a budget counts (see `t:Wardrik.Call.cost/0`)
     * `{:park, prompt}` and `{:park, prompt, link: link}` - the call waits on
       a person, who is shown `prompt`, and authorizes at `link` where there
       is one; see `Wardrik.Call.park/3`
@@ -139,7 +141,8 @@ defmodule Wardrik.Tool do
   @type answer() ::
           {:ok, term()}
           | {:error, term()}
-          | {:ok, term(), [labels: [Wardrik.Label.t()], served_by: Wardrik.Call.served()]}
+          | {:ok, term(),
+             [labels: [Wardrik.Label.t()], served_by: Wardrik.Call.served(), cost: number()]}
           | {:park, String.t()}
           | {:park, String.t(), link: Wardrik.Call.Ask.link()}
           | {:in_doubt, String.t()}

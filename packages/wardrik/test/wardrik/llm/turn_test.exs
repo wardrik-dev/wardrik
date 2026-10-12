@@ -92,7 +92,7 @@ defmodule Wardrik.LLM.TurnTest do
     assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
 
     assert_receive %Event{
-      payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}, _}
+      payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "hi"}}, _, _}
     }
   end
 
@@ -116,7 +116,76 @@ defmodule Wardrik.LLM.TurnTest do
     assert %LLM.Turn{state: :done, messages: _messages} = run(scope(agent_id), Context.new())
 
     assert_receive %Event{payload: {:model_started, _message_id, _model_spec, _}}
-    assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response}}
+    assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response, _}}
+  end
+
+  describe "what a call cost" do
+    defp used(response, usage), do: %{response | usage: usage}
+
+    defp priced_scope(agent_id, model_spec, tools \\ []) do
+      [model_spec: model_spec, tools: tools]
+      |> LLM.Config.new()
+      |> Scope.root(agent_id, name: "turn")
+    end
+
+    test "is the provider's figure where it reports one", %{agent_id: agent_id} do
+      usage = %{input_tokens: 10, output_tokens: 5, total_cost: 0.0123}
+      LLMStub.stream([used(LLMStub.final_answer("hi"), usage)])
+
+      run(scope(agent_id), Context.new())
+
+      assert_receive %Event{
+        payload:
+          {:model_finished, _id, :ok, _ms, _response, %{micro_usd: 12_300, source: :provider}}
+      }
+    end
+
+    test "is the tokens at the catalog's prices otherwise", %{agent_id: agent_id} do
+      spec = "anthropic:claude-sonnet-5"
+      usage = %{input_tokens: 10_000, output_tokens: 2_000}
+      LLMStub.stream([used(LLMStub.final_answer("hi"), usage)])
+
+      run(priced_scope(agent_id, spec), Context.new())
+
+      micro_usd = LLM.Cost.micro(LLM.Cost.of(spec, usage))
+      assert micro_usd > 0
+
+      assert_receive %Event{
+        payload:
+          {:model_finished, _id, :ok, _ms, _response, %{micro_usd: ^micro_usd, source: :catalog}}
+      }
+    end
+
+    test "is nil for a model nobody prices", %{agent_id: agent_id} do
+      LLMStub.stream([used(LLMStub.final_answer("hi"), %{input_tokens: 10, output_tokens: 5})])
+
+      capture_log(fn -> run(priced_scope(agent_id, "nowhere:no-such-model"), Context.new()) end)
+
+      assert_receive %Event{payload: {:model_finished, _id, :ok, _ms, %ReqLLM.Response{}, nil}}
+    end
+
+    test "is what a tool says a call cost", %{agent_id: agent_id} do
+      tool =
+        Wardrik.Tool.new!(
+          name: "search",
+          description: "Searches, at a price.",
+          parameter_schema: [q: [type: :string]],
+          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{"hits" => 1}, cost: 0.004) end
+        )
+
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "search", %{"q" => "x"}),
+        LLMStub.final_answer("done")
+      ])
+
+      run(scope(agent_id, [tool]), Context.new())
+
+      assert_receive %Event{
+        payload:
+          {:tool_finished, "call_1", "search", {:ok, %{"ok" => true}}, nil,
+           %{micro_usd: 4_000, source: :tool}}
+      }
+    end
   end
 
   test "a failed request is announced before the turn gives up", %{agent_id: agent_id} do
@@ -128,7 +197,7 @@ defmodule Wardrik.LLM.TurnTest do
     assert_receive %Event{payload: {:model_started, _message_id, _model_spec, _}}
 
     assert_receive %Event{
-      payload: {:model_finished, _message_id, {:error, :rate_limited}, _ms, _response}
+      payload: {:model_finished, _message_id, {:error, :rate_limited}, _ms, _response, _}
     }
   end
 
@@ -158,11 +227,11 @@ defmodule Wardrik.LLM.TurnTest do
       assert_receive %Event{payload: {:model_started, _message_id, _model_spec, _}}
 
       assert_receive %Event{
-        payload: {:model_finished, _message_id, {:error, :timeout}, _ms, _response}
+        payload: {:model_finished, _message_id, {:error, :timeout}, _ms, _response, _}
       }
 
       assert_receive %Event{payload: {:model_started, _message_id, _model_spec, _}}
-      assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response}}
+      assert_receive %Event{payload: {:model_finished, _message_id, :ok, _ms, _response, _}}
     end
 
     test "fails the turn once its retries are spent", %{agent_id: agent_id} do
@@ -468,7 +537,7 @@ defmodule Wardrik.LLM.TurnTest do
       run(scope(agent_id), Context.new())
 
       assert_receive %Event{
-        payload: {:model_finished, _message_id, {:error, :interrupted}, _ms, _response}
+        payload: {:model_finished, _message_id, {:error, :interrupted}, _ms, _response, _}
       }
     end
 
@@ -816,7 +885,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert log =~ "over_budget"
 
       assert_receive %Event{
-        payload: {:model_finished, _message_id, {:error, :over_budget}, _ms, _response}
+        payload: {:model_finished, _message_id, {:error, :over_budget}, _ms, _response, _}
       }
     end
   end
@@ -941,7 +1010,7 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert Enum.any?(messages, &(&1.role == :tool))
       assert List.last(messages).role == :assistant
-      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _, _}}
     end
 
     test "approving with a note hands the model the note beside the call's answer", %{
@@ -1047,7 +1116,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, labels: []} =
                run(allowing_deploy(agent_id), Context.new([Context.user("deploy")]))
 
-      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _, _}}
     end
 
     test "waits on a person once the turn has read content from outside, and keeps the label", %{
@@ -1081,7 +1150,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, labels: ["outside"]} =
                run(scope, Context.new([Context.user("read it")]))
 
-      assert_receive %Event{payload: {:tool_finished, "call_2", "deploy", _result, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_2", "deploy", _result, _, _}}
     end
   end
 
@@ -1101,7 +1170,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :done, messages: _messages} =
                resume(loosened, parked, %{"call_1" => {:deny, "Not now."}})
 
-      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_1", "deploy", _result, _, _}}
     end
 
     test "a call the new hooks deny is refused, whatever was decided", %{agent_id: agent_id} do
@@ -1121,7 +1190,7 @@ defmodule Wardrik.LLM.TurnTest do
                resume(frozen, parked, %{"call_1" => :approve})
 
       assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Frozen.", _}}
-      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
+      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result, _, _}}
     end
 
     test "a call the new hooks ask about waits again under them", %{agent_id: agent_id} do
@@ -1142,7 +1211,7 @@ defmodule Wardrik.LLM.TurnTest do
       assert %LLM.Turn{state: :waiting} = again = resume(scope, parked, %{"call_1" => :approve})
       assert again.revision == Wardrik.Hook.revision(new)
       assert [{%{id: "call_1"}, "This ships to production."}] = LLM.Turn.waiting(again)
-      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result, _}}
+      refute_received %Event{payload: {:tool_finished, "call_1", "deploy", _result, _, _}}
     end
 
     test "a model call is asked about again", %{agent_id: agent_id} do

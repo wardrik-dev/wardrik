@@ -18,12 +18,20 @@ defmodule Wardrik.Tool.Result do
   Keep `{:error, reason}` for failures where continuing is meaningless, such as
   a bug in the tool or a malformed argument it cannot interpret.
 
+  A call that cost money says how much with `ok/2`, in US dollars, and its
+  `tool_call.completed` event carries it, which a budget counts:
+
+      {:ok, result} -> Wardrik.Tool.Result.ok(result, cost: 0.005)
+
   The message is the client's own, and it lands in conversation state, so it
   must stay free of credentials.
   """
 
-  @typedoc "A tool result carrying whether the call itself succeeded."
-  @type t() :: {:ok, map()}
+  @typedoc """
+  A tool result carrying whether the call itself succeeded, and what it cost
+  where the tool said; see `t:Wardrik.Tool.answer/0`.
+  """
+  @type t() :: {:ok, map()} | {:ok, map(), [cost: number()]}
 
   @doc """
   Whether a result reports a call that actually did its job.
@@ -34,11 +42,19 @@ defmodule Wardrik.Tool.Result do
   """
   @spec ok?(term()) :: boolean()
   def ok?({:ok, %{"ok" => false}}), do: false
+  def ok?({:ok, %{"ok" => false}, _opts}), do: false
   def ok?(_result), do: true
 
   @doc "Reports a successful call."
   @spec ok(term()) :: t()
   def ok(result), do: {:ok, %{"ok" => true, "result" => result}}
+
+  @doc "Reports a successful call that cost `cost:` US dollars, or nothing said where it is `nil`."
+  @spec ok(term(), cost: number() | nil) :: t()
+  def ok(result, cost: nil), do: ok(result)
+
+  def ok(result, cost: usd) when is_number(usd) and usd >= 0,
+    do: {:ok, %{"ok" => true, "result" => result}, cost: usd}
 
   @doc "Reports a failed call as a result rather than a failed tool."
   @spec error(term()) :: t()

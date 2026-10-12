@@ -59,9 +59,9 @@ defmodule WardrikConsole.PrinterTest do
              {:result, "Looking"},
              {:tool_started, "call_1", "github/search", %{"q" => "flaky"}, "key",
               %{by: :default, hooks: []}},
-             {:tool_finished, "call_1", "github/search", {:ok, "3 issues"}, nil},
+             {:tool_finished, "call_1", "github/search", {:ok, "3 issues"}, nil, nil},
              {:tool_started, "call_2", "clock", %{}, "key", %{by: :default, hooks: []}},
-             {:tool_finished, "call_2", "clock", {:error, :timeout}, nil},
+             {:tool_finished, "call_2", "clock", {:error, :timeout}, nil, nil},
              {:tool_denied, "call_3", "shell", "Not on a Friday.", %{by: :default, hooks: []}}
            ]) == [
              "Looking",

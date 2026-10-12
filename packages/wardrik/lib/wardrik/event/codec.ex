@@ -287,18 +287,24 @@ defmodule Wardrik.Event.Codec do
     {"message.started", "messages/" <> message_id, data}
   end
 
-  defp message({:model_finished, message_id, outcome, ms, response}, _event, _opts) do
+  defp message({:model_finished, message_id, outcome, ms, response, cost}, _event, _opts) do
     data =
       %{"message" => answered(message_id, response), "duration_ms" => ms}
       |> outcome(outcome)
       |> Value.put("response", response(response))
       |> Value.put("usage", response && Value.usage(response.usage))
+      |> priced(response, cost)
 
     {"message.completed", "messages/" <> message_id, data}
   end
 
   defp message({:result, text}, _event, opts), do: delta("message.delta", text, opts)
   defp message({:thinking, text}, _event, opts), do: delta("reasoning.delta", text, opts)
+
+  # A model that answered and that nobody prices is said to cost null, which
+  # is not the same as nothing; one that never answered says nothing of cost.
+  defp priced(data, nil, _cost), do: data
+  defp priced(data, _response, cost), do: Map.put(data, "cost", Value.cost(cost))
 
   # -- tool calls ----------------------------------------------------------------
 
@@ -311,11 +317,11 @@ defmodule Wardrik.Event.Codec do
      %{"tool" => %{"name" => name, "call" => call}, "decided" => Value.decided(decided_by)}}
   end
 
-  defp tool({:tool_finished, id, name, result, served_by}, _event, _opts),
-    do: completed(id, name, result, false, served_by)
+  defp tool({:tool_finished, id, name, result, served_by, cost}, _event, _opts),
+    do: completed(id, name, result, false, served_by, cost)
 
   defp tool({:tool_replayed, id, name, result}, _event, _opts),
-    do: completed(id, name, result, true, nil)
+    do: completed(id, name, result, true, nil, nil)
 
   defp tool({:tool_denied, id, name, reason, decided_by}, _event, _opts) do
     {"tool_call.denied", "tool_calls/" <> id,
@@ -448,7 +454,7 @@ defmodule Wardrik.Event.Codec do
     {type, "messages/#{message_id}", %{"message" => %{"id" => message_id}, "delta" => text}}
   end
 
-  defp completed(id, name, result, replayed?, served_by) do
+  defp completed(id, name, result, replayed?, served_by, cost) do
     {status, value, error} = Value.result(result)
 
     call = if value == nil, do: %{"id" => id}, else: Value.capped(%{"id" => id}, "result", value)
@@ -457,6 +463,7 @@ defmodule Wardrik.Event.Codec do
       %{"tool" => %{"name" => name, "call" => call}, "status" => status, "replayed" => replayed?}
       |> Value.put("error", error)
       |> Value.put("served_by", Value.served(served_by))
+      |> Value.put("cost", Value.cost(cost))
 
     {"tool_call.completed", "tool_calls/" <> id, data}
   end

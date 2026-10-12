@@ -936,7 +936,8 @@ defmodule WardrikTUI.AppTest do
       emit(turn, [
         {:turn_started, [Message.new("hi")]},
         {:tool_call, tool_call("web_search", %{"query" => "lemonade"})},
-        {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}, nil},
+        {:tool_finished, "call_1", "web_search", {:ok, %{"hits" => 3, "top" => "stand"}}, nil,
+         nil},
         {:tool_call, tool_call("deep_research", %{"topic" => "citrus"})},
         {:turn_finished, []}
       ])
@@ -1126,8 +1127,8 @@ defmodule WardrikTUI.AppTest do
 
       refute screen(session) =~ "req"
 
-      emit(turn, [{:model_finished, "m0", :ok, 10, nil}])
-      emit(branch, [{:model_finished, "m0", :ok, 10, nil}])
+      emit(turn, [{:model_finished, "m0", :ok, 10, nil, nil}])
+      emit(branch, [{:model_finished, "m0", :ok, 10, nil, nil}])
 
       text = screen(session)
       assert text =~ "↑ 1.5k in"

@@ -50,10 +50,10 @@ defmodule WardrikTUI.View do
   def trace({:model_started, _message_id, model_spec, _decided_by}),
     do: line("model", inspect(model_spec), :cyan)
 
-  def trace({:model_finished, _message_id, :ok, ms, _response}),
+  def trace({:model_finished, _message_id, :ok, ms, _response, _cost}),
     do: line("model", "ok #{Text.duration(ms)}", :cyan)
 
-  def trace({:model_finished, _message_id, {:error, reason}, ms, _response}),
+  def trace({:model_finished, _message_id, {:error, reason}, ms, _response, _cost}),
     do: line("model", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
   def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
@@ -61,10 +61,10 @@ defmodule WardrikTUI.View do
   def trace({:tool_started, id, name, _arguments, _key, _decided_by}),
     do: line("tool", "#{name} #{id}", :yellow)
 
-  def trace({:tool_finished, id, name, {:ok, output}, _served_by}),
+  def trace({:tool_finished, id, name, {:ok, output}, _served_by, _cost}),
     do: line("tool", "#{name} #{id} ok #{payload(output)}", :yellow)
 
-  def trace({:tool_finished, id, name, {:error, why}, _served_by}),
+  def trace({:tool_finished, id, name, {:error, why}, _served_by, _cost}),
     do: line("tool", "#{name} #{id} #{inspect(why)}", :red)
 
   def trace({:tool_denied, id, name, reason, _decided_by}),

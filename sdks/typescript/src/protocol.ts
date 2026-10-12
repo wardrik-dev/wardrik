@@ -69,7 +69,19 @@ export interface Usage {
   reasoning?: {
     output_tokens?: number;
   };
-  cost_usd?: number;
+}
+/**
+ * What a call cost, the same figure a budget counts.
+ */
+export interface Cost {
+  /**
+   * Whole micro-dollars: 1000000 is one US dollar.
+   */
+  micro_usd: number;
+  /**
+   * provider where the provider reported the figure, catalog where Wardrik priced the tokens at the model catalog's prices, tool where the tool reported it.
+   */
+  source: "provider" | "catalog" | "tool";
 }
 /**
  * Who did something, and how they were known.
@@ -636,6 +648,10 @@ export interface MessageCompletedData {
     finish_reasons?: string[];
   };
   usage?: Usage;
+  /**
+   * What the call cost, on a call the model answered; null where nobody prices the model, which is not the same as nothing.
+   */
+  cost?: Cost | null;
   status: "ok" | "error" | "cancelled";
   error?: ErrorInfo;
   duration_ms: DurationMs;
@@ -915,6 +931,7 @@ export interface ToolCallCompletedData {
   error?: ErrorInfo;
   replayed: boolean;
   served_by?: ServedBy;
+  cost?: Cost;
 }
 /**
  * A tool call was refused without running.

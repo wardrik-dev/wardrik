@@ -134,8 +134,11 @@ defmodule Wardrik.Event.Log.Writer do
   defp follow(writer, %Event{payload: {:model_started, message_id, _spec, _decided_by}} = event),
     do: %{writer | messages: Map.put(writer.messages, span(event), message_id)}
 
-  defp follow(writer, %Event{payload: {:model_finished, _id, _outcome, _ms, _response}} = event),
-    do: %{writer | messages: Map.delete(writer.messages, span(event))}
+  defp follow(
+         writer,
+         %Event{payload: {:model_finished, _id, _outcome, _ms, _response, _cost}} = event
+       ),
+       do: %{writer | messages: Map.delete(writer.messages, span(event))}
 
   defp follow(writer, _event), do: writer
 

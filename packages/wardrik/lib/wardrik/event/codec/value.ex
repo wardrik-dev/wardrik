@@ -128,8 +128,14 @@ defmodule Wardrik.Event.Codec.Value do
     |> put("output_tokens", usage[:output_tokens])
     |> put("cache_read", count("input_tokens", usage[:cached_tokens]))
     |> put("reasoning", count("output_tokens", usage[:reasoning_tokens]))
-    |> put("cost_usd", usage[:total_cost])
   end
+
+  @doc "What a call cost, as `t:Wardrik.Call.cost/0` carries it, or `nil`."
+  @spec cost(Wardrik.Call.cost() | nil) :: map() | nil
+  def cost(nil), do: nil
+
+  def cost(%{micro_usd: micro_usd, source: source}),
+    do: %{"micro_usd" => micro_usd, "source" => Atom.to_string(source)}
 
   defp count(_key, nil), do: nil
   defp count(key, value), do: %{key => value}

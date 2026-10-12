@@ -65,7 +65,7 @@ defmodule Wardrik.Event.LogTest do
       |> append!(source, {:thinking, "hmm"})
       |> append!(source, {:result, "Hel"})
       |> append!(source, {:tool_progress, "call_1", "search", 1, 2})
-      |> append!(source, {:model_finished, "s1.m0", :ok, 5, nil})
+      |> append!(source, {:model_finished, "s1.m0", :ok, 5, nil, nil})
       |> append!(source, {:result, "lo"})
 
       assert EventLog.types(agent_id) == [

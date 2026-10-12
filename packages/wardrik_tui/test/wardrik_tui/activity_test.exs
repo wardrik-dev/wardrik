@@ -145,7 +145,7 @@ defmodule WardrikTUI.ActivityTest do
         Activity.new()
         |> fold(turn, {:turn_started, [Message.new("hi")]})
         |> fold(turn, {:model_started, "m0", :m, %{by: :default, hooks: []}})
-        |> fold(turn, {:model_finished, "m0", :ok, 12, nil})
+        |> fold(turn, {:model_finished, "m0", :ok, 12, nil, nil})
 
       assert Activity.fetch(activity, turn.trace.span_id).doing == nil
     end

@@ -24,7 +24,7 @@ defmodule WardrikConsoleTest do
         {:thinking, "hmm"},
         {:result, "the answer"},
         {:tool_started, "call_1", "echo", %{}, "key", %{by: :default, hooks: []}},
-        {:tool_finished, "call_1", "echo", {:ok, "done"}, nil},
+        {:tool_finished, "call_1", "echo", {:ok, "done"}, nil, nil},
         {:turn_failed, :rate_limited}
       ])
 

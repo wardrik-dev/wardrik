@@ -96,6 +96,15 @@ defmodule WardrikDaemon.Config do
   names none, and the one the CLI finds an agent in when it is named without
   an org. It is `default` unless set; `org/0` reads it.
 
+  `tools` sets what a tool the daemon ships takes: `web_search` takes
+  `price`, what one search costs in US dollars on the deployment's plan,
+  which each search's `tool_call.completed` event carries and a budget
+  counts.
+
+      tools:
+        web_search:
+          price: 0.005
+
   `defaults` is what an agent is given where nothing else says: one
   `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
   `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`
@@ -391,6 +400,9 @@ defmodule WardrikDaemon.Config do
       {"defaults", defaults} ->
         {WardrikDaemon.Agents, defaults: defaults(defaults)}
 
+      {"tools", tools} ->
+        {WardrikDaemon.AgentFile, tools: tools(table!(tools, ["tools"]))}
+
       {"mcp", servers} ->
         {WardrikMCP, servers: servers(table!(servers, ["mcp"]), org)}
 
@@ -421,11 +433,39 @@ defmodule WardrikDaemon.Config do
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, defaults, mcp, oauth, vault, ssh, http, channels, " <>
-            "notify, cluster or storage"
+          "is not a section; expected org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
+            "channels, notify, cluster or storage"
         )
     end)
   end
+
+  # -- tools -----------------------------------------------------------------
+
+  @tool_keys %{"web_search" => ~w(price)}
+
+  defp tools(tools) do
+    Map.new(tools, fn {name, settings} ->
+      path = ["tools", name]
+
+      case Map.fetch(@tool_keys, name) do
+        {:ok, keys} ->
+          settings = table!(settings, path)
+          known!(settings, keys, path)
+          {name, Enum.map(settings, fn {"price", price} -> {:price, price!(price, path)} end)}
+
+        :error ->
+          invalid!(
+            path,
+            "is not a tool that takes settings; expected #{Enum.map_join(@tool_keys, ", ", &elem(&1, 0))}"
+          )
+      end
+    end)
+  end
+
+  defp price!(price, _path) when is_number(price) and price >= 0, do: price
+
+  defp price!(_price, path),
+    do: invalid!(path ++ ["price"], "is a price in US dollars, such as 0.005")
 
   # -- org -------------------------------------------------------------------
 
@@ -990,8 +1030,8 @@ defmodule WardrikDaemon.Config do
     do:
       invalid!(
         ["the file"],
-        "is a set of sections: org, defaults, mcp, oauth, vault, ssh, http, channels, " <>
-          "notify, cluster, storage"
+        "is a set of sections: org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
+          "channels, notify, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

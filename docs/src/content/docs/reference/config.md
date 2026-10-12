@@ -104,6 +104,15 @@ not set is refused with where to set it.
 names none, and the one the CLI finds an agent in when it is named without
 an org. It is `default` unless set; `org/0` reads it.
 
+`tools` sets what a tool the daemon ships takes: `web_search` takes
+`price`, what one search costs in US dollars on the deployment's plan,
+which each search's `tool_call.completed` event carries and a budget
+counts.
+
+    tools:
+      web_search:
+        price: 0.005
+
 `defaults` is what an agent is given where nothing else says: one
 `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
 `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`

@@ -211,6 +211,44 @@ defmodule WardrikPolicy.BudgetTest do
       assert micro_usd == 3 * each
     end
 
+    test "counts a model call at the cost the call carries, as its event does", context do
+      %{budget: budget, scope: scope, request: request} = context
+
+      made = spend(scope, request, {:ok, costing(0.0123)})
+
+      assert made.cost == %{micro_usd: 12_300, source: :provider}
+      assert %Spend{micro_usd: 12_300} = Budget.spent(budget, scope)
+    end
+
+    test "counts a tool call at the price its tool reported", context do
+      %{budget: budget, scope: scope} = context
+
+      search =
+        Wardrik.Tool.new!(
+          name: "search",
+          description: "Searches, at a price.",
+          parameter_schema: [],
+          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{"hits" => 1}, cost: 0.004) end
+        )
+
+      free =
+        Wardrik.Tool.new!(
+          name: "free",
+          description: "Costs nothing it knows of.",
+          parameter_schema: [],
+          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{}) end
+        )
+
+      scope = %{scope | config: Config.new(tools: [search, free])}
+
+      for {id, name} <- [{"c1", "search"}, {"c2", "free"}, {"c3", "search"}] do
+        %{Call.tool(%{id: id, name: name, arguments: %{}}, scope) | state: :allowed}
+        |> Pipeline.run()
+      end
+
+      assert %Spend{micro_usd: 8_000, tokens: 0} = Budget.spent(budget, scope)
+    end
+
     test "a budget in dollars refuses a model the catalog cannot price", context do
       %{scope: scope} = context
 

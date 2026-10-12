@@ -38,6 +38,14 @@ defmodule WardrikProtocol.SchemaTest do
     end)
   end
 
+  # A value that may be null is indexed as what it is when it is not, since
+  # a null fits a field of any type.
+  defp walk(%{"oneOf" => branches}, path, acc, defs) do
+    for branch <- branches, branch != %{"type" => "null"}, reduce: acc do
+      acc -> walk(branch, path, acc, defs)
+    end
+  end
+
   # An array is indexed as the type of what it holds.
   defp walk(%{"type" => "array", "items" => items}, path, acc, defs),
     do: walk(items, path, acc, defs)

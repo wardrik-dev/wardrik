@@ -75,7 +75,7 @@ of them. A worker that goes away takes its tools with it, until it connects agai
 | `input` | a schema for its arguments, such as a `zod` object, sent to the model as JSON Schema |
 | `readOnly` | whether it changes nothing. A tool that is not read-only is [gated](/concepts/policy/#gated-tools): a call to it asks a person unless a policy allows it by name |
 | `idempotent` | whether running a call twice is safe; see below |
-| `run` | the function, given the arguments, and `{ agent, run, idempotencyKey, signal }` |
+| `run` | the function, given the arguments, and `{ agent, run, idempotencyKey, signal, cost }` |
 
 `run` answers with an object, which the model is given as the call's result, or a string, as text.
 A thrown error is a failed call: the model is told its message, and the turn carries on.
@@ -104,6 +104,28 @@ wardrik.tool({
 Here each customer's agent is `shop/@<customer id>/support`, and no argument the model writes can
 reach another customer's orders. `run` is the run the call is part of, the id its events carry, so a
 call can be matched with the turn it belongs to.
+
+### What a call cost
+
+A call to a paid API can say what it cost, in US dollars, with `cost`. The call's
+`tool_call.completed` event carries it, and the agent's [budget](/concepts/policy/#budgets) counts
+it. Said more than once, the amounts add up; a call that throws reports none.
+
+```ts
+wardrik.tool({
+  name: "enrich_contact",
+  description: "Look a contact up by email.",
+  input: z.object({ email: z.string() }),
+  readOnly: true,
+  run: async ({ email }, { cost }) => {
+    const found = await enrich.lookup(email);
+    cost(0.01);
+    return found;
+  },
+});
+```
+
+On the wire it is `_meta.costUsd` on the call's result.
 
 ### Running a call twice
 

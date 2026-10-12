@@ -85,10 +85,10 @@ defmodule WardrikConsole.Printer do
   defp said({:tool_started, _id, name, arguments, _key, _decided_by}),
     do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]}]
 
-  defp said({:tool_finished, _id, name, {:ok, _output}, _served_by}),
+  defp said({:tool_finished, _id, name, {:ok, _output}, _served_by, _cost}),
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
-  defp said({:tool_finished, _id, name, {:error, reason}, _served_by}),
+  defp said({:tool_finished, _id, name, {:error, reason}, _served_by, _cost}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
 
   defp said({:tool_denied, _id, name, reason, _decided_by}),

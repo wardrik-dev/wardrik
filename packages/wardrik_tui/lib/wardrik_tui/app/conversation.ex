@@ -322,7 +322,7 @@ defmodule WardrikTUI.App.Conversation do
   end
 
   defp handle_projection(
-         %Event{payload: {:tool_finished, id, name, result, _served_by}} = event,
+         %Event{payload: {:tool_finished, id, name, result, _served_by, _cost}} = event,
          projection
        ) do
     {output, ok?} =
@@ -385,7 +385,10 @@ defmodule WardrikTUI.App.Conversation do
   end
 
   defp handle_projection(
-         %Event{payload: {:model_finished, _message_id, _outcome, _ms, _response}, source: source} =
+         %Event{
+           payload: {:model_finished, _message_id, _outcome, _ms, _response, _cost},
+           source: source
+         } =
            event,
          projection
        ) do

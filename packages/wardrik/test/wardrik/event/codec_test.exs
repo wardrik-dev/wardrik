@@ -78,7 +78,7 @@ defmodule Wardrik.Event.CodecTest do
       {turn,
        {:model_started, "#{turn.trace.span_id}.m0", "anthropic:claude-sonnet-5",
         %{by: :default, hooks: []}}},
-      {turn, {:model_finished, "#{turn.trace.span_id}.m0", :ok, 1_500, response(asking)}},
+      {turn, {:model_finished, "#{turn.trace.span_id}.m0", :ok, 1_500, response(asking), nil}},
       {turn, {:result, "Shipped"}},
       {turn, {:thinking, "The build is green."}},
       {turn, {:meta, %{usage: %{input_tokens: 1}}}},
@@ -91,7 +91,7 @@ defmodule Wardrik.Event.CodecTest do
       {tool,
        {:tool_finished, "call_1", "deploy",
         {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}},
-        %{id: "w1", name: "deploys"}}},
+        %{id: "w1", name: "deploys"}, nil}},
       {tool, {:tool_replayed, "call_1", "deploy", {:ok, %{"ok" => true, "result" => "done"}}}},
       {tool,
        {:tool_denied, "call_1", "deploy", "Not today.", %{by: :person, hooks: ["careful"]}}},
@@ -273,7 +273,7 @@ defmodule Wardrik.Event.CodecTest do
 
   describe "tool calls" do
     defp completed(result),
-      do: elem(encode(turn(), {:tool_finished, "call_1", "deploy", result, nil}), 1)["data"]
+      do: elem(encode(turn(), {:tool_finished, "call_1", "deploy", result, nil, nil}), 1)["data"]
 
     test "answer with what the tool returned, whichever way it said it" do
       assert %{"status" => "ok", "tool" => %{"call" => %{"result" => %{"n" => 1}}}} =
@@ -329,15 +329,27 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => finished}} =
         encode(
           turn(),
-          {:tool_finished, "call_1", "deploy", {:ok, 1}, %{id: "w1", name: "deploys"}}
+          {:tool_finished, "call_1", "deploy", {:ok, 1}, %{id: "w1", name: "deploys"}, nil}
         )
 
       assert finished["served_by"] == %{"id" => "w1", "name" => "deploys"}
 
       {:ok, %{"data" => unserved}} =
-        encode(turn(), {:tool_finished, "call_1", "deploy", {:ok, 1}, nil})
+        encode(turn(), {:tool_finished, "call_1", "deploy", {:ok, 1}, nil, nil})
 
       refute Map.has_key?(unserved, "served_by")
+    end
+
+    test "carry what a call cost where its tool said, and nothing otherwise" do
+      {:ok, %{"data" => priced} = event} =
+        encode(
+          turn(),
+          {:tool_finished, "call_1", "search", {:ok, 1}, nil, %{micro_usd: 4_000, source: :tool}}
+        )
+
+      valid!(event)
+      assert priced["cost"] == %{"micro_usd" => 4_000, "source" => "tool"}
+      refute Map.has_key?(completed({:ok, 1}), "cost")
     end
 
     test "answered from the ledger say they were replayed" do
@@ -359,7 +371,7 @@ defmodule Wardrik.Event.CodecTest do
         )
 
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_finished, "s.m0", :ok, 900, response(message)})
+        encode(turn(), {:model_finished, "s.m0", :ok, 900, response(message), nil})
 
       assert data["message"] == %{
                "id" => "s.m0",
@@ -389,9 +401,30 @@ defmodule Wardrik.Event.CodecTest do
       assert data["status"] == "ok"
     end
 
+    test "complete with what the call cost, null where nobody prices the model" do
+      message = Context.assistant("hi")
+
+      {:ok, %{"data" => priced} = event} =
+        encode(
+          turn(),
+          {:model_finished, "s.m0", :ok, 900, response(message),
+           %{micro_usd: 4_200, source: :catalog}}
+        )
+
+      valid!(event)
+      assert priced["cost"] == %{"micro_usd" => 4_200, "source" => "catalog"}
+
+      {:ok, %{"data" => unpriced} = event} =
+        encode(turn(), {:model_finished, "s.m0", :ok, 900, response(message), nil})
+
+      valid!(event)
+
+      assert Map.fetch(unpriced, "cost") == {:ok, nil}
+    end
+
     test "that were stopped say so, and name their message alone" do
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_finished, "s.m0", {:error, :interrupted}, 10, nil})
+        encode(turn(), {:model_finished, "s.m0", {:error, :interrupted}, 10, nil, nil})
 
       assert data == %{
                "message" => %{"id" => "s.m0"},

@@ -159,7 +159,7 @@ defmodule WardrikTUI.Activity do
   end
 
   defp doing({:model_started, _message_id, _model_spec, _decided_by}), do: "waiting on the model"
-  defp doing({:model_finished, _message_id, _outcome, _ms, _response}), do: nil
+  defp doing({:model_finished, _message_id, _outcome, _ms, _response, _cost}), do: nil
   defp doing({:thinking, _text}), do: "thinking"
   defp doing({:result, _text}), do: "answering"
   defp doing({:tool_started, _id, name, _arguments, _key, _decided_by}), do: name

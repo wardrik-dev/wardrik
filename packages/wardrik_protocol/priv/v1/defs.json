@@ -139,13 +139,35 @@
             }
           },
           "additionalProperties": false
-        },
-        "cost_usd": {
-          "type": "number"
         }
       },
       "additionalProperties": false,
       "description": "Token usage, as gen_ai.usage.* without the prefix."
+    },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "micro_usd": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Whole micro-dollars: 1000000 is one US dollar."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "provider",
+            "catalog",
+            "tool"
+          ],
+          "description": "provider where the provider reported the figure, catalog where Wardrik priced the tokens at the model catalog's prices, tool where the tool reported it."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "micro_usd",
+        "source"
+      ],
+      "description": "What a call cost, the same figure a budget counts."
     },
     "principal": {
       "type": "object",

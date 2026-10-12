@@ -451,6 +451,7 @@ defmodule Wardrik.Call.Pipeline do
     |> answered({:ok, output})
     |> Call.served(Keyword.get(opts, :served_by))
     |> Call.label(Keyword.get(opts, :labels, []))
+    |> Call.priced(Keyword.get(opts, :cost))
   end
 
   defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
@@ -536,7 +537,7 @@ defmodule Wardrik.Call.Pipeline do
 
     case Usage.of(request, call.result) do
       nil -> call
-      usage -> call |> Call.used(usage) |> tap(&Hook.settle/1)
+      usage -> call |> Call.used(usage, request.model_spec) |> tap(&Hook.settle/1)
     end
   end
 
@@ -558,7 +559,7 @@ defmodule Wardrik.Call.Pipeline do
   end
 
   defp finished(%Call{target: %Tool{}} = call) do
-    emit(call, {:tool_finished, call.id, Call.name(call), call.result, call.served_by})
+    emit(call, {:tool_finished, call.id, Call.name(call), call.result, call.served_by, call.cost})
     call
   end
 

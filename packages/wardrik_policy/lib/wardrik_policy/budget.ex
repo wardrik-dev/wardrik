@@ -1,7 +1,7 @@
 defmodule WardrikPolicy.Budget do
   @moduledoc """
-  How much an agent may spend on model calls, over what period, and what
-  happens once it has.
+  How much an agent may spend on model calls and paid tools, over what
+  period, and what happens once it has.
 
       budget:
         usd: 5.00
@@ -11,7 +11,7 @@ defmodule WardrikPolicy.Budget do
 
   | Field | What it decides |
   | --- | --- |
-  | `usd` | a limit in US dollars, as `Wardrik.LLM.Cost` prices each call |
+  | `usd` | a limit in US dollars: each model call as `Wardrik.LLM.Cost` prices it, and each tool call at the price its tool reports |
   | `tokens` | a limit in tokens, input and output together |
   | `per` | the period the limits cover: `turn`, `day`, `week`, `month`, or `total` for the agent's whole life. `day` unless set |
   | `grant` | how much more a person's approval allows, as `usd` and `tokens`. Another of each limit unless set |
@@ -36,7 +36,10 @@ defmodule WardrikPolicy.Budget do
   A budget is a `Wardrik.Hook`, as `WardrikPolicy.hooks/1` names it. Each model
   call is checked before it is made against what the agent has spent in the
   budget's period, as its `WardrikPolicy.Meter` holds it, and what it used is
-  recorded there once it returns. A budget whose meter cannot be read refuses
+  recorded there once it returns, at the cost the call carries, the figure
+  its `message.completed` event carries too (see `t:Wardrik.Call.cost/0`).
+  A tool call that reports a cost is recorded the same way; tool calls are
+  counted, not checked, since a model call asked for each. A budget whose meter cannot be read refuses
   the call rather than letting it run unmetered; the host starts
   `WardrikPolicy.Supervisor` to run the meters. Once the agent has spent its
   limit, a budget that asks parks it on the next call, and approving that
@@ -184,11 +187,19 @@ defmodule WardrikPolicy.Budget do
 
   def approved(%Call{}, _memo, %__MODULE__{}), do: :ok
 
+  # A call is counted at the cost it carries, the figure its event carries
+  # too; a tool call that said nothing of cost counts nothing.
   @impl Wardrik.Hook
-  def settle(%Call{target: %Call.Model{} = model, scope: scope}, %__MODULE__{} = budget) do
-    usage = model.usage
-    micro_usd = micro(Cost.of(model.model_spec, usage) || 0)
-    tokens = Usage.tokens(usage)
+  def settle(%Call{target: %Call.Model{usage: usage}} = call, %__MODULE__{} = budget),
+    do: spend(call, budget, Usage.tokens(usage))
+
+  def settle(%Call{target: %Call.Tool{}, cost: %{}} = call, %__MODULE__{} = budget),
+    do: spend(call, budget, 0)
+
+  def settle(%Call{}, %__MODULE__{}), do: :ok
+
+  defp spend(%Call{scope: scope} = call, budget, tokens) do
+    micro_usd = if call.cost, do: call.cost.micro_usd, else: 0
 
     with {:error, reason} <- scope |> spend_key(budget) |> Meter.spend(micro_usd, tokens) do
       Logger.error(
@@ -198,8 +209,6 @@ defmodule WardrikPolicy.Budget do
 
     :ok
   end
-
-  def settle(%Call{}, %__MODULE__{}), do: :ok
 
   @doc """
   What an agent has spent in `budget`'s period now, given the scope of one of
@@ -281,9 +290,9 @@ defmodule WardrikPolicy.Budget do
   def micro_usd(%__MODULE__{usd: nil}), do: nil
   def micro_usd(%__MODULE__{usd: usd}), do: micro(usd)
 
-  @doc "`usd` dollars in whole micro-dollars, rounded to the nearest."
+  @doc "`usd` dollars in whole micro-dollars, rounded to the nearest, as `Wardrik.LLM.Cost.micro/1`."
   @spec micro(number()) :: non_neg_integer()
-  def micro(usd), do: round(usd * 1_000_000)
+  def micro(usd), do: Cost.micro(usd)
 
   @doc "Whole micro-dollars as dollars and cents: `$1.20`."
   @spec dollars(non_neg_integer()) :: String.t()

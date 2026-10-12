@@ -593,7 +593,8 @@ defmodule WardrikDaemon.AgentFile do
     servers =
       for {ref, opts} <- servers(), reach(key, ref, opts) == :ok, do: ref
 
-    @shipped ++ Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
+    Enum.map(@shipped, &set/1) ++
+      Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
   end
 
   defp tool!("workers/*", _modules?, key), do: [{WardrikHTTP.Workers, key}]
@@ -634,9 +635,19 @@ defmodule WardrikDaemon.AgentFile do
 
   defp shipped!(name, modules?) do
     case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do
-      {:ok, module} -> module
+      {:ok, module} -> set(module)
       :error when modules? -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
       :error -> invalid!("tools names #{name}, which is not a tool the daemon ships")
+    end
+  end
+
+  # A shipped tool config.yaml's `tools` sets is named with its settings.
+  defp set(module) do
+    settings = Keyword.get(WardrikDaemon.Config.settings(__MODULE__), :tools, %{})
+
+    case Map.fetch(settings, module.tool().name) do
+      {:ok, opts} -> {module, opts}
+      :error -> module
     end
   end
 

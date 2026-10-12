@@ -23,6 +23,9 @@
     },
     "served_by": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/served_by"
+    },
+    "cost": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost"
     }
   },
   "additionalProperties": false,

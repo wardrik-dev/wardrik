@@ -46,4 +46,12 @@ defmodule Wardrik.Tool.ResultTest do
                 "error" => %{"code" => "no_key", "message" => "Set BRAVE_API_KEY."}
               }}
   end
+
+  test "ok/2 reports what a call cost beside its result" do
+    assert Result.ok(%{"hits" => 1}, cost: 0.004) ==
+             {:ok, %{"ok" => true, "result" => %{"hits" => 1}}, cost: 0.004}
+
+    assert Result.ok(%{"hits" => 1}, cost: nil) == Result.ok(%{"hits" => 1})
+    assert Result.ok?(Result.ok(1, cost: 0.1))
+  end
 end

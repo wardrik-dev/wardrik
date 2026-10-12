@@ -73,7 +73,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       assert_receive %Event{payload: {:tool_started, "call_1", "connect", _, _, _}}
       assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Authorize first"}}
-      refute_receive %Event{payload: {:tool_finished, "call_1", "connect", _result, _}}
+      refute_receive %Event{payload: {:tool_finished, "call_1", "connect", _result, _, _}}
     end
 
     test "runs again when the call is approved", %{agent_id: agent_id} do
@@ -129,11 +129,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
 
       assert_receive %Event{
-        payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}, _}
+        payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}, _, _}
       }
 
       assert_receive %Event{payload: {:tool_started, "call_2", "reverse", _, _, _}}
-      assert_receive %Event{payload: {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}, _, _}}
 
       assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
       assert Enum.map(messages, & &1.name) == ["echo", "reverse"]
@@ -151,7 +151,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                |> ToolRunner.messages()
 
       assert_receive %Event{
-        payload: {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}, _}
+        payload: {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}, _, _}
       }
 
       assert message.tool_call_id == "call_1"
@@ -354,7 +354,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       ToolRunner.execute(call("call_1", "echo", %{}), scope(agent_id, tools))
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}} = started
-      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _, _}} = finished
+      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _, _, _}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -427,7 +427,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         |> message()
 
       assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
-      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}, _}}
+      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}, _, _}}
       assert message.role == :tool
       assert message.tool_call_id == "call_1"
       assert message.name == "echo"

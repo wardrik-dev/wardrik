@@ -380,8 +380,8 @@ judge's allow is shown as it would be for a run that had not.
 
 ## Budgets
 
-A policy may hold a budget for what the agent spends on model calls, in dollars, in tokens, or
-both:
+A policy may hold a budget for what the agent spends on model calls and paid tools, in dollars, in
+tokens, or both:
 
 ```yaml
 budget:
@@ -405,8 +405,17 @@ Prices come from the provider where it reports what a call cost, and from the mo
 otherwise. A dollar budget refuses every call to a model the catalog cannot price; a budget in
 tokens alone governs such a model, or one a subscription pays for.
 
+A tool call counts where its tool says what it cost: `web_search` at the `price` config.yaml sets
+for it under `tools`, and a [tool worker](/guides/tool-workers/) at what it reports. Tool calls are
+counted, not checked; the model call that asked for them was.
+
+Each call's event carries what the budget counted, as `cost` on
+[`message.completed`](/reference/events/#wardrikmessagecompleted) and
+[`tool_call.completed`](/reference/events/#wardriktool_callcompleted): whole micro-dollars, and
+whether the provider, the catalog or the tool priced it. A model nobody prices says `null`, which is
+not the same as nothing. What an agent cost over any period is a read of its log.
+
 `wardrik status`, `wardrik ls` and `wardrik show` show what each agent has spent in its period.
-Tool calls are not metered.
 
 ## Connecting an account
 

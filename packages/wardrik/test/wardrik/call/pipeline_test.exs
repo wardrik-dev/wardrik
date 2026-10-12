@@ -264,7 +264,7 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert_received %Event{
-        payload: {:tool_finished, "call_1", "echo", {:ok, "hi"}, %{id: "w1", name: "echoes"}}
+        payload: {:tool_finished, "call_1", "echo", {:ok, "hi"}, %{id: "w1", name: "echoes"}, _}
       }
 
       scope(agent_id, tools: [served]) |> call("call_2", "echo") |> Pipeline.run()
@@ -313,7 +313,7 @@ defmodule Wardrik.Call.PipelineTest do
       assert_received {:ran, true, ^key}
 
       assert_received %Event{
-        payload: {:tool_finished, "call_1", "refund", {:ok, _}, %{id: "w2", name: "refunds"}}
+        payload: {:tool_finished, "call_1", "refund", {:ok, _}, %{id: "w2", name: "refunds"}, _}
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =

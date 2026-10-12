@@ -66,6 +66,13 @@ defmodule WardrikHTTP.WorkerTest do
             "structuredContent" => params["arguments"]
           })
 
+        "priced" ->
+          reply(id, state, %{
+            "content" => [%{"type" => "text", "text" => "Found."}],
+            "structuredContent" => %{"found" => true},
+            "_meta" => %{"costUsd" => 0.002}
+          })
+
         "fail" ->
           reply(id, state, %{
             "isError" => true,
@@ -220,6 +227,21 @@ defmodule WardrikHTTP.WorkerTest do
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
              Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+  end
+
+  test "a call is answered with what its worker said it cost", context do
+    connect(context, [tool("priced"), tool("echo")])
+
+    assert {:ok, %{"ok" => true, "result" => %{"found" => true}}, opts} =
+             Workers.call(context.agent, "priced", %{}, handed(context.agent))
+
+    assert opts[:cost] == 0.002
+    assert opts[:served_by]
+
+    assert {:ok, %{"ok" => true}, opts} =
+             Workers.call(context.agent, "echo", %{"order" => "o_1"}, handed(context.agent))
+
+    refute Keyword.has_key?(opts, :cost)
   end
 
   test "a call for a user's agent says whose it is, however the model called it", context do

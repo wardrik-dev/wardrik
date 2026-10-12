@@ -118,7 +118,7 @@ defmodule Wardrik.LLM.Turn do
   `Wardrik.Failure` calls transient, such as a stream that times out before its
   first chunk, is asked again after each wait the config's `:retries` lists,
   through the dispatch each time. Each try is its own `{:model_started, _, _}`
-  and `{:model_finished, _, _, _, _}`, under the same message id. A call that
+  and `{:model_finished, _, _, _, _, _}`, under the same message id. A call that
   fails once the provider has begun to answer is not asked again, since what
   streamed has already been published; it fails the turn, as a call does once
   its retries are spent. `:interrupt` stops the wait, and a turn past its
@@ -584,11 +584,13 @@ defmodule Wardrik.LLM.Turn do
     Process.put(@streamed, [])
     Process.put(@answered, false)
 
-    result = call |> Pipeline.run(&streamed/1) |> unsettled()
+    made = Pipeline.run(call, &streamed/1)
+    result = unsettled(made)
 
     Event.emit(
       source,
-      {:model_finished, message_id, outcome(result), Trace.elapsed_ms(started_at), answer(result)}
+      {:model_finished, message_id, outcome(result), Trace.elapsed_ms(started_at), answer(result),
+       made.cost}
     )
 
     result

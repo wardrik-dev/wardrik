@@ -166,6 +166,37 @@ test("offers its tools with their hints, and answers a call with the call's idem
   await working;
 });
 
+test("answers with what a call cost, where its tool says", async () => {
+  const wardrik = new Wardrik({ url, token: "wardrik_secret" });
+
+  wardrik.tool({
+    name: "lookup",
+    input: z.object({ paid: z.boolean() }),
+    readOnly: true,
+    run: ({ paid }, { cost }) => {
+      if (paid) {
+        cost(0.002);
+        cost(0.001);
+      }
+      return { found: true };
+    },
+  });
+
+  const arriving = next();
+  const working = wardrik.work({ signal: stop.signal });
+  const peer = await arriving;
+  await peer.initialize();
+
+  const paid = await peer.request("tools/call", { name: "lookup", arguments: { paid: true } });
+  assert.equal(paid.result._meta.costUsd.toFixed(3), "0.003");
+
+  const free = await peer.request("tools/call", { name: "lookup", arguments: { paid: false } });
+  assert.equal(free.result._meta, undefined);
+
+  stop.abort();
+  await working;
+});
+
 test("tells a tool which agent and run a call is for", async () => {
   const seen: unknown[] = [];
   const wardrik = new Wardrik({ url, token: "wardrik_secret" });
