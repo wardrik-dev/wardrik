@@ -235,7 +235,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `idle_timeout` | integer or `"infinity"` |  | How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
-| `schedule` | array of object |  | The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. |
+| `schedule` | array of object |  | The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run. |
 | `channels` | array of string |  | The chat channels, as config.yaml names them, it may be chosen to answer in. |
 
 ### `agent_snapshot`
@@ -293,7 +293,7 @@ What GET /v1/exports/{name} answers: the events after the export's cursor, in ev
 
 ### `schedule`
 
-A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.
+A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -306,7 +306,7 @@ A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedu
 
 ### `schedule_definition`
 
-The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out.
+The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

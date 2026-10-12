@@ -345,7 +345,7 @@ A schedule came due.
 | --- | --- | --- | --- |
 | `schedule` | object | yes |  |
 | `schedule.name` | string | yes |  |
-| `status` | string | yes | One of `asked`, `busy`, `no_agent`, `missed`, `failed`. |
+| `status` | string | yes | One of `asked`, `nothing_new`, `busy`, `no_agent`, `missed`, `failed`. |
 
 ### `wardrik.secret.removed`
 
