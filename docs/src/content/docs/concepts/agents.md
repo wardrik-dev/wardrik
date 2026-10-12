@@ -93,6 +93,11 @@ without calling anything.
 - **A turn may have a deadline.** `timeout` is how many seconds a turn may take, and there is none
   unless an agent file says. At the deadline the turn stops at its next step and ends, as
   `run.deadline_exceeded`.
+- **A failed model call is asked again.** One that fails for a passing reason, such as a timeout, a
+  dropped connection or a provider's 5xx, is asked again after each wait `retries` lists, in
+  seconds, before the turn fails: `[1, 5]` unless an agent file or `config.yaml`'s `defaults` say
+  otherwise. `retries: [2, 10, 30]` waits longer for a slow provider, and `retries: []` never asks
+  again.
 - **Tool calls run together.** Up to 8 of a round's calls run at once, and each may take up to 60
   seconds.
 - **A model call that fails is asked again.** One that times out, loses its connection, is rate

@@ -131,6 +131,14 @@
       ],
       "description": "How many rounds of tool calls a turn may make."
     },
+    "retries": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again."
+    },
     "compaction": {
       "oneOf": [
         {
@@ -244,6 +252,11 @@
       "timeout": 600,
       "idle_timeout": 900,
       "max_iterations": 12,
+      "retries": [
+        2,
+        10,
+        30
+      ],
       "compaction": {
         "at": 0.6,
         "keep": 0.25

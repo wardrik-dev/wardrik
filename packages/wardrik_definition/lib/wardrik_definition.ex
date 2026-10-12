@@ -45,8 +45,9 @@ defmodule WardrikDefinition do
 
   @keys schema |> List.keyfind("properties", 0) |> elem(1) |> Enum.map(&elem(&1, 0))
   @file_keys ~w(name org user) ++ (@keys -- ["instructions"]) ++ ["notify"]
-  @default_keys ~w(model tools policy timeout idle_timeout max_iterations compaction)
+  @default_keys ~w(model tools policy timeout idle_timeout max_iterations retries compaction)
   @trigger_keys ~w(name prompt_file)
+  @retries "is a list of whole numbers of seconds, one wait for each try"
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
   @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t() | nil}
@@ -61,9 +62,9 @@ defmodule WardrikDefinition do
   def file_keys, do: @file_keys
 
   @doc """
-  The keys a host's defaults may set. `idle_timeout` holds for every agent
-  whose definition sets none; the others are what a host writes into a
-  definition it makes, such as a new agent file.
+  The keys a host's defaults may set. `idle_timeout` and `retries` hold for
+  every agent whose definition sets none; the others are what a host writes
+  into a definition it makes, such as a new agent file.
   """
   @spec default_keys() :: [String.t()]
   def default_keys, do: @default_keys
@@ -73,7 +74,7 @@ defmodule WardrikDefinition do
   def check_defaults(defaults) do
     case Map.keys(defaults) -- @default_keys do
       [] ->
-        idle(defaults["idle_timeout"])
+        with :ok <- idle(defaults["idle_timeout"]), do: retries(defaults["retries"])
 
       [key | _rest] ->
         {:error, key, "is not a setting; expected one of #{Enum.join(@default_keys, ", ")}"}
@@ -84,6 +85,12 @@ defmodule WardrikDefinition do
   defp idle("infinity"), do: :ok
   defp idle(seconds) when is_integer(seconds) and seconds > 0, do: :ok
   defp idle(_seconds), do: {:error, "idle_timeout", "is a whole number of seconds, or infinity"}
+
+  defp retries(nil), do: :ok
+
+  defp retries(waits) do
+    if waits?(waits), do: :ok, else: {:error, "retries", @retries}
+  end
 
   @doc """
   An agent file with `fields` as its frontmatter, in the order given, and a
@@ -302,6 +309,7 @@ defmodule WardrikDefinition do
        ] ++ context.config)
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
+      |> put(:retries, fields["retries"] || context.defaults["retries"], &retries!/1)
       |> compaction(fields)
       |> Config.new()
 
@@ -751,6 +759,14 @@ defmodule WardrikDefinition do
   defp iterations!(n) when is_integer(n) and n > 0, do: n
   defp iterations!("infinity"), do: :infinity
   defp iterations!(_n), do: invalid!("max_iterations is a whole number, or infinity")
+
+  defp retries!(waits) do
+    if waits?(waits),
+      do: Enum.map(waits, &:timer.seconds/1),
+      else: invalid!("retries " <> @retries)
+  end
+
+  defp waits?(waits), do: is_list(waits) and Enum.all?(waits, &(is_integer(&1) and &1 >= 0))
 
   defp string!(value, _key) when is_binary(value), do: value
   defp string!(_value, key), do: invalid!("#{key} is a string")

@@ -241,6 +241,10 @@ export interface AgentDefinition {
    */
   max_iterations?: number | "infinity";
   /**
+   * How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again.
+   */
+  retries?: number[];
+  /**
    * When the agent summarises its older history, as shares of the model's window; false never does.
    */
   compaction?:

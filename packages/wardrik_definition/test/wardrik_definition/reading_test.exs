@@ -131,6 +131,22 @@ defmodule WardrikDefinition.ReadingTest do
              read("---\nidle_timeout: infinity\n---\n", defaults)
   end
 
+  test "retries are seconds before each try, and the defaults' where it sets none", context do
+    assert {:ok, spec} = read("---\nretries: [2, 10, 30]\n---\n", context)
+    assert spec.config.retries == [2_000, 10_000, 30_000]
+    assert {:ok, %{config: %{retries: []}}} = read("---\nretries: []\n---\n", context)
+    assert {:ok, %{config: %{retries: [1_000, 5_000]}}} = read("Answer briefly.\n", context)
+
+    for written <- ["soon", "[1, -1]", "[1.5]"] do
+      assert {:error, "retries is a list of whole numbers of seconds, one wait for each try"} =
+               read("---\nretries: #{written}\n---\n", context)
+    end
+
+    defaults = %{context: %{context.context | defaults: %{"retries" => [3]}}}
+    assert {:ok, %{config: %{retries: [3_000]}}} = read("Answer briefly.\n", defaults)
+    assert {:ok, %{config: %{retries: []}}} = read("---\nretries: []\n---\n", defaults)
+  end
+
   test "text/1 writes a file that reads back as it was given", context do
     text =
       WardrikDefinition.text([
