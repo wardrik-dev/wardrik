@@ -64,25 +64,6 @@ defmodule WardrikBrave.WebSearchTest do
       assert result["count"] == 1
     end
 
-    test "a search says what it cost where the tool was named with a price" do
-      stub_json(200, @body)
-
-      assert {:ok, %{"ok" => true}, cost: 0.005} =
-               WebSearch.run(0.005, %{query: "elixir"}, config())
-
-      stub_status(429)
-      assert {:ok, %{"ok" => false}} = WebSearch.run(0.005, %{query: "elixir"}, config())
-    end
-
-    test "named with a price, it is the same tool" do
-      assert [tool] = WebSearch.tools(price: 0.005)
-      assert tool.name == "web_search"
-
-      assert Wardrik.Tool.annotations({WebSearch, price: 0.005}, "web_search").labels == [
-               "outside"
-             ]
-    end
-
     test "a failed search is a result the model can read, not a failed tool" do
       stub_status(429)
 

@@ -73,6 +73,13 @@ defmodule WardrikHTTP.WorkerTest do
             "_meta" => %{"costUsd" => 0.002}
           })
 
+        "declined" ->
+          reply(id, state, %{
+            "isError" => true,
+            "content" => [%{"type" => "text", "text" => "Declined."}],
+            "_meta" => %{"costUsd" => 0.25}
+          })
+
         "fail" ->
           reply(id, state, %{
             "isError" => true,
@@ -230,7 +237,7 @@ defmodule WardrikHTTP.WorkerTest do
   end
 
   test "a call is answered with what its worker said it cost", context do
-    connect(context, [tool("priced"), tool("echo")])
+    connect(context, [tool("priced"), tool("echo"), tool("declined")])
 
     assert {:ok, %{"ok" => true, "result" => %{"found" => true}}, opts} =
              Workers.call(context.agent, "priced", %{}, handed(context.agent))
@@ -242,6 +249,11 @@ defmodule WardrikHTTP.WorkerTest do
              Workers.call(context.agent, "echo", %{"order" => "o_1"}, handed(context.agent))
 
     refute Keyword.has_key?(opts, :cost)
+
+    assert {:ok, %{"ok" => false}, opts} =
+             Workers.call(context.agent, "declined", %{}, handed(context.agent))
+
+    assert opts[:cost] == 0.25
   end
 
   test "a call for a user's agent says whose it is, however the model called it", context do

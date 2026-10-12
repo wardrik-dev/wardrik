@@ -96,14 +96,19 @@ defmodule WardrikDaemon.Config do
   names none, and the one the CLI finds an agent in when it is named without
   an org. It is `default` unless set; `org/0` reads it.
 
-  `tools` sets what a tool the daemon ships takes: `web_search` takes
-  `price`, what one search costs in US dollars on the deployment's plan,
-  which each search's `tool_call.completed` event carries and a budget
-  counts.
+  `tools` lists what one call to a tool costs, in US dollars, for a tool
+  that says nothing of what it cost itself, such as an MCP server's: each
+  call the tool answers, failed or not, carries that price as its cost in
+  its `tool_call.completed` event, and a budget counts it. A tool is named
+  as a policy names one, `web_search` or `github/create_issue`, with `*`
+  for any run of characters; a name given whole wins over a pattern, and a
+  longer pattern over a shorter.
 
       tools:
         web_search:
           price: 0.005
+        github/*:
+          price: 0.001
 
   `defaults` is what an agent is given where nothing else says: one
   `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
@@ -401,7 +406,7 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.Agents, defaults: defaults(defaults)}
 
       {"tools", tools} ->
-        {WardrikDaemon.AgentFile, tools: tools(table!(tools, ["tools"]))}
+        {WardrikDaemon.AgentFile, tool_prices: prices(table!(tools, ["tools"]))}
 
       {"mcp", servers} ->
         {WardrikMCP, servers: servers(table!(servers, ["mcp"]), org)}
@@ -441,25 +446,25 @@ defmodule WardrikDaemon.Config do
 
   # -- tools -----------------------------------------------------------------
 
-  @tool_keys %{"web_search" => ~w(price)}
-
-  defp tools(tools) do
+  defp prices(tools) do
     Map.new(tools, fn {name, settings} ->
       path = ["tools", name]
-
-      case Map.fetch(@tool_keys, name) do
-        {:ok, keys} ->
-          settings = table!(settings, path)
-          known!(settings, keys, path)
-          {name, Enum.map(settings, fn {"price", price} -> {:price, price!(price, path)} end)}
-
-        :error ->
-          invalid!(
-            path,
-            "is not a tool that takes settings; expected #{Enum.map_join(@tool_keys, ", ", &elem(&1, 0))}"
-          )
-      end
+      tool_pattern!(name, path)
+      settings = table!(settings, path)
+      known!(settings, ["price"], path)
+      {name, price!(Map.get(settings, "price"), path)}
     end)
+  end
+
+  defp tool_pattern!(name, path) do
+    case WardrikPolicy.Pattern.parse(name) do
+      {:ok, pattern} ->
+        if WardrikPolicy.Pattern.argument?(pattern),
+          do: invalid!(path, "names the tool alone, not what its calls act on")
+
+      {:error, message} ->
+        invalid!(path, message)
+    end
   end
 
   defp price!(price, _path) when is_number(price) and price >= 0, do: price

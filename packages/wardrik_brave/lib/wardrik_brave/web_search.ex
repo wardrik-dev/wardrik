@@ -16,11 +16,6 @@ defmodule WardrikBrave.WebSearch do
   Its key is the credential `BRAVE_API_KEY`, which the scope's
   `Wardrik.Credential` resolver resolves for each call, such as `WardrikVault`
   holding it as the deployment's secret.
-
-  Brave bills each query. Named with what one costs on the deployment's plan,
-  in US dollars, every search says so, and a budget counts it:
-
-      Wardrik.LLM.Config.new(tools: [{WardrikBrave.WebSearch, price: 0.005}])
   """
 
   @behaviour Wardrik.Tool
@@ -52,16 +47,7 @@ defmodule WardrikBrave.WebSearch do
   def annotations(_name), do: %{labels: ["outside"], credentials: [@credential]}
 
   @impl true
-  def annotations(_opts, name), do: annotations(name)
-
-  @doc "The tool, as named with `price:`, what one search costs in US dollars."
-  @impl true
-  def tools(opts) when is_list(opts), do: [tool(Keyword.get(opts, :price))]
-
-  @impl true
-  def tool, do: tool(nil)
-
-  defp tool(price) when is_nil(price) or (is_number(price) and price >= 0) do
+  def tool do
     Wardrik.Tool.new!(
       name: "web_search",
       description: @description,
@@ -92,7 +78,7 @@ defmodule WardrikBrave.WebSearch do
             "Approximate token budget for the whole result. Defaults to #{@default_max_tokens}. Raise it only for research."
         ]
       ],
-      run: {__MODULE__, :run, [price]}
+      run: {__MODULE__, :run}
     )
   end
 
@@ -115,20 +101,16 @@ defmodule WardrikBrave.WebSearch do
   def validate_between(value), do: {:error, "expected a string, got: #{inspect(value)}"}
 
   @doc """
-  Runs one search and reports the outcome to the model, and what it cost at
-  `price`, where one is named: with the key the call resolved, handed its
-  `Wardrik.Tool.Context`, or as `config` says.
+  Runs one search and reports the outcome to the model: with the key the call
+  resolved, handed its `Wardrik.Tool.Context`, or as `config` says.
   """
-  @spec run(number() | nil, map() | keyword(), Wardrik.Tool.Context.t() | Config.t()) ::
-          Result.t()
-  def run(price \\ nil, params, context)
+  @spec run(map() | keyword(), Wardrik.Tool.Context.t() | Config.t()) :: Result.t()
+  def run(params, %Wardrik.Tool.Context{credentials: credentials}),
+    do: run(params, Config.new(api_key: key(credentials[@credential])))
 
-  def run(price, params, %Wardrik.Tool.Context{credentials: credentials}),
-    do: run(price, params, Config.new(api_key: key(credentials[@credential])))
-
-  def run(price, params, %Config{} = config) do
+  def run(params, %Config{} = config) do
     case window(Map.new(params)) do
-      {:ok, _window} -> search(params, config, price)
+      {:ok, _window} -> search(params, config)
       {:error, message} -> Result.error(:conflicting_dates, message)
     end
   end
@@ -136,9 +118,9 @@ defmodule WardrikBrave.WebSearch do
   defp key(nil), do: nil
   defp key(credential), do: Wardrik.Credential.reveal(credential)
 
-  defp search(params, config, price) do
+  defp search(params, config) do
     case Client.search(config, body(params)) do
-      {:ok, result} -> Result.ok(result, cost: price)
+      {:ok, result} -> Result.ok(result)
       {:error, reason} -> Result.error(reason)
     end
   end

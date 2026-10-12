@@ -17,7 +17,7 @@ defmodule WardrikHTTP.Worker do
        key as `_meta.idempotencyKey`, and the worker answers with a
        `CallToolResult`: `structuredContent` where it has any, `content`, and
        `isError`, and what the call cost in US dollars as `_meta.costUsd`
-       where it costs money. A call Wardrik stops waiting for, or stops, is sent
+       where it costs money, whether it succeeded or failed. A call Wardrik stops waiting for, or stops, is sent
        `notifications/cancelled`: one not answered in time, and one whose
        caller ends first, as a call killed with
        `Wardrik.LLM.ToolRunner.kill_call/2`, past its turn's deadline, or in
@@ -181,7 +181,7 @@ defmodule WardrikHTTP.Worker do
   end
 
   defp result(%{"result" => %{"isError" => true} = result}),
-    do: Result.error(:tool_error, text(result))
+    do: Result.error(:tool_error, text(result), cost: cost(result))
 
   defp result(%{"result" => %{"structuredContent" => structured} = result})
        when is_map(structured),

@@ -11,6 +11,7 @@ defmodule Wardrik.LLM.TurnTest do
   alias Wardrik.LLM
   alias Wardrik.Scope
   alias Wardrik.Test.LLMStub
+  alias Wardrik.Tool.Result
 
   # A turn run or resumed through its token, as a turn under `scope` is.
   defp run(scope, context), do: scope |> LLM.Turn.new(context) |> LLM.Turn.run()
@@ -164,13 +165,71 @@ defmodule Wardrik.LLM.TurnTest do
       assert_receive %Event{payload: {:model_finished, _id, :ok, _ms, %ReqLLM.Response{}, nil}}
     end
 
+    test "is what the config lists for a tool that says nothing, and what a tool says wins",
+         %{agent_id: agent_id} do
+      tool = fn name, answer ->
+        Wardrik.Tool.new!(
+          name: name,
+          description: "Does something.",
+          parameter_schema: [],
+          run: fn _input, _context -> answer end
+        )
+      end
+
+      tools = [
+        tool.("listed", Result.ok(%{})),
+        tool.("failing", {:error, "It broke."}),
+        tool.("saying", Result.ok(%{}, cost: 0.002))
+      ]
+
+      LLMStub.stream([
+        LLMStub.tool_call("call_1", "listed", %{}),
+        LLMStub.tool_call("call_2", "failing", %{}),
+        LLMStub.tool_call("call_3", "saying", %{}),
+        LLMStub.final_answer("done")
+      ])
+
+      [tools: tools, tool_prices: %{"listed" => 0.01, "fail*" => 0.003, "*" => 0.5}]
+      |> LLM.Config.new()
+      |> Scope.root(agent_id, name: "turn")
+      |> run(Context.new())
+
+      assert_receive %Event{payload: {:tool_finished, "call_1", _, _, _, %{micro_usd: 10_000}}}
+
+      assert_receive %Event{
+        payload: {:tool_finished, "call_2", _, {:error, _}, _, %{micro_usd: 3_000}}
+      }
+
+      assert_receive %Event{payload: {:tool_finished, "call_3", _, _, _, %{micro_usd: 2_000}}}
+    end
+
+    test "is what a failed call says it cost", %{agent_id: agent_id} do
+      tool =
+        Wardrik.Tool.new!(
+          name: "charge",
+          description: "Fails, and is charged.",
+          parameter_schema: [],
+          run: fn _input, _context -> {:error, "Declined.", cost: 0.25} end
+        )
+
+      LLMStub.stream([LLMStub.tool_call("call_1", "charge", %{}), LLMStub.final_answer("done")])
+
+      run(scope(agent_id, [tool]), Context.new())
+
+      assert_receive %Event{
+        payload:
+          {:tool_finished, "call_1", "charge", {:error, "Declined."}, nil,
+           %{micro_usd: 250_000, source: :tool}}
+      }
+    end
+
     test "is what a tool says a call cost", %{agent_id: agent_id} do
       tool =
         Wardrik.Tool.new!(
           name: "search",
           description: "Searches, at a price.",
           parameter_schema: [q: [type: :string]],
-          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{"hits" => 1}, cost: 0.004) end
+          run: fn _input, _context -> Result.ok(%{"hits" => 1}, cost: 0.004) end
         )
 
       LLMStub.stream([

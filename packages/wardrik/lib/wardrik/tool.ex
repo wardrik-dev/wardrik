@@ -129,6 +129,8 @@ defmodule Wardrik.Tool do
       the call's events name (see `t:Wardrik.Call.served/0`), and `cost:`
       for what the call cost in US dollars, which its `tool_call.completed`
       event carries and a budget counts (see `t:Wardrik.Call.cost/0`)
+    * `{:error, reason, cost: usd}` - a failed call that still cost `usd`
+      US dollars, which its event carries and a budget counts
     * `{:park, prompt}` and `{:park, prompt, link: link}` - the call waits on
       a person, who is shown `prompt`, and authorizes at `link` where there
       is one; see `Wardrik.Call.park/3`
@@ -141,6 +143,7 @@ defmodule Wardrik.Tool do
   @type answer() ::
           {:ok, term()}
           | {:error, term()}
+          | {:error, term(), [cost: number()]}
           | {:ok, term(),
              [labels: [Wardrik.Label.t()], served_by: Wardrik.Call.served(), cost: number()]}
           | {:park, String.t()}

@@ -220,7 +220,8 @@ defmodule WardrikPolicy.BudgetTest do
       assert %Spend{micro_usd: 12_300} = Budget.spent(budget, scope)
     end
 
-    test "counts a tool call at the price its tool reported", context do
+    test "counts a tool call, failed or not, at the price its tool reported or the config lists",
+         context do
       %{budget: budget, scope: scope} = context
 
       search =
@@ -239,14 +240,39 @@ defmodule WardrikPolicy.BudgetTest do
           run: fn _input, _context -> Wardrik.Tool.Result.ok(%{}) end
         )
 
-      scope = %{scope | config: Config.new(tools: [search, free])}
+      declined =
+        Wardrik.Tool.new!(
+          name: "charge",
+          description: "Fails, and is charged.",
+          parameter_schema: [],
+          run: fn _input, _context -> {:error, "Declined.", cost: 0.25} end
+        )
 
-      for {id, name} <- [{"c1", "search"}, {"c2", "free"}, {"c3", "search"}] do
+      listed =
+        Wardrik.Tool.new!(
+          name: "lookup",
+          description: "Says nothing of cost; the config lists it.",
+          parameter_schema: [],
+          run: fn _input, _context -> {:error, "Not found."} end
+        )
+
+      config =
+        Config.new(tools: [search, free, declined, listed], tool_prices: %{"lookup" => 0.1})
+
+      scope = %{scope | config: config}
+
+      for {id, name} <- [
+            {"c1", "search"},
+            {"c2", "free"},
+            {"c3", "search"},
+            {"c4", "charge"},
+            {"c5", "lookup"}
+          ] do
         %{Call.tool(%{id: id, name: name, arguments: %{}}, scope) | state: :allowed}
         |> Pipeline.run()
       end
 
-      assert %Spend{micro_usd: 8_000, tokens: 0} = Budget.spent(budget, scope)
+      assert %Spend{micro_usd: 358_000, tokens: 0} = Budget.spent(budget, scope)
     end
 
     test "a budget in dollars refuses a model the catalog cannot price", context do

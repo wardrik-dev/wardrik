@@ -181,14 +181,12 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "serves globex, and not default"
   end
 
-  test "names a shipped tool with what config.yaml's tools sets for it", context do
-    Application.put_env(:wardrik_daemon, AgentFile, tools: %{"web_search" => [price: 0.005]})
+  test "carries the prices config.yaml's tools lists", context do
+    Application.put_env(:wardrik_daemon, AgentFile, tool_prices: %{"github/*" => 0.001})
 
     assert {:ok, spec} = read("---\ntools: [web_search]\n---\n", context)
-    assert spec.config.tools == [{WardrikBrave.WebSearch, price: 0.005}]
-
-    assert {:ok, spec} = read("---\ntools: [\"*\"]\n---\n", context)
-    assert {WardrikBrave.WebSearch, price: 0.005} in spec.config.tools
+    assert spec.config.tool_prices == %{"github/*" => 0.001}
+    assert Wardrik.LLM.Config.tool_price(spec.config, "github__create_issue") == 0.001
   end
 
   defp with_servers(servers),

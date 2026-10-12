@@ -54,4 +54,15 @@ defmodule Wardrik.Tool.ResultTest do
     assert Result.ok(%{"hits" => 1}, cost: nil) == Result.ok(%{"hits" => 1})
     assert Result.ok?(Result.ok(1, cost: 0.1))
   end
+
+  test "error/2 and error/3 report what a failed call cost" do
+    assert {:ok, %{"ok" => false, "error" => %{"code" => "declined"}}, cost: 0.25} =
+             Result.error(:declined, cost: 0.25)
+
+    assert {:ok, %{"ok" => false, "error" => %{"message" => "No funds."}}, cost: 0.1} =
+             Result.error(:declined, "No funds.", cost: 0.1)
+
+    assert Result.error(:declined, cost: nil) == Result.error(:declined)
+    refute Result.ok?(Result.error(:declined, cost: 0.25))
+  end
 end

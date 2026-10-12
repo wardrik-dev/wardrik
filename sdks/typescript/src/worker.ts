@@ -41,8 +41,8 @@ export interface ToolContext {
   /**
    * Says what the call cost in US dollars, such as a paid API's price for it.
    * The call's `tool_call.completed` event carries it and a budget counts it.
-   * Said more than once, the amounts add up; said for a call that throws,
-   * nothing is reported.
+   * Said more than once, the amounts add up. A call that throws after saying
+   * it is reported failed, at what it said.
    */
   cost(usd: number): void;
 }
@@ -220,12 +220,13 @@ export class Worker {
           },
         };
 
+        let result: CallToolResult;
         try {
-          const result = answer(await tool.run(args, context));
-          return costUsd === undefined ? result : { ...result, _meta: { costUsd } };
+          result = answer(await tool.run(args, context));
         } catch (error) {
-          return failed(error);
+          result = failed(error);
         }
+        return costUsd === undefined ? result : { ...result, _meta: { costUsd } };
       },
     );
   }

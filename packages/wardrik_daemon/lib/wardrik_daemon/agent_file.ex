@@ -486,7 +486,11 @@ defmodule WardrikDaemon.AgentFile do
   # lets `tools` and `policy` name modules.
   defp spec(fields, system, policies, modules?, id) do
     config =
-      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, id)]
+      [
+        system: if(system == "", do: nil, else: system),
+        tools: tools(fields, modules?, id),
+        tool_prices: Keyword.get(WardrikDaemon.Config.settings(__MODULE__), :tool_prices, %{})
+      ]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> compaction(fields)
@@ -593,8 +597,7 @@ defmodule WardrikDaemon.AgentFile do
     servers =
       for {ref, opts} <- servers(), reach(key, ref, opts) == :ok, do: ref
 
-    Enum.map(@shipped, &set/1) ++
-      Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
+    @shipped ++ Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
   end
 
   defp tool!("workers/*", _modules?, key), do: [{WardrikHTTP.Workers, key}]
@@ -635,19 +638,9 @@ defmodule WardrikDaemon.AgentFile do
 
   defp shipped!(name, modules?) do
     case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do
-      {:ok, module} -> set(module)
+      {:ok, module} -> module
       :error when modules? -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
       :error -> invalid!("tools names #{name}, which is not a tool the daemon ships")
-    end
-  end
-
-  # A shipped tool config.yaml's `tools` sets is named with its settings.
-  defp set(module) do
-    settings = Keyword.get(WardrikDaemon.Config.settings(__MODULE__), :tools, %{})
-
-    case Map.fetch(settings, module.tool().name) do
-      {:ok, opts} -> {module, opts}
-      :error -> module
     end
   end
 

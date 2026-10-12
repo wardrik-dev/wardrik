@@ -11,7 +11,7 @@ defmodule WardrikPolicy.Budget do
 
   | Field | What it decides |
   | --- | --- |
-  | `usd` | a limit in US dollars: each model call as `Wardrik.LLM.Cost` prices it, and each tool call at the price its tool reports |
+  | `usd` | a limit in US dollars: each model call as `Wardrik.LLM.Cost` prices it, and each tool call at the price its tool reports or its config lists |
   | `tokens` | a limit in tokens, input and output together |
   | `per` | the period the limits cover: `turn`, `day`, `week`, `month`, or `total` for the agent's whole life. `day` unless set |
   | `grant` | how much more a person's approval allows, as `usd` and `tokens`. Another of each limit unless set |
@@ -38,8 +38,9 @@ defmodule WardrikPolicy.Budget do
   budget's period, as its `WardrikPolicy.Meter` holds it, and what it used is
   recorded there once it returns, at the cost the call carries, the figure
   its `message.completed` event carries too (see `t:Wardrik.Call.cost/0`).
-  A tool call that reports a cost is recorded the same way; tool calls are
-  counted, not checked, since a model call asked for each. A budget whose meter cannot be read refuses
+  A tool call with a cost, failed or not, is recorded the same way. Tool
+  calls are counted and never refused, even once the budget is spent: the
+  model call that asked for each was checked. A budget whose meter cannot be read refuses
   the call rather than letting it run unmetered; the host starts
   `WardrikPolicy.Supervisor` to run the meters. Once the agent has spent its
   limit, a budget that asks parks it on the next call, and approving that

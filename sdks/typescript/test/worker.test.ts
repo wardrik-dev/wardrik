@@ -166,7 +166,7 @@ test("offers its tools with their hints, and answers a call with the call's idem
   await working;
 });
 
-test("answers with what a call cost, where its tool says", async () => {
+test("answers with what a call cost, where its tool says, failed or not", async () => {
   const wardrik = new Wardrik({ url, token: "wardrik_secret" });
 
   wardrik.tool({
@@ -182,6 +182,15 @@ test("answers with what a call cost, where its tool says", async () => {
     },
   });
 
+  wardrik.tool({
+    name: "charge",
+    input: z.object({}),
+    run: (_args, { cost }) => {
+      cost(0.25);
+      throw new Error("Declined.");
+    },
+  });
+
   const arriving = next();
   const working = wardrik.work({ signal: stop.signal });
   const peer = await arriving;
@@ -192,6 +201,10 @@ test("answers with what a call cost, where its tool says", async () => {
 
   const free = await peer.request("tools/call", { name: "lookup", arguments: { paid: false } });
   assert.equal(free.result._meta, undefined);
+
+  const charged = await peer.request("tools/call", { name: "charge", arguments: {} });
+  assert.equal(charged.result.isError, true);
+  assert.equal(charged.result._meta.costUsd, 0.25);
 
   stop.abort();
   await working;

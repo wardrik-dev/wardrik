@@ -405,9 +405,20 @@ Prices come from the provider where it reports what a call cost, and from the mo
 otherwise. A dollar budget refuses every call to a model the catalog cannot price; a budget in
 tokens alone governs such a model, or one a subscription pays for.
 
-A tool call counts where its tool says what it cost: `web_search` at the `price` config.yaml sets
-for it under `tools`, and a [tool worker](/guides/tool-workers/) at what it reports. Tool calls are
-counted, not checked; the model call that asked for them was.
+A tool call counts what it cost, failed or not: what its tool reports, as a
+[tool worker](/guides/tool-workers/) can, or else the price `config.yaml` lists for it, which is how
+a search API or an MCP server's tools are priced:
+
+```yaml title="~/.config/wardrik/config.yaml"
+tools:
+  web_search:
+    price: 0.005
+  github/*:
+    price: 0.001
+```
+
+Tool calls are counted and never refused, even once a budget is spent: the model call that asked
+for each was checked.
 
 Each call's event carries what the budget counted, as `cost` on
 [`message.completed`](/reference/events/#wardrikmessagecompleted) and

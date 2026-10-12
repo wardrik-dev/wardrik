@@ -417,8 +417,15 @@ defmodule Wardrik.Call.Pipeline do
 
   defp again(handed, _call), do: handed
 
-  defp told(%Call{state: :done} = call), do: finished(call)
+  defp told(%Call{state: :done} = call), do: call |> listed() |> finished()
   defp told(call), do: announced(call)
+
+  # A call its tool answered without saying what it cost costs what the
+  # config lists for the tool, if anything.
+  defp listed(%Call{cost: nil, target: %Tool{name: name}, scope: scope} = call),
+    do: Call.priced(call, Config.tool_price(scope.config, name))
+
+  defp listed(call), do: call
 
   defp tool(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
     case offered(call) do
@@ -453,6 +460,9 @@ defmodule Wardrik.Call.Pipeline do
     |> Call.label(Keyword.get(opts, :labels, []))
     |> Call.priced(Keyword.get(opts, :cost))
   end
+
+  defp took({:error, reason, opts}, call, _retry) when is_list(opts),
+    do: call |> answered({:error, reason}) |> Call.priced(Keyword.get(opts, :cost))
 
   defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
 

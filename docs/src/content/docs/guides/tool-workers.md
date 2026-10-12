@@ -109,7 +109,8 @@ call can be matched with the turn it belongs to.
 
 A call to a paid API can say what it cost, in US dollars, with `cost`. The call's
 `tool_call.completed` event carries it, and the agent's [budget](/concepts/policy/#budgets) counts
-it. Said more than once, the amounts add up; a call that throws reports none.
+it. Said more than once, the amounts add up, and a call that throws after saying it is reported
+failed at what it said, since a paid API may charge for a call that fails.
 
 ```ts
 wardrik.tool({

@@ -45,7 +45,8 @@ defmodule Wardrik.Call do
     * `:served_by` - what answered a tool call, where its tool said, as
       `t:served/0`
     * `:cost` - what it cost, as `t:cost/0`: a model call priced from what
-      it used, or a tool call at the price its tool reported; `nil` for one
+      it used, or a tool call at the price its tool reported, else the price
+      its config lists for the tool (see `Wardrik.LLM.Config`); `nil` for one
       nobody priced
     * `:labels` - what its answer holds, as `Wardrik.Label`s; see `label/2`
     * `:note` - what the person who approved it said, which the model reads
@@ -116,7 +117,8 @@ defmodule Wardrik.Call do
   @typedoc """
   What a call cost, in whole micro-dollars: `:provider` where the provider
   reported the figure, `:catalog` where `Wardrik.LLM.Cost` priced the tokens
-  at the catalog's prices, and `:tool` where the tool reported it.
+  at the catalog's prices, and `:tool` where the tool reported it or the
+  config lists a price for the tool.
   """
   @type cost() :: %{micro_usd: non_neg_integer(), source: :provider | :catalog | :tool}
 
