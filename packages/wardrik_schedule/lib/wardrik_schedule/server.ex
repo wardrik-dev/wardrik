@@ -1,7 +1,8 @@
 defmodule WardrikSchedule.Server do
   @moduledoc """
   The process behind one `WardrikSchedule`: it sleeps until the schedule's next
-  run, writes down the run after it, and then asks the agent.
+  run, writes down the run after it, checks the schedule's source, and asks
+  the agent with what it found, writing down the source's cursor first.
 
   Started by `WardrikSchedule.put/2` under the supervisor `WardrikSchedule`
   runs.
@@ -12,7 +13,10 @@ defmodule WardrikSchedule.Server do
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias WardrikSchedule.Item
   alias WardrikSchedule.State
+
+  require Logger
 
   # A timer is re-armed at least this often, so a clock that jumps, or a host
   # that slept, is noticed within the hour.
@@ -45,12 +49,22 @@ defmodule WardrikSchedule.Server do
   def handle_continue(:wake, state), do: wake(state)
 
   # Runs after the state naming the next run has been written, so a crash
-  # from here on loses this firing rather than repeating it.
+  # from here on loses this firing rather than repeating it. The cursor is
+  # written before the agent is asked, for the same reason.
   def handle_continue(:deliver, state) do
-    outcome = deliver(state)
-    announce(state, outcome)
-    next = State.fired(state, outcome)
-    {:noreply, next, {:continue, :wake}, meta: State.meta(next), sync: true}
+    case check(state) do
+      {:ask, pid, items, cursor} ->
+        next = %{state | cursor: cursor}
+        {:noreply, next, {:continue, {:ask, pid, items}}, meta: State.meta(next), sync: true}
+
+      {outcome, cursor} ->
+        settle(%{state | cursor: cursor}, outcome)
+    end
+  end
+
+  def handle_continue({:ask, pid, items}, %State{schedule: schedule} = state) do
+    :ok = Agent.ask(pid, Item.message(schedule.prompt, items), labels: Item.labels(items))
+    settle(state, :asked)
   end
 
   @impl DurableServer
@@ -73,31 +87,48 @@ defmodule WardrikSchedule.Server do
     end
   end
 
-  defp deliver(%State{agent: agent, schedule: schedule}) do
+  defp settle(state, outcome) do
+    announce(state, outcome)
+    next = State.fired(state, outcome)
+    {:noreply, next, {:continue, :wake}, meta: State.meta(next), sync: true}
+  end
+
+  # The source is checked before the agent is looked up, so a source with
+  # nothing new wakes no sleeping agent; and its cursor is kept only once the
+  # agent is asked, so what an agent that was busy missed is found again.
+  defp check(%State{agent: agent, schedule: schedule, cursor: cursor}) do
+    case WardrikSchedule.check(schedule, cursor, agent) do
+      {:ok, [], next} ->
+        {:nothing_new, next}
+
+      {:ok, items, next} ->
+        case ready(agent, schedule) do
+          {:ok, pid} -> {:ask, pid, items, next}
+          outcome -> {outcome, cursor}
+        end
+
+      {:error, reason} ->
+        Logger.warning("schedule #{agent}//#{schedule.name} could not check: #{reason}")
+        {:failed, cursor}
+    end
+  end
+
+  defp ready(agent, schedule) do
     case Fleet.whereis(agent) do
       nil -> :no_agent
-      pid -> ask(pid, schedule)
+      pid -> idle(pid, schedule.overlap)
     end
   catch
     :exit, _reason -> :failed
   end
 
-  defp ask(pid, %WardrikSchedule{overlap: :queue, prompt: prompt}) do
-    :ok = Agent.ask(pid, prompt)
-    :asked
-  end
+  defp idle(pid, :queue), do: {:ok, pid}
 
-  defp ask(pid, %WardrikSchedule{overlap: :skip, prompt: prompt}) do
+  defp idle(pid, :skip) do
     case Agent.status(pid) do
-      %{state: :idle} ->
-        :ok = Agent.ask(pid, prompt)
-        :asked
-
-      %{state: _running_or_parked} ->
-        :busy
-
-      {:error, :not_found} ->
-        :no_agent
+      %{state: :idle} -> {:ok, pid}
+      %{state: _running_or_parked} -> :busy
+      {:error, :not_found} -> :no_agent
     end
   end
 

@@ -2,7 +2,7 @@
 title: Pull the plug, then press stop
 description: Kill -9 the node an agent runs on while it sets up two new hires, and it finishes without doing any step twice. Stop it on purpose, and it stays stopped, even when its node is lost too.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 An agent is setting up two new hires for their first day: their accounts, a laptop each and a

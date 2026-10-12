@@ -1,21 +1,22 @@
 defmodule WardrikSchedule.State do
   @moduledoc """
   A running schedule as data: the agent it asks, the schedule, when it runs
-  next, and when it last fired and what came of it.
+  next, when it last fired and what came of it, and its source's cursor.
 
   Every move is a function of the state and the time, so `WardrikSchedule.Server`
   only carries out what these answer.
   """
 
   @enforce_keys [:agent, :schedule, :next_at]
-  defstruct [:agent, :schedule, :next_at, :last_at, :last_outcome]
+  defstruct [:agent, :schedule, :next_at, :last_at, :last_outcome, :cursor]
 
   @type t() :: %__MODULE__{
           agent: Wardrik.AgentID.t(),
           schedule: WardrikSchedule.t(),
           next_at: DateTime.t(),
           last_at: DateTime.t() | nil,
-          last_outcome: WardrikSchedule.outcome() | nil
+          last_outcome: WardrikSchedule.outcome() | nil,
+          cursor: WardrikSchedule.Source.cursor() | nil
         }
 
   # How late a run may be and still count as on time rather than missed: a
