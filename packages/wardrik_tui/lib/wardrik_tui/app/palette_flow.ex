@@ -196,7 +196,13 @@ defmodule WardrikTUI.App.PaletteFlow do
     do: Enum.map(commands, &{{:command, &1}, View.help_command(&1, available?)})
 
   defp agent_row(member) do
-    elsewhere = if member.node == node(), do: "", else: " · @#{short_node(member.node)}"
+    elsewhere =
+      cond do
+        member.asleep -> " · asleep"
+        member.node == node() -> ""
+        true -> " · @#{short_node(member.node)}"
+      end
+
     [Text.tag(to_string(member.id), :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
   end
 

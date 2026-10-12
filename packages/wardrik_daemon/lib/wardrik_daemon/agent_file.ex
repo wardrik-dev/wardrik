@@ -31,6 +31,7 @@ defmodule WardrikDaemon.AgentFile do
   | `context` | the files read into each turn; see below |
   | `policy` | what its tool calls may do; see below |
   | `timeout` | how many seconds a turn may take |
+  | `idle_timeout` | how many seconds it may have nothing to do before it sleeps, or `infinity`; `config.yaml`'s `defaults` when absent, and 900 where they set none. A sleeping agent wakes when something asks it; see `Wardrik.Agent` |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
   | `schedule` | when it is asked something on a clock; see below |
@@ -224,12 +225,13 @@ defmodule WardrikDaemon.AgentFile do
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.LLM.Config
+  alias WardrikDaemon.Agents
   alias WardrikDaemon.Definition
   alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools workspace context org user policy timeout max_iterations compaction schedule notify channels)
-  @definition_keys ~w(description instructions model tools workspace context policy timeout max_iterations compaction schedule channels)
+  @keys ~w(name description model tools workspace context org user policy timeout idle_timeout max_iterations compaction schedule notify channels)
+  @definition_keys ~w(description instructions model tools workspace context policy timeout idle_timeout max_iterations compaction schedule channels)
   @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
@@ -490,7 +492,7 @@ defmodule WardrikDaemon.AgentFile do
       |> compaction(fields)
       |> Config.new()
 
-    Spec.new(
+    [
       id: id,
       description: optional_string!(fields["description"], "description"),
       config: config,
@@ -498,7 +500,9 @@ defmodule WardrikDaemon.AgentFile do
       timeout: fields["timeout"] && seconds!(fields["timeout"]),
       credentials: WardrikVault,
       ledger: Wardrik.Ledger.Store
-    )
+    ]
+    |> put(:idle_timeout, fields["idle_timeout"] || Agents.defaults()["idle_timeout"], &idle!/1)
+    |> Spec.new()
   end
 
   defp put(opts, _key, nil, _cast), do: opts
@@ -918,6 +922,10 @@ defmodule WardrikDaemon.AgentFile do
 
   defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
   defp seconds!(_seconds), do: invalid!("timeout is a whole number of seconds")
+
+  defp idle!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
+  defp idle!("infinity"), do: :infinity
+  defp idle!(_seconds), do: invalid!("idle_timeout is a whole number of seconds, or infinity")
 
   defp iterations!(n) when is_integer(n) and n > 0, do: n
   defp iterations!("infinity"), do: :infinity

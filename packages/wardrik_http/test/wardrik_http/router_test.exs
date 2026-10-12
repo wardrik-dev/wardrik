@@ -803,15 +803,12 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key) == nil
     end
 
-    test "leaves a stopped agent's store be, since none runs", %{kept: kept} do
+    test "forgets an agent asleep, as one awake", %{kept: kept} do
       {key, _agent} = echo_agent()
-      conversation = Agent.snapshot(key).generation
       :ok = Wardrik.Fleet.stop(key)
 
-      assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
-
-      {:ok, _pid} = Wardrik.Fleet.spawn(key)
-      assert Agent.snapshot(key).generation == conversation
+      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      refute Wardrik.Fleet.stored?(key)
     end
 
     test "may refuse to delete an agent, which is left be", %{kept: kept} do
@@ -977,6 +974,29 @@ defmodule WardrikHTTP.RouterTest do
                  headers: [{"accept", "text/event-stream"}]
                )
     end
+
+    test "a stream opened from the head of a sleeping agent wakes it and follows it",
+         %{api: api} do
+      key = sleeping_agent()
+
+      stream = open(api, key, [])
+      :ok = Agent.ask(key, "again")
+
+      assert {[{_id, "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
+      Req.cancel_async_response(stream.response)
+    end
+  end
+
+  # An agent that answered once, then went to sleep.
+  defp sleeping_agent do
+    {key, agent} =
+      Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]}, idle_timeout: 50)
+
+    :ok = Event.Bus.subscribe(key, level: :lifecycle)
+    Agent.ask(agent, "hi")
+    assert_receive %Event{payload: {:agent_stopped, _node, :idle}}, 2_000
+    assert Fleet.await_update(fn -> Wardrik.Fleet.whereis(key, wake: false) == nil end)
+    key
   end
 
   defp open(api, key, headers) do
@@ -1127,8 +1147,15 @@ defmodule WardrikHTTP.RouterTest do
       settled(agent)
       {parked, _agent} = parked_agent()
 
+      asleep = sleeping_agent()
+
       {:ok, %{body: %{"agents" => agents}}} = Req.get(api, url: "/v1/agents")
       for listed <- agents, do: conforms(listed, "agent")
+
+      assert %{"asleep" => true, "status" => "idle"} =
+               listed = Enum.find(agents, &(&1["id"] == to_string(asleep)))
+
+      refute Map.has_key?(listed, "node")
 
       for key <- [idle, parked] do
         {:ok, %{status: 200, body: snapshot}} = Req.get(api, url: "/v1/agents/#{key}")

@@ -15,6 +15,10 @@ defmodule Wardrik.Fleet.Supervisor do
     * `:store` - the store's adapter and its options, as `Wardrik` takes them;
       the options belong to the adapter, see `WardrikStore.EKV`
     * `:log` - passed to `Group`, `false` by default
+    * `:definition` - `{module, function, args}` answering an agent's
+      definition as it stands, which a sleeping agent takes as it wakes; see
+      `Wardrik.Fleet`. None by default, and an agent wakes with the
+      definition it slept with
 
   `Wardrik` starts it with its `:store` and its `:fleet`.
 
@@ -38,6 +42,7 @@ defmodule Wardrik.Fleet.Supervisor do
   @impl true
   def init(opts) do
     store = Keyword.get(opts, :store, [])
+    :ok = Wardrik.Fleet.definition(Keyword.get(opts, :definition))
 
     children = [
       WardrikStore.child_spec(store),

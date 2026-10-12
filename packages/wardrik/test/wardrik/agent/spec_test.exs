@@ -14,10 +14,18 @@ defmodule Wardrik.Agent.SpecTest do
     assert_raise KeyError, fn -> Spec.new(id: ~A"acme/triage", nmae: "triage") end
   end
 
-  test "options/1 is the config and every seam the spec sets" do
+  test "options/1 is the config, the idle timeout and every seam the spec sets" do
     hooks = [%Wardrik.Hook{name: "some", module: SomeHook}]
     spec = Spec.new(id: ~A"acme/triage", hooks: hooks, timeout: 60_000)
 
-    assert Spec.options(spec) == [config: spec.config, hooks: hooks, timeout: 60_000]
+    assert Spec.options(spec) == [
+             config: spec.config,
+             idle_timeout: :timer.minutes(15),
+             hooks: hooks,
+             timeout: 60_000
+           ]
+
+    assert [_config, idle_timeout: :infinity] =
+             Spec.options(Spec.new(id: ~A"acme/triage", idle_timeout: :infinity))
   end
 end

@@ -31,6 +31,19 @@ defmodule Wardrik.Agent do
 
       Wardrik.Agent.ask(~A"acme/@jon/researcher", "What changed this week?")
 
+  ## Sleeping
+
+  An agent with nothing to do for its `:idle_timeout`, #{div(Wardrik.Agent.State.default_idle_timeout(), 60_000)}
+  minutes unless it is given another, writes itself down and stops, and
+  reports `{:agent_stopped, node, :idle}`. Nothing running, it costs nothing.
+  It sleeps only with no turn running and nothing queued; a turn parked on a
+  person does not keep it awake.
+
+  Given its ID, every function here but `interrupt/1` reaches the agent
+  through `Wardrik.Fleet.whereis/2`, which wakes a sleeping one from the store;
+  `interrupt/1` has nothing to stop in one asleep. Each call, cast and
+  finished turn counts as something done.
+
   ## Interrupting
 
   `interrupt/1` asks the running turn to stop, drops everything queued behind
@@ -164,8 +177,13 @@ defmodule Wardrik.Agent do
   @doc """
   The state an agent starts life with, for `Wardrik.Fleet.spawn/2` to hand over.
 
-  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and the
-  scope's `Wardrik.Scope.seams/0`.
+  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`,
+  `:idle_timeout`, `:wake_only`, and the scope's `Wardrik.Scope.seams/0`.
+
+  `:idle_timeout` is how long the agent may have nothing to do before it
+  sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
+  starts nothing new: the agent comes up only from what the store holds, and
+  one the store does not hold deletes itself as it starts.
 
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
@@ -247,7 +265,7 @@ defmodule Wardrik.Agent do
   which is the only way to get rid of one without answering it.
   """
   @spec interrupt(agent()) :: :ok | {:error, :not_found}
-  def interrupt(agent), do: cast(agent, :interrupt)
+  def interrupt(agent), do: cast(agent, :interrupt, wake: false)
 
   @doc """
   Answers the calls a parked turn stopped on and carries it on.
@@ -275,35 +293,41 @@ defmodule Wardrik.Agent do
   @spec parked(agent()) :: [{Wardrik.Tool.call(), String.t()}] | {:error, :not_found}
   def parked(agent), do: call(agent, :parked)
 
-  defp cast(agent, message) do
-    case resolve(agent) do
+  defp cast(agent, message, opts \\ []) do
+    case resolve(agent, opts) do
       nil -> {:error, :not_found}
       pid -> GenServer.cast(pid, message)
     end
   end
 
   defp call(agent, message) do
-    case resolve(agent) do
+    case resolve(agent, []) do
       nil -> {:error, :not_found}
       pid -> GenServer.call(pid, message)
     end
   end
 
-  defp resolve(pid) when is_pid(pid), do: pid
-  defp resolve(%Wardrik.AgentID{} = id), do: Fleet.whereis(id)
+  defp resolve(pid, _opts) when is_pid(pid), do: pid
+  defp resolve(%Wardrik.AgentID{} = id, opts), do: Fleet.whereis(id, opts)
 
   # -- durability ------------------------------------------------------------
 
   @impl DurableServer
   def dump_state(%State{} = state), do: Stored.dump(state)
 
+  # A state read from the store has a version; one with none is the state the
+  # caller handed over, for an agent the store did not hold.
   @impl DurableServer
-  def load_state(_old_vsn, dumped), do: Stored.load(dumped)
+  def load_state(nil, dumped), do: Stored.load(dumped)
+  def load_state(_old_vsn, dumped), do: %{Stored.load(dumped) | wake_only: false}
 
   # DurableServer's callback type leaves out the continue its server takes
   # from `init`.
   @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
+  def init(%State{wake_only: true} = state),
+    do: {:ok, state, {:continue, :gone}, meta: Map.put(View.meta(state), :gone, true)}
+
   def init(%State{} = state) do
     {:ok, state, {:continue, :open},
      meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
@@ -311,27 +335,33 @@ defmodule Wardrik.Agent do
 
   # -- messages --------------------------------------------------------------
 
+  # Every call and cast is something done, which puts off sleeping.
   @impl DurableServer
-  def handle_call({:configure, opts}, _from, state) do
-    next = state |> State.configure(opts) |> redecide()
+  def handle_call(request, from, state), do: called(request, from, touched(state))
+
+  @impl DurableServer
+  def handle_cast(request, state), do: told(request, touched(state))
+
+  defp called({:configure, opts}, _from, state) do
+    next = state |> State.configure(opts) |> redecide() |> arm_idle()
     {:reply, :ok, next, meta: View.meta(next), sync: true}
   end
 
-  def handle_call({:checkpoint, checkpoint}, {pid, _tag}, state) do
+  defp called({:checkpoint, checkpoint}, {pid, _tag}, state) do
     case State.checkpointed(state, pid, checkpoint) do
       {:ok, next} -> {:reply, :ok, next, meta: View.meta(next), sync: true}
       :stale -> {:reply, {:error, :not_the_running_turn}, state}
     end
   end
 
-  def handle_call({:kept, context}, {pid, _tag}, state) do
+  defp called({:kept, context}, {pid, _tag}, state) do
     case State.kept(state, pid, context) do
       {:ok, next} -> {:reply, :ok, next, sync: true}
       :stale -> {:reply, {:error, :not_the_running_turn}, state}
     end
   end
 
-  def handle_call(:clear, _from, state) do
+  defp called(:clear, _from, state) do
     case State.clear(state) do
       {:ok, next, effects} ->
         next = perform(next, effects)
@@ -342,12 +372,12 @@ defmodule Wardrik.Agent do
     end
   end
 
-  def handle_call(:get_context, _from, state), do: {:reply, state.context, state}
-  def handle_call(:status, _from, state), do: {:reply, View.status(state), state}
-  def handle_call(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
-  def handle_call(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
+  defp called(:get_context, _from, state), do: {:reply, state.context, state}
+  defp called(:status, _from, state), do: {:reply, View.status(state), state}
+  defp called(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
+  defp called(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
 
-  def handle_call({:decide, decisions, by}, _from, state) do
+  defp called({:decide, decisions, by}, _from, state) do
     ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
 
     cond do
@@ -365,20 +395,19 @@ defmodule Wardrik.Agent do
     end
   end
 
-  @impl DurableServer
-  def handle_cast({:ask, %Message{} = message}, state) do
+  defp told({:ask, %Message{} = message}, state) do
     {state, effects} = State.queue(state, message)
 
     state |> perform(effects) |> advance(sync: true)
   end
 
-  def handle_cast(:interrupt, state) do
+  defp told(:interrupt, state) do
     {state, effects} = State.interrupt(state)
 
     state |> perform(effects) |> advance(sync: true)
   end
 
-  def handle_cast({:resume, decisions, by}, state), do: decided(state, decisions, by)
+  defp told({:resume, decisions, by}, state), do: decided(state, decisions, by)
 
   defp decided(state, decisions, by) do
     case resume_turn(state, decisions, by) do
@@ -456,8 +485,11 @@ defmodule Wardrik.Agent do
     state = State.logged(state, Writer.open(state.log, started))
     :ok = Bus.publish(started)
 
-    advance(state)
+    state |> touched() |> arm_idle() |> advance()
   end
+
+  # Woken after it was forgotten: it goes without leaving anything behind.
+  def handle_continue(:gone, state), do: {:stop, :delete, state}
 
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
@@ -479,7 +511,7 @@ defmodule Wardrik.Agent do
   def handle_info({ref, result}, state) when is_reference(ref) do
     if State.running?(state, ref) do
       Process.demonitor(ref, [:flush])
-      state |> answered(result) |> advance(sync: true)
+      state |> answered(result) |> touched() |> advance(sync: true)
     else
       stay(state)
     end
@@ -490,7 +522,7 @@ defmodule Wardrik.Agent do
 
   def handle_info({:kill, ref}, state) do
     case State.kill(state, ref) do
-      {:kill, state, effects} -> state |> perform(effects) |> advance(sync: true)
+      {:kill, state, effects} -> state |> perform(effects) |> touched() |> advance(sync: true)
       :stale -> stay(state)
     end
   end
@@ -500,9 +532,20 @@ defmodule Wardrik.Agent do
   def handle_info(%Credential.Available{ref: ref, owner: owner, by: by}, state) do
     case State.awaiting(state, ref, owner) do
       [] -> {:noreply, state}
-      ids -> decided(state, Map.new(ids, &{&1, :approve}), by)
+      ids -> state |> touched() |> decided(Map.new(ids, &{&1, :approve}), by)
     end
   end
+
+  # Only the timer armed last counts.
+  def handle_info({:idle, tag}, %State{idle_timer: {_timer, tag}} = state) do
+    case State.idle(state, now()) do
+      {:wait, ms} -> stay(arm_idle(state, ms))
+      :never -> stay(%{state | idle_timer: nil})
+      :sleep -> sleep(state)
+    end
+  end
+
+  def handle_info({:idle, _tag}, state), do: stay(state)
 
   # The agent's own events, which it writes to its log.
   def handle_info(%Event{source: %{agent_id: id}} = event, %State{agent_id: id} = state),
@@ -526,10 +569,42 @@ defmodule Wardrik.Agent do
   defp down(state, ref, reason) do
     if State.running?(state, ref) do
       Logger.error("Turn crashed: #{inspect(reason)}")
-      state |> settle(State.failed(state, reason)) |> advance(sync: true)
+      state |> settle(State.failed(state, reason)) |> touched() |> advance(sync: true)
     else
       stay(state)
     end
+  end
+
+  # -- sleeping --------------------------------------------------------------
+
+  defp touched(state), do: State.touched(state, now())
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  defp arm_idle(%State{idle_timeout: timeout} = state), do: arm_idle(state, timeout)
+
+  defp arm_idle(%State{idle_timer: armed} = state, ms) do
+    with {timer, _tag} <- armed, do: Process.cancel_timer(timer)
+
+    case ms do
+      :infinity ->
+        %{state | idle_timer: nil}
+
+      ms ->
+        tag = make_ref()
+        %{state | idle_timer: {Process.send_after(self(), {:idle, tag}, ms), tag}}
+    end
+  end
+
+  # The stop is written to the log before the agent goes, since nothing of
+  # this process hears its own event afterwards. A permanent stop is one the
+  # fleet does not undo; the next caller wakes it.
+  defp sleep(state) do
+    stopped = Event.new(Source.root(state.agent_id), {:agent_stopped, node(), :idle})
+    state = log(state, stopped)
+    :ok = Bus.publish(stopped)
+
+    {:stop, :permanent, %{state | idle_timer: nil}}
   end
 
   # -- returns ---------------------------------------------------------------

@@ -86,7 +86,7 @@ defmodule WardrikDaemon.CLI.InitTest do
     assert output =~ "  wardrik ask assistant MESSAGE  ask it something, and follow the answer"
 
     assert File.read!(Path.join(config, "agents/assistant.md")) =~
-             ~r/\A---\ndescription: .*\nmodel: anthropic:\S+\n---\nYou are a helpful assistant/
+             ~r/\A---\ndescription: .*\nmodel: anthropic:\S+\nidle_timeout: infinity\n---\nYou are a helpful assistant/
 
     commands = log(log)
     assert commands =~ "start key=unset"

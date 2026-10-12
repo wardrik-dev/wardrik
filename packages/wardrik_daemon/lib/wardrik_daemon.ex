@@ -214,7 +214,7 @@ defmodule WardrikDaemon do
               [
                 "  #{member.id}",
                 member.status,
-                Nodes.display(member.node)
+                if(member.asleep, do: "asleep", else: Nodes.display(member.node))
                 | spent(member.id) ++ next_run(member.id)
               ],
               "  "

@@ -9,7 +9,8 @@ defmodule Wardrik.Agent.Spec do
           description: "Watches the incident queue.",
           config: Wardrik.LLM.Config.new(system: "You watch the incident queue."),
           hooks: [Wardrik.Hook.new("careful", MyApp.Hook)],
-          timeout: :timer.minutes(10)
+          timeout: :timer.minutes(10),
+          idle_timeout: :infinity
         )
 
       {:ok, pid} = Wardrik.Fleet.put(spec)
@@ -24,6 +25,7 @@ defmodule Wardrik.Agent.Spec do
   | `:id` | the agent's `Wardrik.AgentID` |
   | `:description` | what it is for, in words a person reads |
   | `:config` | a `Wardrik.LLM.Config` |
+  | `:idle_timeout` | how long it may have nothing to do before it sleeps, in milliseconds or `:infinity`; see `Wardrik.Agent` |
   | `:hooks`, `:dispatch`, `:credentials`, `:ledger`, `:timeout` | the seams of `Wardrik.Scope.seams/0` |
   """
 
@@ -32,12 +34,14 @@ defmodule Wardrik.Agent.Spec do
   alias Wardrik.Scope
 
   @enforce_keys [:id, :config]
-  defstruct [:id, :description, :config] ++ Scope.seams()
+  defstruct [:id, :description, :config, idle_timeout: Wardrik.Agent.State.default_idle_timeout()] ++
+              Scope.seams()
 
   @type t() :: %__MODULE__{
           id: AgentID.t(),
           description: String.t() | nil,
           config: Config.t(),
+          idle_timeout: timeout(),
           hooks: [Wardrik.Hook.t()] | nil,
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
           credentials: module() | nil,
@@ -55,8 +59,8 @@ defmodule Wardrik.Agent.Spec do
     do: struct!(__MODULE__, Keyword.put_new_lazy(fields, :config, &Config.new/0))
 
   @doc """
-  What `Wardrik.Fleet.spawn/2` and `Wardrik.Agent.configure/2` take: the config, and
-  each seam the spec sets.
+  What `Wardrik.Fleet.spawn/2` and `Wardrik.Agent.configure/2` take: the config,
+  the idle timeout, and each seam the spec sets.
   """
   @spec options(t()) :: keyword()
   def options(%__MODULE__{} = spec) do
@@ -68,6 +72,6 @@ defmodule Wardrik.Agent.Spec do
         end
       end)
 
-    [config: spec.config] ++ seams
+    [config: spec.config, idle_timeout: spec.idle_timeout] ++ seams
   end
 end

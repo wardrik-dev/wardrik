@@ -334,6 +334,25 @@ defmodule WardrikDaemon.AgentsTest do
     :ok = :sys.resume(Agents)
   end
 
+  describe "an agent asleep" do
+    test "is left asleep by a reload, and wakes with its file as it reads now",
+         %{org: org} = context do
+      write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-sonnet-5\n")
+      start_supervised!({Agents, dir: context.dir})
+      Agents.files()
+      key = AgentID.parse!("#{org}/alpha")
+      :ok = Wardrik.Event.Bus.subscribe(key)
+      assert_receive %Wardrik.Event{payload: {:agent_stopped, _node, :idle}}, 3_000
+      assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
+
+      write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-haiku-4-5\n")
+      Agents.reload()
+
+      assert Fleet.whereis(key, wake: false) == nil
+      assert %{model: "anthropic:claude-haiku-4-5"} = Agent.status(key)
+    end
+  end
+
   describe "an agent the files no longer declare" do
     test "stops once its file is gone, and comes back as it was with the file",
          %{dir: dir, org: org} = context do
@@ -346,7 +365,7 @@ defmodule WardrikDaemon.AgentsTest do
       File.rm!(Path.join([dir, "agents", "beta.md"]))
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/beta"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/beta"), wake: false) == nil
       assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/beta")) == []
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
 
@@ -363,7 +382,7 @@ defmodule WardrikDaemon.AgentsTest do
       write(context, "alpha", "name: gamma\n")
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/gamma"))
     end
 
@@ -411,7 +430,7 @@ defmodule WardrikDaemon.AgentsTest do
       File.rm!(Path.join([context.dir, "agents", "alpha.md"]))
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/defined"))
       assert :ok = Agents.editable(AgentID.parse!("#{org}/defined"))
     end
@@ -426,7 +445,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] = Agents.files()
     assert policy_error =~ "careful.yaml: deny is a list"
     assert agent_error =~ "names careful"
-    assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+    assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
   end
 
   test "runs the schedules a file declares, and stops those it no longer does",

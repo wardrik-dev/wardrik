@@ -218,7 +218,7 @@ defmodule Wardrik.FleetTest do
       assert_receive %Event{payload: {:turn_finished, _messages}}
 
       :ok = Fleet.stop(key)
-      assert Fleet.whereis(key) == nil
+      assert Fleet.whereis(key, wake: false) == nil
       assert Fleet.stored?(key)
       {:ok, restarted} = Fleet.spawn(key, [])
 

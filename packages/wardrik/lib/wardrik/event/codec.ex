@@ -75,7 +75,14 @@ defmodule Wardrik.Event.Codec do
     :deadline_reached,
     :call_decided
   ]
-  @agent [:message_queued, :agent_started, :context_compacted, :context_cleared, :schedule_fired]
+  @agent [
+    :message_queued,
+    :agent_started,
+    :agent_stopped,
+    :context_compacted,
+    :context_cleared,
+    :schedule_fired
+  ]
   @steps [:span_started, :span_finished, :delegation_started, :delegation_finished]
   @messages [:model_started, :model_finished, :result, :thinking]
 
@@ -215,6 +222,13 @@ defmodule Wardrik.Event.Codec do
        "node" => to_string(node),
        "status" => to_string(status)
      }}
+  end
+
+  defp agent({:agent_stopped, node, reason}, event, _opts) do
+    key = to_string(event.source.agent_id)
+
+    {"agent.stopped", "agents/" <> key,
+     %{"agent" => %{"id" => key}, "node" => to_string(node), "reason" => to_string(reason)}}
   end
 
   defp agent({:context_compacted, stats}, event, _opts) do

@@ -135,16 +135,31 @@ defmodule Wardrik.Credential do
   Says that `ref` can now be resolved for `owner`, so a call parked on it
   carries on.
 
-  Every agent in the cluster hears it, as an `Available`, and one holding a
-  call parked to resolve `ref` for `owner` approves the call as `:by`, the
-  `Wardrik.Principal` that connected it, and carries on with nobody asked. A
-  resolver says it once the credential is kept where the next `c:resolve/2`
-  finds it.
+  Every agent awake in the cluster hears it, as an `Available`, and one
+  holding a call parked to resolve `ref` for `owner` approves the call as
+  `:by`, the `Wardrik.Principal` that connected it, and carries on with nobody
+  asked. One asleep with such a call is woken to hear it. A resolver says it
+  once the credential is kept where the next `c:resolve/2` finds it.
   """
   @spec available(ref(), owner(), by: Wardrik.Principal.t() | nil) :: :ok
   def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
     word = %Available{ref: ref, owner: owner, by: Keyword.get(opts, :by)}
-    Enum.each(Fleet.list(), &send(&1.pid, word))
+
+    Enum.each(Fleet.list(), fn
+      %{asleep: false, pid: pid} -> send(pid, word)
+      %{asleep: true, status: :parked, id: id} -> wake_awaiting(id, word)
+      %{asleep: true} -> :ok
+    end)
+  end
+
+  defp wake_awaiting(id, %Available{ref: ref, owner: owner} = word) do
+    with {:ok, dumped} <- Fleet.written(id),
+         [_ | _] <- Wardrik.Agent.State.Stored.awaiting(dumped, ref, owner),
+         pid when is_pid(pid) <- Fleet.whereis(id) do
+      send(pid, word)
+    end
+
+    :ok
   end
 
   @doc """

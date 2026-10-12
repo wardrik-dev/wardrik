@@ -216,6 +216,8 @@ defmodule WardrikTUI.Fleet do
   defp failed(%Member{status: :idle, outcome: :failed}), do: Text.tag(" failed", :red)
   defp failed(_member), do: []
 
+  defp elsewhere(nil), do: Text.tag(" asleep", @faint)
+
   defp elsewhere(node) do
     if node == node(), do: [], else: Text.tag(" @#{short(node)}", @faint)
   end
@@ -231,7 +233,10 @@ defmodule WardrikTUI.Fleet do
       [
         Text.tag("  #{@glyphs[member.status]} ", @colours[member.status]),
         Text.tag(to_string(member.id), :bright),
-        Text.tag(" #{member.status} on #{member.node}", @faint)
+        Text.tag(
+          " #{member.status} #{if member.asleep, do: "and asleep", else: "on #{member.node}"}",
+          @faint
+        )
       ]
     end)
   end

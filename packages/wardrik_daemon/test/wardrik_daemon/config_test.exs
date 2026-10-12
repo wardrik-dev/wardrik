@@ -291,6 +291,17 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "defaults.name is not a setting; expected one of model, tools, policy"
     end
 
+    test "defaults' idle_timeout is seconds, or infinity", context do
+      assert {:ok, [{WardrikDaemon.Agents, defaults: %{"idle_timeout" => 600}}]} =
+               read("defaults:\n  idle_timeout: 600\n", context)
+
+      assert {:ok, [{WardrikDaemon.Agents, defaults: %{"idle_timeout" => "infinity"}}]} =
+               read("defaults:\n  idle_timeout: infinity\n", context)
+
+      assert {:error, message} = read("defaults:\n  idle_timeout: 0\n", context)
+      assert message =~ "defaults.idle_timeout is a whole number of seconds, or infinity"
+    end
+
     test "a key nothing takes is refused", context do
       assert {:error, message} =
                read("mcp:\n  notes:\n    command: npx\n    comand: typo\n", context)

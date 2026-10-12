@@ -65,6 +65,7 @@ defmodule Wardrik.Event.CodecTest do
       {turn, {:call_decided, "call_1", {:deny, "Not today."}, by}},
       {Source.root(@agent), {:message_queued, Message.new("Ship it.", "m-1", sender: by)}},
       {Source.root(@agent), {:agent_started, :wardrik_b@localhost, :parked, "9f2c1e7a"}},
+      {Source.root(@agent), {:agent_stopped, :wardrik_b@localhost, :idle}},
       {turn,
        {:context_compacted,
         %{messages_before: 40, messages_after: 8, tokens_before: 60_000, tokens_after: 9_000}}},

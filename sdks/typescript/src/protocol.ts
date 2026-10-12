@@ -158,9 +158,13 @@ export interface AgentSummary {
    */
   pending: number;
   /**
-   * The node the agent runs on.
+   * Whether it has gone to sleep for having had nothing to do; it wakes when something asks it.
    */
-  node: string;
+  asleep: boolean;
+  /**
+   * The node the agent runs on. Absent while it sleeps.
+   */
+  node?: string;
   /**
    * How the last run ended. Absent before the first.
    */
@@ -216,6 +220,10 @@ export interface AgentDefinition {
    * How many seconds a turn may take.
    */
   timeout?: number;
+  /**
+   * How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent.
+   */
+  idle_timeout?: number | "infinity";
   /**
    * How many rounds of tool calls a turn may make.
    */
@@ -542,7 +550,7 @@ export interface AgentStartedData {
   status: "idle" | "running" | "parked";
 }
 /**
- * Someone stopped an agent, which kept its conversation.
+ * An agent stopped, keeping its conversation: someone stopped it, or it went to sleep for having had nothing to do, until something wakes it.
  */
 export interface AgentStoppedData {
   agent: {
@@ -551,6 +559,14 @@ export interface AgentStoppedData {
      */
     id: string;
   };
+  /**
+   * The node it stopped on, where it stopped itself.
+   */
+  node?: string;
+  /**
+   * Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it.
+   */
+  reason?: "idle";
   actor?: Principal;
 }
 /**
