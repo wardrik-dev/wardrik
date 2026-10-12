@@ -213,9 +213,8 @@ defmodule WardrikDaemon do
             Enum.join(
               [
                 "  #{member.id}",
-                member.status,
-                if(member.asleep, do: "asleep", else: Nodes.display(member.node))
-                | spent(member.id) ++ next_run(member.id)
+                Wardrik.Fleet.Member.label(member)
+                | where(member) ++ spent(member.id) ++ next_run(member.id)
               ],
               "  "
             )
@@ -281,6 +280,9 @@ defmodule WardrikDaemon do
         max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
     end
   end
+
+  defp where(%{asleep: true}), do: []
+  defp where(member), do: [Nodes.display(member.node)]
 
   defp next_run(key) do
     case next_in(key) do

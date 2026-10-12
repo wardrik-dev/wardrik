@@ -234,7 +234,7 @@ defmodule WardrikTUI.Fleet do
         Text.tag("  #{@glyphs[member.status]} ", @colours[member.status]),
         Text.tag(to_string(member.id), :bright),
         Text.tag(
-          " #{member.status} #{if member.asleep, do: "and asleep", else: "on #{member.node}"}",
+          " #{Member.label(member)}#{if member.asleep, do: "", else: " on #{member.node}"}",
           @faint
         )
       ]

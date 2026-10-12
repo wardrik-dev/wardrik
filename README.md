@@ -105,6 +105,7 @@ tools that run in your own process.
 | --- | --- |
 | [wardrik](packages/wardrik) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
 | [wardrik_protocol](packages/wardrik_protocol) | The JSON Schemas of events and the HTTP API, which every client is checked or generated against |
+| [wardrik_definition](packages/wardrik_definition) | An agent's definition, from an agent file, the HTTP API or a host's own store, read into the spec it runs on |
 | [wardrik_store](packages/wardrik_store) | Where agents and their records are kept: the store behaviour, its EKV and in-memory adapters, and the suite an adapter passes |
 | [wardrik_sdk](packages/wardrik_sdk) | Every package below in one dependency, and `mix wardrik` for trying agents in a terminal |
 

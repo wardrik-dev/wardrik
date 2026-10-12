@@ -14,6 +14,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias Wardrik.Agent
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
+  alias Wardrik.Fleet.Member
   alias WardrikConsole.Filter
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
@@ -137,14 +138,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp trimmed([]), do: []
   defp trimmed(cells), do: List.update_at(cells, -1, fn [cell, _padding] -> cell end)
 
-  defp status(%{asleep: true, status: :parked}),
-    do: Owl.Data.tag("parked, asleep", [:bright, :yellow])
+  @colours %{parked: [:bright, :yellow], running: :cyan, failed: :red}
 
-  defp status(%{asleep: true}), do: Owl.Data.tag("asleep", @faint)
-  defp status(%{status: :parked}), do: Owl.Data.tag("parked", [:bright, :yellow])
-  defp status(%{status: :running}), do: Owl.Data.tag("running", :cyan)
-  defp status(%{outcome: :failed}), do: Owl.Data.tag("idle, last failed", :red)
-  defp status(%{status: status}), do: Owl.Data.tag(to_string(status), @faint)
+  defp status(member),
+    do: Owl.Data.tag(Member.label(member), Map.get(@colours, Member.state(member), @faint))
 
   defp next(key) do
     case WardrikDaemon.next_in(key) do
