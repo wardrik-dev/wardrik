@@ -31,9 +31,10 @@ defmodule Wardrik.Scope do
   | `:deadline` | when the work must stop |
   | `:hooks` | whether a tool call may run, and a model call be made |
   | `:dispatch` | what a model call actually is, and who pays for it |
+  | `:retry` | whether a model call that failed is asked again |
   | `:credentials` | where a secret a tool names comes from |
 
-  The last five are the seams a host reaches through. Each defaults to
+  The last six are the seams a host reaches through. Each defaults to
   something inert, so a deployment that needs none of them configures none of
   them and no branch in the runtime has to handle their absence.
 
@@ -89,6 +90,7 @@ defmodule Wardrik.Scope do
     :source,
     :deadline,
     :dispatch,
+    :retry,
     :credentials,
     :ledger,
     :journal,
@@ -99,7 +101,7 @@ defmodule Wardrik.Scope do
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:hooks, :dispatch, :credentials, :ledger, :timeout]
+  @seams [:hooks, :dispatch, :retry, :credentials, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -108,6 +110,7 @@ defmodule Wardrik.Scope do
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
+          retry: Wardrik.LLM.Retry.t() | nil,
           credentials: module() | nil,
           ledger: module() | nil,
           journal: pid() | nil,
@@ -139,6 +142,8 @@ defmodule Wardrik.Scope do
       allow everything
     * `:dispatch` - a `Wardrik.LLM.Dispatch` module, or `nil` to call the provider
       as configured
+    * `:retry` - a `Wardrik.LLM.Retry`, or `nil` to ask a failed model call
+      again after the waits the config's `:retries` lists
     * `:credentials` - a `Wardrik.Credential` module, or `nil` to resolve none
     * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
       it runs, or `nil` to record none
@@ -153,6 +158,7 @@ defmodule Wardrik.Scope do
       source: Source.root(agent_id, opts),
       hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),
+      retry: Keyword.get(opts, :retry),
       credentials: Keyword.get(opts, :credentials),
       ledger: Keyword.get(opts, :ledger),
       journal: Keyword.get(opts, :journal),

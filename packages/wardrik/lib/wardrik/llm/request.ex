@@ -6,20 +6,25 @@ defmodule Wardrik.LLM.Request do
   what lets a host route the call, supply the key it runs under, or refuse it,
   without the turn knowing that any of that happened.
 
-  Everything `ReqLLM.stream_text/3` takes is here and nothing else, so a
-  dispatch that rewrites a request cannot rewrite anything the turn depends on.
+  Everything `ReqLLM.stream_text/3` takes is here, so a dispatch that rewrites
+  a request cannot rewrite anything the turn depends on, and with it the tries
+  of the call that failed before this one, newest first, as
+  `Wardrik.LLM.Attempt`s: empty on a call's first try. A dispatch reads them to
+  send the next try elsewhere; see `Wardrik.LLM.Retry`.
   """
 
+  alias Wardrik.LLM.Attempt
   alias Wardrik.LLM.Config
 
   @enforce_keys [:model_spec, :context, :opts]
-  defstruct [:model_spec, :context, :opts]
+  defstruct [:model_spec, :context, :opts, attempts: []]
 
-  @typedoc "A model call: which model, what conversation, and the options it runs under."
+  @typedoc "A model call: which model, what conversation, the options it runs under, and its failed tries."
   @type t() :: %__MODULE__{
           model_spec: term(),
           context: ReqLLM.Context.t(),
-          opts: keyword()
+          opts: keyword(),
+          attempts: [Attempt.t()]
         }
 
   @doc """
@@ -58,6 +63,11 @@ defmodule Wardrik.LLM.Request do
   def put_opts(%__MODULE__{} = request, opts) when is_list(opts) do
     %{request | opts: Keyword.merge(request.opts, opts)}
   end
+
+  @doc "The request with `attempt`, a try of it that failed, added to its attempts."
+  @spec failed(t(), Attempt.t()) :: t()
+  def failed(%__MODULE__{attempts: attempts} = request, %Attempt{} = attempt),
+    do: %{request | attempts: [attempt | attempts]}
 
   @doc "Sends this request to a different model."
   @spec put_model(t(), term()) :: t()

@@ -283,9 +283,11 @@ defmodule Wardrik.LLM.TurnTest do
     }
   end
 
-  describe "a model call that fails before it answers" do
-    defp retrying(agent_id, retries) do
-      [retries: retries] |> LLM.Config.new() |> Scope.root(agent_id, name: "turn")
+  describe "a model call that fails" do
+    defp retrying(agent_id, retries, opts \\ []) do
+      [retries: retries]
+      |> LLM.Config.new()
+      |> Scope.root(agent_id, Keyword.put(opts, :name, "turn"))
     end
 
     defp answering do
@@ -325,7 +327,7 @@ defmodule Wardrik.LLM.TurnTest do
                    run(retrying(agent_id, [0, 0]), Context.new([Context.user("hi")]))
         end)
 
-      assert log =~ "asking again in 0ms"
+      assert log =~ "Model call failed, asking again in 0ms"
     end
 
     test "is not asked again for a reason that would fail the same way", %{agent_id: agent_id} do
@@ -337,18 +339,73 @@ defmodule Wardrik.LLM.TurnTest do
       end)
     end
 
-    test "is not asked again once the provider has begun to answer", %{agent_id: agent_id} do
-      expect(ReqLLM, :stream_text, 1, fn _model, _context, _opts -> {:ok, :streamed} end)
+    test "is asked again once the provider has begun to answer, under a message id of its own",
+         %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :broken} end)
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
 
-      stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, opts ->
-        opts[:on_chunk].(%{type: :content})
-        {:error, :closed}
+      stub(ReqLLM.StreamResponse, :process_stream, fn
+        :broken, opts ->
+          opts[:on_chunk].(%{type: :content})
+          opts[:on_result].("Half an ans")
+          {:error, :closed}
+
+        :streamed, _opts ->
+          {:ok, LLMStub.final_answer("done")}
       end)
 
       capture_log(fn ->
-        assert %LLM.Turn{state: :failed, error: :closed} =
+        assert %LLM.Turn{state: :done, messages: [%{role: :assistant}]} =
                  run(retrying(agent_id, [0]), Context.new([Context.user("hi")]))
       end)
+
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: first}}
+      assert_receive %Event{payload: %Event.ModelFinished{outcome: {:error, :closed}}}
+      assert_receive %Event{payload: %Event.ModelStarted{message_id: second}}
+      assert_receive %Event{payload: %Event.ModelFinished{outcome: :ok}}
+      assert second == first <> ".2"
+    end
+
+    test "asks the scope's retry, with the tries that failed", %{agent_id: agent_id} do
+      expect(ReqLLM, :stream_text, 2, fn _model, _context, _opts -> {:error, :rate_limited} end)
+      expect(ReqLLM, :stream_text, fn _model, _context, _opts -> {:ok, :streamed} end)
+
+      stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, _opts ->
+        {:ok, LLMStub.final_answer("done")}
+      end)
+
+      scope = retrying(agent_id, [], retry: {__MODULE__.Twice, self()})
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :done} = run(scope, Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive {:again, [%LLM.Attempt{reason: :rate_limited, answered?: false}]}
+      assert_receive {:again, [%LLM.Attempt{}, %LLM.Attempt{}]}
+    end
+
+    test "is admitted by the dispatch with its attempts, which may send it elsewhere",
+         %{agent_id: agent_id} do
+      test_pid = self()
+
+      stub(ReqLLM, :stream_text, fn model, _context, _opts ->
+        send(test_pid, {:model, model})
+        if model == "test:fallback", do: {:ok, :streamed}, else: {:error, :timeout}
+      end)
+
+      stub(ReqLLM.StreamResponse, :process_stream, fn :streamed, _opts ->
+        {:ok, LLMStub.final_answer("done")}
+      end)
+
+      scope = retrying(agent_id, [0], dispatch: __MODULE__.Failover)
+
+      capture_log(fn ->
+        assert %LLM.Turn{state: :done} = run(scope, Context.new([Context.user("hi")]))
+      end)
+
+      assert_receive {:model, first}
+      assert first != "test:fallback"
+      assert_receive {:model, "test:fallback"}
     end
 
     test "stops waiting when the turn is interrupted", %{agent_id: agent_id} do
@@ -1313,5 +1370,29 @@ defmodule Wardrik.LLM.TurnTest do
 
       assert answer.role == :assistant
     end
+  end
+
+  defmodule Twice do
+    @moduledoc false
+    @behaviour Wardrik.LLM.Retry
+
+    @impl true
+    def again(%LLM.Request{attempts: attempts}, _scope, test_pid) do
+      send(test_pid, {:again, attempts})
+
+      case attempts do
+        [_first, _second, _third | _more] -> :stop
+        _fewer -> {:again, 0}
+      end
+    end
+  end
+
+  defmodule Failover do
+    @moduledoc false
+    @behaviour Wardrik.LLM.Dispatch
+
+    @impl true
+    def admit(%LLM.Request{attempts: []} = request, _scope), do: {:ok, request}
+    def admit(request, _scope), do: {:ok, LLM.Request.put_model(request, "test:fallback")}
   end
 end
