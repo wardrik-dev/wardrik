@@ -4,8 +4,10 @@ defmodule Wardrik.AgentSleepTest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.Agent.Spec
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
 
   @idle 50
@@ -175,6 +177,30 @@ defmodule Wardrik.AgentSleepTest do
     assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
     refute Fleet.stored?(key)
   end
+
+  test "an agent wakes with the definition the fleet answers for it now" do
+    key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
+    asleep(key)
+
+    spec = Spec.new(id: key, config: Config.new(model_spec: "test:after"), idle_timeout: @idle)
+    :ok = Fleet.definition({__MODULE__, :defined, [spec]})
+    on_exit(fn -> Fleet.definition(nil) end)
+
+    assert %{model: "test:after"} = Agent.status(key)
+  end
+
+  test "without a definition the fleet answers, an agent wakes as it slept" do
+    key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
+    asleep(key)
+
+    :ok = Fleet.definition({__MODULE__, :defined, [:none]})
+    on_exit(fn -> Fleet.definition(nil) end)
+
+    assert %{model: "test:before"} = Agent.status(key)
+  end
+
+  def defined(%Spec{} = spec, _id), do: {:ok, spec}
+  def defined(:none, _id), do: :none
 
   test "an ID nothing holds is not woken" do
     key = Wardrik.Test.Fleet.id()

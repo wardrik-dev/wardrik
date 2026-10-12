@@ -270,6 +270,22 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
+  The spec the definition kept for `key` writes now, for it or the agent it
+  is a conversation of, or `:none` where none is kept or it does not build.
+  The fleet asks it as an agent wakes, so a definition changed while the
+  agent slept is the one it wakes with; see `Wardrik.Fleet`.
+  """
+  @spec current(AgentID.t()) :: {:ok, Spec.t()} | :none
+  def current(key) do
+    with {:ok, definition} <- Definition.of(key),
+         {:ok, spec} <- build(definition, key) do
+      {:ok, spec}
+    else
+      _none -> :none
+    end
+  end
+
+  @doc """
   The spec `definition` writes for the agent `key`, its own or one of its
   conversations, under the policies last read, and under the ceiling of the
   token that sent it where one did.
@@ -534,13 +550,14 @@ defmodule WardrikDaemon.Agents do
     state
   end
 
-  # Every running agent the HTTP API defined, its conversations, and the
+  # Every agent awake the HTTP API defined, its conversations, and the
   # conversations of an agent a file that read declares, are brought to their
-  # definitions as they read now, and why one does not build is answered.
+  # definitions as they read now, and why one does not build is answered. One
+  # asleep takes its definition as it wakes.
   defp rebuild(state, put) do
     policies = policies(state)
 
-    for %{id: id} <- Fleet.list(),
+    for %{id: id, asleep: false} <- Fleet.list(),
         {:ok, definition} <- [Definition.of(id)],
         rebuilt?(definition, id, put),
         message <- rebuilt(definition, id, policies),
@@ -646,15 +663,23 @@ defmodule WardrikDaemon.Agents do
   end
 
   # The definition is kept before the agent starts, so whatever finds the
-  # agent finds what it is.
+  # agent finds what it is. An agent asleep is left asleep, and takes the
+  # definition as it wakes.
   defp put({:ok, definition, spec, route}) do
     :ok = keep(definition)
 
+    case Fleet.lookup(spec.id) do
+      %{asleep: true} -> {:ok, spec, route}
+      _awake_or_new -> started(spec, route)
+    end
+  end
+
+  defp put({:error, _message} = error), do: error
+
+  defp started(spec, route) do
     case Fleet.put(spec) do
       {:ok, _pid} -> {:ok, spec, route}
       {:error, reason} -> {:error, "#{spec.id} did not start: #{inspect(reason)}"}
     end
   end
-
-  defp put({:error, _message} = error), do: error
 end

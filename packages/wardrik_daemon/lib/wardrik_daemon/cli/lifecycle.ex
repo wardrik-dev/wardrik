@@ -89,8 +89,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       %Command{
         name: "agent stop",
         arguments: "KEY",
-        summary: "stop an agent, and keep its conversation for agent spawn",
-        details: ["An agent a file declares starts again at the next wardrik reload."],
+        summary: "stop an agent now, keeping its conversation; it wakes when asked again",
+        details: [
+          "Anything asked of it by its key wakes it, as does wardrik agent spawn. wardrik agent " <>
+            "rm removes it for good once no file declares it."
+        ],
         count: {1, 1},
         run: &stop/2
       },
@@ -384,13 +387,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp stopped(key, nil),
-    do: "Stopped #{key}, and kept its conversation. #{spawn_line(key)} starts it again."
-
-  defp stopped(key, {path, _spec}),
+  defp stopped(key, _declared),
     do:
-      "Stopped #{key}, and kept its conversation. #{shown(path)} declares it, so wardrik " <>
-        "reload, or #{spawn_line(key)}, starts it again."
+      "Stopped #{key}, and kept its conversation. It wakes when something asks it, or with " <>
+        "#{spawn_line(key)}."
 
   defp spawn_line(%AgentID{org: org, user: user, name: name}) do
     Enum.join(

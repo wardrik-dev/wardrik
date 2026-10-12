@@ -27,6 +27,19 @@ defmodule Wardrik.Fleet do
   agent that has gone to sleep, as `Wardrik.Agent` describes, is in no
   registry: `list/1` reads it from the store, as it wrote itself down.
 
+  ## Waking
+
+  An agent asleep is started again from the store by `whereis/2`, which every
+  command reaching an agent by its ID goes through, and by `spawn/2`. Where
+  the fleet was started with a `:definition`, `{module, function, args}`, it
+  is called with the agent's ID appended as the agent wakes; `{:ok, spec}`
+  gives the agent that `Wardrik.Agent.Spec`'s config, seams and idle timeout,
+  as `Wardrik.Agent.configure/2` does, and anything else leaves it the
+  definition it slept with. A host that changes a definition then need wake
+  no agent to apply it, and changes only the agents awake. Without one, an
+  agent wakes as it slept, and `put/1` is how a sleeping agent is given a
+  new definition.
+
   ## Durability
 
   Agents are `DurableServer` processes: one per ID across the cluster under a
@@ -51,11 +64,13 @@ defmodule Wardrik.Fleet do
   # -- lifecycle -------------------------------------------------------------
 
   @doc """
-  Starts an agent in the fleet, or returns the one already running under its ID.
+  Starts an agent in the fleet, or returns the one already running under its
+  ID, waking it where it sleeps.
 
-  Options are everything `Wardrik.Agent.initial_state/2` takes, and `:node`, the
-  node to start it on. Without one the agent is placed on whichever node has
-  capacity, so the pid may be remote either way.
+  Options are everything `Wardrik.Agent.initial_state/2` takes, for an agent
+  the store does not hold, and `:node`, the node to start it on. Without one
+  the agent is placed on whichever node has capacity, or wakes as
+  `whereis/2` wakes it, so the pid may be remote either way.
 
       {:ok, pid} = Wardrik.Fleet.spawn(Wardrik.AgentID.new!("researcher", org: "acme"), config: config)
       {:ok, pid} = Wardrik.Fleet.spawn(id, config: config, node: :"wardrik_b@host")
@@ -64,7 +79,10 @@ defmodule Wardrik.Fleet do
   def spawn(%AgentID{} = id, opts \\ []) do
     {node, opts} = Keyword.pop(opts, :node)
 
-    child(id, opts) |> start(node) |> started()
+    case node == nil and whereis(id) do
+      pid when is_pid(pid) -> {:ok, pid}
+      _new_or_placed -> child(id, opts) |> start(node) |> started()
+    end
   end
 
   @doc """
@@ -78,7 +96,7 @@ defmodule Wardrik.Fleet do
   def put(%Spec{} = spec) do
     options = Spec.options(spec)
 
-    with {:ok, pid} <- spawn(spec.id, options),
+    with {:ok, pid} <- spec.id |> child(options) |> start(nil) |> started(),
          :ok <- Agent.configure(pid, options) do
       {:ok, pid}
     end
@@ -181,12 +199,33 @@ defmodule Wardrik.Fleet do
   defp wake(id) do
     with true <- stored?(id),
          {:ok, {pid, meta}} when not is_map_key(meta, :gone) <-
-           id |> child(wake_only: true) |> start(nil) do
+           id |> child(wake_only: true) |> start(nil),
+         :ok <- defined(pid, id) do
       pid
     else
       _gone -> nil
     end
   end
+
+  defp defined(pid, id) do
+    with {module, function, args} <- :persistent_term.get({__MODULE__, :definition}, nil),
+         {:ok, %Spec{} = spec} <- apply(module, function, args ++ [id]) do
+      Agent.configure(pid, Spec.options(spec))
+    else
+      _as_it_slept -> :ok
+    end
+  end
+
+  @doc false
+  @spec definition({module(), atom(), list()} | nil) :: :ok
+  def definition(nil) do
+    :persistent_term.erase({__MODULE__, :definition})
+    :ok
+  end
+
+  def definition({module, function, args} = definition)
+      when is_atom(module) and is_atom(function) and is_list(args),
+      do: :persistent_term.put({__MODULE__, :definition}, definition)
 
   @doc "One agent as the fleet sees it, awake or asleep, or `nil` when nothing holds that ID."
   @spec lookup(AgentID.t()) :: Member.t() | nil

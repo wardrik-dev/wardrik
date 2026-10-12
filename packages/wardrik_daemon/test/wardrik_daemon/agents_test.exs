@@ -334,6 +334,25 @@ defmodule WardrikDaemon.AgentsTest do
     :ok = :sys.resume(Agents)
   end
 
+  describe "an agent asleep" do
+    test "is left asleep by a reload, and wakes with its file as it reads now",
+         %{org: org} = context do
+      write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-sonnet-5\n")
+      start_supervised!({Agents, dir: context.dir})
+      Agents.files()
+      key = AgentID.parse!("#{org}/alpha")
+      :ok = Wardrik.Event.Bus.subscribe(key)
+      assert_receive %Wardrik.Event{payload: {:agent_stopped, _node, :idle}}, 3_000
+      assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
+
+      write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-haiku-4-5\n")
+      Agents.reload()
+
+      assert Fleet.whereis(key, wake: false) == nil
+      assert %{model: "anthropic:claude-haiku-4-5"} = Agent.status(key)
+    end
+  end
+
   describe "an agent the files no longer declare" do
     test "stops once its file is gone, and comes back as it was with the file",
          %{dir: dir, org: org} = context do

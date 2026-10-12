@@ -33,7 +33,8 @@ defmodule Wardrikd.Application do
     children = [
       {Wardrik,
        store: WardrikDaemon.Config.settings(WardrikStore),
-       cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
+       cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
+       fleet: [definition: {WardrikDaemon.Agents, :current, []}]},
       WardrikPolicy.Supervisor,
       WardrikSchedule,
       WardrikHTTP.Access,

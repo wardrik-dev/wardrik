@@ -148,9 +148,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       key = AgentID.parse!("#{org}/helper")
 
       assert command(["agent", "stop", key]) ==
-               {"Stopped #{key}, and kept its conversation. agents/helper.md declares it, so " <>
-                  "wardrik reload, or wardrik agent spawn helper --org #{org}, starts it again.\n",
-                0}
+               {"Stopped #{key}, and kept its conversation. It wakes when something asks it, or " <>
+                  "with wardrik agent spawn helper --org #{org}.\n", 0}
 
       assert status(key) == :asleep
 
@@ -163,8 +162,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert Wardrik.Test.Fleet.await_update(fn -> status(loose) == :idle end)
 
       assert command(["agent", "stop", loose]) ==
-               {"Stopped #{loose}, and kept its conversation. wardrik agent spawn loose " <>
-                  "--org #{org} starts it again.\n", 0}
+               {"Stopped #{loose}, and kept its conversation. It wakes when something asks it, " <>
+                  "or with wardrik agent spawn loose --org #{org}.\n", 0}
 
       assert command(["agent", "spawn", "loose", "--org", org]) ==
                {"Started #{loose} on #{here} again, with its conversation.\n", 0}
