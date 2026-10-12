@@ -1,7 +1,7 @@
-defmodule WardrikSchedule.ItemTest do
+defmodule WardrikTrigger.ItemTest do
   use ExUnit.Case, async: true
 
-  alias WardrikSchedule.Item
+  alias WardrikTrigger.Item
 
   describe "message/2" do
     test "is the prompt alone where no item holds anything to show" do

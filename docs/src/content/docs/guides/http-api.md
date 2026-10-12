@@ -50,7 +50,7 @@ It answers `201` and the agent's snapshot, and starts the agent. Putting it agai
 gives the running agent what the definition says now, keeping its conversation.
 
 A definition takes `description`, `instructions` for the system prompt, `model`, `tools`,
-`workspace`, `context`, `policy`, `timeout`, `max_iterations`, `compaction` and `schedule`, as an
+`workspace`, `context`, `policy`, `timeout`, `max_iterations`, `compaction` and `triggers`, as an
 [agent file](/reference/agent-files/) does. It names tools and policies the daemon ships or
 configures, never a module, shares only the trees its token's scope covers, and cannot trust outside
 content. A key an agent file declares belongs to the file, and is refused with `409`.
@@ -142,10 +142,10 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 person; the agent answers the next message as usual. `DELETE .../conversation` empties the
 conversation, and with it the mark of [content from outside](/concepts/policy/#content-from-outside)
 it held, answering `409` while a turn runs or waits on a person. `DELETE` stops the agent and
-removes its conversation and schedules.
+removes its conversation and triggers.
 
-A definition's `schedule` lists the agent's schedules, and one is put or removed at
-`/schedules/{name}`; see [Run an agent on a schedule](/guides/schedules/#over-http).
+A definition's `triggers` lists the agent's triggers, and one is put or removed at
+`/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).
 
 ## Errors
 

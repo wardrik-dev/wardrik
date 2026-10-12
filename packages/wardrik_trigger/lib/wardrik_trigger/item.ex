@@ -1,6 +1,6 @@
-defmodule WardrikSchedule.Item do
+defmodule WardrikTrigger.Item do
   @moduledoc """
-  One thing a `WardrikSchedule.Source` found: an entry in a feed, a search
+  One thing a `WardrikTrigger.Source` found: an entry in a feed, a search
   result, a request that arrived. `id` is what tells it apart from the
   source's others, and the rest is what the agent is shown of it.
 

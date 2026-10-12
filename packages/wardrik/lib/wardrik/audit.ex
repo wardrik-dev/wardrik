@@ -56,7 +56,7 @@ defmodule Wardrik.Audit do
     * `{:agents_cancelled, prefix, count}` - the same for every agent under
       `prefix`, `count` of them
     * `{:agent_cleared, id}` - its conversation was emptied
-    * `{:schedule_set, id, name}`, `{:schedule_removed, id, name}`
+    * `{:trigger_set, id, name}`, `{:trigger_removed, id, name}`
     * `{:agents_reloaded, nodes}` - the files that declare agents were read
       again on `nodes`
 
@@ -86,8 +86,8 @@ defmodule Wardrik.Audit do
           | {:agent_cancelled, AgentID.t()}
           | {:agents_cancelled, Prefix.t(), non_neg_integer()}
           | {:agent_cleared, AgentID.t()}
-          | {:schedule_set, AgentID.t(), String.t()}
-          | {:schedule_removed, AgentID.t(), String.t()}
+          | {:trigger_set, AgentID.t(), String.t()}
+          | {:trigger_removed, AgentID.t(), String.t()}
           | {:agents_reloaded, [node()]}
           | {:room_bound, String.t(), String.t(), AgentID.t(), :mentions | :everything}
           | {:room_unbound, String.t(), String.t()}

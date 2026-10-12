@@ -55,7 +55,7 @@ model: anthropic:claude-sonnet-5
 tools: [web_search, files]
 context: [WATCHLIST.md, LATEST.md]
 channels: [slack]
-schedule:
+triggers:
   - name: sweep
     every: "0 8 * * 1-5"      # 08:00 UTC, Monday to Friday
     prompt_file: HEARTBEAT.md
@@ -94,10 +94,10 @@ want more or less of, change WATCHLIST.md or HEARTBEAT.md, and say what you chan
 - `prompt_file` asks the agent, each weekday, to read `HEARTBEAT.md` and do what it says as it
   stands then. The agent writes that file itself, so what it checks changes as the team tells it
   to, and as the Friday review finds what is worth looking at. See
-  [A checklist the agent can edit](/guides/schedules/#a-checklist-the-agent-can-edit).
+  [A checklist the agent can edit](/guides/triggers/#a-checklist-the-agent-can-edit).
 - `context` reads `WATCHLIST.md` and `LATEST.md` into every turn, so a reply in a thread knows what
   the brief above it said.
-- `notify` posts what each scheduled run answers to `#competitors`. A conversation in a thread
+- `notify` posts what each triggered run answers to `#competitors`. A conversation in a thread
   answers in its thread, and posts nothing else.
 - `channels` offers the agent in Slack, so it answers in the channel's threads.
 - The budget stops it for the day once it has spent $3, rather than asking. See
@@ -114,7 +114,7 @@ wardrik ask competitors "Do this morning's sweep now."
 ```
 
 Each answer is posted to `#competitors` as well; the second is what each weekday morning brings.
-`wardrik schedules` says when it runs next.
+`wardrik triggers` says when it runs next.
 
 ## In Slack
 
@@ -141,9 +141,9 @@ message in the channel, has the agent answer anything posted there, with no ment
 
 ## What it shows
 
-- **A schedule that follows its own checklist.** The agent writes `HEARTBEAT.md`, and each run
+- **A trigger that follows its own checklist.** The agent writes `HEARTBEAT.md`, and each run
   reads it as it stands, so what it does changes without anyone editing its file.
-- **Posting and conversing in one place.** Scheduled runs post to a room as notices; replies in the
+- **Posting and conversing in one place.** Triggered runs post to a room as notices; replies in the
   room are threads the agent answers. See [Send notices](/guides/notices/) and
   [Channels](/channels/).
 - **Memory in files.** Its notes, its watchlist and its last brief are files every conversation

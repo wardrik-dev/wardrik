@@ -1,10 +1,10 @@
-defmodule WardrikSchedule.Server do
+defmodule WardrikTrigger.Server do
   @moduledoc """
-  The process behind one `WardrikSchedule`: it sleeps until the schedule's next
-  run, writes down the run after it, checks the schedule's source, and asks
+  The process behind one `WardrikTrigger`: it sleeps until the trigger's next
+  run, writes down the run after it, checks the trigger's source, and asks
   the agent with what it found, writing down the source's cursor first.
 
-  Started by `WardrikSchedule.put/2` under the supervisor `WardrikSchedule`
+  Started by `WardrikTrigger.put/2` under the supervisor `WardrikTrigger`
   runs.
   """
 
@@ -13,8 +13,8 @@ defmodule WardrikSchedule.Server do
   alias Wardrik.Agent
   alias Wardrik.Event
   alias Wardrik.Fleet
-  alias WardrikSchedule.Item
-  alias WardrikSchedule.State
+  alias WardrikTrigger.Item
+  alias WardrikTrigger.State
 
   require Logger
 
@@ -33,15 +33,15 @@ defmodule WardrikSchedule.Server do
   @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
   def init(%State{} = state) do
-    :ok = WardrikSchedule.join(state.agent, state.schedule.name)
+    :ok = WardrikTrigger.join(state.agent, state.trigger.name)
     {:ok, state, {:continue, :wake}, meta: State.meta(state), permanent: true}
   end
 
   # Each step after a write is a continue, so no call lands between a run
   # written down and its delivery.
   @impl DurableServer
-  def handle_call({:configure, %WardrikSchedule{} = schedule}, _from, state) do
-    next = State.configure(state, schedule, DateTime.utc_now())
+  def handle_call({:configure, %WardrikTrigger{} = trigger}, _from, state) do
+    next = State.configure(state, trigger, DateTime.utc_now())
     {:reply, :ok, next, {:continue, :wake}, meta: State.meta(next), sync: true}
   end
 
@@ -62,8 +62,8 @@ defmodule WardrikSchedule.Server do
     end
   end
 
-  def handle_continue({:ask, pid, items}, %State{schedule: schedule} = state) do
-    :ok = Agent.ask(pid, Item.message(schedule.prompt, items), labels: Item.labels(items))
+  def handle_continue({:ask, pid, items}, %State{trigger: trigger} = state) do
+    :ok = Agent.ask(pid, Item.message(trigger.prompt, items), labels: Item.labels(items))
     settle(state, :asked)
   end
 
@@ -96,27 +96,27 @@ defmodule WardrikSchedule.Server do
   # The source is checked before the agent is looked up, so a source with
   # nothing new wakes no sleeping agent; and its cursor is kept only once the
   # agent is asked, so what an agent that was busy missed is found again.
-  defp check(%State{agent: agent, schedule: schedule, cursor: cursor}) do
-    case WardrikSchedule.check(schedule, cursor, agent) do
+  defp check(%State{agent: agent, trigger: trigger, cursor: cursor}) do
+    case WardrikTrigger.check(trigger, cursor, agent) do
       {:ok, [], next} ->
         {:nothing_new, next}
 
       {:ok, items, next} ->
-        case ready(agent, schedule) do
+        case ready(agent, trigger) do
           {:ok, pid} -> {:ask, pid, items, next}
           outcome -> {outcome, cursor}
         end
 
       {:error, reason} ->
-        Logger.warning("schedule #{agent}//#{schedule.name} could not check: #{reason}")
+        Logger.warning("trigger #{agent}//#{trigger.name} could not check: #{reason}")
         {:failed, cursor}
     end
   end
 
-  defp ready(agent, schedule) do
+  defp ready(agent, trigger) do
     case Fleet.whereis(agent) do
       nil -> :no_agent
-      pid -> idle(pid, schedule.overlap)
+      pid -> idle(pid, trigger.overlap)
     end
   catch
     :exit, _reason -> :failed
@@ -132,11 +132,11 @@ defmodule WardrikSchedule.Server do
     end
   end
 
-  defp announce(%State{agent: agent, schedule: schedule}, outcome) do
-    Event.announce(agent, %Event.ScheduleFired{name: schedule.name, outcome: outcome})
+  defp announce(%State{agent: agent, trigger: trigger}, outcome) do
+    Event.announce(agent, %Event.TriggerFired{name: trigger.name, outcome: outcome})
   end
 
-  # Only the timer armed last wakes the schedule.
+  # Only the timer armed last wakes the trigger.
   defp arm(ms) do
     tag = make_ref()
     Process.put(:wake, tag)

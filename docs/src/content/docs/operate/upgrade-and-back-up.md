@@ -56,7 +56,7 @@ The daemon makes most of what it keeps again, but not these:
 | --- | --- | --- |
 | What you write | `~/.config/wardrik`: `config.yaml`, `agents/`, `policies/`, `ssh/authorized_keys`, `env` | the daemon only reads it |
 | The vault's key | `~/.local/share/wardrik/vault_key`, or wherever you keep `WARDRIK_VAULT_KEY` | without it, sealed credentials cannot be read |
-| The store | `~/.local/share/wardrik/store`, or the database or bucket `storage` names | agents, conversations, schedules, files, tokens and sealed credentials |
+| The store | `~/.local/share/wardrik/store`, or the database or bucket `storage` names | agents, conversations, triggers, files, tokens and sealed credentials |
 | The cookie | `~/.local/share/wardrik/cookie` | a cluster's nodes all need the same one |
 | The SSH host key | `~/.local/share/wardrik/ssh` | without it, clients are told the host key changed |
 

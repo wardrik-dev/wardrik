@@ -3,8 +3,8 @@ defmodule WardrikDaemon do
   The host a `wardrik` release runs beside core.
 
   The release's tree starts it after core, `WardrikPolicy.Supervisor`, which
-  keeps the budgets its agents' policies set, `WardrikSchedule`, which runs
-  their schedules, `WardrikHTTP.Access`, which keeps what its tokens grant,
+  keeps the budgets its agents' policies set, `WardrikTrigger`, which runs
+  their triggers, `WardrikHTTP.Access`, which keeps what its tokens grant,
   and `WardrikHTTP.Workers`, the tool workers connected to the cluster, so
   all five start once the fleet is up. It gives core `WardrikDaemon.Cluster`
   as its `:cluster`, which starts before the fleet:
@@ -12,7 +12,7 @@ defmodule WardrikDaemon do
       children = [
         {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
         WardrikPolicy.Supervisor,
-        WardrikSchedule,
+        WardrikTrigger,
         WardrikHTTP.Access,
         WardrikHTTP.Workers,
         WardrikDaemon
@@ -59,9 +59,9 @@ defmodule WardrikDaemon do
       wardrik doctor    # whether config.yaml reads, and the store it names answers
       wardrik reload    # read agents/ and policies/ again
       wardrik parked    # what is waiting on a person
-      wardrik schedules # when each schedule runs next, and how it last ran
+      wardrik triggers # when each trigger runs next, and how it last ran
       wardrik agent spawn NAME   # start an agent, writing its file from defaults
-      wardrik agent rm KEY       # remove one, its conversation and schedules
+      wardrik agent rm KEY       # remove one, its conversation and triggers
       wardrik approve KEY CALL
       wardrik deny KEY CALL [REASON]
       wardrik token create NAME --scope PREFIX --policy NAME   # a token for the HTTP API
@@ -191,7 +191,7 @@ defmodule WardrikDaemon do
   @doc """
   What this node is running, as `wardrik status` prints it: the node, how long
   it has been up, which of its cluster's nodes are connected, each agent in
-  the fleet with what it is doing, on which node, and when a schedule asks it
+  the fleet with what it is doing, on which node, and when a trigger asks it
   next, and each agent or policy file that does not read.
   """
   @spec status() :: String.t()
@@ -266,15 +266,15 @@ defmodule WardrikDaemon do
 
   def spent(_spec, _key), do: []
 
-  @doc "How long until a schedule next asks the agent `key`, in milliseconds, or `nil` where none does."
+  @doc "How long until a trigger next asks the agent `key`, in milliseconds, or `nil` where none does."
   @spec next_in(Wardrik.AgentID.t()) :: non_neg_integer() | nil
   def next_in(key) do
-    case WardrikSchedule.for_agent(key) do
+    case WardrikTrigger.for_agent(key) do
       [] ->
         nil
 
-      schedules ->
-        next = schedules |> Enum.map(& &1.next_at) |> Enum.min(DateTime)
+      triggers ->
+        next = triggers |> Enum.map(& &1.next_at) |> Enum.min(DateTime)
         max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
     end
   end

@@ -1,7 +1,7 @@
-defmodule WardrikSchedule.StatusTest do
+defmodule WardrikTrigger.StatusTest do
   use ExUnit.Case, async: true
 
-  alias WardrikSchedule.Status
+  alias WardrikTrigger.Status
 
   test "described/1 says what each outcome did" do
     for {outcome, text} <- [

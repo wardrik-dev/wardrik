@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.Cluster do
   @moduledoc """
-  Joins this daemon to others, so the fleet, its store and the schedules span
+  Joins this daemon to others, so the fleet, its store and the triggers span
   them all, and an agent whose node is lost carries on on another.
 
   `config.yaml` says which nodes the cluster has, in one of two ways:

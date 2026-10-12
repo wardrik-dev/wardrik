@@ -51,8 +51,8 @@ const resources: Record<string, string> = {
   "connections.json": "Connections",
   "error.json": "ErrorBody",
   "export.json": "ExportPage",
-  "schedule.json": "Schedule",
-  "schedule_definition.json": "ScheduleDefinition",
+  "trigger.json": "Trigger",
+  "trigger_definition.json": "TriggerDefinition",
 };
 
 // The title of the resource a reference names, where it names one.

@@ -1,10 +1,10 @@
 # Architecture policy for `mix reach.check --arch`.
 #
-# WardrikSchedule depends on core and calls the public modules listed below,
+# WardrikTrigger depends on core and calls the public modules listed below,
 # never the internals, which only core calls.
 [
   layers: [
-    schedule: ["WardrikSchedule", "WardrikSchedule.*"]
+    triggers: ["WardrikTrigger", "WardrikTrigger.*"]
   ],
   boundaries: [
     public: [

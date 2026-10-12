@@ -17,7 +17,7 @@ defmodule Wardrik.Credo.Check.NoScans do
       A process is found by its key, not by listing every process and
       filtering.
 
-          # reads every schedule on every node to find one agent's
+          # reads every trigger on every node to find one agent's
           for {key, _pid, _meta} <- Group.global_members(group), String.starts_with?(key, prefix), do: key
 
           # reads the agent's own group

@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:wardrik:schema:v1:schedule.triggered",
-  "title": "wardrik.schedule.triggered",
-  "description": "A schedule came due.",
+  "$id": "urn:wardrik:schema:v1:trigger.fired",
+  "title": "wardrik.trigger.fired",
+  "description": "A trigger came due.",
   "type": "object",
   "properties": {
-    "schedule": {
+    "trigger": {
       "type": "object",
       "properties": {
         "name": {
@@ -31,7 +31,7 @@
   },
   "additionalProperties": false,
   "required": [
-    "schedule",
+    "trigger",
     "status"
   ]
 }

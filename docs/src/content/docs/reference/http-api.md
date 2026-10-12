@@ -55,7 +55,7 @@ See `WardrikHTTP.Token`; from a shell:
 | `read` | listing agents, snapshots, definitions, events and connections |
 | `message` | messages, cancelling, and clearing the conversation |
 | `decide` | interrupts, and their authorization links |
-| `define` | putting and deleting agents and schedules, and connecting accounts |
+| `define` | putting and deleting agents and triggers, and connecting accounts |
 | `serve` | `/v1/workers` |
 
 ## Keys in paths
@@ -83,15 +83,15 @@ agent with is its key.
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, where the server keeps definitions |
-| `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and schedules included, `204` |
+| `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and triggers included, `204` |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
 | `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
-| `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
-| `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
+| `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
+| `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
@@ -102,8 +102,8 @@ agent with is its key.
 
 `Wardrik.Resource` shows what each answers. Each resource's JSON Schema is
 in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
-`agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
-`schedule_definition.json`, `authorization.json`, `connections.json`,
+`agent_snapshot.json`, `agent_definition.json`, `trigger.json`,
+`trigger_definition.json`, `authorization.json`, `connections.json`,
 `connecting.json`, `export.json` and `error.json`. `sdks/typescript` generates
 its types from them.
 
@@ -169,16 +169,16 @@ beside the answer, and never changes the call, which runs as the model
 wrote it. The decision is recorded as made by the caller's principal, and answers `409` when the agent is not waiting on that call,
 and `503` when the agent could not record it.
 
-### Schedules
+### Triggers
 
-    PUT /v1/agents/acme/triage/schedules/sweep
+    PUT /v1/agents/acme/triage/triggers/sweep
     {"every": "*/30 * * * *", "prompt": "Check the incident queue."}
 
 `every` is a cron expression read in UTC, or a duration of at least a
 minute, as `"30m"`. `overlap` is `skip`, the default, or `queue`; `missed`
 is `run_once`, the default, or `skip`; `jitter` is up to so many seconds
-added to each run. A schedule is part of the agent's definition, which the
-host keeps: a definition put again lists every schedule the agent has, and
+added to each run. A trigger is part of the agent's definition, which the
+host keeps: a definition put again lists every trigger the agent has, and
 an agent with no definition kept answers `404`.
 
 ### Connections
@@ -218,7 +218,7 @@ its idempotency key as `_meta.idempotencyKey`. A worker that answers with
 
 Carries a `Request-Id` header, the caller's own where it sent one, and is
 logged under it. An error is `{"error": {"type": …, "message": …}}`. A
-request that changes something, defining, deleting, scheduling, cancelling
+request that changes something, defining, deleting, setting triggers, cancelling
 or clearing, is recorded in `Wardrik.Audit` with the caller's principal.
 
 
@@ -258,7 +258,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `idle_timeout` | integer or `"infinity"` |  | How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
-| `schedule` | array of object |  | The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run. |
+| `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. |
 | `channels` | array of string |  | The chat channels, as config.yaml names them, it may be chosen to answer in. |
 
 ### `agent_snapshot`
@@ -332,9 +332,9 @@ What GET /v1/exports/{name} answers: the events after the export's cursor, in ev
 | `next` | string | yes | What POST /v1/exports/{name} takes, as {"next": …}, to move the cursor past these events. |
 | `gaps` | array of object | yes | Each log trimmed past the cursor, which was read from its oldest event. |
 
-### `schedule`
+### `trigger`
 
-A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
+A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -342,12 +342,12 @@ A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedu
 | `every` | string | yes | A cron expression, or a duration such as 30m. |
 | `prompt` | string | yes | What the agent is asked each time. |
 | `overlap` | string | yes | What a firing does while a run is still going: skip it, or queue its prompt. One of `skip`, `queue`. |
-| `missed` | string | yes | What a schedule does about the firings it missed while down. One of `run_once`, `skip`. |
+| `missed` | string | yes | What a trigger does about the firings it missed while down. One of `run_once`, `skip`. |
 | `jitter` | integer | yes | Up to this many seconds of delay, chosen at random each time. |
 
-### `schedule_definition`
+### `trigger_definition`
 
-The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
+The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -355,5 +355,5 @@ The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt
 | `prompt` | string |  | What the agent is asked each time. |
 | `prompt_file` | string |  | In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with. |
 | `overlap` | string |  | What a firing does while a run is still going: skip it, or queue its prompt. One of `skip`, `queue`. |
-| `missed` | string |  | What a schedule does about the firings it missed while down. One of `run_once`, `skip`. |
+| `missed` | string |  | What a trigger does about the firings it missed while down. One of `run_once`, `skip`. |
 | `jitter` | integer |  | Up to this many seconds of delay, chosen at random each time. |

@@ -81,10 +81,10 @@ defmodule WardrikDefinition.ReadingTest do
          do: {:ok, route}
   end
 
-  defp schedules(text, %{context: context} = test) do
+  defp triggers(text, %{context: context} = test) do
     with {:ok, _spec} <- read(text, test),
          {:ok, _id, fields} <- WardrikDefinition.parse(text, "triage", context),
-         do: {:ok, WardrikDefinition.schedules(fields)}
+         do: {:ok, WardrikDefinition.triggers(fields)}
   end
 
   test "reads a whole file into the agent's spec", context do
@@ -423,18 +423,18 @@ defmodule WardrikDefinition.ReadingTest do
              read("---\nmax_iterations: infinity\n---\n", context)
   end
 
-  test "reads one schedule, or a list of them", context do
-    assert {:ok, [%WardrikSchedule{name: "schedule-1", every: {:cron, "*/30 * * * *"}}]} =
-             schedules(
-               "---\nschedule:\n  every: \"*/30 * * * *\"\n  prompt: Look.\n---\n",
+  test "reads one trigger, or a list of them", context do
+    assert {:ok, [%WardrikTrigger{name: "trigger-1", every: {:cron, "*/30 * * * *"}}]} =
+             triggers(
+               "---\ntriggers:\n  every: \"*/30 * * * *\"\n  prompt: Look.\n---\n",
                context
              )
 
     assert {:ok, two} =
-             schedules(
+             triggers(
                """
                ---
-               schedule:
+               triggers:
                  - name: sweep
                    every: 30m
                    prompt: Check the queue.
@@ -450,44 +450,44 @@ defmodule WardrikDefinition.ReadingTest do
              )
 
     assert [
-             %WardrikSchedule{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
-             %WardrikSchedule{name: "digest", overlap: :queue, missed: :skip}
+             %WardrikTrigger{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
+             %WardrikTrigger{name: "digest", overlap: :queue, missed: :skip}
            ] = two
 
-    assert {:ok, []} = schedules("---\n---\n", context)
+    assert {:ok, []} = triggers("---\n---\n", context)
   end
 
-  test "a schedule that does not read says which and why", context do
+  test "a trigger that does not read says which and why", context do
     for {settings, refusal} <- [
-          {"{every: 10s, prompt: Look.}", "schedule 1: every: \"10s\" is shorter than a minute"},
-          {"{name: sweep, every: 30m}", "schedule sweep: prompt is a string"},
-          {"{every: 30m, prompt: Look., when: now}", "schedule when is not a setting"},
+          {"{every: 10s, prompt: Look.}", "trigger 1: every: \"10s\" is shorter than a minute"},
+          {"{name: sweep, every: 30m}", "trigger sweep: prompt is a string"},
+          {"{every: 30m, prompt: Look., when: now}", "trigger when is not a setting"},
           {"[{name: a, every: 30m, prompt: x}, {name: a, every: 1h, prompt: y}]",
-           "schedule names a twice"},
-          {"[look]", "schedule 1 is not a set of keys"},
-          {"look", "schedule is a schedule, or a list of them"}
+           "trigger names a twice"},
+          {"[look]", "trigger 1 is not a set of keys"},
+          {"look", "triggers is a trigger, or a list of them"}
         ] do
-      assert {:error, message} = read("---\nschedule: #{settings}\n---\n", context)
+      assert {:error, message} = read("---\ntriggers: #{settings}\n---\n", context)
       assert message =~ refusal
     end
   end
 
-  test "prompt_file asks the agent to follow a file of its workspace when the schedule fires",
+  test "prompt_file asks the agent to follow a file of its workspace when the trigger fires",
        context do
-    assert {:ok, [%WardrikSchedule{name: "heartbeat", prompt: prompt}]} =
-             schedules(
-               "---\ntools: [files]\nschedule: {name: heartbeat, every: 30m, prompt_file: ./HEARTBEAT.md}\n---\n",
+    assert {:ok, [%WardrikTrigger{name: "heartbeat", prompt: prompt}]} =
+             triggers(
+               "---\ntools: [files]\ntriggers: {name: heartbeat, every: 30m, prompt_file: ./HEARTBEAT.md}\n---\n",
                context
              )
 
     assert prompt =~ "It is time for heartbeat. Read HEARTBEAT.md with read_file"
 
     for {settings, refusal} <- [
-          {"tools: [files]\nschedule: {every: 30m, prompt: Look., prompt_file: H.md}",
-           "a schedule has a prompt or a prompt_file, not both"},
-          {"schedule: {every: 30m, prompt_file: H.md}",
+          {"tools: [files]\ntriggers: {every: 30m, prompt: Look., prompt_file: H.md}",
+           "a trigger has a prompt or a prompt_file, not both"},
+          {"triggers: {every: 30m, prompt_file: H.md}",
            "prompt_file names a file, and tools names no files to read it with"},
-          {"tools: [files]\nschedule: {every: 30m, prompt_file: /etc/passwd}",
+          {"tools: [files]\ntriggers: {every: 30m, prompt_file: /etc/passwd}",
            "prompt_file: /etc/passwd is absolute"}
         ] do
       assert {:error, message} = read("---\n#{settings}\n---\n", context)
@@ -592,33 +592,33 @@ defmodule WardrikDefinition.ReadingTest do
                )
     end
 
-    test "lists its schedules as a file does, and one is set or deleted in it" do
+    test "lists its triggers as a file does, and one is set or deleted in it" do
       unnamed = %{"every" => "1h", "prompt" => "Look."}
-      fields = %{"schedule" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]}
+      fields = %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]}
 
-      assert [%WardrikSchedule{name: "schedule-1"}, %WardrikSchedule{name: "schedule-2"}] =
-               WardrikDefinition.schedules(fields)
+      assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
+               WardrikDefinition.triggers(fields)
 
-      assert {:ok, fields, :changed, %WardrikSchedule{every: {:interval, 7_200_000}}} =
-               WardrikDefinition.put_schedule(fields, "schedule-1", %{unnamed | "every" => "2h"})
+      assert {:ok, fields, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
+               WardrikDefinition.put_trigger(fields, "trigger-1", %{unnamed | "every" => "2h"})
 
-      assert {:ok, fields, :created, %WardrikSchedule{name: "sweep"}} =
-               WardrikDefinition.put_schedule(fields, "sweep", unnamed)
+      assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
+               WardrikDefinition.put_trigger(fields, "sweep", unnamed)
 
-      assert ~w(schedule-1 schedule-2 sweep) ==
-               Enum.map(WardrikDefinition.schedules(fields), & &1.name)
+      assert ~w(trigger-1 trigger-2 sweep) ==
+               Enum.map(WardrikDefinition.triggers(fields), & &1.name)
 
-      assert {:error, "schedule sweep: prompt is a string" <> _rest} =
-               WardrikDefinition.put_schedule(fields, "sweep", %{"every" => "1h"})
+      assert {:error, "trigger sweep: prompt is a string" <> _rest} =
+               WardrikDefinition.put_trigger(fields, "sweep", %{"every" => "1h"})
 
-      {:ok, fields} = WardrikDefinition.delete_schedule(fields, "schedule-2")
-      {:ok, fields} = WardrikDefinition.delete_schedule(fields, "schedule-1")
-      assert {:error, :not_found} = WardrikDefinition.delete_schedule(fields, "schedule-1")
-      {:ok, fields} = WardrikDefinition.delete_schedule(fields, "sweep")
+      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-2")
+      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-1")
+      assert {:error, :not_found} = WardrikDefinition.delete_trigger(fields, "trigger-1")
+      {:ok, fields} = WardrikDefinition.delete_trigger(fields, "sweep")
       assert WardrikDefinition.fields(fields) == %{}
 
-      assert %{"schedule" => [%{"every" => "1h"}]} =
-               WardrikDefinition.fields(%{"schedule" => unnamed, "notify" => "ops"})
+      assert %{"triggers" => [%{"every" => "1h"}]} =
+               WardrikDefinition.fields(%{"triggers" => unnamed, "notify" => "ops"})
     end
   end
 

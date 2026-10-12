@@ -1,20 +1,20 @@
-defmodule WardrikSchedule.Clock do
+defmodule WardrikTrigger.Clock do
   @moduledoc """
-  The source of a schedule that names none: every run finds one item, which
+  The source of a trigger that names none: every run finds one item, which
   holds nothing to show, so the agent is asked its prompt alone each time.
   """
 
-  @behaviour WardrikSchedule.Source
+  @behaviour WardrikTrigger.Source
 
-  alias WardrikSchedule.Item
+  alias WardrikTrigger.Item
 
-  @impl WardrikSchedule.Source
+  @impl WardrikTrigger.Source
   def decode(fields) when map_size(fields) == 0, do: {:ok, nil}
 
-  @impl WardrikSchedule.Source
+  @impl WardrikTrigger.Source
   def encode(nil), do: %{}
 
-  @impl WardrikSchedule.Source
+  @impl WardrikTrigger.Source
   def check(nil, cursor, _agent),
     do: {:ok, [%Item{id: DateTime.to_iso8601(DateTime.utc_now())}], cursor}
 end

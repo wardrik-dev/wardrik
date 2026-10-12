@@ -1,15 +1,15 @@
-defmodule WardrikSchedule.StateTest do
+defmodule WardrikTrigger.StateTest do
   use ExUnit.Case, async: true
 
-  alias WardrikSchedule.State
+  alias WardrikTrigger.State
 
   @created ~U[2026-09-24 09:00:00Z]
 
   defp state(opts \\ []) do
-    schedule =
-      WardrikSchedule.new("sweep", Keyword.merge([every: "*/30 * * * *", prompt: "Look."], opts))
+    trigger =
+      WardrikTrigger.new("sweep", Keyword.merge([every: "*/30 * * * *", prompt: "Look."], opts))
 
-    State.new(Wardrik.AgentID.parse!("default/triage"), schedule, @created)
+    State.new(Wardrik.AgentID.parse!("default/triage"), trigger, @created)
   end
 
   describe "new/3" do
@@ -38,7 +38,7 @@ defmodule WardrikSchedule.StateTest do
       assert next.next_at == ~U[2026-09-24 14:00:00Z]
     end
 
-    test "lets an overdue run go when the schedule skips what it missed" do
+    test "lets an overdue run go when the trigger skips what it missed" do
       assert {:skip, next} = State.due(state(missed: :skip), ~U[2026-09-24 13:47:00Z])
       assert next.next_at == ~U[2026-09-24 14:00:00Z]
       assert next.last_outcome == :missed
@@ -47,18 +47,18 @@ defmodule WardrikSchedule.StateTest do
   end
 
   describe "configure/3" do
-    test "keeps the next run when the schedule keeps its clock" do
+    test "keeps the next run when the trigger keeps its clock" do
       state = state()
-      reworded = %{state.schedule | prompt: "Look again."}
+      reworded = %{state.trigger | prompt: "Look again."}
 
       configured = State.configure(state, reworded, ~U[2026-09-24 09:20:00Z])
       assert configured.next_at == ~U[2026-09-24 09:30:00Z]
-      assert configured.schedule.prompt == "Look again."
+      assert configured.trigger.prompt == "Look again."
     end
 
     test "goes on from now when the clock changes" do
       state = state()
-      hourly = WardrikSchedule.new("sweep", every: "@hourly", prompt: "Look.")
+      hourly = WardrikTrigger.new("sweep", every: "@hourly", prompt: "Look.")
 
       assert State.configure(state, hourly, ~U[2026-09-24 09:20:00Z]).next_at ==
                ~U[2026-09-24 10:00:00Z]

@@ -24,7 +24,7 @@ defmodule Wardrik.Command do
 
   @typedoc """
   What a change answers once it is made: `:created` where it made something
-  that was not there, as an agent or a schedule. A change with nothing to
+  that was not there, as an agent or a trigger. A change with nothing to
   say answers `{:ok, nil}`.
   """
   @type answer() :: {:ok, term()} | {:created, term()}

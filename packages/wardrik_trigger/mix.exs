@@ -1,4 +1,4 @@
-defmodule WardrikSchedule.MixProject do
+defmodule WardrikTrigger.MixProject do
   use Mix.Project
 
   @version "0.1.0-rc.1"
@@ -6,11 +6,11 @@ defmodule WardrikSchedule.MixProject do
 
   def project do
     [
-      app: :wardrik_schedule,
+      app: :wardrik_trigger,
       version: @version,
       elixir: "~> 1.20",
       description:
-        "Schedules for Wardrik agents: a prompt each agent is asked on a clock, kept across restarts and nodes.",
+        "Triggers for Wardrik agents: a prompt each agent is asked on a clock, or when a source it watches finds something new, kept across restarts and nodes.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
       elixirc_paths: elixirc_paths(Mix.env()),

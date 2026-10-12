@@ -46,7 +46,7 @@ defmodule WardrikDefinition do
   @keys schema |> List.keyfind("properties", 0) |> elem(1) |> Enum.map(&elem(&1, 0))
   @file_keys ~w(name org user) ++ (@keys -- ["instructions"]) ++ ["notify"]
   @default_keys ~w(model tools policy timeout idle_timeout max_iterations compaction)
-  @schedule_keys ~w(name prompt_file)
+  @trigger_keys ~w(name prompt_file)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
   @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t() | nil}
@@ -148,8 +148,8 @@ defmodule WardrikDefinition do
 
   `id` is `owner`, or one of its conversations: an ID with an external ID,
   whose spec has the tools of the definition's agent, its workspace tree
-  among them. Its schedules are checked with the rest of it, and kept beside
-  the spec rather than in it; see `schedules/1`.
+  among them. Its triggers are checked with the rest of it, and kept beside
+  the spec rather than in it; see `triggers/1`.
   """
   @spec spec(fields(), AgentID.t(), AgentID.t(), Context.t(), source()) ::
           {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
@@ -158,7 +158,7 @@ defmodule WardrikDefinition do
 
     file? = match?({:file, _name}, source)
     system = optional_string!(fields["instructions"], "instructions") || ""
-    _schedules = schedules(fields["schedule"], files?(fields))
+    _triggers = triggers(fields["triggers"], files?(fields))
     _channels = channels!(fields["channels"], owner.org, context)
     spec = build(fields, system, context, file?, owner)
     within!(spec, source)
@@ -173,12 +173,12 @@ defmodule WardrikDefinition do
   @doc """
   The definition as the HTTP API writes one, as `agent_definition.json`
   describes it: what an agent file says besides its `name`, `org`, `user`
-  and `notify`, with one schedule as a list of one.
+  and `notify`, with one trigger as a list of one.
   """
   @spec fields(fields()) :: fields()
   def fields(fields) do
     case Map.take(fields, @keys) do
-      %{"schedule" => %{} = one} = taken -> %{taken | "schedule" => [one]}
+      %{"triggers" => %{} = one} = taken -> %{taken | "triggers" => [one]}
       taken -> taken
     end
   end
@@ -188,41 +188,41 @@ defmodule WardrikDefinition do
   def channels(fields), do: Map.get(fields, "channels") || []
 
   @doc """
-  The schedules a definition lists, which ask its agent on a clock. They are
+  The triggers a definition lists, which ask its agent something when they come round. They are
   checked with the rest of the definition as `spec/4` reads it.
   """
-  @spec schedules(fields()) :: [WardrikSchedule.t()]
-  def schedules(fields), do: schedules(fields["schedule"], files?(fields))
+  @spec triggers(fields()) :: [WardrikTrigger.t()]
+  def triggers(fields), do: triggers(fields["triggers"], files?(fields))
 
   @doc """
-  `fields` with the schedule `name` set to `given`, as the body of
-  `PUT /v1/agents/{id}/schedules/{name}` writes one: whether it was added or
-  changed, and the schedule it reads into, or why it does not read.
+  `fields` with the trigger `name` set to `given`, as the body of
+  `PUT /v1/agents/{id}/triggers/{name}` writes one: whether it was added or
+  changed, and the trigger it reads into, or why it does not read.
   """
-  @spec put_schedule(fields(), String.t(), map()) ::
-          {:ok, fields(), :created | :changed, WardrikSchedule.t()} | {:error, String.t()}
-  def put_schedule(fields, name, given) when is_map(given) do
-    listed = named(fields["schedule"])
-    schedule = Map.put(given, "name", name)
+  @spec put_trigger(fields(), String.t(), map()) ::
+          {:ok, fields(), :created | :changed, WardrikTrigger.t()} | {:error, String.t()}
+  def put_trigger(fields, name, given) when is_map(given) do
+    listed = named(fields["triggers"])
+    trigger = Map.put(given, "name", name)
 
     {status, listed} =
       if Enum.any?(listed, &(&1["name"] == name)),
-        do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: schedule, else: &1))},
-        else: {:created, listed ++ [schedule]}
+        do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: trigger, else: &1))},
+        else: {:created, listed ++ [trigger]}
 
-    read = schedules(listed, files?(fields))
-    {:ok, Map.put(fields, "schedule", listed), status, Enum.find(read, &(&1.name == name))}
+    read = triggers(listed, files?(fields))
+    {:ok, Map.put(fields, "triggers", listed), status, Enum.find(read, &(&1.name == name))}
   catch
     {:invalid, message} -> {:error, message}
   end
 
-  @doc "`fields` without the schedule `name`, or `{:error, :not_found}` where it has none."
-  @spec delete_schedule(fields(), String.t()) :: {:ok, fields()} | {:error, :not_found}
-  def delete_schedule(fields, name) do
-    case Enum.split_with(named(fields["schedule"]), &(&1["name"] == name)) do
+  @doc "`fields` without the trigger `name`, or `{:error, :not_found}` where it has none."
+  @spec delete_trigger(fields(), String.t()) :: {:ok, fields()} | {:error, :not_found}
+  def delete_trigger(fields, name) do
+    case Enum.split_with(named(fields["triggers"]), &(&1["name"] == name)) do
       {[], _kept} -> {:error, :not_found}
-      {_gone, []} -> {:ok, Map.delete(fields, "schedule")}
-      {_gone, kept} -> {:ok, Map.put(fields, "schedule", kept)}
+      {_gone, []} -> {:ok, Map.delete(fields, "triggers")}
+      {_gone, kept} -> {:ok, Map.put(fields, "triggers", kept)}
     end
   end
 
@@ -499,60 +499,60 @@ defmodule WardrikDefinition do
       ["; it has ", Enum.map_join(configured, ", ", fn {name, _ref} -> name end)]
       |> IO.iodata_to_binary()
 
-  # -- schedules -------------------------------------------------------------
+  # -- triggers -------------------------------------------------------------
 
-  defp schedules(nil, _files?), do: []
-  defp schedules(%{} = one, files?), do: schedules([one], files?)
+  defp triggers(nil, _files?), do: []
+  defp triggers(%{} = one, files?), do: triggers([one], files?)
 
-  defp schedules(list, files?) when is_list(list) do
-    schedules = list |> Enum.with_index(1) |> Enum.map(&schedule!(&1, files?))
+  defp triggers(list, files?) when is_list(list) do
+    triggers = list |> Enum.with_index(1) |> Enum.map(&trigger!(&1, files?))
 
-    case schedules -- Enum.uniq_by(schedules, & &1.name) do
-      [] -> schedules
-      [twice | _] -> invalid!("schedule names #{twice.name} twice")
+    case triggers -- Enum.uniq_by(triggers, & &1.name) do
+      [] -> triggers
+      [twice | _] -> invalid!("trigger names #{twice.name} twice")
     end
   end
 
-  defp schedules(_other, _files?), do: invalid!("schedule is a schedule, or a list of them")
+  defp triggers(_other, _files?), do: invalid!("triggers is a trigger, or a list of them")
 
-  # The schedules a checked definition lists, each with the name it is known by.
+  # The triggers a checked definition lists, each with the name it is known by.
   defp named(nil), do: []
   defp named(%{} = one), do: named([one])
 
   defp named(list) do
     for {fields, index} <- Enum.with_index(list, 1),
-        do: Map.put_new(fields, "name", "schedule-#{index}")
+        do: Map.put_new(fields, "name", "trigger-#{index}")
   end
 
-  defp schedule!({%{} = fields, index}, files?) do
-    keys = @schedule_keys ++ WardrikSchedule.keys()
+  defp trigger!({%{} = fields, index}, files?) do
+    keys = @trigger_keys ++ WardrikTrigger.keys()
 
     case Map.keys(fields) -- keys do
       [] ->
         :ok
 
       [key | _] ->
-        invalid!("schedule #{key} is not a setting; expected one of #{Enum.join(keys, ", ")}")
+        invalid!("trigger #{key} is not a setting; expected one of #{Enum.join(keys, ", ")}")
     end
 
-    name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
+    name = optional_string!(fields["name"], "trigger name") || "trigger-#{index}"
 
     with {:ok, fields} <- prompted(fields, name, files?),
-         {:ok, schedule} <- WardrikSchedule.decode(name, Map.delete(fields, "name")) do
-      schedule
+         {:ok, trigger} <- WardrikTrigger.decode(name, Map.delete(fields, "name")) do
+      trigger
     else
-      {:error, message} -> invalid!("schedule #{fields["name"] || index}: #{message}")
+      {:error, message} -> invalid!("trigger #{fields["name"] || index}: #{message}")
     end
   end
 
-  defp schedule!({_other, index}, _files?),
-    do: invalid!("schedule #{index} is not a set of keys")
+  defp trigger!({_other, index}, _files?),
+    do: invalid!("trigger #{index} is not a set of keys")
 
-  # A schedule's prompt_file is a prompt asking the agent to follow the file,
+  # A trigger's prompt_file is a prompt asking the agent to follow the file,
   # which it reads with read_file as the turn runs, so it reads it as it
   # stands then, and its labels with it.
   defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _name, _files?),
-    do: {:error, "a schedule has a prompt or a prompt_file, not both"}
+    do: {:error, "a trigger has a prompt or a prompt_file, not both"}
 
   defp prompted(%{"prompt_file" => _file}, _name, false),
     do: {:error, "prompt_file names a file, and tools names no files to read it with"}

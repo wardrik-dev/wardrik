@@ -92,12 +92,12 @@ describe("requests", () => {
     await server.close();
   });
 
-  test("send a message, schedule, decide, cancel, clear and page as the API takes them", async () => {
+  test("send a message, set a trigger, decide, cancel, clear and page as the API takes them", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
       json(response, 202, { message: { id: "m1" } }),
     );
-    server.on("PUT", path + "/schedules/sweep", (request, response) =>
-      json(response, 201, { schedule: { name: "sweep", ...(request.body as object) } }),
+    server.on("PUT", path + "/triggers/sweep", (request, response) =>
+      json(response, 201, { trigger: { name: "sweep", ...(request.body as object) } }),
     );
     server.on("POST", path + "/interrupts/call_1", (_request, response) =>
       json(response, 200, { interrupt: { id: "call_1", decision: "approved" } }),
@@ -111,7 +111,7 @@ describe("requests", () => {
     const agent = wardrik.agent(key);
 
     assert.deepEqual(await agent.send("hi", { id: "m1" }), { id: "m1" });
-    await agent.schedule("sweep", { every: "*/30 * * * *", prompt: "Look." });
+    await agent.setTrigger("sweep", { every: "*/30 * * * *", prompt: "Look." });
     await agent.approve("call_1");
     await agent.reject("call_1", "Not now.");
     await agent.cancel();
@@ -123,7 +123,7 @@ describe("requests", () => {
       server.received.map((request) => [request.method, request.path, request.body]),
       [
         ["POST", path + "/messages", { id: "m1", parts: [{ type: "text", content: "hi" }] }],
-        ["PUT", path + "/schedules/sweep", { every: "*/30 * * * *", prompt: "Look." }],
+        ["PUT", path + "/triggers/sweep", { every: "*/30 * * * *", prompt: "Look." }],
         ["POST", path + "/interrupts/call_1", { decision: "approve" }],
         ["POST", path + "/interrupts/call_1", { decision: "reject", reason: "Not now." }],
         ["POST", path + "/cancel", undefined],

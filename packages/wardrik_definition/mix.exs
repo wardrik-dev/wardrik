@@ -29,7 +29,7 @@ defmodule WardrikDefinition.MixProject do
     [
       sibling(:wardrik),
       sibling(:wardrik_policy),
-      sibling(:wardrik_schedule),
+      sibling(:wardrik_trigger),
       sibling(:wardrik_workspace),
       sibling(:wardrik_notify),
       # The schema of a definition, whose keys are read as this compiles.

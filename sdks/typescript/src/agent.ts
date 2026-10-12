@@ -4,8 +4,8 @@ import type {
   AgentDefinition,
   AgentSnapshot,
   Authorization,
-  Schedule,
-  ScheduleDefinition,
+  Trigger,
+  TriggerDefinition,
   WardrikEvent,
 } from "./protocol.ts";
 
@@ -177,20 +177,20 @@ export class Agent {
     await this.#http.send("DELETE", this.#path + "/conversation");
   }
 
-  /** Asks the agent on a clock, as `name`, replacing a schedule of that name. */
-  async schedule(name: string, definition: ScheduleDefinition): Promise<Schedule> {
-    const answer = await this.#http.json<{ schedule: Schedule }>(
+  /** Sets the trigger `name`, replacing one of that name. */
+  async setTrigger(name: string, definition: TriggerDefinition): Promise<Trigger> {
+    const answer = await this.#http.json<{ trigger: Trigger }>(
       "PUT",
-      this.#path + "/schedules/" + encodeURIComponent(name),
+      this.#path + "/triggers/" + encodeURIComponent(name),
       { body: definition },
     );
 
-    return answer.schedule;
+    return answer.trigger;
   }
 
-  /** Stops the schedule `name` and deletes it. */
-  async unschedule(name: string): Promise<void> {
-    await this.#http.send("DELETE", this.#path + "/schedules/" + encodeURIComponent(name));
+  /** Stops the trigger `name` and deletes it. */
+  async removeTrigger(name: string): Promise<void> {
+    await this.#http.send("DELETE", this.#path + "/triggers/" + encodeURIComponent(name));
   }
 
   /** Stops the agent and deletes everything it had. */

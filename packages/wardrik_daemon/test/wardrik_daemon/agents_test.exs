@@ -19,8 +19,8 @@ defmodule WardrikDaemon.AgentsTest do
     on_exit(fn ->
       prefix = Prefix.parse!(org <> "/")
 
-      for schedule <- WardrikSchedule.list(prefix),
-          do: WardrikSchedule.delete(schedule.agent, schedule.name)
+      for trigger <- WardrikTrigger.list(prefix),
+          do: WardrikTrigger.delete(trigger.agent, trigger.name)
 
       Fleet.forget_under(prefix)
     end)
@@ -308,10 +308,10 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.delete(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
     assert Agents.editable(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
 
-    assert Agents.put_schedule(AgentID.parse!("#{org}/alpha"), "sweep", %{}) ==
+    assert Agents.put_trigger(AgentID.parse!("#{org}/alpha"), "sweep", %{}) ==
              {:error, :conflict, message}
 
-    assert Agents.delete_schedule(AgentID.parse!("#{org}/alpha"), "sweep") ==
+    assert Agents.delete_trigger(AgentID.parse!("#{org}/alpha"), "sweep") ==
              {:error, :conflict, message}
   end
 
@@ -358,7 +358,7 @@ defmodule WardrikDaemon.AgentsTest do
     test "stops once its file is gone, and comes back as it was with the file",
          %{dir: dir, org: org} = context do
       write(context, "alpha", "")
-      write(context, "beta", "schedule:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
+      write(context, "beta", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
       start_supervised!({Agents, dir: dir})
       Agents.files()
       %{generation: generation} = Agent.snapshot(AgentID.parse!("#{org}/beta"))
@@ -367,7 +367,7 @@ defmodule WardrikDaemon.AgentsTest do
       Agents.reload()
 
       assert Fleet.whereis(AgentID.parse!("#{org}/beta"), wake: false) == nil
-      assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/beta")) == []
+      assert WardrikTrigger.for_agent(AgentID.parse!("#{org}/beta")) == []
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
 
       write(context, "beta", "")
@@ -449,48 +449,48 @@ defmodule WardrikDaemon.AgentsTest do
     assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
   end
 
-  test "runs the schedules a file declares, and stops those it no longer does",
+  test "runs the triggers a file declares, and stops those it no longer does",
        %{org: org} = context do
-    write(context, "alpha", "schedule:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
+    write(context, "alpha", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
     start_supervised!({Agents, dir: context.dir})
     assert [{_alpha, {:ok, _spec}}] = Agents.files()
 
-    assert [%WardrikSchedule.Status{name: "sweep"}] =
-             WardrikSchedule.for_agent(AgentID.parse!("#{org}/alpha"))
+    assert [%WardrikTrigger.Status{name: "sweep"}] =
+             WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha"))
 
     assert WardrikDaemon.status() =~ ~r"#{org}/alpha .*next run in 5\dm"
 
     write(context, "alpha", "")
     Agents.reload()
 
-    assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/alpha")) == []
+    assert WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha")) == []
   end
 
-  test "brings an agent the HTTP API defined to the schedules its definition lists",
+  test "brings an agent the HTTP API defined to the triggers its definition lists",
        %{org: org} = context do
     start_supervised!({Agents, dir: context.dir})
     defined = AgentID.parse!("#{org}/defined")
     sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
 
-    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
-    assert [%{name: "sweep"}] = WardrikSchedule.for_agent(defined)
+    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
+    assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
 
     {:ok, _spec} = Agents.put(defined, %{}, grant(org))
-    assert WardrikSchedule.for_agent(defined) == []
+    assert WardrikTrigger.for_agent(defined) == []
 
-    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
+    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
     :ok = Agents.delete(defined)
-    assert WardrikSchedule.for_agent(defined) == []
+    assert WardrikTrigger.for_agent(defined) == []
   end
 
-  test "changes one schedule in the definition the HTTP API sent", %{org: org} = context do
+  test "changes one trigger in the definition the HTTP API sent", %{org: org} = context do
     start_supervised!({Agents, dir: context.dir})
     defined = AgentID.parse!("#{org}/defined")
     sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
-    {:ok, _spec} = Agents.put(defined, %{"schedule" => [sweep]}, grant(org))
+    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
 
     assert {:ok, :created, digest} =
-             Agents.put_schedule(defined, "digest", %{
+             Agents.put_trigger(defined, "digest", %{
                "every" => "0 17 * * *",
                "prompt" => "Sum up."
              })
@@ -504,27 +504,27 @@ defmodule WardrikDaemon.AgentsTest do
              "jitter" => 0
            }
 
-    schema = WardrikProtocol.dir() |> Path.join("schedule.json") |> File.read!() |> JSON.decode!()
+    schema = WardrikProtocol.dir() |> Path.join("trigger.json") |> File.read!() |> JSON.decode!()
     assert {:ok, _} = JSV.validate(digest, JSV.build!(schema, resolver: WardrikProtocol.Resolver))
 
     assert {:ok, :changed, %{"every" => "2h"}} =
-             Agents.put_schedule(defined, "sweep", %{"every" => "2h", "prompt" => "Look."})
+             Agents.put_trigger(defined, "sweep", %{"every" => "2h", "prompt" => "Look."})
 
-    assert {:ok, %{"schedule" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
+    assert {:ok, %{"triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
              Agents.get(defined)
 
     assert [%{name: "digest"}, %{name: "sweep", every: {:interval, 7_200_000}}] =
-             WardrikSchedule.for_agent(defined)
+             WardrikTrigger.for_agent(defined)
 
-    assert {:error, ~s(schedule digest: every: "10s" is shorter than a minute)} =
-             Agents.put_schedule(defined, "digest", %{"every" => "10s", "prompt" => "Sum up."})
+    assert {:error, ~s(trigger digest: every: "10s" is shorter than a minute)} =
+             Agents.put_trigger(defined, "digest", %{"every" => "10s", "prompt" => "Sum up."})
 
-    assert :ok = Agents.delete_schedule(defined, "digest")
-    assert {:error, :not_found} = Agents.delete_schedule(defined, "digest")
-    assert [%{name: "sweep"}] = WardrikSchedule.for_agent(defined)
+    assert :ok = Agents.delete_trigger(defined, "digest")
+    assert {:error, :not_found} = Agents.delete_trigger(defined, "digest")
+    assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
 
     assert {:error, :not_found} =
-             Agents.put_schedule(
+             Agents.put_trigger(
                AgentID.parse!("#{org}/nobody"),
                "sweep",
                Map.delete(sweep, "name")
