@@ -29,6 +29,7 @@ defmodule WardrikPolicy.Pattern do
   it governs and read back on another node.
   """
 
+  alias Wardrik.Tool.Name
   alias WardrikPolicy.Condition
 
   @enforce_keys [:source, :parts]
@@ -46,10 +47,10 @@ defmodule WardrikPolicy.Pattern do
   def parse(source) when is_binary(source) and source != "" do
     case Regex.run(~r/\A([^()]+)\((.*)\)\z/s, source) do
       [_whole, name, inner] ->
-        pattern = %__MODULE__{source: source, parts: String.split(name, "*")}
+        pattern = %__MODULE__{source: source, parts: Name.glob(name)}
 
         case Condition.parse(inner) do
-          :subject -> {:ok, %{pattern | argument: String.split(inner, "*")}}
+          :subject -> {:ok, %{pattern | argument: Name.glob(inner)}}
           {:ok, conditions} -> {:ok, %{pattern | conditions: conditions}}
           {:error, message} -> {:error, "#{inspect(source)}, which #{message}"}
         end
@@ -64,7 +65,7 @@ defmodule WardrikPolicy.Pattern do
   defp unparsed(source) do
     case {count(source, "("), count(source, ")")} do
       {0, 0} ->
-        {:ok, %__MODULE__{source: source, parts: String.split(source, "*")}}
+        {:ok, %__MODULE__{source: source, parts: Name.glob(source)}}
 
       {same, same} ->
         {:error,
@@ -109,8 +110,7 @@ defmodule WardrikPolicy.Pattern do
   end
 
   @doc "How a tool the agent knows as `name` is shown: `server/tool` for an MCP server's."
-  @spec shown(String.t()) :: String.t()
-  def shown(name), do: String.replace(name, "__", "/", global: false)
+  defdelegate shown(name), to: Name
 
   @doc """
   Whether the pattern names the tool the agent knows as `name`, as it is
@@ -144,27 +144,10 @@ defmodule WardrikPolicy.Pattern do
   def match?(%__MODULE__{argument: argument} = pattern, name, subject),
     do: names?(pattern, name) and glob?(argument, subject)
 
-  defp names?(%__MODULE__{parts: parts}, name),
-    do: glob?(parts, name) or glob?(parts, shown(name))
+  defp names?(%__MODULE__{parts: parts}, name), do: Name.match?(parts, name)
 
   @doc "Whether `text` matches `glob`, a pattern split at its `*`s."
-  @spec glob?([String.t()], String.t()) :: boolean()
-  def glob?([whole], text), do: text == whole
-
-  def glob?([first | rest], name) do
-    String.starts_with?(name, first) and
-      follows?(rest, binary_slice(name, byte_size(first)..-1//1))
-  end
-
-  defp follows?([last], rest), do: String.ends_with?(rest, last)
-  defp follows?(["" | parts], rest), do: follows?(parts, rest)
-
-  defp follows?([part | parts], rest) do
-    case :binary.match(rest, part) do
-      {at, length} -> follows?(parts, binary_slice(rest, (at + length)..-1//1))
-      :nomatch -> false
-    end
-  end
+  defdelegate glob?(glob, text), to: Name
 
   defimpl String.Chars do
     def to_string(pattern), do: pattern.source

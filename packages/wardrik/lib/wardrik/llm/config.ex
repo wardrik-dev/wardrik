@@ -86,6 +86,7 @@ defmodule Wardrik.LLM.Config do
   require Logger
 
   alias Wardrik.Tool
+  alias Wardrik.Tool.Name
 
   defstruct model_spec: {:zai_coding_plan, model: "glm-5.3-flash"},
             system: nil,
@@ -191,29 +192,10 @@ defmodule Wardrik.LLM.Config do
         usd
 
       :error ->
-        shown = String.replace(name, "__", "/", global: false)
-
         prices
-        |> Enum.filter(fn {pattern, _usd} -> glob?(pattern, name) or glob?(pattern, shown) end)
+        |> Enum.filter(fn {pattern, _usd} -> Name.match?(Name.glob(pattern), name) end)
         |> Enum.max_by(fn {pattern, _usd} -> String.length(pattern) end, fn -> {nil, nil} end)
         |> elem(1)
-    end
-  end
-
-  defp glob?(pattern, name) do
-    [first | rest] = String.split(pattern, "*")
-
-    String.starts_with?(name, first) and
-      follows?(rest, binary_slice(name, byte_size(first)..-1//1))
-  end
-
-  defp follows?([], rest), do: rest == ""
-  defp follows?([last], rest), do: String.ends_with?(rest, last)
-
-  defp follows?([part | parts], rest) do
-    case :binary.match(rest, part) do
-      {at, size} -> follows?(parts, binary_slice(rest, (at + size)..-1//1))
-      :nomatch -> false
     end
   end
 
