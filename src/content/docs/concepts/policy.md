@@ -223,8 +223,8 @@ A call can also be decided:
 - from Slack, where the notice shows the call's arguments, with Approve and Deny buttons. See
   [Slack](/channels/slack/);
 - over the HTTP API, with a token that can `decide`:
-  `POST /v1/agents/{key}/interrupts/{id}` with `{"decision": "approve"}`,
-  `{"decision": "approve", "note": "..."}`, or `{"decision": "reject", "reason": "..."}`;
+  `POST /v1/agents/{key}/decisions` with `{"decisions": [{"id": "...", "decision": "approve"}]}`,
+  an approval with a `"note"`, or `"decision": "reject"` with a `"reason"`;
 - in the [terminal client](/guides/tui/), with Ctrl-Y and Ctrl-N.
 
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the

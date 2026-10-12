@@ -86,7 +86,7 @@ agent with is its key.
 | `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and triggers included, `204` |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
-| `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
+| `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
@@ -155,19 +155,24 @@ trimmed past the cursor, which was read from its oldest event. See
 
 `content` in place of `parts` is the text alone. `id` is optional, and a
 message sent again under the same id is taken once. The answer names it:
-`{"message": {"id": "msg_01"}}`.
+`{"message": {"id": "msg_01"}}`. The model reads the message as from the
+caller's principal.
 
-### Interrupts
+### Decisions
 
-    POST /v1/agents/acme/triage/interrupts/toolu_01
-    {"decision": "reject", "reason": "Not this quarter."}
+    POST /v1/agents/acme/triage/decisions
+    {"decisions": [{"id": "toolu_01", "decision": "reject", "reason": "Not this quarter."}]}
 
-`decision` is `approve` or `reject`. A rejection's `reason` is what the
-model is told in place of the call's answer; an approval's `note`, as in
-`{"decision": "approve", "note": "Only this once."}`, is what it reads
-beside the answer, and never changes the call, which runs as the model
-wrote it. The decision is recorded as made by the caller's principal, and answers `409` when the agent is not waiting on that call,
-and `503` when the agent could not record it.
+Each decision names a call the agent waits on, an interrupt's `id`, and
+is `approve` or `reject`; `wardrik_protocol`'s `decisions.json` is the
+body's schema. A rejection's `reason` is what the model is told in place
+of the call's answer; an approval's `note`, as in
+`{"id": "toolu_01", "decision": "approve", "note": "Only this once."}`, is
+what it reads beside the answer, and never changes the call, which runs as
+the model wrote it. The decisions are taken together, and recorded as made
+by the caller's principal. The answer lists each call with `approved` or
+`rejected`; `409` where the agent is not waiting on one of them, and `503`
+where it could not record them.
 
 ### Triggers
 
@@ -310,6 +315,14 @@ The accounts an owner's org is offered, and who holds each: what GET /v1/connect
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `connections` | array of object | yes |  |
+
+### `decisions`
+
+The body of POST /v1/agents/{key}/decisions: what a person decides of the calls an agent waits on, taken together. The answer lists each call's id with approved or rejected.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `decisions` | array of object | yes |  |
 
 ### `error`
 
