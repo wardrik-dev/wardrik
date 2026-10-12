@@ -16,6 +16,7 @@ config :wardrik, WardrikStore,
 # An agent wakes with its definition as it stands, as the release starts the
 # fleet.
 config :wardrik, Wardrik.Fleet, definition: {WardrikDaemon.Agents, :current, []}
+config :wardrik, definitions: WardrikDaemon.Agents
 
 # What the daemon starts each package with, beside what config.yaml says.
 config :wardrik_daemon, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]

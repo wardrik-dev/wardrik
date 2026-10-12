@@ -13,7 +13,7 @@ defmodule WardrikHTTP.Auth do
 
   import Plug.Conn
 
-  alias WardrikHTTP.Resource
+  alias Wardrik.Resource
 
   @impl Plug
   def init(opts), do: opts

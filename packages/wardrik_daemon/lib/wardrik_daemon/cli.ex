@@ -27,6 +27,7 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Fleet
+  alias Wardrik.Resource
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Agents
   alias WardrikDaemon.CLI.Command
@@ -41,7 +42,6 @@ defmodule WardrikDaemon.CLI do
   alias WardrikDaemon.CLI.Vault
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
-  alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
 
   @faint [:faint, :light_black]

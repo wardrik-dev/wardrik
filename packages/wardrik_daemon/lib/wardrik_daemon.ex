@@ -186,9 +186,7 @@ defmodule WardrikDaemon do
     end
   end
 
-  defp listener do
-    [definition: WardrikDaemon.Agents] ++ Keyword.take(Config.settings(WardrikHTTP), [:port, :ip])
-  end
+  defp listener, do: Keyword.take(Config.settings(WardrikHTTP), [:port, :ip])
 
   @doc """
   What this node is running, as `wardrik status` prints it: the node, how long

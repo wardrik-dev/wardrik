@@ -157,12 +157,12 @@ defmodule WardrikHTTP.Access do
   def authorize(%Grant{} = grant, action, id), do: authorize([grant], action, id)
 
   def authorize(grants, action, %Wardrik.AgentID{} = id) when is_list(grants) do
-    case Enum.filter(grants, &Grant.covers?(&1, id)) do
-      [] ->
-        {:error, :not_found}
+    answers = Enum.map(grants, &Wardrik.Subject.authorize(id, &1, action))
 
-      reaching ->
-        if Enum.any?(reaching, &(action in &1.can)), do: :ok, else: {:error, :forbidden}
+    cond do
+      :ok in answers -> :ok
+      Enum.any?(answers, &match?({:error, %{type: :forbidden}}, &1)) -> {:error, :forbidden}
+      true -> {:error, :not_found}
     end
   end
 
