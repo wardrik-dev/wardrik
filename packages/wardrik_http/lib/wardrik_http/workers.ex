@@ -185,6 +185,10 @@ defmodule WardrikHTTP.Workers do
         Process.demonitor(ref, [:flush])
         {:ok, result, served_by: served}
 
+      {^ref, {:ok, result, opts}} ->
+        Process.demonitor(ref, [:flush])
+        {:ok, result, Keyword.put(opts, :served_by, served)}
+
       {:DOWN, ^ref, :process, _pid, _reason} ->
         {:in_doubt, "The worker running #{name} went away before it answered.", served_by: served}
     after

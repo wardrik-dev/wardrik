@@ -19,8 +19,8 @@ defmodule WardrikTUI.ScrollTest do
     on_exit(fn -> Breeze.Test.stop(session) end)
 
     turn = Source.root(agent_id, name: "turn")
-    Event.emit(turn, {:turn_started, [Wardrik.Agent.Message.new("hi")]})
-    Enum.each(1..40, &Event.emit(turn, {:result, "line #{&1}\n"}))
+    Event.emit(turn, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
+    Enum.each(1..40, &Event.emit(turn, %Event.Result{text: "line #{&1}\n"}))
     screen(session)
     Breeze.Test.focus(session, "log")
 

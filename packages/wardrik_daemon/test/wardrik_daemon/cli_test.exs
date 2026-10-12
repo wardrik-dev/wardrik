@@ -65,7 +65,7 @@ defmodule WardrikDaemon.CLITest do
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
 
@@ -90,7 +90,7 @@ defmodule WardrikDaemon.CLITest do
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "open an issue")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
 
     await_parked(key)
 
@@ -106,7 +106,10 @@ defmodule WardrikDaemon.CLITest do
     assert command(["approve", key, "call_1"]) == {"Approved call_1 for #{key}.\n", 0}
     assert_receive {:resumed, %{"call_1" => :approve}}
 
-    assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+    assert_receive %Event{
+      payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+    }
+
     assert by == Wardrik.Principal.new(:shell, "ops")
   end
 
@@ -353,11 +356,17 @@ defmodule WardrikDaemon.CLITest do
     assert_receive {:written, "Watching " <> watching}
     assert watching =~ "#{key}, idle on "
 
-    Wardrik.Test.Events.emit(key, {:result, "first\n"})
+    Wardrik.Test.Events.emit(key, %Event.Result{text: "first\n"})
 
     Wardrik.Test.Events.emit(
       key,
-      {:tool_started, "call_1", "deploy", %{}, "key", %{by: :default, hooks: []}}
+      %Event.ToolStarted{
+        call_id: "call_1",
+        name: "deploy",
+        arguments: %{},
+        idempotency_key: "key",
+        decided_by: %{by: :default, hooks: []}
+      }
     )
 
     assert_receive {:written, "first\n"}
@@ -425,7 +434,7 @@ defmodule WardrikDaemon.CLITest do
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "hello")
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["history", key]) == {"user: hello\n\nassistant: hello back\n", 0}
   end
@@ -436,7 +445,7 @@ defmodule WardrikDaemon.CLITest do
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "hello")
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert command(["clear", key]) == {"Cleared #{key}'s conversation.\n", 0}
     assert command(["history", key]) == {"Nothing has been said yet.\n", 0}
@@ -588,8 +597,8 @@ defmodule WardrikDaemon.CLITest do
     {:ok, _pid} = WardrikSchedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
     # A schedule announces a firing before it records it, so the second
     # firing is the first that finds the one before it written down.
-    assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
-    assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
+    assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
+    assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
 
     assert {output, 0} = command(["schedules", prefix])
     assert output =~ "2 schedules:"

@@ -45,6 +45,27 @@ defmodule Wardrik.LLM.ConfigTest do
     assert Config.tools(Config.new(tools: once)) == once
   end
 
+  describe "tool_price/2" do
+    test "is a name's own price, else the longest pattern's that matches it" do
+      config =
+        Config.new(
+          tool_prices: %{
+            "web_search" => 0.005,
+            "github/*" => 0.01,
+            "github/create_*" => 0.02,
+            "*search" => 0.5
+          }
+        )
+
+      assert Config.tool_price(config, "web_search") == 0.005
+      assert Config.tool_price(config, "github__list_issues") == 0.01
+      assert Config.tool_price(config, "github__create_issue") == 0.02
+      assert Config.tool_price(config, "deep_search") == 0.5
+      assert Config.tool_price(config, "run_lua") == nil
+      assert Config.tool_price(Config.new(), "web_search") == nil
+    end
+  end
+
   describe "tool_timeout/2" do
     defmodule Patient do
       @behaviour Wardrik.Tool

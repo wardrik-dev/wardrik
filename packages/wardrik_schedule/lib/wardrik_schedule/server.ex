@@ -102,7 +102,7 @@ defmodule WardrikSchedule.Server do
   end
 
   defp announce(%State{agent: agent, schedule: schedule}, outcome) do
-    Event.announce(agent, {:schedule_fired, schedule.name, outcome})
+    Event.announce(agent, %Event.ScheduleFired{name: schedule.name, outcome: outcome})
   end
 
   # Only the timer armed last wakes the schedule.

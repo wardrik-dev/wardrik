@@ -46,7 +46,7 @@ defmodule Wardrik.Event.Log.Writer do
   alias Wardrik.Event.Log
   alias Wardrik.Event.Log.Entry
 
-  @deltas [:result, :thinking]
+  @deltas [Event.Result, Event.Thinking]
 
   # Writes the store could not confirm, remembered so one found committed is
   # taken as this writer's own.
@@ -79,10 +79,10 @@ defmodule Wardrik.Event.Log.Writer do
 
   @doc """
   Finds the head of the log and writes `started`, the agent's
-  `{:agent_started, ...}` event, after it, ahead of the bus.
+  `Wardrik.Event.AgentStarted` event, after it, ahead of the bus.
   """
   @spec open(t(), Event.t()) :: t()
-  def open(%__MODULE__{} = writer, %Event{payload: {:agent_started, _, _, _}} = started) do
+  def open(%__MODULE__{} = writer, %Event{payload: %Event.AgentStarted{}} = started) do
     with {:error, reason} <- Log.opened(writer.agent_id),
          do: Logger.warning("Could not list #{writer.agent_id}'s log: #{inspect(reason)}")
 
@@ -131,11 +131,14 @@ defmodule Wardrik.Event.Log.Writer do
     if Codec.durable?(Event.type(event)), do: durable(writer, event), else: live(writer, event)
   end
 
-  defp follow(writer, %Event{payload: {:model_started, message_id, _spec, _decided_by}} = event),
+  defp follow(writer, %Event{payload: %Event.ModelStarted{message_id: message_id}} = event),
     do: %{writer | messages: Map.put(writer.messages, span(event), message_id)}
 
-  defp follow(writer, %Event{payload: {:model_finished, _id, _outcome, _ms, _response}} = event),
-    do: %{writer | messages: Map.delete(writer.messages, span(event))}
+  defp follow(
+         writer,
+         %Event{payload: %Event.ModelFinished{}} = event
+       ),
+       do: %{writer | messages: Map.delete(writer.messages, span(event))}
 
   defp follow(writer, _event), do: writer
 
@@ -189,7 +192,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   # -- live ------------------------------------------------------------------
 
-  defp live(writer, %Event{payload: {type, _text}} = event) when type in @deltas do
+  defp live(writer, %Event{payload: %kind{}} = event) when kind in @deltas do
     case Map.fetch(writer.messages, span(event)) do
       {:ok, message_id} -> deliver(writer, event, message_id: message_id)
       :error -> {:ok, writer}

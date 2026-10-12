@@ -2,10 +2,11 @@ defmodule Wardrik.Event do
   @moduledoc """
   One thing that happened, and where it happened.
 
-  The payload stays a tuple, so subscribers match on it the way they always
-  have; this struct is the envelope around it.
+  The payload is a struct of its own for each kind of event, with named
+  fields, so a subscriber matches the fields it reads and a field added later
+  touches no one who does not read it; this struct is the envelope around it.
 
-      def handle_info(%Wardrik.Event{payload: {:tool_finished, id, name, result, _served_by}}, state)
+      def handle_info(%Wardrik.Event{payload: %Wardrik.Event.ToolFinished{name: name}}, state)
 
   `root?/1` separates the turn's own events from work it spawned, which is
   what lets one subscription render a whole tree.
@@ -19,92 +20,65 @@ defmodule Wardrik.Event do
   defstruct [:id, :source, :payload, :at]
 
   @typedoc """
-  An event payload. Its first element names the event.
+  An event payload: one of the structs below, each named for its kind, as
+  `type/1` names it.
 
   Every payload core emits is listed here. A package emits these and no
-  others; `Wardrik.Tool.progress/2` is how a tool reports `:tool_progress`.
+  others; `Wardrik.Tool.Context.progress/3` is how a tool reports progress.
 
-  Agent lifecycle, on the turn's root span:
-
-    * `{:turn_started, messages}`, the `Wardrik.Agent.Message`s it answers,
-      `{:turn_finished, messages}`,
-      `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
-      `{:turn_parked, calls}`, `{:turn_resumed, decisions}`,
-      `{:call_decided, call_id, decision, by}`, one per call a person
-      answered, with the `Wardrik.Principal` who did, or `nil` where no caller
-      said, `{:context_compacted, stats}`
-
-  Agent lifecycle, each on the root of a trace of its own:
-
-    * `{:message_queued, message}`, a `Wardrik.Agent.Message` the agent will
-      answer, with who sent it where that is known, `{:agent_started, node,
-      status, generation}`, each time the agent is loaded, `{:agent_stopped,
-      node, :idle}`, when it goes to sleep for having had nothing to do,
-      `{:context_cleared, dropped}`, when its history is
-      emptied, with how many messages it held, `{:schedule_fired, name,
-      outcome}`, when a schedule came due, with what came of it, as
-      `WardrikSchedule` announces it
-
-  Spans and delegations, on their own span:
-
-    * `{:span_started, name}`, `{:span_finished, outcome, duration_ms}`
-    * `{:delegation_started, prompt}`, `{:delegation_finished, outcome, duration_ms}`
-
-  Model calls, each answering with the assistant message `message_id` names:
-
-    * `{:model_started, message_id, model_spec, decided_by}`, with who let the
-      call go ahead, as `t:Wardrik.Call.decider/0`,
-      `{:model_finished, message_id, outcome, duration_ms, response}`, where
-      `response` is the `ReqLLM.Response` without its context, or `nil` for a
-      call that did not answer
-    * `{:result, text}`, `{:thinking, text}`, `{:meta, chunk}`, `{:chunk, chunk}`,
-      `{:tool_call, call}`, `{:deadline_reached, message_count}`
-
-  Tool calls, on the call's span:
-
-    * `{:tool_started, call_id, name, arguments, idempotency_key, decided_by}`,
-      with who let the call go ahead, as `t:Wardrik.Call.decider/0`, again
-      for each time it runs; `{:tool_finished, call_id, name, result, served_by}`,
-      with what answered it where its tool said, as `t:Wardrik.Call.served/0`
-    * `{:tool_denied, call_id, name, reason, decided_by}`,
-      `{:tool_parked, call_id, name, prompt}`
-    * `{:tool_progress, call_id, name, progress, total}`
-    * `{:tool_replayed, call_id, name, result}`, a call answered from the
-      ledger without running again
+    * Agent lifecycle, on the turn's root span: `Wardrik.Event.TurnStarted`,
+      `Wardrik.Event.TurnFinished`, `Wardrik.Event.TurnFailed`,
+      `Wardrik.Event.TurnInterrupted`, `Wardrik.Event.TurnParked`,
+      `Wardrik.Event.TurnResumed`, `Wardrik.Event.CallDecided`,
+      `Wardrik.Event.ContextCompacted`.
+    * Agent lifecycle, each on the root of a trace of its own:
+      `Wardrik.Event.MessageQueued`, `Wardrik.Event.AgentStarted`,
+      `Wardrik.Event.AgentStopped`, `Wardrik.Event.ContextCleared`,
+      `Wardrik.Event.ScheduleFired`.
+    * Spans and delegations, on their own span: `Wardrik.Event.SpanStarted`,
+      `Wardrik.Event.SpanFinished`, `Wardrik.Event.DelegationStarted`,
+      `Wardrik.Event.DelegationFinished`.
+    * Model calls: `Wardrik.Event.ModelStarted`,
+      `Wardrik.Event.ModelFinished`, `Wardrik.Event.Result`,
+      `Wardrik.Event.Thinking`, `Wardrik.Event.Meta`, `Wardrik.Event.Chunk`,
+      `Wardrik.Event.ToolCall`, `Wardrik.Event.DeadlineReached`.
+    * Tool calls, on the call's span: `Wardrik.Event.ToolStarted`,
+      `Wardrik.Event.ToolFinished`, `Wardrik.Event.ToolReplayed`,
+      `Wardrik.Event.ToolDenied`, `Wardrik.Event.ToolParked`,
+      `Wardrik.Event.ToolProgress`.
   """
   @type payload() ::
-          {:turn_started, [Wardrik.Agent.Message.t()]}
-          | {:turn_finished, [ReqLLM.Message.t()]}
-          | {:turn_failed, term()}
-          | {:turn_interrupted, Wardrik.Agent.State.stats()}
-          | {:turn_parked, [{Wardrik.Tool.call(), String.t()}]}
-          | {:turn_resumed, %{String.t() => term()}}
-          | {:call_decided, String.t(), Wardrik.LLM.Turn.decision(), Wardrik.Principal.t() | nil}
-          | {:message_queued, Wardrik.Agent.Message.t()}
-          | {:agent_started, node(), :idle | :running | :parked, String.t()}
-          | {:agent_stopped, node(), :idle}
-          | {:context_compacted, Wardrik.History.stats()}
-          | {:context_cleared, non_neg_integer()}
-          | {:schedule_fired, String.t(), :asked | :busy | :no_agent | :missed | :failed}
-          | {:span_started, String.t()}
-          | {:span_finished, Wardrik.Scope.outcome(), non_neg_integer()}
-          | {:delegation_started, String.t()}
-          | {:delegation_finished, {:ok, String.t()} | {:error, term()}, non_neg_integer()}
-          | {:model_started, String.t(), term(), Wardrik.Call.decider()}
-          | {:model_finished, String.t(), :ok | {:error, term()}, non_neg_integer(),
-             ReqLLM.Response.t() | nil}
-          | {:result, String.t()}
-          | {:thinking, String.t()}
-          | {:meta, term()}
-          | {:chunk, term()}
-          | {:tool_call, term()}
-          | {:deadline_reached, non_neg_integer()}
-          | {:tool_started, String.t(), String.t(), map(), String.t(), Wardrik.Call.decider()}
-          | {:tool_finished, String.t(), String.t(), term(), Wardrik.Call.served() | nil}
-          | {:tool_replayed, String.t(), String.t(), term()}
-          | {:tool_denied, String.t(), String.t(), String.t(), Wardrik.Call.decider()}
-          | {:tool_parked, String.t(), String.t(), String.t()}
-          | {:tool_progress, String.t(), String.t(), number(), number() | nil}
+          __MODULE__.TurnStarted.t()
+          | __MODULE__.TurnFinished.t()
+          | __MODULE__.TurnFailed.t()
+          | __MODULE__.TurnInterrupted.t()
+          | __MODULE__.TurnParked.t()
+          | __MODULE__.TurnResumed.t()
+          | __MODULE__.CallDecided.t()
+          | __MODULE__.MessageQueued.t()
+          | __MODULE__.AgentStarted.t()
+          | __MODULE__.AgentStopped.t()
+          | __MODULE__.ContextCompacted.t()
+          | __MODULE__.ContextCleared.t()
+          | __MODULE__.ScheduleFired.t()
+          | __MODULE__.SpanStarted.t()
+          | __MODULE__.SpanFinished.t()
+          | __MODULE__.DelegationStarted.t()
+          | __MODULE__.DelegationFinished.t()
+          | __MODULE__.ModelStarted.t()
+          | __MODULE__.ModelFinished.t()
+          | __MODULE__.Result.t()
+          | __MODULE__.Thinking.t()
+          | __MODULE__.Meta.t()
+          | __MODULE__.Chunk.t()
+          | __MODULE__.ToolCall.t()
+          | __MODULE__.DeadlineReached.t()
+          | __MODULE__.ToolStarted.t()
+          | __MODULE__.ToolFinished.t()
+          | __MODULE__.ToolReplayed.t()
+          | __MODULE__.ToolDenied.t()
+          | __MODULE__.ToolParked.t()
+          | __MODULE__.ToolProgress.t()
 
   @typedoc """
   A payload, who emitted it, and when, under an id of its own: a UUIDv7 that
@@ -120,7 +94,7 @@ defmodule Wardrik.Event do
 
   @doc "Build an event without publishing it."
   @spec new(Source.t(), payload()) :: t()
-  def new(%Source{} = source, payload) when is_tuple(payload) do
+  def new(%Source{} = source, %_kind{} = payload) do
     %__MODULE__{
       id: Wardrik.UUID.v7(),
       source: source,
@@ -139,9 +113,43 @@ defmodule Wardrik.Event do
   @spec announce(Wardrik.AgentID.t(), payload()) :: :ok
   def announce(%Wardrik.AgentID{} = agent, payload), do: emit(Source.root(agent), payload)
 
-  @doc "The name of the event, taken from the first element of its payload."
+  @types %{
+    __MODULE__.TurnStarted => :turn_started,
+    __MODULE__.TurnFinished => :turn_finished,
+    __MODULE__.TurnFailed => :turn_failed,
+    __MODULE__.TurnInterrupted => :turn_interrupted,
+    __MODULE__.TurnParked => :turn_parked,
+    __MODULE__.TurnResumed => :turn_resumed,
+    __MODULE__.CallDecided => :call_decided,
+    __MODULE__.MessageQueued => :message_queued,
+    __MODULE__.AgentStarted => :agent_started,
+    __MODULE__.AgentStopped => :agent_stopped,
+    __MODULE__.ContextCompacted => :context_compacted,
+    __MODULE__.ContextCleared => :context_cleared,
+    __MODULE__.ScheduleFired => :schedule_fired,
+    __MODULE__.SpanStarted => :span_started,
+    __MODULE__.SpanFinished => :span_finished,
+    __MODULE__.DelegationStarted => :delegation_started,
+    __MODULE__.DelegationFinished => :delegation_finished,
+    __MODULE__.ModelStarted => :model_started,
+    __MODULE__.ModelFinished => :model_finished,
+    __MODULE__.Result => :result,
+    __MODULE__.Thinking => :thinking,
+    __MODULE__.Meta => :meta,
+    __MODULE__.Chunk => :chunk,
+    __MODULE__.ToolCall => :tool_call,
+    __MODULE__.DeadlineReached => :deadline_reached,
+    __MODULE__.ToolStarted => :tool_started,
+    __MODULE__.ToolFinished => :tool_finished,
+    __MODULE__.ToolReplayed => :tool_replayed,
+    __MODULE__.ToolDenied => :tool_denied,
+    __MODULE__.ToolParked => :tool_parked,
+    __MODULE__.ToolProgress => :tool_progress
+  }
+
+  @doc "The name of the event, as an atom: `:tool_finished` for a `Wardrik.Event.ToolFinished`."
   @spec type(t()) :: atom()
-  def type(%__MODULE__{payload: payload}), do: elem(payload, 0)
+  def type(%__MODULE__{payload: %kind{}}), do: Map.fetch!(@types, kind)
 
   @typedoc """
   How much of an agent's stream to take.

@@ -173,7 +173,7 @@ defmodule WardrikHTTP.RouterTest do
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
 
     {key, agent}
   end
@@ -185,14 +185,14 @@ defmodule WardrikHTTP.RouterTest do
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "open an issue")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
 
     {key, agent}
   end
 
   # A turn has finished, and the agent has written everything it emitted.
   defp settled(agent) do
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
     Agent.status(agent)
   end
 
@@ -225,7 +225,10 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"decision" => "approve"}
                )
 
-      assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+      }
+
       assert {Wardrik.Principal.type(by), Wardrik.Principal.id(by)} == {:user, "jon"}
     end
 
@@ -529,7 +532,10 @@ defmodule WardrikHTTP.RouterTest do
       assert body == %{"interrupt" => %{"id" => "call_1", "decision" => "approved"}}
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+      }
+
       assert Wardrik.Principal.type(by) == :token
       assert Wardrik.Principal.id(by) == token.id
 
@@ -549,7 +555,9 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"decision" => "approve", "note" => "Only staging."}
                )
 
-      assert_receive %Event{payload: {:call_decided, "call_1", {:approve, "Only staging."}, _by}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: {:approve, "Only staging."}}
+      }
     end
 
     test "rejects a call, with the reason given", %{api: api} do
@@ -600,7 +608,7 @@ defmodule WardrikHTTP.RouterTest do
     assert_receive {:turn, _messages, _turn}
 
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
-    assert_receive %Event{payload: {:turn_interrupted, _stats}}
+    assert_receive %Event{payload: %Event.TurnInterrupted{}}
     assert Audit.about("agents/#{key}") == [{"agent.cancelled", actor(token)}]
 
     assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/cancel")
@@ -622,10 +630,10 @@ defmodule WardrikHTTP.RouterTest do
 
     assert Audit.about("agents/#{key}") == []
     send(turn, :release)
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert {:ok, %{status: 204}} = Req.delete(api, url: "/v1/agents/#{key}/conversation")
-    assert_receive %Event{payload: {:context_cleared, 2}}
+    assert_receive %Event{payload: %Event.ContextCleared{dropped: 2}}
     assert Agent.get_context(agent).messages == []
     assert Audit.about("agents/#{key}") == [{"agent.cleared", actor(token)}]
 
@@ -994,7 +1002,7 @@ defmodule WardrikHTTP.RouterTest do
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "hi")
-    assert_receive %Event{payload: {:agent_stopped, _node, :idle}}, 2_000
+    assert_receive %Event{payload: %Event.AgentStopped{reason: :idle}}, 2_000
     assert Fleet.await_update(fn -> Wardrik.Fleet.whereis(key, wake: false) == nil end)
     key
   end

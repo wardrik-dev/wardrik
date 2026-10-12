@@ -9,6 +9,7 @@ defmodule Wardrik.Agent.StateTest do
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
   alias Wardrik.Agent.State.Waiting
+  alias Wardrik.Event
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
   alias Wardrik.Scope
@@ -106,7 +107,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a message arriving while idle waits for nobody" do
       {state, effects} = State.queue(state(), Message.new("hello"))
 
-      assert [{:emit, _source, {:message_queued, %Message{text: "hello"}}}] = effects
+      assert [{:emit, _source, %Event.MessageQueued{message: %Message{text: "hello"}}}] = effects
       assert View.status(state).pending == 1
     end
 
@@ -121,7 +122,7 @@ defmodule Wardrik.Agent.StateTest do
     test "a message arriving mid-turn asks that turn to wrap up" do
       {_state, effects} = State.queue(running(), Message.new("and another thing"))
 
-      assert [{:emit, _source, {:message_queued, _message}}, {:ask_to_stop, pid}] = effects
+      assert [{:emit, _source, %Event.MessageQueued{}}, {:ask_to_stop, pid}] = effects
       assert pid == self()
     end
 
@@ -168,14 +169,17 @@ defmodule Wardrik.Agent.StateTest do
     test "a waiting turn is abandoned outright" do
       {state, effects} = State.interrupt(waiting())
 
-      assert [{:emit, source, {:turn_interrupted, stats}}, {:close_turn, scope}] = effects
+      assert [{:emit, source, %Event.TurnInterrupted{stats: stats}}, {:close_turn, scope}] =
+               effects
+
       assert stats.resolution == :abandoned
       assert state.mode == :idle
       assert scope.source == source
     end
 
     test "an idle agent says there was nothing to stop" do
-      {_state, [{:emit, _source, {:turn_interrupted, stats}}]} = State.interrupt(state())
+      {_state, [{:emit, _source, %Event.TurnInterrupted{stats: stats}}]} =
+        State.interrupt(state())
 
       assert stats.resolution == :idle
       assert stats.elapsed_ms == 0
@@ -194,7 +198,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert [
                {:shutdown, _task},
-               {:emit, _source, {:turn_interrupted, stats}},
+               {:emit, _source, %Event.TurnInterrupted{stats: stats}},
                {:close_turn, _scope}
              ] = effects
 
@@ -227,7 +231,9 @@ defmodule Wardrik.Agent.StateTest do
     test "empties the history and its mark, and says how much it held" do
       {state, _effects} = State.settled(running(), [Context.assistant("read it")], ["outside"])
 
-      assert {:ok, cleared, [{:emit, _source, {:context_cleared, 1}}]} = State.clear(state)
+      assert {:ok, cleared, [{:emit, _source, %Event.ContextCleared{dropped: 1}}]} =
+               State.clear(state)
+
       assert cleared.context.messages == []
       assert cleared.labels == []
     end
@@ -245,7 +251,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, [{:emit, source, event}, {:close_turn, scope}]} =
         State.settled(running(), messages, [])
 
-      assert event == {:turn_finished, messages}
+      assert event == %Event.TurnFinished{messages: messages}
       assert scope.source == source
       assert Context.to_list(state.context) |> length() == 1
     end
@@ -255,7 +261,7 @@ defmodule Wardrik.Agent.StateTest do
       {_state, effects} = State.settled(stopping(), messages, [])
 
       assert [
-               {:emit, _source, {:turn_interrupted, stats}},
+               {:emit, _source, %Event.TurnInterrupted{stats: stats}},
                {:close_turn, _scope},
                {:cancel_kill, _timer}
              ] = effects
@@ -287,7 +293,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "parking announces the calls a person has to answer" do
-      {state, [{:emit, _source, {:turn_parked, calls}} | _rest]} =
+      {state, [{:emit, _source, %Event.TurnParked{calls: calls}} | _rest]} =
         State.parked(running(), parked_turn())
 
       assert [{%{id: "call_1"}, "Really?"}] = calls
@@ -376,7 +382,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, _effects} = State.queue(reload(running()), Message.new("hello"))
 
       assert {%State{mode: :idle, pending: []},
-              [{:emit, _source, {:turn_interrupted, %{resolution: :idle, dropped: 1}}}]} =
+              [{:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :idle, dropped: 1}}}]} =
                State.interrupt(state)
     end
 
@@ -417,7 +423,7 @@ defmodule Wardrik.Agent.StateTest do
     test "interrupting a turn due to resume abandons it" do
       assert {%State{mode: :idle, outcome: :interrupted},
               [
-                {:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}},
+                {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
                 {:close_turn, _scope}
               ]} =
                State.interrupt(reload(resumed()))
@@ -459,7 +465,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert {%State{mode: :idle, outcome: :interrupted},
               [
-                {:emit, _source, {:turn_interrupted, %{resolution: :abandoned}}},
+                {:emit, _source, %Event.TurnInterrupted{stats: %{resolution: :abandoned}}},
                 {:close_turn, _scope}
               ]} =
                State.interrupt(reload(state))

@@ -46,8 +46,8 @@ defmodule Wardrik.Subagent do
   ## Events
 
   A delegation announces itself on its own span:
-  `{:delegation_started, prompt}` before the turn and
-  `{:delegation_finished, outcome, ms}` after it, where `outcome` is what the
+  `Wardrik.Event.DelegationStarted` before the turn and
+  `Wardrik.Event.DelegationFinished` after it, where `outcome` is what the
   call returns. Both are `:lifecycle` events, so `Wardrik.Delegation` can follow
   a turn's delegations without its token stream.
   """
@@ -74,9 +74,14 @@ defmodule Wardrik.Subagent do
 
   defp delegate(delegate, prompt) do
     started_at = System.monotonic_time()
-    Event.emit(delegate.source, {:delegation_started, prompt})
+    Event.emit(delegate.source, %Event.DelegationStarted{prompt: prompt})
     outcome = answer(delegate, prompt)
-    Event.emit(delegate.source, {:delegation_finished, outcome, Trace.elapsed_ms(started_at)})
+
+    Event.emit(delegate.source, %Event.DelegationFinished{
+      outcome: outcome,
+      duration_ms: Trace.elapsed_ms(started_at)
+    })
+
     outcome
   end
 

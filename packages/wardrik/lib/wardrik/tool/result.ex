@@ -18,12 +18,22 @@ defmodule Wardrik.Tool.Result do
   Keep `{:error, reason}` for failures where continuing is meaningless, such as
   a bug in the tool or a malformed argument it cannot interpret.
 
+  A call that cost money says how much, in US dollars, with `ok/2`, or with
+  `error/2` and `error/3` for one that failed and was charged anyway. Its
+  `tool_call.completed` event carries it, and a budget counts it:
+
+      {:ok, result} -> Wardrik.Tool.Result.ok(result, cost: 0.005)
+      {:error, reason} -> Wardrik.Tool.Result.error(reason, cost: 0.005)
+
   The message is the client's own, and it lands in conversation state, so it
   must stay free of credentials.
   """
 
-  @typedoc "A tool result carrying whether the call itself succeeded."
-  @type t() :: {:ok, map()}
+  @typedoc """
+  A tool result carrying whether the call itself succeeded, and what it cost
+  where the tool said; see `t:Wardrik.Tool.answer/0`.
+  """
+  @type t() :: {:ok, map()} | {:ok, map(), [cost: number()]}
 
   @doc """
   Whether a result reports a call that actually did its job.
@@ -34,20 +44,36 @@ defmodule Wardrik.Tool.Result do
   """
   @spec ok?(term()) :: boolean()
   def ok?({:ok, %{"ok" => false}}), do: false
+  def ok?({:ok, %{"ok" => false}, _opts}), do: false
   def ok?(_result), do: true
 
   @doc "Reports a successful call."
   @spec ok(term()) :: t()
   def ok(result), do: {:ok, %{"ok" => true, "result" => result}}
 
-  @doc "Reports a failed call as a result rather than a failed tool."
+  @doc "Reports a successful call that cost `cost:` US dollars, or nothing said where it is `nil`."
+  @spec ok(term(), cost: number() | nil) :: t()
+  def ok(result, [cost: _usd] = opts), do: costing(ok(result), opts)
+
+  @doc "Reports a failed call as a result rather than a failed tool, and what it cost where `cost:` says."
   @spec error(term()) :: t()
+  @spec error(term(), cost: number() | nil) :: t()
   def error(reason), do: {:ok, %{"ok" => false, "error" => describe(reason)}}
+  def error(reason, [cost: _usd] = opts), do: costing(error(reason), opts)
 
   @doc "The same report, with a code and sentence chosen by the caller."
   @spec error(atom() | String.t(), String.t()) :: t()
   def error(code, message) when is_binary(message),
     do: {:ok, %{"ok" => false, "error" => %{"code" => to_string(code), "message" => message}}}
+
+  @doc "`error/2` with a code and sentence, for a call that cost `cost:` US dollars."
+  @spec error(atom() | String.t(), String.t(), cost: number() | nil) :: t()
+  def error(code, message, [cost: _usd] = opts), do: costing(error(code, message), opts)
+
+  defp costing(result, cost: nil), do: result
+
+  defp costing({:ok, report}, cost: usd) when is_number(usd) and usd >= 0,
+    do: {:ok, report, cost: usd}
 
   # A client that names its own failures gives the model something better than
   # any sentence written around it.

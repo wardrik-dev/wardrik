@@ -86,7 +86,7 @@ defmodule Wardrik.FleetTest do
       pid = start(key, runner: runner(self()))
       Event.Bus.subscribe(key)
       Agent.ask(pid, "hello")
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
 
       {:ok, moved} = Fleet.move(key, node())
 
@@ -116,7 +116,7 @@ defmodule Wardrik.FleetTest do
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "deploy")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
       # A call is a barrier: the callback that parked has returned, so the
       # metadata it published is in the registry.
       assert [{_call, _prompt}] = Agent.parked(pid)
@@ -140,13 +140,15 @@ defmodule Wardrik.FleetTest do
 
       Agent.ask(pid, "go")
       assert_receive {:delegating, branch}
-      assert_receive %Event{payload: {:delegation_started, "look into pricing"}} = started
+
+      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "look into pricing"}} =
+                       started
 
       assert [%{name: "pricing", status: :running}] =
                Delegation.list(Delegation.fold(Delegation.new(), started))
 
       send(branch, :release)
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
 
       assert Wardrik.Test.Fleet.await_update(fn -> match?(%{outcome: :ok}, Fleet.lookup(key)) end)
     end
@@ -158,7 +160,7 @@ defmodule Wardrik.FleetTest do
       Event.Bus.subscribe(key, level: :lifecycle)
 
       Agent.ask(pid, "go")
-      assert_receive %Event{payload: {:turn_failed, :boom}}
+      assert_receive %Event{payload: %Event.TurnFailed{reason: :boom}}
 
       assert Wardrik.Test.Fleet.await_update(fn -> Fleet.lookup(key).outcome == :failed end)
     end
@@ -181,8 +183,11 @@ defmodule Wardrik.FleetTest do
 
       assert Fleet.kill(Prefix.new!(org: org)) == 2
 
-      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :stopped}}}, 1_000
-      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :stopped}}}, 1_000
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :stopped}}},
+                     1_000
+
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :stopped}}},
+                     1_000
     end
 
     test "leaves agents outside the prefix alone" do
@@ -215,7 +220,7 @@ defmodule Wardrik.FleetTest do
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "hello")
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
 
       :ok = Fleet.stop(key)
       assert Fleet.whereis(key, wake: false) == nil
@@ -235,7 +240,7 @@ defmodule Wardrik.FleetTest do
       Event.Bus.subscribe(key)
 
       Agent.ask(pid, "deploy it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
       assert [{_call, _prompt}] = Agent.parked(pid)
 
       :ok = Fleet.stop(key)

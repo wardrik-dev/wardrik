@@ -16,6 +16,7 @@ defmodule WardrikTUI.View do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Event
   alias WardrikTUI.Activity
   alias WardrikTUI.Render
   alias WardrikTUI.Text
@@ -46,42 +47,43 @@ defmodule WardrikTUI.View do
   end
 
   @doc "A low-level event as a trace line, or `nil` when it is not worth one."
-  @spec trace(tuple()) :: Text.t() | nil
-  def trace({:model_started, _message_id, model_spec, _decided_by}),
+  @spec trace(Wardrik.Event.payload()) :: Text.t() | nil
+  def trace(%Event.ModelStarted{model_spec: model_spec}),
     do: line("model", inspect(model_spec), :cyan)
 
-  def trace({:model_finished, _message_id, :ok, ms, _response}),
+  def trace(%Event.ModelFinished{outcome: :ok, duration_ms: ms}),
     do: line("model", "ok #{Text.duration(ms)}", :cyan)
 
-  def trace({:model_finished, _message_id, {:error, reason}, ms, _response}),
+  def trace(%Event.ModelFinished{outcome: {:error, reason}, duration_ms: ms}),
     do: line("model", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
-  def trace({:meta, meta}), do: line("meta", inspect(meta), @faint)
+  def trace(%Event.Meta{chunk: meta}), do: line("meta", inspect(meta), @faint)
 
-  def trace({:tool_started, id, name, _arguments, _key, _decided_by}),
+  def trace(%Event.ToolStarted{call_id: id, name: name}),
     do: line("tool", "#{name} #{id}", :yellow)
 
-  def trace({:tool_finished, id, name, {:ok, output}, _served_by}),
+  def trace(%Event.ToolFinished{call_id: id, name: name, result: {:ok, output}}),
     do: line("tool", "#{name} #{id} ok #{payload(output)}", :yellow)
 
-  def trace({:tool_finished, id, name, {:error, why}, _served_by}),
+  def trace(%Event.ToolFinished{call_id: id, name: name, result: {:error, why}}),
     do: line("tool", "#{name} #{id} #{inspect(why)}", :red)
 
-  def trace({:tool_denied, id, name, reason, _decided_by}),
+  def trace(%Event.ToolDenied{call_id: id, name: name, reason: reason}),
     do: line("deny", "#{name} #{id} #{reason}", :red)
 
-  def trace({:tool_parked, id, name, prompt}),
+  def trace(%Event.ToolParked{call_id: id, name: name, prompt: prompt}),
     do: line("ask", "#{name} #{id} #{prompt}", :yellow)
 
-  def trace({:delegation_started, task}), do: line("deleg", Render.squash(task), :magenta)
+  def trace(%Event.DelegationStarted{prompt: task}),
+    do: line("deleg", Render.squash(task), :magenta)
 
-  def trace({:delegation_finished, {:ok, _text}, ms}),
+  def trace(%Event.DelegationFinished{outcome: {:ok, _text}, duration_ms: ms}),
     do: line("deleg", "ok #{Text.duration(ms)}", :magenta)
 
-  def trace({:delegation_finished, {:error, reason}, ms}),
+  def trace(%Event.DelegationFinished{outcome: {:error, reason}, duration_ms: ms}),
     do: line("deleg", "#{inspect(reason)} #{Text.duration(ms)}", :red)
 
-  def trace({:turn_parked, calls}),
+  def trace(%Event.TurnParked{calls: calls}),
     do:
       line(
         "turn",
@@ -89,18 +91,19 @@ defmodule WardrikTUI.View do
         :yellow
       )
 
-  def trace({:turn_resumed, decisions}),
+  def trace(%Event.TurnResumed{decisions: decisions}),
     do: line("turn", "resumed · #{map_size(decisions)} call(s) answered", :cyan)
 
-  def trace({:deadline_reached, count}),
+  def trace(%Event.DeadlineReached{message_count: count}),
     do: line("turn", "deadline reached after #{count} message(s)", :yellow)
 
-  def trace({:turn_started, messages}),
+  def trace(%Event.TurnStarted{messages: messages}),
     do: line("turn", Enum.map_join(messages, " | ", & &1.text), :cyan)
 
-  def trace({:turn_finished, messages}), do: line("turn", "#{length(messages)} message(s)", :cyan)
+  def trace(%Event.TurnFinished{messages: messages}),
+    do: line("turn", "#{length(messages)} message(s)", :cyan)
 
-  def trace({:turn_interrupted, stats}),
+  def trace(%Event.TurnInterrupted{stats: stats}),
     do: line("turn", "interrupted #{inspect(stats)}", :yellow)
 
   def trace(_payload), do: nil

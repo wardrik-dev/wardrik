@@ -117,8 +117,8 @@ defmodule Wardrik.LLM.Turn do
   A call that fails before the provider has begun to answer, for a reason
   `Wardrik.Failure` calls transient, such as a stream that times out before its
   first chunk, is asked again after each wait the config's `:retries` lists,
-  through the dispatch each time. Each try is its own `{:model_started, _, _}`
-  and `{:model_finished, _, _, _, _}`, under the same message id. A call that
+  through the dispatch each time. Each try is its own `Wardrik.Event.ModelStarted`
+  and `Wardrik.Event.ModelFinished`, under the same message id. A call that
   fails once the provider has begun to answer is not asked again, since what
   streamed has already been published; it fails the turn, as a call does once
   its retries are spent. `:interrupt` stops the wait, and a turn past its
@@ -364,7 +364,7 @@ defmodule Wardrik.LLM.Turn do
 
   defp out_of_time(turn) do
     Logger.warning("Turn reached its deadline, stopping with what it has")
-    Event.emit(turn.scope.source, {:deadline_reached, length(turn.messages)})
+    Event.emit(turn.scope.source, %Event.DeadlineReached{message_count: length(turn.messages)})
     done(turn)
   end
 
@@ -578,17 +578,28 @@ defmodule Wardrik.LLM.Turn do
 
     Event.emit(
       source,
-      {:model_started, message_id, call.target.model_spec, Call.decided_by(call)}
+      %Event.ModelStarted{
+        message_id: message_id,
+        model_spec: call.target.model_spec,
+        decided_by: Call.decided_by(call)
+      }
     )
 
     Process.put(@streamed, [])
     Process.put(@answered, false)
 
-    result = call |> Pipeline.run(&streamed/1) |> unsettled()
+    made = Pipeline.run(call, &streamed/1)
+    result = unsettled(made)
 
     Event.emit(
       source,
-      {:model_finished, message_id, outcome(result), Trace.elapsed_ms(started_at), answer(result)}
+      %Event.ModelFinished{
+        message_id: message_id,
+        outcome: outcome(result),
+        duration_ms: Trace.elapsed_ms(started_at),
+        response: answer(result),
+        cost: made.cost
+      }
     )
 
     result
@@ -678,16 +689,16 @@ defmodule Wardrik.LLM.Turn do
     |> ReqLLM.StreamResponse.process_stream(
       on_chunk: fn chunk ->
         Process.put(@answered, true)
-        Event.emit(source, {:chunk, chunk})
+        Event.emit(source, %Event.Chunk{chunk: chunk})
         if interrupted?(), do: throw(:interrupt)
       end,
-      on_meta: &Event.emit(source, {:meta, &1}),
+      on_meta: &Event.emit(source, %Event.Meta{chunk: &1}),
       on_result: fn text ->
         Process.put(@streamed, [text | Process.get(@streamed, [])])
-        Event.emit(source, {:result, text})
+        Event.emit(source, %Event.Result{text: text})
       end,
-      on_thinking: &Event.emit(source, {:thinking, &1}),
-      on_tool_call: &Event.emit(source, {:tool_call, &1})
+      on_thinking: &Event.emit(source, %Event.Thinking{text: &1}),
+      on_tool_call: &Event.emit(source, %Event.ToolCall{call: &1})
     )
   end
 end

@@ -178,7 +178,10 @@ defmodule WardrikHTTP do
   messages. An agent whose tools include `workers/*` is offered the tools of
   every worker whose token reaches its key, as `workers__<name>`, and a call
   carries the agent it is for as `_meta.agent`, its run as `_meta.run`, and
-  its idempotency key as `_meta.idempotencyKey`. See `WardrikHTTP.Workers`.
+  its idempotency key as `_meta.idempotencyKey`. A worker that answers with
+  `_meta.costUsd` says what the call cost in US dollars, which the call's
+  `tool_call.completed` event carries and a budget counts. See
+  `WardrikHTTP.Workers`.
 
   ## Every response
 

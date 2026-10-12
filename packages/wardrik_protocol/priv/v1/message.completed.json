@@ -29,6 +29,17 @@
     "usage": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/usage"
     },
+    "cost": {
+      "oneOf": [
+        {
+          "$ref": "urn:wardrik:schema:v1:defs#/$defs/cost"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the call cost, on a call the model answered; null where nobody prices the model, which is not the same as nothing."
+    },
     "status": {
       "type": "string",
       "enum": [

@@ -22,7 +22,7 @@ defmodule Wardrik.AgentSleepTest do
   end
 
   defp asleep(key) do
-    assert_receive %Event{payload: {:agent_stopped, _node, :idle}}, 2_000
+    assert_receive %Event{payload: %Event.AgentStopped{reason: :idle}}, 2_000
     assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
   end
 
@@ -48,7 +48,7 @@ defmodule Wardrik.AgentSleepTest do
     :ok = Agent.ask(key, "work")
     assert_receive {:turn, _messages, turn}
 
-    refute_receive %Event{payload: {:agent_stopped, _node, :idle}}, @idle * 4
+    refute_receive %Event{payload: %Event.AgentStopped{reason: :idle}}, @idle * 4
     send(turn, :release)
     asleep(key)
   end
@@ -59,7 +59,7 @@ defmodule Wardrik.AgentSleepTest do
     :ok = Agent.ask(key, "hello")
     assert_receive {:turn, _messages}
 
-    refute_receive %Event{payload: {:agent_stopped, _node, _reason}}, @idle * 4
+    refute_receive %Event{payload: %Event.AgentStopped{}}, @idle * 4
     assert is_pid(Fleet.whereis(key, wake: false))
   end
 
@@ -82,7 +82,7 @@ defmodule Wardrik.AgentSleepTest do
     key = start_agent(runner: {AgentRunners, :parking, [self(), "call_1"]})
 
     :ok = Agent.ask(key, "ship it")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
     asleep(key)
 
     assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
@@ -99,7 +99,7 @@ defmodule Wardrik.AgentSleepTest do
       )
 
     :ok = Agent.ask(key, "ship it")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
     asleep(key)
 
     assert %{asleep: true, status: :parked, waiting_on: [_name]} = Fleet.lookup(key)
@@ -107,7 +107,7 @@ defmodule Wardrik.AgentSleepTest do
     :ok = Agent.decide(key, %{"call_1" => :approve})
 
     assert_receive {:resumed, %{"call_1" => :approve}}
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
   end
 
   test "a sleeping agent parked on a credential wakes when it is connected" do
@@ -123,7 +123,7 @@ defmodule Wardrik.AgentSleepTest do
       )
 
     :ok = Agent.ask(key, "open an issue")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
     asleep(key)
 
     :ok = Wardrik.Credential.available("github", {"acme", "someone-else"})

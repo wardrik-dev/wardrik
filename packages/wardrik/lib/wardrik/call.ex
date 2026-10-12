@@ -44,6 +44,10 @@ defmodule Wardrik.Call do
       or how a model call ended, as `t:Wardrik.LLM.Dispatch.outcome/0`
     * `:served_by` - what answered a tool call, where its tool said, as
       `t:served/0`
+    * `:cost` - what it cost, as `t:cost/0`: a model call priced from what
+      it used, or a tool call at the price its tool reported, else the price
+      its config lists for the tool (see `Wardrik.LLM.Config`); `nil` for one
+      nobody priced
     * `:labels` - what its answer holds, as `Wardrik.Label`s; see `label/2`
     * `:note` - what the person who approved it said, which the model reads
       with its answer; see `approve/2`
@@ -81,6 +85,7 @@ defmodule Wardrik.Call do
   alias Wardrik.Call.Denial
   alias Wardrik.Call.Model
   alias Wardrik.Call.Tool
+  alias Wardrik.LLM.Cost
   alias Wardrik.LLM.Request
   alias Wardrik.Scope
 
@@ -92,6 +97,7 @@ defmodule Wardrik.Call do
     :denied,
     :result,
     :served_by,
+    :cost,
     :note,
     state: :unchecked,
     asks: [],
@@ -107,6 +113,14 @@ defmodule Wardrik.Call do
   shares, and a `:name` a person reads, such as a tool worker's token.
   """
   @type served() :: %{required(:id) => String.t(), optional(:name) => String.t()}
+
+  @typedoc """
+  What a call cost, in whole micro-dollars: `:provider` where the provider
+  reported the figure, `:catalog` where `Wardrik.LLM.Cost` priced the tokens
+  at the catalog's prices, and `:tool` where the tool reported it or the
+  config lists a price for the tool.
+  """
+  @type cost() :: %{micro_usd: non_neg_integer(), source: :provider | :catalog | :tool}
 
   @typedoc """
   Who decided a call: `:hook` where hooks allowed it by name or one refused
@@ -127,6 +141,7 @@ defmodule Wardrik.Call do
           labels: [Wardrik.Label.t()],
           result: term(),
           served_by: served() | nil,
+          cost: cost() | nil,
           note: String.t() | nil,
           private: map()
         }
@@ -306,10 +321,20 @@ defmodule Wardrik.Call do
   @spec answer(t(), term()) :: t()
   def answer(%__MODULE__{} = call, result), do: %{call | state: :done, result: result}
 
-  @doc "A model call that used `usage`."
-  @spec used(t(), map()) :: t()
-  def used(%__MODULE__{target: %Model{} = model} = call, usage),
-    do: %{call | target: %{model | usage: usage}}
+  @doc """
+  A model call that used `usage` of `model_spec`, the model it reached, and
+  cost what `Wardrik.LLM.Cost.price/2` makes of that.
+  """
+  @spec used(t(), map(), term()) :: t()
+  def used(%__MODULE__{target: %Model{} = model} = call, usage, model_spec),
+    do: %{call | target: %{model | usage: usage}, cost: Cost.price(model_spec, usage)}
+
+  @doc "A tool call its tool said cost `usd` dollars, or one it said nothing of, for `nil`."
+  @spec priced(t(), number() | nil) :: t()
+  def priced(%__MODULE__{} = call, nil), do: call
+
+  def priced(%__MODULE__{target: %Tool{}} = call, usd) when is_number(usd) and usd >= 0,
+    do: %{call | cost: %{micro_usd: Cost.micro(usd), source: :tool}}
 
   @doc "A tool call answered by `served_by`, where its tool named what answered it."
   @spec served(t(), served() | nil) :: t()

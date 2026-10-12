@@ -30,6 +30,16 @@ defmodule Wardrik.LLM.Config do
 
       Wardrik.LLM.Config.new(tools: [...], tool_timeouts: %{"deep_research" => :timer.minutes(20)})
 
+  `:tool_prices` is what one call to a tool costs, in US dollars, where the
+  tool itself says nothing of what it cost: a call it answered, whether it
+  succeeded or failed, carries that price as its cost (see
+  `t:Wardrik.Call.cost/0`), and a budget counts it. A tool is named as the
+  agent knows it, `github__create_issue`, or as a server's tool,
+  `github/create_issue`, with `*` for any run of characters: `github/*`. A
+  name given whole wins over a pattern, and a longer pattern over a shorter.
+
+      Wardrik.LLM.Config.new(tools: [...], tool_prices: %{"web_search" => 0.005, "github/*" => 0.0})
+
   `:generation` is passed to `ReqLLM.stream_text/3` as it stands, so anything
   the provider takes can be set here — how long an answer may run, and how much
   of it the model may spend on reasoning.
@@ -82,6 +92,7 @@ defmodule Wardrik.LLM.Config do
             tools: [],
             except_tools: [],
             tool_timeouts: %{},
+            tool_prices: %{},
             generation: [],
             max_iterations: 30,
             retries: [1_000, 5_000],
@@ -93,6 +104,7 @@ defmodule Wardrik.LLM.Config do
           tools: [Tool.spec()],
           except_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
+          tool_prices: %{String.t() => number()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
@@ -107,6 +119,7 @@ defmodule Wardrik.LLM.Config do
           dropped_tools: [String.t()],
           except_tools: [String.t()],
           tool_timeouts: %{String.t() => timeout()},
+          tool_prices: %{String.t() => number()},
           generation: keyword(),
           max_iterations: pos_integer() | :infinity,
           retries: [non_neg_integer()],
@@ -165,6 +178,43 @@ defmodule Wardrik.LLM.Config do
   @spec tool_timeout(t(), String.t(), tool_index() | nil) :: timeout() | nil
   def tool_timeout(%__MODULE__{} = config, name, index \\ nil) do
     Map.get_lazy(config.tool_timeouts, name, fn -> annotated(config, index, name, :timeout) end)
+  end
+
+  @doc """
+  What one call to the tool the agent knows as `name` costs, in US dollars,
+  as `:tool_prices` says, or `nil` where it says nothing.
+  """
+  @spec tool_price(t(), String.t()) :: number() | nil
+  def tool_price(%__MODULE__{tool_prices: prices}, name) do
+    case Map.fetch(prices, name) do
+      {:ok, usd} ->
+        usd
+
+      :error ->
+        shown = String.replace(name, "__", "/", global: false)
+
+        prices
+        |> Enum.filter(fn {pattern, _usd} -> glob?(pattern, name) or glob?(pattern, shown) end)
+        |> Enum.max_by(fn {pattern, _usd} -> String.length(pattern) end, fn -> {nil, nil} end)
+        |> elem(1)
+    end
+  end
+
+  defp glob?(pattern, name) do
+    [first | rest] = String.split(pattern, "*")
+
+    String.starts_with?(name, first) and
+      follows?(rest, binary_slice(name, byte_size(first)..-1//1))
+  end
+
+  defp follows?([], rest), do: rest == ""
+  defp follows?([last], rest), do: String.ends_with?(rest, last)
+
+  defp follows?([part | parts], rest) do
+    case :binary.match(rest, part) do
+      {at, size} -> follows?(parts, binary_slice(rest, (at + size)..-1//1))
+      :nomatch -> false
+    end
   end
 
   @doc """

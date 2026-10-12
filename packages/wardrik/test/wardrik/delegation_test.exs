@@ -22,9 +22,9 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(turn, {:turn_started, [Message.new("go")]}, 0),
-        at(pricing, {:span_started, "pricing"}, 10),
-        at(pricing, {:delegation_started, "what do rivals charge?"}, 11)
+        at(turn, %Event.TurnStarted{messages: [Message.new("go")]}, 0),
+        at(pricing, %Event.SpanStarted{name: "pricing"}, 10),
+        at(pricing, %Event.DelegationStarted{prompt: "what do rivals charge?"}, 11)
       ])
 
     assert Delegation.summary(delegations) == %{active: 1, total: 1}
@@ -36,8 +36,12 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold_more(delegations, [
-        at(pricing, {:delegation_finished, {:ok, "about $20"}, 900}, 911),
-        at(pricing, {:span_finished, :ok, 901}, 911)
+        at(
+          pricing,
+          %Event.DelegationFinished{outcome: {:ok, "about $20"}, duration_ms: 900},
+          911
+        ),
+        at(pricing, %Event.SpanFinished{outcome: :ok, duration_ms: 901}, 911)
       ])
 
     assert Delegation.summary(delegations) == %{active: 0, total: 1}
@@ -50,9 +54,9 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(branch, {:span_started, "branch_0"}, 0),
-        at(branch, {:delegation_started, "task"}, 1),
-        at(branch, {:delegation_finished, {:error, :timeout}, 50}, 51)
+        at(branch, %Event.SpanStarted{name: "branch_0"}, 0),
+        at(branch, %Event.DelegationStarted{prompt: "task"}, 1),
+        at(branch, %Event.DelegationFinished{outcome: {:error, :timeout}, duration_ms: 50}, 51)
       ])
 
     assert [%{span_id: id, name: "branch_0", status: :error, error: :timeout}] =
@@ -70,13 +74,13 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(research, {:span_started, "deep_research"}, 0),
-        at(research, {:delegation_started, "research x"}, 1),
-        at(tool, {:span_started, "fan_out"}, 2),
-        at(angle, {:span_started, "pricing"}, 3),
-        at(angle, {:delegation_started, "pricing angle"}, 4),
-        at(search, {:span_started, "web_search"}, 5),
-        at(search, {:span_finished, :ok, 40}, 45)
+        at(research, %Event.SpanStarted{name: "deep_research"}, 0),
+        at(research, %Event.DelegationStarted{prompt: "research x"}, 1),
+        at(tool, %Event.SpanStarted{name: "fan_out"}, 2),
+        at(angle, %Event.SpanStarted{name: "pricing"}, 3),
+        at(angle, %Event.DelegationStarted{prompt: "pricing angle"}, 4),
+        at(search, %Event.SpanStarted{name: "web_search"}, 5),
+        at(search, %Event.SpanFinished{outcome: :ok, duration_ms: 40}, 45)
       ])
 
     assert Delegation.summary(delegations) == %{active: 2, total: 2}
@@ -96,9 +100,9 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(branch, {:span_started, "slow"}, 0),
-        at(branch, {:delegation_started, "task"}, 1),
-        at(branch, {:span_finished, {:error, :timeout}, 5_000}, 5_001)
+        at(branch, %Event.SpanStarted{name: "slow"}, 0),
+        at(branch, %Event.DelegationStarted{prompt: "task"}, 1),
+        at(branch, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 5_000}, 5_001)
       ])
 
     assert [%{status: :error, error: :timeout, duration_ms: 5_000}] = Delegation.list(delegations)
@@ -110,10 +114,10 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(turn, {:turn_started, [Message.new("go")]}, 0),
-        at(branch, {:span_started, "slow"}, 1),
-        at(branch, {:delegation_started, "task"}, 2),
-        at(turn, {:turn_interrupted, %{}}, 100)
+        at(turn, %Event.TurnStarted{messages: [Message.new("go")]}, 0),
+        at(branch, %Event.SpanStarted{name: "slow"}, 1),
+        at(branch, %Event.DelegationStarted{prompt: "task"}, 2),
+        at(turn, %Event.TurnInterrupted{stats: %{}}, 100)
       ])
 
     assert [%{status: :error, error: :interrupted, duration_ms: 98}] =
@@ -121,7 +125,7 @@ defmodule Wardrik.DelegationTest do
 
     assert Delegation.summary(
              fold_more(delegations, [
-               at(turn(), {:turn_started, [Message.new("again")]}, 200)
+               at(turn(), %Event.TurnStarted{messages: [Message.new("again")]}, 200)
              ])
            ) ==
              %{active: 0, total: 0}
@@ -134,10 +138,10 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(branch, {:span_started, "branch"}, 0),
-        at(delegate, {:delegation_started, "first"}, 1),
-        at(nested, {:delegation_started, "nested"}, 2),
-        at(branch, {:span_finished, {:error, :timeout}, 100}, 100)
+        at(branch, %Event.SpanStarted{name: "branch"}, 0),
+        at(delegate, %Event.DelegationStarted{prompt: "first"}, 1),
+        at(nested, %Event.DelegationStarted{prompt: "nested"}, 2),
+        at(branch, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 100}, 100)
       ])
 
     assert Delegation.summary(delegations) == %{active: 0, total: 2}
@@ -149,8 +153,16 @@ defmodule Wardrik.DelegationTest do
 
     delegations =
       fold([
-        at(turn, {:result, "text"}, 0),
-        at(turn, {:model_started, "m0", "m", %{by: :default, hooks: []}}, 1)
+        at(turn, %Event.Result{text: "text"}, 0),
+        at(
+          turn,
+          %Event.ModelStarted{
+            message_id: "m0",
+            model_spec: "m",
+            decided_by: %{by: :default, hooks: []}
+          },
+          1
+        )
       ])
 
     assert Delegation.list(delegations) == []

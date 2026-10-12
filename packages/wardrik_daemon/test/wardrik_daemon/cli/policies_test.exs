@@ -65,14 +65,25 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   # person approved.
   defp ran(%AgentID{} = id, calls) do
     source = Source.root(id, name: "turn")
-    writer = Writer.open(Writer.new(id), Event.new(source, {:agent_started, node(), :idle, "g1"}))
+
+    writer =
+      Writer.open(
+        Writer.new(id),
+        Event.new(source, %Event.AgentStarted{node: node(), status: :idle, generation: "g1"})
+      )
 
     Enum.reduce(calls, writer, fn
       {:approved, call_id, by}, writer ->
-        appended(writer, source, {:call_decided, call_id, :approve, by})
+        appended(writer, source, %Event.CallDecided{call_id: call_id, decision: :approve, by: by})
 
       {call_id, tool, arguments, decided_by}, writer ->
-        appended(writer, source, {:tool_started, call_id, tool, arguments, nil, decided_by})
+        appended(writer, source, %Event.ToolStarted{
+          call_id: call_id,
+          name: tool,
+          arguments: arguments,
+          idempotency_key: nil,
+          decided_by: decided_by
+        })
     end)
   end
 

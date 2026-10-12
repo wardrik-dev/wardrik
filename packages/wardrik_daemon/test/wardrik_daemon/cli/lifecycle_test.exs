@@ -80,7 +80,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     key = agent(org, name, runner: {AgentRunners, :parking, [self(), "call_1"]})
     :ok = Event.Bus.subscribe(key)
     :ok = Agent.ask(key, "ship it")
-    assert_receive %Event{payload: {:turn_parked, _calls}}
+    assert_receive %Event{payload: %Event.TurnParked{}}
     assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
     key
   end
@@ -228,7 +228,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"No agent under #{org}/ is taking a turn.\n", 0}
 
       :ok = Agent.ask(key, "ship it again")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :parked end)
 
       assert command(["agent", "cancel", org <> "/"]) ==

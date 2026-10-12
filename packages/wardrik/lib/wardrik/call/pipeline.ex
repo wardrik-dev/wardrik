@@ -278,7 +278,13 @@ defmodule Wardrik.Call.Pipeline do
   defp refused(%Call{state: :denied, target: %Tool{}} = call) do
     case held(call) do
       %Call{state: :denied, denied: denied} = call ->
-        emit(call, {:tool_denied, call.id, Call.name(call), denied.reason, Call.decided_by(call)})
+        emit(call, %Event.ToolDenied{
+          call_id: call.id,
+          name: Call.name(call),
+          reason: denied.reason,
+          decided_by: Call.decided_by(call)
+        })
+
         Call.answer(call, Result.error(:denied, denied.reason))
 
       answered ->
@@ -401,7 +407,13 @@ defmodule Wardrik.Call.Pipeline do
   defp handed(%Call{target: %Tool{name: name, arguments: args}} = call) do
     emit(
       call,
-      {:tool_started, call.id, name, args, Ledger.idempotency_key(call), Call.decided_by(call)}
+      %Event.ToolStarted{
+        call_id: call.id,
+        name: name,
+        arguments: args,
+        idempotency_key: Ledger.idempotency_key(call),
+        decided_by: Call.decided_by(call)
+      }
     )
 
     {handed, read} = Subagent.watching(fn -> tool(call, :may_retry) end)
@@ -417,8 +429,15 @@ defmodule Wardrik.Call.Pipeline do
 
   defp again(handed, _call), do: handed
 
-  defp told(%Call{state: :done} = call), do: finished(call)
+  defp told(%Call{state: :done} = call), do: call |> listed() |> finished()
   defp told(call), do: announced(call)
+
+  # A call its tool answered without saying what it cost costs what the
+  # config lists for the tool, if anything.
+  defp listed(%Call{cost: nil, target: %Tool{name: name}, scope: scope} = call),
+    do: Call.priced(call, Config.tool_price(scope.config, name))
+
+  defp listed(call), do: call
 
   defp tool(%Call{target: %Tool{name: name, arguments: args}} = call, retry) do
     case offered(call) do
@@ -451,7 +470,11 @@ defmodule Wardrik.Call.Pipeline do
     |> answered({:ok, output})
     |> Call.served(Keyword.get(opts, :served_by))
     |> Call.label(Keyword.get(opts, :labels, []))
+    |> Call.priced(Keyword.get(opts, :cost))
   end
+
+  defp took({:error, reason, opts}, call, _retry) when is_list(opts),
+    do: call |> answered({:error, reason}) |> Call.priced(Keyword.get(opts, :cost))
 
   defp took({:park, prompt}, call, retry), do: took({:park, prompt, []}, call, retry)
 
@@ -536,7 +559,7 @@ defmodule Wardrik.Call.Pipeline do
 
     case Usage.of(request, call.result) do
       nil -> call
-      usage -> call |> Call.used(usage) |> tap(&Hook.settle/1)
+      usage -> call |> Call.used(usage, request.model_spec) |> tap(&Hook.settle/1)
     end
   end
 
@@ -553,17 +576,29 @@ defmodule Wardrik.Call.Pipeline do
   # -- events ------------------------------------------------------------------
 
   defp replayed(call, result) do
-    emit(call, {:tool_replayed, call.id, Call.name(call), result})
+    emit(call, %Event.ToolReplayed{call_id: call.id, name: Call.name(call), result: result})
     Call.answer(call, result)
   end
 
   defp finished(%Call{target: %Tool{}} = call) do
-    emit(call, {:tool_finished, call.id, Call.name(call), call.result, call.served_by})
+    emit(call, %Event.ToolFinished{
+      call_id: call.id,
+      name: Call.name(call),
+      result: call.result,
+      served_by: call.served_by,
+      cost: call.cost
+    })
+
     call
   end
 
   defp announced(%Call{state: :waiting, target: %Tool{}} = call) do
-    emit(call, {:tool_parked, call.id, Call.name(call), Call.prompt(call)})
+    emit(call, %Event.ToolParked{
+      call_id: call.id,
+      name: Call.name(call),
+      prompt: Call.prompt(call)
+    })
+
     call
   end
 

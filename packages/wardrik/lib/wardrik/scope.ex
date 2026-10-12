@@ -9,7 +9,7 @@ defmodule Wardrik.Scope do
   the things that change per run.
 
       scope = Wardrik.Scope.root(config, ~A"acme/@jon/assistant", name: "turn")
-      Wardrik.Event.emit(scope.source, {:turn_started, [Wardrik.Agent.Message.new("hello")]})
+      Wardrik.Event.emit(scope.source, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]})
 
   Work the turn spawns takes a child scope, so its events land in the same
   stream under a child span and it inherits the same authority:
@@ -58,8 +58,8 @@ defmodule Wardrik.Scope do
         Search.run(query, branch)
       end)
 
-  It emits `{:span_started, name}`, runs the function, and emits
-  `{:span_finished, outcome, duration_ms}` whether the function returns,
+  It emits `Wardrik.Event.SpanStarted`, runs the function, and emits
+  `Wardrik.Event.SpanFinished` whether the function returns,
   raises, throws or exits.
 
   `open/2` and `close/2` are the same two ends apart, for a combinator whose
@@ -261,14 +261,17 @@ defmodule Wardrik.Scope do
   @spec open(t(), String.t()) :: t()
   def open(%__MODULE__{} = scope, name) do
     branch = child(scope, name: name)
-    Event.emit(branch.source, {:span_started, name})
+    Event.emit(branch.source, %Event.SpanStarted{name: name})
     branch
   end
 
   @doc "Ends a span opened by `open/2`, reporting how it went and how long it took."
   @spec close(t(), outcome()) :: :ok
   def close(%__MODULE__{source: source}, outcome) do
-    Event.emit(source, {:span_finished, outcome, Trace.elapsed_ms(source.trace)})
+    Event.emit(source, %Event.SpanFinished{
+      outcome: outcome,
+      duration_ms: Trace.elapsed_ms(source.trace)
+    })
   end
 
   @doc """

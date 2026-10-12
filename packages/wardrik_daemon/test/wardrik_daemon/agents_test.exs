@@ -5,6 +5,7 @@ defmodule WardrikDaemon.AgentsTest do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.Event
   alias Wardrik.Fleet
   alias WardrikDaemon.Agents
 
@@ -342,7 +343,7 @@ defmodule WardrikDaemon.AgentsTest do
       Agents.files()
       key = AgentID.parse!("#{org}/alpha")
       :ok = Wardrik.Event.Bus.subscribe(key)
-      assert_receive %Wardrik.Event{payload: {:agent_stopped, _node, :idle}}, 3_000
+      assert_receive %Wardrik.Event{payload: %Event.AgentStopped{reason: :idle}}, 3_000
       assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
 
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-haiku-4-5\n")

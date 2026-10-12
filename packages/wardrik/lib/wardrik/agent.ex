@@ -35,7 +35,7 @@ defmodule Wardrik.Agent do
 
   An agent with nothing to do for its `:idle_timeout`, #{div(Wardrik.Agent.State.default_idle_timeout(), 60_000)}
   minutes unless it is given another, writes itself down and stops, and
-  reports `{:agent_stopped, node, :idle}`. Nothing running, it costs nothing.
+  reports `Wardrik.Event.AgentStopped`. Nothing running, it costs nothing.
   It sleeps only with no turn running and nothing queued; a turn parked on a
   person does not keep it awake.
 
@@ -50,7 +50,7 @@ defmodule Wardrik.Agent do
   it, and kills the turn if it has not returned within its grace. A tool
   already running does not read its mailbox, which is what the grace covers.
   Either way the agent settles idle and reports what it stopped as
-  `{:turn_interrupted, stats}`.
+  `Wardrik.Event.TurnInterrupted`.
 
   `Wardrik.Fleet.kill/1` does the same across a prefix.
   `Wardrik.LLM.ToolRunner.kill_call/2` stops one tool call rather than the turn.
@@ -59,8 +59,7 @@ defmodule Wardrik.Agent do
 
   A `Wardrik.Hook` that asks a person about a call parks the turn. The agent holds
   what it was doing, reports `:parked`, and does nothing until `resume/2`
-  answers the calls it stopped on, and emits `{:call_decided, call_id, decision,
-  by}` for each, with the `Wardrik.Principal` a caller names as `:by`. Messages
+  answers the calls it stopped on, and emits `Wardrik.Event.CallDecided` for each, with the `Wardrik.Principal` a caller names as `:by`. Messages
   that arrive meanwhile queue behind
   it rather than starting a turn of their own, because the parked work is still
   the current work; `interrupt/1` abandons it if that is what you want.
@@ -82,12 +81,12 @@ defmodule Wardrik.Agent do
   `Wardrik.History`, before the messages it answers join it. The default,
   `Wardrik.Compaction`, summarises the older part of a history that has
   outgrown the model's window, with the agent's own model. The agent keeps
-  what it answers, and `{:context_compacted, stats}` reports it on the turn's
+  what it answers, and `Wardrik.Event.ContextCompacted` reports it on the turn's
   trace. A history that cannot be rewritten is kept as it was, and the turn
   runs regardless.
 
   `clear/1` empties the history of an idle agent, and reports
-  `{:context_cleared, dropped}`, with how many messages it held. It is how an
+  `Wardrik.Event.ContextCleared`, with how many messages it held. It is how an
   agent is rid of the labels of what its history held, such as content from
   outside: until then, every turn carries them. See `Wardrik.Agent.State`.
 
@@ -116,12 +115,12 @@ defmodule Wardrik.Agent do
   cannot build is left out with a warning.
 
   The agent adds events of its own so subscribers can follow its state
-  without polling: `{:turn_started, messages}`, `{:turn_finished, messages}`,
-  `{:turn_failed, reason}`, `{:turn_interrupted, stats}`,
-  `{:turn_resumed, decisions}` and `{:call_decided, call_id, decision, by}`
+  without polling: `Wardrik.Event.TurnStarted`, `Wardrik.Event.TurnFinished`,
+  `Wardrik.Event.TurnFailed`, `Wardrik.Event.TurnInterrupted`,
+  `Wardrik.Event.TurnResumed` and `Wardrik.Event.CallDecided`
   on the turn's root span, so a subscriber can tell them from events the
-  turn's own work produced; and `{:message_queued, message}` as a message
-  arrives and `{:agent_started, node, status, generation}` each time the agent is loaded,
+  turn's own work produced; and `Wardrik.Event.MessageQueued` as a message
+  arrives and `Wardrik.Event.AgentStarted` each time the agent is loaded,
   on the root of a trace of their own. A client attaching mid-turn can catch
   up with `status/1` or `snapshot/1`.
 
@@ -209,7 +208,7 @@ defmodule Wardrik.Agent do
   Queues a message for the agent to answer.
 
   `:id` names the message, a new UUIDv7 when left out. The agent announces it
-  as `{:message_queued, message}` and takes it once, however many times the
+  as `Wardrik.Event.MessageQueued` and takes it once, however many times the
   same id is sent. `:sender` is the `Wardrik.Principal` who sent it, which
   its event carries and the model reads; see `Wardrik.Agent.Message`.
   `:labels` are what the message holds, as `Wardrik.Label`s, which its turn
@@ -242,7 +241,7 @@ defmodule Wardrik.Agent do
   before returning.
 
   `:by` names the `Wardrik.Principal` deciding, carried on each
-  `{:call_decided, call_id, decision, by}` event. `{:error, :unrecorded}`
+  `Wardrik.Event.CallDecided` event. `{:error, :unrecorded}`
   means the decisions could not be written to the agent's log, and were not
   taken.
   """
@@ -439,7 +438,12 @@ defmodule Wardrik.Agent do
     decided =
       for {call, _prompt} <- Turn.waiting(turn),
           Map.has_key?(decisions, call.id),
-          do: Event.new(scope.source, {:call_decided, call.id, decisions[call.id], by})
+          do:
+            Event.new(scope.source, %Event.CallDecided{
+              call_id: call.id,
+              decision: decisions[call.id],
+              by: by
+            })
 
     with {:ok, state} <- log_ahead(state, decided) do
       Enum.each(decided, &Bus.publish/1)
@@ -448,7 +452,7 @@ defmodule Wardrik.Agent do
   end
 
   defp carry_on(state, scope, turn, decisions, started_at) do
-    Event.emit(scope.source, {:turn_resumed, decisions})
+    Event.emit(scope.source, %Event.TurnResumed{decisions: decisions})
     task = run(fn -> State.apply_resumer(state, scope, turn, decisions) end)
 
     State.resumed(state, task, scope, turn, decisions, started_at)
@@ -479,7 +483,11 @@ defmodule Wardrik.Agent do
     started =
       Event.new(
         Source.root(state.agent_id),
-        {:agent_started, node(), View.status(state).state, state.generation}
+        %Event.AgentStarted{
+          node: node(),
+          status: View.status(state).state,
+          generation: state.generation
+        }
       )
 
     state = State.logged(state, Writer.open(state.log, started))
@@ -600,7 +608,9 @@ defmodule Wardrik.Agent do
   # this process hears its own event afterwards. A permanent stop is one the
   # fleet does not undo; the next caller wakes it.
   defp sleep(state) do
-    stopped = Event.new(Source.root(state.agent_id), {:agent_stopped, node(), :idle})
+    stopped =
+      Event.new(Source.root(state.agent_id), %Event.AgentStopped{node: node(), reason: :idle})
+
     state = log(state, stopped)
     :ok = Bus.publish(stopped)
 
@@ -624,7 +634,7 @@ defmodule Wardrik.Agent do
   defp start(state, messages) do
     scope = state |> State.turn_scope() |> journaled() |> heard(messages)
 
-    Event.emit(scope.source, {:turn_started, messages})
+    Event.emit(scope.source, %Event.TurnStarted{messages: messages})
     task = run(fn -> State.apply_runner(state, scope, kept(state, scope, messages)) end)
 
     State.started(state, task, scope, asked(state.context, messages), System.monotonic_time())
@@ -641,7 +651,7 @@ defmodule Wardrik.Agent do
       {:ok, history, stats} ->
         context = asked(history, messages)
         :ok = GenServer.call(scope.journal, {:kept, context}, :timer.seconds(30))
-        Event.emit(scope.source, {:context_compacted, stats})
+        Event.emit(scope.source, %Event.ContextCompacted{stats: stats})
         context
     end
   end
@@ -651,7 +661,7 @@ defmodule Wardrik.Agent do
 
   defp replay(state, scope, checkpoint) do
     scope = journaled(scope)
-    Event.emit(scope.source, {:turn_started, []})
+    Event.emit(scope.source, %Event.TurnStarted{messages: []})
     task = run(fn -> State.apply_replayer(state, scope, checkpoint) end)
 
     State.replayed(state, task, scope, checkpoint, System.monotonic_time())

@@ -10,7 +10,7 @@ defmodule WardrikSchedule do
   schedule's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
   calls `Wardrik.Agent.ask/2`, and announces what happened on the agent's topic
-  as `{:schedule_fired, name, outcome}`. It also joins a group of its agent's,
+  as `Wardrik.Event.ScheduleFired`. It also joins a group of its agent's,
   so `for_agent/1` finds an agent's schedules by its ID rather than by
   looking through every schedule in the cluster.
 

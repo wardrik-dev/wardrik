@@ -7,6 +7,7 @@ defmodule Wardrik.Test.AgentRunners do
   """
 
   alias ReqLLM.Context
+  alias Wardrik.Event
   alias Wardrik.LLM.Message
   alias Wardrik.LLM.Turn
 
@@ -66,10 +67,15 @@ defmodule Wardrik.Test.AgentRunners do
   """
   def delegating(test_pid, name, %Turn{scope: scope} = turn) do
     Wardrik.Scope.span(scope, name, fn branch ->
-      Wardrik.Event.emit(branch.source, {:delegation_started, "look into #{name}"})
+      Wardrik.Event.emit(branch.source, %Event.DelegationStarted{prompt: "look into #{name}"})
       send(test_pid, {:delegating, self()})
       receive do: (:release -> :ok)
-      Wardrik.Event.emit(branch.source, {:delegation_finished, {:ok, "found #{name}"}, 5})
+
+      Wardrik.Event.emit(branch.source, %Event.DelegationFinished{
+        outcome: {:ok, "found #{name}"},
+        duration_ms: 5
+      })
+
       :ok
     end)
 
@@ -81,7 +87,7 @@ defmodule Wardrik.Test.AgentRunners do
 
   @doc "Emits on the scope it was given before answering."
   def emitting(text, %Turn{scope: scope} = turn) do
-    Wardrik.Event.emit(scope.source, {:result, text})
+    Wardrik.Event.emit(scope.source, %Event.Result{text: text})
     Turn.done(turn, [Context.assistant("ok")])
   end
 

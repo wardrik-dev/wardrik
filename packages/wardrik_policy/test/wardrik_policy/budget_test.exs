@@ -211,6 +211,70 @@ defmodule WardrikPolicy.BudgetTest do
       assert micro_usd == 3 * each
     end
 
+    test "counts a model call at the cost the call carries, as its event does", context do
+      %{budget: budget, scope: scope, request: request} = context
+
+      made = spend(scope, request, {:ok, costing(0.0123)})
+
+      assert made.cost == %{micro_usd: 12_300, source: :provider}
+      assert %Spend{micro_usd: 12_300} = Budget.spent(budget, scope)
+    end
+
+    test "counts a tool call, failed or not, at the price its tool reported or the config lists",
+         context do
+      %{budget: budget, scope: scope} = context
+
+      search =
+        Wardrik.Tool.new!(
+          name: "search",
+          description: "Searches, at a price.",
+          parameter_schema: [],
+          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{"hits" => 1}, cost: 0.004) end
+        )
+
+      free =
+        Wardrik.Tool.new!(
+          name: "free",
+          description: "Costs nothing it knows of.",
+          parameter_schema: [],
+          run: fn _input, _context -> Wardrik.Tool.Result.ok(%{}) end
+        )
+
+      declined =
+        Wardrik.Tool.new!(
+          name: "charge",
+          description: "Fails, and is charged.",
+          parameter_schema: [],
+          run: fn _input, _context -> {:error, "Declined.", cost: 0.25} end
+        )
+
+      listed =
+        Wardrik.Tool.new!(
+          name: "lookup",
+          description: "Says nothing of cost; the config lists it.",
+          parameter_schema: [],
+          run: fn _input, _context -> {:error, "Not found."} end
+        )
+
+      config =
+        Config.new(tools: [search, free, declined, listed], tool_prices: %{"lookup" => 0.1})
+
+      scope = %{scope | config: config}
+
+      for {id, name} <- [
+            {"c1", "search"},
+            {"c2", "free"},
+            {"c3", "search"},
+            {"c4", "charge"},
+            {"c5", "lookup"}
+          ] do
+        %{Call.tool(%{id: id, name: name, arguments: %{}}, scope) | state: :allowed}
+        |> Pipeline.run()
+      end
+
+      assert %Spend{micro_usd: 358_000, tokens: 0} = Budget.spent(budget, scope)
+    end
+
     test "a budget in dollars refuses a model the catalog cannot price", context do
       %{scope: scope} = context
 

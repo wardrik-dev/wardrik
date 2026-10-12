@@ -116,7 +116,7 @@ defmodule WardrikTUI.App.ContextTest do
     connect_sidebar(s, b)
     Event.Bus.subscribe(a)
     Agent.ask(pid, "new question")
-    assert_receive %Event{payload: {:turn_finished, _}}, 2000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 2000
     connect_sidebar(s, a)
     assert screen(s) =~ "message 1"
     assert screen(s) =~ "↓ new output below · End to follow"
@@ -160,7 +160,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(pid, %{"first" => :approve}) == {:error, :not_parked}
     Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
-    assert_receive %Event{payload: {:turn_parked, _}}, 2000
+    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
     assert Agent.decide(pid, %{"absent" => :approve}) == {:error, :stale_decision}
     assert Agent.decide(pid, %{}) == {:error, :stale_decision}
     assert Agent.decide(pid, %{"first" => :approve}) == :ok
@@ -185,7 +185,7 @@ defmodule WardrikTUI.App.ContextTest do
 
     Event.Bus.subscribe(id)
     Agent.ask(next, "please work")
-    assert_receive %Event{payload: {:turn_parked, _}}, 2000
+    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
     Breeze.Test.info(s, :refresh_fleet)
     assert screen(s) =~ "waiting on deploy, second"
   end
@@ -199,7 +199,7 @@ defmodule WardrikTUI.App.ContextTest do
 
     Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
-    assert_receive %Event{payload: {:turn_parked, _}}, 2000
+    assert_receive %Event{payload: %Event.TurnParked{}}, 2000
     s = session(id)
     submit(s, "/approve 1")
     assert_receive {:resumer, running, %{"first" => :approve}}
@@ -208,7 +208,7 @@ defmodule WardrikTUI.App.ContextTest do
     assert screen(s) =~ "no decision sent"
     Agent.status(pid)
     send(running, :release)
-    assert_receive %Event{payload: {:turn_parked, remaining}}, 2000
+    assert_receive %Event{payload: %Event.TurnParked{calls: remaining}}, 2000
     assert [{%{id: "second"}, _}] = remaining
     screen(s)
     submit(s, "/approve 1")

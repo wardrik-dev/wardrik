@@ -361,7 +361,7 @@ defmodule WardrikResearch.DeepTest do
 
       {:ok, _result} = Deep.run(%{topic: "widgets", angles: ["pricing"]}, scope, [])
 
-      assert_receive %Event{payload: {:result, _text}} = event
+      assert_receive %Event{payload: %Event.Result{}} = event
       assert event.source.agent_id == agent_id
     end
   end
@@ -429,7 +429,7 @@ defmodule WardrikResearch.DeepTest do
 
   defp collect_spans(acc \\ []) do
     receive do
-      %Event{payload: {:result, _text}, source: source} -> collect_spans([source.trace | acc])
+      %Event{payload: %Event.Result{}, source: source} -> collect_spans([source.trace | acc])
       %Event{} -> collect_spans(acc)
     after
       0 -> acc

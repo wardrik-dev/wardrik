@@ -486,7 +486,11 @@ defmodule WardrikDaemon.AgentFile do
   # lets `tools` and `policy` name modules.
   defp spec(fields, system, policies, modules?, id) do
     config =
-      [system: if(system == "", do: nil, else: system), tools: tools(fields, modules?, id)]
+      [
+        system: if(system == "", do: nil, else: system),
+        tools: tools(fields, modules?, id),
+        tool_prices: Keyword.get(WardrikDaemon.Config.settings(__MODULE__), :tool_prices, %{})
+      ]
       |> put(:model_spec, fields["model"], &string!(&1, "model"))
       |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
       |> compaction(fields)

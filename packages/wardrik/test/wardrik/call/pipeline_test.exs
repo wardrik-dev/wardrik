@@ -248,7 +248,10 @@ defmodule Wardrik.Call.PipelineTest do
       ledgered = %{ledgered | hooks: saying(:pass)}
       assert %Call{state: :done} = ledgered |> call("call_2", "echo") |> Pipeline.run()
 
-      assert_received %Event{payload: {:tool_replayed, "call_2", "echo", {:ok, "hi"}}}
+      assert_received %Event{
+        payload: %Event.ToolReplayed{call_id: "call_2", name: "echo", result: {:ok, "hi"}}
+      }
+
       refute_received {:settled, _call}
     end
 
@@ -260,17 +263,32 @@ defmodule Wardrik.Call.PipelineTest do
       |> Pipeline.run()
 
       assert_received %Event{
-        payload: {:tool_started, "call_1", "echo", %{}, _key, %{by: :hook, hooks: ["saying"]}}
+        payload: %Event.ToolStarted{
+          call_id: "call_1",
+          name: "echo",
+          arguments: %{},
+          decided_by: %{by: :hook, hooks: ["saying"]}
+        }
       }
 
       assert_received %Event{
-        payload: {:tool_finished, "call_1", "echo", {:ok, "hi"}, %{id: "w1", name: "echoes"}}
+        payload: %Event.ToolFinished{
+          call_id: "call_1",
+          name: "echo",
+          result: {:ok, "hi"},
+          served_by: %{id: "w1", name: "echoes"}
+        }
       }
 
       scope(agent_id, tools: [served]) |> call("call_2", "echo") |> Pipeline.run()
 
       assert_received %Event{
-        payload: {:tool_started, "call_2", "echo", %{}, _key, %{by: :default, hooks: []}}
+        payload: %Event.ToolStarted{
+          call_id: "call_2",
+          name: "echo",
+          arguments: %{},
+          decided_by: %{by: :default, hooks: []}
+        }
       }
 
       scope(agent_id, hooks: saying({:deny, "No."}), tools: [served])
@@ -278,7 +296,12 @@ defmodule Wardrik.Call.PipelineTest do
       |> Pipeline.run()
 
       assert_received %Event{
-        payload: {:tool_denied, "call_3", "echo", "No.", %{by: :hook, hooks: ["saying"]}}
+        payload: %Event.ToolDenied{
+          call_id: "call_3",
+          name: "echo",
+          reason: "No.",
+          decided_by: %{by: :hook, hooks: ["saying"]}
+        }
       }
     end
   end
@@ -295,7 +318,10 @@ defmodule Wardrik.Call.PipelineTest do
       assert prompt =~ "refund may already have done what it does."
       assert prompt =~ "The worker went away before it answered."
       assert_received {:ran, "refund", false}
-      assert_received %Event{payload: {:tool_parked, "call_1", "refund", ^prompt}}
+
+      assert_received %Event{
+        payload: %Event.ToolParked{call_id: "call_1", name: "refund", prompt: ^prompt}
+      }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
                Ledger.fetch(Ledger.Store, Ledger.key(scope, Call.to_map(call)))
@@ -313,7 +339,12 @@ defmodule Wardrik.Call.PipelineTest do
       assert_received {:ran, true, ^key}
 
       assert_received %Event{
-        payload: {:tool_finished, "call_1", "refund", {:ok, _}, %{id: "w2", name: "refunds"}}
+        payload: %Event.ToolFinished{
+          call_id: "call_1",
+          name: "refund",
+          result: {:ok, _},
+          served_by: %{id: "w2", name: "refunds"}
+        }
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
@@ -348,7 +379,11 @@ defmodule Wardrik.Call.PipelineTest do
       assert_received {:ran, "refund", true}
 
       assert_received %Event{
-        payload: {:tool_started, "call_1", "refund", _args, _key, %{by: :person, hooks: []}}
+        payload: %Event.ToolStarted{
+          call_id: "call_1",
+          name: "refund",
+          decided_by: %{by: :person, hooks: []}
+        }
       }
     end
 
@@ -362,7 +397,12 @@ defmodule Wardrik.Call.PipelineTest do
       waiting |> Call.under(scope) |> Pipeline.answer({:deny, "Leave it."}) |> Pipeline.run()
 
       assert_received %Event{
-        payload: {:tool_denied, "call_1", "refund", reason, %{by: :person}}
+        payload: %Event.ToolDenied{
+          call_id: "call_1",
+          name: "refund",
+          reason: reason,
+          decided_by: %{by: :person}
+        }
       }
 
       assert reason =~ "may already have done what it does"

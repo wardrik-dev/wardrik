@@ -9,6 +9,11 @@ defmodule Wardrik.LLM.Cost do
   priced by the model's entry in the catalog `Wardrik.LLM.Catalog` loads. A model
   the catalog does not price costs `nil`, which is not the same as nothing: a
   host enforcing a budget decides what an unpriced call counts as.
+
+  `price/2` is the same figure as a call keeps it, `t:Wardrik.Call.cost/0`:
+  whole micro-dollars, and whether the provider reported it or the catalog
+  priced it. A call's events carry that figure, and a budget counts it, so
+  the two never disagree.
   """
 
   @doc "The cost of a call to `model_spec` that used `usage`, or `nil` where it cannot be priced."
@@ -24,6 +29,27 @@ defmodule Wardrik.LLM.Cost do
       _unpriced -> nil
     end
   end
+
+  @doc """
+  The cost of a call to `model_spec` that used `usage`, as a call keeps it,
+  or `nil` where it cannot be priced.
+  """
+  @spec price(term(), map() | nil) :: Wardrik.Call.cost() | nil
+  def price(_model_spec, nil), do: nil
+
+  def price(_model_spec, %{total_cost: total}) when is_number(total),
+    do: %{micro_usd: micro(total), source: :provider}
+
+  def price(model_spec, usage) when is_map(usage) do
+    case of(model_spec, usage) do
+      nil -> nil
+      usd -> %{micro_usd: micro(usd), source: :catalog}
+    end
+  end
+
+  @doc "`usd` dollars in whole micro-dollars, rounded to the nearest."
+  @spec micro(number()) :: non_neg_integer()
+  def micro(usd), do: round(usd * 1_000_000)
 
   @doc "Whether the catalog prices `model_spec`, so that `of/2` can price a call to it from its tokens."
   @spec priced?(term()) :: boolean()

@@ -38,6 +38,13 @@ export interface ToolContext {
   idempotencyKey: string | undefined;
   /** Aborts when Wardrik stops waiting for the call, or stops it. */
   signal: AbortSignal;
+  /**
+   * Says what the call cost in US dollars, such as a paid API's price for it.
+   * The call's `tool_call.completed` event carries it and a budget counts it.
+   * Said more than once, the amounts add up. A call that throws after saying
+   * it is reported failed, at what it said.
+   */
+  cost(usd: number): void;
 }
 
 /** A tool that runs in this process, for agents to call. */
@@ -201,18 +208,25 @@ export class Worker {
       },
       async (args: unknown, ctx: ServerContext) => {
         const meta = ctx.mcpReq._meta ?? {};
-        const context = {
+        let costUsd: number | undefined;
+        const context: ToolContext = {
           agent: callingAgent(meta["agent"]),
           run: typeof meta["run"] === "string" ? meta["run"] : undefined,
           idempotencyKey: typeof meta["idempotencyKey"] === "string" ? meta["idempotencyKey"] : undefined,
           signal: ctx.mcpReq.signal,
+          cost(usd: number) {
+            if (!Number.isFinite(usd) || usd < 0) throw new RangeError(`A cost is US dollars, at least 0, not ${usd}`);
+            costUsd = (costUsd ?? 0) + usd;
+          },
         };
 
+        let result: CallToolResult;
         try {
-          return answer(await tool.run(args, context));
+          result = answer(await tool.run(args, context));
         } catch (error) {
-          return failed(error);
+          result = failed(error);
         }
+        return costUsd === undefined ? result : { ...result, _meta: { costUsd } };
       },
     );
   }

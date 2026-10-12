@@ -258,7 +258,7 @@ defmodule Wardrik.Agent.State do
       will never be read again, and the log can drop what has aged out
   """
   @type effect() ::
-          {:emit, Source.t(), tuple()}
+          {:emit, Source.t(), Wardrik.Event.payload()}
           | {:ask_to_stop, pid()}
           | {:stop_now, pid()}
           | {:arm_kill, reference(), pos_integer(), non_neg_integer()}
@@ -449,7 +449,10 @@ defmodule Wardrik.Agent.State do
       }
 
       {queued,
-       [{:emit, Source.root(state.agent_id), {:message_queued, message}} | nudge(state.mode)]}
+       [
+         {:emit, Source.root(state.agent_id), %Event.MessageQueued{message: message}}
+         | nudge(state.mode)
+       ]}
     end
   end
 
@@ -574,11 +577,12 @@ defmodule Wardrik.Agent.State do
        disarm(running)}
   end
 
-  defp finish(%Running{stopping: nil}, messages), do: {:turn_finished, messages}
+  defp finish(%Running{stopping: nil}, messages), do: %Event.TurnFinished{messages: messages}
 
   defp finish(%Running{stopping: stopping} = running, messages),
-    do:
-      {:turn_interrupted, stats(running.started_at, stopping.dropped, length(messages), :stopped)}
+    do: %Event.TurnInterrupted{
+      stats: stats(running.started_at, stopping.dropped, length(messages), :stopped)
+    }
 
   @doc """
   Empties the history, and with it the labels of what it held, keeping
@@ -590,7 +594,7 @@ defmodule Wardrik.Agent.State do
     dropped = length(state.context.messages)
 
     {:ok, %{state | context: Context.new(), labels: []},
-     [{:emit, Source.root(state.agent_id), {:context_cleared, dropped}}]}
+     [{:emit, Source.root(state.agent_id), %Event.ContextCleared{dropped: dropped}}]}
   end
 
   def clear(%__MODULE__{}), do: {:error, :busy}
@@ -599,7 +603,7 @@ defmodule Wardrik.Agent.State do
   @spec parked(t(), Turn.t()) :: {t(), [effect()]}
   def parked(%__MODULE__{mode: %Running{} = running} = state, turn) do
     waiting = %Waiting{turn: turn, source: running.scope.source, started_at: running.started_at}
-    announcement = {:emit, running.scope.source, {:turn_parked, Turn.waiting(turn)}}
+    announcement = {:emit, running.scope.source, %Event.TurnParked{calls: Turn.waiting(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
   end
@@ -608,7 +612,7 @@ defmodule Wardrik.Agent.State do
   @spec failed(t(), term()) :: {t(), [effect()]}
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
-     [{:emit, running.scope.source, {:turn_failed, reason}}, close(running.scope)] ++
+     [{:emit, running.scope.source, %Event.TurnFailed{reason: reason}}, close(running.scope)] ++
        disarm(running)}
   end
 
@@ -642,7 +646,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(%{drained | outcome: :interrupted}),
      [
-       {:emit, source, {:turn_interrupted, stats(nil, dropped, 0, :abandoned)}},
+       {:emit, source, %Event.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
        close(%{turn_scope(state) | source: source})
      ]}
   end
@@ -653,7 +657,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(%{drained | outcome: :interrupted}),
      [
-       {:emit, waiting.source, {:turn_interrupted, stats}},
+       {:emit, waiting.source, %Event.TurnInterrupted{stats: stats}},
        close(%{turn_scope(state) | source: waiting.source})
      ]}
   end
@@ -666,7 +670,7 @@ defmodule Wardrik.Agent.State do
     {drained, dropped} = drain(state)
     stats = stats(nil, dropped, 0, :idle)
 
-    {idle(drained), [{:emit, Source.root(state.agent_id), {:turn_interrupted, stats}}]}
+    {idle(drained), [{:emit, Source.root(state.agent_id), %Event.TurnInterrupted{stats: stats}}]}
   end
 
   defp drain(state), do: {%{state | pending: []}, length(state.pending)}
@@ -694,7 +698,7 @@ defmodule Wardrik.Agent.State do
     {:kill, idle(%{state | outcome: :interrupted}),
      [
        {:shutdown, running.task},
-       {:emit, running.scope.source, {:turn_interrupted, stats}},
+       {:emit, running.scope.source, %Event.TurnInterrupted{stats: stats}},
        close(running.scope)
      ]}
   end
