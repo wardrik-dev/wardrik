@@ -33,6 +33,7 @@ defmodule WardrikDaemon.AgentFile do
   | `timeout` | how many seconds a turn may take |
   | `idle_timeout` | how many seconds it may have nothing to do before it sleeps, or `infinity`; `config.yaml`'s `defaults` when absent, and 900 where they set none. A sleeping agent wakes when something asks it; see `Wardrik.Agent` |
   | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
+  | `retries` | how many seconds a turn waits before asking a failed model call again, one wait for each try; see below |
   | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
   | `triggers` | when it is asked something on a clock; see below |
   | `notify` | who hears when it parks, fails or answers; see below |
@@ -135,6 +136,17 @@ defmodule WardrikDaemon.AgentFile do
 
   See `WardrikPolicy`. A definition over HTTP cannot write one in place,
   though it may name a policy in `policies/` that has one.
+
+  ## Retries
+
+  A model call that fails for a passing reason, such as a timeout, a dropped
+  connection or a provider's 5xx, is asked again after each wait `retries`
+  lists, in seconds, before the turn fails; see `Wardrik.LLM.Retry`.
+
+      retries: [2, 10, 30]    # after 2s, then 10s, then 30s
+      retries: []             # never ask again
+
+  `config.yaml`'s `defaults` when absent, and `[1, 5]` where they set none.
 
   ## Triggers
 

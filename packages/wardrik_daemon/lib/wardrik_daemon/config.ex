@@ -25,6 +25,7 @@ defmodule WardrikDaemon.Config do
         model: anthropic:claude-sonnet-5
         tools: [web_search]
         policy: careful
+        retries: [1, 5, 30]
 
       mcp:
         linear:
@@ -112,10 +113,11 @@ defmodule WardrikDaemon.Config do
 
   `defaults` is what an agent is given where nothing else says: one
   `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
-  `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`
-  and `compaction`, as an agent file does; see `WardrikDaemon.AgentFile`.
-  `idle_timeout` holds for every agent that sets none of its own, 900
-  seconds where it is not set. `wardrik init` writes it with the model it
+  `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`,
+  `retries` and `compaction`, as an agent file does; see
+  `WardrikDaemon.AgentFile`. `idle_timeout` and `retries` hold for every
+  agent that sets none of its own: 900 seconds, and `[1, 5]`, where they are
+  not set. `wardrik init` writes it with the model it
   chose.
 
   An MCP server and a notify target each serve one org's agents, the
