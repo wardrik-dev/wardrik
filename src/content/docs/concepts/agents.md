@@ -95,6 +95,10 @@ without calling anything.
   `run.deadline_exceeded`.
 - **Tool calls run together.** Up to 8 of a round's calls run at once, and each may take up to 60
   seconds.
+- **A model call that fails is asked again.** One that times out, loses its connection, is rate
+  limited or meets a provider error, before its answer begins or part way through it, is asked
+  again after a second, and again after five. What it had streamed is dropped, and the next try
+  answers as a message of its own. Only then does the turn fail.
 
 A tool call may wait on a person, which parks the turn until it is decided. See
 [Policy and approvals](/concepts/policy/).
