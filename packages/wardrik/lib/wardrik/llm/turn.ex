@@ -114,15 +114,18 @@ defmodule Wardrik.LLM.Turn do
 
   ## A model call that fails
 
-  A call that fails before the provider has begun to answer, for a reason
-  `Wardrik.Failure` calls transient, such as a stream that times out before its
-  first chunk, is asked again after each wait the config's `:retries` lists,
-  through the dispatch each time. Each try is its own `Wardrik.Event.ModelStarted`
-  and `Wardrik.Event.ModelFinished`, under the same message id. A call that
-  fails once the provider has begun to answer is not asked again, since what
-  streamed has already been published; it fails the turn, as a call does once
-  its retries are spent. `:interrupt` stops the wait, and a turn past its
-  deadline fails with the call's reason rather than waiting.
+  A call that fails is handed to the scope's `Wardrik.LLM.Retry`, with the
+  failed try added to the request's attempts, which decides whether to ask
+  again and after how long: by default after each wait the config's
+  `:retries` lists, for a reason `Wardrik.Failure` calls transient, such as a
+  stream that times out, before its first chunk or part way through. Each try
+  goes through the hooks and the dispatch, which may send it to another
+  model, and is its own `Wardrik.Event.ModelStarted` and
+  `Wardrik.Event.ModelFinished`. A retry answers under the message id of the
+  first try with the try's number added, `.2` for the second, so what a failed
+  try had streamed is never taken for its answer. A call the retry lets go
+  fails the turn. `:interrupt` stops the wait, and a turn past its deadline
+  fails with the call's reason rather than waiting.
 
   ## The iteration cap
 
@@ -137,9 +140,10 @@ defmodule Wardrik.LLM.Turn do
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
   alias Wardrik.Event
-  alias Wardrik.Failure
   alias Wardrik.Hook
+  alias Wardrik.LLM.Attempt
   alias Wardrik.LLM.Request
+  alias Wardrik.LLM.Retry
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
   alias Wardrik.Tool
@@ -535,12 +539,10 @@ defmodule Wardrik.LLM.Turn do
   # its cap.
   defp request(%__MODULE__{} = turn, %Scope{config: config} = scope, opts, closing? \\ false) do
     config = %{config | system: system(config.system, turn, closing?)}
-    request(%{scope | config: config}, turn.context, message_id(turn), config.retries, opts)
+    asked(%{scope | config: config}, Request.new(config, turn.context), message_id(turn), opts)
   end
 
-  defp request(%Scope{} = scope, context, message_id, retries, opts) do
-    request = Request.new(scope.config, context)
-
+  defp asked(%Scope{} = scope, %Request{} = request, message_id, opts) do
     case request |> Pipeline.model(scope, opts[:approved]) |> Pipeline.decide() do
       %Call{state: :waiting} = waiting ->
         {:park, waiting}
@@ -550,29 +552,37 @@ defmodule Wardrik.LLM.Turn do
 
       call ->
         call
-        |> make(message_id)
-        |> retry(scope, context, message_id, retries, opts)
+        |> make(tried_id(message_id, request))
+        |> again(scope, request, message_id, opts)
     end
   end
 
-  defp retry({:error, reason} = failed, scope, context, message_id, [wait | retries], opts) do
-    if not Process.get(@answered) and Failure.retryable?(reason) and not Scope.expired?(scope) do
-      Logger.warning(
-        "Model call failed before answering, asking again in #{wait}ms: #{inspect(reason)}"
-      )
+  defp tried_id(message_id, %Request{attempts: []}), do: message_id
+  defp tried_id(message_id, %Request{attempts: tried}), do: "#{message_id}.#{length(tried) + 1}"
 
-      receive do
-        :interrupt -> {:interrupted, ""}
-      after
-        wait -> request(scope, context, message_id, retries, opts)
-      end
-    else
-      failed
+  defp again({{:error, reason} = failed, model_spec}, scope, request, message_id, opts) do
+    attempt = %Attempt{model_spec: model_spec, reason: reason, answered?: Process.get(@answered)}
+    tried = Request.failed(request, attempt)
+
+    case if(Scope.expired?(scope), do: :stop, else: Retry.again(scope, tried)) do
+      {:again, wait} ->
+        Logger.warning("Model call failed, asking again in #{wait}ms: #{inspect(reason)}")
+
+        receive do
+          :interrupt -> {:interrupted, ""}
+        after
+          wait -> asked(scope, tried, message_id, opts)
+        end
+
+      :stop ->
+        failed
     end
   end
 
-  defp retry(result, _scope, _context, _message_id, _retries, _opts), do: result
+  defp again({result, _model_spec}, _scope, _request, _message_id, _opts), do: result
 
+  # What a try came to, with the model it went to once the dispatch had
+  # admitted it.
   defp make(%Call{scope: %Scope{source: source}} = call, message_id) do
     started_at = System.monotonic_time()
 
@@ -602,7 +612,7 @@ defmodule Wardrik.LLM.Turn do
       }
     )
 
-    result
+    {result, made.target.model_spec}
   end
 
   defp streamed(%Call{scope: scope} = call),

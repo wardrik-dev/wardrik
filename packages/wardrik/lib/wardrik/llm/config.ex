@@ -66,9 +66,10 @@ defmodule Wardrik.LLM.Config do
   where something else is doing the stopping.
 
   `:retries` is how long a turn waits before asking again when a model call
-  fails before the provider began to answer, for a reason `Wardrik.Failure` calls
-  transient, one wait for each try: a second after the first failure and five
-  after the second, by default. `[]` never asks again.
+  fails for a reason `Wardrik.Failure` calls transient, one wait for each try:
+  a second after the first failure and five after the second, by default.
+  `[]` never asks again. They are the waits of `Wardrik.LLM.Retry.Backoff`, the
+  retry of a scope that names none; see `Wardrik.LLM.Retry`.
 
       Wardrik.LLM.Config.new(retries: [2_000, 10_000, 30_000])
 

@@ -107,8 +107,8 @@ defmodule Wardrik.Agent do
 
   Beyond `:config`, an agent takes the seams every scope it roots is built
   with: `:hooks` decide whether a tool call may run and a model call be made,
-  `:dispatch` decides what a model call is and who pays for it, and `:timeout`
-  bounds the whole turn. Each is optional and inert by default. Who the work is
+  `:dispatch` decides what a model call is and who pays for it, `:retry`
+  whether one that failed is asked again, and `:timeout` bounds the whole turn. Each is optional and inert by default. Who the work is
   for is read from the agent's ID.
 
   A config's tools are built on whichever node runs the agent. One that node
