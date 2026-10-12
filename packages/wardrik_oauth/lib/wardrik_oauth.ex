@@ -134,14 +134,15 @@ defmodule WardrikOAuth do
 
   What resolving does, without a call: for a surface that wants to connect a
   user before an agent ever asks. A secret the vault holds under the
-  provider's name for `owner` is not a token, and is left be.
+  provider's name for `owner` is not a token, and is left be. `:by` is who
+  asked, whom the token is recorded in the audit as stored by once it is.
   """
-  @spec hold(Provider.t(), term()) :: Credential.outcome()
-  def hold(%Provider{} = provider, owner) do
+  @spec hold(Provider.t(), term(), keyword()) :: Credential.outcome()
+  def hold(%Provider{} = provider, owner, opts \\ []) do
     case WardrikVault.lookup(provider.name, owner) do
       {:ok, :grant, encoded} -> held(provider, owner, encoded)
       {:ok, :secret, _secret} -> {:error, :held_as_a_secret}
-      {:error, :not_found} -> begin(provider, owner)
+      {:error, :not_found} -> begin(provider, owner, opts[:by])
       {:error, :no_key} -> {:error, :no_key}
       {:error, _kind, reason} -> unreadable(provider, owner, reason)
       {:error, reason} -> {:error, reason}
@@ -354,11 +355,11 @@ defmodule WardrikOAuth do
   # begin one at a time for a user and provider across the cluster, and one
   # under way on any node is joined, so calls parking at once, on any node,
   # share one.
-  defp begin(%Provider{} = provider, owner) do
+  defp begin(%Provider{} = provider, owner, by \\ nil) do
     single_flight(provider, owner, fn ->
       case Pending.under_way(provider.name, owner) do
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
-        :error -> open(provider, owner)
+        :error -> open(provider, owner, by)
       end
     end)
   end
@@ -366,13 +367,14 @@ defmodule WardrikOAuth do
   defp required(%Flight{url: url, user_code: code, owner: owner}),
     do: {:authorization_required, %{url: url, code: code}, owner}
 
-  defp open(%Provider{} = provider, owner) do
+  defp open(%Provider{} = provider, owner, by) do
     with {:ok, metadata, registered} <- prepare(provider),
          {:ok, flow} <- flow(provider, metadata) do
       flight = %Flight{
         state: Flow.state(),
         provider: provider,
         owner: owner,
+        by: by,
         metadata: metadata,
         registered: registered,
         url: nil,
@@ -487,9 +489,14 @@ defmodule WardrikOAuth do
 
   # Every call parked on the provider for this owner carries on, approved by
   # the authorization that finished: whoever finished it is known only as
-  # that, not as the user the token is kept for.
-  defp connected(%Flight{provider: %Provider{name: name}, owner: owner}) do
+  # that, not as the user the token is kept for. The audit names who asked
+  # for the connection, where someone did.
+  defp connected(%Flight{provider: %Provider{name: name}, owner: owner, by: asked}) do
     by = Wardrik.Principal.new(:oauth, name, name: "#{name} authorization")
+
+    :ok =
+      Wardrik.Audit.record({:secret_stored, name, Wardrik.Connections.prefix(owner)}, asked || by)
+
     Credential.available(name, owner, by: by)
   end
 

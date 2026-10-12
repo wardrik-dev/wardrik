@@ -26,17 +26,21 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.AgentOperation
   alias Wardrik.Command
+  alias Wardrik.Connections
   alias Wardrik.Error
   alias Wardrik.Event.Export
   alias Wardrik.Fleet
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.Clear
+  alias Wardrik.Operations.Connect
   alias Wardrik.Operations.Decide
   alias Wardrik.Operations.Define
+  alias Wardrik.Operations.Disconnect
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAuthorization
+  alias Wardrik.Operations.ReadConnections
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
   alias Wardrik.Operations.RemoveSchedule
@@ -107,6 +111,15 @@ defmodule WardrikHTTP.Router do
         export(conn, conn.method, "#{conn.assigns.caller.id}/#{name}")
     end
   end
+
+  # A caller's own connections, or with owner=org their org's.
+  get "/v1/connections", do: run(conn, Query, connections(conn, ReadConnections, []), 200)
+
+  post "/v1/connections/:provider",
+    do: run(conn, Command, connections(conn, Connect, provider: provider), 200)
+
+  delete "/v1/connections/:provider",
+    do: run(conn, Command, connections(conn, Disconnect, provider: provider), 204)
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
   # for a user's, and what follows its ID is what is asked of it.
@@ -192,8 +205,11 @@ defmodule WardrikHTTP.Router do
 
   defp answer(_conn, {:events, fun}, key), do: fun.(key)
 
-  defp answer(conn, {Query, request, status}, key) do
-    with {:ok, request} <- request.(key),
+  defp answer(conn, {kind, request, status}, key), do: run(conn, kind, request.(key), status)
+
+  # Runs the operation a route built, or answers why it could not be built.
+  defp run(conn, Query, request, status) do
+    with {:ok, request} <- request,
          {:ok, body} <- Query.run(request, caller(conn)) do
       json(conn, status, body)
     else
@@ -201,14 +217,24 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  defp answer(conn, {Command, request, status}, key) do
-    answered = with {:ok, request} <- request.(key), do: Command.run(request, caller(conn))
+  defp run(conn, Command, request, status) do
+    answered = with {:ok, request} <- request, do: Command.run(request, caller(conn))
 
     case answered do
       {:ok, nil} -> send_resp(conn, 204, "")
       {:ok, body} -> json(conn, status, body)
       {:created, body} -> json(conn, 201, body)
       {:error, error} -> error(conn, error)
+    end
+  end
+
+  # The request about the caller's own connections, or with owner=org their
+  # org's.
+  defp connections(conn, module, fields) do
+    case conn.query_params["owner"] do
+      nil -> Connections.request(module, caller(conn), :person, fields)
+      "org" -> Connections.request(module, caller(conn), :org, fields)
+      _other -> {:error, Error.new(:invalid, "owner is org, or left out for the caller's own")}
     end
   end
 

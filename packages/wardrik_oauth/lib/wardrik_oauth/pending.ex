@@ -56,6 +56,7 @@ defmodule WardrikOAuth.Pending do
       :user_code,
       :url,
       :started_at,
+      :by,
       expires_after: :timer.minutes(15)
     ]
 
@@ -68,6 +69,7 @@ defmodule WardrikOAuth.Pending do
             verifier: String.t() | nil,
             user_code: String.t() | nil,
             url: String.t(),
+            by: Wardrik.Principal.t() | nil,
             started_at: integer(),
             expires_after: pos_integer()
           }

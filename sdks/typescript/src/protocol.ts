@@ -364,6 +364,48 @@ export interface Envelope {
   data: {};
 }
 /**
+ * What POST /v1/connections/{provider} answers: that the owner holds the account already, or where to authorize it.
+ */
+export interface Connecting {
+  /**
+   * The account's name, as the deployment configures it.
+   */
+  provider: string;
+  /**
+   * Whether the owner holds it already.
+   */
+  connected: boolean;
+  authorization?: Authorization1;
+}
+/**
+ * Where to authorize it, where it is not held yet.
+ */
+export interface Authorization1 {
+  /**
+   * The page to open.
+   */
+  url: string;
+  /**
+   * The code to enter at the page, where one is needed.
+   */
+  code?: string;
+}
+/**
+ * The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.
+ */
+export interface Connections {
+  connections: {
+    /**
+     * The account's name, as the deployment configures it.
+     */
+    provider: string;
+    /**
+     * Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it.
+     */
+    held_by?: "person" | "org" | "deployment";
+  }[];
+}
+/**
  * What every answer of 400 and above holds. A 410 adds oldest, the first sequence the log still holds.
  */
 export interface ErrorBody {

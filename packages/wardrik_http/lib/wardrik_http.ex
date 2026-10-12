@@ -44,10 +44,10 @@ defmodule WardrikHTTP do
 
   | Action | Routes |
   | --- | --- |
-  | `read` | listing agents, snapshots, definitions and events |
+  | `read` | listing agents, snapshots, definitions, events and connections |
   | `message` | messages, cancelling, and clearing the conversation |
   | `decide` | interrupts, and their authorization links |
-  | `define` | putting and deleting agents and schedules |
+  | `define` | putting and deleting agents and schedules, and connecting accounts |
   | `serve` | `/v1/workers` |
 
   ## Keys in paths
@@ -87,13 +87,16 @@ defmodule WardrikHTTP do
   | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
   | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
   | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
+  | `GET /v1/connections` | the accounts the caller's org is offered, and whether they, the org or the deployment holds each |
+  | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
+  | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, `204` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
 
   `Wardrik.Resource` shows what each answers. Each resource's JSON Schema is
   in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
   `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
-  `schedule_definition.json`, `authorization.json`, `export.json` and
-  `error.json`. `sdks/typescript` generates
+  `schedule_definition.json`, `authorization.json`, `connections.json`,
+  `connecting.json`, `export.json` and `error.json`. `sdks/typescript` generates
   its types from them.
 
   ### Agents
@@ -169,6 +172,26 @@ defmodule WardrikHTTP do
   added to each run. A schedule is part of the agent's definition, which the
   host keeps: a definition put again lists every schedule the agent has, and
   an agent with no definition kept answers `404`.
+
+  ### Connections
+
+      GET /v1/connections
+      {"connections": [{"provider": "github", "held_by": "person"},
+                       {"provider": "linear"}]}
+
+      POST /v1/connections/linear
+      {"provider": "linear", "connected": false,
+       "authorization": {"url": "https://linear.app/oauth/authorize?…"}}
+
+  A caller's connections are its person's, within the org its token reaches:
+  the user its scope names, else the user it was made `--for`. With
+  `?owner=org` they are the org's, for a token that may `define` under the
+  org. A token for no person asks with `?owner=org`, and one that reaches
+  every org asks with a token for one. Connecting asks nobody to approve
+  anything and parks nothing: the account is held once the person has
+  authorized it at the link, and the audit records it as stored by the
+  caller. A value is never answered. The host names what offers
+  connections as `Wardrik`'s `:connections`; see `Wardrik.Connections`.
 
   ### Tool workers
 

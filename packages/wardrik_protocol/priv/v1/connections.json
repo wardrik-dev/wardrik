@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:connections",
+  "title": "Connections",
+  "description": "The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "connections"
+  ],
+  "properties": {
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The account's name, as the deployment configures it."
+          },
+          "held_by": {
+            "enum": [
+              "person",
+              "org",
+              "deployment"
+            ],
+            "description": "Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "connections": [
+        {
+          "provider": "github",
+          "held_by": "person"
+        },
+        {
+          "provider": "linear"
+        }
+      ]
+    }
+  ]
+}

@@ -110,6 +110,26 @@ An interrupt with the reason `authorization` waits on a person to connect an acc
 `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`, and the call
 carries on by itself once they have. See [Connect accounts](/guides/accounts/).
 
+## Connect accounts
+
+A token made `--for` a person connects their accounts before any agent asks for one:
+
+```sh
+curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections
+# {"connections": [{"provider": "github", "held_by": "person"}, {"provider": "linear"}]}
+
+curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
+# {"provider": "linear", "connected": false, "authorization": {"url": "https://…"}}
+
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
+```
+
+`held_by` is `person`, `org` or `deployment`, whichever a call of theirs would use, and absent where
+nobody holds it. The person is the user the token's scope names, else the one it was made `--for`;
+a token for no person, or one that may `define` under the org, asks with `?owner=org` for the org's.
+Listing needs `read`, and connecting and forgetting `define`. Connecting parks nothing: the account
+is held once the person has authorized at the link.
+
 ## Stop it, clear it, and remove it
 
 ```sh
@@ -172,5 +192,6 @@ for await (const event of agent.ask("What is on fire?")) {
 ```
 
 `ask` gives the events of the turn that answers the message, until it completes, fails or is
-cancelled. A request the API refuses throws a `WardrikError` with its `status`, `type` and
+cancelled. `wardrik.connections` lists, connects and forgets accounts, with `{owner: "org"}` for the
+org's. A request the API refuses throws a `WardrikError` with its `status`, `type` and
 `requestId`. The SDK also runs tools in your app; see [Tools in your app](/guides/tool-workers/).

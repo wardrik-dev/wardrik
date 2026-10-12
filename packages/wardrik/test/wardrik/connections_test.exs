@@ -1,0 +1,188 @@
+defmodule Wardrik.ConnectionsTest do
+  # The host's connections module is one for the node, which these tests set.
+  use ExUnit.Case, async: false
+
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Caller
+  alias Wardrik.Command
+  alias Wardrik.Connections
+  alias Wardrik.Error
+  alias Wardrik.Grant
+  alias Wardrik.Operations.Connect
+  alias Wardrik.Operations.Disconnect
+  alias Wardrik.Operations.ReadConnections
+  alias Wardrik.Principal
+  alias Wardrik.Query
+  alias Wardrik.Test.Audit
+
+  # Offers what the test puts in its process as :offered, and holds what it
+  # puts as :held, a map of owner to providers; operations run in the test's
+  # process, so they read it there.
+  defmodule Offered do
+    @moduledoc false
+    @behaviour Wardrik.Connections
+
+    @impl true
+    def list(owner) do
+      for provider <- Process.get(:offered, []),
+          do: %{provider: provider, held_by: held_by(provider, owner)}
+    end
+
+    defp held_by(provider, {org, _user} = person) do
+      cond do
+        held?(provider, person) -> :person
+        held?(provider, org) -> :org
+        true -> nil
+      end
+    end
+
+    defp held_by(provider, org), do: if(held?(provider, org), do: :org)
+
+    @impl true
+    def connect(provider, owner, by) do
+      send(self(), {:connect, provider, owner, by})
+
+      cond do
+        provider not in Process.get(:offered, []) -> {:error, :not_found}
+        held?(provider, owner) -> {:ok, :held}
+        true -> {:ok, %{url: "https://auth.example.com/#{provider}", code: nil}}
+      end
+    end
+
+    @impl true
+    def disconnect(provider, owner) do
+      if held?(provider, owner) do
+        Process.put(:held, Map.update!(Process.get(:held), owner, &List.delete(&1, provider)))
+        :ok
+      else
+        {:error, :not_found}
+      end
+    end
+
+    defp held?(provider, owner), do: provider in Map.get(Process.get(:held, %{}), owner, [])
+  end
+
+  setup do
+    :ignore = Connections.configure(Offered)
+    on_exit(fn -> Connections.configure(nil) end)
+
+    provider = "app#{System.unique_integer([:positive])}"
+    Process.put(:offered, ["github", provider])
+    Process.put(:held, %{{"acme", "jon"} => ["github"]})
+
+    %{provider: provider}
+  end
+
+  @jon Principal.new(:user, "jon", name: "Jon")
+
+  defp caller(scope, principal \\ @jon, can \\ Grant.actions()) do
+    {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
+    Caller.new(principal, grant)
+  end
+
+  defp read(caller, whose \\ :person) do
+    with {:ok, request} <- Connections.request(ReadConnections, caller, whose),
+         do: Query.run(request, caller)
+  end
+
+  describe "listing" do
+    test "says who holds each account offered, never a value", %{provider: provider} do
+      assert {:ok, %{"connections" => connections}} = read(caller("acme/"))
+
+      assert connections == [
+               %{"provider" => "github", "held_by" => "person"},
+               %{"provider" => provider}
+             ]
+    end
+
+    test "is of the person a scope names, else the person the caller acts as" do
+      assert {:ok, request} =
+               Connections.request(ReadConnections, caller("acme/@jon/", nil), :person)
+
+      assert to_string(request.owner) == "acme/@jon/"
+
+      assert {:ok, request} = Connections.request(ReadConnections, caller("acme/"), :person)
+      assert to_string(request.owner) == "acme/@jon/"
+
+      assert {:ok, request} = Connections.request(ReadConnections, caller("acme/"), :org)
+      assert to_string(request.owner) == "acme/"
+    end
+
+    test "needs a person, or the org, and one org" do
+      assert {:error, %Error{type: :invalid, message: message}} =
+               read(caller("acme/", Principal.new(:token, "t1")))
+
+      assert message =~ "owner=org"
+      assert {:ok, _list} = read(caller("acme/", Principal.new(:token, "t1")), :org)
+
+      assert {:error, %Error{type: :invalid}} = read(caller(""))
+    end
+
+    test "is refused outside the caller's scope, and without read" do
+      assert {:error, %Error{type: :not_found}} =
+               Query.run(%ReadConnections{owner: Prefix.parse!("globex/")}, caller("acme/"))
+
+      assert {:error, %Error{type: :not_found}} =
+               Query.run(
+                 %ReadConnections{owner: Prefix.parse!("acme/@jon/")},
+                 caller("acme/@maria/")
+               )
+
+      assert {:error, %Error{type: :forbidden}} =
+               read(caller("acme/", @jon, [:message]))
+    end
+  end
+
+  describe "connecting" do
+    test "answers where to authorize, or that it is held, as the caller", %{provider: provider} do
+      assert {:ok, request} =
+               Connections.request(Connect, caller("acme/"), :person, provider: provider)
+
+      assert {:ok,
+              %{
+                "connected" => false,
+                "authorization" => %{"url" => "https://auth.example.com/" <> _}
+              }} = Command.run(request, caller("acme/"))
+
+      assert_received {:connect, ^provider, {"acme", "jon"}, @jon}
+
+      {:ok, request} = Connections.request(Connect, caller("acme/"), :person, provider: "github")
+
+      assert {:ok, %{"provider" => "github", "connected" => true}} =
+               Command.run(request, caller("acme/"))
+    end
+
+    test "is refused for an account not offered, without define, or for the org without it" do
+      {:ok, request} = Connections.request(Connect, caller("acme/"), :person, provider: "nothing")
+      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/"))
+
+      reader = caller("acme/", @jon, [:read])
+      {:ok, request} = Connections.request(Connect, reader, :org, provider: "github")
+      assert {:error, %Error{type: :forbidden}} = Command.run(request, reader)
+    end
+  end
+
+  describe "disconnecting" do
+    test "forgets the owner's account, and is recorded as the caller's" do
+      {:ok, request} =
+        Connections.request(Disconnect, caller("acme/"), :person, provider: "github")
+
+      assert {:ok, nil} = Command.run(request, caller("acme/"))
+
+      assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
+               List.last(Audit.about("secrets/github"))
+
+      assert {:ok, %{"connections" => [%{"provider" => "github"} = github | _]}} =
+               read(caller("acme/"))
+
+      refute Map.has_key?(github, "held_by")
+      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/"))
+    end
+  end
+
+  test "a host with no connections module offers none" do
+    Connections.configure(nil)
+
+    assert {:error, %Error{type: :unsupported}} = read(caller("acme/"))
+  end
+end

@@ -3,8 +3,9 @@ defmodule Wardrik do
   The supervisor of everything Wardrik runs. In order:
 
     * The store's settings, kept where every read and write finds them; see
-      `WardrikStore.configure/1`, and the host's definitions module, kept where
-      every operation finds it; see `Wardrik.Definition.configure/1`.
+      `WardrikStore.configure/1`, and the host's definitions and connections
+      modules, kept where every operation finds them; see
+      `Wardrik.Definition.configure/1` and `Wardrik.Connections.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
@@ -18,11 +19,12 @@ defmodule Wardrik do
   load is a task that exits once done and is not started again.
 
   The `:wardrik` application starts it by default, with the store, the fleet
-  and the definitions module as the application's environment holds them:
+  and the definitions and connections modules as the application's
+  environment holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, definitions: MyApp.Definitions
+      config :wardrik, definitions: MyApp.Definitions, connections: WardrikOAuth.Connections
 
   A host that starts it in its own tree instead, after the repo its store is
   kept in, says so, and hands it its options:
@@ -47,6 +49,9 @@ defmodule Wardrik do
     * `:definitions` - the `Wardrik.Definition` that agents' definitions go
       to, whichever surface they come from. None by default, where no
       operation defines an agent.
+    * `:connections` - the `Wardrik.Connections` that the accounts people and
+      orgs connect are asked of. None by default, where no operation offers
+      any.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -61,7 +66,14 @@ defmodule Wardrik do
 
   @impl true
   def init(opts) do
-    opts = Keyword.validate!(opts, cluster: [], store: [], fleet: [], definitions: nil)
+    opts =
+      Keyword.validate!(opts,
+        cluster: [],
+        store: [],
+        fleet: [],
+        definitions: nil,
+        connections: nil
+      )
 
     children =
       [
@@ -69,6 +81,10 @@ defmodule Wardrik do
         %{
           id: {Wardrik.Definition, :module},
           start: {Wardrik.Definition, :configure, [opts[:definitions]]}
+        },
+        %{
+          id: {Wardrik.Connections, :module},
+          start: {Wardrik.Connections, :configure, [opts[:connections]]}
         },
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,

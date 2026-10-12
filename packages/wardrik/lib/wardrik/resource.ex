@@ -81,6 +81,28 @@ defmodule Wardrik.Resource do
     end
   end
 
+  @doc "The connections an owner is offered, and who holds each, where anyone does."
+  @spec connections([Wardrik.Connections.connection()]) :: map()
+  def connections(connections) do
+    %{
+      "connections" =>
+        for(
+          %{provider: provider, held_by: held_by} <- connections,
+          do: Value.put(%{"provider" => provider}, "held_by", held_by && to_string(held_by))
+        )
+    }
+  end
+
+  @doc """
+  A connection asked for: held already where `link` is `nil`, else where
+  to authorize it.
+  """
+  @spec connecting(String.t(), Wardrik.Call.Ask.link() | nil) :: map()
+  def connecting(provider, nil), do: %{"provider" => provider, "connected" => true}
+
+  def connecting(provider, link),
+    do: %{"provider" => provider, "connected" => false, "authorization" => authorization(link)}
+
   @doc """
   A page of an export: its events, the `next` that moves the export past
   them, and where a log was trimmed before the export got to it.

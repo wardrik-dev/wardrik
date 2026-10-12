@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:connecting",
+  "title": "A connection asked for",
+  "description": "What POST /v1/connections/{provider} answers: that the owner holds the account already, or where to authorize it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "connected"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "The account's name, as the deployment configures it."
+    },
+    "connected": {
+      "type": "boolean",
+      "description": "Whether the owner holds it already."
+    },
+    "authorization": {
+      "$ref": "urn:wardrik:schema:v1:authorization",
+      "description": "Where to authorize it, where it is not held yet."
+    }
+  },
+  "examples": [
+    {
+      "provider": "github",
+      "connected": true
+    },
+    {
+      "provider": "linear",
+      "connected": false,
+      "authorization": {
+        "url": "https://auth.example.com/authorize?client_id=…&state=…"
+      }
+    }
+  ]
+}

@@ -23,6 +23,7 @@
       "Wardrik.Change",
       "Wardrik.Command",
       "Wardrik.Compaction",
+      "Wardrik.Connections",
       "Wardrik.Credential",
       "Wardrik.Definition",
       "Wardrik.Delegation",
