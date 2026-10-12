@@ -141,11 +141,14 @@ defmodule Mix.Tasks.Wardrik do
     redirect_logging(opts[:log] || System.get_env("WARDRIK_LOG"))
 
     config = config(opts)
-    spawn_opts = [config: config] ++ scope_opts(opts)
     org = opts[:org] || @org
     agent_id = Wardrik.AgentID.new!(opts[:name] || "assistant", org: org, user: opts[:user])
 
-    {:ok, _agent} = Wardrik.Fleet.spawn(agent_id, spawn_opts)
+    # Every agent this session starts is created on what the task was given.
+    :ok = Mix.Tasks.Wardrik.Created.keep([config: config] ++ scope_opts(opts))
+    :ignore = Wardrik.Definition.configure(Mix.Tasks.Wardrik.Created)
+    {:ok, spec} = Mix.Tasks.Wardrik.Created.create(agent_id)
+    {:ok, _agent} = Wardrik.Fleet.put(spec)
 
     :ok =
       Breeze.Server.run(
@@ -154,7 +157,6 @@ defmodule Mix.Tasks.Wardrik do
             agent: agent_id,
             agent_id: agent_id,
             org: org,
-            spawn_opts: spawn_opts,
             model: config.model_spec,
             verbose: opts[:verbose] || false
           ] ++ sidebar_width(opts)
@@ -280,4 +282,22 @@ defmodule Mix.Tasks.Wardrik do
   defp credentials(opts) do
     if opts[:credentials], do: Module.safe_concat([opts[:credentials]]), else: WardrikVault
   end
+end
+
+defmodule Mix.Tasks.Wardrik.Created do
+  @moduledoc false
+  # The agents `mix wardrik` starts: each one new, on the config and seams the
+  # task was given, which it keeps no definition of.
+  @behaviour Wardrik.Definition
+
+  @key {__MODULE__, :fields}
+
+  @spec keep(keyword()) :: :ok
+  def keep(fields), do: :persistent_term.put(@key, fields)
+
+  @impl true
+  def put(_id, _definition, _grant), do: {:error, "mix wardrik keeps no definitions"}
+
+  @impl true
+  def create(id), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ :persistent_term.get(@key))}
 end

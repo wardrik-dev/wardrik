@@ -1376,6 +1376,51 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  describe "an agent's life" do
+    defp root(api) do
+      {:ok, secret, _token} = Token.create("root", Prefix.all(), Grant.actions(), ceiling: [])
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    test "is stopped, keeping its conversation, and spawned again from the store", %{api: api} do
+      {key, _agent} = echo_agent()
+
+      assert {:ok, %{status: 200, body: %{"stopped" => [_key]}}} =
+               Req.post(api, url: "/v1/agents/#{key}/stop")
+
+      assert %{asleep: true} = Wardrik.Fleet.lookup(key)
+
+      assert {:ok, %{status: 200, body: %{"from" => "store", "agent" => %{"asleep" => false}}}} =
+               Req.post(api, url: "/v1/agents/#{key}/spawn")
+
+      assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/stop")
+    end
+
+    test "is placed on a node, and moved, only by a token over every agent", %{api: api} do
+      {key, _agent} = echo_agent()
+      here = to_string(node())
+
+      assert {:ok, %{status: 403}} =
+               Req.post(api, url: "/v1/agents/#{key}/move", json: %{"node" => here})
+
+      assert {:ok, %{status: 200, body: %{"moving" => %{"to" => ^here}}}} =
+               Req.post(root(api),
+                 url: "/v1/agents/#{key}/move",
+                 params: [plan: true],
+                 json: %{"node" => here}
+               )
+
+      assert {:ok, %{status: 200, body: %{"from" => "running"}}} =
+               Req.post(root(api), url: "/v1/agents/#{key}/spawn", json: %{"node" => here})
+
+      assert {:ok, %{status: 400}} =
+               Req.post(root(api),
+                 url: "/v1/agents/#{key}/move",
+                 json: %{"node" => "nowhere@nohost"}
+               )
+    end
+  end
+
   describe "the resources' schemas" do
     @resources ~w(agent agent_snapshot authorization decisions trigger trigger_definition export error connections connecting)
 

@@ -30,15 +30,14 @@ defmodule Wardrik.Fleet do
   ## Waking
 
   An agent asleep is started again from the store by `whereis/2`, which every
-  command reaching an agent by its ID goes through, and by `spawn/2`. Where
-  the fleet was started with a `:definition`, `{module, function, args}`, it
-  is called with the agent's ID appended as the agent wakes; `{:ok, spec}`
-  gives the agent that `Wardrik.Agent.Spec`'s config, seams and idle timeout,
-  as `Wardrik.Agent.configure/2` does, and anything else leaves it the
-  definition it slept with. A host that changes a definition then need wake
-  no agent to apply it, and changes only the agents awake. Without one, an
-  agent wakes as it slept, and `put/1` is how a sleeping agent is given a
-  new definition.
+  command reaching an agent by its ID goes through, and by `spawn/2`. As it
+  wakes, the host's `Wardrik.Definition.current/1` is asked for its spec, and
+  a spec answered gives the agent its config, seams and idle timeout, as
+  `Wardrik.Agent.configure/2` does; `:none` leaves it the definition it slept
+  with. A host that changes a definition then need wake no agent to apply
+  it, and changes only the agents awake. A host that does not say leaves
+  every agent to wake as it slept, and `put/1` is how a sleeping agent is
+  given a new definition.
 
   ## Durability
 
@@ -208,24 +207,11 @@ defmodule Wardrik.Fleet do
   end
 
   defp defined(pid, id) do
-    with {module, function, args} <- :persistent_term.get({__MODULE__, :definition}, nil),
-         {:ok, %Spec{} = spec} <- apply(module, function, args ++ [id]) do
-      Agent.configure(pid, Spec.options(spec))
-    else
-      _as_it_slept -> :ok
+    case Wardrik.Definition.current(id) do
+      {:ok, %Spec{} = spec} -> Agent.configure(pid, Spec.options(spec))
+      :none -> :ok
     end
   end
-
-  @doc false
-  @spec definition({module(), atom(), list()} | nil) :: :ok
-  def definition(nil) do
-    :persistent_term.erase({__MODULE__, :definition})
-    :ok
-  end
-
-  def definition({module, function, args} = definition)
-      when is_atom(module) and is_atom(function) and is_list(args),
-      do: :persistent_term.put({__MODULE__, :definition}, definition)
 
   @doc "One agent as the fleet sees it, awake or asleep, or `nil` when nothing holds that ID."
   @spec lookup(AgentID.t()) :: Member.t() | nil

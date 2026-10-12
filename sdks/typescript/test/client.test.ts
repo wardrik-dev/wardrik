@@ -122,6 +122,30 @@ describe("requests", () => {
     await server.close();
   });
 
+  test("spawn, stop and move an agent as the API takes them", async () => {
+    server.on("POST", path + "/spawn", (_request, response) => json(response, 200, {}));
+    server.on("POST", path + "/stop", (_request, response) => json(response, 200, {}));
+    server.on("POST", path + "/move", (_request, response) => json(response, 200, {}));
+
+    const agent = wardrik.agent(key);
+    await agent.spawn();
+    await agent.spawn("wardrik@box2");
+    await agent.stop();
+    await agent.move("wardrik@box2");
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path, request.body]),
+      [
+        ["POST", path + "/spawn", {}],
+        ["POST", path + "/spawn", { node: "wardrik@box2" }],
+        ["POST", path + "/stop", undefined],
+        ["POST", path + "/move", { node: "wardrik@box2" }],
+      ],
+    );
+
+    await server.close();
+  });
+
   test("send a message, set a trigger, decide, cancel, clear and page as the API takes them", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
       json(response, 202, { message: { id: "m1" } }),

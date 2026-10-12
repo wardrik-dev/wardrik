@@ -275,7 +275,7 @@ defmodule WardrikDaemon.Agents do
   The fleet asks it as an agent wakes, so a definition changed while the
   agent slept is the one it wakes with; see `Wardrik.Fleet`.
   """
-  @spec current(AgentID.t()) :: {:ok, Spec.t()} | :none
+  @impl Wardrik.Definition
   def current(key) do
     with {:ok, definition} <- Definition.of(key),
          {:ok, spec} <- build(definition, key) do
@@ -284,6 +284,93 @@ defmodule WardrikDaemon.Agents do
       _none -> :none
     end
   end
+
+  @doc """
+  Defines the agent `key`, which nothing declares or keeps, by writing
+  `agents/NAME.md`, or `agents/USER-NAME.md` for a user's agent, from
+  `config.yaml`'s `defaults`, with its org and user where they are not the
+  deployment's, then reading the files again on every node; answers the
+  spec the file writes. The file is written only
+  once the defaults are known to make an agent under the key, and never over
+  one that is there, which is a conflict saying what it declares.
+  """
+  @impl Wardrik.Definition
+  def create(%AgentID{} = key) do
+    path = Path.join([dir(), "agents", file_name(key) <> ".md"])
+
+    with :ok <- untaken(path),
+         {:ok, _options} <- created(key),
+         :ok <- write(path, AgentFile.text(created_fields(key))) do
+      _reloaded = WardrikDaemon.reload_all()
+      written(path)
+    end
+  end
+
+  defp untaken(path) do
+    cond do
+      not File.exists?(path) ->
+        :ok
+
+      other = Enum.find_value(WardrikDaemon.declared(), &declaring(&1, path)) ->
+        {:error, :conflict, "#{shown(path)} is there already, and declares #{other}."}
+
+      true ->
+        {:error, :conflict,
+         "#{shown(path)} is there already, and is kept as it is: wardrik reload reads it, " <>
+           "and wardrik status says why where it does not."}
+    end
+  end
+
+  defp declaring({key, {path, _spec}}, path), do: key
+  defp declaring(_declared, _path), do: nil
+
+  defp created(key) do
+    case options(key) do
+      {:ok, options} ->
+        {:ok, options}
+
+      {:error, message} ->
+        {:error, "config.yaml's defaults do not make an agent for #{key}: #{message}"}
+    end
+  end
+
+  defp write(path, text) do
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, text, [:exclusive]) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error, "#{shown(path)} could not be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # Each person's agent has a file of its own, as every person's assistant.
+  defp file_name(%AgentID{user: nil, name: name}), do: name
+  defp file_name(%AgentID{user: user, name: name}), do: "#{user}-#{name}"
+
+  # The name where the file's is not the agent's, the org and user where
+  # they are not the deployment's own, then the defaults every new agent is
+  # written with.
+  defp created_fields(%AgentID{org: org, user: user, name: name} = key) do
+    named = if file_name(key) != name, do: [{"name", name}], else: []
+    named = if org != WardrikDaemon.Config.org(), do: named ++ [{"org", org}], else: named
+    named = if user, do: named ++ [{"user", user}], else: named
+    defaults = defaults()
+
+    named ++
+      for key <- WardrikDefinition.default_keys() -- ["idle_timeout"],
+          Map.has_key?(defaults, key),
+          do: {key, defaults[key]}
+  end
+
+  defp written(path) do
+    case List.keyfind(files(), path, 0) do
+      {^path, {:ok, spec}} -> {:ok, spec}
+      {^path, {:error, message}} -> {:error, message}
+    end
+  end
+
+  defp shown(path), do: Path.join("agents", Path.basename(path))
 
   @doc """
   The spec `definition` writes for the agent `key`, its own or one of its

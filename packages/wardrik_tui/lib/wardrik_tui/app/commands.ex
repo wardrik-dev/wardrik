@@ -9,6 +9,7 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias Wardrik.Caller
+  alias Wardrik.Change
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
@@ -16,6 +17,10 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.CancelAgents
   alias Wardrik.Operations.Forget
+  alias Wardrik.Operations.Move
+  alias Wardrik.Operations.Spawn
+  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Operations.Stop
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -112,27 +117,21 @@ defmodule WardrikTUI.App.Commands do
   # An agent already running under the ID is connected to rather than
   # started again, or, in the background, left alone and named.
   defp spawn_agent(term, id, name, options, prompt, mode) do
-    case placement(options) do
-      {:ok, placement} ->
-        case Fleet.whereis(id) do
-          nil -> start_agent(term, id, name, placement, prompt, mode)
-          pid -> existing_agent(term, id, name, pid, prompt, mode)
-        end
+    with {:ok, placement} <- placement(options),
+         {:ok, %{"from" => from}} <- Operation.run(spawning(id, placement), caller(term)) do
+      pid = Fleet.whereis(id)
 
-      {:error, reason} ->
-        Display.append(term, placement_error(reason, "/spawn"))
-    end
-  end
-
-  defp start_agent(term, id, name, placement, prompt, mode) do
-    with {:ok, options} <- WardrikTUI.App.options(term.assigns.options, id),
-         {:ok, pid} <- Fleet.spawn(id, options ++ term.assigns.spawn_opts ++ placement) do
-      :ok = record(term, {:agent_spawned, id, node(pid)})
-      started(term, id, name, pid, prompt, mode)
+      if from == "running",
+        do: existing_agent(term, id, name, pid, prompt, mode),
+        else: started(term, id, name, pid, prompt, mode)
     else
-      {:error, reason} -> Display.append(term, fleet_error(reason, placement[:node]))
+      {:error, %Error{message: message}} -> Display.append(term, View.error(message))
+      {:error, reason} -> Display.append(term, placement_error(reason, "/spawn"))
     end
   end
+
+  defp spawning(id, []), do: %Spawn{agent: id}
+  defp spawning(id, node: node), do: %SpawnOn{agent: id, node: node}
 
   defp started(term, id, _name, pid, prompt, :attach),
     do: term |> Connection.switch(pid, id) |> Display.append(View.spawned(id)) |> ask_if(prompt)
@@ -179,38 +178,40 @@ defmodule WardrikTUI.App.Commands do
   # An agent whose turn is running or waiting is not moved until `/confirm`,
   # after what the move would interrupt has been shown.
   defp move_agent(term, id, options) do
-    case placement(options) do
-      {:ok, [node: node]} ->
-        case Fleet.lookup(id) do
-          nil ->
-            Display.append(term, View.no_such_agent(id))
+    with {:ok, [node: node]} <- placement(options),
+         {:ok, change} <- Operation.plan(%Move{agent: id, node: node}, caller(term)) do
+      case Operation.preview(change) do
+        %{"moving" => %{"from" => here, "to" => here}} ->
+          Display.append(term, View.already_on(id, node))
 
-          %{status: status} when status in [:running, :parked] ->
-            term
-            |> assign(confirm: {:move, id, node})
-            |> Display.append(View.move_preview(id, node, status))
+        %{"moving" => %{"interrupting" => doing}} ->
+          term
+          |> assign(confirm: {:move, change})
+          |> Display.append(View.move_preview(id, node, interrupted(doing)))
 
-          _idle ->
-            move_now(term, id, node)
-        end
-
-      {:error, reason} ->
-        Display.append(term, placement_error(reason, "/move"))
+        _nothing_to_interrupt ->
+          move_now(term, change)
+      end
+    else
+      {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
+      {:error, %Error{message: message}} -> Display.append(term, View.error(message))
+      {:error, reason} -> Display.append(term, placement_error(reason, "/move"))
     end
   end
 
-  defp move_now(term, id, node) do
-    case Fleet.move(id, node) do
-      {:ok, pid} ->
-        :ok = record(term, {:agent_moved, id, node})
+  defp interrupted("turn"), do: :running
+  defp interrupted("calls"), do: :parked
 
+  defp move_now(term, %Change{request: %Move{agent: id, node: node}} = change) do
+    case Operation.make(change, caller(term)) do
+      {:ok, _answer} ->
         term
-        |> adopt(id, pid)
+        |> adopt(id, Fleet.whereis(id))
         |> Connection.refresh_fleet()
         |> Display.append(View.moved(id, node))
 
-      {:error, reason} ->
-        Display.append(term, fleet_error(reason, node))
+      {:error, %Error{message: message}} ->
+        Display.append(term, View.error(message))
     end
   end
 
@@ -219,10 +220,6 @@ defmodule WardrikTUI.App.Commands do
 
   defp placement_error({:unknown_options, keys}, command),
     do: View.unknown_options(keys, Command.find(command))
-
-  defp fleet_error({:erpc, reason}, node), do: View.unreachable(node, reason)
-
-  defp fleet_error(reason, _node), do: View.error(reason)
 
   # The attached agent is addressed by its new process from here on.
   defp adopt(%{assigns: %{agent_id: id}} = term, id, pid), do: Connection.reconnect(term, pid)
@@ -317,16 +314,12 @@ defmodule WardrikTUI.App.Commands do
   # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
-    case Fleet.stop(id) do
-      :ok ->
-        :ok = record(term, {:agent_stopped, id})
+    case Operation.run(%Stop{agent: id}, caller(term)) do
+      {:ok, _answer} ->
         term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
 
-      {:error, :noproc} ->
+      {:error, %Error{type: :not_found}} ->
         Display.append(term, View.no_such_agent(id))
-
-      {:error, reason} ->
-        Display.append(term, View.error(reason))
     end
   end
 
@@ -375,8 +368,8 @@ defmodule WardrikTUI.App.Commands do
     term |> assign(confirm: nil) |> forget_all(ids)
   end
 
-  defp confirm(%{assigns: %{confirm: {:move, id, node}}} = term) do
-    term |> assign(confirm: nil) |> move_now(id, node)
+  defp confirm(%{assigns: %{confirm: {:move, change}}} = term) do
+    term |> assign(confirm: nil) |> move_now(change)
   end
 
   defp confirm(term), do: Interaction.flash(term, View.nothing_to_confirm())

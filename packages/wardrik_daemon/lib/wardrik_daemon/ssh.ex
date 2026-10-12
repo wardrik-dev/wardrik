@@ -16,10 +16,10 @@ defmodule WardrikDaemon.SSH do
 
   Each connection is a session of the `:entrypoint` the application
   environment names, and the name is who it is for. `config/config.exs` names
-  the TUI's, which starts agents as `config.yaml`'s `defaults` say:
+  the TUI's, which starts agents through `Wardrik.Definition`, as every
+  surface does:
 
-      config :wardrik_daemon, WardrikDaemon.SSH,
-        entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
+      config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 
   Nothing else in the daemon names the TUI, so a build without it names no
   entrypoint and serves nothing, and says so where keys are there to let in.

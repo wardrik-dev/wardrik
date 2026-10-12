@@ -178,29 +178,47 @@ defmodule Wardrik.AgentSleepTest do
     refute Fleet.stored?(key)
   end
 
-  test "an agent wakes with the definition the fleet answers for it now" do
+  # Answers whatever spec a test keeps for an ID, or none.
+  defmodule Current do
+    @moduledoc false
+    @behaviour Wardrik.Definition
+
+    @impl true
+    def put(_id, _definition, _grant), do: {:error, "not here"}
+
+    @impl true
+    def current(id), do: :persistent_term.get({__MODULE__, id}, :none)
+
+    def keep(id, spec), do: :persistent_term.put({__MODULE__, id}, {:ok, spec})
+  end
+
+  defp definitions(module) do
+    :ignore = Wardrik.Definition.configure(module)
+    on_exit(fn -> Wardrik.Definition.configure(nil) end)
+  end
+
+  test "an agent wakes with the definition the host answers for it now" do
     key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
     asleep(key)
 
-    spec = Spec.new(id: key, config: Config.new(model_spec: "test:after"), idle_timeout: @idle)
-    :ok = Fleet.definition({__MODULE__, :defined, [spec]})
-    on_exit(fn -> Fleet.definition(nil) end)
+    definitions(Current)
+
+    Current.keep(
+      key,
+      Spec.new(id: key, config: Config.new(model_spec: "test:after"), idle_timeout: @idle)
+    )
 
     assert %{model: "test:after"} = Agent.status(key)
   end
 
-  test "without a definition the fleet answers, an agent wakes as it slept" do
+  test "without a definition the host answers, an agent wakes as it slept" do
     key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
     asleep(key)
 
-    :ok = Fleet.definition({__MODULE__, :defined, [:none]})
-    on_exit(fn -> Fleet.definition(nil) end)
+    definitions(Current)
 
     assert %{model: "test:before"} = Agent.status(key)
   end
-
-  def defined(%Spec{} = spec, _id), do: {:ok, spec}
-  def defined(:none, _id), do: :none
 
   test "an ID nothing holds is not woken" do
     key = Wardrik.Test.Fleet.id()

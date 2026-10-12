@@ -30,7 +30,6 @@ defmodule WardrikDaemon.CLI.Vault do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
   alias WardrikConsole.Nodes
-  alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Config
@@ -258,7 +257,7 @@ defmodule WardrikDaemon.CLI.Vault do
   # Every other node running a daemon reads the key file too. One without a
   # copy, on another host, is named, since what is sealed is unreadable there.
   defp spread do
-    others = CLI.daemons() -- [node()]
+    others = WardrikDaemon.daemons() -- [node()]
 
     for {other, answer} <- Enum.zip(others, :erpc.multicall(others, VaultKey, :load, [])),
         answer != {:ok, :ok},
@@ -270,7 +269,9 @@ defmodule WardrikDaemon.CLI.Vault do
   defp placed(name, secret) do
     if Secrets.key?(name) do
       :ok = Secrets.place(name, secret)
-      _answers = :erpc.multicall(CLI.daemons() -- [node()], Secrets, :place, [name, secret])
+
+      _answers =
+        :erpc.multicall(WardrikDaemon.daemons() -- [node()], Secrets, :place, [name, secret])
     end
 
     :ok

@@ -15,7 +15,6 @@ config :wardrik, WardrikStore,
 
 # An agent wakes with its definition as it stands, as the release starts the
 # fleet.
-config :wardrik, Wardrik.Fleet, definition: {WardrikDaemon.Agents, :current, []}
 config :wardrik, definitions: WardrikDaemon.Agents, connections: WardrikOAuth.Connections
 
 # What the daemon starts each package with, beside what config.yaml says.
@@ -34,8 +33,7 @@ config :anubis_mcp, log: false
 config :wardrik_daemon, WardrikHTTP, port: 0
 
 # What the daemon serves over SSH, as a release that carries the TUI names it.
-config :wardrik_daemon, WardrikDaemon.SSH,
-  entrypoint: {WardrikTUI.SSH, options: {WardrikDaemon.Agents, :options, []}}
+config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 
 config :req_llm,
   load_dotenv: false,

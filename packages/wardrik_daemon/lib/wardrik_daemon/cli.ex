@@ -478,7 +478,7 @@ defmodule WardrikDaemon.CLI do
   defp running do
     %{
       keys: fn -> Enum.map(Fleet.list(), &to_string(&1.id)) end,
-      nodes: fn -> Enum.map(daemons(), &Nodes.display/1) end,
+      nodes: fn -> Enum.map(WardrikDaemon.daemons(), &Nodes.display/1) end,
       calls: fn key ->
         case Agent.parked(key) do
           calls when is_list(calls) -> Enum.map(calls, &elem(&1, 0).id)
@@ -500,26 +500,9 @@ defmodule WardrikDaemon.CLI do
   defp agents(_words, opts), do: Query.run(%ListAgents{prefix: Prefix.all()}, opts[:caller])
 
   defp reload(_words, opts) do
-    reloaded = reload_all()
+    reloaded = WardrikDaemon.reload_all()
     :ok = Audit.record({:agents_reloaded, reloaded}, opts[:by])
     {:ok, WardrikDaemon.status()}
-  end
-
-  @doc "Has every node running a daemon read the agent and policy files again, and answers which did."
-  @spec reload_all() :: [node()]
-  def reload_all do
-    for daemon <- daemons() do
-      _files = :erpc.call(daemon, WardrikDaemon.Agents, :reload, [], :timer.minutes(1))
-      daemon
-    end
-  end
-
-  @doc "This node and every node connected to it that runs a daemon of its own."
-  @spec daemons() :: [node()]
-  def daemons do
-    for daemon <- [node() | Node.list()],
-        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Agents]) != nil,
-        do: daemon
   end
 
   defp needs_terminal(_words, _opts), do: :live

@@ -47,16 +47,6 @@ defmodule WardrikTUI.App do
   @default_denial "Denied by the person watching."
   @leader_after 1_500
 
-  @doc """
-  What `:options` answers for an agent this app starts under `id`: the
-  options to spawn it with ahead of `:spawn_opts`, or why it cannot start.
-  Without `:options`, none.
-  """
-  @spec options({module(), atom(), list()} | nil, Wardrik.AgentID.t()) ::
-          {:ok, keyword()} | {:error, String.t()}
-  def options(nil, _id), do: {:ok, []}
-  def options({module, function, args}, id), do: apply(module, function, [id | args])
-
   @doc "The fleet panel's width in columns, unless started with `:sidebar_width`."
   @spec default_sidebar_width() :: pos_integer()
   def default_sidebar_width, do: @sidebar_width
@@ -400,8 +390,6 @@ defmodule WardrikTUI.App do
       term
       |> assign(
         org: Keyword.get(opts, :org),
-        spawn_opts: Keyword.get(opts, :spawn_opts, []),
-        options: Keyword.get(opts, :options),
         principal: Keyword.get_lazy(opts, :principal, &terminal/0),
         fleet: [],
         fleet_due?: false,

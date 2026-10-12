@@ -345,6 +345,17 @@ defmodule WardrikTUI.View do
   def sent_to(id, text),
     do: note(["sent to ", Text.tag(to_string(id), :bright), ": ", Text.tag(text, :bright)])
 
+  @doc "That an agent runs on the node a move names already, so nothing moved."
+  @spec already_on(AgentID.t(), node()) :: Text.t()
+  def already_on(id, node) do
+    note([
+      Text.tag(to_string(id), :bright),
+      " runs on ",
+      Text.tag(Atom.to_string(node), :bright),
+      " already · nothing was moved"
+    ])
+  end
+
   @doc "That an agent was restarted on another node."
   @spec moved(AgentID.t(), node()) :: Text.t()
   def moved(id, node) do

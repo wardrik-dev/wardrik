@@ -1,18 +1,55 @@
 defmodule WardrikTUI.App.FleetTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.Event
   alias Wardrik.Event.Bus
   alias Wardrik.Event.Source
   alias Wardrik.Fleet
+  alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
   alias WardrikTUI.App
 
+  # Defines each agent a session starts as a new one, on a model nothing
+  # answers, or says why it cannot.
+  defmodule Created do
+    @moduledoc false
+    @behaviour Wardrik.Definition
+
+    @impl true
+    def put(_id, _definition, _grant), do: {:error, "not here"}
+
+    @impl true
+    def current(_id), do: :none
+
+    @impl true
+    def create(%AgentID{name: "refused"}), do: {:error, "the defaults name no such tool"}
+
+    def create(id),
+      do: {:ok, Spec.new(id: id, config: Config.new(model_spec: "test:model"))}
+  end
+
+  # A second node, b, which the session can name and Wardrik.Fleet.move/2 is
+  # stubbed to reach.
+  defp elsewhere do
+    Mimic.set_mimic_global()
+
+    stub(WardrikConsole.Nodes, :find, fn
+      "b", _nodes -> :wardrik_b@localhost
+      name, nodes -> call_original(WardrikConsole.Nodes, :find, [name, nodes])
+    end)
+
+    stub(Wardrik.Deployment, :node, fn _node -> :ok end)
+  end
+
   setup do
+    :ignore = Wardrik.Definition.configure(Created)
+    on_exit(fn -> Wardrik.Definition.configure(nil) end)
     :ok = Fleet.watch()
     org = "tui#{System.unique_integer([:positive])}"
     spawn_opts = [runner: {AgentRunners, :echo, [self(), "ok"]}]
@@ -186,39 +223,16 @@ defmodule WardrikTUI.App.FleetTest do
     assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
   end
 
-  # What a host's :options gives the agents a session starts, here a model,
-  # or why one cannot start.
-  @doc false
-  def given(id, test_pid) do
-    send(test_pid, {:options_for, id})
-
-    if id.name == "refused",
-      do: {:error, "the defaults name no such tool"},
-      else: {:ok, [config: Wardrik.LLM.Config.new(model_spec: "anthropic:claude-sonnet-5")]}
-  end
-
-  test "/spawn starts an agent with what :options gives its ID", %{org: org, agent_id: agent_id} do
-    session =
-      Breeze.Test.start!(App,
-        size: {90, 14},
-        start_opts: [
-          agent: agent_id,
-          agent_id: agent_id,
-          org: org,
-          options: {__MODULE__, :given, [self()]},
-          model: "test:model"
-        ],
-        global_keybindings: App.keybindings()
-      )
-
-    on_exit(fn -> Breeze.Test.stop(session) end)
+  test "/spawn starts an agent as the host defines it, or says why it cannot", %{
+    session: session,
+    org: org
+  } do
     key = AgentID.new!("helper", org: org)
     on_exit(fn -> Fleet.forget(key) end)
 
     submit(session, "/spawn helper")
-    assert_receive {:options_for, ^key}
     assert screen(session) =~ "spawned and connected to #{key}"
-    assert Agent.status(key).model == "anthropic:claude-sonnet-5"
+    assert Agent.status(key).model == "test:model"
 
     submit(session, "/spawn refused")
     assert screen(session) =~ "✗ the defaults name no such tool"
@@ -226,12 +240,14 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   test "/spawn sends the prompt as this client's first message", %{session: session, org: org} do
-    on_exit(fn -> Fleet.forget(AgentID.new!("asked", org: org)) end)
+    key = AgentID.new!("asked", org: org)
+    on_exit(fn -> Fleet.forget(key) end)
+    :ok = Bus.subscribe(key)
 
     submit(session, "/spawn asked look into it")
 
     assert screen(session) =~ "› look into it"
-    assert_receive {:turn, [{:user, "look into it"}]}
+    assert_receive %Event{payload: %Event.MessageQueued{message: %{text: "look into it"}}}
   end
 
   test "/connect moves this client onto another agent", %{session: session, org: org} do
@@ -613,7 +629,7 @@ defmodule WardrikTUI.App.FleetTest do
   test "the header shows the attached agent's model and usage starts over", ctx do
     %{session: session, org: org} = ctx
     key = AgentID.new!("sonnet", org: org)
-    config = Wardrik.LLM.Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
+    config = Config.new(model_spec: {:anthropic, model: "claude-sonnet-5"})
     {:ok, _pid} = Fleet.spawn(key, config: config, runner: {AgentRunners, :echo, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(key) end)
 
@@ -692,6 +708,7 @@ defmodule WardrikTUI.App.FleetTest do
     %{session: session, org: org, agent_id: agent_id} = ctx
     key = AgentID.new!("worker", org: org)
     on_exit(fn -> Fleet.forget(key) end)
+    :ok = Bus.subscribe(key)
 
     submit(session, "/spawn worker --bg look into it")
 
@@ -702,8 +719,12 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ to_string(agent_id)
     assert text =~ "› ○ watched"
     assert Fleet.whereis(key)
-    assert_receive {:turn, [{:user, "From " <> said}]}
-    assert said =~ ~r/:\nlook into it$/
+
+    assert_receive %Event{
+      payload: %Event.MessageQueued{message: %{text: "look into it", sender: sender}}
+    }
+
+    assert Wardrik.Principal.id(sender) == "ops"
   end
 
   test "/spawn of an agent already running connects rather than starting one", ctx do
@@ -725,21 +746,21 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ "/connect watched attaches"
   end
 
-  test "/move restarts an agent on the node it is given", ctx do
+  test "/move restarts an agent on the node it is given, and leaves one there already", ctx do
     %{session: session, agent_id: agent_id} = ctx
-    before = Fleet.whereis(agent_id)
     [short | _host] = node() |> Atom.to_string() |> String.split("@")
 
     submit(session, "/move watched node=#{short}")
+    assert screen(session) =~ "#{agent_id} runs on #{node()} already"
 
-    assert screen(session) =~ "moved #{agent_id} to #{node()}"
-    assert Fleet.whereis(agent_id) != before
+    elsewhere()
+    expect(Fleet, :move, fn ^agent_id, :wardrik_b@localhost -> {:ok, Fleet.whereis(agent_id)} end)
+
+    submit(session, "/move watched node=b")
+
+    assert screen(session) =~ "moved #{agent_id} to wardrik_b@localhost"
     assert Audit.about("agents/#{agent_id}") == [{"agent.moved", @ops}]
     assert screen(session) =~ "› ○ watched"
-
-    # The client follows the agent to its new process.
-    submit(session, "still there?")
-    assert_receive {:turn, [{:user, "still there?"}]}
   end
 
   test "a restart under the same ID is followed and announced", ctx do
@@ -782,22 +803,25 @@ defmodule WardrikTUI.App.FleetTest do
     busy = AgentID.new!("busy", org: org)
     {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(busy) end)
-    [short | _host] = node() |> Atom.to_string() |> String.split("@")
 
     Agent.ask(pid, "go")
     assert_receive {:turn, _context, turn}
     assert eventually(session, fn -> screen(session) =~ "◐ busy" end)
 
-    submit(session, "/move busy node=#{short}")
+    elsewhere()
+    expect(Fleet, :move, fn ^busy, :wardrik_b@localhost -> {:ok, pid} end)
+
+    submit(session, "/move busy node=b")
     text = screen(session)
-    assert text =~ "/move #{busy} restarts it on #{node()}"
+    assert text =~ "/move #{busy} restarts it on wardrik_b@localhost"
     assert text =~ "its turn is running and would be interrupted"
     assert text =~ "/confirm goes ahead"
     assert Fleet.whereis(busy) == pid
 
     submit(session, "/confirm")
-    assert eventually(session, fn -> screen(session) =~ "moved #{busy} to #{node()}" end)
-    assert Fleet.whereis(busy) != pid
+
+    assert eventually(session, fn -> screen(session) =~ "moved #{busy} to wardrik_b@localhost" end)
+
     send(turn, :release)
   end
 
@@ -806,13 +830,13 @@ defmodule WardrikTUI.App.FleetTest do
     busy = AgentID.new!("stays", org: org)
     {:ok, pid} = Fleet.spawn(busy, runner: {AgentRunners, :blocking, [self(), "ok"]})
     on_exit(fn -> Fleet.forget(busy) end)
-    [short | _host] = node() |> Atom.to_string() |> String.split("@")
 
     Agent.ask(pid, "go")
     assert_receive {:turn, _context, turn}
     assert eventually(session, fn -> screen(session) =~ "◐ stays" end)
 
-    submit(session, "/move stays node=#{short}")
+    elsewhere()
+    submit(session, "/move stays node=b")
     submit(session, "/filter")
     assert screen(session) =~ "move cancelled · the agent stays where it is"
     assert Fleet.whereis(busy) == pid
