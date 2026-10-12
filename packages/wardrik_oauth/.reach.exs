@@ -19,6 +19,7 @@
       "Wardrik.Call",
       "Wardrik.Call.Ask",
       "Wardrik.Compaction",
+      "Wardrik.Connections",
       "Wardrik.Credential",
       "Wardrik.Delegation",
       "Wardrik.Event",

@@ -1,5 +1,6 @@
 import type { StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { Agent } from "./agent.ts";
+import { Connections } from "./connections.ts";
 import { Export } from "./export.ts";
 import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary } from "./protocol.ts";
@@ -33,6 +34,8 @@ const env = (name: string): string | undefined =>
  */
 export class Wardrik {
   readonly agents: Agents;
+  /** The accounts the token's person, or their org, connects. */
+  readonly connections: Connections;
 
   readonly #http: Http;
   readonly #worker: Worker;
@@ -45,6 +48,7 @@ export class Wardrik {
     this.#http = new Http(url, token, options.fetch ?? globalThis.fetch);
     this.#worker = new Worker(options.name ?? "wardrik-sdk", version);
     this.agents = new Agents(this.#http);
+    this.connections = new Connections(this.#http);
   }
 
   /** The agent under `key`, `org/name` or `org/@user/name`. */

@@ -133,6 +133,32 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(_opts), do: ~s(Signed realm="test")
   end
 
+  # Offers github, held by jon in test, and linear, held by nobody.
+  defmodule Linked do
+    @moduledoc false
+    @behaviour Wardrik.Connections
+
+    @impl true
+    def list(owner) do
+      [
+        %{provider: "github", held_by: if(owner == {"test", "jon"}, do: :person)},
+        %{provider: "linear", held_by: nil}
+      ]
+    end
+
+    @impl true
+    def connect("github", {"test", "jon"}, _by), do: {:ok, :held}
+
+    def connect(provider, _owner, _by) when provider in ["github", "linear"],
+      do: {:ok, %{url: "https://auth.example.com/#{provider}", code: nil}}
+
+    def connect(_provider, _owner, _by), do: {:error, :not_found}
+
+    @impl true
+    def disconnect("github", {"test", "jon"}), do: :ok
+    def disconnect(_provider, _owner), do: {:error, :not_found}
+  end
+
   # Cannot check any credential now, as an identity provider that is down.
   defmodule Down do
     @moduledoc false
@@ -1163,8 +1189,92 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  describe "connections" do
+    setup do
+      :ignore = Wardrik.Connections.configure(Linked)
+      on_exit(fn -> Wardrik.Connections.configure(nil) end)
+    end
+
+    defp as(api, scope, principal) do
+      {:ok, secret, _token} =
+        Token.create("connections", Prefix.parse!(scope), Grant.actions(),
+          ceiling: [],
+          for: principal
+        )
+
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    @jon Wardrik.Principal.new(:user, "jon")
+
+    test "lists, connects and forgets the person's own, or with owner=org the org's",
+         %{api: api} do
+      jon = as(api, "test/", @jon)
+
+      assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
+               Req.get(jon, url: "/v1/connections")
+
+      assert listed == [
+               %{"provider" => "github", "held_by" => "person"},
+               %{"provider" => "linear"}
+             ]
+
+      assert {:ok, %{status: 200, body: %{"connections" => [%{"provider" => "github"} | _]}}} =
+               Req.get(jon, url: "/v1/connections?owner=org")
+
+      assert {:ok, %{status: 200, body: %{"connected" => true}}} =
+               Req.post(jon, url: "/v1/connections/github")
+
+      assert {:ok, %{status: 200, body: %{"connected" => false, "authorization" => link}}} =
+               Req.post(jon, url: "/v1/connections/linear")
+
+      assert link == %{"url" => "https://auth.example.com/linear"}
+
+      conforms(
+        %{"provider" => "linear", "connected" => false, "authorization" => link},
+        "connecting"
+      )
+
+      assert {:ok, %{status: 204}} = Req.delete(jon, url: "/v1/connections/github")
+
+      assert Audit.about("secrets/github") |> List.last() ==
+               {"secret.removed", %{"type" => "user", "id" => "jon"}}
+
+      assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/connections/linear")
+      assert {:ok, %{status: 404}} = Req.post(jon, url: "/v1/connections/nothing")
+    end
+
+    test "are refused to a caller with no person, outside its org, or without define",
+         %{api: api} do
+      assert {:ok, %{status: 400, body: body}} = Req.get(api, url: "/v1/connections")
+      assert body["error"]["message"] =~ "owner=org"
+      assert {:ok, %{status: 200}} = Req.get(api, url: "/v1/connections?owner=org")
+      assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/connections?owner=someone")
+
+      globex = as(api, "globex/", @jon)
+
+      assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
+               Req.get(globex, url: "/v1/connections")
+
+      refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
+
+      {:ok, secret, _token} =
+        Token.create("reader", Prefix.parse!("test/"), [:read], ceiling: [], for: @jon)
+
+      reader = Req.merge(api, auth: {:bearer, secret})
+      assert {:ok, %{status: 403}} = Req.post(reader, url: "/v1/connections/linear")
+    end
+
+    test "answer 501 where the host offers none", %{api: api} do
+      Wardrik.Connections.configure(nil)
+      jon = as(api, "test/", @jon)
+
+      assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
+    end
+  end
+
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization schedule schedule_definition export error)
+    @resources ~w(agent agent_snapshot authorization schedule schedule_definition export error connections connecting)
 
     defp schema(name) do
       WardrikProtocol.dir()

@@ -106,6 +106,24 @@ The link is never in the conversation, an event or a notice. A person finds it:
 Once the account is connected, the call carries on by itself, with nobody approving it. A link is
 good for 15 minutes; a call after that parks on a new one.
 
+### Before any agent asks
+
+A person connects an account ahead of time, from any client, over the HTTP API with a token made
+`--for` them:
+
+```sh
+curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections
+curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
+```
+
+The list says, for each account the deployment offers, whether the person, their org or the
+deployment holds it, never a value. `POST` answers the link to authorize at, or that it is held
+already; nothing parks on it, and the account is held once they have authorized. `DELETE` forgets
+it, so the next call that needs it asks again. `?owner=org` acts on the org's instead, for a token
+that may `define` under the org. The audit records each account stored or removed, and who asked;
+see [the HTTP API](/guides/http-api/#connect-accounts).
+
 Until any user has connected, a server that needs an account to list its tools offers one tool,
 `github__connect`, so an agent can begin connecting. Once one has, its tools are kept in the store
 and offered on every node.

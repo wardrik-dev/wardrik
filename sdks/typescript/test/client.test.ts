@@ -280,3 +280,28 @@ describe("exports", () => {
     await server.close();
   });
 });
+
+describe("connections", () => {
+  test("list, connect and forget, for the person or with owner=org", async () => {
+    const list = { connections: [{ provider: "github", held_by: "person" }, { provider: "linear" }] };
+    const link = { provider: "linear", connected: false, authorization: { url: "https://auth.example.com/a" } };
+    server.on("GET", "/v1/connections", (_request, response) => json(response, 200, list));
+    server.on("POST", "/v1/connections/linear", (_request, response) => json(response, 200, link));
+    server.on("DELETE", "/v1/connections/linear", (_request, response) => json(response, 204));
+
+    assert.deepEqual(await wardrik.connections.list(), list);
+    assert.deepEqual(await wardrik.connections.connect("linear"), link);
+    await wardrik.connections.disconnect("linear", { owner: "org" });
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path]),
+      [
+        ["GET", "/v1/connections"],
+        ["POST", "/v1/connections/linear"],
+        ["DELETE", "/v1/connections/linear?owner=org"],
+      ],
+    );
+
+    await server.close();
+  });
+});

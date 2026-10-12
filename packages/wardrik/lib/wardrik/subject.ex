@@ -40,3 +40,25 @@ defimpl Wardrik.Subject, for: Wardrik.AgentID do
     end
   end
 end
+
+defimpl Wardrik.Subject, for: Wardrik.AgentID.Prefix do
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Error
+  alias Wardrik.Grant
+
+  @verbs %{read: "read what is under", define: "change what is under"}
+
+  def authorize(prefix, %Grant{scope: scope, can: can}, action) do
+    cond do
+      not Prefix.covers?(scope, prefix) ->
+        {:error, Error.new(:not_found, "Nothing under #{prefix} is within this caller's reach.")}
+
+      action in can ->
+        :ok
+
+      true ->
+        {:error,
+         Error.new(:forbidden, "This caller may not #{Map.fetch!(@verbs, action)} #{prefix}.")}
+    end
+  end
+end

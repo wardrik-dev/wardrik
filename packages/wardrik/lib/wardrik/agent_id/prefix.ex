@@ -50,6 +50,16 @@ defmodule Wardrik.AgentID.Prefix do
   @spec of(AgentID.t()) :: t()
   def of(%AgentID{} = id), do: %__MODULE__{segments: AgentID.segments(id)}
 
+  @doc "The org whose agents `prefix` is under, or `nil` for every agent."
+  @spec org(t()) :: String.t() | nil
+  def org(%__MODULE__{segments: [org | _rest]}), do: org
+  def org(%__MODULE__{segments: []}), do: nil
+
+  @doc "The user whose agents `prefix` is under, or `nil` where it names none."
+  @spec user(t()) :: String.t() | nil
+  def user(%__MODULE__{segments: [_org, "@" <> user | _rest]}), do: user
+  def user(%__MODULE__{}), do: nil
+
   @doc "Whether `id`, or every agent under another prefix, is under `prefix`."
   @spec covers?(t(), AgentID.t() | t()) :: boolean()
   def covers?(%__MODULE__{segments: segments}, %AgentID{} = id),
