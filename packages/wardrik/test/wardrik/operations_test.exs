@@ -24,8 +24,8 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
-  alias Wardrik.Operations.RemoveSchedule
-  alias Wardrik.Operations.SetSchedule
+  alias Wardrik.Operations.RemoveTrigger
+  alias Wardrik.Operations.SetTrigger
   alias Wardrik.Principal
   alias Wardrik.Query
   alias Wardrik.Test.AgentRunners
@@ -33,7 +33,7 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Test.EventLog
   alias Wardrik.Test.Fleet
 
-  # Keeps what it is sent in WardrikStore, schedules beside definitions;
+  # Keeps what it is sent in WardrikStore, triggers beside definitions;
   # refuses a definition holding "refuse", writes every spec for
   # test/elsewhere where one holds "elsewhere", and refuses to change an agent
   # whose name holds "-owned".
@@ -42,7 +42,7 @@ defmodule Wardrik.OperationsTest do
     @behaviour Wardrik.Definition
 
     @ns :operations_test_definitions
-    @schedules :operations_test_schedules
+    @triggers :operations_test_triggers
 
     @impl true
     def put(_id, %{"refuse" => message}, _grant), do: {:error, message}
@@ -74,22 +74,22 @@ defmodule Wardrik.OperationsTest do
     end
 
     @impl true
-    def put_schedule(_id, _name, %{"refuse" => message}), do: {:error, message}
+    def put_trigger(_id, _name, %{"refuse" => message}), do: {:error, message}
 
-    def put_schedule(id, name, fields) do
+    def put_trigger(id, name, fields) do
       with :ok <- editable(id),
            {:ok, _definition} <- get(id) do
-        status = if WardrikStore.get(@schedules, "#{id}//#{name}"), do: :changed, else: :created
-        {:ok, _vsn} = WardrikStore.put(@schedules, "#{id}//#{name}", fields)
+        status = if WardrikStore.get(@triggers, "#{id}//#{name}"), do: :changed, else: :created
+        {:ok, _vsn} = WardrikStore.put(@triggers, "#{id}//#{name}", fields)
         {:ok, status, Map.put(fields, "name", name)}
       end
     end
 
     @impl true
-    def delete_schedule(id, name) do
+    def delete_trigger(id, name) do
       with :ok <- editable(id) do
-        if WardrikStore.get(@schedules, "#{id}//#{name}"),
-          do: WardrikStore.delete(@schedules, "#{id}//#{name}"),
+        if WardrikStore.get(@triggers, "#{id}//#{name}"),
+          do: WardrikStore.delete(@triggers, "#{id}//#{name}"),
           else: {:error, :not_found}
       end
     end
@@ -449,9 +449,9 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
-  describe "schedules" do
+  describe "triggers" do
     setup do
-      id = defined_id("scheduled")
+      id = defined_id("triggered")
       {:created, _snapshot} = Command.run(%Define{agent: id, definition: %{}}, caller())
       %{id: id}
     end
@@ -459,27 +459,27 @@ defmodule Wardrik.OperationsTest do
     test "are set, changed and removed, and each change recorded", %{id: id} do
       fields = %{"every" => "1h", "prompt" => "Look."}
 
-      assert {:created, %{"schedule" => %{"name" => "sweep"}}} =
-               Command.run(%SetSchedule{agent: id, name: "sweep", fields: fields}, caller())
+      assert {:created, %{"trigger" => %{"name" => "sweep"}}} =
+               Command.run(%SetTrigger{agent: id, name: "sweep", fields: fields}, caller())
 
-      assert {:ok, %{"schedule" => %{"every" => "2h"}}} =
+      assert {:ok, %{"trigger" => %{"every" => "2h"}}} =
                Command.run(
-                 %SetSchedule{agent: id, name: "sweep", fields: %{fields | "every" => "2h"}},
+                 %SetTrigger{agent: id, name: "sweep", fields: %{fields | "every" => "2h"}},
                  caller()
                )
 
-      assert {:ok, nil} = Command.run(%RemoveSchedule{agent: id, name: "sweep"}, caller())
+      assert {:ok, nil} = Command.run(%RemoveTrigger{agent: id, name: "sweep"}, caller())
 
       assert {:error, %Error{type: :not_found, message: message}} =
-               Command.run(%RemoveSchedule{agent: id, name: "sweep"}, caller())
+               Command.run(%RemoveTrigger{agent: id, name: "sweep"}, caller())
 
-      assert message == "#{id} has no schedule sweep."
+      assert message == "#{id} has no trigger sweep."
 
       assert Audit.about("agents/#{id}") == [
                {"agent.defined", @jon},
-               {"schedule.set", @jon},
-               {"schedule.set", @jon},
-               {"schedule.removed", @jon}
+               {"trigger.set", @jon},
+               {"trigger.set", @jon},
+               {"trigger.removed", @jon}
              ]
     end
 
@@ -487,13 +487,13 @@ defmodule Wardrik.OperationsTest do
          %{id: id} do
       assert {:error, %Error{type: :invalid}} =
                Command.run(
-                 %SetSchedule{agent: id, name: "sweep", fields: %{"refuse" => "no time"}},
+                 %SetTrigger{agent: id, name: "sweep", fields: %{"refuse" => "no time"}},
                  caller()
                )
 
       assert {:error, %Error{type: :not_found, message: message}} =
                Command.run(
-                 %SetSchedule{agent: Fleet.id("nobody"), name: "s", fields: %{}},
+                 %SetTrigger{agent: Fleet.id("nobody"), name: "s", fields: %{}},
                  caller()
                )
 
@@ -502,15 +502,15 @@ defmodule Wardrik.OperationsTest do
       owned = Fleet.id("kept-owned")
 
       assert {:error, %Error{type: :conflict}} =
-               Command.run(%SetSchedule{agent: owned, name: "s", fields: %{}}, caller())
+               Command.run(%SetTrigger{agent: owned, name: "s", fields: %{}}, caller())
 
       assert {:error, %Error{type: :conflict}} =
-               Command.run(%RemoveSchedule{agent: owned, name: "s"}, caller())
+               Command.run(%RemoveTrigger{agent: owned, name: "s"}, caller())
     end
   end
 
   describe "a host without a definitions module, or one that only reads" do
-    test "defines, keeps, forgets and schedules nothing" do
+    test "defines, keeps, forgets and triggers nothing" do
       {id, _agent} = Fleet.start_agent()
 
       for module <- [nil, Reading] do
@@ -522,10 +522,10 @@ defmodule Wardrik.OperationsTest do
         assert {:error, %Error{type: :unsupported}} = Command.run(%Forget{agent: id}, caller())
 
         assert {:error, %Error{type: :unsupported}} =
-                 Command.run(%SetSchedule{agent: id, name: "s", fields: %{}}, caller())
+                 Command.run(%SetTrigger{agent: id, name: "s", fields: %{}}, caller())
 
         assert {:error, %Error{type: :unsupported}} =
-                 Command.run(%RemoveSchedule{agent: id, name: "s"}, caller())
+                 Command.run(%RemoveTrigger{agent: id, name: "s"}, caller())
       end
 
       definitions(nil)

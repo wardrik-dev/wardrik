@@ -249,28 +249,28 @@ defmodule WardrikDaemon.AgentFileTest do
     assert message =~ "names careful, which is neither a policy in policies/ nor a module"
   end
 
-  # The schedules the file `text` lists, once it reads.
-  defp scheduled(text, %{tmp_dir: dir} = context) do
+  # The triggers the file `text` lists, once it reads.
+  defp triggered(text, %{tmp_dir: dir} = context) do
     with {:ok, _spec} <- read(text, context),
          {:ok, definition} <- AgentFile.parse(Path.join(dir, "triage.md")),
-         do: {:ok, AgentFile.schedules(definition)}
+         do: {:ok, AgentFile.triggers(definition)}
   end
 
-  test "reads one schedule, or a list of them", context do
+  test "reads one trigger, or a list of them", context do
     assert {:ok, one} =
-             scheduled(
-               "---\nschedule:\n  every: \"*/30 * * * *\"\n  prompt: Check the queue.\n---\n",
+             triggered(
+               "---\ntriggers:\n  every: \"*/30 * * * *\"\n  prompt: Check the queue.\n---\n",
                context
              )
 
-    assert [%WardrikSchedule{name: "schedule-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
+    assert [%WardrikTrigger{name: "trigger-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
              one
 
     assert {:ok, two} =
-             scheduled(
+             triggered(
                """
                ---
-               schedule:
+               triggers:
                  - name: sweep
                    every: 30m
                    prompt: Check the queue.
@@ -286,11 +286,11 @@ defmodule WardrikDaemon.AgentFileTest do
              )
 
     assert [
-             %WardrikSchedule{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
-             %WardrikSchedule{name: "digest", overlap: :queue, missed: :skip}
+             %WardrikTrigger{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
+             %WardrikTrigger{name: "digest", overlap: :queue, missed: :skip}
            ] = two
 
-    assert {:ok, []} = scheduled("---\n---\n", context)
+    assert {:ok, []} = triggered("---\n---\n", context)
   end
 
   # config.yaml's channels, by the orgs each serves.
@@ -474,53 +474,53 @@ defmodule WardrikDaemon.AgentFileTest do
                "policy names WardrikDaemon.AgentFileTest.Policy, which is not a policy in policies/"
     end
 
-    test "lists the agent's schedules as a file does, and one is set or deleted in it" do
+    test "lists the agent's triggers as a file does, and one is set or deleted in it" do
       id = Wardrik.AgentID.parse!("acme/triage")
       unnamed = %{"every" => "1h", "prompt" => "Look."}
 
       assert {:ok, definition} =
                AgentFile.define(
                  id,
-                 %{"schedule" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]},
+                 %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]},
                  nil
                )
 
-      assert [%WardrikSchedule{name: "schedule-1"}, %WardrikSchedule{name: "schedule-2"}] =
-               AgentFile.schedules(definition)
+      assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
+               AgentFile.triggers(definition)
 
-      assert {:ok, definition, :changed, %WardrikSchedule{every: {:interval, 7_200_000}}} =
-               AgentFile.put_schedule(definition, "schedule-1", %{unnamed | "every" => "2h"})
+      assert {:ok, definition, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
+               AgentFile.put_trigger(definition, "trigger-1", %{unnamed | "every" => "2h"})
 
-      assert {:ok, definition, :created, %WardrikSchedule{name: "sweep"}} =
-               AgentFile.put_schedule(definition, "sweep", unnamed)
+      assert {:ok, definition, :created, %WardrikTrigger{name: "sweep"}} =
+               AgentFile.put_trigger(definition, "sweep", unnamed)
 
-      assert ~w(schedule-1 schedule-2 sweep) ==
-               Enum.map(AgentFile.schedules(definition), & &1.name)
+      assert ~w(trigger-1 trigger-2 sweep) ==
+               Enum.map(AgentFile.triggers(definition), & &1.name)
 
-      assert {:error, "schedule sweep: prompt is a string" <> _rest} =
-               AgentFile.put_schedule(definition, "sweep", %{"every" => "1h"})
+      assert {:error, "trigger sweep: prompt is a string" <> _rest} =
+               AgentFile.put_trigger(definition, "sweep", %{"every" => "1h"})
 
-      assert {:error, "schedule sweep: prompt_file names a file" <> _rest} =
-               AgentFile.put_schedule(definition, "sweep", %{
+      assert {:error, "trigger sweep: prompt_file names a file" <> _rest} =
+               AgentFile.put_trigger(definition, "sweep", %{
                  "every" => "1h",
                  "prompt_file" => "A.md"
                })
 
-      {:ok, definition} = AgentFile.delete_schedule(definition, "schedule-2")
-      {:ok, definition} = AgentFile.delete_schedule(definition, "schedule-1")
-      assert {:error, :not_found} = AgentFile.delete_schedule(definition, "schedule-1")
-      {:ok, definition} = AgentFile.delete_schedule(definition, "sweep")
+      {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-2")
+      {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-1")
+      assert {:error, :not_found} = AgentFile.delete_trigger(definition, "trigger-1")
+      {:ok, definition} = AgentFile.delete_trigger(definition, "sweep")
       assert AgentFile.fields(definition) == %{}
 
-      assert {:error, "schedule 1: every: \"10s\" is shorter than a minute"} =
-               AgentFile.definition(id, %{"schedule" => %{"every" => "10s", "prompt" => "Look."}})
+      assert {:error, "trigger 1: every: \"10s\" is shorter than a minute"} =
+               AgentFile.definition(id, %{"triggers" => %{"every" => "10s", "prompt" => "Look."}})
     end
 
-    test "answers one schedule as a list of one", context do
-      {:ok, _spec} = read("---\nschedule: {every: 1h, prompt: Look.}\n---\n", context)
+    test "answers one trigger as a list of one", context do
+      {:ok, _spec} = read("---\ntriggers: {every: 1h, prompt: Look.}\n---\n", context)
       {:ok, definition} = AgentFile.parse(Path.join(context.tmp_dir, "triage.md"))
 
-      assert %{"schedule" => [%{"every" => "1h", "prompt" => "Look."}]} =
+      assert %{"triggers" => [%{"every" => "1h", "prompt" => "Look."}]} =
                AgentFile.fields(definition)
     end
 

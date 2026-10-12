@@ -1,9 +1,9 @@
-defmodule Wardrik.Operations.SetSchedule do
+defmodule Wardrik.Operations.SetTrigger do
   @moduledoc """
-  Sets one of an agent's schedules, as `wardrik_protocol`'s
-  `schedule_definition.json` describes it. A schedule is part of the agent's
+  Sets one of an agent's triggers, as `wardrik_protocol`'s
+  `trigger_definition.json` describes it. A trigger is part of the agent's
   definition, so the host's `Wardrik.Definition` sets it; the answer is the
-  schedule, `:created` where the agent had none of that name.
+  trigger, `:created` where the agent had none of that name.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -28,15 +28,15 @@ defmodule Wardrik.Operations.SetSchedule do
   @impl Wardrik.Command
   def plan(%__MODULE__{agent: id, name: name} = request, _caller) do
     with {:ok, _module} <- definitions(),
-         do: {:ok, Change.new(request, [{:schedule_set, id, name}])}
+         do: {:ok, Change.new(request, [{:trigger_set, id, name}])}
   end
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, name: name, fields: fields}}, _caller) do
     with {:ok, module} <- definitions() do
-      case module.put_schedule(id, name, fields) do
-        {:ok, :created, schedule} -> {:created, %{"schedule" => schedule}}
-        {:ok, :changed, schedule} -> {:ok, %{"schedule" => schedule}}
+      case module.put_trigger(id, name, fields) do
+        {:ok, :created, trigger} -> {:created, %{"trigger" => trigger}}
+        {:ok, :changed, trigger} -> {:ok, %{"trigger" => trigger}}
         {:error, :not_found} -> {:error, ReadDefinition.undefined(id)}
         {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
         {:error, message} -> {:error, Error.new(:invalid, message)}
@@ -45,9 +45,9 @@ defmodule Wardrik.Operations.SetSchedule do
   end
 
   defp definitions do
-    case Definition.module(:put_schedule) do
+    case Definition.module(:put_trigger) do
       {:ok, module} -> {:ok, module}
-      :unsupported -> {:error, Error.new(:unsupported, "This server does not schedule agents.")}
+      :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
     end
   end
 end

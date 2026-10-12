@@ -102,7 +102,7 @@ node, so listen beyond loopback only on a network you trust. See
 ## In an application of your own
 
 The daemon is `WardrikDaemon`, started after Wardrik in your tree, beside the
-budget meters, the schedules, the tokens' grants and the tool workers' group:
+budget meters, the triggers, the tokens' grants and the tool workers' group:
 
 ```elixir
 config :wardrik, start: :host
@@ -110,7 +110,7 @@ config :wardrik, start: :host
 children = [
   {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
   WardrikPolicy.Supervisor,
-  WardrikSchedule,
+  WardrikTrigger,
   WardrikHTTP.Access,
   WardrikHTTP.Workers,
   WardrikDaemon

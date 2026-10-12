@@ -59,10 +59,10 @@ description: Triages the issues anyone files on acme/widgets.
 model: anthropic:claude-sonnet-5
 tools: [github/*, files]
 context: [TRIAGE.md]
-schedule:
-  name: sweep
-  every: 15m
-  prompt: Triage the issues opened since your last sweep.
+triggers:
+  - name: sweep
+    every: 15m
+    prompt: Triage the issues opened since your last sweep.
 policy:
   allow: [github/*, read_file, write_file(TRIAGE.md), edit_file(TRIAGE.md)]
   default: deny

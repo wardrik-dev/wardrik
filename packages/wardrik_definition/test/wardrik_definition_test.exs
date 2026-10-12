@@ -152,17 +152,17 @@ defmodule WardrikDefinitionTest do
              WardrikDefinition.check_defaults(%{"name" => "x"})
   end
 
-  test "changes and removes one schedule" do
-    fields = %{"schedule" => %{"every" => "1h", "prompt" => "Look."}}
+  test "changes and removes one trigger" do
+    fields = %{"triggers" => %{"every" => "1h", "prompt" => "Look."}}
 
-    assert {:ok, fields, :created, %WardrikSchedule{name: "sweep"}} =
-             WardrikDefinition.put_schedule(fields, "sweep", %{"every" => "2h", "prompt" => "Go."})
+    assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
+             WardrikDefinition.put_trigger(fields, "sweep", %{"every" => "2h", "prompt" => "Go."})
 
-    assert [%{name: "schedule-1"}, %{name: "sweep"}] = WardrikDefinition.schedules(fields)
+    assert [%{name: "trigger-1"}, %{name: "sweep"}] = WardrikDefinition.triggers(fields)
 
-    assert {:ok, %{"schedule" => [%{"name" => "sweep"}]}} =
-             WardrikDefinition.delete_schedule(fields, "schedule-1")
+    assert {:ok, %{"triggers" => [%{"name" => "sweep"}]}} =
+             WardrikDefinition.delete_trigger(fields, "trigger-1")
 
-    assert {:error, :not_found} = WardrikDefinition.delete_schedule(fields, "nope")
+    assert {:error, :not_found} = WardrikDefinition.delete_trigger(fields, "nope")
   end
 end

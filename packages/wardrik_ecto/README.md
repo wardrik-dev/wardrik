@@ -1,7 +1,7 @@
 # wardrik_ecto
 
 A [Wardrik store](../wardrik_store) in Postgres, through an Ecto repo your
-application owns. Agents, their events, schedules and sealed credentials are
+application owns. Agents, their events, triggers and sealed credentials are
 kept in one table, `wardrik_records`.
 
 ```elixir

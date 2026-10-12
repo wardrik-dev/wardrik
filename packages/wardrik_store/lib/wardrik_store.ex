@@ -30,8 +30,8 @@ defmodule WardrikStore do
   has to know the other's keys.
 
   The fleet is kept by `DurableServer`, whose supervisors each write under a
-  prefix of their own: `agents/<key>` for agents, and, where schedules and
-  budgets run, `schedules/` and `meters/`, with each node's heartbeat under
+  prefix of their own: `agents/<key>` for agents, and, where triggers and
+  budgets run, `triggers/` and `meters/`, with each node's heartbeat under
   `<prefix>__nodes/`. Through `WardrikStore.Durable` they sit in the
   `:durable` namespace, so an agent in a bucket is
   `wardrik/durable/agents/acme/@jon/triage`. On EKV, DurableServer's own backend

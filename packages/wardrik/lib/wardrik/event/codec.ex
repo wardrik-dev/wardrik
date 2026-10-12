@@ -81,7 +81,7 @@ defmodule Wardrik.Event.Codec do
     :agent_stopped,
     :context_compacted,
     :context_cleared,
-    :schedule_fired
+    :trigger_fired
   ]
   @steps [:span_started, :span_finished, :delegation_started, :delegation_finished]
   @messages [:model_started, :model_finished, :result, :thinking]
@@ -249,9 +249,9 @@ defmodule Wardrik.Event.Codec do
     do:
       {"conversation.cleared", "agents/#{event.source.agent_id}", %{"messages_before" => dropped}}
 
-  defp agent(%Event.ScheduleFired{name: name, outcome: outcome}, event, _opts) do
-    {"schedule.triggered", "agents/#{event.source.agent_id}",
-     %{"schedule" => %{"name" => name}, "status" => to_string(outcome)}}
+  defp agent(%Event.TriggerFired{name: name, outcome: outcome}, event, _opts) do
+    {"trigger.fired", "agents/#{event.source.agent_id}",
+     %{"trigger" => %{"name" => name}, "status" => to_string(outcome)}}
   end
 
   # -- steps and subagents -------------------------------------------------------
@@ -409,11 +409,11 @@ defmodule Wardrik.Event.Codec do
 
   defp change({:agent_cleared, id}), do: agent_change("agent.cleared", id, %{})
 
-  defp change({:schedule_set, id, name}),
-    do: agent_change("schedule.set", id, %{"schedule" => %{"name" => name}})
+  defp change({:trigger_set, id, name}),
+    do: agent_change("trigger.set", id, %{"trigger" => %{"name" => name}})
 
-  defp change({:schedule_removed, id, name}),
-    do: agent_change("schedule.removed", id, %{"schedule" => %{"name" => name}})
+  defp change({:trigger_removed, id, name}),
+    do: agent_change("trigger.removed", id, %{"trigger" => %{"name" => name}})
 
   defp change({:agents_reloaded, nodes}),
     do: {"agents.reloaded", "agents", %{"nodes" => Enum.map(nodes, &to_string/1)}}

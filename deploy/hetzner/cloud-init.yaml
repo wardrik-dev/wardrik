@@ -151,10 +151,10 @@ write_files:
       model: zai_coding_plan:glm-5.3
       tools: [github/*]
       user: jon
-      schedule:
-        name: sweep
-        every: "*/30 * * * *"
-        prompt: Look at what landed on main since your last look.
+      triggers:
+        - name: sweep
+          every: "*/30 * * * *"
+          prompt: Look at what landed on main since your last look.
       notify: {to: [demo], on: [parked, failed]}
       policy:
         ask:

@@ -18,7 +18,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   file declares starts again at the next `wardrik reload`.
 
   `agent rm` removes an agent, running or stopped, or every agent running
-  under a prefix, with its conversation and schedules, for good. It lists
+  under a prefix, with its conversation and triggers, for good. It lists
   what it removes and asks first; `--yes` removes without asking, as it must
   where nobody can answer. It leaves an agent a file declares: removing the
   file, then `wardrik reload`, removes that one.
@@ -98,7 +98,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
         name: "agent rm",
         arguments: "KEY|PREFIX/",
         options: "[--yes]",
-        summary: "remove an agent, its conversation and its schedules, for good",
+        summary: "remove an agent, its conversation and its triggers, for good",
         details: [
           "It lists what it removes and asks first; --yes removes without asking. A PREFIX/,",
           "such as acme/, removes every agent under it. An agent a file declares is left:",
@@ -456,11 +456,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp removing([key], kept),
-    do: ["This removes #{key}, its conversation and its schedules, for good." | left(kept)]
+    do: ["This removes #{key}, its conversation and its triggers, for good." | left(kept)]
 
   defp removing(keys, kept) do
     [
-      "This removes #{length(keys)} agents, their conversations and their schedules, for good:"
+      "This removes #{length(keys)} agents, their conversations and their triggers, for good:"
       | Enum.map(keys, &"\n  #{&1}")
     ] ++ left(kept)
   end

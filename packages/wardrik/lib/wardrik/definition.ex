@@ -2,7 +2,7 @@ defmodule Wardrik.Definition do
   @moduledoc """
   Where agents' definitions go: a definition as `wardrik_protocol`'s
   `agent_definition.json` describes it, read into the `Wardrik.Agent.Spec` it
-  runs on, and the schedules beside it.
+  runs on, and the triggers beside it.
 
   A host names the module once, as `Wardrik`'s `:definitions`, and every
   operation that defines an agent asks it, whichever surface it came from:
@@ -20,8 +20,8 @@ defmodule Wardrik.Definition do
   | `put/3` | `Wardrik.Operations.Define` | no module is named, and each operation is `:unsupported` |
   | `get/1` | `Wardrik.Operations.ReadDefinition` | `:unsupported` |
   | `delete/1` | `Wardrik.Operations.Forget` | `:unsupported` |
-  | `put_schedule/3` | `Wardrik.Operations.SetSchedule` | `:unsupported` |
-  | `delete_schedule/2` | `Wardrik.Operations.RemoveSchedule` | `:unsupported` |
+  | `put_trigger/3` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
+  | `delete_trigger/2` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps it, and refuses the agents its files declare. A module
@@ -57,28 +57,28 @@ defmodule Wardrik.Definition do
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
   @doc """
-  Sets the schedule `name` of the agent `id` to `fields`, as
-  `wardrik_protocol`'s `schedule_definition.json` describes them: whether it
-  was `:created` or `:changed`, and the schedule as `schedule.json` describes
+  Sets the trigger `name` of the agent `id` to `fields`, as
+  `wardrik_protocol`'s `trigger_definition.json` describes them: whether it
+  was `:created` or `:changed`, and the trigger as `trigger.json` describes
   it. `{:error, :not_found}` is for an agent the module keeps no definition
   for, a message for fields that do not read.
   """
-  @callback put_schedule(id :: Wardrik.AgentID.t(), name :: String.t(), fields :: map()) ::
+  @callback put_trigger(id :: Wardrik.AgentID.t(), name :: String.t(), fields :: map()) ::
               {:ok, :created | :changed, map()}
               | {:error, :not_found}
               | {:error, String.t()}
               | {:error, :conflict, String.t()}
 
   @doc """
-  Deletes the schedule `name` of the agent `id`: `:ok`, `{:error, :not_found}`
+  Deletes the trigger `name` of the agent `id`: `:ok`, `{:error, :not_found}`
   where it has none, or a conflict.
   """
-  @callback delete_schedule(id :: Wardrik.AgentID.t(), name :: String.t()) ::
+  @callback delete_trigger(id :: Wardrik.AgentID.t(), name :: String.t()) ::
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
-  @optional_callbacks get: 1, delete: 1, put_schedule: 3, delete_schedule: 2
+  @optional_callbacks get: 1, delete: 1, put_trigger: 3, delete_trigger: 2
 
-  @callbacks %{put: 3, get: 1, delete: 1, put_schedule: 3, delete_schedule: 2}
+  @callbacks %{put: 3, get: 1, delete: 1, put_trigger: 3, delete_trigger: 2}
   @module {__MODULE__, :module}
 
   @doc """

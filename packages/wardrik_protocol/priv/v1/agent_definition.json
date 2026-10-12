@@ -159,7 +159,7 @@
       ],
       "description": "When the agent summarises its older history, as shares of the model's window; false never does."
     },
-    "schedule": {
+    "triggers": {
       "type": "array",
       "items": {
         "type": "object",
@@ -170,7 +170,7 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "The schedule's name, schedule-1, schedule-2 and so on by its place in the list where it is left out."
+            "description": "The trigger's name, trigger-1, trigger-2 and so on by its place in the list where it is left out."
           },
           "every": {
             "type": "string",
@@ -198,7 +198,7 @@
               "run_once",
               "skip"
             ],
-            "description": "What a schedule does about the firings it missed while down."
+            "description": "What a trigger does about the firings it missed while down."
           },
           "jitter": {
             "type": "integer",
@@ -207,7 +207,7 @@
           }
         }
       },
-      "description": "The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run."
+      "description": "The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run."
     },
     "channels": {
       "type": "array",
@@ -248,7 +248,7 @@
         "at": 0.6,
         "keep": 0.25
       },
-      "schedule": [
+      "triggers": [
         {
           "name": "sweep",
           "every": "*/30 * * * *",

@@ -538,7 +538,7 @@ defmodule WardrikDaemon.CLITest do
     policy:
       budget:
         tokens: 500
-    schedule:
+    triggers:
       name: tally
       every: 30m
       prompt: Count again.
@@ -557,7 +557,7 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ ~r"tools +web_search"
     assert output =~ ~r"policy +the file's own: no rules; otherwise allow"
     assert output =~ ~r"budget +0 of 500 tokens today"
-    assert output =~ ~r"schedule +every 30m +next in \d+m +not run yet"
+    assert output =~ ~r"trigger +every 30m +next in \d+m +not run yet"
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
     thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
@@ -584,24 +584,24 @@ defmodule WardrikDaemon.CLITest do
     assert command(["show", "nobody/here"]) == {"No agent runs under nobody/here.\n", 1}
   end
 
-  test "schedules lists each schedule's next run, and its last and what came of it" do
+  test "triggers lists each trigger's next run, and its last and what came of it" do
     prefix = "cli-#{System.unique_integer([:positive])}/"
     key = Wardrik.AgentID.parse!(prefix <> "pinger")
-    on_exit(fn -> WardrikSchedule.sync(key, []) end)
+    on_exit(fn -> WardrikTrigger.sync(key, []) end)
 
-    assert {output, 0} = command(["schedules", prefix])
-    assert output == "Nothing is scheduled under #{prefix}.\n"
+    assert {output, 0} = command(["triggers", prefix])
+    assert output == "No agent has a trigger under #{prefix}.\n"
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
-    {:ok, _pid} = WardrikSchedule.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
-    {:ok, _pid} = WardrikSchedule.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
-    # A schedule announces a firing before it records it, so the second
+    {:ok, _pid} = WardrikTrigger.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
+    {:ok, _pid} = WardrikTrigger.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
+    # A trigger announces a firing before it records it, so the second
     # firing is the first that finds the one before it written down.
-    assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
-    assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
+    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
+    assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
 
-    assert {output, 0} = command(["schedules", prefix])
-    assert output =~ "2 schedules:"
+    assert {output, 0} = command(["triggers", prefix])
+    assert output =~ "2 triggers:"
     assert output =~ ~r"  #{key}/hourly  0 \* \* \* \*  next in \d+[ms]  not run yet"
 
     assert output =~

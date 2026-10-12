@@ -46,7 +46,7 @@ defmodule WardrikDaemon.CLI.CompletionTest do
     assert complete(["approve", ""]) == ["acme/triage", "acme/@jon/digest"]
     assert complete(["approve", "acme/triage", ""]) == ["call_1", "call_2"]
     assert complete(["deny", "acme/@jon/digest", ""]) == []
-    assert complete(["schedules", "acme/"]) == ["acme/triage", "acme/@jon/digest"]
+    assert complete(["triggers", "acme/"]) == ["acme/triage", "acme/@jon/digest"]
     assert complete(["agent", "cancel", "acme/t"]) == ["acme/triage"]
   end
 

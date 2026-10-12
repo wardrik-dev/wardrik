@@ -12,8 +12,8 @@ defmodule WardrikDaemon.Agents do
   `WardrikDaemon.Definition` is kept, and its `notify` becomes the agent's
   route with `WardrikNotify.put_routes/1`.
 
-  A definition's `schedule` is its agent's schedules, so each is brought to
-  what a definition lists as it is kept, with `WardrikSchedule.sync/2`, and
+  A definition's `triggers` are its agent's triggers, so each is brought to
+  what a definition lists as it is kept, with `WardrikTrigger.sync/2`, and
   cleared as it is deleted.
 
   A file that does not read, or whose agent does not start, is reported by
@@ -27,7 +27,7 @@ defmodule WardrikDaemon.Agents do
   declare, and the name of the file each came from. A key its inventory held
   that no file declares any more, because its file was removed or now names
   another agent, is retired once no other node connected to it declares it
-  either: the agent stops, its schedules are cleared and its definition
+  either: the agent stops, its triggers are cleared and its definition
   forgotten, and it keeps its conversation, so a file that declares it again
   brings it back as it was.
   `Wardrik.Fleet.forget/1`, or `wardrik agent rm`, removes it for good. A
@@ -38,11 +38,11 @@ defmodule WardrikDaemon.Agents do
   It is also the daemon's `Wardrik.Definition`. `put/3` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.define/3`, under the
   policies it last read, and keeps it with the grant of the token that sent
-  it; `get/1` answers it, `delete/1` forgets it, and `put_schedule/3` and
-  `delete_schedule/2` change one of its schedules. A key an agent file
+  it; `get/1` answers it, `delete/1` forgets it, and `put_trigger/3` and
+  `delete_trigger/2` change one of its triggers. A key an agent file
   declares, here or on any node connected to this one, belongs to the file:
   each of them refuses it with a conflict, so the API changes neither it nor
-  its schedules.
+  its triggers.
 
   ## Reading what was read
 
@@ -357,31 +357,31 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Sets the schedule `name` in the definition the HTTP API sent for the agent
-  `key`, from `fields` as `WardrikDaemon.AgentFile.put_schedule/3` reads
-  them, and brings the agent's schedules to it: whether it was added or
-  changed, and the schedule as `WardrikSchedule.encode/1` writes it.
+  Sets the trigger `name` in the definition the HTTP API sent for the agent
+  `key`, from `fields` as `WardrikDaemon.AgentFile.put_trigger/3` reads
+  them, and brings the agent's triggers to it: whether it was added or
+  changed, and the trigger as `WardrikTrigger.encode/1` writes it.
   `{:error, :not_found}` where no definition is kept, or a conflict where an
   agent file declares `key`.
   """
   @impl Wardrik.Definition
-  def put_schedule(key, name, fields) do
+  def put_trigger(key, name, fields) do
     with {:ok, definition} <- defined(key),
-         {:ok, definition, status, schedule} <- AgentFile.put_schedule(definition, name, fields) do
+         {:ok, definition, status, trigger} <- AgentFile.put_trigger(definition, name, fields) do
       :ok = keep(definition)
-      {:ok, status, WardrikSchedule.encode(schedule)}
+      {:ok, status, WardrikTrigger.encode(trigger)}
     end
   end
 
   @doc """
-  Deletes the schedule `name` from the definition the HTTP API sent for the
+  Deletes the trigger `name` from the definition the HTTP API sent for the
   agent `key`, and stops it: `{:error, :not_found}` where neither is kept, or
   a conflict where an agent file declares `key`.
   """
   @impl Wardrik.Definition
-  def delete_schedule(key, name) do
+  def delete_trigger(key, name) do
     with {:ok, definition} <- defined(key),
-         {:ok, definition} <- AgentFile.delete_schedule(definition, name),
+         {:ok, definition} <- AgentFile.delete_trigger(definition, name),
          do: keep(definition)
   end
 
@@ -399,19 +399,19 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Deletes the definition kept for the agent `key`, and the schedules it
+  Deletes the definition kept for the agent `key`, and the triggers it
   lists, as `wardrik agent rm` does once it has forgotten the agent.
   """
   @spec drop(AgentID.t()) :: :ok
   def drop(key) do
-    :ok = WardrikSchedule.sync(key, [])
+    :ok = WardrikTrigger.sync(key, [])
     Definition.delete(key)
   end
 
-  # A schedule starts only once the definition listing it is kept.
+  # A trigger starts only once the definition listing it is kept.
   defp keep(definition) do
     :ok = Definition.put(definition)
-    WardrikSchedule.sync(definition.id, AgentFile.schedules(definition))
+    WardrikTrigger.sync(definition.id, AgentFile.triggers(definition))
   end
 
   @doc """

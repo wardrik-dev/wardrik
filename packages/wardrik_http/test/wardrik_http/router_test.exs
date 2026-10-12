@@ -39,14 +39,14 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
-  # Keeps what it is sent in WardrikStore, schedules beside definitions, and
+  # Keeps what it is sent in WardrikStore, triggers beside definitions, and
   # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
     @behaviour Wardrik.Definition
 
     @ns :router_test_definitions
-    @schedules :router_test_schedules
+    @triggers :router_test_triggers
 
     @impl true
     def put(key, definition, grant) do
@@ -73,29 +73,29 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     @impl true
-    def put_schedule(_key, _name, %{"refuse" => message}), do: {:error, message}
+    def put_trigger(_key, _name, %{"refuse" => message}), do: {:error, message}
 
-    def put_schedule(key, name, fields) do
+    def put_trigger(key, name, fields) do
       with :ok <- editable(key),
            {:ok, _definition} <- get(key) do
-        status = if scheduled(key, name), do: :changed, else: :created
+        status = if triggered(key, name), do: :changed, else: :created
         defaults = %{"name" => name, "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
-        schedule = Map.merge(defaults, fields)
-        {:ok, _vsn} = WardrikStore.put(@schedules, "#{key}//#{name}", schedule)
-        {:ok, status, schedule}
+        trigger = Map.merge(defaults, fields)
+        {:ok, _vsn} = WardrikStore.put(@triggers, "#{key}//#{name}", trigger)
+        {:ok, status, trigger}
       end
     end
 
     @impl true
-    def delete_schedule(key, name) do
+    def delete_trigger(key, name) do
       with :ok <- editable(key) do
-        if scheduled(key, name),
-          do: WardrikStore.delete(@schedules, "#{key}//#{name}"),
+        if triggered(key, name),
+          do: WardrikStore.delete(@triggers, "#{key}//#{name}"),
           else: {:error, :not_found}
       end
     end
 
-    defp scheduled(key, name), do: WardrikStore.get(@schedules, "#{key}//#{name}")
+    defp triggered(key, name), do: WardrikStore.get(@triggers, "#{key}//#{name}")
 
     defp editable(key) do
       if String.contains?(key.name, "-owned"),
@@ -353,7 +353,7 @@ defmodule WardrikHTTP.RouterTest do
             {:delete, "/conversation", nil},
             {:put, "", %{}},
             {:delete, "", nil},
-            {:put, "/schedules/sweep", %{"every" => "1h", "prompt" => "Look."}}
+            {:put, "/triggers/sweep", %{"every" => "1h", "prompt" => "Look."}}
           ] do
         assert {:ok, %{status: 403}} =
                  Req.request(watcher, method: method, url: "/v1/agents/#{key}#{path}", json: body)
@@ -881,52 +881,52 @@ defmodule WardrikHTTP.RouterTest do
       assert Audit.about("agents/#{key}") == []
     end
 
-    test "may refuse to change an agent's schedules", %{kept: kept} do
+    test "may refuse to change an agent's triggers", %{kept: kept} do
       key = Fleet.id("kept-owned")
 
       assert {:ok, %{status: 409, body: body}} =
                Req.put(kept,
-                 url: "/v1/agents/#{key}/schedules/sweep",
+                 url: "/v1/agents/#{key}/triggers/sweep",
                  json: %{"every" => "2h", "prompt" => "Look less."}
                )
 
       assert body["error"]["message"] == "#{key} belongs to a file."
-      assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
+      assert {:ok, %{status: 409}} = Req.delete(kept, url: "/v1/agents/#{key}/triggers/sweep")
     end
   end
 
-  describe "schedules" do
+  describe "triggers" do
     setup %{api: api} do
       definitions(Kept)
       kept = api
-      key = Fleet.id("scheduled")
+      key = Fleet.id("triggered")
       {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
       %{kept: kept, key: key}
     end
 
-    defp schedule(api, key, name, body),
-      do: Req.put(api, url: "/v1/agents/#{key}/schedules/#{name}", json: body)
+    defp trigger(api, key, name, body),
+      do: Req.put(api, url: "/v1/agents/#{key}/triggers/#{name}", json: body)
 
     test "are set in the agent's definition, then changed", %{kept: kept, key: key, token: token} do
-      assert {:ok, %{status: 201, body: %{"schedule" => %{"name" => "sweep", "every" => "1h"}}}} =
-               schedule(kept, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
+      assert {:ok, %{status: 201, body: %{"trigger" => %{"name" => "sweep", "every" => "1h"}}}} =
+               trigger(kept, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
-      assert {:ok, %{status: 200, body: %{"schedule" => %{"every" => "2h"}}}} =
-               schedule(kept, key, "sweep", %{"every" => "2h", "prompt" => "Look."})
+      assert {:ok, %{status: 200, body: %{"trigger" => %{"every" => "2h"}}}} =
+               trigger(kept, key, "sweep", %{"every" => "2h", "prompt" => "Look."})
 
-      assert {"schedule.set", actor(token)} in Audit.about("agents/#{key}")
+      assert {"trigger.set", actor(token)} in Audit.about("agents/#{key}")
     end
 
     test "that do not read, or are for an agent with no definition kept, are refused",
          %{kept: kept, key: key} do
       assert {:ok, %{status: 400, body: body}} =
-               schedule(kept, key, "sweep", %{"refuse" => "every is not a time"})
+               trigger(kept, key, "sweep", %{"refuse" => "every is not a time"})
 
       assert body["error"]["message"] == "every is not a time"
 
       assert {:ok, %{status: 404, body: body}} =
-               schedule(kept, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
+               trigger(kept, "test/nobody", "sweep", %{"every" => "30m", "prompt" => "Look."})
 
       assert body["error"]["message"] == "test/nobody has no definition kept."
     end
@@ -937,19 +937,19 @@ defmodule WardrikHTTP.RouterTest do
       token: token
     } do
       {:ok, %{status: 201}} =
-        schedule(kept, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
+        trigger(kept, key, "sweep", %{"every" => "1d", "prompt" => "Look."})
 
-      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
+      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}/triggers/sweep")
 
       assert {:ok, %{status: 404, body: body}} =
-               Req.delete(kept, url: "/v1/agents/#{key}/schedules/sweep")
+               Req.delete(kept, url: "/v1/agents/#{key}/triggers/sweep")
 
-      assert body["error"]["message"] == "#{key} has no schedule sweep."
+      assert body["error"]["message"] == "#{key} has no trigger sweep."
 
       assert Audit.about("agents/#{key}") == [
                {"agent.defined", actor(token)},
-               {"schedule.set", actor(token)},
-               {"schedule.removed", actor(token)}
+               {"trigger.set", actor(token)},
+               {"trigger.removed", actor(token)}
              ]
     end
 
@@ -957,10 +957,10 @@ defmodule WardrikHTTP.RouterTest do
       definitions(Definition)
 
       assert {:ok, %{status: 501, body: body}} =
-               schedule(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
+               trigger(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
-      assert body["error"]["message"] == "This server does not schedule agents."
-      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
+      assert body["error"]["message"] == "This server keeps no triggers."
+      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}/triggers/sweep")
     end
   end
 
@@ -1274,7 +1274,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization schedule schedule_definition export error connections connecting)
+    @resources ~w(agent agent_snapshot authorization trigger trigger_definition export error connections connecting)
 
     defp schema(name) do
       WardrikProtocol.dir()

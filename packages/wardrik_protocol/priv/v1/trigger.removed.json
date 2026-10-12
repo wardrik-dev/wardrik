@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:wardrik:schema:v1:schedule.removed",
-  "title": "wardrik.schedule.removed",
-  "description": "Someone removed one of an agent's schedules.",
+  "$id": "urn:wardrik:schema:v1:trigger.removed",
+  "title": "wardrik.trigger.removed",
+  "description": "Someone removed one of an agent's triggers.",
   "type": "object",
   "properties": {
     "agent": {
@@ -18,7 +18,7 @@
         "id"
       ]
     },
-    "schedule": {
+    "trigger": {
       "type": "object",
       "properties": {
         "name": {
@@ -37,6 +37,6 @@
   "additionalProperties": false,
   "required": [
     "agent",
-    "schedule"
+    "trigger"
   ]
 }

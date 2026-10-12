@@ -1,6 +1,6 @@
-defmodule WardrikSchedule.Status do
+defmodule WardrikTrigger.Status do
   @moduledoc """
-  One schedule as `WardrikSchedule.list/1` reports it: its key, the agent it
+  One trigger as `WardrikTrigger.list/1` reports it: its key, the agent it
   asks, when it runs next, and when it last fired and what came of it.
   """
 
@@ -12,14 +12,14 @@ defmodule WardrikSchedule.Status do
           pid: pid(),
           agent: Wardrik.AgentID.t(),
           name: String.t(),
-          every: WardrikSchedule.every(),
+          every: WardrikTrigger.every(),
           next_at: DateTime.t(),
           last_at: DateTime.t() | nil,
-          last_outcome: WardrikSchedule.outcome() | nil
+          last_outcome: WardrikTrigger.outcome() | nil
         }
 
   @doc "What a run that came to `outcome` did, as a person reads it."
-  @spec described(WardrikSchedule.outcome() | nil) :: String.t()
+  @spec described(WardrikTrigger.outcome() | nil) :: String.t()
   def described(nil), do: "asking"
   def described(:asked), do: "asked"
   def described(:nothing_new), do: "found nothing new"

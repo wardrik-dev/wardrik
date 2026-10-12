@@ -109,7 +109,7 @@ defmodule WardrikDaemon.CLI do
         summary: "empty an agent's conversation, and the labels of what it read",
         details: [
           "An agent whose conversation holds content from outside asks a person",
-          "before each gated call until it is cleared. Its files, schedules and",
+          "before each gated call until it is cleared. Its files, triggers and",
           "config stay. Refused while it runs a turn or waits on a person."
         ],
         count: {1, 1},

@@ -46,7 +46,7 @@ need an engineer.
 ```
 
 The [docs](https://docs.wardrik.dev) cover installing, agent files, policies,
-schedules, Slack, storage and running several nodes as one cluster.
+triggers, Slack, storage and running several nodes as one cluster.
 
 ### The library
 
@@ -123,7 +123,7 @@ tools that run in your own process.
 
 | Package | Description |
 | --- | --- |
-| [wardrik_schedule](packages/wardrik_schedule) | A prompt an agent is asked on a clock, owned by one node of the cluster and carried on by another |
+| [wardrik_trigger](packages/wardrik_trigger) | A prompt an agent is asked on a clock, or when a source it watches finds something new, owned by one node of the cluster and carried on by another |
 | [wardrik_workflow](packages/wardrik_workflow) | Steps run many at once or in order, each under a span of its own, and offered to an agent as a tool |
 
 ### Stores

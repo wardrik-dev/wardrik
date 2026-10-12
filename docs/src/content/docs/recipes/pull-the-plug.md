@@ -173,8 +173,8 @@ The agent answers its next message as usual. The other ways to stop one are the 
 
 A stop ends what an agent is doing now. To keep it from starting again:
 
-- **Its schedules.** Remove `schedule` from its file and `wardrik reload`, or delete one over the
-  HTTP API. See [Run an agent on a schedule](/guides/schedules/#changing-and-removing-schedules).
+- **Its triggers.** Remove `triggers` from its file and `wardrik reload`, or delete one over the
+  HTTP API. See [Trigger an agent](/guides/triggers/#changing-and-removing-triggers).
 - **Whoever messages it.** Revoke the token that sends it messages, `wardrik token revoke ID`. See
   [Tokens](/operate/security/#tokens).
 - **Its tools.** Revoke a tool worker's token, and its tools are gone from every agent at once; or

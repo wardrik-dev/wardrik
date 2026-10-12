@@ -251,11 +251,11 @@ export interface AgentDefinition {
         window?: number;
       };
   /**
-   * The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
+   * The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
    */
-  schedule?: {
+  triggers?: {
     /**
-     * The schedule's name, schedule-1, schedule-2 and so on by its place in the list where it is left out.
+     * The trigger's name, trigger-1, trigger-2 and so on by its place in the list where it is left out.
      */
     name?: string;
     /**
@@ -275,7 +275,7 @@ export interface AgentDefinition {
      */
     overlap?: "skip" | "queue";
     /**
-     * What a schedule does about the firings it missed while down.
+     * What a trigger does about the firings it missed while down.
      */
     missed?: "run_once" | "skip";
     /**
@@ -456,9 +456,9 @@ export interface ExportPage {
   }[];
 }
 /**
- * A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
+ * A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
  */
-export interface Schedule {
+export interface Trigger {
   name: string;
   /**
    * A cron expression, or a duration such as 30m.
@@ -473,7 +473,7 @@ export interface Schedule {
    */
   overlap: "skip" | "queue";
   /**
-   * What a schedule does about the firings it missed while down.
+   * What a trigger does about the firings it missed while down.
    */
   missed: "run_once" | "skip";
   /**
@@ -483,9 +483,9 @@ export interface Schedule {
   [k: string]: unknown;
 }
 /**
- * The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
+ * The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
  */
-export interface ScheduleDefinition {
+export interface TriggerDefinition {
   /**
    * A cron expression, or a duration such as 30m.
    */
@@ -503,7 +503,7 @@ export interface ScheduleDefinition {
    */
   overlap?: "skip" | "queue";
   /**
-   * What a schedule does about the firings it missed while down.
+   * What a trigger does about the firings it missed while down.
    */
   missed?: "run_once" | "skip";
   /**
@@ -824,45 +824,6 @@ export interface RunStartedData {
   run: Run;
 }
 /**
- * Someone removed one of an agent's schedules.
- */
-export interface ScheduleRemovedData {
-  agent: {
-    /**
-     * The agent's ID.
-     */
-    id: string;
-  };
-  schedule: {
-    name: string;
-  };
-  actor?: Principal;
-}
-/**
- * Someone set one of an agent's schedules.
- */
-export interface ScheduleSetData {
-  agent: {
-    /**
-     * The agent's ID.
-     */
-    id: string;
-  };
-  schedule: {
-    name: string;
-  };
-  actor?: Principal;
-}
-/**
- * A schedule came due.
- */
-export interface ScheduleTriggeredData {
-  schedule: {
-    name: string;
-  };
-  status: "asked" | "nothing_new" | "busy" | "no_agent" | "missed" | "failed";
-}
-/**
  * Someone took a secret out of the vault.
  */
 export interface SecretRemovedData {
@@ -1001,6 +962,45 @@ export interface ToolCallStartedData {
   tool: Tool;
   decided: Decided;
 }
+/**
+ * A trigger came due.
+ */
+export interface TriggerFiredData {
+  trigger: {
+    name: string;
+  };
+  status: "asked" | "nothing_new" | "busy" | "no_agent" | "missed" | "failed";
+}
+/**
+ * Someone removed one of an agent's triggers.
+ */
+export interface TriggerRemovedData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  trigger: {
+    name: string;
+  };
+  actor?: Principal;
+}
+/**
+ * Someone set one of an agent's triggers.
+ */
+export interface TriggerSetData {
+  agent: {
+    /**
+     * The agent's ID.
+     */
+    id: string;
+  };
+  trigger: {
+    name: string;
+  };
+  actor?: Principal;
+}
 
 /** Each event type, and the data its events carry. */
 export interface EventData {
@@ -1031,9 +1031,6 @@ export interface EventData {
   "wardrik.run.interrupted": RunInterruptedData;
   "wardrik.run.resumed": RunResumedData;
   "wardrik.run.started": RunStartedData;
-  "wardrik.schedule.removed": ScheduleRemovedData;
-  "wardrik.schedule.set": ScheduleSetData;
-  "wardrik.schedule.triggered": ScheduleTriggeredData;
   "wardrik.secret.removed": SecretRemovedData;
   "wardrik.secret.stored": SecretStoredData;
   "wardrik.step.completed": StepCompletedData;
@@ -1047,6 +1044,9 @@ export interface EventData {
   "wardrik.tool_call.denied": ToolCallDeniedData;
   "wardrik.tool_call.progress": ToolCallProgressData;
   "wardrik.tool_call.started": ToolCallStartedData;
+  "wardrik.trigger.fired": TriggerFiredData;
+  "wardrik.trigger.removed": TriggerRemovedData;
+  "wardrik.trigger.set": TriggerSetData;
 }
 
 /** An event's type, as its CloudEvent names it. */

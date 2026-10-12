@@ -64,7 +64,7 @@ prefix. A value longer than 64 KiB is cut short and marked `"truncated": true`.
 | `subagent.started`, `subagent.completed`, `subagent.failed` | delegated work |
 | `conversation.compacted` | the agent summarised its older history |
 | `conversation.cleared` | the agent's conversation was emptied |
-| `schedule.triggered` | a schedule came round, and what came of it |
+| `trigger.fired` | a trigger came round, and what came of it |
 | `agent.started` | the agent started on a node |
 
 Two names are easy to misread: `run.interrupted` is a turn waiting on a person, and

@@ -34,7 +34,7 @@ defmodule Wardrik.Event do
     * Agent lifecycle, each on the root of a trace of its own:
       `Wardrik.Event.MessageQueued`, `Wardrik.Event.AgentStarted`,
       `Wardrik.Event.AgentStopped`, `Wardrik.Event.ContextCleared`,
-      `Wardrik.Event.ScheduleFired`.
+      `Wardrik.Event.TriggerFired`.
     * Spans and delegations, on their own span: `Wardrik.Event.SpanStarted`,
       `Wardrik.Event.SpanFinished`, `Wardrik.Event.DelegationStarted`,
       `Wardrik.Event.DelegationFinished`.
@@ -60,7 +60,7 @@ defmodule Wardrik.Event do
           | __MODULE__.AgentStopped.t()
           | __MODULE__.ContextCompacted.t()
           | __MODULE__.ContextCleared.t()
-          | __MODULE__.ScheduleFired.t()
+          | __MODULE__.TriggerFired.t()
           | __MODULE__.SpanStarted.t()
           | __MODULE__.SpanFinished.t()
           | __MODULE__.DelegationStarted.t()
@@ -126,7 +126,7 @@ defmodule Wardrik.Event do
     __MODULE__.AgentStopped => :agent_stopped,
     __MODULE__.ContextCompacted => :context_compacted,
     __MODULE__.ContextCleared => :context_cleared,
-    __MODULE__.ScheduleFired => :schedule_fired,
+    __MODULE__.TriggerFired => :trigger_fired,
     __MODULE__.SpanStarted => :span_started,
     __MODULE__.SpanFinished => :span_finished,
     __MODULE__.DelegationStarted => :delegation_started,
@@ -175,7 +175,7 @@ defmodule Wardrik.Event do
     :message_queued,
     :agent_started,
     :agent_stopped,
-    :schedule_fired,
+    :trigger_fired,
     :span_started,
     :span_finished,
     :delegation_started,

@@ -274,7 +274,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       {output, 0} = live(["agent", "rm", org <> "/"], "n\n")
 
       assert output =~
-               "This removes 2 agents, their conversations and their schedules, for good:\n" <>
+               "This removes 2 agents, their conversations and their triggers, for good:\n" <>
                  "  #{first}\n  #{second}\n"
 
       assert output =~ "Remove them?"
@@ -293,7 +293,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       key = agent(org, "lone")
 
       {output, 1} = live(["agent", "rm", key], "", input?: false)
-      assert output =~ "This removes #{key}, its conversation and its schedules, for good."
+      assert output =~ "This removes #{key}, its conversation and its triggers, for good."
       assert output =~ "wardrik agent rm #{key} --yes removes without asking."
 
       :ok = Fleet.stop(key)

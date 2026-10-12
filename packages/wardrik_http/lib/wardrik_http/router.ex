@@ -43,8 +43,8 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.ReadConnections
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
-  alias Wardrik.Operations.RemoveSchedule
-  alias Wardrik.Operations.SetSchedule
+  alias Wardrik.Operations.RemoveTrigger
+  alias Wardrik.Operations.SetTrigger
   alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikHTTP.Access
@@ -168,11 +168,11 @@ defmodule WardrikHTTP.Router do
   defp route("POST", ["cancel"], _conn), do: {Command, &{:ok, %Cancel{agent: &1}}, 202}
   defp route("DELETE", ["conversation"], _conn), do: {Command, &{:ok, %Clear{agent: &1}}, 204}
 
-  defp route("PUT", ["schedules", name], conn),
-    do: {Command, &schedule(conn, &1, name), 200}
+  defp route("PUT", ["triggers", name], conn),
+    do: {Command, &trigger(conn, &1, name), 200}
 
-  defp route("DELETE", ["schedules", name], _conn),
-    do: {Command, &{:ok, %RemoveSchedule{agent: &1, name: name}}, 204}
+  defp route("DELETE", ["triggers", name], _conn),
+    do: {Command, &{:ok, %RemoveTrigger{agent: &1, name: name}}, 204}
 
   defp route(_method, _rest, _conn), do: nil
 
@@ -246,9 +246,9 @@ defmodule WardrikHTTP.Router do
          do: {:ok, %Define{agent: key, definition: fields}}
   end
 
-  defp schedule(conn, key, name) do
+  defp trigger(conn, key, name) do
     with {:ok, fields} <- object(conn.body_params),
-         do: {:ok, %SetSchedule{agent: key, name: name, fields: fields}}
+         do: {:ok, %SetTrigger{agent: key, name: name, fields: fields}}
   end
 
   # Plug.Parsers keeps a body that is not an object under "_json".

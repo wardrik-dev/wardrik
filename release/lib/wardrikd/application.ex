@@ -8,8 +8,8 @@ defmodule Wardrikd.Application do
   them, so starting Wardrik here starts it last.
 
   What runs on the fleet starts after it, so once the fleet is up, and goes
-  with it: `WardrikPolicy.Supervisor` keeps the budgets, `WardrikSchedule`
-  runs the schedules, `WardrikHTTP.Access` keeps what tokens grant,
+  with it: `WardrikPolicy.Supervisor` keeps the budgets, `WardrikTrigger`
+  runs the triggers, `WardrikHTTP.Access` keeps what tokens grant,
   `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
   rest. `WardrikDaemon.Cluster` connects this node to
   the others before the fleet starts, `WardrikDaemon.Agents` is where
@@ -20,7 +20,7 @@ defmodule Wardrikd.Application do
   what `config/runtime.exs` read of `config.yaml` as the node booted; see
   `WardrikDaemon.Config.boot/1`.
 
-  `DurableServer`, which runs the fleet, the schedules and the budgets, logs
+  `DurableServer`, which runs the fleet, the triggers and the budgets, logs
   its warnings and errors alone: at `info` it writes a line every few seconds
   for each of its supervisors, which buries the daemon's own.
   """
@@ -40,7 +40,7 @@ defmodule Wardrikd.Application do
        connections: WardrikOAuth.Connections,
        fleet: [definition: {WardrikDaemon.Agents, :current, []}]},
       WardrikPolicy.Supervisor,
-      WardrikSchedule,
+      WardrikTrigger,
       WardrikHTTP.Access,
       {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
       WardrikDaemon

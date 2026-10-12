@@ -62,7 +62,7 @@ wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAM
 | `read` | listing agents, their snapshots and their events |
 | `message` | sending messages, and stopping a turn |
 | `decide` | approving and denying waiting calls, and their authorization links |
-| `define` | putting and removing agents and schedules |
+| `define` | putting and removing agents and triggers |
 | `serve` | offering tools as a [worker](/guides/tool-workers/) |
 
 ```sh

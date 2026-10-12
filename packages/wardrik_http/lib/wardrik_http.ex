@@ -47,7 +47,7 @@ defmodule WardrikHTTP do
   | `read` | listing agents, snapshots, definitions, events and connections |
   | `message` | messages, cancelling, and clearing the conversation |
   | `decide` | interrupts, and their authorization links |
-  | `define` | putting and deleting agents and schedules, and connecting accounts |
+  | `define` | putting and deleting agents and triggers, and connecting accounts |
   | `serve` | `/v1/workers` |
 
   ## Keys in paths
@@ -75,15 +75,15 @@ defmodule WardrikHTTP do
   | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
   | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
   | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, where the server keeps definitions |
-  | `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and schedules included, `204` |
+  | `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and triggers included, `204` |
   | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
   | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
   | `POST /v1/agents/{key}/interrupts/{id}` | approves or rejects a call the agent is waiting on |
   | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
   | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
   | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
-  | `PUT /v1/agents/{key}/schedules/{schedule}` | asks the agent a prompt on a clock, `201`, or changes the schedule, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
-  | `DELETE /v1/agents/{key}/schedules/{schedule}` | stops the schedule and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
+  | `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
+  | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
   | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
   | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
   | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
@@ -94,8 +94,8 @@ defmodule WardrikHTTP do
 
   `Wardrik.Resource` shows what each answers. Each resource's JSON Schema is
   in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
-  `agent_snapshot.json`, `agent_definition.json`, `schedule.json`,
-  `schedule_definition.json`, `authorization.json`, `connections.json`,
+  `agent_snapshot.json`, `agent_definition.json`, `trigger.json`,
+  `trigger_definition.json`, `authorization.json`, `connections.json`,
   `connecting.json`, `export.json` and `error.json`. `sdks/typescript` generates
   its types from them.
 
@@ -161,16 +161,16 @@ defmodule WardrikHTTP do
   wrote it. The decision is recorded as made by the caller's principal, and answers `409` when the agent is not waiting on that call,
   and `503` when the agent could not record it.
 
-  ### Schedules
+  ### Triggers
 
-      PUT /v1/agents/acme/triage/schedules/sweep
+      PUT /v1/agents/acme/triage/triggers/sweep
       {"every": "*/30 * * * *", "prompt": "Check the incident queue."}
 
   `every` is a cron expression read in UTC, or a duration of at least a
   minute, as `"30m"`. `overlap` is `skip`, the default, or `queue`; `missed`
   is `run_once`, the default, or `skip`; `jitter` is up to so many seconds
-  added to each run. A schedule is part of the agent's definition, which the
-  host keeps: a definition put again lists every schedule the agent has, and
+  added to each run. A trigger is part of the agent's definition, which the
+  host keeps: a definition put again lists every trigger the agent has, and
   an agent with no definition kept answers `404`.
 
   ### Connections
@@ -210,7 +210,7 @@ defmodule WardrikHTTP do
 
   Carries a `Request-Id` header, the caller's own where it sent one, and is
   logged under it. An error is `{"error": {"type": …, "message": …}}`. A
-  request that changes something, defining, deleting, scheduling, cancelling
+  request that changes something, defining, deleting, setting triggers, cancelling
   or clearing, is recorded in `Wardrik.Audit` with the caller's principal.
   """
 end

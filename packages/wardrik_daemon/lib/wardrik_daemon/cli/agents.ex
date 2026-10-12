@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.CLI.Agents do
   @moduledoc """
-  `wardrik ls`, `show` and `schedules`: the fleet's agents a line each, one
-  agent in full, and when each schedule asks its agent.
+  `wardrik ls`, `show` and `triggers`: the fleet's agents a line each, one
+  agent in full, and when each trigger asks its agent.
 
   `ls` takes the words the TUI's `/filter` does, as `WardrikConsole.Filter`
   reads them, where `attention` is an agent waiting on a person. `show KEY`
@@ -21,7 +21,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.Definition
   alias WardrikPolicy.Pattern
-  alias WardrikSchedule.Status
+  alias WardrikTrigger.Status
 
   @faint [:faint, :light_black]
 
@@ -51,11 +51,11 @@ defmodule WardrikDaemon.CLI.Agents do
         run: &show/2
       },
       %Command{
-        name: "schedules",
+        name: "triggers",
         arguments: "[PREFIX]",
-        summary: "when each schedule runs next, and how it last ran",
+        summary: "when each trigger runs next, and how it last ran",
         count: {0, 1},
-        run: &schedules/2
+        run: &triggers/2
       }
     ]
   end
@@ -282,7 +282,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   defp asked(key) do
     now = DateTime.utc_now()
-    for schedule <- WardrikSchedule.for_agent(key), do: {"schedule", schedule(schedule, now)}
+    for trigger <- WardrikTrigger.for_agent(key), do: {"trigger", trigger(trigger, now)}
   end
 
   defp waiting(snapshot) do
@@ -310,28 +310,28 @@ defmodule WardrikDaemon.CLI.Agents do
   defp source(_owner, {:api, _grant}),
     do: Owl.Data.tag("none; it was defined over the HTTP API", @faint)
 
-  # -- schedules ----------------------------------------------------------------
+  # -- triggers ----------------------------------------------------------------
 
-  defp schedules(words, _opts) do
+  defp triggers(words, _opts) do
     prefix = List.first(words, Wardrik.AgentID.Prefix.all())
     now = DateTime.utc_now()
 
     rows =
-      for schedule <- WardrikSchedule.list(prefix),
-          do: "  #{schedule.agent}/#{schedule.name}  #{schedule(schedule, now)}"
+      for trigger <- WardrikTrigger.list(prefix),
+          do: "  #{trigger.agent}/#{trigger.name}  #{trigger(trigger, now)}"
 
     under = to_string(prefix)
 
     case rows do
-      [] -> {:ok, "Nothing is scheduled#{if under != "", do: " under #{under}"}."}
-      [_row] -> {:ok, Enum.join(["1 schedule:" | rows], "\n")}
-      rows -> {:ok, Enum.join(["#{length(rows)} schedules:" | rows], "\n")}
+      [] -> {:ok, "No agent has a trigger#{if under != "", do: " under #{under}"}."}
+      [_row] -> {:ok, Enum.join(["1 trigger:" | rows], "\n")}
+      rows -> {:ok, Enum.join(["#{length(rows)} triggers:" | rows], "\n")}
     end
   end
 
-  defp schedule(schedule, now) do
-    next = WardrikDaemon.duration(max(DateTime.diff(schedule.next_at, now, :millisecond), 0))
-    "#{every(schedule.every)}  next in #{next}  #{ran(schedule, now)}"
+  defp trigger(trigger, now) do
+    next = WardrikDaemon.duration(max(DateTime.diff(trigger.next_at, now, :millisecond), 0))
+    "#{every(trigger.every)}  next in #{next}  #{ran(trigger, now)}"
   end
 
   defp every({:cron, text}), do: text

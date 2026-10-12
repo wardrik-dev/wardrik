@@ -9,7 +9,7 @@ An agent that gets better at the work it is given. After a task worth repeating 
 how it did it, as a skill in a file of its own, and the next time it reads that skill first. Once a
 week it reads them all again, merges the ones that overlap and fixes the ones that led it wrong.
 
-Nothing here is a feature of its own: it is files, a file read into every turn, and a schedule.
+Nothing here is a feature of its own: it is files, a file read into every turn, and a trigger.
 
 ## What it takes
 
@@ -26,13 +26,13 @@ model: anthropic:claude-sonnet-5
 tools: [files, web_search, deep_research, run_lua]
 context: [SKILLS.md, MEMORY.md]
 compaction: {at: 0.5, keep: 0.2}
-schedule:
-  name: tidy
-  every: "0 3 * * 0"        # Sundays, 03:00 UTC
-  prompt: >-
-    Tidy your skills. Read each one in skills/, merge those that overlap, fix what this week's work
-    showed was wrong, and remove those you have not used and do not expect to. Keep SKILLS.md to
-    what is in skills/.
+triggers:
+  - name: tidy
+    every: "0 3 * * 0"        # Sundays, 03:00 UTC
+    prompt: >-
+      Tidy your skills. Read each one in skills/, merge those that overlap, fix what this week's work
+      showed was wrong, and remove those you have not used and do not expect to. Keep SKILLS.md to
+      what is in skills/.
 policy:
   ask:
     delete_file(skills/*): This deletes a skill.
@@ -69,8 +69,8 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   reads a skill with `read_file` when it fits. A file longer than its share of the turn is read from
   its start and its end, and the agent is asked to fold it shorter. See
   [Files and memory](/concepts/files-and-memory/).
-- **A schedule that keeps it in shape.** The Sunday run is an ordinary message on a clock, in the
-  agent's history like any other. See [Run an agent on a schedule](/guides/schedules/).
+- **A trigger that keeps it in shape.** The Sunday run is an ordinary message on a clock, in the
+  agent's history like any other. See [Trigger an agent](/guides/triggers/).
 - **A long life.** The agent keeps one conversation for as long as it runs, and summarises the older
   part with its own model before it outgrows the context window: `compaction` sets when. What it
   must not forget belongs in a skill or `MEMORY.md`, which no summary touches. See
@@ -101,5 +101,5 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   context: [shared/skills/SKILLS.md]
   ```
 
-- **A night's lessons.** A second schedule at 02:00 can ask it to read the day's conversation
+- **A night's lessons.** A second trigger at 02:00 can ask it to read the day's conversation
   back and keep what it learned in `MEMORY.md`, before the history is summarised away.

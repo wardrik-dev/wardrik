@@ -1,61 +1,62 @@
-defmodule WardrikSchedule do
+defmodule WardrikTrigger do
   @moduledoc """
-  A prompt an agent is asked on a clock.
+  A prompt an agent is asked when its time comes: on a clock, or when a
+  source it watches finds something new.
 
-      WardrikSchedule.put(~A"acme/triage", "sweep",
+      WardrikTrigger.put(~A"acme/triage", "sweep",
         every: "*/30 * * * *",
         prompt: "Check the incident queue.")
 
-  Each schedule is a `DurableServer` keyed by the agent's ID and the
-  schedule's name, so one process in the cluster owns it, and it carries on
+  Each trigger is a `DurableServer` keyed by the agent's ID and the
+  trigger's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
   checks its source, and where that found something calls
   `Wardrik.Agent.ask/3`, and it announces what happened on the agent's topic
-  as `Wardrik.Event.ScheduleFired`. It also joins a group of its agent's,
-  so `for_agent/1` finds an agent's schedules by its ID rather than by
-  looking through every schedule in the cluster.
+  as `Wardrik.Event.TriggerFired`. It also joins a group of its agent's,
+  so `for_agent/1` finds an agent's triggers by its ID rather than by
+  looking through every trigger in the cluster.
 
-  A schedule writes down its next run before it asks the agent, so a firing
-  lost to a crash is not made again: a schedule fires at most once for each
+  A trigger writes down its next run before it asks the agent, so a firing
+  lost to a crash is not made again: a trigger fires at most once for each
   time it names.
 
   ## Sources
 
-  A schedule watches a `WardrikSchedule.Source`: the clock, which asks the
+  A trigger watches a `WardrikTrigger.Source`: the clock, which asks the
   agent its prompt on every run, unless it names another, which asks only
   when it finds something new, with what it found under the prompt:
 
-      WardrikSchedule.put(~A"acme/growth", "mentions",
+      WardrikTrigger.put(~A"acme/growth", "mentions",
         every: "1h",
         prompt: "New mentions of Acme. Which deserve a reply?",
         source: {MyApp.Feed, "https://example.com/alerts.xml"})
 
-  A source registers the key a schedule written as text names it by, so
-  `decode/2` reads it; see `WardrikSchedule.Source`.
+  A source registers the key a trigger written as text names it by, so
+  `decode/2` reads it; see `WardrikTrigger.Source`.
 
-  `sync/2` brings an agent's schedules to a list, starting, changing and
+  `sync/2` brings an agent's triggers to a list, starting, changing and
   deleting them, and `sync(agent, [])` deletes them all; what keeps the
-  agent's definition calls it as that changes. The schedules run under a
+  agent's definition calls it as that changes. The triggers run under a
   supervisor a host starts once per node, after Wardrik in its own tree:
 
-      children = [Wardrik, WardrikSchedule]
+      children = [Wardrik, WardrikTrigger]
 
   ## Options
 
     * `:every` - required. A five-field cron expression read in UTC, see
-      `WardrikSchedule.Cron`; a duration of at least a minute, as `"30m"`,
+      `WardrikTrigger.Cron`; a duration of at least a minute, as `"30m"`,
       `"2h"` or `"1d"`; or `{:interval, ms}`
     * `:prompt` - required. What the agent is asked
     * `:overlap` - what a firing does when the agent is running or waiting
       on a person: `:skip`, the default, leaves it be, and `:queue` asks
       anyway, which the running turn takes at its next boundary
-    * `:missed` - what a schedule that comes back overdue does, after its
+    * `:missed` - what a trigger that comes back overdue does, after its
       node or the daemon was down past a run: `:run_once`, the default, fires
       once and goes on from now, and `:skip` goes on from now
     * `:jitter` - up to this many milliseconds added to each run, `0` by
       default
     * `:source` - what it watches, as `{module, opts}` of a
-      `WardrikSchedule.Source`; the clock, `{WardrikSchedule.Clock, nil}`, by
+      `WardrikTrigger.Source`; the clock, `{WardrikTrigger.Clock, nil}`, by
       default
 
   ## Outcomes
@@ -71,12 +72,12 @@ defmodule WardrikSchedule do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias WardrikSchedule.Clock
-  alias WardrikSchedule.Cron
-  alias WardrikSchedule.Server
-  alias WardrikSchedule.Source
-  alias WardrikSchedule.State
-  alias WardrikSchedule.Status
+  alias WardrikTrigger.Clock
+  alias WardrikTrigger.Cron
+  alias WardrikTrigger.Server
+  alias WardrikTrigger.Source
+  alias WardrikTrigger.State
+  alias WardrikTrigger.Status
 
   @enforce_keys [:name, :every, :prompt]
   defstruct [
@@ -89,7 +90,7 @@ defmodule WardrikSchedule do
     source: {Clock, nil}
   ]
 
-  @typedoc "When a schedule runs: a cron expression's text, or every so many milliseconds."
+  @typedoc "When a trigger runs: a cron expression's text, or every so many milliseconds."
   @type every() :: {:cron, String.t()} | {:interval, pos_integer()}
 
   @type t() :: %__MODULE__{
@@ -105,7 +106,7 @@ defmodule WardrikSchedule do
   @typedoc "What one firing did."
   @type outcome() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
-  @name WardrikSchedule.Schedules
+  @name WardrikTrigger.Triggers
   @fields ~w(every prompt overlap missed jitter)
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
   @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
@@ -114,7 +115,7 @@ defmodule WardrikSchedule do
   @spec supervisor() :: atom()
   def supervisor, do: @name
 
-  @doc "The supervisor the schedules run under, started after Wardrik."
+  @doc "The supervisor the triggers run under, started after Wardrik."
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts),
     do: %{
@@ -123,7 +124,7 @@ defmodule WardrikSchedule do
     }
 
   @doc """
-  Starts the supervisor the schedules run under, over the store the fleet
+  Starts the supervisor the triggers run under, over the store the fleet
   runs on. `:log` is passed to `Group`.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -131,7 +132,7 @@ defmodule WardrikSchedule do
     DurableServer.Supervisor.start_link(
       [
         name: @name,
-        prefix: "schedules/",
+        prefix: "triggers/",
         backend: WardrikStore.durable_backend(),
         group: [log: Keyword.get(opts, :log, false)]
       ] ++ WardrikStore.durable_shutdown()
@@ -139,7 +140,7 @@ defmodule WardrikSchedule do
   end
 
   @doc """
-  A schedule named `name`, from the options above. Raises `ArgumentError`
+  A trigger named `name`, from the options above. Raises `ArgumentError`
   on one that does not read.
   """
   @spec new(String.t(), keyword()) :: t()
@@ -157,12 +158,12 @@ defmodule WardrikSchedule do
 
   defp name!(name) when is_binary(name) and name != "" do
     if String.contains?(name, "/"),
-      do: raise(ArgumentError, "a schedule's name may not contain \"/\", got #{inspect(name)}"),
+      do: raise(ArgumentError, "a trigger's name may not contain \"/\", got #{inspect(name)}"),
       else: name
   end
 
   defp name!(name),
-    do: raise(ArgumentError, "a schedule's name is a string, got #{inspect(name)}")
+    do: raise(ArgumentError, "a trigger's name is a string, got #{inspect(name)}")
 
   defp every!({:interval, ms} = every) when is_integer(ms) and ms > 0, do: every
 
@@ -214,15 +215,15 @@ defmodule WardrikSchedule do
     do: raise(ArgumentError, "source is {module, opts}, got #{inspect(other)}")
 
   @doc """
-  A schedule named `name`, from fields written as text, as an agent file or a
+  A trigger named `name`, from fields written as text, as an agent file or a
   JSON body writes them:
 
-      WardrikSchedule.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
+      WardrikTrigger.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
 
   `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
   `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
   The fields left are the source's, which one of them names by its key, and
-  the clock's where none does: see `WardrikSchedule.Source`.
+  the clock's where none does: see `WardrikTrigger.Source`.
   """
   @spec decode(String.t(), map()) :: {:ok, t()} | {:error, String.t()}
   def decode(name, fields) when is_map(fields) do
@@ -248,7 +249,7 @@ defmodule WardrikSchedule do
   end
 
   @doc """
-  The fields a schedule written as text may have: those every schedule has,
+  The fields a trigger written as text may have: those every trigger has,
   and the key of each source a loaded application registers.
   """
   @spec keys() :: [String.t()]
@@ -260,7 +261,7 @@ defmodule WardrikSchedule do
     case fields |> Map.keys() |> Enum.filter(&Map.has_key?(sources, &1)) |> Enum.sort() do
       [] -> clock(fields)
       [key] -> source(Map.fetch!(sources, key), fields)
-      [one, other | _] -> {:error, "#{one} and #{other} each name a source; a schedule has one"}
+      [one, other | _] -> {:error, "#{one} and #{other} each name a source; a trigger has one"}
     end
   end
 
@@ -311,7 +312,7 @@ defmodule WardrikSchedule do
   defp seconds(_seconds), do: {:error, "jitter is a whole number of seconds"}
 
   @doc """
-  `schedule` written as text, with its name, as `decode/2` reads it back:
+  `trigger` written as text, with its name, as `decode/2` reads it back:
 
       %{"name" => "sweep", "every" => "30m", "prompt" => "Look.",
         "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
@@ -320,22 +321,22 @@ defmodule WardrikSchedule do
   source's fields are written beside the rest.
   """
   @spec encode(t()) :: %{String.t() => term()}
-  def encode(%__MODULE__{source: {module, opts}} = schedule) do
+  def encode(%__MODULE__{source: {module, opts}} = trigger) do
     opts
     |> module.encode()
     |> Map.merge(%{
-      "name" => schedule.name,
-      "every" => text(schedule.every),
-      "prompt" => schedule.prompt,
-      "overlap" => to_string(schedule.overlap),
-      "missed" => to_string(schedule.missed),
-      "jitter" => div(schedule.jitter, 1_000)
+      "name" => trigger.name,
+      "every" => text(trigger.every),
+      "prompt" => trigger.prompt,
+      "overlap" => to_string(trigger.overlap),
+      "missed" => to_string(trigger.missed),
+      "jitter" => div(trigger.jitter, 1_000)
     })
   end
 
-  @doc "What `schedule`'s source finds for `agent` since `cursor`; see `WardrikSchedule.Source`."
+  @doc "What `trigger`'s source finds for `agent` since `cursor`; see `WardrikTrigger.Source`."
   @spec check(t(), Source.cursor() | nil, AgentID.t()) ::
-          {:ok, [WardrikSchedule.Item.t()], Source.cursor()} | {:error, String.t()}
+          {:ok, [WardrikTrigger.Item.t()], Source.cursor()} | {:error, String.t()}
   def check(%__MODULE__{source: {module, opts}}, cursor, %AgentID{} = agent),
     do: module.check(opts, cursor, agent)
 
@@ -347,7 +348,7 @@ defmodule WardrikSchedule do
   end
 
   @doc """
-  The first time `schedule` names after `from`, with its jitter added.
+  The first time `trigger` names after `from`, with its jitter added.
   """
   @spec next(t(), DateTime.t()) :: DateTime.t()
   def next(%__MODULE__{every: every, jitter: jitter}, %DateTime{} = from) do
@@ -366,17 +367,17 @@ defmodule WardrikSchedule do
   end
 
   @doc """
-  Starts `schedule` for the agent `agent`, or brings a running one to
-  it. A schedule whose `every` changes goes on from now; one that keeps it
+  Starts `trigger` for the agent `agent`, or brings a running one to
+  it. A trigger whose `every` changes goes on from now; one that keeps it
   keeps its next run.
   """
   @spec put(AgentID.t(), t()) :: {:ok, pid()} | {:error, term()}
-  def put(%AgentID{} = agent, %__MODULE__{} = schedule) do
+  def put(%AgentID{} = agent, %__MODULE__{} = trigger) do
     child =
-      {Server, key: key(agent, schedule.name), initial_state: State.new(agent, schedule, now())}
+      {Server, key: key(agent, trigger.name), initial_state: State.new(agent, trigger, now())}
 
     with {:ok, {pid, _meta}} <- DurableServer.Supervisor.ensure_started_child(@name, child),
-         :ok <- GenServer.call(pid, {:configure, schedule}) do
+         :ok <- GenServer.call(pid, {:configure, trigger}) do
       {:ok, pid}
     end
   end
@@ -385,21 +386,21 @@ defmodule WardrikSchedule do
   @spec put(AgentID.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def put(agent, name, opts), do: put(agent, new(name, opts))
 
-  @doc "Stops the schedule named `name` for `agent`, and deletes it."
+  @doc "Stops the trigger named `name` for `agent`, and deletes it."
   @spec delete(AgentID.t(), String.t()) :: :ok | {:error, term()}
   def delete(%AgentID{} = agent, name) when is_binary(name) do
     DurableServer.Supervisor.terminate_and_delete_child(@name, key(agent, name))
   end
 
   @doc """
-  Brings `agent`'s schedules to `schedules`: each is put, and every other
-  schedule the agent has is deleted.
+  Brings `agent`'s triggers to `triggers`: each is put, and every other
+  trigger the agent has is deleted.
   """
   @spec sync(AgentID.t(), [t()]) :: :ok | {:error, term()}
-  def sync(%AgentID{} = agent, schedules) when is_list(schedules) do
-    names = MapSet.new(schedules, & &1.name)
+  def sync(%AgentID{} = agent, triggers) when is_list(triggers) do
+    names = MapSet.new(triggers, & &1.name)
 
-    with :ok <- put_all(agent, schedules) do
+    with :ok <- put_all(agent, triggers) do
       agent
       |> for_agent()
       |> Enum.reject(&(&1.name in names))
@@ -407,16 +408,16 @@ defmodule WardrikSchedule do
     end
   end
 
-  defp put_all(agent, schedules) do
-    Enum.reduce_while(schedules, :ok, fn schedule, :ok ->
-      case put(agent, schedule) do
+  defp put_all(agent, triggers) do
+    Enum.reduce_while(triggers, :ok, fn trigger, :ok ->
+      case put(agent, trigger) do
         {:ok, _pid} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, {:schedule, schedule.name, reason}}}
+        {:error, reason} -> {:halt, {:error, {:trigger, trigger.name, reason}}}
       end
     end)
   end
 
-  @doc "The schedules of `agent`, by name."
+  @doc "The triggers of `agent`, by name."
   @spec for_agent(AgentID.t()) :: [Status.t()]
   def for_agent(%AgentID{} = agent) do
     for {_pid, %{name: name}} <- Group.members(@name, group(agent)),
@@ -433,7 +434,7 @@ defmodule WardrikSchedule do
 
   defp group(agent), do: "agents/#{agent}"
 
-  @doc "Every schedule of the agents under `prefix`, across the cluster, sorted by key."
+  @doc "Every trigger of the agents under `prefix`, across the cluster, sorted by key."
   @spec list(Prefix.t()) :: [Status.t()]
   def list(prefix \\ Prefix.all()) do
     for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
@@ -443,8 +444,8 @@ defmodule WardrikSchedule do
     |> Enum.sort_by(& &1.key)
   end
 
-  # `//` holds no ID, so an agent's schedules never mix with those of an agent
-  # whose external ID is one of its schedules' names.
+  # `//` holds no ID, so an agent's triggers never mix with those of an agent
+  # whose external ID is one of its triggers' names.
   defp key(agent, name), do: "#{agent}//#{name}"
 
   defp now, do: DateTime.utc_now()

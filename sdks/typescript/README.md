@@ -42,12 +42,12 @@ for await (const event of agent.ask("What's on fire?")) {
   }
 }
 
-await agent.schedule("sweep", { every: "*/30 * * * *", prompt: "Check the queue." });
+await agent.setTrigger("sweep", { every: "*/30 * * * *", prompt: "Check the queue." });
 ```
 
 `ask` sends a message and gives the events of the run that answers it, until
 that run completes, fails or is cancelled. `send` only queues the message.
-`snapshot`, `page`, `reject`, `cancel`, `clear`, `unschedule` and `delete` are one
+`snapshot`, `page`, `reject`, `cancel`, `clear`, `removeTrigger` and `delete` are one
 request each, and `wardrik.agents.list()` lists what the token reaches.
 
 An interrupt with reason `authorization` waits for a person to connect an

@@ -31,10 +31,10 @@ model: anthropic:claude-sonnet-5
 user: jon
 tools: [files, web_search, run_lua, workers/*]
 context: [SOUL.md, USER.md, MEMORY.md]
-schedule:
-  name: heartbeat
-  every: 30m
-  prompt_file: HEARTBEAT.md
+triggers:
+  - name: heartbeat
+    every: 30m
+    prompt_file: HEARTBEAT.md
 policy:
   allow_after:
     outside: [workers/message_me]
@@ -133,7 +133,7 @@ A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardri
   The files are in the store, so they live wherever the agent does. See
   [Files and memory](/concepts/files-and-memory/).
 - **A heartbeat it edits.** `prompt_file` asks it to follow `HEARTBEAT.md` as it stands each time.
-  See [A checklist the agent can edit](/guides/schedules/#a-checklist-the-agent-can-edit).
+  See [A checklist the agent can edit](/guides/triggers/#a-checklist-the-agent-can-edit).
 - **Rules outside the conversation.** The policy is not in the prompt, so no instruction to the
   agent loosens it, and no summary of a long history loses it: a change to `SOUL.md` asks you
   every time. See [Policy and approvals](/concepts/policy/).

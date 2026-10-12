@@ -48,7 +48,7 @@ defmodule WardrikSDK.MixProject do
       sibling(:wardrik_policy),
       sibling(:wardrik_research),
       sibling(:wardrik_s3),
-      sibling(:wardrik_schedule),
+      sibling(:wardrik_trigger),
       sibling(:wardrik_tui),
       sibling(:wardrik_vault),
       sibling(:wardrik_workspace),
