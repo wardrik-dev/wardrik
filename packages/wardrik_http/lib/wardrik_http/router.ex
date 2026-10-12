@@ -159,8 +159,7 @@ defmodule WardrikHTTP.Router do
   defp route("GET", ["events"], conn), do: {:events, &events(conn, &1)}
   defp route("POST", ["messages"], conn), do: {Command, &Ask.new(&1, conn.body_params), 202}
 
-  defp route("POST", ["interrupts", id], conn),
-    do: {Command, &Decide.new(&1, id, conn.body_params), 200}
+  defp route("POST", ["decisions"], conn), do: {Command, &Decide.new(&1, conn.body_params), 200}
 
   defp route("GET", ["interrupts", id, "authorization"], _conn),
     do: {Query, &{:ok, %ReadAuthorization{agent: &1, interrupt: id}}, 200}
@@ -382,19 +381,17 @@ defmodule WardrikHTTP.Router do
   end
 
   @statuses %{
-    not_found: {404, "not_found"},
-    forbidden: {403, "forbidden"},
-    invalid: {400, "invalid_request"},
-    conflict: {409, "conflict"},
-    gap: {410, "gap"},
-    unsupported: {501, "not_supported"},
-    unavailable: {503, "unavailable"}
+    not_found: 404,
+    forbidden: 403,
+    invalid: 400,
+    conflict: 409,
+    gap: 410,
+    unsupported: 501,
+    unavailable: 503
   }
 
-  defp error(conn, %Error{type: type, message: message, details: details}) do
-    {status, name} = Map.fetch!(@statuses, type)
-    json(conn, status, Resource.error(name, message, details))
-  end
+  defp error(conn, %Error{type: type} = error),
+    do: json(conn, Map.fetch!(@statuses, type), Resource.error(error))
 
   defp invalid(conn, message), do: json(conn, 400, Resource.error("invalid_request", message))
 

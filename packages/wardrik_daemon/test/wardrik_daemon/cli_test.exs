@@ -284,14 +284,14 @@ defmodule WardrikDaemon.CLITest do
              {"policies/ has no policy nope; it has careful\n", 1}
   end
 
-  test "ask sends the agent a message" do
+  test "ask sends the agent a message, from whoever typed it" do
     test_pid = self()
 
     {key, _agent} =
       Wardrik.Test.Fleet.start_agent(runner: {AgentRunners, :echo, [test_pid, "hello back"]})
 
     assert command(["ask", key, "hello", "there", "--no-wait"]) == {"Asked #{key}.\n", 0}
-    assert_receive {:turn, [{:user, "hello there"}]}
+    assert_receive {:turn, [{:user, "From shell ops:\nhello there"}]}
   end
 
   test "ask follows the answer live, and says so where it cannot" do
@@ -466,7 +466,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert to_string(key) == "default/#{name}"
     assert command(["ask", name, "hello", "--no-wait"]) == {"Asked #{key}.\n", 0}
-    assert_receive {:turn, [{:user, "hello"}]}
+    assert_receive {:turn, [{:user, "From shell ops:\nhello"}]}
 
     {mine, _agent} =
       Wardrik.Test.Fleet.start_agent([], Wardrik.AgentID.new!(name, org: "default", user: "jon"))
@@ -654,16 +654,21 @@ defmodule WardrikDaemon.CLITest do
              Enum.find(interrupts, &(&1["agent"]["id"] == key))
   end
 
-  test "--json answers a failure as an error document" do
+  test "--json answers a failure as the HTTP API's error document" do
     {output, 1} = command(["history", "nobody/here", "--json"])
 
     assert JSON.decode!(output) == %{
-             "error" => %{"type" => "failed", "message" => "No agent runs under nobody/here."}
+             "error" => %{"type" => "not_found", "message" => "No agent runs under nobody/here."}
            }
 
     {output, 1} = command(["history", "--json"])
 
-    assert %{"error" => %{"type" => "usage", "message" => "Usage: wardrik history KEY [--json]"}} =
+    assert %{
+             "error" => %{
+               "type" => "invalid_request",
+               "message" => "Usage: wardrik history KEY [--json]"
+             }
+           } =
              JSON.decode!(output)
   end
 

@@ -283,11 +283,14 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    test "sends the agent the message, which says its ID" do
+    test "sends the agent the message from the caller, and says its ID" do
       {id, _agent} = Fleet.start_agent(runner: {AgentRunners, :echo, [self(), "ok"]})
+      :ok = Event.Bus.subscribe(id)
       {:ok, ask} = Ask.new(id, %{"id" => "m1", "content" => "hi"})
 
       assert {:ok, %{"message" => %{"id" => "m1"}}} = Command.run(ask, caller())
+      assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
+      assert Principal.id(sender) == "jon"
       assert_receive {:turn, _messages}
 
       {:ok, nobody} = Ask.new(Fleet.id("nobody"), %{"content" => "hi"})
@@ -296,50 +299,70 @@ defmodule Wardrik.OperationsTest do
   end
 
   describe "deciding" do
-    test "reads an approval, with its note, or a rejection, with its reason" do
+    defp decide(id, decisions), do: Decide.new(id, %{"decisions" => decisions})
+
+    test "reads approvals, with their notes, and rejections, with their reasons" do
       id = Fleet.id()
 
-      assert {:ok, %Decide{decision: :approve}} = Decide.new(id, "c", %{"decision" => "approve"})
+      assert {:ok, %Decide{decisions: decisions}} =
+               decide(id, [
+                 %{"id" => "a", "decision" => "approve"},
+                 %{"id" => "b", "decision" => "approve", "note" => "Only staging."},
+                 %{"id" => "c", "decision" => "reject", "reason" => "Not now."},
+                 %{"id" => "d", "decision" => "reject"}
+               ])
 
-      assert {:ok, %Decide{decision: {:approve, "Only staging."}}} =
-               Decide.new(id, "c", %{"decision" => "approve", "note" => "Only staging."})
+      assert decisions == %{
+               "a" => :approve,
+               "b" => {:approve, "Only staging."},
+               "c" => {:deny, "Not now."},
+               "d" => {:deny, "A person refused this call."}
+             }
 
-      assert {:ok, %Decide{decision: {:deny, "Not now."}}} =
-               Decide.new(id, "c", %{"decision" => "reject", "reason" => "Not now."})
+      for body <- [%{}, %{"decisions" => []}, %{"decisions" => [%{"id" => "a"}]}] do
+        assert {:error, %Error{type: :invalid}} = Decide.new(id, body)
+      end
 
-      assert {:ok, %Decide{decision: {:deny, _given}}} =
-               Decide.new(id, "c", %{"decision" => "reject"})
-
-      assert {:error, %Error{type: :invalid}} = Decide.new(id, "c", %{"decision" => "maybe"})
+      assert {:error, %Error{type: :invalid}} =
+               decide(id, [%{"id" => "a", "decision" => "maybe"}])
     end
 
     test "decides a call the agent waits on, as the caller" do
       id = parked_agent()
-      {:ok, decide} = Decide.new(id, "call_1", %{"decision" => "reject", "reason" => "No."})
 
-      assert {:ok, %{"interrupt" => %{"id" => "call_1", "decision" => "rejected"}}} =
-               Command.run(decide, caller())
+      {:ok, decided} =
+        decide(id, [%{"id" => "call_1", "decision" => "reject", "reason" => "No."}])
+
+      assert {:ok, %{"decisions" => [%{"id" => "call_1", "decision" => "rejected"}]}} =
+               Command.run(decided, caller())
 
       assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
       assert Principal.id(by) == "jon"
-      assert {:error, %Error{type: :conflict}} = Command.run(decide, caller())
+      assert {:error, %Error{type: :conflict}} = Command.run(decided, caller())
     end
 
-    test "refuses a call the agent does not wait on, or an agent not running" do
+    test "refuses calls the agent does not wait on, or an agent not running" do
       id = parked_agent()
-      {:ok, stale} = Decide.new(id, "call_9", %{"decision" => "approve"})
-      assert {:error, %Error{type: :conflict}} = Command.run(stale, caller())
 
-      {:ok, nobody} = Decide.new(Fleet.id("nobody"), "call_1", %{"decision" => "approve"})
+      {:ok, stale} =
+        decide(id, [
+          %{"id" => "call_9", "decision" => "approve"},
+          %{"id" => "call_8", "decision" => "approve"}
+        ])
+
+      assert {:error, %Error{type: :conflict, message: message}} = Command.run(stale, caller())
+      assert message == "#{id} is not waiting on call_8 and call_9."
+
+      {:ok, nobody} = decide(Fleet.id("nobody"), [%{"id" => "call_1", "decision" => "approve"}])
       assert {:error, %Error{type: :not_found}} = Command.run(nobody, caller())
     end
 
     test "says so where the agent cannot record the decision" do
       id = parked_agent()
       :ok = EventLog.usurp(id)
-      {:ok, decide} = Decide.new(id, "call_1", %{"decision" => "approve"})
+      {:ok, decided} = decide(id, [%{"id" => "call_1", "decision" => "approve"}])
 
-      assert {:error, %Error{type: :unavailable}} = Command.run(decide, caller())
+      assert {:error, %Error{type: :unavailable}} = Command.run(decided, caller())
     end
   end
 

@@ -99,8 +99,8 @@ describe("requests", () => {
     server.on("PUT", path + "/triggers/sweep", (request, response) =>
       json(response, 201, { trigger: { name: "sweep", ...(request.body as object) } }),
     );
-    server.on("POST", path + "/interrupts/call_1", (_request, response) =>
-      json(response, 200, { interrupt: { id: "call_1", decision: "approved" } }),
+    server.on("POST", path + "/decisions", (_request, response) =>
+      json(response, 200, { decisions: [{ id: "call_1", decision: "approved" }] }),
     );
     server.on("POST", path + "/cancel", (_request, response) => json(response, 202, {}));
     server.on("DELETE", path + "/conversation", (_request, response) => json(response, 204));
@@ -124,8 +124,12 @@ describe("requests", () => {
       [
         ["POST", path + "/messages", { id: "m1", parts: [{ type: "text", content: "hi" }] }],
         ["PUT", path + "/triggers/sweep", { every: "*/30 * * * *", prompt: "Look." }],
-        ["POST", path + "/interrupts/call_1", { decision: "approve" }],
-        ["POST", path + "/interrupts/call_1", { decision: "reject", reason: "Not now." }],
+        ["POST", path + "/decisions", { decisions: [{ id: "call_1", decision: "approve" }] }],
+        [
+          "POST",
+          path + "/decisions",
+          { decisions: [{ id: "call_1", decision: "reject", reason: "Not now." }] },
+        ],
         ["POST", path + "/cancel", undefined],
         ["DELETE", path + "/conversation", undefined],
         ["GET", path + "/events?starting_after=4&limit=10", undefined],

@@ -1,7 +1,8 @@
 defmodule Wardrik.Operations.Ask do
   @moduledoc """
-  Sends an agent a message, which it answers in a turn of its own: the
-  answer says the message's ID, and the agent's log says the rest.
+  Sends an agent a message from the caller's principal, which it answers in
+  a turn of its own: the answer says the message's ID, and the agent's log
+  says the rest.
 
   `new/2` reads a message as `wardrik_protocol` describes one: text parts,
   or `content`, with an `id` of the sender's choosing, or one made for it.
@@ -52,8 +53,8 @@ defmodule Wardrik.Operations.Ask do
   def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}}, _caller) do
-    case Agent.ask(agent, text, id: id) do
+  def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}}, caller) do
+    case Agent.ask(agent, text, id: id, sender: caller.principal) do
       :ok -> {:ok, %{"message" => %{"id" => id}}}
       {:error, :not_found} -> {:error, AgentOperation.not_found(agent)}
     end

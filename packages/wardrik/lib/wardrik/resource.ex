@@ -120,6 +120,21 @@ defmodule Wardrik.Resource do
     }
   end
 
+  @types %{
+    not_found: "not_found",
+    forbidden: "forbidden",
+    invalid: "invalid_request",
+    conflict: "conflict",
+    gap: "gap",
+    unsupported: "not_supported",
+    unavailable: "unavailable"
+  }
+
+  @doc "An operation's `Wardrik.Error`, as every surface answers it."
+  @spec error(Wardrik.Error.t()) :: map()
+  def error(%Wardrik.Error{type: type, message: message, details: details}),
+    do: error(Map.fetch!(@types, type), message, details)
+
   @doc "An error of `type`, saying what went wrong, with any other fields beside."
   @spec error(String.t(), String.t(), map()) :: map()
   def error(type, message, fields \\ %{}),

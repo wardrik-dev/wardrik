@@ -16,8 +16,11 @@ defmodule WardrikDaemon.CLI.Decisions do
   """
 
   alias Wardrik.Agent
+  alias Wardrik.Command, as: Operation
+  alias Wardrik.Error
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
+  alias Wardrik.Operations.Decide
   alias WardrikConsole.Ansi
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
@@ -89,23 +92,20 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp link(%{link: %{url: url}}), do: "\n      open #{url}"
   defp link(_call), do: ""
 
-  defp approve([key, call], opts), do: decided(key, [call], :approve, opts[:by])
-
   defp approve([key, call | note], opts),
-    do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:by])
+    do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:caller])
 
   defp approve(_words, _opts), do: :live
 
   defp deny([key, call | reason], opts),
-    do: decided(key, [call], {:deny, reason(reason)}, opts[:by])
+    do: decided(key, [call], {:deny, Enum.join(reason, " ")}, opts[:caller])
 
   defp deny(_words, _opts), do: :live
 
-  defp reason([]), do: "A person refused this call."
-  defp reason(words), do: Enum.join(words, " ")
+  defp approve_chosen(words, opts, terminal),
+    do: choose(words, terminal, :approve, opts[:caller])
 
-  defp approve_chosen(words, opts, terminal), do: choose(words, terminal, :approve, opts[:by])
-  defp deny_chosen(words, opts, terminal), do: choose(words, terminal, :deny, opts[:by])
+  defp deny_chosen(words, opts, terminal), do: choose(words, terminal, :deny, opts[:caller])
 
   # Which calls, asked of the person at the terminal.
   defp choose(_words, %Terminal{input?: false}, verb, _by) do
@@ -114,12 +114,12 @@ defmodule WardrikDaemon.CLI.Decisions do
        "wardrik #{verb} KEY CALL. wardrik parked lists them."}
   end
 
-  defp choose(words, %Terminal{} = terminal, verb, by) do
+  defp choose(words, %Terminal{} = terminal, verb, caller) do
     case {waiting(words), words} do
       {{:error, message}, _words} -> {:error, message}
       {[], []} -> {:ok, "Nothing is waiting on a person."}
-      {[only], [_key]} -> decide([only], verb, terminal, by)
-      {calls, _words} -> calls |> pick(verb, words == []) |> decide(verb, terminal, by)
+      {[only], [_key]} -> decide([only], verb, terminal, caller)
+      {calls, _words} -> calls |> pick(verb, words == []) |> decide(verb, terminal, caller)
     end
   end
 
@@ -134,48 +134,46 @@ defmodule WardrikDaemon.CLI.Decisions do
     [Pattern.shown(call.name), if(every?, do: ["  ", to_string(key)], else: []), "  ", prompt]
   end
 
-  defp decide([], _verb, _terminal, _by), do: {:ok, "Nothing was decided."}
+  defp decide([], _verb, _terminal, _caller), do: {:ok, "Nothing was decided."}
 
-  defp decide(chosen, :approve, _terminal, by), do: each_agent(chosen, :approve, by)
+  defp decide(chosen, :approve, _terminal, caller), do: each_agent(chosen, {:approve, ""}, caller)
 
-  defp decide(chosen, :deny, terminal, by) do
+  defp decide(chosen, :deny, terminal, caller) do
     Terminal.puts(terminal, Owl.Data.tag("Why? Enter for no reason.", @faint))
-    each_agent(chosen, {:deny, reason(List.wrap(Owl.IO.input(optional: true)))}, by)
+    each_agent(chosen, {:deny, Owl.IO.input(optional: true) || ""}, caller)
   end
 
   # One decision for each agent the chosen calls belong to.
-  defp each_agent(chosen, decision, by) do
+  defp each_agent(chosen, decision, caller) do
     answers =
       chosen
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1).id)
-      |> Enum.map(fn {key, ids} -> decided(key, ids, decision, by) end)
+      |> Enum.map(fn {key, ids} -> decided(key, ids, decision, caller) end)
 
-    lines = Enum.map_intersperse(answers, "\n", &elem(&1, 1))
+    lines = Enum.map_intersperse(answers, "\n", &said/1)
     if Enum.all?(answers, &match?({:ok, _}, &1)), do: {:ok, lines}, else: {:error, lines}
   end
 
-  defp decided(key, ids, decision, by) do
-    case Agent.decide(key, Map.new(ids, &{&1, decision}), by: by) do
-      :ok ->
-        {:ok, [done(decision), " ", names(ids), " for ", to_string(key), "."]}
+  defp said({:ok, line}), do: line
+  defp said({:error, %Error{message: message}}), do: message
 
-      {:error, :not_found} ->
-        {:error, "No agent runs under #{key}."}
+  # The decisions, as Wardrik.Operations.Decide reads them over every
+  # surface: a note or a reason only where one was given.
+  defp decided(key, ids, {verb, said}, caller) do
+    {decision, field} = if verb == :approve, do: {"approve", "note"}, else: {"reject", "reason"}
 
-      {:error, :not_parked} ->
-        {:error, "#{key} is not waiting on anything."}
+    decisions =
+      for id <- ids,
+          do:
+            Map.reject(%{"id" => id, "decision" => decision, field => said}, &(elem(&1, 1) == ""))
 
-      {:error, :stale_decision} ->
-        {:error, [to_string(key), " is not waiting on ", names(ids), "."]}
-
-      {:error, :unrecorded} ->
-        {:error, "#{key} could not record the decision, so it was not taken."}
-    end
+    with {:ok, request} <- Decide.new(key, %{"decisions" => decisions}),
+         {:ok, _answer} <- Operation.run(request, caller),
+         do: {:ok, [done(verb), " ", names(ids), " for ", to_string(key), "."]}
   end
 
   defp done(:approve), do: "Approved"
-  defp done({:approve, _note}), do: "Approved"
-  defp done({:deny, _reason}), do: "Denied"
+  defp done(:deny), do: "Denied"
 
   defp names([only]), do: only
   defp names(ids), do: [Enum.intersperse(Enum.drop(ids, -1), ", "), " and ", List.last(ids)]

@@ -26,7 +26,15 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Caller
+  alias Wardrik.Command, as: Operation
+  alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Grant
+  alias Wardrik.Operations.Ask
+  alias Wardrik.Operations.Clear
+  alias Wardrik.Operations.ReadAgent
+  alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Agents
@@ -252,8 +260,11 @@ defmodule WardrikDaemon.CLI do
          {:ok, words} <- named(command, words) do
       answer(terminal, command, words, opts)
     else
-      {:error, usage} -> failed(terminal, "usage", usage, "--json" in args)
-      not_a_command -> failed(terminal, "usage", unknown(not_a_command), "--json" in args)
+      {:error, usage} ->
+        failed(terminal, "invalid_request", usage, "--json" in args)
+
+      not_a_command ->
+        failed(terminal, "invalid_request", unknown(not_a_command), "--json" in args)
     end
   end
 
@@ -289,17 +300,34 @@ defmodule WardrikDaemon.CLI do
 
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
-    opts = Keyword.put(opts, :by, Terminal.principal(terminal))
+    by = Terminal.principal(terminal)
+    opts = Keyword.merge(opts, by: by, caller: caller(by))
 
-    case respond(command, words, opts, terminal, json?) do
-      {:ok, document} when json? -> IO.puts(JSON.encode!(document))
-      {:ok, text} -> Terminal.puts(terminal, text)
-      :ok -> :ok
-      :live -> exit({:shutdown, :live})
-      :error -> exit({:shutdown, 1})
-      {:error, :usage} -> failed(terminal, "usage", Command.usage(command), json?)
-      {:error, message} -> failed(terminal, "failed", message, json?)
-    end
+    command
+    |> respond(words, opts, terminal, json?)
+    |> answered(terminal, command, json?)
+  end
+
+  defp answered({:ok, document}, _terminal, _command, true), do: IO.puts(JSON.encode!(document))
+  defp answered({:ok, text}, terminal, _command, false), do: Terminal.puts(terminal, text)
+  defp answered(:ok, _terminal, _command, _json?), do: :ok
+  defp answered(:live, _terminal, _command, _json?), do: exit({:shutdown, :live})
+  defp answered(:error, _terminal, _command, _json?), do: exit({:shutdown, 1})
+
+  defp answered({:error, :usage}, terminal, command, json?),
+    do: failed(terminal, "invalid_request", Command.usage(command), json?)
+
+  defp answered({:error, %Error{} = error}, terminal, _command, json?),
+    do: failed(terminal, error, json?)
+
+  defp answered({:error, message}, terminal, _command, json?),
+    do: failed(terminal, "failed", message, json?)
+
+  # Whoever typed a command at the node may do anything to any agent: they
+  # hold the node itself.
+  defp caller(by) do
+    {:ok, grant} = Grant.new(Prefix.all())
+    Caller.new(by, grant)
   end
 
   defp respond(%Command{json: json}, words, opts, _terminal, true), do: json.(words, opts)
@@ -312,7 +340,15 @@ defmodule WardrikDaemon.CLI do
   end
 
   # A command that fails prints why, or with --json an error of `type`
-  # saying so, and exits with status 1.
+  # saying so, as the HTTP API answers it, and exits with status 1.
+  defp failed(terminal, %Error{message: message} = error, json?) do
+    if json?,
+      do: IO.puts(JSON.encode!(Resource.error(error))),
+      else: Terminal.puts(terminal, message)
+
+    exit({:shutdown, 1})
+  end
+
   defp failed(terminal, type, message, json?) do
     if json?,
       do: IO.puts(JSON.encode!(Resource.error(type, plain(message)))),
@@ -495,16 +531,18 @@ defmodule WardrikDaemon.CLI do
 
   defp needs_terminal(_words, _opts), do: :live
 
-  defp ask(words, opts), do: if(opts[:no_wait], do: asked(words), else: :live)
+  defp ask(words, opts), do: if(opts[:no_wait], do: asked(words, opts), else: :live)
 
-  defp asked([key | words]) do
-    case Agent.ask(key, Enum.join(words, " ")) do
-      :ok -> {:ok, "Asked #{key}."}
-      {:error, :not_found} -> {:error, no_agent(key)}
-    end
+  defp asked([key | words], opts) do
+    with {:ok, _answer} <- ask_operation(key, words, opts[:caller]), do: {:ok, "Asked #{key}."}
   end
 
-  defp answer_followed([key | words], _opts, terminal) do
+  defp ask_operation(key, words, caller) do
+    with {:ok, ask} <- Ask.new(key, %{"content" => Enum.join(words, " ")}),
+         do: Operation.run(ask, caller)
+  end
+
+  defp answer_followed([key | words], opts, terminal) do
     if match?(%{state: :parked}, Agent.status(key)) do
       Terminal.puts(
         terminal,
@@ -512,13 +550,16 @@ defmodule WardrikDaemon.CLI do
       )
     end
 
-    case Follow.turn(key, terminal, fn -> Agent.ask(key, Enum.join(words, " ")) end) do
-      {:error, :not_found} -> {:error, no_agent(key)}
+    case Follow.turn(key, terminal, fn -> sent(ask_operation(key, words, opts[:caller])) end) do
+      {:error, %Error{} = error} -> {:error, error}
       :parked -> {:ok, Owl.Data.tag("wardrik approve #{key}, or deny, decides it.", @faint)}
       :failed -> :error
       _finished_or_gone -> :ok
     end
   end
+
+  defp sent({:ok, _answer}), do: :ok
+  defp sent({:error, error}), do: {:error, error}
 
   defp watch([key], opts, terminal) do
     case {Fleet.lookup(key), opts[:json]} do
@@ -551,54 +592,27 @@ defmodule WardrikDaemon.CLI do
     )
   end
 
-  defp history([key], _opts) do
-    case Agent.get_context(key) do
-      {:error, :not_found} -> {:error, no_agent(key)}
-      context -> {:ok, conversation(context)}
-    end
+  defp history([key], opts) do
+    with {:ok, snapshot} <- snapshot([key], opts), do: {:ok, conversation(snapshot["messages"])}
   end
 
-  defp snapshot([key], _opts) do
-    case Agent.snapshot(key) do
-      {:error, :not_found} -> {:error, no_agent(key)}
-      snapshot -> {:ok, Resource.snapshot(key, snapshot)}
-    end
-  end
+  defp snapshot([key], opts), do: Query.run(%ReadAgent{agent: key}, opts[:caller])
 
   defp clear([key], opts) do
-    case Agent.clear(key) do
-      :ok ->
-        :ok = Audit.record({:agent_cleared, key}, opts[:by])
-        {:ok, "Cleared #{key}'s conversation."}
-
-      {:error, :busy} ->
-        {:error, "#{key} is running a turn, or waiting on a person; cancel it, or wait."}
-
-      {:error, :not_found} ->
-        {:error, no_agent(key)}
-    end
+    with {:ok, nil} <- Operation.run(%Clear{agent: key}, opts[:caller]),
+         do: {:ok, "Cleared #{key}'s conversation."}
   end
 
   defp no_agent(key), do: "No agent runs under #{key}."
 
-  defp conversation(context) do
-    case ReqLLM.Context.to_list(context) do
-      [] -> "Nothing has been said yet."
-      messages -> Enum.map_join(messages, "\n\n", &message/1)
-    end
-  end
+  defp conversation([]), do: "Nothing has been said yet."
+  defp conversation(messages), do: Enum.map_join(messages, "\n\n", &message/1)
 
-  defp message(%{role: role} = message), do: "#{role}: #{text(message)}"
+  defp message(%{"role" => role, "parts" => parts}),
+    do: "#{role}: #{Enum.map_join(parts, " ", &part/1)}"
 
-  defp text(%{content: content}) when is_binary(content), do: content
-
-  defp text(%{content: parts} = message) when is_list(parts) do
-    written = for %{type: :text, text: text} <- parts, do: text
-
-    calls =
-      for call <- Map.get(message, :tool_calls) || [],
-          do: "[calls #{Pattern.shown(ReqLLM.ToolCall.name(call))}]"
-
-    Enum.join(written ++ calls, " ")
-  end
+  defp part(%{"type" => "text", "content" => text}), do: text
+  defp part(%{"type" => "tool_call", "name" => name}), do: "[calls #{Pattern.shown(name)}]"
+  defp part(%{"type" => "tool_call_response", "response" => response}), do: to_string(response)
+  defp part(_other), do: ""
 end

@@ -406,6 +406,46 @@ export interface Connections {
   }[];
 }
 /**
+ * The body of POST /v1/agents/{key}/decisions: what a person decides of the calls an agent waits on, taken together. The answer lists each call's id with approved or rejected.
+ */
+export interface Decisions {
+  /**
+   * @minItems 1
+   */
+  decisions: [
+    {
+      /**
+       * The id of a call the agent waits on, an interrupt's.
+       */
+      id: string;
+      decision: "approve" | "reject";
+      /**
+       * For an approval, what the agent is told with it.
+       */
+      note?: string;
+      /**
+       * For a rejection, why, which the agent is told.
+       */
+      reason?: string;
+    },
+    ...{
+      /**
+       * The id of a call the agent waits on, an interrupt's.
+       */
+      id: string;
+      decision: "approve" | "reject";
+      /**
+       * For an approval, what the agent is told with it.
+       */
+      note?: string;
+      /**
+       * For a rejection, why, which the agent is told.
+       */
+      reason?: string;
+    }[]
+  ];
+}
+/**
  * What every answer of 400 and above holds. A 410 adds oldest, the first sequence the log still holds.
  */
 export interface ErrorBody {
