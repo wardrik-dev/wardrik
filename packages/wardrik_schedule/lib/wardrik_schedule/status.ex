@@ -18,6 +18,16 @@ defmodule WardrikSchedule.Status do
           last_outcome: WardrikSchedule.outcome() | nil
         }
 
+  @doc "What a run that came to `outcome` did, as a person reads it."
+  @spec described(WardrikSchedule.outcome() | nil) :: String.t()
+  def described(nil), do: "asking"
+  def described(:asked), do: "asked"
+  def described(:nothing_new), do: "found nothing new"
+  def described(:busy), do: "skipped, the agent was busy"
+  def described(:no_agent), do: "no agent runs under the key"
+  def described(:missed), do: "let a missed run go"
+  def described(:failed), do: "failed"
+
   @doc false
   @spec new(String.t(), pid(), map()) :: t()
   def new(key, pid, meta) do

@@ -46,7 +46,7 @@ defmodule WardrikDefinition do
   @keys schema |> List.keyfind("properties", 0) |> elem(1) |> Enum.map(&elem(&1, 0))
   @file_keys ~w(name org user) ++ (@keys -- ["instructions"]) ++ ["notify"]
   @default_keys ~w(model tools policy timeout idle_timeout max_iterations compaction)
-  @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
+  @schedule_keys ~w(name prompt_file)
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
   @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t() | nil}
@@ -525,14 +525,14 @@ defmodule WardrikDefinition do
   end
 
   defp schedule!({%{} = fields, index}, files?) do
-    case Map.keys(fields) -- @schedule_keys do
+    keys = @schedule_keys ++ WardrikSchedule.keys()
+
+    case Map.keys(fields) -- keys do
       [] ->
         :ok
 
       [key | _] ->
-        invalid!(
-          "schedule #{key} is not a setting; expected one of #{Enum.join(@schedule_keys, ", ")}"
-        )
+        invalid!("schedule #{key} is not a setting; expected one of #{Enum.join(keys, ", ")}")
     end
 
     name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"

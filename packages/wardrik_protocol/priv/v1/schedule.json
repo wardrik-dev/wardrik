@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:schedule",
   "title": "A schedule",
-  "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.",
+  "description": "A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "required": [
     "name",
     "every",

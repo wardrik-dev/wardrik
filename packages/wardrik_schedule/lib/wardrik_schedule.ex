@@ -9,7 +9,8 @@ defmodule WardrikSchedule do
   Each schedule is a `DurableServer` keyed by the agent's ID and the
   schedule's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
-  calls `Wardrik.Agent.ask/2`, and announces what happened on the agent's topic
+  checks its source, and where that found something calls
+  `Wardrik.Agent.ask/3`, and it announces what happened on the agent's topic
   as `Wardrik.Event.ScheduleFired`. It also joins a group of its agent's,
   so `for_agent/1` finds an agent's schedules by its ID rather than by
   looking through every schedule in the cluster.
@@ -17,6 +18,20 @@ defmodule WardrikSchedule do
   A schedule writes down its next run before it asks the agent, so a firing
   lost to a crash is not made again: a schedule fires at most once for each
   time it names.
+
+  ## Sources
+
+  A schedule watches a `WardrikSchedule.Source`: the clock, which asks the
+  agent its prompt on every run, unless it names another, which asks only
+  when it finds something new, with what it found under the prompt:
+
+      WardrikSchedule.put(~A"acme/growth", "mentions",
+        every: "1h",
+        prompt: "New mentions of Acme. Which deserve a reply?",
+        source: {MyApp.Feed, "https://example.com/alerts.xml"})
+
+  A source registers the key a schedule written as text names it by, so
+  `decode/2` reads it; see `WardrikSchedule.Source`.
 
   `sync/2` brings an agent's schedules to a list, starting, changing and
   deleting them, and `sync(agent, [])` deletes them all; what keeps the
@@ -39,25 +54,40 @@ defmodule WardrikSchedule do
       once and goes on from now, and `:skip` goes on from now
     * `:jitter` - up to this many milliseconds added to each run, `0` by
       default
+    * `:source` - what it watches, as `{module, opts}` of a
+      `WardrikSchedule.Source`; the clock, `{WardrikSchedule.Clock, nil}`, by
+      default
 
   ## Outcomes
 
     * `:asked` - the agent was asked
+    * `:nothing_new` - the source found nothing, so the agent was not asked
     * `:busy` - the agent was running or waiting, and `overlap: :skip` left it
     * `:no_agent` - no agent runs under the ID
     * `:missed` - an overdue run that `missed: :skip` let go
-    * `:failed` - asking the agent raised or exited
+    * `:failed` - the source could not be checked, or asking the agent
+      raised or exited
   """
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias WardrikSchedule.Clock
   alias WardrikSchedule.Cron
   alias WardrikSchedule.Server
+  alias WardrikSchedule.Source
   alias WardrikSchedule.State
   alias WardrikSchedule.Status
 
   @enforce_keys [:name, :every, :prompt]
-  defstruct [:name, :every, :prompt, overlap: :skip, missed: :run_once, jitter: 0]
+  defstruct [
+    :name,
+    :every,
+    :prompt,
+    overlap: :skip,
+    missed: :run_once,
+    jitter: 0,
+    source: {Clock, nil}
+  ]
 
   @typedoc "When a schedule runs: a cron expression's text, or every so many milliseconds."
   @type every() :: {:cron, String.t()} | {:interval, pos_integer()}
@@ -68,13 +98,15 @@ defmodule WardrikSchedule do
           prompt: String.t(),
           overlap: :skip | :queue,
           missed: :run_once | :skip,
-          jitter: non_neg_integer()
+          jitter: non_neg_integer(),
+          source: {module(), term()}
         }
 
   @typedoc "What one firing did."
-  @type outcome() :: :asked | :busy | :no_agent | :missed | :failed
+  @type outcome() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
   @name WardrikSchedule.Schedules
+  @fields ~w(every prompt overlap missed jitter)
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
   @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
 
@@ -118,7 +150,8 @@ defmodule WardrikSchedule do
       prompt: prompt!(Keyword.get(opts, :prompt)),
       overlap: one_of!(Keyword.get(opts, :overlap, :skip), [:skip, :queue], :overlap),
       missed: one_of!(Keyword.get(opts, :missed, :run_once), [:run_once, :skip], :missed),
-      jitter: jitter!(Keyword.get(opts, :jitter, 0))
+      jitter: jitter!(Keyword.get(opts, :jitter, 0)),
+      source: source!(Keyword.get(opts, :source, {Clock, nil}))
     }
   end
 
@@ -175,6 +208,11 @@ defmodule WardrikSchedule do
   defp jitter!(ms) when is_integer(ms) and ms >= 0, do: ms
   defp jitter!(other), do: raise(ArgumentError, "jitter is milliseconds, got #{inspect(other)}")
 
+  defp source!({module, _opts} = source) when is_atom(module), do: source
+
+  defp source!(other),
+    do: raise(ArgumentError, "source is {module, opts}, got #{inspect(other)}")
+
   @doc """
   A schedule named `name`, from fields written as text, as an agent file or a
   JSON body writes them:
@@ -183,37 +221,66 @@ defmodule WardrikSchedule do
 
   `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
   `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
+  The fields left are the source's, which one of them names by its key, and
+  the clock's where none does: see `WardrikSchedule.Source`.
   """
   @spec decode(String.t(), map()) :: {:ok, t()} | {:error, String.t()}
   def decode(name, fields) when is_map(fields) do
-    with :ok <- known(fields),
-         {:ok, every} <- every(fields["every"]),
-         {:ok, overlap} <- choice(fields, "overlap", :skip, ~w(skip queue)),
-         {:ok, missed} <- choice(fields, "missed", :run_once, ~w(run_once skip)),
-         {:ok, jitter} <- seconds(fields["jitter"]) do
+    {own, rest} = Map.split(fields, @fields)
+
+    with {:ok, source} <- source(rest),
+         {:ok, every} <- every(own["every"]),
+         {:ok, overlap} <- choice(own, "overlap", :skip, ~w(skip queue)),
+         {:ok, missed} <- choice(own, "missed", :run_once, ~w(run_once skip)),
+         {:ok, jitter} <- seconds(own["jitter"]) do
       {:ok,
        new(name,
          every: every,
-         prompt: fields["prompt"],
+         prompt: own["prompt"],
          overlap: overlap,
          missed: missed,
-         jitter: jitter
+         jitter: jitter,
+         source: source
        )}
     end
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   end
 
-  @fields ~w(every prompt overlap missed jitter)
+  @doc """
+  The fields a schedule written as text may have: those every schedule has,
+  and the key of each source a loaded application registers.
+  """
+  @spec keys() :: [String.t()]
+  def keys, do: @fields ++ (Source.all() |> Map.keys() |> Enum.sort())
 
-  defp known(fields) do
-    case Map.keys(fields) -- @fields do
-      [] ->
-        :ok
+  defp source(fields) do
+    sources = Source.all()
 
-      [key | _] ->
-        {:error, "#{key} is not a setting; expected every, prompt, overlap, missed or jitter"}
+    case fields |> Map.keys() |> Enum.filter(&Map.has_key?(sources, &1)) |> Enum.sort() do
+      [] -> clock(fields)
+      [key] -> source(Map.fetch!(sources, key), fields)
+      [one, other | _] -> {:error, "#{one} and #{other} each name a source; a schedule has one"}
     end
+  end
+
+  defp source(module, fields) do
+    with {:ok, opts} <- module.decode(fields), do: {:ok, {module, opts}}
+  end
+
+  defp clock(fields) when map_size(fields) == 0, do: {:ok, {Clock, nil}}
+
+  defp clock(fields) do
+    {last, others} = List.pop_at(keys(), -1)
+
+    {:error,
+     IO.iodata_to_binary([
+       fields |> Map.keys() |> Enum.min(),
+       " is not a setting; expected ",
+       Enum.intersperse(others, ", "),
+       " or ",
+       last
+     ])}
   end
 
   defp every(text) when is_binary(text), do: {:ok, text}
@@ -249,19 +316,28 @@ defmodule WardrikSchedule do
       %{"name" => "sweep", "every" => "30m", "prompt" => "Look.",
         "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
 
-  An interval is written in the largest unit that divides it.
+  An interval is written in the largest unit that divides it, and the
+  source's fields are written beside the rest.
   """
-  @spec encode(t()) :: %{String.t() => String.t() | non_neg_integer()}
-  def encode(%__MODULE__{} = schedule) do
-    %{
+  @spec encode(t()) :: %{String.t() => term()}
+  def encode(%__MODULE__{source: {module, opts}} = schedule) do
+    opts
+    |> module.encode()
+    |> Map.merge(%{
       "name" => schedule.name,
       "every" => text(schedule.every),
       "prompt" => schedule.prompt,
       "overlap" => to_string(schedule.overlap),
       "missed" => to_string(schedule.missed),
       "jitter" => div(schedule.jitter, 1_000)
-    }
+    })
   end
+
+  @doc "What `schedule`'s source finds for `agent` since `cursor`; see `WardrikSchedule.Source`."
+  @spec check(t(), Source.cursor() | nil, AgentID.t()) ::
+          {:ok, [WardrikSchedule.Item.t()], Source.cursor()} | {:error, String.t()}
+  def check(%__MODULE__{source: {module, opts}}, cursor, %AgentID{} = agent),
+    do: module.check(opts, cursor, agent)
 
   defp text({:cron, text}), do: text
 

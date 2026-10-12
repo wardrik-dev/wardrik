@@ -163,7 +163,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "required": [
           "every"
         ],
@@ -207,7 +207,7 @@
           }
         }
       },
-      "description": "The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one."
+      "description": "The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run."
     },
     "channels": {
       "type": "array",

@@ -21,6 +21,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikDaemon.Definition
   alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
+  alias WardrikSchedule.Status
 
   @faint [:faint, :light_black]
 
@@ -342,17 +343,12 @@ defmodule WardrikDaemon.CLI.Agents do
   defp interval(ms), do: "#{ms}ms"
 
   defp ran(%{last_at: nil, last_outcome: nil}, _now), do: "not run yet"
-  defp ran(%{last_at: nil, last_outcome: outcome}, _now), do: "last: " <> outcome(outcome)
+
+  defp ran(%{last_at: nil, last_outcome: outcome}, _now),
+    do: "last: " <> Status.described(outcome)
 
   defp ran(%{last_at: at, last_outcome: outcome}, now) do
     ago = WardrikDaemon.duration(max(DateTime.diff(now, at, :millisecond), 0))
-    "last run #{ago} ago: " <> outcome(outcome)
+    "last run #{ago} ago: " <> Status.described(outcome)
   end
-
-  defp outcome(nil), do: "asking"
-  defp outcome(:asked), do: "asked"
-  defp outcome(:busy), do: "skipped, the agent was busy"
-  defp outcome(:no_agent), do: "no agent runs under the key"
-  defp outcome(:missed), do: "let a missed run go"
-  defp outcome(:failed), do: "failed to ask"
 end

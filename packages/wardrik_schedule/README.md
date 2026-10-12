@@ -31,6 +31,23 @@ asks the agent, so a firing lost to a crash is not made again, and it
 announces each firing on the agent's events as `{:schedule_fired, name,
 outcome}`.
 
+A schedule watches a source: the clock, which asks the agent on every run,
+unless it names another, which asks only when it finds something new, with
+what it found under the prompt. A source is a module implementing
+`WardrikSchedule.Source`, registered under the key a schedule names it by:
+
+```elixir
+# mix.exs of the package that ships it
+def application, do: [env: [wardrik_schedule_sources: [feed: MyApp.Feed]]]
+```
+
+```elixir
+WardrikSchedule.put(~A"acme/growth", "mentions",
+  every: "1h",
+  prompt: "New mentions of Acme. Which deserve a reply?",
+  source: {MyApp.Feed, "https://example.com/alerts.xml"})
+```
+
 In the daemon, an agent's definition lists its schedules, in its file or in
 the body of `PUT /v1/agents/{id}`:
 

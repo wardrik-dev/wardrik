@@ -1,9 +1,43 @@
+defmodule WardrikScheduleTest.Watch do
+  @moduledoc false
+  @behaviour WardrikSchedule.Source
+
+  # Answers each check with the next of the answers its test hands it, each a
+  # function of the cursor, and with nothing new once they run out.
+
+  @impl WardrikSchedule.Source
+  def decode(%{"watch" => name} = fields) when map_size(fields) == 1 and is_binary(name),
+    do: {:ok, name}
+
+  def decode(_fields), do: {:error, "watch names the answers a test hands it"}
+
+  @impl WardrikSchedule.Source
+  def encode(name), do: %{"watch" => name}
+
+  @impl WardrikSchedule.Source
+  def check(name, cursor, _agent) do
+    answer =
+      Agent.get_and_update(String.to_existing_atom(name), fn
+        [next | rest] -> {next, rest}
+        [] -> {fn cursor -> {:ok, [], cursor} end, []}
+      end)
+
+    answer.(cursor)
+  end
+
+  def answers(name, answers), do: Agent.start_link(fn -> answers end, name: name)
+end
+
 defmodule WardrikScheduleTest do
   use ExUnit.Case, async: false
 
+  alias ReqLLM.Context
   alias Wardrik.Event
   alias Wardrik.Fleet
+  alias Wardrik.LLM.Turn
   alias Wardrik.Test.AgentRunners
+  alias WardrikSchedule.Item
+  alias WardrikScheduleTest.Watch
 
   # Short enough to fire within an assert_receive, long enough that a test
   # sees each firing it waits for.
@@ -18,6 +52,18 @@ defmodule WardrikScheduleTest do
     end)
 
     %{key: key}
+  end
+
+  @doc "Reports the message and labels a turn began with, then answers."
+  def labelled(test_pid, %Turn{} = turn) do
+    [%{content: [%{text: text}]} | _] = Enum.reverse(turn.context.messages)
+    send(test_pid, {:asked, text, turn.labels})
+    Turn.done(turn, [Context.assistant("done")])
+  end
+
+  defp watching(_context) do
+    Application.put_env(:wardrik_schedule, :wardrik_schedule_sources, watch: Watch)
+    on_exit(fn -> Application.delete_env(:wardrik_schedule, :wardrik_schedule_sources) end)
   end
 
   defp spawn_agent(key, runner) do
@@ -110,6 +156,26 @@ defmodule WardrikScheduleTest do
                WardrikSchedule.decode("sweep", %{"every" => "30m", "prompt" => "Look."})
     end
 
+    test "reads a registered source from the fields left" do
+      Application.put_env(:wardrik_schedule, :wardrik_schedule_sources, watch: Watch)
+      on_exit(fn -> Application.delete_env(:wardrik_schedule, :wardrik_schedule_sources) end)
+
+      fields = %{"every" => "1h", "prompt" => "What is new?", "watch" => "mentions"}
+
+      assert {:ok, %WardrikSchedule{source: {Watch, "mentions"}} = schedule} =
+               WardrikSchedule.decode("mentions", fields)
+
+      assert %{"watch" => "mentions", "every" => "1h"} = WardrikSchedule.encode(schedule)
+      assert "watch" in WardrikSchedule.keys()
+
+      assert WardrikSchedule.decode("mentions", Map.put(fields, "watch", 1)) ==
+               {:error, "watch names the answers a test hands it"}
+
+      assert {:error,
+              "when is not a setting; expected every, prompt, overlap, missed, jitter or watch"} =
+               WardrikSchedule.decode("mentions", %{"every" => "1h", "when" => "now"})
+    end
+
     test "says what does not read" do
       for {fields, message} <- [
             {%{"when" => "now"},
@@ -171,6 +237,81 @@ defmodule WardrikScheduleTest do
       {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
+    end
+  end
+
+  describe "firing with a source" do
+    setup [:watching]
+
+    setup %{key: key} do
+      name = :"watch_#{System.unique_integer([:positive])}"
+      %{key: key, name: name}
+    end
+
+    test "asks with what it found under the prompt, labelled as its items are",
+         %{key: key, name: name} do
+      item = %Item{
+        id: "1",
+        title: "Acme on the front page",
+        link: "https://example.com/1",
+        labels: ["outside"]
+      }
+
+      {:ok, _pid} = Watch.answers(name, [fn nil -> {:ok, [item], "1"} end])
+      spawn_agent(key, {__MODULE__, :labelled, [self()]})
+
+      {:ok, _pid} =
+        WardrikSchedule.put(key, "mentions",
+          every: @every,
+          prompt: "What is new?",
+          source: {Watch, Atom.to_string(name)}
+        )
+
+      assert_receive {:asked, text, ["outside"]}
+      assert text == "What is new?\n\n## Acme on the front page\nhttps://example.com/1"
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "mentions", outcome: :asked}}
+
+      assert_receive %Event{
+        payload: %Event.ScheduleFired{name: "mentions", outcome: :nothing_new}
+      }
+
+      refute_received {:asked, _text, _labels}
+    end
+
+    test "keeps the cursor only once the agent is asked", %{key: key, name: name} do
+      test = self()
+      found = fn cursor -> send(test, {:checked, cursor}) && {:ok, [%Item{id: "1"}], "1"} end
+      {:ok, _pid} = Watch.answers(name, [found, found])
+      spawn_agent(key, {AgentRunners, :blocking, [self(), "done"]})
+      {:ok, _pid} = WardrikSchedule.put(key, "busy", every: @every, prompt: "Look.")
+
+      assert_receive {:turn, _context, turn}
+
+      {:ok, _pid} =
+        WardrikSchedule.put(key, "mentions",
+          every: @every,
+          prompt: "What is new?",
+          source: {Watch, Atom.to_string(name)}
+        )
+
+      assert_receive {:checked, nil}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "mentions", outcome: :busy}}
+      assert_receive {:checked, nil}
+      send(turn, :release)
+    end
+
+    test "fails a run its source could not check", %{key: key, name: name} do
+      {:ok, _pid} = Watch.answers(name, [fn _cursor -> {:error, "the feed did not answer"} end])
+      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+
+      {:ok, _pid} =
+        WardrikSchedule.put(key, "mentions",
+          every: @every,
+          prompt: "What is new?",
+          source: {Watch, Atom.to_string(name)}
+        )
+
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "mentions", outcome: :failed}}
     end
   end
 

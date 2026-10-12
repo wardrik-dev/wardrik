@@ -251,7 +251,7 @@ export interface AgentDefinition {
         window?: number;
       };
   /**
-   * The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one.
+   * The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
    */
   schedule?: {
     /**
@@ -282,6 +282,7 @@ export interface AgentDefinition {
      * Up to this many seconds of delay, chosen at random each time.
      */
     jitter?: number;
+    [k: string]: unknown;
   }[];
   /**
    * The chat channels, as config.yaml names them, it may be chosen to answer in.
@@ -413,7 +414,7 @@ export interface ExportPage {
   }[];
 }
 /**
- * A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers.
+ * A schedule as it was put, the schedule field of what PUT /v1/agents/{key}/schedules/{schedule} answers. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
  */
 export interface Schedule {
   name: string;
@@ -437,9 +438,10 @@ export interface Schedule {
    * Up to this many seconds of delay, chosen at random each time.
    */
   jitter: number;
+  [k: string]: unknown;
 }
 /**
- * The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out.
+ * The body of PUT /v1/agents/{key}/schedules/{schedule}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the schedule watches, which one of them names; without one, it asks on every run.
  */
 export interface ScheduleDefinition {
   /**
@@ -466,6 +468,7 @@ export interface ScheduleDefinition {
    * Up to this many seconds of delay, chosen at random each time.
    */
   jitter?: number;
+  [k: string]: unknown;
 }
 /**
  * Someone dropped the turn an agent was taking, and what was queued behind it.
@@ -815,7 +818,7 @@ export interface ScheduleTriggeredData {
   schedule: {
     name: string;
   };
-  status: "asked" | "busy" | "no_agent" | "missed" | "failed";
+  status: "asked" | "nothing_new" | "busy" | "no_agent" | "missed" | "failed";
 }
 /**
  * Someone took a secret out of the vault.

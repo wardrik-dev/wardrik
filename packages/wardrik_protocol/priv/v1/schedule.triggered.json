@@ -21,6 +21,7 @@
       "type": "string",
       "enum": [
         "asked",
+        "nothing_new",
         "busy",
         "no_agent",
         "missed",

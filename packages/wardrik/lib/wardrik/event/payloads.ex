@@ -132,7 +132,7 @@ defmodule Wardrik.Event.ScheduleFired do
 
   @type t() :: %__MODULE__{
           name: String.t(),
-          outcome: :asked | :busy | :no_agent | :missed | :failed
+          outcome: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
         }
 end
 
