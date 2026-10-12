@@ -49,6 +49,7 @@ const resources: Record<string, string> = {
   "cloudevent.json": "Envelope",
   "connecting.json": "Connecting",
   "connections.json": "Connections",
+  "decisions.json": "Decisions",
   "error.json": "ErrorBody",
   "export.json": "ExportPage",
   "trigger.json": "Trigger",

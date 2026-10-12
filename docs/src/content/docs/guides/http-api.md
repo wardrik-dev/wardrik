@@ -94,13 +94,15 @@ as `["outside"]` for content from outside. With a token that can `decide`:
 
 ```sh
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
-  -d '{"decision": "approve", "note": "Label it for the next sprint."}'
+  http://127.0.0.1:4747/v1/agents/acme/triage/decisions \
+  -d '{"decisions": [{"id": "call_1", "decision": "approve", "note": "Label it for the next sprint."}]}'
 
 curl -s -X POST -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/interrupts/call_1 \
-  -d '{"decision": "reject", "reason": "Not on a Friday."}'
+  http://127.0.0.1:4747/v1/agents/acme/triage/decisions \
+  -d '{"decisions": [{"id": "call_1", "decision": "reject", "reason": "Not on a Friday."}]}'
 ```
+
+Several calls the agent waits on can be decided in one request, each its own entry in `decisions`.
 
 A `note` with an approval is what the model reads beside the call's answer; it never changes the
 call, which runs as the model wrote it. A `reason` with a rejection is what it reads in place of

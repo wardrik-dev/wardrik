@@ -266,8 +266,8 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 200}} =
                Req.post(jon,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "approve"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_1", "decision" => "approve"}]}
                )
 
       assert_receive %Event{
@@ -348,7 +348,7 @@ defmodule WardrikHTTP.RouterTest do
              }
 
       for {method, path, body} <- [
-            {:post, "/interrupts/x", %{"decision" => "approve"}},
+            {:post, "/decisions", %{"decisions" => [%{"id" => "x", "decision" => "approve"}]}},
             {:post, "/cancel", %{}},
             {:delete, "/conversation", nil},
             {:put, "", %{}},
@@ -460,7 +460,8 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 202}} =
                Req.post(api, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
 
-      assert_receive {:turn, [{:user, "hi"}]}
+      assert_receive {:turn, [{:user, "From router-test (token " <> _rest = said}]}
+      assert said =~ ~r/\):\nhi$/
 
       assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/@ann/#{name}")
     end
@@ -508,13 +509,15 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"id" => "m1", "parts" => [%{"type" => "text", "content" => "hi"}]}
                )
 
-      assert_receive {:turn, [{:user, "hi"}]}
+      assert_receive {:turn, [{:user, "From router-test (token " <> _rest = said}]}
+      assert said =~ ~r/\):\nhi$/
 
       assert {:ok, %{status: 202, body: %{"message" => %{"id" => id}}}} =
                Req.post(api, url: "/v1/agents/#{key}/messages", json: %{"content" => "again"})
 
       assert id =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/
-      assert_receive {:turn, [{:user, "hi"}, {:assistant, "ok"}, {:user, "again"}]}
+      assert_receive {:turn, [{:user, ^said}, {:assistant, "ok"}, {:user, again}]}
+      assert again =~ ~r/\):\nagain$/
     end
 
     test "refuses a message with no text, and one for an agent that does not run", %{api: api} do
@@ -579,11 +582,11 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 200, body: body}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "approve"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_1", "decision" => "approve"}]}
                )
 
-      assert body == %{"interrupt" => %{"id" => "call_1", "decision" => "approved"}}
+      assert body == %{"decisions" => [%{"id" => "call_1", "decision" => "approved"}]}
       assert_receive {:resumed, %{"call_1" => :approve}}
 
       assert_receive %Event{
@@ -595,18 +598,22 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 409, body: %{"error" => %{"type" => "conflict"}}}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "approve"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_1", "decision" => "approve"}]}
                )
     end
 
     test "an approval carries the note given with it", %{api: api} do
       {key, _agent} = parked_agent()
 
-      assert {:ok, %{status: 200, body: %{"interrupt" => %{"decision" => "approved"}}}} =
+      assert {:ok, %{status: 200, body: %{"decisions" => [%{"decision" => "approved"}]}}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "approve", "note" => "Only staging."}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{
+                   "decisions" => [
+                     %{"id" => "call_1", "decision" => "approve", "note" => "Only staging."}
+                   ]
+                 }
                )
 
       assert_receive %Event{
@@ -619,20 +626,24 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 400}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "maybe"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_1", "decision" => "maybe"}]}
                )
 
       assert {:ok, %{status: 409}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_9",
-                 json: %{"decision" => "reject"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_9", "decision" => "reject"}]}
                )
 
-      assert {:ok, %{status: 200, body: %{"interrupt" => %{"decision" => "rejected"}}}} =
+      assert {:ok, %{status: 200, body: %{"decisions" => [%{"decision" => "rejected"}]}}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "reject", "reason" => "Not this quarter."}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{
+                   "decisions" => [
+                     %{"id" => "call_1", "decision" => "reject", "reason" => "Not this quarter."}
+                   ]
+                 }
                )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not this quarter."}}}
@@ -644,8 +655,8 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 503, body: %{"error" => %{"type" => "unavailable"}}}} =
                Req.post(api,
-                 url: "/v1/agents/#{key}/interrupts/call_1",
-                 json: %{"decision" => "reject"}
+                 url: "/v1/agents/#{key}/decisions",
+                 json: %{"decisions" => [%{"id" => "call_1", "decision" => "reject"}]}
                )
     end
   end
@@ -1274,7 +1285,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization trigger trigger_definition export error connections connecting)
+    @resources ~w(agent agent_snapshot authorization decisions trigger trigger_definition export error connections connecting)
 
     defp schema(name) do
       WardrikProtocol.dir()
@@ -1342,7 +1353,10 @@ defmodule WardrikHTTP.RouterTest do
         Req.get(api, url: "/v1/agents", auth: nil),
         Req.get(api, url: "/v1/agents/test/nobody"),
         Req.post(api, url: "/v1/agents/#{key}/messages", json: %{}),
-        Req.post(api, url: "/v1/agents/#{key}/interrupts/x", json: %{"decision" => "approve"}),
+        Req.post(api,
+          url: "/v1/agents/#{key}/decisions",
+          json: %{"decisions" => [%{"id" => "x", "decision" => "approve"}]}
+        ),
         Req.get(api, url: "/v1/agents/#{key}/events", params: [starting_after: 0]),
         Req.get(api, url: "/v1/workers"),
         Req.get(api, url: "/v1/agents/#{key}/definition"),

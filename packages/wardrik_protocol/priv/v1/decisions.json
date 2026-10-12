@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:decisions",
+  "title": "Decisions",
+  "description": "The body of POST /v1/agents/{key}/decisions: what a person decides of the calls an agent waits on, taken together. The answer lists each call's id with approved or rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decisions"
+  ],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "decision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The id of a call the agent waits on, an interrupt's."
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "For an approval, what the agent is told with it."
+          },
+          "reason": {
+            "type": "string",
+            "description": "For a rejection, why, which the agent is told."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "decisions": [
+        {
+          "id": "toolu_01",
+          "decision": "approve",
+          "note": "Only staging."
+        }
+      ]
+    },
+    {
+      "decisions": [
+        {
+          "id": "toolu_01",
+          "decision": "reject",
+          "reason": "Not this quarter."
+        },
+        {
+          "id": "toolu_02",
+          "decision": "approve"
+        }
+      ]
+    }
+  ]
+}

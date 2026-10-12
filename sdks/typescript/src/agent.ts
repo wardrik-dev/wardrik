@@ -4,6 +4,7 @@ import type {
   AgentDefinition,
   AgentSnapshot,
   Authorization,
+  Decisions,
   Trigger,
   TriggerDefinition,
   WardrikEvent,
@@ -142,7 +143,15 @@ export class Agent {
    * says.
    */
   async approve(interrupt: string, note?: string): Promise<void> {
-    await this.#decide(interrupt, { decision: "approve", ...(note ? { note } : {}) });
+    await this.decide([{ id: interrupt, decision: "approve", ...(note ? { note } : {}) }]);
+  }
+
+  /**
+   * Decides calls the agent is waiting on, taken together: each one's id,
+   * `approve` with a `note`, or `reject` with a `reason`.
+   */
+  async decide(decisions: Decisions["decisions"]): Promise<void> {
+    await this.#http.send("POST", this.#path + "/decisions", { body: { decisions } });
   }
 
   /**
@@ -160,7 +169,7 @@ export class Agent {
 
   /** Rejects a call the agent is waiting on; the model is told `reason`. */
   async reject(interrupt: string, reason?: string): Promise<void> {
-    await this.#decide(interrupt, { decision: "reject", ...(reason ? { reason } : {}) });
+    await this.decide([{ id: interrupt, decision: "reject", ...(reason ? { reason } : {}) }]);
   }
 
   /** Stops what the agent is doing. */
@@ -198,9 +207,4 @@ export class Agent {
     await this.#http.send("DELETE", this.#path);
   }
 
-  async #decide(interrupt: string, body: object): Promise<void> {
-    await this.#http.send("POST", this.#path + "/interrupts/" + encodeURIComponent(interrupt), {
-      body,
-    });
-  }
 }
