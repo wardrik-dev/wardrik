@@ -159,7 +159,8 @@ lists, in seconds, before the turn fails; see `Wardrik.LLM.Retry`.
 ## Triggers
 
 `triggers` is one trigger or a list of them, each a `WardrikTrigger`,
-that ask the agent, and none of its conversations, on a clock:
+that ask the agent, and none of its conversations, on a clock, or when a
+feed it watches has something new:
 
     triggers:
       - name: sweep
@@ -169,6 +170,10 @@ that ask the agent, and none of its conversations, on a clock:
         every: "0 17 * * 1-5"
         prompt: Write up what happened today.
         overlap: queue
+      - name: rivals
+        every: 1h
+        feed: [https://rivalco.example/changelog.rss, https://hnrss.org/newest?q=rivalco]
+        prompt: What changed at our competitors?
 
   * `every` - a cron expression in UTC, quoted, since YAML reads a leading
     `*` as something else; or a duration of at least a minute, as `30m`,
@@ -185,6 +190,10 @@ that ask the agent, and none of its conversations, on a clock:
   * `missed` - `run_once`, the default, fires once for runs missed while
     the daemon was down, and `skip` lets them go
   * `jitter` - up to this many seconds added to each run
+  * `feed` - an RSS or Atom feed's URL, or a list of them, read on each
+    run: the agent is asked only when one has entries it has not seen,
+    with them under the prompt, as `WardrikTrigger.Feed` reads them. The
+    first run only notes what a feed already holds
 
 ## Channels
 

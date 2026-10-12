@@ -24,7 +24,11 @@ defmodule WardrikTrigger.MixProject do
     ]
   end
 
-  def application, do: [extra_applications: [:logger]]
+  def application,
+    do: [
+      extra_applications: [:logger],
+      env: [wardrik_trigger_sources: [feed: WardrikTrigger.Feed]]
+    ]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
@@ -35,6 +39,9 @@ defmodule WardrikTrigger.MixProject do
       sibling(:wardrik_store),
       {:durable_server, "~> 0.1.5"},
       {:group, "~> 0.2.1"},
+      {:req, "~> 0.7"},
+      {:sweet_xml, "~> 0.7"},
+      {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end
