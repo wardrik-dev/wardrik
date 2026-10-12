@@ -181,6 +181,7 @@ The model answered, failed, or was stopped.
 | `response.id` | string |  |  |
 | `response.finish_reasons` | array of string |  |  |
 | `usage` | [usage](#usage) |  |  |
+| `cost` | [cost](#cost) or null |  | What the call cost, on a call the model answered; null where nobody prices the model, which is not the same as nothing. |
 | `status` | string | yes | One of `ok`, `error`, `cancelled`. |
 | `error` | [error](#error) |  |  |
 | `duration_ms` | [duration_ms](#duration_ms) | yes |  |
@@ -457,6 +458,7 @@ A tool call answered, or was answered from the ledger when replayed.
 | `error` | [error](#error) |  |  |
 | `replayed` | boolean | yes |  |
 | `served_by` | [served_by](#served_by) |  |  |
+| `cost` | [cost](#cost) |  |  |
 
 ### `wardrik.tool_call.denied`
 
@@ -547,7 +549,15 @@ Token usage, as gen_ai.usage.* without the prefix.
 | `cache_read.input_tokens` | integer |  |  |
 | `reasoning` | object |  |  |
 | `reasoning.output_tokens` | integer |  |  |
-| `cost_usd` | number |  |  |
+
+### `cost`
+
+What a call cost, the same figure a budget counts.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `micro_usd` | integer | yes | Whole micro-dollars: 1000000 is one US dollar. |
+| `source` | string | yes | provider where the provider reported the figure, catalog where Wardrik priced the tokens at the model catalog's prices, tool where the tool reported it. One of `provider`, `catalog`, `tool`. |
 
 ### `principal`
 
