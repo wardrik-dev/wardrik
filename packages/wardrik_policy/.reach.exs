@@ -45,6 +45,7 @@
       "Wardrik.Test.*",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
+      "Wardrik.Tool.Name",
       "Wardrik.Tool.Result",
       "Wardrik.UUID"
     ],
