@@ -44,7 +44,7 @@ defmodule WardrikConsole.Printer do
 
   @doc "The lines `event` completes, and the printer to give the next event to."
   @spec event(t(), Event.t()) :: {[Owl.Data.t()], t()}
-  def event(%__MODULE__{} = printer, %Event{payload: {:result, text}} = event) do
+  def event(%__MODULE__{} = printer, %Event{payload: %Event.Result{text: text}} = event) do
     if Event.root?(event) do
       {settled, printer} = settle(printer, :reasoning)
       {lines, answer} = Markdown.push(printer.answer, text)
@@ -54,7 +54,7 @@ defmodule WardrikConsole.Printer do
     end
   end
 
-  def event(%__MODULE__{} = printer, %Event{payload: {:thinking, text}} = event) do
+  def event(%__MODULE__{} = printer, %Event{payload: %Event.Thinking{text: text}} = event) do
     if Event.root?(event) do
       {settled, printer} = settle(printer, :answer)
       {lines, reasoning} = Markdown.push(printer.reasoning, text)
@@ -82,31 +82,31 @@ defmodule WardrikConsole.Printer do
 
   # The lines an event says, before which the text so far is settled; `nil`
   # for an event that neither says anything nor settles.
-  defp said({:tool_started, _id, name, arguments, _key, _decided_by}),
+  defp said(%Event.ToolStarted{name: name, arguments: arguments}),
     do: [{:cut, ["  ", Owl.Data.tag("→", :cyan), " ", name, arguments(arguments)]}]
 
-  defp said({:tool_finished, _id, name, {:ok, _output}, _served_by, _cost}),
+  defp said(%Event.ToolFinished{name: name, result: {:ok, _output}}),
     do: [{:cut, ["  ", Owl.Data.tag("✓", :green), " ", name]}]
 
-  defp said({:tool_finished, _id, name, {:error, reason}, _served_by, _cost}),
+  defp said(%Event.ToolFinished{name: name, result: {:error, reason}}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, ": ", inspect(reason)]}]
 
-  defp said({:tool_denied, _id, name, reason, _decided_by}),
+  defp said(%Event.ToolDenied{name: name, reason: reason}),
     do: [{:cut, ["  ", Owl.Data.tag("✗", :red), " ", name, " was refused: ", reason]}]
 
-  defp said({:turn_parked, calls}) do
+  defp said(%Event.TurnParked{calls: calls}) do
     [
       Owl.Data.tag("Waiting on a person for #{count(calls)}:", [:bright, :yellow])
       | for({call, prompt} <- calls, do: {:cut, ["  ? ", call.name, "  ", call.id, "  ", prompt]})
     ]
   end
 
-  defp said({:turn_finished, _messages}), do: []
+  defp said(%Event.TurnFinished{}), do: []
 
-  defp said({:turn_failed, reason}),
+  defp said(%Event.TurnFailed{reason: reason}),
     do: [Owl.Data.tag("✗ the turn failed: #{inspect(reason)}", :red)]
 
-  defp said({:turn_interrupted, _stats}), do: [Owl.Data.tag("■ stopped", :yellow)]
+  defp said(%Event.TurnInterrupted{}), do: [Owl.Data.tag("■ stopped", :yellow)]
   defp said(_payload), do: nil
 
   defp arguments(arguments) when map_size(arguments) == 0, do: []

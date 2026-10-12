@@ -1,10 +1,10 @@
 defmodule WardrikTUI.Usage do
   @moduledoc """
-  Token and cost totals for one agent, folded from `{:meta, chunk}` events.
+  Token and cost totals for one agent, folded from `Wardrik.Event.Meta` events.
 
   Usage is collected per request, keyed by the span the request runs on, with
   later records overwriting earlier ones. `settle/2` folds a span's request
-  into the totals when its `{:model_finished, ...}` arrives, so concurrent
+  into the totals when its `Wardrik.Event.ModelFinished` arrives, so concurrent
   requests on different spans add up.
 
   Cost is the provider's `total_cost` when present, otherwise what

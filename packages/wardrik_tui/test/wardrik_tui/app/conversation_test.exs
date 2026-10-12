@@ -17,7 +17,7 @@ defmodule WardrikTUI.App.ConversationTest do
     state =
       Conversation.new(60, "test:model")
       |> Conversation.apply_event(
-        Event.new(root, {:turn_started, [Wardrik.Agent.Message.new("hello")]}),
+        Event.new(root, %Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hello")]}),
         @options
       )
 
@@ -26,14 +26,26 @@ defmodule WardrikTUI.App.ConversationTest do
 
     state =
       state
-      |> Conversation.apply_event(Event.new(child, {:result, "private child answer"}), @options)
-      |> Conversation.apply_event(Event.new(root, {:result, "visible answer"}), @options)
+      |> Conversation.apply_event(
+        Event.new(child, %Event.Result{text: "private child answer"}),
+        @options
+      )
+      |> Conversation.apply_event(
+        Event.new(root, %Event.Result{text: "visible answer"}),
+        @options
+      )
 
     assert state.answer_text == "visible answer"
     assert state.chars == String.length("visible answer")
     assert Transcript.to_list(state.transcript) == []
 
-    state = Conversation.apply_event(state, Event.new(root, {:turn_finished, []}), @options)
+    state =
+      Conversation.apply_event(
+        state,
+        Event.new(root, %Event.TurnFinished{messages: []}),
+        @options
+      )
+
     text = state.transcript |> Transcript.to_list() |> Enum.join("\n")
 
     refute state.running?

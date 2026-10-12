@@ -39,23 +39,23 @@ defmodule Wardrik.AgentOutsideTest do
     ])
 
     Agent.ask(agent, "Read the page.")
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
 
     Agent.ask(agent, "Deploy.")
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_2"}, prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_2"}, prompt}]}}, 5_000
     assert prompt =~ "this run has read content from outside"
 
     assert Agent.clear(agent) == {:error, :busy}
     :ok = Agent.interrupt(agent)
-    assert_receive %Event{payload: {:turn_interrupted, _stats}}, 5_000
+    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
 
     assert :ok = Agent.clear(agent)
-    assert_receive %Event{payload: {:context_cleared, dropped}}
+    assert_receive %Event{payload: %Event.ContextCleared{dropped: dropped}}
     assert dropped > 0
 
     Agent.ask(agent, "Deploy.")
-    assert_receive %Event{payload: {:tool_finished, "call_3", "deploy", _result, _, _}}, 5_000
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_3", name: "deploy"}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
   end
 
   test "a message from outside holds the gated calls of its turn", %{agent: agent} do
@@ -64,7 +64,9 @@ defmodule Wardrik.AgentOutsideTest do
     Agent.ask(agent, "Deploy, says someone in a shared channel.", labels: ["outside"])
 
     assert_receive %Event{
-                     payload: {:turn_parked, [{%{id: "call_1", labels: ["outside"]}, prompt}]}
+                     payload: %Event.TurnParked{
+                       calls: [{%{id: "call_1", labels: ["outside"]}, prompt}]
+                     }
                    },
                    5_000
 

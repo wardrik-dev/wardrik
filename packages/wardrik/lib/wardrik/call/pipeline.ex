@@ -278,7 +278,13 @@ defmodule Wardrik.Call.Pipeline do
   defp refused(%Call{state: :denied, target: %Tool{}} = call) do
     case held(call) do
       %Call{state: :denied, denied: denied} = call ->
-        emit(call, {:tool_denied, call.id, Call.name(call), denied.reason, Call.decided_by(call)})
+        emit(call, %Event.ToolDenied{
+          call_id: call.id,
+          name: Call.name(call),
+          reason: denied.reason,
+          decided_by: Call.decided_by(call)
+        })
+
         Call.answer(call, Result.error(:denied, denied.reason))
 
       answered ->
@@ -401,7 +407,13 @@ defmodule Wardrik.Call.Pipeline do
   defp handed(%Call{target: %Tool{name: name, arguments: args}} = call) do
     emit(
       call,
-      {:tool_started, call.id, name, args, Ledger.idempotency_key(call), Call.decided_by(call)}
+      %Event.ToolStarted{
+        call_id: call.id,
+        name: name,
+        arguments: args,
+        idempotency_key: Ledger.idempotency_key(call),
+        decided_by: Call.decided_by(call)
+      }
     )
 
     {handed, read} = Subagent.watching(fn -> tool(call, :may_retry) end)
@@ -564,17 +576,29 @@ defmodule Wardrik.Call.Pipeline do
   # -- events ------------------------------------------------------------------
 
   defp replayed(call, result) do
-    emit(call, {:tool_replayed, call.id, Call.name(call), result})
+    emit(call, %Event.ToolReplayed{call_id: call.id, name: Call.name(call), result: result})
     Call.answer(call, result)
   end
 
   defp finished(%Call{target: %Tool{}} = call) do
-    emit(call, {:tool_finished, call.id, Call.name(call), call.result, call.served_by, call.cost})
+    emit(call, %Event.ToolFinished{
+      call_id: call.id,
+      name: Call.name(call),
+      result: call.result,
+      served_by: call.served_by,
+      cost: call.cost
+    })
+
     call
   end
 
   defp announced(%Call{state: :waiting, target: %Tool{}} = call) do
-    emit(call, {:tool_parked, call.id, Call.name(call), Call.prompt(call)})
+    emit(call, %Event.ToolParked{
+      call_id: call.id,
+      name: Call.name(call),
+      prompt: Call.prompt(call)
+    })
+
     call
   end
 

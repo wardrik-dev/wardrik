@@ -62,7 +62,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert Call.link(parked) == link
       assert [{%{id: "call_1", link: ^link}, "Connect it first"}] = ToolRunner.parked([parked])
 
-      assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Connect it first"}}
+      assert_receive %Event{
+        payload: %Event.ToolParked{call_id: "call_1", name: "connect", prompt: "Connect it first"}
+      }
+
       assert Call.link(Call.park(Call.tool(call("c", "t", %{})), "No link")) == nil
     end
 
@@ -71,9 +74,13 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "connect", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "connect", _, _, _}}
-      assert_receive %Event{payload: {:tool_parked, "call_1", "connect", "Authorize first"}}
-      refute_receive %Event{payload: {:tool_finished, "call_1", "connect", _result, _, _}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "connect"}}
+
+      assert_receive %Event{
+        payload: %Event.ToolParked{call_id: "call_1", name: "connect", prompt: "Authorize first"}
+      }
+
+      refute_receive %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "connect"}}
     end
 
     test "runs again when the call is approved", %{agent_id: agent_id} do
@@ -126,14 +133,21 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       messages =
         calls |> ToolRunner.execute_many_async(scope(agent_id, tools)) |> ToolRunner.messages()
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
 
       assert_receive %Event{
-        payload: {:tool_finished, "call_1", "echo", {:ok, %{"input" => "Hello"}}, _, _}
+        payload: %Event.ToolFinished{
+          call_id: "call_1",
+          name: "echo",
+          result: {:ok, %{"input" => "Hello"}}
+        }
       }
 
-      assert_receive %Event{payload: {:tool_started, "call_2", "reverse", _, _, _}}
-      assert_receive %Event{payload: {:tool_finished, "call_2", "reverse", {:ok, "dlroW"}, _, _}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_2", name: "reverse"}}
+
+      assert_receive %Event{
+        payload: %Event.ToolFinished{call_id: "call_2", name: "reverse", result: {:ok, "dlroW"}}
+      }
 
       assert Enum.map(messages, & &1.tool_call_id) == ["call_1", "call_2"]
       assert Enum.map(messages, & &1.name) == ["echo", "reverse"]
@@ -151,7 +165,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                |> ToolRunner.messages()
 
       assert_receive %Event{
-        payload: {:tool_finished, "call_1", "nope", {:error, "Unknown tool: nope"}, _, _}
+        payload: %Event.ToolFinished{
+          call_id: "call_1",
+          name: "nope",
+          result: {:error, "Unknown tool: nope"}
+        }
       }
 
       assert message.tool_call_id == "call_1"
@@ -249,7 +267,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         Event.Bus.subscribe(agent_id)
         send(test_pid, :ready)
 
-        receive do: (%Event{payload: {:tool_started, _, _, _, _, _}} = e ->
+        receive do: (%Event{payload: %Event.ToolStarted{}} = e ->
                        send(test_pid, {:other, e}))
       end)
 
@@ -259,8 +277,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       tools = [tool!("echo", fn input -> {:ok, input} end)]
       ToolRunner.execute_many_async([call("call_1", "echo", %{})], scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
-      assert_receive {:other, %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
+
+      assert_receive {:other,
+                      %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}}
     end
   end
 
@@ -335,8 +355,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute_many_async(calls, turn)
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}} = one
-      assert_receive %Event{payload: {:tool_started, "call_2", "echo", _, _, _}} = two
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}} = one
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_2", name: "echo"}} = two
 
       for event <- [one, two] do
         refute Event.root?(event)
@@ -353,8 +373,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "echo", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}} = started
-      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", _, _, _}} = finished
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}} =
+                       started
+
+      assert_receive %Event{payload: %Event.ToolFinished{call_id: "call_1", name: "echo"}} =
+                       finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -365,8 +388,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "echo", %{}), turn)
 
-      assert_receive %Event{payload: {:span_started, "echo"}} = started
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}} = started
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
       assert started.source.trace.parent_span_id == turn.source.trace.span_id
@@ -377,7 +400,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "boom", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:span_finished, {:error, :nope}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :nope}}}
     end
 
     test "a tool that reports its own failure closes its span as a failure", %{
@@ -387,7 +410,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       done = ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
 
       # The model still gets a successful tool result saying the call failed.
       refute message(done).metadata[:is_error]
@@ -398,7 +421,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute(call("call_1", "search", %{}), scope(agent_id, tools))
 
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
     end
 
     test "a crashing call still closes its span", %{agent_id: agent_id} do
@@ -410,8 +433,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         |> ToolRunner.messages()
       end)
 
-      assert_receive %Event{payload: {:span_started, "boom"}} = started
-      assert_receive %Event{payload: {:span_finished, {:error, :kaboom}, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "boom"}} = started
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :kaboom}}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -426,8 +449,12 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         |> ToolRunner.execute(scope(agent_id, tools))
         |> message()
 
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
-      assert_receive %Event{payload: {:tool_finished, "call_1", "echo", {:ok, %{"a" => 1}}, _, _}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
+
+      assert_receive %Event{
+        payload: %Event.ToolFinished{call_id: "call_1", name: "echo", result: {:ok, %{"a" => 1}}}
+      }
+
       assert message.role == :tool
       assert message.tool_call_id == "call_1"
       assert message.name == "echo"
@@ -462,7 +489,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
       assert message(done).tool_call_id == "call_1"
-      assert_receive %Event{payload: {:tool_started, "call_1", "echo", _, _, _}}
+      assert_receive %Event{payload: %Event.ToolStarted{call_id: "call_1", name: "echo"}}
     end
 
     test "a denied call never runs and the model is told why", %{agent_id: agent_id} do
@@ -474,7 +501,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                ToolRunner.execute_many_async(calls, governed(agent_id, tools))
 
       refute_receive :ran
-      assert_receive %Event{payload: {:tool_denied, "call_1", "drop", "Never.", _}}
+
+      assert_receive %Event{
+        payload: %Event.ToolDenied{call_id: "call_1", name: "drop", reason: "Never."}
+      }
 
       [part] = message(done).content
       assert %{"ok" => false, "error" => %{"message" => "Never."}} = JSON.decode!(part.text)
@@ -485,7 +515,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       ToolRunner.execute_many_async([call("call_1", "drop", %{})], governed(agent_id, tools))
 
-      assert_receive %Event{payload: {:span_finished, {:error, _reason}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, _reason}}}
     end
 
     test "an asked call parks instead of running", %{agent_id: agent_id} do
@@ -499,7 +529,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       refute_receive :ran
       assert parked_call.id == "call_1"
       assert parked_call.scope == nil
-      assert_receive %Event{payload: {:tool_parked, "call_1", "deploy", _prompt}}
+      assert_receive %Event{payload: %Event.ToolParked{call_id: "call_1", name: "deploy"}}
     end
 
     test "a batch reports each call's own outcome", %{agent_id: agent_id} do
@@ -589,7 +619,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert [%Call{state: :waiting, asks: [%Call.Ask{by: :tool}]}] =
                ToolRunner.execute_many_async(calls, under(agent_id, [Deploy], []))
 
-      refute_receive %Event{payload: {:tool_started, "call_1", _, _, _, _}}
+      refute_receive %Event{payload: %Event.ToolStarted{call_id: "call_1"}}
 
       allowing = [Wardrik.Hook.new("rules", Rules, allow: ["deploy"])]
 
@@ -756,7 +786,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
                "To use issues, connect github at its link. This carries on once it is connected."
 
       assert link == %{url: "https://example.com/authorize", code: nil}
-      assert_receive %Event{payload: {:tool_parked, "call_1", "issues", ^prompt}}
+
+      assert_receive %Event{
+        payload: %Event.ToolParked{call_id: "call_1", name: "issues", prompt: ^prompt}
+      }
 
       assert Call.awaits?(parked, "github", "new")
       refute Call.awaits?(parked, "github", "device")
@@ -822,7 +855,10 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert %Call{state: :done, denied: %Call.Denial{by: :person}} =
                done = ToolRunner.refuse(call("call_1", "deploy", %{}), scope, "Not this quarter.")
 
-      assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", "Not this quarter.", _}}
+      assert_receive %Event{
+        payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: "Not this quarter."}
+      }
+
       assert message(done).tool_call_id == "call_1"
 
       [part] = message(done).content

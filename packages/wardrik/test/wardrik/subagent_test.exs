@@ -56,7 +56,7 @@ defmodule Wardrik.SubagentTest do
 
     {:ok, _text} = Subagent.run(scope, "pricing?")
 
-    assert_receive %Event{payload: {:result, _text}} = event
+    assert_receive %Event{payload: %Event.Result{}} = event
     assert event.source.trace.parent_span_id == scope.source.trace.span_id
     refute Event.root?(event)
   end
@@ -86,7 +86,7 @@ defmodule Wardrik.SubagentTest do
       assert Subagent.run(scope, "Ship it.", except_tools: ["echo"]) ==
                {:error, :approval_required}
 
-      refute_received %Event{payload: {:tool_started, "call_1", _name, _args, _key, _}}
+      refute_received %Event{payload: %Event.ToolStarted{call_id: "call_1"}}
     end
 
     test "a delegate begins with the labels of its scope", %{scope: scope} do
@@ -116,10 +116,17 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(scope, "pricing?", name: "pricing")
 
-      assert_receive %Event{payload: {:span_started, "pricing"}} = opened
-      assert_receive %Event{payload: {:delegation_started, "pricing?"}} = started
-      assert_receive %Event{payload: {:delegation_finished, {:ok, "about $20"}, ms}} = finished
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+      assert_receive %Event{payload: %Event.SpanStarted{name: "pricing"}} = opened
+      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
+
+      assert_receive %Event{
+                       payload: %Event.DelegationFinished{
+                         outcome: {:ok, "about $20"},
+                         duration_ms: ms
+                       }
+                     } = finished
+
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
 
       assert started.source.trace.span_id == opened.source.trace.span_id
       assert finished.source.trace.span_id == opened.source.trace.span_id
@@ -133,8 +140,8 @@ defmodule Wardrik.SubagentTest do
       {:ok, _text} = Subagent.run(scope, "pricing?")
       {:ok, _text} = Subagent.run(scope, "competitors?")
 
-      assert_receive %Event{payload: {:delegation_started, "pricing?"}} = started
-      assert_receive %Event{payload: {:delegation_started, "competitors?"}} = second
+      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "pricing?"}} = started
+      assert_receive %Event{payload: %Event.DelegationStarted{prompt: "competitors?"}} = second
       assert started.source.trace.parent_span_id == scope.source.trace.span_id
       refute started.source.trace.span_id == second.source.trace.span_id
     end
@@ -155,12 +162,14 @@ defmodule Wardrik.SubagentTest do
     assert Subagent.run(%{scope | hooks: [Wardrik.Hook.new("ask", AskHook)]}, "echo") ==
              {:error, :approval_required}
 
-    assert_receive %Event{payload: {:delegation_started, "echo"}} = started
+    assert_receive %Event{payload: %Event.DelegationStarted{prompt: "echo"}} = started
 
-    assert_receive %Event{payload: {:delegation_finished, {:error, :approval_required}, _}} =
+    assert_receive %Event{
+                     payload: %Event.DelegationFinished{outcome: {:error, :approval_required}}
+                   } =
                      ended
 
-    refute_receive %Event{payload: {:tool_started, "blocked", _, _, _, _}}
+    refute_receive %Event{payload: %Event.ToolStarted{call_id: "blocked"}}
 
     delegations =
       Wardrik.Delegation.new()
@@ -285,7 +294,7 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(scope, "pricing?", name: "researcher")
 
-      assert_receive %Event{payload: {:result, _text}} = event
+      assert_receive %Event{payload: %Event.Result{}} = event
 
       refute Event.root?(event)
       assert event.source.agent_id == scope.source.agent_id
@@ -299,8 +308,8 @@ defmodule Wardrik.SubagentTest do
 
       {:ok, _text} = Subagent.run(scope, "pricing?", name: "researcher")
 
-      assert_receive %Event{payload: {:span_started, "researcher"}} = started
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "researcher"}} = started
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -310,7 +319,7 @@ defmodule Wardrik.SubagentTest do
 
       ExUnit.CaptureLog.with_log(fn -> Subagent.run(scope, "pricing?", name: "researcher") end)
 
-      assert_receive %Event{payload: {:span_finished, {:error, :rate_limited}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :rate_limited}}}
     end
   end
 
@@ -319,7 +328,7 @@ defmodule Wardrik.SubagentTest do
 
     {:ok, _text} = Subagent.run(scope, "pricing?")
 
-    assert_receive %Event{payload: {:span_started, "turn"}} = event
+    assert_receive %Event{payload: %Event.SpanStarted{name: "turn"}} = event
     refute event.source.trace.span_id == scope.source.trace.span_id
   end
 

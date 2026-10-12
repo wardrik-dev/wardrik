@@ -30,16 +30,22 @@ defmodule WardrikConsole.PrinterTest do
   end
 
   test "the answer is returned a line at a time, as markdown, and the rest when the turn ends" do
-    assert print([{:result, "# Tri"}, {:result, "age\nsome **bold"}]) == ["Triage"]
+    assert print([%Event.Result{text: "# Tri"}, %Event.Result{text: "age\nsome **bold"}]) == [
+             "Triage"
+           ]
 
-    assert print([{:result, "# Triage\nsome **bold**"}, {:turn_finished, []}]) == [
+    assert print([
+             %Event.Result{text: "# Triage\nsome **bold**"},
+             %Event.TurnFinished{messages: []}
+           ]) == [
              "Triage",
              "some bold"
            ]
   end
 
   test "reasoning is faint behind a bar, and settled before the answer that follows it" do
-    {lines, _printer} = lines([{:thinking, "hmm"}, {:result, "answer\n"}], Printer.new())
+    {lines, _printer} =
+      lines([%Event.Thinking{text: "hmm"}, %Event.Result{text: "answer\n"}], Printer.new())
 
     assert Enum.map(lines, &plain/1) == ["┊ hmm", "answer"]
     assert :faint in sequences(hd(lines))
@@ -49,20 +55,48 @@ defmodule WardrikConsole.PrinterTest do
     nested = Source.child(root())
 
     assert print([
-             Event.new(nested, {:result, "from a subagent\n"}),
-             Event.new(nested, {:thinking, "its thinking\n"})
+             Event.new(nested, %Event.Result{text: "from a subagent\n"}),
+             Event.new(nested, %Event.Thinking{text: "its thinking\n"})
            ]) == []
   end
 
   test "a tool call is a line when it starts and when it ends, after the text before it" do
     assert print([
-             {:result, "Looking"},
-             {:tool_started, "call_1", "github/search", %{"q" => "flaky"}, "key",
-              %{by: :default, hooks: []}},
-             {:tool_finished, "call_1", "github/search", {:ok, "3 issues"}, nil, nil},
-             {:tool_started, "call_2", "clock", %{}, "key", %{by: :default, hooks: []}},
-             {:tool_finished, "call_2", "clock", {:error, :timeout}, nil, nil},
-             {:tool_denied, "call_3", "shell", "Not on a Friday.", %{by: :default, hooks: []}}
+             %Event.Result{text: "Looking"},
+             %Event.ToolStarted{
+               call_id: "call_1",
+               name: "github/search",
+               arguments: %{"q" => "flaky"},
+               idempotency_key: "key",
+               decided_by: %{by: :default, hooks: []}
+             },
+             %Event.ToolFinished{
+               call_id: "call_1",
+               name: "github/search",
+               result: {:ok, "3 issues"},
+               served_by: nil,
+               cost: nil
+             },
+             %Event.ToolStarted{
+               call_id: "call_2",
+               name: "clock",
+               arguments: %{},
+               idempotency_key: "key",
+               decided_by: %{by: :default, hooks: []}
+             },
+             %Event.ToolFinished{
+               call_id: "call_2",
+               name: "clock",
+               result: {:error, :timeout},
+               served_by: nil,
+               cost: nil
+             },
+             %Event.ToolDenied{
+               call_id: "call_3",
+               name: "shell",
+               reason: "Not on a Friday.",
+               decided_by: %{by: :default, hooks: []}
+             }
            ]) == [
              "Looking",
              ~s(  → github/search {"q":"flaky"}),
@@ -77,7 +111,12 @@ defmodule WardrikConsole.PrinterTest do
     [line] =
       print(
         [
-          {:tool_denied, "call_1", "shell", String.duplicate("x", 50), %{by: :default, hooks: []}}
+          %Event.ToolDenied{
+            call_id: "call_1",
+            name: "shell",
+            reason: String.duplicate("x", 50),
+            decided_by: %{by: :default, hooks: []}
+          }
         ],
         Printer.new(width: 30)
       )
@@ -88,7 +127,7 @@ defmodule WardrikConsole.PrinterTest do
 
   test "why a turn failed is written whole, however long" do
     reason = {:provider_build_failed, String.duplicate("x", 60)}
-    [line] = print([{:turn_failed, reason}], Printer.new(width: 30))
+    [line] = print([%Event.TurnFailed{reason: reason}], Printer.new(width: 30))
 
     assert line == "✗ the turn failed: #{inspect(reason)}"
   end
@@ -99,30 +138,33 @@ defmodule WardrikConsole.PrinterTest do
       {%{id: "call_2", name: "shell", arguments: %{}}, "This runs a command."}
     ]
 
-    assert print([{:turn_parked, calls}]) == [
+    assert print([%Event.TurnParked{calls: calls}]) == [
              "Waiting on a person for 2 calls:",
              "  ? github/create_issue  call_1  This opens an issue.",
              "  ? shell  call_2  This runs a command."
            ]
 
-    assert print([{:turn_parked, Enum.take(calls, 1)}]) |> hd() ==
+    assert print([%Event.TurnParked{calls: Enum.take(calls, 1)}]) |> hd() ==
              "Waiting on a person for 1 call:"
   end
 
   test "a turn that fails or is stopped says so after what it had written" do
-    assert print([{:result, "half"}, {:turn_failed, :rate_limited}]) == [
+    assert print([%Event.Result{text: "half"}, %Event.TurnFailed{reason: :rate_limited}]) == [
              "half",
              "✗ the turn failed: :rate_limited"
            ]
 
-    assert print([{:turn_interrupted, %{}}]) == ["■ stopped"]
+    assert print([%Event.TurnInterrupted{stats: %{}}]) == ["■ stopped"]
   end
 
   test "a table is laid out at the printer's width once it ends" do
     [top | _rest] =
       lines =
       print(
-        [{:result, "| a | b |\n|---|---|\n| one two three | 4 |\n"}, {:turn_finished, []}],
+        [
+          %Event.Result{text: "| a | b |\n|---|---|\n| one two three | 4 |\n"},
+          %Event.TurnFinished{messages: []}
+        ],
         Printer.new(width: 16)
       )
 
@@ -131,6 +173,11 @@ defmodule WardrikConsole.PrinterTest do
   end
 
   test "events that say nothing return no lines" do
-    assert print([{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}, {:span_started, "x"}]) == []
+    assert print([
+             %Event.Chunk{chunk: "c"},
+             %Event.Meta{chunk: %{}},
+             %Event.ToolCall{call: %{}},
+             %Event.SpanStarted{name: "x"}
+           ]) == []
   end
 end

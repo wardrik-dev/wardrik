@@ -133,7 +133,11 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     assert %LLM.Turn{state: :done, messages: messages} = replay(scope, checkpoint)
     refute_received :refunded
-    assert_received %Event{payload: {:tool_replayed, "call_1", "refund", {:ok, _result}}}
+
+    assert_received %Event{
+      payload: %Event.ToolReplayed{call_id: "call_1", name: "refund", result: {:ok, _result}}
+    }
+
     assert List.last(messages).role == :assistant
   end
 

@@ -10,6 +10,7 @@ defmodule WardrikNotify.Notice do
     * `:finished` - a turn answered, and `text` is what it said last
   """
 
+  alias Wardrik.Event
   alias Wardrik.LLM.Message
 
   @enforce_keys [:agent, :kind, :at]
@@ -40,13 +41,13 @@ defmodule WardrikNotify.Notice do
     base = %{agent: source.agent_id, at: DateTime.from_unix!(at, :microsecond)}
 
     case payload do
-      {:turn_parked, calls} ->
+      %Event.TurnParked{calls: calls} ->
         {:ok, %{parked(source.agent_id, calls) | at: base.at}}
 
-      {:turn_failed, reason} ->
+      %Event.TurnFailed{reason: reason} ->
         {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :failed, reason: reason}))}
 
-      {:turn_finished, messages} ->
+      %Event.TurnFinished{messages: messages} ->
         {:ok, struct!(__MODULE__, Map.merge(base, %{kind: :finished, text: last_said(messages)}))}
 
       _other ->

@@ -10,8 +10,7 @@ defmodule WardrikTUI.Activity do
       WardrikTUI.Activity.depth(activity, span_id)
       WardrikTUI.Activity.running(activity)
 
-  A span opens on `{:span_started, name}` and closes on `{:span_finished,
-  outcome, ms}`; a turn opens and closes on its own events. Anything else
+  A span opens on `Wardrik.Event.SpanStarted` and closes on `Wardrik.Event.SpanFinished`; a turn opens and closes on its own events. Anything else
   updates what the span is currently doing. A span first seen mid-flight is
   opened where it was seen, so a client attaching late still draws a tree.
 
@@ -131,23 +130,23 @@ defmodule WardrikTUI.Activity do
     end
   end
 
-  defp absorb(activity, span_id, {:span_started, name}, now) do
+  defp absorb(activity, span_id, %Event.SpanStarted{name: name}, now) do
     update(activity, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(activity, span_id, {:span_finished, outcome, ms}, _now) do
+  defp absorb(activity, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, _now) do
     close(activity, span_id, outcome, ms)
   end
 
-  defp absorb(activity, span_id, {:turn_started, _questions}, now) do
+  defp absorb(activity, span_id, %Event.TurnStarted{}, now) do
     update(activity, span_id, &%{&1 | name: &1.name || "turn", started_at: now})
   end
 
-  defp absorb(activity, span_id, {:turn_finished, _messages}, now) do
+  defp absorb(activity, span_id, %Event.TurnFinished{}, now) do
     close(activity, span_id, :ok, since(activity, span_id, now))
   end
 
-  defp absorb(activity, span_id, {:turn_failed, reason}, now) do
+  defp absorb(activity, span_id, %Event.TurnFailed{reason: reason}, now) do
     close(activity, span_id, {:error, reason}, since(activity, span_id, now))
   end
 
@@ -158,11 +157,11 @@ defmodule WardrikTUI.Activity do
     end
   end
 
-  defp doing({:model_started, _message_id, _model_spec, _decided_by}), do: "waiting on the model"
-  defp doing({:model_finished, _message_id, _outcome, _ms, _response, _cost}), do: nil
-  defp doing({:thinking, _text}), do: "thinking"
-  defp doing({:result, _text}), do: "answering"
-  defp doing({:tool_started, _id, name, _arguments, _key, _decided_by}), do: name
+  defp doing(%Event.ModelStarted{}), do: "waiting on the model"
+  defp doing(%Event.ModelFinished{}), do: nil
+  defp doing(%Event.Thinking{}), do: "thinking"
+  defp doing(%Event.Result{}), do: "answering"
+  defp doing(%Event.ToolStarted{name: name}), do: name
   defp doing(_payload), do: :keep
 
   defp close(activity, span_id, outcome, ms) do

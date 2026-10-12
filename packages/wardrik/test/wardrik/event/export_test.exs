@@ -24,12 +24,18 @@ defmodule Wardrik.Event.ExportTest do
   # started after `agent.started`, the first `old` of them, and the start
   # before them, long ago.
   defp written(agent_id, count, old \\ 0) do
-    started = Event.new(Source.root(agent_id), {:agent_started, node(), :idle, "g1"})
+    started =
+      Event.new(Source.root(agent_id), %Event.AgentStarted{
+        node: node(),
+        status: :idle,
+        generation: "g1"
+      })
+
     started = if old > 0, do: %{started | at: days_ago(31)}, else: started
     writer = Writer.open(Writer.new(agent_id), started)
 
     Enum.reduce(1..count//1, writer, fn n, writer ->
-      event = Event.new(Source.root(agent_id), {:turn_started, []})
+      event = Event.new(Source.root(agent_id), %Event.TurnStarted{messages: []})
       event = if n <= old, do: %{event | at: days_ago(31)}, else: event
       {:ok, writer} = Writer.append(writer, event)
       writer

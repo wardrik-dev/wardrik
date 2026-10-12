@@ -44,7 +44,7 @@ defmodule WardrikSlack.AnswersTest do
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
       :ok = Agent.ask(key, "Open an issue.")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       %{key: key}
     end
@@ -94,7 +94,7 @@ defmodule WardrikSlack.AnswersTest do
       on_exit(fn -> Fleet.forget(key) end)
       :ok = Event.Bus.subscribe(key, level: :lifecycle)
       :ok = Agent.ask(key, "Ship it.")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       %{key: key}
     end
@@ -129,7 +129,10 @@ defmodule WardrikSlack.AnswersTest do
       assert_receive {:resumed, %{"call_1" => :approve}}
 
       jon = Wardrik.Principal.new(:slack, "U1", name: "jon")
-      assert_receive %Event{payload: {:call_decided, "call_1", :approve, ^jon}}
+
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}
+      }
 
       assert_receive {:slack, "hooks.slack.com", "/actions/r", reply}
       assert reply["replace_original"] == true

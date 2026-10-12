@@ -135,7 +135,7 @@ defmodule WardrikScheduleTest do
       {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, [user: "Check the queue."]}
-      assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :asked}}
     end
 
     test "leaves a running agent be when it skips overlaps", %{key: key} do
@@ -144,8 +144,8 @@ defmodule WardrikScheduleTest do
       {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
       assert_receive {:turn, _context, turn}
-      assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
-      assert_receive %Event{payload: {:schedule_fired, "tick", :busy}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :asked}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :busy}}
       send(turn, :release)
     end
 
@@ -160,8 +160,8 @@ defmodule WardrikScheduleTest do
         )
 
       assert_receive {:turn, _context, turn}
-      assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
-      assert_receive %Event{payload: {:schedule_fired, "tick", :asked}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :asked}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :asked}}
       send(turn, :release)
     end
 
@@ -170,7 +170,7 @@ defmodule WardrikScheduleTest do
 
       {:ok, _pid} = WardrikSchedule.put(key, "tick", every: @every, prompt: "Check the queue.")
 
-      assert_receive %Event{payload: {:schedule_fired, "tick", :no_agent}}
+      assert_receive %Event{payload: %Event.ScheduleFired{name: "tick", outcome: :no_agent}}
     end
   end
 

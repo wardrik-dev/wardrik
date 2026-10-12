@@ -51,14 +51,19 @@ defmodule Wardrik.Tool.Context do
       credentials: credentials,
       in_doubt: Keyword.get(opts, :in_doubt, false),
       progress: fn progress, total ->
-        Event.emit(source, {:tool_progress, id, name, progress, total})
+        Event.emit(source, %Event.ToolProgress{
+          call_id: id,
+          name: name,
+          progress: progress,
+          total: total
+        })
       end
     }
   end
 
   @doc """
   Reports how far the call has got, on the turn's event stream: emits
-  `{:tool_progress, call_id, name, progress, total}` under the call's span,
+  `Wardrik.Event.ToolProgress` under the call's span,
   where `total` is `nil` for work with no known end.
 
       Wardrik.Tool.Context.progress(context, 3, 10)

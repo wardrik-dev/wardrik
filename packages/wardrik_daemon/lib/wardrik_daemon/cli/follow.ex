@@ -98,9 +98,9 @@ defmodule WardrikDaemon.CLI.Follow do
     if Event.root?(event), do: outcome(payload)
   end
 
-  defp outcome({:turn_finished, _messages}), do: :finished
-  defp outcome({:turn_parked, _calls}), do: :parked
-  defp outcome({:turn_failed, _reason}), do: :failed
-  defp outcome({:turn_interrupted, _stats}), do: :failed
+  defp outcome(%Event.TurnFinished{}), do: :finished
+  defp outcome(%Event.TurnParked{}), do: :parked
+  defp outcome(%Event.TurnFailed{}), do: :failed
+  defp outcome(%Event.TurnInterrupted{}), do: :failed
   defp outcome(_payload), do: nil
 end

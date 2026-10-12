@@ -65,8 +65,10 @@ defmodule Wardrik.ScopeTest do
 
       assert Scope.span(scope, "echo", fn _branch -> {:ok, :done} end) == {:ok, :done}
 
-      assert_receive %Event{payload: {:span_started, "echo"}} = started
-      assert_receive %Event{payload: {:span_finished, :ok, ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}} = started
+
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok, duration_ms: ms}} =
+                       finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
       assert started.source.trace.parent_span_id == scope.source.trace.span_id
@@ -87,7 +89,7 @@ defmodule Wardrik.ScopeTest do
 
       assert Scope.span(scope, "echo", fn _ -> {:error, :nope} end) == {:error, :nope}
 
-      assert_receive %Event{payload: {:span_finished, {:error, :nope}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :nope}}}
     end
 
     test "a raise closes the span and is re-raised" do
@@ -97,7 +99,7 @@ defmodule Wardrik.ScopeTest do
         Scope.span(scope, "echo", fn _ -> raise "boom" end)
       end
 
-      assert_receive %Event{payload: {:span_finished, {:error, %RuntimeError{}}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, %RuntimeError{}}}}
     end
 
     test "an exit closes the span and is re-raised" do
@@ -105,7 +107,7 @@ defmodule Wardrik.ScopeTest do
 
       catch_exit(Scope.span(scope, "echo", fn _ -> exit(:crashed) end))
 
-      assert_receive %Event{payload: {:span_finished, {:error, :crashed}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :crashed}}}
     end
   end
 
@@ -114,12 +116,12 @@ defmodule Wardrik.ScopeTest do
       scope = subscribed()
       branch = Scope.open(scope, "echo")
 
-      assert_receive %Event{payload: {:span_started, "echo"}}
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
 
       task = Task.async(fn -> Scope.close(branch, {:error, :timeout}) end)
       Task.await(task)
 
-      assert_receive %Event{payload: {:span_finished, {:error, :timeout}, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :timeout}}} = finished
       assert finished.source.trace.span_id == branch.source.trace.span_id
     end
 
@@ -129,8 +131,8 @@ defmodule Wardrik.ScopeTest do
       branch = Scope.open(scope, "echo")
       assert Scope.closing(branch, fn _ -> {:ok, :done} end) == {:ok, :done}
 
-      assert_receive %Event{payload: {:span_started, "echo"}}
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
     end
   end
 

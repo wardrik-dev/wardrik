@@ -48,55 +48,103 @@ defmodule Wardrik.Event.CodecTest do
       )
 
     [
-      {turn, {:turn_started, [Message.new("Ship it.", "m-1")]}},
+      {turn, %Event.TurnStarted{messages: [Message.new("Ship it.", "m-1")]}},
       {turn,
-       {:turn_finished,
-        [asking, Context.tool_result("call_1", "deploy", "done"), Context.assistant("Shipped.")]}},
-      {turn, {:turn_failed, :timeout}},
-      {turn, {:turn_interrupted, %{dropped: 1, kept: 0, resolution: :killed, elapsed_ms: 2_000}}},
+       %Event.TurnFinished{
+         messages: [
+           asking,
+           Context.tool_result("call_1", "deploy", "done"),
+           Context.assistant("Shipped.")
+         ]
+       }},
+      {turn, %Event.TurnFailed{reason: :timeout}},
       {turn,
-       {:turn_parked,
-        [
-          {call("call_1", "deploy"), "This ships to production."},
-          {call("call_2", "refund") |> Map.put(:in_doubt, true) |> Map.put(:labels, ["outside"]),
-           "refund may already have run."}
-        ]}},
-      {turn, {:turn_resumed, %{"call_1" => :approve}}},
-      {turn, {:call_decided, "call_1", {:deny, "Not today."}, by}},
-      {Source.root(@agent), {:message_queued, Message.new("Ship it.", "m-1", sender: by)}},
-      {Source.root(@agent), {:agent_started, :wardrik_b@localhost, :parked, "9f2c1e7a"}},
-      {Source.root(@agent), {:agent_stopped, :wardrik_b@localhost, :idle}},
+       %Event.TurnInterrupted{
+         stats: %{dropped: 1, kept: 0, resolution: :killed, elapsed_ms: 2_000}
+       }},
       {turn,
-       {:context_compacted,
-        %{messages_before: 40, messages_after: 8, tokens_before: 60_000, tokens_after: 9_000}}},
-      {Source.root(@agent), {:context_cleared, 12}},
-      {Source.root(@agent), {:schedule_fired, "sweep", :asked}},
-      {step, {:span_started, "research"}},
-      {step, {:span_finished, {:error, :timeout}, 1_200}},
-      {step, {:delegation_started, "Look into the failing build."}},
-      {step, {:delegation_finished, {:ok, "It was a flaky test."}, 9_000}},
+       %Event.TurnParked{
+         calls: [
+           {call("call_1", "deploy"), "This ships to production."},
+           {call("call_2", "refund") |> Map.put(:in_doubt, true) |> Map.put(:labels, ["outside"]),
+            "refund may already have run."}
+         ]
+       }},
+      {turn, %Event.TurnResumed{decisions: %{"call_1" => :approve}}},
+      {turn, %Event.CallDecided{call_id: "call_1", decision: {:deny, "Not today."}, by: by}},
+      {Source.root(@agent),
+       %Event.MessageQueued{message: Message.new("Ship it.", "m-1", sender: by)}},
+      {Source.root(@agent),
+       %Event.AgentStarted{node: :wardrik_b@localhost, status: :parked, generation: "9f2c1e7a"}},
+      {Source.root(@agent), %Event.AgentStopped{node: :wardrik_b@localhost, reason: :idle}},
       {turn,
-       {:model_started, "#{turn.trace.span_id}.m0", "anthropic:claude-sonnet-5",
-        %{by: :default, hooks: []}}},
-      {turn, {:model_finished, "#{turn.trace.span_id}.m0", :ok, 1_500, response(asking), nil}},
-      {turn, {:result, "Shipped"}},
-      {turn, {:thinking, "The build is green."}},
-      {turn, {:meta, %{usage: %{input_tokens: 1}}}},
-      {turn, {:chunk, :anything}},
-      {turn, {:tool_call, %{name: "deploy"}}},
-      {turn, {:deadline_reached, 6}},
+       %Event.ContextCompacted{
+         stats: %{
+           messages_before: 40,
+           messages_after: 8,
+           tokens_before: 60_000,
+           tokens_after: 9_000
+         }
+       }},
+      {Source.root(@agent), %Event.ContextCleared{dropped: 12}},
+      {Source.root(@agent), %Event.ScheduleFired{name: "sweep", outcome: :asked}},
+      {step, %Event.SpanStarted{name: "research"}},
+      {step, %Event.SpanFinished{outcome: {:error, :timeout}, duration_ms: 1_200}},
+      {step, %Event.DelegationStarted{prompt: "Look into the failing build."}},
+      {step,
+       %Event.DelegationFinished{outcome: {:ok, "It was a flaky test."}, duration_ms: 9_000}},
+      {turn,
+       %Event.ModelStarted{
+         message_id: "#{turn.trace.span_id}.m0",
+         model_spec: "anthropic:claude-sonnet-5",
+         decided_by: %{by: :default, hooks: []}
+       }},
+      {turn,
+       %Event.ModelFinished{
+         message_id: "#{turn.trace.span_id}.m0",
+         outcome: :ok,
+         duration_ms: 1_500,
+         response: response(asking),
+         cost: nil
+       }},
+      {turn, %Event.Result{text: "Shipped"}},
+      {turn, %Event.Thinking{text: "The build is green."}},
+      {turn, %Event.Meta{chunk: %{usage: %{input_tokens: 1}}}},
+      {turn, %Event.Chunk{chunk: :anything}},
+      {turn, %Event.ToolCall{call: %{name: "deploy"}}},
+      {turn, %Event.DeadlineReached{message_count: 6}},
       {tool,
-       {:tool_started, "call_1", "deploy", %{"repo" => "wardrik"}, "acme/@ops/triage/t/call_1",
-        %{by: :hook, hooks: ["careful"]}}},
+       %Event.ToolStarted{
+         call_id: "call_1",
+         name: "deploy",
+         arguments: %{"repo" => "wardrik"},
+         idempotency_key: "acme/@ops/triage/t/call_1",
+         decided_by: %{by: :hook, hooks: ["careful"]}
+       }},
       {tool,
-       {:tool_finished, "call_1", "deploy",
-        {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}},
-        %{id: "w1", name: "deploys"}, nil}},
-      {tool, {:tool_replayed, "call_1", "deploy", {:ok, %{"ok" => true, "result" => "done"}}}},
+       %Event.ToolFinished{
+         call_id: "call_1",
+         name: "deploy",
+         result: {:ok, %{"ok" => true, "result" => %{"url" => "https://example.com/1"}}},
+         served_by: %{id: "w1", name: "deploys"},
+         cost: nil
+       }},
       {tool,
-       {:tool_denied, "call_1", "deploy", "Not today.", %{by: :person, hooks: ["careful"]}}},
-      {tool, {:tool_parked, "call_1", "deploy", "This ships to production."}},
-      {tool, {:tool_progress, "call_1", "deploy", 3, 10}}
+       %Event.ToolReplayed{
+         call_id: "call_1",
+         name: "deploy",
+         result: {:ok, %{"ok" => true, "result" => "done"}}
+       }},
+      {tool,
+       %Event.ToolDenied{
+         call_id: "call_1",
+         name: "deploy",
+         reason: "Not today.",
+         decided_by: %{by: :person, hooks: ["careful"]}
+       }},
+      {tool,
+       %Event.ToolParked{call_id: "call_1", name: "deploy", prompt: "This ships to production."}},
+      {tool, %Event.ToolProgress{call_id: "call_1", name: "deploy", progress: 3, total: 10}}
     ]
   end
 
@@ -137,6 +185,15 @@ defmodule Wardrik.Event.CodecTest do
     for {:type, _, :tuple, [{:atom, _, tag} | _]} <- members, do: tag
   end
 
+  defp kinds(module, name) do
+    {:ok, types} = Code.Typespec.fetch_types(module)
+
+    {:type, {^name, {:type, _, :union, members}, []}} =
+      Enum.find(types, &match?({:type, {^name, _, _}}, &1))
+
+    for {:remote_type, _, [{:atom, _, kind}, {:atom, _, :t}, []]} <- members, do: kind
+  end
+
   defp valid!(event) do
     assert {:ok, _} = JSV.validate(event, build("cloudevent")), "envelope of #{event["type"]}"
 
@@ -152,8 +209,8 @@ defmodule Wardrik.Event.CodecTest do
 
   describe "every payload" do
     test "has a fixture here" do
-      assert Enum.sort(tags(Event, :payload)) ==
-               Enum.sort(Enum.map(fixtures(), &elem(elem(&1, 1), 0)))
+      assert Enum.sort(kinds(Event, :payload)) ==
+               fixtures() |> Enum.map(&elem(&1, 1).__struct__) |> Enum.uniq() |> Enum.sort()
     end
 
     test "encodes to a CloudEvent the envelope schema takes, with data its type's schema takes" do
@@ -221,7 +278,12 @@ defmodule Wardrik.Event.CodecTest do
       source = within(turn(), "deploy")
 
       event =
-        Event.new(source, {:tool_denied, "call_1", "deploy", "No.", %{by: :default, hooks: []}})
+        Event.new(source, %Event.ToolDenied{
+          call_id: "call_1",
+          name: "deploy",
+          reason: "No.",
+          decided_by: %{by: :default, hooks: []}
+        })
 
       assert {:ok, cloud_event} = Codec.encode(event, sequence: 41)
 
@@ -244,7 +306,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "has no sequence where none was given, and no parent at a run's root" do
-      assert {:ok, event} = encode(turn(), {:turn_resumed, %{}}, [])
+      assert {:ok, event} = encode(turn(), %Event.TurnResumed{decisions: %{}}, [])
 
       refute Map.has_key?(event, "sequence")
       refute Map.has_key?(event, "parentspanid")
@@ -266,14 +328,29 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "provider records and the per-call park are not sent" do
-      for payload <- [{:chunk, 1}, {:meta, %{}}, {:tool_call, %{}}, {:tool_parked, "c", "n", "p"}],
+      for payload <- [
+            %Event.Chunk{chunk: 1},
+            %Event.Meta{chunk: %{}},
+            %Event.ToolCall{call: %{}},
+            %Event.ToolParked{call_id: "c", name: "n", prompt: "p"}
+          ],
           do: assert(:skip = encode(turn(), payload))
     end
   end
 
   describe "tool calls" do
     defp completed(result),
-      do: elem(encode(turn(), {:tool_finished, "call_1", "deploy", result, nil, nil}), 1)["data"]
+      do:
+        elem(
+          encode(turn(), %Event.ToolFinished{
+            call_id: "call_1",
+            name: "deploy",
+            result: result,
+            served_by: nil,
+            cost: nil
+          }),
+          1
+        )["data"]
 
     test "answer with what the tool returned, whichever way it said it" do
       assert %{"status" => "ok", "tool" => %{"call" => %{"result" => %{"n" => 1}}}} =
@@ -301,8 +378,13 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => data}} =
         encode(
           turn(),
-          {:tool_started, "call_1", "deploy", %{repo: :wardrik}, "key-1",
-           %{by: :default, hooks: []}}
+          %Event.ToolStarted{
+            call_id: "call_1",
+            name: "deploy",
+            arguments: %{repo: :wardrik},
+            idempotency_key: "key-1",
+            decided_by: %{by: :default, hooks: []}
+          }
         )
 
       assert data["tool"]["call"] == %{
@@ -314,14 +396,25 @@ defmodule Wardrik.Event.CodecTest do
 
     test "name who decided them, and what answered them" do
       {:ok, %{"data" => started}} =
-        encode(turn(), {:tool_started, "call_1", "deploy", %{}, "k", %{by: :default, hooks: []}})
+        encode(turn(), %Event.ToolStarted{
+          call_id: "call_1",
+          name: "deploy",
+          arguments: %{},
+          idempotency_key: "k",
+          decided_by: %{by: :default, hooks: []}
+        })
 
       assert started["decided"] == %{"by" => "default"}
 
       {:ok, %{"data" => denied}} =
         encode(
           turn(),
-          {:tool_denied, "call_1", "deploy", "No.", %{by: :hook, hooks: ["careful"]}}
+          %Event.ToolDenied{
+            call_id: "call_1",
+            name: "deploy",
+            reason: "No.",
+            decided_by: %{by: :hook, hooks: ["careful"]}
+          }
         )
 
       assert denied["decided"] == %{"by" => "hook", "hooks" => ["careful"]}
@@ -329,13 +422,25 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => finished}} =
         encode(
           turn(),
-          {:tool_finished, "call_1", "deploy", {:ok, 1}, %{id: "w1", name: "deploys"}, nil}
+          %Event.ToolFinished{
+            call_id: "call_1",
+            name: "deploy",
+            result: {:ok, 1},
+            served_by: %{id: "w1", name: "deploys"},
+            cost: nil
+          }
         )
 
       assert finished["served_by"] == %{"id" => "w1", "name" => "deploys"}
 
       {:ok, %{"data" => unserved}} =
-        encode(turn(), {:tool_finished, "call_1", "deploy", {:ok, 1}, nil, nil})
+        encode(turn(), %Event.ToolFinished{
+          call_id: "call_1",
+          name: "deploy",
+          result: {:ok, 1},
+          served_by: nil,
+          cost: nil
+        })
 
       refute Map.has_key?(unserved, "served_by")
     end
@@ -344,7 +449,13 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => priced} = event} =
         encode(
           turn(),
-          {:tool_finished, "call_1", "search", {:ok, 1}, nil, %{micro_usd: 4_000, source: :tool}}
+          %Event.ToolFinished{
+            call_id: "call_1",
+            name: "search",
+            result: {:ok, 1},
+            served_by: nil,
+            cost: %{micro_usd: 4_000, source: :tool}
+          }
         )
 
       valid!(event)
@@ -356,7 +467,11 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => data}} =
         encode(
           turn(),
-          {:tool_replayed, "call_1", "deploy", {:ok, %{"ok" => true, "result" => 1}}}
+          %Event.ToolReplayed{
+            call_id: "call_1",
+            name: "deploy",
+            result: {:ok, %{"ok" => true, "result" => 1}}
+          }
         )
 
       assert data["replayed"] == true
@@ -371,7 +486,13 @@ defmodule Wardrik.Event.CodecTest do
         )
 
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_finished, "s.m0", :ok, 900, response(message), nil})
+        encode(turn(), %Event.ModelFinished{
+          message_id: "s.m0",
+          outcome: :ok,
+          duration_ms: 900,
+          response: response(message),
+          cost: nil
+        })
 
       assert data["message"] == %{
                "id" => "s.m0",
@@ -407,15 +528,26 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => priced} = event} =
         encode(
           turn(),
-          {:model_finished, "s.m0", :ok, 900, response(message),
-           %{micro_usd: 4_200, source: :catalog}}
+          %Event.ModelFinished{
+            message_id: "s.m0",
+            outcome: :ok,
+            duration_ms: 900,
+            response: response(message),
+            cost: %{micro_usd: 4_200, source: :catalog}
+          }
         )
 
       valid!(event)
       assert priced["cost"] == %{"micro_usd" => 4_200, "source" => "catalog"}
 
       {:ok, %{"data" => unpriced} = event} =
-        encode(turn(), {:model_finished, "s.m0", :ok, 900, response(message), nil})
+        encode(turn(), %Event.ModelFinished{
+          message_id: "s.m0",
+          outcome: :ok,
+          duration_ms: 900,
+          response: response(message),
+          cost: nil
+        })
 
       valid!(event)
 
@@ -424,7 +556,13 @@ defmodule Wardrik.Event.CodecTest do
 
     test "that were stopped say so, and name their message alone" do
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_finished, "s.m0", {:error, :interrupted}, 10, nil, nil})
+        encode(turn(), %Event.ModelFinished{
+          message_id: "s.m0",
+          outcome: {:error, :interrupted},
+          duration_ms: 10,
+          response: nil,
+          cost: nil
+        })
 
       assert data == %{
                "message" => %{"id" => "s.m0"},
@@ -437,8 +575,11 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => data}} =
         encode(
           turn(),
-          {:model_started, "s.m0", {:anthropic, model: "claude-sonnet-5"},
-           %{by: :default, hooks: []}}
+          %Event.ModelStarted{
+            message_id: "s.m0",
+            model_spec: {:anthropic, model: "claude-sonnet-5"},
+            decided_by: %{by: :default, hooks: []}
+          }
         )
 
       assert data["provider"] == %{"name" => "anthropic"}
@@ -446,7 +587,7 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "stream as deltas under the message they belong to" do
-      {:ok, event} = encode(turn(), {:result, "Ship"}, message_id: "s.m0")
+      {:ok, event} = encode(turn(), %Event.Result{text: "Ship"}, message_id: "s.m0")
 
       assert event["type"] == "wardrik.message.delta"
       assert event["data"] == %{"message" => %{"id" => "s.m0"}, "delta" => "Ship"}
@@ -454,7 +595,9 @@ defmodule Wardrik.Event.CodecTest do
 
     test "answered by a tool name the call they answer" do
       {:ok, %{"data" => %{"messages" => [message]}}} =
-        encode(turn(), {:turn_finished, [Context.tool_result("call_1", "deploy", "done")]})
+        encode(turn(), %Event.TurnFinished{
+          messages: [Context.tool_result("call_1", "deploy", "done")]
+        })
 
       assert message["parts"] == [
                %{"type" => "tool_call_response", "id" => "call_1", "response" => "done"}
@@ -470,8 +613,13 @@ defmodule Wardrik.Event.CodecTest do
       {:ok, %{"data" => data}} =
         encode(
           turn(),
-          {:turn_parked,
-           [{call("call_1", "deploy"), "Ship?"}, {model, "Over budget."}, {doubt, "Again?"}]}
+          %Event.TurnParked{
+            calls: [
+              {call("call_1", "deploy"), "Ship?"},
+              {model, "Over budget."},
+              {doubt, "Again?"}
+            ]
+          }
         )
 
       assert data["interrupts"] == [
@@ -494,30 +642,40 @@ defmodule Wardrik.Event.CodecTest do
     test "say what the run had read, which may be what asked for them" do
       labelled = Map.put(call("call_1", "deploy"), :labels, ["outside"])
 
-      {:ok, %{"data" => data}} = encode(turn(), {:turn_parked, [{labelled, "Ship?"}]})
+      {:ok, %{"data" => data}} = encode(turn(), %Event.TurnParked{calls: [{labelled, "Ship?"}]})
 
       assert [%{"labels" => ["outside"]}] = data["interrupts"]
     end
 
     test "are resolved by someone, approving or rejecting" do
-      {:ok, %{"data" => approved}} = encode(turn(), {:call_decided, "call_1", :approve, nil})
+      {:ok, %{"data" => approved}} =
+        encode(turn(), %Event.CallDecided{call_id: "call_1", decision: :approve, by: nil})
+
       assert approved == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
 
       by = Principal.new(:shell, "wardrik")
-      {:ok, %{"data" => rejected}} = encode(turn(), {:call_decided, "call_1", {:deny, "No."}, by})
+
+      {:ok, %{"data" => rejected}} =
+        encode(turn(), %Event.CallDecided{call_id: "call_1", decision: {:deny, "No."}, by: by})
 
       assert rejected["decision"] == "rejected"
       assert rejected["reason"] == "No."
       assert rejected["resolved_by"] == %{"type" => "shell", "id" => "wardrik"}
 
       {:ok, %{"data" => noted}} =
-        encode(turn(), {:call_decided, "call_1", {:approve, " Only once. "}, by})
+        encode(turn(), %Event.CallDecided{
+          call_id: "call_1",
+          decision: {:approve, " Only once. "},
+          by: by
+        })
 
       assert noted["decision"] == "approved"
       assert noted["note"] == "Only once."
       refute Map.has_key?(noted, "reason")
 
-      {:ok, %{"data" => blank}} = encode(turn(), {:call_decided, "call_1", {:approve, " "}, nil})
+      {:ok, %{"data" => blank}} =
+        encode(turn(), %Event.CallDecided{call_id: "call_1", decision: {:approve, " "}, by: nil})
+
       assert blank == %{"interrupt" => %{"id" => "call_1"}, "decision" => "approved"}
     end
   end
@@ -526,17 +684,21 @@ defmodule Wardrik.Event.CodecTest do
     by = Principal.new(:slack, "U1", name: "jon")
 
     assert {:ok, %{"data" => %{"sender" => %{"type" => "slack", "id" => "U1", "name" => "jon"}}}} =
-             encode(Source.root(@agent), {:message_queued, Message.new("Hi.", "m-1", sender: by)})
+             encode(Source.root(@agent), %Event.MessageQueued{
+               message: Message.new("Hi.", "m-1", sender: by)
+             })
 
     assert {:ok, %{"data" => data}} =
-             encode(Source.root(@agent), {:message_queued, Message.new("Hi.", "m-1")})
+             encode(Source.root(@agent), %Event.MessageQueued{message: Message.new("Hi.", "m-1")})
 
     refute Map.has_key?(data, "sender")
   end
 
   test "a run names the messages it answers" do
     {:ok, event} =
-      encode(turn(), {:turn_started, [Message.new("one", "m-1"), Message.new("two", "m-2")]})
+      encode(turn(), %Event.TurnStarted{
+        messages: [Message.new("one", "m-1"), Message.new("two", "m-2")]
+      })
 
     assert event["data"]["run"]["message_ids"] == ["m-1", "m-2"]
     assert event["subject"] == "runs/" <> event["data"]["run"]["id"]
@@ -545,7 +707,10 @@ defmodule Wardrik.Event.CodecTest do
   describe "steps and subagents" do
     test "a subagent that failed says why" do
       {:ok, event} =
-        encode(within(turn(), "research"), {:delegation_finished, {:error, :timeout}, 5})
+        encode(within(turn(), "research"), %Event.DelegationFinished{
+          outcome: {:error, :timeout},
+          duration_ms: 5
+        })
 
       assert event["type"] == "wardrik.subagent.failed"
       assert event["data"]["error"]["type"] == "timeout"
@@ -553,13 +718,18 @@ defmodule Wardrik.Event.CodecTest do
     end
 
     test "a step that finished says so" do
-      {:ok, event} = encode(within(turn(), "plan"), {:span_finished, :ok, 5})
+      {:ok, event} =
+        encode(within(turn(), "plan"), %Event.SpanFinished{outcome: :ok, duration_ms: 5})
 
       assert event["data"] == %{"status" => "ok", "duration_ms" => 5}
     end
 
     test "a step a stopped turn interrupted is cancelled" do
-      {:ok, event} = encode(within(turn(), "plan"), {:span_finished, {:error, :interrupted}, 5})
+      {:ok, event} =
+        encode(within(turn(), "plan"), %Event.SpanFinished{
+          outcome: {:error, :interrupted},
+          duration_ms: 5
+        })
 
       assert event["data"] == %{"status" => "cancelled", "duration_ms" => 5}
       assert {:ok, _} = JSV.validate(event["data"], build("step.completed"))
@@ -569,7 +739,11 @@ defmodule Wardrik.Event.CodecTest do
   test "a model is read from however it was named" do
     started = fn spec ->
       {:ok, %{"data" => data}} =
-        encode(turn(), {:model_started, "s.m0", spec, %{by: :default, hooks: []}})
+        encode(turn(), %Event.ModelStarted{
+          message_id: "s.m0",
+          model_spec: spec,
+          decided_by: %{by: :default, hooks: []}
+        })
 
       {data["provider"], data["request"]["model"]}
     end

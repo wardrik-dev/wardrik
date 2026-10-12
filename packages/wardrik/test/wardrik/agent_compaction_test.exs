@@ -48,7 +48,9 @@ defmodule Wardrik.AgentCompactionTest do
     Agent.ask(agent, "third question")
 
     assert_receive %Event{
-                     payload: {:context_compacted, %{messages_before: 4, messages_after: 4}}
+                     payload: %Event.ContextCompacted{
+                       stats: %{messages_before: 4, messages_after: 4}
+                     }
                    },
                    5_000
 
@@ -63,7 +65,7 @@ defmodule Wardrik.AgentCompactionTest do
                    5_000
 
     assert summary =~ "Two questions were asked and answered."
-    assert_receive %Event{payload: {:turn_finished, _messages}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert [kept | _rest] = agent |> Agent.get_context() |> Context.to_list()
     assert Wardrik.LLM.Message.text(kept) =~ "Two questions were asked and answered."
@@ -86,7 +88,7 @@ defmodule Wardrik.AgentCompactionTest do
     assert_receive :summarising, 5_000
     :ok = Agent.interrupt(agent)
 
-    assert_receive %Event{payload: {:turn_interrupted, %{resolution: :killed}}}, 5_000
+    assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :killed}}}, 5_000
     refute_received {:turn, _turn}
   end
 
@@ -98,7 +100,7 @@ defmodule Wardrik.AgentCompactionTest do
 
     assert_receive {:turn, turn}, 5_000
     assert [_, _, _, _, _] = turn
-    refute_received %Event{payload: {:context_compacted, _stats}}
+    refute_received %Event{payload: %Event.ContextCompacted{}}
   end
 
   describe "the state" do

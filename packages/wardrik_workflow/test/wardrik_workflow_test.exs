@@ -207,7 +207,7 @@ defmodule WardrikWorkflowTest do
 
   test "nested work keeps one topic and deepens the tree", %{scope: scope, agent_id: agent_id} do
     inner = fn _input, scope ->
-      Event.emit(scope.source, {:result, "inner"})
+      Event.emit(scope.source, %Event.Result{text: "inner"})
       {:ok, scope.source.trace}
     end
 
@@ -215,7 +215,7 @@ defmodule WardrikWorkflowTest do
 
     [{:branch, {:ok, [{:leaf, {:ok, leaf}}]}}] = WardrikWorkflow.fan_out(scope, [:branch], outer)
 
-    assert_receive %Event{payload: {:result, "inner"}} = event
+    assert_receive %Event{payload: %Event.Result{text: "inner"}} = event
     assert event.source.agent_id == agent_id
     assert leaf.trace_id == scope.source.trace.trace_id
     refute leaf.parent_span_id == scope.source.trace.span_id
@@ -225,8 +225,8 @@ defmodule WardrikWorkflowTest do
     test "a branch announces both ends of its own span", %{scope: scope} do
       WardrikWorkflow.fan_out(scope, [:only], Steps.Echo)
 
-      assert_receive %Event{payload: {:span_started, "only"}} = started
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "only"}} = started
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
       assert started.source.trace.parent_span_id == scope.source.trace.span_id
@@ -235,7 +235,7 @@ defmodule WardrikWorkflowTest do
     test "a branch that errors closes as a failure", %{scope: scope} do
       WardrikWorkflow.fan_out(scope, [:only], Steps.Boom)
 
-      assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :boom}}}
     end
 
     test "a branch killed at the timeout is closed by the fan-out", %{scope: scope} do
@@ -246,8 +246,8 @@ defmodule WardrikWorkflowTest do
           WardrikWorkflow.fan_out(scope, [:slow], step, timeout: 20)
         end)
 
-      assert_receive %Event{payload: {:span_started, "slow"}} = started
-      assert_receive %Event{payload: {:span_finished, {:error, :timeout}, _ms}} = finished
+      assert_receive %Event{payload: %Event.SpanStarted{name: "slow"}} = started
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :timeout}}} = finished
 
       assert started.source.trace.span_id == finished.source.trace.span_id
     end
@@ -255,17 +255,17 @@ defmodule WardrikWorkflowTest do
     test "each stage of a sequence announces its own span", %{scope: scope} do
       WardrikWorkflow.sequence(scope, :in, [Steps.Echo, Steps.Echo])
 
-      assert_receive %Event{payload: {:span_started, "echo"}}
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
-      assert_receive %Event{payload: {:span_started, "echo"}}
-      assert_receive %Event{payload: {:span_finished, :ok, _ms}}
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
+      assert_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: :ok}}
     end
 
     test "a sequence stops at the first failed stage", %{scope: scope} do
       WardrikWorkflow.sequence(scope, :in, [Steps.Boom, Steps.Echo])
 
-      assert_receive %Event{payload: {:span_finished, {:error, :boom}, _ms}}
-      refute_receive %Event{payload: {:span_started, "echo"}}
+      assert_receive %Event{payload: %Event.SpanFinished{outcome: {:error, :boom}}}
+      refute_receive %Event{payload: %Event.SpanStarted{name: "echo"}}
     end
   end
 

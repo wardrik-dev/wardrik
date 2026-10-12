@@ -15,7 +15,9 @@ defmodule WardrikNotify.NoticeTest do
     call = %{id: "call_1", name: "deploy", arguments: %{"env" => "prod"}}
 
     assert {:ok, %Notice{kind: :parked, agent: ~A"acme/triage", calls: [parked]} = notice} =
-             Notice.from_event(event({:turn_parked, [{call, "This ships to production."}]}))
+             Notice.from_event(
+               event(%Event.TurnParked{calls: [{call, "This ships to production."}]})
+             )
 
     assert parked == %{
              id: "call_1",
@@ -43,7 +45,9 @@ defmodule WardrikNotify.NoticeTest do
     call = %{id: "call_1", name: "deploy", arguments: %{}, labels: ["outside"]}
 
     assert {:ok, %Notice{calls: [%{labels: ["outside"]}]}} =
-             Notice.from_event(event({:turn_parked, [{call, "This ships to production."}]}))
+             Notice.from_event(
+               event(%Event.TurnParked{calls: [{call, "This ships to production."}]})
+             )
   end
 
   test "a call waiting on an authorization is named without its link" do
@@ -56,7 +60,7 @@ defmodule WardrikNotify.NoticeTest do
 
     assert {:ok, notice} =
              Notice.from_event(
-               event({:turn_parked, [{call, "To connect github, open its link."}]})
+               event(%Event.TurnParked{calls: [{call, "To connect github, open its link."}]})
              )
 
     assert [%{authorization: true}] = notice.calls
@@ -68,20 +72,22 @@ defmodule WardrikNotify.NoticeTest do
 
   test "a failed turn keeps its reason, and a finished one what it said last" do
     assert {:ok, %Notice{kind: :failed, reason: :timeout}} =
-             Notice.from_event(event({:turn_failed, :timeout}))
+             Notice.from_event(event(%Event.TurnFailed{reason: :timeout}))
 
     messages = [Context.assistant("Looking."), Context.assistant("Two incidents need you.")]
 
     assert {:ok, %Notice{kind: :finished, text: "Two incidents need you."}} =
-             Notice.from_event(event({:turn_finished, messages}))
+             Notice.from_event(event(%Event.TurnFinished{messages: messages}))
   end
 
   test "any other event is nobody's business" do
-    assert Notice.from_event(event({:turn_started, [Wardrik.Agent.Message.new("hi")]})) == :none
+    assert Notice.from_event(
+             event(%Event.TurnStarted{messages: [Wardrik.Agent.Message.new("hi")]})
+           ) == :none
   end
 
   test "to_map/1 is what a webhook sends" do
-    {:ok, notice} = Notice.from_event(event({:turn_failed, :timeout}))
+    {:ok, notice} = Notice.from_event(event(%Event.TurnFailed{reason: :timeout}))
 
     assert %{event: "turn_failed", agent: "acme/triage", reason: ":timeout", calls: []} =
              Notice.to_map(notice)

@@ -67,15 +67,32 @@ defmodule WardrikMCP.RobustnessTest do
 
       assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
 
-      assert_receive %Event{payload: {:tool_progress, "call_noisy", ^name, 1, 3}}, 5_000
-      assert_receive %Event{payload: {:tool_progress, "call_noisy", ^name, 3, 3}}, 5_000
+      assert_receive %Event{
+                       payload: %Event.ToolProgress{
+                         call_id: "call_noisy",
+                         name: ^name,
+                         progress: 1,
+                         total: 3
+                       }
+                     },
+                     5_000
+
+      assert_receive %Event{
+                       payload: %Event.ToolProgress{
+                         call_id: "call_noisy",
+                         name: ^name,
+                         progress: 3,
+                         total: 3
+                       }
+                     },
+                     5_000
     end
 
     test "a call outside a turn reports none and still answers", %{ref: ref} do
       assert {:ok, %{"result" => %{"content" => "done in 2"}}} =
                WardrikMCP.call(ref, "noisy", %{}, context())
 
-      refute_receive %Event{payload: {:tool_progress, _id, _name, _progress, _total}}, 100
+      refute_receive %Event{payload: %Event.ToolProgress{}}, 100
     end
   end
 
@@ -121,7 +138,8 @@ defmodule WardrikMCP.RobustnessTest do
   # `slow` answers nothing and reports progress once, so its progress event is
   # the only word that the server has the request.
   defp await_reached_server(call_id) do
-    assert_receive %Event{payload: {:tool_progress, ^call_id, _name, 1, 1}}, 5_000
+    assert_receive %Event{payload: %Event.ToolProgress{call_id: ^call_id, progress: 1, total: 1}},
+                   5_000
   end
 
   # The cancellation is sent from a task of the connection's, so it races this

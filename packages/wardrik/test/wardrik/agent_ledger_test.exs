@@ -90,13 +90,13 @@ defmodule Wardrik.AgentLedgerTest do
 
     {:ok, agent} = Wardrik.Fleet.spawn(key, opts([]))
 
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, prompt}]}}, 5_000
     assert prompt =~ "may already have done what it does"
     refute_received {:began, "deploy", _tool}
 
     Agent.resume(agent, %{"call_1" => {:deny, "It shipped; leave it."}})
 
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
     refute_received {:began, "deploy", _tool}
   end
 
@@ -105,7 +105,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}, 5_000
 
     Agent.resume(agent, %{"call_1" => :approve})
     assert_receive {:began, "deploy", tool}, 5_000
@@ -113,7 +113,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     # The approval stands; what is asked is whether the call may have run.
     {:ok, agent} = Wardrik.Fleet.spawn(key, opts(hooks: @careful))
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, prompt}]}}, 5_000
     assert prompt =~ "may already have done what it does"
     refute_received {:began, "deploy", _tool}
 
@@ -121,7 +121,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     assert_receive {:began, "deploy", tool}, 5_000
     send(tool, :finish)
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
   end
 
   test "an agent given hooks that allow the call it waits on carries on", %{key: key} do
@@ -129,7 +129,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}, 5_000
 
     :ok = Agent.configure(agent, opts(hooks: @careful))
     assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
@@ -139,7 +139,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     assert_receive {:began, "deploy", tool}, 5_000
     send(tool, :finish)
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
   end
 
   test "a turn stopped with its agent stops, with the call it was making", %{key: key} do
@@ -150,7 +150,7 @@ defmodule Wardrik.AgentLedgerTest do
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:tool_started, call_id, "deploy", _, _, _}}, 5_000
+    assert_receive %Event{payload: %Event.ToolStarted{call_id: call_id, name: "deploy"}}, 5_000
     assert_receive {:began, "deploy", tool}, 5_000
     tool_ref = Process.monitor(tool)
 
@@ -160,7 +160,7 @@ defmodule Wardrik.AgentLedgerTest do
     # Replayed from its checkpoint, not asked again: the stub gives a model
     # asked again new call ids.
     {:ok, _agent} = Wardrik.Fleet.spawn(key, opts([]))
-    assert_receive %Event{payload: {:turn_parked, [{%{id: ^call_id}, prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: ^call_id}, prompt}]}}, 5_000
     assert prompt =~ "may already have done what it does"
   end
 
@@ -169,21 +169,25 @@ defmodule Wardrik.AgentLedgerTest do
 
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts(hooks: @careful), key)
     Agent.ask(agent, "ship it")
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}, 5_000
 
     Agent.resume(agent, %{"call_1" => :approve})
     assert_receive {:began, "deploy", tool}, 5_000
     lose(key, tool)
 
     {:ok, agent} = Wardrik.Fleet.spawn(key, opts(hooks: @careful))
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}, 5_000
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}, 5_000
 
     Agent.resume(agent, %{"call_1" => {:deny, "Not today."}})
 
-    assert_receive %Event{payload: {:tool_denied, "call_1", "deploy", reason, _}}, 5_000
+    assert_receive %Event{
+                     payload: %Event.ToolDenied{call_id: "call_1", name: "deploy", reason: reason}
+                   },
+                   5_000
+
     assert reason =~ "may already have done what it does"
     assert reason =~ "Not today."
-    assert_receive %Event{payload: {:turn_finished, _messages}}, 5_000
+    assert_receive %Event{payload: %Event.TurnFinished{}}, 5_000
   end
 
   test "a turn's claims are forgotten once it ends", %{key: key} do
@@ -202,7 +206,10 @@ defmodule Wardrik.AgentLedgerTest do
     assert [_claim] = WardrikStore.keys(:claims, "#{key}//")
     send(tool, :finish)
 
-    assert_receive %Event{payload: {:turn_finished, _}, source: %{trace: %{trace_id: trace_id}}},
+    assert_receive %Event{
+                     payload: %Event.TurnFinished{},
+                     source: %{trace: %{trace_id: trace_id}}
+                   },
                    5_000
 
     assert_receive {:forgotten, %{agent_id: ^key, trace_id: ^trace_id, answer: :ok}}, 5_000

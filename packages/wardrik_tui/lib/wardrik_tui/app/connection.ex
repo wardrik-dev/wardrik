@@ -114,7 +114,7 @@ defmodule WardrikTUI.App.Connection do
   # replay of the whole conversation. `agent_id` is what the events are
   # published under.
   def attach(term, agent, agent_id) do
-    # `:raw` delivers `{:tool_call, chunk}` with its arguments.
+    # `:raw` delivers `Wardrik.Event.ToolCall` with its arguments.
     :ok = Bus.subscribe(agent_id, level: :raw)
 
     case snapshot(agent) do

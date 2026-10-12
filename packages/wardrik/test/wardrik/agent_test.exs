@@ -43,7 +43,7 @@ defmodule Wardrik.AgentTest do
     assert :ok = Agent.ask(agent, "hello")
 
     assert_receive {:turn, [{:user, "hello"}]}
-    assert_receive %Event{payload: {:turn_finished, [_assistant]}}
+    assert_receive %Event{payload: %Event.TurnFinished{messages: [_assistant]}}
     assert roles(agent) == [:user, :assistant]
   end
 
@@ -53,7 +53,7 @@ defmodule Wardrik.AgentTest do
 
     :ok = Agent.ask(agent, "Reconcile last week.", id: "m-1", sender: maria)
 
-    assert_receive %Event{payload: {:message_queued, %{id: "m-1", sender: ^maria}}}
+    assert_receive %Event{payload: %Event.MessageQueued{message: %{id: "m-1", sender: ^maria}}}
     assert_receive {:turn, [{:user, "From Maria Chen (slack U024BE7LH):\nReconcile last week."}]}
   end
 
@@ -97,10 +97,10 @@ defmodule Wardrik.AgentTest do
     agent = start_agent(runner: runner(self()))
 
     Agent.ask(agent, "one")
-    assert_receive %Event{payload: {:turn_finished, _}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     Agent.ask(agent, "two")
-    assert_receive %Event{payload: {:turn_finished, _}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
 
     assert roles(agent) == [:user, :assistant, :user, :assistant]
   end
@@ -113,7 +113,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "boom")
       assert_receive {:turn, [{:user, "boom"}]}
-      assert_receive %Event{payload: {:turn_failed, _reason}}
+      assert_receive %Event{payload: %Event.TurnFailed{}}
 
       # Still alive, still serving, and the failed turn left no result behind.
       Agent.ask(agent, "after")
@@ -139,11 +139,11 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(config: config)
 
       Agent.ask(agent, "one")
-      assert_receive %Event{payload: {:turn_failed, _reason}}
+      assert_receive %Event{payload: %Event.TurnFailed{}}
 
       Agent.ask(agent, "two")
-      assert_receive %Event{payload: {:turn_started, [%Agent.Message{text: "two"}]}}
-      assert_receive %Event{payload: {:turn_failed, _reason}}
+      assert_receive %Event{payload: %Event.TurnStarted{messages: [%Agent.Message{text: "two"}]}}
+      assert_receive %Event{payload: %Event.TurnFailed{}}
       assert Process.alive?(agent)
     end)
   end
@@ -156,7 +156,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "hello")
 
-      assert_receive %Event{payload: {:turn_failed, :rate_limited}}
+      assert_receive %Event{payload: %Event.TurnFailed{reason: :rate_limited}}
       assert roles(agent) == [:user]
     end)
   end
@@ -166,7 +166,7 @@ defmodule Wardrik.AgentTest do
 
     Agent.ask(agent, "hello")
 
-    assert_receive %Event{payload: {:result, "streamed"}}
+    assert_receive %Event{payload: %Event.Result{text: "streamed"}}
   end
 
   describe "status/1" do
@@ -198,7 +198,7 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: runner(self()))
 
       Agent.ask(agent, "hello")
-      assert_receive %Event{payload: {:turn_finished, _}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
 
       assert %{state: :idle, pending: 0} = Agent.status(agent)
     end
@@ -209,19 +209,19 @@ defmodule Wardrik.AgentTest do
 
     Agent.ask(agent, "hello")
 
-    assert_receive %Event{payload: {:turn_started, [%{text: "hello"}]}}
-    assert_receive %Event{payload: {:turn_finished, _}}
+    assert_receive %Event{payload: %Event.TurnStarted{messages: [%{text: "hello"}]}}
+    assert_receive %Event{payload: %Event.TurnFinished{}}
   end
 
   test "a turn's lifecycle events share one root span, and the next turn opens another" do
     agent = start_agent(runner: runner(self()))
 
     Agent.ask(agent, "one")
-    assert_receive %Event{payload: {:turn_started, [%{text: "one"}]}} = started
-    assert_receive %Event{payload: {:turn_finished, _}} = finished
+    assert_receive %Event{payload: %Event.TurnStarted{messages: [%{text: "one"}]}} = started
+    assert_receive %Event{payload: %Event.TurnFinished{}} = finished
 
     Agent.ask(agent, "two")
-    assert_receive %Event{payload: {:turn_started, [%{text: "two"}]}} = next_turn
+    assert_receive %Event{payload: %Event.TurnStarted{messages: [%{text: "two"}]}} = next_turn
 
     assert Event.root?(started)
     assert started.source.trace.span_id == finished.source.trace.span_id
@@ -236,8 +236,8 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "hello")
 
-      assert_receive %Event{payload: {:turn_started, _}} = started
-      assert_receive %Event{payload: {:turn_failed, :rate_limited}} = failed
+      assert_receive %Event{payload: %Event.TurnStarted{}} = started
+      assert_receive %Event{payload: %Event.TurnFailed{reason: :rate_limited}} = failed
 
       assert started.source.trace.span_id == failed.source.trace.span_id
     end)
@@ -259,7 +259,7 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: runner(self()))
 
       Agent.ask(agent, "hello")
-      assert_receive %Event{payload: {:turn_finished, _}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
 
       # Replies carrying a ref the agent is not waiting on.
       send(agent, {make_ref(), {:ok, [Context.assistant("injected")]}})
@@ -347,7 +347,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.interrupt(agent)
 
-      assert_receive %Event{payload: {:turn_interrupted, stats}}
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: stats}}
       assert stats.resolution == :stopped
       assert stats.kept == 1
 
@@ -365,7 +365,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.interrupt(agent)
 
-      assert_receive %Event{payload: {:turn_interrupted, %{dropped: 2}}}
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{dropped: 2}}}
       assert %{state: :idle, pending: 0} = Agent.status(agent)
     end
 
@@ -374,7 +374,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.interrupt(agent)
 
-      assert_receive %Event{payload: {:turn_interrupted, %{resolution: :idle}}}
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: %{resolution: :idle}}}
     end
 
     test "kills a turn that will not stop, and still settles idle" do
@@ -390,7 +390,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.interrupt(agent)
 
-      assert_receive %Event{payload: {:turn_interrupted, stats}}, 5_000
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: stats}}, 5_000
       assert stats.resolution == :killed
       assert %{state: :idle} = Agent.status(agent)
     end
@@ -401,7 +401,7 @@ defmodule Wardrik.AgentTest do
       Agent.ask(agent, "one")
       assert_receive {:running, _pid}
       Agent.interrupt(agent)
-      assert_receive %Event{payload: {:turn_interrupted, _stats}}
+      assert_receive %Event{payload: %Event.TurnInterrupted{}}
 
       Agent.ask(agent, "two")
 
@@ -414,7 +414,7 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: parking_runner(self()))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, prompt}]}}
+      assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, prompt}]}}
 
       assert prompt == "This ships to production."
       assert %{state: :parked, pending: 0} = Agent.status(agent)
@@ -437,13 +437,13 @@ defmodule Wardrik.AgentTest do
         start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       Agent.resume(agent, %{"call_1" => :approve})
 
-      assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
+      assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
       assert roles(agent) == [:user, :assistant]
       assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
     end
@@ -457,12 +457,15 @@ defmodule Wardrik.AgentTest do
         start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       :ok = Agent.decide(agent, %{"call_1" => {:deny, "Not today."}}, by: by)
 
-      assert_receive %Event{payload: {:call_decided, "call_1", {:deny, "Not today."}, ^by}}
-      assert_receive %Event{payload: {:turn_resumed, _decisions}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: {:deny, "Not today."}, by: ^by}
+      }
+
+      assert_receive %Event{payload: %Event.TurnResumed{}}
     end
 
     test "a turn that parks again stays parked" do
@@ -472,11 +475,11 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, still))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _}]}}
+      assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _}]}}
 
       Agent.resume(agent, %{})
       assert_receive {:resumed, %{}}
-      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_2"}, _}]}}
+      assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_2"}, _}]}}
 
       assert %{state: :parked, pending: 0} = Agent.status(agent)
       assert [{%{id: "call_2"}, _prompt}] = Agent.parked(agent)
@@ -496,7 +499,7 @@ defmodule Wardrik.AgentTest do
         )
 
       Agent.ask(agent, "open an issue")
-      assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}
+      assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}
 
       :ok = Wardrik.Credential.available("github", {"acme", "someone-else"}, by: by)
       :ok = Wardrik.Credential.available("linear", {"acme", "jon"}, by: by)
@@ -504,10 +507,13 @@ defmodule Wardrik.AgentTest do
 
       :ok = Wardrik.Credential.available("github", {"acme", "jon"}, by: by)
 
-      assert_receive %Event{payload: {:call_decided, "call_1", :approve, ^by}}
-      assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^by}
+      }
+
+      assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
       assert %{state: :idle, pending: 0} = Agent.status(agent)
     end
 
@@ -515,7 +521,7 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: parking_runner(self()))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       :ok = Wardrik.Credential.available("github", nil)
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
@@ -535,7 +541,7 @@ defmodule Wardrik.AgentTest do
 
       Agent.ask(agent, "ship it")
       assert_receive :asked
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
 
       Agent.ask(agent, "and another thing")
 
@@ -548,12 +554,12 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(runner: parking_runner(test_pid))
 
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
       Agent.ask(agent, "queued")
 
       Agent.interrupt(agent)
 
-      assert_receive %Event{payload: {:turn_interrupted, stats}}
+      assert_receive %Event{payload: %Event.TurnInterrupted{stats: stats}}
       assert stats.resolution == :abandoned
       assert stats.dropped == 1
       assert %{state: :idle, pending: 0, model: {:zai_coding_plan, _}} = Agent.status(agent)
@@ -581,7 +587,7 @@ defmodule Wardrik.AgentTest do
 
       assert_receive {:replayed, %Wardrik.LLM.Turn{} = checkpoint}, 5_000
       assert Wardrik.LLM.Turn.call_ids(checkpoint) == ["call_1"]
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
       assert roles(key) == [:user, :assistant]
     end
 
@@ -603,19 +609,19 @@ defmodule Wardrik.AgentTest do
 
       agent = start_agent(opts, key)
       Agent.ask(agent, "ship it")
-      assert_receive %Event{payload: {:turn_parked, _calls}}
+      assert_receive %Event{payload: %Event.TurnParked{}}
       :ok = Agent.decide(agent, decisions)
       assert_receive {:holding, ^decisions, _lost}
-      assert_receive %Event{payload: {:turn_resumed, ^decisions}}
+      assert_receive %Event{payload: %Event.TurnResumed{decisions: ^decisions}}
 
       :ok = Wardrik.Fleet.stop(key)
       {:ok, _agent} = Wardrik.Fleet.spawn(key, opts)
 
       assert_receive {:holding, ^decisions, resumed}, 5_000
-      assert_receive %Event{payload: {:turn_resumed, ^decisions}}
+      assert_receive %Event{payload: %Event.TurnResumed{decisions: ^decisions}}
       send(resumed, :release)
 
-      assert_receive %Event{payload: {:turn_finished, _messages}}
+      assert_receive %Event{payload: %Event.TurnFinished{}}
       assert Agent.parked(key) == []
       assert roles(key) == [:user, :assistant]
     end

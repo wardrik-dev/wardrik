@@ -3,6 +3,7 @@ defmodule WardrikConsoleTest do
 
   import ExUnit.CaptureIO
 
+  alias Wardrik.Event
   alias Wardrik.Test.Events
   alias Wardrik.Test.Fleet
   alias WardrikConsole, as: Console
@@ -21,11 +22,23 @@ defmodule WardrikConsoleTest do
   test "prints each line an event completes" do
     output =
       render(Fleet.id(), [
-        {:thinking, "hmm"},
-        {:result, "the answer"},
-        {:tool_started, "call_1", "echo", %{}, "key", %{by: :default, hooks: []}},
-        {:tool_finished, "call_1", "echo", {:ok, "done"}, nil, nil},
-        {:turn_failed, :rate_limited}
+        %Event.Thinking{text: "hmm"},
+        %Event.Result{text: "the answer"},
+        %Event.ToolStarted{
+          call_id: "call_1",
+          name: "echo",
+          arguments: %{},
+          idempotency_key: "key",
+          decided_by: %{by: :default, hooks: []}
+        },
+        %Event.ToolFinished{
+          call_id: "call_1",
+          name: "echo",
+          result: {:ok, "done"},
+          served_by: nil,
+          cost: nil
+        },
+        %Event.TurnFailed{reason: :rate_limited}
       ])
 
     assert output ==
@@ -33,7 +46,12 @@ defmodule WardrikConsoleTest do
   end
 
   test "ignores events it does not render" do
-    output = render(Fleet.id(), [{:chunk, "c"}, {:meta, %{}}, {:tool_call, %{}}])
+    output =
+      render(Fleet.id(), [
+        %Event.Chunk{chunk: "c"},
+        %Event.Meta{chunk: %{}},
+        %Event.ToolCall{call: %{}}
+      ])
 
     assert output == ""
   end
@@ -45,8 +63,8 @@ defmodule WardrikConsoleTest do
     output =
       capture_io(fn ->
         {:ok, console} = Console.start_link(agent_id: mine)
-        Events.emit(theirs, {:result, "not mine\n"})
-        Events.emit(mine, {:result, "mine\n"})
+        Events.emit(theirs, %Event.Result{text: "not mine\n"})
+        Events.emit(mine, %Event.Result{text: "mine\n"})
         :sys.get_state(console)
       end)
 
@@ -63,7 +81,12 @@ defmodule WardrikConsoleTest do
 
         Events.emit(
           agent_id,
-          {:tool_denied, "call_1", "shell", String.duplicate("x", 40), %{by: :default, hooks: []}}
+          %Event.ToolDenied{
+            call_id: "call_1",
+            name: "shell",
+            reason: String.duplicate("x", 40),
+            decided_by: %{by: :default, hooks: []}
+          }
         )
 
         :sys.get_state(console)

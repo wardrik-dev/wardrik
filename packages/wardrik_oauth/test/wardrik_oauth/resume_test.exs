@@ -45,7 +45,7 @@ defmodule WardrikOAuth.ResumeTest do
 
     :ok = Event.Bus.subscribe(key)
     Agent.ask(agent, "go")
-    assert_receive %Event{payload: {:turn_parked, [{%{id: "call_1"}, _prompt}]}}
+    assert_receive %Event{payload: %Event.TurnParked{calls: [{%{id: "call_1"}, _prompt}]}}
 
     %{agent: agent, url: link.url}
   end
@@ -65,9 +65,12 @@ defmodule WardrikOAuth.ResumeTest do
 
       assert {:ok, "github"} = finish(url)
 
-      assert_receive %Event{payload: {:call_decided, "call_1", :approve, by}}
+      assert_receive %Event{
+        payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
+      }
+
       assert by == oauth()
-      assert_receive %Event{payload: {:turn_resumed, %{"call_1" => :approve}}}
+      assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
     end
 
@@ -81,7 +84,7 @@ defmodule WardrikOAuth.ResumeTest do
       assert {:ok, "github"} = finish(theirs.url)
 
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(agent)
-      refute_received %Event{payload: {:turn_resumed, _decisions}}
+      refute_received %Event{payload: %Event.TurnResumed{}}
     end
 
     test "stays parked, on the same link, while the token endpoint refuses", %{owner: owner} do

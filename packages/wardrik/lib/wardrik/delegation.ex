@@ -4,7 +4,7 @@ defmodule Wardrik.Delegation do
 
   A delegation is one `Wardrik.Subagent.run/3`: it is identified by its own span
   and it is known from the
-  `{:delegation_started, task}` and `{:delegation_finished, outcome, ms}`
+  `Wardrik.Event.DelegationStarted` and `Wardrik.Event.DelegationFinished`
   events the subagent emits there. Spans are followed too, so a delegation's
   depth under other delegations and the work under it are known.
 
@@ -13,7 +13,7 @@ defmodule Wardrik.Delegation do
       Wardrik.Delegation.summary(delegations)   #=> %{active: 2, total: 4}
       Wardrik.Delegation.list(delegations)      # every delegation, oldest first
 
-  `{:turn_started, _}` starts over. A turn ending with delegations still
+  `Wardrik.Event.TurnStarted` starts over. A turn ending with delegations still
   running closes them as interrupted, and a span closed as an error with a
   delegation running on it closes the delegation the same way, which is how a
   branch killed by its fan-out is settled.
@@ -64,7 +64,7 @@ defmodule Wardrik.Delegation do
 
   @doc "Applies one event."
   @spec fold(t(), Event.t()) :: t()
-  def fold(%__MODULE__{}, %Event{payload: {:turn_started, _questions}}), do: new()
+  def fold(%__MODULE__{}, %Event{payload: %Event.TurnStarted{}}), do: new()
 
   def fold(%__MODULE__{} = delegations, %Event{source: source, payload: payload, at: at}) do
     now = div(at, 1_000)
@@ -161,11 +161,11 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp absorb(delegations, span_id, {:span_started, name}, now) do
+  defp absorb(delegations, span_id, %Event.SpanStarted{name: name}, now) do
     update_span(delegations, span_id, &%{&1 | name: name, started_at: now})
   end
 
-  defp absorb(delegations, span_id, {:span_finished, outcome, ms}, now) do
+  defp absorb(delegations, span_id, %Event.SpanFinished{outcome: outcome, duration_ms: ms}, now) do
     closed =
       delegations
       |> update_span(span_id, &close(&1, outcome, ms))
@@ -177,7 +177,7 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp absorb(delegations, span_id, {:delegation_started, task}, now) do
+  defp absorb(delegations, span_id, %Event.DelegationStarted{prompt: task}, now) do
     if Map.has_key?(delegations.records, span_id) do
       delegations
     else
@@ -203,7 +203,12 @@ defmodule Wardrik.Delegation do
     end
   end
 
-  defp absorb(delegations, span_id, {:delegation_finished, outcome, ms}, _now) do
+  defp absorb(
+         delegations,
+         span_id,
+         %Event.DelegationFinished{outcome: outcome, duration_ms: ms},
+         _now
+       ) do
     update_record(delegations, span_id, fn
       %{status: :running} = record ->
         case outcome do
@@ -216,8 +221,8 @@ defmodule Wardrik.Delegation do
     end)
   end
 
-  defp absorb(delegations, _span_id, {ended, _detail}, now)
-       when ended in [:turn_finished, :turn_failed, :turn_interrupted] do
+  defp absorb(delegations, _span_id, %ended{}, now)
+       when ended in [Event.TurnFinished, Event.TurnFailed, Event.TurnInterrupted] do
     records =
       Map.new(delegations.records, fn
         {id, %{status: :running} = record} ->
