@@ -38,6 +38,7 @@ Someone dropped the turn an agent was taking, and what was queued behind it.
 | --- | --- | --- | --- |
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
+| `under` | string |  | The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.agent.cleared`
@@ -68,6 +69,7 @@ Someone removed an agent, with everything it had.
 | --- | --- | --- | --- |
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
+| `under` | string |  | The prefix someone removed every agent under at once, where it was one of them; every agent's entry from that one change shares its trace. |
 | `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.agent.moved`
@@ -116,16 +118,6 @@ An agent stopped, keeping its conversation: someone stopped it, or it went to sl
 | `agent.id` | string | yes | The agent's ID. |
 | `node` | string |  | The node it stopped on, where it stopped itself. |
 | `reason` | string |  | Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it. One of `idle`. |
-| `actor` | [principal](#principal) |  |  |
-
-### `wardrik.agents.cancelled`
-
-Someone dropped the turns of every agent under a prefix, and what was queued behind them.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `prefix` | string | yes | The prefix, as acme/; empty for every agent. |
-| `count` | integer | yes | How many agents were told. |
 | `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.agents.reloaded`
@@ -623,4 +615,5 @@ A call a run waits on a person for.
 | `reason` | string | yes | One of `tool_approval`, `model_approval`, `authorization`, `in_doubt`. |
 | `message` | string | yes |  |
 | `tool_call_id` | string |  |  |
+| `name` | string |  | The tool the call is for, as the agent names it; none for a model's approval. |
 | `labels` | array of string |  | The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote. |
