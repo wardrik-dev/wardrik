@@ -21,17 +21,24 @@ defmodule WardrikTrigger.Item do
           labels: [Wardrik.Label.t()]
         }
 
+  @shown 20
+
   @doc """
   The message that asks the agent: `prompt`, with what each item holds under
-  it. Items that hold nothing to show, such as the clock's, add nothing.
+  it, the first #{@shown} of them, and how many more there are. Items that
+  hold nothing to show, such as the clock's, add nothing.
   """
   @spec message(String.t(), [t()]) :: String.t()
   def message(prompt, items) when is_binary(prompt) and is_list(items) do
-    case Enum.reject(items, &empty?/1) do
-      [] -> prompt
-      shown -> Enum.join([prompt | Enum.map(shown, &shown/1)], "\n\n")
+    case items |> Enum.reject(&empty?/1) |> Enum.split(@shown) do
+      {[], []} -> prompt
+      {shown, []} -> Enum.join([prompt | Enum.map(shown, &shown/1)], "\n\n")
+      {shown, more} -> Enum.join([prompt | Enum.map(shown, &shown/1)] ++ [more(more)], "\n\n")
     end
   end
+
+  defp more([_one]), do: "…and 1 more."
+  defp more(more), do: "…and #{length(more)} more."
 
   @doc "The labels of `items`, together."
   @spec labels([t()]) :: [Wardrik.Label.t()]

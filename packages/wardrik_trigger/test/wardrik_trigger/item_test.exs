@@ -19,6 +19,19 @@ defmodule WardrikTrigger.ItemTest do
     end
   end
 
+  test "message/2 shows twenty items, and says how many more there are" do
+    items = for n <- 1..22, do: %Item{id: "#{n}", title: "Item #{n}"}
+    message = Item.message("What is new?", items)
+
+    assert message =~ "## Item 20"
+    refute message =~ "## Item 21"
+    assert String.ends_with?(message, "\n\n…and 2 more.")
+
+    assert "What is new?"
+           |> Item.message(Enum.take(items, 21))
+           |> String.ends_with?("…and 1 more.")
+  end
+
   test "labels/1 is the labels of every item, once each" do
     assert Item.labels([
              %Item{id: "1", labels: ["outside"]},

@@ -1,6 +1,6 @@
 ---
 title: Trigger an agent
-description: Ask an agent something on a clock, with cron or an interval, and give it a checklist it can edit.
+description: Ask an agent something on a clock, with cron or an interval, or when a feed it watches has something new, and give it a checklist it can edit.
 sidebar:
   order: 1
 ---
@@ -95,6 +95,48 @@ the trigger is next running, however many runs were missed. `missed: skip` lets 
 ```yaml
 missed: skip
 ```
+
+## Watching a feed
+
+`feed` makes a trigger watch an RSS or Atom feed, or a list of them. On each run the feeds are read,
+and the agent is asked only when one has entries it has not seen, with each entry's title, link,
+date and summary under the prompt:
+
+```yaml
+triggers:
+  - name: mentions
+    every: 1h
+    feed: https://www.google.com/alerts/feeds/0123456789/0123456789
+    prompt: New mentions of Acme. Say which deserve a reply, and draft it.
+  - name: rivals
+    every: 6h
+    feed:
+      - https://rivalco.example/changelog.rss
+      - https://hnrss.org/newest?q=rivalco
+    prompt: What changed at our competitors? Update shared/team/BATTLECARDS.md.
+```
+
+- **A run with nothing new asks nothing.** It costs a request to each feed, and no model call;
+  `wardrik triggers` says it found nothing new. A feed that has not changed since the last run
+  answers with nothing at all.
+- **The first run only reads.** What a feed already holds is noted as seen, so a new trigger
+  starts with what comes next rather than the feed's whole history.
+- **Up to 20 entries a message.** More than that are counted at the end of the message.
+- **Entries are content from outside.** Whoever wrote them could be asking for the agent's next
+  call, so a gated tool's calls wait on a person once the agent has read them. See
+  [Content from outside](/concepts/policy/#content-from-outside).
+- **A feed that cannot be read is tried again on the next run**, and the others are read as usual.
+  The run fails only when none can be read.
+
+Many places a team watches have a feed:
+
+| What | Its feed |
+| --- | --- |
+| A Google Alert | in [Google Alerts](https://www.google.com/alerts), under the alert's options, choose **Deliver to: RSS feed** |
+| Hacker News stories that mention a word | `https://hnrss.org/newest?q=WORD` |
+| A subreddit, or a search of Reddit | `https://www.reddit.com/r/NAME/.rss`, `https://www.reddit.com/search.rss?q=WORD` |
+| A GitHub repository's releases | `https://github.com/OWNER/REPO/releases.atom` |
+| A blog or changelog | the `rss` or `atom` link in its page's `<head>`, often `/feed`, `/rss.xml` or `/atom.xml` |
 
 ## A checklist the agent can edit
 

@@ -62,8 +62,15 @@ defmodule WardrikTriggerTest do
   end
 
   defp watching(_context) do
-    Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, watch: Watch)
-    on_exit(fn -> Application.delete_env(:wardrik_trigger, :wardrik_trigger_sources) end)
+    register_watch()
+  end
+
+  # Registers the test's source beside those the package registers, and puts
+  # them back after.
+  defp register_watch do
+    sources = Application.get_env(:wardrik_trigger, :wardrik_trigger_sources, [])
+    Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, sources ++ [watch: Watch])
+    on_exit(fn -> Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, sources) end)
   end
 
   defp spawn_agent(key, runner) do
@@ -155,8 +162,7 @@ defmodule WardrikTriggerTest do
     end
 
     test "reads a registered source from the fields left" do
-      Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, watch: Watch)
-      on_exit(fn -> Application.delete_env(:wardrik_trigger, :wardrik_trigger_sources) end)
+      register_watch()
 
       fields = %{"every" => "1h", "prompt" => "What is new?", "watch" => "mentions"}
 
@@ -170,14 +176,14 @@ defmodule WardrikTriggerTest do
                {:error, "watch names the answers a test hands it"}
 
       assert {:error,
-              "when is not a setting; expected every, prompt, overlap, missed, jitter or watch"} =
+              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed or watch"} =
                WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"})
     end
 
     test "says what does not read" do
       for {fields, message} <- [
             {%{"when" => "now"},
-             "when is not a setting; expected every, prompt, overlap, missed or jitter"},
+             "when is not a setting; expected every, prompt, overlap, missed, jitter or feed"},
             {%{"prompt" => "Look."}, ~s(every is a cron expression, or a duration such as "30m")},
             {%{"every" => "30m", "prompt" => "Look.", "overlap" => "interrupt"},
              "overlap is one of skip, queue"},
