@@ -16,9 +16,14 @@ defmodule WardrikPolicy.Spend do
           granted_tokens: non_neg_integer()
         }
 
-  @doc "The name of `agent`'s spend in `window`, as a meter is keyed."
+  @doc """
+  The name of `agent`'s spend in `window`, as a meter is keyed: the agent's,
+  never one conversation's, so an agent and every conversation it answers for
+  spend from one meter.
+  """
   @spec key(Wardrik.AgentID.t(), String.t()) :: String.t()
-  def key(%Wardrik.AgentID{} = agent, window), do: "#{agent}|#{window}"
+  def key(%Wardrik.AgentID{} = agent, window),
+    do: "#{Wardrik.AgentID.put_external_id(agent, nil)}|#{window}"
 
   @doc "The spend with `micro_usd` and `tokens` more spent."
   @spec spend(t(), non_neg_integer(), non_neg_integer()) :: t()
