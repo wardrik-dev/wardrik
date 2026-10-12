@@ -391,6 +391,8 @@ budget:
   on_exhausted: ask   # or deny
 ```
 
+- A budget covers the agent and every conversation it answers for, its Slack threads and SDK
+  sessions included: they spend from one meter, and a grant made in one frees them all.
 - `per` is the period, `day` unless set. Days, weeks and months are UTC calendar ones, weeks from
   Monday. A `turn` budget covers one turn, with what it delegates.
 - Tokens count input and output together.
