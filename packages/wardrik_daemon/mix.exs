@@ -15,7 +15,7 @@ defmodule WardrikDaemon.MixProject do
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit],
+        plt_add_apps: [:mix, :ex_unit, :wardrik_protocol],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -42,6 +42,7 @@ defmodule WardrikDaemon.MixProject do
       sibling(:wardrik),
       sibling(:wardrik_brave),
       sibling(:wardrik_console),
+      sibling(:wardrik_definition),
       sibling(:wardrik_ecto),
       sibling(:wardrik_http),
       sibling(:wardrik_lua),
@@ -64,8 +65,9 @@ defmodule WardrikDaemon.MixProject do
       # The TUI the SSH tests serve, as a release that carries it does.
       sibling(:wardrik_tui, only: :test),
       # The schemas the docs task writes the event and resource references
-      # from, and the tests check definitions against.
-      sibling(:wardrik_protocol, only: [:dev, :test]),
+      # from, and the tests check definitions against; read as
+      # wardrik_definition compiles.
+      sibling(:wardrik_protocol, runtime: false),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

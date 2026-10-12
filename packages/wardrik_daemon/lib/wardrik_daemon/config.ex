@@ -217,7 +217,6 @@ defmodule WardrikDaemon.Config do
   @redirect ~w(url ip port open)a
   @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @vault ~w(keys)a
-  @defaults ~w(model tools policy timeout idle_timeout max_iterations compaction)
   @listener ~w(port ip)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
@@ -579,23 +578,11 @@ defmodule WardrikDaemon.Config do
   # as one.
   defp defaults(defaults) do
     defaults = table!(defaults, ["defaults"])
-    known!(defaults, @defaults, ["defaults"])
 
-    case defaults["idle_timeout"] do
-      nil ->
-        :ok
-
-      "infinity" ->
-        :ok
-
-      seconds when is_integer(seconds) and seconds > 0 ->
-        :ok
-
-      _other ->
-        invalid!(["defaults", "idle_timeout"], "is a whole number of seconds, or infinity")
+    case WardrikDefinition.check_defaults(defaults) do
+      :ok -> defaults
+      {:error, key, message} -> invalid!(["defaults", key], message)
     end
-
-    defaults
   end
 
   # -- oauth and vault -------------------------------------------------------

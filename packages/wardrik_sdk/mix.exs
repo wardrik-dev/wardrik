@@ -36,6 +36,7 @@ defmodule WardrikSDK.MixProject do
       sibling(:wardrik),
       sibling(:wardrik_brave),
       sibling(:wardrik_console),
+      sibling(:wardrik_definition),
       sibling(:wardrik_daemon),
       sibling(:wardrik_ecto),
       sibling(:wardrik_http),

@@ -198,12 +198,15 @@ defmodule WardrikTUI.App.PaletteFlow do
   defp agent_row(member) do
     elsewhere =
       cond do
-        member.asleep -> " · asleep"
+        member.asleep -> ""
         member.node == node() -> ""
         true -> " · @#{short_node(member.node)}"
       end
 
-    [Text.tag(to_string(member.id), :bright), Text.tag("  #{member.status}#{elsewhere}", @faint)]
+    [
+      Text.tag(to_string(member.id), :bright),
+      Text.tag("  #{Wardrik.Fleet.Member.label(member)}#{elsewhere}", @faint)
+    ]
   end
 
   defp node_row(name) do

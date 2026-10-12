@@ -26,6 +26,33 @@ defmodule Wardrik.Fleet.Member do
           outcome: Wardrik.Agent.State.outcome()
         }
 
+  @typedoc """
+  What an agent is doing, as every surface shows it: one parked waits on a
+  person, asleep or awake, and one idle whose last turn failed is `:failed`.
+  """
+  @type state() :: :parked | :asleep | :running | :failed | :idle
+
+  @doc "What `member` is doing, as every surface shows it."
+  @spec state(t()) :: state()
+  def state(%__MODULE__{status: :parked}), do: :parked
+  def state(%__MODULE__{asleep: true}), do: :asleep
+  def state(%__MODULE__{status: :running}), do: :running
+  def state(%__MODULE__{outcome: :failed}), do: :failed
+  def state(%__MODULE__{}), do: :idle
+
+  @doc """
+  What `member` is doing, in the words every surface shows: `parked`,
+  `parked, asleep`, `asleep`, `running`, `idle, last failed` or `idle`.
+  """
+  @spec label(t()) :: String.t()
+  def label(%__MODULE__{} = member) do
+    case {state(member), member.asleep} do
+      {:parked, true} -> "parked, asleep"
+      {:failed, _asleep} -> "idle, last failed"
+      {state, _asleep} -> Atom.to_string(state)
+    end
+  end
+
   @doc false
   @spec new(Wardrik.AgentID.t(), pid(), Wardrik.Agent.State.View.meta()) :: t()
   def new(

@@ -224,36 +224,42 @@ defmodule WardrikDaemon.AgentFile do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias Wardrik.LLM.Config
   alias WardrikDaemon.Agents
+  alias WardrikDaemon.Config
   alias WardrikDaemon.Definition
-  alias WardrikPolicy.Pattern
 
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
-  @keys ~w(name description model tools workspace context org user policy timeout idle_timeout max_iterations compaction schedule notify channels)
-  @definition_keys ~w(description instructions model tools workspace context policy timeout idle_timeout max_iterations compaction schedule channels)
-  @schedule_keys ~w(name every prompt prompt_file overlap missed jitter)
-  @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
+
+  @doc """
+  What a definition may name here, as `WardrikDefinition` reads it: the tools
+  the daemon ships, and the MCP servers, channels and notify targets
+  `config.yaml` configures, with `policies` the policies in `policies/`, by
+  name.
+  """
+  @spec context(%{String.t() => WardrikPolicy.t()}) :: WardrikDefinition.Context.t()
+  def context(policies \\ %{}) do
+    %WardrikDefinition.Context{
+      org: Config.org(),
+      tools: @shipped,
+      servers: WardrikMCP |> Config.settings() |> Keyword.get(:servers, []),
+      mcp: WardrikMCP,
+      workers: WardrikHTTP.Workers,
+      channels: WardrikChannel |> Config.settings() |> Keyword.get(:orgs, []),
+      targets: WardrikNotify |> Config.settings() |> Keyword.get(:targets, []),
+      policies: policies,
+      defaults: Agents.defaults(),
+      seams: [credentials: WardrikVault, ledger: Wardrik.Ledger.Store],
+      config: [tool_prices: Keyword.get(Config.settings(__MODULE__), :tool_prices, %{})],
+      names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
+    }
+  end
 
   @doc """
   An agent file with `fields` as its frontmatter, in the order given, and a
-  short prompt after it. A value is written as JSON, which YAML reads, where
-  it is not a word YAML reads as itself.
+  short prompt after it; see `WardrikDefinition.text/1`.
   """
   @spec text([{String.t(), term()}]) :: String.t()
-  def text(fields) do
-    front = for {key, value} <- fields, do: "#{key}: #{yaml(value)}\n"
-    IO.iodata_to_binary(["---\n", front, "---\n", @prompt, "\n"])
-  end
-
-  defp yaml(value) when is_binary(value) do
-    if Regex.match?(~r/\A[A-Za-z][\w.:\/@+-]*\z/, value) and
-         String.downcase(value) not in ~w(true false null yes no on off),
-       do: value,
-       else: JSON.encode!(value)
-  end
-
-  defp yaml(value), do: JSON.encode!(value)
+  def text(fields), do: WardrikDefinition.text(fields)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in
@@ -287,16 +293,15 @@ defmodule WardrikDaemon.AgentFile do
   """
   @spec parse(Path.t()) :: {:ok, Definition.t()} | {:error, String.t()}
   def parse(path) do
+    name = path |> Path.basename() |> Path.rootname()
+
     with {:ok, text} <- File.read(path),
-         {:ok, front, body} <- split(text),
-         {:ok, fields} <- frontmatter(front) do
-      written(path, fields, String.trim(body))
+         {:ok, id, fields} <- WardrikDefinition.parse(text, name, context()) do
+      {:ok, %Definition{id: id, fields: fields, source: {:file, Path.basename(path)}}}
     else
       {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
       {:error, message} -> {:error, "#{path}: #{message}"}
     end
-  catch
-    {:invalid, message} -> {:error, "#{path}: #{message}"}
   end
 
   @doc """
@@ -309,16 +314,8 @@ defmodule WardrikDaemon.AgentFile do
   @spec define(AgentID.t(), map(), Wardrik.Grant.t() | nil) ::
           {:ok, Definition.t()} | {:error, String.t()}
   def define(%AgentID{} = id, fields, grant) when is_map(fields) do
-    if id.external_id,
-      do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
-
-    known!(fields, @definition_keys)
-    held_after!(fields["policy"])
-    optional_string!(fields["instructions"], "instructions")
-
-    {:ok, %Definition{id: id, fields: fields, source: {:api, grant}}}
-  catch
-    {:invalid, message} -> {:error, message}
+    with :ok <- WardrikDefinition.accept(id, fields, context()),
+         do: {:ok, %Definition{id: id, fields: fields, source: {:api, grant}}}
   end
 
   @doc """
@@ -335,615 +332,43 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   The spec `definition` writes for the agent `id`, with `policies` as `read/2`
-  takes them, and where its notices go, as `load/2` answers them.
-
-  `id` is the definition's own agent, or one of its conversations: an ID with
-  an external ID, whose spec has the tools of the definition's agent, its
-  workspace tree among them. A definition sent to the HTTP API names no
-  modules. Its schedules are checked with the rest of it, and kept beside the
-  spec rather than in it; see `schedules/1`.
+  takes them, and where its notices go, as `load/2` answers them; see
+  `WardrikDefinition.spec/5`.
   """
   @spec spec(Definition.t(), AgentID.t(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
-  def spec(%Definition{id: owner, fields: fields, source: source}, %AgentID{} = id, policies) do
-    if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
+  def spec(%Definition{id: owner, fields: fields, source: source}, %AgentID{} = id, policies),
+    do: WardrikDefinition.spec(fields, owner, id, context(policies), source)
 
-    file? = match?({:file, _name}, source)
-    system = optional_string!(fields["instructions"], "instructions") || ""
-    _schedules = schedules(fields["schedule"], files?(fields))
-    _channels = channels!(fields["channels"], owner.org)
-    spec = spec(fields, system, policies, file?, owner)
-    within!(spec, source)
-
-    {:ok, %{spec | id: id}, route(fields["notify"], owner.org)}
-  rescue
-    error in [ArgumentError] -> {:error, Exception.message(error)}
-  catch
-    {:invalid, message} -> {:error, message}
-  end
-
-  @doc """
-  The definition as the HTTP API writes one, as
-  `wardrik_protocol`'s `agent_definition.json` describes it: what an agent file
-  says besides its `name`, `org`, `user` and `notify`, with one schedule as a
-  list of one.
-  """
+  @doc "The definition as the HTTP API writes one; see `WardrikDefinition.fields/1`."
   @spec fields(Definition.t()) :: map()
-  def fields(%Definition{fields: fields}) do
-    case Map.take(fields, @definition_keys) do
-      %{"schedule" => %{} = one} = taken -> %{taken | "schedule" => [one]}
-      taken -> taken
-    end
-  end
+  def fields(%Definition{fields: fields}), do: WardrikDefinition.fields(fields)
 
-  @doc """
-  The schedules `definition` lists, which ask its agent on a clock. They are
-  checked with the rest of the definition as `spec/3` builds its spec.
-  """
+  @doc "The schedules `definition` lists; see `WardrikDefinition.schedules/1`."
   @spec schedules(Definition.t()) :: [WardrikSchedule.t()]
-  def schedules(%Definition{fields: fields}), do: schedules(fields["schedule"], files?(fields))
+  def schedules(%Definition{fields: fields}), do: WardrikDefinition.schedules(fields)
 
   @doc """
-  `definition` with the schedule `name` set to `given`, as the body of
-  `PUT /v1/agents/{id}/schedules/{name}` writes one: whether it was added or
-  changed, and the schedule it reads into, or why it does not read.
+  `definition` with the schedule `name` set to `given`; see
+  `WardrikDefinition.put_schedule/3`.
   """
   @spec put_schedule(Definition.t(), String.t(), map()) ::
           {:ok, Definition.t(), :created | :changed, WardrikSchedule.t()}
           | {:error, String.t()}
-  def put_schedule(%Definition{fields: fields} = definition, name, given) when is_map(given) do
-    listed = named(fields["schedule"])
-    schedule = Map.put(given, "name", name)
-
-    {status, listed} =
-      if Enum.any?(listed, &(&1["name"] == name)),
-        do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: schedule, else: &1))},
-        else: {:created, listed ++ [schedule]}
-
-    read = schedules(listed, files?(fields))
-    definition = %{definition | fields: Map.put(fields, "schedule", listed)}
-    {:ok, definition, status, Enum.find(read, &(&1.name == name))}
-  catch
-    {:invalid, message} -> {:error, message}
+  def put_schedule(%Definition{fields: fields} = definition, name, given) do
+    with {:ok, fields, status, schedule} <- WardrikDefinition.put_schedule(fields, name, given),
+         do: {:ok, %{definition | fields: fields}, status, schedule}
   end
 
   @doc "`definition` without the schedule `name`, or `{:error, :not_found}` where it has none."
   @spec delete_schedule(Definition.t(), String.t()) ::
           {:ok, Definition.t()} | {:error, :not_found}
   def delete_schedule(%Definition{fields: fields} = definition, name) do
-    case Enum.split_with(named(fields["schedule"]), &(&1["name"] == name)) do
-      {[], _kept} -> {:error, :not_found}
-      {_gone, []} -> {:ok, %{definition | fields: Map.delete(fields, "schedule")}}
-      {_gone, kept} -> {:ok, %{definition | fields: Map.put(fields, "schedule", kept)}}
-    end
+    with {:ok, fields} <- WardrikDefinition.delete_schedule(fields, name),
+         do: {:ok, %{definition | fields: fields}}
   end
-
-  defp owner(id), do: AgentID.put_external_id(id, nil)
-
-  # A definition a token sent shares only the trees the token's scope covers.
-  defp within!(%Spec{config: config}, {:api, %Wardrik.Grant{scope: scope}}) do
-    for {WardrikWorkspace, workspace} <- config.tools,
-        do: ok!(WardrikWorkspace.Spec.within(workspace, scope))
-  end
-
-  defp within!(_spec, _source), do: :ok
-
-  defp ok!(:ok), do: :ok
-  defp ok!({:error, message}), do: invalid!("workspace " <> message)
-
-  # A rule that holds after a label loosens what a token's ceiling holds, so
-  # only a policy the operator writes may say one.
-  defp held_after!(%{"allow_after" => _rules}),
-    do:
-      invalid!("policy cannot allow_after in a definition; name a policy in policies/ that does")
-
-  defp held_after!(_policy), do: :ok
-
-  defp split("---\n" <> rest) do
-    case String.split(rest, ~r/^---[ \t]*$\n?/m, parts: 2) do
-      [front, body] -> {:ok, front, body}
-      [_unclosed] -> {:error, "has frontmatter that is never closed with ---"}
-    end
-  end
-
-  defp split(text), do: {:ok, "", text}
-
-  defp frontmatter(front) do
-    case YamlElixir.read_from_string(front) do
-      {:ok, fields} when is_map(fields) -> {:ok, fields}
-      {:ok, nil} -> {:ok, %{}}
-      {:ok, _other} -> {:error, "has frontmatter that is not a set of keys"}
-      {:error, error} -> {:error, "has frontmatter that is not YAML: #{Exception.message(error)}"}
-    end
-  end
-
-  defp written(path, fields, body) do
-    known!(fields, @keys)
-
-    id =
-      AgentID.new!(
-        optional_string!(fields["name"], "name") || path |> Path.basename() |> Path.rootname(),
-        org: optional_string!(fields["org"], "org") || WardrikDaemon.Config.org(),
-        user: optional_string!(fields["user"], "user")
-      )
-
-    fields = Map.drop(fields, ~w(name org user))
-    fields = if body == "", do: fields, else: Map.put(fields, "instructions", body)
-
-    {:ok, %Definition{id: id, fields: fields, source: {:file, Path.basename(path)}}}
-  rescue
-    error in [ArgumentError] -> {:error, "#{path}: #{Exception.message(error)}"}
-  end
-
-  defp known!(fields, keys) do
-    case Map.keys(fields) -- keys do
-      [] -> :ok
-      [key | _] -> invalid!("#{key} is not a setting; expected one of #{Enum.join(keys, ", ")}")
-    end
-  end
-
-  # Everything a file and a definition say alike, for the agent `id`. `modules?`
-  # lets `tools` and `policy` name modules.
-  defp spec(fields, system, policies, modules?, id) do
-    config =
-      [
-        system: if(system == "", do: nil, else: system),
-        tools: tools(fields, modules?, id),
-        tool_prices: Keyword.get(WardrikDaemon.Config.settings(__MODULE__), :tool_prices, %{})
-      ]
-      |> put(:model_spec, fields["model"], &string!(&1, "model"))
-      |> put(:max_iterations, fields["max_iterations"], &iterations!/1)
-      |> compaction(fields)
-      |> Config.new()
-
-    [
-      id: id,
-      description: optional_string!(fields["description"], "description"),
-      config: config,
-      hooks: policy(fields["policy"], policies, modules?),
-      timeout: fields["timeout"] && seconds!(fields["timeout"]),
-      credentials: WardrikVault,
-      ledger: Wardrik.Ledger.Store
-    ]
-    |> put(:idle_timeout, fields["idle_timeout"] || Agents.defaults()["idle_timeout"], &idle!/1)
-    |> Spec.new()
-  end
-
-  defp put(opts, _key, nil, _cast), do: opts
-  defp put(opts, key, value, cast), do: Keyword.put(opts, key, cast.(value))
-
-  # -- tools and servers -----------------------------------------------------
-
-  defp tools(%{"tools" => names} = fields, modules?, key) when is_list(names) do
-    if not files?(fields), do: unreached!(fields)
-
-    names
-    |> Enum.flat_map(fn
-      "files" -> [files!(fields, key)]
-      "*" -> tool!("*", modules?, key) ++ [files!(fields, key)]
-      name -> tool!(name, modules?, key)
-    end)
-    |> Enum.uniq()
-  end
-
-  defp tools(%{"tools" => _names}, _modules?, _key), do: invalid!("tools is a list")
-
-  defp tools(fields, _modules?, _key) do
-    unreached!(fields)
-    []
-  end
-
-  defp files?(%{"tools" => names}) when is_list(names),
-    do: Enum.any?(names, &(&1 in ["files", "*"]))
-
-  defp files?(_fields), do: false
-
-  # A workspace, or files to read into each turn, with no files tools to
-  # reach them.
-  defp unreached!(%{"workspace" => _workspace}),
-    do: invalid!("workspace shares trees, and tools names no files to reach them with")
-
-  defp unreached!(%{"context" => _context}),
-    do:
-      invalid!(
-        "context names files to read into each turn, and tools names no files to read them with"
-      )
-
-  defp unreached!(_fields), do: :ok
-
-  # The file tools over the agent's own tree, and the trees `workspace` shares.
-  defp files!(fields, key) do
-    workspace = Map.get(fields, "workspace") || %{}
-    if not is_map(workspace), do: invalid!("workspace is a set of settings: shared")
-
-    case Map.keys(workspace) -- ["shared"] do
-      [] -> :ok
-      [key | _rest] -> invalid!("workspace.#{key} is not a setting; expected shared")
-    end
-
-    {files, bytes} = context!(Map.get(fields, "context", []))
-
-    with {:ok, spec} <- workspace!(key, workspace),
-         {:ok, spec} <- WardrikWorkspace.Spec.context(spec, files),
-         {:ok, spec} <- budget(spec, bytes) do
-      {WardrikWorkspace, spec}
-    else
-      {:error, message} -> invalid!(message)
-    end
-  end
-
-  # `context` is the files, or the files with how much of them each turn may
-  # read.
-  defp context!(%{} = context) do
-    case Map.keys(context) -- ["files", "max_bytes"] do
-      [] -> {Map.get(context, "files", []), Map.get(context, "max_bytes")}
-      [key | _rest] -> invalid!("context.#{key} is not a setting; expected files or max_bytes")
-    end
-  end
-
-  defp context!(files), do: {files, nil}
-
-  defp budget(spec, nil), do: {:ok, spec}
-  defp budget(spec, bytes), do: WardrikWorkspace.Spec.context_bytes(spec, bytes)
-
-  defp workspace!(key, workspace) do
-    case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{}) do
-      {:ok, spec} -> {:ok, spec}
-      {:error, message} -> {:error, "workspace " <> message}
-    end
-  end
-
-  defp tool!("*", _modules?, key) do
-    servers =
-      for {ref, opts} <- servers(), reach(key, ref, opts) == :ok, do: ref
-
-    @shipped ++ Enum.map(servers, &{WardrikMCP, &1}) ++ [{WardrikHTTP.Workers, key}]
-  end
-
-  defp tool!("workers/*", _modules?, key), do: [{WardrikHTTP.Workers, key}]
-
-  defp tool!("workers/" <> tool = name, _modules?, _key) do
-    invalid!(
-      "tools names #{name}; name the workers' tools as workers/*, and let a policy deny what is not #{tool}"
-    )
-  end
-
-  defp tool!(name, modules?, key) when is_binary(name) do
-    pattern = Pattern.parse!(name)
-
-    cond do
-      Pattern.argument?(pattern) ->
-        invalid!(
-          "tools names #{name}; name the tool alone, and let a policy name what its calls act on"
-        )
-
-      server = Pattern.server(pattern) ->
-        [server!(server, key)]
-
-      String.contains?(name, "/") ->
-        [server, tool] = String.split(name, "/", parts: 2)
-
-        invalid!(
-          "tools names #{name}; name the whole server as #{server}/*, and list #{tool} " <>
-            "in its only in config.yaml"
-        )
-
-      true ->
-        [shipped!(name, modules?)]
-    end
-  end
-
-  defp tool!(name, _modules?, _key),
-    do: invalid!("tools names #{inspect(name)}, which is not a tool")
-
-  defp shipped!(name, modules?) do
-    case Map.fetch(Map.new(@shipped, &{&1.tool().name, &1}), name) do
-      {:ok, module} -> module
-      :error when modules? -> module!(name, :tool, 0, "a tool", "a tool the daemon ships")
-      :error -> invalid!("tools names #{name}, which is not a tool the daemon ships")
-    end
-  end
-
-  defp server!(name, key) do
-    configured = Map.new(Keyword.keys(servers()), &{Atom.to_string(&1), &1})
-
-    with {:ok, ref} <- Map.fetch(configured, name),
-         :ok <- reach(key, ref, Keyword.fetch!(servers(), ref)) do
-      {WardrikMCP, ref}
-    else
-      {:error, why} ->
-        invalid!("tools names #{name}/*, but #{why}")
-
-      :error ->
-        invalid!(
-          "tools names #{name}/*, but config.yaml configures no server #{name}" <>
-            configured_servers(configured)
-        )
-    end
-  end
-
-  defp servers, do: WardrikMCP |> WardrikDaemon.Config.settings() |> Keyword.get(:servers, [])
-
-  # Whether the agent `id` can reach the server `ref`: one serving its org.
-  defp reach(%AgentID{org: org}, ref, opts) do
-    case Keyword.get(opts, :orgs, :all) do
-      :all -> :ok
-      orgs -> if org in orgs, do: :ok, else: {:error, not_served(ref, orgs, org)}
-    end
-  end
-
-  defp not_served(ref, orgs, org),
-    do: "config.yaml's #{ref} serves #{Enum.join(orgs, ", ")}, and not #{org}"
-
-  defp configured_servers(configured) when map_size(configured) == 0, do: ""
-
-  defp configured_servers(configured),
-    do:
-      ["; it has ", Enum.map_join(configured, ", ", fn {name, _ref} -> name end)]
-      |> IO.iodata_to_binary()
-
-  # -- schedules -------------------------------------------------------------
-
-  defp schedules(nil, _files?), do: []
-  defp schedules(%{} = one, files?), do: schedules([one], files?)
-
-  defp schedules(list, files?) when is_list(list) do
-    schedules = list |> Enum.with_index(1) |> Enum.map(&schedule!(&1, files?))
-
-    case schedules -- Enum.uniq_by(schedules, & &1.name) do
-      [] -> schedules
-      [twice | _] -> invalid!("schedule names #{twice.name} twice")
-    end
-  end
-
-  defp schedules(_other, _files?), do: invalid!("schedule is a schedule, or a list of them")
-
-  # The schedules a checked definition lists, each with the name it is known by.
-  defp named(nil), do: []
-  defp named(%{} = one), do: named([one])
-
-  defp named(list) do
-    for {fields, index} <- Enum.with_index(list, 1),
-        do: Map.put_new(fields, "name", "schedule-#{index}")
-  end
-
-  defp schedule!({%{} = fields, index}, files?) do
-    case Map.keys(fields) -- @schedule_keys do
-      [] ->
-        :ok
-
-      [key | _] ->
-        invalid!(
-          "schedule #{key} is not a setting; expected one of #{Enum.join(@schedule_keys, ", ")}"
-        )
-    end
-
-    name = optional_string!(fields["name"], "schedule name") || "schedule-#{index}"
-
-    with {:ok, fields} <- prompted(fields, name, files?),
-         {:ok, schedule} <- WardrikSchedule.decode(name, Map.delete(fields, "name")) do
-      schedule
-    else
-      {:error, message} -> invalid!("schedule #{fields["name"] || index}: #{message}")
-    end
-  end
-
-  defp schedule!({_other, index}, _files?),
-    do: invalid!("schedule #{index} is not a set of keys")
-
-  # A schedule's prompt_file is a prompt asking the agent to follow the file,
-  # which it reads with read_file as the turn runs, so it reads it as it
-  # stands then, and its labels with it.
-  defp prompted(%{"prompt_file" => _file, "prompt" => _prompt}, _name, _files?),
-    do: {:error, "a schedule has a prompt or a prompt_file, not both"}
-
-  defp prompted(%{"prompt_file" => _file}, _name, false),
-    do: {:error, "prompt_file names a file, and tools names no files to read it with"}
-
-  defp prompted(%{"prompt_file" => file} = fields, name, true) do
-    case WardrikWorkspace.Path.normalize(file) do
-      {:ok, path} ->
-        {:ok,
-         fields
-         |> Map.delete("prompt_file")
-         |> Map.put(
-           "prompt",
-           "It is time for #{name}. Read #{path} with read_file, and do what it says as it stands now. If it asks nothing of you, answer in one line."
-         )}
-
-      {:error, message} ->
-        {:error, "prompt_file: " <> message}
-    end
-  end
-
-  defp prompted(fields, _name, _files?), do: {:ok, fields}
-
-  # -- notify ----------------------------------------------------------------
-
-  defp route(nil, _org), do: nil
-  defp route(target, org) when is_binary(target), do: route(%{"to" => [target]}, org)
-  defp route(targets, org) when is_list(targets), do: route(%{"to" => targets}, org)
-
-  defp route(%{} = fields, org) do
-    case Map.keys(fields) -- ~w(to on) do
-      [] -> :ok
-      [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
-    end
-
-    targets = fields |> Map.get("to") |> List.wrap()
-    if targets == [], do: invalid!("notify names no target")
-
-    %WardrikNotify.Route{
-      targets: Enum.map(targets, &target!(&1, org)),
-      on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
-    }
-  end
-
-  defp route(_other, _org), do: invalid!("notify is a target, a list of them, or to and on")
-
-  defp target!(name, org) when is_binary(name) do
-    targets = WardrikNotify |> WardrikDaemon.Config.settings() |> Keyword.get(:targets, [])
-    names = Keyword.keys(targets)
-
-    case Enum.find(names, &(Atom.to_string(&1) == name)) do
-      nil ->
-        invalid!(
-          IO.iodata_to_binary([
-            "notify names #{name}, but config.yaml's notify has no target #{name}",
-            known_targets(names)
-          ])
-        )
-
-      target ->
-        if not WardrikNotify.tells?(targets, target, org),
-          do: invalid!("notify names #{name}, which config.yaml's notify keeps for another org")
-
-        target
-    end
-  end
-
-  defp target!(name, _org), do: invalid!("notify names #{inspect(name)}, which is not a target")
-
-  # -- channels ----------------------------------------------------------------
 
   @doc "The channels a definition's fields offer its agent in, by name."
   @spec channels(map()) :: [String.t()]
-  def channels(fields), do: Map.get(fields, "channels") || []
-
-  defp channels!(nil, _org), do: []
-
-  defp channels!(names, org) when is_list(names) do
-    settings = WardrikDaemon.Config.settings(WardrikChannel)
-    orgs = Keyword.get(settings, :orgs, [])
-
-    for name <- names, do: channel!(name, org, orgs)
-  end
-
-  defp channels!(_other, _org),
-    do: invalid!("channels is a list of the channels it is offered in")
-
-  defp channel!(name, org, orgs) do
-    case Enum.find(orgs, fn {channel, _orgs} -> Atom.to_string(channel) == name end) do
-      nil ->
-        invalid!(
-          "channels names #{inspect(name)}, but config.yaml's channels has no such channel"
-        )
-
-      {_channel, :all} ->
-        name
-
-      {_channel, served} ->
-        if org in served,
-          do: name,
-          else: invalid!("channels names #{name}, which config.yaml keeps for another org")
-    end
-  end
-
-  defp known_targets([]), do: []
-
-  defp known_targets(names),
-    do: ["; it has " | Enum.map_intersperse(names, ", ", &Atom.to_string/1)]
-
-  defp kind!(kind) do
-    case Enum.find(WardrikNotify.Route.kinds(), &(Atom.to_string(&1) == kind)) do
-      nil -> invalid!("notify on lists #{inspect(kind)}; expected parked, failed or finished")
-      found -> found
-    end
-  end
-
-  # -- scalars ---------------------------------------------------------------
-
-  defp policy(nil, _policies, _modules?), do: []
-
-  defp policy(name, policies, modules?) when is_binary(name) do
-    case Map.fetch(policies, name) do
-      {:ok, policy} ->
-        WardrikPolicy.hooks(policy)
-
-      :error when modules? ->
-        module = module!(name, :call, 2, "a hook", "a policy in policies/")
-        [Wardrik.Hook.new(name, module)]
-
-      :error ->
-        invalid!("policy names #{name}, which is not a policy in policies/")
-    end
-  end
-
-  defp policy(fields, _policies, _modules?) when is_map(fields) do
-    case WardrikPolicy.decode(fields) do
-      {:ok, policy} -> WardrikPolicy.hooks(policy)
-      {:error, message} -> invalid!("policy " <> message)
-    end
-  end
-
-  defp policy(_value, _policies, _modules?),
-    do: invalid!("policy is the name of a policy, rules, or a module")
-
-  defp module!(name, function, arity, what, known) do
-    module = Module.safe_concat([name])
-
-    if Code.ensure_loaded?(module) and function_exported?(module, function, arity),
-      do: module,
-      else: invalid!("#{name} is not #{what}")
-  rescue
-    ArgumentError -> invalid!("names #{name}, which is neither #{known} nor a module")
-  end
-
-  defp compaction(config, %{"compaction" => false}), do: Keyword.put(config, :history, nil)
-
-  defp compaction(config, %{"compaction" => %{} = fields}) do
-    case Map.keys(fields) -- ~w(at keep window) do
-      [] ->
-        compaction =
-          Wardrik.Compaction.new(
-            at: share!(fields, "at", 0.6),
-            keep: share!(fields, "keep", 0.25),
-            window: window!(fields["window"])
-          )
-
-        Keyword.put(config, :history, {Wardrik.Compaction, compaction})
-
-      [key | _] ->
-        invalid!("compaction #{key} is not a setting; expected at, keep or window")
-    end
-  end
-
-  defp compaction(_config, %{"compaction" => _other}),
-    do: invalid!("compaction is false, or a set of at, keep and window")
-
-  defp compaction(config, _fields), do: config
-
-  defp share!(fields, key, default) do
-    case Map.get(fields, key, default) do
-      n when is_number(n) and n > 0 and n < 1 -> n / 1
-      _other -> invalid!("compaction #{key} is a share of the window, between 0 and 1")
-    end
-  end
-
-  defp window!(nil), do: nil
-  defp window!(n) when is_integer(n) and n > 0, do: n
-  defp window!(_n), do: invalid!("compaction window is a whole number of tokens")
-
-  defp seconds!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
-  defp seconds!(_seconds), do: invalid!("timeout is a whole number of seconds")
-
-  defp idle!(seconds) when is_integer(seconds) and seconds > 0, do: :timer.seconds(seconds)
-  defp idle!("infinity"), do: :infinity
-  defp idle!(_seconds), do: invalid!("idle_timeout is a whole number of seconds, or infinity")
-
-  defp iterations!(n) when is_integer(n) and n > 0, do: n
-  defp iterations!("infinity"), do: :infinity
-  defp iterations!(_n), do: invalid!("max_iterations is a whole number, or infinity")
-
-  defp string!(value, _key) when is_binary(value), do: value
-  defp string!(_value, key), do: invalid!("#{key} is a string")
-
-  defp optional_string!(nil, _key), do: nil
-
-  defp optional_string!(value, _key) when is_binary(value) or is_integer(value),
-    do: to_string(value)
-
-  defp optional_string!(_value, key), do: invalid!("#{key} is a string")
-
-  defp invalid!(message), do: throw({:invalid, message})
+  def channels(fields), do: WardrikDefinition.channels(fields)
 end

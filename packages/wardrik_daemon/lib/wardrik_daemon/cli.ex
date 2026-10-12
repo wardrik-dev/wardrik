@@ -537,7 +537,7 @@ defmodule WardrikDaemon.CLI do
 
   defp watching(%{asleep: true} = member) do
     Owl.Data.tag(
-      "Watching #{member.id}, #{member.status} and asleep until something asks it. " <>
+      "Watching #{member.id}, #{Wardrik.Fleet.Member.label(member)} until something asks it. " <>
         "Ctrl-C stops watching.",
       @faint
     )
@@ -545,7 +545,7 @@ defmodule WardrikDaemon.CLI do
 
   defp watching(member) do
     Owl.Data.tag(
-      "Watching #{member.id}, #{member.status} on #{Nodes.display(member.node)}. " <>
+      "Watching #{member.id}, #{Wardrik.Fleet.Member.label(member)} on #{Nodes.display(member.node)}. " <>
         "Ctrl-C stops watching; the agent carries on.",
       @faint
     )

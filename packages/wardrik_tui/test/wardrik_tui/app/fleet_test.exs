@@ -341,7 +341,7 @@ defmodule WardrikTUI.App.FleetTest do
     type.("connect")
     Breeze.Test.input(session, "Enter")
 
-    assert screen(session) =~ "#{dozer}  idle · asleep"
+    assert screen(session) =~ "#{dozer}  asleep"
 
     type.("dozer")
     Breeze.Test.input(session, "Enter")

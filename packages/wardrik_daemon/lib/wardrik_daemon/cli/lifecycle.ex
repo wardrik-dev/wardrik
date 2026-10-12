@@ -50,9 +50,6 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   @faint [:faint, :light_black]
 
-  # The order a file spawn writes gives config.yaml's defaults.
-  @defaults ~w(model tools policy timeout max_iterations compaction)
-
   @doc "The commands that start, stop and move agents, for `WardrikDaemon.CLI.commands/0`."
   @spec commands() :: [Command.t()]
   def commands do
@@ -257,7 +254,9 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     defaults = Agents.defaults()
 
     for({key, value} <- [{"org", opts[:org]}, {"user", opts[:user]}], value, do: {key, value}) ++
-      for key <- @defaults, Map.has_key?(defaults, key), do: {key, defaults[key]}
+      for key <- WardrikDefinition.default_keys() -- ["idle_timeout"],
+          Map.has_key?(defaults, key),
+          do: {key, defaults[key]}
   end
 
   defp written(key, path, by) do

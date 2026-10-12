@@ -102,28 +102,6 @@ defmodule WardrikDaemon.AgentFileTest do
     end
   end
 
-  test "text/1 writes a file that reads back as it was given", context do
-    text =
-      AgentFile.text([
-        {"org", "acme"},
-        {"description", "Says what it does."},
-        {"model", "anthropic:claude-sonnet-5"},
-        {"tools", ["web_search", "*"]},
-        {"policy", %{"ask" => ["linear/*"]}},
-        {"timeout", 600},
-        {"name", "yes"}
-      ])
-
-    assert text =~ "\norg: acme\ndescription: \"Says what it does.\"\nmodel: anthropic:"
-    assert text =~ "\nname: \"yes\"\n---\nYou are a helpful assistant."
-    assert {:ok, spec} = read("written", text, context)
-    assert spec.id == ~A"acme/yes"
-    assert spec.description == "Says what it does."
-    assert spec.config.model_spec == "anthropic:claude-sonnet-5"
-    assert WardrikBrave.WebSearch in spec.config.tools
-    assert spec.timeout == 600_000
-  end
-
   test "a file with no frontmatter is all prompt, and names no tools", context do
     assert {:ok, spec} = read("helper", "Answer briefly.\n", context)
 
@@ -131,11 +109,6 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.config.system == "Answer briefly."
     assert spec.config.tools == []
     assert spec.hooks == []
-  end
-
-  test "name in the frontmatter wins over the file's", context do
-    assert {:ok, spec} = read("file-name", "---\nname: triage\n---\nHi.\n", context)
-    assert spec.id == ~A"default/triage"
   end
 
   test "* is every shipped tool, the file tools, every server it reaches and the tool workers' tools",
@@ -193,54 +166,6 @@ defmodule WardrikDaemon.AgentFileTest do
     do: Application.put_env(:wardrik_daemon, WardrikMCP, servers: servers)
 
   describe "files" do
-    test "are the file tools over the agent's own tree, and the trees workspace shares",
-         context do
-      assert {:ok, spec} =
-               read(
-                 """
-                 ---
-                 org: acme
-                 user: jon
-                 tools: [files]
-                 workspace:
-                   shared:
-                     team: acme
-                     runbooks: {tree: acme/runbooks, mode: read}
-                 ---
-                 """,
-                 context
-               )
-
-      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
-      assert files.tree.tree == "agents/acme/@jon/triage"
-
-      assert Enum.map(files.shared, &{&1.name, &1.tree, &1.mode}) == [
-               {"runbooks", "shared/acme/runbooks", :read},
-               {"team", "shared/acme", :write}
-             ]
-    end
-
-    test "share no tree the agent's key does not reach", context do
-      assert {:error, message} =
-               read(
-                 "---\norg: acme\ntools: [files]\nworkspace: {shared: {theirs: globex}}\n---\n",
-                 context
-               )
-
-      assert message =~
-               "workspace shared theirs: globex belongs to globex/, which acme/triage is not under"
-    end
-
-    test "are what a workspace needs, and a workspace takes only shared", context do
-      assert {:error, message} = read("---\nworkspace: {shared: {team: _}}\n---\n", context)
-      assert message =~ "workspace shares trees, and tools names no files"
-
-      assert {:error, message} =
-               read("---\ntools: [files]\nworkspace: {size: 1GB}\n---\n", context)
-
-      assert message =~ "workspace.size is not a setting; expected shared"
-    end
-
     test "are shared over HTTP too, within the scope of the token that sent the definition" do
       id = Wardrik.AgentID.parse!("acme/triage")
 
@@ -268,20 +193,6 @@ defmodule WardrikDaemon.AgentFileTest do
     end
   end
 
-  test "workers/* is every tool the tool workers offer the agent, and * takes them too",
-       context do
-    assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*]\n---\n", context)
-    assert spec.config.tools == [{WardrikHTTP.Workers, ~A"acme/triage"}]
-
-    assert {:ok, spec} = read("---\ntools: [\"*\"]\n---\n", context)
-    assert {WardrikHTTP.Workers, ~A"default/triage"} in spec.config.tools
-
-    assert {:error, message} = read("---\ntools: [workers/refund]\n---\n", context)
-
-    assert message =~
-             "name the workers' tools as workers/*, and let a policy deny what is not refund"
-  end
-
   test "a tool nothing ships is refused", context do
     assert {:error, message} = read("---\ntools: [websearch]\n---\n", context)
 
@@ -292,23 +203,6 @@ defmodule WardrikDaemon.AgentFileTest do
   test "a server config.yaml does not configure is refused, naming those it does", context do
     assert {:error, message} = read("---\ntools: [github/*]\n---\n", context)
     assert message =~ "configures no server github; it has linear"
-  end
-
-  test "one tool of a server is pointed at the server's only", context do
-    assert {:error, message} = read("---\ntools: [linear/list_issues]\n---\n", context)
-    assert message =~ "name the whole server as linear/*, and list list_issues in its only"
-  end
-
-  test "a key nothing takes is refused", context do
-    assert {:error, message} = read("---\nmcp: [linear]\n---\n", context)
-    assert message =~ "mcp is not a setting"
-  end
-
-  test "a tool is named alone, what its calls act on being a policy's to name", context do
-    assert {:error, message} = read("---\ntools: [run_lua(x)]\n---\n", context)
-
-    assert message =~
-             "tools names run_lua(x); name the tool alone, and let a policy name what its calls act on"
   end
 
   test "a file may write a rule that holds after a label, and a definition may not",
@@ -350,81 +244,9 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.hooks == WardrikPolicy.hooks(careful)
   end
 
-  test "a policy written in place is one too", context do
-    assert {:ok, spec} = read("---\npolicy:\n  ask: [github/*]\n---\n", context)
-    assert [%Wardrik.Hook{module: WardrikPolicy, value: policy}] = spec.hooks
-    assert {:ask, _prompt} = WardrikPolicy.decide(policy, "github__create_issue")
-  end
-
-  test "a policy written in place may hold conditions on a call's arguments", context do
-    assert {:ok, spec} =
-             read(
-               """
-               ---
-               policy:
-                 deny:
-                   write_file(content = *password*): No secrets in files.
-                 ask: ["books/create_bill(amount >= 100, account != Payroll)"]
-               ---
-               """,
-               context
-             )
-
-    assert [%Wardrik.Hook{module: WardrikPolicy, value: policy}] = spec.hooks
-
-    assert {:deny, "No secrets in files."} =
-             WardrikPolicy.decide(policy, "write_file", [], %{"content" => "the password"})
-
-    assert {:ask, _prompt} =
-             WardrikPolicy.decide(policy, "books__create_bill", [], %{
-               "amount" => 500,
-               "account" => "Rent"
-             })
-
-    assert {:error, message} =
-             read("---\npolicy:\n  ask: [books/pay(amount > 5, to = x)]\n---\n", context)
-
-    assert message =~ "which opens a parenthesis it never closes; a [ ] list splits a rule"
-  end
-
-  test "a policy with a budget gives the budget a hook of its own", context do
-    assert {:ok, spec} = read("---\npolicy:\n  budget:\n    usd: 5\n---\n", context)
-
-    assert [
-             %Wardrik.Hook{module: WardrikPolicy},
-             %Wardrik.Hook{module: WardrikPolicy.Budget, value: %WardrikPolicy.Budget{usd: 5.0}}
-           ] = spec.hooks
-
-    assert spec.dispatch == nil
-  end
-
-  test "a policy written in place that does not read says why", context do
-    assert {:error, message} = read("---\npolicy:\n  allows: [x]\n---\n", context)
-    assert message =~ "policy allows is not a setting"
-  end
-
   test "a policy name that is neither a policy nor a module is refused", context do
     assert {:error, message} = read("---\npolicy: careful\n---\n", context)
     assert message =~ "names careful, which is neither a policy in policies/ nor a module"
-  end
-
-  test "compaction is on by default, tuned or turned off by the file", context do
-    assert {:ok, default} = read("---\n---\n", context)
-    assert default.config.history == {Wardrik.Compaction, %Wardrik.Compaction{}}
-
-    assert {:ok, tuned} = read("---\ncompaction:\n  at: 0.5\n  window: 32000\n---\n", context)
-
-    assert tuned.config.history ==
-             {Wardrik.Compaction, %Wardrik.Compaction{at: 0.5, keep: 0.25, window: 32_000}}
-
-    assert {:ok, off} = read("---\ncompaction: false\n---\n", context)
-    assert off.config.history == nil
-
-    assert {:error, message} = read("---\ncompaction:\n  at: 2\n---\n", context)
-    assert message =~ "compaction at is a share of the window"
-
-    assert {:error, message} = read("---\ncompaction:\n  at: 0.3\n  keep: 0.4\n---\n", context)
-    assert message =~ ".md: a compaction keeps less than it waits for"
   end
 
   # The schedules the file `text` lists, once it reads.
@@ -469,39 +291,6 @@ defmodule WardrikDaemon.AgentFileTest do
            ] = two
 
     assert {:ok, []} = scheduled("---\n---\n", context)
-  end
-
-  test "a schedule that does not read says which and why", context do
-    assert {:error, message} =
-             read("---\nschedule:\n  every: 10s\n  prompt: Look.\n---\n", context)
-
-    assert message =~ "schedule 1: every: \"10s\" is shorter than a minute"
-
-    assert {:error, message} =
-             read("---\nschedule:\n  name: sweep\n  every: 30m\n---\n", context)
-
-    assert message =~ "schedule sweep: prompt is a string"
-
-    assert {:error, message} =
-             read("---\nschedule:\n  every: 30m\n  prompt: Look.\n  when: now\n---\n", context)
-
-    assert message =~ "schedule when is not a setting"
-
-    assert {:error, message} =
-             read(
-               "---\nschedule:\n  every: 30m\n  prompt: Look.\n  overlap: interrupt\n---\n",
-               context
-             )
-
-    assert message =~ "schedule 1: overlap is one of skip, queue"
-
-    assert {:error, message} =
-             read(
-               "---\nschedule:\n  - {name: a, every: 30m, prompt: x}\n  - {name: a, every: 1h, prompt: y}\n---\n",
-               context
-             )
-
-    assert message =~ "schedule names a twice"
   end
 
   # config.yaml's channels, by the orgs each serves.
@@ -576,11 +365,6 @@ defmodule WardrikDaemon.AgentFileTest do
       assert message =~ "notify names globex, which config.yaml's notify keeps for another org"
       assert {:ok, _spec} = read("---\nnotify: globex\norg: globex\n---\n", context)
     end
-  end
-
-  test "a policy that is not one is refused", context do
-    assert {:error, message} = read("---\npolicy: WardrikDaemon.AgentFileTest\n---\n", context)
-    assert message =~ "WardrikDaemon.AgentFileTest is not a hook"
   end
 
   describe "the definition schema" do
@@ -748,16 +532,6 @@ defmodule WardrikDaemon.AgentFileTest do
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end
     end
-
-    test "a definition that does not read says why" do
-      assert {:error, "timeout is a whole number of seconds"} =
-               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"timeout" => "soon"})
-
-      assert {:error, "instructions is a string"} =
-               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{
-                 "instructions" => ["a"]
-               })
-    end
   end
 
   test "frontmatter that is never closed, or is not YAML, says so", context do
@@ -766,88 +540,5 @@ defmodule WardrikDaemon.AgentFileTest do
 
     assert {:error, yaml} = read("---\ntools: [a\n---\n", context)
     assert yaml =~ "not YAML"
-  end
-
-  describe "context" do
-    test "names files read into each turn, in the workspace the file tools reach", context do
-      assert {:ok, spec} =
-               read(
-                 "---\norg: acme\ntools: [files]\nworkspace: {shared: {team: acme}}\ncontext: [SOUL.md, shared/team/CONVENTIONS.md]\n---\n",
-                 context
-               )
-
-      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{context: files}}] = spec.config.tools
-      assert files == ["SOUL.md", "shared/team/CONVENTIONS.md"]
-    end
-
-    test "takes the files with how much of them each turn reads", context do
-      assert {:ok, spec} =
-               read(
-                 "---\ntools: [files]\ncontext: {files: [MEMORY.md], max_bytes: 65536}\n---\n",
-                 context
-               )
-
-      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
-      assert {files.context, files.context_bytes} == {["MEMORY.md"], 65_536}
-
-      assert {:error, message} =
-               read("---\ntools: [files]\ncontext: {files: [], max_bytes: 10}\n---\n", context)
-
-      assert message =~ "context max_bytes is a number of bytes from 1024 to 262144"
-
-      assert {:error, message} =
-               read("---\ntools: [files]\ncontext: {paths: [MEMORY.md]}\n---\n", context)
-
-      assert message =~ "context.paths is not a setting; expected files or max_bytes"
-    end
-
-    test "needs the file tools to read them with", context do
-      assert {:error, message} = read("---\ncontext: [SOUL.md]\n---\n", context)
-      assert message =~ "context names files to read into each turn, and tools names no files"
-
-      assert {:error, _message} =
-               read("---\ntools: [web_search]\ncontext: [SOUL.md]\n---\n", context)
-    end
-
-    test "refuses a file outside the workspace", context do
-      assert {:error, message} = read("---\ntools: [files]\ncontext: [../x.md]\n---\n", context)
-      assert message =~ "context: ../x.md climbs out of the workspace with .."
-    end
-  end
-
-  describe "prompt_file" do
-    test "asks the agent to read and follow a file of its workspace when the schedule fires",
-         context do
-      assert {:ok, schedules} =
-               scheduled(
-                 """
-                 ---
-                 tools: [files]
-                 schedule:
-                   name: heartbeat
-                   every: 30m
-                   prompt_file: ./HEARTBEAT.md
-                 ---
-                 """,
-                 context
-               )
-
-      assert [%WardrikSchedule{name: "heartbeat", prompt: prompt}] = schedules
-      assert prompt =~ "It is time for heartbeat. Read HEARTBEAT.md with read_file"
-    end
-
-    test "is in place of a prompt, needs the file tools, and names a file", context do
-      for {settings, refusal} <- [
-            {"tools: [files]\nschedule: {every: 30m, prompt: Look., prompt_file: H.md}",
-             "a schedule has a prompt or a prompt_file, not both"},
-            {"schedule: {every: 30m, prompt_file: H.md}",
-             "prompt_file names a file, and tools names no files to read it with"},
-            {"tools: [files]\nschedule: {every: 30m, prompt_file: /etc/passwd}",
-             "prompt_file: /etc/passwd is absolute"}
-          ] do
-        assert {:error, message} = read("---\n#{settings}\n---\n", context)
-        assert message =~ refusal
-      end
-    end
   end
 end
