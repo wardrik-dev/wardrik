@@ -41,6 +41,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.ForgetAgents
   alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.ListParked
+  alias Wardrik.Operations.Move
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadConnections
@@ -48,6 +49,9 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.ReadEvents
   alias Wardrik.Operations.RemoveTrigger
   alias Wardrik.Operations.SetTrigger
+  alias Wardrik.Operations.Spawn
+  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Operations.Stop
   alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikHTTP.Access
@@ -170,6 +174,9 @@ defmodule WardrikHTTP.Router do
 
   defp route("POST", ["cancel"], _conn), do: {Command, &{:ok, %Cancel{agent: &1}}, 202}
   defp route("DELETE", ["conversation"], _conn), do: {Command, &{:ok, %Clear{agent: &1}}, 204}
+  defp route("POST", ["spawn"], conn), do: {Command, &spawn(conn, &1), 200}
+  defp route("POST", ["stop"], _conn), do: {Command, &{:ok, %Stop{agent: &1}}, 200}
+  defp route("POST", ["move"], conn), do: {Command, &move(conn, &1), 200}
 
   defp route("PUT", ["triggers", name], conn),
     do: {Command, &trigger(conn, &1, name), 200}
@@ -276,6 +283,32 @@ defmodule WardrikHTTP.Router do
     with {:ok, fields} <- object(conn.body_params),
          do: {:ok, %Define{agent: key, definition: fields}}
   end
+
+  # A spawn that names a node is the deployment's to make, and one that names
+  # none any caller's who may define the agent.
+  defp spawn(conn, key) do
+    case conn.body_params do
+      %{"node" => name} ->
+        with {:ok, node} <- named(name), do: {:ok, %SpawnOn{agent: key, node: node}}
+
+      _anywhere ->
+        {:ok, %Spawn{agent: key}}
+    end
+  end
+
+  defp move(conn, key) do
+    with {:ok, node} <- named(conn.body_params["node"]), do: {:ok, %Move{agent: key, node: node}}
+  end
+
+  # A node the deployment has, by its name: never an atom made from a request.
+  defp named(name) when is_binary(name) do
+    case Enum.find([Node.self() | Node.list()], &(Atom.to_string(&1) == name)) do
+      nil -> {:error, Error.new(:invalid, "#{name} is not a node of this deployment.")}
+      node -> {:ok, node}
+    end
+  end
+
+  defp named(_name), do: {:error, Error.new(:invalid, "node is a node's name, as wardrik@host")}
 
   defp trigger(conn, key, name) do
     with {:ok, fields} <- object(conn.body_params),

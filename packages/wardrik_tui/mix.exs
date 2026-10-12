@@ -37,6 +37,7 @@ defmodule WardrikTUI.MixProject do
       {:breeze, "0.5.1"},
       {:termite_ssh, "~> 0.1.2"},
       {:owl, "~> 0.13"},
+      {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

@@ -24,12 +24,16 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Operations.ForgetAgents
   alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.ListParked
+  alias Wardrik.Operations.Move
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
   alias Wardrik.Operations.RemoveTrigger
   alias Wardrik.Operations.SetTrigger
+  alias Wardrik.Operations.Spawn
+  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Operations.Stop
   alias Wardrik.Principal
   alias Wardrik.Query
   alias Wardrik.Test.AgentRunners
@@ -97,6 +101,27 @@ defmodule Wardrik.OperationsTest do
           else: {:error, :not_found}
       end
     end
+
+    @impl true
+    def current(id) do
+      case get(id) do
+        {:ok, fields} -> {:ok, spec(id, fields)}
+        {:error, :not_found} -> :none
+      end
+    end
+
+    @impl true
+    def create(id) do
+      with {:ok, _spec} <- put(id, %{"model" => "openai:gpt-5"}, nil),
+           do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
+    end
+
+    defp spec(id, fields),
+      do:
+        Spec.new(
+          id: id,
+          config: Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
+        )
 
     def elsewhere, do: AgentID.parse!("test/elsewhere")
 
@@ -644,6 +669,109 @@ defmodule Wardrik.OperationsTest do
 
       assert {:error, %Error{type: :conflict}} =
                Command.run(%RemoveTrigger{agent: owned, name: "s"}, caller())
+    end
+  end
+
+  describe "stopping" do
+    test "puts an agent to sleep with its conversation, and leaves one asleep be" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:ok, %{"stopped" => [text]}} = Command.run(%Stop{agent: id}, caller())
+      assert text == to_string(id)
+      assert %{asleep: true} = Wardrik.Fleet.lookup(id)
+
+      assert {:ok, %{"stopped" => []}} = Command.run(%Stop{agent: id}, caller())
+      assert Audit.about("agents/#{id}") == [{"agent.stopped", @jon}]
+
+      assert {:error, %Error{type: :not_found}} =
+               Command.run(%Stop{agent: Fleet.id("nobody")}, caller())
+    end
+  end
+
+  describe "spawning" do
+    test "leaves an agent running as it is, and wakes one asleep" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:ok, %{"from" => "running"}} = Command.run(%Spawn{agent: id}, caller())
+      :ok = Wardrik.Fleet.stop(id)
+
+      assert {:ok, change} = Command.plan(%Spawn{agent: id}, caller())
+
+      assert Command.preview(change) == %{
+               "spawning" => %{"agent" => to_string(id), "from" => "store"}
+             }
+
+      assert {:ok, %{"from" => "store", "agent" => %{"asleep" => false}}} =
+               Command.make(change, caller())
+
+      assert Audit.about("agents/#{id}") == [{"agent.spawned", @jon}]
+    end
+
+    test "starts an agent on its definition, or defines one nothing defines" do
+      id = defined_id()
+
+      {:ok, _vsn} =
+        WardrikStore.put(:operations_test_definitions, to_string(id), %{"model" => "openai:gpt-5"})
+
+      assert {:ok, %{"from" => "definition"}} = Command.run(%Spawn{agent: id}, caller())
+      assert Agent.status(id).model == "openai:gpt-5"
+
+      fresh = defined_id("fresh")
+      assert {:ok, %{"from" => "new"}} = Command.run(%Spawn{agent: fresh}, caller())
+      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(fresh)
+
+      owned = defined_id("fresh-owned")
+
+      assert {:error, %Error{type: :conflict}} = Command.run(%Spawn{agent: owned}, caller())
+    end
+
+    test "finds nothing to start where nothing defines it and the host creates none" do
+      definitions(nil)
+
+      assert {:error, %Error{type: :not_found}} =
+               Command.run(%Spawn{agent: Fleet.id("nobody")}, caller())
+    end
+
+    test "on a node is the deployment's to choose" do
+      id = defined_id("placed")
+      root = Caller.root(Principal.new(:user, "jon", name: "Jon"))
+
+      assert {:ok, %{"from" => "new", "agent" => %{"node" => node}}} =
+               Command.run(%SpawnOn{agent: id, node: node()}, root)
+
+      assert node == to_string(node())
+
+      assert {:error, %Error{type: :forbidden}} =
+               Command.plan(%SpawnOn{agent: id, node: node()}, caller())
+
+      assert {:error, %Error{type: :invalid}} =
+               Command.plan(%SpawnOn{agent: id, node: :nowhere@nohost}, root)
+    end
+  end
+
+  describe "moving" do
+    test "leaves an agent on its node be, interrupting nothing" do
+      root = Caller.root(Principal.new(:user, "jon", name: "Jon"))
+      {id, _turn} = busy_agent()
+
+      assert {:ok, change} = Command.plan(%Move{agent: id, node: node()}, root)
+
+      assert Command.preview(change) == %{
+               "moving" => %{
+                 "agent" => to_string(id),
+                 "from" => to_string(node()),
+                 "to" => to_string(node())
+               }
+             }
+
+      assert {:ok, %{"agent" => _agent}} = Command.make(change, root)
+      assert Audit.about("agents/#{id}") == []
+
+      assert {:error, %Error{type: :forbidden}} =
+               Command.plan(%Move{agent: id, node: node()}, caller())
+
+      assert {:error, %Error{type: :not_found}} =
+               Command.plan(%Move{agent: Fleet.id("nobody"), node: node()}, root)
     end
   end
 

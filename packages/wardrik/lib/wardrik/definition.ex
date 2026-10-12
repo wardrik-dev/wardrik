@@ -1,11 +1,13 @@
 defmodule Wardrik.Definition do
   @moduledoc """
-  Where agents' definitions go: a definition as `wardrik_protocol`'s
-  `agent_definition.json` describes it, read into the `Wardrik.Agent.Spec` it
-  runs on, and the triggers beside it.
+  What every agent is, as the host keeps it: a definition as
+  `wardrik_protocol`'s `agent_definition.json` describes it, read into the
+  `Wardrik.Agent.Spec` it runs on, and the triggers beside it. It is where
+  an agent's spec comes from as it is defined, created, started or woken.
 
   A host names the module once, as `Wardrik`'s `:definitions`, and every
-  operation that defines an agent asks it, whichever surface it came from:
+  operation asks it, whichever surface it came from, as does
+  `Wardrik.Fleet` as a sleeping agent wakes:
 
       children = [{Wardrik, definitions: MyApp.Definitions}]
 
@@ -22,6 +24,9 @@ defmodule Wardrik.Definition do
   | `delete/1` | `Wardrik.Operations.Forget`, `ForgetAgents` | the agent is forgotten, and no definition with it |
   | `put_trigger/3` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
   | `delete_trigger/2` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
+  | `editable/1` | `Wardrik.Operations.Forget`, `ForgetAgents`, which keep what it refuses | every agent may be forgotten |
+  | `current/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, and an agent waking | an agent starts and wakes as it was stored |
+  | `create/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, for an agent nothing defines | such an agent is not found |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps it, and refuses the agents its files declare. A module
@@ -83,9 +88,43 @@ defmodule Wardrik.Definition do
   """
   @callback editable(id :: Wardrik.AgentID.t()) :: :ok | {:error, :conflict, String.t()}
 
-  @optional_callbacks get: 1, delete: 1, put_trigger: 3, delete_trigger: 2, editable: 1
+  @doc """
+  The spec the agent `id` runs on now, from the definition kept of it, or of
+  the agent it is a conversation of, or `:none` where none is kept. An agent
+  waking takes it, so a definition changed while it slept is the one it
+  wakes with, and one started takes it too.
+  """
+  @callback current(id :: Wardrik.AgentID.t()) :: {:ok, Wardrik.Agent.Spec.t()} | :none
 
-  @callbacks %{put: 3, get: 1, delete: 1, put_trigger: 3, delete_trigger: 2, editable: 1}
+  @doc """
+  Defines the agent `id`, which nothing defines yet, from what the host
+  gives every new agent, and answers the spec it runs on; or a message
+  saying why it cannot, or a conflict where something else already holds
+  what it would write.
+  """
+  @callback create(id :: Wardrik.AgentID.t()) ::
+              {:ok, Wardrik.Agent.Spec.t()}
+              | {:error, String.t()}
+              | {:error, :conflict, String.t()}
+
+  @optional_callbacks get: 1,
+                      delete: 1,
+                      put_trigger: 3,
+                      delete_trigger: 2,
+                      editable: 1,
+                      current: 1,
+                      create: 1
+
+  @callbacks %{
+    put: 3,
+    get: 1,
+    delete: 1,
+    put_trigger: 3,
+    delete_trigger: 2,
+    editable: 1,
+    current: 1,
+    create: 1
+  }
   @module {__MODULE__, :module}
 
   @doc """
@@ -109,6 +148,29 @@ defmodule Wardrik.Definition do
       {:ok, module} -> module.editable(id)
       :unsupported -> :ok
     end
+  end
+
+  @doc "The spec the agent `id` runs on now, as `c:current/1` answers it; `:none` where the host does not say."
+  @spec current(Wardrik.AgentID.t()) :: {:ok, Wardrik.Agent.Spec.t()} | :none
+  def current(id) do
+    case module(:current) do
+      {:ok, module} -> module.current(id)
+      :unsupported -> :none
+    end
+  end
+
+  @doc "Whether the host's module creates agents nothing defines yet."
+  @spec creates?() :: boolean()
+  def creates?, do: module(:create) != :unsupported
+
+  @doc "Defines the agent `id` as `c:create/1` does, or `:unsupported` where the host creates none."
+  @spec create(Wardrik.AgentID.t()) ::
+          {:ok, Wardrik.Agent.Spec.t()}
+          | {:error, String.t()}
+          | {:error, :conflict, String.t()}
+          | :unsupported
+  def create(id) do
+    with {:ok, module} <- module(:create), do: module.create(id)
   end
 
   @doc "Whether the host's module keeps a definition of the agent `id`; `false` where it keeps none."

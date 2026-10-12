@@ -178,6 +178,24 @@ export class Agent {
   }
 
   /**
+   * Starts the agent: wakes it, starts it on the definition the server keeps,
+   * or has the server define it. On `node`, only with a token over every agent.
+   */
+  async spawn(node?: string): Promise<void> {
+    await this.#http.send("POST", this.#path + "/spawn", { body: node ? { node } : {} });
+  }
+
+  /** Stops the agent, keeping its conversation; it wakes when something asks it. */
+  async stop(): Promise<void> {
+    await this.#http.send("POST", this.#path + "/stop");
+  }
+
+  /** Starts the agent again on `node`, with its conversation; a token over every agent only. */
+  async move(node: string): Promise<void> {
+    await this.#http.send("POST", this.#path + "/move", { body: { node } });
+  }
+
+  /**
    * Empties the agent's conversation, and with it the mark of content from
    * outside it held, which holds its gated tools' calls for a person until
    * then. Refused while the agent runs a turn or waits on a person.

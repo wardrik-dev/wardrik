@@ -3,7 +3,7 @@
 # The launcher calls the public modules listed below, never the internals.
 [
   layers: [
-    launcher: "Mix.Tasks.Wardrik",
+    launcher: ["Mix.Tasks.Wardrik", "Mix.Tasks.Wardrik.*"],
     demo: ["WardrikDemo", "WardrikDemo.*"]
   ],
   boundaries: [
@@ -20,7 +20,10 @@
       "Wardrik.Call.Ask",
       "Wardrik.Compaction",
       "Wardrik.Credential",
+      "Wardrik.Definition",
       "Wardrik.Delegation",
+      "Wardrik.Deployment",
+      "Wardrik.DeploymentOperation",
       "Wardrik.Event",
       "Wardrik.Event.Bus",
       "Wardrik.Event.Codec.Value",

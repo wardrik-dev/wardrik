@@ -26,6 +26,8 @@
       "Wardrik.Credential",
       "Wardrik.Definition",
       "Wardrik.Delegation",
+      "Wardrik.Deployment",
+      "Wardrik.DeploymentOperation",
       "Wardrik.Effect",
       "Wardrik.Error",
       "Wardrik.Event",

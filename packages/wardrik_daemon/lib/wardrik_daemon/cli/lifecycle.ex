@@ -34,21 +34,22 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   where the file is with `file/1`.
   """
 
-  alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Audit
   alias Wardrik.Command, as: Operation
-  alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.CancelAgents
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.ForgetAgents
+  alias Wardrik.Operations.ListAgents
+  alias Wardrik.Operations.Move
+  alias Wardrik.Operations.ReadAgent
+  alias Wardrik.Operations.Spawn
+  alias Wardrik.Operations.SpawnOn
+  alias Wardrik.Operations.Stop
+  alias Wardrik.Query
   alias WardrikConsole.Nodes
-  alias WardrikDaemon.AgentFile
-  alias WardrikDaemon.Agents
-  alias WardrikDaemon.CLI
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
 
@@ -141,27 +142,13 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp spawn_agent([name], opts) do
     with {:ok, key} <- key(name, opts),
-         {:ok, node} <- named_node(opts[:on]) do
-      path = Path.join([Agents.dir(), "agents", name <> ".md"])
-
-      cond do
-        member = awake(key) ->
-          {:ok, "#{key} runs already, on #{Nodes.display(member.node)}."}
-
-        file = WardrikDaemon.declared()[key] ->
-          restart(file, node, opts[:by])
-
-        Fleet.stored?(key) ->
-          resume(key, node, opts[:by])
-
-        File.exists?(path) ->
-          taken(path)
-
-        true ->
-          write(key, path, opts, node)
-      end
-    end
+         {:ok, node} <- named_node(opts[:on]),
+         {:ok, answer} <- Operation.run(spawning(key, node), opts[:caller]),
+         do: {:ok, spawned(answer, key, opts[:caller])}
   end
+
+  defp spawning(key, nil), do: %Spawn{agent: key}
+  defp spawning(key, node), do: %SpawnOn{agent: key, node: node}
 
   defp key(name, opts) do
     named = [
@@ -182,142 +169,36 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp restart({path, spec}, node, by) do
-    key = spec.id
+  defp spawned(%{"from" => "running", "agent" => agent}, key, _caller),
+    do: "#{key} runs already, on #{on(agent)}."
 
-    with :ok <- placed(key, Spec.options(spec), node) do
-      case Fleet.put(spec) do
-        {:ok, pid} ->
-          on = node(pid)
-          :ok = Audit.record({:agent_spawned, key, on}, by)
-          {:ok, "Started #{key} on #{Nodes.display(on)}, as #{shown(path)} declares it."}
+  defp spawned(%{"from" => "store", "agent" => agent}, key, _caller),
+    do: "Started #{key} on #{on(agent)} again, with its conversation."
 
-        {:error, reason} ->
-          {:error, "#{key} did not start: #{inspect(reason)}"}
-      end
+  defp spawned(%{"from" => "definition", "agent" => agent}, key, _caller) do
+    case WardrikDaemon.declared()[key] do
+      {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
+      nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
   end
 
-  # An agent stopped with no file declaring it starts from what it had.
-  defp resume(key, node, by) do
-    case Fleet.spawn(key, if(node, do: [node: node], else: [])) do
-      {:ok, pid} ->
-        on = node(pid)
-        :ok = Audit.record({:agent_spawned, key, on}, by)
-        {:ok, "Started #{key} on #{Nodes.display(on)} again, with its conversation."}
+  defp spawned(%{"from" => "new", "agent" => agent}, key, caller) do
+    {:ok, snapshot} = Query.run(%ReadAgent{agent: key}, caller)
+    {path, _spec} = WardrikDaemon.declared()[key]
 
-      {:error, reason} ->
-        {:error, not_started(key, reason, node)}
-    end
+    [
+      "Wrote #{shown(path)}, and started #{key} on #{on(agent)}, ",
+      "with #{model(snapshot)}.\n",
+      Owl.Data.tag("wardrik agent edit #{key} changes what it is for.", @faint)
+    ]
   end
 
-  defp taken(path) do
-    case Enum.find(WardrikDaemon.declared(), fn {_key, {file, _spec}} -> file == path end) do
-      {other, _file} ->
-        {:error, "#{shown(path)} is there already, and declares #{other}."}
+  defp on(%{"node" => node}), do: shown_node(node)
 
-      nil ->
-        {:error,
-         "#{shown(path)} is there already, and is kept as it is: wardrik reload reads it, " <>
-           "and wardrik status says why where it does not."}
-    end
-  end
+  defp model(%{"provider" => %{"name" => provider}, "request" => %{"model" => model}}),
+    do: "#{provider}:#{model}"
 
-  # The file is written only once the defaults are known to make an agent
-  # under the key, and never over one that is there.
-  defp write(key, path, opts, node) do
-    with {:ok, options} <- defaults(key),
-         :ok <- create(path, AgentFile.text(fields(opts))),
-         :ok <- placed(key, options, node) do
-      _reloaded = CLI.reload_all()
-      written(key, path, opts[:by])
-    end
-  end
-
-  defp create(path, text) do
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, text, [:exclusive]) do
-      :ok
-    else
-      {:error, reason} ->
-        {:error, "#{shown(path)} could not be written: #{:file.format_error(reason)}"}
-    end
-  end
-
-  defp defaults(key) do
-    case Agents.options(key) do
-      {:ok, options} ->
-        {:ok, options}
-
-      {:error, message} ->
-        {:error, "config.yaml's defaults do not make an agent for #{key}: #{message}"}
-    end
-  end
-
-  defp fields(opts) do
-    defaults = Agents.defaults()
-
-    for({key, value} <- [{"org", opts[:org]}, {"user", opts[:user]}], value, do: {key, value}) ++
-      for key <- WardrikDefinition.default_keys() -- ["idle_timeout"],
-          Map.has_key?(defaults, key),
-          do: {key, defaults[key]}
-  end
-
-  defp written(key, path, by) do
-    case List.keyfind(Agents.files(), path, 0) do
-      {^path, {:ok, spec}} ->
-        on = running_on(key)
-        :ok = Audit.record({:agent_spawned, key, on}, by)
-
-        {:ok,
-         [
-           "Wrote #{shown(path)}, and started #{key} on #{Nodes.display(on)}, ",
-           "with #{model(spec)}.\n",
-           Owl.Data.tag("wardrik agent edit #{key} changes what it is for.", @faint)
-         ]}
-
-      {^path, {:error, message}} ->
-        {:error, message}
-    end
-  end
-
-  defp running_on(key) do
-    case awake(key) do
-      nil -> node()
-      member -> member.node
-    end
-  end
-
-  # A sleeping agent runs nowhere; spawning it wakes it.
-  defp awake(key) do
-    case Fleet.lookup(key) do
-      %{asleep: false} = member -> member
-      _asleep_or_none -> nil
-    end
-  end
-
-  defp model(spec) do
-    case Value.model(spec.config.model_spec) do
-      {nil, model} -> model
-      {provider, model} -> "#{provider}:#{model}"
-    end
-  end
-
-  # An agent bound for a node is started there first; reading the files then
-  # finds it running.
-  defp placed(_key, _options, nil), do: :ok
-
-  defp placed(key, options, node) do
-    case Fleet.spawn(key, options ++ [node: node]) do
-      {:ok, _pid} -> :ok
-      {:error, reason} -> {:error, not_started(key, reason, node)}
-    end
-  end
-
-  defp not_started(key, {:erpc, reason}, node),
-    do: "#{key} did not start: #{Nodes.display(node)} could not be reached (#{inspect(reason)})"
-
-  defp not_started(key, reason, _node), do: "#{key} did not start: #{inspect(reason)}"
+  defp model(%{"request" => %{"model" => model}}), do: model
 
   # -- cancel and stop ------------------------------------------------------------
 
@@ -362,20 +243,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp stop([key], opts) do
-    case Fleet.stop(key) do
-      :ok ->
-        :ok = Audit.record({:agent_stopped, key}, opts[:by])
-        {:ok, stopped(key, WardrikDaemon.declared()[key])}
-
-      {:error, :noproc} ->
-        {:error, no_agent(key)}
-
-      {:error, reason} ->
-        {:error, "#{key} did not stop: #{inspect(reason)}"}
-    end
+    with {:ok, %{"stopped" => stopped}} <- Operation.run(%Stop{agent: key}, opts[:caller]),
+         do: {:ok, stopped(key, stopped)}
   end
 
-  defp stopped(key, _declared),
+  defp stopped(key, []),
+    do: "#{key} is asleep already. It wakes when something asks it, or with #{spawn_line(key)}."
+
+  defp stopped(key, [_key]),
     do:
       "Stopped #{key}, and kept its conversation. It wakes when something asks it, or with " <>
         "#{spawn_line(key)}."
@@ -454,87 +329,89 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # -- move ---------------------------------------------------------------------
 
   defp move([key | named], opts) do
-    with {:ok, member} <- member(key),
-         {:ok, node} <- destination(member, named, nil) do
-      cond do
-        node == member.node -> {:ok, "#{key} runs on #{Nodes.display(node)} already."}
-        member.status == :idle or opts[:yes] -> moved(key, node, opts[:by])
-        true -> :live
-      end
-    end
+    with {:ok, node} <- destination(key, named, nil, opts[:caller]),
+         {:ok, change} <- Operation.plan(%Move{agent: key, node: node}, opts[:caller]),
+         do: moving(change, opts, nil)
   end
 
   defp move_asked([key | named], opts, terminal) do
-    with {:ok, member} <- member(key),
-         {:ok, node} <- destination(member, named, terminal) do
-      cond do
-        node == member.node -> {:ok, "#{key} runs on #{Nodes.display(node)} already."}
-        member.status == :idle or opts[:yes] -> moved(key, node, opts[:by])
-        terminal.input? -> confirmed(member, node, terminal, opts[:by])
-        true -> {:error, "#{interrupting(member)} #{move_line(key, node)} --yes moves it anyway."}
+    with {:ok, node} <- destination(key, named, terminal, opts[:caller]),
+         {:ok, change} <- Operation.plan(%Move{agent: key, node: node}, opts[:caller]),
+         do: moving(change, opts, terminal)
+  end
+
+  # Moving an agent that is doing nothing goes ahead; one taking a turn, or
+  # waiting on a person, is moved only once someone agrees, or with --yes.
+  defp moving(change, opts, terminal) do
+    %{"moving" => %{"agent" => key, "to" => to} = moving} = Operation.preview(change)
+
+    cond do
+      moving["from"] == to -> {:ok, "#{key} runs on #{shown_node(to)} already."}
+      not is_map_key(moving, "interrupting") or opts[:yes] -> moved(change, opts[:caller])
+      terminal == nil -> :live
+      terminal.input? -> confirmed(change, moving, terminal, opts[:caller])
+      true -> {:error, "#{interrupting(moving)} #{move_line(key, to)} --yes moves it anyway."}
+    end
+  end
+
+  defp confirmed(change, %{"to" => to} = moving, terminal, caller) do
+    Terminal.puts(terminal, interrupting(moving))
+
+    if Owl.IO.confirm(message: "Move it to #{shown_node(to)}?", default: false),
+      do: moved(change, caller),
+      else: {:ok, "Nothing was moved."}
+  end
+
+  defp move_line(key, node), do: "wardrik agent move #{key} #{shown_node(node)}"
+
+  # The node a move is for: the one named, or one asked for where none is,
+  # which needs the terminal.
+  defp destination(_key, [name], _terminal, _caller), do: named_node(name)
+
+  defp destination(_key, [], nil, _caller), do: :live
+
+  defp destination(key, [], terminal, caller) do
+    with {:ok, from} <- running_on(key, caller) do
+      case Enum.reject(WardrikDaemon.daemons(), &(to_string(&1) == from)) do
+        [] ->
+          {:error, "#{shown_node(from)} is the only node, so there is nowhere to move #{key} to."}
+
+        others when terminal.input? ->
+          {:ok,
+           Owl.IO.select(others,
+             label: "Move #{key} from #{shown_node(from)} to which node?",
+             render_as: &Nodes.display/1
+           )}
+
+        others ->
+          {:error,
+           "wardrik agent move asks which node only where someone can answer; name it, as in " <>
+             "#{move_line(key, hd(others))}. The nodes are #{nodes(others)}."}
       end
     end
   end
 
-  defp confirmed(member, node, terminal, by) do
-    Terminal.puts(terminal, interrupting(member))
+  # The node the agent `key` runs on, as the fleet lists it.
+  defp running_on(key, caller) do
+    {:ok, %{"agents" => agents}} = Query.run(%ListAgents{prefix: Prefix.of(key)}, caller)
 
-    if Owl.IO.confirm(message: "Move it to #{Nodes.display(node)}?", default: false),
-      do: moved(member.id, node, by),
-      else: {:ok, "Nothing was moved."}
-  end
-
-  defp move_line(key, node), do: "wardrik agent move #{key} #{Nodes.display(node)}"
-
-  defp member(key) do
-    case Fleet.lookup(key) do
+    case Enum.find(agents, &(&1["id"] == to_string(key))) do
       nil -> {:error, no_agent(key)}
-      member -> {:ok, member}
+      agent -> {:ok, agent["node"]}
     end
   end
 
-  # The node a move is for: the one named, or one asked for where none is,
-  # which needs the terminal.
-  defp destination(_member, [name], _terminal), do: named_node(name)
-
-  defp destination(_member, [], nil), do: :live
-
-  defp destination(member, [], terminal) do
-    case CLI.daemons() -- [member.node] do
-      [] ->
-        {:error,
-         "#{Nodes.display(member.node)} is the only node, so there is nowhere to move " <>
-           "#{member.id} to."}
-
-      others when terminal.input? ->
-        {:ok,
-         Owl.IO.select(others,
-           label: "Move #{member.id} from #{Nodes.display(member.node)} to which node?",
-           render_as: &Nodes.display/1
-         )}
-
-      others ->
-        {:error,
-         "wardrik agent move asks which node only where someone can answer; name it, as in " <>
-           "#{move_line(member.id, hd(others))}. The nodes are #{nodes(others)}."}
-    end
-  end
-
-  defp interrupting(%{status: :running, id: key}),
+  defp interrupting(%{"agent" => key, "interrupting" => "turn"}),
     do: "#{key} is taking a turn, which moving it ends; what it has said so far is kept."
 
-  defp interrupting(%{id: key}),
+  defp interrupting(%{"agent" => key}),
     do: "#{key} is waiting on a person, and moving it abandons what it waits for."
 
-  defp moved(key, node, by) do
-    case Fleet.move(key, node) do
-      {:ok, _pid} ->
-        :ok = Audit.record({:agent_moved, key, node}, by)
-        {:ok, "Moved #{key} to #{Nodes.display(node)}, with its conversation."}
+  defp moved(change, caller) do
+    %{"moving" => %{"agent" => key, "to" => to}} = Operation.preview(change)
 
-      {:error, reason} ->
-        {:error, "#{key} was not moved: #{inspect(reason)}"}
-    end
+    with {:ok, _answer} <- Operation.make(change, caller),
+         do: {:ok, "Moved #{key} to #{shown_node(to)}, with its conversation."}
   end
 
   # -- edit ---------------------------------------------------------------------
@@ -565,7 +442,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp named_node(nil), do: {:ok, nil}
 
   defp named_node(name) do
-    daemons = CLI.daemons()
+    daemons = WardrikDaemon.daemons()
 
     case Nodes.find(name, daemons) do
       nil -> {:error, "No node #{name} runs wardrik; the nodes are #{nodes(daemons)}."}
@@ -574,6 +451,16 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp nodes(daemons), do: daemons |> Enum.map(&Nodes.display/1) |> listed()
+
+  # A node an answer names, as a person reads it.
+  defp shown_node(node) when is_atom(node), do: Nodes.display(node)
+
+  defp shown_node(name) when is_binary(name) do
+    case Nodes.find(name, WardrikDaemon.daemons()) do
+      nil -> name
+      node -> Nodes.display(node)
+    end
+  end
 
   defp prefix?(target), do: match?(%Prefix{}, target)
 

@@ -1,5 +1,7 @@
 Mimic.copy(WardrikDaemon.AgentFile)
 Mimic.copy(WardrikDaemon.CLI)
+Mimic.copy(WardrikDaemon)
+Mimic.copy(Wardrik.Deployment)
 Mimic.copy(Wardrik.Fleet)
 Mimic.copy(WardrikStore)
 Mimic.copy(ReqLLM)

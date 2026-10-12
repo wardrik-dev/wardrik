@@ -241,6 +241,23 @@ defmodule WardrikDaemon do
         do: {spec.id, {path, spec}}
   end
 
+  @doc "Has every node running a daemon read the agent and policy files again, and answers which did."
+  @spec reload_all() :: [node()]
+  def reload_all do
+    for daemon <- daemons() do
+      _files = :erpc.call(daemon, WardrikDaemon.Agents, :reload, [], :timer.minutes(1))
+      daemon
+    end
+  end
+
+  @doc "This node and every node connected to it that runs a daemon of its own."
+  @spec daemons() :: [node()]
+  def daemons do
+    for daemon <- [node() | Node.list()],
+        :erpc.call(daemon, Process, :whereis, [WardrikDaemon.Agents]) != nil,
+        do: daemon
+  end
+
   @doc """
   What the agent `key` has spent of each budget the spec its kept definition
   writes gives it, as its budgets say it; nothing where none is kept.

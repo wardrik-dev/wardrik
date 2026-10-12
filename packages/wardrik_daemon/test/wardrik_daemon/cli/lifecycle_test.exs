@@ -116,14 +116,21 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert Audit.about("agents/#{key}") == [{"agent.spawned", @ops}]
     end
 
-    test "puts an agent with a user, on the node named", %{dir: dir, org: org, here: here} do
+    test "puts an agent with a user in a file of its own, on the node named", %{
+      dir: dir,
+      org: org,
+      here: here
+    } do
       key = AgentID.parse!("#{org}/@jon/digest")
 
       {output, 0} =
         command(["agent", "spawn", "digest", "--org", org, "--user", "jon", "--on", here])
 
-      assert output =~ "Wrote agents/digest.md, and started #{key} on #{here}"
-      assert File.read!(Path.join(dir, "agents/digest.md")) =~ "---\norg: #{org}\nuser: jon\n"
+      assert output =~ "Wrote agents/jon-digest.md, and started #{key} on #{here}"
+
+      assert File.read!(Path.join(dir, "agents/jon-digest.md")) =~
+               "---\nname: digest\norg: #{org}\nuser: jon\n"
+
       assert Fleet.lookup(key).node == node()
 
       assert command(["agent", "spawn", "other", "--on", "nowhere"]) ==
@@ -353,8 +360,10 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   end
 
   describe "move" do
+    # A second node, which Wardrik.Fleet.move/2 is stubbed to reach.
     setup do
-      stub(CLI, :daemons, fn -> [node(), :wardrik_b@localhost] end)
+      stub(WardrikDaemon, :daemons, fn -> [node(), :wardrik_b@localhost] end)
+      stub(Wardrik.Deployment, :node, fn _node -> :ok end)
       :ok
     end
 
@@ -431,13 +440,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                "#{key} is taking a turn, which moving it ends; what it has said so far is kept."
 
       assert command(["agent", "move", key, "b", "--yes"]) ==
-               {"#{key} was not moved: :no_capacity\n", 1}
+               {"#{key} did not move to wardrik_b@localhost: :no_capacity\n", 1}
 
       send(runner, :release)
     end
 
     test "says where there is nowhere to move to", %{org: org, here: here} do
-      stub(CLI, :daemons, fn -> [node()] end)
+      stub(WardrikDaemon, :daemons, fn -> [node()] end)
       key = agent(org, "mover")
 
       assert live(["agent", "move", key]) ==
