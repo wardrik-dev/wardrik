@@ -161,6 +161,11 @@ and those it keeps, such as one an agent file declares, with why. Any route that
 takes it. `GET /v1/agents?prefix=acme/` lists the agents under a prefix, and `GET /v1/interrupts`
 the calls they wait on a person for.
 
+`POST .../stop` puts an agent to sleep with its conversation, and `POST .../spawn` starts it again,
+or starts one the server defines, or has the server define a new one as `wardrik agent spawn` does.
+Where an agent runs is the deployment's to say: `POST .../move` with `{"node": "wardrik@box2"}`,
+or `spawn` with a node, takes a token over every agent.
+
 A definition's `triggers` lists the agent's triggers, and one is put or removed at
 `/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).
 

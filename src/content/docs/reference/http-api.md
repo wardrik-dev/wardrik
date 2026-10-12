@@ -92,6 +92,9 @@ agent with is its key.
 | `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202`; an agent taking no turn is left as it is |
+| `POST /v1/agents/{key}/spawn` | starts the agent: wakes it, starts it on its definition, or has the server define it; with `{"node": ...}`, on that node, to a token over every agent |
+| `POST /v1/agents/{key}/stop` | stops the agent, keeping its conversation, so it sleeps until something asks it |
+| `POST /v1/agents/{key}/move` | starts the agent again on `{"node": ...}`, with its conversation, to a token over every agent |
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
 | `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
