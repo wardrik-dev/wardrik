@@ -114,7 +114,7 @@ Empty an agent's conversation, and the labels of what it read.
 wardrik clear KEY
 ```
 
-An agent whose conversation holds content from outside asks a person before each gated call until it is cleared. Its files, schedules and config stay. Refused while it runs a turn or waits on a person.
+An agent whose conversation holds content from outside asks a person before each gated call until it is cleared. Its files, triggers and config stay. Refused while it runs a turn or waits on a person.
 
 ## wardrik ls
 
@@ -134,12 +134,12 @@ One agent in full: what it has and what it is doing.
 wardrik show KEY
 ```
 
-## wardrik schedules
+## wardrik triggers
 
-When each schedule runs next, and how it last ran.
+When each trigger runs next, and how it last ran.
 
 ```sh
-wardrik schedules [PREFIX]
+wardrik triggers [PREFIX]
 ```
 
 ## wardrik agent spawn
@@ -174,7 +174,7 @@ Anything asked of it by its key wakes it, as does wardrik agent spawn. wardrik a
 
 ## wardrik agent rm
 
-Remove an agent, its conversation and its schedules, for good.
+Remove an agent, its conversation and its triggers, for good.
 
 ```sh
 wardrik agent rm KEY|PREFIX/ [--yes]

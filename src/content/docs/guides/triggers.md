@@ -1,18 +1,18 @@
 ---
-title: Run an agent on a schedule
+title: Trigger an agent
 description: Ask an agent something on a clock, with cron or an interval, and give it a checklist it can edit.
 sidebar:
   order: 1
 ---
 
-An agent can be asked something on a clock. A schedule is part of the agent's definition, here its
-agent file:
+A trigger asks an agent something when it comes round, here on a clock. An agent's triggers are
+part of its definition, here its agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
 model: anthropic:claude-sonnet-5
 tools: [linear/*]
-schedule:
+triggers:
   - name: sweep
     every: 30m
     prompt: Check the incident queue, and say what is new.
@@ -23,23 +23,23 @@ schedule:
 You watch the incident queue.
 ```
 
-Read the agent files again, and see when each schedule runs:
+Read the agent files again, and see when each trigger runs:
 
 ```sh
 wardrik reload
-wardrik schedules
+wardrik triggers
 ```
 
 ```
-2 schedules:
+2 triggers:
   default/triage/digest  0 17 * * 1-5  next in 3h 12m  not run yet
   default/triage/sweep  every 30m  next in 29m  not run yet
 ```
 
 `wardrik status` and `wardrik ls` show when each agent next runs, and `wardrik show` lists its
-schedules.
+triggers.
 
-A scheduled run is an ordinary message to the agent. It is in the agent's history like any other,
+A triggered run is an ordinary message to the agent. It is in the agent's history like any other,
 and `wardrik watch` follows it.
 
 ## When it runs
@@ -61,10 +61,10 @@ Fields take numbers only: `MON` and `JAN` are not read. Where both the day of th
 of the week are given, a day matching either runs.
 
 **An interval** is a number and a unit, `s`, `m`, `h` or `d`, of at least a minute: `30m`, `2h`,
-`1d`. It is measured from when the schedule was set or last ran, not from the top of the hour, so
+`1d`. It is measured from when the trigger was set or last ran, not from the top of the hour, so
 `1d` set at 14:20 runs at 14:20.
 
-`jitter` adds up to that many seconds to each run, so several schedules on the same minute do not
+`jitter` adds up to that many seconds to each run, so several triggers on the same minute do not
 all ask at once:
 
 ```yaml
@@ -72,14 +72,14 @@ every: "0 * * * *"
 jitter: 120
 ```
 
-A new schedule runs first when it next comes round, not as soon as it is set.
+A new trigger runs first when it next comes round, not as soon as it is set.
 
 ## When the agent is busy
 
 By default a run that finds the agent running a turn, or waiting on a person, lets it be, and
-`wardrik schedules` says the run was skipped. `overlap: queue` asks it anyway:
+`wardrik triggers` says the run was skipped. `overlap: queue` asks it anyway:
 
-- a running turn stops at its next step, and the scheduled message is answered in the turn after,
+- a running turn stops at its next step, and the triggered message is answered in the turn after,
   with what the running one left;
 - an agent waiting on a person answers it once what it waits on is decided.
 
@@ -90,7 +90,7 @@ overlap: queue
 ## When the daemon was down
 
 A run more than a minute late, because the daemon was stopped or every node was lost, runs once when
-the schedule is next running, however many runs were missed. `missed: skip` lets them go instead:
+the trigger is next running, however many runs were missed. `missed: skip` lets them go instead:
 
 ```yaml
 missed: skip
@@ -110,10 +110,10 @@ done, or note when to look again. It needs `files` in its tools:
 ```yaml
 tools: [files, linear/*]
 context: [MEMORY.md]
-schedule:
-  name: heartbeat
-  every: 30m
-  prompt_file: HEARTBEAT.md
+triggers:
+  - name: heartbeat
+    every: 30m
+    prompt_file: HEARTBEAT.md
 ```
 
 The file is read as the run happens, so one that does not exist yet is the agent's to find out
@@ -132,41 +132,41 @@ See [Send notices](/guides/notices/) for the targets.
 
 ## In a cluster
 
-A schedule runs once in the cluster, on whichever node holds it. Its next run is written to the
+A trigger runs once in the cluster, on whichever node holds it. Its next run is written to the
 store before the agent is asked, so each run happens once, and when its node is lost it carries on
 from the store on another.
 
-## Changing and removing schedules
+## Changing and removing triggers
 
-`wardrik reload` gives each agent the schedules its file lists now and removes the others. A changed
+`wardrik reload` gives each agent the triggers its file lists now and removes the others. A changed
 `every` starts counting again from the reload; a changed prompt, `overlap`, `missed` or `jitter`
-keeps the next run where it was. Removing `schedule` from a file removes all of that agent's
-schedules.
+keeps the next run where it was. Removing `triggers` from a file removes all of that agent's
+triggers.
 
 ## Over HTTP
 
-An agent defined over the HTTP API lists its schedules in its definition, as a file does:
+An agent defined over the HTTP API lists its triggers in its definition, as a file does:
 
 ```sh
 curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
   http://127.0.0.1:4747/v1/agents/acme/triage \
   -d '{"instructions": "You watch the incident queue.", "tools": ["linear/*"],
-       "schedule": [{"name": "sweep", "every": "30m", "prompt": "Check the incident queue."}]}'
+       "triggers": [{"name": "sweep", "every": "30m", "prompt": "Check the incident queue."}]}'
 ```
 
-Putting the definition again gives the agent the schedules it lists then, and removes the others.
-One schedule is set or removed at a time with a token that can `define`, which changes the
+Putting the definition again gives the agent the triggers it lists then, and removes the others.
+One trigger is set or removed at a time with a token that can `define`, which changes the
 definition the daemon keeps:
 
 ```sh
 curl -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/json" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/digest \
+  http://127.0.0.1:4747/v1/agents/acme/triage/triggers/digest \
   -d '{"every": "0 17 * * 1-5", "prompt": "Write up what happened today."}'
 
 curl -X DELETE -H "authorization: Bearer $TOKEN" \
-  http://127.0.0.1:4747/v1/agents/acme/triage/schedules/digest
+  http://127.0.0.1:4747/v1/agents/acme/triage/triggers/digest
 ```
 
-The body is one schedule without its `name`, which is the path's. `GET .../definition` lists the
-schedules as they stand. An agent with no definition kept answers `404`, and one a file declares
-has the schedules its file lists: the HTTP API refuses, with `409`, to change them.
+The body is one trigger without its `name`, which is the path's. `GET .../definition` lists the
+triggers as they stand. An agent with no definition kept answers `404`, and one a file declares
+has the triggers its file lists: the HTTP API refuses, with `409`, to change them.

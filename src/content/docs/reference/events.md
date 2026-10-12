@@ -313,40 +313,6 @@ A run began, answering the messages it lists. None for a run carried on after a 
 | --- | --- | --- | --- |
 | `run` | [run](#run) | yes |  |
 
-### `wardrik.schedule.removed`
-
-Someone removed one of an agent's schedules.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `agent` | object | yes |  |
-| `agent.id` | string | yes | The agent's ID. |
-| `schedule` | object | yes |  |
-| `schedule.name` | string | yes |  |
-| `actor` | [principal](#principal) |  |  |
-
-### `wardrik.schedule.set`
-
-Someone set one of an agent's schedules.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `agent` | object | yes |  |
-| `agent.id` | string | yes | The agent's ID. |
-| `schedule` | object | yes |  |
-| `schedule.name` | string | yes |  |
-| `actor` | [principal](#principal) |  |  |
-
-### `wardrik.schedule.triggered`
-
-A schedule came due.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `schedule` | object | yes |  |
-| `schedule.name` | string | yes |  |
-| `status` | string | yes | One of `asked`, `nothing_new`, `busy`, `no_agent`, `missed`, `failed`. |
-
 ### `wardrik.secret.removed`
 
 Someone took a secret out of the vault.
@@ -488,6 +454,40 @@ A tool call began.
 | --- | --- | --- | --- |
 | `tool` | [tool](#tool) | yes |  |
 | `decided` | [decided](#decided) | yes |  |
+
+### `wardrik.trigger.fired`
+
+A trigger came due.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `trigger` | object | yes |  |
+| `trigger.name` | string | yes |  |
+| `status` | string | yes | One of `asked`, `nothing_new`, `busy`, `no_agent`, `missed`, `failed`. |
+
+### `wardrik.trigger.removed`
+
+Someone removed one of an agent's triggers.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `trigger` | object | yes |  |
+| `trigger.name` | string | yes |  |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.trigger.set`
+
+Someone set one of an agent's triggers.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agent` | object | yes |  |
+| `agent.id` | string | yes | The agent's ID. |
+| `trigger` | object | yes |  |
+| `trigger.name` | string | yes |  |
+| `actor` | [principal](#principal) |  |  |
 
 ## Shared types
 

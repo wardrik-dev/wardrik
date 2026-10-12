@@ -74,5 +74,5 @@ streams what they do as [events](/reference/events/).
 - [Policy and approvals](/concepts/policy/): what an agent's tool calls may do, and which wait on a
   person.
 - [Connect MCP servers](/guides/mcp/): give agents the tools of the services you use.
-- [Run an agent on a schedule](/guides/schedules/): ask it something on a clock.
+- [Trigger an agent](/guides/triggers/): ask it something on a clock.
 - [Agent files](/reference/agent-files/): every key an agent file takes.

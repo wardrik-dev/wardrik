@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Everything the daemon keeps is in one store: agents and their conversations, schedules, the event
+Everything the daemon keeps is in one store: agents and their conversations, triggers, the event
 log, agents' files, the ledger, tokens, sealed credentials, and the tools MCP servers listed. Where
 the store is decides what a node needs to carry on.
 
@@ -74,7 +74,7 @@ Each kind of record has a namespace of its own:
 
 | Namespace | What |
 | --- | --- |
-| `durable` | agents, as `agents/<key>`; schedules; budget meters; each node's heartbeat |
+| `durable` | agents, as `agents/<key>`; triggers; budget meters; each node's heartbeat |
 | `events` | each agent's event log, for 30 days |
 | `files` | agents' files, as `<tree>//<path>` |
 | `claims` | the ledger, until each turn ends |

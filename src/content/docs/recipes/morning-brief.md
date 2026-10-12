@@ -62,10 +62,10 @@ description: Posts a brief each weekday morning.
 model: anthropic:claude-sonnet-5
 tools: [web_search, github/*, files]
 context: [FOLLOWING.md]
-schedule:
-  name: morning
-  every: "30 6 * * 1-5"     # 06:30 UTC, Monday to Friday
-  prompt: Write this morning's brief.
+triggers:
+  - name: morning
+    every: "30 6 * * 1-5"     # 06:30 UTC, Monday to Friday
+    prompt: Write this morning's brief.
 notify: {to: [brief], on: [finished, failed]}
 policy:
   budget: {usd: 1.00, per: day, on_exhausted: deny}
@@ -92,12 +92,12 @@ wardrik ask brief "Write this morning's brief now."
 ```
 
 Both answers reach Slack as well, since every turn the agent finishes is sent there; the second is
-what each morning brings. `wardrik schedules` says when it runs next.
+what each morning brings. `wardrik triggers` says when it runs next.
 
 ## What it shows
 
-- **A schedule.** `every` is cron, in UTC, and a run missed while the daemon was down runs once
-  when it comes back. See [Run an agent on a schedule](/guides/schedules/).
+- **A trigger.** `every` is cron, in UTC, and a run missed while the daemon was down runs once
+  when it comes back. See [Trigger an agent](/guides/triggers/).
 - **Notices.** `finished` sends what each turn answered to the target, which suits an agent whose
   answers someone reads elsewhere. See [Send notices](/guides/notices/).
 - **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you can change by telling the

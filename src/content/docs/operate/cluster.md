@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Several daemons can run as one cluster. Their agents, schedules and store span every node, any
+Several daemons can run as one cluster. Their agents, triggers and store span every node, any
 node answers for all of them, and the agents of a node that is lost carry on on another, waiting
 on the same calls they were waiting on.
 

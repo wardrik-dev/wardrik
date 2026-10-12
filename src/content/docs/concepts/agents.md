@@ -60,8 +60,8 @@ API.
   the trees its token's scope covers. See [Use the HTTP API](/guides/http-api/).
 
 An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
-refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
-`wardrik reload` stops the agent and clears its schedules, and so does changing the file's `name`.
+refuses, with `409`, to define it, remove it or change its triggers. Removing the file and running
+`wardrik reload` stops the agent and clears its triggers, and so does changing the file's `name`.
 The agent keeps its conversation and the definition it last had, so a file that declares it again
 brings it back as it was. Stopped, it [sleeps](#sleeping): anything asked of it by its key wakes it,
 with the definition it last had where no file declares it any more. To be rid of it, `wardrik agent
@@ -144,7 +144,7 @@ An agent with nothing to do for 15 minutes writes itself down and stops, so it c
 is needed. It sleeps only once no turn is running and no message waits; a turn parked on a person
 does not keep it awake. Anything asked of it by its key wakes it, on whichever node, as it was:
 
-- a message, from a channel, the HTTP API, `wardrik ask` or a schedule;
+- a message, from a channel, the HTTP API, `wardrik ask` or a trigger;
 - a decision on a call it parked, or an account connected that a call waited on;
 - a client attaching, or reading what it is doing.
 
@@ -179,7 +179,7 @@ model can read. See [Durable runs](/concepts/durable-runs/#a-history-that-grows)
 as a sleeping agent wakes, and a turn already running finishes with what it started with.
 
 `wardrik clear AGENT` empties the conversation of an agent that is not running a turn or waiting on
-a person, keeping its files, schedules and config. It is how an agent that read content from outside
+a person, keeping its files, triggers and config. It is how an agent that read content from outside
 is rid of it: until then, its gated tools ask a person on every turn. See
 [Policy and approvals](/concepts/policy/#content-from-outside).
 

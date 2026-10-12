@@ -14,7 +14,7 @@ export default defineConfig({
 	// Flags such as --node stay two hyphens, not a dash.
 	markdown: { smartypants: false },
 	// Pages that moved, from where links to them may still point.
-	redirects: { '/guides/slack/': '/channels/slack/' },
+	redirects: { '/guides/slack/': '/channels/slack/', '/guides/schedules/': '/guides/triggers/' },
 	integrations: [
 		starlight({
 			title: 'Wardrik',

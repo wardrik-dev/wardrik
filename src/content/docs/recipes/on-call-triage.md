@@ -118,10 +118,10 @@ tools: [linear/*, github/*, runbooks/*, files]
 context: [MEMORY.md]
 policy: oncall
 timeout: 900
-schedule:
-  name: sweep
-  every: 5m
-  prompt: Look for new incidents.
+triggers:
+  - name: sweep
+    every: 5m
+    prompt: Look for new incidents.
 notify: oncall
 ---
 You give the first response to incidents for acme's on-call engineers.
@@ -218,7 +218,7 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 
 ## Taking it further
 
-- Point a second schedule at a weekly review: `every: "0 9 * * 1"`, asking for what the week's
+- Point a second trigger at a weekly review: `every: "0 9 * * 1"`, asking for what the week's
   incidents had in common, and keep the answer in a file the team reads.
 - Give the agent a runbook step it may take without asking, such as restarting one service, as a
   [tool worker](/guides/tool-workers/) whose tool the policy allows by name.

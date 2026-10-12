@@ -111,8 +111,8 @@ says so in its log, and tries again every five seconds.
 `wardrik parked` what each waits on: a call to approve, an account to connect, or a budget spent.
 `wardrik show KEY` says why an agent's last turn failed.
 
-**A schedule did not run.** `wardrik schedules` says how each last ran: asked, skipped because the
-agent was busy, or a missed run let go.
+**A trigger did not run.** `wardrik triggers` says how each last ran: asked, found nothing new,
+skipped because the agent was busy, or a missed run let go.
 
 **A token gets `503`.** The node cannot read tokens from the store just now, as in a cluster without
 a quorum.

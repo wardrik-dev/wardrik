@@ -41,8 +41,8 @@ notify: {to: [ops], on: [parked, failed, finished]}
 **Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
 turn had read content from outside first, and its arguments. In Slack, each call has
 [Approve and Deny](/channels/slack/#what-a-notice-says-in-slack) buttons. **Failed:** why the turn
-failed. **Finished:** what the turn answered, which suits an agent on a
-[schedule](/guides/schedules/).
+failed. **Finished:** what the turn answered, which suits an agent a
+[trigger](/guides/triggers/) asks.
 
 A turn waiting on several calls sends a notice again when some are decided and others still wait.
 

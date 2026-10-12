@@ -42,7 +42,7 @@ with no frontmatter is all prompt.
 | `idle_timeout` | how many seconds it may have nothing to do before it sleeps, or `infinity`; `config.yaml`'s `defaults` when absent, and 900 where they set none. A sleeping agent wakes when something asks it; see `Wardrik.Agent` |
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
-| `schedule` | when it is asked something on a clock; see below |
+| `triggers` | when it is asked something on a clock; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
 | `channels` | the chat channels it may be chosen to answer in; see below |
 
@@ -144,12 +144,12 @@ for a tool whose calls may follow what a stranger wrote:
 See `WardrikPolicy`. A definition over HTTP cannot write one in place,
 though it may name a policy in `policies/` that has one.
 
-## Schedule
+## Triggers
 
-`schedule` is one schedule or a list of them, each a `WardrikSchedule`,
+`triggers` is one trigger or a list of them, each a `WardrikTrigger`,
 that ask the agent, and none of its conversations, on a clock:
 
-    schedule:
+    triggers:
       - name: sweep
         every: "*/30 * * * *"
         prompt: Check the incident queue.
@@ -163,10 +163,10 @@ that ask the agent, and none of its conversations, on a clock:
     `2h` or `1d`
   * `prompt` - what the agent is asked
   * `prompt_file` - in place of `prompt`, a file in its workspace: each time
-    the schedule fires the agent is asked to read it and do what it says,
+    the trigger fires the agent is asked to read it and do what it says,
     so the agent can edit the checklist it follows. It needs `files` in
     `tools`
-  * `name` - the schedule's name, `schedule-1`, `schedule-2` and so on by
+  * `name` - the trigger's name, `trigger-1`, `trigger-2` and so on by
     its place in the list when absent
   * `overlap` - `skip`, the default, leaves an agent that is running or
     waiting on a person be, and `queue` asks it anyway
@@ -216,9 +216,9 @@ as it does a file's:
 `wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
 mean in a file. The ID gives the agent's `name`, `org` and `user`. A
-definition has no `notify`. Its `schedule` lists the agent's schedules as
-a file's does, and `put_schedule/3` and `delete_schedule/2` change one of
-them in a definition kept, for the schedules routes. Its `tools` and
+definition has no `notify`. Its `triggers` lists the agent's triggers as
+a file's does, and `put_trigger/3` and `delete_trigger/2` change one of
+them in a definition kept, for the triggers routes. Its `tools` and
 `policy` name what the daemon ships or configures, and never a module,
 and its `workspace` shares only the trees the scope of the token that
 sent it covers.
