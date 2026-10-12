@@ -262,6 +262,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `timeout` | integer |  | How many seconds a turn may take. |
 | `idle_timeout` | integer or `"infinity"` |  | How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
+| `retries` | array of integer |  | How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
 | `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. |
 | `channels` | array of string |  | The chat channels, as config.yaml names them, it may be chosen to answer in. |
