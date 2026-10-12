@@ -34,13 +34,17 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   where the file is with `file/1`.
   """
 
-  alias Wardrik.Agent
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Command, as: Operation
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
+  alias Wardrik.Operations.Cancel
+  alias Wardrik.Operations.CancelAgents
+  alias Wardrik.Operations.Forget
+  alias Wardrik.Operations.ForgetAgents
   alias WardrikConsole.Nodes
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.Agents
@@ -317,53 +321,38 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   # -- cancel and stop ------------------------------------------------------------
 
-  defp cancel([], opts),
-    do: if(opts[:all], do: cancel_under(Prefix.all(), opts[:by]), else: {:error, :usage})
+  defp cancel([], opts) do
+    if opts[:all],
+      do: cancelled(%CancelAgents{prefix: Prefix.all()}, opts[:caller]),
+      else: {:error, :usage}
+  end
 
   defp cancel([target], opts) do
     cond do
       opts[:all] -> {:error, :usage}
-      prefix?(target) -> cancel_under(target, opts[:by])
-      true -> cancel_one(target, opts[:by])
+      prefix?(target) -> cancelled(%CancelAgents{prefix: target}, opts[:caller])
+      true -> cancelled(%Cancel{agent: target}, opts[:caller])
     end
   end
 
-  defp cancel_one(key, by) do
-    with %{status: status} when status != :idle <- Fleet.lookup(key),
-         :ok <- Agent.interrupt(key) do
-      :ok = Audit.record({:agent_cancelled, key}, by)
-      {:ok, cancelled(key, status)}
-    else
-      %{status: :idle} -> {:ok, "#{key} is taking no turn, so there is none to cancel."}
-      _gone -> {:error, no_agent(key)}
-    end
+  defp cancelled(request, caller) do
+    with {:ok, %{"cancelled" => agents}} <- Operation.run(request, caller),
+         do: {:ok, cancelled_line(request, agents)}
   end
 
-  defp cancelled(key, :parked),
-    do:
-      "Abandoned the calls #{key} waited on, and the messages waiting behind them. It keeps " <>
-        "running, with what was said so far."
+  defp cancelled_line(%Cancel{agent: key}, []),
+    do: "#{key} is taking no turn, so there is none to cancel."
 
-  defp cancelled(key, _running),
+  defp cancelled_line(%Cancel{agent: key}, [_key]),
     do:
-      "Cancelled #{key}'s turn, and the messages waiting behind it. It keeps running, " <>
+      "Cancelled what #{key} was doing, and the messages waiting behind it. It keeps running, " <>
         "with what was said so far."
 
-  defp cancel_under(prefix, by) do
-    busy = for %{status: status, id: key} <- Fleet.list(prefix), status != :idle, do: key
+  defp cancelled_line(%CancelAgents{prefix: prefix}, []),
+    do: "No agent#{under(prefix)} is taking a turn."
 
-    case {Fleet.kill(prefix), busy} do
-      {0, _busy} ->
-        {:ok, "Nothing runs#{under(prefix)}."}
-
-      {_count, []} ->
-        {:ok, "No agent#{under(prefix)} is taking a turn."}
-
-      {count, busy} ->
-        :ok = Audit.record({:agents_cancelled, prefix, count}, by)
-        {:ok, "Cancelled the turns of #{listed(busy)}. They keep running."}
-    end
-  end
+  defp cancelled_line(%CancelAgents{}, agents),
+    do: ["Cancelled the turns of ", listed(agents), ". They keep running."]
 
   defp under(prefix) do
     case to_string(prefix) do
@@ -403,107 +392,63 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   # -- rm -----------------------------------------------------------------------
 
   defp rm([target], opts) do
-    with {:ok, removing, kept} <- removal(target) do
-      if opts[:yes], do: removed(removing, kept, opts[:by]), else: :live
+    with {:ok, change} <- Operation.plan(forgetting(target), opts[:caller]) do
+      if opts[:yes], do: removed(change, opts[:caller]), else: :live
     end
   end
 
   defp rm_asked([target], opts, terminal) do
-    with {:ok, removing, kept} <- removal(target) do
+    with {:ok, change} <- Operation.plan(forgetting(target), opts[:caller]) do
+      preview = Operation.preview(change)
+
       if terminal.input?,
-        do: rm_confirmed(removing, kept, terminal, opts[:by]),
+        do: rm_confirmed(change, preview, terminal, opts[:caller]),
         else:
           {:error,
            [
-             removing(removing, kept),
+             removing(preview),
              "\nwardrik agent rm asks first only where someone can answer; ",
              "wardrik agent rm #{target} --yes removes without asking."
            ]}
     end
   end
 
-  defp rm_confirmed(removing, kept, terminal, by) do
-    Terminal.puts(terminal, removing(removing, kept))
+  defp forgetting(%Prefix{} = prefix), do: %ForgetAgents{prefix: prefix}
+  defp forgetting(key), do: %Forget{agent: key}
 
-    if Owl.IO.confirm(message: "Remove #{them(removing)}?", default: false),
-      do: removed(removing, kept, by),
+  defp rm_confirmed(change, preview, terminal, caller) do
+    Terminal.puts(terminal, removing(preview))
+
+    if Owl.IO.confirm(message: "Remove #{them(preview["forgetting"])}?", default: false),
+      do: removed(change, caller),
       else: {:ok, "Nothing was removed."}
   end
 
-  # What a removal reaches: the agents under the key or prefix that no file
-  # declares, here or on a node connected to this one, and why each of the
-  # others stays.
-  defp removal(target) do
-    declared = WardrikDaemon.declared()
-    staying = target |> targets() |> Enum.map(&{&1, staying(&1, declared)})
-    removing = for {key, nil} <- staying, do: key
-    kept = for {_key, why} <- staying, why != nil, do: why
-
-    cond do
-      removing != [] -> {:ok, removing, kept}
-      kept != [] -> {:error, Enum.join(kept, "\n")}
-      prefix?(target) -> {:error, "Nothing runs under #{target}."}
-      true -> {:error, no_agent(target)}
-    end
-  end
-
-  defp targets(target) do
-    cond do
-      prefix?(target) -> Enum.map(Fleet.list(target), & &1.id)
-      Fleet.stored?(target) -> [target]
-      true -> []
-    end
-  end
-
-  defp removing([key], kept),
+  defp removing(%{"forgetting" => [key], "keeping" => kept}),
     do: ["This removes #{key}, its conversation and its triggers, for good." | left(kept)]
 
-  defp removing(keys, kept) do
+  defp removing(%{"forgetting" => keys, "keeping" => kept}) do
     [
       "This removes #{length(keys)} agents, their conversations and their triggers, for good:"
       | Enum.map(keys, &"\n  #{&1}")
     ] ++ left(kept)
   end
 
-  defp left(kept), do: for(why <- kept, do: ["\n", why])
-
-  # Why the agent under `key` stays, where a file declares it: one here, or
-  # one another node reads.
-  defp staying(key, declared) do
-    case Map.fetch(declared, key) do
-      {:ok, {path, _spec}} ->
-        "#{key} is declared by #{shown(path)}, and stays; remove #{shown(path)}, then " <>
-          "wardrik reload removes it."
-
-      :error ->
-        case Agents.editable(key) do
-          :ok -> nil
-          {:error, :conflict, message} -> message
-        end
-    end
-  end
+  defp left(kept), do: for(%{"why" => why} <- kept, do: ["\n", why])
 
   defp them([_one]), do: "it"
   defp them(_keys), do: "them"
 
-  defp removed(removing, kept, by) do
-    {gone, failed} =
-      removing
-      |> Enum.map(&{&1, forget(&1, by)})
-      |> Enum.split_with(&match?({_key, :ok}, &1))
+  defp removed(change, caller) do
+    with {:ok, %{"forgotten" => gone, "kept" => kept, "failed" => failed}} <-
+           Operation.make(change, caller) do
+      lines =
+        if(gone == [], do: [], else: ["Removed #{listed(gone)}."]) ++
+          for(%{"why" => why} <- kept, do: why) ++
+          for %{"id" => key, "why" => why} <- failed, do: "#{key} was not removed: #{why}"
 
-    lines =
-      if(gone == [], do: [], else: ["Removed #{listed(Enum.map(gone, &elem(&1, 0)))}."]) ++
-        kept ++
-        for {key, {:error, reason}} <- failed, do: "#{key} was not removed: #{inspect(reason)}"
-
-    if failed == [], do: {:ok, Enum.join(lines, "\n")}, else: {:error, Enum.join(lines, "\n")}
-  end
-
-  defp forget(key, by) do
-    with :ok <- Fleet.forget(key),
-         :ok <- Audit.record({:agent_forgotten, key}, by),
-         do: Agents.drop(key)
+      if failed == [], do: {:ok, Enum.join(lines, "\n")}, else: {:error, Enum.join(lines, "\n")}
+    end
   end
 
   # -- move ---------------------------------------------------------------------

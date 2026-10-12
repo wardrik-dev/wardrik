@@ -6,6 +6,7 @@ defmodule Wardrik.Operations.Connect do
   the audit once it is held, as whoever asked for it.
   """
 
+  @behaviour Wardrik.FleetOperation
   @behaviour Wardrik.Command
 
   alias Wardrik.Change
@@ -18,12 +19,10 @@ defmodule Wardrik.Operations.Connect do
 
   @type t() :: %__MODULE__{owner: Wardrik.AgentID.Prefix.t(), provider: String.t()}
 
-  @doc "The owner's agents, which a caller reaches to change their connections."
-  @spec subject(t()) :: Wardrik.AgentID.Prefix.t()
+  @impl Wardrik.FleetOperation
   def subject(%__MODULE__{owner: owner}), do: owner
 
-  @doc "What a grant must allow on them."
-  @spec action() :: Wardrik.Grant.action()
+  @impl Wardrik.FleetOperation
   def action, do: :define
 
   @impl Wardrik.Command
@@ -32,14 +31,14 @@ defmodule Wardrik.Operations.Connect do
   end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{owner: owner, provider: provider}}, caller) do
+  def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
     with {:ok, module} <- Connections.module() do
       case module.connect(provider, Connections.owner_of(owner), caller.principal) do
         {:ok, :held} ->
-          {:ok, Resource.connecting(provider, nil)}
+          {:ok, Resource.connecting(provider, nil), change.effect}
 
         {:ok, link} ->
-          {:ok, Resource.connecting(provider, link)}
+          {:ok, Resource.connecting(provider, link), change.effect}
 
         {:error, :not_found} ->
           {:error, Error.new(:not_found, "No account named #{provider} is offered.")}
@@ -48,5 +47,12 @@ defmodule Wardrik.Operations.Connect do
           {:error, Error.new(:unavailable, "#{provider} could not start a sign-in now.")}
       end
     end
+  end
+
+  defimpl Wardrik.Effect do
+    def preview(%{owner: owner, provider: provider}),
+      do: %{"connecting" => %{"owner" => to_string(owner), "provider" => provider}}
+
+    def audit(_connect), do: []
   end
 end

@@ -71,16 +71,19 @@ defmodule WardrikHTTP do
 
   | Route | Answers |
   | --- | --- |
-  | `GET /v1/agents` | the agents the token reaches |
+  | `GET /v1/agents` | the agents under `?prefix=`, or every one the token reaches; `403` where it may not read them |
+  | `POST /v1/agents/cancel?prefix=` | stops what every agent under the prefix is doing, where it is taking a turn, `202`; `prefix=` alone is every agent |
+  | `DELETE /v1/agents?prefix=` | removes every agent under the prefix but those the server keeps, as an agent file declares; answers which went, which stayed and why |
+  | `GET /v1/interrupts` | the calls agents under `?prefix=`, or every one the token reaches, wait on a person for |
   | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
   | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
   | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, where the server keeps definitions |
-  | `DELETE /v1/agents/{key}` | stops the running agent and deletes everything it had, its definition and triggers included, `204` |
+  | `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included; `409` where something else, such as an agent file, declares it |
   | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
   | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
   | `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
   | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization`, which no event carries |
-  | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
+  | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202`; an agent taking no turn is left as it is |
   | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
   | `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
   | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
@@ -91,6 +94,13 @@ defmodule WardrikHTTP do
   | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
   | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, `204` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
+
+  A route that changes something answers what it would do, and does
+  nothing, with `?plan=true`: a cancel the agents it would stop, as
+  `{"cancelling": [...]}`, a removal those it would remove and those it
+  would keep, as `{"forgetting": [...], "keeping": [{"id": ..., "why": ...}]}`.
+  Done, a cancel answers `{"cancelled": [...]}`, and a removal
+  `{"forgotten": [...], "kept": [...], "failed": [...]}`.
 
   `Wardrik.Resource` shows what each answers. Each resource's JSON Schema is
   in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,

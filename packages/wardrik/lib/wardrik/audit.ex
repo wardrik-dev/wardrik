@@ -49,12 +49,13 @@ defmodule Wardrik.Audit do
       started or brought to it
     * `{:agent_spawned, id, node}` - it was started, on `node`
     * `{:agent_stopped, id}` - it was stopped, keeping its conversation
-    * `{:agent_forgotten, id}` - it was removed, with everything it had
+    * `{:agent_forgotten, id}` - it was removed, with everything it had;
+      `{:agent_forgotten, id, prefix}` where it was one of the agents under
+      `prefix` someone removed at once
     * `{:agent_moved, id, node}` - it was started again on `node`
     * `{:agent_cancelled, id}` - its turn, and what was queued behind it,
-      were dropped
-    * `{:agents_cancelled, prefix, count}` - the same for every agent under
-      `prefix`, `count` of them
+      were dropped; `{:agent_cancelled, id, prefix}` where it was one of the
+      agents under `prefix` someone cancelled at once
     * `{:agent_cleared, id}` - its conversation was emptied
     * `{:trigger_set, id, name}`, `{:trigger_removed, id, name}`
     * `{:agents_reloaded, nodes}` - the files that declare agents were read
@@ -82,9 +83,10 @@ defmodule Wardrik.Audit do
           | {:agent_spawned, AgentID.t(), node()}
           | {:agent_stopped, AgentID.t()}
           | {:agent_forgotten, AgentID.t()}
+          | {:agent_forgotten, AgentID.t(), Prefix.t()}
           | {:agent_moved, AgentID.t(), node()}
           | {:agent_cancelled, AgentID.t()}
-          | {:agents_cancelled, Prefix.t(), non_neg_integer()}
+          | {:agent_cancelled, AgentID.t(), Prefix.t()}
           | {:agent_cleared, AgentID.t()}
           | {:trigger_set, AgentID.t(), String.t()}
           | {:trigger_removed, AgentID.t(), String.t()}
@@ -108,21 +110,32 @@ defmodule Wardrik.Audit do
           trace: Trace.t()
         }
 
-  @doc "A change `by` made, now, without recording it."
-  @spec new(action(), Principal.t() | nil) :: t()
-  def new(action, by) when is_tuple(action) and (is_struct(by, Principal) or is_nil(by)) do
+  @doc "A change `by` made, now, without recording it, under `trace` or a trace of its own."
+  @spec new(action(), Principal.t() | nil, Trace.t()) :: t()
+  def new(action, by, trace \\ Trace.root())
+      when is_tuple(action) and (is_struct(by, Principal) or is_nil(by)) do
     %__MODULE__{
       id: Wardrik.UUID.v7(),
       action: action,
       by: by,
       at: System.system_time(:microsecond),
-      trace: Trace.root()
+      trace: trace
     }
   end
 
   @doc "Records `action`, made by `by`, in the audit log."
   @spec record(action(), Principal.t() | nil) :: :ok
   def record(action, by), do: GenServer.call(__MODULE__, {:record, new(action, by)})
+
+  @doc """
+  Records `actions`, made by `by` as one change, in the audit log: each its
+  own entry, all under one trace, so the entries say they were one change.
+  """
+  @spec record_all([action()], Principal.t() | nil) :: :ok
+  def record_all(actions, by) when is_list(actions) do
+    trace = Trace.root()
+    Enum.each(actions, &(:ok = GenServer.call(__MODULE__, {:record, new(&1, by, trace)})))
+  end
 
   @doc false
   @spec start_link([]) :: GenServer.on_start()

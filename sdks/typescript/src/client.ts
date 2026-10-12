@@ -3,7 +3,7 @@ import { Agent } from "./agent.ts";
 import { Connections } from "./connections.ts";
 import { Export } from "./export.ts";
 import { agentPath, Http } from "./http.ts";
-import type { AgentDefinition, AgentSummary } from "./protocol.ts";
+import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
 
 export const version = "0.0.0";
@@ -88,6 +88,16 @@ export class Wardrik {
   }
 }
 
+/** What a removal under a prefix did. */
+export interface Removal {
+  forgotten: string[];
+  kept: { id: string; why: string }[];
+  failed: { id: string; why: string }[];
+}
+
+/** A call an agent waits on a person for, with the agent's key. */
+export type Parked = Interrupt & { agent: { id: string } };
+
 /** The agents a token reaches. */
 export class Agents {
   readonly #http: Http;
@@ -96,10 +106,43 @@ export class Agents {
     this.#http = http;
   }
 
-  /** Every agent the token reaches. */
-  async list(): Promise<AgentSummary[]> {
-    const answer = await this.#http.json<{ agents: AgentSummary[] }>("GET", "/v1/agents");
+  /** The agents under `prefix`, such as `"acme/"`, or every one the token reaches. */
+  async list(prefix?: string): Promise<AgentSummary[]> {
+    const answer = await this.#http.json<{ agents: AgentSummary[] }>("GET", "/v1/agents", {
+      query: { prefix },
+    });
+
     return answer.agents;
+  }
+
+  /**
+   * Stops what every agent under `prefix` is doing, where it is taking a
+   * turn, and answers the keys of those it stopped. `""` is every agent.
+   */
+  async cancel(prefix: string): Promise<string[]> {
+    const answer = await this.#http.json<{ cancelled: string[] }>("POST", "/v1/agents/cancel", {
+      query: { prefix },
+    });
+
+    return answer.cancelled;
+  }
+
+  /**
+   * Removes every agent under `prefix` but those the server keeps, such as one
+   * an agent file declares: those removed, those kept and why, and those that
+   * could not be removed and why.
+   */
+  async remove(prefix: string): Promise<Removal> {
+    return this.#http.json<Removal>("DELETE", "/v1/agents", { query: { prefix } });
+  }
+
+  /** The calls agents under `prefix`, or every one the token reaches, wait on a person for. */
+  async parked(prefix?: string): Promise<Parked[]> {
+    const answer = await this.#http.json<{ interrupts: Parked[] }>("GET", "/v1/interrupts", {
+      query: { prefix },
+    });
+
+    return answer.interrupts;
   }
 
   /**

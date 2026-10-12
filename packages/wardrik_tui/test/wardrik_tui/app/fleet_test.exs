@@ -702,7 +702,8 @@ defmodule WardrikTUI.App.FleetTest do
     assert text =~ to_string(agent_id)
     assert text =~ "› ○ watched"
     assert Fleet.whereis(key)
-    assert_receive {:turn, [{:user, "look into it"}]}
+    assert_receive {:turn, [{:user, "From " <> said}]}
+    assert said =~ ~r/:\nlook into it$/
   end
 
   test "/spawn of an agent already running connects rather than starting one", ctx do
@@ -1032,11 +1033,32 @@ defmodule WardrikTUI.App.FleetTest do
     assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
   end
 
-  test "/stop PREFIX/ interrupts every agent under it", %{session: session, org: org} do
+  test "/stop of an agent that does not run says so", %{session: session, org: org} do
+    submit(session, "/stop nobody")
+
+    assert screen(session) =~ "no agent at #{org}/nobody"
+  end
+
+  test "/stop PREFIX/ interrupts every agent under it taking a turn", %{
+    session: session,
+    org: org
+  } do
+    key = AgentID.new!("busy", org: org)
+    {:ok, pid} = Fleet.spawn(key, runner: {AgentRunners, :streaming, [self()]})
+    on_exit(fn -> Fleet.forget(key) end)
+    :ok = Bus.subscribe(key)
+    Agent.ask(pid, "take your time")
+    assert_receive {:running, _turn_pid}
+
     submit(session, "/stop #{org}/")
 
     assert screen(session) =~ "asked 1 under #{org}/ to stop"
-    assert Audit.about("agents/#{org}/") == [{"agents.cancelled", @ops}]
+    assert_receive %Event{payload: %Event.TurnInterrupted{}}, 5_000
+
+    assert [%{"data" => %{"under" => under, "actor" => @ops}}] =
+             for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{key}", do: e)
+
+    assert under == "#{org}/"
   end
 
   test "/shutdown NAME stops an agent and keeps its conversation for /spawn", ctx do

@@ -97,7 +97,8 @@ defmodule WardrikHTTP.RouterTest do
 
     defp triggered(key, name), do: WardrikStore.get(@triggers, "#{key}//#{name}")
 
-    defp editable(key) do
+    @impl true
+    def editable(key) do
       if String.contains?(key.name, "-owned"),
         do: {:error, :conflict, "#{key} belongs to a file."},
         else: :ok
@@ -772,23 +773,25 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key) == nil
     end
 
-    test "are not taken, kept or deleted by a server with nothing to read them", %{api: api} do
+    test "are neither taken nor kept by a server with nothing to read them", %{api: api} do
       definitions(nil)
       {key, _agent} = echo_agent()
 
       assert {:ok, %{status: 501, body: body}} = define(api, defined_key(), %{})
       assert body["error"]["type"] == "not_supported"
       assert {:ok, %{status: 501}} = Req.get(api, url: "/v1/agents/#{key}/definition")
-      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}")
-      assert Wardrik.Fleet.lookup(key)
+
+      assert {:ok, %{status: 200, body: %{"forgotten" => [_key]}}} =
+               Req.delete(api, url: "/v1/agents/#{key}")
+
+      assert Wardrik.Fleet.lookup(key) == nil
     end
 
-    test "are neither kept nor deleted by a module that only reads them", %{api: api} do
+    test "are not kept by a module that only reads them", %{api: api} do
       {key, _agent} = echo_agent()
 
       assert {:ok, %{status: 501, body: body}} = Req.get(api, url: "/v1/agents/#{key}/definition")
       assert body["error"]["message"] == "This server does not keep agents' definitions."
-      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}")
     end
   end
 
@@ -860,7 +863,9 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200, body: ^definition}} =
                Req.get(kept, url: "/v1/agents/#{key}/definition")
 
-      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert {:ok, %{status: 200, body: %{"forgotten" => [_forgotten], "kept" => []}}} =
+               Req.delete(kept, url: "/v1/agents/#{key}")
+
       assert Wardrik.Fleet.lookup(key) == nil
       assert {:ok, %{status: 404}} = Req.get(kept, url: "/v1/agents/#{key}/definition")
       assert {:ok, %{status: 404}} = Req.delete(kept, url: "/v1/agents/#{key}")
@@ -872,7 +877,9 @@ defmodule WardrikHTTP.RouterTest do
     test "forgets an agent it kept no definition for", %{kept: kept} do
       {key, _agent} = echo_agent()
 
-      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert {:ok, %{status: 200, body: %{"forgotten" => [_forgotten], "kept" => []}}} =
+               Req.delete(kept, url: "/v1/agents/#{key}")
+
       assert Wardrik.Fleet.lookup(key) == nil
     end
 
@@ -880,7 +887,9 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = echo_agent()
       :ok = Wardrik.Fleet.stop(key)
 
-      assert {:ok, %{status: 204}} = Req.delete(kept, url: "/v1/agents/#{key}")
+      assert {:ok, %{status: 200, body: %{"forgotten" => [_forgotten], "kept" => []}}} =
+               Req.delete(kept, url: "/v1/agents/#{key}")
+
       refute Wardrik.Fleet.stored?(key)
     end
 
@@ -1281,6 +1290,89 @@ defmodule WardrikHTTP.RouterTest do
       jon = as(api, "test/", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
+    end
+  end
+
+  describe "agents under a prefix" do
+    setup do
+      definitions(Kept)
+      :ok
+    end
+
+    defp under(org), do: Wardrik.AgentID.Prefix.new!(org: org)
+
+    defp org_agents(names) do
+      org = "fleet-#{System.unique_integer([:positive])}"
+
+      {org,
+       for(
+         name <- names,
+         do: elem(Fleet.start_agent([], Wardrik.AgentID.new!(name, org: org)), 0)
+       )}
+    end
+
+    defp scoped(api, org, can \\ Grant.actions()) do
+      {:ok, secret, _token} = Token.create("fleet", under(org), can, ceiling: [])
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    test "are listed, to a caller who may read them, and refused to one who may not", %{api: api} do
+      {org, [a, b]} = org_agents(["a", "b"])
+
+      assert {:ok, %{status: 200, body: %{"agents" => agents}}} =
+               Req.get(scoped(api, org), url: "/v1/agents", params: [prefix: "#{org}/"])
+
+      assert Enum.map(agents, & &1["id"]) == [to_string(a), to_string(b)]
+
+      assert {:ok, %{status: 403}} = Req.get(scoped(api, org, [:message]), url: "/v1/agents")
+
+      assert {:ok, %{status: 404}} =
+               Req.get(scoped(api, org), url: "/v1/agents", params: [prefix: "elsewhere/"])
+    end
+
+    test "show what a cancel or a removal would do with plan=true, and do nothing",
+         %{api: api} do
+      {org, [a]} = org_agents(["a"])
+      fleet = scoped(api, org)
+
+      assert {:ok, %{status: 200, body: %{"cancelling" => []}}} =
+               Req.post(fleet, url: "/v1/agents/cancel", params: [prefix: "#{org}/", plan: true])
+
+      assert {:ok, %{status: 200, body: %{"forgetting" => [text], "keeping" => []}}} =
+               Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/", plan: true])
+
+      assert text == to_string(a)
+      assert Wardrik.Fleet.lookup(a)
+    end
+
+    test "are cancelled, and removed, where the request names them", %{api: api} do
+      {org, [a]} = org_agents(["a"])
+      fleet = scoped(api, org)
+
+      assert {:ok, %{status: 400}} = Req.post(fleet, url: "/v1/agents/cancel")
+      assert {:ok, %{status: 400}} = Req.delete(fleet, url: "/v1/agents")
+
+      assert {:ok, %{status: 202, body: %{"cancelled" => []}}} =
+               Req.post(fleet, url: "/v1/agents/cancel", params: [prefix: "#{org}/"])
+
+      assert {:ok, %{status: 200, body: %{"forgotten" => [_a], "failed" => []}}} =
+               Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
+
+      assert Wardrik.Fleet.lookup(a) == nil
+
+      assert {:ok, %{status: 404}} =
+               Req.delete(fleet, url: "/v1/agents", params: [prefix: "#{org}/"])
+    end
+
+    test "answer the calls they wait on a person for", %{api: api} do
+      {key, _agent} = parked_agent()
+      assert Fleet.await_update(fn -> Wardrik.Fleet.lookup(key).status == :parked end)
+
+      assert {:ok, %{status: 200, body: %{"interrupts" => interrupts}}} =
+               Req.get(api, url: "/v1/interrupts", params: [prefix: to_string(key)])
+
+      assert [%{"id" => "call_1", "agent" => %{"id" => text}}] = interrupts
+      assert text == to_string(key)
     end
   end
 

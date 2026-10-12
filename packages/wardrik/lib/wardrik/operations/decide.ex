@@ -73,10 +73,10 @@ defmodule Wardrik.Operations.Decide do
   def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: agent, decisions: decisions}}, caller) do
+  def make(%Change{request: %__MODULE__{agent: agent, decisions: decisions}} = change, caller) do
     case Agent.decide(agent, decisions, by: caller.principal) do
       :ok ->
-        {:ok, %{"decisions" => Enum.map(Enum.sort(decisions), &decided/1)}}
+        {:ok, %{"decisions" => Enum.map(Enum.sort(decisions), &decided/1)}, change.effect}
 
       {:error, :not_found} ->
         {:error, AgentOperation.not_found(agent)}
@@ -104,5 +104,28 @@ defmodule Wardrik.Operations.Decide do
       [only] -> only
       ids -> "#{Enum.join(Enum.drop(ids, -1), ", ")} and #{List.last(ids)}"
     end
+  end
+
+  @doc false
+  @spec deciding({String.t(), decision()}) :: map()
+  def deciding({id, :approve}), do: %{"id" => id, "decision" => "approve"}
+  def deciding({id, {:approve, note}}), do: %{"id" => id, "decision" => "approve", "note" => note}
+
+  def deciding({id, {:deny, reason}}),
+    do: %{"id" => id, "decision" => "reject", "reason" => reason}
+
+  defimpl Wardrik.Effect do
+    alias Wardrik.Operations.Decide
+
+    def preview(%{agent: agent, decisions: decisions}) do
+      %{
+        "deciding" => %{
+          "agent" => to_string(agent),
+          "decisions" => Enum.map(Enum.sort(decisions), &Decide.deciding/1)
+        }
+      }
+    end
+
+    def audit(_decide), do: []
   end
 end

@@ -19,7 +19,7 @@ defmodule Wardrik.Definition do
   | --- | --- | --- |
   | `put/3` | `Wardrik.Operations.Define` | no module is named, and each operation is `:unsupported` |
   | `get/1` | `Wardrik.Operations.ReadDefinition` | `:unsupported` |
-  | `delete/1` | `Wardrik.Operations.Forget` | `:unsupported` |
+  | `delete/1` | `Wardrik.Operations.Forget`, `ForgetAgents` | the agent is forgotten, and no definition with it |
   | `put_trigger/3` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
   | `delete_trigger/2` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
 
@@ -76,9 +76,16 @@ defmodule Wardrik.Definition do
   @callback delete_trigger(id :: Wardrik.AgentID.t(), name :: String.t()) ::
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
-  @optional_callbacks get: 1, delete: 1, put_trigger: 3, delete_trigger: 2
+  @doc """
+  `:ok` where the agent `id` may be changed or forgotten through this
+  module, or a conflict saying why not, as one an agent file declares; it
+  changes nothing. A module without it lets every agent be.
+  """
+  @callback editable(id :: Wardrik.AgentID.t()) :: :ok | {:error, :conflict, String.t()}
 
-  @callbacks %{put: 3, get: 1, delete: 1, put_trigger: 3, delete_trigger: 2}
+  @optional_callbacks get: 1, delete: 1, put_trigger: 3, delete_trigger: 2, editable: 1
+
+  @callbacks %{put: 3, get: 1, delete: 1, put_trigger: 3, delete_trigger: 2, editable: 1}
   @module {__MODULE__, :module}
 
   @doc """
@@ -91,6 +98,44 @@ defmodule Wardrik.Definition do
     :persistent_term.put(@module, module)
     :ignore
   end
+
+  @doc """
+  `:ok` where the host's module lets the agent `id` be changed or forgotten,
+  or a conflict saying why not; `:ok` where it does not say.
+  """
+  @spec editable(Wardrik.AgentID.t()) :: :ok | {:error, :conflict, String.t()}
+  def editable(id) do
+    case module(:editable) do
+      {:ok, module} -> module.editable(id)
+      :unsupported -> :ok
+    end
+  end
+
+  @doc "Whether the host's module keeps a definition of the agent `id`; `false` where it keeps none."
+  @spec kept?(Wardrik.AgentID.t()) :: boolean()
+  def kept?(id) do
+    case module(:get) do
+      {:ok, module} -> match?({:ok, _definition}, module.get(id))
+      :unsupported -> false
+    end
+  end
+
+  @doc """
+  Forgets the definition the host's module keeps of the agent `id`, as the
+  agent is forgotten: whether one was kept, or a conflict where the module
+  refuses. A host that keeps none forgets nothing.
+  """
+  @spec forget(Wardrik.AgentID.t()) :: {:ok, boolean()} | {:error, :conflict, String.t()}
+  def forget(id) do
+    case module(:delete) do
+      {:ok, module} -> forgotten(module.delete(id))
+      :unsupported -> {:ok, false}
+    end
+  end
+
+  defp forgotten(:ok), do: {:ok, true}
+  defp forgotten({:error, :not_found}), do: {:ok, false}
+  defp forgotten({:error, :conflict, why}), do: {:error, :conflict, why}
 
   @doc """
   The host's module, where it has `callback`, or `:unsupported`: none was

@@ -8,7 +8,14 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
+  alias Wardrik.Caller
+  alias Wardrik.Command, as: Operation
+  alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Operations.Ask
+  alias Wardrik.Operations.Cancel
+  alias Wardrik.Operations.CancelAgents
+  alias Wardrik.Operations.Forget
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -160,10 +167,10 @@ defmodule WardrikTUI.App.Commands do
   # A prompt for an agent this client is not attached to.
   defp ask_elsewhere(term, _pid, _id, nil), do: term
 
-  defp ask_elsewhere(term, pid, id, prompt) do
-    case Agent.ask(pid, prompt) do
-      :ok -> Display.append(term, View.sent_to(id, prompt))
-      {:error, :not_found} -> Display.append(term, View.no_such_agent(id))
+  defp ask_elsewhere(term, _pid, id, prompt) do
+    case asked(term, id, prompt) do
+      {:ok, _answer} -> Display.append(term, View.sent_to(id, prompt))
+      {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
   catch
     :exit, _reason -> Display.append(term, View.unavailable(id))
@@ -285,12 +292,15 @@ defmodule WardrikTUI.App.Commands do
       else: with_id(term, target, &stop_one(term, &1))
   end
 
+  # This client may cancel every agent, so a cancel under a prefix it can
+  # name always answers.
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        count = Fleet.kill(prefix)
-        if count > 0, do: :ok = record(term, {:agents_cancelled, prefix, count})
-        Display.append(term, View.stopped_under(prefix, count))
+        {:ok, %{"cancelled" => cancelled}} =
+          Operation.run(%CancelAgents{prefix: prefix}, caller(term))
+
+        Display.append(term, View.stopped_under(prefix, length(cancelled)))
 
       {:error, message} ->
         Display.append(term, View.error(message))
@@ -298,13 +308,9 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp stop_one(term, id) do
-    case Agent.interrupt(id) do
-      :ok ->
-        :ok = record(term, {:agent_cancelled, id})
-        Display.append(term, View.stopped(id))
-
-      {:error, :not_found} ->
-        Display.append(term, View.no_such_agent(id))
+    case Operation.run(%Cancel{agent: id}, caller(term)) do
+      {:ok, _answer} -> Display.append(term, View.stopped(id))
+      {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
   end
 
@@ -376,8 +382,12 @@ defmodule WardrikTUI.App.Commands do
   defp confirm(term), do: Interaction.flash(term, View.nothing_to_confirm())
 
   defp forget_all(term, ids) do
-    {removed, failed} = Enum.split_with(ids, &(Fleet.forget(&1) == :ok))
-    Enum.each(removed, &(:ok = record(term, {:agent_forgotten, &1})))
+    {removed, failed} =
+      Enum.split_with(
+        ids,
+        &match?({:ok, _answer}, Operation.run(%Forget{agent: &1}, caller(term)))
+      )
+
     term = assign(term, views: Map.drop(term.assigns.views, removed))
 
     case failed do
@@ -466,6 +476,13 @@ defmodule WardrikTUI.App.Commands do
     :ok = record(term, {:agent_cancelled, term.assigns.agent_id})
     term
   end
+
+  defp asked(term, id, text) do
+    with {:ok, ask} <- Ask.new(id, %{"content" => text}), do: Operation.run(ask, caller(term))
+  end
+
+  # Whoever uses this client holds the node, as a shell on it does.
+  defp caller(term), do: Caller.root(term.assigns.principal)
 
   # A change this client made, recorded for the person using it.
   defp record(term, action), do: Audit.record(action, term.assigns.principal)

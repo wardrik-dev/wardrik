@@ -29,15 +29,18 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Connections
   alias Wardrik.Error
   alias Wardrik.Event.Export
-  alias Wardrik.Fleet
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
+  alias Wardrik.Operations.CancelAgents
   alias Wardrik.Operations.Clear
   alias Wardrik.Operations.Connect
   alias Wardrik.Operations.Decide
   alias Wardrik.Operations.Define
   alias Wardrik.Operations.Disconnect
   alias Wardrik.Operations.Forget
+  alias Wardrik.Operations.ForgetAgents
+  alias Wardrik.Operations.ListAgents
+  alias Wardrik.Operations.ListParked
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadConnections
@@ -83,16 +86,17 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  get "/v1/agents" do
-    grant = conn.assigns.caller.grant
+  # The agents under ?prefix=, the caller's whole scope where it names none.
+  get "/v1/agents", do: run(conn, Query, under(conn, ListAgents, :scope), 200)
 
-    agents =
-      for member <- Fleet.list(grant.scope),
-          Access.authorize(grant, :read, member.id) == :ok,
-          do: Resource.agent(member)
+  # Every agent under ?prefix=, which the request must name: prefix= alone is
+  # every agent there is.
+  post "/v1/agents/cancel", do: run(conn, Command, under(conn, CancelAgents, :named), 202)
+  delete "/v1/agents", do: run(conn, Command, under(conn, ForgetAgents, :named), 200)
 
-    json(conn, 200, %{"agents" => agents})
-  end
+  # The calls agents under ?prefix= wait on a person for, under the caller's
+  # whole scope where it names none.
+  get "/v1/interrupts", do: run(conn, Query, under(conn, ListParked, :scope), 200)
 
   # An export is a cursor of the caller's own, over every log it may read.
   match "/v1/exports/:name" do
@@ -154,7 +158,7 @@ defmodule WardrikHTTP.Router do
   # answers something. The operation checks the caller's grant.
   defp route("GET", [], _conn), do: {Query, &{:ok, %ReadAgent{agent: &1}}, 200}
   defp route("PUT", [], conn), do: {Command, &define(conn, &1), 200}
-  defp route("DELETE", [], _conn), do: {Command, &{:ok, %Forget{agent: &1}}, 204}
+  defp route("DELETE", [], _conn), do: {Command, &{:ok, %Forget{agent: &1}}, 200}
   defp route("GET", ["definition"], _conn), do: {Query, &{:ok, %ReadDefinition{agent: &1}}, 200}
   defp route("GET", ["events"], conn), do: {:events, &events(conn, &1)}
   defp route("POST", ["messages"], conn), do: {Command, &Ask.new(&1, conn.body_params), 202}
@@ -216,6 +220,16 @@ defmodule WardrikHTTP.Router do
     end
   end
 
+  # With ?plan=true, a command answers what it would do, and does nothing.
+  defp run(%{query_params: %{"plan" => "true"}} = conn, Command, request, _status) do
+    with {:ok, request} <- request,
+         {:ok, change} <- Command.plan(request, caller(conn)) do
+      json(conn, 200, Command.preview(change))
+    else
+      {:error, error} -> error(conn, error)
+    end
+  end
+
   defp run(conn, Command, request, status) do
     answered = with {:ok, request} <- request, do: Command.run(request, caller(conn))
 
@@ -224,6 +238,24 @@ defmodule WardrikHTTP.Router do
       {:ok, body} -> json(conn, status, body)
       {:created, body} -> json(conn, 201, body)
       {:error, error} -> error(conn, error)
+    end
+  end
+
+  # The request of `module` under the prefix ?prefix= names: where it names
+  # none, the caller's whole scope, or for a request that must name one, why
+  # not.
+  defp under(conn, module, default) do
+    case {conn.query_params["prefix"], default} do
+      {nil, :scope} -> {:ok, struct!(module, prefix: conn.assigns.caller.grant.scope)}
+      {nil, :named} -> {:error, Error.new(:invalid, "prefix names the agents, as acme/")}
+      {text, _default} -> prefixed(module, text)
+    end
+  end
+
+  defp prefixed(module, text) do
+    case Prefix.parse(text) do
+      {:ok, prefix} -> {:ok, struct!(module, prefix: prefix)}
+      {:error, message} -> {:error, Error.new(:invalid, message)}
     end
   end
 

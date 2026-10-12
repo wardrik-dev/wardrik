@@ -1,14 +1,18 @@
 defmodule Wardrik.Operations.Cancel do
   @moduledoc """
-  Drops what an agent is doing, and what is queued behind it.
+  Drops what an agent is doing, and what is queued behind it: the turn it is
+  taking, or the calls it waits on a person for. An agent taking no turn is
+  left as it is, and nothing is recorded; see
+  `Wardrik.Operations.Cancelling`.
   """
 
   @behaviour Wardrik.AgentOperation
   @behaviour Wardrik.Command
 
-  alias Wardrik.Agent
   alias Wardrik.AgentOperation
   alias Wardrik.Change
+  alias Wardrik.Fleet
+  alias Wardrik.Operations.Cancelling
 
   @enforce_keys [:agent]
   defstruct [:agent]
@@ -22,14 +26,16 @@ defmodule Wardrik.Operations.Cancel do
   def action, do: :message
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id} = request, _caller),
-    do: {:ok, Change.new(request, [{:agent_cancelled, id}])}
+  def plan(%__MODULE__{agent: id} = request, _caller) do
+    case Fleet.lookup(id) do
+      nil -> {:error, AgentOperation.not_found(id)}
+      member -> {:ok, Change.new(request, Cancelling.of([member], id))}
+    end
+  end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id}}, _caller) do
-    case Agent.interrupt(id) do
-      :ok -> {:ok, %{"agent" => %{"id" => to_string(id)}}}
-      {:error, :not_found} -> {:error, AgentOperation.not_found(id)}
-    end
+  def make(%Change{effect: %Cancelling{} = effect}, _caller) do
+    made = Cancelling.make(effect)
+    {:ok, Cancelling.answer(made), made}
   end
 end

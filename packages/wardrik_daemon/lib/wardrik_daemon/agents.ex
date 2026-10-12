@@ -389,8 +389,11 @@ defmodule WardrikDaemon.Agents do
     with :ok <- editable(key), do: Definition.get(key)
   end
 
-  @doc "`:ok` where the HTTP API may change the agent `key`, or a conflict where a file declares it."
-  @spec editable(AgentID.t()) :: :ok | {:error, :conflict, String.t()}
+  @doc """
+  `:ok` where an operation may change or forget the agent `key`, or a
+  conflict where a file declares it.
+  """
+  @impl Wardrik.Definition
   def editable(key) do
     case owner(key) do
       {:file, path, _spec} -> declared(key, path)
@@ -438,11 +441,14 @@ defmodule WardrikDaemon.Agents do
   defp declared(key, {path, node}),
     do:
       {:error, :conflict,
-       "#{key} is declared by agents/#{Path.basename(path)} on #{node}; change the file"}
+       "#{key} is declared by agents/#{Path.basename(path)} on #{node}; change or remove that " <>
+         "file, then wardrik reload reads it"}
 
   defp declared(key, path),
     do:
-      {:error, :conflict, "#{key} is declared by agents/#{Path.basename(path)}; change the file"}
+      {:error, :conflict,
+       "#{key} is declared by agents/#{Path.basename(path)}; change or remove that file, then " <>
+         "wardrik reload reads it"}
 
   # Whether a file declares `key`, here with its spec or on another node, or
   # the policies a definition the API sends for it is read under.

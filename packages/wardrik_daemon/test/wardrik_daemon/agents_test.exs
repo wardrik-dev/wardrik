@@ -300,7 +300,9 @@ defmodule WardrikDaemon.AgentsTest do
   test "leaves an agent a file declares to its file", %{org: org} = context do
     write(context, "alpha", "")
     start_supervised!({Agents, dir: context.dir})
-    message = "#{org}/alpha is declared by agents/alpha.md; change the file"
+
+    message =
+      "#{org}/alpha is declared by agents/alpha.md; change or remove that file, then wardrik reload reads it"
 
     assert Agents.put(AgentID.parse!("#{org}/alpha"), %{}, grant(org)) ==
              {:error, :conflict, message}
@@ -403,7 +405,7 @@ defmodule WardrikDaemon.AgentsTest do
 
       assert Agents.editable(AgentID.parse!("#{org}/beta")) ==
                {:error, :conflict,
-                "#{org}/beta is declared by agents/beta.md on #{other}; change the file"}
+                "#{org}/beta is declared by agents/beta.md on #{other}; change or remove that file, then wardrik reload reads it"}
     end
 
     test "is left as it was while its file does not read", %{org: org} = context do

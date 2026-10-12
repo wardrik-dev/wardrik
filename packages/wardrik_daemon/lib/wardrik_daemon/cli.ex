@@ -30,9 +30,9 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
-  alias Wardrik.Grant
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Clear
+  alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Query
   alias Wardrik.Resource
@@ -301,7 +301,7 @@ defmodule WardrikDaemon.CLI do
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
     by = Terminal.principal(terminal)
-    opts = Keyword.merge(opts, by: by, caller: caller(by))
+    opts = Keyword.merge(opts, by: by, caller: Caller.root(by))
 
     command
     |> respond(words, opts, terminal, json?)
@@ -322,13 +322,6 @@ defmodule WardrikDaemon.CLI do
 
   defp answered({:error, message}, terminal, _command, json?),
     do: failed(terminal, "failed", message, json?)
-
-  # Whoever typed a command at the node may do anything to any agent: they
-  # hold the node itself.
-  defp caller(by) do
-    {:ok, grant} = Grant.new(Prefix.all())
-    Caller.new(by, grant)
-  end
 
   defp respond(%Command{json: json}, words, opts, _terminal, true), do: json.(words, opts)
 
@@ -504,7 +497,7 @@ defmodule WardrikDaemon.CLI do
 
   defp status(_words, _opts), do: {:ok, WardrikDaemon.status()}
 
-  defp agents(_words, _opts), do: {:ok, %{"agents" => Enum.map(Fleet.list(), &Resource.agent/1)}}
+  defp agents(_words, opts), do: Query.run(%ListAgents{prefix: Prefix.all()}, opts[:caller])
 
   defp reload(_words, opts) do
     reloaded = reload_all()

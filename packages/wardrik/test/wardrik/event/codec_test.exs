@@ -159,9 +159,10 @@ defmodule Wardrik.Event.CodecTest do
       {:agent_spawned, id, :wardrik_b@localhost},
       {:agent_stopped, id},
       {:agent_forgotten, id},
+      {:agent_forgotten, id, prefix},
       {:agent_moved, id, :wardrik_b@localhost},
       {:agent_cancelled, id},
-      {:agents_cancelled, prefix, 3},
+      {:agent_cancelled, id, prefix},
       {:agent_cleared, id},
       {:trigger_set, id, "sweep"},
       {:trigger_removed, id, "sweep"},
@@ -606,7 +607,7 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   describe "interrupts" do
-    test "say whether a tool or the model call is waiting, and on what" do
+    test "say whether a tool or the model call is waiting, on what, and which tool" do
       model = %{id: "model_1", name: "model", arguments: %{}}
       doubt = Map.put(call("call_2", "refund"), :in_doubt, true)
 
@@ -627,14 +628,16 @@ defmodule Wardrik.Event.CodecTest do
                  "id" => "call_1",
                  "reason" => "tool_approval",
                  "message" => "Ship?",
-                 "tool_call_id" => "call_1"
+                 "tool_call_id" => "call_1",
+                 "name" => "deploy"
                },
                %{"id" => "model_1", "reason" => "model_approval", "message" => "Over budget."},
                %{
                  "id" => "call_2",
                  "reason" => "in_doubt",
                  "message" => "Again?",
-                 "tool_call_id" => "call_2"
+                 "tool_call_id" => "call_2",
+                 "name" => "refund"
                }
              ]
     end

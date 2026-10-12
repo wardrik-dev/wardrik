@@ -13,19 +13,22 @@ defmodule Wardrik.Command do
       {:ok, answer} = Wardrik.Command.make(change, caller)
 
   `run/2` does both. A plan makes nothing happen, so a surface may show it
-  first, or keep it until a person agrees to it; `make/2` checks the grant
-  again, since it may come much later.
+  first, as `preview/1` gives it, or keep it until a person agrees to it;
+  `make/2` checks the grant again, since it may come much later, and does
+  what the plan's `Wardrik.Effect` says. What the audit records is what the
+  change made, as that effect's entries, all under one trace.
   """
 
   alias Wardrik.Audit
   alias Wardrik.Caller
   alias Wardrik.Change
+  alias Wardrik.Effect
   alias Wardrik.Error
 
   @typedoc """
   What a change answers once it is made: `:created` where it made something
-  that was not there, as an agent or a trigger. A change with nothing to
-  say answers `{:ok, nil}`.
+  that was not there, as an agent or a trigger. A change with nothing to say
+  answers `{:ok, nil}`.
   """
   @type answer() :: {:ok, term()} | {:created, term()}
 
@@ -36,8 +39,13 @@ defmodule Wardrik.Command do
   @callback plan(request :: struct(), caller :: Caller.t()) ::
               {:ok, Change.t()} | {:error, Error.t()}
 
-  @doc "Makes `change`, for `caller`, whose grant allows it."
-  @callback make(change :: Change.t(), caller :: Caller.t()) :: answer() | {:error, Error.t()}
+  @doc """
+  Makes `change`, for `caller`, whose grant allows it: what it answers, and
+  the `Wardrik.Effect` it made, which is the change's own unless part of it
+  could not be made.
+  """
+  @callback make(change :: Change.t(), caller :: Caller.t()) ::
+              {:ok | :created, term(), Wardrik.Effect.t()} | {:error, Error.t()}
 
   @doc "Plans `request`, and makes the change."
   @spec run(struct(), Caller.t()) :: answer() | {:error, Error.t()}
@@ -54,17 +62,20 @@ defmodule Wardrik.Command do
     with :ok <- authorize(request, caller), do: module.plan(request, caller)
   end
 
+  @doc "What `change` will do, as every surface shows it before it is made."
+  @spec preview(Change.t()) :: map()
+  def preview(%Change{effect: effect}), do: Effect.preview(effect)
+
   @doc """
-  Makes `change`, where `caller`'s grant still allows it, and records it in
-  the audit once it is made.
+  Makes `change`, where `caller`'s grant still allows it, and records what
+  it made in the audit, every entry under one trace.
   """
   @spec make(Change.t(), Caller.t()) :: answer() | {:error, Error.t()}
   def make(%Change{request: %module{} = request} = change, %Caller{} = caller) do
     with :ok <- authorize(request, caller),
-         {result, _answer} = answer when result in [:ok, :created] <-
-           module.make(change, caller) do
-      Enum.each(change.audit, &(:ok = Audit.record(&1, caller.principal)))
-      answer
+         {result, answer, made} when result in [:ok, :created] <- module.make(change, caller) do
+      :ok = Audit.record_all(Effect.audit(made), caller.principal)
+      {result, answer}
     end
   end
 
