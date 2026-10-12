@@ -164,13 +164,13 @@ The messages waiting behind the turn go too, and a turn waiting on a person is a
 
 ## wardrik agent stop
 
-Stop an agent, and keep its conversation for agent spawn.
+Stop an agent now, keeping its conversation; it wakes when asked again.
 
 ```sh
 wardrik agent stop KEY
 ```
 
-An agent a file declares starts again at the next wardrik reload.
+Anything asked of it by its key wakes it, as does wardrik agent spawn. wardrik agent rm removes it for good once no file declares it.
 
 ## wardrik agent rm
 

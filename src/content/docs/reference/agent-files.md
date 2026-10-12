@@ -39,6 +39,7 @@ with no frontmatter is all prompt.
 | `context` | the files read into each turn; see below |
 | `policy` | what its tool calls may do; see below |
 | `timeout` | how many seconds a turn may take |
+| `idle_timeout` | how many seconds it may have nothing to do before it sleeps, or `infinity`; `config.yaml`'s `defaults` when absent, and 900 where they set none. A sleeping agent wakes when something asks it; see `Wardrik.Agent` |
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
 | `schedule` | when it is asked something on a clock; see below |

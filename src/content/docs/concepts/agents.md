@@ -53,7 +53,7 @@ An agent is declared by a file in `agents/` under the config directory, or defin
 API.
 
 - **A file** is read when the daemon starts, and again with `wardrik reload`, which gives each
-  running agent what its file says now. `wardrik agent spawn NAME` writes one from `config.yaml`'s
+  agent awake what its file says now; one [asleep](#sleeping) takes it as it wakes. `wardrik agent spawn NAME` writes one from `config.yaml`'s
   `defaults` and starts its agent. See [Agent files](/reference/agent-files/).
 - **A definition** is sent with `PUT /v1/agents/{key}`, by a token that can
   `define`, and takes effect at once. It says less than a file can: no notices, no modules, and only
@@ -62,15 +62,17 @@ API.
 An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
 refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
 `wardrik reload` stops the agent and clears its schedules, and so does changing the file's `name`.
-The agent keeps its conversation, so a file that declares it again brings it back as it was;
-`wardrik agent rm KEY` removes it for good. An agent the HTTP API defined is never touched by
+The agent keeps its conversation and the definition it last had, so a file that declares it again
+brings it back as it was. Stopped, it [sleeps](#sleeping): anything asked of it by its key wakes it,
+with the definition it last had where no file declares it any more. To be rid of it, `wardrik agent
+rm KEY` removes it for good once no file declares it. An agent the HTTP API defined is never touched by
 reading the files, and `wardrik agent rm KEY` removes it too.
 
 In a [cluster](/operate/cluster/) each node reads its own `agents/`, and an agent stops only once no
 node's files declare it.
 
-`wardrik agent cancel` ends the turn an agent is taking, `agent stop` stops it and keeps its
-conversation for `agent spawn`, and `agent move` starts it again on another node, as it was. See
+`wardrik agent cancel` ends the turn an agent is taking, `agent stop` stops it now, keeping its
+conversation, and it wakes when something asks it again; and `agent move` starts it again on another node, as it was. See
 [the CLI](/reference/cli/).
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
@@ -136,6 +138,34 @@ wardrik ls attention          # the agents waiting on a person
 A query is words that must all match: text in the key, `name:`, `org:`, `user:`, `node:`, and
 `status:idle`, `status:running` or `status:parked`.
 
+## Sleeping
+
+An agent with nothing to do for 15 minutes writes itself down and stops, so it costs nothing until it
+is needed. It sleeps only once no turn is running and no message waits; a turn parked on a person
+does not keep it awake. Anything asked of it by its key wakes it, on whichever node, as it was:
+
+- a message, from a channel, the HTTP API, `wardrik ask` or a schedule;
+- a decision on a call it parked, or an account connected that a call waited on;
+- a client attaching, or reading what it is doing.
+
+Stopping a turn wakes nothing, since a sleeping agent has none. `wardrik ls` and `GET /v1/agents`
+list a sleeping agent with the status it slept in and as asleep, and its log says
+`agent.stopped`, with the reason `idle`, as it goes.
+
+A sleeping agent wakes with its definition as it reads then, so `wardrik reload` changes the agents
+awake and wakes none: one asleep takes its file or definition as it stands when it next wakes.
+
+`idle_timeout` sets how long, in seconds, or `infinity` for an agent that never sleeps: in an agent
+file or a definition for one agent, and in `config.yaml`'s `defaults` for every agent that sets
+none.
+
+```yaml
+---
+description: Answers in the team's channel.
+idle_timeout: infinity
+---
+```
+
 ## The conversation
 
 An agent keeps everything said to it and by it, and `wardrik history` prints it. Its system prompt,
@@ -145,8 +175,8 @@ it changes the agent from its next turn.
 An agent that runs for weeks summarises the older part of its history before it outgrows what the
 model can read. See [Durable runs](/concepts/durable-runs/#a-history-that-grows).
 
-`wardrik reload` keeps the conversation. What a file says now applies from the agent's next turn,
-and a turn already running finishes with what it started with.
+`wardrik reload` keeps the conversation. What a file says now applies from the agent's next turn, or
+as a sleeping agent wakes, and a turn already running finishes with what it started with.
 
 `wardrik clear AGENT` empties the conversation of an agent that is not running a turn or waiting on
 a person, keeping its files, schedules and config. It is how an agent that read content from outside
