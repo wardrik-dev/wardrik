@@ -35,7 +35,7 @@ defmodule WardrikDaemon.Agents do
   left as it was. An agent the HTTP API defined is in no inventory, and
   reading the files never touches it.
 
-  It is also the daemon's `WardrikHTTP.Definition`. `put/3` reads a definition
+  It is also the daemon's `Wardrik.Definition`. `put/3` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.define/3`, under the
   policies it last read, and keeps it with the grant of the token that sent
   it; `get/1` answers it, `delete/1` forgets it, and `put_schedule/3` and
@@ -72,7 +72,7 @@ defmodule WardrikDaemon.Agents do
   `wardrik agent spawn` writes a file from them.
   """
 
-  @behaviour WardrikHTTP.Definition
+  @behaviour Wardrik.Definition
 
   use GenServer
 
@@ -319,7 +319,7 @@ defmodule WardrikDaemon.Agents do
   by a token holding `grant`, which it keeps; or a conflict where an agent
   file declares it.
   """
-  @impl WardrikHTTP.Definition
+  @impl Wardrik.Definition
   def put(key, fields, grant) do
     case owner(key) do
       {:file, path, _spec} ->
@@ -335,7 +335,7 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc "The definition kept for the agent `key`, as the HTTP API writes one."
-  @impl WardrikHTTP.Definition
+  @impl Wardrik.Definition
   def get(key) do
     with {:ok, definition} <- Definition.get(key), do: {:ok, AgentFile.fields(definition)}
   end
@@ -345,7 +345,7 @@ defmodule WardrikDaemon.Agents do
   `{:error, :not_found}` where none was kept, or a conflict where an agent
   file declares `key`.
   """
-  @impl WardrikHTTP.Definition
+  @impl Wardrik.Definition
   def delete(key) do
     case owner(key) do
       {:file, path, _spec} ->
@@ -364,7 +364,7 @@ defmodule WardrikDaemon.Agents do
   `{:error, :not_found}` where no definition is kept, or a conflict where an
   agent file declares `key`.
   """
-  @impl WardrikHTTP.Definition
+  @impl Wardrik.Definition
   def put_schedule(key, name, fields) do
     with {:ok, definition} <- defined(key),
          {:ok, definition, status, schedule} <- AgentFile.put_schedule(definition, name, fields) do
@@ -378,7 +378,7 @@ defmodule WardrikDaemon.Agents do
   agent `key`, and stops it: `{:error, :not_found}` where neither is kept, or
   a conflict where an agent file declares `key`.
   """
-  @impl WardrikHTTP.Definition
+  @impl Wardrik.Definition
   def delete_schedule(key, name) do
     with {:ok, definition} <- defined(key),
          {:ok, definition} <- AgentFile.delete_schedule(definition, name),

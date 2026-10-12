@@ -12,7 +12,8 @@ defmodule Wardrikd.Application do
   runs the schedules, `WardrikHTTP.Access` keeps what tokens grant,
   `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
   rest. `WardrikDaemon.Cluster` connects this node to
-  the others before the fleet starts.
+  the others before the fleet starts, and `WardrikDaemon.Agents` is where
+  every surface's definitions go.
 
   The store, and whether tool workers' answers are the deployment's own, are
   what `config/runtime.exs` read of `config.yaml` as the node booted; see
@@ -34,6 +35,7 @@ defmodule Wardrikd.Application do
       {Wardrik,
        store: WardrikDaemon.Config.settings(WardrikStore),
        cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
+       definitions: WardrikDaemon.Agents,
        fleet: [definition: {WardrikDaemon.Agents, :current, []}]},
       WardrikPolicy.Supervisor,
       WardrikSchedule,

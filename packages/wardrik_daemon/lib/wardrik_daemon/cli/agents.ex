@@ -15,11 +15,11 @@ defmodule WardrikDaemon.CLI.Agents do
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
+  alias Wardrik.Resource
   alias WardrikConsole.Filter
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.Definition
-  alias WardrikHTTP.Resource
   alias WardrikPolicy.Pattern
 
   @faint [:faint, :light_black]

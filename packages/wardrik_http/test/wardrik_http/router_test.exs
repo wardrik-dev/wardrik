@@ -1,5 +1,6 @@
 defmodule WardrikHTTP.RouterTest do
-  use ExUnit.Case, async: true
+  # The host's definitions module is one for the node, which tests change.
+  use ExUnit.Case, async: false
 
   alias ReqLLM.Context
   alias Wardrik.Agent
@@ -18,7 +19,7 @@ defmodule WardrikHTTP.RouterTest do
 
   defmodule Definition do
     @moduledoc false
-    @behaviour WardrikHTTP.Definition
+    @behaviour Wardrik.Definition
 
     @impl true
     def put(_key, %{"refuse" => message}, _grant), do: {:error, message}
@@ -42,7 +43,7 @@ defmodule WardrikHTTP.RouterTest do
   # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
-    @behaviour WardrikHTTP.Definition
+    @behaviour Wardrik.Definition
 
     @ns :router_test_definitions
     @schedules :router_test_schedules
@@ -132,12 +133,27 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(_opts), do: ~s(Signed realm="test")
   end
 
+  # Cannot check any credential now, as an identity provider that is down.
+  defmodule Down do
+    @moduledoc false
+    @behaviour WardrikHTTP.Authenticator
+
+    @impl true
+    def authenticate(_conn, :down), do: {:error, :unavailable}
+
+    @impl true
+    def challenge(:down), do: ~s(Down realm="test")
+  end
+
   setup do
     {:ok, secret, token} =
       Token.create("router-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
 
+    definitions(Definition)
+    on_exit(fn -> definitions(nil) end)
+
     listener = :"router-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0, definition: Definition})
+    start_supervised!({Listener, name: listener, port: 0})
     {:ok, port} = Listener.port(listener)
 
     %{
@@ -145,6 +161,9 @@ defmodule WardrikHTTP.RouterTest do
       token: token
     }
   end
+
+  # Names `module` as the host's definitions module, for every listener.
+  defp definitions(module), do: :ignore = Wardrik.Definition.configure(module)
 
   # Another listener with `options`, and a client for it holding the same token.
   defp listener(api, options) do
@@ -230,6 +249,15 @@ defmodule WardrikHTTP.RouterTest do
       }
 
       assert {Wardrik.Principal.type(by), Wardrik.Principal.id(by)} == {:user, "jon"}
+    end
+
+    test "a credential the authenticator cannot check now is answered unavailable", %{
+      api: api
+    } do
+      down = listener(api, authenticator: {Down, :down})
+
+      assert {:ok, %{status: 503, body: body}} = Req.get(down, url: "/v1/agents")
+      assert body["error"]["type"] == "unavailable"
     end
 
     test "a token for one agent lists that agent, and none whose key it begins", %{api: api} do
@@ -690,15 +718,12 @@ defmodule WardrikHTTP.RouterTest do
       assert Wardrik.Fleet.lookup(key) == nil
     end
 
-    test "for one agent never start another", %{api: api} do
-      key = defined_key()
+    test "for one agent never start another, and answer that something went wrong",
+         %{api: api} do
+      assert {:ok, %{status: 500, body: body}} =
+               define(api, defined_key(), %{"elsewhere" => true})
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:ok, %{status: 500}} = define(api, key, %{"elsewhere" => true})
-        end)
-
-      assert log =~ "wrote a spec for test/elsewhere, not #{key}"
+      assert body["error"]["type"] == "internal"
       assert Wardrik.Fleet.lookup(Wardrik.AgentID.parse!("test/elsewhere")) == nil
     end
 
@@ -711,13 +736,13 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are not taken, kept or deleted by a server with nothing to read them", %{api: api} do
-      bare = listener(api, [])
+      definitions(nil)
       {key, _agent} = echo_agent()
 
-      assert {:ok, %{status: 501, body: body}} = define(bare, defined_key(), %{})
+      assert {:ok, %{status: 501, body: body}} = define(api, defined_key(), %{})
       assert body["error"]["type"] == "not_supported"
-      assert {:ok, %{status: 501}} = Req.get(bare, url: "/v1/agents/#{key}/definition")
-      assert {:ok, %{status: 501}} = Req.delete(bare, url: "/v1/agents/#{key}")
+      assert {:ok, %{status: 501}} = Req.get(api, url: "/v1/agents/#{key}/definition")
+      assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}")
       assert Wardrik.Fleet.lookup(key)
     end
 
@@ -781,7 +806,10 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "a definition module that keeps definitions" do
-    setup %{api: api}, do: %{kept: listener(api, definition: Kept)}
+    setup %{api: api} do
+      definitions(Kept)
+      %{kept: api}
+    end
 
     test "answers one back as it was sent, and forgets it with its agent", %{
       kept: kept,
@@ -843,7 +871,8 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "schedules" do
     setup %{api: api} do
-      kept = listener(api, definition: Kept)
+      definitions(Kept)
+      kept = api
       key = Fleet.id("scheduled")
       {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
@@ -899,10 +928,12 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are not set where the server keeps no definitions", %{api: api, key: key} do
+      definitions(Definition)
+
       assert {:ok, %{status: 501, body: body}} =
                schedule(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
-      assert body["error"]["message"] == "This server does not schedule agents over HTTP."
+      assert body["error"]["message"] == "This server does not schedule agents."
       assert {:ok, %{status: 501}} = Req.delete(api, url: "/v1/agents/#{key}/schedules/sweep")
     end
   end
@@ -976,11 +1007,13 @@ defmodule WardrikHTTP.RouterTest do
       assert {[{"000000000002", "wardrik.message.created"} | _rest], stream} = frames(stream, 3)
       Req.cancel_async_response(stream.response)
 
-      assert {:ok, %{status: 404}} =
-               Req.get(api,
-                 url: "/v1/agents/test/nobody/events",
-                 headers: [{"accept", "text/event-stream"}]
-               )
+      for nobody <- ["test/nobody", "other/nobody"] do
+        assert {:ok, %{status: 404}} =
+                 Req.get(api,
+                   url: "/v1/agents/#{nobody}/events",
+                   headers: [{"accept", "text/event-stream"}]
+                 )
+      end
     end
 
     test "a stream opened from the head of a sleeping agent wakes it and follows it",

@@ -1,6 +1,7 @@
-defmodule WardrikHTTP.Resource do
+defmodule Wardrik.Resource do
   @moduledoc """
-  What the HTTP API answers with, as maps `JSON.encode!/1` takes.
+  What operations answer with, as maps `JSON.encode!/1` takes: the shapes
+  every surface answers in, as the HTTP API does.
 
   Names follow the event data's: OpenTelemetry's attribute names without
   their `gen_ai.` prefix, as nested objects, and messages and interrupts in

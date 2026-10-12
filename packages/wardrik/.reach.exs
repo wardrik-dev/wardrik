@@ -45,6 +45,14 @@
        except: ["Wardrik.Application"]}
     ]
   ],
+  smells: [
+    behaviour_candidate: [
+      # Each operation implements Wardrik.AgentOperation and one of
+      # Wardrik.Query or Wardrik.Command; the check groups modules by their
+      # public functions, and does not read the behaviours they declare.
+      ignore: [modules: ["Wardrik.Operations.*"]]
+    ]
+  ],
   checks: [
     layer_coverage: [
       require_all_modules: true,
