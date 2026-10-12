@@ -10,7 +10,7 @@
     "name",
     "status",
     "pending",
-    "node"
+    "asleep"
   ],
   "properties": {
     "id": {
@@ -33,9 +33,13 @@
       "minimum": 0,
       "description": "Messages waiting for the next run."
     },
+    "asleep": {
+      "type": "boolean",
+      "description": "Whether it has gone to sleep for having had nothing to do; it wakes when something asks it."
+    },
     "node": {
       "type": "string",
-      "description": "The node the agent runs on."
+      "description": "The node the agent runs on. Absent while it sleeps."
     },
     "outcome": {
       "type": "string",
@@ -54,7 +58,8 @@
       "status": "parked",
       "pending": 0,
       "node": "wardrik@box1",
-      "outcome": "ok"
+      "outcome": "ok",
+      "asleep": false
     }
   ]
 }

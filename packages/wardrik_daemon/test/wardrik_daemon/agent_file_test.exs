@@ -63,6 +63,45 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.ledger == Wardrik.Ledger.Store
   end
 
+  describe "idle_timeout" do
+    test "is seconds, or infinity, and fifteen minutes where nothing sets it", context do
+      assert {:ok, spec} = read("---\nidle_timeout: 60\n---\n", context)
+      assert spec.idle_timeout == :timer.seconds(60)
+
+      assert {:ok, spec} = read("---\nidle_timeout: infinity\n---\n", context)
+      assert spec.idle_timeout == :infinity
+
+      assert {:ok, spec} = read("Answer briefly.\n", context)
+      assert spec.idle_timeout == :timer.minutes(15)
+
+      assert {:error, message} = read("---\nidle_timeout: soon\n---\n", context)
+      assert message =~ "idle_timeout is a whole number of seconds, or infinity"
+    end
+
+    test "is config.yaml's defaults' where the file sets none", context do
+      previous = Application.get_env(:wardrik_daemon, WardrikDaemon.Agents)
+
+      on_exit(fn ->
+        Application.put_env(:wardrik_daemon, WardrikDaemon.Agents, previous || [])
+      end)
+
+      Application.put_env(:wardrik_daemon, WardrikDaemon.Agents,
+        defaults: %{"idle_timeout" => 300}
+      )
+
+      assert {:ok, spec} = read("Answer briefly.\n", context)
+      assert spec.idle_timeout == :timer.seconds(300)
+
+      assert {:ok, spec} = read("---\nidle_timeout: infinity\n---\n", context)
+      assert spec.idle_timeout == :infinity
+
+      assert {:ok, spec} =
+               AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{"timeout" => 600})
+
+      assert spec.idle_timeout == :timer.seconds(300)
+    end
+  end
+
   test "text/1 writes a file that reads back as it was given", context do
     text =
       AgentFile.text([

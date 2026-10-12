@@ -346,7 +346,7 @@ defmodule WardrikDaemon.AgentsTest do
       File.rm!(Path.join([dir, "agents", "beta.md"]))
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/beta"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/beta"), wake: false) == nil
       assert WardrikSchedule.for_agent(AgentID.parse!("#{org}/beta")) == []
       assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
 
@@ -363,7 +363,7 @@ defmodule WardrikDaemon.AgentsTest do
       write(context, "alpha", "name: gamma\n")
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/gamma"))
     end
 
@@ -411,7 +411,7 @@ defmodule WardrikDaemon.AgentsTest do
       File.rm!(Path.join([context.dir, "agents", "alpha.md"]))
       Agents.reload()
 
-      assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+      assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/defined"))
       assert :ok = Agents.editable(AgentID.parse!("#{org}/defined"))
     end
@@ -426,7 +426,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] = Agents.files()
     assert policy_error =~ "careful.yaml: deny is a list"
     assert agent_error =~ "names careful"
-    assert {:error, :not_found} = Agent.status(AgentID.parse!("#{org}/alpha"))
+    assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
   end
 
   test "runs the schedules a file declares, and stops those it no longer does",

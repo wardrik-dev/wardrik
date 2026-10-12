@@ -400,7 +400,8 @@ defmodule WardrikDaemon.CLI.Init do
         file,
         AgentFile.text([
           {"description", "A first agent, written by wardrik init."},
-          {"model", "#{init.provider}:#{init.model}"}
+          {"model", "#{init.provider}:#{init.model}"},
+          {"idle_timeout", "infinity"}
         ])
       )
 

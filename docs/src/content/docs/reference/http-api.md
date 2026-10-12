@@ -210,7 +210,8 @@ One entry of GET /v1/agents.
 | `name` | string | yes |  |
 | `status` | string | yes | One of `idle`, `running`, `parked`. |
 | `pending` | integer | yes | Messages waiting for the next run. |
-| `node` | string | yes | The node the agent runs on. |
+| `asleep` | boolean | yes | Whether it has gone to sleep for having had nothing to do; it wakes when something asks it. |
+| `node` | string |  | The node the agent runs on. Absent while it sleeps. |
 | `outcome` | string |  | How the last run ended. Absent before the first. One of `ok`, `failed`, `interrupted`. |
 
 ### `agent_definition`
@@ -228,6 +229,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `context` | array of string or object |  | The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with. |
 | `policy` | string or object |  |  |
 | `timeout` | integer |  | How many seconds a turn may take. |
+| `idle_timeout` | integer or `"infinity"` |  | How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent. |
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
 | `schedule` | array of object |  | The schedules that ask the agent on a clock, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/schedules/{schedule} change one. |

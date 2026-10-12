@@ -161,6 +161,8 @@ defmodule Wardrik.Agent.State do
   # How many message ids an agent remembers, so one sent again is taken once.
   @recent 256
 
+  @default_idle_timeout :timer.minutes(15)
+
   @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts, :log]
   defstruct [
     :generation,
@@ -173,6 +175,9 @@ defmodule Wardrik.Agent.State do
     :scope_opts,
     replayer: {Turn, :replay, []},
     grace: @default_grace,
+    idle_timeout: @default_idle_timeout,
+    active_at: nil,
+    idle_timer: nil,
     mode: :idle,
     pending: [],
     recent: [],
@@ -183,6 +188,10 @@ defmodule Wardrik.Agent.State do
   @doc "How long an interrupted turn is given to answer before it is killed."
   @spec default_grace() :: pos_integer()
   def default_grace, do: @default_grace
+
+  @doc "How long an agent with nothing to do stays running, unless it is given another."
+  @spec default_idle_timeout() :: timeout()
+  def default_idle_timeout, do: @default_idle_timeout
 
   @typedoc """
   What the agent is doing. Each shape carries its own data and nothing else's.
@@ -220,6 +229,9 @@ defmodule Wardrik.Agent.State do
           resumer: resumer(),
           scope_opts: keyword(),
           grace: pos_integer(),
+          idle_timeout: timeout(),
+          active_at: integer() | nil,
+          idle_timer: {reference(), reference()} | nil,
           mode: mode(),
           pending: [Message.t()],
           recent: [String.t()],
@@ -278,7 +290,8 @@ defmodule Wardrik.Agent.State do
       resumer: mfa!(Keyword.get(opts, :resumer, {Turn, :resume, []}), :resumer),
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
       scope_opts: Keyword.take(opts, Scope.seams()),
-      grace: Keyword.get(opts, :grace, @default_grace)
+      grace: Keyword.get(opts, :grace, @default_grace),
+      idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, @default_idle_timeout))
     }
   end
 
@@ -287,18 +300,59 @@ defmodule Wardrik.Agent.State do
   from now on. A turn already running keeps the scope it began under, and a
   parked one is resumed under the new seams.
 
-  `:config` replaces the config when given. The seams in `opts`, of
-  `Wardrik.Scope.seams/0`, replace every seam the agent had, so one left out is
-  one the agent no longer has. Who the work is for stays with the agent's ID.
+  `:config` and `:idle_timeout` replace the agent's when given. The seams in
+  `opts`, of `Wardrik.Scope.seams/0`, replace every seam the agent had, so one
+  left out is one the agent no longer has. Who the work is for stays with the
+  agent's ID.
   """
   @spec configure(t(), keyword()) :: t()
   def configure(%__MODULE__{} = state, opts) do
     %{
       state
       | config: Keyword.get(opts, :config, state.config),
+        idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, state.idle_timeout)),
         scope_opts: Keyword.take(opts, Scope.seams())
     }
   end
+
+  defp idle_timeout!(:infinity), do: :infinity
+  defp idle_timeout!(ms) when is_integer(ms) and ms > 0, do: ms
+
+  defp idle_timeout!(other) do
+    raise ArgumentError,
+          ":idle_timeout must be a number of milliseconds above zero or :infinity, " <>
+            "got: #{inspect(other)}"
+  end
+
+  @doc "The same agent, last busy at `now`, in milliseconds of monotonic time."
+  @spec touched(t(), integer()) :: t()
+  def touched(%__MODULE__{} = state, now), do: %{state | active_at: now}
+
+  @doc """
+  Whether the agent may stop for having had nothing to do since `now -
+  idle_timeout`: `{:wait, ms}` until it might, `:sleep` once it may, or
+  `:never`.
+
+  An agent sleeps only with no turn running or due and nothing queued. A
+  parked turn does not keep it awake: it is written down, and a decision wakes
+  the agent.
+  """
+  @spec idle(t(), integer()) :: {:wait, pos_integer()} | :sleep | :never
+  def idle(%__MODULE__{idle_timeout: :infinity}, _now), do: :never
+
+  def idle(%__MODULE__{idle_timeout: timeout, active_at: active_at} = state, now) do
+    left = active_at + timeout - now
+
+    cond do
+      left > 0 -> {:wait, left}
+      at_rest?(state) -> :sleep
+      true -> {:wait, timeout}
+    end
+  end
+
+  defp at_rest?(%__MODULE__{mode: :idle, pending: []}), do: true
+  defp at_rest?(%__MODULE__{mode: %Waiting{}, pending: []}), do: true
+  defp at_rest?(%__MODULE__{}), do: false
 
   defp generation, do: :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
 

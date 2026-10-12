@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent.stopped",
   "title": "wardrik.agent.stopped",
-  "description": "Someone stopped an agent, which kept its conversation.",
+  "description": "An agent stopped, keeping its conversation: someone stopped it, or it went to sleep for having had nothing to do, until something wakes it.",
   "type": "object",
   "properties": {
     "agent": {
@@ -17,6 +17,17 @@
       "required": [
         "id"
       ]
+    },
+    "node": {
+      "type": "string",
+      "description": "The node it stopped on, where it stopped itself."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "idle"
+      ],
+      "description": "Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it."
     },
     "actor": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"

@@ -141,7 +141,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       path = Path.join([Agents.dir(), "agents", name <> ".md"])
 
       cond do
-        member = Fleet.lookup(key) ->
+        member = awake(key) ->
           {:ok, "#{key} runs already, on #{Nodes.display(member.node)}."}
 
         file = WardrikDaemon.declared()[key] ->
@@ -276,9 +276,17 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   end
 
   defp running_on(key) do
-    case Fleet.lookup(key) do
+    case awake(key) do
       nil -> node()
       member -> member.node
+    end
+  end
+
+  # A sleeping agent runs nowhere; spawning it wakes it.
+  defp awake(key) do
+    case Fleet.lookup(key) do
+      %{asleep: false} = member -> member
+      _asleep_or_none -> nil
     end
   end
 

@@ -107,6 +107,18 @@
       "minimum": 1,
       "description": "How many seconds a turn may take."
     },
+    "idle_timeout": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "infinity"
+        }
+      ],
+      "description": "How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent."
+    },
     "max_iterations": {
       "oneOf": [
         {
@@ -230,6 +242,7 @@
         ]
       },
       "timeout": 600,
+      "idle_timeout": 900,
       "max_iterations": 12,
       "compaction": {
         "at": 0.6,

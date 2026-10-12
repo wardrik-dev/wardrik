@@ -330,6 +330,28 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.whereis(other)
   end
 
+  test "an agent asleep is shown asleep, and connecting to it wakes it", ctx do
+    %{session: session, org: org} = ctx
+    dozer = spawn_and_ask(org, "dozer", "remember this")
+    :ok = Fleet.stop(dozer)
+    type = fn text -> Enum.each(String.graphemes(text), &Breeze.Test.input(session, &1)) end
+
+    Breeze.Test.input(session, %{"key" => "p", "ctrlKey" => true})
+    screen(session)
+    type.("connect")
+    Breeze.Test.input(session, "Enter")
+
+    assert screen(session) =~ "#{dozer}  idle · asleep"
+
+    type.("dozer")
+    Breeze.Test.input(session, "Enter")
+
+    text = screen(session)
+    assert text =~ "connected to #{dozer}"
+    assert text =~ "› remember this"
+    assert Fleet.whereis(dozer, wake: false)
+  end
+
   test "the palette picks an agent for /connect, and types the rest of /spawn", ctx do
     %{session: session, org: org} = ctx
     other = spawn_and_ask(org, "other", "what is up")
@@ -1026,7 +1048,7 @@ defmodule WardrikTUI.App.FleetTest do
     text = screen(session)
     assert text =~ "shut down #{key}"
     assert text =~ "its conversation is kept"
-    assert Fleet.whereis(key) == nil
+    assert Fleet.whereis(key, wake: false) == nil
     assert Audit.about("agents/#{key}") == [{"agent.stopped", @ops}]
 
     submit(session, "/spawn sleeper")
@@ -1035,10 +1057,11 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.whereis(key)
   end
 
-  test "shutting down the attached agent leaves the client waiting, sending nothing", ctx do
+  test "an attached agent forgotten leaves the client waiting, sending nothing", ctx do
     %{session: session, agent_id: agent_id} = ctx
 
-    submit(session, "/shutdown watched")
+    :ok = Fleet.forget(agent_id)
+    Breeze.Test.info(session, :refresh_fleet)
 
     text = screen(session)
     assert text =~ "#{agent_id} is not running"
@@ -1047,8 +1070,16 @@ defmodule WardrikTUI.App.FleetTest do
     submit(session, "hello?")
     assert screen(session) =~ "is not running · nothing was sent"
     refute_receive {:turn, _}
+  end
 
-    submit(session, "/spawn watched")
+  test "shutting down the attached agent puts it to sleep, and what is typed wakes it", ctx do
+    %{session: session, agent_id: agent_id} = ctx
+
+    submit(session, "/shutdown watched")
+
+    assert screen(session) =~ "shut down #{agent_id}"
+    assert Fleet.whereis(agent_id, wake: false) == nil
+
     submit(session, "hello again")
     assert_receive {:turn, [{:user, "hello again"}]}, 2_000
   end

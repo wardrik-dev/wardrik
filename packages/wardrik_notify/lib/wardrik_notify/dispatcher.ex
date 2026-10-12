@@ -115,7 +115,7 @@ defmodule WardrikNotify.Dispatcher do
   end
 
   defp held_here?(agent) do
-    case Wardrik.Fleet.whereis(agent) do
+    case Wardrik.Fleet.whereis(agent, wake: false) do
       pid when is_pid(pid) -> node(pid) == node()
       nil -> false
     end

@@ -106,9 +106,11 @@ an org. It is `default` unless set; `org/0` reads it.
 
 `defaults` is what an agent is given where nothing else says: one
 `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
-`model`, `tools`, `policy`, `timeout`, `max_iterations` and `compaction`,
-as an agent file does; see `WardrikDaemon.AgentFile`. `wardrik init`
-writes it with the model it chose.
+`model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`
+and `compaction`, as an agent file does; see `WardrikDaemon.AgentFile`.
+`idle_timeout` holds for every agent that sets none of its own, 900
+seconds where it is not set. `wardrik init` writes it with the model it
+chose.
 
 An MCP server and a notify target each serve one org's agents, the
 deployment's own, unless its `org` names another, a list of them, or `*`

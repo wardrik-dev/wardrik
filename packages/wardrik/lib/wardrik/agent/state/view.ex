@@ -8,6 +8,7 @@ defmodule Wardrik.Agent.State.View do
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Due
   alias Wardrik.Agent.State.Running
+  alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.Waiting
 
   @typedoc "Whether a turn is in flight, and how many messages are waiting behind it."
@@ -57,6 +58,23 @@ defmodule Wardrik.Agent.State.View do
       pending: pending,
       waiting_on: Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.name end),
       outcome: state.outcome
+    }
+  end
+
+  @doc """
+  What `Wardrik.Fleet` reports about an agent that is asleep, read from what it
+  wrote down as it stopped. It was idle or parked, since an agent sleeps only
+  then.
+  """
+  @spec meta_at_rest(Stored.t()) :: meta()
+  def meta_at_rest(dumped) do
+    waiting = Stored.waiting_on(dumped)
+
+    %{
+      status: if(waiting == [], do: :idle, else: :parked),
+      pending: length(dumped.pending),
+      waiting_on: Enum.map(waiting, fn {call, _prompt} -> call.name end),
+      outcome: dumped.outcome
     }
   end
 

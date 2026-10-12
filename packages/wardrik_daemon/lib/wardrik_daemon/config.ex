@@ -98,9 +98,11 @@ defmodule WardrikDaemon.Config do
 
   `defaults` is what an agent is given where nothing else says: one
   `wardrik agent spawn` writes a file for, and one the TUI starts. It takes
-  `model`, `tools`, `policy`, `timeout`, `max_iterations` and `compaction`,
-  as an agent file does; see `WardrikDaemon.AgentFile`. `wardrik init`
-  writes it with the model it chose.
+  `model`, `tools`, `policy`, `timeout`, `idle_timeout`, `max_iterations`
+  and `compaction`, as an agent file does; see `WardrikDaemon.AgentFile`.
+  `idle_timeout` holds for every agent that sets none of its own, 900
+  seconds where it is not set. `wardrik init` writes it with the model it
+  chose.
 
   An MCP server and a notify target each serve one org's agents, the
   deployment's own, unless its `org` names another, a list of them, or `*`
@@ -201,7 +203,7 @@ defmodule WardrikDaemon.Config do
   @redirect ~w(url ip port open)a
   @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
   @vault ~w(keys)a
-  @defaults ~w(model tools policy timeout max_iterations compaction)
+  @defaults ~w(model tools policy timeout idle_timeout max_iterations compaction)
   @listener ~w(port ip)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
@@ -533,6 +535,21 @@ defmodule WardrikDaemon.Config do
   defp defaults(defaults) do
     defaults = table!(defaults, ["defaults"])
     known!(defaults, @defaults, ["defaults"])
+
+    case defaults["idle_timeout"] do
+      nil ->
+        :ok
+
+      "infinity" ->
+        :ok
+
+      seconds when is_integer(seconds) and seconds > 0 ->
+        :ok
+
+      _other ->
+        invalid!(["defaults", "idle_timeout"], "is a whole number of seconds, or infinity")
+    end
+
     defaults
   end
 

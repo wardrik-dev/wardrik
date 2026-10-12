@@ -45,7 +45,7 @@ defmodule Wardrik.Agent.State.Stored do
   def dump(%State{} = state) do
     state
     |> Map.from_struct()
-    |> Map.drop([:log])
+    |> Map.drop([:log, :active_at, :idle_timer])
     |> Map.merge(%{
       config: Config.dump(state.config),
       mode: at_rest(state.mode),
@@ -69,6 +69,21 @@ defmodule Wardrik.Agent.State.Stored do
 
     struct!(State, %{dumped | config: Config.load(config), mode: reopen(mode)})
   end
+
+  @doc """
+  What an agent written down waits on, as `{call, prompt}` pairs, or `[]`
+  when it is not parked. Read without loading the agent.
+  """
+  @spec waiting_on(t()) :: [{Wardrik.Tool.call(), String.t()}]
+  def waiting_on(%{mode: {:waiting, turn, _source}}), do: Turn.waiting(turn)
+  def waiting_on(%{}), do: []
+
+  @doc "The ids of the calls an agent written down parked to resolve `ref` for `owner`."
+  @spec awaiting(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: [String.t()]
+  def awaiting(%{mode: {:waiting, turn, _source}}, ref, owner),
+    do: Turn.awaiting(turn, ref, owner)
+
+  def awaiting(%{}, _ref, _owner), do: []
 
   defp reopen({:waiting, turn, source}),
     do: %Waiting{turn: turn, source: source, started_at: System.monotonic_time()}

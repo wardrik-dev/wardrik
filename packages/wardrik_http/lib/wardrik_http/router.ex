@@ -227,15 +227,14 @@ defmodule WardrikHTTP.Router do
     do: json(conn, 404, Resource.error("not_found", "#{key} has no definition kept."))
 
   # The definition module is asked first, and may refuse. An agent is
-  # forgotten only where one runs, as every other route acts on running
-  # agents alone.
+  # forgotten where the store holds one, awake or asleep.
   defp forget(conn, key) do
     with {:ok, module} <- definitions(conn, :delete),
          kept when kept in [:ok, {:error, :not_found}] <- module.delete(key) do
-      running = Fleet.lookup(key)
-      if running, do: :ok = Fleet.forget(key)
+      held = Fleet.lookup(key)
+      if held, do: :ok = Fleet.forget(key)
 
-      if running || kept == :ok do
+      if held || kept == :ok do
         :ok = record(conn, {:agent_forgotten, key})
         send_resp(conn, 204, "")
       else

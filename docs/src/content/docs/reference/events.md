@@ -108,12 +108,14 @@ The agent was loaded: started, restarted, or moved to another node.
 
 ### `wardrik.agent.stopped`
 
-Someone stopped an agent, which kept its conversation.
+An agent stopped, keeping its conversation: someone stopped it, or it went to sleep for having had nothing to do, until something wakes it.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `agent` | object | yes |  |
 | `agent.id` | string | yes | The agent's ID. |
+| `node` | string |  | The node it stopped on, where it stopped itself. |
+| `reason` | string |  | Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it. One of `idle`. |
 | `actor` | [principal](#principal) |  |  |
 
 ### `wardrik.agents.cancelled`

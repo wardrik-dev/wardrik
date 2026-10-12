@@ -6,12 +6,12 @@ defmodule Wardrik.Fleet do
   | Function | Answers |
   | --- | --- |
   | `put/1` | start an agent from its `Wardrik.Agent.Spec`, or bring a running one to it |
-  | `list/1` | which agents are running, and what each is doing |
+  | `list/1` | every agent, awake or asleep, and what each is doing |
   | `watch/1` | the same, as messages, whenever it changes |
   | `kill/1` | interrupt everything under a prefix |
   | `forget/1`, `forget_under/1` | remove an agent, or every agent under a prefix, and its store |
   | `move/2` | restart an agent on another node, as it was |
-  | `whereis/1` | the pid behind an ID, on whatever node holds it |
+  | `whereis/2` | the pid behind an ID, on whatever node holds it, waking it where it sleeps |
   | `stored?/1` | whether the store holds an agent, running or stopped |
 
   An agent is addressed by its `Wardrik.AgentID`, and the fleet is sliced by
@@ -23,8 +23,9 @@ defmodule Wardrik.Fleet do
   ## Listing
 
   Agents publish what they are doing as registry metadata when it changes, and
-  the registry replicates between nodes, so `list/1` is a table read that sends
-  no messages and `watch/1` needs no polling.
+  the registry replicates between nodes, so `watch/1` needs no polling. An
+  agent that has gone to sleep, as `Wardrik.Agent` describes, is in no
+  registry: `list/1` reads it from the store, as it wrote itself down.
 
   ## Durability
 
@@ -111,10 +112,11 @@ defmodule Wardrik.Fleet do
   defp started({:error, reason}), do: {:error, reason}
 
   @doc """
-  Stops an agent, syncing its state first so `spawn/2` brings it back as it was.
+  Stops an agent, syncing its state first, so it sleeps as it was until
+  something wakes it.
 
-  The agent stays stopped until something spawns it again: a graceful stop
-  would leave a permanent agent eligible for the supervisor's own restart.
+  The stop is permanent: a graceful one would leave the agent eligible for
+  the supervisor's own restart.
   """
   @spec stop(AgentID.t()) :: :ok | {:error, term()}
   def stop(%AgentID{} = id) do
@@ -123,19 +125,33 @@ defmodule Wardrik.Fleet do
 
   @doc "Whether an agent is kept under `id`, running or stopped."
   @spec stored?(AgentID.t()) :: boolean()
-  def stored?(%AgentID{} = id),
-    do: match?({:ok, _info}, DurableServer.Supervisor.get_server_info(@name, to_string(id)))
+  def stored?(%AgentID{} = id), do: match?({:ok, _info}, info(id))
+
+  @doc """
+  What a stopped agent wrote down as it stopped, read without starting it.
+  One running writes itself down as it goes, so what this reads of it may
+  already be behind.
+  """
+  @spec written(AgentID.t()) :: {:ok, Wardrik.Agent.State.Stored.t()} | {:error, :not_found}
+  def written(%AgentID{} = id) do
+    with {:ok, info} <- info(id), do: {:ok, info.user_state}
+  end
+
+  # A forgotten agent can leave a tombstone, which is no agent.
+  defp info(id) do
+    case DurableServer.Supervisor.get_server_info(@name, to_string(id)) do
+      {:ok, %{status: :deleting}} -> {:error, :not_found}
+      {:ok, info} -> {:ok, info}
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
 
   @doc "Stops an agent and deletes everything it had, permanently."
   @spec forget(AgentID.t()) :: :ok | {:error, term()}
   def forget(%AgentID{} = id),
     do: DurableServer.Supervisor.terminate_and_delete_child(@name, to_string(id))
 
-  @doc """
-  Forgets every running agent under `prefix`, and returns how many.
-
-  Agents that are stored but not running are left where they are.
-  """
+  @doc "Forgets every agent under `prefix`, awake or asleep, and returns how many."
   @spec forget_under(Prefix.t()) :: non_neg_integer()
   def forget_under(prefix) do
     members = list(prefix)
@@ -143,40 +159,83 @@ defmodule Wardrik.Fleet do
     length(members)
   end
 
-  @doc "The pid behind an ID, wherever in the cluster it is, or `nil`."
-  @spec whereis(AgentID.t()) :: pid() | nil
-  def whereis(%AgentID{} = id) do
+  @doc """
+  The pid behind an ID, wherever in the cluster it is, or `nil` where the
+  store holds no agent under it.
+
+  An agent asleep is started from the store first, as it was. Callers racing
+  to wake one agent, on any node, start one process between them. With
+  `wake: false` a sleeping agent answers `nil` instead, for a caller with
+  nothing to ask of it.
+  """
+  @spec whereis(AgentID.t(), keyword()) :: pid() | nil
+  def whereis(%AgentID{} = id, opts \\ []) do
     case DurableServer.Supervisor.lookup(@name, to_string(id)) do
       {pid, _meta} -> pid
-      nil -> nil
+      nil -> if Keyword.get(opts, :wake, true), do: wake(id)
     end
   end
 
-  @doc "One agent as the fleet sees it, or `nil` when nothing holds that ID."
+  defp wake(id) do
+    with true <- stored?(id),
+         {:ok, pid} <- id |> child([]) |> start(nil) |> started() do
+      pid
+    else
+      _asleep_or_gone -> nil
+    end
+  end
+
+  @doc "One agent as the fleet sees it, awake or asleep, or `nil` when nothing holds that ID."
   @spec lookup(AgentID.t()) :: Member.t() | nil
   def lookup(%AgentID{} = id) do
     case DurableServer.Supervisor.lookup(@name, to_string(id)) do
       {pid, meta} -> Member.new(id, pid, meta)
-      nil -> nil
+      nil -> asleep(id)
+    end
+  end
+
+  defp asleep(id) do
+    case written(id) do
+      {:ok, dumped} -> Member.asleep(id, dumped)
+      {:error, :not_found} -> nil
     end
   end
 
   # -- the fleet -------------------------------------------------------------
 
   @doc """
-  Every agent under `prefix`, across the cluster, sorted by ID.
+  Every agent under `prefix`, across the cluster, awake or asleep, sorted by
+  ID.
 
-  Reads each node's registry, so this is one call per node in the cluster.
-  `watch/1` is the cheaper way to keep a view up to date.
+  Reads each node's registry for the agents awake, and the store for those
+  asleep, so it reads every agent the store holds. `watch/1` is the cheaper
+  way to keep a view of the agents awake up to date.
   """
   @spec list(Prefix.t()) :: [Member.t()]
   def list(prefix \\ Prefix.all()) do
-    for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
-        id = AgentID.parse!(key),
-        Prefix.covers?(prefix, id) do
-      Member.new(id, pid, meta.user_meta)
+    awake =
+      for {key, {pid, meta}} <- DurableServer.Supervisor.global_members(@name),
+          id <- under(prefix, key),
+          into: %{},
+          do: {key, Member.new(id, pid, meta.user_meta)}
+
+    asleep =
+      for info <- DurableServer.Supervisor.stream_all_server_info(@name),
+          not info.running,
+          info.status != :deleting,
+          not Map.has_key?(awake, info.key),
+          id <- under(prefix, info.key),
+          do: Member.asleep(id, info.user_state)
+
+    Enum.sort_by(Map.values(awake) ++ asleep, &to_string(&1.id))
+  end
+
+  defp under(prefix, key) do
+    with {:ok, id} <- AgentID.parse(key), true <- Prefix.covers?(prefix, id) do
+      [id]
+    else
+      _elsewhere -> []
     end
-    |> Enum.sort_by(&to_string(&1.id))
   end
 
   @doc """
@@ -203,14 +262,15 @@ defmodule Wardrik.Fleet do
   end
 
   @doc """
-  Interrupts every agent under `prefix`, and returns how many were told to stop.
+  Interrupts every agent awake under `prefix`, and returns how many were told
+  to stop. One asleep has nothing to stop.
 
   Each agent's turn is interrupted and its queue discarded; the agents stay up.
   Use `stop/1` or `forget/1` to be rid of one.
   """
   @spec kill(Prefix.t()) :: non_neg_integer()
   def kill(prefix \\ Prefix.all()) do
-    members = list(prefix)
+    members = for %Member{asleep: false} = member <- list(prefix), do: member
     Enum.each(members, &Agent.interrupt(&1.pid))
     length(members)
   end

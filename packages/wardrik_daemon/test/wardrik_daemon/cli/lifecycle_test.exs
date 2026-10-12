@@ -88,6 +88,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   defp status(key) do
     case Fleet.lookup(key) do
       nil -> nil
+      %{asleep: true} -> :asleep
       member -> member.status
     end
   end
@@ -151,7 +152,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                   "wardrik reload, or wardrik agent spawn helper --org #{org}, starts it again.\n",
                 0}
 
-      assert status(key) == nil
+      assert status(key) == :asleep
 
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"Started #{key} on #{here}, as agents/helper.md declares it.\n", 0}

@@ -97,7 +97,7 @@ defmodule WardrikDaemon.CLI.Agents do
         [
           Owl.Data.tag(to_string(member.id), :bright),
           status(member),
-          Nodes.display(member.node),
+          where(member),
           next(member.id),
           Enum.join(WardrikDaemon.spent(member.id), ", ")
         ]
@@ -137,6 +137,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp trimmed([]), do: []
   defp trimmed(cells), do: List.update_at(cells, -1, fn [cell, _padding] -> cell end)
 
+  defp status(%{asleep: true, status: :parked}),
+    do: Owl.Data.tag("parked, asleep", [:bright, :yellow])
+
+  defp status(%{asleep: true}), do: Owl.Data.tag("asleep", @faint)
   defp status(%{status: :parked}), do: Owl.Data.tag("parked", [:bright, :yellow])
   defp status(%{status: :running}), do: Owl.Data.tag("running", :cyan)
   defp status(%{outcome: :failed}), do: Owl.Data.tag("idle, last failed", :red)
@@ -151,11 +155,11 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # -- show ---------------------------------------------------------------------
 
+  # The snapshot wakes an agent asleep, so the fleet then shows it awake.
   defp show([key], _opts) do
-    case {Fleet.lookup(key), Agent.snapshot(key)} do
-      {nil, _snapshot} -> {:error, "No agent runs under #{key}."}
-      {_member, {:error, :not_found}} -> {:error, "No agent runs under #{key}."}
-      {member, snapshot} -> {:ok, &shown(member, snapshot, defined(key), &1)}
+    case Agent.snapshot(key) do
+      {:error, :not_found} -> {:error, "No agent runs under #{key}."}
+      snapshot -> {:ok, &shown(Fleet.lookup(key), snapshot, defined(key), &1)}
     end
   end
 
@@ -201,6 +205,9 @@ defmodule WardrikDaemon.CLI.Agents do
        do: [description, "" | lines]
 
   defp described(lines, _defined), do: lines
+
+  defp where(%{asleep: true}), do: ""
+  defp where(member), do: Nodes.display(member.node)
 
   defp doing(member, snapshot) do
     [

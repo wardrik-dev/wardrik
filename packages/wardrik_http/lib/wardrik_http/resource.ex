@@ -45,8 +45,9 @@ defmodule WardrikHTTP.Resource do
       "name" => member.id.name,
       "status" => to_string(member.status),
       "pending" => member.pending,
-      "node" => to_string(member.node)
+      "asleep" => member.asleep
     }
+    |> Value.put("node", member.node && to_string(member.node))
     |> Value.put("outcome", member.outcome && to_string(member.outcome))
   end
 

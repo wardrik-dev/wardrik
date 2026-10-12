@@ -303,7 +303,8 @@ defmodule WardrikTUI.App.Connection do
   # The attached agent as the fleet has it now. A new process under the same
   # ID, after a move or a restart, is adopted; an ID the fleet no longer holds
   # means the agent is not running, unless it is a local process that was never
-  # in the fleet.
+  # in the fleet. One asleep is addressed by its ID, which wakes it, and is
+  # shown afresh once it is awake.
   defp follow(term, fleet) do
     %{agent: agent, agent_id: id} = term.assigns
 
@@ -311,11 +312,17 @@ defmodule WardrikTUI.App.Connection do
       nil ->
         assign(term, available?: alive?(agent))
 
+      %{asleep: true} ->
+        assign(term, agent: id, available?: true)
+
       %{pid: pid} when pid == agent ->
         if term.assigns.available?, do: term, else: reconnect(term, pid)
 
       %{pid: pid} when is_pid(agent) ->
         term |> reconnect(pid) |> followed(pid)
+
+      %{pid: pid} when is_struct(agent, Wardrik.AgentID) ->
+        reconnect(term, pid)
 
       %{pid: pid} ->
         assign(term, agent: pid, available?: true)

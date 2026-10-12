@@ -63,14 +63,15 @@ An agent belongs to whichever made it. A file's agent is changed through its fil
 refuses, with `409`, to define it, remove it or change its schedules. Removing the file and running
 `wardrik reload` stops the agent and clears its schedules, and so does changing the file's `name`.
 The agent keeps its conversation, so a file that declares it again brings it back as it was;
+stopped, it [sleeps](#sleeping), and anything asked of it by its key wakes it with what it had.
 `wardrik agent rm KEY` removes it for good. An agent the HTTP API defined is never touched by
 reading the files, and `wardrik agent rm KEY` removes it too.
 
 In a [cluster](/operate/cluster/) each node reads its own `agents/`, and an agent stops only once no
 node's files declare it.
 
-`wardrik agent cancel` ends the turn an agent is taking, `agent stop` stops it and keeps its
-conversation for `agent spawn`, and `agent move` starts it again on another node, as it was. See
+`wardrik agent cancel` ends the turn an agent is taking, `agent stop` puts it to sleep, keeping its
+conversation, and `agent move` starts it again on another node, as it was. See
 [the CLI](/reference/cli/).
 
 A file that does not read is listed by `wardrik status`, and the agent it declared, if one runs,
@@ -135,6 +136,31 @@ wardrik ls attention          # the agents waiting on a person
 
 A query is words that must all match: text in the key, `name:`, `org:`, `user:`, `node:`, and
 `status:idle`, `status:running` or `status:parked`.
+
+## Sleeping
+
+An agent with nothing to do for 15 minutes writes itself down and stops, so it costs nothing until it
+is needed. It sleeps only once no turn is running and no message waits; a turn parked on a person
+does not keep it awake. Anything asked of it by its key wakes it, on whichever node, as it was:
+
+- a message, from a channel, the HTTP API, `wardrik ask` or a schedule;
+- a decision on a call it parked, or an account connected that a call waited on;
+- a client attaching, or reading what it is doing.
+
+Stopping a turn wakes nothing, since a sleeping agent has none. `wardrik ls` and `GET /v1/agents`
+list a sleeping agent with the status it slept in and as asleep, and its log says
+`agent.stopped`, with the reason `idle`, as it goes.
+
+`idle_timeout` sets how long, in seconds, or `infinity` for an agent that never sleeps: in an agent
+file or a definition for one agent, and in `config.yaml`'s `defaults` for every agent that sets
+none.
+
+```yaml
+---
+description: Answers in the team's channel.
+idle_timeout: infinity
+---
+```
 
 ## The conversation
 

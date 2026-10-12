@@ -38,7 +38,8 @@ defmodule Wardrik.Event do
 
     * `{:message_queued, message}`, a `Wardrik.Agent.Message` the agent will
       answer, with who sent it where that is known, `{:agent_started, node,
-      status, generation}`, each time the agent is loaded,
+      status, generation}`, each time the agent is loaded, `{:agent_stopped,
+      node, :idle}`, when it goes to sleep for having had nothing to do,
       `{:context_cleared, dropped}`, when its history is
       emptied, with how many messages it held, `{:schedule_fired, name,
       outcome}`, when a schedule came due, with what came of it, as
@@ -81,6 +82,7 @@ defmodule Wardrik.Event do
           | {:call_decided, String.t(), Wardrik.LLM.Turn.decision(), Wardrik.Principal.t() | nil}
           | {:message_queued, Wardrik.Agent.Message.t()}
           | {:agent_started, node(), :idle | :running | :parked, String.t()}
+          | {:agent_stopped, node(), :idle}
           | {:context_compacted, Wardrik.History.stats()}
           | {:context_cleared, non_neg_integer()}
           | {:schedule_fired, String.t(), :asked | :busy | :no_agent | :missed | :failed}
@@ -164,6 +166,7 @@ defmodule Wardrik.Event do
     :call_decided,
     :message_queued,
     :agent_started,
+    :agent_stopped,
     :schedule_fired,
     :span_started,
     :span_finished,
