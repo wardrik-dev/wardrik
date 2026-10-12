@@ -14,10 +14,14 @@ defmodule Wardrik.Deployment do
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
-  @doc "`:ok` where `node` is one of the deployment's, this node or one connected to it, or why not."
+  @doc "The deployment's nodes: this one, and every one connected to it."
+  @spec nodes() :: [node()]
+  def nodes, do: [Node.self() | Node.list()]
+
+  @doc "`:ok` where `node` is one of the deployment's, as `nodes/0` answers them, or why not."
   @spec node(node()) :: :ok | {:error, Wardrik.Error.t()}
   def node(node) when is_atom(node) do
-    if node in [Node.self() | Node.list()],
+    if node in nodes(),
       do: :ok,
       else: {:error, Wardrik.Error.new(:invalid, "#{node} is not a node of this deployment.")}
   end
@@ -31,6 +35,6 @@ defimpl Wardrik.Subject, for: Wardrik.Deployment do
   def authorize(_deployment, %Grant{scope: scope, can: can}, action) do
     if Prefix.covers?(scope, Prefix.all()) and action in can,
       do: :ok,
-      else: {:error, Error.new(:forbidden, "This caller may not change where agents run.")}
+      else: {:error, Error.new(:forbidden, "This caller may not act on the deployment.")}
   end
 end

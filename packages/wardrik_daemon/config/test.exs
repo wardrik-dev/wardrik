@@ -15,7 +15,10 @@ config :wardrik, WardrikStore,
 
 # An agent wakes with its definition as it stands, as the release starts the
 # fleet.
-config :wardrik, definitions: WardrikDaemon.Agents, connections: WardrikOAuth.Connections
+config :wardrik,
+  definitions: WardrikDaemon.Agents,
+  connections: WardrikOAuth.Connections,
+  tokens: WardrikHTTP.Tokens
 
 # What the daemon starts each package with, beside what config.yaml says.
 config :wardrik_daemon, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]

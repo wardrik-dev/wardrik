@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:nodes",
+  "title": "Nodes",
+  "description": "The deployment's nodes, each with how many agents run on it, and how many agents sleep on none: what GET /v1/deployment/nodes answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "nodes",
+    "asleep"
+  ],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "agents"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The node's name, as an agent's node is given."
+          },
+          "agents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many agents run on it."
+          }
+        }
+      }
+    },
+    "asleep": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many agents sleep, on no node, until something asks them."
+    }
+  },
+  "examples": [
+    {
+      "nodes": [
+        {
+          "name": "wardrik@box1",
+          "agents": 12
+        },
+        {
+          "name": "wardrik@box2",
+          "agents": 9
+        }
+      ],
+      "asleep": 40
+    }
+  ]
+}

@@ -103,7 +103,7 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc "Reads every file again and brings the fleet to what they say."
-  @spec reload() :: [file()]
+  @impl Wardrik.Definition
   def reload, do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
 
   @doc """
@@ -301,7 +301,7 @@ defmodule WardrikDaemon.Agents do
     with :ok <- untaken(path),
          {:ok, _options} <- created(key),
          :ok <- write(path, AgentFile.text(created_fields(key))) do
-      _reloaded = WardrikDaemon.reload_all()
+      _reloaded = Wardrik.Definition.reload_all()
       written(path)
     end
   end
@@ -562,10 +562,7 @@ defmodule WardrikDaemon.Agents do
   def handle_continue(:load, state), do: {:noreply, load(state)}
 
   @impl true
-  def handle_call(:reload, _from, state) do
-    state = load(state)
-    {:reply, state.files, state}
-  end
+  def handle_call(:reload, _from, state), do: {:reply, :ok, load(state)}
 
   def handle_call(:loaded, _from, state), do: {:reply, published(state), state}
 

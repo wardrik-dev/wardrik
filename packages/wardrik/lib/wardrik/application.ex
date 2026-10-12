@@ -2,7 +2,7 @@ defmodule Wardrik.Application do
   @moduledoc false
 
   # The one place core reads its application environment: the store, the
-  # fleet and the definitions and connections modules, for the default start,
+  # fleet and the definitions, connections and tokens modules, for the default start,
   # which a host starting Wardrik itself passes.
 
   use Application
@@ -15,7 +15,8 @@ defmodule Wardrik.Application do
           store: Application.get_env(:wardrik, WardrikStore, []),
           fleet: Application.get_env(:wardrik, Wardrik.Fleet, []),
           definitions: Application.get_env(:wardrik, :definitions),
-          connections: Application.get_env(:wardrik, :connections)
+          connections: Application.get_env(:wardrik, :connections),
+          tokens: Application.get_env(:wardrik, :tokens)
         )
 
       :host ->

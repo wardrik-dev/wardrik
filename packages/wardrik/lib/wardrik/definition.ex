@@ -27,6 +27,7 @@ defmodule Wardrik.Definition do
   | `editable/1` | `Wardrik.Operations.Forget`, `ForgetAgents`, which keep what it refuses | every agent may be forgotten |
   | `current/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, and an agent waking | an agent starts and wakes as it was stored |
   | `create/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, for an agent nothing defines | such an agent is not found |
+  | `reload/0` | `Wardrik.Operations.Reload`, on every node whose module has it | `:unsupported` where no node's has it |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
   agent file, keeps it, and refuses the agents its files declare. A module
@@ -107,13 +108,20 @@ defmodule Wardrik.Definition do
               | {:error, String.t()}
               | {:error, :conflict, String.t()}
 
+  @doc """
+  Reads every definition this node's module keeps again, and brings the
+  agents it runs to what they say now.
+  """
+  @callback reload() :: :ok
+
   @optional_callbacks get: 1,
                       delete: 1,
                       put_trigger: 3,
                       delete_trigger: 2,
                       editable: 1,
                       current: 1,
-                      create: 1
+                      create: 1,
+                      reload: 0
 
   @callbacks %{
     put: 3,
@@ -123,7 +131,8 @@ defmodule Wardrik.Definition do
     delete_trigger: 2,
     editable: 1,
     current: 1,
-    create: 1
+    create: 1,
+    reload: 0
   }
   @module {__MODULE__, :module}
 
@@ -171,6 +180,34 @@ defmodule Wardrik.Definition do
           | :unsupported
   def create(id) do
     with {:ok, module} <- module(:create), do: module.create(id)
+  end
+
+  @doc "Reads every definition again on this node, as `c:reload/0` does, or `:unsupported`."
+  @spec reload() :: :ok | :unsupported
+  def reload do
+    with {:ok, module} <- module(:reload), do: module.reload()
+  end
+
+  @doc "The deployment's nodes whose host's module reads its definitions again."
+  @spec reloading() :: [node()]
+  def reloading do
+    for node <- Wardrik.Deployment.nodes(),
+        :erpc.call(node, __MODULE__, :module, [:reload]) != :unsupported,
+        do: node
+  end
+
+  @doc "Reads every definition again on each of `nodes`, one after another."
+  @spec reload_on([node()]) :: :ok
+  def reload_on(nodes) when is_list(nodes) do
+    Enum.each(nodes, &(:ok = :erpc.call(&1, __MODULE__, :reload, [], :timer.minutes(1))))
+  end
+
+  @doc "Reads every definition again on every node that reads them, and answers those nodes."
+  @spec reload_all() :: [node()]
+  def reload_all do
+    nodes = reloading()
+    :ok = reload_on(nodes)
+    nodes
   end
 
   @doc "Whether the host's module keeps a definition of the agent `id`; `false` where it keeps none."

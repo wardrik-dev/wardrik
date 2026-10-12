@@ -44,10 +44,10 @@ defmodule WardrikHTTP do
 
   | Action | Routes |
   | --- | --- |
-  | `read` | listing agents, snapshots, definitions, events and connections |
+  | `read` | listing agents, snapshots, definitions, events and connections; the deployment's nodes and audit |
   | `message` | messages, cancelling, and clearing the conversation |
   | `decide` | interrupts, and their authorization links |
-  | `define` | putting and deleting agents and triggers, and connecting accounts |
+  | `define` | putting and deleting agents and triggers, connecting accounts, and reloading the deployment |
   | `serve` | `/v1/workers` |
 
   ## Keys in paths
@@ -96,7 +96,14 @@ defmodule WardrikHTTP do
   | `GET /v1/connections` | the accounts the caller's org is offered, and whether they, the org or the deployment holds each |
   | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
   | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, `204` |
+  | `POST /v1/deployment/reload` | has every node whose host reads its definitions again do so, and answers those nodes; `501` where none does |
+  | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
+  | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
   | `GET /v1/workers` | a WebSocket a tool worker holds open, to offer tools and answer calls to them |
+
+  The `/v1/deployment` routes are for a token over every agent alone; any
+  other is answered `403`. Tokens are made only from a shell on the server,
+  never over the API.
 
   A route that changes something answers what it would do, and does
   nothing, with `?plan=true`: a cancel the agents it would stop, as
@@ -109,7 +116,7 @@ defmodule WardrikHTTP do
   in `wardrik_protocol`, beside the events': `agent.json` for an agent listed,
   `agent_snapshot.json`, `agent_definition.json`, `trigger.json`,
   `trigger_definition.json`, `authorization.json`, `connections.json`,
-  `connecting.json`, `export.json` and `error.json`. `sdks/typescript` generates
+  `connecting.json`, `export.json`, `nodes.json` and `error.json`. `sdks/typescript` generates
   its types from them.
 
   ### Agents
@@ -210,6 +217,21 @@ defmodule WardrikHTTP do
   authorized it at the link, and the audit records it as stored by the
   caller. A value is never answered. The host names what offers
   connections as `Wardrik`'s `:connections`; see `Wardrik.Connections`.
+
+  ### The deployment
+
+      GET /v1/deployment/nodes
+      {"nodes": [{"name": "wardrik@box1", "agents": 12}], "asleep": 40}
+
+      GET /v1/deployment/audit?starting_after=120&limit=50
+      {"changes": [{"type": "wardrik.agent.defined", "subject": "agents/acme/triage", …}]}
+
+  A change in the audit is a CloudEvent, as an agent's events are, whose
+  `data.actor` is who made it; see `Wardrik.Audit` for every type. A page
+  asked for before the oldest change kept is a `gap`, as an agent's events
+  are. A reload has every node whose host reads its definitions again, as a
+  daemon reads its agent and policy files, do so, and answers
+  `{"reloaded": [...]}`, the nodes that did.
 
   ### Tool workers
 

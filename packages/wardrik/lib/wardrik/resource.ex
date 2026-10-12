@@ -81,6 +81,40 @@ defmodule Wardrik.Resource do
     end
   end
 
+  @doc """
+  The deployment's `nodes`, each with how many agents run on it as `counts`
+  has them, and how many agents sleep on none.
+  """
+  @spec nodes([node()], %{node() => non_neg_integer()}, non_neg_integer()) :: map()
+  def nodes(nodes, counts, asleep) do
+    %{
+      "nodes" =>
+        for(node <- nodes, do: %{"name" => to_string(node), "agents" => Map.get(counts, node, 0)}),
+      "asleep" => asleep
+    }
+  end
+
+  @doc """
+  A token as `Wardrik.Tokens` keeps it, never its secret: what its grant
+  reaches, and allows; the names of the hooks of its ceiling, where it can
+  define agents; and the person it acts for, where it acts for one.
+  """
+  @spec token(Wardrik.Tokens.token()) :: map()
+  def token(token) do
+    %{
+      "id" => token.id,
+      "name" => token.name,
+      "scope" => to_string(token.grant.scope),
+      "can" => Enum.map(token.grant.can, &to_string/1),
+      "created_at" => DateTime.to_iso8601(token.created_at)
+    }
+    |> Value.put(
+      "ceiling",
+      if(:define in token.grant.can, do: Enum.map(token.grant.ceiling, & &1.name))
+    )
+    |> Value.put("for", token.principal && Wardrik.Principal.id(token.principal))
+  end
+
   @doc "The connections an owner is offered, and who holds each, where anyone does."
   @spec connections([Wardrik.Connections.connection()]) :: map()
   def connections(connections) do

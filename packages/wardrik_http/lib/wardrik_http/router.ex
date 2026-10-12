@@ -43,10 +43,13 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.ListParked
   alias Wardrik.Operations.Move
   alias Wardrik.Operations.ReadAgent
+  alias Wardrik.Operations.ReadAudit
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadConnections
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
+  alias Wardrik.Operations.ReadNodes
+  alias Wardrik.Operations.Reload
   alias Wardrik.Operations.RemoveTrigger
   alias Wardrik.Operations.SetTrigger
   alias Wardrik.Operations.Spawn
@@ -128,6 +131,11 @@ defmodule WardrikHTTP.Router do
 
   delete "/v1/connections/:provider",
     do: run(conn, Command, connections(conn, Disconnect, provider: provider), 204)
+
+  # The deployment itself, to a token over every agent.
+  post "/v1/deployment/reload", do: run(conn, Command, {:ok, %Reload{}}, 200)
+  get "/v1/deployment/nodes", do: run(conn, Query, {:ok, %ReadNodes{}}, 200)
+  get "/v1/deployment/audit", do: audit(conn)
 
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
   # for a user's, and what follows its ID is what is asked of it.
@@ -320,6 +328,18 @@ defmodule WardrikHTTP.Router do
     do: {:error, Error.new(:invalid, "The body is a JSON object")}
 
   defp object(fields), do: {:ok, fields}
+
+  # -- the deployment --------------------------------------------------------
+
+  defp audit(conn) do
+    with {:ok, starting_after} <- sequence(conn.query_params["starting_after"], "starting_after"),
+         {:ok, limit} <- limit(conn.query_params) do
+      request = %ReadAudit{starting_after: starting_after || 0, limit: limit}
+      run(conn, Query, {:ok, request}, 200)
+    else
+      {:error, message} -> invalid(conn, message)
+    end
+  end
 
   # -- events ----------------------------------------------------------------
 

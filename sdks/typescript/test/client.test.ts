@@ -363,3 +363,30 @@ describe("connections", () => {
     await server.close();
   });
 });
+
+describe("deployment", () => {
+  test("lists its nodes, reloads and pages the audit as the API takes them", async () => {
+    const nodes = { nodes: [{ name: "wardrik@box1", agents: 2 }], asleep: 1 };
+    const page = { changes: [] };
+    server.on("GET", "/v1/deployment/nodes", (_request, response) => json(response, 200, nodes));
+    server.on("POST", "/v1/deployment/reload", (_request, response) =>
+      json(response, 200, { reloaded: ["wardrik@box1"] }),
+    );
+    server.on("GET", "/v1/deployment/audit", (_request, response) => json(response, 200, page));
+
+    assert.deepEqual(await wardrik.deployment.nodes(), nodes);
+    assert.deepEqual(await wardrik.deployment.reload(), ["wardrik@box1"]);
+    assert.deepEqual(await wardrik.deployment.audit({ startingAfter: 120, limit: 50 }), page);
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path]),
+      [
+        ["GET", "/v1/deployment/nodes"],
+        ["POST", "/v1/deployment/reload"],
+        ["GET", "/v1/deployment/audit?starting_after=120&limit=50"],
+      ],
+    );
+
+    await server.close();
+  });
+});

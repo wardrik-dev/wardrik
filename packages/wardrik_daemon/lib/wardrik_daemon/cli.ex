@@ -25,15 +25,16 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Audit
   alias Wardrik.Caller
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Clear
-  alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.ReadAgent
+  alias Wardrik.Operations.ReadAudit
+  alias Wardrik.Operations.ReadNodes
+  alias Wardrik.Operations.Reload
   alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
@@ -53,6 +54,7 @@ defmodule WardrikDaemon.CLI do
   alias WardrikPolicy.Pattern
 
   @faint [:faint, :light_black]
+  @audit_limit 100
 
   @doc "Every command `wardrik` takes, in the order `wardrik help` lists them."
   @spec commands() :: [Command.t()]
@@ -65,15 +67,27 @@ defmodule WardrikDaemon.CLI do
       %Command{
         name: "status",
         summary: "what the daemon, or its cluster, is running",
-        details: ["With --json, the agents as GET /v1/agents lists them."],
+        details: ["With --json, the nodes as GET /v1/deployment/nodes lists them."],
         run: &status/2,
-        json: &agents/2
+        json: &nodes/2
       },
       %Command{name: "doctor", summary: "check what the daemon reads, running or not"},
       %Command{
         name: "reload",
         summary: "read the agent and policy files again, everywhere",
         run: &reload/2
+      },
+      %Command{
+        name: "audit",
+        options: "[--after N] [--limit N]",
+        summary: "what people changed, oldest first",
+        details: [
+          "Up to --limit changes, #{@audit_limit} unless given, after the change numbered --after.",
+          "With --json, the page as GET /v1/deployment/audit answers it."
+        ],
+        switches: [after: :integer, limit: :integer],
+        run: &audit/2,
+        json: &audit_page/2
       },
       %Command{
         name: "ask",
@@ -497,13 +511,55 @@ defmodule WardrikDaemon.CLI do
 
   defp status(_words, _opts), do: {:ok, WardrikDaemon.status()}
 
-  defp agents(_words, opts), do: Query.run(%ListAgents{prefix: Prefix.all()}, opts[:caller])
+  defp nodes(_words, opts), do: Query.run(%ReadNodes{}, opts[:caller])
 
   defp reload(_words, opts) do
-    reloaded = WardrikDaemon.reload_all()
-    :ok = Audit.record({:agents_reloaded, reloaded}, opts[:by])
-    {:ok, WardrikDaemon.status()}
+    with {:ok, _reloaded} <- Operation.run(%Reload{}, opts[:caller]),
+         do: {:ok, WardrikDaemon.status()}
   end
+
+  defp audit_page(_words, opts) do
+    limit = opts[:limit] || @audit_limit
+
+    if limit in 1..500,
+      do: Query.run(%ReadAudit{starting_after: opts[:after] || 0, limit: limit}, opts[:caller]),
+      else: {:error, "--limit is a number from 1 to 500"}
+  end
+
+  defp audit(words, opts) do
+    with {:ok, %{"changes" => changes}} <- audit_page(words, opts) do
+      {:ok, changes(changes, opts[:after] || 0, opts[:limit] || @audit_limit)}
+    end
+  end
+
+  defp changes([], starting_after, _limit), do: "No changes after #{starting_after}."
+
+  defp changes(changes, _starting_after, limit) do
+    lines = Enum.map(changes, &change/1)
+    last = String.to_integer(List.last(changes)["sequence"])
+
+    if length(changes) == limit,
+      do: Enum.join(lines ++ ["More: wardrik audit --after #{last}"], "\n"),
+      else: Enum.join(lines, "\n")
+  end
+
+  defp change(%{"sequence" => sequence, "type" => "wardrik." <> type} = change) do
+    {:ok, at, _offset} = DateTime.from_iso8601(change["time"])
+
+    Enum.join(
+      [
+        String.to_integer(sequence),
+        at |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+        type,
+        change["subject"],
+        by(change["data"]["actor"])
+      ],
+      "  "
+    )
+  end
+
+  defp by(nil), do: "by nobody known"
+  defp by(%{"id" => id}), do: "by " <> id
 
   defp needs_terminal(_words, _opts), do: :live
 

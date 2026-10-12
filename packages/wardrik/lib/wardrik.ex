@@ -3,9 +3,10 @@ defmodule Wardrik do
   The supervisor of everything Wardrik runs. In order:
 
     * The store's settings, kept where every read and write finds them; see
-      `WardrikStore.configure/1`, and the host's definitions and connections
-      modules, kept where every operation finds them; see
-      `Wardrik.Definition.configure/1` and `Wardrik.Connections.configure/1`.
+      `WardrikStore.configure/1`, and the host's definitions, connections and
+      tokens modules, kept where every operation finds them; see
+      `Wardrik.Definition.configure/1`, `Wardrik.Connections.configure/1` and
+      `Wardrik.Tokens.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
@@ -19,7 +20,7 @@ defmodule Wardrik do
   load is a task that exits once done and is not started again.
 
   The `:wardrik` application starts it by default, with the store, the fleet
-  and the definitions and connections modules as the application's
+  and the definitions, connections and tokens modules as the application's
   environment holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
@@ -52,6 +53,8 @@ defmodule Wardrik do
     * `:connections` - the `Wardrik.Connections` that the accounts people and
       orgs connect are asked of. None by default, where no operation offers
       any.
+    * `:tokens` - the `Wardrik.Tokens` that callers' tokens are made, listed
+      and revoked through. None by default, where no operation makes any.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -72,7 +75,8 @@ defmodule Wardrik do
         store: [],
         fleet: [],
         definitions: nil,
-        connections: nil
+        connections: nil,
+        tokens: nil
       )
 
     children =
@@ -86,6 +90,7 @@ defmodule Wardrik do
           id: {Wardrik.Connections, :module},
           start: {Wardrik.Connections, :configure, [opts[:connections]]}
         },
+        %{id: {Wardrik.Tokens, :module}, start: {Wardrik.Tokens, :configure, [opts[:tokens]]}},
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
