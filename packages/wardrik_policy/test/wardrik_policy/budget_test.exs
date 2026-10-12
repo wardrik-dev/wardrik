@@ -160,6 +160,36 @@ defmodule WardrikPolicy.BudgetTest do
       assert Budget.spending(budget, scope.source.agent_id) == "$1.20 of $1.50 today"
     end
 
+    test "an agent's conversations spend from one budget, and a grant frees them all", context do
+      %{budget: budget, scope: scope, request: request} = context
+      agent = scope.source.agent_id
+
+      thread = fn external_id ->
+        Scope.root(Config.new(), Wardrik.AgentID.put_external_id(agent, external_id),
+          hooks: scope.hooks
+        )
+      end
+
+      one = thread.("C1-1.0")
+      two = thread.("C1-2.0")
+
+      spend(one, request, {:ok, costing(0.6)})
+      spend(two, request, {:ok, costing(0.6)})
+
+      assert %Call{state: :waiting} = decide(one, request)
+      assert %Call{state: :waiting} = waiting = decide(two, request)
+
+      :ok = approve(waiting, two)
+
+      assert %Call{state: :allowed} = decide(one, request)
+      assert %Call{state: :allowed} = decide(scope, request)
+      assert Budget.spending(budget, agent) == "$1.20 of $1.50 today"
+
+      other = Scope.root(Config.new(), %{agent | name: "other"}, hooks: scope.hooks)
+      assert %Call{state: :allowed} = decide(other, request)
+      assert Budget.spent(budget, other) == %Spend{}
+    end
+
     test "a budget that denies ends the turn instead of parking", context do
       %{scope: scope, request: request} = context
 
