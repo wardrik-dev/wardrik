@@ -25,14 +25,13 @@ defmodule Wardrik.Operations.Clear do
   def action, do: :message
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id} = request, _caller),
-    do: {:ok, Change.new(request, [{:agent_cleared, id}])}
+  def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id}}, _caller) do
+  def make(%Change{request: %__MODULE__{agent: id}} = change, _caller) do
     case Agent.clear(id) do
       :ok ->
-        {:ok, nil}
+        {:ok, nil, change.effect}
 
       {:error, :busy} ->
         {:error,
@@ -44,5 +43,10 @@ defmodule Wardrik.Operations.Clear do
       {:error, :not_found} ->
         {:error, AgentOperation.not_found(id)}
     end
+  end
+
+  defimpl Wardrik.Effect do
+    def preview(%{agent: id}), do: %{"clearing" => to_string(id)}
+    def audit(%{agent: id}), do: [{:agent_cleared, id}]
   end
 end

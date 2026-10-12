@@ -46,7 +46,13 @@ defimpl Wardrik.Subject, for: Wardrik.AgentID.Prefix do
   alias Wardrik.Error
   alias Wardrik.Grant
 
-  @verbs %{read: "read what is under", define: "change what is under"}
+  @verbs %{
+    read: "read what is under",
+    message: "send messages to the agents under",
+    decide: "decide the calls of the agents under",
+    define: "change what is under",
+    serve: "offer tools to the agents under"
+  }
 
   def authorize(prefix, %Grant{scope: scope, can: can}, action) do
     cond do

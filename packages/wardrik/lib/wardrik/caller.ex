@@ -22,4 +22,14 @@ defmodule Wardrik.Caller do
   @doc "A caller known as `principal`, or `nil` where none is known, holding `grant`."
   @spec new(Principal.t() | nil, Grant.t()) :: t()
   def new(principal, %Grant{} = grant), do: %__MODULE__{principal: principal, grant: grant}
+
+  @doc """
+  A caller known as `principal` who may do anything to every agent: one who
+  holds the node itself, as a shell on it, or the terminal client.
+  """
+  @spec root(Principal.t() | nil) :: t()
+  def root(principal) do
+    {:ok, grant} = Grant.new(Wardrik.AgentID.Prefix.all())
+    new(principal, grant)
+  end
 end

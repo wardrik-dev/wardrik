@@ -31,19 +31,19 @@ defmodule Wardrik.Operations.Define do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id} = request, _caller) do
-    with {:ok, _module} <- definitions(),
-         do: {:ok, Change.new(request, [{:agent_defined, id}])}
+  def plan(%__MODULE__{} = request, _caller) do
+    with {:ok, _module} <- definitions(), do: {:ok, Change.new(request)}
   end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id, definition: fields}}, caller) do
+  def make(%Change{request: %__MODULE__{agent: id, definition: fields}} = change, caller) do
     with {:ok, module} <- definitions(),
          {:ok, spec} <- read(module, id, fields, caller.grant) do
       if spec.id != id,
         do: raise(ArgumentError, "#{inspect(module)} wrote a spec for #{spec.id}, not #{id}")
 
-      run(%{spec | hooks: Grant.held(caller.grant, spec.hooks)})
+      with {result, snapshot} <- run(%{spec | hooks: Grant.held(caller.grant, spec.hooks)}),
+           do: {result, snapshot, change.effect}
     end
   end
 
@@ -74,5 +74,12 @@ defmodule Wardrik.Operations.Define do
         Logger.warning("#{spec.id} did not start: #{inspect(reason)}")
         {:error, Error.new(:unavailable, "#{spec.id} did not start.")}
     end
+  end
+
+  defimpl Wardrik.Effect do
+    def preview(%{agent: id, definition: definition}),
+      do: %{"defining" => %{"agent" => to_string(id), "definition" => definition}}
+
+    def audit(%{agent: id}), do: [{:agent_defined, id}]
   end
 end

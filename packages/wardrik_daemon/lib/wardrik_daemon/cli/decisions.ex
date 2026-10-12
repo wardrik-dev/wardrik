@@ -15,12 +15,15 @@ defmodule WardrikDaemon.CLI.Decisions do
   node runs as can read, so that account is who decides.
   """
 
-  alias Wardrik.Agent
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
-  alias Wardrik.Event.Codec.Value
-  alias Wardrik.Fleet
   alias Wardrik.Operations.Decide
+  alias Wardrik.Operations.ListParked
+  alias Wardrik.Operations.ReadAgent
+  alias Wardrik.Operations.ReadAuthorization
+  alias Wardrik.Query
   alias WardrikConsole.Ansi
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
@@ -58,39 +61,41 @@ defmodule WardrikDaemon.CLI.Decisions do
     ]
   end
 
-  defp parked(_words, _opts) do
-    rows =
-      for {key, call, prompt} <- waiting(),
-          do:
-            "  #{key}  #{call.id}  #{Pattern.shown(call.name)}  #{prompt}" <>
-              read(call) <> link(call)
+  defp parked(words, opts) do
+    with {:ok, %{"interrupts" => interrupts}} <- interrupts(words, opts) do
+      rows =
+        for %{"agent" => %{"id" => id}} = interrupt <- interrupts,
+            key = AgentID.parse!(id),
+            do: row_of(key, interrupt) <> read(interrupt) <> link(key, interrupt, opts[:caller])
 
-    case rows do
-      [] -> {:ok, "Nothing is waiting on a person."}
-      rows -> {:ok, Enum.join(["#{length(rows)} waiting:" | rows], "\n")}
+      case rows do
+        [] -> {:ok, "Nothing is waiting on a person."}
+        rows -> {:ok, Enum.join(["#{length(rows)} waiting:" | rows], "\n")}
+      end
     end
   end
 
-  defp interrupts(_words, _opts) do
-    interrupts =
-      for {key, call, prompt} <- waiting(),
-          do: Map.put(Value.interrupt({call, prompt}), "agent", %{"id" => to_string(key)})
+  defp interrupts(_words, opts), do: Query.run(%ListParked{prefix: Prefix.all()}, opts[:caller])
 
-    {:ok, %{"interrupts" => interrupts}}
-  end
+  defp row_of(key, %{"id" => id, "message" => prompt} = interrupt),
+    do: "  #{key}  #{id}  #{Pattern.shown(interrupt["name"] || "model")}  #{prompt}"
 
-  defp read(%{labels: [_ | _] = labels}),
+  defp read(%{"labels" => [_ | _] = labels}),
     do: "\n      after reading #{Wardrik.Label.described(labels)}, which may be what asked for it"
 
-  defp read(_call), do: ""
+  defp read(_interrupt), do: ""
 
   # Where to authorize, for the operator reading this on the node; no notice
   # or event carries it.
-  defp link(%{link: %{url: url, code: code}}) when is_binary(code),
-    do: "\n      enter #{code} at #{url}"
+  defp link(key, %{"reason" => "authorization", "id" => id}, caller) do
+    case Query.run(%ReadAuthorization{agent: key, interrupt: id}, caller) do
+      {:ok, %{"url" => url, "code" => code}} -> "\n      enter #{code} at #{url}"
+      {:ok, %{"url" => url}} -> "\n      open #{url}"
+      {:error, _gone} -> ""
+    end
+  end
 
-  defp link(%{link: %{url: url}}), do: "\n      open #{url}"
-  defp link(_call), do: ""
+  defp link(_key, _interrupt, _caller), do: ""
 
   defp approve([key, call | note], opts),
     do: decided(key, [call], {:approve, Enum.join(note, " ")}, opts[:caller])
@@ -115,7 +120,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   end
 
   defp choose(words, %Terminal{} = terminal, verb, caller) do
-    case {waiting(words), words} do
+    case {waiting(words, caller), words} do
       {{:error, message}, _words} -> {:error, message}
       {[], []} -> {:ok, "Nothing is waiting on a person."}
       {[only], [_key]} -> decide([only], verb, terminal, caller)
@@ -130,8 +135,13 @@ defmodule WardrikDaemon.CLI.Decisions do
     )
   end
 
-  defp row({key, call, prompt}, every?) do
-    [Pattern.shown(call.name), if(every?, do: ["  ", to_string(key)], else: []), "  ", prompt]
+  defp row({key, interrupt}, every?) do
+    [
+      Pattern.shown(interrupt["name"] || "model"),
+      if(every?, do: ["  ", to_string(key)], else: []),
+      "  ",
+      interrupt["message"]
+    ]
   end
 
   defp decide([], _verb, _terminal, _caller), do: {:ok, "Nothing was decided."}
@@ -147,7 +157,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp each_agent(chosen, decision, caller) do
     answers =
       chosen
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1).id)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1)["id"])
       |> Enum.map(fn {key, ids} -> decided(key, ids, decision, caller) end)
 
     lines = Enum.map_intersperse(answers, "\n", &said/1)
@@ -178,25 +188,24 @@ defmodule WardrikDaemon.CLI.Decisions do
   defp names([only]), do: only
   defp names(ids), do: [Enum.intersperse(Enum.drop(ids, -1), ", "), " and ", List.last(ids)]
 
-  # Every call a parked agent is waiting on, with the agent's key, or those
+  # Every call a parked agent is waiting on, with the agent's ID, or those
   # of the one agent `words` name.
-  defp waiting,
-    do: for({key, calls} <- parked_agents(), {call, prompt} <- calls, do: {key, call, prompt})
+  defp waiting([], caller), do: parked_under(Prefix.all(), caller)
 
-  defp waiting([]), do: waiting()
-
-  defp waiting([key]) do
-    case Agent.parked(key) do
-      {:error, :not_found} -> {:error, "No agent runs under #{key}."}
+  defp waiting([key], caller) do
+    with {:ok, _snapshot} <- Query.run(%ReadAgent{agent: key}, caller),
+         [_ | _] = calls <-
+           for({^key, _interrupt} = call <- parked_under(Prefix.of(key), caller), do: call) do
+      calls
+    else
       [] -> {:error, "#{key} is not waiting on anything."}
-      calls -> for {call, prompt} <- calls, do: {key, call, prompt}
+      {:error, error} -> {:error, error}
     end
   end
 
-  defp parked_agents do
-    for %{status: :parked, id: key} <- Fleet.list(),
-        calls = Agent.parked(key),
-        is_list(calls),
-        do: {key, calls}
+  # The CLI's caller may read every agent.
+  defp parked_under(prefix, caller) do
+    {:ok, %{"interrupts" => interrupts}} = Query.run(%ListParked{prefix: prefix}, caller)
+    for %{"agent" => %{"id" => id}} = interrupt <- interrupts, do: {AgentID.parse!(id), interrupt}
   end
 end

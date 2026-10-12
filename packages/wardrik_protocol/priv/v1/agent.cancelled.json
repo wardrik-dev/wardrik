@@ -18,6 +18,10 @@
         "id"
       ]
     },
+    "under": {
+      "type": "string",
+      "description": "The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace."
+    },
     "actor": {
       "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
     }

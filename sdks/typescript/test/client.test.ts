@@ -92,6 +92,36 @@ describe("requests", () => {
     await server.close();
   });
 
+  test("list, cancel, remove and read the parked calls of agents under a prefix", async () => {
+    server.on("GET", "/v1/agents", (_request, response) => json(response, 200, { agents: [] }));
+    server.on("POST", "/v1/agents/cancel", (_request, response) =>
+      json(response, 202, { cancelled: ["acme/a"] }),
+    );
+    server.on("DELETE", "/v1/agents", (_request, response) =>
+      json(response, 200, { forgotten: ["acme/a"], kept: [], failed: [] }),
+    );
+    server.on("GET", "/v1/interrupts", (_request, response) =>
+      json(response, 200, { interrupts: [] }),
+    );
+
+    assert.deepEqual(await wardrik.agents.list("acme/"), []);
+    assert.deepEqual(await wardrik.agents.cancel("acme/"), ["acme/a"]);
+    assert.deepEqual((await wardrik.agents.remove("acme/")).forgotten, ["acme/a"]);
+    assert.deepEqual(await wardrik.agents.parked(), []);
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path]),
+      [
+        ["GET", "/v1/agents?prefix=acme%2F"],
+        ["POST", "/v1/agents/cancel?prefix=acme%2F"],
+        ["DELETE", "/v1/agents?prefix=acme%2F"],
+        ["GET", "/v1/interrupts"],
+      ],
+    );
+
+    await server.close();
+  });
+
   test("send a message, set a trigger, decide, cancel, clear and page as the API takes them", async () => {
     server.on("POST", path + "/messages", (_request, response) =>
       json(response, 202, { message: { id: "m1" } }),

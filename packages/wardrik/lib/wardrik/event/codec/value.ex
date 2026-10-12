@@ -154,14 +154,18 @@ defmodule Wardrik.Event.Codec.Value do
   defp interrupt_of({%{id: id, name: "model"}, prompt}),
     do: %{"id" => id, "reason" => "model_approval", "message" => prompt}
 
-  defp interrupt_of({%{id: id, in_doubt: true}, prompt}),
-    do: %{"id" => id, "reason" => "in_doubt", "message" => prompt, "tool_call_id" => id}
+  defp interrupt_of({%{in_doubt: true} = call, prompt}),
+    do: tool_interrupt(call, "in_doubt", prompt)
 
-  defp interrupt_of({%{id: id, link: %{url: _url}}, prompt}),
-    do: %{"id" => id, "reason" => "authorization", "message" => prompt, "tool_call_id" => id}
+  defp interrupt_of({%{link: %{url: _url}} = call, prompt}),
+    do: tool_interrupt(call, "authorization", prompt)
 
-  defp interrupt_of({%{id: id}, prompt}),
-    do: %{"id" => id, "reason" => "tool_approval", "message" => prompt, "tool_call_id" => id}
+  defp interrupt_of({call, prompt}), do: tool_interrupt(call, "tool_approval", prompt)
+
+  defp tool_interrupt(%{id: id, name: name}, reason, prompt) do
+    %{"id" => id, "reason" => reason, "message" => prompt, "tool_call_id" => id}
+    |> put("name", name)
+  end
 
   @doc """
   The provider and model a model spec names, however it names them: as

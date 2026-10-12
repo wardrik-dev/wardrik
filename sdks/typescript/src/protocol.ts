@@ -151,6 +151,10 @@ export interface Interrupt {
   message: string;
   tool_call_id?: string;
   /**
+   * The tool the call is for, as the agent names it; none for a model's approval.
+   */
+  name?: string;
+  /**
    * The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote.
    */
   labels?: string[];
@@ -566,6 +570,10 @@ export interface AgentCancelledData {
      */
     id: string;
   };
+  /**
+   * The prefix someone cancelled every agent under at once, where it was one of them; every agent's entry from that one change shares its trace.
+   */
+  under?: string;
   actor?: Principal;
 }
 /**
@@ -602,6 +610,10 @@ export interface AgentForgottenData {
      */
     id: string;
   };
+  /**
+   * The prefix someone removed every agent under at once, where it was one of them; every agent's entry from that one change shares its trace.
+   */
+  under?: string;
   actor?: Principal;
 }
 /**
@@ -668,20 +680,6 @@ export interface AgentStoppedData {
    * Why it stopped itself: idle, having had nothing to do for its idle timeout. Absent where someone stopped it.
    */
   reason?: "idle";
-  actor?: Principal;
-}
-/**
- * Someone dropped the turns of every agent under a prefix, and what was queued behind them.
- */
-export interface AgentsCancelledData {
-  /**
-   * The prefix, as acme/; empty for every agent.
-   */
-  prefix: string;
-  /**
-   * How many agents were told.
-   */
-  count: number;
   actor?: Principal;
 }
 /**
@@ -1056,7 +1054,6 @@ export interface EventData {
   "wardrik.agent.spawned": AgentSpawnedData;
   "wardrik.agent.started": AgentStartedData;
   "wardrik.agent.stopped": AgentStoppedData;
-  "wardrik.agents.cancelled": AgentsCancelledData;
   "wardrik.agents.reloaded": AgentsReloadedData;
   "wardrik.conversation.cleared": ConversationClearedData;
   "wardrik.conversation.compacted": ConversationCompactedData;

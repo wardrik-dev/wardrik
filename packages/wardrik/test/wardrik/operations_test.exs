@@ -16,10 +16,14 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.LLM.Config
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
+  alias Wardrik.Operations.CancelAgents
   alias Wardrik.Operations.Clear
   alias Wardrik.Operations.Decide
   alias Wardrik.Operations.Define
   alias Wardrik.Operations.Forget
+  alias Wardrik.Operations.ForgetAgents
+  alias Wardrik.Operations.ListAgents
+  alias Wardrik.Operations.ListParked
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAuthorization
   alias Wardrik.Operations.ReadDefinition
@@ -96,7 +100,8 @@ defmodule Wardrik.OperationsTest do
 
     def elsewhere, do: AgentID.parse!("test/elsewhere")
 
-    defp editable(id) do
+    @impl true
+    def editable(id) do
       if String.contains?(id.name, "-owned"),
         do: {:error, :conflict, "#{id} belongs to a file."},
         else: :ok
@@ -146,8 +151,10 @@ defmodule Wardrik.OperationsTest do
   end
 
   # An agent running a turn, which goes on until it is sent `:release`.
-  defp busy_agent do
-    {id, agent} = Fleet.start_agent(runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10)
+  defp busy_agent(id \\ Fleet.id()) do
+    {id, agent} =
+      Fleet.start_agent([runner: {AgentRunners, :blocking, [self(), "ok"]}, grace: 10], id)
+
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
@@ -370,13 +377,55 @@ defmodule Wardrik.OperationsTest do
     test "stops what the agent is doing, and is recorded" do
       {id, _turn} = busy_agent()
 
-      assert {:ok, %{"agent" => %{"id" => text}}} = Command.run(%Cancel{agent: id}, caller())
+      assert {:ok, %{"cancelled" => [text]}} = Command.run(%Cancel{agent: id}, caller())
       assert text == to_string(id)
       assert_receive %Event{payload: %Event.TurnInterrupted{}}
       assert Audit.about("agents/#{id}") == [{"agent.cancelled", @jon}]
 
       assert {:error, %Error{type: :not_found}} =
                Command.run(%Cancel{agent: Fleet.id("nobody")}, caller())
+    end
+
+    test "leaves an agent taking no turn as it is, and records nothing" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:ok, change} = Command.plan(%Cancel{agent: id}, caller())
+      assert Command.preview(change) == %{"cancelling" => []}
+      assert {:ok, %{"cancelled" => []}} = Command.make(change, caller())
+      assert Audit.about("agents/#{id}") == []
+    end
+
+    test "under a prefix stops each agent taking a turn, recorded as one change" do
+      org = "cancel-#{System.unique_integer([:positive])}"
+      prefix = Prefix.new!(org: org)
+      {busy, _turn} = busy_agent(AgentID.new!("busy", org: org))
+      {other, _turn} = busy_agent(AgentID.new!("other", org: org))
+      {idle, _agent} = Fleet.start_agent([], AgentID.new!("idle", org: org))
+
+      assert {:ok, change} = Command.plan(%CancelAgents{prefix: prefix}, caller("#{org}/"))
+      assert Command.preview(change) == %{"cancelling" => [to_string(busy), to_string(other)]}
+
+      assert {:ok, %{"cancelled" => [_, _]}} = Command.make(change, caller("#{org}/"))
+      assert Audit.about("agents/#{idle}") == []
+
+      entries =
+        for %{"subject" => "agents/" <> agent} = event <- Wardrik.Test.Audit.all(),
+            agent in [to_string(busy), to_string(other)],
+            do: event
+
+      assert [%{"traceparent" => trace}, %{"traceparent" => trace}] = entries
+      assert Enum.all?(entries, &(&1["data"]["under"] == "#{org}/"))
+    end
+
+    test "under a prefix outside the caller's scope reaches nothing" do
+      assert {:error, %Error{type: :not_found}} =
+               Command.plan(%CancelAgents{prefix: Prefix.new!(org: "other")}, caller())
+
+      assert {:error, %Error{type: :forbidden}} =
+               Command.plan(
+                 %CancelAgents{prefix: Prefix.parse!("test/")},
+                 caller("test/", [:read])
+               )
     end
   end
 
@@ -455,20 +504,86 @@ defmodule Wardrik.OperationsTest do
       id = defined_id()
       {:created, _snapshot} = Command.run(%Define{agent: id, definition: %{}}, caller())
 
-      assert {:ok, nil} = Command.run(%Forget{agent: id}, caller())
+      assert {:ok, change} = Command.plan(%Forget{agent: id}, caller())
+      assert Command.preview(change) == %{"forgetting" => [to_string(id)], "keeping" => []}
+
+      assert {:ok, %{"forgotten" => [_id], "kept" => [], "failed" => []}} =
+               Command.make(change, caller())
+
       assert Wardrik.Fleet.lookup(id) == nil
       assert {:error, %Error{type: :not_found}} = Query.run(%ReadDefinition{agent: id}, caller())
       assert {:error, %Error{type: :not_found}} = Command.run(%Forget{agent: id}, caller())
     end
 
-    test "removes an agent the host kept no definition for, unless the host refuses" do
+    test "removes an agent the host kept no definition for, unless the host keeps it" do
       {id, _agent} = Fleet.start_agent()
-      assert {:ok, nil} = Command.run(%Forget{agent: id}, caller())
+      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, caller())
       assert Wardrik.Fleet.lookup(id) == nil
 
       {owned, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
-      assert {:error, %Error{type: :conflict}} = Command.run(%Forget{agent: owned}, caller())
+
+      assert {:error, %Error{type: :conflict, message: message}} =
+               Command.plan(%Forget{agent: owned}, caller())
+
+      assert message == "#{owned} belongs to a file."
       assert Wardrik.Fleet.lookup(owned)
+    end
+
+    test "under a prefix removes what the host lets go, says why it keeps the rest" do
+      org = "forget-#{System.unique_integer([:positive])}"
+      prefix = Prefix.new!(org: org)
+      {gone, _agent} = Fleet.start_agent([], AgentID.new!("gone", org: org))
+      {owned, _agent} = Fleet.start_agent([], AgentID.new!("kept-owned", org: org))
+      on_exit(fn -> Wardrik.Fleet.forget(owned) end)
+
+      assert {:ok, change} = Command.plan(%ForgetAgents{prefix: prefix}, caller("#{org}/"))
+
+      assert Command.preview(change) == %{
+               "forgetting" => [to_string(gone)],
+               "keeping" => [%{"id" => to_string(owned), "why" => "#{owned} belongs to a file."}]
+             }
+
+      assert {:ok, %{"forgotten" => [_gone], "kept" => [_owned], "failed" => []}} =
+               Command.make(change, caller("#{org}/"))
+
+      assert Wardrik.Fleet.lookup(gone) == nil
+      assert Wardrik.Fleet.lookup(owned)
+
+      assert [%{"data" => %{"under" => under}}] =
+               for(e <- Wardrik.Test.Audit.all(), e["subject"] == "agents/#{gone}", do: e)
+
+      assert under == "#{org}/"
+
+      assert {:error, %Error{type: :conflict}} =
+               Command.plan(%ForgetAgents{prefix: prefix}, caller("#{org}/"))
+
+      assert {:error, %Error{type: :not_found}} =
+               Command.plan(%ForgetAgents{prefix: Prefix.new!(org: "#{org}-none")}, caller())
+    end
+  end
+
+  describe "listing" do
+    test "answers every agent under the prefix, and refuses a caller who may not read them" do
+      {id, _agent} = Fleet.start_agent()
+
+      assert {:ok, %{"agents" => agents}} =
+               Query.run(%ListAgents{prefix: Prefix.parse!("test/")}, caller())
+
+      assert Enum.any?(agents, &(&1["id"] == to_string(id)))
+
+      assert {:error, %Error{type: :forbidden}} =
+               Query.run(%ListAgents{prefix: Prefix.parse!("test/")}, caller("test/", [:message]))
+    end
+
+    test "answers each call waiting on a person, with its agent" do
+      id = parked_agent()
+      assert Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status == :parked end)
+
+      assert {:ok, %{"interrupts" => interrupts}} =
+               Query.run(%ListParked{prefix: Prefix.of(id)}, caller())
+
+      assert [%{"id" => "call_1", "agent" => %{"id" => text}}] = interrupts
+      assert text == to_string(id)
     end
   end
 
@@ -533,7 +648,7 @@ defmodule Wardrik.OperationsTest do
   end
 
   describe "a host without a definitions module, or one that only reads" do
-    test "defines, keeps, forgets and triggers nothing" do
+    test "defines, keeps and triggers nothing, and forgets an agent with no definition" do
       {id, _agent} = Fleet.start_agent()
 
       for module <- [nil, Reading] do
@@ -541,8 +656,6 @@ defmodule Wardrik.OperationsTest do
 
         assert {:error, %Error{type: :unsupported}} =
                  Query.run(%ReadDefinition{agent: id}, caller())
-
-        assert {:error, %Error{type: :unsupported}} = Command.run(%Forget{agent: id}, caller())
 
         assert {:error, %Error{type: :unsupported}} =
                  Command.run(%SetTrigger{agent: id, name: "s", fields: %{}}, caller())
@@ -557,6 +670,9 @@ defmodule Wardrik.OperationsTest do
                Command.run(%Define{agent: id, definition: %{}}, caller())
 
       assert Wardrik.Fleet.lookup(id)
+
+      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, caller())
+      assert Wardrik.Fleet.lookup(id) == nil
     end
   end
 end

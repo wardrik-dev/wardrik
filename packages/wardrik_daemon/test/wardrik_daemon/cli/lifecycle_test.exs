@@ -216,8 +216,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       key = parked(org, "parker")
 
       assert command(["agent", "cancel", key]) ==
-               {"Abandoned the calls #{key} waited on, and the messages waiting behind " <>
-                  "them. It keeps running, with what was said so far.\n", 0}
+               {"Cancelled what #{key} was doing, and the messages waiting behind it. It " <>
+                  "keeps running, with what was said so far.\n", 0}
 
       assert Wardrik.Test.Fleet.await_update(fn -> status(key) == :idle end)
 
@@ -234,7 +234,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "cancel", org <> "/"]) ==
                {"Cancelled the turns of #{key}. They keep running.\n", 0}
 
-      assert command(["agent", "cancel", "nobody/"]) == {"Nothing runs under nobody/.\n", 0}
+      assert command(["agent", "cancel", "nobody/"]) ==
+               {"No agent under nobody/ is taking a turn.\n", 0}
 
       assert command(["agent", "cancel", "nobody/here"]) ==
                {"No agent runs under nobody/here.\n", 1}
@@ -242,12 +243,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       assert command(["agent", "cancel", ""]) ==
                {"Name an agent's key, or a prefix such as acme/.\n", 1}
 
-      assert Audit.about("agents/#{key}") == [{"agent.cancelled", @ops}]
+      assert Audit.about("agents/#{key}") ==
+               [{"agent.cancelled", @ops}, {"agent.cancelled", @ops}]
 
-      assert [%{"data" => %{"prefix" => prefix, "count" => 1, "actor" => @ops}}] =
-               for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{org}/", do: e)
+      assert [_own, %{"data" => %{"under" => under, "actor" => @ops}}] =
+               for(%{"subject" => subject} = e <- Audit.all(), subject == "agents/#{key}", do: e)
 
-      assert prefix == org <> "/"
+      assert under == org <> "/"
     end
   end
 
@@ -320,13 +322,13 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       other = agent(org, "other")
 
       declared =
-        "#{helper} is declared by agents/helper.md, and stays; remove agents/helper.md, then"
+        "#{helper} is declared by agents/helper.md; change or remove that file, then " <>
+          "wardrik reload reads it"
 
-      assert command(["agent", "rm", helper, "--yes"]) ==
-               {declared <> " wardrik reload removes it.\n", 1}
+      assert command(["agent", "rm", helper, "--yes"]) == {declared <> "\n", 1}
 
       assert command(["agent", "rm", org <> "/", "--yes"]) ==
-               {"Removed #{other}.\n#{declared} wardrik reload removes it.\n", 0}
+               {"Removed #{other}.\n#{declared}\n", 0}
 
       assert status(helper) == :idle
     end
@@ -343,7 +345,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       on_exit(fn -> WardrikStore.delete(:declared, "agents/#{other}") end)
 
       assert command(["agent", "rm", key, "--yes"]) ==
-               {"#{key} is declared by agents/theirs.md on #{other}; change the file\n", 1}
+               {"#{key} is declared by agents/theirs.md on #{other}; change or remove that file, then wardrik reload reads it\n",
+                1}
 
       assert status(key) == :idle
     end

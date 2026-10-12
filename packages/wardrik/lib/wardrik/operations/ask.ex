@@ -53,10 +53,17 @@ defmodule Wardrik.Operations.Ask do
   def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}}, caller) do
+  def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}} = change, caller) do
     case Agent.ask(agent, text, id: id, sender: caller.principal) do
-      :ok -> {:ok, %{"message" => %{"id" => id}}}
+      :ok -> {:ok, %{"message" => %{"id" => id}}, change.effect}
       {:error, :not_found} -> {:error, AgentOperation.not_found(agent)}
     end
+  end
+
+  defimpl Wardrik.Effect do
+    def preview(%{agent: agent, id: id, text: text}),
+      do: %{"asking" => %{"agent" => to_string(agent), "id" => id, "content" => text}}
+
+    def audit(_ask), do: []
   end
 end

@@ -318,6 +318,10 @@
         "tool_call_id": {
           "type": "string"
         },
+        "name": {
+          "type": "string",
+          "description": "The tool the call is for, as the agent names it; none for a model's approval."
+        },
         "labels": {
           "type": "array",
           "items": {

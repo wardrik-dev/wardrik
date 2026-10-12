@@ -398,14 +398,16 @@ defmodule Wardrik.Event.Codec do
   defp change({:agent_stopped, id}), do: agent_change("agent.stopped", id, %{})
   defp change({:agent_forgotten, id}), do: agent_change("agent.forgotten", id, %{})
 
+  defp change({:agent_forgotten, id, prefix}),
+    do: agent_change("agent.forgotten", id, %{"under" => to_string(prefix)})
+
   defp change({:agent_moved, id, node}),
     do: agent_change("agent.moved", id, %{"node" => to_string(node)})
 
   defp change({:agent_cancelled, id}), do: agent_change("agent.cancelled", id, %{})
 
-  defp change({:agents_cancelled, prefix, count}),
-    do:
-      {"agents.cancelled", "agents/#{prefix}", %{"prefix" => to_string(prefix), "count" => count}}
+  defp change({:agent_cancelled, id, prefix}),
+    do: agent_change("agent.cancelled", id, %{"under" => to_string(prefix)})
 
   defp change({:agent_cleared, id}), do: agent_change("agent.cleared", id, %{})
 

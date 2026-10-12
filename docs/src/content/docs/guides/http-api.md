@@ -142,10 +142,24 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 ```
 
 `cancel` stops the running turn, drops the messages waiting behind it, and abandons one waiting on a
-person; the agent answers the next message as usual. `DELETE .../conversation` empties the
-conversation, and with it the mark of [content from outside](/concepts/policy/#content-from-outside)
-it held, answering `409` while a turn runs or waits on a person. `DELETE` stops the agent and
-removes its conversation and triggers.
+person; the agent answers the next message as usual, and one taking no turn is left as it is. It
+answers the agents it stopped, as `{"cancelled": ["acme/triage"]}`. `DELETE .../conversation`
+empties the conversation, and with it the mark of
+[content from outside](/concepts/policy/#content-from-outside) it held, answering `409` while a turn
+runs or waits on a person. `DELETE` stops the agent and removes its conversation and triggers, and
+answers `{"forgotten": ["acme/triage"], "kept": [], "failed": []}`.
+
+Every agent under a prefix is stopped or removed at once, with the prefix named:
+
+```sh
+curl -s -X POST -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/agents/cancel?prefix=acme/"
+curl -s -X DELETE -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/agents?prefix=acme/&plan=true"
+```
+
+`?plan=true` answers what a change would do, and does nothing: here, the agents it would remove,
+and those it keeps, such as one an agent file declares, with why. Any route that changes something
+takes it. `GET /v1/agents?prefix=acme/` lists the agents under a prefix, and `GET /v1/interrupts`
+the calls they wait on a person for.
 
 A definition's `triggers` lists the agent's triggers, and one is put or removed at
 `/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).

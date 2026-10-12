@@ -26,17 +26,16 @@ defmodule Wardrik.Operations.SetTrigger do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id, name: name} = request, _caller) do
-    with {:ok, _module} <- definitions(),
-         do: {:ok, Change.new(request, [{:trigger_set, id, name}])}
+  def plan(%__MODULE__{} = request, _caller) do
+    with {:ok, _module} <- definitions(), do: {:ok, Change.new(request)}
   end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id, name: name, fields: fields}}, _caller) do
+  def make(%Change{request: %__MODULE__{agent: id, name: name, fields: fields}} = change, _caller) do
     with {:ok, module} <- definitions() do
       case module.put_trigger(id, name, fields) do
-        {:ok, :created, trigger} -> {:created, %{"trigger" => trigger}}
-        {:ok, :changed, trigger} -> {:ok, %{"trigger" => trigger}}
+        {:ok, :created, trigger} -> {:created, %{"trigger" => trigger}, change.effect}
+        {:ok, :changed, trigger} -> {:ok, %{"trigger" => trigger}, change.effect}
         {:error, :not_found} -> {:error, ReadDefinition.undefined(id)}
         {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
         {:error, message} -> {:error, Error.new(:invalid, message)}
@@ -49,5 +48,12 @@ defmodule Wardrik.Operations.SetTrigger do
       {:ok, module} -> {:ok, module}
       :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
     end
+  end
+
+  defimpl Wardrik.Effect do
+    def preview(%{agent: id, name: name, fields: fields}),
+      do: %{"setting" => %{"agent" => to_string(id), "trigger" => Map.put(fields, "name", name)}}
+
+    def audit(%{agent: id, name: name}), do: [{:trigger_set, id, name}]
   end
 end

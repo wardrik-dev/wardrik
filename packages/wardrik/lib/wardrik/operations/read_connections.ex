@@ -4,6 +4,7 @@ defmodule Wardrik.Operations.ReadConnections do
   whether they, their org or the deployment holds each; never a value.
   """
 
+  @behaviour Wardrik.FleetOperation
   @behaviour Wardrik.Query
 
   alias Wardrik.Connections
@@ -13,12 +14,10 @@ defmodule Wardrik.Operations.ReadConnections do
 
   @type t() :: %__MODULE__{owner: Wardrik.AgentID.Prefix.t()}
 
-  @doc "The owner's agents, which a caller reaches to read their connections."
-  @spec subject(t()) :: Wardrik.AgentID.Prefix.t()
+  @impl Wardrik.FleetOperation
   def subject(%__MODULE__{owner: owner}), do: owner
 
-  @doc "What a grant must allow on them."
-  @spec action() :: Wardrik.Grant.action()
+  @impl Wardrik.FleetOperation
   def action, do: :read
 
   @impl Wardrik.Query
