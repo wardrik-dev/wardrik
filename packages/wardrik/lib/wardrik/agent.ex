@@ -177,8 +177,13 @@ defmodule Wardrik.Agent do
   @doc """
   The state an agent starts life with, for `Wardrik.Fleet.spawn/2` to hand over.
 
-  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`, and the
-  scope's `Wardrik.Scope.seams/0`.
+  Options: `:config`, `:context`, `:runner`, `:resumer`, `:grace`,
+  `:idle_timeout`, `:wake_only`, and the scope's `Wardrik.Scope.seams/0`.
+
+  `:idle_timeout` is how long the agent may have nothing to do before it
+  sleeps, in milliseconds or `:infinity`; see "Sleeping" above. `:wake_only`
+  starts nothing new: the agent comes up only from what the store holds, and
+  one the store does not hold deletes itself as it starts.
 
   `:grace` is how long an interrupted turn is given to answer before it is
   killed, #{State.default_grace()}ms by default. `:runner` and `:resumer` are
@@ -310,13 +315,19 @@ defmodule Wardrik.Agent do
   @impl DurableServer
   def dump_state(%State{} = state), do: Stored.dump(state)
 
+  # A state read from the store has a version; one with none is the state the
+  # caller handed over, for an agent the store did not hold.
   @impl DurableServer
-  def load_state(_old_vsn, dumped), do: Stored.load(dumped)
+  def load_state(nil, dumped), do: Stored.load(dumped)
+  def load_state(_old_vsn, dumped), do: %{Stored.load(dumped) | wake_only: false}
 
   # DurableServer's callback type leaves out the continue its server takes
   # from `init`.
   @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
+  def init(%State{wake_only: true} = state),
+    do: {:ok, state, {:continue, :gone}, meta: Map.put(View.meta(state), :gone, true)}
+
   def init(%State{} = state) do
     {:ok, state, {:continue, :open},
      meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
@@ -476,6 +487,9 @@ defmodule Wardrik.Agent do
 
     state |> touched() |> arm_idle() |> advance()
   end
+
+  # Woken after it was forgotten: it goes without leaving anything behind.
+  def handle_continue(:gone, state), do: {:stop, :delete, state}
 
   def handle_continue(:maybe_run, state) do
     case State.take(state) do

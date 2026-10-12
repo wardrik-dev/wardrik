@@ -176,12 +176,15 @@ defmodule Wardrik.Fleet do
     end
   end
 
+  # The stored check spares a start for an ID nothing holds; `:wake_only`
+  # keeps one forgotten since from coming back empty.
   defp wake(id) do
     with true <- stored?(id),
-         {:ok, pid} <- id |> child([]) |> start(nil) |> started() do
+         {:ok, {pid, meta}} when not is_map_key(meta, :gone) <-
+           id |> child(wake_only: true) |> start(nil) do
       pid
     else
-      _asleep_or_gone -> nil
+      _gone -> nil
     end
   end
 

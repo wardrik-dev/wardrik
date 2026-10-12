@@ -178,6 +178,7 @@ defmodule Wardrik.Agent.State do
     idle_timeout: @default_idle_timeout,
     active_at: nil,
     idle_timer: nil,
+    wake_only: false,
     mode: :idle,
     pending: [],
     recent: [],
@@ -232,6 +233,7 @@ defmodule Wardrik.Agent.State do
           idle_timeout: timeout(),
           active_at: integer() | nil,
           idle_timer: {reference(), reference()} | nil,
+          wake_only: boolean(),
           mode: mode(),
           pending: [Message.t()],
           recent: [String.t()],
@@ -291,7 +293,8 @@ defmodule Wardrik.Agent.State do
       replayer: mfa!(Keyword.get(opts, :replayer, {Turn, :replay, []}), :replayer),
       scope_opts: Keyword.take(opts, Scope.seams()),
       grace: Keyword.get(opts, :grace, @default_grace),
-      idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, @default_idle_timeout))
+      idle_timeout: idle_timeout!(Keyword.get(opts, :idle_timeout, @default_idle_timeout)),
+      wake_only: Keyword.get(opts, :wake_only, false)
     }
   end
 

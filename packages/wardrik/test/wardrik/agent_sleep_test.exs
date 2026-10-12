@@ -1,5 +1,6 @@
 defmodule Wardrik.AgentSleepTest do
   use ExUnit.Case, async: false
+  use Mimic
 
   alias ReqLLM.Context
   alias Wardrik.Agent
@@ -154,6 +155,25 @@ defmodule Wardrik.AgentSleepTest do
 
     assert {:error, :not_found} = Agent.interrupt(key)
     assert Fleet.whereis(key, wake: false) == nil
+  end
+
+  test "an agent forgotten after it was found stored does not come back empty" do
+    key = start_agent(runner: runner(self()))
+    asleep(key)
+    {:ok, info} = DurableServer.Supervisor.get_server_info(Wardrik.Fleet, to_string(key))
+    :ok = Fleet.forget(key)
+
+    # The store answers as it did before the agent was forgotten, once: the
+    # check passes, and the start finds nothing.
+    stub(DurableServer.Supervisor, :get_server_info, fn fleet, key ->
+      call_original(DurableServer.Supervisor, :get_server_info, [fleet, key])
+    end)
+
+    expect(DurableServer.Supervisor, :get_server_info, fn _fleet, _key -> {:ok, info} end)
+
+    assert Fleet.whereis(key) == nil
+    assert Wardrik.Test.Fleet.await_update(fn -> Fleet.whereis(key, wake: false) == nil end)
+    refute Fleet.stored?(key)
   end
 
   test "an ID nothing holds is not woken" do
