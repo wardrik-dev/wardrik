@@ -102,14 +102,16 @@ defmodule WardrikDefinitionTest do
              spec(%{"channels" => ["ops"]}, context, id)
   end
 
-  test "names a server or the workers only where the host has them", %{context: context, id: id} do
-    assert {:error, "tools names workers/*, but Mode has no tool workers"} =
+  test "names a server or a source only where the host has them", %{context: context, id: id} do
+    assert {:error, "tools names workers/*, but Mode configures no server workers" <> _} =
              spec(%{"tools" => ["workers/*"]}, context, id)
 
     assert {:error, "tools names books/*, but Mode configures no server books" <> _} =
              spec(%{"tools" => ["books/*"]}, %{context | mcp: nil}, id)
 
-    assert {:ok, spec, nil} = spec(%{"tools" => ["workers/*"]}, %{context | workers: Source}, id)
+    assert {:ok, spec, nil} =
+             spec(%{"tools" => ["workers/*"]}, %{context | sources: [workers: Source]}, id)
+
     assert spec.config.tools == [{Source, id}]
   end
 

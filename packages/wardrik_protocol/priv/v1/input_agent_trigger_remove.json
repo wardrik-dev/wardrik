@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_agent_trigger_remove",
+  "title": "agent.trigger.remove",
+  "description": "What removing one of an agent's triggers takes: its name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The trigger's name."
+    }
+  },
+  "examples": [
+    {
+      "name": "rivals"
+    }
+  ]
+}

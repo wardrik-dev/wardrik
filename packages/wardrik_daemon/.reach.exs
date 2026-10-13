@@ -21,6 +21,7 @@
       "Wardrik.Call",
       "Wardrik.Call.Ask",
       "Wardrik.Caller",
+      "Wardrik.Catalog.Tools",
       "Wardrik.Change",
       "Wardrik.Command",
       "Wardrik.Compaction",

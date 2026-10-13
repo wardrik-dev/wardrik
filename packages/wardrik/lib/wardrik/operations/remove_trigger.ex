@@ -5,6 +5,7 @@ defmodule Wardrik.Operations.RemoveTrigger do
   """
 
   @behaviour Wardrik.AgentOperation
+  @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Command
 
   alias Wardrik.Change
@@ -15,6 +16,21 @@ defmodule Wardrik.Operations.RemoveTrigger do
   defstruct [:agent, :name]
 
   @type t() :: %__MODULE__{agent: Wardrik.AgentID.t(), name: String.t()}
+
+  @impl Wardrik.Catalog.Entry
+  def name, do: "agent.trigger.remove"
+
+  @impl Wardrik.Catalog.Entry
+  def summary, do: "Remove one of the agent's triggers, by name."
+
+  @impl Wardrik.Catalog.Entry
+  def input, do: WardrikProtocol.schema("input_agent_trigger_remove")
+
+  @impl Wardrik.Catalog.Entry
+  def new(%Wardrik.AgentID{} = agent, %{"name" => name}) when is_binary(name),
+    do: {:ok, %__MODULE__{agent: agent, name: name}}
+
+  def new(_agent, _input), do: {:error, Error.new(:invalid, "A trigger is removed by its name")}
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id

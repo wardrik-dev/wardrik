@@ -204,7 +204,10 @@ defmodule Mix.Tasks.Wardrik.Docs do
 
   defp event?(schema), do: String.starts_with?(schema["title"] || "", "wardrik.")
 
-  defp resource?(name), do: name not in ["cloudevent", "defs"] and not String.contains?(name, ".")
+  defp resource?(name),
+    do:
+      name not in ["cloudevent", "defs"] and not String.contains?(name, ".") and
+        not String.starts_with?(name, "input_")
 
   defp schema(heading, schema, defs_page) do
     ["### `#{heading}`\n\n", description(schema), fields(schema, defs_page)]

@@ -111,7 +111,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert spec.hooks == []
   end
 
-  test "* is every shipped tool, the file tools, every server it reaches and the tool workers' tools",
+  test "* is every shipped tool, the file tools, every server it reaches, the tool workers' tools and its own operations",
        context do
     with_servers(
       linear: [transport: {:streamable_http, base_url: "https://mcp.linear.app/mcp"}],
@@ -129,6 +129,7 @@ defmodule WardrikDaemon.AgentFileTest do
              {WardrikMCP, :linear},
              {WardrikMCP, :github},
              {WardrikHTTP.Workers, ~A"default/triage"},
+             {Wardrik.Catalog.Tools, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 

@@ -20,6 +20,8 @@ defmodule Wardrik.Principal do
     * `:oauth` - an authorization flow that finished, by the provider it was
       for: whoever completed it is not known
     * `:token` - a caller of the HTTP API, by the id of the token it presented
+    * `:agent` - an agent acting on itself through `Wardrik.Catalog.Tools`,
+      by its ID
     * `:webhook` - a request from outside to one of an agent's triggers, by
       the trigger it was sent to, as `org/name//trigger`: whoever sent it is
       known only by the secret its signature was made with
@@ -32,7 +34,16 @@ defmodule Wardrik.Principal do
 
   @typedoc "How a principal reached Wardrik."
   @type type() ::
-          :shell | :ssh | :terminal | :channel | :oauth | :token | :webhook | :user | atom()
+          :shell
+          | :ssh
+          | :terminal
+          | :channel
+          | :oauth
+          | :token
+          | :webhook
+          | :agent
+          | :user
+          | atom()
 
   @opaque t() :: %__MODULE__{type: type(), id: String.t(), name: String.t() | nil}
 

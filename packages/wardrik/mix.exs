@@ -56,8 +56,9 @@ defmodule Wardrik.MixProject do
       {:ekv, "~> 0.4.3", only: :test},
       # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
       {:mimic, "~> 1.7", only: [:dev, :test]},
-      # The schemas the codec's tests check what it writes against.
-      sibling(:wardrik_protocol, only: :test),
+      # The schemas of what operations take, which the catalog's surfaces
+      # describe them by, and the codec's tests check what it writes against.
+      sibling(:wardrik_protocol),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

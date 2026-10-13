@@ -286,6 +286,21 @@ triggers:
 The file is read as the run happens, so one that does not exist yet is the agent's to find out
 about. See [Files and memory](/concepts/files-and-memory/).
 
+## An agent that changes what it watches
+
+`self/*` in an agent's tools lets it read its own definition, and set and remove its own triggers,
+so it can change what it watches as it learns what matters: add a feed it found, check a page more
+often after a launch, or drop a check that never finds anything.
+
+```yaml
+tools: [web_search, files, self/*]
+```
+
+Each change waits on a person, who sees the trigger it would set, unless the agent's policy allows
+it. The audit records the agent as who made it, and `wardrik triggers` lists the trigger as any
+other. An agent its file declares keeps the triggers its file lists; one defined over the HTTP API
+changes its own. See [Policy and approvals](/concepts/policy/).
+
 ## Hearing what it did
 
 An agent nobody is watching can say what each run answered. `notify` with `finished` sends a turn's
