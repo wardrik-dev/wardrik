@@ -49,6 +49,7 @@ defmodule WardrikSlack.ThreadsTest do
     agent = Wardrik.Test.Fleet.id("books")
 
     context = %Context{
+      host: Wardrik.Host.new(),
       channel: "slack-#{System.unique_integer([:positive])}",
       offered: {__MODULE__, :offering, [agent]},
       start: {__MODULE__, :starting, [runner]}

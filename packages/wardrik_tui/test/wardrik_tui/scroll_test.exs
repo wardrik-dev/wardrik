@@ -13,7 +13,7 @@ defmodule WardrikTUI.ScrollTest do
     session =
       Breeze.Test.start!(App,
         size: {60, 14},
-        start_opts: [agent: agent, agent_id: agent_id, model: "m"]
+        start_opts: [agent: agent, agent_id: agent_id, host: Wardrik.Host.new(), model: "m"]
       )
 
     on_exit(fn -> Breeze.Test.stop(session) end)

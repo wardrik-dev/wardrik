@@ -8,7 +8,8 @@ defmodule Wardrik.Agent.State.Stored do
   keeps its source, and its clock starts again where it is read back. Each
   keeps who asked for it. How far
   the agent's `Wardrik.Event.Log` has got is written as a sequence number,
-  from which the next owner looks for the head.
+  from which the next owner looks for the head. The `Wardrik.Host` it runs
+  on is never written: whichever node loads it next hands it its own.
   """
 
   alias ReqLLM.Context
@@ -46,7 +47,7 @@ defmodule Wardrik.Agent.State.Stored do
   def dump(%State{} = state) do
     state
     |> Map.from_struct()
-    |> Map.drop([:log, :active_at, :idle_timer])
+    |> Map.drop([:log, :host, :active_at, :idle_timer])
     |> Map.merge(%{
       config: Config.dump(state.config),
       mode: at_rest(state.mode),
@@ -71,7 +72,14 @@ defmodule Wardrik.Agent.State.Stored do
     {sequence, dumped} = Map.pop(dumped, :sequence, 0)
     dumped = Map.put(dumped, :log, Writer.new(agent_id, sequence))
 
-    struct!(State, %{dumped | config: Config.load(config), mode: reopen(mode)})
+    struct!(
+      State,
+      Map.merge(dumped, %{
+        config: Config.load(config),
+        mode: reopen(mode),
+        host: Wardrik.Host.new()
+      })
+    )
   end
 
   @doc """

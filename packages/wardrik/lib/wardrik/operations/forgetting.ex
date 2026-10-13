@@ -5,7 +5,7 @@ defmodule Wardrik.Operations.Forgetting do
   what was asked, one agent or a prefix.
 
   The host's `Wardrik.Definition` is asked of each agent: it says which it
-  keeps as the forget is planned, through `Wardrik.Definition.editable/1`,
+  keeps as the forget is planned, through `c:Wardrik.Definition.editable/1`,
   and forgets the definition of each removed, where it keeps one.
   """
 
@@ -13,6 +13,7 @@ defmodule Wardrik.Operations.Forgetting do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Definition
   alias Wardrik.Fleet
+  alias Wardrik.Host
 
   @enforce_keys [:agents, :kept, :asked]
   defstruct [:agents, :kept, :asked]
@@ -23,12 +24,17 @@ defmodule Wardrik.Operations.Forgetting do
           asked: AgentID.t() | Prefix.t()
         }
 
-  @doc "The effect of forgetting `ids`, under `asked`: those the host lets go, and why it keeps the rest."
-  @spec of([AgentID.t()], AgentID.t() | Prefix.t()) :: t()
-  def of(ids, asked) do
+  @doc """
+  The effect of forgetting `ids`, under `asked`: those `host` lets go, and
+  why it keeps the rest.
+  """
+  @spec of(Host.t(), [AgentID.t()], AgentID.t() | Prefix.t()) :: t()
+  def of(host, ids, asked) do
+    definitions = Host.definitions(host)
+
     {agents, kept} =
       Enum.reduce(ids, {[], []}, fn id, {agents, kept} ->
-        case Definition.editable(id) do
+        case definitions.editable(id) do
           :ok -> {[id | agents], kept}
           {:error, :conflict, why} -> {agents, [{id, why} | kept]}
         end
@@ -38,13 +44,14 @@ defmodule Wardrik.Operations.Forgetting do
   end
 
   @doc """
-  Forgets each agent `effect` removes, and the definition the host keeps of
+  Forgets each agent `effect` removes, and the definition `host` keeps of
   it: the effect it made, and each agent that could not be forgotten, with
   why. An agent the host refuses now is kept, as the plan would have.
   """
-  @spec make(t()) :: {t(), [{AgentID.t(), String.t()}]}
-  def make(%__MODULE__{agents: agents, kept: kept} = effect) do
-    forgotten = Enum.map(agents, &{&1, forget(&1)})
+  @spec make(Host.t(), t()) :: {t(), [{AgentID.t(), String.t()}]}
+  def make(host, %__MODULE__{agents: agents, kept: kept} = effect) do
+    definitions = Host.definitions(host)
+    forgotten = Enum.map(agents, &{&1, forget(definitions, &1)})
 
     made = %{
       effect
@@ -55,8 +62,8 @@ defmodule Wardrik.Operations.Forgetting do
     {made, for({id, {:failed, why}} <- forgotten, do: {id, why})}
   end
 
-  defp forget(id) do
-    with {:ok, _kept} <- Definition.forget(id),
+  defp forget(definitions, id) do
+    with {:ok, _kept} <- Definition.forget(definitions, id),
          :ok <- Fleet.forget(id) do
       :ok
     else

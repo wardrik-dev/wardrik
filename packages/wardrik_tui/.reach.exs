@@ -40,6 +40,7 @@
       "Wardrik.Fleet.Member",
       "Wardrik.FleetOperation",
       "Wardrik.Grant",
+      "Wardrik.Host",
       "Wardrik.Hook",
       "Wardrik.Label",
       "Wardrik.Ledger",

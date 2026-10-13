@@ -21,6 +21,7 @@
       "Wardrik.Compaction",
       "Wardrik.Credential",
       "Wardrik.Definition",
+      "Wardrik.Host",
       "Wardrik.Delegation",
       "Wardrik.Deployment",
       "Wardrik.DeploymentOperation",

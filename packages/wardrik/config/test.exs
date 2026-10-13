@@ -17,3 +17,6 @@ config :req_llm,
   load_dotenv: false,
   zai_api_key: "test-zai-api-key",
   receive_timeout: 1_000
+
+# Every agent the suite starts asks these for the definition it runs on.
+config :wardrik, Wardrik.Host, definitions: Wardrik.Test.Definitions

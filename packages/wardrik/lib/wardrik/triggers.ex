@@ -4,13 +4,14 @@ defmodule Wardrik.Triggers do
   sends when something happens there: the host's module checks the request
   and asks the agent.
 
-  A host names the module once, as `Wardrik`'s `:triggers`, and
-  `Wardrik.Operations.Deliver` hands it each request, whichever surface it
-  came from:
+  A host names the module once, as the `:triggers` of its `Wardrik.Host`,
+  and `Wardrik.Operations.Deliver` hands it each request, whichever surface
+  it came from:
 
-      children = [{Wardrik, triggers: WardrikTrigger}]
+      Wardrik.Host.new(triggers: WardrikTrigger)
 
-  Without a module, `Deliver` is `:unsupported`.
+  A host that takes none has `Wardrik.Triggers.None`, which answers
+  `:unsupported`, and so does `Deliver`.
 
   The request is checked by the trigger itself, against a secret it and the
   sender share, so whoever sends it holds no credential of the server's. The
@@ -27,8 +28,6 @@ defmodule Wardrik.Triggers do
       sender that tries again delivers it later
   """
 
-  alias Wardrik.Error
-
   @typedoc "A request as it arrived: its headers, names in lower case, and its body."
   @type request() :: %{headers: [{String.t(), String.t()}], body: binary()}
 
@@ -37,25 +36,5 @@ defmodule Wardrik.Triggers do
               {:ok, :asked | :seen}
               | {:error, :not_found}
               | {:error, :forbidden | :unavailable, String.t()}
-
-  @module {__MODULE__, :module}
-
-  @doc """
-  Keeps `module`, or `nil` for none, as the host's. Answers `:ignore`, so
-  `Wardrik` runs it as a child that starts nothing.
-  """
-  @spec configure(module() | nil) :: :ignore
-  def configure(module) when is_atom(module) do
-    :persistent_term.put(@module, module)
-    :ignore
-  end
-
-  @doc "The host's module, or an `:unsupported` error where none was named."
-  @spec module() :: {:ok, module()} | {:error, Error.t()}
-  def module do
-    case :persistent_term.get(@module, nil) do
-      nil -> {:error, Error.new(:unsupported, "This server takes no requests for triggers.")}
-      module -> {:ok, module}
-    end
-  end
+              | :unsupported
 end

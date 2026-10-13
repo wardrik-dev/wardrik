@@ -3,7 +3,9 @@ defmodule WardrikSlack.Answers do
   What a press of a button `WardrikSlack.Notices` posted does.
 
   The person pressing is the principal `WardrikChannel.principal/3` makes of
-  them, and may do what the host's `Wardrik.Grants` says: they decide a call
+  them, and may do what the host's `Wardrik.Grants` says, as
+  `Wardrik.Host.caller/2` answers it on the host the channel's context
+  carries: they decide a call
   as `Wardrik.Operations.Decide` takes it, so where their grant allows
   `:decide` on the agent, or where they asked for the turn that waits; and
   they are shown where to connect an account where their grant allows
@@ -22,7 +24,8 @@ defmodule WardrikSlack.Answers do
   connect the account; or tells them why nothing happened.
 
   `opts` are the channel's: its `:name`, which names the person pressing,
-  and `:req_options`, merged into each request.
+  its `:context`, whose host they act on, and `:req_options`, merged into
+  each request.
   """
   @spec answer(map(), keyword()) :: :ok | :ignored
   def answer(payload, opts \\ [])
@@ -41,7 +44,10 @@ defmodule WardrikSlack.Answers do
         )
 
       reply =
-        case Wardrik.Grants.caller(by, agent) do
+        case Wardrik.Host.caller(Keyword.fetch!(opts, :context).host,
+               principal: by,
+               subject: agent
+             ) do
           {:ok, caller} -> pressed(action, payload, {user, caller}, agent, call, name)
           {:error, _unreached} -> WardrikSlack.ephemeral(@refused)
         end

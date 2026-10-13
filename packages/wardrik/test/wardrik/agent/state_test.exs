@@ -160,7 +160,7 @@ defmodule Wardrik.Agent.StateTest do
 
     defp decider(principal, can) do
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), can)
-      Wardrik.Caller.new(principal, grant)
+      Wardrik.Caller.new(principal: principal, grant: grant, host: Wardrik.Host.new())
     end
 
     test "a turn takes the oldest sender's messages, up to the next sender's" do
@@ -210,7 +210,11 @@ defmodule Wardrik.Agent.StateTest do
       {waiting, _effects} = State.parked(running(), parked_turn())
 
       refute State.decides?(waiting, decider(nil, [:read]))
-      assert State.decides?(waiting, Wardrik.Caller.root(nil))
+
+      assert State.decides?(
+               waiting,
+               Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+             )
     end
   end
 
@@ -682,6 +686,15 @@ defmodule Wardrik.Agent.StateTest do
       end
 
       assert Stored.dump(stopping()).mode == %Due{recovery: :owed}
+    end
+
+    test "the host it runs on is never written, and every turn's scope carries it" do
+      host = Wardrik.Host.new(definitions: Wardrik.Test.Definitions)
+      state = State.hosted(state(), host)
+
+      refute Map.has_key?(Stored.dump(state), :host)
+      assert reload(state).host == Wardrik.Host.new()
+      assert State.turn_scope(state, nil).host == host
     end
 
     test "a runner that is not an MFA is refused when the state is built" do

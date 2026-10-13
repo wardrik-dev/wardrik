@@ -10,6 +10,7 @@ defmodule Wardrik.Operations.RevokeToken do
   alias Wardrik.Change
   alias Wardrik.Deployment
   alias Wardrik.Error
+  alias Wardrik.Host
   alias Wardrik.Tokens
 
   @enforce_keys [:id]
@@ -24,21 +25,24 @@ defmodule Wardrik.Operations.RevokeToken do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{id: id} = request, _caller) do
-    with {:ok, module} <- Tokens.module() do
-      if Enum.any?(module.list(), &(&1.id == id)),
-        do: {:ok, Change.new(request)},
-        else: {:error, not_found(id)}
+  def plan(%__MODULE__{id: id} = request, caller) do
+    case Host.tokens(caller.host).list() do
+      :unsupported ->
+        {:error, Tokens.unsupported()}
+
+      tokens ->
+        if Enum.any?(tokens, &(&1.id == id)),
+          do: {:ok, Change.new(request)},
+          else: {:error, not_found(id)}
     end
   end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{id: id}} = change, _caller) do
-    with {:ok, module} <- Tokens.module() do
-      case module.revoke(id) do
-        :ok -> {:ok, nil, change.effect}
-        {:error, :not_found} -> {:error, not_found(id)}
-      end
+  def make(%Change{request: %__MODULE__{id: id}} = change, caller) do
+    case Host.tokens(caller.host).revoke(id) do
+      :ok -> {:ok, nil, change.effect}
+      {:error, :not_found} -> {:error, not_found(id)}
+      :unsupported -> {:error, Tokens.unsupported()}
     end
   end
 

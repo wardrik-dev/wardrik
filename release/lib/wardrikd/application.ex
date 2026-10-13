@@ -11,12 +11,15 @@ defmodule Wardrikd.Application do
   with it: `WardrikPolicy.Supervisor` keeps the budgets, `WardrikTrigger`
   runs the triggers, `WardrikHTTP.Access` keeps what tokens grant,
   `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
-  rest. `WardrikDaemon.Cluster` connects this node to
-  the others before the fleet starts, `WardrikDaemon.Agents` is where
-  every surface's definitions go, `WardrikOAuth.Connections` offers the
-  accounts people and orgs connect, `WardrikTrigger` takes the requests
-  from outside that triggers are sent, checked with secrets the vault holds
-  for the agent's user, org or deployment, else the environment's, and
+  rest. `WardrikDaemon.Cluster` connects this node to the others before the
+  fleet starts.
+
+  Core and the daemon are handed one `Wardrik.Host`: `WardrikDaemon.Agents`
+  is where every surface's definitions go, `WardrikOAuth.Connections` offers
+  the accounts people and orgs connect, `WardrikHTTP.Tokens` makes the HTTP
+  API's tokens, `WardrikTrigger` takes the requests from outside that
+  triggers are sent, checked with secrets the vault holds for the agent's
+  user, org or deployment, else the environment's, and
   `WardrikDaemon.Grants` says what each principal may do.
 
   The store, and whether tool workers' answers are the deployment's own, are
@@ -35,20 +38,25 @@ defmodule Wardrikd.Application do
     :ok = Logger.put_application_level(:durable_server, :warning)
     http = WardrikDaemon.Config.settings(WardrikHTTP)
 
+    host =
+      Wardrik.Host.new(
+        definitions: WardrikDaemon.Agents,
+        connections: WardrikOAuth.Connections,
+        tokens: WardrikHTTP.Tokens,
+        triggers: WardrikTrigger,
+        grants: WardrikDaemon.Grants
+      )
+
     children = [
       {Wardrik,
        store: WardrikDaemon.Config.settings(WardrikStore),
        cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
-       definitions: WardrikDaemon.Agents,
-       connections: WardrikOAuth.Connections,
-       tokens: WardrikHTTP.Tokens,
-       triggers: WardrikTrigger,
-       grants: WardrikDaemon.Grants},
+       host: host},
       WardrikPolicy.Supervisor,
       {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
       WardrikHTTP.Access,
       {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
-      WardrikDaemon
+      {WardrikDaemon, host: host}
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrikd.Supervisor)

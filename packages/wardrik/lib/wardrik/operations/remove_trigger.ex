@@ -9,8 +9,8 @@ defmodule Wardrik.Operations.RemoveTrigger do
   @behaviour Wardrik.Command
 
   alias Wardrik.Change
-  alias Wardrik.Definition
   alias Wardrik.Error
+  alias Wardrik.Host
 
   @enforce_keys [:agent, :name]
   defstruct [:agent, :name]
@@ -42,24 +42,14 @@ defmodule Wardrik.Operations.RemoveTrigger do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{} = request, _caller) do
-    with {:ok, _module} <- definitions(), do: {:ok, Change.new(request)}
-  end
+  def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id, name: name}} = change, _caller) do
-    with {:ok, module} <- definitions() do
-      case module.delete_trigger(id, name) do
-        :ok -> {:ok, nil, change.effect}
-        {:error, :not_found} -> {:error, Error.new(:not_found, "#{id} has no trigger #{name}.")}
-        {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
-      end
-    end
-  end
-
-  defp definitions do
-    case Definition.module(:delete_trigger) do
-      {:ok, module} -> {:ok, module}
+  def make(%Change{request: %__MODULE__{agent: id, name: name}} = change, caller) do
+    case Host.definitions(caller.host).delete_trigger(id, name) do
+      :ok -> {:ok, nil, change.effect}
+      {:error, :not_found} -> {:error, Error.new(:not_found, "#{id} has no trigger #{name}.")}
+      {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
       :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
     end
   end

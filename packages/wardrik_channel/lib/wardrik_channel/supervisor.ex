@@ -9,6 +9,7 @@ defmodule WardrikChannel.Supervisor do
       children = [Wardrik, WardrikChannel.Replies, {WardrikChannel.Supervisor, opts}]
 
       {WardrikChannel.Supervisor,
+       host: host,
        channels: [slack: {WardrikSlack, token: "xoxb-…", app_token: "xapp-…"}]}
 
   Options:
@@ -16,6 +17,8 @@ defmodule WardrikChannel.Supervisor do
     * `:channels` - each channel by name, as its adapter and the options its
       `config/1` answered; each is started with `:name` and `:context`, its
       `WardrikChannel.Context`, added
+    * `:host` - the `Wardrik.Host` what each channel's people ask runs on,
+      as their callers carry it; required
     * `:offered`, `:creatable`, `:create`, `:start` and `:approvers` - the
       host's answers to which agents may answer in a channel's rooms, to
       creating one, to starting a thread's agent, and to who may answer what
@@ -33,19 +36,21 @@ defmodule WardrikChannel.Supervisor do
   @impl true
   def init(opts) do
     opts =
-      Keyword.validate!(opts,
+      Keyword.validate!(opts, [
+        :host,
         channels: [],
         offered: {Context, :none, []},
         creatable: {Context, :no, []},
         create: {Context, :refuse, []},
         start: {Context, :unstarted, []},
         approvers: {Context, :none, []}
-      )
+      ])
 
     channels =
       for {name, {adapter, channel}} <- opts[:channels] do
         context = %Context{
           channel: to_string(name),
+          host: Keyword.fetch!(opts, :host),
           offered: opts[:offered],
           creatable: opts[:creatable],
           create: opts[:create],

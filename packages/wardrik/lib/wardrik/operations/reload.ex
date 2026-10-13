@@ -1,8 +1,9 @@
 defmodule Wardrik.Operations.Reload do
   @moduledoc """
-  Has every node whose host reads its definitions again do so, as
-  `Wardrik.Definition`'s `c:Wardrik.Definition.reload/0`, and brings the
-  agents each runs to what they say now.
+  Has every node the host's `Wardrik.Definition` names in
+  `c:Wardrik.Definition.reloading/0` read its definitions again, as
+  `c:Wardrik.Definition.reload/0`, and bring the agents it runs to what
+  they say now.
   """
 
   @behaviour Wardrik.DeploymentOperation
@@ -11,6 +12,7 @@ defmodule Wardrik.Operations.Reload do
   alias Wardrik.Change
   alias Wardrik.Deployment
   alias Wardrik.Error
+  alias Wardrik.Host
   alias Wardrik.Operations.Reloading
 
   defstruct []
@@ -24,16 +26,16 @@ defmodule Wardrik.Operations.Reload do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(request, _caller) do
-    case Wardrik.Definition.reloading() do
+  def plan(request, caller) do
+    case Host.definitions(caller.host).reloading() do
       [] -> {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
       nodes -> {:ok, Change.new(request, %Reloading{nodes: nodes})}
     end
   end
 
   @impl Wardrik.Command
-  def make(%Change{effect: %Reloading{nodes: nodes} = effect}, _caller) do
-    :ok = Wardrik.Definition.reload_on(nodes)
+  def make(%Change{effect: %Reloading{nodes: nodes} = effect}, caller) do
+    :ok = Wardrik.Definition.reload_on(Host.definitions(caller.host), nodes)
     {:ok, %{"reloaded" => Enum.map(nodes, &to_string/1)}, effect}
   end
 end

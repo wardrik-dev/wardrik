@@ -57,7 +57,13 @@ defmodule WardrikTUI.SSHTest do
 
     [first | _rest] = Fleet.list()
 
-    {:ok, pid} = WardrikTUI.SSH.start_link(session: session(self()), org: "default")
+    {:ok, pid} =
+      WardrikTUI.SSH.start_link(
+        session: session(self()),
+        org: "default",
+        host: Wardrik.Host.new()
+      )
+
     on_exit(fn -> if Process.alive?(pid), do: Breeze.Server.stop(pid) end)
 
     assert drawn(to_string(first.id)) =~ to_string(first.id)

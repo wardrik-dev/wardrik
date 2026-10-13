@@ -2,6 +2,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   use ExUnit.Case, async: false
   use Mimic
 
+  # Commands run over rpc build their callers on the daemon's host.
+  setup do: WardrikDaemon.Test.Host.held()
+
   import ExUnit.CaptureIO
 
   alias Wardrik.Agent

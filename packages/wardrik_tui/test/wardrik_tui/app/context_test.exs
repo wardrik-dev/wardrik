@@ -22,7 +22,7 @@ defmodule WardrikTUI.App.ContextTest do
     s =
       Breeze.Test.start!(App,
         size: {100, 30},
-        start_opts: [agent: id, agent_id: id],
+        start_opts: [agent: id, agent_id: id, host: Wardrik.Host.new()],
         global_keybindings: App.keybindings()
       )
 
@@ -157,21 +157,40 @@ defmodule WardrikTUI.App.ContextTest do
         resumer: {__MODULE__, :resume_blocked, [self()]}
       )
 
-    assert Agent.decide(pid, %{"first" => :approve}, Wardrik.Caller.root(nil)) ==
+    assert Agent.decide(
+             pid,
+             %{"first" => :approve},
+             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+           ) ==
              {:error, :not_parked}
 
     Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
     assert_receive %Event{payload: %Event.TurnParked{}}, 2000
 
-    assert Agent.decide(pid, %{"absent" => :approve}, Wardrik.Caller.root(nil)) ==
+    assert Agent.decide(
+             pid,
+             %{"absent" => :approve},
+             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+           ) ==
              {:error, :stale_decision}
 
-    assert Agent.decide(pid, %{}, Wardrik.Caller.root(nil)) == {:error, :stale_decision}
-    assert Agent.decide(pid, %{"first" => :approve}, Wardrik.Caller.root(nil)) == :ok
+    assert Agent.decide(pid, %{}, Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())) ==
+             {:error, :stale_decision}
+
+    assert Agent.decide(
+             pid,
+             %{"first" => :approve},
+             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+           ) == :ok
+
     assert_receive {:resumer, running, %{"first" => :approve}}
 
-    assert Agent.decide(pid, %{"second" => :approve}, Wardrik.Caller.root(nil)) ==
+    assert Agent.decide(
+             pid,
+             %{"second" => :approve},
+             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+           ) ==
              {:error, :not_parked}
 
     send(running, :release)

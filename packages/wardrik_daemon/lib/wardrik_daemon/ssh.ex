@@ -15,9 +15,10 @@ defmodule WardrikDaemon.SSH do
   directory and the key are this user's alone, however they were left.
 
   Each connection is a session of the `:entrypoint` the application
-  environment names, and the name is who it is for. `config/config.exs` names
-  the TUI's, which starts agents through `Wardrik.Definition`, as every
-  surface does:
+  environment names, given the deployment's org and the daemon's
+  `Wardrik.Host`, and the name is who it is for. `config/config.exs` names
+  the TUI's, which starts agents through the host's `Wardrik.Definition`, as
+  every surface does:
 
       config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 
@@ -50,13 +51,15 @@ defmodule WardrikDaemon.SSH do
 
   @doc """
   The listener for a daemon whose config lives in `config_dir` and whose data
-  lives in `data_dir`, as `settings` place it: none where `config_dir` holds no
-  `ssh/authorized_keys`, or where `settings` names no `:entrypoint`.
+  lives in `data_dir`, as `settings` place it, whose sessions run on `host`:
+  none where `config_dir` holds no `ssh/authorized_keys`, or where `settings`
+  names no `:entrypoint`.
   """
-  @spec children(Path.t(), Path.t(), keyword()) :: [{module(), keyword()}]
+  @spec children(Path.t(), Path.t(), Wardrik.Host.t(), keyword()) :: [{module(), keyword()}]
   def children(
         config_dir,
         data_dir,
+        host,
         settings \\ Application.get_env(:wardrik_daemon, __MODULE__, [])
       ) do
     keys = Path.join([config_dir, "ssh", "authorized_keys"])
@@ -77,14 +80,17 @@ defmodule WardrikDaemon.SSH do
            ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
            auth: {:public_key, fn _user, key -> authorized?(keys, key) end},
            system_dir: host_key!(Path.join(data_dir, "ssh")),
-           entrypoint: in_org(entrypoint)}
+           entrypoint: entrypoint(entrypoint, host)}
         ]
     end
   end
 
-  # A session finds an agent named without an org in the deployment's.
-  defp in_org({module, opts}),
-    do: {module, Keyword.put_new(opts, :org, WardrikDaemon.Config.org())}
+  # A session finds an agent named without an org in the deployment's, and
+  # runs what it asks on the daemon's host.
+  defp entrypoint({module, opts}, host),
+    do:
+      {module,
+       opts |> Keyword.put_new(:org, WardrikDaemon.Config.org()) |> Keyword.put(:host, host)}
 
   @retry :timer.seconds(5)
 

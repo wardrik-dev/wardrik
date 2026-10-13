@@ -31,6 +31,7 @@ defmodule WardrikChannel.ThreadsTest do
     agent = Wardrik.Test.Fleet.id("books")
 
     context = %Context{
+      host: Wardrik.Host.new(),
       channel: "chat-#{System.unique_integer([:positive])}",
       offered: {__MODULE__, :offering, [agent]},
       start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
@@ -208,7 +209,7 @@ defmodule WardrikChannel.ThreadsTest do
       Wardrik.Agent.decide(
         agent,
         %{"call_1" => {:deny, "Not on Fridays."}},
-        Wardrik.Caller.root(by)
+        Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
       )
 
     assert_receive {:delivered,

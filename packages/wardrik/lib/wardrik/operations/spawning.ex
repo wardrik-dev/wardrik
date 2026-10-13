@@ -6,11 +6,11 @@ defmodule Wardrik.Operations.Spawning do
 
     * `:running` - it runs already, and nothing happens
     * `:asleep` - it is stored, and wakes from what it had, as the host's
-      `Wardrik.Definition.current/1` says it is now
+      `c:Wardrik.Definition.current/1` says it is now
     * `{:defined, spec}` - the host defines it, and it starts on that spec,
       with whatever it had stored
     * `:new` - nothing defines it yet, and the host's
-      `Wardrik.Definition.create/1` defines it as it starts
+      `c:Wardrik.Definition.create/1` defines it as it starts
 
   `on` is the node it starts on, or `:anywhere` for wherever the fleet puts
   it; once made, the node it runs on.
@@ -19,10 +19,10 @@ defmodule Wardrik.Operations.Spawning do
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentOperation
-  alias Wardrik.Definition
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
+  alias Wardrik.Host
   alias Wardrik.Resource
 
   @enforce_keys [:agent, :start, :on]
@@ -33,14 +33,16 @@ defmodule Wardrik.Operations.Spawning do
   @type t() :: %__MODULE__{agent: AgentID.t(), start: start(), on: node() | :anywhere}
 
   @doc """
-  The effect of starting the agent `id` on `on`, or why it cannot start:
-  one nothing defines, where the host creates none, is not found.
+  The effect of starting the agent `id` on `on`, on `host`, or why it
+  cannot start: one that runs already runs on, one the host defines starts
+  on its definition, one asleep wakes, and one nothing defines is defined
+  as it starts.
   """
-  @spec of(AgentID.t(), node() | :anywhere) :: {:ok, t()} | {:error, Error.t()}
-  def of(%AgentID{} = id, on) do
+  @spec of(Host.t(), AgentID.t(), node() | :anywhere) :: {:ok, t()} | {:error, Error.t()}
+  def of(host, %AgentID{} = id, on) do
     member = Fleet.lookup(id)
 
-    case {member, Definition.current(id)} do
+    case {member, Host.definitions(host).current(id)} do
       {%Member{asleep: false, node: node}, _current} ->
         {:ok, %__MODULE__{agent: id, start: :running, on: node}}
 
@@ -51,27 +53,30 @@ defmodule Wardrik.Operations.Spawning do
         {:ok, %__MODULE__{agent: id, start: :asleep, on: on}}
 
       {nil, :none} ->
-        if Definition.creates?(),
-          do: {:ok, %__MODULE__{agent: id, start: :new, on: on}},
-          else: {:error, AgentOperation.not_found(id)}
+        {:ok, %__MODULE__{agent: id, start: :new, on: on}}
     end
   end
 
-  @doc "Starts the agent as `effect` says: the effect made, with the node it runs on."
-  @spec make(t()) :: {:ok, t()} | {:error, Error.t()}
-  def make(%__MODULE__{start: :running} = effect), do: {:ok, effect}
+  @doc """
+  Starts the agent as `effect` says, on `host`: the effect made, with the
+  node it runs on. One nothing defines is not found where the host creates
+  none.
+  """
+  @spec make(Host.t(), t()) :: {:ok, t()} | {:error, Error.t()}
+  def make(_host, %__MODULE__{start: :running} = effect), do: {:ok, effect}
 
-  def make(%__MODULE__{agent: id, start: :asleep, on: on} = effect),
+  def make(_host, %__MODULE__{agent: id, start: :asleep, on: on} = effect),
     do: id |> Fleet.spawn(placed(on)) |> made(effect)
 
-  def make(%__MODULE__{start: {:defined, spec}, on: on} = effect),
+  def make(_host, %__MODULE__{start: {:defined, spec}, on: on} = effect),
     do: spec |> started(on) |> made(effect)
 
-  def make(%__MODULE__{agent: id, start: :new, on: on} = effect) do
-    case Definition.create(id) do
+  def make(host, %__MODULE__{agent: id, start: :new, on: on} = effect) do
+    case Host.definitions(host).create(id) do
       {:ok, spec} -> spec |> started(on) |> made(effect)
       {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
       {:error, why} -> {:error, Error.new(:invalid, why)}
+      :unsupported -> {:error, AgentOperation.not_found(id)}
     end
   end
 

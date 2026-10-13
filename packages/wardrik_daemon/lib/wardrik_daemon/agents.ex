@@ -106,6 +106,10 @@ defmodule WardrikDaemon.Agents do
   @impl Wardrik.Definition
   def reload, do: GenServer.call(__MODULE__, :reload, :timer.minutes(1))
 
+  @doc "Every node that runs a daemon, each of which reads its files again on `reload/0`."
+  @impl Wardrik.Definition
+  def reloading, do: WardrikDaemon.daemons()
+
   @doc """
   What became of each file the last time they were read: the policies, then
   the agents, each in the order of their names.
@@ -290,16 +294,33 @@ defmodule WardrikDaemon.Agents do
   @doc """
   The spec the definition kept for `key` writes now, for it or the agent it
   is a conversation of, or `:none` where none is kept or it does not build.
-  The fleet asks it as an agent wakes, so a definition changed while the
-  agent slept is the one it wakes with; see `Wardrik.Fleet`.
+  An agent asks it as it starts or wakes, so a definition changed while the
+  agent slept is the one it wakes with; see `Wardrik.Agent`.
+
+  Until the files are first read it answers `:none` without waiting: the
+  reading puts every agent a file declares, and brings every agent awake
+  that a kept definition writes to it, so one starting meanwhile, as each a
+  reading puts does, is brought to it then.
   """
   @impl Wardrik.Definition
   def current(key) do
-    with {:ok, definition} <- Definition.of(key),
-         {:ok, spec} <- build(definition, key) do
+    with {:ok, policies} <- read_policies(),
+         {:ok, definition} <- Definition.of(key),
+         {:ok, spec} <- build(definition, key, policies) do
       {:ok, spec}
     else
       _none -> :none
+    end
+  end
+
+  defp read_policies do
+    if :ets.whereis(@table) == :undefined do
+      {:ok, %{}}
+    else
+      case :ets.lookup(@table, :loaded) do
+        [{:loaded, loaded}] -> {:ok, loaded.policies}
+        [] -> :reading
+      end
     end
   end
 
@@ -319,7 +340,7 @@ defmodule WardrikDaemon.Agents do
     with :ok <- untaken(path),
          {:ok, _options} <- created(key),
          :ok <- write(path, AgentFile.text(created_fields(key))) do
-      _reloaded = Wardrik.Definition.reload_all()
+      :ok = Wardrik.Definition.reload_on(__MODULE__, reloading())
       written(path)
     end
   end

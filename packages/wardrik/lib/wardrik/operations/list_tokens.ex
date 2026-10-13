@@ -5,6 +5,7 @@ defmodule Wardrik.Operations.ListTokens do
   @behaviour Wardrik.Query
 
   alias Wardrik.Deployment
+  alias Wardrik.Host
   alias Wardrik.Tokens
 
   defstruct []
@@ -18,8 +19,10 @@ defmodule Wardrik.Operations.ListTokens do
   def action, do: :read
 
   @impl Wardrik.Query
-  def run(_request, _caller) do
-    with {:ok, module} <- Tokens.module(),
-         do: {:ok, %{"tokens" => Enum.map(module.list(), &Wardrik.Resource.token/1)}}
+  def run(_request, caller) do
+    case Host.tokens(caller.host).list() do
+      :unsupported -> {:error, Tokens.unsupported()}
+      tokens -> {:ok, %{"tokens" => Enum.map(tokens, &Wardrik.Resource.token/1)}}
+    end
   end
 end

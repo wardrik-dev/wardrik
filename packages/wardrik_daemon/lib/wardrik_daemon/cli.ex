@@ -25,10 +25,10 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Caller
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Host
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Clear
   alias Wardrik.Operations.ReadAgent
@@ -315,7 +315,7 @@ defmodule WardrikDaemon.CLI do
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
     by = Terminal.principal(terminal)
-    opts = Keyword.merge(opts, by: by, caller: Caller.root(by))
+    opts = Keyword.merge(opts, by: by, caller: Host.root(WardrikDaemon.Host.get(), principal: by))
 
     command
     |> respond(words, opts, terminal, json?)

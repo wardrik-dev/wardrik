@@ -4,6 +4,7 @@ defmodule WardrikDaemonTest do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Config
+  alias WardrikDaemon.Test.Host
   alias WardrikDaemon.Test.Settings
 
   @moduletag :tmp_dir
@@ -16,10 +17,14 @@ defmodule WardrikDaemonTest do
     tmp_dir: dir
   } do
     assert {:ok, pid} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
-    assert [WardrikDaemon.Agents, WardrikHTTP.Listener] =
+    assert [WardrikDaemon.Agents, WardrikDaemon.Host, WardrikHTTP.Listener] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    assert WardrikDaemon.Host.get() == Host.host()
   end
 
   test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
@@ -37,7 +42,10 @@ defmodule WardrikDaemonTest do
     key = AgentID.parse!("daemon/defined-#{System.unique_integer([:positive])}")
     on_exit(fn -> Wardrik.Fleet.forget(key) end)
 
-    start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+    start_supervised!(
+      {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+    )
+
     {:ok, port} = WardrikHTTP.Listener.port()
 
     api =
@@ -68,7 +76,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yaml"), "vault:\n  keys: [\"#{key}\"]\n")
 
     assert {:ok, _pid} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert Config.settings(WardrikVault)[:keys] == [key]
     assert WardrikVault.Config.keys() == [key]
@@ -90,7 +100,9 @@ defmodule WardrikDaemonTest do
     """)
 
     assert {:ok, pid} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     children = Enum.map(Supervisor.which_children(pid), &elem(&1, 0))
     assert WardrikNotify.Supervisor in children
@@ -107,7 +119,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yml"), "vault:\n  keys: [\"#{key}\"]\n")
 
     assert {:ok, _pid} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert WardrikVault.Config.keys() == [key]
   end
@@ -117,7 +131,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yml"), "")
 
     assert {:error, {{:config, message}, _child}} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert message =~ "holds both config.yaml and config.yml; keep one"
   end
@@ -131,7 +147,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
     assert {:ok, _pid} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert Config.settings(WardrikDaemon.SSH)[:ip] == {127, 0, 0, 1}
   end
@@ -145,7 +163,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 
     assert {:error, {{:config, message}, _child}} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert message =~
              "storage.postgres.url names ${#{name}}, which is not set; storage reads " <>
@@ -156,7 +176,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join(dir, "config.yaml"), "nope: {}\n")
 
     assert {:error, {{:config, message}, _child}} =
-             start_supervised({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+             start_supervised(
+               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+             )
 
     assert message =~ "nope is not a section"
   end
@@ -172,7 +194,9 @@ defmodule WardrikDaemonTest do
       "---\norg: #{org}\npolicy:\n  budget:\n    tokens: 500\n---\nYou count.\n"
     )
 
-    start_supervised!({WardrikDaemon, config_dir: dir, state_dir: dir, data_dir: dir})
+    start_supervised!(
+      {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
+    )
 
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")))

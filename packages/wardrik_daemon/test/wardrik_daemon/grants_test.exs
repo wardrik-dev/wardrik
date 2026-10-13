@@ -14,7 +14,7 @@ defmodule WardrikDaemon.GrantsTest do
 
   # The test channel knows people by their id alone.
   setup %{tmp_dir: dir} do
-    context = %WardrikChannel.Context{channel: "chat"}
+    context = %WardrikChannel.Context{host: Wardrik.Host.new(), channel: "chat"}
     :ok = WardrikChannel.put_channel(WardrikDaemon.Test.Channel, [], context)
     previous = Application.get_env(:wardrik_daemon, Agents)
 

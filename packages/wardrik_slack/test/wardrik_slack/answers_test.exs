@@ -32,8 +32,6 @@ defmodule WardrikSlack.AnswersTest do
 
   setup do
     test = self()
-    :ignore = Wardrik.Grants.configure(Held)
-    on_exit(fn -> Wardrik.Grants.configure(nil) end)
 
     Req.Test.stub(WardrikSlack.Stub, fn conn ->
       send(test, {:slack, conn.host, conn.request_path, JSON.decode!(Req.Test.raw_body(conn))})
@@ -51,7 +49,10 @@ defmodule WardrikSlack.AnswersTest do
   end
 
   # The channel's options a press is answered with.
-  defp answering, do: [name: :slack, token: "xoxb-test", req_options: @req_options]
+  defp answering do
+    context = %WardrikChannel.Context{channel: "slack", host: Wardrik.Host.new(grants: Held)}
+    [name: :slack, token: "xoxb-test", context: context, req_options: @req_options]
+  end
 
   describe "Show link" do
     setup do
@@ -95,7 +96,10 @@ defmodule WardrikSlack.AnswersTest do
         Agent.decide(
           key,
           %{"call_1" => {:deny, "Not now."}},
-          Wardrik.Caller.root(Wardrik.Principal.new(:shell, "t"))
+          Wardrik.Caller.root(
+            principal: Wardrik.Principal.new(:shell, "t"),
+            host: Wardrik.Host.new()
+          )
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}

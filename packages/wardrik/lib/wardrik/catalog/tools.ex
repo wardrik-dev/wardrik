@@ -11,7 +11,8 @@ defmodule Wardrik.Catalog.Tools do
   Each tool is described by its operation's summary, and takes its input. A
   call builds the operation's request and runs it through `Wardrik.Query` or
   `Wardrik.Command`, as every surface does, as the calling agent, a caller
-  made with `Wardrik.Caller.agent/2`: the audit records the agent as who made
+  made with `Wardrik.Caller.agent/1` on the host the call's scope carries:
+  the audit records the agent as who made
   a change, an agent another surface declares, as a file does, answers as it
   would there, and an agent it sends a message answers it back with a
   message of its own (see `Wardrik.Operations.Ask`).
@@ -91,11 +92,12 @@ defmodule Wardrik.Catalog.Tools do
   @doc """
   The calling agent, as the caller of an operation reaching the agents under
   `reach`: the agent the call's scope runs for, granted to read, send
-  messages to and define them, under its own hooks as ceiling.
+  messages to and define them, under its own hooks as ceiling, on the host
+  the scope carries.
   """
   @spec caller(Wardrik.Tool.Context.t(), Prefix.t()) :: Caller.t()
   def caller(%Wardrik.Tool.Context{scope: scope}, reach) do
     {:ok, grant} = Grant.new(reach, [:read, :message, :define], scope.hooks)
-    Caller.agent(Scope.agent_id(scope), grant)
+    Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)
   end
 end

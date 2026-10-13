@@ -6,6 +6,9 @@ defmodule WardrikChannel.Context do
   arguments named below are appended to.
 
     * `:channel` - the channel's name, as `config.yaml` gives it
+    * `:host` - the `Wardrik.Host` the channel was started on, which a
+      person known by their principal is asked of with
+      `Wardrik.Host.caller/2`
     * `:offered` - given the channel, the agents that may answer in its
       rooms, as `WardrikChannel.Offer`s; none by default
     * `:creatable` - given the channel, whether someone in a room may create
@@ -25,9 +28,10 @@ defmodule WardrikChannel.Context do
   alias Wardrik.Principal
   alias WardrikChannel.Offer
 
-  @enforce_keys [:channel]
+  @enforce_keys [:channel, :host]
   defstruct [
     :channel,
+    :host,
     offered: {__MODULE__, :none, []},
     creatable: {__MODULE__, :no, []},
     create: {__MODULE__, :refuse, []},
@@ -39,6 +43,7 @@ defmodule WardrikChannel.Context do
 
   @type t() :: %__MODULE__{
           channel: String.t(),
+          host: Wardrik.Host.t(),
           offered: host(),
           creatable: host(),
           create: host(),

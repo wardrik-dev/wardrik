@@ -49,7 +49,8 @@ defmodule WardrikChannel do
   Someone writing in a room, or pressing a button, is the
   `Wardrik.Principal` `principal/3` makes, and may do what the host's
   `Wardrik.Grants` says that principal may, such as decide what an agent
-  asks. A host that grants by what `config.yaml` names people, as a
+  asks: `Wardrik.Host.caller/2`, on the host its context carries, makes
+  them a caller. A host that grants by what `config.yaml` names people, as a
   channel's approvers, asks `among?/4`.
 
   ## Rooms

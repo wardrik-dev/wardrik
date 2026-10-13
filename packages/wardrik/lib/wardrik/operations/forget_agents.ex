@@ -26,8 +26,8 @@ defmodule Wardrik.Operations.ForgetAgents do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{prefix: prefix} = request, _caller) do
-    case Forgetting.of(Enum.map(Fleet.list(prefix), & &1.id), prefix) do
+  def plan(%__MODULE__{prefix: prefix} = request, caller) do
+    case Forgetting.of(caller.host, Enum.map(Fleet.list(prefix), & &1.id), prefix) do
       %Forgetting{agents: [], kept: []} ->
         {:error, Error.new(:not_found, "Nothing runs under #{prefix}.")}
 
@@ -40,8 +40,8 @@ defmodule Wardrik.Operations.ForgetAgents do
   end
 
   @impl Wardrik.Command
-  def make(%Change{effect: %Forgetting{} = effect}, _caller) do
-    {made, failed} = Forgetting.make(effect)
+  def make(%Change{effect: %Forgetting{} = effect}, caller) do
+    {made, failed} = Forgetting.make(caller.host, effect)
     {:ok, Forgetting.answer(made, failed), made}
   end
 end

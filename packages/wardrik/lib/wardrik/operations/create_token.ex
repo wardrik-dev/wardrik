@@ -11,6 +11,7 @@ defmodule Wardrik.Operations.CreateToken do
   alias Wardrik.Change
   alias Wardrik.Deployment
   alias Wardrik.Error
+  alias Wardrik.Host
   alias Wardrik.Operations.TokenCreated
   alias Wardrik.Tokens
 
@@ -30,21 +31,20 @@ defmodule Wardrik.Operations.CreateToken do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(request, _caller) do
-    with {:ok, _module} <- Tokens.module(), do: {:ok, Change.new(request)}
-  end
+  def plan(request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, _caller) do
-    with {:ok, module} <- Tokens.module() do
-      case module.create(name, grant, for) do
-        {:ok, secret, token} ->
-          made = %TokenCreated{token: token}
-          {:created, %{"secret" => secret, "token" => Wardrik.Resource.token(token)}, made}
+  def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, caller) do
+    case Host.tokens(caller.host).create(name, grant, for) do
+      {:ok, secret, token} ->
+        made = %TokenCreated{token: token}
+        {:created, %{"secret" => secret, "token" => Wardrik.Resource.token(token)}, made}
 
-        {:error, message} ->
-          {:error, Error.new(:invalid, message)}
-      end
+      {:error, message} ->
+        {:error, Error.new(:invalid, message)}
+
+      :unsupported ->
+        {:error, Tokens.unsupported()}
     end
   end
 

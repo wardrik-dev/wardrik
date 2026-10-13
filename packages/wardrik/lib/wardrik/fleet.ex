@@ -31,13 +31,14 @@ defmodule Wardrik.Fleet do
 
   An agent asleep is started again from the store by `whereis/2`, which every
   command reaching an agent by its ID goes through, and by `spawn/2`. As it
-  wakes, the host's `Wardrik.Definition.current/1` is asked for its spec, and
-  a spec answered gives the agent its config, seams and idle timeout, as
-  `Wardrik.Agent.configure/2` does; `:none` leaves it the definition it slept
-  with. A host that changes a definition then need wake no agent to apply
-  it, and changes only the agents awake. A host that does not say leaves
-  every agent to wake as it slept, and `put/1` is how a sleeping agent is
-  given a new definition.
+  wakes, it asks the host it is handed for its spec, as `Wardrik.Agent`
+  describes, so a host that changes a definition need wake no agent to
+  apply it, and changes only the agents awake. A host that keeps no
+  definitions leaves every agent to wake as it slept, and `put/1` is how a
+  sleeping agent is given a new definition.
+
+  The host is the one `Wardrik` was started with, which the fleet's
+  supervisor hands every agent; nothing here takes one.
 
   ## Durability
 
@@ -198,18 +199,10 @@ defmodule Wardrik.Fleet do
   defp wake(id) do
     with true <- stored?(id),
          {:ok, {pid, meta}} when not is_map_key(meta, :gone) <-
-           id |> child(wake_only: true) |> start(nil),
-         :ok <- defined(pid, id) do
+           id |> child(wake_only: true) |> start(nil) do
       pid
     else
       _gone -> nil
-    end
-  end
-
-  defp defined(pid, id) do
-    case Wardrik.Definition.current(id) do
-      {:ok, %Spec{} = spec} -> Agent.configure(pid, Spec.options(spec))
-      :none -> :ok
     end
   end
 

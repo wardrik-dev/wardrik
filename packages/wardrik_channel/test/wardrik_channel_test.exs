@@ -47,7 +47,8 @@ defmodule WardrikChannelTest do
 
     pid =
       start_supervised!(
-        {WardrikChannel.Supervisor, channels: [one: {WardrikChannel.Test.Adapter, settings}]}
+        {WardrikChannel.Supervisor,
+         host: Wardrik.Host.new(), channels: [one: {WardrikChannel.Test.Adapter, settings}]}
       )
 
     assert [{_tasks, _task_pid, :supervisor, _}, {{:channel, :one}, channel, :worker, _}] =
@@ -58,7 +59,8 @@ defmodule WardrikChannelTest do
 
   test "knows someone by the channel and the id it knows them by, among those named" do
     start_supervised!(
-      {WardrikChannel.Supervisor, channels: [named: {WardrikChannel.Test.Adapter, test: self()}]}
+      {WardrikChannel.Supervisor,
+       host: Wardrik.Host.new(), channels: [named: {WardrikChannel.Test.Adapter, test: self()}]}
     )
 
     assert WardrikChannel.person(WardrikChannel.principal(:named, "U1", "maria")) ==
@@ -73,6 +75,7 @@ defmodule WardrikChannelTest do
   test "runs what each channel runs, under its name, beside the channels' tasks" do
     {:ok, {_flags, [tasks | channels]}} =
       WardrikChannel.Supervisor.init(
+        host: Wardrik.Host.new(),
         channels: [
           one: {WardrikChannel.Test.Adapter, test: self()},
           two: {WardrikChannel.Test.Adapter, test: self()}

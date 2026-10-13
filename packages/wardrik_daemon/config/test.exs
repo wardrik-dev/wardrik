@@ -13,9 +13,9 @@ config :wardrik, WardrikStore,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
-# An agent wakes with its definition as it stands, as the release starts the
-# fleet.
-config :wardrik,
+# An agent starts and wakes with its definition as it stands, as the release
+# starts the fleet; WardrikDaemon.Test.Host hands tests the same host.
+config :wardrik, Wardrik.Host,
   definitions: WardrikDaemon.Agents,
   connections: WardrikOAuth.Connections,
   tokens: WardrikHTTP.Tokens,

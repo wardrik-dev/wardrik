@@ -19,6 +19,7 @@ defmodule WardrikTUI.AppTest do
         start_opts: [
           agent: agent,
           agent_id: agent_id,
+          host: Wardrik.Host.new(),
           model: "test:model",
           sidebar: false,
           clipboard: fn text ->

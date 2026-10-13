@@ -16,7 +16,7 @@ defmodule Wardrik.Operations.Deliver do
 
   alias Wardrik.Change
   alias Wardrik.Error
-  alias Wardrik.Triggers
+  alias Wardrik.Host
 
   @enforce_keys [:agent, :trigger, :headers, :body]
   defstruct [:agent, :trigger, :headers, :body]
@@ -35,29 +35,27 @@ defmodule Wardrik.Operations.Deliver do
   def action, do: :message
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{} = request, _caller) do
-    with {:ok, _module} <- Triggers.module(), do: {:ok, Change.new(request)}
-  end
+  def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{} = request} = change, _caller) do
-    with {:ok, module} <- Triggers.module() do
-      case module.deliver(request.agent, request.trigger, %{
-             headers: request.headers,
-             body: request.body
-           }) do
-        {:ok, status} ->
-          {:ok, %{"delivery" => %{"status" => Atom.to_string(status)}}, change.effect}
+  def make(%Change{request: %__MODULE__{} = request} = change, caller) do
+    delivery = %{headers: request.headers, body: request.body}
 
-        {:error, :not_found} ->
-          {:error, no_trigger(request)}
+    case Host.triggers(caller.host).deliver(request.agent, request.trigger, delivery) do
+      {:ok, status} ->
+        {:ok, %{"delivery" => %{"status" => Atom.to_string(status)}}, change.effect}
 
-        {:error, :forbidden, _message} ->
-          {:error, no_trigger(request)}
+      {:error, :not_found} ->
+        {:error, no_trigger(request)}
 
-        {:error, :unavailable, message} ->
-          {:error, Error.new(:unavailable, message)}
-      end
+      {:error, :forbidden, _message} ->
+        {:error, no_trigger(request)}
+
+      {:error, :unavailable, message} ->
+        {:error, Error.new(:unavailable, message)}
+
+      :unsupported ->
+        {:error, Error.new(:unsupported, "This server takes no requests for triggers.")}
     end
   end
 

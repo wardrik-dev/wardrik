@@ -1,6 +1,5 @@
 defmodule Wardrik.DeploymentOperationsTest do
-  # The host's definitions and tokens modules are one for the node, which
-  # these tests set.
+  # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
   alias Wardrik.AgentID.Prefix
@@ -8,6 +7,7 @@ defmodule Wardrik.DeploymentOperationsTest do
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Operations.CreateToken
   alias Wardrik.Operations.ListTokens
   alias Wardrik.Operations.ReadAudit
@@ -22,7 +22,7 @@ defmodule Wardrik.DeploymentOperationsTest do
   # Reads its definitions again by telling the test that asked.
   defmodule Reloads do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @impl true
     def put(_id, _definition, _grant), do: {:error, "keeps none"}
@@ -32,6 +32,9 @@ defmodule Wardrik.DeploymentOperationsTest do
       send(:persistent_term.get({__MODULE__, :test}), :reloaded)
       :ok
     end
+
+    @impl true
+    def reloading, do: [node()]
   end
 
   # Keeps its tokens in the store, each with the secret "secret-" and its id.
@@ -60,24 +63,19 @@ defmodule Wardrik.DeploymentOperationsTest do
     end
   end
 
-  setup do
-    on_exit(fn ->
-      :ignore = Wardrik.Definition.configure(nil)
-      :ignore = Wardrik.Tokens.configure(nil)
-    end)
-  end
+  @host Host.new(definitions: Reloads, tokens: Tokens)
 
-  defp root, do: Caller.root(Principal.new(:user, "jon", name: "Jon"))
+  defp root(host \\ @host),
+    do: Caller.root(principal: Principal.new(:user, "jon", name: "Jon"), host: host)
 
   defp caller do
     {:ok, grant} = Grant.new(Prefix.parse!("test/"), Grant.actions())
-    Caller.new(Principal.new(:user, "jon", name: "Jon"), grant)
+    Caller.new(principal: Principal.new(:user, "jon", name: "Jon"), grant: grant, host: @host)
   end
 
   describe "reloading" do
     test "reads the definitions again on every node whose host reads them, and records it" do
       :persistent_term.put({Reloads, :test}, self())
-      :ignore = Wardrik.Definition.configure(Reloads)
 
       assert {:ok, change} = Command.plan(%Reload{}, root())
       assert Command.preview(change) == %{"reloading" => %{"nodes" => [to_string(node())]}}
@@ -92,8 +90,7 @@ defmodule Wardrik.DeploymentOperationsTest do
     end
 
     test "is unsupported where no node's host reads its definitions again" do
-      :ignore = Wardrik.Definition.configure(nil)
-      assert {:error, %Error{type: :unsupported}} = Command.run(%Reload{}, root())
+      assert {:error, %Error{type: :unsupported}} = Command.run(%Reload{}, root(Host.new()))
     end
   end
 
@@ -131,7 +128,6 @@ defmodule Wardrik.DeploymentOperationsTest do
 
   describe "tokens" do
     test "are made, listed and revoked through the host's module, and recorded" do
-      :ignore = Wardrik.Tokens.configure(Tokens)
       {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read])
       request = %CreateToken{name: "ci", grant: grant, for: Principal.new(:user, "ana")}
 
@@ -173,11 +169,13 @@ defmodule Wardrik.DeploymentOperationsTest do
     test "are unsupported where the host makes none" do
       {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read])
 
-      assert {:error, %Error{type: :unsupported}} =
-               Command.run(%CreateToken{name: "ci", grant: grant}, root())
+      none = root(Host.new())
 
-      assert {:error, %Error{type: :unsupported}} = Query.run(%ListTokens{}, root())
-      assert {:error, %Error{type: :unsupported}} = Command.run(%RevokeToken{id: "x"}, root())
+      assert {:error, %Error{type: :unsupported}} =
+               Command.run(%CreateToken{name: "ci", grant: grant}, none)
+
+      assert {:error, %Error{type: :unsupported}} = Query.run(%ListTokens{}, none)
+      assert {:error, %Error{type: :unsupported}} = Command.run(%RevokeToken{id: "x"}, none)
     end
   end
 end

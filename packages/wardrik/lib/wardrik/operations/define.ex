@@ -14,10 +14,10 @@ defmodule Wardrik.Operations.Define do
 
   alias Wardrik.Agent
   alias Wardrik.Change
-  alias Wardrik.Definition
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Resource
 
   @enforce_keys [:agent, :definition]
@@ -55,14 +55,13 @@ defmodule Wardrik.Operations.Define do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{} = request, _caller) do
-    with {:ok, _module} <- definitions(), do: {:ok, Change.new(request)}
-  end
+  def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, definition: fields}} = change, caller) do
-    with {:ok, module} <- definitions(),
-         {:ok, spec} <- read(module, id, fields, caller.grant) do
+    module = Host.definitions(caller.host)
+
+    with {:ok, spec} <- read(module, id, fields, caller.grant) do
       if spec.id != id,
         do: raise(ArgumentError, "#{inspect(module)} wrote a spec for #{spec.id}, not #{id}")
 
@@ -71,18 +70,12 @@ defmodule Wardrik.Operations.Define do
     end
   end
 
-  defp definitions do
-    case Definition.module(:put) do
-      {:ok, module} -> {:ok, module}
-      :unsupported -> {:error, Error.new(:unsupported, "This server does not define agents.")}
-    end
-  end
-
   defp read(module, id, fields, grant) do
     case module.put(id, fields, grant) do
       {:ok, spec} -> {:ok, spec}
       {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
       {:error, message} -> {:error, Error.new(:invalid, message)}
+      :unsupported -> {:error, Error.new(:unsupported, "This server does not define agents.")}
     end
   end
 
