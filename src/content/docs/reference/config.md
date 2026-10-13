@@ -69,6 +69,7 @@ refused, since one of them would go unread.
         type: slack
         token: ${SLACK_BOT_TOKEN}
         app_token: ${SLACK_APP_TOKEN}
+        admins: ["@jon"]
 
     notify:
       ops:
@@ -194,9 +195,10 @@ finds those the release holds, and its `org`, whose agents it may offer
 in a room: the deployment's own unless it says, or `*` for every org's.
 Someone in a room no agent is offered in may create one there, from
 `defaults`, where `defaults` name a policy, unless the channel's `create`
-is `false`. A channel's `approvers` may answer what an agent asks in its
-threads, as the channel names people, and are asked it directly where the
-channel can reach a person; anyone in the room may where it names nobody.
+is `false`. A channel's `approvers` are asked what an agent asks in its
+threads, as the channel names people, directly where the channel can
+reach a person, and its `admins`, named alike, may change its orgs'
+agents; see `WardrikDaemon.Grants` for what each may do.
 The rest of a channel's settings are its adapter's, which reads them; see
 `WardrikChannel`. An agent is offered in a channel's rooms where its file
 names the channel; see `WardrikDaemon.AgentFile`.
