@@ -1,6 +1,6 @@
 ---
 title: Watch your competitors
-description: An agent that watches your competitors' feeds and posts to a Slack channel when they change, checks what has no feed once a week, researches what anything asks of it through a webhook, talks it over with the team in the thread, and changes what it looks for as they tell it.
+description: An agent that watches your competitors' feeds and posts to a Slack channel when they change, checks what has no feed once a week, talks it over with the team in the thread, and changes what it looks for as they tell it.
 sidebar:
   order: 6
 ---
@@ -154,63 +154,10 @@ so what one thread changes, the next run follows. **Answer every message**, unde
 message in the channel, has the agent answer anything posted there, with no mention. See
 [Threads in Slack](/channels/slack/#threads-in-slack).
 
-## Research on demand
-
-The feeds and the sweep come round on their own time. A webhook trigger lets anything ask the
-agent to research something now: a teammate's terminal, a launcher, or an automation tool's step
-when a deal is lost to a competitor. Add one beside the others:
-
-```yaml
-  - name: research
-    webhook:
-      secret: ${COMPETITORS_HOOK_SECRET}
-    prompt: >
-      Research what is below for the team now, against WATCHLIST.md and notes/: add what is new
-      to notes/, and answer with the brief.
-```
-
-Seal its secret in the vault, read the agent files again, and see its address:
-
-```sh
-wardrik vault put COMPETITORS_HOOK_SECRET
-wardrik reload
-wardrik triggers
-```
-
-```
-  default/competitors/research  on request  http://127.0.0.1:4747/v1/hooks/default/competitors/research  not run yet
-```
-
-Then ask it anything, with the secret as a bearer token:
-
-```sh
-curl -X POST -H "authorization: Bearer $SECRET" \
-  http://127.0.0.1:4747/v1/hooks/default/competitors/research \
-  --data "Billwise just announced a free plan for up to three users. What does it mean for our starter plan?"
-# {"delivery":{"status":"asked"}}
-```
-
-The agent researches it at once, adds what it found to `notes/`, and posts the brief to
-`#competitors`, as a sweep's would be. A request that arrives while it is busy is answered next.
-
-- **The body is the request,** plain text or JSON, shown to the agent under the prompt as content
-  from outside.
-- **A tool that sets only a URL** puts the secret at the end of it, `.../research/SECRET`.
-- **The same body sent twice is asked about once,** so a sender that retries does not have it
-  research twice. To ask the same thing again on purpose, send an `Idempotency-Key` header of
-  your own.
-- **From outside this machine**, set `base_url` in `config.yaml` to the address something in front
-  of the daemon serves, and `wardrik triggers` prints the trigger's address under it.
-
-See [Receiving a webhook](/guides/triggers/#receiving-a-webhook) for the rest, and for pointing
-services such as GitHub or Sentry at a trigger.
-
 ## What it shows
 
 - **Feeds that cost nothing until they change.** The agent is asked only when a feed has
   something new, so watching every half hour is cheap.
-- **Research the moment someone asks.** A webhook trigger takes a request from anything that can
-  post to a URL, and the agent answers it at once, with the same notes the sweep keeps.
 - **A trigger that follows its own checklist.** The agent writes `HEARTBEAT.md`, and each run
   reads it as it stands, so what it does changes without anyone editing its file.
 - **Posting and conversing in one place.** Triggered runs post to a room as notices; replies in the
