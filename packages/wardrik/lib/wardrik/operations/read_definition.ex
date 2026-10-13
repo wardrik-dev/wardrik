@@ -29,6 +29,9 @@ defmodule Wardrik.Operations.ReadDefinition do
   @impl Wardrik.Catalog.Entry
   def new(%Wardrik.AgentID{} = agent, _input), do: {:ok, %__MODULE__{agent: agent}}
 
+  @impl Wardrik.Catalog.Entry
+  def labels(_answer), do: []
+
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id
 

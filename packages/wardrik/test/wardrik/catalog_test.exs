@@ -2,11 +2,17 @@ defmodule Wardrik.CatalogTest do
   # The host's definitions module is one for the node, which these tests set.
   use ExUnit.Case, async: false
 
+  alias Wardrik.Agent.Message
   alias Wardrik.AgentID
   alias Wardrik.Call
   alias Wardrik.Catalog
-  alias Wardrik.Catalog.Tools
+  alias Wardrik.Catalog.Agents
+  alias Wardrik.Catalog.Self
   alias Wardrik.Definition
+  alias Wardrik.Event
+  alias Wardrik.Grant
+  alias Wardrik.Principal
+  alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Tools.Rules
 
   # Keeps nothing: tells the test what it was asked, and refuses an agent
@@ -17,7 +23,13 @@ defmodule Wardrik.CatalogTest do
     @behaviour Wardrik.Definition
 
     @impl true
-    def put(_id, _definition, _grant), do: {:error, "not here"}
+    def put(id, definition, grant) do
+      tell({:put, id, definition, grant})
+
+      if String.contains?(id.name, "filed"),
+        do: {:error, :conflict, "#{id} belongs to a file."},
+        else: {:ok, Wardrik.Agent.Spec.new(id: id, hooks: [])}
+    end
 
     @impl true
     def get(_id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
@@ -49,7 +61,7 @@ defmodule Wardrik.CatalogTest do
       :persistent_term.erase(Kept)
     end)
 
-    %{agent: AgentID.parse!("acme/watch-#{System.unique_integer([:positive])}")}
+    %{agent: acme("watch")}
   end
 
   @trigger %{
@@ -58,81 +70,237 @@ defmodule Wardrik.CatalogTest do
     "prompt" => "Look."
   }
 
-  defp scope(agent, opts \\ []),
-    do: Wardrik.Test.scope([tools: [{Tools, agent}], id: agent] ++ opts)
+  defp scope(agent, source, opts \\ []),
+    do: Wardrik.Test.scope([tools: [{source, agent}], id: agent] ++ opts)
 
-  test "offers the catalog's agent operations as tools, each described as it is" do
-    agent = AgentID.parse!("acme/watch")
+  defp allowing(names), do: [hooks: [Wardrik.Hook.new("rules", Rules, allow: names)]]
 
-    assert [read, set, remove] = Tools.tools(agent)
+  defp acme(name), do: AgentID.parse!("acme/#{name}-#{System.unique_integer([:positive])}")
 
-    assert {read.name, set.name, remove.name} ==
-             {"agent_definition_read", "agent_trigger_set", "agent_trigger_remove"}
-
-    assert set.description == Wardrik.Operations.SetTrigger.summary()
-    assert set.parameter_schema == Wardrik.Operations.SetTrigger.input()
-
-    assert Catalog.agent_commands() == [
-             Wardrik.Operations.SetTrigger,
-             Wardrik.Operations.RemoveTrigger
-           ]
-
-    assert Tools.annotations(agent, "agent_trigger_set") == %{gated: true}
-    assert Tools.annotations(agent, "agent_definition_read") == %{}
+  defp echoing(id, reply) do
+    Wardrik.Test.Fleet.start_agent([runner: {AgentRunners, :echo, [self(), reply]}], id)
+    :ok = Event.Bus.subscribe(id)
+    id
   end
 
-  test "a change waits on a person, then runs as the agent itself", %{agent: agent} do
-    scope = scope(agent)
+  describe "an agent's operations on itself" do
+    test "are each a tool named for what it does to the agent" do
+      agent = AgentID.parse!("acme/watch")
+      tools = Self.tools(agent)
 
-    waiting =
-      Wardrik.Test.call(scope, "agent_trigger_set", %{"name" => "rivals", "trigger" => @trigger})
+      assert Enum.map(tools, & &1.name) == [
+               "self_read",
+               "self_definition_read",
+               "self_ask",
+               "self_define",
+               "self_trigger_set",
+               "self_trigger_remove"
+             ]
 
-    assert %Call{state: :waiting} = waiting
-    refute_received {:put_trigger, _id, _name, _fields}
+      set = Enum.find(tools, &(&1.name == "self_trigger_set"))
+      assert set.description == Wardrik.Operations.SetTrigger.summary()
+      assert set.parameter_schema == Wardrik.Operations.SetTrigger.input()
 
-    assert %Call{state: :done, result: {:ok, %{"trigger" => %{"name" => "rivals"}}}} =
-             Wardrik.Test.resume(scope, waiting)
+      assert Self.annotations(agent, "self_trigger_set") == %{gated: true}
+      assert Self.annotations(agent, "self_definition_read") == %{}
+    end
 
-    assert_received {:put_trigger, ^agent, "rivals", @trigger}
+    test "a change waits on a person, then runs as the agent itself", %{agent: agent} do
+      scope = scope(agent, Self)
 
-    assert Wardrik.Test.Audit.about("agents/#{agent}") |> List.last() ==
-             {"trigger.set", %{"type" => "agent", "id" => to_string(agent)}}
+      waiting =
+        Wardrik.Test.call(scope, "self_trigger_set", %{"name" => "rivals", "trigger" => @trigger})
+
+      assert %Call{state: :waiting} = waiting
+      refute_received {:put_trigger, _id, _name, _fields}
+
+      assert %Call{state: :done, result: {:ok, %{"trigger" => %{"name" => "rivals"}}}} =
+               Wardrik.Test.resume(scope, waiting)
+
+      assert_received {:put_trigger, ^agent, "rivals", @trigger}
+
+      assert Wardrik.Test.Audit.about("agents/#{agent}") |> List.last() ==
+               {"trigger.set", %{"type" => "agent", "id" => to_string(agent)}}
+    end
+
+    test "a conversation's call changes its agent", %{agent: agent} do
+      conversation = AgentID.put_external_id(agent, "thread-1")
+
+      assert %Call{state: :done, result: {:ok, "done"}} =
+               conversation
+               |> scope(Self, allowing(["self_trigger_remove"]))
+               |> Wardrik.Test.call("self_trigger_remove", %{"name" => "rivals"})
+
+      assert_received {:delete_trigger, ^agent, "rivals"}
+    end
+
+    test "a read runs without waiting on anyone", %{agent: agent} do
+      assert %Call{state: :done, result: {:ok, %{"description" => "Watches."}}} =
+               agent |> scope(Self) |> Wardrik.Test.call("self_definition_read", %{})
+    end
+
+    test "answers what does not read, or what another surface declares, as it would there",
+         %{agent: agent} do
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
+               agent
+               |> scope(Self, allowing(["self_trigger_set"]))
+               |> Wardrik.Test.call("self_trigger_set", %{"name" => "x"})
+
+      filed = AgentID.parse!("acme/filed")
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "conflict"}}}} =
+               filed
+               |> scope(Self, allowing(["self_trigger_set"]))
+               |> Wardrik.Test.call("self_trigger_set", %{
+                 "name" => "rivals",
+                 "trigger" => @trigger
+               })
+    end
   end
 
-  test "a conversation's call changes its agent", %{agent: agent} do
-    conversation = AgentID.put_external_id(agent, "thread-1")
-    hooks = [Wardrik.Hook.new("rules", Rules, allow: ["agent_trigger_remove"])]
+  describe "an agent's operations on the agents of its org" do
+    test "are each a tool taking the agent it acts on, and those on them all" do
+      agent = AgentID.parse!("acme/front")
+      tools = Agents.tools(agent)
 
-    assert %Call{state: :done, result: {:ok, "done"}} =
-             conversation
-             |> scope(hooks: hooks)
-             |> Wardrik.Test.call("agent_trigger_remove", %{"name" => "rivals"})
+      assert Enum.map(tools, & &1.name) == [
+               "agent_read",
+               "agent_definition_read",
+               "agent_ask",
+               "agent_define",
+               "agent_trigger_set",
+               "agent_trigger_remove",
+               "agents_list"
+             ]
 
-    assert_received {:delete_trigger, ^agent, "rivals"}
-  end
+      for tool <- tools, tool.name != "agents_list" do
+        assert %{"required" => ["agent" | _rest], "properties" => %{"agent" => _agent}} =
+                 tool.parameter_schema
 
-  test "a read runs without waiting on anyone", %{agent: agent} do
-    assert %Call{state: :done, result: {:ok, %{"description" => "Watches."}}} =
-             agent |> scope() |> Wardrik.Test.call("agent_definition_read", %{})
-  end
+        root = JSV.build!(tool.parameter_schema)
 
-  test "answers what does not read, or what another surface declares, as it would there",
-       %{agent: agent} do
-    hooks = [Wardrik.Hook.new("rules", Rules, allow: ["agent_trigger_set"])]
+        for example <- tool.parameter_schema["examples"],
+            do: assert({:ok, _valid} = JSV.validate(example, root))
+      end
 
-    assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
-             agent
-             |> scope(hooks: hooks)
-             |> Wardrik.Test.call("agent_trigger_set", %{"name" => "x"})
+      list = Enum.find(tools, &(&1.name == "agents_list"))
+      assert list.parameter_schema == Wardrik.Operations.ListAgents.input()
 
-    filed = AgentID.parse!("acme/filed")
+      assert Catalog.fleet_queries() == [Wardrik.Operations.ListAgents]
+      assert Agents.annotations(agent, "agent_ask") == %{gated: true}
+      assert Agents.annotations(agent, "agent_define") == %{gated: true}
+      assert Agents.annotations(agent, "agents_list") == %{}
+    end
 
-    assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "conflict"}}}} =
-             filed
-             |> scope(hooks: hooks)
-             |> Wardrik.Test.call("agent_trigger_set", %{
-               "name" => "rivals",
-               "trigger" => @trigger
-             })
+    test "an ask is answered back to the agent that asked, holding what the delegate read" do
+      front = echoing(acme("front"), "Noted.")
+      reconciler = echoing(acme("reconciler"), "Two are open.")
+
+      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
+
+      scope = scope(front, Agents, allowing(["agent_ask"]))
+
+      assert %Call{state: :done, result: {:ok, %{"message" => %{"id" => id}}}} =
+               Wardrik.Test.call(scope, "agent_ask", %{
+                 "agent" => reconciler.name,
+                 "content" => "Which deposits are open?"
+               })
+
+      assert_receive %Event{
+        payload: %Event.MessageQueued{
+          message: %Message{text: "Which deposits are open?", reply_to: [^front]}
+        },
+        source: %{agent_id: ^reconciler}
+      }
+
+      assert_receive %Event{
+                       payload: %Event.MessageQueued{message: %Message{} = answer},
+                       source: %{agent_id: ^front}
+                     },
+                     5_000
+
+      assert answer.id == "answer:" <> id
+      assert answer.text =~ "Two are open."
+      assert answer.labels == ["outside"]
+      assert Principal.type(answer.sender) == :agent
+      assert Principal.id(answer.sender) == to_string(reconciler)
+
+      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^front}}, 5_000
+    end
+
+    test "a read of an agent labels the call with what its history holds" do
+      front = acme("front")
+      reconciler = echoing(acme("reconciler"), "Read.")
+
+      :ok = Wardrik.Agent.ask(reconciler, "Read this page.", labels: ["outside"])
+      assert_receive %Event{payload: %Event.TurnFinished{}, source: %{agent_id: ^reconciler}}
+
+      assert %Call{state: :done, labels: ["outside"], result: {:ok, %{"labels" => ["outside"]}}} =
+               front
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_read", %{"agent" => reconciler.name})
+
+      assert %Call{state: :done, labels: [], result: {:ok, %{"description" => "Watches."}}} =
+               front
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_definition_read", %{"agent" => reconciler.name})
+    end
+
+    test "a worker it defines is held to its own hooks, ahead of the worker's" do
+      front = acme("front")
+      worker = acme("worker")
+      on_exit(fn -> Wardrik.Fleet.forget(worker) end)
+
+      hooks = [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
+      scope = scope(front, Agents, hooks: hooks)
+
+      assert %Call{state: :done, result: {:ok, %{"agent" => %{"id" => id}}}} =
+               Wardrik.Test.call(scope, "agent_define", %{
+                 "agent" => worker.name,
+                 "definition" => %{"instructions" => "Reconcile."}
+               })
+
+      assert id == to_string(worker)
+      assert_received {:put, ^worker, %{"instructions" => "Reconcile."}, grant}
+      assert grant.ceiling == hooks
+      assert grant.can == [:read, :message, :define]
+      assert Grant.covers?(grant, AgentID.parse!("acme/anyone"))
+      refute Grant.covers?(grant, AgentID.parse!("other/anyone"))
+
+      %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(worker))
+      assert Keyword.fetch!(state.scope_opts, :hooks) == hooks
+
+      assert Wardrik.Test.Audit.about("agents/#{worker}") |> List.last() ==
+               {"agent.defined", %{"type" => "agent", "id" => to_string(front)}}
+    end
+
+    test "reaches its own org and no other" do
+      front = acme("front")
+      inside = echoing(acme("inside"), "ok")
+
+      outside =
+        echoing(AgentID.parse!("other/outside-#{System.unique_integer([:positive])}"), "ok")
+
+      assert %Call{state: :done, result: {:ok, %{"agents" => agents}}} =
+               front |> scope(Agents) |> Wardrik.Test.call("agents_list", %{})
+
+      ids = Enum.map(agents, & &1["id"])
+      assert to_string(inside) in ids
+      refute to_string(outside) in ids
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
+               front
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_read", %{"agent" => to_string(outside)})
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
+               front |> scope(Agents) |> Wardrik.Test.call("agent_read", %{})
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "invalid_request"}}}} =
+               front
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_read", %{"agent" => "a/b/c/d/e"})
+    end
   end
 end

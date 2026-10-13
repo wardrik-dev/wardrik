@@ -291,7 +291,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `description` | string |  | What the agent is for, in words a person reads. |
 | `instructions` | string |  | The system prompt. |
 | `model` | string |  | The model, as provider:model. |
-| `tools` | array of string |  | What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them. |
+| `tools` | array of string |  | What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on the agents of its org; or * for all of them. |
 | `workspace` | object |  | The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them. |
 | `workspace.shared` | object |  | The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read. |
 | `context` | array of string or object |  | The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with. |
@@ -324,6 +324,7 @@ The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event
 | `run` | [run](/reference/events/#run) or null | yes | The run going on, or null between runs. |
 | `interrupts` | array of [interrupt](/reference/events/#interrupt) | yes |  |
 | `messages` | array of [message](/reference/events/#message) | yes |  |
+| `labels` | array of string | yes | What the agent's history holds, as labels, such as outside for content nobody on the agent's side wrote. Every turn carries them until the history is cleared. |
 | `outcome` | string or null | yes | How the last run ended, or null before the first. |
 | `sequence` | integer | yes |  |
 

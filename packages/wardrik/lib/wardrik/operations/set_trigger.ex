@@ -40,6 +40,9 @@ defmodule Wardrik.Operations.SetTrigger do
   def new(_agent, _input),
     do: {:error, Error.new(:invalid, "A trigger is set with its name and the trigger")}
 
+  @impl Wardrik.Catalog.Entry
+  def labels(_answer), do: []
+
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id
 

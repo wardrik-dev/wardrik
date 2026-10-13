@@ -9,12 +9,23 @@ defmodule Wardrik.Agent.Snapshot do
   `generation` changes when an agent is forgotten and started again under the
   same key, and survives a restart. `trace_id` is the current turn's, or `nil`
   between turns. `sequence` is the last event its `Wardrik.Event.Log` has
-  written, for a client to read and follow the log from.
+  written, for a client to read and follow the log from. `labels` are what
+  its history holds, as `Wardrik.Label`s, which every turn carries until the
+  history is cleared.
   """
 
   alias Wardrik.Agent.State
 
-  @enforce_keys [:generation, :status, :context, :parked, :trace_id, :outcome, :sequence]
+  @enforce_keys [
+    :generation,
+    :status,
+    :context,
+    :parked,
+    :trace_id,
+    :outcome,
+    :sequence,
+    :labels
+  ]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -24,6 +35,7 @@ defmodule Wardrik.Agent.Snapshot do
           parked: [{Wardrik.Tool.call(), String.t()}],
           trace_id: String.t() | nil,
           outcome: State.outcome(),
-          sequence: non_neg_integer()
+          sequence: non_neg_integer(),
+          labels: [Wardrik.Label.t()]
         }
 end

@@ -1,79 +1,101 @@
 defmodule Wardrik.Catalog.Tools do
   @moduledoc """
-  The catalog's operations on an agent, offered to that agent as tools, so
-  it can read and change itself as any surface could: see its definition,
-  and set and remove its own triggers. A tool source, named with the
-  agent's ID:
+  How `Wardrik.Catalog`'s operations are offered to an agent as tools, by two
+  tool sources, each named with the agent's ID:
 
-      Wardrik.LLM.Config.new(tools: [{Wardrik.Catalog.Tools, ~A"acme/watch"}])
+  | Source | Offers | On |
+  | --- | --- | --- |
+  | `Wardrik.Catalog.Self` | the operations on an agent, as `self_trigger_set` | the agent itself |
+  | `Wardrik.Catalog.Agents` | the operations on an agent, as `agent_trigger_set`, taking the `agent` they act on, and those on the agents under a prefix, as `agents_list` | the agents of its org |
 
-  Each operation of `Wardrik.Catalog` is a tool named for it, `.` written
-  `_`, as `agent_trigger_set`, described by its summary, taking its input.
-  A call builds the operation's request of the agent, its conversation's
-  agent where a conversation calls it, and runs it as the agent itself, a
-  `:agent` principal granted only to read and change that agent, through
-  `Wardrik.Query` or `Wardrik.Command`, as every surface does: the audit
-  records the agent as who made a change, and an agent another surface
-  declares, as a file does, answers as it would there. A change is gated,
-  so it waits on a person unless the agent's policy allows it.
+  Each tool is described by its operation's summary, and takes its input. A
+  call builds the operation's request and runs it through `Wardrik.Query` or
+  `Wardrik.Command`, as every surface does, as the calling agent, a caller
+  made with `Wardrik.Caller.agent/2`: the audit records the agent as who made
+  a change, an agent another surface declares, as a file does, answers as it
+  would there, and an agent it sends a message answers it back with a
+  message of its own (see `Wardrik.Operations.Ask`).
+
+  The caller's grant lets it read, send messages to and define what its
+  source reaches, and never more. Its ceiling is the calling agent's own
+  hooks: an agent it defines is held to every policy and budget that holds
+  the agent that defined it, ahead of its own, and so is never looser.
+
+  A change is gated, so it waits on a person unless the agent's policy
+  allows it by the tool's name. An answer that shows an agent's conversation
+  labels the call with the labels of that agent's history (see
+  `c:Wardrik.Catalog.Entry.labels/1`), so content from outside that one agent
+  read is outside content to the agent that reads it.
   """
 
-  @behaviour Wardrik.Tool
-
-  alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Catalog
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
-  alias Wardrik.Principal
   alias Wardrik.Query
   alias Wardrik.Resource
+  alias Wardrik.Scope
 
-  @impl Wardrik.Tool
-  def tools(%AgentID{} = agent) do
-    for {module, runner} <- operations(),
-        do: tool(module, runner, AgentID.put_external_id(agent, nil))
-  end
+  @doc """
+  The catalog's operations on an agent, each with what runs it, queries then
+  commands.
+  """
+  @spec agent_operations() :: [{module(), Query | Command}]
+  def agent_operations,
+    do: runners(Catalog.agent_queries(), Query) ++ runners(Catalog.agent_commands(), Command)
 
-  @impl Wardrik.Tool
-  def annotations(%AgentID{}, name) do
-    if name in Enum.map(Catalog.agent_commands(), &tool_name/1),
-      do: %{gated: true},
-      else: %{}
-  end
+  @doc "The catalog's operations on the agents under a prefix, each with what runs it."
+  @spec fleet_operations() :: [{module(), Query}]
+  def fleet_operations, do: runners(Catalog.fleet_queries(), Query)
 
-  defp operations do
-    Enum.map(Catalog.agent_queries(), &{&1, Query}) ++
-      Enum.map(Catalog.agent_commands(), &{&1, Command})
-  end
+  defp runners(modules, runner), do: Enum.map(modules, &{&1, runner})
 
-  defp tool(module, runner, agent) do
+  @doc """
+  The annotations of the tool named `name`, where `commands` names a
+  source's tools that change something: those wait on a person.
+  """
+  @spec annotations([String.t()], String.t()) :: map()
+  def annotations(commands, name),
+    do: if(name in commands, do: %{gated: true}, else: %{})
+
+  @doc """
+  The tool offering `module`, named `name`, taking `schema`, which `run`, a
+  `{module, function, args}`, answers.
+  """
+  @spec tool(module(), String.t(), map(), {module(), atom(), list()}) :: ReqLLM.Tool.t()
+  def tool(module, name, schema, run) do
     Wardrik.Tool.new!(
-      name: tool_name(module),
+      name: name,
       description: module.summary(),
-      parameter_schema: module.input(),
-      run: {__MODULE__, :run, [module, runner, agent]}
+      parameter_schema: schema,
+      run: run
     )
   end
 
-  defp tool_name(module), do: String.replace(module.name(), ".", "_")
-
-  @doc false
-  @spec run(module(), module(), AgentID.t(), map(), Wardrik.Tool.Context.t()) ::
-          {:ok, term()} | {:error, map()}
-  def run(module, runner, agent, input, _context) do
-    with {:ok, request} <- module.new(agent, input),
-         {status, answer} when status in [:ok, :created] <- runner.run(request, caller(agent)) do
-      {:ok, answer || "done"}
+  @doc """
+  Runs `module`'s request of `subject` with `input` through `runner`, as
+  `caller`: the tool's answer, labelled with what it holds.
+  """
+  @spec run(module(), module(), term(), map(), Caller.t()) :: Wardrik.Tool.answer()
+  def run(module, runner, subject, input, %Caller{} = caller) do
+    with {:ok, request} <- module.new(subject, input),
+         {status, answer} when status in [:ok, :created] <- runner.run(request, caller) do
+      {:ok, answer || "done", labels: module.labels(answer)}
     else
       {:error, %Error{} = error} -> {:error, Resource.error(error)}
     end
   end
 
-  defp caller(agent) do
-    {:ok, grant} = Grant.new(Prefix.of(agent), [:read, :define])
-    Caller.new(Principal.new(:agent, to_string(agent)), grant)
+  @doc """
+  The calling agent, as the caller of an operation reaching the agents under
+  `reach`: the agent the call's scope runs for, granted to read, send
+  messages to and define them, under its own hooks as ceiling.
+  """
+  @spec caller(Wardrik.Tool.Context.t(), Prefix.t()) :: Caller.t()
+  def caller(%Wardrik.Tool.Context{scope: scope}, reach) do
+    {:ok, grant} = Grant.new(reach, [:read, :message, :define], scope.hooks)
+    Caller.agent(Scope.agent_id(scope), grant)
   end
 end

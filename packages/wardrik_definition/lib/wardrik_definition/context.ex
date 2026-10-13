@@ -8,7 +8,7 @@ defmodule WardrikDefinition.Context do
         tools: [WardrikBrave.WebSearch],
         servers: [github: [orgs: :all], books: [orgs: ["acme"]]],
         mcp: WardrikMCP,
-        sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Tools],
+        sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: :all],
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
@@ -26,8 +26,9 @@ defmodule WardrikDefinition.Context do
       `WardrikMCP`; with none, a definition names no server
     * `sources` - the tool sources a definition names as `name/*`, each a
       module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID,
-      such as `workers: WardrikHTTP.Workers` for the tool workers' tools and
-      `self: Wardrik.Catalog.Tools` for the agent's operations on itself
+      such as `workers: WardrikHTTP.Workers` for the tool workers' tools,
+      `self: Wardrik.Catalog.Self` for the agent's operations on itself, and
+      `agents: Wardrik.Catalog.Agents` for those on the agents of its org
     * `channels` - the channels an agent may be offered in, by name, each
       with the orgs it serves
     * `targets` - the notify targets, as `WardrikNotify` takes them: each a

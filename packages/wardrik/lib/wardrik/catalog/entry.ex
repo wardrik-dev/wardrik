@@ -31,4 +31,12 @@ defmodule Wardrik.Catalog.Entry do
   @doc "The request it makes of `subject` with `input`, or why the input does not read."
   @callback new(subject :: term(), input :: map()) ::
               {:ok, struct()} | {:error, Wardrik.Error.t()}
+
+  @doc """
+  What `answer`, one it gave, holds, as `Wardrik.Label`s: the labels of an
+  agent's history, for an answer that shows its conversation. A surface that
+  hands the answer to a model labels its run with them, as a tool's answer
+  would; see `Wardrik.Catalog.Tools`.
+  """
+  @callback labels(answer :: term()) :: [Wardrik.Label.t()]
 end

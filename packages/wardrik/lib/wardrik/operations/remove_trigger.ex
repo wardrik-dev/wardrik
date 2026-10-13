@@ -32,6 +32,9 @@ defmodule Wardrik.Operations.RemoveTrigger do
 
   def new(_agent, _input), do: {:error, Error.new(:invalid, "A trigger is removed by its name")}
 
+  @impl Wardrik.Catalog.Entry
+  def labels(_answer), do: []
+
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id
 

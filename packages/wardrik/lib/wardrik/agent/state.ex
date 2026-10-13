@@ -58,6 +58,17 @@ defmodule Wardrik.Agent.State do
   agent's from then on: `kept/3` records it, so a turn that parks or is lost
   keeps it too.
 
+  ## Who the turn answers
+
+  A message may name agents its answer goes to (see `Wardrik.Agent.Message`).
+  A turn that takes it owes each of them an answer, held in `answering` from
+  its start, written down with the agent, and paid as the turn ends: the
+  turn's answer, holding the labels the turn ended with, where it finishes;
+  a word that it failed, or that it stopped, where it does not. A message
+  dropped from the queue unanswered is told it stopped too. Each is a
+  `{:send, id, message}` effect, a message from this agent under an id made
+  from the one it answers, so one sent again is taken once.
+
   ## Stopping is part of running
 
   An interrupt does not change mode. It marks the running turn as stopping and
@@ -80,6 +91,7 @@ defmodule Wardrik.Agent.State do
   alias Wardrik.Hook
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Turn
+  alias Wardrik.Principal
   alias Wardrik.Scope
   alias Wardrik.Trace
 
@@ -183,7 +195,8 @@ defmodule Wardrik.Agent.State do
     pending: [],
     recent: [],
     outcome: nil,
-    labels: []
+    labels: [],
+    answering: []
   ]
 
   @doc "How long an interrupted turn is given to answer before it is killed."
@@ -238,8 +251,12 @@ defmodule Wardrik.Agent.State do
           pending: [Message.t()],
           recent: [String.t()],
           outcome: outcome(),
-          labels: [Wardrik.Label.t()]
+          labels: [Wardrik.Label.t()],
+          answering: [ask()]
         }
+
+  @typedoc "A message the turn answers to another agent: the agent, and the message's id."
+  @type ask() :: {Wardrik.AgentID.t(), String.t()}
 
   @typedoc "How the last turn ended, or `nil` before the first."
   @type outcome() :: nil | :ok | :failed | :interrupted
@@ -256,6 +273,8 @@ defmodule Wardrik.Agent.State do
     * `{:shutdown, task}` - the kill fired; end the task now
     * `{:close_turn, scope}` - a turn has ended for good: its ledger claims
       will never be read again, and the log can drop what has aged out
+    * `{:send, id, message}` - send the agent `id` a message: what a turn
+      answered to an agent that asked it
   """
   @type effect() ::
           {:emit, Source.t(), Wardrik.Event.payload()}
@@ -265,6 +284,7 @@ defmodule Wardrik.Agent.State do
           | {:cancel_kill, reference()}
           | {:shutdown, Task.t()}
           | {:close_turn, Scope.t()}
+          | {:send, Wardrik.AgentID.t(), Message.t()}
 
   @typedoc "What an interrupt stopped."
   @type stats() :: %{
@@ -491,7 +511,15 @@ defmodule Wardrik.Agent.State do
   def take(%__MODULE__{mode: :idle} = state), do: taken(state)
   def take(%__MODULE__{}), do: :none
 
-  defp taken(state), do: {:run, Enum.reverse(state.pending), %{state | pending: [], mode: :idle}}
+  defp taken(state) do
+    messages = Enum.reverse(state.pending)
+
+    {:run, messages,
+     %{state | pending: [], mode: :idle, answering: state.answering ++ asks(messages)}}
+  end
+
+  defp asks(messages),
+    do: for(%Message{id: id, reply_to: to} <- messages, agent <- to, do: {agent, id})
 
   @doc "Records the turn a `take/1` led to, and the context it was given."
   @spec started(t(), Task.t(), Scope.t(), Context.t(), integer()) :: t()
@@ -574,7 +602,7 @@ defmodule Wardrik.Agent.State do
 
     {idle(state),
      [{:emit, running.scope.source, finish(running, messages)}, close(running.scope)] ++
-       disarm(running)}
+       disarm(running) ++ reply(running, state, messages, labels)}
   end
 
   defp finish(%Running{stopping: nil}, messages), do: %Event.TurnFinished{messages: messages}
@@ -583,6 +611,12 @@ defmodule Wardrik.Agent.State do
     do: %Event.TurnInterrupted{
       stats: stats(running.started_at, stopping.dropped, length(messages), :stopped)
     }
+
+  defp reply(%Running{stopping: nil}, state, messages, labels),
+    do: answer(state, state.answering, answered(Wardrik.LLM.Message.answer(messages)), labels)
+
+  defp reply(%Running{stopping: %Stopping{}}, state, _messages, _labels),
+    do: answer(state, state.answering, &stopped/1, [])
 
   @doc """
   Empties the history, and with it the labels of what it held, keeping
@@ -613,7 +647,7 @@ defmodule Wardrik.Agent.State do
   def failed(%__MODULE__{mode: %Running{} = running} = state, reason) do
     {idle(%{state | outcome: :failed}),
      [{:emit, running.scope.source, %Event.TurnFailed{reason: reason}}, close(running.scope)] ++
-       disarm(running)}
+       disarm(running) ++ answer(state, state.answering, &failed/1, [])}
   end
 
   # A turn that answered before its kill was needed leaves the timer behind; it
@@ -638,7 +672,8 @@ defmodule Wardrik.Agent.State do
     {drained, dropped} = drain(state)
 
     {drained,
-     [{:stop_now, running.task.pid}, {:arm_kill, running.task.ref, state.grace, dropped}]}
+     [{:stop_now, running.task.pid}, {:arm_kill, running.task.ref, state.grace, dropped}] ++
+       answer(state, asks(state.pending), &stopped/1, [])}
   end
 
   def interrupt(%__MODULE__{mode: %Due{source: %Source{} = source}} = state) do
@@ -648,6 +683,7 @@ defmodule Wardrik.Agent.State do
      [
        {:emit, source, %Event.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
        close(%{turn_scope(state) | source: source})
+       | unanswered(state)
      ]}
   end
 
@@ -659,6 +695,7 @@ defmodule Wardrik.Agent.State do
      [
        {:emit, waiting.source, %Event.TurnInterrupted{stats: stats}},
        close(%{turn_scope(state) | source: waiting.source})
+       | unanswered(state)
      ]}
   end
 
@@ -670,7 +707,11 @@ defmodule Wardrik.Agent.State do
     {drained, dropped} = drain(state)
     stats = stats(nil, dropped, 0, :idle)
 
-    {idle(drained), [{:emit, Source.root(state.agent_id), %Event.TurnInterrupted{stats: stats}}]}
+    {idle(drained),
+     [
+       {:emit, Source.root(state.agent_id), %Event.TurnInterrupted{stats: stats}}
+       | unanswered(state)
+     ]}
   end
 
   defp drain(state), do: {%{state | pending: []}, length(state.pending)}
@@ -700,6 +741,7 @@ defmodule Wardrik.Agent.State do
        {:shutdown, running.task},
        {:emit, running.scope.source, %Event.TurnInterrupted{stats: stats}},
        close(running.scope)
+       | answer(state, state.answering, &stopped/1, [])
      ]}
   end
 
@@ -737,7 +779,25 @@ defmodule Wardrik.Agent.State do
     %{state | mode: running}
   end
 
-  defp idle(state), do: %{state | mode: :idle}
+  defp idle(state), do: %{state | mode: :idle, answering: []}
+
+  # What the turn owed, and what was queued, which nothing will answer now.
+  defp unanswered(state),
+    do: answer(state, state.answering ++ asks(state.pending), &stopped/1, [])
+
+  defp answer(state, asks, text, labels) do
+    sender = Principal.new(:agent, to_string(state.agent_id))
+
+    for {agent, id} <- asks,
+        do:
+          {:send, agent, Message.new(text.(id), "answer:" <> id, sender: sender, labels: labels)}
+  end
+
+  defp answered(""), do: &"Finished the turn that took your message #{&1} without an answer."
+  defp answered(text), do: &"In answer to your message #{&1}:\n\n#{text}"
+
+  defp failed(id), do: "Could not answer your message #{id}: the turn that took it failed."
+  defp stopped(id), do: "Stopped before answering your message #{id}."
 
   defp close(%Scope{} = scope), do: {:close_turn, scope}
 
