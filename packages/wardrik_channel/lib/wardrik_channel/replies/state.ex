@@ -3,13 +3,14 @@ defmodule WardrikChannel.Replies.State do
   What one room's `WardrikChannel.Replies` keeps: each thread it answers in,
   the agent answering there, the last event of that agent's log it has
   posted, and the messages each run under way answers. `retries` counts the
-  attempts at each thread's next post, and is not kept.
+  attempts at each thread's next post, and `posting` is the channel it posts
+  through, its adapter, options and context; neither is kept.
   """
 
   alias Wardrik.AgentID
 
   @enforce_keys [:channel, :room]
-  defstruct [:channel, :room, threads: %{}, retries: %{}]
+  defstruct [:channel, :room, :posting, threads: %{}, retries: %{}]
 
   @typedoc "A thread followed: its agent, how far its log is posted, and its runs under way."
   @type thread() :: %{
@@ -21,6 +22,7 @@ defmodule WardrikChannel.Replies.State do
   @type t() :: %__MODULE__{
           channel: String.t(),
           room: String.t(),
+          posting: {module(), keyword(), WardrikChannel.Context.t()} | nil,
           threads: %{String.t() => thread()},
           retries: %{String.t() => pos_integer()}
         }
@@ -41,6 +43,10 @@ defmodule WardrikChannel.Replies.State do
 
   @spec new(String.t(), String.t()) :: t()
   def new(channel, room), do: %__MODULE__{channel: channel, room: room}
+
+  @doc "The same room, posting through `channel`: its adapter, options and context."
+  @spec posting(t(), {module(), keyword(), WardrikChannel.Context.t()}) :: t()
+  def posting(%__MODULE__{} = state, channel), do: %{state | posting: channel}
 
   @doc """
   Follows `agent` in `thread`, posting what its log holds after `through`,

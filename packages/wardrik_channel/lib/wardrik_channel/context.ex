@@ -22,6 +22,9 @@ defmodule WardrikChannel.Context do
     * `:approvers` - given the channel, whom to ask what an agent asks in
       its threads, as the channel names people; the room by default. Who
       may answer is what the host's `Wardrik.Grants` says
+    * `:replies` - the name of the `WardrikChannel.Replies` that posts what
+      agents answer in its threads; `WardrikChannel.Replies.supervisor/0`
+      by default
   """
 
   alias Wardrik.AgentID
@@ -36,7 +39,8 @@ defmodule WardrikChannel.Context do
     creatable: {__MODULE__, :no, []},
     create: {__MODULE__, :refuse, []},
     start: {__MODULE__, :unstarted, []},
-    approvers: {__MODULE__, :none, []}
+    approvers: {__MODULE__, :none, []},
+    replies: WardrikChannel.Replies.Rooms
   ]
 
   @type host() :: {module(), atom(), [term()]}
@@ -48,7 +52,8 @@ defmodule WardrikChannel.Context do
           creatable: host(),
           create: host(),
           start: host(),
-          approvers: host()
+          approvers: host(),
+          replies: atom()
         }
 
   @doc "The agents that may answer in a room of the context's channel."

@@ -1,4 +1,4 @@
 Wardrik.Test.start(
-  children: [WardrikChannel.Replies],
+  children: [{WardrikChannel.Replies, channels: %{}}],
   wait: [WardrikChannel.Replies.supervisor()]
 )

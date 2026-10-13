@@ -48,11 +48,11 @@ defmodule WardrikDaemon do
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
       `WardrikDaemon.Agents.routes/0` for the routes as it starts, so one that
       restarts routes the agents as before.
-    * `WardrikChannel.Supervisor`, when a channel is configured, with the
-      host, which runs
+    * `WardrikChannel.Supervisor`, when a channel is configured, which runs
       what each channel's adapter runs, such as its connection to the medium,
       after `WardrikChannel.Replies`, which posts what agents answer in its
-      rooms' threads.
+      rooms' threads. Both are handed the channels `WardrikChannel.channels/2`
+      makes once from the channels' settings, on the host.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
@@ -190,17 +190,20 @@ defmodule WardrikDaemon do
       [] ->
         []
 
-      channels ->
+      configured ->
+        channels =
+          WardrikChannel.channels(configured,
+            host: host,
+            offered: {WardrikDaemon.Agents, :offered, []},
+            creatable: {WardrikDaemon.Agents, :creatable?, []},
+            create: {WardrikDaemon.Agents, :create, []},
+            start: {WardrikDaemon.Agents, :start, []},
+            approvers: {WardrikDaemon.Agents, :approvers, []}
+          )
+
         [
-          WardrikChannel.Replies,
-          {WardrikChannel.Supervisor,
-           channels: channels,
-           host: host,
-           offered: {WardrikDaemon.Agents, :offered, []},
-           creatable: {WardrikDaemon.Agents, :creatable?, []},
-           create: {WardrikDaemon.Agents, :create, []},
-           start: {WardrikDaemon.Agents, :start, []},
-           approvers: {WardrikDaemon.Agents, :approvers, []}}
+          {WardrikChannel.Replies, channels: channels},
+          {WardrikChannel.Supervisor, channels: channels}
         ]
     end
   end

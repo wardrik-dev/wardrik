@@ -58,7 +58,7 @@ defmodule WardrikDaemon.Grants do
 
     {can, ceiling} =
       cond do
-        WardrikChannel.among?(channel, user, Agents.admins(channel)) -> admin()
+        among?(channel, user, Agents.admins(channel)) -> admin()
         decides?(channel, user) -> {@deciders, []}
         true -> {@everyone, []}
       end
@@ -84,17 +84,27 @@ defmodule WardrikDaemon.Grants do
   defp decides?(channel, user) do
     case deciders(channel) do
       [] -> true
-      named -> WardrikChannel.among?(channel, user, named)
+      named -> among?(channel, user, named)
     end
   end
 
+  # As the channel's adapter knows people, from the channel's settings; never
+  # in a channel config.yaml does not name.
+  defp among?(channel, user, names) do
+    case Enum.find(channels(), fn {name, _configured} -> Atom.to_string(name) == channel end) do
+      {_name, configured} -> WardrikChannel.among?(configured, user, names)
+      nil -> false
+    end
+  end
+
+  defp channels, do: Keyword.get(Config.settings(WardrikChannel), :channels, [])
+
   # The channel's approvers, and those of the notify targets posting in it.
   defp deciders(channel) do
-    channels = Keyword.get(Config.settings(WardrikChannel), :channels, [])
     targets = Keyword.get(Config.settings(WardrikNotify), :targets, [])
 
     Agents.approvers(channel) ++
-      for {name, posting} <- channels,
+      for {name, posting} <- channels(),
           Atom.to_string(name) == channel,
           {_target, {_module, options}} <- targets,
           Keyword.get(options, :channel) == posting,

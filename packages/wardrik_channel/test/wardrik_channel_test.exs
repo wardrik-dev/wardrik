@@ -48,45 +48,63 @@ defmodule WardrikChannelTest do
     pid =
       start_supervised!(
         {WardrikChannel.Supervisor,
-         host: Wardrik.Host.new(), channels: [one: {WardrikChannel.Test.Adapter, settings}]}
+         channels:
+           WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, settings}],
+             host: Wardrik.Host.new()
+           )}
       )
 
-    assert [{_tasks, _task_pid, :supervisor, _}, {{:channel, :one}, channel, :worker, _}] =
+    assert [{_tasks, _task_pid, :supervisor, _}, {{:channel, "one"}, channel, :worker, _}] =
              pid |> Supervisor.which_children() |> Enum.sort()
 
-    assert Agent.get(channel, & &1)[:name] == :one
+    assert Agent.get(channel, & &1)[:name] == "one"
+    assert %WardrikChannel.Context{channel: "one"} = Agent.get(channel, & &1)[:context]
   end
 
   test "knows someone by the channel and the id it knows them by, among those named" do
-    start_supervised!(
-      {WardrikChannel.Supervisor,
-       host: Wardrik.Host.new(), channels: [named: {WardrikChannel.Test.Adapter, test: self()}]}
-    )
+    named = {WardrikChannel.Test.Adapter, test: self()}
 
     assert WardrikChannel.person(WardrikChannel.principal(:named, "U1", "maria")) ==
              {"named", "U1"}
 
-    assert WardrikChannel.among?("named", "U1", ["U2", "U1"])
-    refute WardrikChannel.among?("named", "U1", ["U2"])
-    refute WardrikChannel.among?("named", "U1", [])
-    refute WardrikChannel.among?("elsewhere", "U1", ["U1"])
+    assert WardrikChannel.among?(named, "U1", ["U2", "U1"])
+    refute WardrikChannel.among?(named, "U1", ["U2"])
+    refute WardrikChannel.among?(named, "U1", [])
+  end
+
+  test "makes each channel's context once, from the host's answers" do
+    host = Wardrik.Host.new()
+
+    assert %{"one" => {WardrikChannel.Test.Adapter, [test: :me], context}} =
+             WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, test: :me}],
+               host: host,
+               replies: :elsewhere
+             )
+
+    assert %WardrikChannel.Context{channel: "one", host: ^host, replies: :elsewhere} = context
   end
 
   test "runs what each channel runs, under its name, beside the channels' tasks" do
     {:ok, {_flags, [tasks | channels]}} =
       WardrikChannel.Supervisor.init(
-        host: Wardrik.Host.new(),
-        channels: [
-          one: {WardrikChannel.Test.Adapter, test: self()},
-          two: {WardrikChannel.Test.Adapter, test: self()}
-        ]
+        channels:
+          WardrikChannel.channels(
+            [
+              one: {WardrikChannel.Test.Adapter, test: self()},
+              two: {WardrikChannel.Test.Adapter, test: self()}
+            ],
+            host: Wardrik.Host.new()
+          )
       )
 
     assert tasks.id == WardrikChannel.tasks()
 
-    assert [%{id: {:channel, :one}, start: {Agent, :start_link, [one]}}, %{id: {:channel, :two}}] =
-             channels
+    assert [
+             %{id: {:channel, "one"}, start: {Agent, :start_link, [one]}},
+             %{id: {:channel, "two"}}
+           ] =
+             Enum.sort_by(channels, & &1.id)
 
-    assert one.()[:name] == :one
+    assert one.()[:name] == "one"
   end
 end

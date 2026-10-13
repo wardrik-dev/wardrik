@@ -51,7 +51,23 @@ defmodule WardrikChannel do
   `Wardrik.Grants` says that principal may, such as decide what an agent
   asks: `Wardrik.Host.caller/2`, on the host its context carries, makes
   them a caller. A host that grants by what `config.yaml` names people, as a
-  channel's approvers, asks `among?/4`.
+  channel's approvers, asks `among?/3` with the channel's adapter and
+  options.
+
+  ## Starting channels
+
+  `channels/2` makes, once, what each configured channel runs on: its
+  adapter, its options, and its `WardrikChannel.Context`, by its name. The
+  host hands the same map to `WardrikChannel.Replies` and to
+  `WardrikChannel.Supervisor` as they start, so nothing about a channel is
+  kept where a node finds it:
+
+      channels = WardrikChannel.channels([slack: {WardrikSlack, options}], host: host)
+
+      children = [
+        {WardrikChannel.Replies, channels: channels},
+        {WardrikChannel.Supervisor, channels: channels}
+      ]
 
   ## Rooms
 
@@ -86,6 +102,9 @@ defmodule WardrikChannel do
 
   @typedoc "A channel: its adapter, and the options its `config/1` answered."
   @type channel() :: {module(), keyword()}
+
+  @typedoc "The channels a node runs, by name: each one's adapter, options and context."
+  @type channels() :: %{String.t() => {module(), keyword(), Context.t()}}
 
   @doc """
   Reads a channel's settings, as `config.yaml` writes them, less `type` and
@@ -150,20 +169,42 @@ defmodule WardrikChannel do
   end
 
   @doc """
-  Whether the person the channel `channel` knows as `user` is one of
-  `names`, as `config.yaml` names people in it, as its adapter's `among?/3`
-  says: never where the channel does not run on this node, and never for
-  `[]`.
-  """
-  @spec among?(String.t(), String.t(), [String.t()]) :: boolean()
-  def among?(_channel, _user, []), do: false
+  What each of `configured`, channels by name as their adapters and the
+  options their `config/1` answered, runs on: by its name, its adapter, its
+  options and its `WardrikChannel.Context`, which `opts` fill in.
 
-  def among?(channel, user, names) when is_binary(user) and is_list(names) do
-    case channel(channel) do
-      {:ok, {adapter, options, _context}} -> adapter.among?(user, names, options)
-      :error -> false
+  Options are the context's: `:host`, required, and `:offered`,
+  `:creatable`, `:create`, `:start`, `:approvers` and `:replies`, each as
+  `WardrikChannel.Context` describes it.
+  """
+  @spec channels([{atom() | String.t(), channel()}], keyword()) :: channels()
+  def channels(configured, opts) do
+    opts =
+      Keyword.validate!(opts, [:host, :offered, :creatable, :create, :start, :approvers, :replies])
+
+    for {name, {adapter, options}} <- configured, into: %{} do
+      name = to_string(name)
+
+      context =
+        struct!(
+          Context,
+          [channel: name, host: Keyword.fetch!(opts, :host)] ++ Keyword.delete(opts, :host)
+        )
+
+      {name, {adapter, options, context}}
     end
   end
+
+  @doc """
+  Whether the person `channel` knows as `user` is one of `names`, as
+  `config.yaml` names people in it, as its adapter's `among?/3` says, with
+  its options; never for `[]`.
+  """
+  @spec among?(channel(), String.t(), [String.t()]) :: boolean()
+  def among?(_channel, _user, []), do: false
+
+  def among?({adapter, options}, user, names) when is_binary(user) and is_list(names),
+    do: adapter.among?(user, names, options)
 
   @doc """
   A message was posted in a room of the context's channel: asks the agent of
@@ -192,10 +233,10 @@ defmodule WardrikChannel do
   # turn the message starts, and parks, is not taken for one already waiting.
   defp ask(context, inbound, thread, agent) do
     with {:ok, _pid} <- Context.start(context, agent),
-         :ok <- Replies.follow(context.channel, inbound.room, thread, agent),
+         :ok <- Replies.follow(context, inbound.room, thread, agent),
          waiting? = match?([_ | _], Wardrik.Agent.parked(agent)),
          :ok <- Wardrik.Agent.ask(agent, inbound.text, id: inbound.id, sender: inbound.sender) do
-      if waiting?, do: Replies.remind(context.channel, inbound.room, thread)
+      if waiting?, do: Replies.remind(context, inbound.room, thread)
       {:asked, agent}
     else
       {:error, :not_found} -> {:error, "#{agent} stopped before it could be asked."}
@@ -212,22 +253,4 @@ defmodule WardrikChannel do
   defp answers?(%Room{answers: :everything}, _inbound, _agent), do: true
   defp answers?(_room, %Inbound{thread: nil}, _agent), do: false
   defp answers?(_room, _inbound, agent), do: Wardrik.Fleet.stored?(agent)
-
-  @doc """
-  The channel named `name` among those `WardrikChannel.Supervisor` runs on
-  this node: its adapter, the options its `config/1` answered, and its
-  `WardrikChannel.Context`.
-  """
-  @spec channel(String.t()) :: {:ok, {module(), keyword(), Context.t()}} | :error
-  def channel(name) when is_binary(name) do
-    case :persistent_term.get({__MODULE__, name}, nil) do
-      nil -> :error
-      channel -> {:ok, channel}
-    end
-  end
-
-  @doc false
-  @spec put_channel(module(), keyword(), Context.t()) :: :ok
-  def put_channel(adapter, options, %Context{channel: name} = context),
-    do: :persistent_term.put({__MODULE__, name}, {adapter, options, context})
 end

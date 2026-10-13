@@ -124,7 +124,7 @@ defmodule WardrikChannel.Rooms do
     case get(context, room) do
       %Room{} ->
         :ok = WardrikStore.delete(@ns, key(channel, room))
-        :ok = WardrikChannel.Replies.forget(channel, room)
+        :ok = WardrikChannel.Replies.forget(context, room)
         Audit.record({:room_unbound, channel, room}, by)
 
       nil ->

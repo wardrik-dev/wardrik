@@ -1,32 +1,28 @@
 defmodule WardrikChannel.Supervisor do
   @moduledoc """
   Runs each channel: the tasks channels run their work under, then what each
-  channel's adapter runs, such as its connection to the medium. Each channel
-  is written down where `WardrikChannel.channel/1` finds it by its name as it
-  starts. `WardrikChannel.Replies`, which posts in the channels' threads, is
-  started before it:
+  channel's adapter runs, such as its connection to the medium.
+  `WardrikChannel.Replies`, which posts in the channels' threads, is started
+  before it, with the same channels:
 
-      children = [Wardrik, WardrikChannel.Replies, {WardrikChannel.Supervisor, opts}]
+      channels =
+        WardrikChannel.channels(
+          [slack: {WardrikSlack, token: "xoxb-…", app_token: "xapp-…"}],
+          host: host
+        )
 
-      {WardrikChannel.Supervisor,
-       host: host,
-       channels: [slack: {WardrikSlack, token: "xoxb-…", app_token: "xapp-…"}]}
+      children = [
+        {Wardrik, host: host},
+        {WardrikChannel.Replies, channels: channels},
+        {WardrikChannel.Supervisor, channels: channels}
+      ]
 
   Options:
 
-    * `:channels` - each channel by name, as its adapter and the options its
-      `config/1` answered; each is started with `:name` and `:context`, its
-      `WardrikChannel.Context`, added
-    * `:host` - the `Wardrik.Host` what each channel's people ask runs on,
-      as their callers carry it; required
-    * `:offered`, `:creatable`, `:create`, `:start` and `:approvers` - the
-      host's answers to which agents may answer in a channel's rooms, to
-      creating one, to starting a thread's agent, and to who may answer what
-      an agent asks there, as `WardrikChannel.Context` takes them; none, and
-      none created or started, by default
+    * `:channels` - the channels to run, as `WardrikChannel.channels/2`
+      makes them; each adapter's `child_spec/1` is given the channel's
+      options, its `:name` and its `:context`
   """
-
-  alias WardrikChannel.Context
 
   use Supervisor
 
@@ -35,31 +31,11 @@ defmodule WardrikChannel.Supervisor do
 
   @impl true
   def init(opts) do
-    opts =
-      Keyword.validate!(opts, [
-        :host,
-        channels: [],
-        offered: {Context, :none, []},
-        creatable: {Context, :no, []},
-        create: {Context, :refuse, []},
-        start: {Context, :unstarted, []},
-        approvers: {Context, :none, []}
-      ])
+    opts = Keyword.validate!(opts, [:channels])
 
     channels =
-      for {name, {adapter, channel}} <- opts[:channels] do
-        context = %Context{
-          channel: to_string(name),
-          host: Keyword.fetch!(opts, :host),
-          offered: opts[:offered],
-          creatable: opts[:creatable],
-          create: opts[:create],
-          start: opts[:start],
-          approvers: opts[:approvers]
-        }
-
-        :ok = WardrikChannel.put_channel(adapter, channel, context)
-        spec = adapter.child_spec([name: name, context: context] ++ channel)
+      for {name, {adapter, options, context}} <- Keyword.fetch!(opts, :channels) do
+        spec = adapter.child_spec([name: name, context: context] ++ options)
         Supervisor.child_spec(spec, id: {:channel, name})
       end
 

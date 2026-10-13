@@ -5,7 +5,10 @@ defmodule WardrikChannel.Replies.Server do
   writing down how far it has posted.
 
   Started by `WardrikChannel.Replies.follow/4` under the supervisor
-  `WardrikChannel.Replies` runs.
+  `WardrikChannel.Replies` runs, which hands it the channels as it starts:
+  it keeps its own channel's adapter, options and context in memory, and
+  writes none of them down. A room whose channel is not among them does not
+  start.
   """
 
   use DurableServer, vsn: 1
@@ -28,16 +31,20 @@ defmodule WardrikChannel.Replies.Server do
   @source "wardrik://local/agents/"
 
   @impl DurableServer
-  def dump_state(%State{} = state), do: state |> Map.from_struct() |> Map.delete(:retries)
+  def dump_state(%State{} = state),
+    do: state |> Map.from_struct() |> Map.drop([:retries, :posting])
 
   @impl DurableServer
   def load_state(_old_vsn, dumped), do: struct!(State, dumped)
 
   # DurableServer's callback type leaves out the continue its server takes
   # from `init`.
-  @dialyzer {:nowarn_function, init: 1}
+  @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{} = state), do: {:ok, state, {:continue, :open}, permanent: true}
+  def init(%State{channel: channel} = state, %{channels: channels}),
+    do:
+      {:ok, State.posting(state, Map.fetch!(channels, channel)), {:continue, :open},
+       permanent: true}
 
   @impl DurableServer
   def handle_continue(:open, state) do
@@ -163,23 +170,17 @@ defmodule WardrikChannel.Replies.Server do
   defp waiting?(_parked, :all), do: true
   defp waiting?({call, _prompt}, ids), do: call.id in ids
 
-  defp deliver(state, thread, body, to \\ :room) do
-    case WardrikChannel.channel(state.channel) do
-      {:ok, {adapter, options, context}} ->
-        approvers = Context.approvers(context)
+  defp deliver(%State{posting: {adapter, options, context}} = state, thread, body, to \\ :room) do
+    approvers = Context.approvers(context)
 
-        outbound = %Outbound{
-          room: state.room,
-          thread: thread,
-          body: body,
-          approvers: approvers,
-          to: if(approvers == [], do: :room, else: to)
-        }
+    outbound = %Outbound{
+      room: state.room,
+      thread: thread,
+      body: body,
+      approvers: approvers,
+      to: if(approvers == [], do: :room, else: to)
+    }
 
-        with {:ok, _posted} <- adapter.deliver(outbound, options), do: :ok
-
-      :error ->
-        {:error, :unknown_channel}
-    end
+    with {:ok, _posted} <- adapter.deliver(outbound, options), do: :ok
   end
 end
