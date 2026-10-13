@@ -58,7 +58,7 @@ What the daemon, or its cluster, is running.
 wardrik status
 ```
 
-With --json, the agents as GET /v1/agents lists them.
+With --json, the nodes as GET /v1/deployment/nodes lists them.
 
 ## wardrik doctor
 
@@ -75,6 +75,16 @@ Read the agent and policy files again, everywhere.
 ```sh
 wardrik reload
 ```
+
+## wardrik audit
+
+What people changed, oldest first.
+
+```sh
+wardrik audit [--after N] [--limit N]
+```
+
+Up to --limit changes, 100 unless given, after the change numbered --after. With --json, the page as GET /v1/deployment/audit answers it.
 
 ## wardrik ask
 

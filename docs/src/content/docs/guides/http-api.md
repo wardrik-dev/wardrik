@@ -169,6 +169,23 @@ or `spawn` with a node, takes a token over every agent.
 A definition's `triggers` lists the agent's triggers, and one is put or removed at
 `/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).
 
+## The deployment
+
+A token over every agent, made with `wardrik token create NAME --all`, also reaches the deployment
+itself:
+
+```sh
+curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/deployment/nodes
+# {"nodes": [{"name": "wardrik@box1", "agents": 12}], "asleep": 40}
+curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/deployment/reload
+curl -s -H "authorization: Bearer $TOKEN" "http://127.0.0.1:4747/v1/deployment/audit?starting_after=120"
+```
+
+`nodes` counts the agents running on each node, and those asleep on none. `reload` reads the agent
+and policy files again on every node, as `wardrik reload` does. `audit` pages what people changed,
+each change a CloudEvent naming who made it, as `wardrik audit` prints them. Tokens are made from a
+shell on the server alone, never over the API.
+
 ## Errors
 
 An error answers with its status and a body saying what went wrong:
@@ -215,5 +232,5 @@ for await (const event of agent.ask("What is on fire?")) {
 
 `ask` gives the events of the turn that answers the message, until it completes, fails or is
 cancelled. `wardrik.connections` lists, connects and forgets accounts, with `{owner: "org"}` for the
-org's. A request the API refuses throws a `WardrikError` with its `status`, `type` and
+org's, and `wardrik.deployment` lists the nodes, reloads and pages the audit. A request the API refuses throws a `WardrikError` with its `status`, `type` and
 `requestId`. The SDK also runs tools in your app; see [Tools in your app](/guides/tool-workers/).

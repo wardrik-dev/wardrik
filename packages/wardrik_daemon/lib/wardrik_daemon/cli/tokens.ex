@@ -1,7 +1,8 @@
 defmodule WardrikDaemon.CLI.Tokens do
   @moduledoc """
   `wardrik token`: the HTTP API's tokens, made, listed and revoked on the
-  daemon.
+  daemon, as `Wardrik.Operations.CreateToken`, `ListTokens` and `RevokeToken`.
+  They are made from a shell on the server alone, never over the API.
 
   `token create NAME` makes a token printed once. `--scope PREFIX` is the
   agents it reaches, `org/`, `org/@user/` or a key, `org/name` or
@@ -15,10 +16,13 @@ defmodule WardrikDaemon.CLI.Tokens do
   """
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Audit
+  alias Wardrik.Command, as: Operation
   alias Wardrik.Grant
+  alias Wardrik.Operations.CreateToken
+  alias Wardrik.Operations.ListTokens
+  alias Wardrik.Operations.RevokeToken
+  alias Wardrik.Query
   alias WardrikDaemon.CLI.Command
-  alias WardrikHTTP.Token
 
   @doc "The token commands, for `WardrikDaemon.CLI.commands/0`."
   @spec commands() :: [Command.t()]
@@ -64,13 +68,28 @@ defmodule WardrikDaemon.CLI.Tokens do
     can = if opts[:can], do: String.split(opts[:can], ",", trim: true), else: Grant.actions()
 
     with {:ok, scope} <- scope(opts),
-         {:ok, ceiling} <- ceiling(opts, can) do
-      make(name, scope, can, ceiling ++ issued(opts[:for]), opts[:by])
+         {:ok, ceiling} <- ceiling(opts, can),
+         {:ok, grant} <- Grant.new(scope, can, ceiling),
+         {:created, %{"secret" => secret, "token" => token}} <-
+           Operation.run(
+             %CreateToken{name: name, grant: grant, for: issued(opts[:for])},
+             opts[:caller]
+           ) do
+      {:ok,
+       Enum.join(
+         [
+           secret,
+           "",
+           "#{token["name"]} (#{token["id"]})#{issued_to(token)} reaches #{reach(token)}. " <>
+             "This is the only time it is shown."
+         ],
+         "\n"
+       )}
     end
   end
 
-  defp issued(nil), do: []
-  defp issued(person), do: [for: Wardrik.Principal.new(:user, person)]
+  defp issued(nil), do: nil
+  defp issued(person), do: Wardrik.Principal.new(:user, person)
 
   # One of --scope and --all.
   defp scope(opts) do
@@ -88,7 +107,7 @@ defmodule WardrikDaemon.CLI.Tokens do
 
     case {opts[:policy], opts[:unlimited]} do
       {nil, true} ->
-        {:ok, ceiling: []}
+        {:ok, []}
 
       {name, nil} when is_binary(name) and defines? ->
         policy_ceiling(name)
@@ -119,104 +138,70 @@ defmodule WardrikDaemon.CLI.Tokens do
         {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
 
       policy ->
-        {:ok, ceiling: WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
+        {:ok, WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
     end
   end
 
   defp policy_names([]), do: ""
   defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
-  defp make(name, scope, can, opts, by) do
-    case Token.create(name, scope, can, opts) do
-      {:ok, secret, token} ->
-        :ok =
-          Audit.record({:token_created, token.id, token.name, token.grant, token.principal}, by)
-
-        {:ok,
-         Enum.join(
-           [
-             secret,
-             "",
-             "#{token.name} (#{token.id})#{issued_to(token)} reaches #{reach(token.grant)}. " <>
-               "This is the only time it is shown."
-           ],
-           "\n"
-         )}
-
-      {:error, message} when is_binary(message) ->
-        {:error, message}
-
-      {:error, reason} ->
-        {:error, "The token was not made: #{inspect(reason)}"}
-    end
+  defp list(_words, opts) do
+    with {:ok, %{"tokens" => tokens}} <- Query.run(%ListTokens{}, opts[:caller]),
+         do: {:ok, listed(tokens)}
   end
 
-  defp list(_words, _opts) do
+  defp listed(tokens) do
     rows =
-      for token <- Token.list(),
+      for token <- tokens,
           do:
-            "  #{token.id}  #{token.name}#{issued_to(token)}  #{reach(token.grant)}  made #{token.created_at}"
+            "  #{token["id"]}  #{token["name"]}#{issued_to(token)}  #{reach(token)}  made #{token["created_at"]}"
 
     case rows do
       [] ->
-        {:ok,
-         "No tokens. Make one with: wardrik token create NAME --scope PREFIX (--policy NAME | --unlimited)"}
+        "No tokens. Make one with: wardrik token create NAME --scope PREFIX (--policy NAME | --unlimited)"
 
       [_row] ->
-        {:ok, Enum.join(["1 token:" | rows], "\n")}
+        Enum.join(["1 token:" | rows], "\n")
 
       rows ->
-        {:ok, Enum.join(["#{length(rows)} tokens:" | rows], "\n")}
+        Enum.join(["#{length(rows)} tokens:" | rows], "\n")
     end
   end
 
   defp revoke([id], opts) do
-    case Token.revoke(id) do
-      :ok ->
-        :ok = Audit.record({:token_revoked, id}, opts[:by])
-        {:ok, "Revoked #{id}."}
-
-      {:error, :not_found} ->
-        {:error, "No token has the id #{id}."}
-    end
+    with {:ok, nil} <- Operation.run(%RevokeToken{id: id}, opts[:caller]),
+         do: {:ok, "Revoked #{id}."}
   end
 
-  defp issued_to(%Token{principal: nil}), do: ""
-  defp issued_to(%Token{principal: person}), do: ", for #{Wardrik.Principal.id(person)},"
+  defp issued_to(%{"for" => person}), do: ", for #{person},"
+  defp issued_to(_token), do: ""
 
-  defp reach(%Grant{scope: scope, can: can} = grant) do
+  defp reach(%{"scope" => scope, "can" => can} = token) do
     agents =
-      if scope == Prefix.all(), do: "every agent", else: "the agents under #{scope}"
+      if scope == to_string(Prefix.all()), do: "every agent", else: "the agents under #{scope}"
 
-    agents <> actions(can) <> held(grant)
+    agents <> actions(can) <> held(token)
   end
 
-  defp held(%Grant{can: can, ceiling: ceiling}) do
-    cond do
-      :define not in can -> ""
-      ceiling == [] -> ", with no ceiling"
-      true -> ", under the ceiling #{ceiling_names(ceiling)}"
-    end
-  end
+  defp held(%{"ceiling" => []}), do: ", with no ceiling"
+  defp held(%{"ceiling" => ceiling}), do: ", under the ceiling #{ceiling_names(ceiling)}"
+  defp held(_token), do: ""
 
-  # The policies a ceiling is, by name, and not their budgets' hooks.
+  # The policies a ceiling is, by name, and not the judges and budgets each
+  # holds beside its rules.
   defp ceiling_names(ceiling) do
     Enum.map_join(
-      for(
-        %Wardrik.Hook{module: module} = hook <- ceiling,
-        module != WardrikPolicy.Budget,
-        do: hook
-      ),
+      for("ceiling/" <> name <- ceiling, not String.contains?(name, "/"), do: name),
       ", ",
-      &String.replace_prefix(&1.name, "ceiling/", "")
+      & &1
     )
   end
 
   defp actions(can) do
-    {names, [last]} = can |> Enum.map(&Atom.to_string/1) |> Enum.split(-1)
+    {names, [last]} = Enum.split(can, -1)
 
     cond do
-      can == Grant.actions() -> ", for every action"
+      can == Enum.map(Grant.actions(), &Atom.to_string/1) -> ", for every action"
       names == [] -> ", to #{last}"
       true -> ", to #{Enum.join(names, ", ")} and #{last}"
     end

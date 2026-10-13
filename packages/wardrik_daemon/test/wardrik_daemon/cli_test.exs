@@ -162,7 +162,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert list =~
              "  #{token.id}  #{name}  the agents under acme/, for every action, with no ceiling  " <>
-               "made #{token.created_at}"
+               "made #{DateTime.to_iso8601(token.created_at)}"
 
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
     assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
@@ -379,7 +379,12 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "watch --json writes each event of the log as a line of JSON" do
-    {key, _agent} = Wardrik.Test.Fleet.start_agent()
+    key = Wardrik.Test.Fleet.id()
+    :ok = Wardrik.Event.Log.subscribe(key)
+    {^key, _agent} = Wardrik.Test.Fleet.start_agent([], key)
+    # Its start is in its log before anything watches it, so no late write
+    # reaches a terminal that has closed.
+    assert_receive %Wardrik.Event.Log.Entry{sequence: 1}
     :ok = Group.monitor(Wardrik.Event.Log, to_string(key))
     terminal = watching(["watch", key, "--json"])
     assert_receive {:group, [%Group.Event{type: :joined} | _events], _info}
@@ -497,6 +502,24 @@ defmodule WardrikDaemon.CLITest do
     assert {reloaded, 0} = command(["reload"])
     assert reloaded =~ "on #{node()}"
     assert {"agents.reloaded", @ops} in Audit.about("agents")
+  end
+
+  test "audit reads what people changed, a page at a time" do
+    :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, Wardrik.Principal.new(:user, "ops"))
+    last = String.to_integer(List.last(Audit.all())["sequence"])
+    previous = to_string(last - 1)
+
+    assert {page, 0} = command(["audit", "--after", previous, "--limit", "1"])
+    assert [change, more, ""] = String.split(page, "\n")
+    assert change =~ ~r/^#{last}  \S+  agents.reloaded  agents  by ops$/
+    assert more == "More: wardrik audit --after #{last}"
+
+    assert {"No changes after #{last}.\n", 0} == command(["audit", "--after", to_string(last)])
+
+    {output, 0} = command(["audit", "--after", previous, "--json"])
+    assert %{"changes" => [%{"type" => "wardrik.agents.reloaded"}]} = JSON.decode!(output)
+
+    assert {_usage, 1} = command(["audit", "--limit", "0"])
   end
 
   test "ls lists the agents a query picks, with what each is doing and where" do
@@ -638,9 +661,11 @@ defmodule WardrikDaemon.CLITest do
   test "--json answers with the documents the HTTP API answers with" do
     key = to_string(parked_agent())
 
+    here = to_string(node())
+
     {output, 0} = command(["status", "--json"])
-    assert %{"agents" => agents} = JSON.decode!(output)
-    assert %{"id" => ^key, "status" => "parked"} = Enum.find(agents, &(&1["id"] == key))
+    assert %{"nodes" => [%{"name" => ^here, "agents" => agents}]} = JSON.decode!(output)
+    assert agents >= 1
 
     {output, 0} = command(["history", key, "--json"])
 

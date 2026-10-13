@@ -52,6 +52,7 @@ const resources: Record<string, string> = {
   "decisions.json": "Decisions",
   "error.json": "ErrorBody",
   "export.json": "ExportPage",
+  "nodes.json": "Nodes",
   "trigger.json": "Trigger",
   "trigger_definition.json": "TriggerDefinition",
 };

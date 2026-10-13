@@ -1421,8 +1421,59 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  describe "the deployment" do
+    defp over_every_agent(api, can \\ Grant.actions()) do
+      {:ok, secret, _token} = Token.create("deployment", Prefix.all(), can, ceiling: [])
+      Req.merge(api, auth: {:bearer, secret})
+    end
+
+    test "lists its nodes and their agents, to a token over every agent", %{api: api} do
+      {_key, _agent} = echo_agent()
+      here = to_string(node())
+
+      assert {:ok, %{status: 403}} = Req.get(api, url: "/v1/deployment/nodes")
+
+      assert {:ok, %{status: 200, body: %{"nodes" => [%{"name" => ^here}]} = body}} =
+               Req.get(over_every_agent(api, [:read]), url: "/v1/deployment/nodes")
+
+      conforms(body, "nodes")
+    end
+
+    test "reloads its definitions where the host reads them again", %{api: api} do
+      assert {:ok, %{status: 403}} = Req.post(api, url: "/v1/deployment/reload")
+
+      assert {:ok, %{status: 501}} =
+               Req.post(over_every_agent(api), url: "/v1/deployment/reload")
+    end
+
+    test "pages its audit after a sequence number", %{api: api} do
+      :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, nil)
+      reader = over_every_agent(api, [:read])
+
+      assert {:ok, %{status: 403}} = Req.get(api, url: "/v1/deployment/audit")
+
+      assert {:ok, %{status: 200, body: %{"changes" => [_ | _]}}} =
+               Req.get(reader, url: "/v1/deployment/audit")
+
+      last = String.to_integer(List.last(Wardrik.Test.Audit.all())["sequence"])
+
+      assert {:ok, %{status: 200, body: %{"changes" => [%{"type" => "wardrik.agents.reloaded"}]}}} =
+               Req.get(reader,
+                 url: "/v1/deployment/audit",
+                 params: [starting_after: last - 1, limit: 1]
+               )
+
+      assert {:ok, %{status: 400}} =
+               Req.get(reader, url: "/v1/deployment/audit", params: [starting_after: "x"])
+    end
+
+    test "makes no tokens over HTTP", %{api: api} do
+      assert {:ok, %{status: 404}} = Req.post(over_every_agent(api), url: "/v1/deployment/tokens")
+    end
+  end
+
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization decisions trigger trigger_definition export error connections connecting)
+    @resources ~w(agent agent_snapshot authorization decisions trigger trigger_definition export error connections connecting nodes)
 
     defp schema(name) do
       WardrikProtocol.dir()

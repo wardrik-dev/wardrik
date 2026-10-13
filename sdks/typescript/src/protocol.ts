@@ -504,6 +504,25 @@ export interface ExportPage {
   }[];
 }
 /**
+ * The deployment's nodes, each with how many agents run on it, and how many agents sleep on none: what GET /v1/deployment/nodes answers.
+ */
+export interface Nodes {
+  nodes: {
+    /**
+     * The node's name, as an agent's node is given.
+     */
+    name: string;
+    /**
+     * How many agents run on it.
+     */
+    agents: number;
+  }[];
+  /**
+   * How many agents sleep, on no node, until something asks them.
+   */
+  asleep: number;
+}
+/**
  * A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
  */
 export interface Trigger {

@@ -58,6 +58,7 @@
       "Wardrik.Subject",
       "Wardrik.Test",
       "Wardrik.Test.*",
+      "Wardrik.Tokens",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
