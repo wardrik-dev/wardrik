@@ -191,6 +191,78 @@ nothing else: a request to it can only ask that agent, through that trigger.
 - **The service must reach the daemon.** It listens on `127.0.0.1` unless `config.yaml`'s `http`
   says otherwise; put it behind a proxy that serves HTTPS, or a tunnel, at `base_url`.
 
+### Pointing a service at a trigger
+
+Any service that can send a webhook to a URL can reach a trigger. What differs is where you give it
+the secret: a service that sets headers sends `Authorization: Bearer` and the secret; one that lets
+you set only a URL gets the secret at the end of the trigger's path. A service's own signature,
+such as GitHub's or Sentry's, is not checked, so the secret in the path is what proves a request:
+keep that URL as private as a token.
+
+| Service | Where you set it up | The secret | For example |
+| --- | --- | --- | --- |
+| GitHub | the repository's or organization's **Settings → Webhooks** | end of the path | an issue opened, a pull request, a failed workflow run |
+| Sentry | an internal integration's **Webhook URL**, which an issue alert sends to | end of the path | a new issue |
+| Linear | **Settings → API → New webhook** | end of the path | an issue created |
+| Prometheus Alertmanager | a receiver's `webhook_configs`, with `http_config.authorization` | bearer | an alert firing |
+| Grafana | a webhook contact point's **Authorization header** | bearer | an alert firing |
+| PagerDuty | a webhook subscription, with a custom header named `Authorization` | bearer | an incident triggered |
+| A service that follows Standard Webhooks | its webhook settings, with `verify: standard` | its signature | whatever it sends |
+| An automation tool | its webhook or HTTP request step | bearer | anything it connects |
+
+Each request is a model call, so ask a service for the events the agent should hear, and let the
+prompt pass over the rest in a line.
+
+**Triage each new GitHub issue.** In the repository's **Settings → Webhooks**, add a webhook whose
+payload URL is the trigger's address with the secret after it, with content type
+`application/json`, and choose **Issues** among the individual events:
+
+```yaml
+triggers:
+  - name: issue-opened
+    webhook:
+      secret: ${GITHUB_HOOK_SECRET}
+    prompt: >
+      A GitHub issue event is below. If it opened an issue, label it, link the issues it may
+      duplicate, and say who should look. Otherwise answer in one line.
+```
+
+```
+https://agents.acme.example/v1/hooks/acme/triage/issue-opened/SECRET
+```
+
+GitHub sends an event for each change to an issue, opened, edited, closed and more, so the prompt
+says which matter. GitHub's own secret field signs what it sends, which the trigger does not
+check; leave it empty or set, as you like.
+
+**Look into each new Sentry issue.** In Sentry, create an internal integration under
+**Settings → Developer Settings → Custom Integrations**, with the trigger's address and its secret
+as the webhook URL, and **Alert Rule Action** on. Then add an issue alert to the project: when a
+new issue is created, send a notification through that integration:
+
+```yaml
+triggers:
+  - name: sentry-issue
+    webhook:
+      secret: ${SENTRY_HOOK_SECRET}
+    prompt: >
+      Sentry found a new issue; its alert is below. Read the stack trace, find the code and the
+      commits around it, and say what most likely broke and who changed it last.
+```
+
+**Hear an alert as it fires.** Alertmanager sends the secret as a bearer token:
+
+```yaml title="alertmanager.yml"
+receivers:
+  - name: wardrik
+    webhook_configs:
+      - url: https://agents.acme.example/v1/hooks/acme/oncall/alert
+        http_config:
+          authorization:
+            type: Bearer
+            credentials: SECRET
+```
+
 ## A checklist the agent can edit
 
 `prompt_file` asks the agent to follow a file in its workspace, in place of `prompt`. Each run it
