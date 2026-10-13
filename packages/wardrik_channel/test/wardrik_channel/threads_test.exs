@@ -14,7 +14,7 @@ defmodule WardrikChannel.ThreadsTest do
   alias WardrikChannel.Rooms
   alias WardrikNotify.Notice
 
-  @maria Principal.new(:slack, "U1", name: "maria")
+  @maria Principal.new(:channel, "slack/U1", name: "maria")
 
   @doc false
   def offering(agent, _channel), do: [%Offer{agent: agent}]
@@ -83,7 +83,7 @@ defmodule WardrikChannel.ThreadsTest do
                     _channel}
 
     assert_receive {:turn, turn}
-    assert {:user, "From maria (slack U1):\nHow much Barolo is left?"} in turn
+    assert {:user, "From maria (channel slack/U1):\nHow much Barolo is left?"} in turn
   end
 
   test "leaves alone what the room's agent does not answer" do
@@ -202,7 +202,7 @@ defmodule WardrikChannel.ThreadsTest do
 
     assert_receive {:delivered, %Outbound{body: {:notice, %Notice{kind: :parked}}}, _channel}
 
-    by = Wardrik.Principal.new(:slack, "U1", name: "maria")
+    by = Wardrik.Principal.new(:channel, "slack/U1", name: "maria")
     :ok = Wardrik.Agent.decide(agent, %{"call_1" => {:deny, "Not on Fridays."}}, by: by)
 
     assert_receive {:delivered,

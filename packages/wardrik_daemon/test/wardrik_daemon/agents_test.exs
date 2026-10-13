@@ -599,7 +599,7 @@ defmodule WardrikDaemon.AgentsTest do
     write_policy(context, "careful", "deny: [run_lua]\n")
     start_supervised!({Agents, dir: context.dir})
     _files = Agents.files()
-    maria = Wardrik.Principal.new(:slack, "U1", name: "maria")
+    maria = Wardrik.Principal.new(:channel, "slack/U1", name: "maria")
 
     refute Agents.creatable?("slack")
 
@@ -621,7 +621,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert id in Enum.map(Agents.offered("slack"), & &1.agent)
 
     assert Wardrik.Test.Audit.about("agents/#{id}") ==
-             [{"agent.defined", %{"type" => "slack", "id" => "U1", "name" => "maria"}}]
+             [{"agent.defined", %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}}]
 
     assert {:error, message} = Agents.create("slack", "books-bills", maria)
     assert message =~ "#{org}/books-bills is there already"

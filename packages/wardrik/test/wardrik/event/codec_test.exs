@@ -40,7 +40,7 @@ defmodule Wardrik.Event.CodecTest do
     turn = turn()
     tool = within(turn, "deploy")
     step = within(turn, "research")
-    by = Principal.new(:slack, "U1", name: "jon")
+    by = Principal.new(:channel, "slack/U1", name: "jon")
 
     asking =
       Context.assistant("",
@@ -684,9 +684,12 @@ defmodule Wardrik.Event.CodecTest do
   end
 
   test "a message created names who sent it, where anyone is named" do
-    by = Principal.new(:slack, "U1", name: "jon")
+    by = Principal.new(:channel, "slack/U1", name: "jon")
 
-    assert {:ok, %{"data" => %{"sender" => %{"type" => "slack", "id" => "U1", "name" => "jon"}}}} =
+    assert {:ok,
+            %{
+              "data" => %{"sender" => %{"type" => "channel", "id" => "slack/U1", "name" => "jon"}}
+            }} =
              encode(Source.root(@agent), %Event.MessageQueued{
                message: Message.new("Hi.", "m-1", sender: by)
              })

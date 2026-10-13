@@ -87,7 +87,7 @@ defmodule WardrikSlack.Socket do
     {:ok,
      %{
        token: opts[:app_token],
-       answer: [people: people] ++ Keyword.take(opts, [:token, :context, :req_options]),
+       answer: [people: people] ++ Keyword.take(opts, [:name, :token, :context, :req_options]),
        connection: nil,
        backoff: @first_backoff
      }, {:continue, :connect}}

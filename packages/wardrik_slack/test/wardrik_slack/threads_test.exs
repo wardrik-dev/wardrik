@@ -64,7 +64,7 @@ defmodule WardrikSlack.ThreadsTest do
     end)
 
     people = :ets.new(:people, [:public])
-    [context: context, bot: "UBOT", team: "T1", people: people] ++ channel
+    [context: context, name: :slack, bot: "UBOT", team: "T1", people: people] ++ channel
   end
 
   defp message(fields) do
@@ -99,7 +99,7 @@ defmodule WardrikSlack.ThreadsTest do
              %{"channel" => "C1", "timestamp" => "1.1", "name" => "eyes"}
 
     assert_receive {:turn, turn}
-    assert {:user, "From maria (slack U1):\nHow much Barolo is left?"} in turn
+    assert {:user, "From maria (channel slack/U1):\nHow much Barolo is left?"} in turn
 
     assert %{
              "channel" => "C1",
@@ -155,6 +155,6 @@ defmodule WardrikSlack.ThreadsTest do
     opts = bound({AgentRunners, :echo, [self(), "Here."]})
     assert {:asked, _agent} = Threads.message(message(%{}), opts)
     assert_receive {:turn, turn}
-    assert {:user, "From slack U1:\nHow much Barolo is left?"} in turn
+    assert {:user, "From channel slack/U1:\nHow much Barolo is left?"} in turn
   end
 end

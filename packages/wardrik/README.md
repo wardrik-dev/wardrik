@@ -87,7 +87,7 @@ Where several people talk to one agent, as in a chat room, each message names
 who sent it, and the model reads that ahead of the text:
 
 ```elixir
-:ok = Wardrik.Agent.ask(id, "Reconcile last week.", sender: Wardrik.Principal.new(:slack, "U024BE7LH", name: "Maria Chen"))
+:ok = Wardrik.Agent.ask(id, "Reconcile last week.", sender: Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen"))
 ```
 
 ## Tools

@@ -36,7 +36,7 @@ defmodule WardrikSlack.Answers do
             WardrikSlack.ephemeral(link(agent, call))
 
           true ->
-            decide(payload, action, user, agent, call, name)
+            decide(payload, {action, user, opts}, agent, call, name)
         end
 
       WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
@@ -88,10 +88,16 @@ defmodule WardrikSlack.Answers do
   defp link_text({%{link: %{url: url}}, _prompt}), do: "Open #{url}"
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
-  defp decide(payload, action, user, agent, call, name) do
+  defp decide(payload, {action, user, opts}, agent, call, name) do
     note = note(payload, call)
     decision = decision(action, note, user["username"] || user["name"] || user["id"])
-    by = Wardrik.Principal.new(:slack, user["id"], name: user["username"] || user["name"])
+
+    by =
+      WardrikChannel.principal(
+        Keyword.fetch!(opts, :name),
+        user["id"],
+        user["username"] || user["name"]
+      )
 
     case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
       :ok ->
