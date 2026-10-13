@@ -1,7 +1,8 @@
 # wardrik_trigger
 
 Triggers for [Wardrik](../wardrik) agents: a prompt an agent is asked on a
-clock, kept in the store the fleet runs on, so one node in the cluster owns
+clock, or when a source it watches finds something or is sent it, kept in
+the store the fleet runs on, so one node in the cluster owns
 each trigger and another carries it on when that node is lost.
 
 ```elixir
@@ -46,6 +47,28 @@ WardrikTrigger.put(~A"acme/growth", "mentions",
   every: "1h",
   prompt: "New mentions of Acme. Which deserve a reply?",
   source: {MyApp.Feed, "https://example.com/alerts.xml"})
+```
+
+A webhook is a trigger of its own kind, `WardrikTrigger.Webhook`: it has no
+clock, and asks the agent as each request a service sends arrives, through
+`WardrikTrigger.deliver/3`, which makes `WardrikTrigger` the host's
+`Wardrik.Triggers`. A request presents the trigger's secret, or is signed
+as the Standard Webhooks spec says, checked against a secret the host's
+`:secrets` reads by name for the trigger's agent, so each org keeps its own,
+or from the environment where the host gives none; a host registers a
+`WardrikTrigger.Webhook.Verifier` of its own for any other signature. A
+request sent again is asked about once.
+
+Each kind implements `WardrikTrigger.Kind`, its process key, the server that
+runs it, and how it is written as text, so `put/2`, `sync/2` and the listings
+take every kind alike, and a new kind is a struct, a server and that protocol.
+
+```elixir
+children = [{Wardrik, triggers: WardrikTrigger}, {WardrikTrigger, secrets: &MyApp.Vault.secret/2}]
+
+WardrikTrigger.put(~A"acme/triage", WardrikTrigger.Webhook.new("issues",
+  secret: "ISSUES_HOOK_SECRET",
+  prompt: "An event is below. Triage it."))
 ```
 
 In the daemon, an agent's definition lists its triggers, in its file or in

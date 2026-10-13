@@ -515,7 +515,7 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, %{"triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
              Agents.get(defined)
 
-    assert [%{name: "digest"}, %{name: "sweep", every: {:interval, 7_200_000}}] =
+    assert [%{name: "digest"}, %{name: "sweep", schedule: "every 2h"}] =
              WardrikTrigger.for_agent(defined)
 
     assert {:error, ~s(trigger digest: every: "10s" is shorter than a minute)} =

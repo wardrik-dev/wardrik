@@ -2,12 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:trigger_definition",
   "title": "A trigger's definition",
-  "description": "The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.",
+  "description": "The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. A trigger on a clock has every; overlap is skip, missed is run_once and jitter is 0 where they are left out, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{key}/{trigger}, and its overlap is queue where it says none.",
   "type": "object",
   "additionalProperties": true,
-  "required": [
-    "every"
-  ],
   "properties": {
     "every": {
       "type": "string",
@@ -48,6 +45,12 @@
       "every": "*/30 * * * *",
       "prompt": "Check the queue.",
       "overlap": "skip"
+    },
+    {
+      "webhook": {
+        "secret": "${ISSUES_HOOK_SECRET}"
+      },
+      "prompt": "An event is below."
     }
   ]
 }

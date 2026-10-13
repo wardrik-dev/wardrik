@@ -12,7 +12,8 @@ defmodule WardrikHTTP do
 
   ## Tokens
 
-  Every request presents a token, as `Authorization: Bearer wardrik_…`. A token
+  Every request presents a token, as `Authorization: Bearer wardrik_…`, but one
+  to `/v1/hooks/`, which a trigger checks the signature of instead. A token
   carries a `Wardrik.Grant`: the agents under its scope, a key prefix that ends
   at a segment, and the actions it may take on them, every action unless it
   was made with fewer. An agent outside the scope is answered as one that
@@ -90,6 +91,7 @@ defmodule WardrikHTTP do
   | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
   | `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
   | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
+  | `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger, with no token but the trigger's secret, as `Authorization: Bearer` or at the end of the path: `202`, and whether the agent was asked or had been about the same request; `404` where the agent has no such trigger, or its signature does not match, so a sender learns nothing of the triggers it cannot sign for; and `503` where it cannot be delivered now, so a sender that tries again delivers it later |
   | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
   | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
   | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |

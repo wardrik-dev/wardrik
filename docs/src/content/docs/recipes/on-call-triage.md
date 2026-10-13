@@ -218,6 +218,9 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 
 ## Taking it further
 
+- Respond the moment an incident is filed, rather than within five minutes: a `webhook` trigger
+  that Linear, Sentry or Alertmanager calls asks the agent as each arrives. See
+  [Pointing a service at a trigger](/guides/triggers/#pointing-a-service-at-a-trigger).
 - Point a second trigger at a weekly review: `every: "0 9 * * 1"`, asking for what the week's
   incidents had in common, and keep the answer in a file the team reads.
 - Give the agent a runbook step it may take without asking, such as restarting one service, as a

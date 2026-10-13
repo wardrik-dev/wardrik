@@ -13,8 +13,10 @@ defmodule Wardrikd.Application do
   `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
   rest. `WardrikDaemon.Cluster` connects this node to
   the others before the fleet starts, `WardrikDaemon.Agents` is where
-  every surface's definitions go, and `WardrikOAuth.Connections` offers the
-  accounts people and orgs connect.
+  every surface's definitions go, `WardrikOAuth.Connections` offers the
+  accounts people and orgs connect, and `WardrikTrigger` takes the requests
+  from outside that triggers are sent, checked with secrets the vault holds
+  for the agent's user, org or deployment, else the environment's.
 
   The store, and whether tool workers' answers are the deployment's own, are
   what `config/runtime.exs` read of `config.yaml` as the node booted; see
@@ -38,9 +40,10 @@ defmodule Wardrikd.Application do
        cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
        definitions: WardrikDaemon.Agents,
        connections: WardrikOAuth.Connections,
-       tokens: WardrikHTTP.Tokens},
+       tokens: WardrikHTTP.Tokens,
+       triggers: WardrikTrigger},
       WardrikPolicy.Supervisor,
-      WardrikTrigger,
+      {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
       WardrikHTTP.Access,
       {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
       WardrikDaemon

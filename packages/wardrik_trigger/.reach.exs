@@ -46,6 +46,7 @@
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
+      "Wardrik.Triggers",
       "Wardrik.UUID"
     ],
     internal: [
@@ -69,6 +70,14 @@
       {"Wardrik.Fleet.Supervisor", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Event.Source", ["Wardrik", "Wardrik.*"]},
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
+    ]
+  ],
+  smells: [
+    behaviour_candidate: [
+      # WardrikTrigger.Kind is a protocol, and its implementations are the
+      # modules the check finds; it groups modules by their public functions,
+      # and does not read the protocol they implement.
+      ignore: [modules: ["WardrikTrigger.Kind", "WardrikTrigger.Kind.*"]]
     ]
   ],
   checks: [

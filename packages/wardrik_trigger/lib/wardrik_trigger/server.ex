@@ -10,10 +10,7 @@ defmodule WardrikTrigger.Server do
 
   use DurableServer, vsn: 1
 
-  alias Wardrik.Agent
-  alias Wardrik.Event
-  alias Wardrik.Fleet
-  alias WardrikTrigger.Item
+  alias WardrikTrigger.Delivery
   alias WardrikTrigger.State
 
   require Logger
@@ -33,7 +30,7 @@ defmodule WardrikTrigger.Server do
   @dialyzer {:nowarn_function, init: 1}
   @impl DurableServer
   def init(%State{} = state) do
-    :ok = WardrikTrigger.join(state.agent, state.trigger.name)
+    :ok = WardrikTrigger.join(state.agent, state.trigger)
     {:ok, state, {:continue, :wake}, meta: State.meta(state), permanent: true}
   end
 
@@ -63,7 +60,7 @@ defmodule WardrikTrigger.Server do
   end
 
   def handle_continue({:ask, pid, items}, %State{trigger: trigger} = state) do
-    :ok = Agent.ask(pid, Item.message(trigger.prompt, items), labels: Item.labels(items))
+    :ok = Delivery.ask(pid, trigger.prompt, items)
     settle(state, :asked)
   end
 
@@ -102,7 +99,7 @@ defmodule WardrikTrigger.Server do
         {:nothing_new, next}
 
       {:ok, items, next} ->
-        case ready(agent, trigger) do
+        case Delivery.ready(agent, trigger.overlap) do
           {:ok, pid} -> {:ask, pid, items, next}
           outcome -> {outcome, cursor}
         end
@@ -113,28 +110,8 @@ defmodule WardrikTrigger.Server do
     end
   end
 
-  defp ready(agent, trigger) do
-    case Fleet.whereis(agent) do
-      nil -> :no_agent
-      pid -> idle(pid, trigger.overlap)
-    end
-  catch
-    :exit, _reason -> :failed
-  end
-
-  defp idle(pid, :queue), do: {:ok, pid}
-
-  defp idle(pid, :skip) do
-    case Agent.status(pid) do
-      %{state: :idle} -> {:ok, pid}
-      %{state: _running_or_parked} -> :busy
-      {:error, :not_found} -> :no_agent
-    end
-  end
-
-  defp announce(%State{agent: agent, trigger: trigger}, outcome) do
-    Event.announce(agent, %Event.TriggerFired{name: trigger.name, outcome: outcome})
-  end
+  defp announce(%State{agent: agent, trigger: trigger}, outcome),
+    do: Delivery.announce(agent, trigger.name, outcome)
 
   # Only the timer armed last wakes the trigger.
   defp arm(ms) do

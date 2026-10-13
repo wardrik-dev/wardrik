@@ -20,6 +20,7 @@ defmodule WardrikDaemon.Config do
   refused, since one of them would go unread.
 
       org: acme
+      base_url: https://agents.acme.example
 
       defaults:
         model: anthropic:claude-sonnet-5
@@ -96,6 +97,15 @@ defmodule WardrikDaemon.Config do
   `org` is the deployment's org: the one an agent belongs to where its file
   names none, and the one the CLI finds an agent in when it is named without
   an org. It is `default` unless set; `org/0` reads it.
+
+  `base_url` is the deployment's address, as people and services reach it
+  through whatever is in front of the daemon: an `https://` URL, or
+  `http://` on loopback. A webhook trigger is sent requests under it, at
+  `/v1/hooks/`, which `wardrik triggers` prints, and `oauth.redirect.url`
+  is `{base_url}/oauth` where it says no other, so the front passes
+  `/oauth/` to the callback and the rest to the HTTP API. Without it the
+  deployment is this machine's loopback, where the HTTP API listens;
+  `base_url/0` reads it.
 
   `tools` lists what one call to a tool costs, in US dollars, for a tool
   that says nothing of what it cost itself, such as an MCP server's: each
@@ -271,6 +281,17 @@ defmodule WardrikDaemon.Config do
   def org, do: WardrikDaemon |> settings() |> Keyword.get(:org, @org)
 
   @doc """
+  The deployment's address, as `config.yaml`'s `base_url` names it, or where
+  it names none, the HTTP API on this machine's loopback.
+  """
+  @spec base_url() :: String.t()
+  def base_url do
+    Keyword.get_lazy(settings(WardrikDaemon), :base_url, fn ->
+      "http://127.0.0.1:#{Keyword.get(settings(WardrikHTTP), :port, 4747)}"
+    end)
+  end
+
+  @doc """
   What the daemon keeps for `module`: what `config.yaml` says of it, merged
   over what the release's configuration gives it. `[]` where neither says
   anything.
@@ -396,9 +417,32 @@ defmodule WardrikDaemon.Config do
 
   defp sections(document) do
     {org, document} = Map.pop(document, "org")
+    {base_url, document} = Map.pop(document, "base_url")
     org = org!(org)
+    base_url = base_url(base_url)
 
-    [{WardrikDaemon, org: org} | document |> sections(org) |> through_channels()]
+    [
+      {WardrikDaemon, [org: org] ++ base_url}
+      | document |> sections(org) |> through_channels() |> addressed(base_url)
+    ]
+  end
+
+  defp base_url(nil), do: []
+  defp base_url(url), do: [base_url: redirect_url!(url, ["base_url"])]
+
+  # A setting further down that names no address of its own is under the
+  # deployment's.
+  defp addressed(sections, []), do: sections
+
+  defp addressed(sections, base_url: base_url) do
+    Enum.map(sections, fn
+      {WardrikOAuth, oauth} ->
+        redirect = Keyword.put_new(Keyword.get(oauth, :redirect, []), :url, base_url <> "/oauth")
+        {WardrikOAuth, Keyword.put(oauth, :redirect, redirect)}
+
+      section ->
+        section
+    end)
   end
 
   defp sections(document, org) do

@@ -198,7 +198,7 @@ defmodule WardrikDefinition do
   The triggers a definition lists, which ask its agent something when they come round. They are
   checked with the rest of the definition as `spec/4` reads it.
   """
-  @spec triggers(fields()) :: [WardrikTrigger.t()]
+  @spec triggers(fields()) :: [WardrikTrigger.trigger()]
   def triggers(fields), do: triggers(fields["triggers"], files?(fields))
 
   @doc """
@@ -207,7 +207,7 @@ defmodule WardrikDefinition do
   changed, and the trigger it reads into, or why it does not read.
   """
   @spec put_trigger(fields(), String.t(), map()) ::
-          {:ok, fields(), :created | :changed, WardrikTrigger.t()} | {:error, String.t()}
+          {:ok, fields(), :created | :changed, WardrikTrigger.trigger()} | {:error, String.t()}
   def put_trigger(fields, name, given) when is_map(given) do
     listed = named(fields["triggers"])
     trigger = Map.put(given, "name", name)

@@ -7,6 +7,10 @@ defmodule WardrikHTTP.Auth do
   A request from no caller the authenticator knows is answered 401, with the
   authenticator's challenge as `WWW-Authenticate`, and one whose credential
   could not be checked is answered 503. Neither goes further.
+
+  A request to `/v1/hooks/`, from outside to one of an agent's triggers,
+  presents no credential and is let through: the trigger checks its
+  signature, and `WardrikHTTP.Router` gives it no caller but that trigger.
   """
 
   @behaviour Plug
@@ -19,6 +23,8 @@ defmodule WardrikHTTP.Auth do
   def init(opts), do: opts
 
   @impl Plug
+  def call(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
+
   def call(conn, _opts) do
     {module, opts} = authenticator(conn.assigns.options[:authenticator])
 
