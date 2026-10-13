@@ -49,12 +49,14 @@ defmodule Wardrik.AgentTest do
 
   test "a message names who sent it, to the model and in its event" do
     agent = start_agent(runner: runner(self()))
-    maria = Wardrik.Principal.new(:slack, "U024BE7LH", name: "Maria Chen")
+    maria = Wardrik.Principal.new(:channel, "slack/U024BE7LH", name: "Maria Chen")
 
     :ok = Agent.ask(agent, "Reconcile last week.", id: "m-1", sender: maria)
 
     assert_receive %Event{payload: %Event.MessageQueued{message: %{id: "m-1", sender: ^maria}}}
-    assert_receive {:turn, [{:user, "From Maria Chen (slack U024BE7LH):\nReconcile last week."}]}
+
+    assert_receive {:turn,
+                    [{:user, "From Maria Chen (channel slack/U024BE7LH):\nReconcile last week."}]}
   end
 
   test "a second turn sees the first turn's result — turns never overlap" do
@@ -451,7 +453,7 @@ defmodule Wardrik.AgentTest do
     test "each decision says who made it" do
       test_pid = self()
       answer = {:ok, [Context.assistant("left it")]}
-      by = Wardrik.Principal.new(:slack, "U1", name: "jon")
+      by = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
 
       agent =
         start_agent(runner: parking_runner(test_pid), resumer: resumer(test_pid, answer))

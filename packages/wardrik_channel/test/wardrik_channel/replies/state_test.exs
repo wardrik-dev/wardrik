@@ -88,7 +88,7 @@ defmodule WardrikChannel.Replies.StateTest do
   end
 
   test "says who decided a call, and what they said with it" do
-    maria = %{"type" => "slack", "id" => "U1", "name" => "maria"}
+    maria = %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}
     jon = %{"type" => "user", "id" => "jon"}
 
     assert decided("approved", maria) == {:decided, "Approved by maria."}

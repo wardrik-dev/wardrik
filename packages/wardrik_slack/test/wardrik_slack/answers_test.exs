@@ -28,7 +28,7 @@ defmodule WardrikSlack.AnswersTest do
   end
 
   # The channel's options a press is answered with.
-  defp answering, do: [token: "xoxb-test", req_options: @req_options]
+  defp answering, do: [name: :slack, token: "xoxb-test", req_options: @req_options]
 
   describe "Show link" do
     setup do
@@ -128,7 +128,7 @@ defmodule WardrikSlack.AnswersTest do
 
       assert_receive {:resumed, %{"call_1" => :approve}}
 
-      jon = Wardrik.Principal.new(:slack, "U1", name: "jon")
+      jon = Wardrik.Principal.new(:channel, "slack/U1", name: "jon")
 
       assert_receive %Event{
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: ^jon}

@@ -6,7 +6,7 @@ defmodule WardrikSlack.ConnectionTest do
 
   @state %{
     token: "xapp-test",
-    answer: [token: "xoxb-test", req_options: [plug: {Req.Test, WardrikSlack.Stub}]],
+    answer: [name: :slack, token: "xoxb-test", req_options: [plug: {Req.Test, WardrikSlack.Stub}]],
     connection: nil,
     backoff: 1_000
   }

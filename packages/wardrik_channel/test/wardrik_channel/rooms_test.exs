@@ -9,7 +9,7 @@ defmodule WardrikChannel.RoomsTest do
   alias WardrikChannel.Room
   alias WardrikChannel.Rooms
 
-  @maria Principal.new(:slack, "U1", name: "maria")
+  @maria Principal.new(:channel, "slack/U1", name: "maria")
 
   @doc false
   def offering(offers, _channel), do: offers
@@ -48,7 +48,7 @@ defmodule WardrikChannel.RoomsTest do
     assert %Room{room: "C1"} = Rooms.get(context, "C1")
 
     assert Audit.about("rooms/#{context.channel}/C1") ==
-             [{"room.bound", %{"type" => "slack", "id" => "U1", "name" => "maria"}}]
+             [{"room.bound", %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}}]
   end
 
   test "answers the agents to choose among, and binds the one chosen" do

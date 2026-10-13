@@ -557,7 +557,7 @@ Who did something, and how they were known.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | string | yes | shell, ssh, terminal, slack, oauth, token or user. |
+| `type` | string | yes | shell, ssh, terminal, channel, oauth, token, webhook or user. A channel's id is the channel's name and the id it knows them by, as slack/U024BE7LH. |
 | `id` | string | yes |  |
 | `name` | string |  |  |
 

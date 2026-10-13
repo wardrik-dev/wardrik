@@ -20,7 +20,6 @@ defmodule WardrikSlack.Rooms do
   """
 
   alias Wardrik.AgentID
-  alias Wardrik.Principal
   alias WardrikChannel.Context
   alias WardrikChannel.Offer
   alias WardrikChannel.Room
@@ -40,7 +39,7 @@ defmodule WardrikSlack.Rooms do
       context = Keyword.fetch!(opts, :context)
 
       context
-      |> WardrikChannel.Rooms.joined(room, name(room, opts), slack(event["inviter"]))
+      |> WardrikChannel.Rooms.joined(room, name(room, opts), sender(event["inviter"], opts))
       |> message(context, opts)
       |> post(room, opts)
     else
@@ -50,7 +49,11 @@ defmodule WardrikSlack.Rooms do
 
   def event(%{"type" => type, "channel" => room} = event, opts)
       when type in ["channel_left", "group_left"] do
-    WardrikChannel.Rooms.left(Keyword.fetch!(opts, :context), room, slack(event["actor_id"]))
+    WardrikChannel.Rooms.left(
+      Keyword.fetch!(opts, :context),
+      room,
+      sender(event["actor_id"], opts)
+    )
   end
 
   def event(_event, _opts), do: :ignored
@@ -68,7 +71,7 @@ defmodule WardrikSlack.Rooms do
     context = Keyword.fetch!(opts, :context)
     %{"id" => room} = channel = Map.get(payload, "channel", %{})
     user = Map.get(payload, "user", %{})
-    by = slack(user["id"], user["username"] || user["name"])
+    by = sender(user["id"], opts, user["username"] || user["name"])
     name = channel["name"] || room
 
     reply =
@@ -268,9 +271,9 @@ defmodule WardrikSlack.Rooms do
     end
   end
 
-  defp slack(id, name \\ nil)
-  defp slack(nil, _name), do: nil
-  defp slack(id, name), do: Principal.new(:slack, id, name: name)
+  defp sender(id, opts, name \\ nil)
+  defp sender(nil, _opts, _name), do: nil
+  defp sender(id, opts, name), do: WardrikChannel.principal(Keyword.fetch!(opts, :name), id, name)
 
   defp approving([]), do: "A call that needs approval waits here for someone to approve it."
 

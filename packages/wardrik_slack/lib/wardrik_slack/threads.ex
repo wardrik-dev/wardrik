@@ -16,7 +16,6 @@ defmodule WardrikSlack.Threads do
   them, looked up once for each person while the connection stays open.
   """
 
-  alias Wardrik.Principal
   alias WardrikChannel.Inbound
 
   # Slack reports a reply also posted to the channel, and a file posted with
@@ -106,12 +105,12 @@ defmodule WardrikSlack.Threads do
   defp sender(user, opts) do
     case :ets.lookup(Keyword.fetch!(opts, :people), user) do
       [{^user, name}] ->
-        Principal.new(:slack, user, name: name)
+        WardrikChannel.principal(Keyword.fetch!(opts, :name), user, name)
 
       [] ->
         name = named(user, opts)
         :ets.insert(Keyword.fetch!(opts, :people), {user, name})
-        Principal.new(:slack, user, name: name)
+        WardrikChannel.principal(Keyword.fetch!(opts, :name), user, name)
     end
   end
 

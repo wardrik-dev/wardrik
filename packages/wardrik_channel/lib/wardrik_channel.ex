@@ -107,6 +107,19 @@ defmodule WardrikChannel do
   def tasks, do: WardrikChannel.TaskSupervisor
 
   @doc """
+  The `Wardrik.Principal` of someone a channel knows as `user`, by the name
+  `config.yaml` gives the channel: of type `:channel`, known as
+  `channel/user`, so the same id in two channels, as two Slack workspaces,
+  are two people, and every channel names its people alike.
+
+      WardrikChannel.principal(:slack, "U024BE7LH", "jon")
+      #=> a principal of type :channel, known as "slack/U024BE7LH", by name "jon"
+  """
+  @spec principal(atom() | String.t(), String.t(), String.t() | nil) :: Wardrik.Principal.t()
+  def principal(channel, user, name) when is_binary(user),
+    do: Wardrik.Principal.new(:channel, "#{channel}/#{user}", name: name)
+
+  @doc """
   A message was posted in a room of the context's channel: asks the agent of
   its thread, starting it where it is not running, and has
   `WardrikChannel.Replies` post what it answers. Where the agent waits on a

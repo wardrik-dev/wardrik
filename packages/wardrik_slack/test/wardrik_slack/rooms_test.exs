@@ -43,7 +43,7 @@ defmodule WardrikSlack.RoomsTest do
       create: {__MODULE__, :creating, []}
     }
 
-    [context: context, bot: "UBOT", token: "xoxb-test", req_options: @req_options]
+    [context: context, name: :slack, bot: "UBOT", token: "xoxb-test", req_options: @req_options]
   end
 
   defp books, do: %Offer{agent: AgentID.parse!("acme/books"), description: "Keeps the books."}
@@ -103,7 +103,7 @@ defmodule WardrikSlack.RoomsTest do
     assert buttons(message) == ["everything", "wardrik_room_more"]
 
     assert Audit.about("rooms/#{opts[:context].channel}/C1") ==
-             [{"room.bound", %{"type" => "slack", "id" => "U1"}}]
+             [{"room.bound", %{"type" => "channel", "id" => "slack/U1"}}]
   end
 
   @doc false
@@ -136,7 +136,7 @@ defmodule WardrikSlack.RoomsTest do
 
     assert WardrikChannel.Rooms.get(opts[:context], "C1").agent == triage().agent
 
-    assert [{"room.bound", %{"id" => "U2", "name" => "jon"}}] =
+    assert [{"room.bound", %{"id" => "slack/U2", "name" => "jon"}}] =
              Audit.about("rooms/#{opts[:context].channel}/C1")
   end
 
