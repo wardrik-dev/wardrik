@@ -62,8 +62,14 @@ has none.
     server's `only` and `except` narrow what it offers
   * `workers/*`, every tool the connected tool workers offer the agent, as
     `WardrikHTTP.Workers` describes them. A policy narrows what it may call
+  * `self/*`, the agent's operations on itself, as `Wardrik.Catalog.Tools`
+    describes them: reading its definition, and setting and removing its
+    own triggers, so it can change what it watches. A change waits on a
+    person unless its policy allows it, and an agent its file declares
+    keeps the triggers its file lists
   * `*`, every tool the daemon ships, the file tools, every MCP server
-    the agent can reach, and every tool worker's tools
+    the agent can reach, every tool worker's tools, and its operations on
+    itself
   * a module implementing `Wardrik.Tool`
 
 An agent reaches an MCP server that serves its org, as the server's `org`
