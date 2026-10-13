@@ -56,11 +56,12 @@ wardrik init
 
 `wardrik init` says what it finds, then asks for a model provider, offering those whose key your
 shell already sets, a model, the provider's key, which it does not show as you type, and the first
-agent's name. It writes `agents/assistant.md` with that model and no tools, and a `config.yaml`
-whose `defaults` give that model to each agent `wardrik agent spawn` starts, offers to let your SSH
-keys in for `wardrik attach`, starts the daemon, under your systemd from boot if you like, seals
-the key in the vault, and asks the agent one short question. It writes no file that is there
-already, so it can run again.
+agent's name. It writes `agents/assistant.md`, the [front door](/guides/front-door/), which runs
+that model and turns what you ask for into work that runs, and a `config.yaml` whose `defaults` give
+that model to each agent `wardrik agent spawn` starts and each worker the front door defines. It
+offers to let your SSH keys in for `wardrik attach`, starts the daemon, under your systemd from boot
+if you like, seals the key in the vault, and asks the front door what it can do for you. It writes
+no file that is there already, so it can run again.
 
 Without a terminal, as in a script, flags answer its questions:
 
@@ -72,11 +73,11 @@ wardrik init --provider anthropic --key-from-env ANTHROPIC_API_KEY --yes --no-se
 | --- | --- |
 | `--provider P` | the model provider, which has no default |
 | `--model M` | the model, the provider's newest unless given |
-| `--agent NAME` | the first agent's name, `assistant` unless given |
+| `--agent NAME` | the front door's name, `assistant` unless given |
 | `--key-from-env VAR` | the provider's key, read from `VAR`; without it, the provider's own variable, such as `ANTHROPIC_API_KEY` |
 | `--yes` | yes to each yes or no: the vault's key, your SSH keys, the service |
 | `--no-service` | start the daemon with `wardrik start`, not under systemd |
-| `--no-ask` | ask the agent nothing |
+| `--no-ask` | ask the front door nothing |
 
 A question with no default and no flag fails, naming the flag.
 

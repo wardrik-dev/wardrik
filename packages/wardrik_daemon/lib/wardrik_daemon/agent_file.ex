@@ -295,9 +295,10 @@ defmodule WardrikDaemon.AgentFile do
 
   ## Written by wardrik
 
-  `wardrik init` and `wardrik agent spawn` write a file here: the frontmatter
-  they choose, such as `config.yaml`'s `defaults`, and a short prompt to edit
-  into what the agent is for.
+  `wardrik agent spawn` writes a file here: the frontmatter it chooses, such
+  as `config.yaml`'s `defaults`, and a short prompt to edit into what the
+  agent is for. `wardrik init` writes the front door's, whose body is its
+  instructions and a playbook to edit; see `WardrikDaemon.CLI.Init`.
   """
 
   alias Wardrik.Agent.Spec
@@ -337,11 +338,13 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   @doc """
-  An agent file with `fields` as its frontmatter, in the order given, and a
-  short prompt after it; see `WardrikDefinition.text/1`.
+  An agent file with `fields` as its frontmatter, in the order given, and
+  `prompt` after it, or a short one; see `WardrikDefinition.text/2`.
   """
   @spec text([{String.t(), term()}]) :: String.t()
+  @spec text([{String.t(), term()}], String.t()) :: String.t()
   def text(fields), do: WardrikDefinition.text(fields)
+  def text(fields, prompt), do: WardrikDefinition.text(fields, prompt)
 
   @doc """
   Reads the spec of the agent `path` declares, with `policies` the policies in

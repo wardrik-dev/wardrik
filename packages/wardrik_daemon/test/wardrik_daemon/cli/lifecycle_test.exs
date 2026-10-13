@@ -107,7 +107,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                 0}
 
       assert File.read!(Path.join(dir, "agents/helper.md")) ==
-               "---\norg: #{org}\nmodel: anthropic:claude-sonnet-5\ntools: [\"web_search\"]\n---\n" <>
+               "---\norg: #{org}\nmodel: anthropic:claude-sonnet-5\ntools: [web_search]\n---\n" <>
                  @prompt
 
       assert status(key) == :idle

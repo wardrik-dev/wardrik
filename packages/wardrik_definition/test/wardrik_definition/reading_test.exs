@@ -160,11 +160,36 @@ defmodule WardrikDefinition.ReadingTest do
       ])
 
     assert text =~ "\norg: acme\ndescription: \"Says what it does.\"\nmodel: anthropic:"
+    assert text =~ "\ntools: [web_search]\npolicy: {ask: [linear/*]}\n"
     assert text =~ "\nname: \"yes\"\n---\nYou are a helpful assistant."
     assert {:ok, spec} = read("written", text, context)
     assert spec.id == ~A"acme/yes"
     assert spec.config.tools == [Search]
     assert spec.timeout == 600_000
+  end
+
+  test "text/2 writes the prompt it is given, and quotes what YAML would misread", context do
+    text =
+      WardrikDefinition.text(
+        [
+          {"tools", ["files"]},
+          {"context", ["MEMORY.md", "a: b", "yes"]},
+          {"policy", %{"budget" => %{"tokens" => 1000, "per" => "day"}}}
+        ],
+        "You take requests.\n\n"
+      )
+
+    assert text == ~S"""
+           ---
+           tools: [files]
+           context: [MEMORY.md, "a: b", "yes"]
+           policy: {budget: {per: day, tokens: 1000}}
+           ---
+           You take requests.
+           """
+
+    assert {:ok, spec} = read("written", text, context)
+    assert spec.config.system == "You take requests."
   end
 
   test "a file with no frontmatter is all prompt, and names no tools", context do

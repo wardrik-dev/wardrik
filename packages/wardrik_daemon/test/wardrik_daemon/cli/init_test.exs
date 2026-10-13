@@ -83,13 +83,27 @@ defmodule WardrikDaemon.CLI.InitTest do
     assert output =~ "  keys    ANTHROPIC_API_KEY in this environment"
     assert output =~ "anthropic, whose ANTHROPIC_API_KEY is set here"
     assert output =~ "Keep the ANTHROPIC_API_KEY set here?"
-    assert output =~ "Wrote agents/assistant.md, which runs anthropic:"
+    assert output =~ "Wrote agents/assistant.md, the front door, which runs anthropic:"
+    assert output =~ "it proposes the work, waits for your approval, and runs it."
     assert output =~ "The vault, which keeps ANTHROPIC_API_KEY, has no key of its own yet."
     assert output =~ "Hello, I can help."
-    assert output =~ "  wardrik ask assistant MESSAGE  ask it something, and follow the answer"
+    assert output =~ "Next, try: wardrik ask assistant \"Tell me when"
 
-    assert File.read!(Path.join(config, "agents/assistant.md")) =~
-             ~r/\A---\ndescription: .*\nmodel: anthropic:\S+\nidle_timeout: infinity\n---\nYou are a helpful assistant/
+    assert output =~
+             "  wardrik ask assistant MESSAGE  tell it what you want done, and follow its answer"
+
+    assert output =~ "  wardrik approve                approve it, or wardrik deny to refuse it"
+
+    text = File.read!(Path.join(config, "agents/assistant.md"))
+    assert text =~ ~r/\A---\ndescription: .*\nmodel: anthropic:\S+\n/
+
+    assert text =~
+             "\ntools: [self/*, agents/*, files, web_search]\ncontext: [MEMORY.md]\n" <>
+               "policy: {budget: {per: day, tokens: 2000000}}\nidle_timeout: infinity\n---\n" <>
+               "You are Wardrik, the one place"
+
+    assert text =~ "\n# Playbook\n"
+    assert {:ok, _spec} = WardrikDaemon.AgentFile.read(Path.join(config, "agents/assistant.md"))
 
     commands = log(log)
     assert commands =~ "start key=unset"
@@ -97,7 +111,7 @@ defmodule WardrikDaemon.CLI.InitTest do
     assert commands =~
              "vault put ANTHROPIC_API_KEY --yes key=unset secret=unset\nstdin=sk-from-env"
 
-    assert commands =~ "ask assistant In one short sentence"
+    assert commands =~ "ask assistant In two short sentences"
     assert commands =~ "doctor"
   end
 

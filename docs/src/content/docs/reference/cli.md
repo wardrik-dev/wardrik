@@ -18,7 +18,7 @@ whichever node answers, since each speaks for the whole cluster.
 
 ## wardrik init
 
-Set up a first agent, its model and key, and the daemon to run it.
+Set up the front door agent, its model and key, and the daemon to run it.
 
 ```sh
 wardrik init [--provider P] [--model M] [--agent NAME] [--key-from-env VAR] [--yes] [--no-service] [--no-ask]

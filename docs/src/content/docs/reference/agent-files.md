@@ -303,6 +303,7 @@ sent it covers.
 
 ## Written by wardrik
 
-`wardrik init` and `wardrik agent spawn` write a file here: the frontmatter
-they choose, such as `config.yaml`'s `defaults`, and a short prompt to edit
-into what the agent is for.
+`wardrik agent spawn` writes a file here: the frontmatter it chooses, such
+as `config.yaml`'s `defaults`, and a short prompt to edit into what the
+agent is for. `wardrik init` writes the front door's, whose body is its
+instructions and a playbook to edit; see `WardrikDaemon.CLI.Init`.
