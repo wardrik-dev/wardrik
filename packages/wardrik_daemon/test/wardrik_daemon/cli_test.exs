@@ -204,6 +204,11 @@ defmodule WardrikDaemon.CLITest do
                subject == "tokens/#{token.id}",
                do: e
              )
+
+    refused = ~w(token create x --scope acme/@maria/ --can read --for jon)
+
+    assert {"A token for jon cannot reach acme/@maria/, which is maria's.\n", 1} =
+             command(refused)
   end
 
   test "token create writes a scope as the key prefix it is, and refuses one that is not" do

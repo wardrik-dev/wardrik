@@ -166,6 +166,23 @@ defmodule Wardrik.DeploymentOperationsTest do
       assert {:error, %Error{type: :forbidden}} = Query.run(%ListTokens{}, caller())
     end
 
+    test "for a person reach their own agents, or what names nobody's, never another's" do
+      ana = Principal.new(:user, "ana")
+
+      for scope <- ["test/@ana/", "test/@ana/triage", "test/", ""] do
+        {:ok, grant} = Grant.new(Prefix.parse!(scope), [:read])
+        request = %CreateToken{name: "ok", grant: grant, for: ana}
+        assert {:ok, _change} = Command.plan(request, root())
+      end
+
+      {:ok, grant} = Grant.new(Prefix.parse!("test/@jon/"), [:read])
+
+      assert {:error, %Error{type: :invalid, message: message}} =
+               Command.plan(%CreateToken{name: "theirs", grant: grant, for: ana}, root())
+
+      assert message == "A token for ana cannot reach test/@jon/, which is jon's."
+    end
+
     test "are unsupported where the host makes none" do
       {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read])
 

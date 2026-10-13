@@ -12,7 +12,8 @@ defmodule WardrikDaemon.CLI.Tokens do
   holds, which every agent it defines is held to ahead of its own, or
   `--unlimited`, which holds them to their own policies alone. `--for NAME`
   is the person it is issued to, whom a decision made with it is recorded
-  as made by; without it, the token itself.
+  as made by; without it, the token itself. A scope naming a person's agents
+  names theirs.
   """
 
   alias Wardrik.AgentID.Prefix
@@ -40,7 +41,8 @@ defmodule WardrikDaemon.CLI.Tokens do
           "--can ACTIONS limits it to some of read,message,decide,define,serve.",
           "A token that can define holds the agents it defines to --policy NAME, one of",
           "policies/, or to their own policies alone with --unlimited.",
-          "--for NAME is the person it is issued to, whom its decisions are recorded as made by."
+          "--for NAME is the person it is issued to, whom its decisions are recorded as made by;",
+          "a scope naming a person's agents names theirs."
         ],
         switches: [
           scope: :string,
