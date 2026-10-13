@@ -72,7 +72,7 @@ defmodule Wardrik.AgentLogTest do
     agent = parked_agent(key)
     by = Wardrik.Principal.new(:shell, "jon")
 
-    assert :ok = Agent.decide(agent, %{"call_1" => :approve}, by: by)
+    assert :ok = Agent.decide(agent, %{"call_1" => :approve}, Wardrik.Caller.root(by))
     assert_receive %Entry{event: %{"type" => "wardrik.run.completed"}}
 
     assert Enum.drop(EventLog.types(key), 3) == [
@@ -92,7 +92,8 @@ defmodule Wardrik.AgentLogTest do
     agent = parked_agent(key)
     :ok = EventLog.usurp(key)
 
-    assert {:error, :unrecorded} = Agent.decide(agent, %{"call_1" => :approve})
+    assert {:error, :unrecorded} =
+             Agent.decide(agent, %{"call_1" => :approve}, Wardrik.Caller.root(nil))
 
     Agent.resume(agent, %{"call_1" => :approve})
     Agent.ask(agent, "hello?")

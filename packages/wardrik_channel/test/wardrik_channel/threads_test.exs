@@ -203,7 +203,13 @@ defmodule WardrikChannel.ThreadsTest do
     assert_receive {:delivered, %Outbound{body: {:notice, %Notice{kind: :parked}}}, _channel}
 
     by = Wardrik.Principal.new(:channel, "slack/U1", name: "maria")
-    :ok = Wardrik.Agent.decide(agent, %{"call_1" => {:deny, "Not on Fridays."}}, by: by)
+
+    :ok =
+      Wardrik.Agent.decide(
+        agent,
+        %{"call_1" => {:deny, "Not on Fridays."}},
+        Wardrik.Caller.root(by)
+      )
 
     assert_receive {:delivered,
                     %Outbound{

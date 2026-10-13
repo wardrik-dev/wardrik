@@ -61,6 +61,7 @@ defmodule WardrikDaemon.Config do
           type: slack
           token: ${SLACK_BOT_TOKEN}
           app_token: ${SLACK_APP_TOKEN}
+          admins: ["@jon"]
 
       notify:
         ops:
@@ -186,9 +187,10 @@ defmodule WardrikDaemon.Config do
   in a room: the deployment's own unless it says, or `*` for every org's.
   Someone in a room no agent is offered in may create one there, from
   `defaults`, where `defaults` name a policy, unless the channel's `create`
-  is `false`. A channel's `approvers` may answer what an agent asks in its
-  threads, as the channel names people, and are asked it directly where the
-  channel can reach a person; anyone in the room may where it names nobody.
+  is `false`. A channel's `approvers` are asked what an agent asks in its
+  threads, as the channel names people, directly where the channel can
+  reach a person, and its `admins`, named alike, may change its orgs'
+  agents; see `WardrikDaemon.Grants` for what each may do.
   The rest of a channel's settings are its adapter's, which reads them; see
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.
@@ -849,12 +851,14 @@ defmodule WardrikDaemon.Config do
         {orgs, settings} = Map.pop(settings, "org")
         {creates, settings} = Map.pop(settings, "create", true)
         {approvers, settings} = Map.pop(settings, "approvers", [])
+        {admins, settings} = Map.pop(settings, "admins", [])
         adapter = adapter!(type, path ++ ["type"])
 
         unless is_boolean(creates),
           do: invalid!(path ++ ["create"], "is true or false")
 
         approvers!(approvers, path ++ ["approvers"])
+        approvers!(admins, path ++ ["admins"])
 
         case adapter.config(settings) do
           {:ok, options} ->
@@ -863,7 +867,8 @@ defmodule WardrikDaemon.Config do
                channel: {adapter, options},
                orgs: orgs(orgs, org, path ++ ["org"]),
                creates: creates,
-               approvers: approvers
+               approvers: approvers,
+               admins: admins
              }}
 
           {:error, at, message} ->
@@ -875,7 +880,8 @@ defmodule WardrikDaemon.Config do
       channels: for({name, channel} <- read, do: {name, channel.channel}),
       orgs: for({name, channel} <- read, do: {name, channel.orgs}),
       creates: for({name, channel} <- read, do: {name, channel.creates}),
-      approvers: for({name, channel} <- read, do: {name, channel.approvers})
+      approvers: for({name, channel} <- read, do: {name, channel.approvers}),
+      admins: for({name, channel} <- read, do: {name, channel.admins})
     ]
   end
 

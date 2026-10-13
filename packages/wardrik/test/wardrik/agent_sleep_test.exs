@@ -104,7 +104,7 @@ defmodule Wardrik.AgentSleepTest do
 
     assert %{asleep: true, status: :parked, waiting_on: [_name]} = Fleet.lookup(key)
 
-    :ok = Agent.decide(key, %{"call_1" => :approve})
+    :ok = Agent.decide(key, %{"call_1" => :approve}, Wardrik.Caller.root(nil))
 
     assert_receive {:resumed, %{"call_1" => :approve}}
     assert_receive %Event{payload: %Event.TurnFinished{}}

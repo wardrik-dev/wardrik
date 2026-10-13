@@ -5,6 +5,9 @@ defmodule Wardrik.Tool.Context do
 
     * `:scope` - the `Wardrik.Scope` the call runs under: whose work it is,
       what it may do, and whether the run has read content from outside
+    * `:sender` - the `Wardrik.Principal` who asked for the turn the call is
+      part of, or `nil` where nobody did, as a trigger's; see `Wardrik.Scope`.
+      A tool that acts for that person asks `Wardrik.Grants` what they may do
     * `:call_id` - the id the model gave the call
     * `:idempotency_key` - what names this call to the systems it reaches,
       the same when its turn is replayed; see `Wardrik.Ledger.idempotency_key/2`
@@ -28,10 +31,19 @@ defmodule Wardrik.Tool.Context do
   alias Wardrik.Scope
 
   @enforce_keys [:scope, :call_id, :idempotency_key, :progress]
-  defstruct [:scope, :call_id, :idempotency_key, :progress, credentials: %{}, in_doubt: false]
+  defstruct [
+    :scope,
+    :sender,
+    :call_id,
+    :idempotency_key,
+    :progress,
+    credentials: %{},
+    in_doubt: false
+  ]
 
   @type t() :: %__MODULE__{
           scope: Scope.t(),
+          sender: Wardrik.Principal.t() | nil,
           call_id: String.t(),
           idempotency_key: String.t(),
           credentials: %{Wardrik.Credential.ref() => Wardrik.Credential.t()},
@@ -46,6 +58,7 @@ defmodule Wardrik.Tool.Context do
 
     %__MODULE__{
       scope: scope,
+      sender: scope.sender,
       call_id: id,
       idempotency_key: Ledger.idempotency_key(call),
       credentials: credentials,

@@ -151,6 +151,23 @@ defmodule Wardrik.ScopeTest do
     end
   end
 
+  describe "who asked" do
+    test "is the sender named at the root, kept by the work it spawns, and handed to each tool" do
+      maria = Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
+      scope = Scope.root(Config.new(), ~A"acme/assistant", sender: maria)
+
+      assert Scope.child(scope, name: "researcher").sender == maria
+      assert Wardrik.Test.context(scope).sender == maria
+    end
+
+    test "is nobody for work nobody asked for" do
+      scope = Scope.root(Config.new(), ~A"acme/assistant")
+
+      assert scope.sender == nil
+      assert Wardrik.Test.context(scope).sender == nil
+    end
+  end
+
   describe "deadlines" do
     test "a scope without one has all the time in the world" do
       scope = Scope.root(Config.new(), ~A"acme/assistant")

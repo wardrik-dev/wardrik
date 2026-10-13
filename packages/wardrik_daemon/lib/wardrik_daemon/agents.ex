@@ -190,9 +190,27 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  @doc "Who may answer what an agent asks in the channel `channel`'s threads."
+  @doc "Whom to ask what an agent asks in the channel `channel`'s threads, as it names people."
   @spec approvers(String.t()) :: [String.t()]
   def approvers(channel) when is_binary(channel), do: channel_setting(:approvers, channel, [])
+
+  @doc "Who may change the agents of the channel `channel`'s orgs, as it names people."
+  @spec admins(String.t()) :: [String.t()]
+  def admins(channel) when is_binary(channel), do: channel_setting(:admins, channel, [])
+
+  @doc "The orgs whose agents the channel `channel` offers, or `:all`."
+  @spec orgs(String.t()) :: [String.t()] | :all
+  def orgs(channel) when is_binary(channel), do: channel_setting(:orgs, channel, [])
+
+  @doc """
+  The hooks of the policy `policies/` holds as `name`, as a ceiling over the
+  agents a grant defines, or `:error` where it holds none.
+  """
+  @spec ceiling(String.t()) :: {:ok, [Wardrik.Hook.t()]} | :error
+  def ceiling(name) when is_binary(name) do
+    with {:ok, policy} <- Map.fetch(policies(), name),
+         do: {:ok, WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
+  end
 
   defp creates(channel) do
     if creatable?(channel),

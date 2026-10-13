@@ -43,6 +43,7 @@
       "Wardrik.Fleet.Member",
       "Wardrik.FleetOperation",
       "Wardrik.Grant",
+      "Wardrik.Grants",
       "Wardrik.Hook",
       "Wardrik.Label",
       "Wardrik.Ledger",

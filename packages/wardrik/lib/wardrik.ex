@@ -4,9 +4,10 @@ defmodule Wardrik do
 
     * The store's settings, kept where every read and write finds them; see
       `WardrikStore.configure/1`, and the host's definitions, connections,
-      tokens and triggers modules, kept where every operation finds them; see
-      `Wardrik.Definition.configure/1`, `Wardrik.Connections.configure/1`,
-      `Wardrik.Tokens.configure/1` and `Wardrik.Triggers.configure/1`.
+      tokens, triggers and grants modules, kept where every operation finds
+      them; see `Wardrik.Definition.configure/1`,
+      `Wardrik.Connections.configure/1`, `Wardrik.Tokens.configure/1`,
+      `Wardrik.Triggers.configure/1` and `Wardrik.Grants.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
@@ -20,13 +21,13 @@ defmodule Wardrik do
   load is a task that exits once done and is not started again.
 
   The `:wardrik` application starts it by default, with the store, the fleet
-  and the definitions, connections, tokens and triggers modules as the
-  application's environment holds them:
+  and the definitions, connections, tokens, triggers and grants modules as
+  the application's environment holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
       config :wardrik, definitions: MyApp.Definitions, connections: WardrikOAuth.Connections,
-        triggers: WardrikTrigger
+        triggers: WardrikTrigger, grants: MyApp.Grants
 
   A host that starts it in its own tree instead, after the repo its store is
   kept in, says so, and hands it its options:
@@ -58,6 +59,9 @@ defmodule Wardrik do
       and revoked through. None by default, where no operation makes any.
     * `:triggers` - the `Wardrik.Triggers` that requests from outside are
       delivered to. None by default, where no operation delivers any.
+    * `:grants` - the `Wardrik.Grants` that says what each principal may
+      do. None by default, where nobody known by a principal alone holds
+      anything.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -80,7 +84,8 @@ defmodule Wardrik do
         definitions: nil,
         connections: nil,
         tokens: nil,
-        triggers: nil
+        triggers: nil,
+        grants: nil
       )
 
     children =
@@ -99,6 +104,7 @@ defmodule Wardrik do
           id: {Wardrik.Triggers, :module},
           start: {Wardrik.Triggers, :configure, [opts[:triggers]]}
         },
+        %{id: {Wardrik.Grants, :module}, start: {Wardrik.Grants, :configure, [opts[:grants]]}},
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,

@@ -56,8 +56,7 @@ defmodule WardrikSlack.NoticesTest do
       assert JSON.decode!(approve["value"]) == %{
                "a" => "acme/triage",
                "c" => "call_1",
-               "n" => "deploy",
-               "p" => []
+               "n" => "deploy"
              }
     end
 

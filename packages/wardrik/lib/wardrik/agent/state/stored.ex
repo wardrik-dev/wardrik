@@ -5,7 +5,8 @@ defmodule Wardrik.Agent.State.Stored do
 
   A turn in flight is written as the `Wardrik.Agent.State.Due` turn it comes
   back as, from its `recovery`; see `Wardrik.Agent.State`. A waiting turn
-  keeps its source, and its clock starts again where it is read back. How far
+  keeps its source, and its clock starts again where it is read back. Each
+  keeps who asked for it. How far
   the agent's `Wardrik.Event.Log` has got is written as a sequence number,
   from which the next owner looks for the head.
   """
@@ -37,7 +38,7 @@ defmodule Wardrik.Agent.State.Stored do
           resumer: State.resumer(),
           outcome: State.outcome(),
           labels: [Wardrik.Label.t()],
-          mode: :idle | Due.t() | {:waiting, Turn.t(), Source.t()}
+          mode: :idle | Due.t() | {:waiting, Turn.t(), Source.t(), Wardrik.Principal.t() | nil}
         }
 
   @doc "Writes `state` down as data."
@@ -53,11 +54,14 @@ defmodule Wardrik.Agent.State.Stored do
     })
   end
 
-  defp at_rest(%Waiting{turn: turn, source: source}), do: {:waiting, turn, source}
-  defp at_rest(%Running{recovery: :owed}), do: %Due{recovery: :owed}
+  defp at_rest(%Waiting{turn: turn, source: source, sender: sender}),
+    do: {:waiting, turn, source, sender}
+
+  defp at_rest(%Running{recovery: :owed, scope: scope}),
+    do: %Due{recovery: :owed, sender: scope.sender}
 
   defp at_rest(%Running{recovery: recovery, scope: scope}),
-    do: %Due{recovery: recovery, source: scope.source}
+    do: %Due{recovery: recovery, source: scope.source, sender: scope.sender}
 
   defp at_rest(mode), do: mode
 
@@ -75,18 +79,18 @@ defmodule Wardrik.Agent.State.Stored do
   when it is not parked. Read without loading the agent.
   """
   @spec waiting_on(t()) :: [{Wardrik.Tool.call(), String.t()}]
-  def waiting_on(%{mode: {:waiting, turn, _source}}), do: Turn.waiting(turn)
+  def waiting_on(%{mode: {:waiting, turn, _source, _sender}}), do: Turn.waiting(turn)
   def waiting_on(%{}), do: []
 
   @doc "The ids of the calls an agent written down parked to resolve `ref` for `owner`."
   @spec awaiting(t(), Wardrik.Credential.ref(), Wardrik.Credential.owner()) :: [String.t()]
-  def awaiting(%{mode: {:waiting, turn, _source}}, ref, owner),
+  def awaiting(%{mode: {:waiting, turn, _source, _sender}}, ref, owner),
     do: Turn.awaiting(turn, ref, owner)
 
   def awaiting(%{}, _ref, _owner), do: []
 
-  defp reopen({:waiting, turn, source}),
-    do: %Waiting{turn: turn, source: source, started_at: System.monotonic_time()}
+  defp reopen({:waiting, turn, source, sender}),
+    do: %Waiting{turn: turn, source: source, sender: sender, started_at: System.monotonic_time()}
 
   defp reopen(mode), do: mode
 end

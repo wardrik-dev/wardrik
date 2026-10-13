@@ -184,9 +184,11 @@ authorization link to whoever pressed it, and nobody else. See
 ## Who approves
 
 A channel's `approvers` lists who may press the buttons, each by `@handle`, email address or Slack
-user ID, and anyone else is told only the channel's approvers can answer. Without `approvers`,
-anyone in the channel may. An email address needs the bot token scope `users:read.email`. A
-member's ID is under **Copy member ID** in their Slack profile.
+user ID, with its `admins` and the approvers of [notice targets](/guides/notices/) posting in it,
+and anyone else is told only whoever asked, or the channel's approvers, can answer. Without any
+approvers, anyone in the channel may. Whoever asked for the turn may always answer what it waits
+on. An email address needs the bot token scope `users:read.email`. A member's ID is under **Copy
+member ID** in their Slack profile.
 
 Where a channel names approvers, what a thread's agent waits on is sent to each of them in the
 app's messages with them, under the app in Slack's sidebar, with a link to the thread, and the

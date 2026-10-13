@@ -157,15 +157,23 @@ defmodule WardrikTUI.App.ContextTest do
         resumer: {__MODULE__, :resume_blocked, [self()]}
       )
 
-    assert Agent.decide(pid, %{"first" => :approve}) == {:error, :not_parked}
+    assert Agent.decide(pid, %{"first" => :approve}, Wardrik.Caller.root(nil)) ==
+             {:error, :not_parked}
+
     Event.Bus.subscribe(id)
     Agent.ask(pid, "work")
     assert_receive %Event{payload: %Event.TurnParked{}}, 2000
-    assert Agent.decide(pid, %{"absent" => :approve}) == {:error, :stale_decision}
-    assert Agent.decide(pid, %{}) == {:error, :stale_decision}
-    assert Agent.decide(pid, %{"first" => :approve}) == :ok
+
+    assert Agent.decide(pid, %{"absent" => :approve}, Wardrik.Caller.root(nil)) ==
+             {:error, :stale_decision}
+
+    assert Agent.decide(pid, %{}, Wardrik.Caller.root(nil)) == {:error, :stale_decision}
+    assert Agent.decide(pid, %{"first" => :approve}, Wardrik.Caller.root(nil)) == :ok
     assert_receive {:resumer, running, %{"first" => :approve}}
-    assert Agent.decide(pid, %{"second" => :approve}) == {:error, :not_parked}
+
+    assert Agent.decide(pid, %{"second" => :approve}, Wardrik.Caller.root(nil)) ==
+             {:error, :not_parked}
+
     send(running, :release)
   end
 

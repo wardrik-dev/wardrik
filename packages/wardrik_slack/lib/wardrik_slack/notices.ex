@@ -19,7 +19,7 @@ defmodule WardrikSlack.Notices do
   from the agent as they press it; the channel's history never holds it.
 
   An agent answering in a thread is named as the agent the thread is under.
-  Each button carries the call it answers and who may press it, which
+  Each button carries the agent and the call it answers, which
   `WardrikSlack.Answers` reads back: Slack hands back a button as the bot
   posted it, and nobody else can change a bot's message.
   """
@@ -32,7 +32,7 @@ defmodule WardrikSlack.Notices do
 
   @doc """
   The message that posts `notice`: its text and its blocks. `:buttons`
-  says whether a press can reach the channel, and `:approvers` who may press.
+  says whether a press can reach the channel.
   """
   @spec message(Notice.t(), keyword()) :: %{text: String.t(), blocks: [map()]}
   def message(%Notice{} = notice, opts),
@@ -83,13 +83,7 @@ defmodule WardrikSlack.Notices do
     question = section("`#{call.name}`  #{call.prompt}#{read(call)}\n```#{arguments}```")
 
     if opts[:buttons] do
-      value =
-        JSON.encode!(%{
-          a: to_string(agent),
-          c: call.id,
-          n: call.name,
-          p: Keyword.get(opts, :approvers, [])
-        })
+      value = JSON.encode!(%{a: to_string(agent), c: call.id, n: call.name})
 
       [question] ++
         note_box(call) ++

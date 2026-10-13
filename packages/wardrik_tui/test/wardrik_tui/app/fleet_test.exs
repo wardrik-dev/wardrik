@@ -779,7 +779,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert screen(session) =~ "reconnected to #{agent_id} on #{node()}"
 
     submit(session, "hello again")
-    assert_receive {:turn, [{:user, "hello again"}]}, 2_000
+    assert_receive {:turn, [{:user, "From ssh ops:\nhello again"}]}, 2_000
   end
 
   test "/move NAME without a node says so when there is nowhere to go", %{session: session} do
@@ -1127,7 +1127,7 @@ defmodule WardrikTUI.App.FleetTest do
     assert Fleet.whereis(agent_id, wake: false) == nil
 
     submit(session, "hello again")
-    assert_receive {:turn, [{:user, "hello again"}]}, 2_000
+    assert_receive {:turn, [{:user, "From ssh ops:\nhello again"}]}, 2_000
   end
 
   test "/help opens searchable help, the keys of this pane first, and Enter runs a command",

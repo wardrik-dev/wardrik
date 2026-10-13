@@ -64,6 +64,13 @@ defmodule WardrikSlack do
   @impl WardrikChannel
   def child_spec(opts), do: WardrikSlack.Socket.child_spec(opts)
 
+  @doc """
+  Whether the member `user` is one of `names`, each a `@handle`, an email
+  address or a member id, as `WardrikSlack.Approvers` finds them.
+  """
+  @impl WardrikChannel
+  def among?(user, names, opts), do: WardrikSlack.Approvers.among?(user, names, opts)
+
   @impl WardrikChannel
   def deliver(%Outbound{to: :approvers, approvers: [_ | _], thread: thread} = outbound, opts)
       when is_binary(thread) do
@@ -87,10 +94,7 @@ defmodule WardrikSlack do
 
   def deliver(%Outbound{body: {:notice, notice}} = outbound, opts) do
     notice
-    |> WardrikSlack.Notices.message(
-      buttons: opts[:app_token] != nil,
-      approvers: outbound.approvers
-    )
+    |> WardrikSlack.Notices.message(buttons: opts[:app_token] != nil)
     |> posted(outbound, opts)
   end
 
@@ -106,12 +110,9 @@ defmodule WardrikSlack do
     false
   end
 
-  defp asked?({approver, {:ok, member}}, notice, from, outbound, opts) do
+  defp asked?({approver, {:ok, member}}, notice, from, _outbound, opts) do
     %{text: text, blocks: [heading | rest]} =
-      WardrikSlack.Notices.message(notice,
-        buttons: opts[:app_token] != nil,
-        approvers: outbound.approvers
-      )
+      WardrikSlack.Notices.message(notice, buttons: opts[:app_token] != nil)
 
     message = %{text: text, blocks: [heading, from | rest], channel: member}
 

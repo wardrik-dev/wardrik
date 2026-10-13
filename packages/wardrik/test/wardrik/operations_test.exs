@@ -162,7 +162,7 @@ defmodule Wardrik.OperationsTest do
     id
   end
 
-  defp parked_agent do
+  defp parked_agent(sender \\ nil) do
     {id, agent} =
       Fleet.start_agent(
         runner: {AgentRunners, :parking, [self(), "call_1"]},
@@ -170,7 +170,7 @@ defmodule Wardrik.OperationsTest do
       )
 
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
-    Agent.ask(agent, "ship it")
+    Agent.ask(agent, "ship it", sender: sender)
     assert_receive %Event{payload: %Event.TurnParked{}}
     id
   end
@@ -387,6 +387,17 @@ defmodule Wardrik.OperationsTest do
 
       {:ok, nobody} = decide(Fleet.id("nobody"), [%{"id" => "call_1", "decision" => "approve"}])
       assert {:error, %Error{type: :not_found}} = Command.run(nobody, caller())
+    end
+
+    test "takes a decision from whoever asked for the turn, and refuses anyone else without a grant to" do
+      maria = Principal.new(:channel, "slack/U1", name: "Maria")
+      id = parked_agent(maria)
+      {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:read, :message])
+      {:ok, decided} = decide(id, [%{"id" => "call_1", "decision" => "approve"}])
+
+      assert {:error, %Error{type: :forbidden}} = Command.run(decided, caller("test/", [:read]))
+      assert {:ok, _decided} = Command.run(decided, Caller.new(maria, grant))
+      assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: ^maria}}
     end
 
     test "says so where the agent cannot record the decision" do

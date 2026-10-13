@@ -9,8 +9,8 @@ defmodule WardrikChannel.Outbound do
     * `:body` - `{:notice, notice}`, a `WardrikNotify.Notice`, or
       `{:reply, text, answering}`, what is said in a thread, such as what
       an agent answered, and the ids of the messages it answers, if any
-    * `:approvers` - who may answer what it asks, as the channel names
-      people; anyone in the room where it names nobody
+    * `:approvers` - whom it asks, as the channel names people; who may
+      answer is what the host's `Wardrik.Grants` says
     * `:to` - `:room`, to post it in the room, or `:approvers`, to ask each
       of them directly what it asks, and say in the thread who it waits on;
       a channel that cannot reach a person directly posts it in the room

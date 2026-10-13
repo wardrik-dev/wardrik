@@ -41,6 +41,16 @@ defmodule WardrikChannel do
       medium, started by `WardrikChannel.Supervisor` with the channel's
       options, its `:name`, and its `WardrikChannel.Context`.
     * `deliver/2` posts a `WardrikChannel.Outbound` in a room.
+    * `among?/3` says whether someone it knows is one of those
+      `config.yaml` names, as `approvers` name them, in its own terms.
+
+  ## People
+
+  Someone writing in a room, or pressing a button, is the
+  `Wardrik.Principal` `principal/3` makes, and may do what the host's
+  `Wardrik.Grants` says that principal may, such as decide what an agent
+  asks. A host that grants by what `config.yaml` names people, as a
+  channel's approvers, asks `among?/4`.
 
   ## Rooms
 
@@ -89,6 +99,13 @@ defmodule WardrikChannel do
   @doc "Posts `outbound` in its room, as the channel whose options these are."
   @callback deliver(Outbound.t(), keyword()) :: {:ok, term()} | {:error, term()}
 
+  @doc """
+  Whether the person the channel knows as `user` is one of `names`, as
+  `config.yaml` names people in it, such as by handle or email address, as
+  the channel whose options these are.
+  """
+  @callback among?(user :: String.t(), names :: [String.t()], keyword()) :: boolean()
+
   @doc "Every adapter the loaded applications name, by its type."
   @spec adapters() :: %{String.t() => module()}
   def adapters do
@@ -118,6 +135,34 @@ defmodule WardrikChannel do
   @spec principal(atom() | String.t(), String.t(), String.t() | nil) :: Wardrik.Principal.t()
   def principal(channel, user, name) when is_binary(user),
     do: Wardrik.Principal.new(:channel, "#{channel}/#{user}", name: name)
+
+  @doc """
+  The channel and the user id of someone `principal/3` made a principal of.
+
+      WardrikChannel.person(WardrikChannel.principal(:slack, "U024BE7LH", "jon"))
+      #=> {"slack", "U024BE7LH"}
+  """
+  @spec person(Wardrik.Principal.t()) :: {String.t(), String.t()}
+  def person(principal) do
+    [channel, user] = String.split(Wardrik.Principal.id(principal), "/", parts: 2)
+    {channel, user}
+  end
+
+  @doc """
+  Whether the person the channel `channel` knows as `user` is one of
+  `names`, as `config.yaml` names people in it, as its adapter's `among?/3`
+  says: never where the channel does not run on this node, and never for
+  `[]`.
+  """
+  @spec among?(String.t(), String.t(), [String.t()]) :: boolean()
+  def among?(_channel, _user, []), do: false
+
+  def among?(channel, user, names) when is_binary(user) and is_list(names) do
+    case channel(channel) do
+      {:ok, {adapter, options, _context}} -> adapter.among?(user, names, options)
+      :error -> false
+    end
+  end
 
   @doc """
   A message was posted in a room of the context's channel: asks the agent of

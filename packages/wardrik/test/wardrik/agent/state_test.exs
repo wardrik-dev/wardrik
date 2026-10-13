@@ -116,7 +116,7 @@ defmodule Wardrik.Agent.StateTest do
       {once, _effects} = State.queue(state(), message)
 
       assert {^once, []} = State.queue(once, message)
-      assert {:run, [^message], _state} = State.take(once)
+      assert {:run, _scope, [^message], _state} = State.take(once)
     end
 
     test "a message arriving mid-turn asks that turn to wrap up" do
@@ -131,7 +131,7 @@ defmodule Wardrik.Agent.StateTest do
       {running, _} = State.queue(running(), Message.new("hello"))
       {waiting, _} = State.queue(waiting(), Message.new("hello"))
 
-      assert {:run, [%Message{text: "hello"}], drained} = State.take(idle)
+      assert {:run, _scope, [%Message{text: "hello"}], drained} = State.take(idle)
       assert View.status(drained).pending == 0
       assert State.take(running) == :none
       assert State.take(waiting) == :none
@@ -139,6 +139,78 @@ defmodule Wardrik.Agent.StateTest do
 
     test "nothing queued is nothing to run" do
       assert State.take(state()) == :none
+    end
+  end
+
+  describe "one sender a turn" do
+    defp maria, do: Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
+    defp jon, do: Wardrik.Principal.new(:channel, "slack/U2", name: "jon")
+
+    defp from(state, sender, text) do
+      {state, _effects} = State.queue(state, Message.new(text, nil, sender: sender))
+      state
+    end
+
+    defp asked_by(sender) do
+      scope =
+        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: sender)
+
+      State.started(state(), task(), scope, Context.new(), System.monotonic_time())
+    end
+
+    defp decider(principal, can) do
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), can)
+      Wardrik.Caller.new(principal, grant)
+    end
+
+    test "a turn takes the oldest sender's messages, up to the next sender's" do
+      state = state() |> from(maria(), "a") |> from(maria(), "b") |> from(jon(), "c")
+      state = from(state, maria(), "d")
+
+      assert {:run, scope, [%Message{text: "a"}, %Message{text: "b"}], next} = State.take(state)
+      assert Wardrik.Principal.same?(scope.sender, maria())
+      assert [%Message{text: "c"}, %Message{text: "d"}] = Enum.reverse(next.pending)
+
+      assert {:run, scope, [%Message{text: "c"}], _next} = State.take(next)
+      assert Wardrik.Principal.same?(scope.sender, jon())
+    end
+
+    test "messages nobody sent are answered together, as nobody's" do
+      state = state() |> from(nil, "a") |> from(nil, "b")
+
+      assert {:run, %Scope{sender: nil}, [_a, _b], _next} = State.take(state)
+    end
+
+    test "a message mid-turn joins it only from the turn's sender" do
+      {_state, own} = State.queue(asked_by(maria()), Message.new("more", nil, sender: maria()))
+      {_state, other} = State.queue(asked_by(maria()), Message.new("me too", nil, sender: jon()))
+
+      assert [{:emit, _source, %Event.MessageQueued{}}, {:ask_to_stop, _pid}] = own
+      assert [{:emit, _source, %Event.MessageQueued{}}] = other
+    end
+
+    test "a parked turn waits as its sender's, and resumes as theirs" do
+      {waiting, _effects} = State.parked(asked_by(maria()), parked_turn())
+
+      assert %Waiting{sender: sender} = waiting.mode
+      assert Wardrik.Principal.same?(sender, maria())
+      assert {:resume, %Scope{sender: ^sender}, _turn, _at} = State.resume(waiting)
+    end
+
+    test "the asker, or a grant to decide, decides the calls a turn waits on" do
+      {waiting, _effects} = State.parked(asked_by(maria()), parked_turn())
+
+      assert State.decides?(waiting, decider(maria(), [:read]))
+      assert State.decides?(waiting, decider(jon(), [:decide]))
+      refute State.decides?(waiting, decider(jon(), [:read, :message]))
+      refute State.decides?(waiting, decider(nil, [:read]))
+    end
+
+    test "a turn nobody asked for is decided only by a grant to" do
+      {waiting, _effects} = State.parked(running(), parked_turn())
+
+      refute State.decides?(waiting, decider(nil, [:read]))
+      assert State.decides?(waiting, Wardrik.Caller.root(nil))
     end
   end
 
@@ -285,11 +357,11 @@ defmodule Wardrik.Agent.StateTest do
     test "a turn leaves the labels of what it read on the history, and on every turn after" do
       {state, _effects} = State.settled(running(), [Context.assistant("read it")], ["outside"])
       assert state.labels == ["outside"]
-      assert State.turn_scope(state).labels == ["outside"]
+      assert State.turn_scope(state, nil).labels == ["outside"]
 
       {state, _effects} = State.settled(running(state), [Context.assistant("still")], ["books"])
       assert state.labels == ["books", "outside"]
-      assert State.turn_scope(state()).labels == []
+      assert State.turn_scope(state(), nil).labels == []
     end
 
     test "parking announces the calls a person has to answer" do
@@ -343,7 +415,7 @@ defmodule Wardrik.Agent.StateTest do
 
     defp asking(state \\ state(), id \\ "ask-1") do
       {state, _effects} = State.queue(state, Message.new("Which?", id, reply_to: [@asker]))
-      {:run, _messages, state} = State.take(state)
+      {:run, _scope, _messages, state} = State.take(state)
       running(state)
     end
 
@@ -374,7 +446,7 @@ defmodule Wardrik.Agent.StateTest do
       {state, _effects} = State.queue(state(), Message.new("First?", "a", reply_to: [@asker]))
       {state, _effects} = State.queue(state, Message.new("Aside."))
       {state, _effects} = State.queue(state, Message.new("Second?", "b", reply_to: [@asker]))
-      {:run, _messages, state} = State.take(state)
+      {:run, _scope, _messages, state} = State.take(state)
 
       {_state, effects} = State.settled(running(state), [Context.assistant("Both.")], [])
 
@@ -431,7 +503,7 @@ defmodule Wardrik.Agent.StateTest do
       state = asking() |> Stored.dump() |> Stored.load()
       assert state.answering == [{@asker, "ask-1"}]
 
-      {:run, [], state} = State.take(state)
+      {:run, _scope, [], state} = State.take(state)
       {_state, effects} = State.settled(running(state), [Context.assistant("Done.")], [])
       assert [{@asker, %Message{id: "answer:ask-1"}}] = sent(effects)
     end
@@ -470,7 +542,7 @@ defmodule Wardrik.Agent.StateTest do
 
       assert state.mode == %Due{recovery: :owed}
       assert %{state: :running} = View.status(state)
-      assert {:run, [], %State{mode: :idle}} = State.take(state)
+      assert {:run, _scope, [], %State{mode: :idle}} = State.take(state)
     end
 
     test "an agent still owed a turn stays owed" do
@@ -490,6 +562,20 @@ defmodule Wardrik.Agent.StateTest do
 
       assert %State{mode: %Waiting{}} = state
       assert [{%{id: "call_1", name: "deploy"}, "Really?"}] = State.waiting_on(state)
+    end
+
+    test "a turn keeps who asked for it, in flight, owed or parked" do
+      maria = Wardrik.Principal.new(:channel, "slack/U1", name: "Maria")
+
+      scope =
+        Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/@jon/assistant"), sender: maria)
+
+      running = State.started(state(), task(), scope, Context.new(), System.monotonic_time())
+      {waiting, _effects} = State.parked(running, parked_turn())
+
+      assert %State{mode: %Due{recovery: :owed, sender: ^maria}} = owed = reload(running)
+      assert {:run, %Scope{sender: ^maria}, [], _state} = State.take(owed)
+      assert %State{mode: %Waiting{sender: ^maria}} = reload(waiting)
     end
 
     test "a parked turn keeps the source that parked" do
