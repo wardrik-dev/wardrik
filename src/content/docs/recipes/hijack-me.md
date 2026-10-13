@@ -2,7 +2,7 @@
 title: Let anyone try to hijack it
 description: An agent that triages the issues anyone files on a public repository, with write access to them, which no issue can talk into doing anything you have not seen and approved.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 An agent that triages a public repository's issues: it labels each new one and comments on it. It
