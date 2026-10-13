@@ -271,7 +271,8 @@ section names, as `WardrikNotify` describes them:
 
 `on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
 answered. A target tells the agents of the org its `org` in `config.yaml`
-names, and a file routing to one for another org does not read.
+names, and a file routing to one for another org does not read. A
+definition sent over HTTP takes `notify` too, and means the same by it.
 
 The agent resolves the credentials its tools name from `WardrikVault`: its
 user's, its org's or the deployment's, and an account its user, or its
@@ -293,10 +294,10 @@ as it does a file's:
 
 `wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
 the system prompt, as a file's body is, and the other keys mean what they
-mean in a file. The ID gives the agent's `name`, `org` and `user`. A
-definition has no `notify`. Its `triggers` lists the agent's triggers as
-a file's does, and `put_trigger/3` and `delete_trigger/2` change one of
-them in a definition kept, for the triggers routes. Its `tools` and
+mean in a file. The ID gives the agent's `name`, `org` and `user`. Its
+`triggers` lists the agent's triggers as a file's does, and
+`put_trigger/3` and `delete_trigger/2` change one of them in a definition
+kept, for the triggers routes. Its `tools` and
 `policy` name what the daemon ships or configures, and never a module,
 and its `workspace` shares only the trees the scope of the token that
 sent it covers.

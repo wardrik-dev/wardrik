@@ -6,9 +6,9 @@ sidebar:
 ---
 
 An agent nobody is watching can tell someone when it parks on a question, fails, or answers.
-`config.yaml` names the targets under `notify`, and each agent file routes its notices to them. A
-target is a room in one of [`channels`](/channels/), here one Slack app called `slack`, or a
-webhook:
+`config.yaml` names the targets under `notify`, and each agent's definition routes its notices to
+them. A target is a room in one of [`channels`](/channels/), here one Slack app called `slack`, or
+a webhook:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -38,6 +38,11 @@ notify: {to: [ops], on: [parked, failed, finished]}
 `on` is what is sent: `parked`, `failed`, and `finished` for what a turn answered. It is
 `[parked, failed]` unless set. A notice is sent once, from the node holding the agent.
 
+A definition [sent over HTTP](/guides/http-api/#define-an-agent) takes `notify` in the same forms,
+so an agent defined there, or by another agent, is heard too: `"notify": {"to": ["ops"], "on":
+["finished"]}` in the body of `PUT /v1/agents/{key}`. It holds while the agent sleeps and after a
+restart, and goes when the agent is forgotten.
+
 **Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
 turn had read content from outside first, and its arguments. In Slack, each call has
 [Approve and Deny](/channels/slack/#what-a-notice-says-in-slack) buttons. **Failed:** why the turn
@@ -66,8 +71,9 @@ notify:
     room: "#globex-ops"
 ```
 
-An agent file that routes to another org's target does not read, so one org's calls never reach
-another's channel, where its people could approve them.
+An agent file that routes to another org's target does not read, and a definition sent over HTTP
+that does is refused, so one org's calls never reach another's channel, where its people could
+approve them.
 
 ## Webhooks
 
