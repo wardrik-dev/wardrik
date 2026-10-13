@@ -336,20 +336,32 @@ defmodule WardrikDaemon.AgentFileTest do
     test "routes the agent's notices to the targets it names", %{tmp_dir: dir} = context do
       path = Path.join(dir, "triage.md")
 
-      File.write!(path, "---\nnotify: ops\n---\n")
+      route = fn text ->
+        File.write!(path, text)
+        {:ok, definition} = AgentFile.parse(path)
+        AgentFile.route(definition)
+      end
 
-      assert {:ok, _spec, %WardrikNotify.Route{targets: [:ops], on: [:parked, :failed]}} =
-               AgentFile.load(path)
+      assert {:ok, %WardrikNotify.Route{targets: [:ops], on: [:parked, :failed]}} =
+               route.("---\nnotify: ops\n---\n")
 
-      File.write!(path, "---\nnotify: {to: [ops, audit], on: [finished]}\n---\n")
+      assert {:ok, %WardrikNotify.Route{targets: [:ops, :audit], on: [:finished]}} =
+               route.("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n")
 
-      assert {:ok, _spec, %WardrikNotify.Route{targets: [:ops, :audit], on: [:finished]}} =
-               AgentFile.load(path)
-
-      File.write!(path, "---\n---\n")
-      assert {:ok, _spec, nil} = AgentFile.load(path)
+      assert :none = route.("---\n---\n")
 
       assert {:ok, %Spec{}} = read("---\nnotify: ops\n---\n", context)
+    end
+
+    test "routes an agent a definition over HTTP defines as a file does" do
+      id = Wardrik.AgentID.parse!("acme/triage")
+      {:ok, definition} = AgentFile.define(id, %{"notify" => ["ops", "audit"]}, nil)
+
+      assert {:ok, %WardrikNotify.Route{targets: [:ops, :audit], on: [:parked, :failed]}} =
+               AgentFile.route(definition)
+
+      assert {:error, "notify names globex, which config.yaml's notify keeps for another org"} =
+               AgentFile.definition(id, %{"notify" => "globex"})
     end
 
     test "refuses a target config.yaml does not name, and a kind that is not one", context do
@@ -391,11 +403,17 @@ defmodule WardrikDaemon.AgentFileTest do
                Enum.sort(properties)
 
       assert Enum.sort(expected(read("---\n\"?\": 1\n---\n", context))) ==
-               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user notify))
+               Enum.sort((properties -- ["instructions"]) ++ ~w(name org user))
     end
 
     test "takes its example, which the reader reads" do
       in_channels(slack: ["acme"])
+
+      Application.put_env(:wardrik_daemon, WardrikNotify,
+        targets: [ops: {WardrikNotify.Webhook, []}]
+      )
+
+      on_exit(fn -> Application.delete_env(:wardrik_daemon, WardrikNotify) end)
       schema = schema()
       root = JSV.build!(schema, resolver: WardrikProtocol.Resolver)
 
@@ -527,7 +545,7 @@ defmodule WardrikDaemon.AgentFileTest do
     end
 
     test "takes who the agent is from its key" do
-      for key <- ~w(name org user notify) do
+      for key <- ~w(name org user) do
         assert {:error, message} =
                  AgentFile.definition(Wardrik.AgentID.parse!("acme/triage"), %{key => "x"})
 

@@ -159,6 +159,35 @@ defmodule WardrikDaemon.AgentsTest do
     assert :sys.get_state(WardrikNotify.Dispatcher).routes == Agents.routes()
   end
 
+  test "routes an agent the HTTP API defines as its definition says, until it is forgotten",
+       %{org: org} = context do
+    WardrikDaemon.Test.Settings.keep()
+    targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
+    Application.put_env(:wardrik_daemon, WardrikNotify, targets: targets)
+    notify = [routes: {Agents, :routes, []}, targets: targets]
+    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({WardrikNotify.Supervisor, notify})
+    beta = AgentID.parse!("#{org}/beta")
+    routes = fn -> :sys.get_state(WardrikNotify.Dispatcher).routes end
+
+    assert {:ok, _spec} = Agents.put(beta, %{"notify" => "audit"}, grant(org))
+    assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
+
+    stop_supervised!(WardrikNotify.Supervisor)
+    start_supervised!({WardrikNotify.Supervisor, notify})
+    assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
+
+    assert {:ok, _spec} = Agents.put(beta, %{}, grant(org))
+    refute is_map_key(routes.(), beta)
+
+    notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
+    assert {:ok, _spec} = Agents.put(beta, notify_on, grant(org))
+    assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
+
+    assert :ok = Agents.delete(beta)
+    refute is_map_key(routes.(), beta)
+  end
+
   test "reads a definition sent to the HTTP API under the policies it read, and keeps it",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")

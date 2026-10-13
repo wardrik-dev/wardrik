@@ -4,7 +4,7 @@ defmodule WardrikNotify do
   parked on a question, one that failed, and, when asked for, what a turn
   answered.
 
-  `config.yaml` names targets, and an agent file routes its agent to them. A
+  `config.yaml` names targets, and an agent's definition routes it to them. A
   target in a chat medium is a room in one of `config.yaml`'s `channels`:
 
       notify:

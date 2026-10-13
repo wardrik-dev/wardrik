@@ -187,7 +187,7 @@ export interface AgentSummary {
   outcome?: "ok" | "failed" | "interrupted";
 }
 /**
- * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user and notify besides.
+ * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.
  */
 export interface AgentDefinition {
   /**
@@ -292,6 +292,22 @@ export interface AgentDefinition {
     jitter?: number;
     [k: string]: unknown;
   }[];
+  /**
+   * Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves.
+   */
+  notify?:
+    | string
+    | string[]
+    | {
+        /**
+         * The targets, as config.yaml's notify names them.
+         */
+        to: string | string[];
+        /**
+         * What is sent: parked and failed turns unless set, and finished for what a turn answered.
+         */
+        on?: ("parked" | "failed" | "finished")[];
+      };
   /**
    * The chat channels, as config.yaml names them, it may be chosen to answer in.
    */

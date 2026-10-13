@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
-  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org, user and notify besides.",
+  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -214,6 +214,55 @@
       },
       "description": "The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}."
     },
+    "notify": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "to"
+          ],
+          "properties": {
+            "to": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "The targets, as config.yaml's notify names them."
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "parked",
+                  "failed",
+                  "finished"
+                ]
+              },
+              "description": "What is sent: parked and failed turns unless set, and finished for what a turn answered."
+            }
+          }
+        }
+      ],
+      "description": "Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves."
+    },
     "channels": {
       "type": "array",
       "items": {
@@ -265,6 +314,16 @@
           "prompt": "Check the incident queue."
         }
       ],
+      "notify": {
+        "to": [
+          "ops"
+        ],
+        "on": [
+          "parked",
+          "failed",
+          "finished"
+        ]
+      },
       "channels": [
         "slack"
       ]

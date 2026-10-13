@@ -9,8 +9,14 @@ defmodule WardrikDaemon.Agents do
   and puts each agent's `Wardrik.Agent.Spec` to the fleet with `Wardrik.Fleet.put/1`:
   an agent that is not running is started, and one that is takes what its file
   says now. An agent keeps its conversation either way. Each file's
-  `WardrikDaemon.Definition` is kept, and its `notify` becomes the agent's
-  route with `WardrikNotify.put_routes/1`.
+  `WardrikDaemon.Definition` is kept.
+
+  A kept definition's `notify`, whether a file or the HTTP API wrote it, is
+  its agent's route: `routes/0` reads them from the store, and every node
+  connected puts them with `WardrikNotify.put_routes/1` as a reading ends
+  and as the API keeps or forgets a definition. So an agent is routed while
+  it sleeps and as it wakes, on whichever node holds it, and after a
+  restart, until its definition is forgotten.
 
   A definition's `triggers` are its agent's triggers, so each is brought to
   what a definition lists as it is kept, with `WardrikTrigger.sync/2`, and
@@ -420,7 +426,7 @@ defmodule WardrikDaemon.Agents do
   def build(%Definition{} = definition, key), do: build(definition, key, policies())
 
   defp build(definition, key, policies) do
-    with {:ok, spec, _route} <- AgentFile.spec(definition, key, policies),
+    with {:ok, spec} <- AgentFile.spec(definition, key, policies),
          do: {:ok, held(spec, definition.source)}
   end
 
@@ -442,8 +448,8 @@ defmodule WardrikDaemon.Agents do
 
   @doc """
   The spec a definition sent to the HTTP API writes for the agent `key`, sent
-  by a token holding `grant`, which it keeps; or a conflict where an agent
-  file declares it.
+  by a token holding `grant`, which it keeps, routing its notices as it says;
+  or a conflict where an agent file declares it.
   """
   @impl Wardrik.Definition
   def put(key, fields, grant) do
@@ -453,8 +459,9 @@ defmodule WardrikDaemon.Agents do
 
       {:api, policies} ->
         with {:ok, definition} <- AgentFile.define(key, fields, grant),
-             {:ok, spec, _route} <- AgentFile.spec(definition, key, policies) do
+             {:ok, spec} <- AgentFile.spec(definition, key, policies) do
           :ok = keep(definition)
+          :ok = routed()
           {:ok, spec}
         end
     end
@@ -528,13 +535,14 @@ defmodule WardrikDaemon.Agents do
   end
 
   @doc """
-  Deletes the definition kept for the agent `key`, and the triggers it
-  lists, as `wardrik agent rm` does once it has forgotten the agent.
+  Deletes the definition kept for the agent `key`, the triggers it lists
+  and its route, as `wardrik agent rm` does once it has forgotten the agent.
   """
   @spec drop(AgentID.t()) :: :ok
   def drop(key) do
     :ok = WardrikTrigger.sync(key, [])
-    Definition.delete(key)
+    :ok = Definition.delete(key)
+    routed()
   end
 
   # A trigger starts only once the definition listing it is kept.
@@ -551,17 +559,30 @@ defmodule WardrikDaemon.Agents do
   def problems, do: loaded().problems
 
   @doc """
-  The route of each agent a file routes, as the last read of the files put
-  them with `WardrikNotify.put_routes/1`, and none before the first. Read from
-  a table rather than asked of the process, so `WardrikNotify` can ask while a
-  read is putting them to it.
+  The route of each agent a kept definition routes, a file's or the HTTP
+  API's, as `WardrikDaemon.AgentFile.route/1` reads it. Read from the store
+  rather than asked of the process, so `WardrikNotify` can ask as it starts,
+  while a reading is putting them to it. A definition whose `notify` no
+  longer reads, as one naming a target `config.yaml` no longer has, routes
+  nothing.
   """
   @spec routes() :: %{AgentID.t() => WardrikNotify.Route.t()}
   def routes do
-    case :ets.lookup(@table, :routes) do
-      [{:routes, routes}] -> routes
-      [] -> %{}
-    end
+    for %Definition{id: id} = definition <- Definition.all(),
+        {:ok, route} <- [AgentFile.route(definition)],
+        into: %{},
+        do: {id, route}
+  end
+
+  @doc "Puts `routes/0` to `WardrikNotify` on this node."
+  @spec route() :: :ok
+  def route, do: WardrikNotify.put_routes(routes())
+
+  # Every node reads the routes from the store, so whichever holds an agent
+  # sends its notices.
+  defp routed do
+    :ok = route()
+    :erpc.multicast(Node.list(), __MODULE__, :route, [])
   end
 
   defp declared(key, {path, node}),
@@ -629,16 +650,11 @@ defmodule WardrikDaemon.Agents do
   @doc """
   What the policy and agent files under `dir` read into, without starting
   anything: each policy file's policy, and each agent file's definition with
-  the spec it writes and where its notices go, or the message saying why it
-  does not read.
+  the spec it writes, or the message saying why it does not read.
   """
   @spec read_files(Path.t()) ::
           {[{Path.t(), {:ok, WardrikPolicy.t()} | {:error, String.t()}}],
-           [
-             {Path.t(),
-              {:ok, Definition.t(), Spec.t(), WardrikNotify.Route.t() | nil}
-              | {:error, String.t()}}
-           ]}
+           [{Path.t(), {:ok, Definition.t(), Spec.t()} | {:error, String.t()}}]}
   def read_files(dir) do
     policy_files = dir |> read("policies/*.{yaml,yml}", &PolicyFile.read/1) |> once_each()
     policies = for {_path, {:ok, policy}} <- policy_files, into: %{}, do: {policy.name, policy}
@@ -648,7 +664,7 @@ defmodule WardrikDaemon.Agents do
   defp agent(path, policies) do
     with {:ok, definition} <- AgentFile.parse(path) do
       case AgentFile.spec(definition, definition.id, policies) do
-        {:ok, spec, route} -> {:ok, definition, spec, route}
+        {:ok, spec} -> {:ok, definition, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end
     end
@@ -656,20 +672,15 @@ defmodule WardrikDaemon.Agents do
 
   defp load(%{dir: dir} = state) do
     {policy_files, read} = read_files(dir)
-    loaded = for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
-    agent_files = for {path, result} <- loaded, do: {path, spec_only(result)}
+
+    agent_files =
+      for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
+
     prune(state, agent_files)
     state = %{state | files: policy_files ++ agent_files}
     problems = rebuild(state, MapSet.new(for {_path, {:ok, spec}} <- agent_files, do: spec.id))
     forget_removed()
-
-    routes =
-      for {_path, {:ok, spec, %WardrikNotify.Route{} = route}} <- loaded,
-          into: %{},
-          do: {spec.id, route}
-
-    true = :ets.insert(@table, {:routes, routes})
-    :ok = WardrikNotify.put_routes(routes)
+    :ok = routed()
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
@@ -773,9 +784,6 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  defp spec_only({:ok, spec, _route}), do: {:ok, spec}
-  defp spec_only(other), do: other
-
   defp read(dir, pattern, read) do
     dir
     |> Path.join(pattern)
@@ -794,20 +802,20 @@ defmodule WardrikDaemon.Agents do
   # The definition is kept before the agent starts, so whatever finds the
   # agent finds what it is. An agent asleep is left asleep, and takes the
   # definition as it wakes.
-  defp put({:ok, definition, spec, route}) do
+  defp put({:ok, definition, spec}) do
     :ok = keep(definition)
 
     case Fleet.lookup(spec.id) do
-      %{asleep: true} -> {:ok, spec, route}
-      _awake_or_new -> started(spec, route)
+      %{asleep: true} -> {:ok, spec}
+      _awake_or_new -> started(spec)
     end
   end
 
   defp put({:error, _message} = error), do: error
 
-  defp started(spec, route) do
+  defp started(spec) do
     case Fleet.put(spec) do
-      {:ok, _pid} -> {:ok, spec, route}
+      {:ok, _pid} -> {:ok, spec}
       {:error, reason} -> {:error, "#{spec.id} did not start: #{inspect(reason)}"}
     end
   end

@@ -263,7 +263,8 @@ defmodule WardrikDaemon.AgentFile do
 
   `on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
   answered. A target tells the agents of the org its `org` in `config.yaml`
-  names, and a file routing to one for another org does not read.
+  names, and a file routing to one for another org does not read. A
+  definition sent over HTTP takes `notify` too, and means the same by it.
 
   The agent resolves the credentials its tools name from `WardrikVault`: its
   user's, its org's or the deployment's, and an account its user, or its
@@ -285,10 +286,10 @@ defmodule WardrikDaemon.AgentFile do
 
   `wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
   the system prompt, as a file's body is, and the other keys mean what they
-  mean in a file. The ID gives the agent's `name`, `org` and `user`. A
-  definition has no `notify`. Its `triggers` lists the agent's triggers as
-  a file's does, and `put_trigger/3` and `delete_trigger/2` change one of
-  them in a definition kept, for the triggers routes. Its `tools` and
+  mean in a file. The ID gives the agent's `name`, `org` and `user`. Its
+  `triggers` lists the agent's triggers as a file's does, and
+  `put_trigger/3` and `delete_trigger/2` change one of them in a definition
+  kept, for the triggers routes. Its `tools` and
   `policy` name what the daemon ships or configures, and never a module,
   and its `workspace` shares only the trees the scope of the token that
   sent it covers.
@@ -350,19 +351,9 @@ defmodule WardrikDaemon.AgentFile do
   @spec read(Path.t(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t()} | {:error, String.t()}
   def read(path, policies \\ %{}) do
-    with {:ok, spec, _route} <- load(path, policies), do: {:ok, spec}
-  end
-
-  @doc """
-  `read/2`, with where the agent's notices go: a `WardrikNotify.Route`, or `nil`
-  for a file with no `notify`.
-  """
-  @spec load(Path.t(), %{String.t() => WardrikPolicy.t()}) ::
-          {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
-  def load(path, policies \\ %{}) do
     with {:ok, definition} <- parse(path) do
       case spec(definition, definition.id, policies) do
-        {:ok, _spec, _route} = ok -> ok
+        {:ok, spec} -> {:ok, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end
     end
@@ -407,20 +398,26 @@ defmodule WardrikDaemon.AgentFile do
   @spec definition(AgentID.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
           {:ok, Spec.t()} | {:error, String.t()}
   def definition(%AgentID{} = id, fields, policies \\ %{}) do
-    with {:ok, definition} <- define(id, fields, nil),
-         {:ok, spec, _route} <- spec(definition, id, policies),
-         do: {:ok, spec}
+    with {:ok, definition} <- define(id, fields, nil), do: spec(definition, id, policies)
   end
 
   @doc """
   The spec `definition` writes for the agent `id`, with `policies` as `read/2`
-  takes them, and where its notices go, as `load/2` answers them; see
-  `WardrikDefinition.spec/5`.
+  takes them; see `WardrikDefinition.spec/5`.
   """
   @spec spec(Definition.t(), AgentID.t(), %{String.t() => WardrikPolicy.t()}) ::
-          {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
+          {:ok, Spec.t()} | {:error, String.t()}
   def spec(%Definition{id: owner, fields: fields, source: source}, %AgentID{} = id, policies),
     do: WardrikDefinition.spec(fields, owner, id, context(policies), source)
+
+  @doc """
+  Where the notices of `definition`'s agent go, whether a file or the HTTP
+  API wrote it, to the targets `config.yaml`'s `notify` keeps for its org;
+  see `WardrikDefinition.route/3`.
+  """
+  @spec route(Definition.t()) :: {:ok, WardrikNotify.Route.t()} | :none | {:error, String.t()}
+  def route(%Definition{id: id, fields: fields}),
+    do: WardrikDefinition.route(fields, id, context())
 
   @doc "The definition as the HTTP API writes one; see `WardrikDefinition.fields/1`."
   @spec fields(Definition.t()) :: map()

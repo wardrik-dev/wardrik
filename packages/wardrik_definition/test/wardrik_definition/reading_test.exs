@@ -61,8 +61,7 @@ defmodule WardrikDefinition.ReadingTest do
   # The spec an agent file `text` named `name` writes, as an operator's file.
   defp read(name \\ "triage", text, %{context: context}) do
     with {:ok, id, fields} <- WardrikDefinition.parse(text, name, context),
-         {:ok, spec, _route} <- WardrikDefinition.spec(fields, id, id, context, {:file, name}),
-         do: {:ok, spec}
+         do: WardrikDefinition.spec(fields, id, id, context, {:file, name})
   end
 
   defp with_policies(%{context: context}, policies),
@@ -71,14 +70,14 @@ defmodule WardrikDefinition.ReadingTest do
   # The spec a definition sent to the HTTP API writes for `id`, sent by no token.
   defp define(id, fields, %{context: context}) do
     with :ok <- WardrikDefinition.accept(id, fields, context),
-         {:ok, spec, _route} <- WardrikDefinition.spec(fields, id, id, context, {:api, nil}),
-         do: {:ok, spec}
+         do: WardrikDefinition.spec(fields, id, id, context, {:api, nil})
   end
 
-  defp route(text, %{context: context}) do
-    with {:ok, id, fields} <- WardrikDefinition.parse(text, "triage", context),
-         {:ok, _spec, route} <- WardrikDefinition.spec(fields, id, id, context, {:file, "t"}),
-         do: {:ok, route}
+  # Where the notices of the agent a file `text` declares go, once the file reads.
+  defp route(text, %{context: context} = test) do
+    with {:ok, _spec} <- read(text, test),
+         {:ok, id, fields} <- WardrikDefinition.parse(text, "triage", context),
+         do: WardrikDefinition.route(fields, id, context)
   end
 
   defp triggers(text, %{context: context} = test) do
@@ -541,7 +540,7 @@ defmodule WardrikDefinition.ReadingTest do
     assert {:ok, %WardrikNotify.Route{targets: [:ops, :audit], on: [:finished]}} =
              route("---\nnotify: {to: [ops, audit], on: [finished]}\n---\n", context)
 
-    assert {:ok, nil} = route("---\n---\n", context)
+    assert :none = route("---\n---\n", context)
 
     for {settings, refusal} <- [
           {"pager",
@@ -595,7 +594,7 @@ defmodule WardrikDefinition.ReadingTest do
     end
 
     test "takes who the agent is from its key, and says why it does not read", context do
-      for key <- ~w(name org user notify) do
+      for key <- ~w(name org user) do
         assert {:error, message} = define(~A"acme/triage", %{key => "x"}, context)
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end
@@ -614,6 +613,19 @@ defmodule WardrikDefinition.ReadingTest do
                  context.context,
                  {:api, nil}
                )
+    end
+
+    test "routes its notices as a file does, to targets that serve its org", context do
+      fields = %{"notify" => %{"to" => ["ops"], "on" => ["finished"]}}
+      assert {:ok, _spec} = define(~A"acme/triage", fields, context)
+
+      assert {:ok, %WardrikNotify.Route{targets: [:ops], on: [:finished]}} =
+               WardrikDefinition.route(fields, ~A"acme/triage", context.context)
+
+      assert {:error, "notify names globex, which config.yaml's notify keeps for another org"} =
+               define(~A"acme/triage", %{"notify" => "globex"}, context)
+
+      assert {:ok, _spec} = define(~A"globex/triage", %{"notify" => ["globex"]}, context)
     end
 
     test "lists its triggers as a file does, and one is set or deleted in it" do
@@ -641,7 +653,7 @@ defmodule WardrikDefinition.ReadingTest do
       {:ok, fields} = WardrikDefinition.delete_trigger(fields, "sweep")
       assert WardrikDefinition.fields(fields) == %{}
 
-      assert %{"triggers" => [%{"every" => "1h"}]} =
+      assert %{"triggers" => [%{"every" => "1h"}], "notify" => "ops"} =
                WardrikDefinition.fields(%{"triggers" => unnamed, "notify" => "ops"})
     end
   end

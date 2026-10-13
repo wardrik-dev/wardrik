@@ -57,7 +57,7 @@ defmodule WardrikDefinitionTest do
     assert ["description", "instructions" | _rest] = WardrikDefinition.keys()
 
     assert Enum.sort(WardrikDefinition.file_keys()) ==
-             Enum.sort((WardrikDefinition.keys() -- ["instructions"]) ++ ~w(name org user notify))
+             Enum.sort((WardrikDefinition.keys() -- ["instructions"]) ++ ~w(name org user))
   end
 
   test "reads a definition into the spec it writes, with what the host gives every agent",
@@ -70,18 +70,18 @@ defmodule WardrikDefinitionTest do
       "notify" => "pager"
     }
 
-    assert {:ok, spec, route} = spec(fields, context, id, {:file, "triage.md"})
+    assert {:ok, spec} = spec(fields, context, id, {:file, "triage.md"})
     assert spec.config.system == "Watch the queue."
     assert spec.config.tools == [Clock, {Source, :books}]
     assert [_hook | _hooks] = spec.hooks
     assert spec.ledger == Wardrik.Ledger.Store
     assert spec.idle_timeout == :timer.seconds(60)
-    assert route.targets == [:pager]
+    assert {:ok, %{targets: [:pager]}} = WardrikDefinition.route(fields, id, context)
 
-    assert {:ok, %{config: %{tool_prices: %{"clock" => 0.01}}}, nil} =
+    assert {:ok, %{config: %{tool_prices: %{"clock" => 0.01}}}} =
              spec(%{}, %{context | config: [tool_prices: %{"clock" => 0.01}]}, id)
 
-    assert {:ok, %{idle_timeout: :infinity}, nil} =
+    assert {:ok, %{idle_timeout: :infinity}} =
              spec(%{"idle_timeout" => "infinity"}, context, id)
   end
 
@@ -109,7 +109,7 @@ defmodule WardrikDefinitionTest do
     assert {:error, "tools names books/*, but Mode configures no server books" <> _} =
              spec(%{"tools" => ["books/*"]}, %{context | mcp: nil}, id)
 
-    assert {:ok, spec, nil} =
+    assert {:ok, spec} =
              spec(%{"tools" => ["workers/*"]}, %{context | sources: [workers: Source]}, id)
 
     assert spec.config.tools == [{Source, id}]
