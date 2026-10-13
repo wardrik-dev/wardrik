@@ -7,11 +7,11 @@ defmodule Wardrik.Connections.None do
   @behaviour Wardrik.Connections
 
   @impl Wardrik.Connections
-  def list(_owner), do: :unsupported
+  def list(_host, _owner), do: :unsupported
 
   @impl Wardrik.Connections
-  def connect(_provider, _owner, _by), do: :unsupported
+  def connect(_host, _provider, _owner, _by), do: :unsupported
 
   @impl Wardrik.Connections
-  def disconnect(_provider, _owner), do: :unsupported
+  def disconnect(_host, _provider, _owner), do: :unsupported
 end

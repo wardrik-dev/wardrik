@@ -10,11 +10,12 @@ defmodule WardrikEcto.StoreTest do
   @moduletag :postgres
 
   setup_all do
+    store = WardrikStore.new(adapter: Store, repo: Repo)
     :ignore = Store.start_link(repo: Repo)
-    :ok
+    %{store: store}
   end
 
-  use WardrikStore.Conformance, adapter: WardrikEcto.Store
+  use WardrikStore.Conformance
 
   defp away(table) do
     SQL.query!(Repo, "ALTER TABLE #{table} RENAME TO #{table}_away")
@@ -30,8 +31,15 @@ defmodule WardrikEcto.StoreTest do
     end
 
     test "is a supervisor where it starts a repo of its own" do
-      refute Map.has_key?(Store.child_spec(repo: Repo), :type)
-      assert %{type: :supervisor} = Store.child_spec(url: Services.database_url())
+      refute Map.has_key?(Store.child_spec(Store.config(repo: Repo)), :type)
+
+      assert %{type: :supervisor} =
+               Store.child_spec(Store.config(url: Services.database_url()))
+    end
+
+    test "is kept through the repo it names, or through its own" do
+      assert %{repo: Repo, discovery_interval_ms: 5_000} = Store.config(repo: Repo)
+      assert %{repo: WardrikEcto.Repo} = Store.config(url: Services.database_url())
     end
 
     test "needs the table WardrikEcto.Migration creates" do
@@ -47,9 +55,7 @@ defmodule WardrikEcto.StoreTest do
     end
 
     test "with a url, starts a repo of its own and creates the table" do
-      # Run in reverse: the new tables go, the suite's comes back, and the
-      # store is kept through the suite's repo again.
-      on_exit(fn -> :ignore = Store.start_link(repo: Repo) end)
+      # Run in reverse: the new tables go, and the suite's comes back.
       away("wardrik_records")
       SQL.query!(Repo, "DROP TABLE IF EXISTS wardrik_schema_migrations")
 
@@ -57,69 +63,65 @@ defmodule WardrikEcto.StoreTest do
         SQL.query!(Repo, "DROP TABLE IF EXISTS wardrik_records, wardrik_schema_migrations")
       end)
 
-      start_supervised!(Store.child_spec(url: Services.database_url()))
+      store = WardrikStore.new(adapter: Store, url: Services.database_url())
+      start_supervised!({WardrikStore, store})
 
       key = unique()
-      assert {:ok, vsn} = Store.put(:own, key, :value, if_vsn: nil)
-      assert Store.lookup(:own, key) == {:value, vsn}
+      assert {:ok, vsn} = WardrikStore.put(store, :own, key, :value, if_vsn: nil)
+      assert WardrikStore.lookup(store, :own, key) == {:value, vsn}
 
       assert %{rows: [[1]]} =
                SQL.query!(WardrikEcto.Repo, "SELECT version FROM wardrik_schema_migrations")
     end
-
-    test "a call before it starts says so" do
-      :persistent_term.erase({Store, :repo})
-      on_exit(fn -> :ignore = Store.start_link(repo: Repo) end)
-
-      assert_raise ArgumentError, "WardrikEcto.Store was not started", fn ->
-        Store.get(:none, "k", [])
-      end
-    end
   end
 
   describe "a write whose answer is lost" do
-    test "is answered as written where it landed" do
+    test "is answered as written where it landed", %{store: store} do
       expect(SQL, :query, fn repo, sql, args ->
         {:ok, _landed} = call_original(SQL, :query, [repo, sql, args])
         {:error, %DBConnection.ConnectionError{message: "lost"}}
       end)
 
       key = unique()
-      assert {:ok, vsn} = Store.put(:lost, key, :value, if_vsn: nil)
-      assert Store.lookup(:lost, key) == {:value, vsn}
+      assert {:ok, vsn} = WardrikStore.put(store, :lost, key, :value, if_vsn: nil)
+      assert WardrikStore.lookup(store, :lost, key) == {:value, vsn}
     end
 
-    test "fails where it did not land, and conflicts where the condition no longer holds" do
+    test "fails where it did not land, and conflicts where the condition no longer holds", %{
+      store: store
+    } do
       key = unique()
-      {:ok, first} = Store.put(:lost, key, :first, [])
+      {:ok, first} = WardrikStore.put(store, :lost, key, :first)
       lost = {:error, %DBConnection.ConnectionError{message: "lost"}}
 
       expect(SQL, :query, fn _repo, _sql, _args -> lost end)
-      assert ^lost = Store.put(:lost, key, :second, if_vsn: first)
+      assert ^lost = WardrikStore.put(store, :lost, key, :second, if_vsn: first)
 
-      {:ok, _second} = Store.put(:lost, key, :second, if_vsn: first)
+      {:ok, _second} = WardrikStore.put(store, :lost, key, :second, if_vsn: first)
       expect(SQL, :query, fn _repo, _sql, _args -> lost end)
-      assert {:error, :conflict} = Store.put(:lost, key, :third, if_vsn: first)
+      assert {:error, :conflict} = WardrikStore.put(store, :lost, key, :third, if_vsn: first)
 
       expect(SQL, :query, fn _repo, _sql, _args -> lost end)
-      assert ^lost = Store.put(:lost, unique(), :value, if_vsn: nil)
+      assert ^lost = WardrikStore.put(store, :lost, unique(), :value, if_vsn: nil)
     end
   end
 
-  test "fails a delete the database refuses" do
+  test "fails a delete the database refuses", %{store: store} do
     expect(SQL, :query, fn _repo, _sql, _args -> {:error, :closed} end)
-    assert Store.delete(:refused, unique(), []) == {:error, :closed}
+    assert WardrikStore.delete(store, :refused, unique()) == {:error, :closed}
   end
 
-  test "a version from elsewhere matches nothing" do
+  test "a version from elsewhere matches nothing", %{store: store} do
     key = unique()
-    {:ok, _vsn} = Store.put(:foreign, key, :value, [])
-    assert {:error, :conflict} = Store.delete(:foreign, key, if_vsn: "not a version")
+    {:ok, _vsn} = WardrikStore.put(store, :foreign, key, :value)
+
+    assert {:error, :conflict} =
+             WardrikStore.delete(store, :foreign, key, if_vsn: "not a version")
   end
 
-  test "names WardrikStore.Durable to hold a fleet" do
-    assert Store.durable_backend([]) ==
-             {WardrikStore.Durable, store: Store, discovery_interval_ms: 5_000}
+  test "names WardrikStore.Durable to hold a fleet", %{store: store} do
+    assert Store.durable_backend(store) ==
+             {WardrikStore.Durable, store: store, discovery_interval_ms: 5_000}
   end
 
   describe "check/1" do

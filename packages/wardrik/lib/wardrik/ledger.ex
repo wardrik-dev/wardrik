@@ -14,12 +14,14 @@ defmodule Wardrik.Ledger do
   nothing here to hold and nothing to wait on. An entry is written once and
   read on replay.
 
-  `Wardrik.Ledger.Store` writes to the store the fleet already runs on. A deployment
-  that keeps its own system of record implements this behaviour instead.
+  `Wardrik.Ledger.Store` writes to the store the fleet already runs on, the
+  host's. A deployment that keeps its own system of record implements this
+  behaviour instead. Every callback is handed the `Wardrik.Host` the call runs
+  on.
 
       key = {~A"acme/@jon/assistant", call.id}
 
-      case Wardrik.Ledger.claim(Wardrik.Ledger.Store, key, call) do
+      case Wardrik.Ledger.claim(Wardrik.Ledger.Store, host, key, call) do
         :ok -> run(call)
         {:settled, result} -> result
         {:pending, entry} -> park(entry)
@@ -29,7 +31,7 @@ defmodule Wardrik.Ledger do
   ## The four answers
 
     * `:ok` - nothing has run this call, and the claim is now held. Run it, and
-      report what it returned with `settle/3`.
+      report what it returned with `settle/4`.
     * `{:settled, result}` - it ran, and this is what it returned. Answer the
       model with that rather than running it again.
     * `{:pending, entry}` - it was claimed and never settled. Whether its
@@ -88,7 +90,7 @@ defmodule Wardrik.Ledger do
   implementation must not write over an entry it finds: the answer to a second
   claim is the first one's state, whatever it is.
   """
-  @callback claim(key(), Tool.call()) :: claim()
+  @callback claim(Wardrik.Host.t(), key(), Tool.call()) :: claim()
 
   @doc """
   Records what a claimed call returned.
@@ -96,24 +98,25 @@ defmodule Wardrik.Ledger do
   Answers `{:error, :not_claimed}` for a key holding no entry, which is a
   settle without a claim before it rather than something to write anyway.
   """
-  @callback settle(key(), Tool.Result.t()) :: :ok | {:error, term()}
+  @callback settle(Wardrik.Host.t(), key(), Tool.Result.t()) :: :ok | {:error, term()}
 
   @doc "The entry a key holds, if it holds one."
-  @callback fetch(key()) :: {:ok, Entry.t()} | :error
+  @callback fetch(Wardrik.Host.t(), key()) :: {:ok, Entry.t()} | :error
 
   @doc """
   Removes a claim for a call that did not run after all: one that stopped to
   ask a person before doing anything.
   """
-  @callback release(key()) :: :ok | {:error, term()}
+  @callback release(Wardrik.Host.t(), key()) :: :ok | {:error, term()}
 
   @doc """
   Removes every entry a turn made, the calls of its delegations included, once
   the turn has ended and nothing will replay it.
   """
-  @callback forget(Wardrik.Event.Bus.agent_id(), trace_id :: String.t()) :: :ok | {:error, term()}
+  @callback forget(Wardrik.Host.t(), Wardrik.Event.Bus.agent_id(), trace_id :: String.t()) ::
+              :ok | {:error, term()}
 
-  @optional_callbacks release: 1, forget: 2
+  @optional_callbacks release: 2, forget: 3
 
   @doc """
   The key `call` is claimed under when it runs under `scope`: the agent, then
@@ -154,11 +157,11 @@ defmodule Wardrik.Ledger do
   that cannot say whether a call has run has to stop it: the guarantee is only
   worth the cases it covers, and one that fails open covers none.
   """
-  @spec claim(module() | nil, key(), Tool.call()) :: claim()
-  def claim(nil, _key, _call), do: :ok
+  @spec claim(module() | nil, Wardrik.Host.t(), key(), Tool.call()) :: claim()
+  def claim(nil, _host, _key, _call), do: :ok
 
-  def claim(ledger, key, call) when is_atom(ledger) do
-    case ledger.claim(key, call) do
+  def claim(ledger, host, key, call) when is_atom(ledger) do
+    case ledger.claim(host, key, call) do
       :ok -> :ok
       {:settled, result} -> {:settled, result}
       {:pending, %Entry{} = entry} -> {:pending, entry}
@@ -177,11 +180,11 @@ defmodule Wardrik.Ledger do
   now, so a failure here loses the record rather than the work, and the entry
   stays pending until its turn is forgotten.
   """
-  @spec settle(module() | nil, key(), Tool.Result.t()) :: :ok | {:error, term()}
-  def settle(nil, _key, _result), do: :ok
+  @spec settle(module() | nil, Wardrik.Host.t(), key(), Tool.Result.t()) :: :ok | {:error, term()}
+  def settle(nil, _host, _key, _result), do: :ok
 
-  def settle(ledger, key, result) when is_atom(ledger) do
-    case ledger.settle(key, result) do
+  def settle(ledger, host, key, result) when is_atom(ledger) do
+    case ledger.settle(host, key, result) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
       other -> {:error, "Ledger #{inspect(ledger)} returned #{inspect(other)}"}
@@ -196,12 +199,12 @@ defmodule Wardrik.Ledger do
   keeps no releases. A failure is answered, not raised: the claim stays
   pending until its turn is forgotten.
   """
-  @spec release(module() | nil, key()) :: :ok | {:error, term()}
-  def release(nil, _key), do: :ok
+  @spec release(module() | nil, Wardrik.Host.t(), key()) :: :ok | {:error, term()}
+  def release(nil, _host, _key), do: :ok
 
-  def release(ledger, key) when is_atom(ledger) do
-    if Code.ensure_loaded?(ledger) and function_exported?(ledger, :release, 1),
-      do: ledger.release(key),
+  def release(ledger, host, key) when is_atom(ledger) do
+    if Code.ensure_loaded?(ledger) and function_exported?(ledger, :release, 2),
+      do: ledger.release(host, key),
       else: :ok
   catch
     kind, reason ->
@@ -216,13 +219,14 @@ defmodule Wardrik.Ledger do
   `[:wardrik, :ledger, :forgotten]` is emitted once the ledger has answered, with
   the agent id, the trace id and the answer in its metadata.
   """
-  @spec forget(module() | nil, Wardrik.Event.Bus.agent_id(), String.t()) :: :ok | {:error, term()}
-  def forget(nil, _agent_id, _trace_id), do: :ok
+  @spec forget(module() | nil, Wardrik.Host.t(), Wardrik.Event.Bus.agent_id(), String.t()) ::
+          :ok | {:error, term()}
+  def forget(nil, _host, _agent_id, _trace_id), do: :ok
 
-  def forget(ledger, agent_id, trace_id) when is_atom(ledger) do
+  def forget(ledger, host, agent_id, trace_id) when is_atom(ledger) do
     answer =
-      if Code.ensure_loaded?(ledger) and function_exported?(ledger, :forget, 2),
-        do: ledger.forget(agent_id, trace_id),
+      if Code.ensure_loaded?(ledger) and function_exported?(ledger, :forget, 3),
+        do: ledger.forget(host, agent_id, trace_id),
         else: :ok
 
     :telemetry.execute([:wardrik, :ledger, :forgotten], %{}, %{
@@ -238,11 +242,11 @@ defmodule Wardrik.Ledger do
   end
 
   @doc "The entry `ledger` holds for `key`, or `:error` without a ledger."
-  @spec fetch(module() | nil, key()) :: {:ok, Entry.t()} | :error
-  def fetch(nil, _key), do: :error
+  @spec fetch(module() | nil, Wardrik.Host.t(), key()) :: {:ok, Entry.t()} | :error
+  def fetch(nil, _host, _key), do: :error
 
-  def fetch(ledger, key) when is_atom(ledger) do
-    case ledger.fetch(key) do
+  def fetch(ledger, host, key) when is_atom(ledger) do
+    case ledger.fetch(host, key) do
       {:ok, %Entry{} = entry} -> {:ok, entry}
       _other -> :error
     end

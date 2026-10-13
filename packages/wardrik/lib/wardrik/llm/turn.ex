@@ -84,7 +84,7 @@ defmodule Wardrik.LLM.Turn do
   ## What the tools say first
 
   `new/2` asks each of the config's tools what it tells the model before the
-  turn (see `c:Wardrik.Tool.context/0`), once, and every request the turn
+  turn (see `c:Wardrik.Tool.context/1`), once, and every request the turn
   makes carries it after the system prompt. The turn keeps it, so a turn
   carried on after a lost node says what it began with. The labels of what a
   tool tells it are the turn's from the start.
@@ -194,7 +194,7 @@ defmodule Wardrik.LLM.Turn do
   """
   @spec new(Scope.t(), Context.t()) :: t()
   def new(%Scope{config: config} = scope, %Context{} = context) do
-    {preamble, labels} = Tool.context(config.tools)
+    {preamble, labels} = Tool.context(config.tools, scope)
 
     %__MODULE__{
       scope: scope,

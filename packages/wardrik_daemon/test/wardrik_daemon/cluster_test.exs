@@ -1,5 +1,7 @@
 defmodule WardrikDaemon.ClusterTest do
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   # Commands run over rpc build their callers on the daemon's host.
@@ -49,7 +51,7 @@ defmodule WardrikDaemon.ClusterTest do
 
   describe "quorum" do
     test "is more than half the cluster" do
-      assert Enum.map(1..5, &Cluster.quorum/1) == [1, 2, 2, 3, 3]
+      assert Enum.map(1..5, &WardrikStore.quorum(store(), &1)) == [1, 2, 2, 3, 3]
     end
 
     test "without a cluster there is nothing to wait for or refuse" do
@@ -57,7 +59,7 @@ defmodule WardrikDaemon.ClusterTest do
 
       refute Cluster.configured?()
       assert Cluster.size() == 1
-      assert Cluster.waiting() == nil
+      assert Cluster.waiting(store()) == nil
       assert Cluster.refusal() == nil
     end
 
@@ -67,7 +69,7 @@ defmodule WardrikDaemon.ClusterTest do
       assert Cluster.refusal() ==
                "nonode@nohost is not one of cluster.nodes: a, b; start one of them with --node"
 
-      assert Cluster.waiting() == nil
+      assert Cluster.waiting(store()) == nil
     end
 
     test "a node short of a quorum says how many more it needs, and who it has" do
@@ -75,43 +77,43 @@ defmodule WardrikDaemon.ClusterTest do
 
       assert Cluster.members() == [node()]
 
-      assert Cluster.waiting() ==
+      assert Cluster.waiting(store()) ==
                "nonode@nohost is waiting for 1 more node to reach a quorum of 2 of 3"
     end
 
     test "a node whose store is kept elsewhere waits for no other" do
-      stub(WardrikStore, :quorum, fn _size -> 1 end)
+      stub(WardrikStore, :quorum, fn _store, _size -> 1 end)
       named([node(), :wardrik_b@localhost, :wardrik_c@localhost])
 
-      assert Cluster.quorum() == 1
-      assert Cluster.waiting() == nil
+      assert Cluster.quorum(store()) == 1
+      assert Cluster.waiting(store()) == nil
     end
 
     test "a node that is a quorum on its own waits for nothing" do
       named([node()])
 
       assert Cluster.members() == [node()]
-      assert Cluster.waiting() == nil
+      assert Cluster.waiting(store()) == nil
     end
   end
 
   describe "the quorum gate" do
     test "starts nothing without a cluster" do
       cluster([])
-      assert Quorum.start_link() == :ignore
+      assert Quorum.start_link(store()) == :ignore
     end
 
     test "refuses a node the cluster does not name" do
       named([:wardrik_a@localhost])
 
-      log = capture_log(fn -> assert {:error, _reason} = Quorum.start_link() end)
+      log = capture_log(fn -> assert {:error, _reason} = Quorum.start_link(store()) end)
 
       assert log =~ "nonode@nohost is not one of cluster.nodes: a"
     end
 
     test "lets the fleet start once a quorum is connected" do
       named([node()])
-      assert Quorum.start_link() == :ignore
+      assert Quorum.start_link(store()) == :ignore
     end
 
     # Answers what a node short of a quorum is waiting for `times` times, then
@@ -145,7 +147,7 @@ defmodule WardrikDaemon.ClusterTest do
     test "runs nothing without a cluster" do
       cluster([])
       assert {:ok, :undefined} = start_supervised(Cluster)
-      assert {:ok, :undefined} = start_supervised(Quorum)
+      assert {:ok, :undefined} = start_supervised({Quorum, store()})
     end
 
     test "runs a topology for the way the cluster is found, which a node that is not distributed ignores" do
@@ -246,7 +248,7 @@ defmodule WardrikDaemon.ClusterTest do
     @tag :tmp_dir
     test "wardrik start is told nothing once the agent files have been read", %{tmp_dir: dir} do
       cluster([])
-      start_supervised!({WardrikDaemon.Agents, dir: dir})
+      start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
 
       assert WardrikDaemon.CLI.started() == ""
     end
@@ -303,14 +305,14 @@ defmodule WardrikDaemon.ClusterTest do
         ]
       )
 
-      assert Cluster.waiting() =~ "is waiting for 2 more nodes to reach a quorum of 2 of 3"
-      assert WardrikDaemon.status() =~ "\ncluster of 3, found by DNS: none connected\n"
+      assert Cluster.waiting(store()) =~ "is waiting for 2 more nodes to reach a quorum of 2 of 3"
+      assert WardrikDaemon.status(store()) =~ "\ncluster of 3, found by DNS: none connected\n"
     end
 
     test "wardrik status says which of the cluster's nodes are connected" do
       named([node()])
 
-      assert WardrikDaemon.status() =~
+      assert WardrikDaemon.status(store()) =~
                ~r/^wardrik .* on nonode@nohost, up .*\ncluster of 1: nonode@nohost up\n/
     end
   end

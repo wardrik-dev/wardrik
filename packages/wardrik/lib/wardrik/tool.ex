@@ -96,9 +96,9 @@ defmodule Wardrik.Tool do
       `Wardrik.Tool.Annotations`
     * `c:subjects/2` - what a call acts on, from its arguments, so a rule can
       name a call by what it does: `write_file(notes/*)`
-    * `c:context/0` - what the tool tells the model as each turn begins
+    * `c:context/1` - what the tool tells the model as each turn begins
 
-  `c:context/0` speaks for the turn rather than a call: text put after the
+  `c:context/1` speaks for the turn rather than a call: text put after the
   system prompt as each turn begins, such as the files `WardrikWorkspace`
   reads into it. Text with labels labels the turn from its start, as a call
   answering with it would.
@@ -198,15 +198,16 @@ defmodule Wardrik.Tool do
 
   @doc """
   What the tool tells the model as each turn begins, put after the system
-  prompt of every request the turn makes. Optional. It is asked once, when the
+  prompt of every request the turn makes, asked with the turn's scope, whose
+  host holds the store it reads from. Optional. It is asked once, when the
   turn is built, so it reads what it needs then. One that raises fails that
   turn, which runs supervised, and the agent goes on to its next. A source
-  answers with `c:context/1`.
+  answers with `c:context/2`.
   """
-  @callback context() :: context()
+  @callback context(Wardrik.Scope.t()) :: context()
 
-  @doc "`c:context/0` for a source, asked with the argument the spec named it with."
-  @callback context(argument :: term()) :: context()
+  @doc "`c:context/1` for a source, asked with the argument the spec named it with first."
+  @callback context(argument :: term(), Wardrik.Scope.t()) :: context()
 
   @optional_callbacks tool: 0,
                       tools: 1,
@@ -214,8 +215,8 @@ defmodule Wardrik.Tool do
                       annotations: 2,
                       subjects: 2,
                       subjects: 3,
-                      context: 0,
-                      context: 1
+                      context: 1,
+                      context: 2
 
   @typedoc """
   What a tool `new!/1` builds runs: `{module, function, args}`, called as
@@ -292,13 +293,13 @@ defmodule Wardrik.Tool do
   end
 
   @doc """
-  What `specs` tell the model before a turn, joined in the order they are
-  named, or `nil` where none tells it anything, and the labels of what they
-  tell it.
+  What `specs` tell the model before a turn under `scope`, joined in the
+  order they are named, or `nil` where none tells it anything, and the labels
+  of what they tell it.
   """
-  @spec context([spec()]) :: {String.t() | nil, [Wardrik.Label.t()]}
-  def context(specs) when is_list(specs) do
-    told = for spec <- specs, told = told(spec), do: told
+  @spec context([spec()], Wardrik.Scope.t()) :: {String.t() | nil, [Wardrik.Label.t()]}
+  def context(specs, %Wardrik.Scope{} = scope) when is_list(specs) do
+    told = for spec <- specs, told = told(spec, scope), do: told
 
     case Enum.map_join(told, "\n\n", &elem(&1, 0)) do
       "" -> {nil, []}
@@ -306,8 +307,8 @@ defmodule Wardrik.Tool do
     end
   end
 
-  defp told(spec) do
-    case declared(spec, :context, []) do
+  defp told(spec, scope) do
+    case declared(spec, :context, [scope]) do
       {text, labels} when is_binary(text) and text != "" and is_list(labels) -> {text, labels}
       text when is_binary(text) and text != "" -> {text, []}
       _nothing -> nil

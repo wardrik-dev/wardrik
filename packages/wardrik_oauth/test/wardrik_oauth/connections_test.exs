@@ -36,7 +36,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     Caller.new(
       principal: Principal.new(:user, user, name: "Jon"),
       grant: grant,
-      host: Wardrik.Host.new(connections: WardrikOAuth.Connections)
+      host: Wardrik.Host.new(store: Wardrik.Test.store(), connections: WardrikOAuth.Connections)
     )
   end
 
@@ -76,7 +76,7 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
              Enum.reverse(Audit.about("secrets/linear"))
 
-    refute WardrikOAuth.connected?("linear", org)
+    refute WardrikOAuth.connected?(Wardrik.Test.store(), "linear", org)
   end
 
   test "disconnecting removes it, recorded as the person who did", %{jon: jon, owner: owner} do
@@ -114,6 +114,6 @@ defmodule WardrikOAuth.ConnectionsTest do
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
     assert list(jon)["linear"] == "org"
-    assert WardrikOAuth.connected?("linear", org)
+    assert WardrikOAuth.connected?(Wardrik.Test.store(), "linear", org)
   end
 end

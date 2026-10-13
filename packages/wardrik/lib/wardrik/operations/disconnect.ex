@@ -28,7 +28,11 @@ defmodule Wardrik.Operations.Disconnect do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
-    case Host.connections(caller.host).disconnect(provider, Connections.owner_of(owner)) do
+    case Host.connections(caller.host).disconnect(
+           caller.host,
+           provider,
+           Connections.owner_of(owner)
+         ) do
       :ok ->
         {:ok, nil, change.effect}
 

@@ -14,7 +14,8 @@ defmodule WardrikWorkspace.ToolsTest do
     {:ok, spec} = Spec.new(key, shared)
 
     scope =
-      Config.new(tools: [{WardrikWorkspace, spec}]) |> Scope.root(key, name: "turn", hooks: hooks)
+      Config.new(tools: [{WardrikWorkspace, spec}])
+      |> Scope.root(key, name: "turn", host: Wardrik.Test.host(), hooks: hooks)
 
     %{key: key, spec: spec, scope: scope}
   end
@@ -245,7 +246,7 @@ defmodule WardrikWorkspace.ToolsTest do
   describe "how much is listed or found" do
     defp put!(agent, path, content) do
       file = %WardrikWorkspace.File{content: content, by: "someone"}
-      {:ok, _version} = Store.write(agent.spec.tree.tree, path, file, nil)
+      {:ok, _version} = Store.write(Wardrik.Test.host(), agent.spec.tree.tree, path, file, nil)
     end
 
     defp hits(label, n), do: Enum.map_join(1..n, "\n", &"hit #{label} #{&1}")
@@ -330,7 +331,10 @@ defmodule WardrikWorkspace.ToolsTest do
       {:ok, spec} =
         Spec.new(key, %{"runbooks" => %{"tree" => tree <> "/runbooks", "mode" => "read"}})
 
-      scope = Config.new(tools: [{WardrikWorkspace, spec}]) |> Scope.root(key, name: "turn")
+      scope =
+        Config.new(tools: [{WardrikWorkspace, spec}])
+        |> Scope.root(key, name: "turn", host: Wardrik.Test.host())
+
       reader = %{key: key, spec: spec, scope: scope}
 
       assert {:error, "shared/runbooks is shared with you to read, not to change"} =
@@ -388,7 +392,7 @@ defmodule WardrikWorkspace.ToolsTest do
         })
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"], by: by}, _version} =
-               Store.read("shared/#{tree}", "finding.md")
+               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
 
       assert by == to_string(writer.key)
 
@@ -417,13 +421,13 @@ defmodule WardrikWorkspace.ToolsTest do
         answered(clean, "write_file", %{"path" => path, "content" => " Now.", "append" => true})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"], content: "Deploy. Now."}, _version} =
-               Store.read("shared/#{tree}", "finding.md")
+               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
 
       {:ok, _edited} =
         answered(clean, "edit_file", %{"path" => path, "old" => "Now", "new" => "Later"})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
-               Store.read("shared/#{tree}", "finding.md")
+               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
 
       {:ok, %{"version" => version}} = answered(clean, "read_file", %{"path" => path})
 
@@ -435,13 +439,13 @@ defmodule WardrikWorkspace.ToolsTest do
         })
 
       assert {:ok, %WardrikWorkspace.File{labels: [], content: "Wait."}, _version} =
-               Store.read("shared/#{tree}", "finding.md")
+               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
 
       {:ok, _appended} =
         answered(labelled, "write_file", %{"path" => path, "content" => " Go.", "append" => true})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
-               Store.read("shared/#{tree}", "finding.md")
+               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
     end
 
     test "a file a run with no labels wrote labels nothing" do
@@ -476,7 +480,11 @@ defmodule WardrikWorkspace.ToolsTest do
   defp agent_at(text, shared) do
     key = Wardrik.AgentID.parse!(text)
     {:ok, spec} = Spec.new(key, shared)
-    scope = Config.new(tools: [{WardrikWorkspace, spec}]) |> Scope.root(key, name: "turn")
+
+    scope =
+      Config.new(tools: [{WardrikWorkspace, spec}])
+      |> Scope.root(key, name: "turn", host: Wardrik.Test.host())
+
     %{key: key, spec: spec, scope: scope}
   end
 end

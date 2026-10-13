@@ -78,9 +78,9 @@ defmodule WardrikDaemon.JudgeReplay do
   The agents a policy's calls are looked for under where none are named:
   each agent whose definition names the policy, with its conversations.
   """
-  @spec using(String.t()) :: [Prefix.t()]
-  def using(name) do
-    for %Definition{id: id, fields: %{"policy" => ^name}} <- Definition.all(),
+  @spec using(WardrikStore.t(), String.t()) :: [Prefix.t()]
+  def using(store, name) do
+    for %Definition{id: id, fields: %{"policy" => ^name}} <- Definition.all(store),
         do: Prefix.of(id)
   end
 
@@ -88,13 +88,13 @@ defmodule WardrikDaemon.JudgeReplay do
   The newest `last` calls under `prefixes` a question of `judge` names,
   each tried on it, newest first.
   """
-  @spec tried(Judge.t(), [Prefix.t()], pos_integer()) :: [tried()]
-  def tried(%Judge{} = judge, prefixes, last) do
+  @spec tried(WardrikStore.t(), Judge.t(), [Prefix.t()], pos_integer()) :: [tried()]
+  def tried(store, %Judge{} = judge, prefixes, last) do
     for(
-      log <- Log.logs(),
+      log <- Log.logs(store),
       log != :audit,
       Enum.any?(prefixes, &Prefix.covers?(&1, log)),
-      call <- calls(log, judge),
+      call <- calls(store, log, judge),
       do: call
     )
     |> Enum.sort_by(& &1.time, :desc)
@@ -109,10 +109,10 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   # Each call of `log` that ran whole, once, with who let it run where a person did.
-  defp calls(log, judge) do
+  defp calls(store, log, judge) do
     {started, resolved} =
-      log
-      |> events()
+      store
+      |> events(log)
       |> Enum.reduce({%{}, %{}}, fn event, {started, resolved} ->
         case event do
           %{"type" => "wardrik.tool_call.started", "data" => data} ->
@@ -146,13 +146,13 @@ defmodule WardrikDaemon.JudgeReplay do
   defp put_resolver(decided, by), do: Map.put(decided, "resolved_by", by)
 
   # Every event `log` holds, a page at a time.
-  defp events(log) do
+  defp events(store, log) do
     Stream.unfold(0, fn
       nil ->
         nil
 
       after_sequence ->
-        case Log.read(log, starting_after: after_sequence, limit: @page) do
+        case Log.read(store, log, starting_after: after_sequence, limit: @page) do
           {:ok, []} -> nil
           {:ok, events} when length(events) < @page -> {events, nil}
           {:ok, events} -> {events, String.to_integer(List.last(events)["sequence"])}

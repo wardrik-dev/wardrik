@@ -33,7 +33,7 @@ defmodule WardrikOAuth.CallbackTest do
     )
 
     id = AgentID.new!("a", org: "acme", user: owner)
-    scope = Config.new() |> Scope.root(id, credentials: WardrikVault)
+    scope = Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
 
     {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope), "github")
@@ -134,7 +134,7 @@ defmodule WardrikOAuth.CallbackTest do
     assert response =~ "400 Bad Request"
     assert response =~ "access_denied: &lt;script&gt;"
     refute response =~ "<script>"
-    refute WardrikOAuth.connected?("github", {"acme", context.owner})
+    refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", context.owner})
   end
 
   test "a callback with no code is refused", context do

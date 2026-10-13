@@ -5,9 +5,10 @@ defmodule WardrikStore.DurableTest do
   alias WardrikStore.Memory
 
   setup_all do
-    start_supervised!(Memory.child_spec([]))
-    {:ok, %{state: state} = backend} = Durable.init_backend(store: Memory)
-    %{state: state, backend: backend}
+    store = WardrikStore.new(adapter: Memory, name: :durable_test)
+    start_supervised!({WardrikStore, store})
+    {:ok, %{state: state} = backend} = Durable.init_backend(store: store)
+    %{state: state, backend: backend, store: store}
   end
 
   test "polls for heartbeats, at the intervals it was given", %{backend: backend} do
@@ -19,7 +20,7 @@ defmodule WardrikStore.DurableTest do
            }
 
     assert {:ok, %{defaults: %{discovery_interval_ms: 5}}} =
-             Durable.init_backend(%{store: Memory, discovery_interval_ms: 5})
+             Durable.init_backend(%{store: backend.state.store, discovery_interval_ms: 5})
 
     assert Durable.ensure_ready(backend.state) == :ok
   end
@@ -110,22 +111,22 @@ defmodule WardrikStore.DurableTest do
     key = unique()
     {:ok, %{etag: etag}} = Durable.put_object(state, key, 1, [])
 
-    Mimic.expect(Memory, :delete, fn ns, key, _opts ->
-      {:ok, _raced} = Memory.put(ns, key, 2, [])
+    Mimic.expect(Memory, :delete, fn name, ns, key, _opts ->
+      {:ok, _raced} = Memory.put(name, ns, key, 2, [])
       {:error, :conflict}
     end)
 
     assert {:error, :conflict} = Durable.delete_object(state, key, etag: etag)
 
-    Mimic.expect(Memory, :delete, fn ns, key, _opts ->
-      :ok = Memory.delete(ns, key, [])
+    Mimic.expect(Memory, :delete, fn name, ns, key, _opts ->
+      :ok = Memory.delete(name, ns, key, [])
       {:error, :conflict}
     end)
 
     assert {:error, :not_found} = Durable.delete_object(state, key, [])
 
     {:ok, _object} = Durable.put_object(state, key, 1, [])
-    Mimic.expect(Memory, :delete, fn _ns, _key, _opts -> {:error, :unavailable} end)
+    Mimic.expect(Memory, :delete, fn _name, _ns, _key, _opts -> {:error, :unavailable} end)
     assert {:error, :unavailable} = Durable.delete_object(state, key)
   end
 
@@ -141,13 +142,19 @@ defmodule WardrikStore.DurableTest do
     assert [%{body: 1}] =
              Enum.to_list(Durable.list_all_objects_stream(state, prefix, include_objects: true))
 
-    Mimic.expect(Memory, :lookup, fn _ns, _key -> nil end)
+    Mimic.expect(Memory, :lookup, fn _name, _ns, _key -> nil end)
     assert Enum.to_list(Durable.list_all_objects_stream(state, prefix, [])) == []
   end
 
-  test "hands an object it cannot read to the error handler, and leaves it out", %{state: state} do
+  test "hands an object it cannot read to the error handler, and leaves it out", %{
+    state: state,
+    store: store
+  } do
     prefix = unique() <> "/"
-    {:ok, _vsn} = Memory.put(:durable, prefix <> "bad", %{vsn: 1, state: %{}, meta: :bad}, [])
+
+    {:ok, _vsn} =
+      WardrikStore.put(store, :durable, prefix <> "bad", %{vsn: 1, state: %{}, meta: :bad})
+
     test = self()
 
     assert [] =
@@ -168,8 +175,8 @@ defmodule WardrikStore.DurableTest do
     assert Durable.decode(state, %{"heartbeat" => 1}) == {:ok, %{"heartbeat" => 1}}
   end
 
-  test "holds a DurableServer through a restart" do
-    WardrikStore.Test.Durable.survives_a_restart(Memory, :durable_over_memory)
+  test "holds a DurableServer through a restart", %{store: store} do
+    WardrikStore.Test.Durable.survives_a_restart(store, :durable_over_memory)
   end
 
   defp unique, do: "durable-test/#{System.unique_integer([:positive])}"

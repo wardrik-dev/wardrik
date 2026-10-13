@@ -24,7 +24,7 @@ defmodule Wardrik.ConnectionsTest do
     @behaviour Wardrik.Connections
 
     @impl true
-    def list(owner) do
+    def list(_host, owner) do
       for provider <- Process.get(:offered, []),
           do: %{provider: provider, held_by: held_by(provider, owner)}
     end
@@ -40,7 +40,7 @@ defmodule Wardrik.ConnectionsTest do
     defp held_by(provider, org), do: if(held?(provider, org), do: :org)
 
     @impl true
-    def connect(provider, owner, by) do
+    def connect(_host, provider, owner, by) do
       send(self(), {:connect, provider, owner, by})
 
       cond do
@@ -51,7 +51,7 @@ defmodule Wardrik.ConnectionsTest do
     end
 
     @impl true
-    def disconnect(provider, owner) do
+    def disconnect(_host, provider, owner) do
       if held?(provider, owner) do
         Process.put(:held, Map.update!(Process.get(:held), owner, &List.delete(&1, provider)))
         :ok

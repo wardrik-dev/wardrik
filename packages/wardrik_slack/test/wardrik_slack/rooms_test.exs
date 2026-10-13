@@ -37,7 +37,7 @@ defmodule WardrikSlack.RoomsTest do
 
   defp opts(offers, create? \\ false) do
     context = %Context{
-      host: Wardrik.Host.new(),
+      host: Wardrik.Host.new(store: Wardrik.Test.store()),
       channel: "slack-#{System.unique_integer([:positive])}",
       offered: {__MODULE__, :offering, [offers]},
       creatable: {__MODULE__, :creatable, [create?]},

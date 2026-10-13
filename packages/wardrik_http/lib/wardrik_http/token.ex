@@ -3,8 +3,8 @@ defmodule WardrikHTTP.Token do
   A bearer token for the HTTP API, and the `Wardrik.Grant` it carries.
 
       acme = Wardrik.AgentID.Prefix.new!(org: "acme")
-      {:ok, secret, token} = WardrikHTTP.Token.create("ci", acme, [:define], ceiling: hooks)
-      {:ok, secret, token} = WardrikHTTP.Token.create("watcher", Wardrik.AgentID.Prefix.parse!("acme/@jon/"), [:read])
+      {:ok, secret, token} = WardrikHTTP.Token.create(store, "ci", acme, [:define], ceiling: hooks)
+      {:ok, secret, token} = WardrikHTTP.Token.create(store, "watcher", Wardrik.AgentID.Prefix.parse!("acme/@jon/"), [:read])
 
   A token grants the actions it was made with, every one where none are
   named, on the agents under its scope; see `Wardrik.Grant` for both. It acts
@@ -13,7 +13,8 @@ defmodule WardrikHTTP.Token do
   principal's.
 
   It is the `WardrikHTTP.Authenticator` the API uses unless told otherwise,
-  reading `Authorization: Bearer wardrik_…` into a `WardrikHTTP.Caller`.
+  reading `Authorization: Bearer wardrik_…` into a `WardrikHTTP.Caller`, from
+  the store of the listener's host.
 
   A token that can `:define` is made with a `:ceiling`, the hooks every agent
   it defines is held to ahead of the definition's own, or with `ceiling: []`
@@ -22,15 +23,15 @@ defmodule WardrikHTTP.Token do
   token stored before tokens had ceilings reads as one made with `[]`.
 
   The secret, `wardrik_` and 32 characters, is answered once and never kept.
-  `WardrikStore` holds the token in `:tokens` under its `id`, the first 12 hex
-  digits of the SHA-256 of its secret, with the whole hash, so the store holds
-  nothing a caller could present. The `id` is what `list/0` shows and what
-  `revoke/1` takes.
+  The store each function is handed first holds the token in `:tokens` under
+  its `id`, the first 12 hex digits of the SHA-256 of its secret, with the
+  whole hash, so the store holds nothing a caller could present. The `id` is
+  what `list/1` shows and what `revoke/2` takes.
 
-  `verify/1` reads the token with `WardrikHTTP.Access.get/1`: a revoked token is
+  `verify/2` reads the token with `WardrikHTTP.Access.get/2`: a revoked token is
   refused at once on every node the revocation reaches, and within a sweep on
   one it does not. `ref/1` is the record a socket or a stream holds with
-  `WardrikHTTP.Access.hold/1`, so `revoke/1` ends it.
+  `WardrikHTTP.Access.hold/2`, so `revoke/2` ends it.
   """
 
   @behaviour WardrikHTTP.Authenticator
@@ -62,9 +63,15 @@ defmodule WardrikHTTP.Token do
   is the grant's ceiling, which a token that can `:define` must be given, and
   `:for` the `Wardrik.Principal` it acts for.
   """
-  @spec create(String.t(), Wardrik.AgentID.Prefix.t(), [Grant.action() | String.t()], keyword()) ::
+  @spec create(
+          WardrikStore.t(),
+          String.t(),
+          Wardrik.AgentID.Prefix.t(),
+          [Grant.action() | String.t()],
+          keyword()
+        ) ::
           {:ok, String.t(), t()} | {:error, String.t() | term()}
-  def create(name, scope, can \\ Grant.actions(), opts \\ [])
+  def create(store, name, scope, can \\ Grant.actions(), opts \\ [])
       when is_binary(name) and is_list(opts) do
     with {:ok, grant} <- Grant.new(scope, can, Keyword.get(opts, :ceiling, [])),
          :ok <- chosen(grant, opts) do
@@ -80,21 +87,21 @@ defmodule WardrikHTTP.Token do
         principal: Keyword.get(opts, :for)
       }
 
-      with {:ok, _vsn} <- WardrikStore.put(@ns, token.id, token, if_vsn: nil),
+      with {:ok, _vsn} <- WardrikStore.put(store, @ns, token.id, token, if_vsn: nil),
            do: {:ok, secret, token}
     end
   end
 
   @doc """
-  The token a secret belongs to, read with `WardrikHTTP.Access.get/1`: `:error` for a
+  The token a secret belongs to, read with `WardrikHTTP.Access.get/2`: `:error` for a
   secret no token has, and `{:error, :unavailable}` where the store could not
   answer.
   """
-  @spec verify(String.t()) :: {:ok, t()} | :error | {:error, :unavailable}
-  def verify(@prefix <> _rest = secret) do
+  @spec verify(WardrikStore.t(), String.t()) :: {:ok, t()} | :error | {:error, :unavailable}
+  def verify(store, @prefix <> _rest = secret) do
     hash = hash(secret)
 
-    case Access.get({@ns, binary_part(hash, 0, @id_length)}) do
+    case Access.get(store, {@ns, binary_part(hash, 0, @id_length)}) do
       {:ok, %__MODULE__{hash: stored, grant: %Grant{}} = token} ->
         if Plug.Crypto.secure_compare(stored, hash), do: {:ok, current(token)}, else: :error
 
@@ -109,21 +116,21 @@ defmodule WardrikHTTP.Token do
     end
   end
 
-  def verify(_secret), do: :error
+  def verify(_store, _secret), do: :error
 
   @doc """
-  The token `id` names, read as `verify/1` reads one, so a revoked token is
+  The token `id` names, read as `verify/2` reads one, so a revoked token is
   gone at once: `:error` where there is none, or the store could not answer.
   """
-  @spec get(String.t()) :: {:ok, t()} | :error
-  def get(id) when is_binary(id) and byte_size(id) == @id_length do
-    case Access.get({@ns, id}) do
+  @spec get(WardrikStore.t(), String.t()) :: {:ok, t()} | :error
+  def get(store, id) when is_binary(id) and byte_size(id) == @id_length do
+    case Access.get(store, {@ns, id}) do
       {:ok, %__MODULE__{grant: %Grant{}} = token} -> {:ok, current(token)}
       _none -> :error
     end
   end
 
-  def get(_id), do: :error
+  def get(_store, _id), do: :error
 
   # A token that can define says what its agents are held to, even nothing.
   defp chosen(grant, opts) do
@@ -161,10 +168,12 @@ defmodule WardrikHTTP.Token do
 
   @impl WardrikHTTP.Authenticator
   def authenticate(conn, _opts) do
+    store = conn.assigns.options |> Keyword.fetch!(:host) |> Wardrik.Host.store()
+
     with [header] <- Plug.Conn.get_req_header(conn, "authorization"),
          [scheme, secret] <- String.split(header, " ", parts: 2, trim: true),
          "bearer" <- String.downcase(scheme),
-         {:ok, token} <- verify(String.trim(secret)) do
+         {:ok, token} <- verify(store, String.trim(secret)) do
       {:ok, caller(token)}
     else
       {:error, :unavailable} = unavailable -> unavailable
@@ -175,16 +184,16 @@ defmodule WardrikHTTP.Token do
   @impl WardrikHTTP.Authenticator
   def challenge(_opts), do: ~s(Bearer realm="wardrik")
 
-  @doc "The record `token` is kept in, for `WardrikHTTP.Access.hold/1`."
+  @doc "The record `token` is kept in, for `WardrikHTTP.Access.hold/2`."
   @spec ref(t()) :: Access.ref()
   def ref(%__MODULE__{id: id}), do: {@ns, id}
 
   @doc "Every token, oldest first."
-  @spec list() :: [t()]
-  def list do
-    @ns
-    |> WardrikStore.keys("")
-    |> Enum.map(&WardrikStore.get(@ns, &1))
+  @spec list(WardrikStore.t()) :: [t()]
+  def list(store) do
+    store
+    |> WardrikStore.keys(@ns)
+    |> Enum.map(&WardrikStore.get(store, @ns, &1))
     |> Enum.filter(&match?(%__MODULE__{grant: %Grant{}}, &1))
     |> Enum.map(&current/1)
     |> Enum.sort_by(& &1.created_at, DateTime)
@@ -194,11 +203,11 @@ defmodule WardrikHTTP.Token do
   Stops the token with `id` working, and ends every socket and stream open on
   it.
   """
-  @spec revoke(String.t()) :: :ok | {:error, :not_found | term()}
-  def revoke(id) when is_binary(id) and byte_size(id) == @id_length,
-    do: Access.revoke({@ns, id})
+  @spec revoke(WardrikStore.t(), String.t()) :: :ok | {:error, :not_found | term()}
+  def revoke(store, id) when is_binary(id) and byte_size(id) == @id_length,
+    do: Access.revoke(store, {@ns, id})
 
-  def revoke(_id), do: {:error, :not_found}
+  def revoke(_store, _id), do: {:error, :not_found}
 
   defp hash(secret), do: :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
 end

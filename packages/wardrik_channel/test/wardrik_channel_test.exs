@@ -50,7 +50,7 @@ defmodule WardrikChannelTest do
         {WardrikChannel.Supervisor,
          channels:
            WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, settings}],
-             host: Wardrik.Host.new()
+             host: Wardrik.Host.new(store: Wardrik.Test.store())
            )}
       )
 
@@ -73,7 +73,7 @@ defmodule WardrikChannelTest do
   end
 
   test "makes each channel's context once, from the host's answers" do
-    host = Wardrik.Host.new()
+    host = Wardrik.Host.new(store: Wardrik.Test.store())
 
     assert %{"one" => {WardrikChannel.Test.Adapter, [test: :me], context}} =
              WardrikChannel.channels([one: {WardrikChannel.Test.Adapter, test: :me}],
@@ -93,7 +93,7 @@ defmodule WardrikChannelTest do
               one: {WardrikChannel.Test.Adapter, test: self()},
               two: {WardrikChannel.Test.Adapter, test: self()}
             ],
-            host: Wardrik.Host.new()
+            host: Wardrik.Host.new(store: Wardrik.Test.store())
           )
       )
 

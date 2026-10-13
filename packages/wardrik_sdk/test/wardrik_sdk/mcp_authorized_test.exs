@@ -24,7 +24,8 @@ defmodule WardrikSDK.MCPAuthorizedTest do
       Wardrik.Test.scope(
         tools: [{WardrikMCP, ref}],
         id: Wardrik.AgentID.parse!("acme/@#{owner}/assistant"),
-        credentials: WardrikVault
+        credentials: WardrikVault,
+        host: Wardrik.Test.host()
       )
 
     %{scope: scope}
@@ -43,7 +44,7 @@ defmodule WardrikSDK.MCPAuthorizedTest do
     refute prompt =~ "https://"
 
     assert {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
-    assert WardrikOAuth.connected?("github", {"acme", owner})
+    assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
 
     assert %Call{state: :done, result: {:ok, %{"result" => %{"content" => content}}}} =
              Wardrik.Test.resume(scope, call)

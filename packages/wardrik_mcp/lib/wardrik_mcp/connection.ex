@@ -205,7 +205,7 @@ defmodule WardrikMCP.Connection do
   Offers the `tools/list` entries a user's connection on another node got
   from `ref`, in place of the tool that authorizes.
 
-  What `WardrikMCP.Listing.remember/2` runs on every other connected node. A node
+  What `WardrikMCP.Listing.remember/3` runs on every other connected node. A node
   with no connection to `ref`, or one that reaches it as the deployment, is
   left as it is.
   """
@@ -420,7 +420,7 @@ defmodule WardrikMCP.Connection do
 
   defp publish(%State{server: server} = state, listed) do
     hand_over(server, built(server, listed))
-    Listing.remember(server.ref, listed)
+    Listing.remember(server.store, server.ref, listed)
     listed(state, listed)
 
     Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed as a user")
@@ -461,7 +461,7 @@ defmodule WardrikMCP.Connection do
   end
 
   defp remembered(%Server{credential: nil}), do: {[], []}
-  defp remembered(%Server{} = server), do: built(server, Listing.recall(server.ref))
+  defp remembered(%Server{} = server), do: built(server, Listing.recall(server.store, server.ref))
 
   defp offer(%Server{} = server, {tools, read_only}) do
     Registry.update_value(

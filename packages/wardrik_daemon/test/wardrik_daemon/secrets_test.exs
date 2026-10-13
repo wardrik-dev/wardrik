@@ -1,6 +1,8 @@
 defmodule WardrikDaemon.SecretsTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   alias WardrikDaemon.Secrets
   alias WardrikDaemon.Test.Settings
 
@@ -17,7 +19,7 @@ defmodule WardrikDaemon.SecretsTest do
     Enum.each(@variables, &System.delete_env/1)
 
     on_exit(fn ->
-      Enum.each(@variables, &WardrikVault.forget(&1, nil))
+      Enum.each(@variables, &WardrikVault.forget(store(), &1, nil))
       restore(:req_llm, :anthropic_api_key, previous.anthropic)
 
       for {name, value} <- previous.environment,
@@ -36,20 +38,20 @@ defmodule WardrikDaemon.SecretsTest do
 
     on_exit(fn ->
       System.delete_env(name)
-      for owner <- [{"acme", "jon"}, "acme", nil], do: WardrikVault.forget(name, owner)
+      for owner <- [{"acme", "jon"}, "acme", nil], do: WardrikVault.forget(store(), name, owner)
     end)
 
-    assert Secrets.for_agent(name, acme) == nil
+    assert Secrets.for_agent(store(), name, acme) == nil
     System.put_env(name, "environment's")
-    assert Secrets.for_agent(name, acme) == "environment's"
+    assert Secrets.for_agent(store(), name, acme) == "environment's"
 
-    :ok = WardrikVault.put(name, nil, "deployment's")
-    :ok = WardrikVault.put(name, "acme", "acme's")
-    :ok = WardrikVault.put(name, {"acme", "jon"}, "jon's")
+    :ok = WardrikVault.put(store(), name, nil, "deployment's")
+    :ok = WardrikVault.put(store(), name, "acme", "acme's")
+    :ok = WardrikVault.put(store(), name, {"acme", "jon"}, "jon's")
 
-    assert Secrets.for_agent(name, jon) == "jon's"
-    assert Secrets.for_agent(name, acme) == "acme's"
-    assert Secrets.for_agent(name, globex) == "deployment's"
+    assert Secrets.for_agent(store(), name, jon) == "jon's"
+    assert Secrets.for_agent(store(), name, acme) == "acme's"
+    assert Secrets.for_agent(store(), name, globex) == "deployment's"
   end
 
   test "names each provider's key variable, and no other" do
@@ -63,20 +65,20 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "gives a provider the vault's key where the environment sets none" do
-    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
-    :ok = WardrikVault.put("SEARCH_API_KEY", nil, "search-vault")
+    :ok = WardrikVault.put(store(), "ANTHROPIC_API_KEY", nil, "sk-ant-vault")
+    :ok = WardrikVault.put(store(), "SEARCH_API_KEY", nil, "search-vault")
 
-    assert Secrets.apply() == :ok
+    assert Secrets.apply(store()) == :ok
     assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-vault", :application}
     refute "search-vault" in Keyword.values(Application.get_all_env(:req_llm))
   end
 
   test "leaves a key the environment sets to the environment" do
-    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
+    :ok = WardrikVault.put(store(), "ANTHROPIC_API_KEY", nil, "sk-ant-vault")
     Application.delete_env(:req_llm, :anthropic_api_key)
     System.put_env("ANTHROPIC_API_KEY", "sk-ant-environment")
 
-    assert Secrets.apply() == :ok
+    assert Secrets.apply(store()) == :ok
     assert Secrets.place("ANTHROPIC_API_KEY", "sk-ant-placed") == :ok
     assert Application.get_env(:req_llm, :anthropic_api_key) == nil
     assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-environment", :system}
@@ -94,12 +96,12 @@ defmodule WardrikDaemon.SecretsTest do
   end
 
   test "reads the deployment's secret, or nothing" do
-    :ok = WardrikVault.put("ANTHROPIC_API_KEY", nil, "sk-ant-vault")
+    :ok = WardrikVault.put(store(), "ANTHROPIC_API_KEY", nil, "sk-ant-vault")
 
-    assert Secrets.named("ANTHROPIC_API_KEY") == "sk-ant-vault"
-    assert Secrets.named("NOT_IN_THE_VAULT") == nil
+    assert Secrets.named(store(), "ANTHROPIC_API_KEY") == "sk-ant-vault"
+    assert Secrets.named(store(), "NOT_IN_THE_VAULT") == nil
 
     :ok = Settings.no_vault()
-    assert Secrets.named("ANTHROPIC_API_KEY") == nil
+    assert Secrets.named(store(), "ANTHROPIC_API_KEY") == nil
   end
 end

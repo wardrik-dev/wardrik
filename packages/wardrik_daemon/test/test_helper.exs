@@ -9,7 +9,12 @@ Mimic.copy(ReqLLM)
 # The tests that reach real services, which dev/services.sh starts, are
 # left out where nothing answers; see WardrikEcto.Test.Services.
 Wardrik.Test.start(
-  children: [WardrikPolicy.Supervisor, WardrikTrigger, WardrikHTTP.Access, WardrikHTTP.Workers],
+  children: [
+    {WardrikPolicy.Supervisor, store: Wardrik.Test.store()},
+    {WardrikTrigger, store: Wardrik.Test.store()},
+    {WardrikHTTP.Access, store: Wardrik.Test.store()},
+    WardrikHTTP.Workers
+  ],
   wait: [WardrikPolicy.Meter.supervisor(), WardrikTrigger.supervisor()],
   exclude: WardrikEcto.Test.Services.start()
 )

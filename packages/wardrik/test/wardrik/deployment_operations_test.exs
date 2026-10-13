@@ -2,6 +2,8 @@ defmodule Wardrik.DeploymentOperationsTest do
   # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Command
@@ -25,7 +27,7 @@ defmodule Wardrik.DeploymentOperationsTest do
     use Wardrik.Definition
 
     @impl true
-    def put(_id, _definition, _grant), do: {:error, "keeps none"}
+    def put(_host, _id, _definition, _grant), do: {:error, "keeps none"}
 
     @impl true
     def reload do
@@ -45,32 +47,35 @@ defmodule Wardrik.DeploymentOperationsTest do
     @ns :deployment_operations_test_tokens
 
     @impl true
-    def create("refused", _grant, _for), do: {:error, "No token is named refused."}
+    def create(_host, "refused", _grant, _for), do: {:error, "No token is named refused."}
 
-    def create(name, grant, for) do
+    def create(_host, name, grant, for) do
       id = Wardrik.UUID.v7()
       token = %{id: id, name: name, grant: grant, principal: for, created_at: DateTime.utc_now()}
-      {:ok, _vsn} = WardrikStore.put(@ns, id, token)
+      {:ok, _vsn} = WardrikStore.put(store(), @ns, id, token)
       {:ok, "secret-" <> id, token}
     end
 
     @impl true
-    def list, do: @ns |> WardrikStore.keys("") |> Enum.map(&WardrikStore.get(@ns, &1))
+    def list(_host),
+      do: store() |> WardrikStore.keys(@ns, "") |> Enum.map(&WardrikStore.get(store(), @ns, &1))
 
     @impl true
-    def revoke(id) do
-      if WardrikStore.get(@ns, id), do: WardrikStore.delete(@ns, id), else: {:error, :not_found}
+    def revoke(_host, id) do
+      if WardrikStore.get(store(), @ns, id),
+        do: WardrikStore.delete(store(), @ns, id),
+        else: {:error, :not_found}
     end
   end
 
-  @host Host.new(definitions: Reloads, tokens: Tokens)
+  defp host, do: Wardrik.Test.host(definitions: Reloads, tokens: Tokens)
 
-  defp root(host \\ @host),
+  defp root(host \\ host()),
     do: Caller.root(principal: Principal.new(:user, "jon", name: "Jon"), host: host)
 
   defp caller do
     {:ok, grant} = Grant.new(Prefix.parse!("test/"), Grant.actions())
-    Caller.new(principal: Principal.new(:user, "jon", name: "Jon"), grant: grant, host: @host)
+    Caller.new(principal: Principal.new(:user, "jon", name: "Jon"), grant: grant, host: host())
   end
 
   describe "reloading" do

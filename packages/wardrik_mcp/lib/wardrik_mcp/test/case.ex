@@ -51,7 +51,7 @@ defmodule WardrikMCP.Test.Case do
   def stub_options(opts \\ []) do
     {transport_opts, opts} = Keyword.pop(opts, :transport_opts, [])
 
-    [first_retry: 10, refresh_after: 10]
+    [first_retry: 10, refresh_after: 10, store: Wardrik.Test.store()]
     |> Keyword.merge(opts)
     |> Keyword.put(:transport, {:stdio, [command: elixir(), args: [stub()]] ++ transport_opts})
   end

@@ -54,13 +54,13 @@ defmodule WardrikSlack.ThreadsTest do
 
     channels =
       WardrikChannel.channels([{name, {WardrikSlack, channel}}],
-        host: Wardrik.Host.new(),
+        host: Wardrik.Host.new(store: Wardrik.Test.store()),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [runner]},
         replies: replies
       )
 
-    start_supervised!({Replies, name: replies, channels: channels})
+    start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {_adapter, _options, context} = channels[name]
     {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", nil)

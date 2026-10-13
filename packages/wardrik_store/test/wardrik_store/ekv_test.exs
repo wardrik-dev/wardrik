@@ -1,8 +1,20 @@
 defmodule WardrikStore.EKVTest do
   use ExUnit.Case, async: false
-  use WardrikStore.Conformance, adapter: WardrikStore.EKV
+  use WardrikStore.Conformance
 
   alias WardrikStore.EKV
+
+  setup_all do
+    dir = Path.join(System.tmp_dir!(), "wardrik-ekv-test-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+    store = WardrikStore.new(adapter: EKV, name: :ekv_conformance, data_dir: dir)
+    start_supervised!({WardrikStore, store})
+    %{store: store}
+  end
+
+  test "names its EKV instance :wardrik_store unless named" do
+    assert WardrikStore.new(data_dir: "/nowhere").config.name == :wardrik_store
+  end
 
   describe "data_dir/1" do
     test "takes what it was configured with" do
@@ -94,7 +106,7 @@ defmodule WardrikStore.EKVTest do
     assert Enum.map(1..5, &EKV.quorum/1) == [1, 2, 2, 3, 3]
   end
 
-  test "provides the fleet's DurableServer backend" do
-    assert {DurableServer.Backends.EKVStore, name: :wardrik_store} = EKV.durable_backend([])
+  test "provides the fleet's DurableServer backend", %{store: store} do
+    assert EKV.durable_backend(store) == {DurableServer.Backends.EKVStore, name: :ekv_conformance}
   end
 end

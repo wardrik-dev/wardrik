@@ -7,11 +7,11 @@ defmodule Wardrik.Tokens.None do
   @behaviour Wardrik.Tokens
 
   @impl Wardrik.Tokens
-  def create(_name, _grant, _for), do: :unsupported
+  def create(_host, _name, _grant, _for), do: :unsupported
 
   @impl Wardrik.Tokens
-  def list, do: :unsupported
+  def list(_host), do: :unsupported
 
   @impl Wardrik.Tokens
-  def revoke(_id), do: :unsupported
+  def revoke(_host, _id), do: :unsupported
 end

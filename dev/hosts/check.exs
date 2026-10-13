@@ -10,16 +10,26 @@
 
 ExUnit.start(autorun: false)
 
+defmodule WardrikHost do
+  @moduledoc false
+  # The store the application keeps Wardrik in, as its environment names it.
+  def store, do: WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
+end
+
 defmodule WardrikHost.StoreTest do
   use ExUnit.Case, async: false
-  use WardrikStore.Conformance, adapter: WardrikStore.adapter()
+  use WardrikStore.Conformance
+
+  setup_all do
+    %{store: WardrikHost.store()}
+  end
 end
 
 defmodule WardrikHost.FleetTest do
   use ExUnit.Case, async: false
 
   test "the store is the one the application configured" do
-    assert inspect(WardrikStore.adapter()) == System.fetch_env!("WARDRIK_HOST_STORE")
+    assert inspect(WardrikHost.store().adapter) == System.fetch_env!("WARDRIK_HOST_STORE")
   end
 
   test "what the application does not depend on is not loaded" do
@@ -34,7 +44,7 @@ defmodule WardrikHost.FleetTest do
 
     assert {:ok, _pid} = Wardrik.Fleet.spawn(id)
     assert id in Enum.map(Wardrik.Fleet.list(), & &1.id)
-    assert Enum.any?(WardrikStore.keys(:durable, Wardrik.Fleet.prefix()), &(&1 =~ name))
+    assert Enum.any?(WardrikStore.keys(WardrikHost.store(), :durable, Wardrik.Fleet.prefix()), &(&1 =~ name))
 
     if repo = System.get_env("WARDRIK_HOST_REPO") do
       %{rows: rows} =

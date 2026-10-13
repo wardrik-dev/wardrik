@@ -5,6 +5,10 @@ defmodule WardrikWorkspace.Backend.StoreTest do
   alias WardrikWorkspace.Backend.Store
   alias WardrikWorkspace.File
 
+  setup do
+    %{host: Wardrik.Test.host()}
+  end
+
   @file_written %File{
     content: "x",
     by: "test/writer",
@@ -17,10 +21,13 @@ defmodule WardrikWorkspace.Backend.StoreTest do
   describe "a tree or a path that is not normalised" do
     test "is refused as a tree, by every operation" do
       for tree <- ["", "/store-test", "store-test/", "store-test//notes"] do
-        assert Store.read(tree, "a.md") == {:error, {:not_a_tree, tree}}
-        assert Store.write(tree, "a.md", @file_written, nil) == {:error, {:not_a_tree, tree}}
-        assert Store.delete(tree, "a.md", 1) == {:error, {:not_a_tree, tree}}
-        assert Store.list(tree, "") == {:error, {:not_a_tree, tree}}
+        assert Store.read(Wardrik.Test.host(), tree, "a.md") == {:error, {:not_a_tree, tree}}
+
+        assert Store.write(Wardrik.Test.host(), tree, "a.md", @file_written, nil) ==
+                 {:error, {:not_a_tree, tree}}
+
+        assert Store.delete(Wardrik.Test.host(), tree, "a.md", 1) == {:error, {:not_a_tree, tree}}
+        assert Store.list(Wardrik.Test.host(), tree, "") == {:error, {:not_a_tree, tree}}
       end
     end
 
@@ -28,12 +35,15 @@ defmodule WardrikWorkspace.Backend.StoreTest do
       tree = "store-test/#{System.unique_integer([:positive])}"
 
       for path <- ["", "/a.md", "notes/", "notes//a.md"] do
-        assert Store.read(tree, path) == {:error, {:not_a_path, path}}
-        assert Store.write(tree, path, @file_written, nil) == {:error, {:not_a_path, path}}
-        assert Store.delete(tree, path, 1) == {:error, {:not_a_path, path}}
+        assert Store.read(Wardrik.Test.host(), tree, path) == {:error, {:not_a_path, path}}
+
+        assert Store.write(Wardrik.Test.host(), tree, path, @file_written, nil) ==
+                 {:error, {:not_a_path, path}}
+
+        assert Store.delete(Wardrik.Test.host(), tree, path, 1) == {:error, {:not_a_path, path}}
       end
 
-      assert Store.list(tree, "") == {:ok, []}
+      assert Store.list(Wardrik.Test.host(), tree, "") == {:ok, []}
     end
   end
 end

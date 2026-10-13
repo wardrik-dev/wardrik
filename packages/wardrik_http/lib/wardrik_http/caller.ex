@@ -9,7 +9,7 @@ defmodule WardrikHTTP.Caller do
       decision is recorded as made by.
     * `:grant` - what it may do, a `Wardrik.Grant`.
     * `:ref` - the record a stream or a worker's socket holds while it runs,
-      so revoking the credential ends them, as `WardrikHTTP.Access.hold/1`
+      so revoking the credential ends them, as `WardrikHTTP.Access.hold/2`
       takes it; `nil` where there is none to hold.
   """
 

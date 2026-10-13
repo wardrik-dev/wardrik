@@ -33,7 +33,8 @@
   calls: [
     forbidden: [
       # Core takes its settings as options of `Wardrik`, and reads the
-      # application environment only where its application starts it.
+      # application environment only where its application starts it, and
+      # where `Wardrik.Test` hands a suite the store and host it started on.
       {["Wardrik", "Wardrik.*"],
        [
          "Application.get_env",
@@ -42,7 +43,7 @@
          "Application.put_env",
          "Application.delete_env"
        ],
-       except: ["Wardrik.Application"]}
+       except: ["Wardrik.Application", "Wardrik.Test"]}
     ]
   ],
   smells: [

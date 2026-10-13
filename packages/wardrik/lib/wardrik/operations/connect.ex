@@ -33,7 +33,7 @@ defmodule Wardrik.Operations.Connect do
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
     connections = Host.connections(caller.host)
 
-    case connections.connect(provider, Connections.owner_of(owner), caller.principal) do
+    case connections.connect(caller.host, provider, Connections.owner_of(owner), caller.principal) do
       {:ok, :held} ->
         {:ok, Resource.connecting(provider, nil), change.effect}
 

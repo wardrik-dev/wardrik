@@ -1,9 +1,10 @@
 defmodule WardrikVault do
   @moduledoc """
-  Where credentials are kept, sealed with a key the deployment holds, in
-  `WardrikStore`, and the `Wardrik.Credential` resolver that finds them.
+  Where credentials are kept, sealed with a key the deployment holds, in the
+  store every function is handed first, and the `Wardrik.Credential`
+  resolver that finds them in the store of the call's host.
 
-      children = [Wardrik, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
+      children = [{Wardrik, host: host}, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
 
       Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
 
@@ -15,9 +16,9 @@ defmodule WardrikVault do
   since two orgs may each have a user of the same name; an org; or the
   deployment, `nil`.
 
-      WardrikVault.put("github", {"acme", "jon"}, "ghp_xxx")
-      WardrikVault.put("pagerduty", "acme", "pd_xxx")
-      WardrikVault.put("linear", nil, "lin_xxx")
+      WardrikVault.put(store, "github", {"acme", "jon"}, "ghp_xxx")
+      WardrikVault.put(store, "pagerduty", "acme", "pd_xxx")
+      WardrikVault.put(store, "linear", nil, "lin_xxx")
 
   ## Resolving
 
@@ -133,13 +134,14 @@ defmodule WardrikVault do
 
   @impl Wardrik.Credential
   def resolve(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
+    store = Wardrik.Host.store(scope.host)
     owners = owners(scope)
 
-    case find(name, owners) do
+    case find(store, name, owners) do
       {:ok, owner, :secret, secret} -> {:ok, Credential.secret(secret, owner: owner)}
-      {:ok, owner, :grant, grant} -> Config.grants().renew(name, owner, grant)
-      {:unreadable, owner} -> ask(name, owner)
-      :none -> environment(name) || ask(name, hd(owners))
+      {:ok, owner, :grant, grant} -> Config.grants().renew(store, name, owner, grant)
+      {:unreadable, owner} -> ask(store, name, owner)
+      :none -> environment(name) || ask(store, name, hd(owners))
       {:error, :no_key} -> environment(name) || {:error, :no_key}
       {:error, reason} -> {:error, reason}
     end
@@ -157,8 +159,10 @@ defmodule WardrikVault do
   @doc "Tells the grants module that the grant last resolved for `name` was refused."
   @impl Wardrik.Credential
   def refused(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
-    case find(name, owners(scope)) do
-      {:ok, owner, :grant, _grant} -> Config.grants().refused(name, owner)
+    store = Wardrik.Host.store(scope.host)
+
+    case find(store, name, owners(scope)) do
+      {:ok, owner, :grant, _grant} -> Config.grants().refused(store, name, owner)
       _secret_or_none -> :ok
     end
   end
@@ -190,9 +194,9 @@ defmodule WardrikVault do
   # The first of `owners` holding `name`, passing over the grants of any but
   # the first. A grant that no longer unseals is asked for again; a secret
   # that does not is an error.
-  defp find(name, [own | _others] = owners) do
+  defp find(store, name, [own | _others] = owners) do
     Enum.reduce_while(owners, :none, fn owner, :none ->
-      case lookup(name, owner) do
+      case lookup(store, name, owner) do
         {:ok, :grant, _value} when owner != own -> {:cont, :none}
         {:error, :grant, _reason} when owner != own -> {:cont, :none}
         {:ok, kind, value} -> {:halt, {:ok, owner, kind, value}}
@@ -212,11 +216,11 @@ defmodule WardrikVault do
     {:unreadable, owner}
   end
 
-  defp ask(name, owner) do
+  defp ask(store, name, owner) do
     grants = Config.grants()
 
     if grants && grants.grants?(name),
-      do: grants.ask(name, owner),
+      do: grants.ask(store, name, owner),
       else: {:error, :not_found}
   end
 
@@ -224,22 +228,23 @@ defmodule WardrikVault do
   Seals `value` and writes it down as `name` for `owner`, a secret unless
   `kind: :grant` says it is one.
 
-  Overwrites whatever was there, so authorizing again is a `put/4`.
+  Overwrites whatever was there, so authorizing again is a `put/5`.
   """
-  @spec put(String.t(), owner(), String.t(), keyword()) :: :ok | {:error, term()}
-  def put(name, owner, value, opts \\ []) when is_binary(name) and is_binary(value) do
+  @spec put(WardrikStore.t(), String.t(), owner(), String.t(), keyword()) ::
+          :ok | {:error, term()}
+  def put(store, name, owner, value, opts \\ []) when is_binary(name) and is_binary(value) do
     kind = Keyword.get(opts, :kind, :secret)
 
     with {:ok, key} <- sealing_key() do
       path = path(name, owner)
-      write(path, seal(key, path, kind, value))
+      write(store, path, seal(key, path, kind, value))
     end
   end
 
   @doc "Unseals what is written as `name` for `owner`, a secret or a grant."
-  @spec fetch(String.t(), owner()) :: {:ok, String.t()} | {:error, term()}
-  def fetch(name, owner) do
-    case lookup(name, owner) do
+  @spec fetch(WardrikStore.t(), String.t(), owner()) :: {:ok, String.t()} | {:error, term()}
+  def fetch(store, name, owner) do
+    case lookup(store, name, owner) do
       {:ok, _kind, value} -> {:ok, value}
       {:error, _kind, reason} -> {:error, reason}
       {:error, reason} -> {:error, reason}
@@ -250,13 +255,13 @@ defmodule WardrikVault do
   What is written as `name` for `owner`, with its kind, or why not: `:not_found`
   where nothing is, and the kind with the reason where it does not unseal.
   """
-  @spec lookup(String.t(), owner()) ::
+  @spec lookup(WardrikStore.t(), String.t(), owner()) ::
           {:ok, kind(), String.t()} | {:error, term()} | {:error, kind(), term()}
-  def lookup(name, owner) do
+  def lookup(store, name, owner) do
     path = path(name, owner)
 
     with {:ok, keys} <- unsealing_keys(),
-         {:ok, %Sealed{} = sealed} <- read(path) do
+         {:ok, %Sealed{} = sealed} <- read(store, path) do
       case unseal(keys, path, sealed) do
         {:ok, value} -> {:ok, sealed.kind, value}
         {:error, reason} -> {:error, sealed.kind, reason}
@@ -265,23 +270,23 @@ defmodule WardrikVault do
   end
 
   @doc "Whether anything is written as `name` for `owner`."
-  @spec has?(String.t(), owner()) :: boolean()
-  def has?(name, owner), do: match?({:ok, _value}, fetch(name, owner))
+  @spec has?(WardrikStore.t(), String.t(), owner()) :: boolean()
+  def has?(store, name, owner), do: match?({:ok, _value}, fetch(store, name, owner))
 
   @doc "Removes what is written as `name` for `owner`. Removing nothing is still `:ok`."
-  @spec forget(String.t(), owner()) :: :ok | {:error, term()}
-  def forget(name, owner), do: WardrikStore.delete(@ns, path(name, owner))
+  @spec forget(WardrikStore.t(), String.t(), owner()) :: :ok | {:error, term()}
+  def forget(store, name, owner), do: WardrikStore.delete(store, @ns, path(name, owner))
 
   @doc """
   The names `owner` holds credentials of.
 
   Reads no credential and needs no key.
   """
-  @spec names(owner()) :: [String.t()]
-  def names(owner) do
+  @spec names(WardrikStore.t(), owner()) :: [String.t()]
+  def names(store, owner) do
     prefix = segment(owner) <> "/"
 
-    for key <- WardrikStore.keys(@ns, prefix),
+    for key <- WardrikStore.keys(store, @ns, prefix),
         name = String.replace_prefix(key, prefix, ""),
         name != "",
         do: URI.decode(name)
@@ -292,12 +297,12 @@ defmodule WardrikVault do
 
   An owner written as text, such as an org, reads back as that text, and the
   deployment's as `nil`. Any other owner, such as a user's `{org, user}`, is
-  written only as a hash of it, and reads back as `:hashed`; `names/1` lists
+  written only as a hash of it, and reads back as `:hashed`; `names/2` lists
   what one such owner holds. Reads no credential and needs no key.
   """
-  @spec list() :: [{String.t(), owner() | :hashed}]
-  def list do
-    for key <- WardrikStore.keys(@ns),
+  @spec list(WardrikStore.t()) :: [{String.t(), owner() | :hashed}]
+  def list(store) do
+    for key <- WardrikStore.keys(store, @ns),
         [owner, name] <- [String.split(key, "/")],
         do: {URI.decode(name), unsegment(owner)}
   end
@@ -325,15 +330,15 @@ defmodule WardrikVault do
   @spec path(String.t(), owner()) :: String.t()
   def path(name, owner) when is_binary(name), do: segment(owner) <> "/" <> segment(name)
 
-  defp write(path, %Sealed{} = sealed) do
-    case WardrikStore.put(@ns, path, sealed) do
+  defp write(store, path, %Sealed{} = sealed) do
+    case WardrikStore.put(store, @ns, path, sealed) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp read(path) do
-    case WardrikStore.lookup(@ns, path) do
+  defp read(store, path) do
+    case WardrikStore.lookup(store, @ns, path) do
       {%Sealed{} = sealed, _vsn} -> {:ok, sealed}
       nil -> {:error, :not_found}
       {other, _vsn} -> {:error, {:unreadable, other}}

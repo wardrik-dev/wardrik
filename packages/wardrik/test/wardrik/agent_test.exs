@@ -131,7 +131,7 @@ defmodule Wardrik.AgentTest do
     def tools(_argument), do: []
 
     @impl true
-    def context(_argument), do: raise("the store is down")
+    def context(_argument, _scope), do: raise("the store is down")
   end
 
   test "a tool that raises saying what goes first fails that turn, and the agent goes on" do

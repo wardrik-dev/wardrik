@@ -33,15 +33,19 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join(dir, "policies/careful.yaml"), @careful)
     File.write!(Path.join(dir, "policies/plain.yaml"), "ask: [books/*]\n")
-    start_supervised!({WardrikDaemon.Agents, dir: dir})
+    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
     _files = WardrikDaemon.Agents.files()
 
     id = Wardrik.Test.Fleet.id("books")
 
     :ok =
-      Definition.put(%Definition{id: id, fields: %{"policy" => "careful"}, source: {:api, nil}})
+      Definition.put(Wardrik.Test.store(), %Definition{
+        id: id,
+        fields: %{"policy" => "careful"},
+        source: {:api, nil}
+      })
 
-    on_exit(fn -> Definition.delete(id) end)
+    on_exit(fn -> Definition.delete(Wardrik.Test.store(), id) end)
 
     %{id: id}
   end
@@ -71,6 +75,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
 
     writer =
       Writer.open(
+        Wardrik.Test.store(),
         Writer.new(id),
         Event.new(source, %Event.AgentStarted{node: node(), status: :idle, generation: "g1"})
       )
@@ -91,7 +96,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   end
 
   defp appended(writer, source, payload) do
-    {:ok, writer} = Writer.append(writer, Event.new(source, payload))
+    {:ok, writer} = Writer.append(Wardrik.Test.store(), writer, Event.new(source, payload))
     writer
   end
 

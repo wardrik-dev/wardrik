@@ -40,7 +40,7 @@ defmodule Wardrik.Operations.ReadDefinition do
 
   @impl Wardrik.Query
   def run(%__MODULE__{agent: id}, caller) do
-    case Host.definitions(caller.host).get(id) do
+    case Host.definitions(caller.host).get(caller.host, id) do
       {:ok, definition} ->
         {:ok, definition}
 

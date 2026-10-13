@@ -102,28 +102,28 @@ defmodule WardrikOAuth do
 
   @doc "The credential a token held for `owner` answers with, renewed where it has run out."
   @impl WardrikVault.Grants
-  def renew(name, owner, encoded) do
-    with {:ok, provider} <- provider(name), do: held(provider, owner, encoded)
+  def renew(store, name, owner, encoded) do
+    with {:ok, provider} <- provider(name), do: held(store, provider, owner, encoded)
   end
 
   @doc "Asks `owner` to authorize `name`, for a call to park on until they have."
   @impl WardrikVault.Grants
-  def ask(name, owner) do
-    with {:ok, provider} <- provider(name), do: begin(provider, owner)
+  def ask(store, name, owner) do
+    with {:ok, provider} <- provider(name), do: begin(store, provider, owner)
   end
 
   @doc "Treats the token held for `owner` as expired, so the next resolve renews it."
   @impl WardrikVault.Grants
-  def refused(name, owner) do
+  def refused(store, name, owner) do
     with {:ok, provider} <- provider(name),
-         do: single_flight(provider, owner, fn -> expire(provider, owner) end)
+         do: single_flight(provider, owner, fn -> expire(store, provider, owner) end)
 
     :ok
   end
 
-  defp expire(provider, owner) do
-    case current(provider, owner) do
-      %Token{} = token -> store(provider, owner, Token.expire(token))
+  defp expire(store, provider, owner) do
+    case current(store, provider, owner) do
+      %Token{} = token -> keep(store, provider, owner, Token.expire(token))
       nil -> :ok
     end
   end
@@ -136,15 +136,16 @@ defmodule WardrikOAuth do
   user before an agent ever asks. A secret the vault holds under the
   provider's name for `owner` is not a token, and is left be. `:by` is who
   asked, whom the token is recorded in the audit as stored by once it is.
+  The token is kept in `store`, the vault's.
   """
-  @spec hold(Provider.t(), term(), keyword()) :: Credential.outcome()
-  def hold(%Provider{} = provider, owner, opts \\ []) do
-    case WardrikVault.lookup(provider.name, owner) do
-      {:ok, :grant, encoded} -> held(provider, owner, encoded)
+  @spec hold(WardrikStore.t(), Provider.t(), term(), keyword()) :: Credential.outcome()
+  def hold(store, %Provider{} = provider, owner, opts \\ []) do
+    case WardrikVault.lookup(store, provider.name, owner) do
+      {:ok, :grant, encoded} -> held(store, provider, owner, encoded)
       {:ok, :secret, _secret} -> {:error, :held_as_a_secret}
-      {:error, :not_found} -> begin(provider, owner, opts[:by])
+      {:error, :not_found} -> begin(store, provider, owner, opts[:by])
       {:error, :no_key} -> {:error, :no_key}
-      {:error, _kind, reason} -> unreadable(provider, owner, reason)
+      {:error, _kind, reason} -> unreadable(store, provider, owner, reason)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -158,12 +159,12 @@ defmodule WardrikOAuth do
   # A token nothing can read, sealed under a key rotated away or written in
   # another shape, is asked for again and replaced when the user finishes. It
   # is left where it is until then.
-  defp unreadable(%Provider{} = provider, owner, reason) do
+  defp unreadable(store, %Provider{} = provider, owner, reason) do
     Logger.warning(
       "#{provider.name} for #{inspect(owner)} cannot be read (#{tag(reason)}); asking again"
     )
 
-    begin(provider, owner)
+    begin(store, provider, owner)
   end
 
   defp tag(reason) when is_atom(reason), do: reason
@@ -182,7 +183,8 @@ defmodule WardrikOAuth do
       issuer, and must be there where the issuer says it sends one
 
   Only a browser flow still under way is finished; a device flow waits for
-  its code. The token is written before the calls parked on it are told,
+  its code. The token is written, to the store the flow was begun with,
+  before the calls parked on it are told,
   through `Wardrik.Credential.available/3`, so the turn that carries on finds
   the credential it asked for. A callback that cannot be turned into a token
   leaves the flow where it was, so the same link still works. A flow that
@@ -218,7 +220,7 @@ defmodule WardrikOAuth do
   # token is released rather than being lost.
   defp complete(%Flight{} = flight, code) do
     with {:ok, token} <- exchange(flight, code),
-         :ok <- store(flight.provider, flight.owner, token) do
+         :ok <- keep(flight.store, flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
       :ok = Pending.drop(flight.provider.name, flight.owner)
       connected(flight)
@@ -233,20 +235,20 @@ defmodule WardrikOAuth do
     end
   end
 
-  @doc "Forgets a user's token, so the next call asks them to authorize again."
-  @spec disconnect(String.t(), term()) :: :ok | {:error, term()}
-  def disconnect(provider, owner), do: WardrikVault.forget(provider, owner)
+  @doc "Forgets a user's token in `store`, so the next call asks them to authorize again."
+  @spec disconnect(WardrikStore.t(), String.t(), term()) :: :ok | {:error, term()}
+  def disconnect(store, provider, owner), do: WardrikVault.forget(store, provider, owner)
 
-  @doc "Whether a user has authorized a provider."
-  @spec connected?(String.t(), term()) :: boolean()
-  def connected?(provider, owner),
-    do: match?({:ok, :grant, _token}, WardrikVault.lookup(provider, owner))
+  @doc "Whether a user has authorized a provider, by what `store` holds."
+  @spec connected?(WardrikStore.t(), String.t(), term()) :: boolean()
+  def connected?(store, provider, owner),
+    do: match?({:ok, :grant, _token}, WardrikVault.lookup(store, provider, owner))
 
-  @doc "The providers this deployment can offer, and whether this owner has each."
-  @spec connections(term()) :: [%{provider: String.t(), connected?: boolean()}]
-  def connections(owner) do
+  @doc "The providers this deployment can offer, and whether this owner has each in `store`."
+  @spec connections(WardrikStore.t(), term()) :: [%{provider: String.t(), connected?: boolean()}]
+  def connections(store, owner) do
     for provider <- Provider.all() do
-      %{provider: provider.name, connected?: connected?(provider.name, owner)}
+      %{provider: provider.name, connected?: connected?(store, provider.name, owner)}
     end
   end
 
@@ -260,26 +262,26 @@ defmodule WardrikOAuth do
     %{Client.document(Client.new()) | "redirect_uris" => uris}
   end
 
-  defp held(provider, owner, encoded) do
+  defp held(store, provider, owner, encoded) do
     case Token.decode(encoded) do
       {:ok, %Token{} = token} ->
         if Token.fresh?(token, System.system_time(:second)),
           do: {:ok, credential(token, owner)},
-          else: renew(provider, owner)
+          else: renewed(store, provider, owner)
 
       {:error, reason} ->
-        unreadable(provider, owner, reason)
+        unreadable(store, provider, owner, reason)
     end
   end
 
-  defp renew(provider, owner) do
-    case single_flight(provider, owner, fn -> refresh(provider, owner) end) do
+  defp renewed(store, provider, owner) do
+    case single_flight(provider, owner, fn -> refresh(store, provider, owner) end) do
       {:ok, %Token{} = fresh} ->
         {:ok, credential(fresh, owner)}
 
       :ask ->
         Logger.info("#{provider.name} could not be renewed for #{inspect(owner)}; asking again")
-        begin(provider, owner)
+        begin(store, provider, owner)
 
       {:error, reason} ->
         {:error, reason}
@@ -288,14 +290,14 @@ defmodule WardrikOAuth do
 
   # Run holding the renewal lock. The token is read again first: whoever held
   # the lock before may have renewed it already.
-  defp refresh(provider, owner) do
-    case current(provider, owner) do
+  defp refresh(store, provider, owner) do
+    case current(store, provider, owner) do
       nil -> :ask
-      %Token{} = token -> refresh(provider, owner, token)
+      %Token{} = token -> refresh(store, provider, owner, token)
     end
   end
 
-  defp refresh(provider, owner, %Token{} = token) do
+  defp refresh(store, provider, owner, %Token{} = token) do
     cond do
       Token.fresh?(token, System.system_time(:second)) ->
         {:ok, token}
@@ -306,23 +308,37 @@ defmodule WardrikOAuth do
       true ->
         token
         |> Flow.refresh(refresh_options(provider, token))
-        |> refreshed(provider, owner, token)
+        |> refreshed(store, provider, owner, token)
     end
   end
 
-  defp refreshed({:ok, fresh}, provider, owner, _token) do
-    with :ok <- store(provider, owner, fresh), do: {:ok, fresh}
+  defp refreshed({:ok, fresh}, store, provider, owner, _token) do
+    with :ok <- keep(store, provider, owner, fresh), do: {:ok, fresh}
   end
 
-  defp refreshed({:error, {:token_refused, "invalid_grant", _}}, _provider, _owner, _token),
-    do: :ask
+  defp refreshed(
+         {:error, {:token_refused, "invalid_grant", _}},
+         _store,
+         _provider,
+         _owner,
+         _token
+       ),
+       do: :ask
 
-  defp refreshed({:error, {:token_refused, "invalid_client", _}}, provider, _owner, token) do
-    :ok = Registrations.forget(provider.name, token.issuer, redirect(provider), token.client_id)
+  defp refreshed({:error, {:token_refused, "invalid_client", _}}, store, provider, _owner, token) do
+    :ok =
+      Registrations.forget(
+        store,
+        provider.name,
+        token.issuer,
+        redirect(provider),
+        token.client_id
+      )
+
     :ask
   end
 
-  defp refreshed({:error, reason}, _provider, _owner, _token), do: {:error, reason}
+  defp refreshed({:error, reason}, _store, _provider, _owner, _token), do: {:error, reason}
 
   # A token from the issuer the deployment named is renewed under its trust,
   # and with the provider's secret where it was issued to the provider's own
@@ -341,8 +357,8 @@ defmodule WardrikOAuth do
     end
   end
 
-  defp current(provider, owner) do
-    with {:ok, :grant, encoded} <- WardrikVault.lookup(provider.name, owner),
+  defp current(store, provider, owner) do
+    with {:ok, :grant, encoded} <- WardrikVault.lookup(store, provider.name, owner),
          {:ok, %Token{} = token} <- Token.decode(encoded) do
       token
     else
@@ -355,11 +371,11 @@ defmodule WardrikOAuth do
   # begin one at a time for a user and provider across the cluster, and one
   # under way on any node is joined, so calls parking at once, on any node,
   # share one.
-  defp begin(%Provider{} = provider, owner, by \\ nil) do
+  defp begin(store, %Provider{} = provider, owner, by \\ nil) do
     single_flight(provider, owner, fn ->
       case Pending.under_way(provider.name, owner) do
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
-        :error -> open(provider, owner, by)
+        :error -> open(store, provider, owner, by)
       end
     end)
   end
@@ -367,10 +383,11 @@ defmodule WardrikOAuth do
   defp required(%Flight{url: url, user_code: code, owner: owner}),
     do: {:authorization_required, %{url: url, code: code}, owner}
 
-  defp open(%Provider{} = provider, owner, by) do
-    with {:ok, metadata, registered} <- prepare(provider),
+  defp open(store, %Provider{} = provider, owner, by) do
+    with {:ok, metadata, registered} <- prepare(store, provider),
          {:ok, flow} <- flow(provider, metadata) do
       flight = %Flight{
+        store: store,
         state: Flow.state(),
         provider: provider,
         owner: owner,
@@ -471,7 +488,7 @@ defmodule WardrikOAuth do
   end
 
   defp authorized(%Flight{} = flight, %Token{} = token) do
-    case store(flight.provider, flight.owner, token) do
+    case keep(flight.store, flight.provider, flight.owner, token) do
       :ok ->
         Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
         connected(flight)
@@ -511,25 +528,25 @@ defmodule WardrikOAuth do
 
   # A client registered dynamically before, for this issuer and redirect URI,
   # is used again; a new one is kept.
-  defp prepare(%Provider{} = provider) do
+  defp prepare(store, %Provider{} = provider) do
     client = Client.new(redirect_uri: redirect(provider))
 
     with {:ok, metadata} <- Metadata.discover(provider.resource, issuer: provider.issuer),
-         {:ok, registered} <- registered(provider, metadata, client) do
+         {:ok, registered} <- registered(store, provider, metadata, client) do
       {:ok, metadata, registered}
     end
   end
 
-  defp registered(provider, metadata, client) do
+  defp registered(store, provider, metadata, client) do
     known =
-      case Registrations.fetch(provider.name, metadata.issuer, redirect(provider)) do
+      case Registrations.fetch(store, provider.name, metadata.issuer, redirect(provider)) do
         {:ok, registered} -> registered
         :error -> nil
       end
 
     with {:ok, registered} <- Flow.register(metadata, client, provider, known: known) do
       if registered.how == :dynamic and is_nil(known),
-        do: Registrations.put(provider.name, metadata.issuer, registered)
+        do: Registrations.put(store, provider.name, metadata.issuer, registered)
 
       {:ok, registered}
     end
@@ -545,6 +562,7 @@ defmodule WardrikOAuth do
          {:error, {:token_refused, "invalid_client", _description}}
        ) do
     Registrations.forget(
+      flight.store,
       flight.provider.name,
       flight.metadata.issuer,
       registered.redirect_uri,
@@ -554,8 +572,8 @@ defmodule WardrikOAuth do
 
   defp forget_client(_flight, _trouble), do: :ok
 
-  defp store(%Provider{} = provider, owner, %Token{} = token) do
-    WardrikVault.put(provider.name, owner, Token.encode(token), kind: :grant)
+  defp keep(store, %Provider{} = provider, owner, %Token{} = token) do
+    WardrikVault.put(store, provider.name, owner, Token.encode(token), kind: :grant)
   end
 
   defp provider(name) do

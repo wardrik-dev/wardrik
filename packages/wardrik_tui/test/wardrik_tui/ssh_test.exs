@@ -61,7 +61,7 @@ defmodule WardrikTUI.SSHTest do
       WardrikTUI.SSH.start_link(
         session: session(self()),
         org: "default",
-        host: Wardrik.Host.new()
+        host: Wardrik.Host.new(store: Wardrik.Test.store())
       )
 
     on_exit(fn -> if Process.alive?(pid), do: Breeze.Server.stop(pid) end)

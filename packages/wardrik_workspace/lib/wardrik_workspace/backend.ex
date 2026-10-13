@@ -33,26 +33,28 @@ defmodule WardrikWorkspace.Backend do
   @type version() :: term()
 
   @doc "The file at `path` in `tree`, with its version, or `:none` where there is none."
-  @callback read(tree(), path :: String.t()) ::
+  @callback read(Wardrik.Host.t(), tree(), path :: String.t()) ::
               {:ok, File.t(), version()} | :none | {:error, term()}
 
   @doc """
   Writes `file` at `path` in `tree`: only where nothing is written for a
   `nil` version, or only over `version`.
   """
-  @callback write(tree(), path :: String.t(), File.t(), version() | nil) ::
+  @callback write(Wardrik.Host.t(), tree(), path :: String.t(), File.t(), version() | nil) ::
               {:ok, version()} | {:error, :conflict | term()}
 
   @doc "Deletes the file at `path` in `tree`, only where its version is `version`."
-  @callback delete(tree(), path :: String.t(), version()) :: :ok | {:error, :conflict | term()}
+  @callback delete(Wardrik.Host.t(), tree(), path :: String.t(), version()) ::
+              :ok | {:error, :conflict | term()}
 
   @doc "Every file in `tree` whose path starts with `prefix`, with its version."
-  @callback list(tree(), prefix :: String.t()) ::
+  @callback list(Wardrik.Host.t(), tree(), prefix :: String.t()) ::
               {:ok, [{String.t(), File.t(), version()}]} | {:error, term()}
 
   @doc """
   The path of every file in `tree` that starts with `prefix`, read without
   the files, for what needs their names alone.
   """
-  @callback paths(tree(), prefix :: String.t()) :: {:ok, [String.t()]} | {:error, term()}
+  @callback paths(Wardrik.Host.t(), tree(), prefix :: String.t()) ::
+              {:ok, [String.t()]} | {:error, term()}
 end

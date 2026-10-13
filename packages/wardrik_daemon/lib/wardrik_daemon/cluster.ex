@@ -45,15 +45,16 @@ defmodule WardrikDaemon.Cluster do
 
   A store kept elsewhere, in Postgres or S3, needs no quorum: each node starts
   on its own, and the fleet carries on while any node is up. The store says
-  which; see `WardrikStore.quorum/1`.
+  which; see `WardrikStore.quorum/2`.
 
   A release reads `cluster` as it boots, before anything starts; see
   `config/runtime.exs`. This supervisor runs a `WardrikDaemon.Cluster.Topology`
   for the way the cluster is found, which connects to the nodes it finds, and
   `WardrikDaemon.Cluster.Quorum` beside it holds the fleet back until a quorum of
-  them is connected. Core starts both before the fleet, as its `:cluster`:
+  them, as the store counts it, is connected. Core starts both before the
+  fleet, as its `:cluster`:
 
-      {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
+      {Wardrik, cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}]}
 
   Nodes on one machine share a config directory. Only one of them listens for
   SSH, and for OAuth's callback, at a time; see `WardrikDaemon.SSH`.
@@ -95,9 +96,9 @@ defmodule WardrikDaemon.Cluster do
   @spec named() :: [node()]
   def named, do: Keyword.get(settings(), :nodes, [])
 
-  @doc "How many of the cluster's nodes must be connected, this one among them, as the store counts them."
-  @spec quorum(pos_integer()) :: pos_integer()
-  def quorum(size \\ size()), do: WardrikStore.quorum(size)
+  @doc "How many of the cluster's nodes must be connected, this one among them, as `store` counts them."
+  @spec quorum(WardrikStore.t()) :: pos_integer()
+  def quorum(store), do: WardrikStore.quorum(store, size())
 
   @doc """
   The cluster's nodes this one is connected to, itself among them: those
@@ -128,18 +129,18 @@ defmodule WardrikDaemon.Cluster do
 
   @doc """
   Why this node cannot start its agents yet, or `nil` where it can: too few of
-  the cluster's nodes are connected for a quorum.
+  the cluster's nodes are connected for a quorum, as `store` counts it.
   """
-  @spec waiting() :: String.t() | nil
-  def waiting do
-    if configured?() and is_nil(refusal()), do: short_of_quorum(members())
+  @spec waiting(WardrikStore.t()) :: String.t() | nil
+  def waiting(store) do
+    if configured?() and is_nil(refusal()), do: short_of_quorum(quorum(store), members())
   end
 
-  defp short_of_quorum(members) do
-    case quorum() - length(members) do
+  defp short_of_quorum(quorum, members) do
+    case quorum - length(members) do
       needed when needed > 0 ->
         "#{Nodes.display(node())} is waiting for #{needed} more #{plural(needed, "node")} " <>
-          "to reach a quorum of #{quorum()} of #{size()}" <> connected_to(members -- [node()])
+          "to reach a quorum of #{quorum} of #{size()}" <> connected_to(members -- [node()])
 
       _enough ->
         nil

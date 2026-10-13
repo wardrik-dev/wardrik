@@ -1,9 +1,13 @@
 defmodule Wardrik.Host do
   @moduledoc """
-  What the host running Wardrik answers that core cannot: where agents'
-  definitions are kept, which accounts people connect, how callers' tokens
-  are made, where requests for triggers go, and what each principal may do.
-  Each is a module implementing one behaviour:
+  What the host running Wardrik answers that core cannot: the store
+  everything is kept in, where agents' definitions are kept, which accounts
+  people connect, how callers' tokens are made, where requests for triggers
+  go, and what each principal may do.
+
+  `:store` is a `WardrikStore`, the one the host started, or
+  `WardrikStore.None`'s where it names none, which raises on the first read
+  or write. Each of the others is a module implementing one behaviour:
 
   | Field | Behaviour | None |
   | --- | --- | --- |
@@ -13,12 +17,15 @@ defmodule Wardrik.Host do
   | `:triggers` | `Wardrik.Triggers` | `Wardrik.Triggers.None` |
   | `:grants` | `Wardrik.Grants` | `Wardrik.Grants.None` |
 
-  A host names the modules it offers once, as it starts `Wardrik`, and hands
-  the same host to whatever surface it starts after it:
+  A host names its store and the modules it offers once, as it starts
+  `Wardrik`, and hands the same host to whatever surface it starts after it:
 
-      host = Wardrik.Host.new(definitions: MyApp.Definitions, grants: MyApp.Grants)
+      store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+      host = Wardrik.Host.new(store: store, definitions: MyApp.Definitions, grants: MyApp.Grants)
 
       children = [
+        MyApp.Repo,
+        {WardrikStore, store},
         {Wardrik, host: host},
         {MyApp.Endpoint, host: host}
       ]
@@ -49,13 +56,15 @@ defmodule Wardrik.Host do
   alias Wardrik.Error
   alias Wardrik.Grant
 
-  defstruct definitions: Wardrik.Definition.None,
+  defstruct store: WardrikStore.new(adapter: WardrikStore.None),
+            definitions: Wardrik.Definition.None,
             connections: Wardrik.Connections.None,
             tokens: Wardrik.Tokens.None,
             triggers: Wardrik.Triggers.None,
             grants: Wardrik.Grants.None
 
   @type t() :: %__MODULE__{
+          store: WardrikStore.t(),
           definitions: module(),
           connections: module(),
           tokens: module(),
@@ -66,14 +75,15 @@ defmodule Wardrik.Host do
   @seams [:definitions, :connections, :tokens, :triggers, :grants]
 
   @doc """
-  The host offering the seams `opts` names, each by its module, and the None
-  module of each it leaves out.
+  The host keeping everything in the `:store` `opts` names, offering the
+  seams it names, each by its module, and the None module of each it leaves
+  out.
 
-      Wardrik.Host.new(definitions: WardrikDaemon.Agents, tokens: WardrikHTTP.Tokens)
+      Wardrik.Host.new(store: store, definitions: WardrikDaemon.Agents, tokens: WardrikHTTP.Tokens)
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    opts = Keyword.validate!(opts, @seams)
+    opts = Keyword.validate!(opts, [:store | @seams])
     struct!(__MODULE__, opts)
   end
 
@@ -104,7 +114,7 @@ defmodule Wardrik.Host do
   end
 
   defp granted(_host, nil), do: []
-  defp granted(host, principal), do: grants(host).grants(principal)
+  defp granted(host, principal), do: grants(host).grants(host, principal)
 
   @doc """
   A caller known as `:principal` who may do anything to every agent: one who
@@ -116,6 +126,10 @@ defmodule Wardrik.Host do
     opts = Keyword.validate!(opts, [:principal])
     Caller.root(principal: Keyword.fetch!(opts, :principal), host: host)
   end
+
+  @doc "The `WardrikStore` everything is kept in."
+  @spec store(t()) :: WardrikStore.t()
+  def store(%__MODULE__{store: store}), do: store
 
   @doc "The `Wardrik.Definition` agents' definitions go to."
   @spec definitions(t()) :: module()

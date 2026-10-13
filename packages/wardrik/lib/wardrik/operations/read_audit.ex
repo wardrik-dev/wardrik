@@ -25,8 +25,10 @@ defmodule Wardrik.Operations.ReadAudit do
   def action, do: :read
 
   @impl Wardrik.Query
-  def run(%__MODULE__{starting_after: starting_after, limit: limit}, _caller) do
-    case Log.read(:audit, starting_after: starting_after, limit: limit) do
+  def run(%__MODULE__{starting_after: starting_after, limit: limit}, caller) do
+    store = Wardrik.Host.store(caller.host)
+
+    case Log.read(store, :audit, starting_after: starting_after, limit: limit) do
       {:ok, changes} -> {:ok, %{"changes" => changes}}
       {:gap, oldest} -> {:error, ReadEvents.gap(oldest)}
     end

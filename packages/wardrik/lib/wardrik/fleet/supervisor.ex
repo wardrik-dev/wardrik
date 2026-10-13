@@ -1,25 +1,19 @@
 defmodule Wardrik.Fleet.Supervisor do
   @moduledoc """
-  Starts the substrate the fleet runs on.
-
-  Two children, in order:
-
-    * `WardrikStore` - the durable store agent state is written to, as the
-      deployment configured it.
-    * `DurableServer.Supervisor` - keyed processes over that store, named
-      `Wardrik.Fleet`. It starts a `Group` instance under the same name, which is
-      the registry `Wardrik.Fleet` reads.
+  Starts the substrate the fleet runs on: a `DurableServer.Supervisor` of
+  keyed processes over the host's store, named `Wardrik.Fleet`. It starts a
+  `Group` instance under the same name, which is the registry
+  `Wardrik.Fleet` reads.
 
   ## Options
 
-    * `:store` - the store's adapter and its options, as `Wardrik` takes them;
-      the options belong to the adapter, see `WardrikStore.EKV`
+    * `:host` - the `Wardrik.Host` whose store agents are written to, and
+      which every agent is handed as it starts, wakes, or restarts on another
+      node, as `DurableServer`'s `:init_info`. Required. It is never written
+      to the store
     * `:log` - passed to `Group`, `false` by default
-    * `:host` - the `Wardrik.Host` every agent is handed as it starts,
-      wakes, or restarts on another node, as `DurableServer`'s `:init_info`;
-      `Wardrik.Host.new/1` by default. It is never written to the store
 
-  `Wardrik` starts it with its `:store`, its `:fleet` and its `:host`.
+  `Wardrik` starts it with its `:fleet` and its `:host`.
 
   ## Joining other nodes
 
@@ -40,17 +34,16 @@ defmodule Wardrik.Fleet.Supervisor do
 
   @impl true
   def init(opts) do
-    store = Keyword.get(opts, :store, [])
+    host = Keyword.fetch!(opts, :host)
 
     children = [
-      WardrikStore.child_spec(store),
       {DurableServer.Supervisor,
        [
          name: Wardrik.Fleet,
          prefix: Wardrik.Fleet.prefix(),
-         backend: WardrikStore.durable_backend(store),
+         backend: host |> Wardrik.Host.store() |> WardrikStore.durable_backend(),
          group: [log: Keyword.get(opts, :log, false)],
-         init_info: %{host: Keyword.get_lazy(opts, :host, &Wardrik.Host.new/0)}
+         init_info: %{host: host}
        ] ++ WardrikStore.durable_shutdown()}
     ]
 

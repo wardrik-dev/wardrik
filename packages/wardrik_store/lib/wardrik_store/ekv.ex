@@ -5,12 +5,13 @@ if Code.ensure_loaded?(EKV) do
     The default `WardrikStore`: an `EKV` instance on this node's disk, replicated
     between connected nodes.
 
-        {Wardrik, store: [adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik", cluster_size: 3]}
+        WardrikStore.new(adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik", cluster_size: 3)
 
     `:data_dir` falls back to `WARDRIK_DATA_DIR`, then to a directory named after
     the node in the user's data directory, `~/.local/share/wardrik` on Linux.
     `:cluster_size` is the number of voting members EKV does quorum arithmetic
-    against, falling back to `WARDRIK_CLUSTER_SIZE` and then to 1.
+    against, falling back to `WARDRIK_CLUSTER_SIZE` and then to 1. `:name`
+    names the EKV instance, `:wardrik_store` unless given.
 
     Over more than one member, EKV keeps serving for up to `:shutdown_barrier`
     milliseconds as its node stops, five seconds by default, while other members
@@ -30,26 +31,31 @@ if Code.ensure_loaded?(EKV) do
 
     @behaviour WardrikStore
 
-    @name :wardrik_store
-
-    @doc "The name of the EKV instance."
-    @spec name() :: atom()
-    def name, do: @name
+    @impl WardrikStore
+    def config(opts) do
+      %{
+        name: Keyword.get(opts, :name, :wardrik_store),
+        data_dir: data_dir(opts),
+        cluster_size: cluster_size(opts),
+        shutdown_barrier: shutdown_barrier(opts)
+      }
+    end
 
     @impl WardrikStore
-    def child_spec(opts) do
+    def child_spec(config) do
       Supervisor.child_spec(
         {EKV,
-         name: @name,
-         data_dir: data_dir(opts),
-         cluster_size: cluster_size(opts),
-         shutdown_barrier: shutdown_barrier(opts)},
+         name: config.name,
+         data_dir: config.data_dir,
+         cluster_size: config.cluster_size,
+         shutdown_barrier: config.shutdown_barrier},
         id: __MODULE__
       )
     end
 
     @impl WardrikStore
-    def durable_backend(_opts), do: {DurableServer.Backends.EKVStore, name: @name}
+    def durable_backend(%WardrikStore{config: config}),
+      do: {DurableServer.Backends.EKVStore, name: config.name}
 
     @impl WardrikStore
     def quorum(size), do: div(size, 2) + 1
@@ -82,8 +88,8 @@ if Code.ensure_loaded?(EKV) do
     end
 
     @impl WardrikStore
-    def put(ns, key, value, opts) do
-      case EKV.put(@name, path(ns, key), value, put_opts(opts)) do
+    def put(config, ns, key, value, opts) do
+      case EKV.put(config.name, path(ns, key), value, put_opts(opts)) do
         :ok -> {:ok, nil}
         {:ok, vsn} -> {:ok, vsn}
         {:error, reason} -> {:error, reason}
@@ -91,15 +97,15 @@ if Code.ensure_loaded?(EKV) do
     end
 
     @impl WardrikStore
-    def get(ns, key, opts),
-      do: EKV.get(@name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
+    def get(config, ns, key, opts),
+      do: EKV.get(config.name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
 
     @impl WardrikStore
-    def lookup(ns, key), do: EKV.lookup(@name, path(ns, key))
+    def lookup(config, ns, key), do: EKV.lookup(config.name, path(ns, key))
 
     @impl WardrikStore
-    def delete(ns, key, opts) do
-      case EKV.delete(@name, path(ns, key), delete_opts(opts)) do
+    def delete(config, ns, key, opts) do
+      case EKV.delete(config.name, path(ns, key), delete_opts(opts)) do
         :ok -> :ok
         {:ok, _vsn} -> :ok
         {:error, :not_found} -> :ok
@@ -115,10 +121,10 @@ if Code.ensure_loaded?(EKV) do
     end
 
     @impl WardrikStore
-    def keys(ns, prefix) do
+    def keys(config, ns, prefix) do
       root = path(ns, "")
 
-      for entry <- EKV.keys(@name, root <> prefix),
+      for entry <- EKV.keys(config.name, root <> prefix),
           key = entry |> written_key() |> String.replace_prefix(root, ""),
           key != "",
           do: key

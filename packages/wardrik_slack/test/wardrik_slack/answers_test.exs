@@ -16,7 +16,7 @@ defmodule WardrikSlack.AnswersTest do
     @behaviour Wardrik.Grants
 
     @impl true
-    def grants(principal) do
+    def grants(_host, principal) do
       case Wardrik.Principal.id(principal) do
         "slack/U1" -> [grant([:read, :message, :decide])]
         "slack/U2" -> [grant([:read, :message])]
@@ -50,7 +50,11 @@ defmodule WardrikSlack.AnswersTest do
 
   # The channel's options a press is answered with.
   defp answering do
-    context = %WardrikChannel.Context{channel: "slack", host: Wardrik.Host.new(grants: Held)}
+    context = %WardrikChannel.Context{
+      channel: "slack",
+      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: Held)
+    }
+
     [name: :slack, token: "xoxb-test", context: context, req_options: @req_options]
   end
 
@@ -98,7 +102,7 @@ defmodule WardrikSlack.AnswersTest do
           %{"call_1" => {:deny, "Not now."}},
           Wardrik.Caller.root(
             principal: Wardrik.Principal.new(:shell, "t"),
-            host: Wardrik.Host.new()
+            host: Wardrik.Host.new(store: Wardrik.Test.store())
           )
         )
 

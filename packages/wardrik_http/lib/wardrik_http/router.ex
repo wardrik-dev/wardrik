@@ -93,7 +93,9 @@ defmodule WardrikHTTP.Router do
 
       :ok ->
         conn
-        |> WebSockAdapter.upgrade(WardrikHTTP.Worker, conn.assigns.caller, timeout: @idle)
+        |> WebSockAdapter.upgrade(WardrikHTTP.Worker, {conn.assigns.caller, store(conn)},
+          timeout: @idle
+        )
         |> halt()
 
       {:error, _reason} ->
@@ -467,8 +469,12 @@ defmodule WardrikHTTP.Router do
   # The stream holds its caller's credential while it runs, so revoking the
   # credential ends it.
   defp stream(conn, key, cursor) do
-    conn.assigns.caller.ref
-    |> Access.holding(fn -> EventStream.serve(conn, key, cursor) end)
+    store = store(conn)
+
+    store
+    |> Access.holding(conn.assigns.caller.ref, fn ->
+      EventStream.serve(store, conn, key, cursor)
+    end)
     |> case do
       %Plug.Conn{} = conn ->
         conn
@@ -494,7 +500,7 @@ defmodule WardrikHTTP.Router do
 
     case limit(conn.query_params) do
       {:ok, limit} ->
-        {:ok, page} = Export.read(cursor, limit: limit, logs: &exported?(grant, &1))
+        {:ok, page} = Export.read(store(conn), cursor, limit: limit, logs: &exported?(grant, &1))
         json(conn, 200, Resource.export(page))
 
       {:error, message} ->
@@ -504,7 +510,7 @@ defmodule WardrikHTTP.Router do
 
   defp export(conn, "POST", cursor) do
     with %{"next" => next} when is_binary(next) <- conn.body_params,
-         :ok <- Export.advance(cursor, next) do
+         :ok <- Export.advance(store(conn), cursor, next) do
       send_resp(conn, 204, "")
     else
       {:error, :invalid} -> invalid(conn, "next is not one a page of this export answered")
@@ -514,7 +520,7 @@ defmodule WardrikHTTP.Router do
   end
 
   defp export(conn, "DELETE", cursor) do
-    case Export.forget(cursor) do
+    case Export.forget(store(conn), cursor) do
       :ok -> send_resp(conn, 204, "")
       {:error, reason} -> unavailable(conn, "The export was not deleted", reason)
     end
@@ -526,6 +532,8 @@ defmodule WardrikHTTP.Router do
   # log by one that may read the agent.
   defp exported?(grant, :audit), do: Prefix.covers?(grant.scope, Prefix.all())
   defp exported?(grant, id), do: Access.authorize(grant, :read, id) == :ok
+
+  defp store(conn), do: conn.assigns.options |> Keyword.fetch!(:host) |> Wardrik.Host.store()
 
   # -- answers ---------------------------------------------------------------
 

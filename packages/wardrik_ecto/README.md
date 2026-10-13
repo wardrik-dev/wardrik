@@ -17,9 +17,13 @@ Start Wardrik after your repo, and name the repo as its store:
 config :wardrik, start: :host
 
 # lib/my_app/application.ex
+store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+host = Wardrik.Host.new(store: store)
+
 children = [
   MyApp.Repo,
-  {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo]},
+  {WardrikStore, store},
+  {Wardrik, host: host},
   MyAppWeb.Endpoint
 ]
 ```

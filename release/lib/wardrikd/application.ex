@@ -14,7 +14,10 @@ defmodule Wardrikd.Application do
   rest. `WardrikDaemon.Cluster` connects this node to the others before the
   fleet starts.
 
-  Core and the daemon are handed one `Wardrik.Host`: `WardrikDaemon.Agents`
+  The store `config.yaml`'s `storage` names starts first, and
+  `WardrikDaemon.Host` holds the host after it, for the commands that reach
+  the node over rpc while the rest starts. Core and the daemon are handed
+  one `Wardrik.Host`, keeping everything in that store: `WardrikDaemon.Agents`
   is where every surface's definitions go, `WardrikOAuth.Connections` offers
   the accounts people and orgs connect, `WardrikHTTP.Tokens` makes the HTTP
   API's tokens, `WardrikTrigger` takes the requests from outside that
@@ -38,8 +41,11 @@ defmodule Wardrikd.Application do
     :ok = Logger.put_application_level(:durable_server, :warning)
     http = WardrikDaemon.Config.settings(WardrikHTTP)
 
+    store = WardrikStore.new(WardrikDaemon.Config.settings(WardrikStore))
+
     host =
       Wardrik.Host.new(
+        store: store,
         definitions: WardrikDaemon.Agents,
         connections: WardrikOAuth.Connections,
         tokens: WardrikHTTP.Tokens,
@@ -48,13 +54,13 @@ defmodule Wardrikd.Application do
       )
 
     children = [
+      {WardrikStore, store},
+      {WardrikDaemon.Host, host},
       {Wardrik,
-       store: WardrikDaemon.Config.settings(WardrikStore),
-       cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
-       host: host},
-      WardrikPolicy.Supervisor,
-      {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
-      WardrikHTTP.Access,
+       cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}], host: host},
+      {WardrikPolicy.Supervisor, store: store},
+      {WardrikTrigger, store: store, secrets: &WardrikDaemon.Secrets.for_agent(store, &1, &2)},
+      {WardrikHTTP.Access, store: store},
       {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
       {WardrikDaemon, host: host}
     ]

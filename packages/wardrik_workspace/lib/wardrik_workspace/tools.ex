@@ -157,9 +157,9 @@ defmodule WardrikWorkspace.Tools do
 
   # -- read ------------------------------------------------------------------
 
-  defp run(:read_file, spec, args, _context) do
+  defp run(:read_file, spec, args, context) do
     with {:ok, mount, path} <- resolve(spec, args.path),
-         {:ok, file, version} <- existing(mount, path) do
+         {:ok, file, version} <- existing(host(context), mount, path) do
       offset = Map.get(args, :offset, 1)
       limit = min(Map.get(args, :limit, @max_lines), @max_lines)
       lines = lines(file.content)
@@ -194,17 +194,19 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  defp run(:delete_file, spec, args, _context) do
-    with {:ok, mount, path} <- writable(spec, args.path), do: delete(mount, path, @tries)
+  defp run(:delete_file, spec, args, context) do
+    with {:ok, mount, path} <- writable(spec, args.path),
+         do: delete(host(context), mount, path, @tries)
   end
 
   # -- look ------------------------------------------------------------------
 
-  defp run(:list_files, spec, args, _context) do
+  defp run(:list_files, spec, args, context) do
     glob = Map.get(args, :pattern) || "**"
+    host = host(context)
 
-    with {:ok, paths} <- view(spec, glob),
-         {:ok, files} <- read_all(paths) do
+    with {:ok, paths} <- view(host, spec, glob),
+         {:ok, files} <- read_all(host, paths) do
       listed = Enum.sort_by(files, fn {path, file} -> {file.at, path} end, &newest/2)
 
       {:ok,
@@ -215,13 +217,14 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  defp run(:search_files, spec, args, _context) do
+  defp run(:search_files, spec, args, context) do
     glob = Map.get(args, :glob) || "**"
-    context = min(Map.get(args, :context, 0), @max_context)
+    host = host(context)
+    around = min(Map.get(args, :context, 0), @max_context)
 
     with {:ok, regex} <- regex(args.pattern),
-         {:ok, paths} <- view(spec, glob),
-         {:ok, found} <- search(Enum.sort_by(paths, &elem(&1, 0)), regex, context) do
+         {:ok, paths} <- view(host, spec, glob),
+         {:ok, found} <- search(host, Enum.sort_by(paths, &elem(&1, 0)), regex, around) do
       shown = Enum.take(found, @max_matches)
 
       {:ok,
@@ -240,7 +243,7 @@ defmodule WardrikWorkspace.Tools do
   defp replace(mount, path, args, context) do
     key = context.idempotency_key
 
-    case read(mount, path) do
+    case read(host(context), mount, path) do
       {:ok, %File{call: ^key}, version} ->
         {:ok, written(mount, path, version)}
 
@@ -275,7 +278,7 @@ defmodule WardrikWorkspace.Tools do
     key = context.idempotency_key
     retry = fn -> append(mount, path, content, context, tries - 1) end
 
-    case read(mount, path) do
+    case read(host(context), mount, path) do
       {:ok, %File{call: ^key}, version} ->
         {:ok, written(mount, path, version)}
 
@@ -294,7 +297,7 @@ defmodule WardrikWorkspace.Tools do
   # An edit that loses to another writer reads again, and applies again where
   # old still matches.
   defp edit(mount, path, args, context, tries) do
-    with {:ok, file, version} <- existing(mount, path) do
+    with {:ok, file, version} <- existing(host(context), mount, path) do
       if file.call == context.idempotency_key,
         do: {:ok, written(mount, path, version)},
         else: edited(mount, path, args, {context, file, version}, tries)
@@ -332,15 +335,15 @@ defmodule WardrikWorkspace.Tools do
   defp replaced({:ok, answer}, count), do: {:ok, Map.put(answer, "replaced", count)}
   defp replaced(other, _count), do: other
 
-  defp delete(mount, path, tries) do
-    case read(mount, path) do
+  defp delete(host, mount, path, tries) do
+    case read(host, mount, path) do
       :none ->
         {:ok, %{"path" => shown_path(mount, path), "deleted" => false}}
 
       {:ok, _file, version} ->
-        mount.backend.delete(mount.tree, path, version)
+        mount.backend.delete(host, mount.tree, path, version)
         |> removed(mount, path)
-        |> again(fn -> delete(mount, path, tries - 1) end, tries)
+        |> again(fn -> delete(host, mount, path, tries - 1) end, tries)
 
       {:error, reason} ->
         unavailable(reason)
@@ -373,7 +376,7 @@ defmodule WardrikWorkspace.Tools do
       at: DateTime.utc_now()
     }
 
-    case mount.backend.write(mount.tree, path, file, version) do
+    case mount.backend.write(scope.host, mount.tree, path, file, version) do
       {:ok, version} -> {:ok, written(mount, path, version)}
       {:error, :conflict} -> :conflict
       {:error, reason} -> unavailable(reason)
@@ -414,10 +417,12 @@ defmodule WardrikWorkspace.Tools do
     end
   end
 
-  defp read(%Mount{backend: backend, tree: tree}, path), do: backend.read(tree, path)
+  defp host(%Wardrik.Tool.Context{scope: scope}), do: scope.host
 
-  defp existing(mount, path) do
-    case read(mount, path) do
+  defp read(host, %Mount{backend: backend, tree: tree}, path), do: backend.read(host, tree, path)
+
+  defp existing(host, mount, path) do
+    case read(host, mount, path) do
       {:ok, file, version} -> {:ok, file, version}
       :none -> {:error, :not_found, "#{shown_path(mount, path)} does not exist"}
       {:error, reason} -> unavailable(reason)
@@ -426,11 +431,11 @@ defmodule WardrikWorkspace.Tools do
 
   # The path of every file of every mount that `glob` matches, as the agent
   # sees it, with where it is kept; no file is read.
-  defp view(spec, glob) do
+  defp view(host, spec, glob) do
     spec
     |> Spec.mounts()
     |> Enum.reduce_while({:ok, []}, fn mount, {:ok, seen} ->
-      case mount.backend.paths(mount.tree, "") do
+      case mount.backend.paths(host, mount.tree, "") do
         {:ok, paths} -> {:cont, {:ok, [seen(mount, paths, glob) | seen]}}
         {:error, reason} -> {:halt, unavailable(reason)}
       end
@@ -449,10 +454,10 @@ defmodule WardrikWorkspace.Tools do
   end
 
   # Every file of `paths` still there, read in order.
-  defp read_all(paths) do
+  defp read_all(host, paths) do
     paths
     |> Enum.reduce_while({:ok, []}, fn {shown, mount, path}, {:ok, files} ->
-      case read(mount, path) do
+      case read(host, mount, path) do
         {:ok, file, _version} -> {:cont, {:ok, [{shown, file} | files]}}
         :none -> {:cont, {:ok, files}}
         {:error, reason} -> {:halt, unavailable(reason)}
@@ -463,10 +468,10 @@ defmodule WardrikWorkspace.Tools do
 
   # The matches in `paths`, in order, reading each file only while one more
   # match than is shown is still to be found.
-  defp search(paths, regex, context) do
+  defp search(host, paths, regex, context) do
     paths
     |> Enum.reduce_while({:ok, [], 0}, fn {shown, mount, path}, {:ok, found, count} ->
-      case read(mount, path) do
+      case read(host, mount, path) do
         {:ok, file, _version} -> found(matches(shown, file, regex, context), found, count)
         :none -> {:cont, {:ok, found, count}}
         {:error, reason} -> {:halt, unavailable(reason)}

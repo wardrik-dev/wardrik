@@ -34,7 +34,7 @@ defmodule Wardrik.Operations.Forgetting do
 
     {agents, kept} =
       Enum.reduce(ids, {[], []}, fn id, {agents, kept} ->
-        case definitions.editable(id) do
+        case definitions.editable(host, id) do
           :ok -> {[id | agents], kept}
           {:error, :conflict, why} -> {agents, [{id, why} | kept]}
         end
@@ -50,8 +50,7 @@ defmodule Wardrik.Operations.Forgetting do
   """
   @spec make(Host.t(), t()) :: {t(), [{AgentID.t(), String.t()}]}
   def make(host, %__MODULE__{agents: agents, kept: kept} = effect) do
-    definitions = Host.definitions(host)
-    forgotten = Enum.map(agents, &{&1, forget(definitions, &1)})
+    forgotten = Enum.map(agents, &{&1, forget(host, &1)})
 
     made = %{
       effect
@@ -62,8 +61,8 @@ defmodule Wardrik.Operations.Forgetting do
     {made, for({id, {:failed, why}} <- forgotten, do: {id, why})}
   end
 
-  defp forget(definitions, id) do
-    with {:ok, _kept} <- Definition.forget(definitions, id),
+  defp forget(host, id) do
+    with {:ok, _kept} <- Definition.forget(host, id),
          :ok <- Fleet.forget(id) do
       :ok
     else

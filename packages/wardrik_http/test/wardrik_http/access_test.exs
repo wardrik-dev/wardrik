@@ -1,6 +1,8 @@
 defmodule WardrikHTTP.AccessTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   import ExUnit.CaptureLog
 
   alias Wardrik.Grant
@@ -13,7 +15,7 @@ defmodule WardrikHTTP.AccessTest do
   # A record written as a surface writes one, and its ref.
   defp record(value \\ :granted) do
     key = "record-#{System.unique_integer([:positive])}"
-    {:ok, _vsn} = WardrikStore.put(@ns, key, value, if_vsn: nil)
+    {:ok, _vsn} = WardrikStore.put(store(), @ns, key, value, if_vsn: nil)
     {@ns, key}
   end
 
@@ -26,7 +28,7 @@ defmodule WardrikHTTP.AccessTest do
     pid =
       spawn(fn ->
         if opts[:trap], do: Process.flag(:trap_exit, true)
-        send(test, {:held, self(), Access.hold(ref)})
+        send(test, {:held, self(), Access.hold(store(), ref)})
         listen(test, opts[:obey])
       end)
 
@@ -81,56 +83,56 @@ defmodule WardrikHTTP.AccessTest do
   end
 
   test "a caller with no record holds nothing" do
-    assert Access.hold(nil) == :ok
-    assert Access.holding(nil, fn -> :ran end) == :ran
+    assert Access.hold(store(), nil) == :ok
+    assert Access.holding(store(), nil, fn -> :ran end) == :ran
   end
 
   test "fetch/2 reads a record through consensus, or says it is not there" do
     ref = record(:value)
-    assert {:ok, :value} = Access.fetch(ref)
-    assert {:ok, :value} = Access.fetch(ref, timeout: 1_000)
-    assert {:error, :not_found} = Access.fetch({@ns, "absent"})
+    assert {:ok, :value} = Access.fetch(store(), ref)
+    assert {:ok, :value} = Access.fetch(store(), ref, timeout: 1_000)
+    assert {:error, :not_found} = Access.fetch(store(), {@ns, "absent"})
   end
 
   describe "get/1" do
     test "reads a record through consensus once, then answers what it read for a sweep" do
       {ns, key} = ref = record(:value)
-      assert {:ok, :value} = Access.get(ref)
+      assert {:ok, :value} = Access.get(store(), ref)
 
       # Gone from the store without a revocation: this node still answers
       # what it read, until the entry lapses.
-      {_value, vsn} = WardrikStore.lookup(ns, key)
-      :ok = WardrikStore.delete(ns, key, if_vsn: vsn)
-      assert {:ok, :value} = Access.get(ref)
+      {_value, vsn} = WardrikStore.lookup(store(), ns, key)
+      :ok = WardrikStore.delete(store(), ns, key, if_vsn: vsn)
+      assert {:ok, :value} = Access.get(store(), ref)
 
       lapse(ref)
-      assert {:error, :not_found} = Access.get(ref)
+      assert {:error, :not_found} = Access.get(store(), ref)
     end
 
     test "answers a record this node has never held as not there" do
-      assert {:error, :not_found} = Access.get({@ns, "never-written"})
+      assert {:error, :not_found} = Access.get(store(), {@ns, "never-written"})
     end
 
     test "refuses a revoked record at once, and nothing read before brings it back" do
       ref = record(:value)
-      assert {:ok, :value} = Access.get(ref)
+      assert {:ok, :value} = Access.get(store(), ref)
 
-      :ok = Access.revoke(ref)
-      assert {:error, :not_found} = Access.get(ref)
+      :ok = Access.revoke(store(), ref)
+      assert {:error, :not_found} = Access.get(store(), ref)
 
       # A read begun before the revocation, landing after it.
       :ok = Cache.put(ref, :value)
       assert :revoked = Cache.lookup(ref)
-      assert {:error, :not_found} = Access.get(ref)
+      assert {:error, :not_found} = Access.get(store(), ref)
     end
 
     test "reads a record again once what it read has lapsed" do
       ref = record(:value)
-      assert {:ok, :value} = Access.get(ref)
+      assert {:ok, :value} = Access.get(store(), ref)
 
       lapse(ref)
       assert :miss = Cache.lookup(ref)
-      assert {:ok, :value} = Access.get(ref)
+      assert {:ok, :value} = Access.get(store(), ref)
       assert {:ok, :value} = Cache.lookup(ref)
     end
   end
@@ -138,8 +140,8 @@ defmodule WardrikHTTP.AccessTest do
   test "a purge drops what has lapsed, and keeps the rest" do
     lapsed = record()
     kept = record()
-    {:ok, _value} = Access.get(lapsed)
-    {:ok, _value} = Access.get(kept)
+    {:ok, _value} = Access.get(store(), lapsed)
+    {:ok, _value} = Access.get(store(), kept)
     lapse(lapsed)
 
     :ok = Cache.purge()
@@ -153,18 +155,18 @@ defmodule WardrikHTTP.AccessTest do
       ref = record()
       pid = holder(ref)
 
-      assert :ok = Access.revoke(ref)
+      assert :ok = Access.revoke(store(), ref)
 
       assert_receive {:DOWN, _monitor, :process, ^pid, {:shutdown, :revoked}}
-      assert {:error, :not_found} = Access.fetch(ref)
-      assert {:error, :not_found} = Access.revoke(ref)
+      assert {:error, :not_found} = Access.fetch(store(), ref)
+      assert {:error, :not_found} = Access.revoke(store(), ref)
     end
 
     test "tells a holder that traps exits, which ends itself" do
       ref = record()
       pid = holder(ref, trap: true, obey: true)
 
-      :ok = Access.revoke(ref)
+      :ok = Access.revoke(store(), ref)
 
       assert_receive {:got, ^pid, {:EXIT, _from, {:shutdown, :revoked}}}
       assert_receive {:DOWN, _monitor, :process, ^pid, :normal}
@@ -176,7 +178,7 @@ defmodule WardrikHTTP.AccessTest do
 
       log =
         capture_log(fn ->
-          :ok = Access.revoke(ref)
+          :ok = Access.revoke(store(), ref)
           assert_receive {:got, ^pid, {:EXIT, _from, {:shutdown, :revoked}}}
           assert_receive {:DOWN, _monitor, :process, ^pid, :killed}, 1_000
         end)
@@ -190,7 +192,7 @@ defmodule WardrikHTTP.AccessTest do
       other = holder(record())
       _pid = holder(ref)
 
-      :ok = Access.revoke(ref)
+      :ok = Access.revoke(store(), ref)
 
       refute_receive {:DOWN, _monitor, :process, ^other, _reason}, 100
       assert Process.alive?(other)
@@ -198,7 +200,7 @@ defmodule WardrikHTTP.AccessTest do
   end
 
   test "hold/1 holds nothing where the record is gone" do
-    assert {:error, :not_found} = Access.hold({@ns, "absent"})
+    assert {:error, :not_found} = Access.hold(store(), {@ns, "absent"})
   end
 
   test "holding/2 lets go once its function returns, and the process is never ended for it" do
@@ -208,14 +210,14 @@ defmodule WardrikHTTP.AccessTest do
     pid =
       spawn(fn ->
         Process.flag(:trap_exit, true)
-        send(test, {:ran, Access.holding(ref, fn -> :answered end)})
+        send(test, {:ran, Access.holding(store(), ref, fn -> :answered end)})
         listen(test, false)
       end)
 
     Process.monitor(pid)
     assert_receive {:ran, :answered}
 
-    :ok = Access.revoke(ref)
+    :ok = Access.revoke(store(), ref)
 
     refute_receive {:got, ^pid, _message}, 200
     refute_received {:DOWN, _monitor, :process, ^pid, _reason}
@@ -248,8 +250,8 @@ defmodule WardrikHTTP.AccessTest do
     {ns, key} = ref = record()
     pid = holder(ref)
 
-    {_value, vsn} = WardrikStore.lookup(ns, key)
-    :ok = WardrikStore.delete(ns, key, if_vsn: vsn)
+    {_value, vsn} = WardrikStore.lookup(store(), ns, key)
+    :ok = WardrikStore.delete(store(), ns, key, if_vsn: vsn)
     refute_receive {:DOWN, _monitor, :process, ^pid, _reason}, 50
 
     :ok = Leases.sweep()

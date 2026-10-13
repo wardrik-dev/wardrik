@@ -4,11 +4,12 @@ defmodule WardrikHTTP.Access do
   holds.
 
   A surface knows its callers by a credential of its own, a bearer token or an
-  SSH key, and keeps what the credential grants in a record in `WardrikStore`.
-  It reads the record with `get/1`, and asks `authorize/3` before each thing
-  the caller does:
+  SSH key, and keeps what the credential grants in a record in the store the
+  fleet runs on, which every function reading or holding a record is handed
+  first. It reads the record with `get/2`, and asks `authorize/3` before each
+  thing the caller does:
 
-      with {:ok, token} <- WardrikHTTP.Access.get({:tokens, id}),
+      with {:ok, token} <- WardrikHTTP.Access.get(store, {:tokens, id}),
            :ok <- WardrikHTTP.Access.authorize(token.grant, :message, key) do
         Wardrik.Agent.ask(key, text)
       end
@@ -19,21 +20,21 @@ defmodule WardrikHTTP.Access do
 
   ## Reading records
 
-  `get/1` answers what this node read of a record through consensus within
+  `get/2` answers what this node read of a record through consensus within
   the last sweep, from `WardrikHTTP.Access.Cache`, and reads it through consensus
   again where it read nothing since. A record this node does not hold at all
-  is answered as not there without consensus. `fetch/2` always reads through
+  is answered as not there without consensus. `fetch/3` always reads through
   consensus.
 
   ## Holding
 
   A process that goes on acting on a record, a socket or a stream, holds it
-  with `hold/1`. `revoke/1` deletes the record, refuses it on every node the
+  with `hold/2`. `revoke/2` deletes the record, refuses it on every node the
   revocation reaches, and ends every process holding it there:
 
-      :ok = WardrikHTTP.Access.hold({:tokens, id})
+      :ok = WardrikHTTP.Access.hold(store, {:tokens, id})
       # ... and elsewhere, later
-      :ok = WardrikHTTP.Access.revoke({:tokens, id})
+      :ok = WardrikHTTP.Access.revoke(store, {:tokens, id})
 
   A holder is sent the exit signal `{:shutdown, :revoked}`. One that traps
   exits receives it as `{:EXIT, from, {:shutdown, :revoked}}` and ends itself;
@@ -45,15 +46,19 @@ defmodule WardrikHTTP.Access do
   cut off from its quorum, refuses the record and ends its holders within a
   sweep.
 
-  `holding/2` holds a record while a function runs, for a process that goes
+  `holding/3` holds a record while a function runs, for a process that goes
   on after it, as a connection serving one request after another does.
 
   ## Starting
 
-  It reads the store, so a host starts it after Wardrik in its own tree,
-  before `WardrikHTTP.Workers`:
+  It reads the store `:store` names, so a host starts it after Wardrik in its
+  own tree, before `WardrikHTTP.Workers`:
 
-      children = [Wardrik, {WardrikHTTP.Access, grace: 1_000, sweep: 15_000}, WardrikHTTP.Workers]
+      children = [
+        {Wardrik, host: host},
+        {WardrikHTTP.Access, store: store, grace: 1_000, sweep: 15_000},
+        WardrikHTTP.Workers
+      ]
 
   `:grace` is how long the holders of a revoked record have to end
   themselves, and `:sweep` how often held records are read again, in
@@ -75,7 +80,7 @@ defmodule WardrikHTTP.Access do
 
   @doc false
   def child_spec(opts) do
-    opts = Keyword.validate!(opts, grace: 1_000, sweep: :timer.seconds(15))
+    opts = Keyword.validate!(opts, [:store, grace: 1_000, sweep: :timer.seconds(15)])
 
     children = [
       Group.child_spec(name: __MODULE__),
@@ -99,17 +104,24 @@ defmodule WardrikHTTP.Access do
   gone, and one this node does not hold at all; and `{:error, :unavailable}`
   where it must be read through consensus and the store could not answer.
   """
-  @spec get(ref()) :: {:ok, term()} | {:error, :not_found | :unavailable}
-  def get({ns, key} = ref) do
+  @spec get(WardrikStore.t(), ref()) :: {:ok, term()} | {:error, :not_found | :unavailable}
+  def get(store, {ns, key} = ref) do
     case Cache.lookup(ref) do
-      {:ok, value} -> {:ok, value}
-      :revoked -> {:error, :not_found}
-      :miss -> if WardrikStore.get(ns, key) == nil, do: {:error, :not_found}, else: confirm(ref)
+      {:ok, value} ->
+        {:ok, value}
+
+      :revoked ->
+        {:error, :not_found}
+
+      :miss ->
+        if WardrikStore.get(store, ns, key) == nil,
+          do: {:error, :not_found},
+          else: confirm(store, ref)
     end
   end
 
-  defp confirm(ref) do
-    case fetch(ref, timeout: @confirm_timeout) do
+  defp confirm(store, ref) do
+    case fetch(store, ref, timeout: @confirm_timeout) do
       {:ok, value} ->
         :ok = Cache.put(ref, value)
         {:ok, value}
@@ -130,10 +142,10 @@ defmodule WardrikHTTP.Access do
   `{:error, :unavailable}` where the store could not answer. `:timeout` bounds
   the read, in milliseconds.
   """
-  @spec fetch(ref(), timeout: pos_integer()) ::
+  @spec fetch(WardrikStore.t(), ref(), timeout: pos_integer()) ::
           {:ok, term()} | {:error, :not_found | :unavailable}
-  def fetch({ns, key}, opts \\ []) do
-    case WardrikStore.get(ns, key, Keyword.put(opts, :consistent, true)) do
+  def fetch(store, {ns, key}, opts \\ []) do
+    case WardrikStore.get(store, ns, key, Keyword.put(opts, :consistent, true)) do
       nil -> {:error, :not_found}
       value -> {:ok, value}
     end
@@ -170,16 +182,16 @@ defmodule WardrikHTTP.Access do
   Holds `ref` for the calling process until the process exits or the record
   is revoked.
 
-  The record is read with `get/1` once it is held, so a revocation since the
-  caller last read it is never missed. Answers what `get/1` did where it is
+  The record is read with `get/2` once it is held, so a revocation since the
+  caller last read it is never missed. Answers what `get/2` did where it is
   gone or cannot be read, and holds nothing. `nil`, a caller whose credential
   keeps no record, holds nothing and answers `:ok`.
   """
-  @spec hold(ref() | nil) :: :ok | {:error, :not_found | :unavailable}
-  def hold(nil), do: :ok
+  @spec hold(WardrikStore.t(), ref() | nil) :: :ok | {:error, :not_found | :unavailable}
+  def hold(_store, nil), do: :ok
 
-  def hold(ref) do
-    with {:ok, _id} <- register(ref), do: :ok
+  def hold(store, ref) do
+    with {:ok, _id} <- register(store, ref), do: :ok
   end
 
   @doc """
@@ -187,12 +199,13 @@ defmodule WardrikHTTP.Access do
   did where the record could not be held and `fun` did not run. `nil` runs
   `fun` holding nothing.
   """
-  @spec holding(ref() | nil, (-> result)) :: result | {:error, :not_found | :unavailable}
+  @spec holding(WardrikStore.t(), ref() | nil, (-> result)) ::
+          result | {:error, :not_found | :unavailable}
         when result: term()
-  def holding(nil, fun) when is_function(fun, 0), do: fun.()
+  def holding(_store, nil, fun) when is_function(fun, 0), do: fun.()
 
-  def holding(ref, fun) when is_function(fun, 0) do
-    with {:ok, id} <- register(ref) do
+  def holding(store, ref, fun) when is_function(fun, 0) do
+    with {:ok, id} <- register(store, ref) do
       try do
         fun.()
       after
@@ -203,10 +216,10 @@ defmodule WardrikHTTP.Access do
 
   # Held first, then read: a revocation refuses the record before it looks
   # for holders, so it finds this one or this read finds its refusal.
-  defp register(ref) do
+  defp register(store, ref) do
     id = Leases.hold(ref)
 
-    case get(ref) do
+    case get(store, ref) do
       {:ok, _value} ->
         {:ok, id}
 
@@ -220,11 +233,11 @@ defmodule WardrikHTTP.Access do
   Deletes the record under `ref`, refuses it on every node the revocation
   reaches, and ends every process holding it there.
   """
-  @spec revoke(ref()) :: :ok | {:error, :not_found | :conflict | term()}
-  def revoke({ns, key} = ref) do
-    case WardrikStore.lookup(ns, key) do
+  @spec revoke(WardrikStore.t(), ref()) :: :ok | {:error, :not_found | :conflict | term()}
+  def revoke(store, {ns, key} = ref) do
+    case WardrikStore.lookup(store, ns, key) do
       {_value, vsn} ->
-        with :ok <- WardrikStore.delete(ns, key, if_vsn: vsn) do
+        with :ok <- WardrikStore.delete(store, ns, key, if_vsn: vsn) do
           :ok = Cache.revoked(ref)
           Leases.revoked(ref)
         end

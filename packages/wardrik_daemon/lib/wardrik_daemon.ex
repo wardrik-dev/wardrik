@@ -20,20 +20,25 @@ defmodule WardrikDaemon do
         )
 
       children = [
-        {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum], host: host},
-        WardrikPolicy.Supervisor,
-        {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
-        WardrikHTTP.Access,
+        {WardrikStore, store},
+        {WardrikDaemon.Host, host},
+        {Wardrik,
+         cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}], host: host},
+        {WardrikPolicy.Supervisor, store: store},
+        {WardrikTrigger, store: store, secrets: &WardrikDaemon.Secrets.for_agent(store, &1, &2)},
+        {WardrikHTTP.Access, store: store},
         WardrikHTTP.Workers,
         {WardrikDaemon, host: host}
       ]
 
       Supervisor.init(children, strategy: :rest_for_one)
 
-  The host is held by `WardrikDaemon.Host`, which it starts first, for the
-  `wardrik` commands that reach it over rpc, and handed in the options of
-  each of the surfaces below that builds callers: the HTTP API, the
-  channels and the TUI over SSH.
+  The store is started first, and everything that keeps anything is handed
+  it, on the host or in its own options. The host is held by
+  `WardrikDaemon.Host`, started before `Wardrik`, for the `wardrik` commands
+  that reach the node over rpc, and handed in the options of each of the
+  surfaces below that builds callers: the HTTP API, the channels and the TUI
+  over SSH.
 
   As its supervisor starts, it reads `config.yaml`, or `config.yml`, from the
   config directory into the settings it keeps (see `WardrikDaemon.Config`),
@@ -46,7 +51,7 @@ defmodule WardrikDaemon do
     * `WardrikOAuth.Supervisor`, when a provider is configured.
     * `WardrikDaemon.Agents`, which runs the agents `agents/` declares.
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
-      `WardrikDaemon.Agents.routes/0` for the routes as it starts, so one that
+      `WardrikDaemon.Agents.routes/1` for the routes as it starts, so one that
       restarts routes the agents as before.
     * `WardrikChannel.Supervisor`, when a channel is configured, which runs
       what each channel's adapter runs, such as its connection to the medium,
@@ -113,15 +118,16 @@ defmodule WardrikDaemon do
 
   @impl true
   def init(%{host: host, config_dir: config_dir, state_dir: state_dir, data_dir: data_dir}) do
-    case boot(config_dir, data_dir) do
+    store = Wardrik.Host.store(host)
+
+    case boot(store, config_dir, data_dir) do
       :ok ->
         children =
-          [{WardrikDaemon.Host, host}] ++
-            mcp(Path.join([state_dir, "log", "mcp.log"])) ++
+          mcp(store, Path.join([state_dir, "log", "mcp.log"])) ++
             oauth() ++
-            [{WardrikDaemon.Agents, dir: config_dir}] ++
+            [{WardrikDaemon.Agents, dir: config_dir, store: store}] ++
             channels(host) ++
-            notify() ++
+            notify(store) ++
             WardrikDaemon.SSH.children(config_dir, data_dir, host) ++
             [{WardrikHTTP.Listener, [host: host] ++ listener()}]
 
@@ -136,14 +142,14 @@ defmodule WardrikDaemon do
   # The vault's key comes first, from vault.keys, the environment or the key
   # file, so the rest of config.yaml can read from the vault what the
   # environment does not set.
-  defp boot(config_dir, data_dir) do
+  defp boot(store, config_dir, data_dir) do
     with {:ok, file} <- Config.file(config_dir),
          {:ok, vault} <- Config.read(file, only: ["vault"]),
          :ok <- Config.apply(Keyword.take(vault, [WardrikVault])),
          :ok <- vault_key(data_dir),
-         {:ok, settings} <- Config.read(file, vault: &Secrets.named/1) do
+         {:ok, settings} <- Config.read(file, vault: &Secrets.named(store, &1)) do
       :ok = Config.apply(settings)
-      Secrets.apply()
+      Secrets.apply(store)
     end
   end
 
@@ -158,12 +164,12 @@ defmodule WardrikDaemon do
     :ok
   end
 
-  defp mcp(stderr) do
+  defp mcp(store, stderr) do
     settings = Config.settings(WardrikMCP)
 
     if Keyword.get(settings, :servers, []) != [] do
       File.mkdir_p!(Path.dirname(stderr))
-      [{WardrikMCP.Supervisor, Keyword.put(settings, :stderr, {:file, stderr})}]
+      [{WardrikMCP.Supervisor, [store: store, stderr: {:file, stderr}] ++ settings}]
     else
       []
     end
@@ -177,11 +183,13 @@ defmodule WardrikDaemon do
       else: []
   end
 
-  defp notify do
+  defp notify(store) do
     settings = Config.settings(WardrikNotify)
 
     if Keyword.get(settings, :targets, []) != [],
-      do: [{WardrikNotify.Supervisor, [routes: {WardrikDaemon.Agents, :routes, []}] ++ settings}],
+      do: [
+        {WardrikNotify.Supervisor, [routes: {WardrikDaemon.Agents, :routes, [store]}] ++ settings}
+      ],
       else: []
   end
 
@@ -191,18 +199,20 @@ defmodule WardrikDaemon do
         []
 
       configured ->
+        store = Wardrik.Host.store(host)
+
         channels =
           WardrikChannel.channels(configured,
             host: host,
-            offered: {WardrikDaemon.Agents, :offered, []},
+            offered: {WardrikDaemon.Agents, :offered, [store]},
             creatable: {WardrikDaemon.Agents, :creatable?, []},
-            create: {WardrikDaemon.Agents, :create, []},
-            start: {WardrikDaemon.Agents, :start, []},
+            create: {WardrikDaemon.Agents, :create, [store]},
+            start: {WardrikDaemon.Agents, :start, [store]},
             approvers: {WardrikDaemon.Agents, :approvers, []}
           )
 
         [
-          {WardrikChannel.Replies, channels: channels},
+          {WardrikChannel.Replies, channels: channels, store: store},
           {WardrikChannel.Supervisor, channels: channels}
         ]
     end
@@ -216,8 +226,8 @@ defmodule WardrikDaemon do
   the fleet with what it is doing, on which node, and when a trigger asks it
   next, and each agent or policy file that does not read.
   """
-  @spec status() :: String.t()
-  def status do
+  @spec status(WardrikStore.t()) :: String.t()
+  def status(store) do
     members = Fleet.list()
     {uptime_ms, _since_last} = :erlang.statistics(:wall_clock)
 
@@ -234,7 +244,7 @@ defmodule WardrikDaemon do
               [
                 "  #{member.id}",
                 Wardrik.Fleet.Member.label(member)
-                | where(member) ++ spent(member.id) ++ next_run(member.id)
+                | where(member) ++ spent(store, member.id) ++ next_run(member.id)
               ],
               "  "
             )
@@ -275,26 +285,26 @@ defmodule WardrikDaemon do
   What the agent `key` has spent of each budget the spec its kept definition
   writes gives it, as its budgets say it; nothing where none is kept.
   """
-  @spec spent(Wardrik.AgentID.t()) :: [String.t()]
-  def spent(key) do
-    with {:ok, definition} <- WardrikDaemon.Definition.of(key),
+  @spec spent(WardrikStore.t(), Wardrik.AgentID.t()) :: [String.t()]
+  def spent(store, key) do
+    with {:ok, definition} <- WardrikDaemon.Definition.of(store, key),
          {:ok, spec} <- WardrikDaemon.Agents.build(definition, key) do
-      spent(spec, key)
+      spent_by(spec, key)
     else
       {:error, _reason} -> []
     end
   end
 
   @doc "What the agent `key` has spent of each budget `spec` gives it, as its budgets say it."
-  @spec spent(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
-  def spent(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
+  @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
+  def spent_by(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
     for %Wardrik.Hook{module: WardrikPolicy.Budget, value: budget} <- hooks,
         spent = WardrikPolicy.Budget.spending(budget, key),
         spent != nil,
         do: spent
   end
 
-  def spent(_spec, _key), do: []
+  def spent_by(_spec, _key), do: []
 
   @doc """
   How long until a trigger next asks the agent `key`, in milliseconds, or

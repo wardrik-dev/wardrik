@@ -3,8 +3,9 @@ defmodule WardrikDaemon.Host do
   Holds the `Wardrik.Host` the daemon was started with, for what reaches the
   daemon from outside the tree that started it: a `wardrik` command, which
   `bin/wardrik` runs on the daemon's node over rpc, builds its caller on the
-  host `get/0` answers. `WardrikDaemon` starts it first, with its `:host`;
-  everything it starts after it is handed the host in its options.
+  host `get/0` answers. The release starts it after the store and before
+  `Wardrik`, so a node waiting for its cluster can be asked what it waits
+  for; everything started after it is handed the host in its options.
   """
 
   use GenServer

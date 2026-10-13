@@ -36,14 +36,14 @@ defmodule WardrikChannel.ThreadsTest do
     channels =
       WardrikChannel.channels(
         [{name, {WardrikChannel.Test.Adapter, test: self(), refusals: opts[:refusals]}}],
-        host: Wardrik.Host.new(),
+        host: Wardrik.Host.new(store: Wardrik.Test.store()),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
         approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
         replies: replies
       )
 
-    start_supervised!({Replies, name: replies, channels: channels})
+    start_supervised!({Replies, name: replies, channels: channels, store: Wardrik.Test.store()})
     :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
     {_adapter, _options, context} = channels[name]
     {:bound, room, _offer} = Rooms.joined(context, "C1", "books", @maria)
@@ -158,7 +158,7 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "reminds nothing in a room it does not post in, nor a thread it does not follow" do
-    nowhere = %Context{host: Wardrik.Host.new(), channel: "chat-none"}
+    nowhere = %Context{host: Wardrik.Host.new(store: Wardrik.Test.store()), channel: "chat-none"}
     assert Replies.remind(nowhere, "C1", "1.1") == :ok
 
     {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]})
@@ -212,7 +212,7 @@ defmodule WardrikChannel.ThreadsTest do
       Wardrik.Agent.decide(
         agent,
         %{"call_1" => {:deny, "Not on Fridays."}},
-        Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
+        Wardrik.Caller.root(principal: by, host: Wardrik.Host.new(store: Wardrik.Test.store()))
       )
 
     assert_receive {:delivered,

@@ -17,6 +17,7 @@ defmodule WardrikWorkspace.TurnTest do
 
     {:ok, _version} =
       Store.write(
+        Wardrik.Test.host(),
         "shared/" <> tree,
         "findings/db.md",
         %WardrikWorkspace.File{
@@ -37,7 +38,7 @@ defmodule WardrikWorkspace.TurnTest do
     scope =
       [tools: [{WardrikWorkspace, spec}, Wardrik.Test.Tools.Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", hooks: rules)
+      |> Scope.root(key, name: "turn", host: Wardrik.Test.host(), hooks: rules)
 
     assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
              parked =
@@ -61,7 +62,8 @@ defmodule WardrikWorkspace.TurnTest do
       labels: ["outside"]
     }
 
-    {:ok, _version} = Store.write("shared/" <> tree, "findings/db.md", file, nil)
+    {:ok, _version} =
+      Store.write(Wardrik.Test.host(), "shared/" <> tree, "findings/db.md", file, nil)
 
     LLMStub.stream([
       LLMStub.tool_call("call_1", "read_file", %{"path" => "shared/team/findings/db.md"}),
@@ -81,13 +83,13 @@ defmodule WardrikWorkspace.TurnTest do
     scope =
       [tools: [{WardrikWorkspace, spec}]]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", hooks: rules)
+      |> Scope.root(key, name: "turn", host: Wardrik.Test.host(), hooks: rules)
 
     assert %LLM.Turn{state: :done, labels: ["outside"]} =
              scope |> LLM.Turn.new(Context.new([Context.user("Summarise.")])) |> LLM.Turn.run()
 
     assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
-             Store.read("shared/" <> tree, "summary.md")
+             Store.read(Wardrik.Test.host(), "shared/" <> tree, "summary.md")
   end
 
   test "a MEMORY.md a labelled run wrote, read into the turn, labels it before anything is read" do
@@ -101,7 +103,7 @@ defmodule WardrikWorkspace.TurnTest do
       labels: ["outside"]
     }
 
-    {:ok, _version} = Store.write(spec.tree.tree, "MEMORY.md", file, nil)
+    {:ok, _version} = Store.write(Wardrik.Test.host(), spec.tree.tree, "MEMORY.md", file, nil)
 
     test_pid = self()
 
@@ -118,7 +120,7 @@ defmodule WardrikWorkspace.TurnTest do
         tools: [{WardrikWorkspace, spec}, Wardrik.Test.Tools.Deploy]
       ]
       |> LLM.Config.new()
-      |> Scope.root(key, name: "turn", hooks: rules)
+      |> Scope.root(key, name: "turn", host: Wardrik.Test.host(), hooks: rules)
 
     assert %LLM.Turn{state: :waiting, labels: ["outside"]} =
              parked =

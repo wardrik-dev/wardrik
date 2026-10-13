@@ -8,5 +8,5 @@ defmodule Wardrik.Grants.None do
   @behaviour Wardrik.Grants
 
   @impl Wardrik.Grants
-  def grants(_principal), do: []
+  def grants(_host, _principal), do: []
 end

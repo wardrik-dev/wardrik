@@ -1,5 +1,7 @@
 defmodule Wardrik.AgentLogTest do
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   alias Wardrik.Agent
@@ -88,7 +90,7 @@ defmodule Wardrik.AgentLogTest do
              "wardrik.run.completed"
            ]
 
-    assert {:ok, events} = Log.read(key)
+    assert {:ok, events} = Log.read(store(), key)
 
     assert %{"data" => %{"decision" => "approved", "resolved_by" => %{"id" => "jon"}}} =
              Enum.find(events, &(&1["type"] == "wardrik.interrupt.resolved"))

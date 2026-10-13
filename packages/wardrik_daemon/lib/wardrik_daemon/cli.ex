@@ -16,7 +16,7 @@ defmodule WardrikDaemon.CLI do
   `--json` answers `{"error": {"type": ..., "message": ...}}`.
 
   A node waiting for a quorum of its cluster answers every command with what
-  it is waiting for; see `WardrikDaemon.Cluster.waiting/0`.
+  it is waiting for; see `WardrikDaemon.Cluster.waiting/1`.
 
   A command that changes something records it in `Wardrik.Audit` once it
   has, for the account `bin/wardrik` says typed it.
@@ -192,7 +192,7 @@ defmodule WardrikDaemon.CLI do
       reason = Cluster.refusal() ->
         raise reason
 
-      reason = Cluster.waiting() ->
+      reason = Cluster.waiting(held_store()) ->
         reason
 
       true ->
@@ -208,7 +208,7 @@ defmodule WardrikDaemon.CLI do
   """
   @spec stopping() :: String.t()
   def stopping do
-    case Cluster.waiting() do
+    case Cluster.waiting(held_store()) do
       nil ->
         ""
 
@@ -260,7 +260,7 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp dispatch({terminal, args}) do
-    case Cluster.waiting() do
+    case Cluster.waiting(held_store()) do
       nil -> run(terminal, args)
       reason when args == ["status"] -> Terminal.puts(terminal, reason)
       reason -> failed(terminal, "unavailable", reason, "--json" in args)
@@ -509,13 +509,19 @@ defmodule WardrikDaemon.CLI do
 
   # -- the commands the daemon answers ----------------------------------------
 
-  defp status(_words, _opts), do: {:ok, WardrikDaemon.status()}
+  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
+
+  # The node's store, from the host the release holds before Wardrik starts,
+  # so a node waiting for its cluster can say how many it waits for.
+  defp held_store, do: Wardrik.Host.store(WardrikDaemon.Host.get())
+
+  defp status(_words, opts), do: {:ok, WardrikDaemon.status(store(opts))}
 
   defp nodes(_words, opts), do: Query.run(%ReadNodes{}, opts[:caller])
 
   defp reload(_words, opts) do
     with {:ok, _reloaded} <- Operation.run(%Reload{}, opts[:caller]),
-         do: {:ok, WardrikDaemon.status()}
+         do: {:ok, WardrikDaemon.status(store(opts))}
   end
 
   defp audit_page(_words, opts) do

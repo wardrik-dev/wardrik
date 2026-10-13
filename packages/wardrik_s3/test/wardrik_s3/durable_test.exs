@@ -4,9 +4,10 @@ defmodule WardrikS3.DurableTest do
   test "holds a DurableServer in a bucket through a restart" do
     WardrikS3.Test.S3Bucket.reset()
 
-    :ignore =
-      WardrikS3.Store.start_link(WardrikS3.Test.S3Bucket.store_opts(conditional_delete: false))
+    opts = WardrikS3.Test.S3Bucket.store_opts(conditional_delete: false)
+    store = WardrikStore.new([adapter: WardrikS3.Store] ++ opts)
+    start_supervised!({WardrikStore, store})
 
-    WardrikStore.Test.Durable.survives_a_restart(WardrikS3.Store, :durable_over_s3)
+    WardrikStore.Test.Durable.survives_a_restart(store, :durable_over_s3)
   end
 end

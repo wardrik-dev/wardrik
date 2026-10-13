@@ -6,15 +6,16 @@ defmodule Wardrik.Connections do
 
   A host names the module once, as the `:connections` of its
   `Wardrik.Host`, and the operations on connections ask it, whichever
-  surface they came from:
+  surface they came from, handing each callback the host first, for the
+  store it keeps them in:
 
       Wardrik.Host.new(connections: WardrikOAuth.Connections)
 
   | Operation | Callback |
   | --- | --- |
-  | `Wardrik.Operations.ReadConnections` | `list/1` |
-  | `Wardrik.Operations.Connect` | `connect/3` |
-  | `Wardrik.Operations.Disconnect` | `disconnect/2` |
+  | `Wardrik.Operations.ReadConnections` | `list/2` |
+  | `Wardrik.Operations.Connect` | `connect/4` |
+  | `Wardrik.Operations.Disconnect` | `disconnect/3` |
 
   A host that offers none has `Wardrik.Connections.None`, whose callbacks
   answer `:unsupported`, and so does each operation.
@@ -41,7 +42,7 @@ defmodule Wardrik.Connections do
   @type connection() :: %{provider: String.t(), held_by: held_by()}
 
   @doc "The connections the deployment offers `owner`, and who holds each; never a value."
-  @callback list(owner()) :: [connection()] | :unsupported
+  @callback list(Wardrik.Host.t(), owner()) :: [connection()] | :unsupported
 
   @doc """
   Connects `provider` for `owner`, as `by` asked: `{:ok, :held}` where they
@@ -49,11 +50,12 @@ defmodule Wardrik.Connections do
   links are. `{:error, :not_found}` is for a provider the deployment does
   not offer.
   """
-  @callback connect(provider :: String.t(), owner(), by :: Principal.t() | nil) ::
+  @callback connect(Wardrik.Host.t(), provider :: String.t(), owner(), by :: Principal.t() | nil) ::
               {:ok, :held} | {:ok, Wardrik.Call.Ask.link()} | {:error, term()} | :unsupported
 
   @doc "Forgets `owner`'s `provider`: `{:error, :not_found}` where they hold none."
-  @callback disconnect(provider :: String.t(), owner()) :: :ok | {:error, term()} | :unsupported
+  @callback disconnect(Wardrik.Host.t(), provider :: String.t(), owner()) ::
+              :ok | {:error, term()} | :unsupported
 
   @doc "The error each operation answers where the host offers no connections."
   @spec unsupported() :: Error.t()

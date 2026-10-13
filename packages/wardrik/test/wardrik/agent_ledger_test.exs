@@ -1,5 +1,7 @@
 defmodule Wardrik.AgentLedgerTest do
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   alias Wardrik.Agent
@@ -203,7 +205,7 @@ defmodule Wardrik.AgentLedgerTest do
     {^key, agent} = Wardrik.Test.Fleet.start_agent(opts([]), key)
     Agent.ask(agent, "ship it")
     assert_receive {:began, "deploy", tool}, 5_000
-    assert [_claim] = WardrikStore.keys(:claims, "#{key}//")
+    assert [_claim] = WardrikStore.keys(store(), :claims, "#{key}//")
     send(tool, :finish)
 
     assert_receive %Event{
@@ -213,6 +215,6 @@ defmodule Wardrik.AgentLedgerTest do
                    5_000
 
     assert_receive {:forgotten, %{agent_id: ^key, trace_id: ^trace_id, answer: :ok}}, 5_000
-    assert WardrikStore.keys(:claims, "#{key}//") == []
+    assert WardrikStore.keys(store(), :claims, "#{key}//") == []
   end
 end

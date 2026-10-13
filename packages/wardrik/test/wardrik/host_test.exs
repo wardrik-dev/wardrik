@@ -16,7 +16,7 @@ defmodule Wardrik.HostTest do
     @behaviour Wardrik.Grants
 
     @impl true
-    def grants(principal) do
+    def grants(_host, principal) do
       case Principal.id(principal) do
         "maria" ->
           [grant([org: "acme"], [:read]), grant([org: "globex"], [:read, :decide])]
@@ -42,23 +42,26 @@ defmodule Wardrik.HostTest do
     assert Host.connections(host) == Wardrik.Connections.None
     assert Host.tokens(host) == Wardrik.Tokens.None
     assert Host.triggers(host) == Wardrik.Triggers.None
+    assert Host.store(host) == WardrikStore.new(adapter: WardrikStore.None)
     assert_raise ArgumentError, fn -> Host.new(ledger: Held) end
   end
 
   test "each None module answers that the host offers nothing" do
     id = ~A"acme/triage"
+    host = Host.new()
 
-    assert Wardrik.Connections.None.list("acme") == :unsupported
-    assert Wardrik.Connections.None.connect("github", "acme", nil) == :unsupported
-    assert Wardrik.Connections.None.disconnect("github", "acme") == :unsupported
-    assert Wardrik.Tokens.None.list() == :unsupported
-    assert Wardrik.Tokens.None.revoke("t1") == :unsupported
+    assert Wardrik.Connections.None.list(host, "acme") == :unsupported
+    assert Wardrik.Connections.None.connect(host, "github", "acme", nil) == :unsupported
+    assert Wardrik.Connections.None.disconnect(host, "github", "acme") == :unsupported
+    assert Wardrik.Tokens.None.create(host, "t", nil, nil) == :unsupported
+    assert Wardrik.Tokens.None.list(host) == :unsupported
+    assert Wardrik.Tokens.None.revoke(host, "t1") == :unsupported
     assert Wardrik.Triggers.None.deliver(id, "issues", %{headers: [], body: ""}) == :unsupported
-    assert Wardrik.Grants.None.grants(Principal.new(:user, "maria")) == []
-    assert Wardrik.Definition.None.current(id) == :none
-    assert Wardrik.Definition.None.editable(id) == :ok
-    assert Wardrik.Definition.None.delete(id) == {:error, :not_found}
-    assert Wardrik.Definition.None.create(id) == :unsupported
+    assert Wardrik.Grants.None.grants(host, Principal.new(:user, "maria")) == []
+    assert Wardrik.Definition.None.current(host, id) == :none
+    assert Wardrik.Definition.None.editable(host, id) == :ok
+    assert Wardrik.Definition.None.delete(host, id) == {:error, :not_found}
+    assert Wardrik.Definition.None.create(host, id) == :unsupported
     assert Wardrik.Definition.None.reloading() == []
     assert Wardrik.Definition.None.reload() == :ok
   end

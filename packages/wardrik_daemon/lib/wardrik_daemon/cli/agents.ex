@@ -63,12 +63,12 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # -- ls -----------------------------------------------------------------------
 
-  defp ls(words, _opts) do
+  defp ls(words, opts) do
     with {:ok, members} <- picked(words) do
       case members do
         [] when words == [] -> {:ok, "No agents."}
         [] -> {:ok, "No agent matches #{Enum.join(words, " ")}."}
-        members -> {:ok, table(members)}
+        members -> {:ok, table(Wardrik.Host.store(opts[:caller].host), members)}
       end
     end
   end
@@ -92,7 +92,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # A column for each thing any agent listed has, the key, status and node
   # always, under a faint heading.
-  defp table(members) do
+  defp table(store, members) do
     headings = ["AGENT", "STATUS", "NODE", "NEXT RUN", "SPENT"]
 
     rows =
@@ -102,7 +102,7 @@ defmodule WardrikDaemon.CLI.Agents do
           status(member),
           where(member),
           next(member.id),
-          Enum.join(WardrikDaemon.spent(member.id), ", ")
+          Enum.join(WardrikDaemon.spent(store, member.id), ", ")
         ]
       end
 
@@ -155,17 +155,17 @@ defmodule WardrikDaemon.CLI.Agents do
   # -- show ---------------------------------------------------------------------
 
   # The snapshot wakes an agent asleep, so the fleet then shows it awake.
-  defp show([key], _opts) do
+  defp show([key], opts) do
     case Agent.snapshot(key) do
       {:error, :not_found} -> {:error, "No agent runs under #{key}."}
-      snapshot -> {:ok, &shown(Fleet.lookup(key), snapshot, defined(key), &1)}
+      snapshot -> {:ok, &shown(Fleet.lookup(key), snapshot, defined(opts, key), &1)}
     end
   end
 
   # The definition the agent runs on, with the spec it writes now or why it
   # writes none, or `nil` where none is kept.
-  defp defined(key) do
-    case Definition.of(key) do
+  defp defined(opts, key) do
+    case Definition.of(Wardrik.Host.store(opts[:caller].host), key) do
       {:ok, definition} -> {definition, WardrikDaemon.Agents.build(definition, key)}
       {:error, :not_found} -> nil
     end
@@ -252,7 +252,7 @@ defmodule WardrikDaemon.CLI.Agents do
         else: policies
 
     [{"tools", tools(spec)} | policies] ++
-      for spent <- WardrikDaemon.spent(spec, key), do: {"budget", spent}
+      for spent <- WardrikDaemon.spent_by(spec, key), do: {"budget", spent}
   end
 
   # A policy by its name, or as the file's own, with how many rules of each

@@ -60,7 +60,8 @@ defmodule WardrikChannel.Replies.Server do
       {:reply, :ok, state}
     else
       :ok = Log.subscribe(agent)
-      head = Log.head(agent, Log.oldest(agent, consistent: true) - 1)
+      store = store(state)
+      head = Log.head(store, agent, Log.oldest(store, agent, consistent: true) - 1)
       {:reply, :ok, State.follow(state, thread, agent, head), sync: true}
     end
   end
@@ -104,12 +105,16 @@ defmodule WardrikChannel.Replies.Server do
   defp advance(state, thread) do
     followed = state.threads[thread]
 
-    case Log.read(followed.agent, starting_after: followed.through) do
+    case Log.read(store(state), followed.agent, starting_after: followed.through) do
       {:gap, oldest} -> advance(State.skip(state, thread, oldest), thread)
       {:ok, []} -> state
       {:ok, events} -> posted(state, thread, events)
     end
   end
+
+  # The logs are in the store of the host the room's channel runs on.
+  defp store(%State{posting: {_adapter, _options, %Context{host: host}}}),
+    do: Wardrik.Host.store(host)
 
   defp posted(state, thread, []), do: advance(state, thread)
 

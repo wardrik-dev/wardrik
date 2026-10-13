@@ -4,15 +4,16 @@ defmodule Wardrik.Tokens do
   `Wardrik.Grant`: making one, listing them, and revoking one.
 
   A host names the module once, as the `:tokens` of its `Wardrik.Host`, and
-  the operations on tokens ask it:
+  the operations on tokens ask it, handing each callback the host first, for
+  the store it keeps them in:
 
       Wardrik.Host.new(tokens: WardrikHTTP.Tokens)
 
   | Operation | Callback |
   | --- | --- |
-  | `Wardrik.Operations.CreateToken` | `create/3` |
-  | `Wardrik.Operations.ListTokens` | `list/0` |
-  | `Wardrik.Operations.RevokeToken` | `revoke/1` |
+  | `Wardrik.Operations.CreateToken` | `create/4` |
+  | `Wardrik.Operations.ListTokens` | `list/1` |
+  | `Wardrik.Operations.RevokeToken` | `revoke/2` |
 
   A host that makes none has `Wardrik.Tokens.None`, whose callbacks answer
   `:unsupported`, and so does each operation. They act on the
@@ -38,14 +39,20 @@ defmodule Wardrik.Tokens do
   Makes a token named `name` carrying `grant`, acting for `for`, or for
   itself where `nil`: its secret, answered this once, and the token.
   """
-  @callback create(name :: String.t(), grant :: Grant.t(), for :: Principal.t() | nil) ::
+  @callback create(
+              Wardrik.Host.t(),
+              name :: String.t(),
+              grant :: Grant.t(),
+              for :: Principal.t() | nil
+            ) ::
               {:ok, secret :: String.t(), token()} | {:error, String.t()} | :unsupported
 
   @doc "Every token, oldest first."
-  @callback list() :: [token()] | :unsupported
+  @callback list(Wardrik.Host.t()) :: [token()] | :unsupported
 
   @doc "Stops the token `id` working: `{:error, :not_found}` where there is none."
-  @callback revoke(id :: String.t()) :: :ok | {:error, :not_found} | :unsupported
+  @callback revoke(Wardrik.Host.t(), id :: String.t()) ::
+              :ok | {:error, :not_found} | :unsupported
 
   @doc "The error each operation answers where the host makes no tokens."
   @spec unsupported() :: Error.t()

@@ -94,7 +94,7 @@ defmodule WardrikDaemon.CLI.Vault do
     with {:ok, owner} <- owner(opts),
          {:ok, pairs} when is_list(pairs) <- given(words),
          {:ok, notes} <- key(opts, nil) do
-      seal(pairs, owner, notes, opts[:by])
+      seal(store(opts), pairs, owner, notes, opts[:by])
     else
       {:ok, {:ask, _name}} -> :live
       other -> other
@@ -107,7 +107,7 @@ defmodule WardrikDaemon.CLI.Vault do
          {:ok, notes} <- key(opts, terminal),
          :ok <- Enum.each(notes, &Terminal.puts(terminal, &1)),
          {:ok, pairs} <- value(given, terminal) do
-      seal(pairs, owner, [], opts[:by])
+      seal(store(opts), pairs, owner, [], opts[:by])
     else
       :declined -> {:ok, "Nothing was sealed."}
       other -> other
@@ -164,12 +164,12 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp seal([], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
+  defp seal(_store, [], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
 
-  defp seal(pairs, {kind, owner}, notes, by) do
+  defp seal(store, pairs, {kind, owner}, notes, by) do
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
-      case WardrikVault.put(name, owner, value) do
+      case WardrikVault.put(store, name, owner, value) do
         :ok ->
           :ok = Audit.record({:secret_stored, name, prefix(owner)}, by)
           {:cont, [sealed(kind, name, owner, value) | lines]}
@@ -304,9 +304,11 @@ defmodule WardrikDaemon.CLI.Vault do
   defp listed(opts) do
     if opts[:org] || opts[:user] do
       with {:ok, {kind, owner}} <- owner(opts),
-           do: {:ok, for(name <- WardrikVault.names(owner), do: {{kind, name}, owner})}
+           do:
+             {:ok, for(name <- WardrikVault.names(store(opts), owner), do: {{kind, name}, owner})}
     else
-      {:ok, for({name, owner} <- WardrikVault.list(), do: {{kind(owner), name}, owner})}
+      {:ok,
+       for({name, owner} <- WardrikVault.list(store(opts)), do: {{kind(owner), name}, owner})}
     end
   end
 
@@ -366,8 +368,8 @@ defmodule WardrikDaemon.CLI.Vault do
     with {:ok, {kind, owner}} <- owner(opts) do
       for_owner = if kind == :deployment, do: "", else: " for #{shown(owner)}"
 
-      if name in WardrikVault.names(owner) do
-        :ok = removed(kind, name, owner)
+      if name in WardrikVault.names(store(opts), owner) do
+        :ok = removed(store(opts), kind, name, owner)
         :ok = Audit.record({:secret_removed, name, prefix(owner)}, opts[:by])
         {:ok, "Removed #{name}#{for_owner}."}
       else
@@ -376,10 +378,12 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp removed(kind, name, owner) do
-    :ok = WardrikVault.forget(name, owner)
+  defp removed(store, kind, name, owner) do
+    :ok = WardrikVault.forget(store, name, owner)
     if kind == :deployment, do: placed(name, nil), else: :ok
   end
+
+  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
 
   # -- owners ------------------------------------------------------------------
 

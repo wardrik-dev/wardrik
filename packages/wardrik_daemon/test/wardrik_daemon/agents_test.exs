@@ -1,5 +1,7 @@
 defmodule WardrikDaemon.AgentsTest do
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0, host: 0]
   use Mimic
 
   alias Wardrik.Agent
@@ -53,7 +55,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "")
     write(context, "beta", "model: anthropic:claude-sonnet-5\n")
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [{_alpha, {:ok, _}}, {_beta, {:ok, _}}] = Agents.files()
 
@@ -68,7 +70,7 @@ defmodule WardrikDaemon.AgentsTest do
 
   test "reload/0 gives a running agent what its file says now", %{org: org} = context do
     write(context, "alpha", "")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     {:ok, pid} = Fleet.spawn(AgentID.parse!("#{org}/alpha"))
 
     write(context, "alpha", "model: anthropic:claude-sonnet-5\n")
@@ -84,7 +86,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "alpha", "")
     write(context, "broken", "tools: [nope]\n")
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [{_alpha, {:ok, _}}, {broken, {:error, message}}] = Agents.files()
     assert Path.basename(broken) == "broken.md"
@@ -100,7 +102,7 @@ defmodule WardrikDaemon.AgentsTest do
     write(%{dir: dir, org: org}, "alpha", "")
     write(%{dir: dir, org: "#{org}/eu"}, "slashed", "")
 
-    start_supervised!({Agents, dir: dir})
+    start_supervised!({Agents, dir: dir, store: Wardrik.Test.store()})
 
     assert [{_alpha, {:ok, _}}, {slashed, {:error, message}}] = Agents.files()
     assert Path.basename(slashed) == "slashed.md"
@@ -120,7 +122,7 @@ defmodule WardrikDaemon.AgentsTest do
         else: call_original(WardrikDaemon.AgentFile, :parse, [path])
     end)
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [{_alpha, {:ok, _}}, {failing, {:error, message}}] = Agents.files()
     assert message == "#{failing}: (exit) :store_timeout"
@@ -131,7 +133,7 @@ defmodule WardrikDaemon.AgentsTest do
     write_policy(context, "careful", "deny: [run_lua]\n")
     write(context, "alpha", "policy: careful\n")
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [{_policy, {:ok, %WardrikPolicy{name: "careful"} = careful}}, {_alpha, {:ok, spec}}] =
              Agents.files()
@@ -144,19 +146,19 @@ defmodule WardrikDaemon.AgentsTest do
     WardrikDaemon.Test.Settings.keep()
     targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
     Application.put_env(:wardrik_daemon, WardrikNotify, targets: targets)
-    notify = [routes: {Agents, :routes, []}, targets: targets]
+    notify = [routes: {Agents, :routes, [Wardrik.Test.store()]}, targets: targets]
 
     write(context, "alpha", "notify: audit\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     start_supervised!({WardrikNotify.Supervisor, notify})
     _files = Agents.files()
 
     alpha = AgentID.parse!("#{org}/alpha")
-    assert %{^alpha => %WardrikNotify.Route{targets: [:audit]}} = Agents.routes()
+    assert %{^alpha => %WardrikNotify.Route{targets: [:audit]}} = Agents.routes(store())
 
     stop_supervised!(WardrikNotify.Supervisor)
     start_supervised!({WardrikNotify.Supervisor, notify})
-    assert :sys.get_state(WardrikNotify.Dispatcher).routes == Agents.routes()
+    assert :sys.get_state(WardrikNotify.Dispatcher).routes == Agents.routes(store())
   end
 
   test "routes an agent the HTTP API defines as its definition says, until it is forgotten",
@@ -164,59 +166,59 @@ defmodule WardrikDaemon.AgentsTest do
     WardrikDaemon.Test.Settings.keep()
     targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
     Application.put_env(:wardrik_daemon, WardrikNotify, targets: targets)
-    notify = [routes: {Agents, :routes, []}, targets: targets]
-    start_supervised!({Agents, dir: context.dir})
+    notify = [routes: {Agents, :routes, [Wardrik.Test.store()]}, targets: targets]
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     start_supervised!({WardrikNotify.Supervisor, notify})
     beta = AgentID.parse!("#{org}/beta")
     routes = fn -> :sys.get_state(WardrikNotify.Dispatcher).routes end
 
-    assert {:ok, _spec} = Agents.put(beta, %{"notify" => "audit"}, grant(org))
+    assert {:ok, _spec} = Agents.put(host(), beta, %{"notify" => "audit"}, grant(org))
     assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
 
     stop_supervised!(WardrikNotify.Supervisor)
     start_supervised!({WardrikNotify.Supervisor, notify})
     assert %{^beta => %WardrikNotify.Route{targets: [:audit]}} = routes.()
 
-    assert {:ok, _spec} = Agents.put(beta, %{}, grant(org))
+    assert {:ok, _spec} = Agents.put(host(), beta, %{}, grant(org))
     refute is_map_key(routes.(), beta)
 
     notify_on = %{"notify" => %{"to" => "audit", "on" => ["finished"]}}
-    assert {:ok, _spec} = Agents.put(beta, notify_on, grant(org))
+    assert {:ok, _spec} = Agents.put(host(), beta, notify_on, grant(org))
     assert %{^beta => %WardrikNotify.Route{on: [:finished]}} = routes.()
 
-    assert :ok = Agents.delete(beta)
+    assert :ok = Agents.delete(host(), beta)
     refute is_map_key(routes.(), beta)
   end
 
   test "reads a definition sent to the HTTP API under the policies it read, and keeps it",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/defined")
 
-    assert {:ok, spec} = Agents.put(defined, %{"policy" => "careful"}, grant(org))
+    assert {:ok, spec} = Agents.put(host(), defined, %{"policy" => "careful"}, grant(org))
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
-    assert Agents.get(defined) == {:ok, %{"policy" => "careful"}}
+    assert Agents.get(host(), defined) == {:ok, %{"policy" => "careful"}}
 
-    assert {:error, message} = Agents.put(defined, %{"policy" => "lax"}, grant(org))
+    assert {:error, message} = Agents.put(host(), defined, %{"policy" => "lax"}, grant(org))
     assert message =~ "policy names lax"
-    assert Agents.get(defined) == {:ok, %{"policy" => "careful"}}
+    assert Agents.get(host(), defined) == {:ok, %{"policy" => "careful"}}
 
-    assert Agents.delete(defined) == :ok
-    assert Agents.get(defined) == {:error, :not_found}
-    assert Agents.delete(defined) == {:error, :not_found}
+    assert Agents.delete(host(), defined) == :ok
+    assert Agents.get(host(), defined) == {:error, :not_found}
+    assert Agents.delete(host(), defined) == {:error, :not_found}
   end
 
   test "a definition shares only the trees the scope of the token that sent it covers",
        %{org: org} = context do
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/@jon/defined")
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
-    assert {:ok, _spec} = Agents.put(defined, fields, grant(org))
+    assert {:ok, _spec} = Agents.put(host(), defined, fields, grant(org))
 
     assert {:error, message} =
-             Agents.put(defined, fields, grant(Prefix.new!(org: org, user: "jon")))
+             Agents.put(host(), defined, fields, grant(Prefix.new!(org: org, user: "jon")))
 
     assert message ==
              "workspace shared team: #{org} belongs to #{org}/, which #{org}/@jon/ does not cover"
@@ -225,7 +227,7 @@ defmodule WardrikDaemon.AgentsTest do
   test "an agent the HTTP API defined is held to the ceiling of the token that sent it",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/defined")
 
     ceiling = [
@@ -234,19 +236,19 @@ defmodule WardrikDaemon.AgentsTest do
 
     {:ok, grant} = Wardrik.Grant.new(Prefix.new!(org: org), Wardrik.Grant.actions(), ceiling)
 
-    {:ok, _spec} = Agents.put(defined, %{"policy" => "careful"}, grant)
+    {:ok, _spec} = Agents.put(host(), defined, %{"policy" => "careful"}, grant)
 
-    assert {:ok, spec} = Agents.spec(defined)
+    assert {:ok, spec} = Agents.spec(store(), defined)
     assert [%{name: "ceiling"}, %{name: "careful"}] = spec.hooks
   end
 
   test "a conversation runs on the definition of its agent, in the agent's tree",
        %{org: org} = context do
     write(context, "alpha", "model: anthropic:claude-haiku-4-5\ntools: [files]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     thread = AgentID.parse!("#{org}/alpha/1696.1234")
 
-    assert {:ok, spec} = Agents.spec(thread)
+    assert {:ok, spec} = Agents.spec(store(), thread)
     assert spec.id == thread
     assert spec.config.model_spec == "anthropic:claude-haiku-4-5"
     assert [{WardrikWorkspace, workspace}] = spec.config.tools
@@ -257,9 +259,9 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
     write(context, "alpha", "policy: careful\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     thread = AgentID.parse!("#{org}/alpha/1696.1234")
-    {:ok, options} = Agents.options(thread)
+    {:ok, options} = Agents.options(store(), thread)
     {:ok, _pid} = Fleet.spawn(thread, options)
 
     write(context, "alpha", "policy: lax\n")
@@ -274,15 +276,15 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload()
 
     assert Agents.problems() == []
-    assert {:ok, %{hooks: []}} = Agents.spec(thread)
+    assert {:ok, %{hooks: []}} = Agents.spec(store(), thread)
   end
 
   test "reload brings the agents the HTTP API defined to what their definitions write now",
        %{org: org} = context do
     write_policy(context, "careful", "deny: [run_lua]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/defined")
-    {:ok, spec} = Agents.put(defined, %{"policy" => "careful"}, grant(org))
+    {:ok, spec} = Agents.put(host(), defined, %{"policy" => "careful"}, grant(org))
     {:ok, _pid} = Fleet.put(spec)
 
     Agents.reload()
@@ -300,7 +302,7 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload()
 
     assert Agents.problems() == []
-    assert Agents.get(defined) == {:error, :not_found}
+    assert Agents.get(host(), defined) == {:error, :not_found}
   end
 
   test "an agent starts with its file's options, or the defaults where no file declares it",
@@ -313,43 +315,43 @@ defmodule WardrikDaemon.AgentsTest do
     )
 
     write(context, "alpha", "model: anthropic:claude-haiku-4-5\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert Agents.dir() == context.dir
-    assert {:ok, options} = Agents.options(AgentID.parse!("#{org}/alpha"))
+    assert {:ok, options} = Agents.options(store(), AgentID.parse!("#{org}/alpha"))
     assert options[:config].model_spec == "anthropic:claude-haiku-4-5"
-    assert {:ok, options} = Agents.options(AgentID.parse!("#{org}/@jon/assistant"))
+    assert {:ok, options} = Agents.options(store(), AgentID.parse!("#{org}/@jon/assistant"))
     assert options[:config].model_spec == "anthropic:claude-sonnet-5"
 
     Application.put_env(:wardrik_daemon, Agents, defaults: %{"tools" => ["nothing"]})
-    assert {:error, message} = Agents.options(AgentID.parse!("#{org}/assistant"))
+    assert {:error, message} = Agents.options(store(), AgentID.parse!("#{org}/assistant"))
     assert message =~ "tools names nothing"
   end
 
   test "leaves an agent a file declares to its file", %{org: org} = context do
     write(context, "alpha", "")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     message =
       "#{org}/alpha is declared by agents/alpha.md; change or remove that file, then wardrik reload reads it"
 
-    assert Agents.put(AgentID.parse!("#{org}/alpha"), %{}, grant(org)) ==
+    assert Agents.put(host(), AgentID.parse!("#{org}/alpha"), %{}, grant(org)) ==
              {:error, :conflict, message}
 
-    assert Agents.delete(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
-    assert Agents.editable(AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
+    assert Agents.delete(host(), AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
+    assert Agents.editable(host(), AgentID.parse!("#{org}/alpha")) == {:error, :conflict, message}
 
-    assert Agents.put_trigger(AgentID.parse!("#{org}/alpha"), "sweep", %{}) ==
+    assert Agents.put_trigger(host(), AgentID.parse!("#{org}/alpha"), "sweep", %{}) ==
              {:error, :conflict, message}
 
-    assert Agents.delete_trigger(AgentID.parse!("#{org}/alpha"), "sweep") ==
+    assert Agents.delete_trigger(host(), AgentID.parse!("#{org}/alpha"), "sweep") ==
              {:error, :conflict, message}
   end
 
   test "answers what it last read while it is busy reading again", %{org: org} = context do
     write(context, "alpha", "")
     write_policy(context, "careful", "deny: [run_lua]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     assert [_policy, _agent] = Agents.files()
 
     :ok = :sys.suspend(Agents)
@@ -359,9 +361,9 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.dir() == context.dir
     assert Agents.problems() == []
 
-    assert {:error, :conflict, _message} = Agents.editable(AgentID.parse!("#{org}/alpha"))
-    assert Agents.editable(AgentID.parse!("#{org}/beta")) == :ok
-    assert {:ok, _spec} = Agents.spec(AgentID.parse!("#{org}/alpha"))
+    assert {:error, :conflict, _message} = Agents.editable(host(), AgentID.parse!("#{org}/alpha"))
+    assert Agents.editable(host(), AgentID.parse!("#{org}/beta")) == :ok
+    assert {:ok, _spec} = Agents.spec(store(), AgentID.parse!("#{org}/alpha"))
 
     :ok = :sys.resume(Agents)
   end
@@ -370,7 +372,7 @@ defmodule WardrikDaemon.AgentsTest do
     test "is left asleep by a reload, and wakes with its file as it reads now",
          %{org: org} = context do
       write(context, "alpha", "idle_timeout: 1\nmodel: anthropic:claude-sonnet-5\n")
-      start_supervised!({Agents, dir: context.dir})
+      start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
       Agents.files()
       key = AgentID.parse!("#{org}/alpha")
       :ok = Wardrik.Event.Bus.subscribe(key)
@@ -390,7 +392,7 @@ defmodule WardrikDaemon.AgentsTest do
          %{dir: dir, org: org} = context do
       write(context, "alpha", "")
       write(context, "beta", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
-      start_supervised!({Agents, dir: dir})
+      start_supervised!({Agents, dir: dir, store: Wardrik.Test.store()})
       Agents.files()
       %{generation: generation} = Agent.snapshot(AgentID.parse!("#{org}/beta"))
 
@@ -409,7 +411,7 @@ defmodule WardrikDaemon.AgentsTest do
 
     test "stops when its file names another agent", %{org: org} = context do
       write(context, "alpha", "")
-      start_supervised!({Agents, dir: context.dir})
+      start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
       write(context, "alpha", "name: gamma\n")
       Agents.reload()
@@ -421,25 +423,27 @@ defmodule WardrikDaemon.AgentsTest do
     test "runs on while another node's files declare it", %{dir: dir, org: org} = context do
       other = :"agents-test@elsewhere"
       write(context, "beta", "")
-      start_supervised!({Agents, dir: dir, nodes: fn -> [other] end})
+      start_supervised!({Agents, dir: dir, store: Wardrik.Test.store(), nodes: fn -> [other] end})
       Agents.files()
 
-      {:ok, _vsn} = WardrikStore.put(:declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
-      on_exit(fn -> WardrikStore.delete(:declared, "agents/#{other}") end)
+      {:ok, _vsn} =
+        WardrikStore.put(store(), :declared, "agents/#{other}", %{"#{org}/beta" => "beta.md"})
+
+      on_exit(fn -> WardrikStore.delete(store(), :declared, "agents/#{other}") end)
 
       File.rm!(Path.join([dir, "agents", "beta.md"]))
       Agents.reload()
 
       assert %{} = Agent.status(AgentID.parse!("#{org}/beta"))
 
-      assert Agents.editable(AgentID.parse!("#{org}/beta")) ==
+      assert Agents.editable(host(), AgentID.parse!("#{org}/beta")) ==
                {:error, :conflict,
                 "#{org}/beta is declared by agents/beta.md on #{other}; change or remove that file, then wardrik reload reads it"}
     end
 
     test "is left as it was while its file does not read", %{org: org} = context do
       write(context, "alpha", "")
-      start_supervised!({Agents, dir: context.dir})
+      start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
       write(context, "alpha", "tools: [nope]\n")
       Agents.reload()
@@ -452,10 +456,15 @@ defmodule WardrikDaemon.AgentsTest do
 
     test "leaves an agent the HTTP API defined alone", %{org: org} = context do
       write(context, "alpha", "")
-      start_supervised!({Agents, dir: context.dir})
+      start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
       {:ok, spec} =
-        Agents.put(AgentID.parse!("#{org}/defined"), %{"instructions" => "You help."}, grant(org))
+        Agents.put(
+          host(),
+          AgentID.parse!("#{org}/defined"),
+          %{"instructions" => "You help."},
+          grant(org)
+        )
 
       {:ok, _pid} = Fleet.put(spec)
 
@@ -464,7 +473,7 @@ defmodule WardrikDaemon.AgentsTest do
 
       assert Fleet.whereis(AgentID.parse!("#{org}/alpha"), wake: false) == nil
       assert %{} = Agent.status(AgentID.parse!("#{org}/defined"))
-      assert :ok = Agents.editable(AgentID.parse!("#{org}/defined"))
+      assert :ok = Agents.editable(host(), AgentID.parse!("#{org}/defined"))
     end
   end
 
@@ -472,7 +481,7 @@ defmodule WardrikDaemon.AgentsTest do
     write_policy(context, "careful", "deny: run_lua\n")
     write(context, "alpha", "policy: careful\n")
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [{_policy, {:error, policy_error}}, {_alpha, {:error, agent_error}}] = Agents.files()
     assert policy_error =~ "careful.yaml: deny is a list"
@@ -483,13 +492,13 @@ defmodule WardrikDaemon.AgentsTest do
   test "runs the triggers a file declares, and stops those it no longer does",
        %{org: org} = context do
     write(context, "alpha", "triggers:\n  name: sweep\n  every: 1h\n  prompt: Look.\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     assert [{_alpha, {:ok, _spec}}] = Agents.files()
 
     assert [%WardrikTrigger.Status{name: "sweep"}] =
              WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha"))
 
-    assert WardrikDaemon.status() =~ ~r"#{org}/alpha .*next run in 5\dm"
+    assert WardrikDaemon.status(store()) =~ ~r"#{org}/alpha .*next run in 5\dm"
 
     write(context, "alpha", "")
     Agents.reload()
@@ -499,29 +508,29 @@ defmodule WardrikDaemon.AgentsTest do
 
   test "brings an agent the HTTP API defined to the triggers its definition lists",
        %{org: org} = context do
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/defined")
     sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
 
-    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
+    {:ok, _spec} = Agents.put(host(), defined, %{"triggers" => [sweep]}, grant(org))
     assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
 
-    {:ok, _spec} = Agents.put(defined, %{}, grant(org))
+    {:ok, _spec} = Agents.put(host(), defined, %{}, grant(org))
     assert WardrikTrigger.for_agent(defined) == []
 
-    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
-    :ok = Agents.delete(defined)
+    {:ok, _spec} = Agents.put(host(), defined, %{"triggers" => [sweep]}, grant(org))
+    :ok = Agents.delete(host(), defined)
     assert WardrikTrigger.for_agent(defined) == []
   end
 
   test "changes one trigger in the definition the HTTP API sent", %{org: org} = context do
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     defined = AgentID.parse!("#{org}/defined")
     sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
-    {:ok, _spec} = Agents.put(defined, %{"triggers" => [sweep]}, grant(org))
+    {:ok, _spec} = Agents.put(host(), defined, %{"triggers" => [sweep]}, grant(org))
 
     assert {:ok, :created, digest} =
-             Agents.put_trigger(defined, "digest", %{
+             Agents.put_trigger(host(), defined, "digest", %{
                "every" => "0 17 * * *",
                "prompt" => "Sum up."
              })
@@ -539,23 +548,27 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:ok, _} = JSV.validate(digest, JSV.build!(schema, resolver: WardrikProtocol.Resolver))
 
     assert {:ok, :changed, %{"every" => "2h"}} =
-             Agents.put_trigger(defined, "sweep", %{"every" => "2h", "prompt" => "Look."})
+             Agents.put_trigger(host(), defined, "sweep", %{"every" => "2h", "prompt" => "Look."})
 
     assert {:ok, %{"triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
-             Agents.get(defined)
+             Agents.get(host(), defined)
 
     assert [%{name: "digest"}, %{name: "sweep", schedule: "every 2h"}] =
              WardrikTrigger.for_agent(defined)
 
     assert {:error, ~s(trigger digest: every: "10s" is shorter than a minute)} =
-             Agents.put_trigger(defined, "digest", %{"every" => "10s", "prompt" => "Sum up."})
+             Agents.put_trigger(host(), defined, "digest", %{
+               "every" => "10s",
+               "prompt" => "Sum up."
+             })
 
-    assert :ok = Agents.delete_trigger(defined, "digest")
-    assert {:error, :not_found} = Agents.delete_trigger(defined, "digest")
+    assert :ok = Agents.delete_trigger(host(), defined, "digest")
+    assert {:error, :not_found} = Agents.delete_trigger(host(), defined, "digest")
     assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
 
     assert {:error, :not_found} =
              Agents.put_trigger(
+               host(),
                AgentID.parse!("#{org}/nobody"),
                "sweep",
                Map.delete(sweep, "name")
@@ -569,7 +582,7 @@ defmodule WardrikDaemon.AgentsTest do
     File.write!(Path.join([context.dir, "policies", "strict.yml"]), "default: deny\n")
     write(context, "alpha", "policy: strict\n")
 
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
 
     assert [
              {careful_yaml, {:ok, %WardrikPolicy{name: "careful"}}},
@@ -591,20 +604,20 @@ defmodule WardrikDaemon.AgentsTest do
     write(context, "books", "channels: [slack]\n")
     write(context, "triage", "channels: [slack, everyone]\n")
     write(context, "quiet", "")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     # Answered once the files have been read.
     _files = Agents.files()
 
-    assert Enum.map(Agents.offered("slack"), & &1.agent) ==
+    assert Enum.map(Agents.offered(store(), "slack"), & &1.agent) ==
              [AgentID.parse!("#{org}/books"), AgentID.parse!("#{org}/triage")]
 
-    everyone = Enum.map(Agents.offered("everyone"), & &1.agent)
+    everyone = Enum.map(Agents.offered(store(), "everyone"), & &1.agent)
     assert AgentID.parse!("#{org}/triage") in everyone
     refute AgentID.parse!("#{org}/books") in everyone
 
     Application.put_env(:wardrik_daemon, WardrikChannel, orgs: [slack: ["elsewhere"]])
-    assert Agents.offered("slack") == []
-    assert Agents.offered("nowhere") == []
+    assert Agents.offered(store(), "slack") == []
+    assert Agents.offered(store(), "nowhere") == []
   end
 
   test "creates an agent for a room from the defaults, where they name a policy and the channel lets it",
@@ -626,14 +639,14 @@ defmodule WardrikDaemon.AgentsTest do
     end)
 
     write_policy(context, "careful", "deny: [run_lua]\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     _files = Agents.files()
     maria = Wardrik.Principal.new(:channel, "slack/U1", name: "maria")
 
     refute Agents.creatable?("slack")
 
     assert {:error, "Agents are not created from here" <> _} =
-             Agents.create("slack", "books", maria)
+             Agents.create(store(), "slack", "books", maria)
 
     Application.put_env(:wardrik_daemon, Agents,
       defaults: %{"model" => "anthropic:claude-sonnet-5", "policy" => "careful"}
@@ -643,20 +656,23 @@ defmodule WardrikDaemon.AgentsTest do
     refute Agents.creatable?("closed")
 
     assert {:ok, %WardrikChannel.Offer{agent: id, description: "Answers in #Books & Bills."}} =
-             Agents.create("slack", "Books & Bills", maria)
+             Agents.create(store(), "slack", "Books & Bills", maria)
 
     assert id == AgentID.parse!("#{org}/books-bills")
     assert Fleet.lookup(id)
-    assert id in Enum.map(Agents.offered("slack"), & &1.agent)
+    assert id in Enum.map(Agents.offered(store(), "slack"), & &1.agent)
 
     assert Wardrik.Test.Audit.about("agents/#{id}") ==
              [{"agent.defined", %{"type" => "channel", "id" => "slack/U1", "name" => "maria"}}]
 
-    assert {:error, message} = Agents.create("slack", "books-bills", maria)
+    assert {:error, message} = Agents.create(store(), "slack", "books-bills", maria)
     assert message =~ "#{org}/books-bills is there already"
 
-    assert {:error, "Agents are not created from here" <> _} = Agents.create("closed", "x", maria)
-    assert {:error, ~s("!!!" makes no agent's name.)} = Agents.create("slack", "!!!", maria)
+    assert {:error, "Agents are not created from here" <> _} =
+             Agents.create(store(), "closed", "x", maria)
+
+    assert {:error, ~s("!!!" makes no agent's name.)} =
+             Agents.create(store(), "slack", "!!!", maria)
   end
 
   test "starts the agent of a room's thread on its definition, and names the channel's approvers",
@@ -669,13 +685,13 @@ defmodule WardrikDaemon.AgentsTest do
     on_exit(fn -> Application.delete_env(:wardrik_daemon, WardrikChannel) end)
 
     write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
-    start_supervised!({Agents, dir: context.dir})
+    start_supervised!({Agents, dir: context.dir, store: Wardrik.Test.store()})
     _files = Agents.files()
 
     thread = AgentID.put_external_id(AgentID.parse!("#{org}/books"), "C1-1.1")
-    assert {:ok, pid} = Agents.start("slack", thread)
+    assert {:ok, pid} = Agents.start(store(), "slack", thread)
     assert Fleet.whereis(thread) == pid
-    assert Agents.start("slack", thread) == {:ok, pid}
+    assert Agents.start(store(), "slack", thread) == {:ok, pid}
     assert Agent.status(thread).model == Agent.status(AgentID.parse!("#{org}/books")).model
 
     assert Agents.approvers("slack") == ["@maria"]
@@ -683,7 +699,7 @@ defmodule WardrikDaemon.AgentsTest do
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do
-    start_supervised!({Agents, dir: Path.join(dir, "missing")})
+    start_supervised!({Agents, dir: Path.join(dir, "missing"), store: Wardrik.Test.store()})
     assert Agents.files() == []
   end
 end

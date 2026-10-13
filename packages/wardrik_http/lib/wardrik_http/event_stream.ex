@@ -39,20 +39,21 @@ defmodule WardrikHTTP.EventStream do
   and `:not_found` for `:head` when no agent runs under `agent_id`, in either
   case having sent nothing.
   """
-  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(), cursor()) ::
+  @spec serve(WardrikStore.t(), Plug.Conn.t(), Wardrik.AgentID.t(), cursor()) ::
           Plug.Conn.t() | {:gap, pos_integer()} | :not_found
-  def serve(conn, agent_id, cursor) do
+  def serve(store, conn, agent_id, cursor) do
     :ok = Log.subscribe(agent_id)
 
     try do
       with {:ok, starting_after} <- start(agent_id, cursor),
-           {:ok, events} <- Log.read(agent_id, starting_after: starting_after, limit: @page) do
+           {:ok, events} <-
+             Log.read(store, agent_id, starting_after: starting_after, limit: @page) do
         conn
         |> put_resp_content_type("text/event-stream")
         |> put_resp_header("cache-control", "no-cache")
         |> send_chunked(200)
         |> send_events(events, starting_after)
-        |> catch_up(agent_id)
+        |> catch_up(store, agent_id)
         |> follow()
       end
     after
@@ -71,14 +72,14 @@ defmodule WardrikHTTP.EventStream do
   end
 
   # Pages of the log after the last event sent, until a read comes back empty.
-  defp catch_up({:ok, conn, last}, agent_id) do
-    case Log.read(agent_id, starting_after: last, limit: @page) do
-      {:ok, [_ | _] = events} -> conn |> send_events(events, last) |> catch_up(agent_id)
+  defp catch_up({:ok, conn, last}, store, agent_id) do
+    case Log.read(store, agent_id, starting_after: last, limit: @page) do
+      {:ok, [_ | _] = events} -> conn |> send_events(events, last) |> catch_up(store, agent_id)
       _caught_up -> {:ok, conn, last}
     end
   end
 
-  defp catch_up(closed, _agent_id), do: closed
+  defp catch_up(closed, _store, _agent_id), do: closed
 
   defp send_events(conn, events, last) do
     Enum.reduce_while(events, {:ok, conn, last}, fn event, {:ok, conn, _last} ->

@@ -63,7 +63,7 @@ defmodule Wardrik.Operations.CreateToken do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, caller) do
-    case Host.tokens(caller.host).create(name, grant, for) do
+    case Host.tokens(caller.host).create(caller.host, name, grant, for) do
       {:ok, secret, token} ->
         made = %TokenCreated{token: token}
         {:created, %{"secret" => secret, "token" => Wardrik.Resource.token(token)}, made}

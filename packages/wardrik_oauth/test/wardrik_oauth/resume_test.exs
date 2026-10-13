@@ -22,7 +22,7 @@ defmodule WardrikOAuth.ResumeTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault)
+    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
   end
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
@@ -79,7 +79,7 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all()
 
       {:error, {:authorization_required, theirs, _whose}} =
-        WardrikOAuth.hold(provider, {"acme", "else"})
+        WardrikOAuth.hold(Wardrik.Test.store(), provider, {"acme", "else"})
 
       assert {:ok, "github"} = finish(theirs.url)
 
@@ -107,10 +107,10 @@ defmodule WardrikOAuth.ResumeTest do
       [provider] = WardrikOAuth.Provider.all()
 
       {:error, {:authorization_required, link, _whose}} =
-        WardrikOAuth.hold(provider, {"acme", owner})
+        WardrikOAuth.hold(Wardrik.Test.store(), provider, {"acme", owner})
 
       assert {:ok, "github"} = finish(link.url)
-      assert WardrikOAuth.connected?("github", {"acme", owner})
+      assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
     end
   end
 end

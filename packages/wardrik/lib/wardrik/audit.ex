@@ -138,47 +138,48 @@ defmodule Wardrik.Audit do
   end
 
   @doc false
-  @spec start_link([]) :: GenServer.on_start()
-  def start_link([]), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  @spec start_link(WardrikStore.t()) :: GenServer.on_start()
+  def start_link(%WardrikStore{} = store),
+    do: GenServer.start_link(__MODULE__, store, name: __MODULE__)
 
   # The head is found on the first write, not as the process starts.
   @impl true
-  def init([]), do: {:ok, nil}
+  def init(store), do: {:ok, {store, nil}}
 
   @impl true
-  def handle_call({:record, audit}, _from, head) do
-    head = head || Log.head(:audit, Log.oldest(:audit, consistent: true) - 1)
-    head = write(audit, head + 1)
-    {:reply, :ok, head, {:continue, :trim}}
+  def handle_call({:record, audit}, _from, {store, head}) do
+    head = head || Log.head(store, :audit, Log.oldest(store, :audit, consistent: true) - 1)
+    head = write(store, audit, head + 1)
+    {:reply, :ok, {store, head}, {:continue, :trim}}
   end
 
   @impl true
-  def handle_continue(:trim, head) do
+  def handle_continue(:trim, {store, head}) do
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
     # Another node trimming the same log at once is the one conflict here,
     # and leaves the log as trimmed as this would.
-    case Log.trim(:audit, head, cutoff) do
+    case Log.trim(store, :audit, head, cutoff) do
       :ok -> :ok
       {:error, :conflict} -> :ok
       {:error, reason} -> Logger.warning("Could not trim the audit log: #{inspect(reason)}")
     end
 
-    {:noreply, head}
+    {:noreply, {store, head}}
   end
 
   # The head after writing `audit` at `sequence`, or past it where that is
   # taken.
-  defp write(audit, sequence) do
+  defp write(store, audit, sequence) do
     {:ok, event} = Codec.encode(audit, sequence: sequence)
 
-    case WardrikStore.put(Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil) do
+    case WardrikStore.put(store, Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil) do
       {:ok, _vsn} ->
         :ok = Log.publish(:audit, %Entry{event: event, sequence: sequence, follows: sequence - 1})
         sequence
 
       {:error, :conflict} ->
-        write(audit, Log.head(:audit, sequence) + 1)
+        write(store, audit, Log.head(store, :audit, sequence) + 1)
 
       {:error, reason} ->
         Logger.warning("Could not write #{event["type"]} to the audit log: #{inspect(reason)}")

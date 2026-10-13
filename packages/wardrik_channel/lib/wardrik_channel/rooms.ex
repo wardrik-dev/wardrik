@@ -18,7 +18,8 @@ defmodule WardrikChannel.Rooms do
   as taking the bot out of it, or asking it to stop answering there, does,
   and `WardrikChannel.Replies` posts nothing more in its threads.
 
-  Each binding is a `WardrikChannel.Room` kept in `WardrikStore`, and each
+  Each binding is a `WardrikChannel.Room` kept in the store of the host the
+  channel runs on, and each
   change is recorded in `Wardrik.Audit` with the person who made it.
   """
 
@@ -40,8 +41,8 @@ defmodule WardrikChannel.Rooms do
 
   @doc "The binding of `room` in the context's channel, where it has one."
   @spec get(Context.t(), String.t()) :: Room.t() | nil
-  def get(%Context{channel: channel}, room) when is_binary(room),
-    do: WardrikStore.get(@ns, key(channel, room))
+  def get(%Context{channel: channel} = context, room) when is_binary(room),
+    do: context |> store() |> WardrikStore.get(@ns, key(channel, room))
 
   @doc """
   The bot was invited by `by` into `room`, known in the channel as `name`:
@@ -123,7 +124,7 @@ defmodule WardrikChannel.Rooms do
   def left(%Context{channel: channel} = context, room, by) do
     case get(context, room) do
       %Room{} ->
-        :ok = WardrikStore.delete(@ns, key(channel, room))
+        :ok = context |> store() |> WardrikStore.delete(@ns, key(channel, room))
         :ok = WardrikChannel.Replies.forget(context, room)
         Audit.record({:room_unbound, channel, room}, by)
 
@@ -132,12 +133,14 @@ defmodule WardrikChannel.Rooms do
     end
   end
 
-  defp bind(%Context{channel: channel}, room, agent, answers, by) do
+  defp bind(%Context{channel: channel} = context, room, agent, answers, by) do
     bound = %Room{channel: channel, room: room, agent: agent, answers: answers}
-    {:ok, _vsn} = WardrikStore.put(@ns, key(channel, room), bound)
+    {:ok, _vsn} = context |> store() |> WardrikStore.put(@ns, key(channel, room), bound)
     :ok = Audit.record({:room_bound, channel, room, agent, answers}, by)
     bound
   end
 
   defp key(channel, room), do: channel <> "/" <> room
+
+  defp store(%Context{host: host}), do: Wardrik.Host.store(host)
 end

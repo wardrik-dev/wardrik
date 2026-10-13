@@ -18,6 +18,8 @@ defmodule WardrikMCP.Supervisor do
       see `WardrikMCP.Server`.
     * `:first_retry`, `:refresh_after` - the same for how long a connection
       waits before listing a server's tools again; see `WardrikMCP.Server`
+    * `:store` - the `WardrikStore` every server keeps the tools a user's
+      connection listed in; see `WardrikMCP.Listing`
 
   Every connection starts with the supervisor and keeps trying on its own, so a
   server that is down holds up neither the others nor the node, and one that
@@ -137,7 +139,7 @@ defmodule WardrikMCP.Supervisor do
   end
 
   defp servers(opts) do
-    defaults = Keyword.take(opts, [:stderr, :first_retry, :refresh_after])
+    defaults = Keyword.take(opts, [:store, :stderr, :first_retry, :refresh_after])
 
     opts
     |> Keyword.get(:servers, [])
