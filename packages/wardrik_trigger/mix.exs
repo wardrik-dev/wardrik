@@ -29,8 +29,8 @@ defmodule WardrikTrigger.MixProject do
       extra_applications: [:logger, :crypto],
       env: [
         wardrik_trigger_sources: [feed: WardrikTrigger.Feed],
-        wardrik_trigger_webhooks: [
-          github: WardrikTrigger.Webhook.GitHub,
+        wardrik_trigger_verifiers: [
+          shared: WardrikTrigger.Webhook.Shared,
           standard: WardrikTrigger.Webhook.Standard
         ]
       ]

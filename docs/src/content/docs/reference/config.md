@@ -28,6 +28,7 @@ The file is `config.yaml`, or `config.yml`; a directory holding both is
 refused, since one of them would go unread.
 
     org: acme
+    base_url: https://agents.acme.example
 
     defaults:
       model: anthropic:claude-sonnet-5
@@ -104,6 +105,15 @@ not set is refused with where to set it.
 `org` is the deployment's org: the one an agent belongs to where its file
 names none, and the one the CLI finds an agent in when it is named without
 an org. It is `default` unless set; `org/0` reads it.
+
+`base_url` is the deployment's address, as people and services reach it
+through whatever is in front of the daemon: an `https://` URL, or
+`http://` on loopback. A webhook trigger is sent requests under it, at
+`/v1/hooks/`, which `wardrik triggers` prints, and `oauth.redirect.url`
+is `{base_url}/oauth` where it says no other, so the front passes
+`/oauth/` to the callback and the rest to the HTTP API. Without it the
+deployment is this machine's loopback, where the HTTP API listens;
+`base_url/0` reads it.
 
 `tools` lists what one call to a tool costs, in US dollars, for a tool
 that says nothing of what it cost itself, such as an MCP server's: each

@@ -1,19 +1,27 @@
-defmodule WardrikTrigger.Webhook.Scheme do
+defmodule WardrikTrigger.Webhook.Verifier do
   @moduledoc """
-  How a service signs the webhooks it sends, which a `webhook` trigger names:
+  How a webhook trigger tells that a request is the sender's, which the
+  trigger names as `verify`:
 
-      %{"webhook" => "github", "secret" => "${GITHUB_SIGNING_SECRET}", "prompt" => "..."}
+      webhook:
+        secret: ${PAYMENTS_HOOK_SECRET}
+        verify: standard
 
-  `verify/3` checks a request against the secret, and answers the sender's
-  ID for the delivery, the same each time it sends it again, and the kind of
-  event it is. A package registers a scheme under its name in its
-  application's environment:
+  `verify/3` checks a request against the trigger's secret, and answers the
+  sender's ID for the delivery, the same each time it sends it again, and
+  the kind of event it is, where the request says. This package registers
+  two, under the names a trigger gives them:
+
+    * `shared`, the default (`WardrikTrigger.Webhook.Shared`): the request
+      presents the secret itself, as any sender can
+    * `standard` (`WardrikTrigger.Webhook.Standard`): the request is signed
+      as the Standard Webhooks spec says
+
+  A host that needs a service's own signature checked registers a module of
+  its own in its application's environment, and a trigger names it:
 
       def application,
-        do: [env: [wardrik_trigger_webhooks: [stripe: MyApp.Stripe]]]
-
-  This package registers `github` (`WardrikTrigger.Webhook.GitHub`) and
-  `standard` (`WardrikTrigger.Webhook.Standard`).
+        do: [env: [wardrik_trigger_verifiers: [acme_pay: MyApp.AcmePaySignature]]]
   """
 
   @typedoc "What a request that verifies says of itself."
@@ -26,11 +34,11 @@ defmodule WardrikTrigger.Webhook.Scheme do
   @callback verify(headers :: [{String.t(), String.t()}], body :: binary(), secret :: String.t()) ::
               {:ok, delivery()} | {:error, String.t()}
 
-  @doc "Every scheme the loaded applications name, by its name."
+  @doc "Every verifier the loaded applications name, by its name."
   @spec all() :: %{String.t() => module()}
   def all do
     for {app, _description, _version} <- Application.loaded_applications(),
-        {name, module} <- Application.get_env(app, :wardrik_trigger_webhooks, []),
+        {name, module} <- Application.get_env(app, :wardrik_trigger_verifiers, []),
         into: %{},
         do: {to_string(name), module}
   end

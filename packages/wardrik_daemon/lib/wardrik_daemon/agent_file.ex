@@ -167,9 +167,9 @@ defmodule WardrikDaemon.AgentFile do
           feed: [https://rivalco.example/changelog.rss, https://hnrss.org/newest?q=rivalco]
           prompt: What changed at our competitors?
         - name: issues
-          webhook: github
-          secret: ${GITHUB_SIGNING_SECRET}
-          prompt: A GitHub event is below. Triage it.
+          webhook:
+            secret: ${ISSUES_HOOK_SECRET}
+          prompt: An event is below. Triage it.
 
     * `every` - a cron expression in UTC, quoted, since YAML reads a leading
       `*` as something else; or a duration of at least a minute, as `30m`,
@@ -191,12 +191,15 @@ defmodule WardrikDaemon.AgentFile do
       run: the agent is asked only when one has entries it has not seen,
       with them under the prompt, as `WardrikTrigger.Feed` reads them. The
       first run only notes what a feed already holds
-    * `webhook` - how the service that sends it requests signs them,
-      `github` or `standard`, with `secret`, the secret it signs with, as
-      `${NAME}`: the vault's for the agent's user, org or deployment, as a
-      tool's credential is, else the environment variable. The
-      service sends them to `POST /v1/hooks/{key}/{name}`, and the agent is
-      asked about each once, with its body under the prompt, as
+    * `webhook` - a service sends it requests in place of a clock, with its
+      own settings: `secret`, the secret the service holds, as `${NAME}`,
+      read for the agent as a tool's credential is, the vault's for its
+      user, org or deployment, else the environment; and `verify`, `shared`
+      by default, where a request presents the secret as a bearer token or
+      at the end of its path, or `standard`, where it is signed as the
+      Standard Webhooks spec says. The service sends them to
+      `config.yaml`'s `base_url` and `/v1/hooks/{key}/{name}`, and the agent
+      is asked about each once, with its body under the prompt, as
       `WardrikTrigger.Webhook` reads it
 
   ## Channels

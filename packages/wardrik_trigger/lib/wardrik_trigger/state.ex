@@ -82,6 +82,7 @@ defmodule WardrikTrigger.State do
       name: state.trigger.name,
       schedule: WardrikTrigger.schedule(state.trigger.every),
       next: [state.next_at],
+      paths: [],
       last_at: state.last_at,
       last_outcome: state.last_outcome
     }

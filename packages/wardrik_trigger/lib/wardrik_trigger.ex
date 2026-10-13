@@ -256,7 +256,7 @@ defmodule WardrikTrigger do
   `webhook` are a `WardrikTrigger.Webhook`'s, which `Webhook.decode/2` reads.
   """
   @spec decode(String.t(), map()) :: {:ok, trigger()} | {:error, String.t()}
-  def decode(name, %{"webhook" => _scheme} = fields), do: Webhook.decode(name, fields)
+  def decode(name, %{"webhook" => _own} = fields), do: Webhook.decode(name, fields)
 
   def decode(name, fields) when is_map(fields) do
     {own, rest} = Map.split(fields, @fields)
@@ -285,7 +285,7 @@ defmodule WardrikTrigger do
   the key of each source a loaded application registers, and a webhook's.
   """
   @spec keys() :: [String.t()]
-  def keys, do: @fields ++ Enum.sort(Map.keys(Source.all()) ++ Webhook.keys())
+  def keys, do: @fields ++ Enum.sort(["webhook" | Map.keys(Source.all())])
 
   defp source(fields) do
     sources = Source.all()

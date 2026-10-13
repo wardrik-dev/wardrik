@@ -1332,15 +1332,27 @@ defmodule WardrikHTTP.RouterTest do
                Req.post(anyone,
                  url: "/v1/hooks/test/@jon/triage/issues",
                  body: ~s({"action": "opened"}),
-                 headers: [{"content-type", "application/json"}, {"x-github-delivery", "d-1"}]
+                 headers: [{"content-type", "application/json"}, {"idempotency-key", "d-1"}]
                )
 
       assert_receive {:delivered, key, "issues", headers, ~s({"action": "opened"})}
       assert to_string(key) == "test/@jon/triage"
-      assert {"x-github-delivery", "d-1"} in headers
+      assert {"idempotency-key", "d-1"} in headers
 
       assert {:ok, %{status: 202, body: %{"delivery" => %{"status" => "seen"}}}} =
                Req.post(anyone, url: "/v1/hooks/test/triage/issues", body: "seen")
+    end
+
+    test "take a secret at the end of the path as the request's bearer", %{anyone: anyone} do
+      assert {:ok, %{status: 202}} =
+               Req.post(anyone, url: "/v1/hooks/test/@jon/triage/issues/s3cret", body: "{}")
+
+      assert_receive {:delivered, key, "issues", headers, "{}"}
+      assert to_string(key) == "test/@jon/triage"
+      assert {"authorization", "Bearer s3cret"} in headers
+
+      assert {:ok, %{status: 404}} =
+               Req.post(anyone, url: "/v1/hooks/test/triage/issues/s3cret/more", body: "{}")
     end
 
     test "answer what the trigger refuses", %{anyone: anyone} do

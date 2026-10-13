@@ -19,6 +19,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikConsole.Filter
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
+  alias WardrikDaemon.Config
   alias WardrikDaemon.Definition
   alias WardrikPolicy.Pattern
   alias WardrikTrigger.Status
@@ -334,7 +335,9 @@ defmodule WardrikDaemon.CLI.Agents do
       for at <- trigger.next,
           do: "  next in #{WardrikDaemon.duration(max(DateTime.diff(at, now, :millisecond), 0))}"
 
-    "#{trigger.schedule}#{next}  #{ran(trigger, now)}"
+    urls = for path <- trigger.paths, do: "  " <> Config.base_url() <> path
+
+    "#{trigger.schedule}#{next}#{urls}  #{ran(trigger, now)}"
   end
 
   defp ran(%{last_at: nil, last_outcome: nil}, _now), do: "not run yet"

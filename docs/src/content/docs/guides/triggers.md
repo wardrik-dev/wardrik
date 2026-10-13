@@ -142,37 +142,45 @@ Many places a team watches have a feed:
 
 `webhook` makes a trigger take the requests a service sends when something happens there, such as
 an issue opened or a payment made, and ask the agent about each. It has no `every`: it asks as each
-request arrives, with the request's body under the prompt:
+request arrives, with the request's body under the prompt. Its own settings go under `webhook`:
 
 ```yaml
 triggers:
   - name: issues
-    webhook: github
-    secret: ${GITHUB_SIGNING_SECRET}
-    prompt: A GitHub event is below. If it is a new issue, label it and say who should look.
+    webhook:
+      secret: ${ISSUES_HOOK_SECRET}
+    prompt: An event is below. If it is a new issue, label it and say who should look.
 ```
 
-The service sends its requests to the trigger's address, with the agent's key and the trigger's
-name in the path:
+A service sends its requests to the trigger's path, which names the agent by its ID, as
+`/v1/agents/` does, and the trigger by its name, under the deployment's address, `config.yaml`'s
+`base_url`:
 
 ```
-https://wardrik.example.com/v1/hooks/default/triage/issues
+https://agents.acme.example/v1/hooks/acme/triage/issues
+https://agents.acme.example/v1/hooks/acme/@jon/triage/issues
 ```
 
-- **The secret checks each request.** `webhook` names how the service signs what it sends:
-  `github`, or `standard` for the [Standard Webhooks](https://www.standardwebhooks.com/) spec that
-  many services follow. `secret` names the secret you gave the service, as `${NAME}`, which is read
-  as a tool's credential is: the vault's for the agent's user, then its org, then the deployment,
-  then the environment. `wardrik vault put GITHUB_SIGNING_SECRET --org acme` seals one for an org,
-  so each org's agents check with their own.
-- **A request the secret did not sign is answered `404`,** as one to a trigger that does not exist,
-  so a request tells its sender nothing of triggers it cannot sign for; the daemon's log says why.
-  The agent is not asked.
-- **The service needs no token.** The address takes no `Authorization` header, and a request to it
-  can do nothing but ask that agent through that trigger.
+`wardrik triggers` prints each webhook's address. The path reaches that agent's triggers and
+nothing else: a request to it can only ask that agent, through that trigger.
+
+- **The request presents the secret.** `secret` names the secret you give the service, as
+  `${NAME}`, read as a tool's credential is: the vault's for the agent's user, then its org, then
+  the deployment, then the environment. `wardrik vault put ISSUES_HOOK_SECRET --org acme` seals one
+  for an org, so each org's agents check with their own. A service that sets headers sends
+  `Authorization: Bearer` and the secret; one that lets you set only a URL puts the secret at the
+  end of the path, as `.../issues/SECRET`.
+- **A service that signs, by the [Standard Webhooks](https://www.standardwebhooks.com/) spec,** is
+  checked by its signature instead, with `verify: standard` under `webhook`. The signature covers
+  the body and a time, so a request someone copied does not verify for long. A host that embeds
+  Wardrik can register a verifier of its own for any other signature, and name it the same way.
+- **A request that does not verify is answered `404`,** as one to a trigger that does not exist,
+  so a request tells its sender nothing of triggers it holds no secret for; the daemon's log says
+  why. The agent is not asked.
 - **A request sent again is asked about once.** Services send a request again when they hear
-  nothing back in time. The trigger keeps the IDs of the last 500 requests it asked about, and
-  answers a repeat `202` without asking again.
+  nothing back in time. A request's ID is its `Idempotency-Key`, or for a signed one its
+  `webhook-id`, and otherwise the hash of its body. The trigger keeps the last 500 it asked about,
+  and answers a repeat `202` without asking again.
 - **A request that cannot be delivered now is answered `503`**, such as one to an agent that is
   not running, and the trigger does not keep it, so a service that tries again delivers it later.
   A webhook trigger queues behind a running turn unless it says `overlap: skip`, which answers
@@ -180,11 +188,8 @@ https://wardrik.example.com/v1/hooks/default/triage/issues
 - **The body is content from outside.** Whoever made the event could be asking for the agent's
   next call, so a gated tool's calls wait on a person once the agent has read it. The agent is
   shown the body's first 32,768 characters.
-- **The daemon must be reachable from the service.** It listens on `127.0.0.1` unless
-  `config.yaml`'s `http` says otherwise; put it behind a proxy that serves HTTPS, or a tunnel, so
-  the service can reach `/v1/hooks/`.
-
-`wardrik triggers` shows a webhook trigger as running on request, with how its last request went.
+- **The service must reach the daemon.** It listens on `127.0.0.1` unless `config.yaml`'s `http`
+  says otherwise; put it behind a proxy that serves HTTPS, or a tunnel, at `base_url`.
 
 ## A checklist the agent can edit
 

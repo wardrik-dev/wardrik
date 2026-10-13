@@ -3,11 +3,13 @@ defmodule WardrikTrigger.Status do
   One trigger as `WardrikTrigger.list/1` reports it, of either kind: its
   key, the agent it asks, when it runs as a person reads it, such as `every
   30m` or `on request`, the runs it has set, one for a trigger on a clock and
-  none for a webhook, and when it last fired and what came of it.
+  none for a webhook, the paths it is sent requests at under the
+  deployment's address, one for a webhook and none for a trigger on a clock,
+  and when it last fired and what came of it.
   """
 
-  @enforce_keys [:key, :pid, :agent, :name, :schedule, :next]
-  defstruct [:key, :pid, :agent, :name, :schedule, :next, :last_at, :last_outcome]
+  @enforce_keys [:key, :pid, :agent, :name, :schedule, :next, :paths]
+  defstruct [:key, :pid, :agent, :name, :schedule, :next, :paths, :last_at, :last_outcome]
 
   @type t() :: %__MODULE__{
           key: String.t(),
@@ -16,6 +18,7 @@ defmodule WardrikTrigger.Status do
           name: String.t(),
           schedule: String.t(),
           next: [DateTime.t()],
+          paths: [String.t()],
           last_at: DateTime.t() | nil,
           last_outcome: WardrikTrigger.outcome() | nil
         }

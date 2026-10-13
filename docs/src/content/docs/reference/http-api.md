@@ -99,7 +99,7 @@ agent with is its key.
 | `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and with it the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
 | `PUT /v1/agents/{key}/triggers/{trigger}` | asks the agent a prompt on a clock, `201`, or changes the trigger, `200`, in the definition kept; `404` where none is, `409` where something else, such as an agent file, declares the agent |
 | `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204`; `404` where the agent has none, `409` as for `PUT` |
-| `POST /v1/hooks/{key}/{trigger}` | delivers a service's request to a webhook trigger, with no token: `202`, and whether the agent was asked or had been about the same request; `404` where the agent has no such trigger, or its signature does not match, so a sender learns nothing of the triggers it cannot sign for; and `503` where it cannot be delivered now, so a sender that tries again delivers it later |
+| `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger, with no token but the trigger's secret, as `Authorization: Bearer` or at the end of the path: `202`, and whether the agent was asked or had been about the same request; `404` where the agent has no such trigger, or its signature does not match, so a sender learns nothing of the triggers it cannot sign for; and `503` where it cannot be delivered now, so a sender that tries again delivers it later |
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
@@ -301,7 +301,7 @@ The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which 
 | `max_iterations` | integer or `"infinity"` |  | How many rounds of tool calls a turn may make. |
 | `retries` | array of integer |  | How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again. |
 | `compaction` | `false` or object |  | When the agent summarises its older history, as shares of the model's window; false never does. |
-| `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every; a webhook has webhook and secret in its place, and is sent requests at POST /v1/hooks/{key}/{trigger}. |
+| `triggers` | array of object |  | The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}. |
 | `channels` | array of string |  | The chat channels, as config.yaml names them, it may be chosen to answer in. |
 
 ### `agent_snapshot`
@@ -394,7 +394,7 @@ The deployment's nodes, each with how many agents run on it, and how many agents
 
 ### `trigger`
 
-A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook and secret, and asks as each request arrives.
+A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -407,7 +407,7 @@ A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers
 
 ### `trigger_definition`
 
-The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. A trigger on a clock has every; overlap is skip, missed is run_once and jitter is 0 where they are left out, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook and secret, takes no every, missed or jitter, and is sent requests at POST /v1/hooks/{key}/{trigger}; its overlap is queue where it says none.
+The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. A trigger on a clock has every; overlap is skip, missed is run_once and jitter is 0 where they are left out, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{key}/{trigger}, and its overlap is queue where it says none.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

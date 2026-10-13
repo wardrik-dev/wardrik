@@ -176,26 +176,26 @@ defmodule WardrikTriggerTest do
                {:error, "watch names the answers a test hands it"}
 
       assert {:error,
-              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, secret, watch or webhook"} =
+              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, watch or webhook"} =
                WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"})
     end
 
     test "reads a webhook trigger as a kind of its own" do
-      fields = %{"webhook" => "github", "secret" => "${HOOK_SECRET}", "prompt" => "Look."}
+      fields = %{"webhook" => %{"secret" => "${HOOK_SECRET}"}, "prompt" => "Look."}
 
-      assert {:ok, %WardrikTrigger.Webhook{scheme: "github", overlap: :queue} = hook} =
+      assert {:ok, %WardrikTrigger.Webhook{verify: "shared", overlap: :queue} = hook} =
                WardrikTrigger.decode("issues", fields)
 
       assert {:ok, ^hook} =
                WardrikTrigger.decode("issues", Map.delete(WardrikTrigger.encode(hook), "name"))
 
-      assert ["secret", "webhook"] -- WardrikTrigger.keys() == []
+      assert "webhook" in WardrikTrigger.keys()
     end
 
     test "says what does not read" do
       for {fields, message} <- [
             {%{"when" => "now"},
-             "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, secret or webhook"},
+             "when is not a setting; expected every, prompt, overlap, missed, jitter, feed or webhook"},
             {%{"prompt" => "Look."}, ~s(every is a cron expression, or a duration such as "30m")},
             {%{"every" => "30m", "prompt" => "Look.", "overlap" => "interrupt"},
              "overlap is one of skip, queue"},
@@ -340,8 +340,7 @@ defmodule WardrikTriggerTest do
         hook =
           WardrikTrigger.Webhook.new(
             "issues",
-            [prompt: "A GitHub event is below.", scheme: "github", secret: "WARDRIK_TEST_HOOK"] ++
-              opts
+            [prompt: "An event is below.", secret: "WARDRIK_TEST_HOOK"] ++ opts
           )
 
         WardrikTrigger.put(key, hook)
@@ -350,15 +349,9 @@ defmodule WardrikTriggerTest do
       %{put: put}
     end
 
-    defp github(id, body, secret \\ "s3cret") do
-      signature = :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
-
+    defp request(id, body, secret \\ "s3cret") do
       %{
-        headers: [
-          {"x-github-delivery", id},
-          {"x-github-event", "issues"},
-          {"x-hub-signature-256", "sha256=" <> signature}
-        ],
+        headers: [{"authorization", "Bearer " <> secret}, {"idempotency-key", id}],
         body: body
       }
     end
@@ -368,14 +361,22 @@ defmodule WardrikTriggerTest do
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
       {:ok, _pid} = put.([])
 
-      assert [%WardrikTrigger.Status{name: "issues", schedule: "on request"}] =
-               WardrikTrigger.for_agent(key)
+      assert [
+               %WardrikTrigger.Status{
+                 name: "issues",
+                 schedule: "on request",
+                 next: [],
+                 paths: [path]
+               }
+             ] = WardrikTrigger.for_agent(key)
 
-      request = github("d-1", ~s({"action":"opened"}))
+      assert path == "/v1/hooks/#{key}/issues"
+
+      request = request("d-1", ~s({"action":"opened"}))
       assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :asked}
 
       assert_receive {:asked, text, ["outside"]}
-      assert text =~ ~r/\AA GitHub event is below.\n\n## issues \(.+\)\n\{"action":"opened"\}\z/
+      assert text =~ ~r/\AAn event is below.\n\n## \S+\n\{"action":"opened"\}\z/
       assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :asked}}
 
       assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :seen}
@@ -386,8 +387,8 @@ defmodule WardrikTriggerTest do
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
       {:ok, _pid} = put.([])
 
-      assert {:error, :forbidden, "The request's signature does not match" <> _rest} =
-               WardrikTrigger.deliver(key, "issues", github("d-1", "{}", "guess"))
+      assert {:error, :forbidden, "The request's secret is not the trigger's."} =
+               WardrikTrigger.deliver(key, "issues", request("d-1", "{}", "guess"))
 
       refute_received {:asked, _text, _labels}
     end
@@ -401,20 +402,20 @@ defmodule WardrikTriggerTest do
       :ok = WardrikTrigger.delete(key, "busy")
 
       assert {:error, :unavailable, "The agent is busy" <> _rest} =
-               WardrikTrigger.deliver(key, "issues", github("d-1", "{}"))
+               WardrikTrigger.deliver(key, "issues", request("d-1", "{}"))
 
       assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :busy}}
 
       {:ok, _pid} = put.(overlap: :queue)
-      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:ok, :asked}
+      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
       send(turn, :release)
     end
 
     test "says the agent has no such trigger to deliver to", %{key: key} do
-      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:error, :not_found}
+      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
-      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:error, :not_found}
+      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
     end
 
     test "becomes the other kind when put under the same name", %{key: key, put: put} do
@@ -423,7 +424,7 @@ defmodule WardrikTriggerTest do
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
 
       assert [%WardrikTrigger.Status{schedule: "on request"}] = WardrikTrigger.for_agent(key)
-      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:ok, :asked}
+      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
       assert [%WardrikTrigger.Status{schedule: "@daily"}] = WardrikTrigger.for_agent(key)

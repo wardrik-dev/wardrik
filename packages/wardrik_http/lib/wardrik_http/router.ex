@@ -146,14 +146,22 @@ defmodule WardrikHTTP.Router do
   get "/v1/deployment/nodes", do: run(conn, Query, {:ok, %ReadNodes{}}, 200)
   get "/v1/deployment/audit", do: audit(conn)
 
-  # A request from outside to one of an agent's triggers, such as a webhook:
-  # its sender holds no credential of this server's, so it comes as the
-  # trigger it names, granted only to message that agent, and the trigger
-  # checks its signature.
+  # A request from outside to one of an agent's webhook triggers, at
+  # /v1/hooks/{agent}/{trigger}, or with the trigger's secret after it for a
+  # sender that sets no header: it holds no credential of this server's, so
+  # it comes as the trigger it names, granted only to message that agent,
+  # and the trigger checks it.
   post "/v1/hooks/:org/*rest" do
     case agent_path([org | rest]) do
-      {segments, [trigger]} -> within(conn, segments, &hook(conn, &1, trigger))
-      _other -> no_route(conn)
+      {segments, [trigger]} ->
+        within(conn, segments, &hook(conn, &1, trigger))
+
+      {segments, [trigger, secret]} ->
+        conn = bearer(conn, secret)
+        within(conn, segments, &hook(conn, &1, trigger))
+
+      _other ->
+        no_route(conn)
     end
   end
 
@@ -176,6 +184,9 @@ defmodule WardrikHTTP.Router do
   # is read whole rather than parsed.
   defp parse(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
   defp parse(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
+
+  # A secret in the path is the request's credential, as a bearer token is.
+  defp bearer(conn, secret), do: put_req_header(conn, "authorization", "Bearer " <> secret)
 
   defp hook(conn, agent, trigger) do
     case read_body(conn, length: @hook_body) do

@@ -8,7 +8,8 @@ defprotocol WardrikTrigger.Kind do
   implementation of this. Its server joins its agent's triggers with
   `WardrikTrigger.join/2` as it starts, answers `{:configure, trigger}` with
   `:ok`, and puts in its registry metadata what `WardrikTrigger.Status`
-  reports: `agent`, `name`, `schedule`, `next`, `last_at` and `last_outcome`.
+  reports: `agent`, `name`, `schedule`, `next`, `paths`, `last_at` and
+  `last_outcome`.
   """
 
   @doc """

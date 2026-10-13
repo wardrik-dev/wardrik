@@ -629,6 +629,13 @@ defmodule WardrikDaemon.CLITest do
 
     assert output =~
              ~r"  #{key}/tick  every 50ms  next in \d+s  last run \d+s ago: no agent runs under the key"
+
+    hook = WardrikTrigger.Webhook.new("issues", secret: "ISSUES_HOOK_SECRET", prompt: "Look.")
+    {:ok, _pid} = WardrikTrigger.put(key, hook)
+    assert {output, 0} = command(["triggers", prefix])
+
+    assert output =~
+             ~r"  #{key}/issues  on request  http://127\.0\.0\.1:\d+/v1/hooks/#{key}/issues  not run yet"
   end
 
   test "an unknown command fails, saying what was probably meant" do

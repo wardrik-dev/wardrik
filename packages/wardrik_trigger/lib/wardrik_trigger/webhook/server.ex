@@ -102,6 +102,7 @@ defmodule WardrikTrigger.Webhook.Server do
       name: state.hook.name,
       schedule: "on request",
       next: [],
+      paths: [Webhook.path(state.agent, state.hook.name)],
       last_at: state.last_at,
       last_outcome: state.last_outcome
     }

@@ -3,48 +3,70 @@ defmodule WardrikTrigger.WebhookTest do
 
   alias WardrikTrigger.Item
   alias WardrikTrigger.Webhook
-  alias WardrikTrigger.Webhook.GitHub
+  alias WardrikTrigger.Webhook.Shared
   alias WardrikTrigger.Webhook.Standard
 
   @agent Wardrik.AgentID.parse!("acme/hooked")
 
   defp hook(secret),
-    do: Webhook.new("issues", scheme: "standard", secret: secret, prompt: "Look.")
+    do: Webhook.new("issues", verify: "standard", secret: secret, prompt: "Look.")
 
   describe "decode/2" do
-    test "reads a webhook trigger, which queues by default, and writes it back" do
-      fields = %{"webhook" => "standard", "secret" => "${HOOK_SECRET}", "prompt" => "Look."}
+    test "reads a webhook trigger from its own settings, and writes it back" do
+      fields = %{"webhook" => %{"secret" => "${HOOK_SECRET}"}, "prompt" => "Look."}
 
       assert {:ok,
               %Webhook{
                 name: "issues",
-                scheme: "standard",
                 secret: "HOOK_SECRET",
+                verify: "shared",
                 prompt: "Look.",
                 overlap: :queue
               } = hook} = Webhook.decode("issues", fields)
 
-      assert WardrikTrigger.encode(hook) ==
-               Map.merge(fields, %{"name" => "issues", "overlap" => "queue"})
+      assert WardrikTrigger.encode(hook) == %{
+               "name" => "issues",
+               "webhook" => %{"secret" => "${HOOK_SECRET}", "verify" => "shared"},
+               "prompt" => "Look.",
+               "overlap" => "queue"
+             }
 
-      assert {:ok, %Webhook{overlap: :skip}} =
-               Webhook.decode("issues", Map.put(fields, "overlap", "skip"))
+      assert {:ok, %Webhook{verify: "standard", overlap: :skip}} =
+               Webhook.decode(
+                 "issues",
+                 %{
+                   fields
+                   | "webhook" => %{"secret" => "${HOOK_SECRET}", "verify" => "standard"}
+                 }
+                 |> Map.put("overlap", "skip")
+               )
     end
 
     test "says what does not read" do
-      base = %{"webhook" => "github", "secret" => "${S}", "prompt" => "Look."}
+      base = %{"webhook" => %{"secret" => "${S}"}, "prompt" => "Look."}
 
       for {fields, message} <- [
-            {%{base | "webhook" => "gitlab"}, "webhook is one of github, standard"},
-            {Map.delete(base, "secret"), "a webhook has a secret, as ${NAME}"},
-            {%{base | "secret" => "hunter2"}, "a webhook has a secret, as ${NAME}"},
+            {%{base | "webhook" => %{"secret" => "${S}", "verify" => "gitlab"}},
+             "verify is one of shared, standard"},
+            {%{base | "webhook" => %{}}, "a webhook has a secret, as ${NAME}"},
+            {%{base | "webhook" => %{"secret" => "hunter2"}},
+             "a webhook has a secret, as ${NAME}"},
+            {%{base | "webhook" => %{"secret" => "${S}", "url" => "x"}},
+             "url is not a setting of webhook"},
+            {%{base | "webhook" => "yes"},
+             "webhook holds its secret, and how a request is verified"},
             {Map.delete(base, "prompt"), "prompt is a string, got nil"},
             {Map.put(base, "overlap", "now"), "overlap is one of skip, queue"},
             {Map.put(base, "every", "1h"),
-             "every is not a setting of a webhook, which asks as each request arrives"}
+             "every is not a setting of a webhook trigger, which asks as each request arrives"}
           ] do
         assert Webhook.decode("issues", fields) == {:error, message}
       end
+    end
+
+    test "says where a service sends requests, by the agent's ID" do
+      assert Webhook.path(Wardrik.AgentID.parse!("acme/@jon/triage"), "issues") ==
+               "/v1/hooks/acme/@jon/triage/issues"
     end
   end
 
@@ -88,37 +110,22 @@ defmodule WardrikTrigger.WebhookTest do
     end
   end
 
-  describe "GitHub" do
-    defp github_headers(body, secret, extra \\ []) do
-      signature = :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
+  describe "Shared" do
+    test "takes the secret the request presents, and dedupes by its key or its body" do
+      bearer = {"authorization", "Bearer s3cret"}
+      digest = :sha256 |> :crypto.hash("{}") |> Base.encode16(case: :lower)
 
-      [
-        {"x-github-delivery", "d-1"},
-        {"x-github-event", "push"},
-        {"x-hub-signature-256", "sha256=" <> signature}
-      ] ++ extra
+      assert Shared.verify([bearer], "{}", "s3cret") == {:ok, %{id: digest, event: nil}}
+
+      assert Shared.verify([bearer, {"idempotency-key", "k-1"}], "{}", "s3cret") ==
+               {:ok, %{id: "k-1", event: nil}}
     end
 
-    test "verifies the body's signature" do
-      assert GitHub.verify(github_headers("{}", "s"), "{}", "s") ==
-               {:ok, %{id: "d-1", event: "push"}}
-    end
+    test "refuses a request with no secret, or another" do
+      assert Shared.verify([], "{}", "s3cret") == {:error, "The request presents no secret."}
 
-    test "refuses a request that is not signed, or not with the secret" do
-      assert {:error, "The request's signature does not match" <> _} =
-               GitHub.verify(github_headers("{}", "s"), "{}", "other")
-
-      assert {:error, "The request's signature does not match" <> _} =
-               GitHub.verify(github_headers("{}", "s"), "{\"x\":1}", "s")
-
-      assert {:error, "The request has no X-Hub-Signature-256" <> _} =
-               GitHub.verify([{"x-github-delivery", "d-1"}], "{}", "s")
-
-      assert {:error, "The request has no X-Hub-Signature-256" <> _} =
-               GitHub.verify([{"x-hub-signature-256", "sha256=zz"}], "{}", "s")
-
-      headers = List.keydelete(github_headers("{}", "s"), "x-github-delivery", 0)
-      assert {:error, "The request has no X-GitHub-Delivery."} = GitHub.verify(headers, "{}", "s")
+      assert Shared.verify([{"authorization", "Bearer guess"}], "{}", "s3cret") ==
+               {:error, "The request's secret is not the trigger's."}
     end
   end
 

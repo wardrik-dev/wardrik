@@ -52,11 +52,12 @@ WardrikTrigger.put(~A"acme/growth", "mentions",
 A webhook is a trigger of its own kind, `WardrikTrigger.Webhook`: it has no
 clock, and asks the agent as each request a service sends arrives, through
 `WardrikTrigger.deliver/3`, which makes `WardrikTrigger` the host's
-`Wardrik.Triggers`. It checks each request's signature, GitHub's or the
-Standard Webhooks spec's, against a secret the host's `:secrets` reads by
-name for the trigger's agent, so each org keeps its own, or from the
-environment where the host gives none; a request sent again is asked about
-once.
+`Wardrik.Triggers`. A request presents the trigger's secret, or is signed
+as the Standard Webhooks spec says, checked against a secret the host's
+`:secrets` reads by name for the trigger's agent, so each org keeps its own,
+or from the environment where the host gives none; a host registers a
+`WardrikTrigger.Webhook.Verifier` of its own for any other signature. A
+request sent again is asked about once.
 
 Each kind implements `WardrikTrigger.Kind`, its process key, the server that
 runs it, and how it is written as text, so `put/2`, `sync/2` and the listings
@@ -66,9 +67,8 @@ take every kind alike, and a new kind is a struct, a server and that protocol.
 children = [{Wardrik, triggers: WardrikTrigger}, {WardrikTrigger, secrets: &MyApp.Vault.secret/2}]
 
 WardrikTrigger.put(~A"acme/triage", WardrikTrigger.Webhook.new("issues",
-  scheme: "github",
-  secret: "GITHUB_SIGNING_SECRET",
-  prompt: "A GitHub event is below. Triage it."))
+  secret: "ISSUES_HOOK_SECRET",
+  prompt: "An event is below. Triage it."))
 ```
 
 In the daemon, an agent's definition lists its triggers, in its file or in

@@ -1,6 +1,6 @@
 defmodule WardrikTrigger.Webhook.Standard do
   @moduledoc """
-  The `standard` scheme: a webhook signed as the Standard Webhooks spec
+  The `standard` verifier: a webhook signed as the Standard Webhooks spec
   says, which many services follow. `webhook-signature` lists `v1,`
   signatures, each the base64 HMAC-SHA256 of `webhook-id`, `webhook-timestamp`
   and the body, joined by dots, with the secret: the base64 after `whsec_`.
@@ -10,20 +10,20 @@ defmodule WardrikTrigger.Webhook.Standard do
   so one sent again by someone who saw it does not verify for long.
   """
 
-  @behaviour WardrikTrigger.Webhook.Scheme
+  @behaviour WardrikTrigger.Webhook.Verifier
 
-  alias WardrikTrigger.Webhook.Scheme
+  alias WardrikTrigger.Webhook.Verifier
 
   @tolerance 300
 
-  @impl Scheme
+  @impl Verifier
   def verify(headers, body, secret) do
-    id = Scheme.header(headers, "webhook-id")
-    timestamp = Scheme.header(headers, "webhook-timestamp")
+    id = Verifier.header(headers, "webhook-id")
+    timestamp = Verifier.header(headers, "webhook-timestamp")
 
     with :ok <- present(id, timestamp),
          :ok <- recent(timestamp),
-         :ok <- signed(Scheme.header(headers, "webhook-signature"), id, timestamp, body, secret) do
+         :ok <- signed(Verifier.header(headers, "webhook-signature"), id, timestamp, body, secret) do
       {:ok, %{id: id, event: event(body)}}
     end
   end
@@ -49,12 +49,12 @@ defmodule WardrikTrigger.Webhook.Standard do
     do: {:error, "The request has no webhook-signature."}
 
   defp signed(signatures, id, timestamp, body, secret) do
-    expected = secret |> key() |> Scheme.hmac("#{id}.#{timestamp}.#{body}")
+    expected = secret |> key() |> Verifier.hmac("#{id}.#{timestamp}.#{body}")
 
     matched =
       for "v1," <> signature <- String.split(signatures, " ", trim: true),
           {:ok, given} <- [Base.decode64(signature)],
-          Scheme.same?(given, expected),
+          Verifier.same?(given, expected),
           do: given
 
     if matched == [],

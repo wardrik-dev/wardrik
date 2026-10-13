@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:trigger",
   "title": "A trigger",
-  "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook and secret, and asks as each request arrives.",
+  "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -55,9 +55,11 @@
     },
     {
       "name": "issues",
-      "webhook": "github",
-      "secret": "${GITHUB_SIGNING_SECRET}",
-      "prompt": "A GitHub event is below.",
+      "webhook": {
+        "secret": "${ISSUES_HOOK_SECRET}",
+        "verify": "shared"
+      },
+      "prompt": "An event is below.",
       "overlap": "queue"
     }
   ]

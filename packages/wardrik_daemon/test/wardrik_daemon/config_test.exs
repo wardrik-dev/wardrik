@@ -546,6 +546,42 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "both config.yaml and config.yml"
     end
 
+    test "base_url is the deployment's address, which oauth's redirect is under unless it says",
+         context do
+      assert {:ok,
+              [
+                {WardrikDaemon, [org: "default", base_url: "https://agents.example.com"]},
+                {WardrikOAuth, [redirect: redirect]}
+              ]} =
+               read_all(
+                 "base_url: https://agents.example.com/\noauth:\n  redirect:\n    port: 4600\n",
+                 context
+               )
+
+      assert Enum.sort(redirect) == [port: 4600, url: "https://agents.example.com/oauth"]
+
+      assert {:ok, [{WardrikOAuth, [redirect: [url: "https://elsewhere.example.com/cb"]]}]} =
+               read(
+                 "base_url: https://agents.example.com\n" <>
+                   "oauth:\n  redirect:\n    url: https://elsewhere.example.com/cb\n",
+                 context
+               )
+
+      assert {:error, message} = read("base_url: http://agents.example.com\n", context)
+      assert message =~ "base_url is an https:// URL, or http:// on loopback"
+    end
+
+    test "base_url/0 is this machine's loopback where the file names none" do
+      previous = Application.get_env(:wardrik_daemon, WardrikDaemon)
+      on_exit(fn -> Application.put_env(:wardrik_daemon, WardrikDaemon, previous || []) end)
+
+      Application.put_env(:wardrik_daemon, WardrikDaemon, org: "default")
+      assert Config.base_url() =~ ~r"\Ahttp://127\.0\.0\.1:\d+\z"
+
+      Application.put_env(:wardrik_daemon, WardrikDaemon, base_url: "https://agents.example.com")
+      assert Config.base_url() == "https://agents.example.com"
+    end
+
     test "oauth.redirect names where a browser comes back to, and where the daemon listens",
          context do
       assert {:ok, [{WardrikOAuth, oauth}]} =
