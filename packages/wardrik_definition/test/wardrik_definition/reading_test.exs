@@ -46,7 +46,7 @@ defmodule WardrikDefinition.ReadingTest do
         tools: [Search, Lua],
         servers: [linear: [], theirs: [orgs: ["globex"]]],
         mcp: Source,
-        workers: Source,
+        sources: [workers: Source, self: Wardrik.Catalog.Tools],
         channels: [slack: ["default"], acme: ["acme"], every: :all],
         targets: [
           ops: {Source, []},
@@ -177,7 +177,7 @@ defmodule WardrikDefinition.ReadingTest do
              read("file-name", "---\nname: triage\n---\n", context)
   end
 
-  test "* is every shipped tool, the file tools, every server it reaches and the workers' tools",
+  test "* is every shipped tool, the file tools, every server it reaches and every source's tools",
        context do
     assert {:ok, spec} = read("---\ntools: ['*']\n---\n", context)
     {:ok, files} = WardrikWorkspace.Spec.new(~A"default/triage")
@@ -187,6 +187,7 @@ defmodule WardrikDefinition.ReadingTest do
              Lua,
              {Source, :linear},
              {Source, ~A"default/triage"},
+             {Wardrik.Catalog.Tools, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 
@@ -278,14 +279,18 @@ defmodule WardrikDefinition.ReadingTest do
     end
   end
 
-  test "workers/* is every tool the tool workers offer the agent", context do
-    assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*]\n---\n", context)
-    assert spec.config.tools == [{Source, ~A"acme/triage"}]
+  test "a source's name and /* is every tool it offers the agent", context do
+    assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*, self/*]\n---\n", context)
+
+    assert spec.config.tools == [
+             {Source, ~A"acme/triage"},
+             {Wardrik.Catalog.Tools, ~A"acme/triage"}
+           ]
 
     assert {:error, message} = read("---\ntools: [workers/refund]\n---\n", context)
 
     assert message =~
-             "name the workers' tools as workers/*, and let a policy deny what is not refund"
+             "name the source's tools as workers/*, and let a policy deny what is not refund"
   end
 
   test "a tool, server or key nothing provides is refused, saying what does", context do

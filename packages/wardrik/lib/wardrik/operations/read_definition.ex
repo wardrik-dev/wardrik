@@ -5,6 +5,7 @@ defmodule Wardrik.Operations.ReadDefinition do
   """
 
   @behaviour Wardrik.AgentOperation
+  @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Query
 
   alias Wardrik.Definition
@@ -14,6 +15,19 @@ defmodule Wardrik.Operations.ReadDefinition do
   defstruct [:agent]
 
   @type t() :: %__MODULE__{agent: Wardrik.AgentID.t()}
+
+  @impl Wardrik.Catalog.Entry
+  def name, do: "agent.definition.read"
+
+  @impl Wardrik.Catalog.Entry
+  def summary,
+    do: "Read the agent's definition as it was last put: its instructions, tools and triggers."
+
+  @impl Wardrik.Catalog.Entry
+  def input, do: WardrikProtocol.schema("input_agent_definition_read")
+
+  @impl Wardrik.Catalog.Entry
+  def new(%Wardrik.AgentID{} = agent, _input), do: {:ok, %__MODULE__{agent: agent}}
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id

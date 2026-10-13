@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_agent_definition_read",
+  "title": "agent.definition.read",
+  "description": "What reading an agent's definition takes: nothing but the agent.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "examples": [
+    {}
+  ]
+}

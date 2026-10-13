@@ -7,6 +7,7 @@ defmodule Wardrik.Operations.SetTrigger do
   """
 
   @behaviour Wardrik.AgentOperation
+  @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Command
 
   alias Wardrik.Change
@@ -18,6 +19,26 @@ defmodule Wardrik.Operations.SetTrigger do
   defstruct [:agent, :name, :fields]
 
   @type t() :: %__MODULE__{agent: Wardrik.AgentID.t(), name: String.t(), fields: map()}
+
+  @impl Wardrik.Catalog.Entry
+  def name, do: "agent.trigger.set"
+
+  @impl Wardrik.Catalog.Entry
+  def summary,
+    do:
+      "Set one of the agent's triggers, by name: when it is asked something, on a clock, " <>
+        "from a feed, or by a webhook. A trigger of that name is replaced."
+
+  @impl Wardrik.Catalog.Entry
+  def input, do: WardrikProtocol.schema("input_agent_trigger_set")
+
+  @impl Wardrik.Catalog.Entry
+  def new(%Wardrik.AgentID{} = agent, %{"name" => name, "trigger" => %{} = fields})
+      when is_binary(name),
+      do: {:ok, %__MODULE__{agent: agent, name: name, fields: fields}}
+
+  def new(_agent, _input),
+    do: {:error, Error.new(:invalid, "A trigger is set with its name and the trigger")}
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id

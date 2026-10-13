@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_agent_trigger_set",
+  "title": "agent.trigger.set",
+  "description": "What setting one of an agent's triggers takes: the trigger's name, and the trigger as PUT /v1/agents/{key}/triggers/{trigger} takes it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "trigger"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The trigger's name, unique among the agent's triggers."
+    },
+    "trigger": {
+      "$ref": "urn:wardrik:schema:v1:trigger_definition"
+    }
+  },
+  "examples": [
+    {
+      "name": "rivals",
+      "trigger": {
+        "every": "30m",
+        "feed": "https://rivalco.example/changelog.rss",
+        "prompt": "What changed at Rivalco?"
+      }
+    }
+  ]
+}

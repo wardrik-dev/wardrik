@@ -8,7 +8,7 @@ defmodule WardrikDefinition.Context do
         tools: [WardrikBrave.WebSearch],
         servers: [github: [orgs: :all], books: [orgs: ["acme"]]],
         mcp: WardrikMCP,
-        workers: WardrikHTTP.Workers,
+        sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Tools],
         channels: [slack: :all],
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
@@ -24,8 +24,10 @@ defmodule WardrikDefinition.Context do
       `:all` or a list, which a definition names as `server/*`
     * `mcp` - the tool source the servers' tools come through, such as
       `WardrikMCP`; with none, a definition names no server
-    * `workers` - the tool source `workers/*` names, such as
-      `WardrikHTTP.Workers`; with none, a definition cannot name it
+    * `sources` - the tool sources a definition names as `name/*`, each a
+      module implementing `Wardrik.Tool`'s `tools/1`, handed the agent's ID,
+      such as `workers: WardrikHTTP.Workers` for the tool workers' tools and
+      `self: Wardrik.Catalog.Tools` for the agent's operations on itself
     * `channels` - the channels an agent may be offered in, by name, each
       with the orgs it serves
     * `targets` - the notify targets, as `WardrikNotify` takes them: each a
@@ -45,7 +47,7 @@ defmodule WardrikDefinition.Context do
             tools: [],
             servers: [],
             mcp: nil,
-            workers: nil,
+            sources: [],
             channels: [],
             targets: [],
             policies: %{},
@@ -61,7 +63,7 @@ defmodule WardrikDefinition.Context do
           tools: [module()],
           servers: [{atom(), keyword()}],
           mcp: module() | nil,
-          workers: module() | nil,
+          sources: [{atom(), module()}],
           channels: [{atom(), orgs()}],
           targets: WardrikNotify.targets(),
           policies: %{String.t() => WardrikPolicy.t()},

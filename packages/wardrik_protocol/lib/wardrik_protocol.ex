@@ -10,6 +10,8 @@ defmodule WardrikProtocol do
       `wardrik.<noun>.<verb>`, and its `dataschema`
     * `cloudevent.json` - the envelope every event travels in
     * `defs.json` - the types events and resources share, under `$defs`
+    * `input_<operation>.json` - what an operation of `Wardrik.Catalog` takes,
+      by its name with `_` for `.`, such as `input_agent_trigger_set.json`
     * the rest - one per HTTP API resource, such as `agent.json`
 
   `WardrikProtocol.Resolver` finds them by `$id` for JSV:
@@ -18,7 +20,30 @@ defmodule WardrikProtocol do
       {:ok, _} = JSV.validate(agent, root)
   """
 
+  alias WardrikProtocol.Inline
+
+  @glob "../../priv/v1" |> Path.expand(__ENV__.file) |> Path.join("*.json")
+  @files @glob |> Path.wildcard() |> Enum.sort()
+
+  for file <- @files, do: @external_resource(file)
+
   @doc "Where the schemas are as files, for a reader that takes them from disk rather than by `$id`."
   @spec dir() :: Path.t()
   def dir, do: Application.app_dir(:wardrik_protocol, "priv/v1")
+
+  @doc """
+  The schema `name`, such as `"input_agent_trigger_set"`, whole: each `$ref`
+  to another of the protocol's schemas, or to a type of `defs.json`, is put
+  in its place, so a reader that follows no `$id`, as a model reading a
+  tool's parameters, has all of it. The schemas are read into this module
+  when it compiles, and it compiles again when one changes.
+  """
+  @spec schema(String.t()) :: map()
+  for file <- @files, name = Path.basename(file, ".json") do
+    def schema(unquote(name)), do: unquote(Macro.escape(Inline.schema(Path.dirname(file), name)))
+  end
+
+  # Compiles again when a schema is added or removed, as well as changed.
+  @doc false
+  def __mix_recompile__?, do: @glob |> Path.wildcard() |> Enum.sort() != @files
 end

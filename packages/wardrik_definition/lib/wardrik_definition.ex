@@ -415,21 +415,39 @@ defmodule WardrikDefinition do
           reach(key, ref, opts, context) == :ok,
           do: {context.mcp, ref}
 
-    context.tools ++ servers ++ workers(context, key)
-  end
-
-  defp tool!("workers/*", %Context{workers: nil} = context, _modules?, _key),
-    do: invalid!("tools names workers/*, but #{context.names.host} has no tool workers")
-
-  defp tool!("workers/*", context, _modules?, key), do: workers(context, key)
-
-  defp tool!("workers/" <> tool = name, _context, _modules?, _key) do
-    invalid!(
-      "tools names #{name}; name the workers' tools as workers/*, and let a policy deny what is not #{tool}"
-    )
+    context.tools ++ servers ++ for({_name, source} <- context.sources, do: {source, key})
   end
 
   defp tool!(name, context, modules?, key) when is_binary(name) do
+    case source(name, context) do
+      {:all, source} -> [{source, key}]
+      {:one, prefix, tool} -> invalid!(one_of(name, prefix, tool))
+      :none -> named!(name, context, modules?, key)
+    end
+  end
+
+  defp tool!(name, _context, _modules?, _key),
+    do: invalid!("tools names #{inspect(name)}, which is not a tool")
+
+  # A source the host names, as `name/*`: every tool it has for the agent.
+  defp source(name, context) do
+    with [prefix, tool] <- String.split(name, "/", parts: 2),
+         {:ok, source} <- Keyword.fetch(context.sources, source_name(prefix, context)) do
+      if tool == "*", do: {:all, source}, else: {:one, prefix, tool}
+    else
+      _not_a_source -> :none
+    end
+  end
+
+  defp source_name(prefix, context),
+    do: Enum.find(Keyword.keys(context.sources), &(Atom.to_string(&1) == prefix))
+
+  defp one_of(name, prefix, tool),
+    do:
+      "tools names #{name}; name the source's tools as #{prefix}/*, and let a policy deny " <>
+        "what is not #{tool}"
+
+  defp named!(name, context, modules?, key) do
     pattern = Pattern.parse!(name)
 
     cond do
@@ -453,12 +471,6 @@ defmodule WardrikDefinition do
         [shipped!(name, context, modules?)]
     end
   end
-
-  defp tool!(name, _context, _modules?, _key),
-    do: invalid!("tools names #{inspect(name)}, which is not a tool")
-
-  defp workers(%Context{workers: nil}, _key), do: []
-  defp workers(%Context{workers: workers}, key), do: [{workers, key}]
 
   defp shipped!(name, context, modules?) do
     shipped = "a tool #{context.names.host} ships"
