@@ -1,12 +1,12 @@
 ---
 title: Trigger an agent
-description: Ask an agent something on a clock, with cron or an interval, or when a feed it watches has something new, and give it a checklist it can edit.
+description: Ask an agent something on a clock, with cron or an interval, when a feed it watches has something new, or when a service sends it a webhook, and give it a checklist it can edit.
 sidebar:
   order: 1
 ---
 
-A trigger asks an agent something when it comes round, here on a clock. An agent's triggers are
-part of its definition, here its agent file:
+A trigger asks an agent something when it comes round, here on a clock; it can also watch a feed,
+or take a service's webhooks. An agent's triggers are part of its definition, here its agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -137,6 +137,131 @@ Many places a team watches have a feed:
 | A subreddit, or a search of Reddit | `https://www.reddit.com/r/NAME/.rss`, `https://www.reddit.com/search.rss?q=WORD` |
 | A GitHub repository's releases | `https://github.com/OWNER/REPO/releases.atom` |
 | A blog or changelog | the `rss` or `atom` link in its page's `<head>`, often `/feed`, `/rss.xml` or `/atom.xml` |
+
+## Receiving a webhook
+
+`webhook` makes a trigger take the requests a service sends when something happens there, such as
+an issue opened or a payment made, and ask the agent about each. It has no `every`: it asks as each
+request arrives, with the request's body under the prompt. Its own settings go under `webhook`:
+
+```yaml
+triggers:
+  - name: issues
+    webhook:
+      secret: ${ISSUES_HOOK_SECRET}
+    prompt: An event is below. If it is a new issue, label it and say who should look.
+```
+
+A service sends its requests to the trigger's path, which names the agent by its ID, as
+`/v1/agents/` does, and the trigger by its name, under the deployment's address, `config.yaml`'s
+`base_url`:
+
+```
+https://agents.acme.example/v1/hooks/acme/triage/issues
+https://agents.acme.example/v1/hooks/acme/@jon/triage/issues
+```
+
+`wardrik triggers` prints each webhook's address. The path reaches that agent's triggers and
+nothing else: a request to it can only ask that agent, through that trigger.
+
+- **The request presents the secret.** `secret` names the secret you give the service, as
+  `${NAME}`, read as a tool's credential is: the vault's for the agent's user, then its org, then
+  the deployment, then the environment. `wardrik vault put ISSUES_HOOK_SECRET --org acme` seals one
+  for an org, so each org's agents check with their own. A service that sets headers sends
+  `Authorization: Bearer` and the secret; one that lets you set only a URL puts the secret at the
+  end of the path, as `.../issues/SECRET`.
+- **A service that signs, by the [Standard Webhooks](https://www.standardwebhooks.com/) spec,** is
+  checked by its signature instead, with `verify: standard` under `webhook`. The signature covers
+  the body and a time, so a request someone copied does not verify for long. A host that embeds
+  Wardrik can register a verifier of its own for any other signature, and name it the same way.
+- **A request that does not verify is answered `404`,** as one to a trigger that does not exist,
+  so a request tells its sender nothing of triggers it holds no secret for; the daemon's log says
+  why. The agent is not asked.
+- **A request sent again is asked about once.** Services send a request again when they hear
+  nothing back in time. A request's ID is its `Idempotency-Key`, or for a signed one its
+  `webhook-id`, and otherwise the hash of its body. The trigger keeps the last 500 it asked about,
+  and answers a repeat `202` without asking again.
+- **A request that cannot be delivered now is answered `503`**, such as one to an agent that is
+  not running, and the trigger does not keep it, so a service that tries again delivers it later.
+  A webhook trigger queues behind a running turn unless it says `overlap: skip`, which answers
+  `503` while the agent is busy.
+- **The body is content from outside.** Whoever made the event could be asking for the agent's
+  next call, so a gated tool's calls wait on a person once the agent has read it. The agent is
+  shown the body's first 32,768 characters.
+- **The service must reach the daemon.** It listens on `127.0.0.1` unless `config.yaml`'s `http`
+  says otherwise; put it behind a proxy that serves HTTPS, or a tunnel, at `base_url`.
+
+### Pointing a service at a trigger
+
+Any service that can send a webhook to a URL can reach a trigger. What differs is where you give it
+the secret: a service that sets headers sends `Authorization: Bearer` and the secret; one that lets
+you set only a URL gets the secret at the end of the trigger's path. A service's own signature,
+such as GitHub's or Sentry's, is not checked, so the secret in the path is what proves a request:
+keep that URL as private as a token.
+
+| Service | Where you set it up | The secret | For example |
+| --- | --- | --- | --- |
+| GitHub | the repository's or organization's **Settings → Webhooks** | end of the path | an issue opened, a pull request, a failed workflow run |
+| Sentry | an internal integration's **Webhook URL**, which an issue alert sends to | end of the path | a new issue |
+| Linear | **Settings → API → New webhook** | end of the path | an issue created |
+| Prometheus Alertmanager | a receiver's `webhook_configs`, with `http_config.authorization` | bearer | an alert firing |
+| Grafana | a webhook contact point's **Authorization header** | bearer | an alert firing |
+| PagerDuty | a webhook subscription, with a custom header named `Authorization` | bearer | an incident triggered |
+| A service that follows Standard Webhooks | its webhook settings, with `verify: standard` | its signature | whatever it sends |
+| An automation tool | its webhook or HTTP request step | bearer | anything it connects |
+
+Each request is a model call, so ask a service for the events the agent should hear, and let the
+prompt pass over the rest in a line.
+
+**Triage each new GitHub issue.** In the repository's **Settings → Webhooks**, add a webhook whose
+payload URL is the trigger's address with the secret after it, with content type
+`application/json`, and choose **Issues** among the individual events:
+
+```yaml
+triggers:
+  - name: issue-opened
+    webhook:
+      secret: ${GITHUB_HOOK_SECRET}
+    prompt: >
+      A GitHub issue event is below. If it opened an issue, label it, link the issues it may
+      duplicate, and say who should look. Otherwise answer in one line.
+```
+
+```
+https://agents.acme.example/v1/hooks/acme/triage/issue-opened/SECRET
+```
+
+GitHub sends an event for each change to an issue, opened, edited, closed and more, so the prompt
+says which matter. GitHub's own secret field signs what it sends, which the trigger does not
+check; leave it empty or set, as you like.
+
+**Look into each new Sentry issue.** In Sentry, create an internal integration under
+**Settings → Developer Settings → Custom Integrations**, with the trigger's address and its secret
+as the webhook URL, and **Alert Rule Action** on. Then add an issue alert to the project: when a
+new issue is created, send a notification through that integration:
+
+```yaml
+triggers:
+  - name: sentry-issue
+    webhook:
+      secret: ${SENTRY_HOOK_SECRET}
+    prompt: >
+      Sentry found a new issue; its alert is below. Read the stack trace, find the code and the
+      commits around it, and say what most likely broke and who changed it last.
+```
+
+**Hear an alert as it fires.** Alertmanager sends the secret as a bearer token:
+
+```yaml title="alertmanager.yml"
+receivers:
+  - name: wardrik
+    webhook_configs:
+      - url: https://agents.acme.example/v1/hooks/acme/oncall/alert
+        http_config:
+          authorization:
+            type: Bearer
+            credentials: SECRET
+```
 
 ## A checklist the agent can edit
 
