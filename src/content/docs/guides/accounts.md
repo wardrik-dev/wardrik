@@ -34,9 +34,13 @@ after changing `config.yaml`, and `wardrik doctor` checks the vault and each ser
 The vault looks a credential up for each call, the most specific first, and the first it holds is
 the one used:
 
-1. the agent's user's, where the agent works for one;
+1. the agent's user's, where the agent works for one, and the turn is theirs;
 2. its org's;
 3. the deployment's.
+
+A turn is the user's where they asked for it, with a token on their own agents, or from the
+server's shell, or where nobody did, as a trigger's. A turn someone else asked for, such as
+someone in a Slack channel that answers with the user's agent, never reaches the user's own.
 
 Where none of them holds it and `oauth.providers` names a provider of the same name, the agent's
 user is asked to connect an account, or its org where the agent has no user. The account is kept in
