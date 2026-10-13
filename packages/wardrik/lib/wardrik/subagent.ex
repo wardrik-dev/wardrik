@@ -115,7 +115,7 @@ defmodule Wardrik.Subagent do
     :ok = read(turn.labels)
 
     case turn do
-      %Turn{state: :done, messages: messages} -> {:ok, final_text(messages)}
+      %Turn{state: :done, messages: messages} -> {:ok, Message.answer(messages)}
       # A bounded delegation has no agent process to retain and resume a park.
       # Report the blocked work without executing the unapproved tool.
       %Turn{state: :waiting} -> {:error, :approval_required}
@@ -172,19 +172,4 @@ defmodule Wardrik.Subagent do
       :error -> config
     end
   end
-
-  # The last assistant message that actually said something. A turn that ended
-  # in tool calls alone leaves nothing to report, which is an empty answer
-  # rather than an error.
-  defp final_text(messages) do
-    messages
-    |> Enum.reverse()
-    |> Enum.find_value("", fn
-      %{role: :assistant} = message -> presence(Message.text(message))
-      _message -> nil
-    end)
-  end
-
-  defp presence(""), do: nil
-  defp presence(text), do: text
 end

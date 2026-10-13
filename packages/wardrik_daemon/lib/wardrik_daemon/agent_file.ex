@@ -54,19 +54,55 @@ defmodule WardrikDaemon.AgentFile do
       server's `only` and `except` narrow what it offers
     * `workers/*`, every tool the connected tool workers offer the agent, as
       `WardrikHTTP.Workers` describes them. A policy narrows what it may call
-    * `self/*`, the agent's operations on itself, as `Wardrik.Catalog.Tools`
-      describes them: reading its definition, and setting and removing its
-      own triggers, so it can change what it watches. A change waits on a
-      person unless its policy allows it, and an agent its file declares
-      keeps the triggers its file lists
+    * `self/*`, the agent's operations on itself, as `Wardrik.Catalog.Self`
+      describes them: reading its snapshot and definition, defining itself
+      again, and setting and removing its own triggers, so it can change
+      what it watches. An agent its file declares keeps the definition and
+      triggers its file writes
+    * `agents/*`, its operations on the agents of its org, as
+      `Wardrik.Catalog.Agents` describes them, so it can delegate; see
+      below
     * `*`, every tool the daemon ships, the file tools, every MCP server
       the agent can reach, every tool worker's tools, and its operations on
-      itself
+      itself and on the agents of its org
     * a module implementing `Wardrik.Tool`
 
   An agent reaches an MCP server that serves its org, as the server's `org`
   in `config.yaml` says. A file naming a server its agent cannot reach does
   not read, and says why.
+
+  ## Delegating
+
+  `agents/*` lets the agent work with the other agents of its org, each
+  named by the `agent` its tools take, as `reconciler`, or `@jon/reconciler`
+  for one that works for a user:
+
+  | Tool | Does |
+  | --- | --- |
+  | `agents_list` | lists the agents of the org, and what each is doing |
+  | `agent_read` | reads one's snapshot: its status, what it waits on, its conversation |
+  | `agent_definition_read` | reads one's definition |
+  | `agent_ask` | sends one a message, whose answer comes back later |
+  | `agent_define` | defines one, a worker, from a whole definition, or defines it again |
+  | `agent_trigger_set`, `agent_trigger_remove` | changes one's triggers |
+
+  An agent that asks another something goes on with its turn. Once the turn
+  that takes the message ends, the answer comes back to it as a message from
+  that agent, holding the labels of what it read: after a delegate has read
+  content from outside, so has the agent that hears its answer. A delegate
+  whose turn fails, or is stopped, says so instead; one waiting on a person
+  answers once someone decides. See "Answering another agent" in
+  `Wardrik.Agent`.
+
+  An agent defined this way is held to the policies and budget of the agent
+  that defined it, ahead of its own definition's, so a worker is never
+  looser than the agent that made it; it runs as an agent defined over HTTP
+  does, and a file's agent refuses to be defined again. Asking and defining
+  wait on a person, as every change does, unless the policy allows them:
+
+      tools: [agents/*]
+      policy:
+        allow: [agent_ask]
 
   ## Workspace
 
@@ -285,7 +321,11 @@ defmodule WardrikDaemon.AgentFile do
       tools: @shipped,
       servers: WardrikMCP |> Config.settings() |> Keyword.get(:servers, []),
       mcp: WardrikMCP,
-      sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Tools],
+      sources: [
+        workers: WardrikHTTP.Workers,
+        self: Wardrik.Catalog.Self,
+        agents: Wardrik.Catalog.Agents
+      ],
       channels: WardrikChannel |> Config.settings() |> Keyword.get(:orgs, []),
       targets: WardrikNotify |> Config.settings() |> Keyword.get(:targets, []),
       policies: policies,

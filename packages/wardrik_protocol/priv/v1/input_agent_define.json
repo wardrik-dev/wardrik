@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_agent_define",
+  "title": "agent.define",
+  "description": "What defining an agent takes: its definition, whole, as PUT /v1/agents/{key} takes it. An agent defined again is given the new definition in place of the old.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "definition"
+  ],
+  "properties": {
+    "definition": {
+      "$ref": "urn:wardrik:schema:v1:agent_definition"
+    }
+  },
+  "examples": [
+    {
+      "definition": {
+        "description": "Reconciles deposits.",
+        "instructions": "Match each deposit to an invoice, and say which match none.",
+        "tools": [
+          "files"
+        ]
+      }
+    }
+  ]
+}

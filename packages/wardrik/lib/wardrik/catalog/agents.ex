@@ -1,0 +1,103 @@
+defmodule Wardrik.Catalog.Agents do
+  @moduledoc """
+  The catalog's operations on the agents of an agent's org, offered to that
+  agent as tools, so it can delegate: list the agents it can reach, read
+  one's snapshot or definition, send one a message and hear its answer back,
+  and define a worker or change one's triggers. A tool source, named with
+  the agent's ID:
+
+      Wardrik.LLM.Config.new(tools: [{Wardrik.Catalog.Agents, ~A"acme/front"}])
+
+  Each operation of `Wardrik.Catalog.agent_queries/0` and
+  `Wardrik.Catalog.agent_commands/0` is a tool named for it, `.` written `_`,
+  as `agent_ask` for `agent.ask`, taking its input and the `agent` it acts
+  on, by name within the org: `reconciler`, or `@jon/reconciler` for one
+  that works for a user. Each of `Wardrik.Catalog.fleet_queries/0`, as
+  `agents_list`, acts on every agent of the org.
+
+  A call reaches the agents of the calling agent's org and no other: one
+  named in another org is one that does not exist, to it. See
+  `Wardrik.Catalog.Tools` for how a call runs, what an agent it defines is
+  held to, and how an answer it is sent comes back.
+  """
+
+  @behaviour Wardrik.Tool
+
+  alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
+  alias Wardrik.Catalog
+  alias Wardrik.Catalog.Tools
+  alias Wardrik.Error
+  alias Wardrik.Resource
+
+  @agent %{
+    "type" => "string",
+    "description" =>
+      "The agent, by its name within the org, as reconciler, or @user/name for one that " <>
+        "works for a user."
+  }
+
+  @impl Wardrik.Tool
+  def tools(%AgentID{} = agent) do
+    org = Prefix.new!(org: agent.org)
+
+    agents =
+      for {module, runner} <- Tools.agent_operations(),
+          do:
+            Tools.tool(
+              module,
+              name(module),
+              aimed(module.input()),
+              {__MODULE__, :run, [module, runner, org]}
+            )
+
+    fleet =
+      for {module, runner} <- Tools.fleet_operations(),
+          do:
+            Tools.tool(
+              module,
+              name(module),
+              module.input(),
+              {__MODULE__, :run_all, [module, runner, org]}
+            )
+
+    agents ++ fleet
+  end
+
+  @impl Wardrik.Tool
+  def annotations(%AgentID{}, name),
+    do: Tools.annotations(Enum.map(Catalog.agent_commands(), &name/1), name)
+
+  defp name(module), do: String.replace(module.name(), ".", "_")
+
+  defp aimed(schema) do
+    schema
+    |> Map.update!("properties", &Map.put(&1, "agent", @agent))
+    |> Map.update("required", ["agent"], &["agent" | &1])
+    |> Map.update("examples", [], fn examples ->
+      Enum.map(examples, &Map.put(&1, "agent", "reconciler"))
+    end)
+  end
+
+  @doc false
+  @spec run(module(), module(), Prefix.t(), map(), Wardrik.Tool.Context.t()) ::
+          Wardrik.Tool.answer()
+  def run(module, runner, org, %{"agent" => name} = input, context) when is_binary(name) do
+    case AgentID.expand(name, Prefix.org(org)) do
+      {:ok, agent} ->
+        Tools.run(module, runner, agent, Map.delete(input, "agent"), Tools.caller(context, org))
+
+      {:error, message} ->
+        {:error, Resource.error(Error.new(:invalid, message))}
+    end
+  end
+
+  def run(_module, _runner, _org, _input, _context),
+    do: {:error, Resource.error(Error.new(:invalid, "Name the agent the call acts on, as agent"))}
+
+  @doc false
+  @spec run_all(module(), module(), Prefix.t(), map(), Wardrik.Tool.Context.t()) ::
+          Wardrik.Tool.answer()
+  def run_all(module, runner, org, input, context),
+    do: Tools.run(module, runner, org, input, Tools.caller(context, org))
+end

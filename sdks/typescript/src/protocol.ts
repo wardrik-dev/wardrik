@@ -203,7 +203,7 @@ export interface AgentDefinition {
    */
   model?: string;
   /**
-   * What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; or * for all of them.
+   * What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on the agents of its org; or * for all of them.
    */
   tools?: string[];
   /**
@@ -328,6 +328,10 @@ export interface AgentSnapshot {
   run: Run | null;
   interrupts: Interrupt[];
   messages: Message[];
+  /**
+   * What the agent's history holds, as labels, such as outside for content nobody on the agent's side wrote. Every turn carries them until the history is cleared.
+   */
+  labels: string[];
   /**
    * How the last run ended, or null before the first.
    */

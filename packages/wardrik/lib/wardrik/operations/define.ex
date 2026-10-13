@@ -7,6 +7,7 @@ defmodule Wardrik.Operations.Define do
   """
 
   @behaviour Wardrik.AgentOperation
+  @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Command
 
   require Logger
@@ -23,6 +24,29 @@ defmodule Wardrik.Operations.Define do
   defstruct [:agent, :definition]
 
   @type t() :: %__MODULE__{agent: Wardrik.AgentID.t(), definition: map()}
+
+  @impl Wardrik.Catalog.Entry
+  def name, do: "agent.define"
+
+  @impl Wardrik.Catalog.Entry
+  def summary,
+    do:
+      "Define the agent with a whole definition: what it is for, its instructions, model, " <>
+        "tools and triggers. An agent defined already is given the new definition in place " <>
+        "of its old one, and one that does not run yet starts."
+
+  @impl Wardrik.Catalog.Entry
+  def input, do: WardrikProtocol.schema("input_agent_define")
+
+  @impl Wardrik.Catalog.Entry
+  def new(%Wardrik.AgentID{} = agent, %{"definition" => %{} = definition}),
+    do: {:ok, %__MODULE__{agent: agent, definition: definition}}
+
+  def new(_agent, _input),
+    do: {:error, Error.new(:invalid, "An agent is defined with its definition")}
+
+  @impl Wardrik.Catalog.Entry
+  def labels(%{"labels" => labels}), do: labels
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id

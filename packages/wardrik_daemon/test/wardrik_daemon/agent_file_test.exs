@@ -129,7 +129,8 @@ defmodule WardrikDaemon.AgentFileTest do
              {WardrikMCP, :linear},
              {WardrikMCP, :github},
              {WardrikHTTP.Workers, ~A"default/triage"},
-             {Wardrik.Catalog.Tools, ~A"default/triage"},
+             {Wardrik.Catalog.Self, ~A"default/triage"},
+             {Wardrik.Catalog.Agents, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 

@@ -2,13 +2,17 @@ defmodule Wardrik.Operations.Ask do
   @moduledoc """
   Sends an agent a message from the caller's principal, which it answers in
   a turn of its own: the answer says the message's ID, and the agent's log
-  says the rest.
+  says the rest. Where the caller is an agent, made with
+  `Wardrik.Caller.agent/2`, the turn that takes the message sends it the
+  answer as a message of its own; see "Answering another agent" in
+  `Wardrik.Agent`.
 
   `new/2` reads a message as `wardrik_protocol` describes one: text parts,
   or `content`, with an `id` of the sender's choosing, or one made for it.
   """
 
   @behaviour Wardrik.AgentOperation
+  @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Command
 
   alias Wardrik.Agent
@@ -21,8 +25,23 @@ defmodule Wardrik.Operations.Ask do
 
   @type t() :: %__MODULE__{agent: Wardrik.AgentID.t(), id: String.t(), text: String.t()}
 
+  @impl Wardrik.Catalog.Entry
+  def name, do: "agent.ask"
+
+  @impl Wardrik.Catalog.Entry
+  def summary,
+    do:
+      "Send the agent a message, which it answers in a turn of its own. An agent that sends " <>
+        "it is sent the answer back, later, as a message from the agent it asked."
+
+  @impl Wardrik.Catalog.Entry
+  def input, do: WardrikProtocol.schema("input_agent_ask")
+
+  @impl Wardrik.Catalog.Entry
+  def labels(_answer), do: []
+
   @doc "The request to send the agent `id` `message`, or why it does not read."
-  @spec new(Wardrik.AgentID.t(), map()) :: {:ok, t()} | {:error, Error.t()}
+  @impl Wardrik.Catalog.Entry
   def new(%Wardrik.AgentID{} = agent, message) do
     with {:ok, id, text} <- text(message),
          do: {:ok, %__MODULE__{agent: agent, id: id, text: text}}
@@ -54,7 +73,7 @@ defmodule Wardrik.Operations.Ask do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}} = change, caller) do
-    case Agent.ask(agent, text, id: id, sender: caller.principal) do
+    case Agent.ask(agent, text, id: id, sender: caller.principal, reply_to: caller.reply_to) do
       :ok -> {:ok, %{"message" => %{"id" => id}}, change.effect}
       {:error, :not_found} -> {:error, AgentOperation.not_found(agent)}
     end

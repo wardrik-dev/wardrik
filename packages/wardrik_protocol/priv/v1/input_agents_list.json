@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_agents_list",
+  "title": "agents.list",
+  "description": "What listing the agents under a prefix takes: nothing but the prefix.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "examples": [
+    {}
+  ]
+}

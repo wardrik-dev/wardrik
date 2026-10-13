@@ -124,6 +124,28 @@ defmodule Wardrik.Agent do
   on the root of a trace of their own. A client attaching mid-turn can catch
   up with `status/1` or `snapshot/1`.
 
+  ## Answering another agent
+
+  A message may name agents its answer goes to, as one agent's message to
+  another names the agent that sent it; see `Wardrik.Agent.Message`. The turn
+  that takes it sends each of them a message of its own, from this agent, a
+  `:agent` `Wardrik.Principal`:
+
+    * where the turn finishes, its answer, the text of its last assistant
+      message, holding the labels the turn ended with, such as `"outside"`
+      for content it read from outside, so what the asker reads carries them
+      as a tool's answer would
+    * where it fails, a word that it failed, and where it is interrupted or
+      the message is dropped from the queue, a word that it stopped
+
+  A turn waiting on a person answers once someone decides. One the agent
+  takes up again, after it stopped, moved or lost its node, still owes the
+  answers, which are written down with it. The answer is sent once the turn
+  has ended, under an id made from the message's, so one sent again after a
+  node is lost is taken once. An asker asleep wakes for it; one forgotten is
+  never told, and an agent forgotten before it answers tells nobody. Several
+  messages one turn takes are each answered with that turn's answer.
+
   ## Its log
 
   The agent is the only writer of its `Wardrik.Event.Log`. It numbers its events
@@ -213,14 +235,16 @@ defmodule Wardrik.Agent do
   its event carries and the model reads; see `Wardrik.Agent.Message`.
   `:labels` are what the message holds, as `Wardrik.Label`s, which its turn
   carries from its start: `["outside"]` for a message from someone who is not
-  the agent's own.
+  the agent's own. `:reply_to` lists the agents its answer goes to, besides
+  the log; see "Answering another agent" above.
   """
   @spec ask(agent(), String.t(), keyword()) :: :ok | {:error, :not_found}
   def ask(agent, question, opts \\ []) when is_binary(question) and is_list(opts) do
     message =
       Message.new(question, Keyword.get(opts, :id),
         sender: Keyword.get(opts, :sender),
-        labels: Keyword.get(opts, :labels, [])
+        labels: Keyword.get(opts, :labels, []),
+        reply_to: Keyword.get(opts, :reply_to, [])
       )
 
     cast(agent, {:ask, message})
@@ -739,6 +763,16 @@ defmodule Wardrik.Agent do
 
   defp apply_effect({:shutdown, task}, state) do
     Task.shutdown(task, :brutal_kill)
+    state
+  end
+
+  # Sent from a task, so an asker woken from the store holds up nothing here.
+  defp apply_effect({:send, agent, message}, state) do
+    Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
+      with {:error, :not_found} <- cast(agent, {:ask, message}),
+           do: Logger.info("#{agent} is gone, so #{message.id} was not sent to it")
+    end)
+
     state
   end
 

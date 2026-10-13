@@ -338,6 +338,105 @@ defmodule Wardrik.Agent.StateTest do
     end
   end
 
+  describe "answering another agent" do
+    @asker Wardrik.AgentID.parse!("acme/front")
+
+    defp asking(state \\ state(), id \\ "ask-1") do
+      {state, _effects} = State.queue(state, Message.new("Which?", id, reply_to: [@asker]))
+      {:run, _messages, state} = State.take(state)
+      running(state)
+    end
+
+    defp sent(effects), do: for({:send, to, message} <- effects, do: {to, message})
+
+    test "a turn that finishes sends its answer, holding what it read, from the agent" do
+      {state, effects} =
+        State.settled(asking(), [Context.assistant("Two are open.")], ["outside"])
+
+      assert [{@asker, %Message{} = answer}] = sent(effects)
+      assert answer.id == "answer:ask-1"
+      assert answer.text =~ "ask-1"
+      assert answer.text =~ "Two are open."
+      assert answer.labels == ["outside"]
+      assert Wardrik.Principal.type(answer.sender) == :agent
+      assert Wardrik.Principal.id(answer.sender) == "acme/@jon/assistant"
+      assert answer.reply_to == []
+      assert state.answering == []
+    end
+
+    test "a turn that ends in tool calls alone says it had no answer" do
+      {_state, effects} = State.settled(asking(), [], [])
+      assert [{@asker, %Message{text: text}}] = sent(effects)
+      assert text =~ "without an answer"
+    end
+
+    test "each message a turn takes is answered, and one naming nobody is not" do
+      {state, _effects} = State.queue(state(), Message.new("First?", "a", reply_to: [@asker]))
+      {state, _effects} = State.queue(state, Message.new("Aside."))
+      {state, _effects} = State.queue(state, Message.new("Second?", "b", reply_to: [@asker]))
+      {:run, _messages, state} = State.take(state)
+
+      {_state, effects} = State.settled(running(state), [Context.assistant("Both.")], [])
+
+      assert Enum.map(sent(effects), fn {_to, message} -> message.id end) == [
+               "answer:a",
+               "answer:b"
+             ]
+    end
+
+    test "a turn that fails says so, holding nothing it read" do
+      {_state, effects} = State.failed(asking(), :boom)
+      assert [{@asker, %Message{labels: [], text: text}}] = sent(effects)
+      assert text =~ "failed"
+    end
+
+    test "a turn that answers while stopping says it stopped, not what it kept" do
+      {stopping, _effects} = State.interrupt(asking())
+      stopping = State.arm(stopping, make_ref(), 0)
+
+      {_state, effects} = State.settled(stopping, [Context.assistant("Half of it.")], ["outside"])
+      assert [{@asker, %Message{labels: [], text: text}}] = sent(effects)
+      assert text =~ "Stopped before answering"
+    end
+
+    test "a turn killed, or abandoned while waiting, says it stopped" do
+      {stopping, _effects} = State.interrupt(asking())
+      stopping = State.arm(stopping, make_ref(), 0)
+      %State{mode: %Running{task: %Task{ref: ref}}} = stopping
+
+      {:kill, _state, effects} = State.kill(stopping, ref)
+      assert [{@asker, %Message{text: text}}] = sent(effects)
+      assert text =~ "Stopped before answering"
+
+      {waiting, _effects} = State.parked(asking(), parked_turn())
+      {_state, effects} = State.interrupt(waiting)
+      assert [{@asker, %Message{id: "answer:ask-1"}}] = sent(effects)
+    end
+
+    test "a message dropped from the queue says it stopped, and the turn still owes its own" do
+      {state, _effects} =
+        State.queue(asking(), Message.new("Later?", "ask-2", reply_to: [@asker]))
+
+      {state, effects} = State.interrupt(state)
+
+      assert [{@asker, %Message{id: "answer:ask-2"}}] = sent(effects)
+      assert state.answering == [{@asker, "ask-1"}]
+
+      {state, _effects} = State.queue(state(), Message.new("Idle?", "ask-3", reply_to: [@asker]))
+      {_state, effects} = State.interrupt(state)
+      assert [{@asker, %Message{id: "answer:ask-3"}}] = sent(effects)
+    end
+
+    test "what a turn owes is written down with it, and paid when it runs again" do
+      state = asking() |> Stored.dump() |> Stored.load()
+      assert state.answering == [{@asker, "ask-1"}]
+
+      {:run, [], state} = State.take(state)
+      {_state, effects} = State.settled(running(state), [Context.assistant("Done.")], [])
+      assert [{@asker, %Message{id: "answer:ask-1"}}] = sent(effects)
+    end
+  end
+
   describe "being written down" do
     defp reload(state), do: state |> Stored.dump() |> Stored.load()
 

@@ -92,7 +92,8 @@ defmodule Wardrik.Agent.State.View do
       parked: State.waiting_on(state),
       trace_id: trace_id(state.mode),
       outcome: state.outcome,
-      sequence: state.log.head
+      sequence: state.log.head,
+      labels: state.labels
     }
   end
 

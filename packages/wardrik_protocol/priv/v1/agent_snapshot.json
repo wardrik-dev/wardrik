@@ -14,6 +14,7 @@
     "run",
     "interrupts",
     "messages",
+    "labels",
     "outcome",
     "sequence"
   ],
@@ -107,6 +108,13 @@
         "$ref": "urn:wardrik:schema:v1:defs#/$defs/message"
       }
     },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the agent's history holds, as labels, such as outside for content nobody on the agent's side wrote. Every turn carries them until the history is cleared."
+    },
     "outcome": {
       "oneOf": [
         {
@@ -167,6 +175,7 @@
           ]
         }
       ],
+      "labels": [],
       "outcome": "ok",
       "sequence": 41
     }

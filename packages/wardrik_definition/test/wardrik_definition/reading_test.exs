@@ -46,7 +46,7 @@ defmodule WardrikDefinition.ReadingTest do
         tools: [Search, Lua],
         servers: [linear: [], theirs: [orgs: ["globex"]]],
         mcp: Source,
-        sources: [workers: Source, self: Wardrik.Catalog.Tools],
+        sources: [workers: Source, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: ["default"], acme: ["acme"], every: :all],
         targets: [
           ops: {Source, []},
@@ -187,7 +187,8 @@ defmodule WardrikDefinition.ReadingTest do
              Lua,
              {Source, :linear},
              {Source, ~A"default/triage"},
-             {Wardrik.Catalog.Tools, ~A"default/triage"},
+             {Wardrik.Catalog.Self, ~A"default/triage"},
+             {Wardrik.Catalog.Agents, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 
@@ -280,11 +281,13 @@ defmodule WardrikDefinition.ReadingTest do
   end
 
   test "a source's name and /* is every tool it offers the agent", context do
-    assert {:ok, spec} = read("---\norg: acme\ntools: [workers/*, self/*]\n---\n", context)
+    assert {:ok, spec} =
+             read("---\norg: acme\ntools: [workers/*, self/*, agents/*]\n---\n", context)
 
     assert spec.config.tools == [
              {Source, ~A"acme/triage"},
-             {Wardrik.Catalog.Tools, ~A"acme/triage"}
+             {Wardrik.Catalog.Self, ~A"acme/triage"},
+             {Wardrik.Catalog.Agents, ~A"acme/triage"}
            ]
 
     assert {:error, message} = read("---\ntools: [workers/refund]\n---\n", context)

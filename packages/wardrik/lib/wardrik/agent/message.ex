@@ -1,7 +1,8 @@
 defmodule Wardrik.Agent.Message do
   @moduledoc """
   A message someone sent an agent, queued for the next turn: its text, the id
-  it goes by, who sent it, and what it holds, as `Wardrik.Label`s.
+  it goes by, who sent it, what it holds, as `Wardrik.Label`s, and the agents
+  its answer goes to.
 
       Wardrik.Agent.Message.new("What changed this week?")
       Wardrik.Agent.Message.new("What changed this week?", "3f6c0a52-…")
@@ -26,27 +27,38 @@ defmodule Wardrik.Agent.Message do
       Reconcile last week's deposits.
 
   A message with no sender is read as its text alone.
+
+  ## Where its answer goes
+
+  `reply_to` lists the agents the answer goes to, besides the agent's log:
+  the agent that asked, for a message one agent sends another. The turn that
+  takes the message sends each of them its answer as a message of its own;
+  see "Answering another agent" in `Wardrik.Agent`. Most messages list none,
+  and are answered in the log alone.
   """
 
   alias Wardrik.Principal
 
   @enforce_keys [:id, :text]
-  defstruct [:id, :text, :sender, labels: []]
+  defstruct [:id, :text, :sender, labels: [], reply_to: []]
 
   @type t() :: %__MODULE__{
           id: String.t(),
           text: String.t(),
           sender: Principal.t() | nil,
-          labels: [Wardrik.Label.t()]
+          labels: [Wardrik.Label.t()],
+          reply_to: [Wardrik.AgentID.t()]
         }
 
   @doc """
   A message with `text`, under `id` or a new one, from `sender:` where
-  given, holding what `labels:` names.
+  given, holding what `labels:` names, answered to the agents `reply_to:`
+  lists as well as in the log.
   """
   @spec new(String.t(), String.t() | nil,
           sender: Principal.t() | nil,
-          labels: [Wardrik.Label.t()]
+          labels: [Wardrik.Label.t()],
+          reply_to: [Wardrik.AgentID.t()]
         ) ::
           t()
   def new(text, id \\ nil, opts \\ []) when is_binary(text) and (is_binary(id) or is_nil(id)) do
@@ -54,7 +66,8 @@ defmodule Wardrik.Agent.Message do
       id: id || Wardrik.UUID.v7(),
       text: text,
       sender: sender!(Keyword.get(opts, :sender)),
-      labels: Wardrik.Label.union([], Keyword.get(opts, :labels, []))
+      labels: Wardrik.Label.union([], Keyword.get(opts, :labels, [])),
+      reply_to: Keyword.get(opts, :reply_to, [])
     }
   end
 

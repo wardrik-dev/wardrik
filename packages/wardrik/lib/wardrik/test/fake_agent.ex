@@ -29,7 +29,8 @@ defmodule Wardrik.Test.FakeAgent do
        generation: inspect(self()),
        trace_id: nil,
        outcome: nil,
-       sequence: 0
+       sequence: 0,
+       labels: []
      }, owner}
   end
 
