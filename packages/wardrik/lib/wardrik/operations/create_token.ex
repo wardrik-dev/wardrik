@@ -3,16 +3,23 @@ defmodule Wardrik.Operations.CreateToken do
   Makes a token through the host's `Wardrik.Tokens`, carrying `grant`, acting
   for `for`, or for itself where `nil`. It answers the secret this once;
   the audit records the token, never the secret.
+
+  A token acting for a person whose scope names another person's agents,
+  `acme/@maria/` for `jon`, is refused: it would act as one on what is the
+  other's. A scope naming no person, an org's or every agent, is theirs to
+  act within.
   """
 
   @behaviour Wardrik.DeploymentOperation
   @behaviour Wardrik.Command
 
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Change
   alias Wardrik.Deployment
   alias Wardrik.Error
   alias Wardrik.Host
   alias Wardrik.Operations.TokenCreated
+  alias Wardrik.Principal
   alias Wardrik.Tokens
 
   @enforce_keys [:name, :grant]
@@ -31,7 +38,28 @@ defmodule Wardrik.Operations.CreateToken do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(request, _caller), do: {:ok, Change.new(request)}
+  def plan(request, _caller) do
+    with :ok <- issued(request), do: {:ok, Change.new(request)}
+  end
+
+  defp issued(%__MODULE__{for: nil}), do: :ok
+
+  defp issued(%__MODULE__{for: for, grant: grant}) do
+    case Prefix.user(grant.scope) do
+      nil ->
+        :ok
+
+      user ->
+        if user == Principal.id(for),
+          do: :ok,
+          else:
+            {:error,
+             Error.new(
+               :invalid,
+               "A token for #{Principal.id(for)} cannot reach #{grant.scope}, which is #{user}'s."
+             )}
+    end
+  end
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, caller) do
