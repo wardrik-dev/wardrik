@@ -251,7 +251,7 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, %{"events" => [_first, _second]}} =
                Query.run(%ReadEvents{agent: id, limit: 2}, caller())
 
-      :ok = Log.trim(store(), id, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       assert {:error, %Error{type: :gap, details: %{"oldest" => 3}}} =
                Query.run(%ReadEvents{agent: id, limit: 2}, caller())

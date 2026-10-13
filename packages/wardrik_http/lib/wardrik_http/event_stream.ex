@@ -33,15 +33,21 @@ defmodule WardrikHTTP.EventStream do
   @type cursor() :: non_neg_integer() | :head
 
   @doc """
-  Streams `agent_id`'s log after `cursor` on `conn`.
+  Streams `agent_id`'s log on `conn`, read from `opts[:store]`, after
+  `opts[:after]`.
+
+      EventStream.serve(conn, agent_id, store: store, after: :head)
 
   Answers `{:gap, oldest}` where events after the cursor have been dropped,
   and `:not_found` for `:head` when no agent runs under `agent_id`, in either
   case having sent nothing.
   """
-  @spec serve(WardrikStore.t(), Plug.Conn.t(), Wardrik.AgentID.t(), cursor()) ::
+  @spec serve(Plug.Conn.t(), Wardrik.AgentID.t(), store: WardrikStore.t(), after: cursor()) ::
           Plug.Conn.t() | {:gap, pos_integer()} | :not_found
-  def serve(store, conn, agent_id, cursor) do
+  def serve(conn, agent_id, opts) do
+    opts = Keyword.validate!(opts, [:store, :after])
+    store = Keyword.fetch!(opts, :store)
+    cursor = Keyword.fetch!(opts, :after)
     :ok = Log.subscribe(agent_id)
 
     try do

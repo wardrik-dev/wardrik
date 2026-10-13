@@ -124,7 +124,7 @@ defmodule WardrikS3.StoreTest do
   end
 
   test "names WardrikStore.Durable to hold a fleet", %{store: store} do
-    assert Store.durable_backend(store) ==
+    assert WardrikStore.durable_backend(store) ==
              {WardrikStore.Durable, store: store, discovery_interval_ms: 30_000}
   end
 end
@@ -175,43 +175,46 @@ defmodule WardrikS3.StoreStartTest do
     on_exit(fn -> S3Bucket.refuse(nil) end)
   end
 
+  defp store(opts), do: WardrikStore.new([adapter: Store] ++ opts)
+  defp check(opts), do: WardrikStore.check([adapter: Store] ++ opts)
+
   test "names the options it needs and was not given" do
     assert_raise ArgumentError,
                  "WardrikS3.Store needs :endpoint, :access_key_id, :secret_access_key",
-                 fn -> Store.config(bucket: "b") end
+                 fn -> WardrikStore.new(adapter: Store, bucket: "b") end
   end
 
   test "refuses a bucket that writes where a key is already written" do
     assert {:error,
             {:unconditional_bucket, "the bucket wrote a key where one was already written", _}} =
-             Store.start_link(Store.config(S3Bucket.store_opts(conditional_put: false)))
+             Store.start_link(store(S3Bucket.store_opts(conditional_put: false)))
   end
 
   test "fails where the bucket cannot be written" do
     S3Bucket.refuse(403)
 
     assert {:error, %WardrikS3.Error{status: 403}} =
-             Store.start_link(Store.config(S3Bucket.store_opts()))
+             Store.start_link(store(S3Bucket.store_opts()))
   end
 
   test "takes temporary credentials" do
     assert :ignore =
-             Store.start_link(Store.config(S3Bucket.store_opts([], session_token: "token")))
+             Store.start_link(store(S3Bucket.store_opts([], session_token: "token")))
   end
 
   describe "check/1" do
     test "says what a bucket that keeps the contract does with a delete" do
-      assert Store.check(S3Bucket.store_opts(conditional_delete: true)) ==
+      assert check(S3Bucket.store_opts(conditional_delete: true)) ==
                {:ok,
                 "the bucket wardrik at http://s3.test refuses a write whose condition fails, " <>
                   "and deletes over a version"}
 
-      assert {:ok, found} = Store.check(S3Bucket.store_opts(conditional_delete: false))
+      assert {:ok, found} = check(S3Bucket.store_opts(conditional_delete: false))
       assert found =~ "deletes over any version, so a delete over one writes a tombstone"
     end
 
     test "says what a bucket let through" do
-      assert Store.check(S3Bucket.store_opts(conditional_put: false)) ==
+      assert check(S3Bucket.store_opts(conditional_put: false)) ==
                {:error,
                 "the bucket wardrik at http://s3.test: the bucket wrote a key where one was " <>
                   "already written, so it cannot hold the store"}
@@ -220,17 +223,17 @@ defmodule WardrikS3.StoreStartTest do
     test "says what the bucket answered" do
       S3Bucket.refuse(403)
 
-      assert Store.check(S3Bucket.store_opts()) ==
+      assert check(S3Bucket.store_opts()) ==
                {:error, "the bucket wardrik at http://s3.test: the bucket answered 403 Refused"}
     end
 
     test "names the options it needs" do
-      assert Store.check(bucket: "b", endpoint: "http://s3.test") ==
-               {:error, "the bucket b at http://s3.test needs access_key_id, secret_access_key"}
+      assert check(bucket: "b", endpoint: "http://s3.test") ==
+               {:error, "WardrikS3.Store needs :access_key_id, :secret_access_key"}
     end
 
     test "needs no other node" do
-      assert Store.quorum(3) == 1
+      assert WardrikStore.quorum(store(S3Bucket.store_opts()), 3) == 1
     end
   end
 

@@ -1,6 +1,7 @@
 defmodule WardrikStore.DurableTest do
   use ExUnit.Case, async: false
 
+  alias WardrikStore.Adapter.WardrikStore.Memory, as: Impl
   alias WardrikStore.Durable
   alias WardrikStore.Memory
 
@@ -111,22 +112,22 @@ defmodule WardrikStore.DurableTest do
     key = unique()
     {:ok, %{etag: etag}} = Durable.put_object(state, key, 1, [])
 
-    Mimic.expect(Memory, :delete, fn name, ns, key, _opts ->
-      {:ok, _raced} = Memory.put(name, ns, key, 2, [])
+    Mimic.expect(Impl, :delete, fn store, ns, key, _opts ->
+      {:ok, _raced} = Impl.put(store, ns, key, 2, [])
       {:error, :conflict}
     end)
 
     assert {:error, :conflict} = Durable.delete_object(state, key, etag: etag)
 
-    Mimic.expect(Memory, :delete, fn name, ns, key, _opts ->
-      :ok = Memory.delete(name, ns, key, [])
+    Mimic.expect(Impl, :delete, fn store, ns, key, _opts ->
+      :ok = Impl.delete(store, ns, key, [])
       {:error, :conflict}
     end)
 
     assert {:error, :not_found} = Durable.delete_object(state, key, [])
 
     {:ok, _object} = Durable.put_object(state, key, 1, [])
-    Mimic.expect(Memory, :delete, fn _name, _ns, _key, _opts -> {:error, :unavailable} end)
+    Mimic.expect(Impl, :delete, fn _store, _ns, _key, _opts -> {:error, :unavailable} end)
     assert {:error, :unavailable} = Durable.delete_object(state, key)
   end
 
@@ -142,7 +143,7 @@ defmodule WardrikStore.DurableTest do
     assert [%{body: 1}] =
              Enum.to_list(Durable.list_all_objects_stream(state, prefix, include_objects: true))
 
-    Mimic.expect(Memory, :lookup, fn _name, _ns, _key -> nil end)
+    Mimic.expect(Impl, :lookup, fn _store, _ns, _key -> nil end)
     assert Enum.to_list(Durable.list_all_objects_stream(state, prefix, [])) == []
   end
 

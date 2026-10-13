@@ -31,103 +31,108 @@ if Code.ensure_loaded?(EKV) do
 
     @behaviour WardrikStore
 
+    @enforce_keys [:name, :data_dir, :cluster_size, :shutdown_barrier]
+    defstruct [:name, :data_dir, :cluster_size, :shutdown_barrier]
+
+    @typedoc "An EKV store: the instance's name and how it is started."
+    @type t() :: %__MODULE__{
+            name: atom(),
+            data_dir: String.t(),
+            cluster_size: pos_integer(),
+            shutdown_barrier: pos_integer() | false
+          }
+
     @impl WardrikStore
-    def config(opts) do
-      %{
-        name: Keyword.get(opts, :name, :wardrik_store),
-        data_dir: data_dir(opts),
-        cluster_size: cluster_size(opts),
-        shutdown_barrier: shutdown_barrier(opts)
-      }
+    def build(opts) do
+      {:ok,
+       %__MODULE__{
+         name: Keyword.get(opts, :name, :wardrik_store),
+         data_dir: data_dir(opts),
+         cluster_size: cluster_size(opts),
+         shutdown_barrier: shutdown_barrier(opts)
+       }}
     end
 
-    @impl WardrikStore
-    def child_spec(config) do
-      Supervisor.child_spec(
-        {EKV,
-         name: config.name,
-         data_dir: config.data_dir,
-         cluster_size: config.cluster_size,
-         shutdown_barrier: config.shutdown_barrier},
-        id: __MODULE__
-      )
-    end
-
-    @impl WardrikStore
-    def durable_backend(%WardrikStore{config: config}),
-      do: {DurableServer.Backends.EKVStore, name: config.name}
-
-    @impl WardrikStore
-    def quorum(size), do: div(size, 2) + 1
-
-    @doc """
-    Checks that `:data_dir` is a directory this node can write to, or is not
-    made yet.
-    """
-    @impl WardrikStore
-    def check(opts) do
-      dir = data_dir(opts)
-      where = "on this node's disk, at #{dir}"
-
-      case File.stat(dir) do
-        {:ok, %File.Stat{type: :directory, access: :read_write}} ->
-          {:ok, where}
-
-        {:ok, %File.Stat{type: :directory}} ->
-          {:error, "#{where}, which this node cannot write to"}
-
-        {:ok, %File.Stat{}} ->
-          {:error, "#{where}, which is not a directory"}
-
-        {:error, :enoent} ->
-          {:ok, "#{where}, made as the store starts"}
-
-        {:error, reason} ->
-          {:error, "#{where}: #{:file.format_error(reason)}"}
+    defimpl WardrikStore.Adapter do
+      def child_spec(store) do
+        Supervisor.child_spec(
+          {EKV,
+           name: store.name,
+           data_dir: store.data_dir,
+           cluster_size: store.cluster_size,
+           shutdown_barrier: store.shutdown_barrier},
+          id: WardrikStore.EKV
+        )
       end
-    end
 
-    @impl WardrikStore
-    def put(config, ns, key, value, opts) do
-      case EKV.put(config.name, path(ns, key), value, put_opts(opts)) do
-        :ok -> {:ok, nil}
-        {:ok, vsn} -> {:ok, vsn}
-        {:error, reason} -> {:error, reason}
+      def durable_backend(store), do: {DurableServer.Backends.EKVStore, name: store.name}
+
+      def quorum(_store, size), do: div(size, 2) + 1
+
+      # A directory this node can write to, or one not made yet.
+      def check(%{data_dir: dir}) do
+        where = "on this node's disk, at #{dir}"
+
+        case File.stat(dir) do
+          {:ok, %File.Stat{type: :directory, access: :read_write}} ->
+            {:ok, where}
+
+          {:ok, %File.Stat{type: :directory}} ->
+            {:error, "#{where}, which this node cannot write to"}
+
+          {:ok, %File.Stat{}} ->
+            {:error, "#{where}, which is not a directory"}
+
+          {:error, :enoent} ->
+            {:ok, "#{where}, made as the store starts"}
+
+          {:error, reason} ->
+            {:error, "#{where}: #{:file.format_error(reason)}"}
+        end
       end
-    end
 
-    @impl WardrikStore
-    def get(config, ns, key, opts),
-      do: EKV.get(config.name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
-
-    @impl WardrikStore
-    def lookup(config, ns, key), do: EKV.lookup(config.name, path(ns, key))
-
-    @impl WardrikStore
-    def delete(config, ns, key, opts) do
-      case EKV.delete(config.name, path(ns, key), delete_opts(opts)) do
-        :ok -> :ok
-        {:ok, _vsn} -> :ok
-        {:error, :not_found} -> :ok
-        {:error, reason} -> {:error, reason}
+      def put(store, ns, key, value, opts) do
+        case EKV.put(store.name, path(ns, key), value, conditional(opts)) do
+          :ok -> {:ok, nil}
+          {:ok, vsn} -> {:ok, vsn}
+          {:error, reason} -> {:error, reason}
+        end
       end
-    end
 
-    defp delete_opts(opts) do
-      case Keyword.fetch(opts, :if_vsn) do
-        {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
-        :error -> []
+      def get(store, ns, key, opts),
+        do: EKV.get(store.name, path(ns, key), Keyword.take(opts, [:consistent, :timeout]))
+
+      def lookup(store, ns, key), do: EKV.lookup(store.name, path(ns, key))
+
+      def delete(store, ns, key, opts) do
+        case EKV.delete(store.name, path(ns, key), conditional(opts)) do
+          :ok -> :ok
+          {:ok, _vsn} -> :ok
+          {:error, :not_found} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
       end
-    end
 
-    @impl WardrikStore
-    def keys(config, ns, prefix) do
-      root = path(ns, "")
+      def keys(store, ns, prefix) do
+        root = path(ns, "")
 
-      for entry <- EKV.keys(config.name, root <> prefix),
-          key = entry |> written_key() |> String.replace_prefix(root, ""),
-          key != "",
-          do: key
+        for entry <- EKV.keys(store.name, root <> prefix),
+            key = entry |> written_key() |> String.replace_prefix(root, ""),
+            key != "",
+            do: key
+      end
+
+      defp path(ns, key), do: "wardrik/#{ns}/" <> key
+
+      defp conditional(opts) do
+        case Keyword.fetch(opts, :if_vsn) do
+          {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
+          :error -> []
+        end
+      end
+
+      defp written_key({key, _vsn}) when is_binary(key), do: key
+      defp written_key(key) when is_binary(key), do: key
     end
 
     @doc "How many voting members EKV does quorum arithmetic against."
@@ -151,18 +156,6 @@ if Code.ensure_loaded?(EKV) do
       Keyword.get(opts, :data_dir) || System.get_env("WARDRIK_DATA_DIR") ||
         Path.join(:filename.basedir(:user_data, "wardrik"), to_string(node()))
     end
-
-    defp path(ns, key), do: "wardrik/#{ns}/" <> key
-
-    defp put_opts(opts) do
-      case Keyword.fetch(opts, :if_vsn) do
-        {:ok, vsn} -> [if_vsn: vsn, resolve_unconfirmed: true]
-        :error -> []
-      end
-    end
-
-    defp written_key({key, _vsn}) when is_binary(key), do: key
-    defp written_key(key) when is_binary(key), do: key
 
     defp env_integer(name) do
       with value when is_binary(value) <- System.get_env(name),

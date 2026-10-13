@@ -11,14 +11,13 @@ defmodule WardrikStoreTest do
     %{store: store}
   end
 
-  test "a store is its adapter and what the adapter's calls are handed", %{store: store} do
-    assert %WardrikStore{adapter: Memory, config: name} = store
+  test "a store is its adapter's struct, holding what its calls need", %{store: store} do
+    assert %Memory{name: name} = store
     assert Atom.to_string(name) =~ "store_"
   end
 
   test "settings naming no adapter name the EKV one" do
-    assert %WardrikStore{adapter: WardrikStore.EKV, config: %{data_dir: "/nowhere"}} =
-             WardrikStore.new(data_dir: "/nowhere")
+    assert %WardrikStore.EKV{data_dir: "/nowhere"} = WardrikStore.new(data_dir: "/nowhere")
   end
 
   test "reads and writes go through the adapter", %{store: store} do
@@ -46,7 +45,7 @@ defmodule WardrikStoreTest do
     assert %{id: WardrikStore, start: {Memory, :start_link, [name]}} =
              WardrikStore.child_spec(store)
 
-    assert name == store.config
+    assert name == store.name
   end
 
   test "check/1 asks the adapter the settings name, without starting it" do

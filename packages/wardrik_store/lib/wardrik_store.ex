@@ -17,8 +17,9 @@ defmodule WardrikStore do
   | `WardrikStore.Memory` | in one process, for tests |
   | `WardrikStore.None` | nowhere: the store of a host that names none, whose every read and write raises |
 
-  An adapter over another system implements this behaviour and passes
-  `WardrikStore.Conformance`. One whose reads are current on every node can
+  An adapter over another system is a struct implementing
+  `WardrikStore.Adapter`, with a module implementing this behaviour's
+  `c:build/1`, and passes `WardrikStore.Conformance`. One whose reads are current on every node can
   hold the fleet through `WardrikStore.Durable`.
 
   ## Namespaces
@@ -48,9 +49,9 @@ defmodule WardrikStore do
 
   ## The store as a value
 
-  A store is a value, `t:t/0`: the adapter and what its calls need, made
-  once from the deployment's settings by `new/1`, and handed to whatever
-  reads or writes. Nothing of it is kept where a node finds it, so two
+  A store is a value, `t:t/0`: the struct of its adapter, holding what its
+  calls need, built once from the deployment's settings by `new/1`, and
+  handed to whatever reads or writes. Nothing of it is kept where a node finds it, so two
   stores on one node are two values:
 
       store = WardrikStore.new(adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik")
@@ -72,14 +73,14 @@ defmodule WardrikStore do
   `check/1` looks at a store without starting it, for `wardrik doctor`.
   """
 
-  # What an adapter's calls are handed may hold its credentials, as a
-  # bucket's keys, so a store is shown by its adapter alone.
-  @derive {Inspect, only: [:adapter]}
-  @enforce_keys [:adapter, :config]
-  defstruct [:adapter, :config]
+  alias WardrikStore.Adapter
 
-  @typedoc "A store: its adapter, and what the adapter's calls are handed."
-  @type t() :: %__MODULE__{adapter: module(), config: term()}
+  @typedoc """
+  A store: the struct of one adapter, holding what its calls need, as
+  `WardrikStore.EKV`'s instance name or `WardrikS3.Store`'s bucket. Each
+  adapter's struct implements `WardrikStore.Adapter`.
+  """
+  @type t() :: WardrikStore.Adapter.t()
 
   @typedoc "Which set of keys a value belongs to."
   @type ns() :: atom()
@@ -110,98 +111,67 @@ defmodule WardrikStore do
   @type delete_opts() :: [if_vsn: vsn()]
 
   @doc """
-  What the adapter's calls are handed, from the options a deployment names
-  it with. Made without starting anything; raises where the options cannot
-  describe a store.
+  The adapter's store from the options a deployment names it with, made
+  without starting anything, or why the options describe no store.
   """
-  @callback config(keyword()) :: term()
-
-  @doc "The child that runs the store `config` describes."
-  @callback child_spec(config :: term()) :: Supervisor.child_spec()
-
-  @doc "Writes a value, conditionally where `opts` say so."
-  @callback put(config :: term(), ns(), key(), term(), put_opts()) ::
-              {:ok, vsn() | nil} | {:error, :conflict | term()}
-
-  @doc "The value under a key, or `nil`."
-  @callback get(config :: term(), ns(), key(), get_opts()) :: term() | nil
-
-  @doc "The value under a key with its version, or `nil`."
-  @callback lookup(config :: term(), ns(), key()) :: {term(), vsn()} | nil
-
-  @doc "Removes a key. Removing one that is not there is `:ok`."
-  @callback delete(config :: term(), ns(), key(), delete_opts()) ::
-              :ok | {:error, :conflict | term()}
-
-  @doc "Every key in a namespace starting with `prefix`."
-  @callback keys(config :: term(), ns(), prefix :: String.t()) :: [key()]
-
-  @doc "The `DurableServer` backend agents are written through."
-  @callback durable_backend(t()) :: {module(), keyword()}
-
-  @doc """
-  Looks at the store `opts` describe without starting it, and answers what it
-  found, naming the store: that it is there and keeps the contract, or why not.
-  """
-  @callback check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
-
-  @doc """
-  How many nodes of a cluster of `size`, this one among them, must be
-  connected for a write to land: more than half for a store kept on the nodes
-  themselves, and one for a store kept elsewhere.
-  """
-  @callback quorum(size :: pos_integer()) :: pos_integer()
+  @callback build(keyword()) :: {:ok, t()} | {:error, String.t()}
 
   @default_adapter WardrikStore.EKV
 
   @doc """
   The store `settings` describe: the adapter under `:adapter`,
-  `WardrikStore.EKV` where none is named, and its options. Starts nothing.
-  Raises where the adapter is not a module this node has, as one over a
-  dependency the application leaves out is not.
+  `WardrikStore.EKV` where none is named, built from its options. Starts
+  nothing. Raises where the adapter is not a module this node has, as one
+  over a dependency the application leaves out is not, or where the options
+  describe no store.
   """
   @spec new(keyword()) :: t()
   def new(settings \\ []) when is_list(settings) do
-    {adapter, opts} = split(settings)
-    if message = missing(adapter), do: raise(ArgumentError, message)
-    %__MODULE__{adapter: adapter, config: adapter.config(opts)}
+    case build(settings) do
+      {:ok, store} -> store
+      {:error, message} -> raise ArgumentError, message
+    end
   end
 
-  defp split(settings), do: Keyword.pop(settings, :adapter, @default_adapter)
+  defp build(settings) do
+    {adapter, opts} = Keyword.pop(settings, :adapter, @default_adapter)
 
-  @doc "The child that runs `store`."
-  @spec child_spec(t()) :: Supervisor.child_spec()
-  def child_spec(%__MODULE__{adapter: adapter, config: config}),
-    do: Supervisor.child_spec(adapter.child_spec(config), id: __MODULE__)
-
-  @doc """
-  What the adapter `settings` name finds, as `c:check/1` answers, without
-  starting it.
-  """
-  @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
-  def check(settings) when is_list(settings) do
-    {adapter, opts} = split(settings)
-
-    case missing(adapter) do
-      nil -> adapter.check(opts)
-      message -> {:error, message}
+    if Code.ensure_loaded?(adapter) do
+      adapter.build(opts)
+    else
+      {:error, missing(adapter)}
     end
   end
 
   # The adapters over optional dependencies are compiled only where the
   # application has them, so a host that stores elsewhere compiles neither.
   defp missing(adapter) do
-    unless Code.ensure_loaded?(adapter) do
-      "#{inspect(adapter)} is not a module this node has. WardrikEcto.Store needs " <>
-        ":ecto_sql and :postgrex among the application's dependencies, and " <>
-        "WardrikStore.EKV, the store where no adapter is named, needs :ekv"
-    end
+    "#{inspect(adapter)} is not a module this node has. WardrikEcto.Store needs " <>
+      ":ecto_sql and :postgrex among the application's dependencies, and " <>
+      "WardrikStore.EKV, the store where no adapter is named, needs :ekv"
   end
 
-  @doc "How many nodes of a cluster of `size` `store` needs connected. See `c:quorum/1`."
+  @doc """
+  Looks at the store `settings` describe without starting it, for `wardrik
+  doctor`, and answers what it found, naming the store: that it is there and
+  keeps the contract, or why not.
+  """
+  @spec check(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def check(settings) when is_list(settings) do
+    with {:ok, store} <- build(settings), do: Adapter.check(store)
+  end
+
+  @doc "The child that runs `store`."
+  @spec child_spec(t()) :: Supervisor.child_spec()
+  def child_spec(store), do: Supervisor.child_spec(Adapter.child_spec(store), id: __MODULE__)
+
+  @doc """
+  How many nodes of a cluster of `size`, this one among them, `store` needs
+  connected for a write to land: more than half for a store kept on the
+  nodes themselves, and one for a store kept elsewhere.
+  """
   @spec quorum(t(), pos_integer()) :: pos_integer()
-  def quorum(%__MODULE__{adapter: adapter}, size) when is_integer(size) and size > 0,
-    do: adapter.quorum(size)
+  def quorum(store, size) when is_integer(size) and size > 0, do: Adapter.quorum(store, size)
 
   @doc """
   How long a `DurableServer.Supervisor` over the store gives its processes to
@@ -215,20 +185,23 @@ defmodule WardrikStore do
 
   @doc "What `DurableServer` writes agents through in `store`."
   @spec durable_backend(t()) :: {module(), keyword()}
-  def durable_backend(%__MODULE__{adapter: adapter} = store), do: adapter.durable_backend(store)
+  def durable_backend(store), do: Adapter.durable_backend(store)
 
+  @doc "Writes a value, conditionally where `opts` say so."
   @spec put(t(), ns(), key(), term(), put_opts()) ::
           {:ok, vsn() | nil} | {:error, :conflict | term()}
-  def put(%__MODULE__{} = store, ns, key, value, opts \\ []) when is_atom(ns) and is_binary(key),
-    do: store.adapter.put(store.config, ns, key, value, opts)
+  def put(store, ns, key, value, opts \\ []) when is_atom(ns) and is_binary(key),
+    do: Adapter.put(store, ns, key, value, opts)
 
+  @doc "The value under a key, or `nil`."
   @spec get(t(), ns(), key(), get_opts()) :: term() | nil
-  def get(%__MODULE__{} = store, ns, key, opts \\ []) when is_atom(ns) and is_binary(key),
-    do: store.adapter.get(store.config, ns, key, opts)
+  def get(store, ns, key, opts \\ []) when is_atom(ns) and is_binary(key),
+    do: Adapter.get(store, ns, key, opts)
 
+  @doc "The value under a key with its version, or `nil`."
   @spec lookup(t(), ns(), key()) :: {term(), vsn()} | nil
-  def lookup(%__MODULE__{} = store, ns, key) when is_atom(ns) and is_binary(key),
-    do: store.adapter.lookup(store.config, ns, key)
+  def lookup(store, ns, key) when is_atom(ns) and is_binary(key),
+    do: Adapter.lookup(store, ns, key)
 
   @doc """
   Removes `key`. With `if_vsn: vsn` it removes only that version, answering
@@ -237,10 +210,11 @@ defmodule WardrikStore do
   Deleting a key nothing holds is `:ok`.
   """
   @spec delete(t(), ns(), key(), delete_opts()) :: :ok | {:error, :conflict | term()}
-  def delete(%__MODULE__{} = store, ns, key, opts \\ []) when is_atom(ns) and is_binary(key),
-    do: store.adapter.delete(store.config, ns, key, opts)
+  def delete(store, ns, key, opts \\ []) when is_atom(ns) and is_binary(key),
+    do: Adapter.delete(store, ns, key, opts)
 
+  @doc "Every key in a namespace starting with `prefix`."
   @spec keys(t(), ns(), String.t()) :: [key()]
-  def keys(%__MODULE__{} = store, ns, prefix \\ "") when is_atom(ns) and is_binary(prefix),
-    do: store.adapter.keys(store.config, ns, prefix)
+  def keys(store, ns, prefix \\ "") when is_atom(ns) and is_binary(prefix),
+    do: Adapter.keys(store, ns, prefix)
 end

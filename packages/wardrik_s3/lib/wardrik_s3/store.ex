@@ -39,8 +39,8 @@ defmodule WardrikS3.Store do
   listing. A tombstone stays in the bucket, since no request could remove it
   only where it is still a tombstone.
 
-  Which of the two a bucket does is cached on the node, by the store's
-  config, as the store starts, and found the same way by a call that finds
+  Which of the two a bucket does is cached on the node, by the store, as
+  the store starts, and found the same way by a call that finds
   it missing.
 
   `check/1` runs the same requests, and answers what they found.
@@ -70,38 +70,75 @@ defmodule WardrikS3.Store do
   @required [:bucket, :endpoint, :access_key_id, :secret_access_key]
   @page_size 1000
 
-  @doc "What the store's calls are handed. Raises where a required option is missing."
-  @impl WardrikStore
-  def config(opts) do
-    case configured(opts) do
-      {:ok, config} ->
-        config
+  # The request holds the bucket's keys, so a store is shown without it.
+  @derive {Inspect, only: [:bucket, :endpoint, :prefix]}
+  @enforce_keys [:req, :bucket, :endpoint, :prefix, :discovery_interval_ms]
+  defstruct [:req, :bucket, :endpoint, :prefix, :discovery_interval_ms]
 
-      {:error, {:missing_options, missing}} ->
-        raise ArgumentError, "WardrikS3.Store needs #{Enum.map_join(missing, ", ", &inspect/1)}"
+  @typedoc "A store in a bucket: the signed request every call starts from, and where keys go."
+  @type t() :: %__MODULE__{
+          req: Req.Request.t(),
+          bucket: String.t(),
+          endpoint: String.t(),
+          prefix: String.t(),
+          discovery_interval_ms: pos_integer()
+        }
+
+  @impl WardrikStore
+  def build(opts) do
+    case Enum.reject(@required, &Keyword.get(opts, &1)) do
+      [] ->
+        {:ok,
+         %__MODULE__{
+           req: request(opts),
+           bucket: opts[:bucket],
+           endpoint: opts[:endpoint],
+           prefix: Keyword.get(opts, :prefix, "wardrik"),
+           discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000)
+         }}
+
+      missing ->
+        {:error, "WardrikS3.Store needs #{Enum.map_join(missing, ", ", &inspect/1)}"}
     end
   end
 
-  @impl WardrikStore
-  def child_spec(config), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [config]}}
+  defp request(opts) do
+    aws =
+      [
+        access_key_id: opts[:access_key_id],
+        secret_access_key: opts[:secret_access_key],
+        region: Keyword.get(opts, :region, "us-east-1"),
+        service: :s3
+      ] ++ if(token = opts[:session_token], do: [token: token], else: [])
+
+    Req.new(
+      [
+        base_url: opts[:endpoint],
+        aws_sigv4: aws,
+        headers: Keyword.get(opts, :headers, []),
+        decode_body: false,
+        retry: false
+      ] ++ Keyword.get(opts, :req_options, [])
+    )
+  end
 
   @doc """
   Checks the bucket as the module describes, and caches how it deletes.
   Nothing runs, so it answers `:ignore`.
   """
-  @spec start_link(map()) :: :ignore | {:error, term()}
-  def start_link(config) do
-    with {:ok, _conditional_delete} <- deletes_over_version(config), do: :ignore
+  @spec start_link(t()) :: :ignore | {:error, term()}
+  def start_link(%__MODULE__{} = store) do
+    with {:ok, _conditional_delete} <- deletes_over_version(store), do: :ignore
   end
 
   # How the bucket deletes over a version is learned from the bucket, so it
-  # is cached by the config that reaches it, and learned again where it is not.
-  defp deletes_over_version(config) do
-    key = {__MODULE__, :conditional_delete, config}
+  # is cached by the store that reaches it, and learned again where it is not.
+  defp deletes_over_version(store) do
+    key = {__MODULE__, :conditional_delete, store}
 
     case :persistent_term.get(key, :unknown) do
       :unknown ->
-        with {:ok, conditional_delete} <- probe(config) do
+        with {:ok, conditional_delete} <- probe(store) do
           :persistent_term.put(key, conditional_delete)
           {:ok, conditional_delete}
         end
@@ -111,51 +148,15 @@ defmodule WardrikS3.Store do
     end
   end
 
-  defp configured(opts) do
-    case Enum.reject(@required, &Keyword.get(opts, &1)) do
-      [] ->
-        aws =
-          [
-            access_key_id: opts[:access_key_id],
-            secret_access_key: opts[:secret_access_key],
-            region: Keyword.get(opts, :region, "us-east-1"),
-            service: :s3
-          ] ++ if(token = opts[:session_token], do: [token: token], else: [])
+  @doc false
+  @spec check(t()) :: {:ok, String.t()} | {:error, String.t()}
+  def check(%__MODULE__{} = store) do
+    where = "the bucket #{store.bucket} at #{store.endpoint}"
 
-        req =
-          Req.new(
-            [
-              base_url: opts[:endpoint],
-              aws_sigv4: aws,
-              headers: Keyword.get(opts, :headers, []),
-              decode_body: false,
-              retry: false
-            ] ++ Keyword.get(opts, :req_options, [])
-          )
-
+    case probe(store) do
+      {:ok, conditional_delete} ->
         {:ok,
-         %{
-           req: req,
-           bucket: opts[:bucket],
-           prefix: Keyword.get(opts, :prefix, "wardrik"),
-           discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 30_000)
-         }}
-
-      missing ->
-        {:error, {:missing_options, missing}}
-    end
-  end
-
-  @impl WardrikStore
-  def check(opts) do
-    where = "the bucket #{opts[:bucket]} at #{opts[:endpoint]}"
-
-    with {:ok, config} <- configured(opts),
-         {:ok, conditional_delete} <- probe(config) do
-      {:ok, "#{where} refuses a write whose condition fails, and " <> deletes(conditional_delete)}
-    else
-      {:error, {:missing_options, missing}} ->
-        {:error, "#{where} needs #{Enum.map_join(missing, ", ", &to_string/1)}"}
+         "#{where} refuses a write whose condition fails, and " <> deletes(conditional_delete)}
 
       {:error, {:unconditional_bucket, what, _response}} ->
         {:error, "#{where}: #{what}, so it cannot hold the store"}
@@ -168,28 +169,44 @@ defmodule WardrikS3.Store do
   defp deletes(true), do: "deletes over a version"
   defp deletes(false), do: "deletes over any version, so a delete over one writes a tombstone"
 
-  @impl WardrikStore
-  def quorum(_size), do: 1
+  defimpl WardrikStore.Adapter do
+    alias WardrikS3.Store
+
+    def child_spec(store), do: %{id: Store, start: {Store, :start_link, [store]}}
+    def check(store), do: Store.check(store)
+    def quorum(_store, _size), do: 1
+
+    def durable_backend(store),
+      do: {WardrikStore.Durable, store: store, discovery_interval_ms: store.discovery_interval_ms}
+
+    def put(store, ns, key, value, opts), do: Store.put(store, ns, key, value, opts)
+    def get(store, ns, key, opts), do: Store.get(store, ns, key, opts)
+    def lookup(store, ns, key), do: Store.lookup(store, ns, key)
+    def delete(store, ns, key, opts), do: Store.delete(store, ns, key, opts)
+    def keys(store, ns, prefix), do: Store.keys(store, ns, prefix)
+  end
 
   # -- the contract ------------------------------------------------------------
 
-  @impl WardrikStore
-  def put(config, ns, key, value, opts) do
-    object = object(config, ns, key)
+  @doc false
+  @spec put(t(), WardrikStore.ns(), WardrikStore.key(), term(), WardrikStore.put_opts()) ::
+          {:ok, WardrikStore.vsn()} | {:error, :conflict | term()}
+  def put(%__MODULE__{} = store, ns, key, value, opts) do
+    object = object(store, ns, key)
     nonce = :crypto.strong_rand_bytes(16)
     condition = Keyword.fetch(opts, :if_vsn)
 
-    config
+    store
     |> write(object, encode(nonce, value), condition)
-    |> confirmed(config, object, nonce, condition)
+    |> confirmed(store, object, nonce, condition)
   end
 
   # A tombstone counts as nothing written, and is written over by its own version.
-  defp write(config, object, body, {:ok, nil}) do
-    case put_object(config, object, body, [{"if-none-match", "*"}]) do
+  defp write(store, object, body, {:ok, nil}) do
+    case put_object(store, object, body, [{"if-none-match", "*"}]) do
       {:error, :conflict} ->
-        case read(config, object) do
-          {:tombstone, etag} -> put_object(config, object, body, [{"if-match", etag}])
+        case read(store, object) do
+          {:tombstone, etag} -> put_object(store, object, body, [{"if-match", etag}])
           _written_or_gone -> {:error, :conflict}
         end
 
@@ -198,21 +215,21 @@ defmodule WardrikS3.Store do
     end
   end
 
-  defp write(config, object, body, {:ok, vsn}),
-    do: put_object(config, object, body, [{"if-match", vsn}])
+  defp write(store, object, body, {:ok, vsn}),
+    do: put_object(store, object, body, [{"if-match", vsn}])
 
-  defp write(config, object, body, :error), do: put_object(config, object, body, [])
+  defp write(store, object, body, :error), do: put_object(store, object, body, [])
 
   # A write whose answer never arrived is read back: it landed where the object
   # holds its bytes, and failed where the object still meets its condition.
-  defp confirmed({:error, {:unconfirmed, reason}}, config, object, nonce, condition) do
-    case read(config, object) do
+  defp confirmed({:error, {:unconfirmed, reason}}, store, object, nonce, condition) do
+    case read(store, object) do
       {:value, ^nonce, _value, etag} -> {:ok, etag}
       current -> if holds?(current, condition), do: {:error, reason}, else: {:error, :conflict}
     end
   end
 
-  defp confirmed(result, _config, _object, _nonce, _condition), do: result
+  defp confirmed(result, _store, _object, _nonce, _condition), do: result
 
   defp holds?(_current, :error), do: true
   defp holds?(nil, {:ok, nil}), do: true
@@ -220,8 +237,8 @@ defmodule WardrikS3.Store do
   defp holds?({:value, _nonce, _value, etag}, {:ok, etag}), do: true
   defp holds?(_current, _condition), do: false
 
-  defp put_object(config, object, body, headers) do
-    case request(config, :put, object, body: body, headers: headers) do
+  defp put_object(store, object, body, headers) do
+    case request(store, :put, object, body: body, headers: headers) do
       {:ok, %{status: 200} = response} -> {:ok, etag(response)}
       {:ok, %{status: status}} when status in [409, 412] -> {:error, :conflict}
       {:ok, response} -> {:error, Error.exception(response)}
@@ -229,24 +246,26 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl WardrikStore
-  def get(config, ns, key, _opts) do
-    case lookup(config, ns, key) do
+  @doc false
+  @spec get(t(), WardrikStore.ns(), WardrikStore.key(), WardrikStore.get_opts()) :: term() | nil
+  def get(%__MODULE__{} = store, ns, key, _opts) do
+    case lookup(store, ns, key) do
       {value, _vsn} -> value
       nil -> nil
     end
   end
 
-  @impl WardrikStore
-  def lookup(config, ns, key) do
-    case read(config, object(config, ns, key)) do
+  @doc false
+  @spec lookup(t(), WardrikStore.ns(), WardrikStore.key()) :: {term(), WardrikStore.vsn()} | nil
+  def lookup(%__MODULE__{} = store, ns, key) do
+    case read(store, object(store, ns, key)) do
       {:value, _nonce, value, etag} -> {value, etag}
       _absent -> nil
     end
   end
 
-  defp read(config, object) do
-    case request(config, :get, object, retry: :transient) do
+  defp read(store, object) do
+    case request(store, :get, object, retry: :transient) do
       {:ok, %{status: 200, body: ""} = response} ->
         {:tombstone, etag(response)}
 
@@ -265,29 +284,31 @@ defmodule WardrikS3.Store do
     end
   end
 
-  @impl WardrikStore
-  def delete(config, ns, key, opts) do
-    object = object(config, ns, key)
+  @doc false
+  @spec delete(t(), WardrikStore.ns(), WardrikStore.key(), WardrikStore.delete_opts()) ::
+          :ok | {:error, :conflict | term()}
+  def delete(%__MODULE__{} = store, ns, key, opts) do
+    object = object(store, ns, key)
 
     case Keyword.fetch(opts, :if_vsn) do
       :error ->
-        config |> remove(object, []) |> removed(config, object, :error)
+        store |> remove(object, []) |> removed(store, object, :error)
 
       {:ok, vsn} ->
-        config |> delete_over(object, vsn) |> removed(config, object, {:ok, vsn})
+        store |> delete_over(object, vsn) |> removed(store, object, {:ok, vsn})
     end
   end
 
-  defp delete_over(config, object, vsn) do
-    case deletes_over_version(config) do
-      {:ok, true} -> remove(config, object, [{"if-match", vsn}])
-      {:ok, false} -> put_object(config, object, "", [{"if-match", vsn}])
+  defp delete_over(store, object, vsn) do
+    case deletes_over_version(store) do
+      {:ok, true} -> remove(store, object, [{"if-match", vsn}])
+      {:ok, false} -> put_object(store, object, "", [{"if-match", vsn}])
       {:error, error} -> raise error
     end
   end
 
-  defp remove(config, object, headers) do
-    case request(config, :delete, object, headers: headers) do
+  defp remove(store, object, headers) do
+    case request(store, :delete, object, headers: headers) do
       {:ok, %{status: status}} when status in [200, 204, 404] -> :ok
       {:ok, %{status: status}} when status in [409, 412] -> {:error, :conflict}
       {:ok, response} -> {:error, Error.exception(response)}
@@ -296,18 +317,18 @@ defmodule WardrikS3.Store do
   end
 
   # Removing what is already gone is done, whatever the condition named.
-  defp removed({:ok, _tombstone}, _config, _object, _condition), do: :ok
-  defp removed(:ok, _config, _object, _condition), do: :ok
+  defp removed({:ok, _tombstone}, _store, _object, _condition), do: :ok
+  defp removed(:ok, _store, _object, _condition), do: :ok
 
-  defp removed({:error, :conflict}, config, object, _condition) do
-    case read(config, object) do
+  defp removed({:error, :conflict}, store, object, _condition) do
+    case read(store, object) do
       {:value, _nonce, _value, _etag} -> {:error, :conflict}
       _absent -> :ok
     end
   end
 
-  defp removed({:error, {:unconfirmed, reason}}, config, object, condition) do
-    case read(config, object) do
+  defp removed({:error, {:unconfirmed, reason}}, store, object, condition) do
+    case read(store, object) do
       {:value, _nonce, _value, _etag} = current ->
         if holds?(current, condition), do: {:error, reason}, else: {:error, :conflict}
 
@@ -316,30 +337,31 @@ defmodule WardrikS3.Store do
     end
   end
 
-  defp removed(error, _config, _object, _condition), do: error
+  defp removed(error, _store, _object, _condition), do: error
 
-  @impl WardrikStore
-  def keys(config, ns, prefix) do
-    root = object(config, ns, "")
+  @doc false
+  @spec keys(t(), WardrikStore.ns(), String.t()) :: [WardrikStore.key()]
+  def keys(%__MODULE__{} = store, ns, prefix) do
+    root = object(store, ns, "")
 
-    for {object, size} <- list(config, root <> escape(prefix), nil, []),
+    for {object, size} <- list(store, root <> escape(prefix), nil, []),
         size > 0,
         do: object |> String.replace_prefix(root, "") |> unescape()
   end
 
   # The pages so far are kept last first, and joined once the last is read.
-  defp list(config, prefix, token, pages) do
+  defp list(store, prefix, token, pages) do
     query =
       [{"list-type", "2"}, {"max-keys", "#{@page_size}"}, {"prefix", prefix}] ++
         if(token, do: [{"continuation-token", token}], else: [])
 
-    case request(config, :get, nil, query: query, retry: :transient) do
+    case request(store, :get, nil, query: query, retry: :transient) do
       {:ok, %{status: 200, body: body}} ->
         {keys, next} = listing(body)
         pages = [keys | pages]
 
         if next,
-          do: list(config, prefix, next, pages),
+          do: list(store, prefix, next, pages),
           else: pages |> Enum.reverse() |> Enum.concat()
 
       {:ok, response} ->
@@ -373,21 +395,17 @@ defmodule WardrikS3.Store do
 
   defp text(node), do: node |> elem(4) |> List.to_string()
 
-  @impl WardrikStore
-  def durable_backend(%WardrikStore{config: config} = store),
-    do: {WardrikStore.Durable, store: store, discovery_interval_ms: config.discovery_interval_ms}
-
   # -- checking the bucket -----------------------------------------------------
 
-  defp probe(config) do
-    object = object(config, :probe, "#{node()}/#{System.unique_integer([:positive])}")
+  defp probe(store) do
+    object = object(store, :probe, "#{node()}/#{System.unique_integer([:positive])}")
     body = encode(:crypto.strong_rand_bytes(16), :probe)
     stale = ~s("0000000000000000000000000000000f")
 
-    with {:ok, etag} <- probed(config, :put, object, body, [{"if-none-match", "*"}]),
+    with {:ok, etag} <- probed(store, :put, object, body, [{"if-none-match", "*"}]),
          :ok <-
            refused(
-             config,
+             store,
              :put,
              object,
              body,
@@ -396,23 +414,23 @@ defmodule WardrikS3.Store do
            ),
          :ok <-
            refused(
-             config,
+             store,
              :put,
              object,
              body,
              [{"if-match", stale}],
              "wrote over a version that was not the current one"
            ) do
-      conditional_delete?(config, object, stale, etag)
+      conditional_delete?(store, object, stale, etag)
     end
   end
 
   # A bucket that deletes over a version that is not the current one is
   # deleted from by a tombstone written over the version instead.
-  defp conditional_delete?(config, object, stale, etag) do
-    case request(config, :delete, object, headers: [{"if-match", stale}]) do
+  defp conditional_delete?(store, object, stale, etag) do
+    case request(store, :delete, object, headers: [{"if-match", stale}]) do
       {:ok, %{status: 412}} ->
-        _deleted = request(config, :delete, object, headers: [{"if-match", etag}])
+        _deleted = request(store, :delete, object, headers: [{"if-match", etag}])
         {:ok, true}
 
       {:ok, %{status: status}} when status in [200, 204] ->
@@ -426,21 +444,21 @@ defmodule WardrikS3.Store do
     end
   end
 
-  defp probed(config, method, object, body, headers) do
-    case request(config, method, object, body: body, headers: headers) do
+  defp probed(store, method, object, body, headers) do
+    case request(store, method, object, body: body, headers: headers) do
       {:ok, %{status: 200} = response} -> {:ok, etag(response)}
       {:ok, response} -> {:error, Error.exception(response)}
       {:error, reason} -> {:error, Error.exception(reason)}
     end
   end
 
-  defp refused(config, method, object, body, headers, what) do
-    case request(config, method, object, body: body, headers: headers) do
+  defp refused(store, method, object, body, headers, what) do
+    case request(store, method, object, body: body, headers: headers) do
       {:ok, %{status: 412}} ->
         :ok
 
       {:ok, %{status: status} = response} when status < 300 ->
-        _cleaned = request(config, :delete, object, [])
+        _cleaned = request(store, :delete, object, [])
         {:error, {:unconditional_bucket, "the bucket #{what}", Error.exception(response)}}
 
       {:ok, response} ->
@@ -453,8 +471,8 @@ defmodule WardrikS3.Store do
 
   # -- requests ------------------------------------------------------------------
 
-  defp request(config, method, object, opts) do
-    path = if object, do: "/#{config.bucket}/#{object}", else: "/#{config.bucket}"
+  defp request(store, method, object, opts) do
+    path = if object, do: "/#{store.bucket}/#{object}", else: "/#{store.bucket}"
 
     url =
       case Keyword.get(opts, :query, []) do
@@ -465,7 +483,7 @@ defmodule WardrikS3.Store do
           path <> "?" <> Enum.map_join(query, "&", fn {k, v} -> k <> "=" <> encode_query(v) end)
       end
 
-    Req.request(config.req,
+    Req.request(store.req,
       method: method,
       url: url,
       body: opts[:body],
@@ -487,7 +505,7 @@ defmodule WardrikS3.Store do
 
   # -- keys ----------------------------------------------------------------------
 
-  defp object(config, ns, key), do: "#{config.prefix}/#{escape(to_string(ns))}/" <> escape(key)
+  defp object(store, ns, key), do: "#{store.prefix}/#{escape(to_string(ns))}/" <> escape(key)
 
   @doc false
   @spec escape(String.t()) :: String.t()

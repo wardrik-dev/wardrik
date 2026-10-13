@@ -21,7 +21,7 @@ defmodule WardrikS3.Test.S3Bucket do
   @page 2
 
   @doc """
-  What `WardrikS3.Store.start_link/1` takes to reach this bucket, with
+  The options `WardrikStore.new/1` builds a store over this bucket from, with
   `bucket_opts` for the plug and `opts` over the store's own.
   """
   @spec store_opts(keyword(), keyword()) :: keyword()

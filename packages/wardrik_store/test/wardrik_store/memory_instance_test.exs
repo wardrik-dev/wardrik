@@ -42,15 +42,15 @@ defmodule WardrikStore.MemoryInstanceTest do
   end
 
   test "is kept in memory, and needs no other node" do
-    assert Memory.check([]) == {:ok, "in this node's memory"}
-    assert Memory.quorum(3) == 1
+    assert WardrikStore.check(adapter: Memory) == {:ok, "in this node's memory"}
+    assert WardrikStore.quorum(WardrikStore.new(adapter: Memory), 3) == 1
   end
 
   test "is named after the adapter unless named" do
-    assert WardrikStore.new(adapter: Memory).config == Memory
+    assert WardrikStore.new(adapter: Memory).name == Memory
   end
 
   test "holds a one-node fleet through WardrikStore.Durable", %{store: store} do
-    assert Memory.durable_backend(store) == {WardrikStore.Durable, store: store}
+    assert WardrikStore.durable_backend(store) == {WardrikStore.Durable, store: store}
   end
 end

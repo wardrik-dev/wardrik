@@ -101,7 +101,9 @@ defmodule Wardrik.Event.ExportTest do
   test "reads a log trimmed past the cursor from its oldest, and says so", ctx do
     %{first: first, name: name} = ctx
     written(first, 3, 2)
-    :ok = Log.trim(store(), first, 4, DateTime.add(DateTime.utc_now(), -30, :day))
+
+    :ok =
+      Log.trim(store(), first, through: 4, before: DateTime.add(DateTime.utc_now(), -30, :day))
 
     assert {:ok, page} = Export.read(store(), name, logs: &(&1 == first))
     assert from(page.events) == [{source(first), "000000000004"}]

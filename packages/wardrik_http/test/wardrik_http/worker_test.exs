@@ -114,7 +114,11 @@ defmodule WardrikHTTP.WorkerTest do
 
   setup do
     {:ok, secret, _token} =
-      Token.create(store(), "worker-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "worker-test",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     listener = :"worker-#{System.unique_integer([:positive])}"
 
@@ -379,7 +383,11 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("echo")])
 
     {:ok, second, _token} =
-      Token.create(store(), "second", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "second",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     log =
       capture_log(fn -> connect(context, [tool("echo", %{"readOnlyHint" => true})], second) end)
@@ -398,7 +406,9 @@ defmodule WardrikHTTP.WorkerTest do
       context,
       [tool("echo")],
       elem(
-        Token.create(store(), "elsewhere", Prefix.parse!("test/only/"), Grant.actions(),
+        Token.create(store(), "elsewhere",
+          scope: Prefix.parse!("test/only/"),
+          can: Grant.actions(),
           ceiling: []
         ),
         1
@@ -436,7 +446,11 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
     {:ok, elsewhere, _token} =
-      Token.create(store(), "elsewhere", Prefix.parse!("other/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "elsewhere",
+        scope: Prefix.parse!("other/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
@@ -490,7 +504,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a token that may not serve is refused the socket", %{port: port} do
     {:ok, secret, _token} =
-      Token.create(store(), "reader", Prefix.parse!("test/"), [:read])
+      Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
     assert {:error, %WebSockex.RequestError{code: 403}} =
              FakeWorker.start_link(port, secret, self(), [tool("echo")])
@@ -499,7 +513,11 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's socket closes when its token is revoked",
        context do
     {:ok, secret, token} =
-      Token.create(store(), "revoked", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "revoked",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     worker = connect(context, [tool("echo")], secret)
     monitor = Process.monitor(worker)

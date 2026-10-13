@@ -3,8 +3,8 @@ defmodule WardrikHTTP.Token do
   A bearer token for the HTTP API, and the `Wardrik.Grant` it carries.
 
       acme = Wardrik.AgentID.Prefix.new!(org: "acme")
-      {:ok, secret, token} = WardrikHTTP.Token.create(store, "ci", acme, [:define], ceiling: hooks)
-      {:ok, secret, token} = WardrikHTTP.Token.create(store, "watcher", Wardrik.AgentID.Prefix.parse!("acme/@jon/"), [:read])
+      {:ok, secret, token} = WardrikHTTP.Token.create(store, "ci", scope: acme, can: [:define], ceiling: hooks)
+      {:ok, secret, token} = WardrikHTTP.Token.create(store, "watcher", scope: Wardrik.AgentID.Prefix.parse!("acme/@jon/"), can: [:read])
 
   A token grants the actions it was made with, every one where none are
   named, on the agents under its scope; see `Wardrik.Grant` for both. It acts
@@ -58,21 +58,27 @@ defmodule WardrikHTTP.Token do
         }
 
   @doc """
-  Makes a token named `name` granting `can` on the agents under `scope`, and
-  answers its secret, or a message saying why the grant is not one. `:ceiling`
-  is the grant's ceiling, which a token that can `:define` must be given, and
-  `:for` the `Wardrik.Principal` it acts for.
+  Makes a token named `name` and answers its secret, or a message saying why
+  the grant is not one.
+
+    * `:scope` - the agents it reaches, a `Wardrik.AgentID.Prefix`; required
+    * `:can` - what it may do there, every action unless given
+    * `:ceiling` - the grant's ceiling, which a token that can `:define` must
+      be given
+    * `:for` - the `Wardrik.Principal` it acts for
   """
-  @spec create(
-          WardrikStore.t(),
-          String.t(),
-          Wardrik.AgentID.Prefix.t(),
-          [Grant.action() | String.t()],
-          keyword()
+  @spec create(WardrikStore.t(), String.t(),
+          scope: Wardrik.AgentID.Prefix.t(),
+          can: [Grant.action() | String.t()],
+          ceiling: [Wardrik.Hook.t()],
+          for: Principal.t()
         ) ::
           {:ok, String.t(), t()} | {:error, String.t() | term()}
-  def create(store, name, scope, can \\ Grant.actions(), opts \\ [])
-      when is_binary(name) and is_list(opts) do
+  def create(store, name, opts) when is_binary(name) do
+    opts = Keyword.validate!(opts, [:scope, :ceiling, :for, can: Grant.actions()])
+    scope = Keyword.fetch!(opts, :scope)
+    can = Keyword.fetch!(opts, :can)
+
     with {:ok, grant} <- Grant.new(scope, can, Keyword.get(opts, :ceiling, [])),
          :ok <- chosen(grant, opts) do
       secret = @prefix <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)

@@ -50,10 +50,13 @@ defmodule WardrikDaemon.GrantsTest do
 
   test "a token holds what it grants, until it is revoked" do
     {:ok, _secret, token} =
-      WardrikHTTP.Token.create(Wardrik.Test.store(), "ci", Prefix.new!(org: "acme"), [
-        :read,
-        :message
-      ])
+      WardrikHTTP.Token.create(Wardrik.Test.store(), "ci",
+        scope: Prefix.new!(org: "acme"),
+        can: [
+          :read,
+          :message
+        ]
+      )
 
     principal = Principal.new(:token, token.id, name: "ci")
 

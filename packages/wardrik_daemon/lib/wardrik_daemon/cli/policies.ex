@@ -61,7 +61,7 @@ defmodule WardrikDaemon.CLI.Policies do
     with {:ok, policy} <- JudgeReplay.policy(name),
          {:ok, prefixes, where} <- prefixes(store(opts), name, opts[:agent]),
          {:ok, last} <- last(Keyword.get(opts, :last, @last)) do
-      {:ok, JudgeReplay.tried(store(opts), policy.judge, prefixes, last), where}
+      {:ok, JudgeReplay.tried(store(opts), policy.judge, under: prefixes, last: last), where}
     end
   end
 

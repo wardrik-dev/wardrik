@@ -298,26 +298,26 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id,
       cutoff: cutoff
     } do
-      assert :ok = Log.trim(store(), agent_id, 5, cutoff)
+      assert :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
 
       assert {:gap, 4} = Log.read(store(), agent_id)
       assert {:gap, 4} = Log.read(store(), agent_id, starting_after: 2)
       assert sequences(agent_id, 3) == [4, 5]
       assert Log.oldest(store(), agent_id) == 4
 
-      assert :ok = Log.trim(store(), agent_id, 5, cutoff)
+      assert :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
       assert Log.oldest(store(), agent_id) == 4
     end
 
     test "leaves the events to a trim that got there first", %{agent_id: agent_id, cutoff: cutoff} do
       expect(WardrikStore, :put, fn _store, _ns, _key, _dropped, _opts -> {:error, :conflict} end)
 
-      assert {:error, :conflict} = Log.trim(store(), agent_id, 5, cutoff)
+      assert {:error, :conflict} = Log.trim(store(), agent_id, through: 5, before: cutoff)
       assert sequences(agent_id) == [1, 2, 3, 4, 5]
     end
 
     test "drops none past the number it is given", %{agent_id: agent_id, cutoff: cutoff} do
-      assert :ok = Log.trim(store(), agent_id, 2, cutoff)
+      assert :ok = Log.trim(store(), agent_id, through: 2, before: cutoff)
 
       assert sequences(agent_id, 2) == [3, 4, 5]
     end
@@ -326,7 +326,7 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id,
       cutoff: cutoff
     } do
-      :ok = Log.trim(store(), agent_id, 5, cutoff)
+      :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
 
       open(agent_id)
 

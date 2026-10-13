@@ -139,7 +139,7 @@ defmodule Wardrik.Audit do
 
   @doc false
   @spec start_link(WardrikStore.t()) :: GenServer.on_start()
-  def start_link(%WardrikStore{} = store),
+  def start_link(store),
     do: GenServer.start_link(__MODULE__, store, name: __MODULE__)
 
   # The head is found on the first write, not as the process starts.
@@ -159,7 +159,7 @@ defmodule Wardrik.Audit do
 
     # Another node trimming the same log at once is the one conflict here,
     # and leaves the log as trimmed as this would.
-    case Log.trim(store, :audit, head, cutoff) do
+    case Log.trim(store, :audit, through: head, before: cutoff) do
       :ok -> :ok
       {:error, :conflict} -> :ok
       {:error, reason} -> Logger.warning("Could not trim the audit log: #{inspect(reason)}")

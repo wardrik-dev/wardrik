@@ -32,11 +32,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
 
     {:ok, secret, _token} =
-      WardrikHTTP.Token.create(
-        Wardrik.Test.store(),
-        "daemon-test",
-        Prefix.parse!("daemon/"),
-        Wardrik.Grant.actions(),
+      WardrikHTTP.Token.create(Wardrik.Test.store(), "daemon-test",
+        scope: Prefix.parse!("daemon/"),
+        can: Wardrik.Grant.actions(),
         ceiling: []
       )
 

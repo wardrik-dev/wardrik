@@ -28,72 +28,69 @@ defmodule WardrikStore.Memory do
 
   use GenServer
 
+  @enforce_keys [:name]
+  defstruct [:name]
+
+  @typedoc "A store in memory: the name of its process and of the table it owns."
+  @type t() :: %__MODULE__{name: atom()}
+
+  @impl WardrikStore
+  def build(opts), do: {:ok, %__MODULE__{name: Keyword.get(opts, :name, __MODULE__)}}
+
   @doc "Starts the store, empty, under `name`."
   @spec start_link(atom()) :: GenServer.on_start()
   def start_link(name) when is_atom(name), do: GenServer.start_link(__MODULE__, name, name: name)
 
-  @impl WardrikStore
-  def config(opts), do: Keyword.get(opts, :name, __MODULE__)
-
-  @impl WardrikStore
-  def child_spec(name), do: %{id: name, start: {__MODULE__, :start_link, [name]}}
-
-  @impl WardrikStore
-  def check(_opts), do: {:ok, "in this node's memory"}
-
-  @impl WardrikStore
-  def quorum(_size), do: 1
-
-  # Its reads are current because there is only the one node.
-  @impl WardrikStore
-  def durable_backend(store), do: {WardrikStore.Durable, store: store}
-
   @doc "Forgets everything `store` holds."
-  @spec clear(WardrikStore.t()) :: :ok
-  def clear(%WardrikStore{adapter: __MODULE__, config: name}), do: GenServer.call(name, :clear)
+  @spec clear(t()) :: :ok
+  def clear(%__MODULE__{name: name}), do: GenServer.call(name, :clear)
 
-  @impl WardrikStore
-  def put(name, ns, key, value, opts),
-    do: GenServer.call(name, {:put, {ns, key}, value, Keyword.fetch(opts, :if_vsn)})
+  defimpl WardrikStore.Adapter do
+    def child_spec(%{name: name}),
+      do: %{id: name, start: {WardrikStore.Memory, :start_link, [name]}}
 
-  @impl WardrikStore
-  def get(name, ns, key, _opts) do
-    case lookup(name, ns, key) do
-      {value, _vsn} -> value
-      nil -> nil
+    def check(_store), do: {:ok, "in this node's memory"}
+    def quorum(_store, _size), do: 1
+
+    # Its reads are current because there is only the one node.
+    def durable_backend(store), do: {WardrikStore.Durable, store: store}
+
+    def put(%{name: name}, ns, key, value, opts),
+      do: GenServer.call(name, {:put, {ns, key}, value, Keyword.fetch(opts, :if_vsn)})
+
+    def get(store, ns, key, _opts) do
+      case lookup(store, ns, key) do
+        {value, _vsn} -> value
+        nil -> nil
+      end
     end
-  end
 
-  @impl WardrikStore
-  def lookup(name, ns, key) do
-    case :ets.lookup(name, {ns, key}) do
-      [{_key, value, vsn}] -> {value, vsn}
-      [] -> nil
+    def lookup(%{name: name}, ns, key) do
+      case :ets.lookup(name, {ns, key}) do
+        [{_key, value, vsn}] -> {value, vsn}
+        [] -> nil
+      end
     end
+
+    def delete(%{name: name}, ns, key, opts),
+      do: GenServer.call(name, {:delete, {ns, key}, Keyword.fetch(opts, :if_vsn)})
+
+    # The table is walked from the prefix to the first key past it, so no
+    # other key is read.
+    def keys(%{name: table}, ns, prefix) do
+      from = {ns, prefix}
+      first = if :ets.member(table, from), do: from, else: :ets.next(table, from)
+      walk(table, first, ns, prefix, [])
+    end
+
+    defp walk(table, {ns, key} = at, ns, prefix, keys) do
+      if String.starts_with?(key, prefix),
+        do: walk(table, :ets.next(table, at), ns, prefix, [key | keys]),
+        else: Enum.reverse(keys)
+    end
+
+    defp walk(_table, _past, _ns, _prefix, keys), do: Enum.reverse(keys)
   end
-
-  @impl WardrikStore
-  def delete(name, ns, key, opts),
-    do: GenServer.call(name, {:delete, {ns, key}, Keyword.fetch(opts, :if_vsn)})
-
-  @doc """
-  Every key in `ns` starting with `prefix`, in order. The table is walked
-  from the prefix to the first key past it, so no other key is read.
-  """
-  @impl WardrikStore
-  def keys(table, ns, prefix) do
-    from = {ns, prefix}
-    first = if :ets.member(table, from), do: from, else: :ets.next(table, from)
-    walk(table, first, ns, prefix, [])
-  end
-
-  defp walk(table, {ns, key} = at, ns, prefix, keys) do
-    if String.starts_with?(key, prefix),
-      do: walk(table, :ets.next(table, at), ns, prefix, [key | keys]),
-      else: Enum.reverse(keys)
-  end
-
-  defp walk(_table, _past, _ns, _prefix, keys), do: Enum.reverse(keys)
 
   @impl GenServer
   def init(name),

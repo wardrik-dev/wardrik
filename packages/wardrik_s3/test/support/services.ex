@@ -5,7 +5,7 @@ defmodule WardrikS3.Test.Services do
   """
 
   @doc """
-  What `WardrikS3.Store.start_link/1` takes to reach the suite's bucket, under a
+  The options `WardrikStore.new/1` builds a store over the suite's bucket from, under a
   prefix of this run's own. `WARDRIK_TEST_S3_BUCKET` and `WARDRIK_TEST_S3_REGION`
   point it at a bucket elsewhere, on R2 or AWS.
   """

@@ -9,7 +9,11 @@ defmodule WardrikHTTP.TokenTest do
 
   test "a token is found by its secret, and by nothing else" do
     assert {:ok, "wardrik_" <> _rest = secret, token} =
-             Token.create(store(), "ci", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
+             Token.create(store(), "ci",
+               scope: Prefix.parse!("acme/"),
+               can: Grant.actions(),
+               ceiling: []
+             )
 
     assert {:ok, ^token} = Token.verify(store(), secret)
     assert {:ok, ^token} = Token.get(store(), token.id)
@@ -23,14 +27,14 @@ defmodule WardrikHTTP.TokenTest do
   end
 
   test "a token acts for itself, or for the principal it was made for" do
-    {:ok, _secret, ci} = Token.create(store(), "ci", Prefix.parse!("acme/"), [:read])
+    {:ok, _secret, ci} = Token.create(store(), "ci", scope: Prefix.parse!("acme/"), can: [:read])
     assert Wardrik.Principal.type(Token.principal(ci)) == :token
     assert Wardrik.Principal.id(Token.principal(ci)) == ci.id
 
     jon = Wardrik.Principal.new(:user, "jon")
 
     {:ok, secret, for_jon} =
-      Token.create(store(), "laptop", Prefix.parse!("acme/"), [:read], for: jon)
+      Token.create(store(), "laptop", scope: Prefix.parse!("acme/"), can: [:read], for: jon)
 
     assert Token.principal(for_jon) == jon
     assert {:ok, read} = Token.verify(store(), secret)
@@ -39,7 +43,11 @@ defmodule WardrikHTTP.TokenTest do
 
   test "the store holds a hash of the secret under its id, never the secret" do
     {:ok, secret, token} =
-      Token.create(store(), "hashed", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "hashed",
+        scope: Prefix.parse!("acme/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     hash = :crypto.hash(:sha256, secret) |> Base.encode16(case: :lower)
     assert %Token{hash: ^hash} = WardrikStore.get(store(), :tokens, token.id)
@@ -49,18 +57,22 @@ defmodule WardrikHTTP.TokenTest do
 
   test "a token grants every action, or the ones it was made with" do
     {:ok, _secret, every} =
-      Token.create(store(), "every", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "every",
+        scope: Prefix.parse!("acme/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     assert every.grant.can == Grant.actions()
 
     {:ok, secret, watcher} =
-      Token.create(store(), "watcher", Prefix.parse!("acme/"), ["read"])
+      Token.create(store(), "watcher", scope: Prefix.parse!("acme/"), can: ["read"])
 
     assert watcher.grant.can == [:read]
     assert {:ok, %Token{grant: %Grant{can: [:read]}}} = Token.verify(store(), secret)
 
     assert {:error, message} =
-             Token.create(store(), "wrong", Prefix.parse!("acme/"), ["read", "write"])
+             Token.create(store(), "wrong", scope: Prefix.parse!("acme/"), can: ["read", "write"])
 
     assert message =~ ~s("write" is not an action)
   end
@@ -69,22 +81,30 @@ defmodule WardrikHTTP.TokenTest do
     test "is made with a ceiling, or with none, and never without saying" do
       ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
 
-      assert {:error, message} = Token.create(store(), "unsaid", Prefix.parse!("acme/"))
+      assert {:error, message} = Token.create(store(), "unsaid", scope: Prefix.parse!("acme/"))
 
       assert message ==
                "A token that can define agents is made with a ceiling, or with none, ceiling: []"
 
       assert {:error, ^message} =
-               Token.create(store(), "definer", Prefix.parse!("acme/"), [:define])
+               Token.create(store(), "definer", scope: Prefix.parse!("acme/"), can: [:define])
 
       {:ok, secret, token} =
-        Token.create(store(), "careful", Prefix.parse!("acme/"), [:define], ceiling: ceiling)
+        Token.create(store(), "careful",
+          scope: Prefix.parse!("acme/"),
+          can: [:define],
+          ceiling: ceiling
+        )
 
       assert token.grant.ceiling == ceiling
       assert {:ok, %Token{grant: %Grant{ceiling: ^ceiling}}} = Token.verify(store(), secret)
 
       {:ok, _secret, token} =
-        Token.create(store(), "unlimited", Prefix.parse!("acme/"), [:define], ceiling: [])
+        Token.create(store(), "unlimited",
+          scope: Prefix.parse!("acme/"),
+          can: [:define],
+          ceiling: []
+        )
 
       assert token.grant.ceiling == []
     end
@@ -93,16 +113,24 @@ defmodule WardrikHTTP.TokenTest do
       ceiling = [Wardrik.Hook.new("ceiling/careful", Wardrik.Test.Tools.Rules, ask: :all)]
 
       assert {:ok, _secret, _token} =
-               Token.create(store(), "reader", Prefix.parse!("acme/"), [:read])
+               Token.create(store(), "reader", scope: Prefix.parse!("acme/"), can: [:read])
 
-      assert Token.create(store(), "reader", Prefix.parse!("acme/"), [:read], ceiling: ceiling) ==
+      assert Token.create(store(), "reader",
+               scope: Prefix.parse!("acme/"),
+               can: [:read],
+               ceiling: ceiling
+             ) ==
                {:error, "A ceiling holds the agents a grant defines, and this one cannot define"}
     end
   end
 
   test "a token stored before tokens had ceilings reads as one with none" do
     {:ok, secret, token} =
-      Token.create(store(), "older", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "older",
+        scope: Prefix.parse!("acme/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     older = %{token | grant: Map.delete(token.grant, :ceiling)}
     {_token, vsn} = WardrikStore.lookup(store(), :tokens, token.id)
@@ -114,7 +142,11 @@ defmodule WardrikHTTP.TokenTest do
 
   test "a revoked token stops working, and is listed no more" do
     {:ok, secret, token} =
-      Token.create(store(), "revoked", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "revoked",
+        scope: Prefix.parse!("acme/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     assert token in Token.list(store())
 

@@ -206,7 +206,11 @@ defmodule WardrikHTTP.RouterTest do
 
   setup do
     {:ok, secret, token} =
-      Token.create(store(), "router-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "router-test",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     listener = :"router-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0, host: @host})
@@ -319,7 +323,11 @@ defmodule WardrikHTTP.RouterTest do
       {longer, _agent} = Fleet.start_agent([], longer_id)
 
       {:ok, secret, _token} =
-        Token.create(store(), "one-agent", Prefix.of(key), Grant.actions(), ceiling: [])
+        Token.create(store(), "one-agent",
+          scope: Prefix.of(key),
+          can: Grant.actions(),
+          ceiling: []
+        )
 
       one = Req.merge(api, auth: {:bearer, secret})
 
@@ -360,7 +368,7 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = echo_agent()
 
       {:ok, secret, _token} =
-        Token.create(store(), "watcher", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "watcher", scope: Prefix.parse!("test/"), can: [:read])
 
       watcher = Req.merge(api, auth: {:bearer, secret})
 
@@ -397,7 +405,11 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = echo_agent()
 
       {:ok, secret, token} =
-        Token.create(store(), "revoked", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+        Token.create(store(), "revoked",
+          scope: Prefix.parse!("test/"),
+          can: Grant.actions(),
+          ceiling: []
+        )
 
       revoked = Req.merge(api, auth: {:bearer, secret})
       stream = open(revoked, key, [])
@@ -508,7 +520,11 @@ defmodule WardrikHTTP.RouterTest do
 
     test "a token scoped to a user reaches that user's agents alone", %{api: api} do
       {:ok, secret, _token} =
-        Token.create(store(), "jon-only", Prefix.parse!("test/@jon/"), [:read], ceiling: [])
+        Token.create(store(), "jon-only",
+          scope: Prefix.parse!("test/@jon/"),
+          can: [:read],
+          ceiling: []
+        )
 
       jon = Req.merge(api, auth: {:bearer, secret})
       name = "scoped-#{System.unique_integer([:positive])}"
@@ -577,7 +593,7 @@ defmodule WardrikHTTP.RouterTest do
       assert body == %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}
 
       {:ok, secret, _token} =
-        Token.create(store(), "reader", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
       assert {:ok, %{status: 403}} =
                Req.get(api,
@@ -825,7 +841,11 @@ defmodule WardrikHTTP.RouterTest do
     # A client of the same listener holding a token that defines under `ceiling`.
     defp ceiled(api, ceiling) do
       {:ok, secret, _token} =
-        Token.create(store(), "ceiled", Prefix.parse!("test/"), [:define], ceiling: ceiling)
+        Token.create(store(), "ceiled",
+          scope: Prefix.parse!("test/"),
+          can: [:define],
+          ceiling: ceiling
+        )
 
       Req.merge(api, auth: {:bearer, secret})
     end
@@ -1030,7 +1050,7 @@ defmodule WardrikHTTP.RouterTest do
       {key, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
-      :ok = Log.trim(store(), key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       for headers <- [[], [{"accept", "text/event-stream"}]] do
         assert {:ok, %{status: 410, body: %{"error" => %{"type" => "gap", "oldest" => 3}}}} =
@@ -1164,7 +1184,9 @@ defmodule WardrikHTTP.RouterTest do
   describe "exports" do
     # A client for the same listener, holding a token of its own.
     defp client(api, scope, can) do
-      {:ok, secret, _token} = Token.create(store(), "export-test", scope, can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "export-test", scope: scope, can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1234,7 +1256,9 @@ defmodule WardrikHTTP.RouterTest do
   describe "connections" do
     defp as(api, scope, principal) do
       {:ok, secret, _token} =
-        Token.create(store(), "connections", Prefix.parse!(scope), Grant.actions(),
+        Token.create(store(), "connections",
+          scope: Prefix.parse!(scope),
+          can: Grant.actions(),
           ceiling: [],
           for: principal
         )
@@ -1296,7 +1320,12 @@ defmodule WardrikHTTP.RouterTest do
       refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
 
       {:ok, secret, _token} =
-        Token.create(store(), "reader", Prefix.parse!("test/"), [:read], ceiling: [], for: @jon)
+        Token.create(store(), "reader",
+          scope: Prefix.parse!("test/"),
+          can: [:read],
+          ceiling: [],
+          for: @jon
+        )
 
       reader = Req.merge(api, auth: {:bearer, secret})
       assert {:ok, %{status: 403}} = Req.post(reader, url: "/v1/connections/linear")
@@ -1387,7 +1416,9 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     defp scoped(api, org, can \\ Grant.actions()) do
-      {:ok, secret, _token} = Token.create(store(), "fleet", under(org), can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "fleet", scope: under(org), can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1454,7 +1485,7 @@ defmodule WardrikHTTP.RouterTest do
   describe "an agent's life" do
     defp root(api) do
       {:ok, secret, _token} =
-        Token.create(store(), "root", Prefix.all(), Grant.actions(), ceiling: [])
+        Token.create(store(), "root", scope: Prefix.all(), can: Grant.actions(), ceiling: [])
 
       Req.merge(api, auth: {:bearer, secret})
     end
@@ -1500,7 +1531,9 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "the deployment" do
     defp over_every_agent(api, can \\ Grant.actions()) do
-      {:ok, secret, _token} = Token.create(store(), "deployment", Prefix.all(), can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "deployment", scope: Prefix.all(), can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1609,10 +1642,10 @@ defmodule WardrikHTTP.RouterTest do
       {key, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
-      :ok = Log.trim(store(), key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       {:ok, secret, _token} =
-        Token.create(store(), "reader", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
       answers = [
         Req.get(api, url: "/v1/agents", auth: nil),

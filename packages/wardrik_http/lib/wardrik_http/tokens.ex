@@ -17,7 +17,7 @@ defmodule WardrikHTTP.Tokens do
     {:ok, _secret, _token} =
       host
       |> Wardrik.Host.store()
-      |> Token.create(name, grant.scope, grant.can, ceiling: grant.ceiling, for: for)
+      |> Token.create(name, scope: grant.scope, can: grant.can, ceiling: grant.ceiling, for: for)
   end
 
   @impl true

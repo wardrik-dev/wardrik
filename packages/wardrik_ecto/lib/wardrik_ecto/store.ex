@@ -56,49 +56,62 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     @migrations [{1, WardrikEcto.Migration}]
     @migration_lock :erlang.phash2({__MODULE__, :migration})
 
-    @doc """
-    The repo the store's calls go through: the one `:repo` names, or
-    `WardrikEcto.Repo` for `:url`.
+    # A url holds the database's password, so a store is shown by its repo.
+    @derive {Inspect, only: [:repo]}
+    @enforce_keys [:repo, :source, :discovery_interval_ms]
+    defstruct [:repo, :source, :discovery_interval_ms]
+
+    @typedoc """
+    A store in Postgres: the repo its calls go through, and where that repo
+    comes from: the host's, or `WardrikEcto.Repo` over a url, which the store
+    starts and migrates.
     """
+    @type t() :: %__MODULE__{
+            repo: module(),
+            source: {:repo, module()} | {:url, String.t()},
+            discovery_interval_ms: pos_integer()
+          }
+
     @impl WardrikStore
-    def config(opts) do
-      %{
-        repo: Keyword.get(opts, :repo, Repo),
-        opts: opts,
+    def build(opts) do
+      case source(opts) do
+        {:ok, {:repo, repo} = source} -> {:ok, store(repo, source, opts)}
+        {:ok, {:url, _url} = source} -> {:ok, store(Repo, source, opts)}
+        {:error, message} -> {:error, message}
+      end
+    end
+
+    defp source(opts) do
+      case {Keyword.fetch(opts, :repo), Keyword.fetch(opts, :url)} do
+        {{:ok, repo}, :error} when is_atom(repo) -> {:ok, {:repo, repo}}
+        {:error, {:ok, url}} when is_binary(url) -> {:ok, {:url, url}}
+        {{:ok, _repo}, {:ok, _url}} -> {:error, "the store names both a repo and a url"}
+        _neither -> {:error, "the store names no repo or url"}
+      end
+    end
+
+    defp store(repo, source, opts) do
+      %__MODULE__{
+        repo: repo,
+        source: source,
         discovery_interval_ms: Keyword.get(opts, :discovery_interval_ms, 5_000)
       }
     end
 
-    @impl WardrikStore
-    def child_spec(%{opts: opts}) do
-      spec = %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
-      if Keyword.has_key?(opts, :url), do: Map.put(spec, :type, :supervisor), else: spec
-    end
-
     @doc """
-    With `:repo`, checks the repo and the table as the module describes;
-    nothing runs, so it answers `:ignore`. With `:url`, starts
+    With a host's repo, checks the repo and the table as the module
+    describes; nothing runs, so it answers `:ignore`. With a url, starts
     `WardrikEcto.Repo`, migrates it, and does the same over it, under a
     supervisor it answers.
     """
-    @spec start_link(keyword()) :: Supervisor.on_start() | :ignore
-    def start_link(opts) do
-      case {Keyword.fetch(opts, :repo), Keyword.fetch(opts, :url)} do
-        {{:ok, repo}, :error} when is_atom(repo) ->
-          ready(repo)
+    @spec start_link(t()) :: Supervisor.on_start() | :ignore
+    def start_link(%__MODULE__{source: {:repo, repo}}), do: ready(repo)
 
-        {:error, {:ok, url}} when is_binary(url) ->
-          Supervisor.start_link(
-            [{Repo, url: url}, %{id: :migrated, start: {__MODULE__, :migrated, [Repo]}}],
-            strategy: :rest_for_one
-          )
-
-        {{:ok, _repo}, {:ok, _url}} ->
-          {:error, {:conflicting_options, [:repo, :url]}}
-
-        _missing ->
-          {:error, {:missing_options, [:repo]}}
-      end
+    def start_link(%__MODULE__{source: {:url, url}}) do
+      Supervisor.start_link(
+        [{Repo, url: url}, %{id: :migrated, start: {__MODULE__, :migrated, [Repo]}}],
+        strategy: :rest_for_one
+      )
     end
 
     @doc false
@@ -144,20 +157,10 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       error in [DBConnection.ConnectionError, Postgrex.Error, RuntimeError] -> {:error, error}
     end
 
-    @doc """
-    With `:url`, connects to the database once, and answers whether it holds the
-    table or has it made as the store starts. With `:repo`, asks the repo, which
-    must be running, for the table.
-    """
-    @impl WardrikStore
-    def check(opts) do
-      case {Keyword.fetch(opts, :repo), Keyword.fetch(opts, :url)} do
-        {{:ok, repo}, :error} -> check_repo(repo)
-        {:error, {:ok, url}} -> check_url(url)
-        {{:ok, _repo}, {:ok, _url}} -> {:error, "the store names both a repo and a url"}
-        {:error, :error} -> {:error, "the store names no repo or url"}
-      end
-    end
+    @doc false
+    @spec check(t()) :: {:ok, String.t()} | {:error, String.t()}
+    def check(%__MODULE__{source: {:repo, repo}}), do: check_repo(repo)
+    def check(%__MODULE__{source: {:url, url}}), do: check_url(url)
 
     defp check_repo(repo) do
       where = "the table #{@table} through #{inspect(repo)}"
@@ -191,24 +194,41 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     defp describe(reason) when is_binary(reason), do: reason
     defp describe(reason), do: inspect(reason)
 
-    @impl WardrikStore
-    def quorum(_size), do: 1
+    defimpl WardrikStore.Adapter do
+      alias WardrikEcto.Store
 
-    @impl WardrikStore
-    def durable_backend(%WardrikStore{config: config} = store),
-      do:
-        {WardrikStore.Durable, store: store, discovery_interval_ms: config.discovery_interval_ms}
+      def child_spec(%{source: {:repo, _repo}} = store),
+        do: %{id: Store, start: {Store, :start_link, [store]}}
 
-    @impl WardrikStore
-    def put(config, ns, key, value, opts) do
+      def child_spec(%{source: {:url, _url}} = store),
+        do: %{id: Store, start: {Store, :start_link, [store]}, type: :supervisor}
+
+      def check(store), do: Store.check(store)
+      def quorum(_store, _size), do: 1
+
+      def durable_backend(store),
+        do:
+          {WardrikStore.Durable, store: store, discovery_interval_ms: store.discovery_interval_ms}
+
+      def put(store, ns, key, value, opts), do: Store.put(store, ns, key, value, opts)
+      def get(store, ns, key, opts), do: Store.get(store, ns, key, opts)
+      def lookup(store, ns, key), do: Store.lookup(store, ns, key)
+      def delete(store, ns, key, opts), do: Store.delete(store, ns, key, opts)
+      def keys(store, ns, prefix), do: Store.keys(store, ns, prefix)
+    end
+
+    @doc false
+    @spec put(t(), WardrikStore.ns(), WardrikStore.key(), term(), WardrikStore.put_opts()) ::
+            {:ok, WardrikStore.vsn()} | {:error, :conflict | term()}
+    def put(%__MODULE__{} = store, ns, key, value, opts) do
       vsn = vsn()
       condition = Keyword.fetch(opts, :if_vsn)
       args = [to_string(ns), key, :erlang.term_to_binary(value), vsn]
 
-      case query(config.repo, write(condition), args ++ condition_args(condition)) do
+      case query(store.repo, write(condition), args ++ condition_args(condition)) do
         {:ok, %{num_rows: 1}} -> {:ok, vsn}
         {:ok, %{num_rows: 0}} -> {:error, :conflict}
-        {:error, reason} -> confirmed(config, ns, key, vsn, condition, reason)
+        {:error, reason} -> confirmed(store, ns, key, vsn, condition, reason)
       end
     end
 
@@ -233,8 +253,8 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     defp condition_args(_condition), do: []
 
     # The write may or may not have landed. What the row holds says which.
-    defp confirmed(config, ns, key, vsn, condition, reason) do
-      case lookup(config, ns, key) do
+    defp confirmed(store, ns, key, vsn, condition, reason) do
+      case lookup(store, ns, key) do
         {_value, ^vsn} -> {:ok, vsn}
         nil when condition in [:error, {:ok, nil}] -> {:error, reason}
         {_value, current} when condition in [:error, {:ok, current}] -> {:error, reason}
@@ -242,18 +262,21 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl WardrikStore
-    def get(config, ns, key, _opts) do
-      case lookup(config, ns, key) do
+    @doc false
+    @spec get(t(), WardrikStore.ns(), WardrikStore.key(), WardrikStore.get_opts()) :: term() | nil
+    def get(%__MODULE__{} = store, ns, key, _opts) do
+      case lookup(store, ns, key) do
         {value, _vsn} -> value
         nil -> nil
       end
     end
 
-    @impl WardrikStore
-    def lookup(config, ns, key) do
+    @doc false
+    @spec lookup(t(), WardrikStore.ns(), WardrikStore.key()) ::
+            {term(), WardrikStore.vsn()} | nil
+    def lookup(%__MODULE__{} = store, ns, key) do
       case SQL.query!(
-             config.repo,
+             store.repo,
              "SELECT value, vsn FROM #{@table} WHERE ns = $1 AND key = $2",
              [
                to_string(ns),
@@ -265,15 +288,17 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
       end
     end
 
-    @impl WardrikStore
-    def delete(config, ns, key, opts) do
+    @doc false
+    @spec delete(t(), WardrikStore.ns(), WardrikStore.key(), WardrikStore.delete_opts()) ::
+            :ok | {:error, :conflict | term()}
+    def delete(%__MODULE__{} = store, ns, key, opts) do
       args = [to_string(ns), key]
 
       result =
         case Keyword.fetch(opts, :if_vsn) do
           {:ok, vsn} when is_integer(vsn) ->
             query(
-              config.repo,
+              store.repo,
               "DELETE FROM #{@table} WHERE ns = $1 AND key = $2 AND vsn = $3",
               args ++ [vsn]
             )
@@ -282,7 +307,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
             {:ok, %{num_rows: 0}}
 
           :error ->
-            query(config.repo, "DELETE FROM #{@table} WHERE ns = $1 AND key = $2", args)
+            query(store.repo, "DELETE FROM #{@table} WHERE ns = $1 AND key = $2", args)
         end
 
       case result do
@@ -290,18 +315,19 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
           :ok
 
         {:ok, %{num_rows: 0}} ->
-          if lookup(config, ns, key) == nil, do: :ok, else: {:error, :conflict}
+          if lookup(store, ns, key) == nil, do: :ok, else: {:error, :conflict}
 
         {:error, reason} ->
           {:error, reason}
       end
     end
 
-    @impl WardrikStore
-    def keys(config, ns, prefix) do
+    @doc false
+    @spec keys(t(), WardrikStore.ns(), String.t()) :: [WardrikStore.key()]
+    def keys(%__MODULE__{} = store, ns, prefix) do
       %{rows: rows} =
         SQL.query!(
-          config.repo,
+          store.repo,
           "SELECT key FROM #{@table} WHERE ns = $1 AND key LIKE $2 ESCAPE '\\' ORDER BY key",
           [to_string(ns), like(prefix) <> "%"]
         )

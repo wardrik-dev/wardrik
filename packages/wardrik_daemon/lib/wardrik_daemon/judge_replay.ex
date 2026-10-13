@@ -85,11 +85,16 @@ defmodule WardrikDaemon.JudgeReplay do
   end
 
   @doc """
-  The newest `last` calls under `prefixes` a question of `judge` names,
-  each tried on it, newest first.
+  The newest `opts[:last]` calls in `store` under the prefixes `opts[:under]`
+  that a question of `judge` names, each tried on it, newest first.
   """
-  @spec tried(WardrikStore.t(), Judge.t(), [Prefix.t()], pos_integer()) :: [tried()]
-  def tried(store, %Judge{} = judge, prefixes, last) do
+  @spec tried(WardrikStore.t(), Judge.t(), under: [Prefix.t()], last: pos_integer()) ::
+          [tried()]
+  def tried(store, %Judge{} = judge, opts) do
+    opts = Keyword.validate!(opts, [:under, :last])
+    prefixes = Keyword.fetch!(opts, :under)
+    last = Keyword.fetch!(opts, :last)
+
     for(
       log <- Log.logs(store),
       log != :audit,

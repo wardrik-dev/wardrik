@@ -5,7 +5,7 @@ defmodule WardrikStore.Durable do
 
       {WardrikStore.Durable, store: store, discovery_interval_ms: 5_000}
 
-  An adapter names it from its `c:WardrikStore.durable_backend/1`. Every
+  An adapter names it from its `WardrikStore.Adapter.durable_backend/1`. Every
   object is a key in the `:durable` namespace, under the prefix its
   supervisor names, such as `agents/`, and its etag is the version the adapter
   wrote it with. A claim is a write where nothing is written, and an

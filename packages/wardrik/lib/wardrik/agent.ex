@@ -820,7 +820,7 @@ defmodule Wardrik.Agent do
 
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
       Wardrik.Ledger.forget(scope.ledger, scope.host, agent_id, scope.source.trace.trace_id)
-      Log.trim(Host.store(scope.host), agent_id, through, cutoff)
+      Log.trim(Host.store(scope.host), agent_id, through: through, before: cutoff)
     end)
 
     state

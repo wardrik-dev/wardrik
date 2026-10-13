@@ -156,12 +156,17 @@ defmodule Wardrik.Event.Log do
     do: Group.dispatch(__MODULE__, to_string(log), entry)
 
   @doc """
-  Drops the events of `log` written before `cutoff`, oldest first, and none
-  after the sequence `through`.
+  Drops the events of `log` written before `opts[:before]`, oldest first,
+  and none after the sequence `opts[:through]`.
+
+      Log.trim(store, log, through: head, before: cutoff)
   """
-  @spec trim(WardrikStore.t(), log(), non_neg_integer(), DateTime.t()) ::
+  @spec trim(WardrikStore.t(), log(), through: non_neg_integer(), before: DateTime.t()) ::
           :ok | {:error, term()}
-  def trim(store, log, through, %DateTime{} = cutoff) when log?(log) do
+  def trim(store, log, opts) when log?(log) do
+    opts = Keyword.validate!(opts, [:through, :before])
+    %DateTime{} = cutoff = Keyword.fetch!(opts, :before)
+    through = Keyword.fetch!(opts, :through)
     {dropped, vsn} = lookup_dropped(store, log)
 
     case expired_through(store, log, dropped, through, cutoff) do

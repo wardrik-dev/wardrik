@@ -13,7 +13,7 @@ defmodule WardrikStore.EKVTest do
   end
 
   test "names its EKV instance :wardrik_store unless named" do
-    assert WardrikStore.new(data_dir: "/nowhere").config.name == :wardrik_store
+    assert WardrikStore.new(data_dir: "/nowhere").name == :wardrik_store
   end
 
   describe "data_dir/1" do
@@ -74,13 +74,14 @@ defmodule WardrikStore.EKVTest do
     @describetag :tmp_dir
 
     test "finds a directory this node can write to", %{tmp_dir: dir} do
-      assert EKV.check(data_dir: dir) == {:ok, "on this node's disk, at #{dir}"}
+      assert WardrikStore.check(adapter: EKV, data_dir: dir) ==
+               {:ok, "on this node's disk, at #{dir}"}
     end
 
     test "finds one not made yet, which the store makes", %{tmp_dir: dir} do
       dir = Path.join(dir, "store")
 
-      assert EKV.check(data_dir: dir) ==
+      assert WardrikStore.check(adapter: EKV, data_dir: dir) ==
                {:ok, "on this node's disk, at #{dir}, made as the store starts"}
     end
 
@@ -93,20 +94,29 @@ defmodule WardrikStore.EKVTest do
       file = Path.join(dir, "file")
       File.write!(file, "")
 
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: locked)
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: locked)
+
       assert found =~ "which this node cannot write to"
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file)
+
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: file)
+
       assert found =~ "which is not a directory"
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file <> "/x")
+
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: file <> "/x")
+
       assert found =~ "not a directory"
     end
   end
 
-  test "counts a quorum of more than half the cluster" do
-    assert Enum.map(1..5, &EKV.quorum/1) == [1, 2, 2, 3, 3]
+  test "counts a quorum of more than half the cluster", %{store: store} do
+    assert Enum.map(1..5, &WardrikStore.quorum(store, &1)) == [1, 2, 2, 3, 3]
   end
 
   test "provides the fleet's DurableServer backend", %{store: store} do
-    assert EKV.durable_backend(store) == {DurableServer.Backends.EKVStore, name: :ekv_conformance}
+    assert WardrikStore.durable_backend(store) ==
+             {DurableServer.Backends.EKVStore, name: :ekv_conformance}
   end
 end
