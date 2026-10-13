@@ -20,9 +20,15 @@ cat ~/.ssh/id_ed25519.pub >> ~/.config/wardrik/ssh/authorized_keys
 wardrik attach
 ```
 
-`wardrik attach` is `ssh -p 2222` to localhost. A client holding a listed key connects under any user
-name, and each connection is a session of its own. The file is read at every login, so a key added
-or removed counts from the next connection.
+`wardrik attach` is `ssh -p 2222` to localhost. A client holding a listed key connects under the
+name its comment gives before any `@`, as `jon@laptop` gives `jon`, which is the account a key is
+usually made on, or under the names its `principals` option lists, and no other. Each connection is
+a session of its own, for that name. The file is read at every login, so a key added or removed
+counts from the next connection.
+
+```
+principals="jon,ana" ssh-ed25519 AAAAC3Nza... shared@desk
+```
 
 A key listed there reaches every agent and may do anything the client does, including starting and
 removing agents. It is not limited the way a [token](/operate/security/#tokens) is.

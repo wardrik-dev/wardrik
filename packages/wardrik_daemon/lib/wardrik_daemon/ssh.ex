@@ -4,10 +4,15 @@ defmodule WardrikDaemon.SSH do
   the build has a TUI to serve.
 
   With an `ssh/authorized_keys` file in the config directory, in OpenSSH's
-  format, the daemon listens on port 2222 on loopback, and a client holding any
-  key in the file may connect, under any user name:
+  format, the daemon listens on port 2222 on loopback, and a client holding a
+  key in the file may connect under the names the file lists it for: those
+  its `principals` option gives, or else the name its comment gives before
+  any `@`, as `jon@laptop` gives `jon`:
 
       ssh -p 2222 jon@localhost
+
+      principals="jon,ana" ssh-ed25519 AAAAC3Nza... ana@desk
+      ssh-ed25519 AAAAC3Nza... jon@laptop
 
   The file is read at every login, so a key added or removed counts from the
   next connection on, with no restart. The host key is generated the first time
@@ -78,7 +83,7 @@ defmodule WardrikDaemon.SSH do
            name: __MODULE__,
            port: Keyword.get(settings, :port, 2222),
            ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
-           auth: {:public_key, fn _user, key -> authorized?(keys, key) end},
+           auth: {:public_key, fn user, key -> authorized?(keys, user, key) end},
            system_dir: host_key!(Path.join(data_dir, "ssh")),
            entrypoint: entrypoint(entrypoint, host)}
         ]
@@ -140,15 +145,38 @@ defmodule WardrikDaemon.SSH do
     end
   end
 
-  @doc "Whether `key` is among those the OpenSSH `authorized_keys` file at `path` lists."
-  @spec authorized?(Path.t(), term()) :: boolean()
-  def authorized?(path, key) do
+  @doc """
+  Whether `key` may log in as `user` by the OpenSSH `authorized_keys` file
+  at `path`: where the file lists it for that name, by its `principals`
+  option, or else by its comment.
+  """
+  @spec authorized?(Path.t(), String.t() | charlist(), term()) :: boolean()
+  def authorized?(path, user, key) do
     case File.read(path) do
       {:ok, contents} ->
-        Enum.any?(:ssh_file.decode(contents, :auth_keys), fn {listed, _attrs} -> listed == key end)
+        Enum.any?(:ssh_file.decode(contents, :auth_keys), fn {listed, attrs} ->
+          listed == key and to_string(user) in names(attrs)
+        end)
 
       {:error, _reason} ->
         false
+    end
+  end
+
+  # The decoder splits a key's options at every comma, quoted or not.
+  defp names(attrs) do
+    options = attrs |> Keyword.get(:options, []) |> Enum.map_join(",", &to_string/1)
+
+    case Regex.run(~r/(?:^|,)principals="([^"]*)"/, options) do
+      [_option, names] -> String.split(names, ",", trim: true)
+      nil -> commented(attrs |> Keyword.get(:comment, "") |> to_string())
+    end
+  end
+
+  defp commented(comment) do
+    case String.split(comment, "@") do
+      ["" | _host] -> []
+      [name | _host] -> [name]
     end
   end
 
