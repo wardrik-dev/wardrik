@@ -1,6 +1,6 @@
 defmodule WardrikDaemon.CLI.Init do
   @moduledoc """
-  `wardrik init`: from a fresh install to an agent that has answered once.
+  `wardrik init`: from a fresh install to a front door that has answered once.
 
   No daemon need run yet, so `bin/wardrik` runs it on the release's own VM,
   as it runs help, and it asks at the terminal it was typed in. It says what
@@ -13,8 +13,9 @@ defmodule WardrikDaemon.CLI.Init do
     3. the provider's key, without showing it, unless this environment sets
        it and that one is kept
     4. the first agent's name, `assistant` by default, and its file in
-       `agents/`, with that model and no tools, and `config.yaml`, whose
-       `defaults` give the agents `wardrik agent spawn` starts that model
+       `agents/`, the front door, with that model, and `config.yaml`, whose
+       `defaults` give that model to the agents `wardrik agent spawn` starts
+       and to those the front door defines
     5. the public keys in `~/.ssh`, into `ssh/authorized_keys`, for
        `wardrik attach`
     6. the daemon: under the user's systemd where they have one and want
@@ -33,6 +34,24 @@ defmodule WardrikDaemon.CLI.Init do
   and `--key-from-env VAR`, and `--yes` for each yes or no. A question with
   no default and no flag fails, naming the flag. `--no-service` starts the
   daemon without systemd, and `--no-ask` asks the agent nothing.
+
+  ## The front door
+
+  The first agent is the one place people ask for what they want: it turns
+  an outcome into work that runs, defining worker agents of its org with
+  the triggers that start them, through `agents/*`, and changing or
+  retiring them as it is told, each change waiting on a person. Its file
+  gives it `self/*`, `agents/*`, `files` with `MEMORY.md` read into every
+  turn, and `web_search`, which answers that it lacks a key where none is
+  set, and a budget of 2,000,000 tokens a day, which holds every worker it
+  defines too. The budget is in tokens because a model a subscription pays
+  for has no price in dollars.
+
+  Its body is its instructions, then a playbook of the shapes of work that
+  run well: watching feeds, sweeps that follow a checklist the worker
+  keeps, a morning brief, first response to incidents, and acting on what
+  is noticed, with the triggers, instructions and budgets each suits. An
+  operator edits either in the file, and `wardrik reload` reads it again.
   """
 
   alias WardrikDaemon.AgentFile
@@ -41,7 +60,8 @@ defmodule WardrikDaemon.CLI.Init do
   alias WardrikDaemon.Config
   alias WardrikDaemon.VaultKey
 
-  @question "In one short sentence, say hello and what you can help with."
+  @question "In two short sentences, and without calling a tool, say what you can do for me."
+  @tokens 2_000_000
   @secret "WARDRIK_INIT_SECRET"
 
   defstruct [
@@ -71,7 +91,7 @@ defmodule WardrikDaemon.CLI.Init do
       options:
         "[--provider P] [--model M] [--agent NAME] [--key-from-env VAR] [--yes] " <>
           "[--no-service] [--no-ask]",
-      summary: "set up a first agent, its model and key, and the daemon to run it",
+      summary: "set up the front door agent, its model and key, and the daemon to run it",
       details: [
         "It asks what it needs, says what it does, and writes no file that is there already.",
         "Without a terminal, --provider, --model, --agent and --key-from-env VAR answer, and",
@@ -398,17 +418,24 @@ defmodule WardrikDaemon.CLI.Init do
 
       File.write!(
         file,
-        AgentFile.text([
-          {"description", "A first agent, written by wardrik init."},
-          {"model", "#{init.provider}:#{init.model}"},
-          {"idle_timeout", "infinity"}
-        ])
+        AgentFile.text(
+          [
+            {"description", "The front door: turns what people ask for into work that runs."},
+            {"model", "#{init.provider}:#{init.model}"},
+            {"tools", ["self/*", "agents/*", "files", "web_search"]},
+            {"context", ["MEMORY.md"]},
+            {"policy", %{"budget" => %{"tokens" => @tokens, "per" => "day"}}},
+            {"idle_timeout", "infinity"}
+          ],
+          File.read!(Application.app_dir(:wardrik_daemon, "priv/front_door.md"))
+        )
       )
 
-      say(
-        init,
-        "Wrote agents/#{name}.md, which runs #{init.provider}:#{init.model} with no tools."
-      )
+      say(init, [
+        "Wrote agents/#{name}.md, the front door, which runs #{init.provider}:#{init.model}.",
+        "Tell it what you want done: it proposes the work, waits for your approval, and runs it.",
+        "Its instructions and playbook are the body of that file, to edit as you like."
+      ])
 
       {:ok, %{init | wrote?: true}}
     end
@@ -592,8 +619,10 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp next(init) do
     rows = [
-      {"wardrik ls", "the agents running"},
-      {"wardrik ask #{init.agent} MESSAGE", "ask it something, and follow the answer"},
+      {"wardrik ask #{init.agent} MESSAGE", "tell it what you want done, and follow its answer"},
+      {"wardrik parked", "what it proposes, waiting on your approval"},
+      {"wardrik approve", "approve it, or wardrik deny to refuse it"},
+      {"wardrik ls", "the agents running, the workers it defines among them"},
       {"wardrik attach", "the TUI, over SSH"},
       {"wardrik completion SHELL", "completion for bash, zsh or fish"}
     ]
@@ -602,7 +631,9 @@ defmodule WardrikDaemon.CLI.Init do
 
     say(init, [
       "",
-      "Next:"
+      "Next, try: wardrik ask #{init.agent} \"Tell me when https://elixir-lang.org/atom.xml has a new post\"",
+      "",
+      "Then:"
       | for({command, what} <- rows, do: "  #{String.pad_trailing(command, width)}  #{what}")
     ])
   end

@@ -95,24 +95,39 @@ defmodule WardrikDefinition do
   end
 
   @doc """
-  An agent file with `fields` as its frontmatter, in the order given, and a
-  short prompt after it. A value is written as JSON, which YAML reads, where
-  it is not a word YAML reads as itself.
+  An agent file with `fields` as its frontmatter, in the order given, and
+  `prompt` after it, a short one unless given. A list or a map is written in
+  YAML's flow style, as `[a, b]` and `{key: value}`, and a value is written
+  as JSON, which YAML reads, where it is not a word YAML reads as itself.
   """
-  @spec text([{String.t(), term()}]) :: String.t()
-  def text(fields) do
-    front = for {key, value} <- fields, do: "#{key}: #{yaml(value)}\n"
-    IO.iodata_to_binary(["---\n", front, "---\n", @prompt, "\n"])
+  @spec text([{String.t(), term()}], String.t()) :: String.t()
+  def text(fields, prompt \\ @prompt) do
+    front = for {key, value} <- fields, do: [key, ": ", yaml(value), "\n"]
+    IO.iodata_to_binary(["---\n", front, "---\n", String.trim_trailing(prompt), "\n"])
   end
 
-  defp yaml(value) when is_binary(value) do
-    if Regex.match?(~r/\A[A-Za-z][\w.:\/@+-]*\z/, value) and
+  defp yaml(value) when is_binary(value), do: word(value, ~r/\A[A-Za-z][\w.:\/@+*-]*\z/)
+  defp yaml(value), do: flow(value)
+
+  # Within [] or {} a colon can end a key, so a word there holds none.
+  defp flow(list) when is_list(list), do: ["[", Enum.map_intersperse(list, ", ", &flow/1), "]"]
+
+  defp flow(map) when is_map(map),
+    do: [
+      "{",
+      Enum.map_intersperse(map, ", ", fn {key, value} -> [flow(key), ": ", flow(value)] end),
+      "}"
+    ]
+
+  defp flow(value) when is_binary(value), do: word(value, ~r/\A[A-Za-z][\w.\/@+*-]*\z/)
+  defp flow(value), do: JSON.encode!(value)
+
+  defp word(value, word) do
+    if Regex.match?(word, value) and
          String.downcase(value) not in ~w(true false null yes no on off),
        do: value,
        else: JSON.encode!(value)
   end
-
-  defp yaml(value), do: JSON.encode!(value)
 
   @doc """
   The agent an agent file's `text` declares, and the definition it writes:
