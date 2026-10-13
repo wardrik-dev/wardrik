@@ -50,8 +50,8 @@ It answers `201` and the agent's snapshot, and starts the agent. Putting it agai
 gives the running agent what the definition says now, keeping its conversation.
 
 A definition takes `description`, `instructions` for the system prompt, `model`, `tools`,
-`workspace`, `context`, `policy`, `timeout`, `max_iterations`, `retries`, `compaction` and
-`triggers`, as an [agent file](/reference/agent-files/) does. It names tools and policies the
+`workspace`, `context`, `policy`, `timeout`, `max_iterations`, `retries`, `compaction`, `triggers`
+and [`notify`](/guides/notices/), as an [agent file](/reference/agent-files/) does. It names tools and policies the
 daemon ships or configures, never a module, shares only the trees its token's scope covers, and
 cannot trust outside content. A key an agent file declares belongs to the file, and is refused with
 `409`.

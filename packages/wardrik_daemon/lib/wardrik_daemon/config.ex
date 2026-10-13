@@ -195,7 +195,7 @@ defmodule WardrikDaemon.Config do
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.
 
-  `notify` names targets an agent file's `notify` routes to, each one a
+  `notify` names targets an agent's `notify` routes to, each one a
   `channel` of `channels` and a `room` in it, with who may answer it as
   `approvers`, as `WardrikChannel.Notices` takes them; or a `webhook`, with
   `url` and optionally `secret`, as `WardrikNotify.Webhook` takes them.

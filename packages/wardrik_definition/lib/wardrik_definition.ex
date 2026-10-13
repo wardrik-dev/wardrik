@@ -7,12 +7,14 @@ defmodule WardrikDefinition do
   or from a host's own store, and says alike why it does not read.
 
       fields = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
-      {:ok, spec, nil} = WardrikDefinition.spec(fields, ~A"acme/triage", context, {:api, nil})
+      id = ~A"acme/triage"
+      {:ok, spec} = WardrikDefinition.spec(fields, id, id, context, {:api, nil})
 
   `wardrik_protocol`'s `agent_definition.json` is the schema, and the keys a
   definition takes are read from it as this compiles: `keys/0`. An agent
   file takes them too, but `instructions`, which is its body, and `name`,
-  `org`, `user` and `notify` besides: `file_keys/0`.
+  `org` and `user` besides: `file_keys/0`. Where its agent's notices go is
+  read beside its spec: `route/3`.
 
   What a definition may name, the host says in a `WardrikDefinition.Context`:
   the tools it ships, its MCP servers, channels, notify targets and
@@ -44,7 +46,7 @@ defmodule WardrikDefinition do
     })
 
   @keys schema |> List.keyfind("properties", 0) |> elem(1) |> Enum.map(&elem(&1, 0))
-  @file_keys ~w(name org user) ++ (@keys -- ["instructions"]) ++ ["notify"]
+  @file_keys ~w(name org user) ++ (@keys -- ["instructions"])
   @default_keys ~w(model tools policy timeout idle_timeout max_iterations retries compaction)
   @trigger_keys ~w(name prompt_file)
   @retries "is a list of whole numbers of seconds, one wait for each try"
@@ -150,16 +152,16 @@ defmodule WardrikDefinition do
 
   @doc """
   The spec the definition `fields` of the agent `owner` writes for the agent
-  `id`, written by `source`, and where its notices go: a
-  `WardrikNotify.Route`, or `nil` where it says nothing of them.
+  `id`, written by `source`.
 
   `id` is `owner`, or one of its conversations: an ID with an external ID,
   whose spec has the tools of the definition's agent, its workspace tree
-  among them. Its triggers are checked with the rest of it, and kept beside
-  the spec rather than in it; see `triggers/1`.
+  among them. Its triggers and where its notices go are checked with the
+  rest of it, and kept beside the spec rather than in it; see `triggers/1`
+  and `route/3`.
   """
   @spec spec(fields(), AgentID.t(), AgentID.t(), Context.t(), source()) ::
-          {:ok, Spec.t(), WardrikNotify.Route.t() | nil} | {:error, String.t()}
+          {:ok, Spec.t()} | {:error, String.t()}
   def spec(fields, %AgentID{} = owner, %AgentID{} = id, %Context{} = context, source) do
     if owner(id) != owner, do: invalid!("#{id} is neither #{owner} nor a conversation of it")
 
@@ -167,10 +169,11 @@ defmodule WardrikDefinition do
     system = optional_string!(fields["instructions"], "instructions") || ""
     _triggers = triggers(fields["triggers"], files?(fields))
     _channels = channels!(fields["channels"], owner.org, context)
+    _route = route!(fields["notify"], owner.org, context)
     spec = build(fields, system, context, file?, owner)
     within!(spec, source)
 
-    {:ok, %{spec | id: id}, route(fields["notify"], owner.org, context)}
+    {:ok, %{spec | id: id}}
   rescue
     error in [ArgumentError] -> {:error, Exception.message(error)}
   catch
@@ -179,8 +182,8 @@ defmodule WardrikDefinition do
 
   @doc """
   The definition as the HTTP API writes one, as `agent_definition.json`
-  describes it: what an agent file says besides its `name`, `org`, `user`
-  and `notify`, with one trigger as a list of one.
+  describes it: what an agent file says besides its `name`, `org` and
+  `user`, with one trigger as a list of one.
   """
   @spec fields(fields()) :: fields()
   def fields(fields) do
@@ -188,6 +191,21 @@ defmodule WardrikDefinition do
       %{"triggers" => %{} = one} = taken -> %{taken | "triggers" => [one]}
       taken -> taken
     end
+  end
+
+  @doc """
+  Where the notices of the agent `owner`, whose definition is `fields`, go:
+  a `WardrikNotify.Route` to the targets the host names, or `:none` where
+  it says nothing of them. A target tells the agents of the orgs the host
+  keeps it for, so a definition naming one kept for another org does not
+  read. It is checked with the rest of the definition as `spec/5` reads it.
+  """
+  @spec route(fields(), AgentID.t(), Context.t()) ::
+          {:ok, WardrikNotify.Route.t()} | :none | {:error, String.t()}
+  def route(fields, %AgentID{org: org}, %Context{} = context) do
+    route!(fields["notify"], org, context)
+  catch
+    {:invalid, message} -> {:error, message}
   end
 
   @doc "The channels a definition offers its agent in, by name."
@@ -597,15 +615,15 @@ defmodule WardrikDefinition do
 
   # -- notify ----------------------------------------------------------------
 
-  defp route(nil, _org, _context), do: nil
+  defp route!(nil, _org, _context), do: :none
 
-  defp route(target, org, context) when is_binary(target),
-    do: route(%{"to" => [target]}, org, context)
+  defp route!(target, org, context) when is_binary(target),
+    do: route!(%{"to" => [target]}, org, context)
 
-  defp route(targets, org, context) when is_list(targets),
-    do: route(%{"to" => targets}, org, context)
+  defp route!(targets, org, context) when is_list(targets),
+    do: route!(%{"to" => targets}, org, context)
 
-  defp route(%{} = fields, org, context) do
+  defp route!(%{} = fields, org, context) do
     case Map.keys(fields) -- ~w(to on) do
       [] -> :ok
       [key | _] -> invalid!("notify #{key} is not a setting; expected to or on")
@@ -614,13 +632,14 @@ defmodule WardrikDefinition do
     targets = fields |> Map.get("to") |> List.wrap()
     if targets == [], do: invalid!("notify names no target")
 
-    %WardrikNotify.Route{
-      targets: Enum.map(targets, &target!(&1, org, context)),
-      on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
-    }
+    {:ok,
+     %WardrikNotify.Route{
+       targets: Enum.map(targets, &target!(&1, org, context)),
+       on: fields |> Map.get("on", ~w(parked failed)) |> List.wrap() |> Enum.map(&kind!/1)
+     }}
   end
 
-  defp route(_other, _org, _context),
+  defp route!(_other, _org, _context),
     do: invalid!("notify is a target, a list of them, or to and on")
 
   defp target!(name, org, context) when is_binary(name) do
