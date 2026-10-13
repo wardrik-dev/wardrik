@@ -100,8 +100,9 @@ Some things are the deployment's, whatever the org:
 ## The terminal client
 
 The terminal client is served once `~/.config/wardrik/ssh/authorized_keys` lists a key, and a key it
-lists reaches every agent and everything the client does, including removing agents. Options on a
-key, such as `from=` and `command=`, are not applied. There are no passwords, and no commands,
+lists reaches every agent and everything the client does, including removing agents. A key logs in
+only under the names it is listed for, by its `principals` option, or else its comment's name before
+any `@`. Other options on a key, such as `from=` and `command=`, are not applied. There are no passwords, and no commands,
 subsystems or forwarding: only the client. See [The terminal client](/guides/tui/).
 
 ## Secrets

@@ -9,9 +9,9 @@ defmodule WardrikDaemon.SSHTest do
 
   @host Wardrik.Host.new()
 
-  defp public_key(dir, name) do
-    path = Path.join(dir, name)
-    {_out, 0} = System.cmd("ssh-keygen", ~w(-q -t ed25519 -N) ++ ["", "-f", path, "-C", name])
+  defp public_key(dir, comment) do
+    path = Path.join(dir, "key-#{System.unique_integer([:positive])}")
+    {_out, 0} = System.cmd("ssh-keygen", ~w(-q -t ed25519 -N) ++ ["", "-f", path, "-C", comment])
     contents = File.read!(path <> ".pub")
     [{key, _attrs}] = :ssh_file.decode(contents, :auth_keys)
     {contents, key}
@@ -98,15 +98,32 @@ defmodule WardrikDaemon.SSHTest do
 
   test "a key is let in while the file lists it, read at every login", %{tmp_dir: dir} do
     keys = Path.join(dir, "authorized_keys")
-    {listed, key} = public_key(dir, "listed")
+    {listed, key} = public_key(dir, "jon@laptop")
     {_other, stranger} = public_key(dir, "stranger")
 
     File.write!(keys, listed)
-    assert SSH.authorized?(keys, key)
-    refute SSH.authorized?(keys, stranger)
+    assert SSH.authorized?(keys, ~c"jon", key)
+    refute SSH.authorized?(keys, ~c"jon", stranger)
 
     File.write!(keys, "")
-    refute SSH.authorized?(keys, key)
-    refute SSH.authorized?(Path.join(dir, "missing"), key)
+    refute SSH.authorized?(keys, ~c"jon", key)
+    refute SSH.authorized?(Path.join(dir, "missing"), ~c"jon", key)
+  end
+
+  test "a key logs in only as the names it is listed for", %{tmp_dir: dir} do
+    keys = Path.join(dir, "authorized_keys")
+    {listed, key} = public_key(dir, "jon@laptop")
+    {named, ana} = public_key(dir, "ana@desk")
+    {bare, nameless} = public_key(dir, "")
+
+    File.write!(keys, listed <> ~s(no-pty,principals="ana,maria" ) <> named <> bare)
+
+    assert SSH.authorized?(keys, ~c"jon", key)
+    refute SSH.authorized?(keys, ~c"maria", key)
+    assert SSH.authorized?(keys, ~c"maria", ana)
+    assert SSH.authorized?(keys, "ana", ana)
+    refute SSH.authorized?(keys, ~c"ana@desk", ana)
+    refute SSH.authorized?(keys, ~c"", nameless)
+    refute SSH.authorized?(keys, ~c"jon", nameless)
   end
 end
