@@ -38,6 +38,28 @@ defmodule WardrikVaultTest do
     end
   end
 
+  # Each person reaches their own agents in acme; "org" reaches all of
+  # acme, and "root" every agent.
+  defmodule People do
+    @moduledoc false
+    @behaviour Wardrik.Grants
+
+    alias Wardrik.AgentID.Prefix
+
+    @impl true
+    def grants(principal) do
+      scope =
+        case Wardrik.Principal.id(principal) do
+          "root" -> Prefix.all()
+          "org" -> Prefix.new!(org: "acme")
+          user -> Prefix.new!(org: "acme", user: user)
+        end
+
+      {:ok, grant} = Wardrik.Grant.new(scope, [:read, :message])
+      [grant]
+    end
+  end
+
   defp grants(module),
     do: WardrikVault.start_link(Keyword.put(WardrikVault.Config.settings(), :grants, module))
 
@@ -223,6 +245,27 @@ defmodule WardrikVaultTest do
 
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "github")
       assert Credential.reveal(credential) == "acme-token"
+    end
+
+    test "a user's own reach only their turns, and those nobody asked for", %{user: user} do
+      :ok = WardrikVault.put("tracker", {"acme", user}, "theirs")
+      :ok = WardrikVault.put("tracker", "acme", "the org's")
+
+      resolved = fn sender, host ->
+        {:ok, credential} =
+          Credential.resolve(call(user: user, sender: sender, host: host), "tracker")
+
+        Credential.reveal(credential)
+      end
+
+      host = Wardrik.Host.new(grants: People)
+      assert resolved.(nil, host) == "theirs"
+      assert resolved.(Wardrik.Principal.new(:user, user), host) == "theirs"
+      assert resolved.(Wardrik.Principal.new(:shell, "root"), host) == "theirs"
+      assert resolved.(Wardrik.Principal.new(:channel, "org"), host) == "the org's"
+      assert resolved.(Wardrik.Principal.new(:user, "someone-else"), host) == "the org's"
+
+      assert resolved.(Wardrik.Principal.new(:user, user), Wardrik.Host.new()) == "the org's"
     end
 
     test "a name nobody holds is not found, without a grants module that grants it", %{

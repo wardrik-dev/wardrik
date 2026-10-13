@@ -26,6 +26,13 @@ defmodule WardrikVault do
   answers says whose it is as `:owner`. A name nobody holds answers
   `{:error, :not_found}`.
 
+  A user's own are reached only by their own turns: a turn nobody asked
+  for, as a trigger's, or one whose sender the `Wardrik.Grants` of the
+  scope's host answers with a grant on that user's agents alone, or on
+  every agent. A turn anyone else asked for, someone in the org's channel
+  say, reaches the org's and the deployment's, and is asked of the org
+  where neither holds the name.
+
   A name in `:environment` that the node's environment sets is the
   deployment's where no owner the call reaches holds it here, or the vault
   has no key: a tool's key a deployment sets as an environment variable
@@ -85,6 +92,7 @@ defmodule WardrikVault do
 
   require Logger
 
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Credential
   alias Wardrik.Scope
   alias WardrikVault.Config
@@ -157,8 +165,26 @@ defmodule WardrikVault do
 
   # Whose credentials a scope reaches, the most specific first.
   defp owners(%Scope{} = scope) do
-    %Wardrik.AgentID{org: org, user: user} = Scope.agent_id(scope)
-    Enum.reject([user && {org, user}, org], &is_nil/1) ++ [nil]
+    case Scope.agent_id(scope) do
+      %Wardrik.AgentID{user: nil, org: org} ->
+        [org, nil]
+
+      %Wardrik.AgentID{org: org, user: user} = id ->
+        if theirs?(scope, id), do: [{org, user}, org, nil], else: [org, nil]
+    end
+  end
+
+  # A turn nobody asked for is the agent's own work, and so its user's.
+  defp theirs?(%Scope{sender: nil}, _id), do: true
+
+  defp theirs?(%Scope{sender: sender, host: host}, %Wardrik.AgentID{org: org, user: user} = id) do
+    case Wardrik.Host.caller(host, principal: sender, subject: id) do
+      {:ok, %Wardrik.Caller{grant: %Wardrik.Grant{scope: scope}}} ->
+        scope == Prefix.all() or Prefix.covers?(Prefix.new!(org: org, user: user), scope)
+
+      {:error, _unreached} ->
+        false
+    end
   end
 
   # The first of `owners` holding `name`, passing over the grants of any but
