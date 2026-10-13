@@ -79,7 +79,9 @@ question is posted again, so the thread never goes quiet.
 
 A channel's `approvers` may answer what an agent asks in its threads, each as the channel names
 people, and are asked it directly, where the channel can reach a person, with the thread saying who
-it waits on; without them, anyone in the room may, in the thread:
+it waits on; without them, anyone in the room may, in the thread. Whoever asked for a turn may
+answer what it waits on either way. A channel's `admins`, named alike, may also answer, and change
+its orgs' agents where `defaults` names a policy, which holds what they define:
 
 ```yaml
 channels:
@@ -88,11 +90,16 @@ channels:
     token: ${SLACK_BOT_TOKEN}
     app_token: ${SLACK_APP_TOKEN}
     approvers: ["@maria", "finance-lead@example.com"]
+    admins: ["@jon"]
 ```
+
+Everyone in a channel may read and message the agents of the orgs it offers. See
+`WardrikDaemon.Grants` for what each person may do.
 
 ## Notices in a room
 
-A [notice target](/guides/notices/) can be a room of a channel, with who may answer what it asks:
+A [notice target](/guides/notices/) can be a room of a channel, with who may answer what it asks.
+Its approvers may answer in the channel as its own approvers do:
 
 ```yaml
 notify:

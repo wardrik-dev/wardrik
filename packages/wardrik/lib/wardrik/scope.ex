@@ -26,6 +26,7 @@ defmodule Wardrik.Scope do
   | --- | --- |
   | `:config` | which model, and what it can call |
   | `:source` | which agent the work is for, where its events go, and which span they belong to |
+  | `:sender` | who asked for the work: the `Wardrik.Principal` who sent the messages a turn answers; see "Who asked" |
   | `:batch` | which batch of tool calls the work belongs to; see `batch/2` |
   | `:labels` | what the run has read, as `Wardrik.Label`s, for its hooks to weigh; see `Wardrik.Call.label/2` |
   | `:deadline` | when the work must stop |
@@ -37,6 +38,18 @@ defmodule Wardrik.Scope do
   The last six are the seams a host reaches through. Each defaults to
   something inert, so a deployment that needs none of them configures none of
   them and no branch in the runtime has to handle their absence.
+
+  ## Who asked
+
+  An agent's ID says whose the work is; `:sender` says who asked for it.
+  A turn answers the messages of one sender at a time, and runs under a
+  scope naming them, so a tool can act as the person who asked rather than
+  as the agent's owner: with the `Wardrik.Grant` `Wardrik.Grants` answers
+  for them, say. `nil` is a turn nobody asked for, as one a trigger starts.
+  Work the turn spawns keeps its sender.
+
+      scope = Wardrik.Scope.root(config, ~A"acme/assistant", sender: maria)
+      Wardrik.Scope.child(scope).sender == maria
 
   ## Deadlines
 
@@ -88,6 +101,7 @@ defmodule Wardrik.Scope do
   defstruct [
     :config,
     :source,
+    :sender,
     :deadline,
     :dispatch,
     :retry,
@@ -107,6 +121,7 @@ defmodule Wardrik.Scope do
   @type t() :: %__MODULE__{
           config: Config.t(),
           source: Source.t(),
+          sender: Wardrik.Principal.t() | nil,
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
@@ -135,6 +150,8 @@ defmodule Wardrik.Scope do
   Options:
 
     * `:name` - what to call the span, passed to `Wardrik.Event.Source.root/2`
+    * `:sender` - the `Wardrik.Principal` who asked for the work, or `nil`
+      where nobody did
     * `:timeout` - how long the whole run may take, resolved to a deadline
     * `:deadline` - the same thing as a monotonic instant, for a caller that
       already holds one
@@ -156,6 +173,7 @@ defmodule Wardrik.Scope do
     %__MODULE__{
       config: config,
       source: Source.root(agent_id, opts),
+      sender: Keyword.get(opts, :sender),
       hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),
       retry: Keyword.get(opts, :retry),

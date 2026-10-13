@@ -56,6 +56,20 @@ defmodule WardrikChannelTest do
     assert Agent.get(channel, & &1)[:name] == :one
   end
 
+  test "knows someone by the channel and the id it knows them by, among those named" do
+    start_supervised!(
+      {WardrikChannel.Supervisor, channels: [named: {WardrikChannel.Test.Adapter, test: self()}]}
+    )
+
+    assert WardrikChannel.person(WardrikChannel.principal(:named, "U1", "maria")) ==
+             {"named", "U1"}
+
+    assert WardrikChannel.among?("named", "U1", ["U2", "U1"])
+    refute WardrikChannel.among?("named", "U1", ["U2"])
+    refute WardrikChannel.among?("named", "U1", [])
+    refute WardrikChannel.among?("elsewhere", "U1", ["U1"])
+  end
+
   test "runs what each channel runs, under its name, beside the channels' tasks" do
     {:ok, {_flags, [tasks | channels]}} =
       WardrikChannel.Supervisor.init(

@@ -10,6 +10,9 @@ defmodule WardrikHTTP.TokenTest do
              Token.create("ci", Prefix.parse!("acme/"), Grant.actions(), ceiling: [])
 
     assert {:ok, ^token} = Token.verify(secret)
+    assert {:ok, ^token} = Token.get(token.id)
+    assert :error = Token.get("0123456789ab")
+    assert :error = Token.get("short")
     assert :error = Token.verify(secret <> "x")
     assert :error = Token.verify("not-a-token")
     assert %Token{name: "ci", grant: %Grant{scope: scope}} = token
@@ -115,6 +118,7 @@ defmodule WardrikHTTP.TokenTest do
     assert :ok = Token.revoke(token.id)
 
     assert :error = Token.verify(secret)
+    assert :error = Token.get(token.id)
     refute token in Token.list()
     assert {:error, :not_found} = Token.revoke(token.id)
   end

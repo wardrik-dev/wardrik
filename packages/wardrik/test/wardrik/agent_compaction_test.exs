@@ -116,11 +116,11 @@ defmodule Wardrik.AgentCompactionTest do
     test "take/1 runs the turn on whatever the history holds, and nothing with nothing to do" do
       assert :none = State.take(idle())
       {state, _effects} = State.queue(idle(), Message.new("next"))
-      assert {:run, [%Message{text: "next"}], _state} = State.take(state)
+      assert {:run, _scope, [%Message{text: "next"}], _state} = State.take(state)
     end
 
     test "kept/3 takes the history the running turn kept, and refuses any other process" do
-      scope = State.turn_scope(idle())
+      scope = State.turn_scope(idle(), nil)
       running = State.started(idle(), task(), scope, history(), System.monotonic_time())
       kept = Context.new([Context.user("summary")])
 

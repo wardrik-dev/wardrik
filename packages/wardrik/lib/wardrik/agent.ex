@@ -167,6 +167,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
+  alias Wardrik.Caller
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Event.Bus
@@ -261,18 +262,21 @@ defmodule Wardrik.Agent do
   def snapshot(agent), do: call(agent, :snapshot)
 
   @doc """
-  Accepts decisions only while their calls are parked, acknowledging acceptance
-  before returning.
+  Accepts decisions only while their calls are parked, and only from a
+  `caller` who may decide them, acknowledging acceptance before returning.
 
-  `:by` names the `Wardrik.Principal` deciding, carried on each
-  `Wardrik.Event.CallDecided` event. `{:error, :unrecorded}`
-  means the decisions could not be written to the agent's log, and were not
-  taken.
+  A caller may decide them where their grant allows `:decide` on the agent,
+  or where they asked for the turn that waits: `Wardrik.Principal.same?/2`
+  with its sender, so whoever asks may approve what their own turn does.
+  Anyone else is `{:error, :forbidden}`. The caller's principal is carried
+  on each `Wardrik.Event.CallDecided` event as who decided. `{:error,
+  :unrecorded}` means the decisions could not be written to the agent's
+  log, and were not taken.
   """
-  @spec decide(agent(), map(), keyword()) ::
-          :ok | {:error, :not_found | :not_parked | :stale_decision | :unrecorded}
-  def decide(agent, decisions, opts \\ []) when is_map(decisions) and is_list(opts),
-    do: call(agent, {:decide, decisions, Keyword.get(opts, :by)})
+  @spec decide(agent(), map(), Caller.t()) ::
+          :ok | {:error, :not_found | :not_parked | :stale_decision | :forbidden | :unrecorded}
+  def decide(agent, decisions, %Caller{} = caller) when is_map(decisions),
+    do: call(agent, {:decide, decisions, caller})
 
   @doc """
   Empties this agent's history, keeping its config and queue.
@@ -298,7 +302,10 @@ defmodule Wardrik.Agent do
   reason in place of it. A note never changes the call, which runs as the
   model wrote it. Calls left out stay parked, so several people can answer
   one call each. Non-blocking, and a no-op when nothing is parked. `:by`
-  names the `Wardrik.Principal` deciding, as `decide/3` takes it.
+  names the `Wardrik.Principal` deciding, carried on each
+  `Wardrik.Event.CallDecided` event. Unlike `decide/3`, it asks nobody's
+  grant, so it is for code that already holds the agent, never for a
+  surface people decide through.
 
       Wardrik.Agent.resume(~A"acme/@jon/researcher", %{"call_abc" => :approve})
       Wardrik.Agent.resume(pid, %{"call_abc" => {:approve, "Only to staging."}})
@@ -400,10 +407,13 @@ defmodule Wardrik.Agent do
   defp called(:parked, _from, state), do: {:reply, State.waiting_on(state), state}
   defp called(:snapshot, _from, state), do: {:reply, View.snapshot(state), state}
 
-  defp called({:decide, decisions, by}, _from, state) do
+  defp called({:decide, decisions, %Caller{} = caller}, _from, state) do
     ids = Enum.map(State.waiting_on(state), fn {call, _prompt} -> call.id end)
 
     cond do
+      not State.decides?(state, caller) ->
+        {:reply, {:error, :forbidden}, state}
+
       ids == [] ->
         {:reply, {:error, :not_parked}, state}
 
@@ -411,7 +421,7 @@ defmodule Wardrik.Agent do
         {:reply, {:error, :stale_decision}, state}
 
       true ->
-        case resume_turn(state, decisions, by) do
+        case resume_turn(state, decisions, caller.principal) do
           {:ok, next} -> {:reply, :ok, next, meta: View.meta(next), sync: true}
           {:error, next} -> {:reply, {:error, :unrecorded}, next}
         end
@@ -525,8 +535,8 @@ defmodule Wardrik.Agent do
 
   def handle_continue(:maybe_run, state) do
     case State.take(state) do
-      {:run, messages, state} ->
-        stay(start(state, messages))
+      {:run, scope, messages, state} ->
+        stay(start(state, scope, messages))
 
       {:replay, scope, checkpoint, state} ->
         stay(replay(state, scope, checkpoint))
@@ -655,8 +665,8 @@ defmodule Wardrik.Agent do
 
   # -- turns -----------------------------------------------------------------
 
-  defp start(state, messages) do
-    scope = state |> State.turn_scope() |> journaled() |> heard(messages)
+  defp start(state, scope, messages) do
+    scope = scope |> journaled() |> heard(messages)
 
     Event.emit(scope.source, %Event.TurnStarted{messages: messages})
     task = run(fn -> State.apply_runner(state, scope, kept(state, scope, messages)) end)

@@ -16,9 +16,9 @@ defmodule WardrikChannel.Context do
     * `:start` - given the channel and the ID of one of its threads' agents,
       starts it where it is not running, answering `{:ok, pid}` or
       `{:error, message}`; none is started by default
-    * `:approvers` - given the channel, who may answer what an agent asks in
-      its threads, as the channel names people; anyone in the room by
-      default
+    * `:approvers` - given the channel, whom to ask what an agent asks in
+      its threads, as the channel names people; the room by default. Who
+      may answer is what the host's `Wardrik.Grants` says
   """
 
   alias Wardrik.AgentID

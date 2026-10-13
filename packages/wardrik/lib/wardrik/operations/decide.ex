@@ -3,6 +3,11 @@ defmodule Wardrik.Operations.Decide do
   Approves or rejects calls an agent waits on, as the caller's principal: one
   or more of the calls it is parked on, taken together.
 
+  A caller who reaches the agent, with a grant that allows `:read` on it,
+  may ask; the agent takes the decisions from one whose grant allows
+  `:decide` on it, or who asked for the turn that waits, and answers anyone
+  else `:forbidden`. See `Wardrik.Agent.decide/3`.
+
   `new/2` reads decisions as `wardrik_protocol`'s `decisions.json` describes
   them: each the `id` of a call, `approve` with a `note` for the agent where
   one is given, or `reject` with a `reason`. The answer lists each call with
@@ -67,14 +72,14 @@ defmodule Wardrik.Operations.Decide do
   def subject(%__MODULE__{agent: id}), do: id
 
   @impl Wardrik.AgentOperation
-  def action, do: :decide
+  def action, do: :read
 
   @impl Wardrik.Command
   def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: agent, decisions: decisions}} = change, caller) do
-    case Agent.decide(agent, decisions, by: caller.principal) do
+    case Agent.decide(agent, decisions, caller) do
       :ok ->
         {:ok, %{"decisions" => Enum.map(Enum.sort(decisions), &decided/1)}, change.effect}
 
@@ -86,6 +91,14 @@ defmodule Wardrik.Operations.Decide do
 
       {:error, :stale_decision} ->
         {:error, Error.new(:conflict, "#{agent} is not waiting on #{named(decisions)}.")}
+
+      {:error, :forbidden} ->
+        {:error,
+         Error.new(
+           :forbidden,
+           "This caller may not decide the calls of #{agent}, and did not ask for the turn " <>
+             "that waits."
+         )}
 
       {:error, :unrecorded} ->
         {:error,

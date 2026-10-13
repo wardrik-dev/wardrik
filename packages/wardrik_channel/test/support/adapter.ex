@@ -24,6 +24,9 @@ defmodule WardrikChannel.Test.Adapter do
     end
   end
 
+  @impl WardrikChannel
+  def among?(user, names, _opts), do: user in names
+
   defp refused?(nil), do: false
 
   defp refused?(refusals),

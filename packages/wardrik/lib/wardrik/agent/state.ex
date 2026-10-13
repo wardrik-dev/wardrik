@@ -15,9 +15,9 @@ defmodule Wardrik.Agent.State do
   shape needs:
 
       %State{mode: :idle}
-      %State{mode: %Due{recovery: :owed, source: nil}}
+      %State{mode: %Due{recovery: :owed, source: nil, sender: maria}}
       %State{mode: %Running{task: task, scope: scope, started_at: at, stopping: nil, recovery: :owed}}
-      %State{mode: %Waiting{turn: parked, source: source, started_at: at}}
+      %State{mode: %Waiting{turn: parked, source: source, sender: maria, started_at: at}}
 
   Because the data lives inside the mode rather than beside it, a whole class
   of states cannot be written down. There is no way to be running and waiting
@@ -44,6 +44,15 @@ defmodule Wardrik.Agent.State do
 
   Queued messages are held newest-first and reversed when a turn takes them, so
   appending is cheap and the order a caller sees is the order they were asked.
+
+  ## One sender a turn
+
+  A turn answers the messages of one sender, and runs under a scope naming
+  them as `Wardrik.Scope`'s `:sender`, so what it does for someone is done
+  as them: `take/1` takes the oldest queued message and those after it from
+  the same sender, and leaves the rest for the turns after. A message from
+  the running turn's sender joins that turn; one from anybody else waits for
+  it to end. A turn due or waiting keeps its sender, and goes on as theirs.
 
   ## What the history holds
 
@@ -143,12 +152,16 @@ defmodule Wardrik.Agent.State do
     """
 
     @enforce_keys [:recovery]
-    defstruct [:recovery, :source]
+    defstruct [:recovery, :source, :sender]
 
-    @typedoc "What the turn goes on from, as `t:Wardrik.Agent.State.Running.recovery/0`, and where its events go."
+    @typedoc """
+    What the turn goes on from, as `t:Wardrik.Agent.State.Running.recovery/0`,
+    where its events go, and who asked for it.
+    """
     @type t() :: %__MODULE__{
             recovery: Wardrik.Agent.State.Running.recovery(),
-            source: Source.t() | nil
+            source: Source.t() | nil,
+            sender: Wardrik.Principal.t() | nil
           }
   end
 
@@ -156,12 +169,13 @@ defmodule Wardrik.Agent.State do
     @moduledoc "A turn held part way through, waiting on a person."
 
     @enforce_keys [:turn, :source, :started_at]
-    defstruct [:turn, :source, :started_at]
+    defstruct [:turn, :source, :sender, :started_at]
 
-    @typedoc "The parked turn, where its events go, and when it began."
+    @typedoc "The parked turn, where its events go, who asked for it, and when it began."
     @type t() :: %__MODULE__{
             turn: Turn.t(),
             source: Source.t(),
+            sender: Wardrik.Principal.t() | nil,
             started_at: integer()
           }
   end
@@ -426,11 +440,14 @@ defmodule Wardrik.Agent.State do
 
   def stale?(%__MODULE__{}), do: false
 
-  @doc "The scope a turn for this agent runs under, carrying what its history holds."
-  @spec turn_scope(t()) :: Scope.t()
-  def turn_scope(%__MODULE__{} = state) do
-    scope = Scope.root(state.config, state.agent_id, [name: "turn"] ++ state.scope_opts)
-    %{scope | labels: state.labels}
+  @doc """
+  The scope a turn for this agent runs under, asked for by `sender`, carrying
+  what its history holds.
+  """
+  @spec turn_scope(t(), Wardrik.Principal.t() | nil) :: Scope.t()
+  def turn_scope(%__MODULE__{} = state, sender) do
+    opts = [name: "turn", sender: sender] ++ state.scope_opts
+    %{Scope.root(state.config, state.agent_id, opts) | labels: state.labels}
   end
 
   @doc "Records how far this agent's log has got."
@@ -452,10 +469,11 @@ defmodule Wardrik.Agent.State do
   @doc """
   Queues a message, announces it, and says who to nudge.
 
-  A message arriving mid-turn joins that turn rather than waiting for it, so a
-  running turn is asked to stop at its next boundary and the queue it leaves
-  behind starts the next one. A message whose id was among the last
-  #{@recent} queued is the same message sent again, and changes nothing.
+  A message arriving mid-turn from the turn's sender joins that turn rather
+  than waiting for it, so the running turn is asked to stop at its next
+  boundary and the queue it leaves behind starts the next one. One from
+  anybody else waits for the turn to end. A message whose id was among the
+  last #{@recent} queued is the same message sent again, and changes nothing.
   """
   @spec queue(t(), Message.t()) :: {t(), [effect()]}
   def queue(%__MODULE__{} = state, %Message{id: id} = message) do
@@ -471,51 +489,66 @@ defmodule Wardrik.Agent.State do
       {queued,
        [
          {:emit, Source.root(state.agent_id), %Event.MessageQueued{message: message}}
-         | nudge(state.mode)
+         | nudge(state.mode, message)
        ]}
     end
   end
 
-  defp nudge(%Running{task: %Task{pid: pid}}), do: [{:ask_to_stop, pid}]
-  defp nudge(_mode), do: []
+  defp nudge(%Running{task: %Task{pid: pid}, scope: scope}, message) do
+    if from?(message, scope.sender), do: [{:ask_to_stop, pid}], else: []
+  end
+
+  defp nudge(_mode, _message), do: []
+
+  # Messages nobody sent, as a trigger's, are answered together.
+  defp from?(%Message{sender: nil}, nil), do: true
+  defp from?(%Message{sender: sender}, other), do: Principal.same?(sender, other)
 
   @doc """
-  The messages a new turn should answer, and the state with them taken.
+  The messages a new turn should answer, the scope it runs under, and the
+  state with them taken: the oldest queued message, and those after it from
+  the same sender, whom the scope names.
 
   `:none` when a turn is already in flight, when one is waiting on a person, or
   when nothing is queued. A waiting turn is still the current turn: anything
   behind it waits to be answered or abandoned rather than starting beside it.
 
-  An agent owed a turn runs one with no questions at all, against the context
-  that already holds the question it was answering. One due to replay a turn
+  An agent owed a turn runs one for the sender it was running it for, with
+  only their queued messages ahead, against the context that already holds
+  the question it was answering. One due to replay a turn
   answers `{:replay, scope, checkpoint, state}`: the turn goes on from its
   checkpoint, under the trace it began on. One due to resume a parked turn
   answers `{:resume, scope, turn, decisions, state}`: the turn goes on with
   the decisions it was given, under the trace that parked.
   """
   @spec take(t()) ::
-          {:run, [Message.t()], t()}
+          {:run, Scope.t(), [Message.t()], t()}
           | {:replay, Scope.t(), Turn.t(), t()}
           | {:resume, Scope.t(), Turn.t(), %{String.t() => Turn.decision()}, t()}
           | :none
-  def take(%__MODULE__{mode: %Due{recovery: {:replaying, checkpoint}, source: source}} = state),
-    do: {:replay, %{turn_scope(state) | source: source}, checkpoint, state}
+  def take(%__MODULE__{mode: %Due{recovery: {:replaying, checkpoint}} = due} = state),
+    do: {:replay, %{turn_scope(state, due.sender) | source: due.source}, checkpoint, state}
 
-  def take(
-        %__MODULE__{mode: %Due{recovery: {:resuming, turn, decisions}, source: source}} = state
-      ),
-      do: {:resume, %{turn_scope(state) | source: source}, turn, decisions, state}
+  def take(%__MODULE__{mode: %Due{recovery: {:resuming, turn, decisions}} = due} = state),
+    do: {:resume, %{turn_scope(state, due.sender) | source: due.source}, turn, decisions, state}
 
-  def take(%__MODULE__{mode: %Due{recovery: :owed}} = state), do: taken(state)
+  def take(%__MODULE__{mode: %Due{recovery: :owed, sender: sender}} = state),
+    do: taken(state, sender)
+
   def take(%__MODULE__{mode: :idle, pending: []}), do: :none
-  def take(%__MODULE__{mode: :idle} = state), do: taken(state)
+  def take(%__MODULE__{mode: :idle} = state), do: taken(state, List.last(state.pending).sender)
   def take(%__MODULE__{}), do: :none
 
-  defp taken(state) do
-    messages = Enum.reverse(state.pending)
+  defp taken(state, sender) do
+    {asked, later} = state.pending |> Enum.reverse() |> Enum.split_while(&from?(&1, sender))
 
-    {:run, messages,
-     %{state | pending: [], mode: :idle, answering: state.answering ++ asks(messages)}}
+    {:run, turn_scope(state, sender), asked,
+     %{
+       state
+       | pending: Enum.reverse(later),
+         mode: :idle,
+         answering: state.answering ++ asks(asked)
+     }}
   end
 
   defp asks(messages),
@@ -636,7 +669,13 @@ defmodule Wardrik.Agent.State do
   @doc "Holds a turn that stopped to ask, and announces that it can be resumed."
   @spec parked(t(), Turn.t()) :: {t(), [effect()]}
   def parked(%__MODULE__{mode: %Running{} = running} = state, turn) do
-    waiting = %Waiting{turn: turn, source: running.scope.source, started_at: running.started_at}
+    waiting = %Waiting{
+      turn: turn,
+      source: running.scope.source,
+      sender: running.scope.sender,
+      started_at: running.started_at
+    }
+
     announcement = {:emit, running.scope.source, %Event.TurnParked{calls: Turn.waiting(turn)}}
 
     {%{state | mode: waiting}, [announcement | disarm(running)]}
@@ -676,13 +715,13 @@ defmodule Wardrik.Agent.State do
        answer(state, asks(state.pending), &stopped/1, [])}
   end
 
-  def interrupt(%__MODULE__{mode: %Due{source: %Source{} = source}} = state) do
+  def interrupt(%__MODULE__{mode: %Due{source: %Source{} = source} = due} = state) do
     {drained, dropped} = drain(state)
 
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, source, %Event.TurnInterrupted{stats: stats(nil, dropped, 0, :abandoned)}},
-       close(%{turn_scope(state) | source: source})
+       close(%{turn_scope(state, due.sender) | source: source})
        | unanswered(state)
      ]}
   end
@@ -694,7 +733,7 @@ defmodule Wardrik.Agent.State do
     {idle(%{drained | outcome: :interrupted}),
      [
        {:emit, waiting.source, %Event.TurnInterrupted{stats: stats}},
-       close(%{turn_scope(state) | source: waiting.source})
+       close(%{turn_scope(state, waiting.sender) | source: waiting.source})
        | unanswered(state)
      ]}
   end
@@ -755,12 +794,24 @@ defmodule Wardrik.Agent.State do
   """
   @spec resume(t()) :: {:resume, Scope.t(), Turn.t(), integer()} | :none
   def resume(%__MODULE__{mode: %Waiting{} = waiting} = state) do
-    scope = %{turn_scope(state) | source: waiting.source}
+    scope = %{turn_scope(state, waiting.sender) | source: waiting.source}
 
     {:resume, scope, waiting.turn, waiting.started_at}
   end
 
   def resume(%__MODULE__{}), do: :none
+
+  @doc """
+  Whether `caller` may decide the calls this agent waits on: where their
+  grant allows `:decide` on it, or they asked for the turn that waits.
+  """
+  @spec decides?(t(), Wardrik.Caller.t()) :: boolean()
+  def decides?(%__MODULE__{mode: %Waiting{sender: sender}} = state, %Wardrik.Caller{} = caller),
+    do: granted?(state, caller) or Principal.same?(caller.principal, sender)
+
+  def decides?(%__MODULE__{} = state, %Wardrik.Caller{} = caller), do: granted?(state, caller)
+
+  defp granted?(state, caller), do: Wardrik.Grant.allows?(caller.grant, :decide, state.agent_id)
 
   @doc """
   Records the turn a `resume/1`, or a `{:resume, ...}` from `take/1`, led to:

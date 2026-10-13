@@ -18,7 +18,8 @@ config :wardrik, WardrikStore,
 config :wardrik,
   definitions: WardrikDaemon.Agents,
   connections: WardrikOAuth.Connections,
-  tokens: WardrikHTTP.Tokens
+  tokens: WardrikHTTP.Tokens,
+  grants: WardrikDaemon.Grants
 
 # What the daemon starts each package with, beside what config.yaml says.
 config :wardrik_daemon, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]

@@ -108,6 +108,15 @@ defmodule WardrikSlack.ApproversTest do
     refute_receive {:slack, "/api/users.list", _again}
   end
 
+  test "knows a member among those named by id, email address or handle" do
+    opts = slack()
+
+    assert WardrikSlack.among?("U1", ["U7", "maria@example.com"], opts)
+    assert WardrikSlack.among?("U2", ["@nobody", "@jon"], opts)
+    assert WardrikSlack.among?("U7", ["U7"], opts)
+    refute WardrikSlack.among?("U2", ["U7", "maria@example.com"], opts)
+  end
+
   test "names the approvers in a sentence, a member id as Slack shows one" do
     assert Approvers.named(["@maria"]) == "@maria"
     assert Approvers.named(["@maria", "U2"]) == "@maria or <@U2>"

@@ -129,16 +129,12 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp policy_ceiling(name) do
-    policies =
-      for {_path, {:ok, %WardrikPolicy{} = policy}} <- WardrikDaemon.Agents.files(),
-          do: policy
+    with :error <- WardrikDaemon.Agents.ceiling(name) do
+      policies =
+        for {_path, {:ok, %WardrikPolicy{} = policy}} <- WardrikDaemon.Agents.files(),
+            do: policy
 
-    case Enum.find(policies, &(&1.name == name)) do
-      nil ->
-        {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
-
-      policy ->
-        {:ok, WardrikPolicy.hooks(%{policy | name: "ceiling/" <> name})}
+      {:error, "policies/ has no policy #{name}" <> policy_names(policies)}
     end
   end
 

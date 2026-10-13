@@ -12,4 +12,7 @@ defmodule WardrikDaemon.Test.Channel do
 
   @impl WardrikChannel
   def deliver(_outbound, _opts), do: {:ok, :posted}
+
+  @impl WardrikChannel
+  def among?(user, names, _opts), do: user in names
 end

@@ -111,6 +111,20 @@ defmodule WardrikHTTP.Token do
 
   def verify(_secret), do: :error
 
+  @doc """
+  The token `id` names, read as `verify/1` reads one, so a revoked token is
+  gone at once: `:error` where there is none, or the store could not answer.
+  """
+  @spec get(String.t()) :: {:ok, t()} | :error
+  def get(id) when is_binary(id) and byte_size(id) == @id_length do
+    case Access.get({@ns, id}) do
+      {:ok, %__MODULE__{grant: %Grant{}} = token} -> {:ok, current(token)}
+      _none -> :error
+    end
+  end
+
+  def get(_id), do: :error
+
   # A token that can define says what its agents are held to, even nothing.
   defp chosen(grant, opts) do
     if :define in grant.can and not Keyword.has_key?(opts, :ceiling),

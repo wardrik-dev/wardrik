@@ -9,8 +9,31 @@ defmodule WardrikSlack.AnswersTest do
 
   @req_options [plug: {Req.Test, WardrikSlack.Stub}]
 
+  # U1 may decide every agent's calls; U2 may read and message them; nobody
+  # else holds anything.
+  defmodule Held do
+    @moduledoc false
+    @behaviour Wardrik.Grants
+
+    @impl true
+    def grants(principal) do
+      case Wardrik.Principal.id(principal) do
+        "slack/U1" -> [grant([:read, :message, :decide])]
+        "slack/U2" -> [grant([:read, :message])]
+        _anyone -> []
+      end
+    end
+
+    defp grant(can) do
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.all(), can)
+      grant
+    end
+  end
+
   setup do
     test = self()
+    :ignore = Wardrik.Grants.configure(Held)
+    on_exit(fn -> Wardrik.Grants.configure(nil) end)
 
     Req.Test.stub(WardrikSlack.Stub, fn conn ->
       send(test, {:slack, conn.host, conn.request_path, JSON.decode!(Req.Test.raw_body(conn))})
@@ -59,8 +82,8 @@ defmodule WardrikSlack.AnswersTest do
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
     end
 
-    test "is refused to someone who is not an approver", %{key: key} do
-      assert :ok = Answers.answer(press(key, "wardrik_link", "U1", nil, ["U2"]), answering())
+    test "is refused to someone who may not decide", %{key: key} do
+      assert :ok = Answers.answer(press(key, "wardrik_link", "U2"), answering())
 
       assert_receive {:slack, _host, _path, %{"text" => text}}
       assert text =~ "approvers"
@@ -69,8 +92,10 @@ defmodule WardrikSlack.AnswersTest do
 
     test "says so once nothing waits on a connection", %{key: key} do
       :ok =
-        Agent.decide(key, %{"call_1" => {:deny, "Not now."}},
-          by: Wardrik.Principal.new(:shell, "t")
+        Agent.decide(
+          key,
+          %{"call_1" => {:deny, "Not now."}},
+          Wardrik.Caller.root(Wardrik.Principal.new(:shell, "t"))
         )
 
       assert_receive {:resumed, %{"call_1" => {:deny, "Not now."}}}
@@ -78,6 +103,31 @@ defmodule WardrikSlack.AnswersTest do
 
       assert_receive {:slack, _host, _path, %{"text" => text}}
       assert text == "That is no longer waiting on anyone to connect."
+    end
+  end
+
+  describe "a press by whoever asked" do
+    setup do
+      key = Wardrik.Test.Fleet.id("slack-asker")
+
+      {:ok, _pid} =
+        Fleet.spawn(key,
+          runner: {AgentRunners, :parking, [self(), "call_1"]},
+          resumer: {AgentRunners, :resuming, [self(), {:ok, []}]}
+        )
+
+      on_exit(fn -> Fleet.forget(key) end)
+      :ok = Event.Bus.subscribe(key, level: :lifecycle)
+      asker = WardrikChannel.principal(:slack, "U2", "maria")
+      :ok = Agent.ask(key, "Ship it.", sender: asker)
+      assert_receive %Event{payload: %Event.TurnParked{}}
+
+      %{key: key}
+    end
+
+    test "decides their own turn's call, though they may not decide others'", %{key: key} do
+      assert :ok = Answers.answer(press(key, "wardrik_approve", "U2"), answering())
+      assert_receive {:resumed, %{"call_1" => :approve}}
     end
   end
 
@@ -99,7 +149,7 @@ defmodule WardrikSlack.AnswersTest do
       %{key: key}
     end
 
-    defp press(key, action, user \\ "U1", note \\ nil, approvers \\ []) do
+    defp press(key, action, user \\ "U1", note \\ nil) do
       %{
         "state" => %{
           "values" => %{"wardrik-note:call_1" => %{"note" => %{"value" => note}}}
@@ -117,7 +167,7 @@ defmodule WardrikSlack.AnswersTest do
         "actions" => [
           %{
             "action_id" => action,
-            "value" => JSON.encode!(%{a: to_string(key), c: "call_1", n: "deploy", p: approvers})
+            "value" => JSON.encode!(%{a: to_string(key), c: "call_1", n: "deploy"})
           }
         ]
       }
@@ -185,43 +235,15 @@ defmodule WardrikSlack.AnswersTest do
       assert_receive {:resumed, %{"call_1" => :approve}}
     end
 
-    test "refuses someone who is not an approver", %{key: key} do
-      assert :ok = Answers.answer(press(key, "wardrik_approve", "U1", nil, ["U2"]), answering())
+    test "refuses someone who may not decide, or who holds nothing", %{key: key} do
+      for user <- ["U2", "U3"] do
+        assert :ok = Answers.answer(press(key, "wardrik_approve", user), answering())
 
-      assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
-      assert text =~ "approvers"
+        assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
+        assert text =~ "approvers"
+      end
+
       assert [{%{id: "call_1"}, _prompt}] = Agent.parked(key)
-    end
-
-    test "takes an approver by @handle, or by email address", %{key: key} do
-      assert :ok =
-               Answers.answer(
-                 press(key, "wardrik_approve", "U1", nil, ["U2", "@jon"]),
-                 answering()
-               )
-
-      assert_receive {:resumed, _decisions}
-      refute_received {:slack, _host, "/api/users.info", _body}
-    end
-
-    test "looks up the presser's email address where an approver is named by one", %{key: key} do
-      assert :ok =
-               Answers.answer(
-                 press(key, "wardrik_approve", "U1", nil, ["@maria", "jon@example.com"]),
-                 answering()
-               )
-
-      assert_receive {:slack, _host, "/api/users.info", %{"user" => "U1"}}
-      assert_receive {:resumed, _decisions}
-
-      assert :ok =
-               Answers.answer(
-                 press(key, "wardrik_approve", "U1", nil, ["maria@example.com"]),
-                 answering()
-               )
-
-      assert_receive {:slack, _host, _path, %{"response_type" => "ephemeral", "text" => text}}
-      assert text =~ "approvers"
     end
 
     test "says a second press finds the question answered", %{key: key} do

@@ -413,7 +413,9 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp accept_decision(term, chosen, decision) do
-    case Agent.decide(term.assigns.agent, decisions(chosen, decision), by: term.assigns.principal) do
+    decisions = decisions(chosen, decision)
+
+    case Agent.decide(term.assigns.agent, decisions, Caller.root(term.assigns.principal)) do
       :ok ->
         remaining = term.assigns.parked -- chosen
 
@@ -449,7 +451,7 @@ defmodule WardrikTUI.App.Commands do
     do: Display.append(term, View.unavailable(id))
 
   defp ask(term, text) do
-    :ok = Agent.ask(term.assigns.agent, text)
+    :ok = Agent.ask(term.assigns.agent, text, sender: term.assigns.principal)
 
     cond do
       term.assigns.running? -> steer(term, text, :running)

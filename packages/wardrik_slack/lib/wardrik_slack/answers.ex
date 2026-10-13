@@ -2,11 +2,18 @@ defmodule WardrikSlack.Answers do
   @moduledoc """
   What a press of a button `WardrikSlack.Notices` posted does.
 
-  Each button carries who may press it, as the target that posted it named
-  them: each by `@handle`, email address or Slack user id; anyone in the
-  channel may where it named nobody. An email address needs the app's
-  `users:read.email` scope.
+  The person pressing is the principal `WardrikChannel.principal/3` makes of
+  them, and may do what the host's `Wardrik.Grants` says: they decide a call
+  as `Wardrik.Operations.Decide` takes it, so where their grant allows
+  `:decide` on the agent, or where they asked for the turn that waits; and
+  they are shown where to connect an account where their grant allows
+  `:decide`.
   """
+
+  alias Wardrik.Error
+  alias Wardrik.Operations.Decide
+
+  @refused "Only whoever asked, or this channel's approvers, can answer that."
 
   @doc """
   Answers a button press, from the `block_actions` payload Slack sends over
@@ -14,9 +21,8 @@ defmodule WardrikSlack.Answers do
   decided it; or, for Show link, tells the person pressing alone where to
   connect the account; or tells them why nothing happened.
 
-  `opts` are the channel's: `:token`, which looks up a presser's email
-  address where an approver is named by one, and `:req_options`, merged into
-  each request.
+  `opts` are the channel's: its `:name`, which names the person pressing,
+  and `:req_options`, merged into each request.
   """
   @spec answer(map(), keyword()) :: :ok | :ignored
   def answer(payload, opts \\ [])
@@ -25,18 +31,19 @@ defmodule WardrikSlack.Answers do
       when action in ["wardrik_approve", "wardrik_deny", "wardrik_link"] do
     user = Map.get(payload, "user", %{})
 
-    with {:ok, %{"a" => text, "c" => call, "n" => name, "p" => approvers}} <- JSON.decode(value),
+    with {:ok, %{"a" => text, "c" => call, "n" => name}} <- JSON.decode(value),
          {:ok, agent} <- Wardrik.AgentID.parse(text) do
+      by =
+        WardrikChannel.principal(
+          Keyword.fetch!(opts, :name),
+          user["id"],
+          user["username"] || user["name"]
+        )
+
       reply =
-        cond do
-          not approver?(user, approvers, opts) ->
-            WardrikSlack.ephemeral("Only this channel's approvers can answer that.")
-
-          action == "wardrik_link" ->
-            WardrikSlack.ephemeral(link(agent, call))
-
-          true ->
-            decide(payload, {action, user, opts}, agent, call, name)
+        case Wardrik.Grants.caller(by, agent) do
+          {:ok, caller} -> pressed(action, payload, {user, caller}, agent, call, name)
+          {:error, _unreached} -> WardrikSlack.ephemeral(@refused)
         end
 
       WardrikSlack.respond(payload["response_url"], reply, Keyword.get(opts, :req_options, []))
@@ -47,29 +54,22 @@ defmodule WardrikSlack.Answers do
 
   def answer(_payload, _opts), do: :ignored
 
-  # An approver is named by `@handle`, email address or user id. The
-  # presser's email address is looked up only where no handle or id matched.
-  defp approver?(_user, [], _opts), do: true
-
-  defp approver?(user, approvers, opts) do
-    {emails, named} = Enum.split_with(approvers, &email?/1)
-
-    Enum.any?(named, &(&1 == user["id"] or &1 == "@" <> to_string(user["username"]))) or
-      (emails != [] and email(user, opts) in Enum.map(emails, &String.downcase/1))
+  defp pressed("wardrik_link", _payload, {_user, caller}, agent, call, _name) do
+    if Wardrik.Grant.allows?(caller.grant, :decide, agent),
+      do: WardrikSlack.ephemeral(link(agent, call)),
+      else: WardrikSlack.ephemeral(@refused)
   end
 
-  defp email?("@" <> _handle), do: false
-  defp email?(approver), do: String.contains?(approver, "@")
+  defp pressed(action, payload, {user, caller}, agent, call, name) do
+    note = note(payload, call)
+    decision = decision(action, note, user["username"] || user["name"] || user["id"])
 
-  defp email(user, opts) do
-    case WardrikSlack.post(
-           "users.info",
-           Keyword.fetch!(opts, :token),
-           %{user: user["id"]},
-           Keyword.get(opts, :req_options, [])
-         ) do
-      {:ok, %{"user" => %{"profile" => %{"email" => email}}}} -> String.downcase(email)
-      _unknown -> nil
+    case Wardrik.Command.run(%Decide{agent: agent, decisions: %{call => decision}}, caller) do
+      {:ok, _decided} -> decided(payload, action, note, user, call, name)
+      {:error, %Error{type: :forbidden}} -> WardrikSlack.ephemeral(@refused)
+      {:error, %Error{type: :not_found}} -> WardrikSlack.ephemeral("#{agent} is not running.")
+      {:error, %Error{type: :conflict}} -> WardrikSlack.ephemeral("That was already answered.")
+      {:error, %Error{message: message}} -> WardrikSlack.ephemeral(message)
     end
   end
 
@@ -87,32 +87,6 @@ defmodule WardrikSlack.Answers do
 
   defp link_text({%{link: %{url: url}}, _prompt}), do: "Open #{url}"
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
-
-  defp decide(payload, {action, user, opts}, agent, call, name) do
-    note = note(payload, call)
-    decision = decision(action, note, user["username"] || user["name"] || user["id"])
-
-    by =
-      WardrikChannel.principal(
-        Keyword.fetch!(opts, :name),
-        user["id"],
-        user["username"] || user["name"]
-      )
-
-    case Wardrik.Agent.decide(agent, %{call => decision}, by: by) do
-      :ok ->
-        decided(payload, action, note, user, call, name)
-
-      {:error, :not_found} ->
-        WardrikSlack.ephemeral("#{agent} is not running.")
-
-      {:error, :unrecorded} ->
-        WardrikSlack.ephemeral("#{agent} could not record that, so it was not taken.")
-
-      {:error, _not_waiting} ->
-        WardrikSlack.ephemeral("That was already answered.")
-    end
-  end
 
   defp decision("wardrik_approve", nil, _who), do: :approve
   defp decision("wardrik_approve", note, _who), do: {:approve, note}

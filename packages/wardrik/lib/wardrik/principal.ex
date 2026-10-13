@@ -64,4 +64,13 @@ defmodule Wardrik.Principal do
   @doc "The name they go by, where one is known."
   @spec name(t()) :: String.t() | nil
   def name(%__MODULE__{name: name}), do: name
+
+  @doc """
+  Whether `a` and `b` are the same person or system: reached the same way
+  and known by the same id, whatever name each goes by. Nobody, `nil`, is
+  never anyone.
+  """
+  @spec same?(t() | nil, t() | nil) :: boolean()
+  def same?(%__MODULE__{type: type, id: id}, %__MODULE__{type: type, id: id}), do: true
+  def same?(_a, _b), do: false
 end
