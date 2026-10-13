@@ -461,7 +461,12 @@ defmodule Wardrik.AgentTest do
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
 
-      :ok = Agent.decide(agent, %{"call_1" => {:deny, "Not today."}}, Wardrik.Caller.root(by))
+      :ok =
+        Agent.decide(
+          agent,
+          %{"call_1" => {:deny, "Not today."}},
+          Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
+        )
 
       assert_receive %Event{
         payload: %Event.CallDecided{call_id: "call_1", decision: {:deny, "Not today."}, by: ^by}
@@ -612,7 +617,14 @@ defmodule Wardrik.AgentTest do
       agent = start_agent(opts, key)
       Agent.ask(agent, "ship it")
       assert_receive %Event{payload: %Event.TurnParked{}}
-      :ok = Agent.decide(agent, decisions, Wardrik.Caller.root(nil))
+
+      :ok =
+        Agent.decide(
+          agent,
+          decisions,
+          Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+        )
+
       assert_receive {:holding, ^decisions, _lost}
       assert_receive %Event{payload: %Event.TurnResumed{decisions: ^decisions}}
 

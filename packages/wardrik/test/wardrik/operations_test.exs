@@ -13,6 +13,7 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.LLM.Config
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
@@ -47,7 +48,7 @@ defmodule Wardrik.OperationsTest do
   # whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @ns :operations_test_definitions
     @triggers :operations_test_triggers
@@ -136,7 +137,7 @@ defmodule Wardrik.OperationsTest do
   # Reads definitions, and keeps none.
   defmodule Reading do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @impl true
     def put(id, _fields, _grant), do: {:ok, Spec.new(id: id)}
@@ -144,17 +145,14 @@ defmodule Wardrik.OperationsTest do
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
 
-  setup do
-    definitions(Kept)
-    on_exit(fn -> definitions(nil) end)
-  end
+  defp host(definitions \\ Kept), do: Host.new(definitions: definitions)
 
-  defp definitions(module), do: :ignore = Wardrik.Definition.configure(module)
-
-  defp caller(scope \\ "test/", can \\ Grant.actions()) do
+  defp caller(scope \\ "test/", can \\ Grant.actions(), host \\ host()) do
     {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
-    Caller.new(Principal.new(:user, "jon", name: "Jon"), grant)
+    Caller.new(principal: Principal.new(:user, "jon", name: "Jon"), grant: grant, host: host)
   end
+
+  defp root, do: Caller.root(principal: Principal.new(:user, "jon", name: "Jon"), host: host())
 
   defp defined_id(name \\ "defined") do
     id = Fleet.id(name)
@@ -396,7 +394,10 @@ defmodule Wardrik.OperationsTest do
       {:ok, decided} = decide(id, [%{"id" => "call_1", "decision" => "approve"}])
 
       assert {:error, %Error{type: :forbidden}} = Command.run(decided, caller("test/", [:read]))
-      assert {:ok, _decided} = Command.run(decided, Caller.new(maria, grant))
+
+      assert {:ok, _decided} =
+               Command.run(decided, Caller.new(principal: maria, grant: grant, host: host()))
+
       assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: ^maria}}
     end
 
@@ -528,7 +529,10 @@ defmodule Wardrik.OperationsTest do
       {:ok, grant} = Grant.new(Prefix.parse!("test/"), [:define, :read], ceiling)
 
       assert {:created, _snapshot} =
-               Command.run(%Define{agent: id, definition: %{}}, Caller.new(nil, grant))
+               Command.run(
+                 %Define{agent: id, definition: %{}},
+                 Caller.new(principal: nil, grant: grant, host: host())
+               )
 
       %{user_state: state} = :sys.get_state(Wardrik.Fleet.whereis(id))
       assert [%Wardrik.Hook{name: "ceiling"}] = Keyword.fetch!(state.scope_opts, :hooks)
@@ -737,15 +741,15 @@ defmodule Wardrik.OperationsTest do
     end
 
     test "finds nothing to start where nothing defines it and the host creates none" do
-      definitions(nil)
+      none = caller("test/", Grant.actions(), Host.new())
 
       assert {:error, %Error{type: :not_found}} =
-               Command.run(%Spawn{agent: Fleet.id("nobody")}, caller())
+               Command.run(%Spawn{agent: Fleet.id("nobody")}, none)
     end
 
     test "on a node is the deployment's to choose" do
       id = defined_id("placed")
-      root = Caller.root(Principal.new(:user, "jon", name: "Jon"))
+      root = root()
 
       assert {:ok, %{"from" => "new", "agent" => %{"node" => node}}} =
                Command.run(%SpawnOn{agent: id, node: node()}, root)
@@ -762,7 +766,7 @@ defmodule Wardrik.OperationsTest do
 
   describe "moving" do
     test "leaves an agent on its node be, interrupting nothing" do
-      root = Caller.root(Principal.new(:user, "jon", name: "Jon"))
+      root = root()
       {id, _turn} = busy_agent()
 
       assert {:ok, change} = Command.plan(%Move{agent: id, node: node()}, root)
@@ -790,27 +794,27 @@ defmodule Wardrik.OperationsTest do
     test "defines, keeps and triggers nothing, and forgets an agent with no definition" do
       {id, _agent} = Fleet.start_agent()
 
-      for module <- [nil, Reading] do
-        definitions(module)
+      for module <- [Wardrik.Definition.None, Reading] do
+        caller = caller("test/", Grant.actions(), host(module))
 
         assert {:error, %Error{type: :unsupported}} =
-                 Query.run(%ReadDefinition{agent: id}, caller())
+                 Query.run(%ReadDefinition{agent: id}, caller)
 
         assert {:error, %Error{type: :unsupported}} =
-                 Command.run(%SetTrigger{agent: id, name: "s", fields: %{}}, caller())
+                 Command.run(%SetTrigger{agent: id, name: "s", fields: %{}}, caller)
 
         assert {:error, %Error{type: :unsupported}} =
-                 Command.run(%RemoveTrigger{agent: id, name: "s"}, caller())
+                 Command.run(%RemoveTrigger{agent: id, name: "s"}, caller)
       end
 
-      definitions(nil)
+      none = caller("test/", Grant.actions(), Host.new())
 
       assert {:error, %Error{type: :unsupported}} =
-               Command.run(%Define{agent: id, definition: %{}}, caller())
+               Command.run(%Define{agent: id, definition: %{}}, none)
 
       assert Wardrik.Fleet.lookup(id)
 
-      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, caller())
+      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, none)
       assert Wardrik.Fleet.lookup(id) == nil
     end
   end

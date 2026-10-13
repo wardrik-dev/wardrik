@@ -1,9 +1,9 @@
 defmodule WardrikOAuth.Connections do
   @moduledoc """
-  The `Wardrik.Connections` a deployment names to offer its providers'
-  sign-ins as accounts people and orgs connect:
+  The `Wardrik.Connections` a deployment names in its `Wardrik.Host` to
+  offer its providers' sign-ins as accounts people and orgs connect:
 
-      {Wardrik, connections: WardrikOAuth.Connections}
+      Wardrik.Host.new(connections: WardrikOAuth.Connections)
 
   A provider is held for an owner where the vault keeps anything under its
   name for them, a sign-in's token or a key someone sealed, read without

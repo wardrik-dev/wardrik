@@ -60,8 +60,10 @@ defmodule WardrikTUI.App do
   What `Breeze.Server` runs this app with, `start_opts` being what `mount/2`
   is given. The terminal launcher and every SSH session run it the same way.
 
-  `:org` in `start_opts` is the org of an agent a person names without one,
-  as `/spawn triage` or `/connect @jon/triage` do. Without it, a name gives
+  `:host` in `start_opts` is the `Wardrik.Host` every operation the session
+  runs is called on, as a caller who holds the node; it is required.
+  `:org` is the org of an agent a person names without one, as
+  `/spawn triage` or `/connect @jon/triage` do. Without it, a name gives
   its org: `/spawn acme/triage`.
   """
   @spec server_opts(keyword()) :: keyword()
@@ -390,6 +392,7 @@ defmodule WardrikTUI.App do
       term
       |> assign(
         org: Keyword.get(opts, :org),
+        host: Keyword.fetch!(opts, :host),
         principal: Keyword.get_lazy(opts, :principal, &terminal/0),
         fleet: [],
         fleet_due?: false,

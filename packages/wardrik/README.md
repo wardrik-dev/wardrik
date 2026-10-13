@@ -303,6 +303,30 @@ A tool with an effect outside Wardrik passes
 `Wardrik.Ledger.idempotency_key/2` to the system it calls, so that system
 does not repeat the effect either.
 
+### The host
+
+What an operation asks beyond one agent is the host's: where definitions are
+kept, which accounts people connect, how tokens are made, where requests for
+triggers go, and what each principal may do. A `Wardrik.Host` names a module
+for each it offers, and the `None` module of each it does not. It is handed
+to `Wardrik` as it starts, which hands it to every agent, and to each
+surface the application starts after it, which builds its callers with it:
+
+```elixir
+host = Wardrik.Host.new(definitions: MyApp.Definitions, grants: MyApp.Grants)
+
+children = [
+  {Wardrik, host: host},
+  {MyApp.Endpoint, host: host}
+]
+
+{:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: id)
+Wardrik.Query.run(%Wardrik.Operations.ReadAgent{agent: id}, caller)
+```
+
+Nothing of the host is kept on the node or with an agent, so two instances
+on one node each answer with their own.
+
 ### Failures
 
 `Wardrik.Failure.classify/1` sorts a turn's error into `:transient`,
@@ -319,8 +343,8 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants`, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
-| Agents and the fleet | `Wardrik`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Definition`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants` and the `None` module of each, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
+| Agents and the fleet | `Wardrik`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |
 | Inside a turn | `Wardrik.Subagent`, `Wardrik.LLM.Cost`, `Wardrik.LLM.Usage`, `Wardrik.UUID` |

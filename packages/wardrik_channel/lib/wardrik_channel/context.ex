@@ -6,6 +6,9 @@ defmodule WardrikChannel.Context do
   arguments named below are appended to.
 
     * `:channel` - the channel's name, as `config.yaml` gives it
+    * `:host` - the `Wardrik.Host` the channel was started on, which a
+      person known by their principal is asked of with
+      `Wardrik.Host.caller/2`
     * `:offered` - given the channel, the agents that may answer in its
       rooms, as `WardrikChannel.Offer`s; none by default
     * `:creatable` - given the channel, whether someone in a room may create
@@ -19,31 +22,38 @@ defmodule WardrikChannel.Context do
     * `:approvers` - given the channel, whom to ask what an agent asks in
       its threads, as the channel names people; the room by default. Who
       may answer is what the host's `Wardrik.Grants` says
+    * `:replies` - the name of the `WardrikChannel.Replies` that posts what
+      agents answer in its threads; `WardrikChannel.Replies.supervisor/0`
+      by default
   """
 
   alias Wardrik.AgentID
   alias Wardrik.Principal
   alias WardrikChannel.Offer
 
-  @enforce_keys [:channel]
+  @enforce_keys [:channel, :host]
   defstruct [
     :channel,
+    :host,
     offered: {__MODULE__, :none, []},
     creatable: {__MODULE__, :no, []},
     create: {__MODULE__, :refuse, []},
     start: {__MODULE__, :unstarted, []},
-    approvers: {__MODULE__, :none, []}
+    approvers: {__MODULE__, :none, []},
+    replies: WardrikChannel.Replies.Rooms
   ]
 
   @type host() :: {module(), atom(), [term()]}
 
   @type t() :: %__MODULE__{
           channel: String.t(),
+          host: Wardrik.Host.t(),
           offered: host(),
           creatable: host(),
           create: host(),
           start: host(),
-          approvers: host()
+          approvers: host(),
+          replies: atom()
         }
 
   @doc "The agents that may answer in a room of the context's channel."

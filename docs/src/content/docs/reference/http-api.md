@@ -138,13 +138,15 @@ its types from them.
      "tools": ["web_search"]}
 
 `wardrik_protocol`'s `agent_definition.json` is the definition's schema. The
-host reads it, with the `Wardrik.Definition` it names as `Wardrik`'s
-`:definitions`, and decides whether definitions are kept and who owns a
-key: a key it refuses answers `409`. A daemon reads a definition as an agent file (see
+host reads it, with the `Wardrik.Definition` its `Wardrik.Host` names as
+`:definitions`, the host `WardrikHTTP.Listener` was started with, and
+decides whether definitions are kept and who owns a key: a key it refuses
+answers `409`. A daemon reads a definition as an agent file (see
 `WardrikDaemon.AgentFile`), keeps it, so `GET …/definition` answers it, and
 refuses the keys its agent files declare. An agent brought to a new
-definition keeps its conversation. A route whose callback the module
-lacks, or every one where the host names no module, answers `501`.
+definition keeps its conversation. A route the host's module answers
+`:unsupported`, as every one where the host names none does, answers
+`501`.
 
 ### Events
 

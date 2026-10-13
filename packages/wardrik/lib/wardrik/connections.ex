@@ -4,10 +4,11 @@ defmodule Wardrik.Connections do
   ones a deployment offers, who holds each, and connecting or forgetting
   one before any agent asks for it.
 
-  A host names the module once, as `Wardrik`'s `:connections`, and the
-  operations on connections ask it, whichever surface they came from:
+  A host names the module once, as the `:connections` of its
+  `Wardrik.Host`, and the operations on connections ask it, whichever
+  surface they came from:
 
-      children = [{Wardrik, connections: WardrikOAuth.Connections}]
+      Wardrik.Host.new(connections: WardrikOAuth.Connections)
 
   | Operation | Callback |
   | --- | --- |
@@ -15,7 +16,8 @@ defmodule Wardrik.Connections do
   | `Wardrik.Operations.Connect` | `connect/3` |
   | `Wardrik.Operations.Disconnect` | `disconnect/2` |
 
-  Without a module each operation is `:unsupported`.
+  A host that offers none has `Wardrik.Connections.None`, whose callbacks
+  answer `:unsupported`, and so does each operation.
 
   An owner is a person in their org, `{org, user}`, or an org, as
   `Wardrik.Credential` resolves credentials for them: a person's call takes
@@ -39,7 +41,7 @@ defmodule Wardrik.Connections do
   @type connection() :: %{provider: String.t(), held_by: held_by()}
 
   @doc "The connections the deployment offers `owner`, and who holds each; never a value."
-  @callback list(owner()) :: [connection()]
+  @callback list(owner()) :: [connection()] | :unsupported
 
   @doc """
   Connects `provider` for `owner`, as `by` asked: `{:ok, :held}` where they
@@ -48,31 +50,14 @@ defmodule Wardrik.Connections do
   not offer.
   """
   @callback connect(provider :: String.t(), owner(), by :: Principal.t() | nil) ::
-              {:ok, :held} | {:ok, Wardrik.Call.Ask.link()} | {:error, term()}
+              {:ok, :held} | {:ok, Wardrik.Call.Ask.link()} | {:error, term()} | :unsupported
 
   @doc "Forgets `owner`'s `provider`: `{:error, :not_found}` where they hold none."
-  @callback disconnect(provider :: String.t(), owner()) :: :ok | {:error, term()}
+  @callback disconnect(provider :: String.t(), owner()) :: :ok | {:error, term()} | :unsupported
 
-  @module {__MODULE__, :module}
-
-  @doc """
-  Keeps `module`, or `nil` for none, as the host's. Answers `:ignore`, so
-  `Wardrik` runs it as a child that starts nothing.
-  """
-  @spec configure(module() | nil) :: :ignore
-  def configure(module) when is_atom(module) do
-    :persistent_term.put(@module, module)
-    :ignore
-  end
-
-  @doc "The host's module, or an `:unsupported` error where none was named."
-  @spec module() :: {:ok, module()} | {:error, Error.t()}
-  def module do
-    case :persistent_term.get(@module, nil) do
-      nil -> {:error, Error.new(:unsupported, "This server offers no connections.")}
-      module -> {:ok, module}
-    end
-  end
+  @doc "The error each operation answers where the host offers no connections."
+  @spec unsupported() :: Error.t()
+  def unsupported, do: Error.new(:unsupported, "This server offers no connections.")
 
   @doc """
   The prefix of the owner `caller` asks about: `:person` for their own,

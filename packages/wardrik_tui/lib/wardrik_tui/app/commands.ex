@@ -8,11 +8,11 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
-  alias Wardrik.Caller
   alias Wardrik.Change
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Host
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.CancelAgents
@@ -415,7 +415,7 @@ defmodule WardrikTUI.App.Commands do
   defp accept_decision(term, chosen, decision) do
     decisions = decisions(chosen, decision)
 
-    case Agent.decide(term.assigns.agent, decisions, Caller.root(term.assigns.principal)) do
+    case Agent.decide(term.assigns.agent, decisions, caller(term)) do
       :ok ->
         remaining = term.assigns.parked -- chosen
 
@@ -477,7 +477,7 @@ defmodule WardrikTUI.App.Commands do
   end
 
   # Whoever uses this client holds the node, as a shell on it does.
-  defp caller(term), do: Caller.root(term.assigns.principal)
+  defp caller(term), do: Host.root(term.assigns.host, principal: term.assigns.principal)
 
   # A change this client made, recorded for the person using it.
   defp record(term, action), do: Audit.record(action, term.assigns.principal)

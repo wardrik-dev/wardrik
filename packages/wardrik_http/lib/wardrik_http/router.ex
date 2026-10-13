@@ -13,8 +13,9 @@ defmodule WardrikHTTP.Router do
   may not act on so, `403`. A stream of events, and a worker's socket, hold
   the caller's credential, and end when it is revoked.
 
-  Its option is the `WardrikHTTP.Listener`'s `:authenticator`, assigned to
-  each request as `:options`.
+  Its options are the `WardrikHTTP.Listener`'s `:host` and `:authenticator`,
+  assigned to each request as `:options`: every operation a route runs is
+  called with a `Wardrik.Caller` on that host.
   """
 
   use Plug.Router, copy_opts_to_assign: :options
@@ -348,8 +349,13 @@ defmodule WardrikHTTP.Router do
     end
   end
 
-  defp caller(conn),
-    do: Wardrik.Caller.new(conn.assigns.caller.principal, conn.assigns.caller.grant)
+  defp caller(conn) do
+    Wardrik.Caller.new(
+      principal: conn.assigns.caller.principal,
+      grant: conn.assigns.caller.grant,
+      host: Keyword.fetch!(conn.assigns.options, :host)
+    )
+  end
 
   defp define(conn, key) do
     with {:ok, fields} <- object(conn.body_params),

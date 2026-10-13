@@ -1,5 +1,5 @@
 defmodule Wardrik.ConnectionsTest do
-  # The host's connections module is one for the node, which these tests set.
+  # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
   alias Wardrik.AgentID.Prefix
@@ -8,6 +8,7 @@ defmodule Wardrik.ConnectionsTest do
   alias Wardrik.Connections
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Operations.Connect
   alias Wardrik.Operations.Disconnect
   alias Wardrik.Operations.ReadConnections
@@ -63,9 +64,6 @@ defmodule Wardrik.ConnectionsTest do
   end
 
   setup do
-    :ignore = Connections.configure(Offered)
-    on_exit(fn -> Connections.configure(nil) end)
-
     provider = "app#{System.unique_integer([:positive])}"
     Process.put(:offered, ["github", provider])
     Process.put(:held, %{{"acme", "jon"} => ["github"]})
@@ -75,9 +73,14 @@ defmodule Wardrik.ConnectionsTest do
 
   @jon Principal.new(:user, "jon", name: "Jon")
 
-  defp caller(scope, principal \\ @jon, can \\ Grant.actions()) do
+  defp caller(
+         scope,
+         principal \\ @jon,
+         can \\ Grant.actions(),
+         host \\ Host.new(connections: Offered)
+       ) do
     {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
-    Caller.new(principal, grant)
+    Caller.new(principal: principal, grant: grant, host: host)
   end
 
   defp read(caller, whose \\ :person) do
@@ -181,8 +184,7 @@ defmodule Wardrik.ConnectionsTest do
   end
 
   test "a host with no connections module offers none" do
-    Connections.configure(nil)
-
-    assert {:error, %Error{type: :unsupported}} = read(caller("acme/"))
+    assert {:error, %Error{type: :unsupported}} =
+             read(caller("acme/", @jon, Grant.actions(), Host.new()))
   end
 end

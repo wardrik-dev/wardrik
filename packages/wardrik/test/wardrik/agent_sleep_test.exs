@@ -104,7 +104,12 @@ defmodule Wardrik.AgentSleepTest do
 
     assert %{asleep: true, status: :parked, waiting_on: [_name]} = Fleet.lookup(key)
 
-    :ok = Agent.decide(key, %{"call_1" => :approve}, Wardrik.Caller.root(nil))
+    :ok =
+      Agent.decide(
+        key,
+        %{"call_1" => :approve},
+        Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+      )
 
     assert_receive {:resumed, %{"call_1" => :approve}}
     assert_receive %Event{payload: %Event.TurnFinished{}}
@@ -178,32 +183,11 @@ defmodule Wardrik.AgentSleepTest do
     refute Fleet.stored?(key)
   end
 
-  # Answers whatever spec a test keeps for an ID, or none.
-  defmodule Current do
-    @moduledoc false
-    @behaviour Wardrik.Definition
-
-    @impl true
-    def put(_id, _definition, _grant), do: {:error, "not here"}
-
-    @impl true
-    def current(id), do: :persistent_term.get({__MODULE__, id}, :none)
-
-    def keep(id, spec), do: :persistent_term.put({__MODULE__, id}, {:ok, spec})
-  end
-
-  defp definitions(module) do
-    :ignore = Wardrik.Definition.configure(module)
-    on_exit(fn -> Wardrik.Definition.configure(nil) end)
-  end
-
   test "an agent wakes with the definition the host answers for it now" do
     key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
     asleep(key)
 
-    definitions(Current)
-
-    Current.keep(
+    Wardrik.Test.Definitions.keep(
       key,
       Spec.new(id: key, config: Config.new(model_spec: "test:after"), idle_timeout: @idle)
     )
@@ -215,9 +199,21 @@ defmodule Wardrik.AgentSleepTest do
     key = start_agent(runner: runner(self()), config: Config.new(model_spec: "test:before"))
     asleep(key)
 
-    definitions(Current)
-
     assert %{model: "test:before"} = Agent.status(key)
+  end
+
+  test "an agent starting takes the definition the host keeps of it" do
+    key = Wardrik.Test.Fleet.id()
+
+    Wardrik.Test.Definitions.keep(
+      key,
+      Spec.new(id: key, config: Config.new(model_spec: "test:kept"))
+    )
+
+    {^key, _pid} =
+      Wardrik.Test.Fleet.start_agent([config: Config.new(model_spec: "test:given")], key)
+
+    assert %{model: "test:kept"} = Agent.status(key)
   end
 
   test "an ID nothing holds is not woken" do

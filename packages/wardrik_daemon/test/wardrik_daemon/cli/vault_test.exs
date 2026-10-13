@@ -1,6 +1,9 @@
 defmodule WardrikDaemon.CLI.VaultTest do
   use ExUnit.Case, async: false
 
+  # Commands run over rpc build their callers on the daemon's host.
+  setup do: WardrikDaemon.Test.Host.held()
+
   import ExUnit.CaptureIO
 
   alias Wardrik.Test.Audit

@@ -15,8 +15,11 @@ defmodule Wardrik.Fleet.Supervisor do
     * `:store` - the store's adapter and its options, as `Wardrik` takes them;
       the options belong to the adapter, see `WardrikStore.EKV`
     * `:log` - passed to `Group`, `false` by default
+    * `:host` - the `Wardrik.Host` every agent is handed as it starts,
+      wakes, or restarts on another node, as `DurableServer`'s `:init_info`;
+      `Wardrik.Host.new/1` by default. It is never written to the store
 
-  `Wardrik` starts it with its `:store` and its `:fleet`.
+  `Wardrik` starts it with its `:store`, its `:fleet` and its `:host`.
 
   ## Joining other nodes
 
@@ -46,7 +49,8 @@ defmodule Wardrik.Fleet.Supervisor do
          name: Wardrik.Fleet,
          prefix: Wardrik.Fleet.prefix(),
          backend: WardrikStore.durable_backend(store),
-         group: [log: Keyword.get(opts, :log, false)]
+         group: [log: Keyword.get(opts, :log, false)],
+         init_info: %{host: Keyword.get_lazy(opts, :host, &Wardrik.Host.new/0)}
        ] ++ WardrikStore.durable_shutdown()}
     ]
 

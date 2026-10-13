@@ -1,5 +1,5 @@
 defmodule WardrikHTTP.RouterTest do
-  # The host's definitions module is one for the node, which tests change.
+  # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
   alias ReqLLM.Context
@@ -9,6 +9,7 @@ defmodule WardrikHTTP.RouterTest do
   alias Wardrik.Event
   alias Wardrik.Event.Log
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.LLM.Config
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Audit
@@ -19,7 +20,7 @@ defmodule WardrikHTTP.RouterTest do
 
   defmodule Definition do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @impl true
     def put(_key, %{"refuse" => message}, _grant), do: {:error, message}
@@ -43,7 +44,7 @@ defmodule WardrikHTTP.RouterTest do
   # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @ns :router_test_definitions
     @triggers :router_test_triggers
@@ -192,15 +193,14 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(:down), do: ~s(Down realm="test")
   end
 
+  @host Host.new(definitions: Definition, connections: Linked, triggers: Hooked)
+
   setup do
     {:ok, secret, token} =
       Token.create("router-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
 
-    definitions(Definition)
-    on_exit(fn -> definitions(nil) end)
-
     listener = :"router-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0})
+    start_supervised!({Listener, name: listener, port: 0, host: @host})
     {:ok, port} = Listener.port(listener)
 
     %{
@@ -209,16 +209,13 @@ defmodule WardrikHTTP.RouterTest do
     }
   end
 
-  # Names `module` as the host's definitions module, for every listener.
-  defp definitions(module), do: :ignore = Wardrik.Definition.configure(module)
-
-  # Another listener with `options`, and a client for it holding the same token.
+  # Another listener with `options`, on the suite's host unless they name
+  # another, and a client for it holding the same token.
   defp listener(api, options) do
     name = :"router-#{System.unique_integer([:positive])}"
+    options = Keyword.merge([name: name, port: 0, host: @host], options)
 
-    start_supervised!(
-      Supervisor.child_spec({Listener, [name: name, port: 0] ++ options}, id: name)
-    )
+    start_supervised!(Supervisor.child_spec({Listener, options}, id: name))
 
     {:ok, port} = Listener.port(name)
     Req.merge(api, base_url: "http://127.0.0.1:#{port}")
@@ -794,7 +791,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are neither taken nor kept by a server with nothing to read them", %{api: api} do
-      definitions(nil)
+      api = listener(api, host: Host.new())
       {key, _agent} = echo_agent()
 
       assert {:ok, %{status: 501, body: body}} = define(api, defined_key(), %{})
@@ -867,8 +864,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "a definition module that keeps definitions" do
     setup %{api: api} do
-      definitions(Kept)
-      %{kept: api}
+      %{kept: listener(api, host: Host.new(definitions: Kept))}
     end
 
     test "answers one back as it was sent, and forgets it with its agent", %{
@@ -937,8 +933,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "triggers" do
     setup %{api: api} do
-      definitions(Kept)
-      kept = api
+      kept = listener(api, host: Host.new(definitions: Kept))
       key = Fleet.id("triggered")
       {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
@@ -994,8 +989,6 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are not set where the server keeps no definitions", %{api: api, key: key} do
-      definitions(Definition)
-
       assert {:ok, %{status: 501, body: body}} =
                trigger(api, key, "sweep", %{"every" => "1h", "prompt" => "Look."})
 
@@ -1230,11 +1223,6 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "connections" do
-    setup do
-      :ignore = Wardrik.Connections.configure(Linked)
-      on_exit(fn -> Wardrik.Connections.configure(nil) end)
-    end
-
     defp as(api, scope, principal) do
       {:ok, secret, _token} =
         Token.create("connections", Prefix.parse!(scope), Grant.actions(),
@@ -1306,8 +1294,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "answer 501 where the host offers none", %{api: api} do
-      Wardrik.Connections.configure(nil)
-      jon = as(api, "test/", @jon)
+      jon = api |> listener(host: Host.new()) |> as("test/", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
     end
@@ -1316,12 +1303,7 @@ defmodule WardrikHTTP.RouterTest do
   describe "requests to a trigger" do
     setup %{api: api} do
       :persistent_term.put(Hooked, self())
-      :ignore = Wardrik.Triggers.configure(Hooked)
-
-      on_exit(fn ->
-        Wardrik.Triggers.configure(nil)
-        :persistent_term.erase(Hooked)
-      end)
+      on_exit(fn -> :persistent_term.erase(Hooked) end)
 
       %{anyone: Req.merge(api, auth: nil)}
     end
@@ -1379,9 +1361,8 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "agents under a prefix" do
-    setup do
-      definitions(Kept)
-      :ok
+    setup %{api: api} do
+      %{api: listener(api, host: Host.new(definitions: Kept))}
     end
 
     defp under(org), do: Wardrik.AgentID.Prefix.new!(org: org)

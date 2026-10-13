@@ -8,7 +8,7 @@ defmodule WardrikTUI.SSH do
        port: 2222,
        auth: {:public_key, verifier},
        system_dir: host_key_dir,
-       entrypoint: {WardrikTUI.SSH, org: "acme"}}
+       entrypoint: {WardrikTUI.SSH, org: "acme", host: host}}
 
   A session opens on the first agent the fleet runs, in the order of their
   IDs, and the fleet panel moves it to any other. Where the fleet runs none,
@@ -20,7 +20,8 @@ defmodule WardrikTUI.SSH do
   An agent a session starts, that assistant or one `/spawn` names, starts as
   `Wardrik.Operations.Spawn` starts any: on the definition the host keeps of
   it, or one the host's `Wardrik.Definition` creates, so every surface starts
-  the same agent. Whoever connected holds the node, as a shell on it does.
+  the same agent. Whoever connected holds the node, as a shell on it does,
+  on the `Wardrik.Host` the entrypoint's `:host` names.
 
   Breeze starts the session's terminal itself, from the options
   `Termite.SSH.Session.terminal_opts/1` gives, so the keys the client types
@@ -31,10 +32,10 @@ defmodule WardrikTUI.SSH do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.Caller
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Host
   alias Wardrik.Operations.Spawn
 
   @doc "Starts a session for `opts[:session]`, and answers its pid."
@@ -42,13 +43,15 @@ defmodule WardrikTUI.SSH do
   def start_link(opts) do
     session = Keyword.fetch!(opts, :session)
     org = Keyword.get(opts, :org)
+    host = Keyword.fetch!(opts, :host)
     principal = Wardrik.Principal.new(:ssh, to_string(session.username))
 
-    with {:ok, id} <- attach(session.username, org, principal) do
+    with {:ok, id} <- attach(session.username, org, Host.root(host, principal: principal)) do
       start_opts = [
         agent: id,
         agent_id: id,
         org: org,
+        host: host,
         principal: principal,
         model: model(id),
         clipboard: WardrikTUI.Clipboard.osc52(&write(session, &1)),
@@ -72,13 +75,13 @@ defmodule WardrikTUI.SSH do
   defp write(session, string),
     do: Termite.SSH.Adapter.write(%Termite.SSH.Adapter{channel_pid: session.channel_pid}, string)
 
-  defp attach(username, org, principal) do
+  defp attach(username, org, caller) do
     case choose(Fleet.list(), username, org) do
       {:attach, id} ->
         {:ok, id}
 
       {:start, id} ->
-        case Command.run(%Spawn{agent: id}, Caller.root(principal)) do
+        case Command.run(%Spawn{agent: id}, caller) do
           {:ok, _answer} -> {:ok, id}
           {:error, %Error{message: message}} -> {:error, message}
         end

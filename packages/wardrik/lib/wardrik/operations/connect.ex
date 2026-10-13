@@ -12,6 +12,7 @@ defmodule Wardrik.Operations.Connect do
   alias Wardrik.Change
   alias Wardrik.Connections
   alias Wardrik.Error
+  alias Wardrik.Host
   alias Wardrik.Resource
 
   @enforce_keys [:owner, :provider]
@@ -26,26 +27,27 @@ defmodule Wardrik.Operations.Connect do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(request, _caller) do
-    with {:ok, _module} <- Connections.module(), do: {:ok, Change.new(request)}
-  end
+  def plan(request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
-    with {:ok, module} <- Connections.module() do
-      case module.connect(provider, Connections.owner_of(owner), caller.principal) do
-        {:ok, :held} ->
-          {:ok, Resource.connecting(provider, nil), change.effect}
+    connections = Host.connections(caller.host)
 
-        {:ok, link} ->
-          {:ok, Resource.connecting(provider, link), change.effect}
+    case connections.connect(provider, Connections.owner_of(owner), caller.principal) do
+      {:ok, :held} ->
+        {:ok, Resource.connecting(provider, nil), change.effect}
 
-        {:error, :not_found} ->
-          {:error, Error.new(:not_found, "No account named #{provider} is offered.")}
+      {:ok, link} ->
+        {:ok, Resource.connecting(provider, link), change.effect}
 
-        {:error, _reason} ->
-          {:error, Error.new(:unavailable, "#{provider} could not start a sign-in now.")}
-      end
+      {:error, :not_found} ->
+        {:error, Error.new(:not_found, "No account named #{provider} is offered.")}
+
+      {:error, _reason} ->
+        {:error, Error.new(:unavailable, "#{provider} could not start a sign-in now.")}
+
+      :unsupported ->
+        {:error, Connections.unsupported()}
     end
   end
 

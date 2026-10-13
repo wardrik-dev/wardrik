@@ -27,6 +27,7 @@ defmodule WardrikChannel.RoomsTest do
   # where `create?`.
   defp context(offers, create? \\ false) do
     %Context{
+      host: Wardrik.Host.new(),
       channel: "chat-#{System.unique_integer([:positive])}",
       offered: {__MODULE__, :offering, [offers]},
       creatable: {__MODULE__, :creatable, [create?]},
@@ -111,7 +112,7 @@ defmodule WardrikChannel.RoomsTest do
   end
 
   test "offers none, and creates none, where the host says nothing of either" do
-    context = %Context{channel: "chat"}
+    context = %Context{host: Wardrik.Host.new(), channel: "chat"}
 
     assert Context.offered(context) == []
     refute Context.creatable?(context)

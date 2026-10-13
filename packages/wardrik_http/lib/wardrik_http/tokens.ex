@@ -1,9 +1,9 @@
 defmodule WardrikHTTP.Tokens do
   @moduledoc """
   The API's tokens as `Wardrik.Tokens` makes, lists and revokes them: each a
-  `WardrikHTTP.Token`. A host names it as `Wardrik`'s `:tokens`:
+  `WardrikHTTP.Token`. A host names it as its `Wardrik.Host`'s `:tokens`:
 
-      children = [{Wardrik, tokens: WardrikHTTP.Tokens}]
+      Wardrik.Host.new(tokens: WardrikHTTP.Tokens)
   """
 
   @behaviour Wardrik.Tokens

@@ -8,8 +8,8 @@ defmodule Wardrik.Operations.ReadDefinition do
   @behaviour Wardrik.Catalog.Entry
   @behaviour Wardrik.Query
 
-  alias Wardrik.Definition
   alias Wardrik.Error
+  alias Wardrik.Host
 
   @enforce_keys [:agent]
   defstruct [:agent]
@@ -39,16 +39,16 @@ defmodule Wardrik.Operations.ReadDefinition do
   def action, do: :read
 
   @impl Wardrik.Query
-  def run(%__MODULE__{agent: id}, _caller) do
-    with {:ok, module} <- Definition.module(:get),
-         {:ok, definition} <- module.get(id) do
-      {:ok, definition}
-    else
-      :unsupported ->
-        {:error, Error.new(:unsupported, "This server does not keep agents' definitions.")}
+  def run(%__MODULE__{agent: id}, caller) do
+    case Host.definitions(caller.host).get(id) do
+      {:ok, definition} ->
+        {:ok, definition}
 
       {:error, :not_found} ->
         {:error, undefined(id)}
+
+      :unsupported ->
+        {:error, Error.new(:unsupported, "This server does not keep agents' definitions.")}
     end
   end
 

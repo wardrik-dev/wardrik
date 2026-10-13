@@ -14,6 +14,7 @@ defmodule Wardrik.Operations.Forget do
   alias Wardrik.Definition
   alias Wardrik.Error
   alias Wardrik.Fleet
+  alias Wardrik.Host
   alias Wardrik.Operations.Forgetting
 
   @enforce_keys [:agent]
@@ -28,9 +29,9 @@ defmodule Wardrik.Operations.Forget do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id} = request, _caller) do
-    if Fleet.stored?(id) or Definition.kept?(id) do
-      case Forgetting.of([id], id) do
+  def plan(%__MODULE__{agent: id} = request, caller) do
+    if Fleet.stored?(id) or Definition.kept?(Host.definitions(caller.host), id) do
+      case Forgetting.of(caller.host, [id], id) do
         %Forgetting{kept: [{^id, why}]} -> {:error, Error.new(:conflict, why)}
         effect -> {:ok, Change.new(request, effect)}
       end
@@ -40,8 +41,8 @@ defmodule Wardrik.Operations.Forget do
   end
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{agent: id}, effect: effect}, _caller) do
-    case Definition.forget(id) do
+  def make(%Change{request: %__MODULE__{agent: id}, effect: effect}, caller) do
+    case Definition.forget(Host.definitions(caller.host), id) do
       {:error, :conflict, why} ->
         {:error, Error.new(:conflict, why)}
 

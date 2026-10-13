@@ -1,5 +1,5 @@
 defmodule Wardrik.CatalogTest do
-  # The host's definitions module is one for the node, which these tests set.
+  # The definitions module finds the test by a name kept for the node.
   use ExUnit.Case, async: false
 
   alias Wardrik.Agent.Message
@@ -8,9 +8,9 @@ defmodule Wardrik.CatalogTest do
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Agents
   alias Wardrik.Catalog.Self
-  alias Wardrik.Definition
   alias Wardrik.Event
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Principal
   alias Wardrik.Test.AgentRunners
   alias Wardrik.Test.Tools.Rules
@@ -20,7 +20,7 @@ defmodule Wardrik.CatalogTest do
   # in the tool runner, so it finds the test by the name it registers.
   defmodule Kept do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @impl true
     def put(id, definition, grant) do
@@ -54,12 +54,7 @@ defmodule Wardrik.CatalogTest do
 
   setup do
     :persistent_term.put(Kept, self())
-    :ignore = Definition.configure(Kept)
-
-    on_exit(fn ->
-      Definition.configure(nil)
-      :persistent_term.erase(Kept)
-    end)
+    on_exit(fn -> :persistent_term.erase(Kept) end)
 
     %{agent: acme("watch")}
   end
@@ -71,7 +66,10 @@ defmodule Wardrik.CatalogTest do
   }
 
   defp scope(agent, source, opts \\ []),
-    do: Wardrik.Test.scope([tools: [{source, agent}], id: agent] ++ opts)
+    do:
+      Wardrik.Test.scope(
+        [tools: [{source, agent}], id: agent, host: Host.new(definitions: Kept)] ++ opts
+      )
 
   defp allowing(names), do: [hooks: [Wardrik.Hook.new("rules", Rules, allow: names)]]
 

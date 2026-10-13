@@ -3,7 +3,7 @@ defmodule Wardrik.Operations.Ask do
   Sends an agent a message from the caller's principal, which it answers in
   a turn of its own: the answer says the message's ID, and the agent's log
   says the rest. Where the caller is an agent, made with
-  `Wardrik.Caller.agent/2`, the turn that takes the message sends it the
+  `Wardrik.Caller.agent/1`, the turn that takes the message sends it the
   answer as a message of its own; see "Answering another agent" in
   `Wardrik.Agent`.
 

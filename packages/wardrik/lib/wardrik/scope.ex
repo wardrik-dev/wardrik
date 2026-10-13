@@ -34,10 +34,14 @@ defmodule Wardrik.Scope do
   | `:dispatch` | what a model call actually is, and who pays for it |
   | `:retry` | whether a model call that failed is asked again |
   | `:credentials` | where a secret a tool names comes from |
+  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks |
 
-  The last six are the seams a host reaches through. Each defaults to
-  something inert, so a deployment that needs none of them configures none of
-  them and no branch in the runtime has to handle their absence.
+  `:hooks` to `:credentials` are the seams a host reaches through for one
+  agent. Each defaults to something inert, so a deployment that needs none of
+  them configures none of them and no branch in the runtime has to handle
+  their absence. `:host` is the deployment's, handed to every agent as it
+  starts, and `Wardrik.Host.new/1`, which offers no seam, where a run is
+  given none.
 
   ## Who asked
 
@@ -97,10 +101,11 @@ defmodule Wardrik.Scope do
   alias Wardrik.LLM.Config
   alias Wardrik.Trace
 
-  @enforce_keys [:config, :source]
+  @enforce_keys [:config, :source, :host]
   defstruct [
     :config,
     :source,
+    :host,
     :sender,
     :deadline,
     :dispatch,
@@ -121,6 +126,7 @@ defmodule Wardrik.Scope do
   @type t() :: %__MODULE__{
           config: Config.t(),
           source: Source.t(),
+          host: Wardrik.Host.t(),
           sender: Wardrik.Principal.t() | nil,
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
@@ -152,6 +158,8 @@ defmodule Wardrik.Scope do
     * `:name` - what to call the span, passed to `Wardrik.Event.Source.root/2`
     * `:sender` - the `Wardrik.Principal` who asked for the work, or `nil`
       where nobody did
+    * `:host` - the `Wardrik.Host` the work runs on, `Wardrik.Host.new/1`
+      where none is given
     * `:timeout` - how long the whole run may take, resolved to a deadline
     * `:deadline` - the same thing as a monotonic instant, for a caller that
       already holds one
@@ -173,6 +181,7 @@ defmodule Wardrik.Scope do
     %__MODULE__{
       config: config,
       source: Source.root(agent_id, opts),
+      host: Keyword.get_lazy(opts, :host, &Wardrik.Host.new/0),
       sender: Keyword.get(opts, :sender),
       hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),

@@ -12,10 +12,7 @@ defmodule WardrikDaemon.GrantsTest do
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Grants
 
-  # The test channel knows people by their id alone.
   setup %{tmp_dir: dir} do
-    context = %WardrikChannel.Context{channel: "chat"}
-    :ok = WardrikChannel.put_channel(WardrikDaemon.Test.Channel, [], context)
     previous = Application.get_env(:wardrik_daemon, Agents)
 
     on_exit(fn ->
@@ -27,6 +24,7 @@ defmodule WardrikDaemon.GrantsTest do
     %{dir: dir}
   end
 
+  # The test channel knows people by their id alone.
   defp channel(settings) do
     Application.put_env(
       :wardrik_daemon,

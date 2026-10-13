@@ -25,14 +25,14 @@ defmodule Wardrik.Operations.SpawnOn do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id, node: node} = request, _caller) do
+  def plan(%__MODULE__{agent: id, node: node} = request, caller) do
     with :ok <- Deployment.node(node),
-         {:ok, effect} <- Spawning.of(id, node),
+         {:ok, effect} <- Spawning.of(caller.host, id, node),
          do: {:ok, Change.new(request, effect)}
   end
 
   @impl Wardrik.Command
-  def make(%Change{effect: %Spawning{} = effect}, _caller) do
-    with {:ok, made} <- Spawning.make(effect), do: {:ok, Spawning.answer(made), made}
+  def make(%Change{effect: %Spawning{} = effect}, caller) do
+    with {:ok, made} <- Spawning.make(caller.host, effect), do: {:ok, Spawning.answer(made), made}
   end
 end

@@ -24,15 +24,19 @@ defmodule WardrikTest do
     assert List.last(specs).id == Wardrik.Fleet.Supervisor
   end
 
-  test "the store's settings are kept first, and the fleet starts with them" do
+  test "the store's settings are kept first, and the fleet starts with them and the host" do
     store = [adapter: WardrikStore.Memory]
+    host = Wardrik.Host.new(definitions: Wardrik.Test.Definitions)
 
-    {:ok, {_flags, [settings | specs]}} = Wardrik.init(store: store, fleet: [log: true])
+    {:ok, {_flags, [settings | specs]}} =
+      Wardrik.init(store: store, fleet: [log: true], host: host)
 
     assert settings.start == {WardrikStore, :configure, [store]}
 
-    assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [[store: ^store, log: true]]}} =
+    assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [opts]}} =
              Enum.find(specs, &(&1.id == Wardrik.Fleet.Supervisor))
+
+    assert Enum.sort(opts) == Enum.sort(log: true, store: store, host: host)
   end
 
   test "a host that starts Wardrik in its own tree has the application start nothing" do

@@ -146,7 +146,7 @@ defmodule Mix.Tasks.Wardrik do
 
     # Every agent this session starts is created on what the task was given.
     :ok = Mix.Tasks.Wardrik.Created.keep([config: config] ++ scope_opts(opts))
-    :ignore = Wardrik.Definition.configure(Mix.Tasks.Wardrik.Created)
+    host = Wardrik.Host.new(definitions: Mix.Tasks.Wardrik.Created)
     {:ok, spec} = Mix.Tasks.Wardrik.Created.create(agent_id)
     {:ok, _agent} = Wardrik.Fleet.put(spec)
 
@@ -156,6 +156,7 @@ defmodule Mix.Tasks.Wardrik do
           [
             agent: agent_id,
             agent_id: agent_id,
+            host: host,
             org: org,
             model: config.model_spec,
             verbose: opts[:verbose] || false
@@ -288,15 +289,12 @@ defmodule Mix.Tasks.Wardrik.Created do
   @moduledoc false
   # The agents `mix wardrik` starts: each one new, on the config and seams the
   # task was given, which it keeps no definition of.
-  @behaviour Wardrik.Definition
+  use Wardrik.Definition
 
   @key {__MODULE__, :fields}
 
   @spec keep(keyword()) :: :ok
   def keep(fields), do: :persistent_term.put(@key, fields)
-
-  @impl true
-  def put(_id, _definition, _grant), do: {:error, "mix wardrik keeps no definitions"}
 
   @impl true
   def create(id), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ :persistent_term.get(@key))}

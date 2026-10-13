@@ -44,24 +44,27 @@ defmodule WardrikSlack.ThreadsTest do
   @doc false
   def starting(runner, _channel, agent), do: Fleet.spawn(agent, runner: runner)
 
-  # A Slack channel's agent, whose threads run on `runner`, bound to C1.
+  # A Slack channel's agent, whose threads run on `runner`, bound to C1, and
+  # posted in by a WardrikChannel.Replies of its own started with it.
   defp bound(runner) do
     agent = Wardrik.Test.Fleet.id("books")
-
-    context = %Context{
-      channel: "slack-#{System.unique_integer([:positive])}",
-      offered: {__MODULE__, :offering, [agent]},
-      start: {__MODULE__, :starting, [runner]}
-    }
-
+    name = "slack-#{System.unique_integer([:positive])}"
+    replies = :"replies-#{name}"
     channel = [token: "xoxb-test", req_options: @req_options]
-    :ok = WardrikChannel.put_channel(WardrikSlack, channel, context)
-    {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", nil)
 
-    on_exit(fn ->
-      Replies.forget(context.channel, "C1")
-      Fleet.forget_under(AgentID.Prefix.of(agent))
-    end)
+    channels =
+      WardrikChannel.channels([{name, {WardrikSlack, channel}}],
+        host: Wardrik.Host.new(),
+        offered: {__MODULE__, :offering, [agent]},
+        start: {__MODULE__, :starting, [runner]},
+        replies: replies
+      )
+
+    start_supervised!({Replies, name: replies, channels: channels})
+    :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
+    {_adapter, _options, context} = channels[name]
+    {:bound, _room, _offer} = Rooms.joined(context, "C1", "books", nil)
+    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 
     people = :ets.new(:people, [:public])
     [context: context, name: :slack, bot: "UBOT", team: "T1", people: people] ++ channel

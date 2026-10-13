@@ -7,20 +7,33 @@ defmodule WardrikDaemon do
   their triggers, `WardrikHTTP.Access`, which keeps what its tokens grant,
   and `WardrikHTTP.Workers`, the tool workers connected to the cluster, so
   all five start once the fleet is up. It gives core `WardrikDaemon.Cluster`
-  as its `:cluster`, which starts before the fleet:
+  as its `:cluster`, which starts before the fleet, and is handed the same
+  `Wardrik.Host` as core:
+
+      host =
+        Wardrik.Host.new(
+          definitions: WardrikDaemon.Agents,
+          connections: WardrikOAuth.Connections,
+          tokens: WardrikHTTP.Tokens,
+          triggers: WardrikTrigger,
+          grants: WardrikDaemon.Grants
+        )
 
       children = [
-        {Wardrik,
-         cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
-         triggers: WardrikTrigger},
+        {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum], host: host},
         WardrikPolicy.Supervisor,
         {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
         WardrikHTTP.Access,
         WardrikHTTP.Workers,
-        WardrikDaemon
+        {WardrikDaemon, host: host}
       ]
 
       Supervisor.init(children, strategy: :rest_for_one)
+
+  The host is held by `WardrikDaemon.Host`, which it starts first, for the
+  `wardrik` commands that reach it over rpc, and handed in the options of
+  each of the surfaces below that builds callers: the HTTP API, the
+  channels and the TUI over SSH.
 
   As its supervisor starts, it reads `config.yaml`, or `config.yml`, from the
   config directory into the settings it keeps (see `WardrikDaemon.Config`),
@@ -38,16 +51,17 @@ defmodule WardrikDaemon do
     * `WardrikChannel.Supervisor`, when a channel is configured, which runs
       what each channel's adapter runs, such as its connection to the medium,
       after `WardrikChannel.Replies`, which posts what agents answer in its
-      rooms' threads.
+      rooms' threads. Both are handed the channels `WardrikChannel.channels/2`
+      makes once from the channels' settings, on the host.
     * `WardrikDaemon.SSH`, which serves the TUI over SSH, where `ssh/authorized_keys`
       in the config directory lets anyone in.
     * `WardrikHTTP.Listener`, which serves the HTTP API on loopback, or where
       `http` says, to callers holding a token that `wardrik token create`
-      made, and defines agents with `WardrikDaemon.Agents`.
+      made, on the host.
 
   A `config.yaml` that does not read stops the boot, with the reason logged.
 
-  `:config_dir`, `:state_dir` and `:data_dir` override
+  `:host` is required. `:config_dir`, `:state_dir` and `:data_dir` override
   `WardrikDaemon.Config.config_dir/0`, `WardrikDaemon.Config.state_dir/0` and
   `WardrikDaemon.Config.data_dir/0`.
 
@@ -86,28 +100,30 @@ defmodule WardrikDaemon do
   alias WardrikDaemon.VaultKey
 
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts \\ []) do
-    dirs = {
-      Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0),
-      Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0),
-      Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
+  def start_link(opts) do
+    started = %{
+      host: Keyword.fetch!(opts, :host),
+      config_dir: Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0),
+      state_dir: Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0),
+      data_dir: Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
     }
 
-    Supervisor.start_link(__MODULE__, dirs, name: __MODULE__)
+    Supervisor.start_link(__MODULE__, started, name: __MODULE__)
   end
 
   @impl true
-  def init({config_dir, state_dir, data_dir}) do
+  def init(%{host: host, config_dir: config_dir, state_dir: state_dir, data_dir: data_dir}) do
     case boot(config_dir, data_dir) do
       :ok ->
         children =
-          mcp(Path.join([state_dir, "log", "mcp.log"])) ++
+          [{WardrikDaemon.Host, host}] ++
+            mcp(Path.join([state_dir, "log", "mcp.log"])) ++
             oauth() ++
             [{WardrikDaemon.Agents, dir: config_dir}] ++
-            channels() ++
+            channels(host) ++
             notify() ++
-            WardrikDaemon.SSH.children(config_dir, data_dir) ++
-            [{WardrikHTTP.Listener, listener()}]
+            WardrikDaemon.SSH.children(config_dir, data_dir, host) ++
+            [{WardrikHTTP.Listener, [host: host] ++ listener()}]
 
         Supervisor.init(children, strategy: :one_for_one)
 
@@ -169,21 +185,25 @@ defmodule WardrikDaemon do
       else: []
   end
 
-  defp channels do
+  defp channels(host) do
     case Keyword.get(Config.settings(WardrikChannel), :channels, []) do
       [] ->
         []
 
-      channels ->
+      configured ->
+        channels =
+          WardrikChannel.channels(configured,
+            host: host,
+            offered: {WardrikDaemon.Agents, :offered, []},
+            creatable: {WardrikDaemon.Agents, :creatable?, []},
+            create: {WardrikDaemon.Agents, :create, []},
+            start: {WardrikDaemon.Agents, :start, []},
+            approvers: {WardrikDaemon.Agents, :approvers, []}
+          )
+
         [
-          WardrikChannel.Replies,
-          {WardrikChannel.Supervisor,
-           channels: channels,
-           offered: {WardrikDaemon.Agents, :offered, []},
-           creatable: {WardrikDaemon.Agents, :creatable?, []},
-           create: {WardrikDaemon.Agents, :create, []},
-           start: {WardrikDaemon.Agents, :start, []},
-           approvers: {WardrikDaemon.Agents, :approvers, []}}
+          {WardrikChannel.Replies, channels: channels},
+          {WardrikChannel.Supervisor, channels: channels}
         ]
     end
   end

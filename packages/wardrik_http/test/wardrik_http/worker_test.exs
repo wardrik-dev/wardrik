@@ -115,7 +115,7 @@ defmodule WardrikHTTP.WorkerTest do
       Token.create("worker-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
 
     listener = :"worker-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0})
+    start_supervised!({Listener, name: listener, port: 0, host: Wardrik.Host.new()})
     {:ok, port} = Listener.port(listener)
 
     test = self()

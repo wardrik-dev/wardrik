@@ -3,16 +3,13 @@ defmodule Wardrik do
   The supervisor of everything Wardrik runs. In order:
 
     * The store's settings, kept where every read and write finds them; see
-      `WardrikStore.configure/1`, and the host's definitions, connections,
-      tokens, triggers and grants modules, kept where every operation finds
-      them; see `Wardrik.Definition.configure/1`,
-      `Wardrik.Connections.configure/1`, `Wardrik.Tokens.configure/1`,
-      `Wardrik.Triggers.configure/1` and `Wardrik.Grants.configure/1`.
+      `WardrikStore.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
       fleet starts.
-    * `Wardrik.Fleet.Supervisor`, with `:fleet`, which starts the store first.
+    * `Wardrik.Fleet.Supervisor`, with `:fleet` and `:host`, which starts
+      the store first, and hands every agent the host as it starts.
 
   Each child depends on the ones before it: an agent joins the bus as it
   starts and writes its log from what the bus delivers, and runs its turns
@@ -21,27 +18,33 @@ defmodule Wardrik do
   load is a task that exits once done and is not started again.
 
   The `:wardrik` application starts it by default, with the store, the fleet
-  and the definitions, connections, tokens, triggers and grants modules as
-  the application's environment holds them:
+  and the host's seams as the application's environment holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, definitions: MyApp.Definitions, connections: WardrikOAuth.Connections,
-        triggers: WardrikTrigger, grants: MyApp.Grants
+      config :wardrik, Wardrik.Host, definitions: MyApp.Definitions,
+        connections: WardrikOAuth.Connections, triggers: WardrikTrigger, grants: MyApp.Grants
 
   A host that starts it in its own tree instead, after the repo its store is
-  kept in, says so, and hands it its options:
+  kept in, says so, and hands it its options, and the same `Wardrik.Host` to
+  each surface it starts after it:
 
       config :wardrik, start: :host
 
+      host = Wardrik.Host.new(definitions: MyApp.Definitions, grants: MyApp.Grants)
+
       children = [
         MyApp.Repo,
-        {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo]},
-        MyAppWeb.Endpoint
+        {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo], host: host},
+        {MyAppWeb.Endpoint, host: host}
       ]
 
   The application then starts nothing. What runs on the fleet goes after it
   in the host's tree, which starts it once the fleet is up.
+
+  Nothing of the host is kept where a node finds it: it travels in the
+  options of what is started with it, and in each `Wardrik.Caller`, so two
+  instances on one node each answer with their own.
 
   ## Options
 
@@ -49,19 +52,9 @@ defmodule Wardrik do
       `WardrikStore.EKV` with its defaults where none is given. See
       `WardrikStore`.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
-    * `:definitions` - the `Wardrik.Definition` that agents' definitions go
-      to, whichever surface they come from. None by default, where no
-      operation defines an agent.
-    * `:connections` - the `Wardrik.Connections` that the accounts people and
-      orgs connect are asked of. None by default, where no operation offers
-      any.
-    * `:tokens` - the `Wardrik.Tokens` that callers' tokens are made, listed
-      and revoked through. None by default, where no operation makes any.
-    * `:triggers` - the `Wardrik.Triggers` that requests from outside are
-      delivered to. None by default, where no operation delivers any.
-    * `:grants` - the `Wardrik.Grants` that says what each principal may
-      do. None by default, where nobody known by a principal alone holds
-      anything.
+    * `:host` - the `Wardrik.Host` every agent is handed as it starts, for
+      the definition it runs on and the operations its tools call.
+      `Wardrik.Host.new/1` by default, which offers no seam.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -81,30 +74,12 @@ defmodule Wardrik do
         cluster: [],
         store: [],
         fleet: [],
-        definitions: nil,
-        connections: nil,
-        tokens: nil,
-        triggers: nil,
-        grants: nil
+        host: Wardrik.Host.new()
       )
 
     children =
       [
         %{id: {WardrikStore, :settings}, start: {WardrikStore, :configure, [opts[:store]]}},
-        %{
-          id: {Wardrik.Definition, :module},
-          start: {Wardrik.Definition, :configure, [opts[:definitions]]}
-        },
-        %{
-          id: {Wardrik.Connections, :module},
-          start: {Wardrik.Connections, :configure, [opts[:connections]]}
-        },
-        %{id: {Wardrik.Tokens, :module}, start: {Wardrik.Tokens, :configure, [opts[:tokens]]}},
-        %{
-          id: {Wardrik.Triggers, :module},
-          start: {Wardrik.Triggers, :configure, [opts[:triggers]]}
-        },
-        %{id: {Wardrik.Grants, :module}, start: {Wardrik.Grants, :configure, [opts[:grants]]}},
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
@@ -113,7 +88,10 @@ defmodule Wardrik do
         Wardrik.Tasks
       ] ++
         opts[:cluster] ++
-        [{Wardrik.Fleet.Supervisor, Keyword.put(opts[:fleet], :store, opts[:store])}]
+        [
+          {Wardrik.Fleet.Supervisor,
+           Keyword.merge(opts[:fleet], store: opts[:store], host: opts[:host])}
+        ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end

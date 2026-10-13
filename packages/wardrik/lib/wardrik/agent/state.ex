@@ -189,11 +189,12 @@ defmodule Wardrik.Agent.State do
 
   @default_idle_timeout :timer.minutes(15)
 
-  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts, :log]
+  @enforce_keys [:agent_id, :config, :context, :runner, :resumer, :scope_opts, :log, :host]
   defstruct [
     :generation,
     :agent_id,
     :log,
+    :host,
     :config,
     :context,
     :runner,
@@ -251,6 +252,7 @@ defmodule Wardrik.Agent.State do
           generation: String.t(),
           agent_id: Event.Bus.agent_id(),
           log: Writer.t(),
+          host: Wardrik.Host.t(),
           config: Config.t(),
           context: Context.t(),
           runner: runner(),
@@ -320,6 +322,7 @@ defmodule Wardrik.Agent.State do
       generation: generation(),
       agent_id: agent_id,
       log: Writer.new(agent_id),
+      host: Wardrik.Host.new(),
       config: Keyword.get(opts, :config, Config.new()),
       context: Keyword.get(opts, :context, Context.new()),
       runner: mfa!(Keyword.get(opts, :runner, {Turn, :run, []}), :runner),
@@ -331,6 +334,13 @@ defmodule Wardrik.Agent.State do
       wake_only: Keyword.get(opts, :wake_only, false)
     }
   end
+
+  @doc """
+  The same agent on `host`, which the fleet hands it each time it starts;
+  see `Wardrik.Agent`. It is never written down.
+  """
+  @spec hosted(t(), Wardrik.Host.t()) :: t()
+  def hosted(%__MODULE__{} = state, host), do: %{state | host: host}
 
   @doc """
   The same agent with the config and seams in `opts`, for the turns it starts
@@ -446,7 +456,7 @@ defmodule Wardrik.Agent.State do
   """
   @spec turn_scope(t(), Wardrik.Principal.t() | nil) :: Scope.t()
   def turn_scope(%__MODULE__{} = state, sender) do
-    opts = [name: "turn", sender: sender] ++ state.scope_opts
+    opts = [name: "turn", sender: sender, host: state.host] ++ state.scope_opts
     %{Scope.root(state.config, state.agent_id, opts) | labels: state.labels}
   end
 

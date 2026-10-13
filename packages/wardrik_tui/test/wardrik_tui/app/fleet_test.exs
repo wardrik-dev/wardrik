@@ -19,7 +19,7 @@ defmodule WardrikTUI.App.FleetTest do
   # answers, or says why it cannot.
   defmodule Created do
     @moduledoc false
-    @behaviour Wardrik.Definition
+    use Wardrik.Definition
 
     @impl true
     def put(_id, _definition, _grant), do: {:error, "not here"}
@@ -48,8 +48,6 @@ defmodule WardrikTUI.App.FleetTest do
   end
 
   setup do
-    :ignore = Wardrik.Definition.configure(Created)
-    on_exit(fn -> Wardrik.Definition.configure(nil) end)
     :ok = Fleet.watch()
     org = "tui#{System.unique_integer([:positive])}"
     spawn_opts = [runner: {AgentRunners, :echo, [self(), "ok"]}]
@@ -63,6 +61,7 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
+          host: Wardrik.Host.new(definitions: Created),
           org: org,
           spawn_opts: spawn_opts,
           model: "test:model",
@@ -667,7 +666,7 @@ defmodule WardrikTUI.App.FleetTest do
     session =
       Breeze.Test.start!(App,
         size: {90, 14},
-        start_opts: [agent: key, agent_id: key, model: "test:model"],
+        start_opts: [agent: key, agent_id: key, host: Wardrik.Host.new(), model: "test:model"],
         global_keybindings: App.keybindings()
       )
 

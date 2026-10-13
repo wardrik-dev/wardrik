@@ -1,6 +1,5 @@
 defmodule Wardrik.TriggersTest do
-  # The host's triggers module is one for the node, which these tests set.
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
@@ -8,9 +7,9 @@ defmodule Wardrik.TriggersTest do
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Operations.Deliver
   alias Wardrik.Principal
-  alias Wardrik.Triggers
 
   # Answers what the test puts in its process as :answer, and tells the test
   # what it was handed; operations run in the test's process.
@@ -25,24 +24,24 @@ defmodule Wardrik.TriggersTest do
     end
   end
 
-  setup do
-    :ignore = Triggers.configure(Answering)
-    on_exit(fn -> Triggers.configure(nil) end)
-  end
-
   @agent AgentID.parse!("acme/hooked")
 
-  defp caller(can) do
+  defp caller(can, host) do
     {:ok, grant} = Grant.new(Prefix.of(@agent), can)
-    Caller.new(Principal.new(:webhook, "acme/hooked//issues"), grant)
+
+    Caller.new(
+      principal: Principal.new(:webhook, "acme/hooked//issues"),
+      grant: grant,
+      host: host
+    )
   end
 
-  defp deliver(answer, can \\ [:message]) do
+  defp deliver(answer, can \\ [:message], host \\ Host.new(triggers: Answering)) do
     Process.put(:answer, answer)
 
     Command.run(
       %Deliver{agent: @agent, trigger: "issues", headers: [{"x-id", "1"}], body: "{}"},
-      caller(can)
+      caller(can, host)
     )
   end
 
@@ -68,7 +67,6 @@ defmodule Wardrik.TriggersTest do
   end
 
   test "is unsupported where the host names no module" do
-    Triggers.configure(nil)
-    assert {:error, %Error{type: :unsupported}} = deliver({:ok, :asked})
+    assert {:error, %Error{type: :unsupported}} = deliver({:ok, :asked}, [:message], Host.new())
   end
 end

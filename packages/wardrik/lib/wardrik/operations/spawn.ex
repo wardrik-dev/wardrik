@@ -2,7 +2,7 @@ defmodule Wardrik.Operations.Spawn do
   @moduledoc """
   Starts an agent wherever the fleet puts it: one asleep wakes, one the
   host defines starts on its definition, and one nothing defines yet is
-  defined as the host's `Wardrik.Definition.create/1` says; see
+  defined as the host's `c:Wardrik.Definition.create/1` says; see
   `Wardrik.Operations.Spawning`. Starting one on a node of the caller's
   choosing is `Wardrik.Operations.SpawnOn`.
   """
@@ -25,12 +25,13 @@ defmodule Wardrik.Operations.Spawn do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{agent: id} = request, _caller) do
-    with {:ok, effect} <- Spawning.of(id, :anywhere), do: {:ok, Change.new(request, effect)}
+  def plan(%__MODULE__{agent: id} = request, caller) do
+    with {:ok, effect} <- Spawning.of(caller.host, id, :anywhere),
+         do: {:ok, Change.new(request, effect)}
   end
 
   @impl Wardrik.Command
-  def make(%Change{effect: %Spawning{} = effect}, _caller) do
-    with {:ok, made} <- Spawning.make(effect), do: {:ok, Spawning.answer(made), made}
+  def make(%Change{effect: %Spawning{} = effect}, caller) do
+    with {:ok, made} <- Spawning.make(caller.host, effect), do: {:ok, Spawning.answer(made), made}
   end
 end

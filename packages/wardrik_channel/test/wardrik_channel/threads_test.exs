@@ -25,26 +25,29 @@ defmodule WardrikChannel.ThreadsTest do
   @doc false
   def approving(approvers, _channel), do: approvers
 
-  # A channel of its own, delivering to the test, with a room bound to an
-  # agent whose threads run on `runner`, and resume on `:resumer`.
+  # A channel of its own, delivering to the test, posted in by a
+  # WardrikChannel.Replies of its own started with it, with a room bound to
+  # an agent whose threads run on `runner`, and resume on `:resumer`.
   defp bound(runner, opts \\ []) do
     agent = Wardrik.Test.Fleet.id("books")
+    name = "chat-#{System.unique_integer([:positive])}"
+    replies = :"replies-#{name}"
 
-    context = %Context{
-      channel: "chat-#{System.unique_integer([:positive])}",
-      offered: {__MODULE__, :offering, [agent]},
-      start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
-      approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]}
-    }
+    channels =
+      WardrikChannel.channels(
+        [{name, {WardrikChannel.Test.Adapter, test: self(), refusals: opts[:refusals]}}],
+        host: Wardrik.Host.new(),
+        offered: {__MODULE__, :offering, [agent]},
+        start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
+        approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
+        replies: replies
+      )
 
-    channel = [test: self(), refusals: opts[:refusals]]
-    :ok = WardrikChannel.put_channel(WardrikChannel.Test.Adapter, channel, context)
+    start_supervised!({Replies, name: replies, channels: channels})
+    :ok = DurableServer.Supervisor.wait_until_ready(replies, timeout: 10_000)
+    {_adapter, _options, context} = channels[name]
     {:bound, room, _offer} = Rooms.joined(context, "C1", "books", @maria)
-
-    on_exit(fn ->
-      Replies.forget(context.channel, "C1")
-      Fleet.forget_under(AgentID.Prefix.of(agent))
-    end)
+    on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 
     {context, room}
   end
@@ -155,13 +158,14 @@ defmodule WardrikChannel.ThreadsTest do
   end
 
   test "reminds nothing in a room it does not post in, nor a thread it does not follow" do
-    assert Replies.remind("chat-none", "C1", "1.1") == :ok
+    nowhere = %Context{host: Wardrik.Host.new(), channel: "chat-none"}
+    assert Replies.remind(nowhere, "C1", "1.1") == :ok
 
     {context, _room} = bound({AgentRunners, :echo, [self(), "Here."]})
     {:asked, _agent} = WardrikChannel.received(context, inbound(context, id: "8.1", text: "Hi."))
     assert_receive {:delivered, %Outbound{body: {:reply, "Here.", ["8.1"]}}, _channel}
 
-    assert Replies.remind(context.channel, "C1", "9.9") == :ok
+    assert Replies.remind(context, "C1", "9.9") == :ok
     refute_receive {:delivered, _outbound, _channel}, 200
   end
 
@@ -208,7 +212,7 @@ defmodule WardrikChannel.ThreadsTest do
       Wardrik.Agent.decide(
         agent,
         %{"call_1" => {:deny, "Not on Fridays."}},
-        Wardrik.Caller.root(by)
+        Wardrik.Caller.root(principal: by, host: Wardrik.Host.new())
       )
 
     assert_receive {:delivered,
@@ -265,13 +269,13 @@ defmodule WardrikChannel.ThreadsTest do
     assert_receive {:delivered, %Outbound{body: {:reply, "Counted.", ["7.1"]}}, _channel}
 
     key = context.channel <> "/C1"
-    :ok = DurableServer.Supervisor.terminate_child_permanent(Replies.supervisor(), key)
+    :ok = DurableServer.Supervisor.terminate_child_permanent(context.replies, key)
 
     :ok = Wardrik.Agent.ask(agent, "Again.", id: "7.2")
     assert_receive {:turn, _context}
     refute_receive {:delivered, _outbound, _channel}, 200
 
-    :ok = Replies.follow(context.channel, "C1", "7.1", WardrikChannel.conversation(room, "7.1"))
+    :ok = Replies.follow(context, "C1", "7.1", WardrikChannel.conversation(room, "7.1"))
 
     assert_receive {:delivered, %Outbound{thread: "7.1", body: {:reply, "Counted.", ["7.2"]}},
                     _channel}

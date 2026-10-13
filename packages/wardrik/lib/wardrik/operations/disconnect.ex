@@ -10,6 +10,7 @@ defmodule Wardrik.Operations.Disconnect do
   alias Wardrik.Change
   alias Wardrik.Connections
   alias Wardrik.Error
+  alias Wardrik.Host
 
   @enforce_keys [:owner, :provider]
   defstruct [:owner, :provider]
@@ -23,23 +24,22 @@ defmodule Wardrik.Operations.Disconnect do
   def action, do: :define
 
   @impl Wardrik.Command
-  def plan(%__MODULE__{} = request, _caller) do
-    with {:ok, _module} <- Connections.module(), do: {:ok, Change.new(request)}
-  end
+  def plan(%__MODULE__{} = request, _caller), do: {:ok, Change.new(request)}
 
   @impl Wardrik.Command
-  def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, _caller) do
-    with {:ok, module} <- Connections.module() do
-      case module.disconnect(provider, Connections.owner_of(owner)) do
-        :ok ->
-          {:ok, nil, change.effect}
+  def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
+    case Host.connections(caller.host).disconnect(provider, Connections.owner_of(owner)) do
+      :ok ->
+        {:ok, nil, change.effect}
 
-        {:error, :not_found} ->
-          {:error, Error.new(:not_found, "#{owner} holds no #{provider}.")}
+      {:error, :not_found} ->
+        {:error, Error.new(:not_found, "#{owner} holds no #{provider}.")}
 
-        {:error, _reason} ->
-          {:error, Error.new(:unavailable, "#{provider} could not be forgotten now.")}
-      end
+      {:error, _reason} ->
+        {:error, Error.new(:unavailable, "#{provider} could not be forgotten now.")}
+
+      :unsupported ->
+        {:error, Connections.unsupported()}
     end
   end
 

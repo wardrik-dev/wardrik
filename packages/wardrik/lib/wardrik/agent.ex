@@ -114,6 +114,19 @@ defmodule Wardrik.Agent do
   A config's tools are built on whichever node runs the agent. One that node
   cannot build is left out with a warning.
 
+  ## The host it runs on
+
+  Each time the agent starts, wakes from the store, or restarts on another
+  node, the fleet hands it the `Wardrik.Host` that `Wardrik` was started
+  with (see `Wardrik.Fleet.Supervisor`). It keeps it in memory and never
+  writes it down, so what the store holds of an agent names no module of
+  the host's. As it starts it asks the host's `Wardrik.Definition` for the
+  spec it runs on now, `c:Wardrik.Definition.current/1`, and takes its
+  config, seams and idle timeout as `configure/2` gives them, so a
+  definition changed while it slept is the one it wakes with; `:none`
+  leaves it as it was. Every turn's scope carries the host, for the tools
+  that call operations as the agent, as `Wardrik.Catalog.Tools` does.
+
   The agent adds events of its own so subscribers can follow its state
   without polling: `Wardrik.Event.TurnStarted`, `Wardrik.Event.TurnFinished`,
   `Wardrik.Event.TurnFailed`, `Wardrik.Event.TurnInterrupted`,
@@ -164,6 +177,7 @@ defmodule Wardrik.Agent do
   alias ReqLLM.Context
   alias Wardrik.Agent.Message
   alias Wardrik.Agent.Snapshot
+  alias Wardrik.Agent.Spec
   alias Wardrik.Agent.State
   alias Wardrik.Agent.State.Stored
   alias Wardrik.Agent.State.View
@@ -176,6 +190,7 @@ defmodule Wardrik.Agent do
   alias Wardrik.Event.Source
   alias Wardrik.Fleet
   alias Wardrik.History
+  alias Wardrik.Host
   alias Wardrik.LLM.Turn
 
   @typedoc "An agent: the pid of one, or its ID."
@@ -353,13 +368,15 @@ defmodule Wardrik.Agent do
 
   # DurableServer's callback type leaves out the continue its server takes
   # from `init`.
-  @dialyzer {:nowarn_function, init: 1}
+  @dialyzer {:nowarn_function, init: 2}
   @impl DurableServer
-  def init(%State{wake_only: true} = state),
-    do: {:ok, state, {:continue, :gone}, meta: Map.put(View.meta(state), :gone, true)}
+  def init(%State{wake_only: true} = state, %{host: host}),
+    do:
+      {:ok, State.hosted(state, host), {:continue, :gone},
+       meta: Map.put(View.meta(state), :gone, true)}
 
-  def init(%State{} = state) do
-    {:ok, state, {:continue, :open},
+  def init(%State{} = state, %{host: host}) do
+    {:ok, State.hosted(state, host), {:continue, :open},
      meta: View.meta(state), permanent: true, sync_every_ms: @sync_every_ms}
   end
 
@@ -526,8 +543,9 @@ defmodule Wardrik.Agent do
 
     state = State.logged(state, Writer.open(state.log, started))
     :ok = Bus.publish(started)
+    {state, sync} = defined(state)
 
-    state |> touched() |> arm_idle() |> advance()
+    state |> touched() |> arm_idle() |> advance(sync)
   end
 
   # Woken after it was forgotten: it goes without leaving anything behind.
@@ -546,6 +564,16 @@ defmodule Wardrik.Agent do
 
       :none ->
         stay(state)
+    end
+  end
+
+  # The definition the host keeps of it now, which may have changed while it
+  # slept or ran on a node since lost. It is asked once the log is open, as a
+  # parked turn its new hooks decide again writes to it.
+  defp defined(state) do
+    case Host.definitions(state.host).current(state.agent_id) do
+      {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
+      :none -> {state, []}
     end
   end
 
@@ -655,7 +683,7 @@ defmodule Wardrik.Agent do
 
   # Every return republishes this agent's metadata, which is what `Wardrik.Fleet`
   # lists. `sync: true` writes the state to the store before returning.
-  defp advance(state, opts \\ []) do
+  defp advance(state, opts) do
     {:noreply, state, {:continue, :maybe_run}, [meta: View.meta(state)] ++ opts}
   end
 

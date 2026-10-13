@@ -16,8 +16,6 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   setup %{owner: owner} do
     start_supervised!({WardrikOAuth.Supervisor, callback: false})
-    :ignore = Connections.configure(WardrikOAuth.Connections)
-    on_exit(fn -> Connections.configure(nil) end)
 
     stub_server(cimd: true)
 
@@ -34,7 +32,12 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   defp caller(org, user) do
     {:ok, grant} = Grant.new(Prefix.new!(org: org))
-    Caller.new(Principal.new(:user, user, name: "Jon"), grant)
+
+    Caller.new(
+      principal: Principal.new(:user, user, name: "Jon"),
+      grant: grant,
+      host: Wardrik.Host.new(connections: WardrikOAuth.Connections)
+    )
   end
 
   defp list(caller) do

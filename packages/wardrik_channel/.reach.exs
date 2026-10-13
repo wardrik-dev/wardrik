@@ -30,6 +30,7 @@
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
       "Wardrik.Grant",
+      "Wardrik.Host",
       "Wardrik.Hook",
       "Wardrik.Label",
       "Wardrik.Ledger",
