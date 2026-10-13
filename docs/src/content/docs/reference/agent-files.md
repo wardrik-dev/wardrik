@@ -43,7 +43,7 @@ with no frontmatter is all prompt.
 | `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
 | `retries` | how many seconds a turn waits before asking a failed model call again, one wait for each try; see below |
 | `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
-| `triggers` | when it is asked something on a clock; see below |
+| `triggers` | when it is asked something on a clock, or by a webhook; see below |
 | `notify` | who hears when it parks, fails or answers; see below |
 | `channels` | the chat channels it may be chosen to answer in; see below |
 
@@ -159,8 +159,8 @@ lists, in seconds, before the turn fails; see `Wardrik.LLM.Retry`.
 ## Triggers
 
 `triggers` is one trigger or a list of them, each a `WardrikTrigger`,
-that ask the agent, and none of its conversations, on a clock, or when a
-feed it watches has something new:
+that ask the agent, and none of its conversations, on a clock, when a
+feed it watches has something new, or when a service sends it a webhook:
 
     triggers:
       - name: sweep
@@ -174,10 +174,14 @@ feed it watches has something new:
         every: 1h
         feed: [https://rivalco.example/changelog.rss, https://hnrss.org/newest?q=rivalco]
         prompt: What changed at our competitors?
+      - name: issues
+        webhook: github
+        secret: ${GITHUB_SIGNING_SECRET}
+        prompt: A GitHub event is below. Triage it.
 
   * `every` - a cron expression in UTC, quoted, since YAML reads a leading
     `*` as something else; or a duration of at least a minute, as `30m`,
-    `2h` or `1d`
+    `2h` or `1d`. A `webhook` trigger has none
   * `prompt` - what the agent is asked
   * `prompt_file` - in place of `prompt`, a file in its workspace: each time
     the trigger fires the agent is asked to read it and do what it says,
@@ -185,8 +189,9 @@ feed it watches has something new:
     `tools`
   * `name` - the trigger's name, `trigger-1`, `trigger-2` and so on by
     its place in the list when absent
-  * `overlap` - `skip`, the default, leaves an agent that is running or
-    waiting on a person be, and `queue` asks it anyway
+  * `overlap` - `skip` leaves an agent that is running or waiting on a
+    person be, and `queue` asks it anyway; `skip` by default, and `queue`
+    for a `webhook` trigger
   * `missed` - `run_once`, the default, fires once for runs missed while
     the daemon was down, and `skip` lets them go
   * `jitter` - up to this many seconds added to each run
@@ -194,6 +199,13 @@ feed it watches has something new:
     run: the agent is asked only when one has entries it has not seen,
     with them under the prompt, as `WardrikTrigger.Feed` reads them. The
     first run only notes what a feed already holds
+  * `webhook` - how the service that sends it requests signs them,
+    `github` or `standard`, with `secret`, the secret it signs with, as
+    `${NAME}`: the vault's for the agent's user, org or deployment, as a
+    tool's credential is, else the environment variable. The
+    service sends them to `POST /v1/hooks/{key}/{name}`, and the agent is
+    asked about each once, with its body under the prompt, as
+    `WardrikTrigger.Webhook` reads it
 
 ## Channels
 

@@ -5,6 +5,11 @@ defmodule WardrikDaemon.Secrets do
   `WardrikDaemon.Config.read/2` reads through `named/1`, and model providers'
   keys.
 
+  A webhook trigger's `secret` is read by `for_agent/2` instead, as each
+  request arrives, in the order a tool's credential is: the agent's user's,
+  its org's, then the deployment's, and the environment last, so each org
+  keeps its own.
+
   The environment comes first, and the deployment's secret `NAME` in the vault
   second, for every one of them. `wardrik vault put NAME` seals one.
 
@@ -28,8 +33,21 @@ defmodule WardrikDaemon.Secrets do
 
   @doc "The deployment's secret `name` in the vault, or `nil` where it holds none it can read."
   @spec named(String.t()) :: String.t() | nil
-  def named(name) do
-    case WardrikVault.lookup(name, nil) do
+  def named(name), do: secret(name, nil)
+
+  @doc """
+  The secret `name` for the agent `id`: what the vault holds for its user,
+  else its org, else the deployment, else the environment; `nil` where none
+  does.
+  """
+  @spec for_agent(String.t(), Wardrik.AgentID.t()) :: String.t() | nil
+  def for_agent(name, %Wardrik.AgentID{org: org, user: user}) do
+    owners = if user, do: [{org, user}, org, nil], else: [org, nil]
+    Enum.find_value(owners, &secret(name, &1)) || System.get_env(name)
+  end
+
+  defp secret(name, owner) do
+    case WardrikVault.lookup(name, owner) do
       {:ok, :secret, secret} -> secret
       _grant_absent_or_unreadable -> nil
     end

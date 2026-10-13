@@ -1,12 +1,12 @@
 ---
 title: Trigger an agent
-description: Ask an agent something on a clock, with cron or an interval, or when a feed it watches has something new, and give it a checklist it can edit.
+description: Ask an agent something on a clock, with cron or an interval, when a feed it watches has something new, or when a service sends it a webhook, and give it a checklist it can edit.
 sidebar:
   order: 1
 ---
 
-A trigger asks an agent something when it comes round, here on a clock. An agent's triggers are
-part of its definition, here its agent file:
+A trigger asks an agent something when it comes round, here on a clock; it can also watch a feed,
+or take a service's webhooks. An agent's triggers are part of its definition, here its agent file:
 
 ```yaml title="~/.config/wardrik/agents/triage.md"
 ---
@@ -137,6 +137,54 @@ Many places a team watches have a feed:
 | A subreddit, or a search of Reddit | `https://www.reddit.com/r/NAME/.rss`, `https://www.reddit.com/search.rss?q=WORD` |
 | A GitHub repository's releases | `https://github.com/OWNER/REPO/releases.atom` |
 | A blog or changelog | the `rss` or `atom` link in its page's `<head>`, often `/feed`, `/rss.xml` or `/atom.xml` |
+
+## Receiving a webhook
+
+`webhook` makes a trigger take the requests a service sends when something happens there, such as
+an issue opened or a payment made, and ask the agent about each. It has no `every`: it asks as each
+request arrives, with the request's body under the prompt:
+
+```yaml
+triggers:
+  - name: issues
+    webhook: github
+    secret: ${GITHUB_SIGNING_SECRET}
+    prompt: A GitHub event is below. If it is a new issue, label it and say who should look.
+```
+
+The service sends its requests to the trigger's address, with the agent's key and the trigger's
+name in the path:
+
+```
+https://wardrik.example.com/v1/hooks/default/triage/issues
+```
+
+- **The secret checks each request.** `webhook` names how the service signs what it sends:
+  `github`, or `standard` for the [Standard Webhooks](https://www.standardwebhooks.com/) spec that
+  many services follow. `secret` names the secret you gave the service, as `${NAME}`, which is read
+  as a tool's credential is: the vault's for the agent's user, then its org, then the deployment,
+  then the environment. `wardrik vault put GITHUB_SIGNING_SECRET --org acme` seals one for an org,
+  so each org's agents check with their own.
+- **A request the secret did not sign is answered `404`,** as one to a trigger that does not exist,
+  so a request tells its sender nothing of triggers it cannot sign for; the daemon's log says why.
+  The agent is not asked.
+- **The service needs no token.** The address takes no `Authorization` header, and a request to it
+  can do nothing but ask that agent through that trigger.
+- **A request sent again is asked about once.** Services send a request again when they hear
+  nothing back in time. The trigger keeps the IDs of the last 500 requests it asked about, and
+  answers a repeat `202` without asking again.
+- **A request that cannot be delivered now is answered `503`**, such as one to an agent that is
+  not running, and the trigger does not keep it, so a service that tries again delivers it later.
+  A webhook trigger queues behind a running turn unless it says `overlap: skip`, which answers
+  `503` while the agent is busy.
+- **The body is content from outside.** Whoever made the event could be asking for the agent's
+  next call, so a gated tool's calls wait on a person once the agent has read it. The agent is
+  shown the body's first 32,768 characters.
+- **The daemon must be reachable from the service.** It listens on `127.0.0.1` unless
+  `config.yaml`'s `http` says otherwise; put it behind a proxy that serves HTTPS, or a tunnel, so
+  the service can reach `/v1/hooks/`.
+
+`wardrik triggers` shows a webhook trigger as running on request, with how its last request went.
 
 ## A checklist the agent can edit
 

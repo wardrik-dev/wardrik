@@ -10,9 +10,11 @@ defmodule WardrikDaemon do
   as its `:cluster`, which starts before the fleet:
 
       children = [
-        {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]},
+        {Wardrik,
+         cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum],
+         triggers: WardrikTrigger},
         WardrikPolicy.Supervisor,
-        WardrikTrigger,
+        {WardrikTrigger, secrets: &WardrikDaemon.Secrets.for_agent/2},
         WardrikHTTP.Access,
         WardrikHTTP.Workers,
         WardrikDaemon
@@ -274,15 +276,18 @@ defmodule WardrikDaemon do
 
   def spent(_spec, _key), do: []
 
-  @doc "How long until a trigger next asks the agent `key`, in milliseconds, or `nil` where none does."
+  @doc """
+  How long until a trigger next asks the agent `key`, in milliseconds, or
+  `nil` where none does on a clock.
+  """
   @spec next_in(Wardrik.AgentID.t()) :: non_neg_integer() | nil
   def next_in(key) do
-    case WardrikTrigger.for_agent(key) do
+    case Enum.flat_map(WardrikTrigger.for_agent(key), & &1.next) do
       [] ->
         nil
 
-      triggers ->
-        next = triggers |> Enum.map(& &1.next_at) |> Enum.min(DateTime)
+      times ->
+        next = Enum.min(times, DateTime)
         max(DateTime.diff(next, DateTime.utc_now(), :millisecond), 0)
     end
   end

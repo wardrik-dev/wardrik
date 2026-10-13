@@ -172,9 +172,6 @@
       "items": {
         "type": "object",
         "additionalProperties": true,
-        "required": [
-          "every"
-        ],
         "properties": {
           "name": {
             "type": "string",
@@ -215,7 +212,7 @@
           }
         }
       },
-      "description": "The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run."
+      "description": "The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every; a webhook has webhook and secret in its place, and is sent requests at POST /v1/hooks/{key}/{trigger}."
     },
     "channels": {
       "type": "array",

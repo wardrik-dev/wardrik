@@ -330,17 +330,12 @@ defmodule WardrikDaemon.CLI.Agents do
   end
 
   defp trigger(trigger, now) do
-    next = WardrikDaemon.duration(max(DateTime.diff(trigger.next_at, now, :millisecond), 0))
-    "#{every(trigger.every)}  next in #{next}  #{ran(trigger, now)}"
+    next =
+      for at <- trigger.next,
+          do: "  next in #{WardrikDaemon.duration(max(DateTime.diff(at, now, :millisecond), 0))}"
+
+    "#{trigger.schedule}#{next}  #{ran(trigger, now)}"
   end
-
-  defp every({:cron, text}), do: text
-  defp every({:interval, ms}), do: "every " <> interval(ms)
-
-  defp interval(ms) when rem(ms, 86_400_000) == 0, do: "#{div(ms, 86_400_000)}d"
-  defp interval(ms) when rem(ms, 3_600_000) == 0, do: "#{div(ms, 3_600_000)}h"
-  defp interval(ms) when rem(ms, 60_000) == 0, do: "#{div(ms, 60_000)}m"
-  defp interval(ms), do: "#{ms}ms"
 
   defp ran(%{last_at: nil, last_outcome: nil}, _now), do: "not run yet"
 

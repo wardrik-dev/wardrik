@@ -28,6 +28,30 @@ defmodule WardrikDaemon.SecretsTest do
   defp restore(app, key, nil), do: Application.delete_env(app, key)
   defp restore(app, key, value), do: Application.put_env(app, key, value)
 
+  test "reads an agent's secret as its user's, its org's, the deployment's, then the environment's" do
+    name = "HOOK_SECRET_#{System.unique_integer([:positive])}"
+    jon = Wardrik.AgentID.parse!("acme/@jon/triage")
+    acme = Wardrik.AgentID.parse!("acme/triage")
+    globex = Wardrik.AgentID.parse!("globex/triage")
+
+    on_exit(fn ->
+      System.delete_env(name)
+      for owner <- [{"acme", "jon"}, "acme", nil], do: WardrikVault.forget(name, owner)
+    end)
+
+    assert Secrets.for_agent(name, acme) == nil
+    System.put_env(name, "environment's")
+    assert Secrets.for_agent(name, acme) == "environment's"
+
+    :ok = WardrikVault.put(name, nil, "deployment's")
+    :ok = WardrikVault.put(name, "acme", "acme's")
+    :ok = WardrikVault.put(name, {"acme", "jon"}, "jon's")
+
+    assert Secrets.for_agent(name, jon) == "jon's"
+    assert Secrets.for_agent(name, acme) == "acme's"
+    assert Secrets.for_agent(name, globex) == "deployment's"
+  end
+
   test "names each provider's key variable, and no other" do
     variables = Secrets.variables()
 

@@ -29,6 +29,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Connections
   alias Wardrik.Error
   alias Wardrik.Event.Export
+  alias Wardrik.Grant
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.CancelAgents
@@ -36,6 +37,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.Connect
   alias Wardrik.Operations.Decide
   alias Wardrik.Operations.Define
+  alias Wardrik.Operations.Deliver
   alias Wardrik.Operations.Disconnect
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.ForgetAgents
@@ -55,10 +57,17 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.Spawn
   alias Wardrik.Operations.SpawnOn
   alias Wardrik.Operations.Stop
+  alias Wardrik.Principal
   alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikHTTP.Access
   alias WardrikHTTP.EventStream
+
+  @parsers Plug.Parsers.init(parsers: [:json], json_decoder: JSON, pass: ["*/*"])
+
+  # The most of a request to a trigger read, which its signature is checked
+  # against whole.
+  @hook_body 1_048_576
 
   @default_limit 100
   @max_limit 500
@@ -71,7 +80,7 @@ defmodule WardrikHTTP.Router do
   plug Plug.Logger
   plug WardrikHTTP.Auth
   plug :match
-  plug Plug.Parsers, parsers: [:json], json_decoder: JSON, pass: ["*/*"]
+  plug :parse
   plug :dispatch
 
   get "/v1/workers" do
@@ -137,6 +146,17 @@ defmodule WardrikHTTP.Router do
   get "/v1/deployment/nodes", do: run(conn, Query, {:ok, %ReadNodes{}}, 200)
   get "/v1/deployment/audit", do: audit(conn)
 
+  # A request from outside to one of an agent's triggers, such as a webhook:
+  # its sender holds no credential of this server's, so it comes as the
+  # trigger it names, granted only to message that agent, and the trigger
+  # checks its signature.
+  post "/v1/hooks/:org/*rest" do
+    case agent_path([org | rest]) do
+      {segments, [trigger]} -> within(conn, segments, &hook(conn, &1, trigger))
+      _other -> no_route(conn)
+    end
+  end
+
   # An agent is /v1/agents/{org}/{name}, or /v1/agents/{org}/@{user}/{name}
   # for a user's, and what follows its ID is what is asked of it.
   match "/v1/agents/:org/*rest" do
@@ -150,6 +170,39 @@ defmodule WardrikHTTP.Router do
 
   match _ do
     no_route(conn)
+  end
+
+  # A request to a trigger is checked against its body as it was sent, so it
+  # is read whole rather than parsed.
+  defp parse(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
+  defp parse(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
+
+  defp hook(conn, agent, trigger) do
+    case read_body(conn, length: @hook_body) do
+      {:ok, body, conn} ->
+        {:ok, grant} = Grant.new(Prefix.of(agent), [:message])
+        id = "#{agent}//#{trigger}"
+
+        conn
+        |> assign(:caller, %WardrikHTTP.Caller{
+          id: id,
+          name: trigger,
+          principal: Principal.new(:webhook, id),
+          grant: grant
+        })
+        |> run(
+          Command,
+          {:ok, %Deliver{agent: agent, trigger: trigger, headers: conn.req_headers, body: body}},
+          202
+        )
+
+      {:more, _read, conn} ->
+        json(
+          conn,
+          413,
+          Resource.error("invalid_request", "A request to a trigger is at most 1 MB.")
+        )
+    end
   end
 
   defp no_route(conn),

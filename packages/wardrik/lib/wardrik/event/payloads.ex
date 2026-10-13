@@ -126,7 +126,10 @@ defmodule Wardrik.Event.ContextCleared do
 end
 
 defmodule Wardrik.Event.TriggerFired do
-  @moduledoc "A trigger came due, with what came of it, as `WardrikTrigger` announces it."
+  @moduledoc """
+  A trigger came due, or was delivered a request, with what came of it, as
+  `WardrikTrigger` announces it.
+  """
   @enforce_keys ~w(name outcome)a
   defstruct @enforce_keys
 

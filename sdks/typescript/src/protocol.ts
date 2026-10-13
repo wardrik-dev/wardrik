@@ -259,7 +259,7 @@ export interface AgentDefinition {
         window?: number;
       };
   /**
-   * The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
+   * The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every; a webhook has webhook and secret in its place, and is sent requests at POST /v1/hooks/{key}/{trigger}.
    */
   triggers?: {
     /**
@@ -269,7 +269,7 @@ export interface AgentDefinition {
     /**
      * A cron expression, or a duration such as 30m.
      */
-    every: string;
+    every?: string;
     /**
      * What the agent is asked each time.
      */
@@ -523,14 +523,14 @@ export interface Nodes {
   asleep: number;
 }
 /**
- * A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
+ * A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook and secret, and asks as each request arrives.
  */
 export interface Trigger {
   name: string;
   /**
    * A cron expression, or a duration such as 30m.
    */
-  every: string;
+  every?: string;
   /**
    * What the agent is asked each time.
    */
@@ -542,21 +542,21 @@ export interface Trigger {
   /**
    * What a trigger does about the firings it missed while down.
    */
-  missed: "run_once" | "skip";
+  missed?: "run_once" | "skip";
   /**
    * Up to this many seconds of delay, chosen at random each time.
    */
-  jitter: number;
+  jitter?: number;
   [k: string]: unknown;
 }
 /**
- * The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. overlap is skip, missed is run_once and jitter is 0 where they are left out. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run.
+ * The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. A trigger on a clock has every; overlap is skip, missed is run_once and jitter is 0 where they are left out, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook and secret, takes no every, missed or jitter, and is sent requests at POST /v1/hooks/{key}/{trigger}; its overlap is queue where it says none.
  */
 export interface TriggerDefinition {
   /**
    * A cron expression, or a duration such as 30m.
    */
-  every: string;
+  every?: string;
   /**
    * What the agent is asked each time.
    */

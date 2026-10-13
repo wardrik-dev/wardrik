@@ -169,6 +169,10 @@ or `spawn` with a node, takes a token over every agent.
 A definition's `triggers` lists the agent's triggers, and one is put or removed at
 `/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).
 
+A service's webhooks reach a `webhook` trigger at `POST /v1/hooks/{key}/{name}`, with no token: the
+trigger checks each request's signature instead. See
+[Receiving a webhook](/guides/triggers/#receiving-a-webhook).
+
 ## The deployment
 
 A token over every agent, made with `wardrik token create NAME --all`, also reaches the deployment

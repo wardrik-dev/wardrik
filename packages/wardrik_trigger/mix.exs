@@ -26,8 +26,14 @@ defmodule WardrikTrigger.MixProject do
 
   def application,
     do: [
-      extra_applications: [:logger],
-      env: [wardrik_trigger_sources: [feed: WardrikTrigger.Feed]]
+      extra_applications: [:logger, :crypto],
+      env: [
+        wardrik_trigger_sources: [feed: WardrikTrigger.Feed],
+        wardrik_trigger_webhooks: [
+          github: WardrikTrigger.Webhook.GitHub,
+          standard: WardrikTrigger.Webhook.Standard
+        ]
+      ]
     ]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

@@ -34,6 +34,18 @@ defmodule WardrikTrigger do
   A source registers the key a trigger written as text names it by, so
   `decode/2` reads it; see `WardrikTrigger.Source`.
 
+  ## Webhooks
+
+  A trigger that a service sends requests is a `WardrikTrigger.Webhook`, a
+  kind of its own: it has no clock, and asks its agent as each request
+  arrives, through `deliver/3`, which makes this module the host's
+  `Wardrik.Triggers`. `decode/2`, `put/2`, `sync/2` and the listings take
+  every kind alike, through `WardrikTrigger.Kind`. The secrets a webhook is checked with are read for its agent
+  by the host's `:secrets`, so each org can keep its own, and from the
+  environment where the host gives none:
+
+      children = [Wardrik, {WardrikTrigger, secrets: &MyApp.Vault.secret/2}]
+
   `sync/2` brings an agent's triggers to a list, starting, changing and
   deleting them, and `sync(agent, [])` deletes them all; what keeps the
   agent's definition calls it as that changes. The triggers run under a
@@ -70,14 +82,16 @@ defmodule WardrikTrigger do
       raised or exited
   """
 
+  @behaviour Wardrik.Triggers
+
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias WardrikTrigger.Clock
   alias WardrikTrigger.Cron
-  alias WardrikTrigger.Server
+  alias WardrikTrigger.Kind
   alias WardrikTrigger.Source
-  alias WardrikTrigger.State
   alias WardrikTrigger.Status
+  alias WardrikTrigger.Webhook
 
   @enforce_keys [:name, :every, :prompt]
   defstruct [
@@ -103,10 +117,14 @@ defmodule WardrikTrigger do
           source: {module(), term()}
         }
 
+  @typedoc "A trigger of either kind: on a clock, or a webhook."
+  @type trigger() :: t() | Webhook.t()
+
   @typedoc "What one firing did."
   @type outcome() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
   @name WardrikTrigger.Triggers
+  @secrets {__MODULE__, :secrets}
   @fields ~w(every prompt overlap missed jitter)
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
   @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
@@ -125,10 +143,13 @@ defmodule WardrikTrigger do
 
   @doc """
   Starts the supervisor the triggers run under, over the store the fleet
-  runs on. `:log` is passed to `Group`.
+  runs on. `:log` is passed to `Group`, and `:secrets` reads a webhook's
+  secret by its name for an agent, `System.get_env/1` of the name by default.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
+    :persistent_term.put(@secrets, Keyword.get(opts, :secrets, &environment/2))
+
     DurableServer.Supervisor.start_link(
       [
         name: @name,
@@ -149,20 +170,22 @@ defmodule WardrikTrigger do
       name: name!(name),
       every: every!(Keyword.get(opts, :every)),
       prompt: prompt!(Keyword.get(opts, :prompt)),
-      overlap: one_of!(Keyword.get(opts, :overlap, :skip), [:skip, :queue], :overlap),
+      overlap: overlap!(Keyword.get(opts, :overlap, :skip)),
       missed: one_of!(Keyword.get(opts, :missed, :run_once), [:run_once, :skip], :missed),
       jitter: jitter!(Keyword.get(opts, :jitter, 0)),
       source: source!(Keyword.get(opts, :source, {Clock, nil}))
     }
   end
 
-  defp name!(name) when is_binary(name) and name != "" do
+  @doc false
+  @spec name!(term()) :: String.t()
+  def name!(name) when is_binary(name) and name != "" do
     if String.contains?(name, "/"),
       do: raise(ArgumentError, "a trigger's name may not contain \"/\", got #{inspect(name)}"),
       else: name
   end
 
-  defp name!(name),
+  def name!(name),
     do: raise(ArgumentError, "a trigger's name is a string, got #{inspect(name)}")
 
   defp every!({:interval, ms} = every) when is_integer(ms) and ms > 0, do: every
@@ -193,8 +216,14 @@ defmodule WardrikTrigger do
 
   defp interval!(ms, _text), do: {:interval, ms}
 
-  defp prompt!(prompt) when is_binary(prompt) and prompt != "", do: prompt
-  defp prompt!(other), do: raise(ArgumentError, "prompt is a string, got #{inspect(other)}")
+  @doc false
+  @spec prompt!(term()) :: String.t()
+  def prompt!(prompt) when is_binary(prompt) and prompt != "", do: prompt
+  def prompt!(other), do: raise(ArgumentError, "prompt is a string, got #{inspect(other)}")
+
+  @doc false
+  @spec overlap!(term()) :: :skip | :queue
+  def overlap!(overlap), do: one_of!(overlap, [:skip, :queue], :overlap)
 
   defp one_of!(value, allowed, key) do
     if value in allowed,
@@ -223,9 +252,12 @@ defmodule WardrikTrigger do
   `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
   `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
   The fields left are the source's, which one of them names by its key, and
-  the clock's where none does: see `WardrikTrigger.Source`.
+  the clock's where none does: see `WardrikTrigger.Source`. Fields with
+  `webhook` are a `WardrikTrigger.Webhook`'s, which `Webhook.decode/2` reads.
   """
-  @spec decode(String.t(), map()) :: {:ok, t()} | {:error, String.t()}
+  @spec decode(String.t(), map()) :: {:ok, trigger()} | {:error, String.t()}
+  def decode(name, %{"webhook" => _scheme} = fields), do: Webhook.decode(name, fields)
+
   def decode(name, fields) when is_map(fields) do
     {own, rest} = Map.split(fields, @fields)
 
@@ -250,10 +282,10 @@ defmodule WardrikTrigger do
 
   @doc """
   The fields a trigger written as text may have: those every trigger has,
-  and the key of each source a loaded application registers.
+  the key of each source a loaded application registers, and a webhook's.
   """
   @spec keys() :: [String.t()]
-  def keys, do: @fields ++ (Source.all() |> Map.keys() |> Enum.sort())
+  def keys, do: @fields ++ Enum.sort(Map.keys(Source.all()) ++ Webhook.keys())
 
   defp source(fields) do
     sources = Source.all()
@@ -318,20 +350,19 @@ defmodule WardrikTrigger do
         "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
 
   An interval is written in the largest unit that divides it, and the
-  source's fields are written beside the rest.
+  source's fields are written beside the rest. A webhook is written as
+  `Webhook.encode/1` writes it.
   """
-  @spec encode(t()) :: %{String.t() => term()}
-  def encode(%__MODULE__{source: {module, opts}} = trigger) do
-    opts
-    |> module.encode()
-    |> Map.merge(%{
-      "name" => trigger.name,
-      "every" => text(trigger.every),
-      "prompt" => trigger.prompt,
-      "overlap" => to_string(trigger.overlap),
-      "missed" => to_string(trigger.missed),
-      "jitter" => div(trigger.jitter, 1_000)
-    })
+  @spec encode(trigger()) :: %{String.t() => term()}
+  def encode(trigger), do: Kind.encode(trigger)
+
+  @doc false
+  @spec written(every()) :: String.t()
+  def written({:cron, text}), do: text
+
+  def written({:interval, ms}) do
+    {unit, size} = Enum.find(@sizes, fn {_unit, size} -> rem(ms, size) == 0 end)
+    "#{div(ms, size)}#{unit}"
   end
 
   @doc "What `trigger`'s source finds for `agent` since `cursor`; see `WardrikTrigger.Source`."
@@ -340,12 +371,31 @@ defmodule WardrikTrigger do
   def check(%__MODULE__{source: {module, opts}}, cursor, %AgentID{} = agent),
     do: module.check(opts, cursor, agent)
 
-  defp text({:cron, text}), do: text
+  @doc "When `every` runs, as a person reads it: the cron expression, or `every 30m`."
+  @spec schedule(every()) :: String.t()
+  def schedule({:cron, text}), do: text
+  def schedule({:interval, ms} = every) when rem(ms, 1_000) == 0, do: "every " <> written(every)
+  def schedule({:interval, ms}), do: "every #{ms}ms"
 
-  defp text({:interval, ms}) do
-    {unit, size} = Enum.find(@sizes, fn {_unit, size} -> rem(ms, size) == 0 end)
-    "#{div(ms, size)}#{unit}"
+  @doc """
+  Delivers `request` to the trigger `name` of `agent`, as `Wardrik.Triggers`
+  describes: a webhook checks it, and asks the agent about it unless it has
+  before; a trigger on a clock is sent no requests.
+  """
+  @impl Wardrik.Triggers
+  def deliver(%AgentID{} = agent, name, request) when is_binary(name) do
+    case DurableServer.Supervisor.lookup(@name, Webhook.key(agent, name)) do
+      {pid, _meta} -> GenServer.call(pid, {:deliver, request})
+      nil -> {:error, :not_found}
+    end
   end
+
+  @doc "The secret `name` for `agent`, as the `:secrets` the triggers were started with reads it."
+  @spec secret(String.t(), AgentID.t()) :: String.t() | nil
+  def secret(name, %AgentID{} = agent) when is_binary(name),
+    do: :persistent_term.get(@secrets).(name, agent)
+
+  defp environment(name, _agent), do: System.get_env(name)
 
   @doc """
   The first time `trigger` names after `from`, with its jitter added.
@@ -369,15 +419,22 @@ defmodule WardrikTrigger do
   @doc """
   Starts `trigger` for the agent `agent`, or brings a running one to
   it. A trigger whose `every` changes goes on from now; one that keeps it
-  keeps its next run.
+  keeps its next run. A trigger of another kind under the same name is
+  deleted.
   """
-  @spec put(AgentID.t(), t()) :: {:ok, pid()} | {:error, term()}
-  def put(%AgentID{} = agent, %__MODULE__{} = trigger) do
-    child =
-      {Server, key: key(agent, trigger.name), initial_state: State.new(agent, trigger, now())}
+  @spec put(AgentID.t(), trigger()) :: {:ok, pid()} | {:error, term()}
+  def put(%AgentID{} = agent, trigger) do
+    key = Kind.key(trigger, agent)
+    {server, initial} = Kind.child(trigger, agent)
+    child = {server, key: key, initial_state: initial}
 
     with {:ok, {pid, _meta}} <- DurableServer.Supervisor.ensure_started_child(@name, child),
          :ok <- GenServer.call(pid, {:configure, trigger}) do
+      for %{name: name, key: other} <- for_agent(agent),
+          name == trigger.name,
+          other != key,
+          do: terminate(other)
+
       {:ok, pid}
     end
   end
@@ -386,25 +443,35 @@ defmodule WardrikTrigger do
   @spec put(AgentID.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def put(agent, name, opts), do: put(agent, new(name, opts))
 
-  @doc "Stops the trigger named `name` for `agent`, and deletes it."
+  @doc "Stops the trigger named `name` for `agent`, of whichever kind, and deletes it."
   @spec delete(AgentID.t(), String.t()) :: :ok | {:error, term()}
   def delete(%AgentID{} = agent, name) when is_binary(name) do
-    DurableServer.Supervisor.terminate_and_delete_child(@name, key(agent, name))
+    agent
+    |> for_agent()
+    |> Enum.filter(&(&1.name == name))
+    |> Enum.reduce_while(:ok, fn status, :ok ->
+      case terminate(status.key) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
+
+  defp terminate(key), do: DurableServer.Supervisor.terminate_and_delete_child(@name, key)
 
   @doc """
   Brings `agent`'s triggers to `triggers`: each is put, and every other
   trigger the agent has is deleted.
   """
-  @spec sync(AgentID.t(), [t()]) :: :ok | {:error, term()}
+  @spec sync(AgentID.t(), [trigger()]) :: :ok | {:error, term()}
   def sync(%AgentID{} = agent, triggers) when is_list(triggers) do
-    names = MapSet.new(triggers, & &1.name)
+    keys = MapSet.new(triggers, &Kind.key(&1, agent))
 
     with :ok <- put_all(agent, triggers) do
       agent
       |> for_agent()
-      |> Enum.reject(&(&1.name in names))
-      |> Enum.each(&delete(agent, &1.name))
+      |> Enum.reject(&(&1.key in keys))
+      |> Enum.each(&terminate(&1.key))
     end
   end
 
@@ -420,17 +487,17 @@ defmodule WardrikTrigger do
   @doc "The triggers of `agent`, by name."
   @spec for_agent(AgentID.t()) :: [Status.t()]
   def for_agent(%AgentID{} = agent) do
-    for {_pid, %{name: name}} <- Group.members(@name, group(agent)),
-        key = key(agent, name),
+    for {_pid, %{key: key}} <- Group.members(@name, group(agent)),
         {pid, meta} <- [DurableServer.Supervisor.lookup(@name, key)] do
       Status.new(key, pid, meta)
     end
     |> Enum.sort_by(& &1.key)
   end
 
-  @doc false
-  @spec join(AgentID.t(), String.t()) :: :ok
-  def join(%AgentID{} = agent, name), do: Group.join(@name, group(agent), %{name: name})
+  @doc "Joins `trigger`'s process to `agent`'s triggers, as `for_agent/1` finds them."
+  @spec join(AgentID.t(), trigger()) :: :ok
+  def join(%AgentID{} = agent, trigger),
+    do: Group.join(@name, group(agent), %{key: Kind.key(trigger, agent)})
 
   defp group(agent), do: "agents/#{agent}"
 
@@ -444,9 +511,29 @@ defmodule WardrikTrigger do
     |> Enum.sort_by(& &1.key)
   end
 
+  @doc false
+  @spec now() :: DateTime.t()
+  def now, do: DateTime.utc_now()
+end
+
+defimpl WardrikTrigger.Kind, for: WardrikTrigger do
   # `//` holds no ID, so an agent's triggers never mix with those of an agent
   # whose external ID is one of its triggers' names.
-  defp key(agent, name), do: "#{agent}//#{name}"
+  def key(trigger, agent), do: "#{agent}//#{trigger.name}"
 
-  defp now, do: DateTime.utc_now()
+  def child(trigger, agent),
+    do: {WardrikTrigger.Server, WardrikTrigger.State.new(agent, trigger, WardrikTrigger.now())}
+
+  def encode(%WardrikTrigger{source: {module, opts}} = trigger) do
+    opts
+    |> module.encode()
+    |> Map.merge(%{
+      "name" => trigger.name,
+      "every" => WardrikTrigger.written(trigger.every),
+      "prompt" => trigger.prompt,
+      "overlap" => to_string(trigger.overlap),
+      "missed" => to_string(trigger.missed),
+      "jitter" => div(trigger.jitter, 1_000)
+    })
+  end
 end

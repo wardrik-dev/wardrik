@@ -3,10 +3,10 @@ defmodule Wardrik do
   The supervisor of everything Wardrik runs. In order:
 
     * The store's settings, kept where every read and write finds them; see
-      `WardrikStore.configure/1`, and the host's definitions, connections and
-      tokens modules, kept where every operation finds them; see
-      `Wardrik.Definition.configure/1`, `Wardrik.Connections.configure/1` and
-      `Wardrik.Tokens.configure/1`.
+      `WardrikStore.configure/1`, and the host's definitions, connections,
+      tokens and triggers modules, kept where every operation finds them; see
+      `Wardrik.Definition.configure/1`, `Wardrik.Connections.configure/1`,
+      `Wardrik.Tokens.configure/1` and `Wardrik.Triggers.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
       `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
@@ -20,12 +20,13 @@ defmodule Wardrik do
   load is a task that exits once done and is not started again.
 
   The `:wardrik` application starts it by default, with the store, the fleet
-  and the definitions, connections and tokens modules as the application's
-  environment holds them:
+  and the definitions, connections, tokens and triggers modules as the
+  application's environment holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, definitions: MyApp.Definitions, connections: WardrikOAuth.Connections
+      config :wardrik, definitions: MyApp.Definitions, connections: WardrikOAuth.Connections,
+        triggers: WardrikTrigger
 
   A host that starts it in its own tree instead, after the repo its store is
   kept in, says so, and hands it its options:
@@ -55,6 +56,8 @@ defmodule Wardrik do
       any.
     * `:tokens` - the `Wardrik.Tokens` that callers' tokens are made, listed
       and revoked through. None by default, where no operation makes any.
+    * `:triggers` - the `Wardrik.Triggers` that requests from outside are
+      delivered to. None by default, where no operation delivers any.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -76,7 +79,8 @@ defmodule Wardrik do
         fleet: [],
         definitions: nil,
         connections: nil,
-        tokens: nil
+        tokens: nil,
+        triggers: nil
       )
 
     children =
@@ -91,6 +95,10 @@ defmodule Wardrik do
           start: {Wardrik.Connections, :configure, [opts[:connections]]}
         },
         %{id: {Wardrik.Tokens, :module}, start: {Wardrik.Tokens, :configure, [opts[:tokens]]}},
+        %{
+          id: {Wardrik.Triggers, :module},
+          start: {Wardrik.Triggers, :configure, [opts[:triggers]]}
+        },
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,

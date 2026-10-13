@@ -160,6 +160,26 @@ defmodule WardrikHTTP.RouterTest do
     def disconnect(_provider, _owner), do: {:error, :not_found}
   end
 
+  # Hands the test each request a trigger is delivered, and answers by its
+  # body; operations run in the process serving the request.
+  defmodule Hooked do
+    @moduledoc false
+    @behaviour Wardrik.Triggers
+
+    @impl true
+    def deliver(key, name, %{headers: headers, body: body}) do
+      send(:persistent_term.get(__MODULE__), {:delivered, key, name, headers, body})
+
+      case body do
+        "seen" -> {:ok, :seen}
+        "forged" -> {:error, :forbidden, "The request's signature does not match."}
+        "busy" -> {:error, :unavailable, "The agent is busy."}
+        "nowhere" -> {:error, :not_found}
+        _new -> {:ok, :asked}
+      end
+    end
+  end
+
   # Cannot check any credential now, as an identity provider that is down.
   defmodule Down do
     @moduledoc false
@@ -1290,6 +1310,59 @@ defmodule WardrikHTTP.RouterTest do
       jon = as(api, "test/", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
+    end
+  end
+
+  describe "requests to a trigger" do
+    setup %{api: api} do
+      :persistent_term.put(Hooked, self())
+      :ignore = Wardrik.Triggers.configure(Hooked)
+
+      on_exit(fn ->
+        Wardrik.Triggers.configure(nil)
+        :persistent_term.erase(Hooked)
+      end)
+
+      %{anyone: Req.merge(api, auth: nil)}
+    end
+
+    test "are let through with no credential, and handed on as they were sent",
+         %{anyone: anyone} do
+      assert {:ok, %{status: 202, body: %{"delivery" => %{"status" => "asked"}}}} =
+               Req.post(anyone,
+                 url: "/v1/hooks/test/@jon/triage/issues",
+                 body: ~s({"action": "opened"}),
+                 headers: [{"content-type", "application/json"}, {"x-github-delivery", "d-1"}]
+               )
+
+      assert_receive {:delivered, key, "issues", headers, ~s({"action": "opened"})}
+      assert to_string(key) == "test/@jon/triage"
+      assert {"x-github-delivery", "d-1"} in headers
+
+      assert {:ok, %{status: 202, body: %{"delivery" => %{"status" => "seen"}}}} =
+               Req.post(anyone, url: "/v1/hooks/test/triage/issues", body: "seen")
+    end
+
+    test "answer what the trigger refuses", %{anyone: anyone} do
+      answers =
+        for body <- ["forged", "busy", "nowhere"],
+            do: Req.post(anyone, url: "/v1/hooks/test/triage/issues", body: body)
+
+      assert Enum.map(answers, fn {:ok, response} -> response.status end) == [404, 503, 404]
+      for {:ok, response} <- answers, do: conforms(response.body, "error")
+    end
+
+    test "are refused past a megabyte, or with no trigger in the path", %{anyone: anyone} do
+      assert {:ok, %{status: 413, body: body}} =
+               Req.post(anyone,
+                 url: "/v1/hooks/test/triage/issues",
+                 body: String.duplicate("a", 1_048_577)
+               )
+
+      conforms(body, "error")
+      assert {:ok, %{status: 404}} = Req.post(anyone, url: "/v1/hooks/test/triage", body: "{}")
+      assert {:ok, %{status: 401}} = Req.get(anyone, url: "/v1/agents")
+      refute_received {:delivered, _key, _name, _headers, _body}
     end
   end
 

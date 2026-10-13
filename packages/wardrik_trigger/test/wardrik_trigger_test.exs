@@ -176,14 +176,26 @@ defmodule WardrikTriggerTest do
                {:error, "watch names the answers a test hands it"}
 
       assert {:error,
-              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed or watch"} =
+              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, secret, watch or webhook"} =
                WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"})
+    end
+
+    test "reads a webhook trigger as a kind of its own" do
+      fields = %{"webhook" => "github", "secret" => "${HOOK_SECRET}", "prompt" => "Look."}
+
+      assert {:ok, %WardrikTrigger.Webhook{scheme: "github", overlap: :queue} = hook} =
+               WardrikTrigger.decode("issues", fields)
+
+      assert {:ok, ^hook} =
+               WardrikTrigger.decode("issues", Map.delete(WardrikTrigger.encode(hook), "name"))
+
+      assert ["secret", "webhook"] -- WardrikTrigger.keys() == []
     end
 
     test "says what does not read" do
       for {fields, message} <- [
             {%{"when" => "now"},
-             "when is not a setting; expected every, prompt, overlap, missed, jitter or feed"},
+             "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, secret or webhook"},
             {%{"prompt" => "Look."}, ~s(every is a cron expression, or a duration such as "30m")},
             {%{"every" => "30m", "prompt" => "Look.", "overlap" => "interrupt"},
              "overlap is one of skip, queue"},
@@ -319,17 +331,117 @@ defmodule WardrikTriggerTest do
     end
   end
 
+  describe "deliver/3" do
+    setup %{key: key} do
+      System.put_env("WARDRIK_TEST_HOOK", "s3cret")
+      on_exit(fn -> System.delete_env("WARDRIK_TEST_HOOK") end)
+
+      put = fn opts ->
+        hook =
+          WardrikTrigger.Webhook.new(
+            "issues",
+            [prompt: "A GitHub event is below.", scheme: "github", secret: "WARDRIK_TEST_HOOK"] ++
+              opts
+          )
+
+        WardrikTrigger.put(key, hook)
+      end
+
+      %{put: put}
+    end
+
+    defp github(id, body, secret \\ "s3cret") do
+      signature = :crypto.mac(:hmac, :sha256, secret, body) |> Base.encode16(case: :lower)
+
+      %{
+        headers: [
+          {"x-github-delivery", id},
+          {"x-github-event", "issues"},
+          {"x-hub-signature-256", "sha256=" <> signature}
+        ],
+        body: body
+      }
+    end
+
+    test "asks the agent about a request once, however often it is sent",
+         %{key: key, put: put} do
+      spawn_agent(key, {__MODULE__, :labelled, [self()]})
+      {:ok, _pid} = put.([])
+
+      assert [%WardrikTrigger.Status{name: "issues", schedule: "on request"}] =
+               WardrikTrigger.for_agent(key)
+
+      request = github("d-1", ~s({"action":"opened"}))
+      assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :asked}
+
+      assert_receive {:asked, text, ["outside"]}
+      assert text =~ ~r/\AA GitHub event is below.\n\n## issues \(.+\)\n\{"action":"opened"\}\z/
+      assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :asked}}
+
+      assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :seen}
+      refute_receive {:asked, _text, _labels}, 100
+    end
+
+    test "refuses a request its secret did not sign", %{key: key, put: put} do
+      spawn_agent(key, {__MODULE__, :labelled, [self()]})
+      {:ok, _pid} = put.([])
+
+      assert {:error, :forbidden, "The request's signature does not match" <> _rest} =
+               WardrikTrigger.deliver(key, "issues", github("d-1", "{}", "guess"))
+
+      refute_received {:asked, _text, _labels}
+    end
+
+    test "keeps no request it could not deliver, so the next try delivers it",
+         %{key: key, put: put} do
+      spawn_agent(key, {AgentRunners, :blocking, [self(), "done"]})
+      {:ok, _pid} = put.(overlap: :skip)
+      {:ok, _pid} = WardrikTrigger.put(key, "busy", every: @every, prompt: "Look.")
+      assert_receive {:turn, _context, turn}
+      :ok = WardrikTrigger.delete(key, "busy")
+
+      assert {:error, :unavailable, "The agent is busy" <> _rest} =
+               WardrikTrigger.deliver(key, "issues", github("d-1", "{}"))
+
+      assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :busy}}
+
+      {:ok, _pid} = put.(overlap: :queue)
+      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:ok, :asked}
+      send(turn, :release)
+    end
+
+    test "says the agent has no such trigger to deliver to", %{key: key} do
+      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:error, :not_found}
+
+      {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
+      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:error, :not_found}
+    end
+
+    test "becomes the other kind when put under the same name", %{key: key, put: put} do
+      {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
+      {:ok, _pid} = put.([])
+      spawn_agent(key, {__MODULE__, :labelled, [self()]})
+
+      assert [%WardrikTrigger.Status{schedule: "on request"}] = WardrikTrigger.for_agent(key)
+      assert WardrikTrigger.deliver(key, "issues", github("d-1", "{}")) == {:ok, :asked}
+
+      {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
+      assert [%WardrikTrigger.Status{schedule: "@daily"}] = WardrikTrigger.for_agent(key)
+    end
+  end
+
   describe "list/1 and sync/2" do
     test "lists an agent's triggers with their next run", %{key: key} do
       {:ok, _pid} = WardrikTrigger.put(key, "sweep", every: "@daily", prompt: "Look.")
 
       assert [
-               %WardrikTrigger.Status{name: "sweep", agent: ^key, every: {:cron, "@daily"}} =
+               %WardrikTrigger.Status{name: "sweep", agent: ^key, schedule: "@daily"} =
                  status
              ] =
                WardrikTrigger.for_agent(key)
 
-      assert DateTime.compare(status.next_at, DateTime.utc_now()) == :gt
+      assert [next] = status.next
+      assert DateTime.compare(next, DateTime.utc_now()) == :gt
     end
 
     test "finds an agent's triggers and none of its conversations'", %{key: key} do
