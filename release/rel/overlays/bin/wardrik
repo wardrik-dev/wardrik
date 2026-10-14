@@ -105,10 +105,15 @@ terminal="--terminal=${width:-80},$colour,$input,user=$user"
 done
 
 # The nodes this install has run on this machine, as cluster.nodes names them:
-# each has a state directory of its own.
+# each that has opened its store. A command given a name no node started
+# under, as a mistyped --node, leaves directories behind that count for
+# nothing; see forget_unstarted.
 local_nodes () {
   for dir in "$state_dir"/nodes/*/; do
-    [ -d "$dir" ] && basename "$dir"
+    [ -d "$dir" ] || continue
+    name="$(basename "$dir")"
+    store="$data_home/nodes/$name/store"
+    [ -d "$store" ] && [ -n "$(ls -A "$store")" ] && echo "$name"
   done
   return 0
 }
