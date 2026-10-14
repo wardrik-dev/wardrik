@@ -1,42 +1,148 @@
 ---
 title: Wardrik
-description: An agent runtime built on OTP. Agents that carry on when a node is lost, with every tool call decided by policy.
+description: Run AI agents your team can trust. Every tool call passes a policy you can read, anything that changes something waits for a person, and agents carry on when a server dies.
 template: splash
+editUrl: false
 hero:
-  tagline: An agent runtime built on OTP. Agents carry on when a node is lost, and every tool call they make goes through a policy you can read.
+  title: Hand off the work. Keep the final say.
+  tagline: Wardrik runs AI agents for your team, in Slack and over an API. Every tool call passes a policy you can read, and anything that changes something waits for you.
+  image:
+    html: |
+      <div class="approval" role="img" aria-label="A tool call waiting for a person to approve it">
+        <div class="approval-head"><span class="approval-pill">Waiting on you</span><span class="approval-agent">acme/triage</span></div>
+        <div class="approval-tool">github/create_issue</div>
+        <p class="approval-why">This opens an issue on GitHub.</p>
+        <pre class="approval-args">{ "repo": "acme/widgets",
+        "title": "Checkout fails for EU cards" }</pre>
+        <div class="approval-note">Add a note for the agent</div>
+        <div class="approval-actions"><span class="approval-approve">Approve</span><span class="approval-deny">Deny</span></div>
+      </div>
   actions:
-    - text: Install
-      link: /getting-started/install/
-      icon: right-arrow
     - text: Quickstart
       link: /getting-started/quickstart/
+      icon: right-arrow
+    - text: Install
+      link: /getting-started/install/
       variant: minimal
     - text: Examples
       link: /examples/
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+## Running in two commands
 
-<CardGrid>
-	<Card title="Carries on through kill -9" icon="rocket">
-		Each agent is a durable process. Kill the node it runs on mid-turn and it carries on on
-		another, and the ledger keeps a tool call that already ran from running twice.
-	</Card>
-	<Card title="Policy on every call" icon="approve-check">
-		Allow, ask or deny a tool call by its name and by what it acts on. A call that waits on a
-		person reaches Slack with Approve and Deny.
-	</Card>
-	<Card title="Answers in Slack threads" icon="comment-alt">
-		Invite an agent's bot into a Slack channel and it answers there, each conversation in a
-		thread of its own, asking in the thread before a call it may not make alone.
-	</Card>
-	<Card title="Your tools, in your process" icon="puzzle">
-		Tools written with the TypeScript SDK run in your own app. Wardrik calls them over a socket,
-		each call with an idempotency key.
-	</Card>
-	<Card title="Files and memory" icon="document">
-		Each agent has a tree of files of its own, kept in the store, and the trees it shares. The
-		files its agent file names are read into every turn.
-	</Card>
-</CardGrid>
+```sh
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+wardrik init
+```
+
+`wardrik init` asks for a model provider and its key, and starts the daemon with one agent, the
+[front door](/build/front-door/): the one place to ask for what you want.
+
+## From a sentence to work that runs
+
+Ask for an outcome, in Slack or from a shell. The front door answers with its plan in plain words,
+what it will watch, how often and what it may spend, and proposes the work as the tool calls that
+would do it. Those calls wait for you:
+
+```text
+$ wardrik ask assistant "Tell me when the Elixir blog has a new post"
+I'll set up a watcher on that feed. Plan:
+• A worker checks the feed every 30 minutes. A check costs nothing until a new post appears.
+
+Waiting on a person for 1 call:
+  ? agent_define  call_8d2ebbfe…
+
+$ wardrik approve assistant call_8d2ebbfe…
+```
+
+Approve them, and the work runs on its own from then on, inside the policy and budget you set. Tell
+it "less often" or "stop", and it proposes the change.
+
+## What you get
+
+<dl class="home-specs">
+<div>
+<dt>A policy on every call</dt>
+<dd>Allow, ask or deny each tool call by its name, by what it acts on, or by its arguments.</dd>
+</div>
+<div>
+<dt>Approvals where you work</dt>
+<dd>A call that waits shows its arguments in Slack, with Approve, Deny and a note for the agent.</dd>
+</div>
+<div>
+<dt>Survives a lost server</dt>
+<dd>Kill the node an agent runs on mid-turn and it carries on on another, without running a call twice.</dd>
+</div>
+<div>
+<dt>Your tools, in your app</dt>
+<dd>Tools written with the TypeScript SDK run in your own process, with your code and your keys. Any MCP server works too.</dd>
+</div>
+<div>
+<dt>Budgets</dt>
+<dd>Cap what an agent spends a day on models and paid tools together. Once it's spent, it stops and asks.</dd>
+</div>
+<div>
+<dt>A record of everything</dt>
+<dd>Every message, tool call and decision is an event to follow live, export, or read back, with who approved what.</dd>
+</div>
+</dl>
+
+## A policy you can read
+
+<div class="home-split">
+<div>
+
+Every tool call is decided before it runs: it runs, it waits on a person, or it is refused, and the
+model is told why. A policy is a short file anyone on the team can read.
+
+Content from outside, a web page or an issue anyone can file, can't talk an agent into anything.
+Once a run has read it, every call that changes something waits for a person. More in
+[Policy and approvals](/concepts/policy/).
+
+</div>
+<div>
+
+```yaml
+# ~/.config/wardrik/policies/careful.yaml
+allow: [web_search, linear/*]
+ask:
+  github/create_*: This opens an issue on GitHub.
+deny: [run_lua]
+budget:
+  usd: 5.00
+  per: day
+```
+
+</div>
+</div>
+
+## Pull the plug, and it carries on
+
+<div class="home-split">
+<div>
+
+Wardrik is built on Erlang/OTP and runs as one node or a cluster of them. Kill the node an agent
+runs on in the middle of a tool call, and it comes back on another at the step it was in. Every call
+carries an idempotency key, so the work is done once. [Try it yourself](/examples/pull-the-plug/).
+
+</div>
+<div>
+
+```text
+[it] laptop for Ana...
+$ kill -9 "$(wardrik pid --node c)"
+[it] laptop for Ana: stopped before it happened
+
+[agent] carries on on wardrik_b@localhost
+[it] laptop for Ana...
+[it] laptop for Ana: done
+```
+
+</div>
+</div>
+
+<p class="home-next">
+Start with the <a href="/getting-started/quickstart/">Quickstart</a>, put an agent in
+<a href="/channels/slack/">Slack</a>, or copy one from the <a href="/examples/">Examples</a>.
+</p>

@@ -94,6 +94,17 @@
 	--sl-color-red-high: #7a1a12;
 }
 
+/* The browser's own surfaces take the palette too. */
+::selection {
+	background: var(--sl-color-accent-low);
+	color: var(--sl-color-white);
+}
+
+:focus-visible {
+	outline: 2px solid var(--sl-color-accent);
+	outline-offset: 2px;
+}
+
 /* The wordmark. */
 .site-title {
 	display: flex;
@@ -269,4 +280,186 @@ site-search button {
 	* {
 		scroll-behavior: auto !important;
 	}
+}
+
+/* The home page. */
+.hero {
+	padding-block: clamp(2.5rem, calc(1rem + 8vmin), 6rem);
+}
+
+.hero h1 {
+	font-size: clamp(2.25rem, calc(1rem + 4vmin), 3.5rem);
+	line-height: 1.08;
+	letter-spacing: -0.035em;
+}
+
+/* On a phone the headline comes before the example call. */
+@media (max-width: 50rem) {
+	.hero > .hero-html {
+		order: 2;
+	}
+}
+
+.hero .tagline {
+	color: var(--sl-color-gray-3);
+	font-size: 1.125rem;
+	line-height: 1.6;
+}
+
+/* A call waiting on a person, as a notice shows one. */
+.approval {
+	width: min(100%, 26rem);
+	box-sizing: border-box;
+	padding: 1.25rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 12px;
+	background: var(--sl-color-black);
+	box-shadow: 0 24px 48px -24px rgb(16 20 24 / 0.25);
+	text-align: start;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.approval-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	font-size: 0.8125rem;
+	color: var(--sl-color-gray-3);
+}
+
+.approval-pill {
+	display: inline-flex;
+	white-space: nowrap;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0.1875rem 0.625rem;
+	border-radius: 999px;
+	background: var(--sl-color-accent-low);
+	color: var(--sl-color-text-accent);
+	font-weight: 600;
+}
+
+.approval-pill::before {
+	content: '';
+	width: 0.375rem;
+	height: 0.375rem;
+	border-radius: 999px;
+	background: var(--sl-color-accent);
+}
+
+.approval-agent,
+.approval-tool,
+.approval-args {
+	font-family: var(--__sl-font-mono);
+}
+
+.approval-tool {
+	font-size: 1rem;
+	font-weight: 500;
+	color: var(--sl-color-white);
+}
+
+.approval-why {
+	margin: 0;
+	color: var(--sl-color-gray-2);
+}
+
+.approval-args {
+	margin: 0;
+	padding: 0.75rem;
+	border-radius: 8px;
+	background: var(--sl-color-gray-6);
+	color: var(--sl-color-gray-2);
+	font-size: 0.8125rem;
+	line-height: 1.6;
+	white-space: pre-wrap;
+}
+
+.approval-note {
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 8px;
+	color: var(--sl-color-gray-4);
+	font-size: 0.875rem;
+}
+
+.approval-actions {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.approval-actions span {
+	padding: 0.4375rem 1rem;
+	border-radius: 8px;
+	font-size: 0.875rem;
+	font-weight: 500;
+}
+
+.approval-approve {
+	background: var(--sl-color-white);
+	color: var(--sl-color-black);
+}
+
+.approval-deny {
+	border: 1px solid var(--sl-color-gray-5);
+	color: var(--sl-color-white);
+}
+
+/* Starlight spaces each block from the one before it; in a grid, the cells
+ * line up instead. */
+.home-split > div {
+	margin: 0;
+}
+
+/* What Wardrik gives you, as a list rather than a wall of cards. */
+.home-specs {
+	margin-top: 1.5rem;
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+
+.home-specs > div {
+	display: grid;
+	grid-template-columns: minmax(10rem, 15rem) 1fr;
+	gap: 0.25rem 2rem;
+	margin: 0;
+	padding-block: 1rem;
+	border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+.home-specs dt {
+	font-weight: 600;
+	color: var(--sl-color-white);
+}
+
+.home-specs dd {
+	margin: 0;
+	padding: 0;
+	color: var(--sl-color-gray-2);
+}
+
+@media (max-width: 40rem) {
+	.home-specs > div {
+		grid-template-columns: 1fr;
+	}
+}
+
+.home-next {
+	margin-top: 3rem;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--sl-color-gray-5);
+	font-size: 1.125rem;
+}
+
+.home-split {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+	gap: 1.5rem 2.5rem;
+	align-items: start;
+}
+
+.home-split > div > :first-child {
+	margin-top: 0;
 }

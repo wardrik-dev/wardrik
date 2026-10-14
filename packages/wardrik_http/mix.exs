@@ -46,6 +46,7 @@ defmodule WardrikHTTP.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:makeup_syntect, "~> 0.1", only: :dev, runtime: false},
       sibling(:wardrik),
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
