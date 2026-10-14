@@ -28,12 +28,14 @@ const env = (name: string): string | undefined =>
 /**
  * A Wardrik server, as one token reaches it.
  *
- *     const wardrik = new Wardrik();
- *     const agent = await wardrik.agents.put("acme/triage", { model: "anthropic:claude-sonnet-5" });
+ * ```ts
+ * const wardrik = new Wardrik();
+ * const agent = await wardrik.agents.put("acme/triage", { model: "anthropic:claude-sonnet-5" });
  *
- *     for await (const event of agent.ask("What's on fire?")) {
- *       if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
- *     }
+ * for await (const event of agent.ask("What's on fire?")) {
+ *   if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
+ * }
+ * ```
  */
 export class Wardrik {
   readonly agents: Agents;
