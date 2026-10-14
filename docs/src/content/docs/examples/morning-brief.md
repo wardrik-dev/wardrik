@@ -7,7 +7,7 @@ sidebar:
 
 Each weekday morning this agent searches for what changed in the things you follow, looks at what
 waits for you on GitHub, and posts a brief of it to a Slack channel. It is one agent file and a few
-lines of `config.yaml`, and the quickest of these recipes to have running.
+lines of `config.yaml`, and the quickest of these examples to have running.
 
 ## What it takes
 
@@ -16,11 +16,11 @@ lines of `config.yaml`, and the quickest of these recipes to have running.
 - a key for `web_search`, where the daemon reads its keys. A search made without one tells the
   agent which key it lacks;
 - a Slack app with a bot token, made as [Slack](/channels/slack/#a-slack-app) makes
-  one. This recipe only posts, so it needs no app-level token;
+  one. This example only posts, so it needs no app-level token;
 - for the GitHub part, a personal access token that can read your repositories.
 
 `SLACK_BOT_TOKEN` and `GITHUB_TOKEN` are read where `config.yaml` reads any `${NAME}`, as
-[Connect MCP servers](/guides/mcp/) says.
+[Connect MCP servers](/build/mcp/) says.
 
 ## Where it posts
 
@@ -97,9 +97,9 @@ what each morning brings. `wardrik triggers` says when it runs next.
 ## What it shows
 
 - **A trigger.** `every` is cron, in UTC, and a run missed while the daemon was down runs once
-  when it comes back. See [Trigger an agent](/guides/triggers/).
+  when it comes back. See [Trigger an agent](/build/triggers/).
 - **Notices.** `finished` sends what each turn answered to the target, which suits an agent whose
-  answers someone reads elsewhere. See [Send notices](/guides/notices/).
+  answers someone reads elsewhere. See [Send notices](/build/notices/).
 - **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you can change by telling the
   agent, rather than in its system prompt. See [Files and memory](/concepts/files-and-memory/).
 - **A budget.** Once the agent has spent a dollar in a day, `on_exhausted: deny` refuses its next

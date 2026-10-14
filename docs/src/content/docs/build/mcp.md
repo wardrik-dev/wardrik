@@ -2,7 +2,7 @@
 title: Connect MCP servers
 description: Give agents the tools of an MCP server, run as a command or reached over HTTP, and decide which of them they may call.
 sidebar:
-  order: 2
+  order: 1
 ---
 
 An MCP server's tools are named in `config.yaml`, under `mcp`, and an agent file gives them to an
@@ -74,7 +74,7 @@ An agent file that names a server its org is not served by does not read, and sa
 
 The credentials in a server's `headers` or `env` are the deployment's, so a server that every org
 shares reaches the service the same way for all of them. Give each org a server of its own, or
-reach it as each user with [Connect accounts](/guides/accounts/).
+reach it as each user with [Connect accounts](/build/accounts/).
 
 ## A server run as a command
 
@@ -115,7 +115,7 @@ mcp:
 A key in `headers` is the deployment's own: every agent reaches the server as the deployment. To
 keep it out of the environment, seal it with `wardrik vault put linear` and name it as the server's
 `credential: linear`, which sends it as `authorization: Bearer <token>`. A credential can also be
-an org's or a user's, or an account each user connects; see [Connect accounts](/guides/accounts/).
+an org's or a user's, or an account each user connects; see [Connect accounts](/build/accounts/).
 
 ## What a server's tools may do
 

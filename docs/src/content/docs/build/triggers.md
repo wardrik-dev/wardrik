@@ -2,7 +2,7 @@
 title: Trigger an agent
 description: Ask an agent something on a clock, with cron or an interval, when a feed it watches has something new, or when a service sends it a webhook, and give it a checklist it can edit.
 sidebar:
-  order: 1
+  order: 5
 ---
 
 A trigger asks an agent something when it comes round, here on a clock; it can also watch a feed,
@@ -310,7 +310,7 @@ answer to a target in `config.yaml`:
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
-See [Send notices](/guides/notices/) for the targets.
+See [Send notices](/build/notices/) for the targets.
 
 ## In a cluster
 

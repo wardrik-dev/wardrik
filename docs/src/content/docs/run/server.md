@@ -20,7 +20,7 @@ own on your machine, which every run copies to the server in place of what is th
   do anything without a password.
 - The team's subdomain pointing at it, and ports 22, 80 and 443 open to it. Caddy gets the name a
   certificate, so that people's browsers come back to the daemon over HTTPS when they
-  [connect an account](/guides/accounts/); see [A public address](/operate/public-address/).
+  [connect an account](/build/accounts/); see [A public address](/run/public-address/).
 - Nothing else: the script makes the user the daemon runs as, and installs Caddy.
 
 Your own machine needs the checkout, SSH, and Docker, which builds the release in the Dockerfile's
@@ -54,9 +54,9 @@ machine is.
 
 4. Invite the Slack app to a channel, `/invite @yourapp`. The example agent answers there, and the
    channel's approvers are asked what it waits on.
-5. Give the agents the team's tools: their [MCP servers](/guides/mcp/) in `config.yaml`, and under
+5. Give the agents the team's tools: their [MCP servers](/build/mcp/) in `config.yaml`, and under
    `oauth.providers` each account those servers sign in with, as
-   [Connect accounts](/guides/accounts/) says. The daemon serves `acme.example.com/oauth` once a
+   [Connect accounts](/build/accounts/) says. The daemon serves `acme.example.com/oauth` once a
    provider is named, and `wardrik doctor` says whether it reaches the daemon.
 
 ## What it leaves on the server
@@ -88,7 +88,7 @@ Agent and policy files are read again with `wardrik reload`, without a restart.
 Run the script again, with the same variables. It builds the release from the checkout as it is,
 installs it beside the one running, and starts the daemon again on it, keeping the store, the vault
 and the config. The release before stays installed, to go back to; see
-[Upgrade and back up](/operate/upgrade-and-back-up/).
+[Upgrade and back up](/run/upgrade-and-back-up/).
 
 `WARDRIK_TARBALL` installs a release tarball you already have rather than building one, and
 `WARDRIK_SSH_OPTS` passes ssh and scp more options, such as `-o Port=2200`.
@@ -98,6 +98,6 @@ and the config. The release before stays installed, to go back to; see
 Everything the team has, its conversations, connected accounts and the vault, is in
 `~wardrik/.local/share/wardrik` on the server, with the vault's key beside the store. On a rented
 server that is the server's own disk, which goes when the server does. Back up the
-directory, or keep the store elsewhere with [Storage](/operate/storage/), and give the vault a key of
+directory, or keep the store elsewhere with [Storage](/run/storage/), and give the vault a key of
 its own in the env file, so that a server made again over the same store reads what the last one
 sealed.

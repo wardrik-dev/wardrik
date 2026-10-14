@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import starlight from '@astrojs/starlight';
 import { ExpressiveCodeTheme } from '@astrojs/starlight/expressive-code';
 import { defineConfig } from 'astro/config';
+import starlightSidebarTopics from 'starlight-sidebar-topics';
 
 // Code sits on one dark ground, in light and dark alike.
 const terminal = ExpressiveCodeTheme.fromJSONString(
@@ -13,8 +14,6 @@ export default defineConfig({
 	site: 'https://docs.wardrik.dev',
 	// Flags such as --node stay two hyphens, not a dash.
 	markdown: { smartypants: false },
-	// Pages that moved, from where links to them may still point.
-	redirects: { '/guides/slack/': '/channels/slack/', '/guides/schedules/': '/guides/triggers/' },
 	integrations: [
 		starlight({
 			title: 'Wardrik',
@@ -45,20 +44,56 @@ export default defineConfig({
 			},
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/wardrik-dev/wardrik' }],
 			editLink: { baseUrl: 'https://github.com/wardrik-dev/wardrik/edit/main/docs/' },
-			sidebar: [
-				{
-					label: 'Getting started',
-					items: [
-						{ label: 'Install', slug: 'getting-started/install' },
-						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
+			// Three topics, each with a sidebar of its own; the header shows them as tabs.
+			plugins: [
+				starlightSidebarTopics(
+					[
+						{
+							label: 'Docs',
+							link: '/getting-started/install/',
+							items: [
+								{
+									label: 'Get started',
+									items: [
+										{ label: 'Install', slug: 'getting-started/install' },
+										{ label: 'Quickstart', slug: 'getting-started/quickstart' },
+									],
+								},
+								{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
+								{ label: 'Build', items: [{ autogenerate: { directory: 'build' } }] },
+								{ label: 'Channels', items: [{ autogenerate: { directory: 'channels' } }] },
+								{ label: 'Run', items: [{ autogenerate: { directory: 'run' } }] },
+							],
+						},
+						{
+							label: 'Examples',
+							link: '/examples/',
+							items: [
+								{ label: 'Overview', slug: 'examples' },
+								{
+									label: 'Everyday agents',
+									items: [
+										'examples/morning-brief',
+										'examples/telegram-assistant',
+										'examples/skills',
+										'examples/browser-errands',
+									],
+								},
+								{
+									label: 'For a team',
+									items: ['examples/on-call-triage', 'examples/competitor-watch', 'examples/act-on-signals'],
+								},
+								{ label: 'Try to break it', items: ['examples/pull-the-plug', 'examples/hijack-me'] },
+							],
+						},
+						{
+							label: 'Reference',
+							link: '/reference/cli/',
+							items: [{ autogenerate: { directory: 'reference' } }],
+						},
 					],
-				},
-				{ label: 'Channels', items: [{ autogenerate: { directory: 'channels' } }] },
-				{ label: 'Recipes', items: [{ autogenerate: { directory: 'recipes' } }] },
-				{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
-				{ label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },
-				{ label: 'Operate', items: [{ autogenerate: { directory: 'operate' } }] },
-				{ label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },
+					{ exclude: ['/'] },
+				),
 			],
 		}),
 	],

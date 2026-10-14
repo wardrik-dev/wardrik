@@ -2,7 +2,7 @@
 title: Tools in your app
 description: Offer agents tools that run in your own process, with the TypeScript SDK, over a connection your app opens to the daemon.
 sidebar:
-  order: 5
+  order: 3
 ---
 
 A tool worker is your own app offering agents tools. The tools run in your process, with your code,
@@ -41,7 +41,7 @@ wardrik token create shop --scope acme/ --can serve
 
 An agent file that names no `org` is in the deployment's, `default` unless `config.yaml` names
 another, so a worker for such agents is made with `--scope default/`. See
-[Tokens](/operate/security/#tokens).
+[Tokens](/run/security/#tokens).
 
 Run as many workers under one token as you like: those offering a tool of the same name share its
 calls. A tool is bound to the token that offers it. Where workers under a second token offer the same
@@ -172,5 +172,5 @@ Without it, a turn that has called a worker waits on a person before a gated too
 ## Driving agents too
 
 The same client drives agents over the HTTP API: it defines them, asks them things and follows what
-they do. See [Use the HTTP API](/guides/http-api/). `examples/refund.ts` in the SDK runs a worker and
+they do. See [Use the HTTP API](/build/http-api/). `examples/refund.ts` in the SDK runs a worker and
 an agent that calls it together.

@@ -2,7 +2,7 @@
 title: Durable runs
 description: How a turn carries on when its node is lost, how the ledger keeps a tool call from running twice, and how an agent's history stays within what its model can read.
 sidebar:
-  order: 2
+  order: 3
 ---
 
 An agent's state is written to the store as it changes: its conversation, the messages waiting for
@@ -58,7 +58,7 @@ acme/triage/<trace>/<span>/<round>/<call>
 
 A tool with an effect outside Wardrik passes the key on, so the system it calls does not repeat the
 effect either: a payment provider, for one, takes it as its own idempotency key. A tool worker
-receives it with each call; see [Tools in your app](/guides/tool-workers/). It is in the call's
+receives it with each call; see [Tools in your app](/build/tool-workers/). It is in the call's
 `tool_call.started` event as `tool.call.idempotency_key`.
 
 An MCP server is not sent the key.

@@ -15,8 +15,8 @@ The [docs](https://docs.wardrik.dev) cover
 [agent files](https://docs.wardrik.dev/reference/agent-files/),
 [policies](https://docs.wardrik.dev/reference/policies/),
 [`config.yaml`](https://docs.wardrik.dev/reference/config/),
-[storage](https://docs.wardrik.dev/operate/storage/) and
-[clusters](https://docs.wardrik.dev/operate/cluster/) in full.
+[storage](https://docs.wardrik.dev/run/storage/) and
+[clusters](https://docs.wardrik.dev/run/cluster/) in full.
 
 ## The command
 
