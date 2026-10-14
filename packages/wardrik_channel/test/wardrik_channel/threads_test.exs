@@ -36,7 +36,11 @@ defmodule WardrikChannel.ThreadsTest do
     channels =
       WardrikChannel.channels(
         [{name, {WardrikChannel.Test.Adapter, test: self(), refusals: opts[:refusals]}}],
-        host: Wardrik.Host.new(store: Wardrik.Test.store()),
+        host:
+          Wardrik.Host.new(
+            store: Wardrik.Test.store(),
+            grants: %WardrikChannel.Test.Grants{reach: [Principal.id(@maria)]}
+          ),
         offered: {__MODULE__, :offering, [agent]},
         start: {__MODULE__, :starting, [[runner: runner] ++ Keyword.take(opts, [:resumer])]},
         approvers: {__MODULE__, :approving, [Keyword.get(opts, :approvers, [])]},
@@ -235,6 +239,20 @@ defmodule WardrikChannel.ThreadsTest do
                     }, _channel}
 
     assert reason =~ "The cellar is locked."
+  end
+
+  test "asks nothing for someone the host's grants give no reach, and says so" do
+    {context, room} = bound({AgentRunners, :echo, [self(), "Here."]})
+    stranger = Principal.new(:channel, "slack/U9", name: "stranger")
+
+    assert {:error, message} =
+             WardrikChannel.received(context, %{
+               inbound(context, id: "6.1", text: "Hello?")
+               | sender: stranger
+             })
+
+    assert message == "#{room.agent} is not one you may reach from here."
+    refute Fleet.stored?(WardrikChannel.conversation(room, "6.1"))
   end
 
   test "says why where the thread's agent cannot be started" do
