@@ -1,6 +1,6 @@
 ---
 title: An agent that acts on what it notices
-description: An agent that hears when a competitor moves, does the work that follows, and proposes the rest as calls the team approves in Slack.
+description: "Drafts a response to each competitor launch, and proposes the next steps as calls to approve."
 sidebar:
   order: 3
 ---
