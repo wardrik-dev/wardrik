@@ -408,11 +408,16 @@ site-search button {
 	color: var(--sl-color-white);
 }
 
-/* The signature band: how a call is decided, given the page's weight. A
- * tinted ground runs to the window's edges without widening the page. */
+/* The signature band: how a call is decided, given the page's weight. */
 .home-band {
 	margin-block: 0;
 	padding-block: clamp(3.5rem, 7vw, 5.5rem);
+}
+
+/* The page alternates plain and tinted sections. A tinted ground runs to the
+ * window's edges without widening the page. */
+.home-band,
+.home-tint {
 	background: var(--sl-color-gray-6);
 	box-shadow: 0 0 0 100vmax var(--sl-color-gray-6);
 	clip-path: inset(0 -100vmax);
@@ -443,18 +448,6 @@ site-search button {
 	letter-spacing: -0.02em;
 }
 
-.home-section + .home-section {
-	border-top: 1px solid var(--sl-color-gray-5);
-}
-
-.home-band-end {
-	margin-top: 0;
-}
-
-/* The page ends on the band, not on Starlight's footer space. */
-.home-band-end .home-actions {
-	margin-bottom: 0;
-}
 
 .home-lead {
 	margin-bottom: 2.5rem;
