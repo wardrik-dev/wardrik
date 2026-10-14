@@ -755,11 +755,11 @@ site-search button {
 	margin-top: 2rem;
 }
 
-/* Each item spans three rows of the grid, title, line and example, so a pair
- * lines up row by row and their examples fill the same height. */
+/* Each item spans four rows of the grid, title, line, example and link, so
+ * a pair lines up row by row and their examples fill the same height. */
 .sl-markdown-content .team > div {
 	display: grid;
-	grid-row: span 3;
+	grid-row: span 4;
 	grid-template-rows: subgrid;
 	grid-template-columns: minmax(0, 1fr);
 	min-width: 0;
@@ -783,6 +783,10 @@ site-search button {
 	display: flex;
 	flex-direction: column;
 	margin: 0;
+}
+
+.sl-markdown-content .team > div > :last-child {
+	margin: 1rem 0 0;
 }
 
 .team .expressive-code .frame,
