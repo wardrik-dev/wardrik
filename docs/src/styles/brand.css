@@ -1,152 +1,173 @@
 /*
- * Wardrik's design system, as Starlight reads it. The tokens are the brand
- * guide's: Ink, Signal and Amber on Paper, a slate scale that leans towards
- * the accent, and the terminal's state colours. Colour means state, never
- * decoration: cyan running, amber waiting on a person, green done, red failed.
+ * Wardrik's design system, as Starlight reads it: ink on white, one accent,
+ * Ember, and Geist throughout. Ember is also the colour of a call that waits
+ * on a person, so where it appears, someone decides. Code sits on one dark
+ * ground in both themes.
  */
 
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/400-italic.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/geist-sans/400.css';
+@import '@fontsource/geist-sans/500.css';
+@import '@fontsource/geist-sans/600.css';
+@import '@fontsource/geist-sans/700.css';
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
 
 :root {
-	--wardrik-signal: #11a3b3;
-	--wardrik-term-bg: #10181d;
+	--sl-font: 'Geist Sans';
+	--sl-font-mono: 'Geist Mono';
+	--sl-line-height: 1.65;
 
-	--sl-font: 'IBM Plex Sans';
-	--sl-font-mono: 'IBM Plex Mono';
-	--sl-line-height: 1.6;
-
-	/* The type scale, in steps of 1.25 from 16. */
-	--sl-text-h1: 2.4375rem; /* 39 */
-	--sl-text-h2: 1.9375rem; /* 31 */
-	--sl-text-h3: 1.5625rem; /* 25 */
-	--sl-text-h4: 1.25rem; /* 20 */
+	--sl-text-h1: 2.5rem;
+	--sl-text-h2: 1.5rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-h4: 1.0625rem;
 	--sl-text-h5: 1rem;
 	--sl-text-code: 0.875rem;
 
-	/* Dark: slate 950 ground, slate 50 text. */
-	--sl-color-white: #f2f4f5;
-	--sl-color-gray-1: #dde5e9;
-	--sl-color-gray-2: #c3ced4;
-	--sl-color-gray-3: #8e9ca4;
-	--sl-color-gray-4: #56656f;
-	--sl-color-gray-5: #27333a;
-	--sl-color-gray-6: #151d21;
-	--sl-color-black: #0e1417;
+	/* Dark: near-black ground, near-white text. */
+	--sl-color-white: #f4f5f7;
+	--sl-color-gray-1: #e6e8eb;
+	--sl-color-gray-2: #c9ced4;
+	--sl-color-gray-3: #9aa3ae;
+	--sl-color-gray-4: #6b737e;
+	--sl-color-gray-5: #23272e;
+	--sl-color-gray-6: #14171b;
+	--sl-color-black: #0b0d10;
+	--sl-color-text: #e6e8eb;
+	--sl-color-bg-nav: var(--sl-color-black);
+	--sl-color-bg-sidebar: var(--sl-color-black);
 
-	--sl-color-accent-low: #0f3236;
-	--sl-color-accent: #4fc3cf;
-	--sl-color-accent-high: #9bdde4;
-	--sl-color-text: #dde5e9;
-	--sl-color-text-accent: #4fc3cf;
+	--sl-color-accent-low: #2a1a10;
+	--sl-color-accent: #fb8a4b;
+	--sl-color-accent-high: #fdba8c;
+	--sl-color-text-accent: #fb8a4b;
 
-	/* Callouts take the state colours: a note is signal, a tip done, caution a
-	 * person deciding, and danger failed. */
-	--sl-color-blue-low: #0f3236;
-	--sl-color-blue: #4fc3cf;
-	--sl-color-blue-high: #9bdde4;
-	--sl-color-purple-low: #1c3322;
-	--sl-color-purple: #7cc98a;
-	--sl-color-purple-high: #b5e3be;
-	--sl-color-green-low: #1c3322;
-	--sl-color-green: #7cc98a;
-	--sl-color-green-high: #b5e3be;
-	--sl-color-orange-low: #2a2114;
-	--sl-color-orange: #e2a447;
-	--sl-color-orange-high: #f0cb8e;
-	--sl-color-red-low: #3a1d1b;
-	--sl-color-red: #e57a72;
-	--sl-color-red-high: #f2b3ad;
+	/* Callouts: a note is neutral, a tip green, caution Ember, danger red. */
+	--sl-color-blue-low: #14171b;
+	--sl-color-blue: #c9ced4;
+	--sl-color-blue-high: #f4f5f7;
+	--sl-color-purple-low: #0f2418;
+	--sl-color-purple: #6ccb8e;
+	--sl-color-purple-high: #b7e8c6;
+	--sl-color-green-low: #0f2418;
+	--sl-color-green: #6ccb8e;
+	--sl-color-green-high: #b7e8c6;
+	--sl-color-orange-low: #2a1a10;
+	--sl-color-orange: #fb8a4b;
+	--sl-color-orange-high: #fdba8c;
+	--sl-color-red-low: #2d1412;
+	--sl-color-red: #f38b82;
+	--sl-color-red-high: #f9c3be;
 }
 
 :root[data-theme='light'] {
-	/* Light: Ink on Paper. */
-	--sl-color-white: #15212a;
-	--sl-color-gray-1: #27333a;
-	--sl-color-gray-2: #3a4851;
-	--sl-color-gray-3: #56656f;
-	--sl-color-gray-4: #8e9ca4;
-	--sl-color-gray-5: #d3dade;
-	--sl-color-gray-6: #e3e8ea;
-	--sl-color-gray-7: #f7f9fa;
-	--sl-color-black: #f2f4f5;
+	--sl-color-white: #101418;
+	--sl-color-gray-1: #1f252c;
+	--sl-color-gray-2: #3a424c;
+	--sl-color-gray-3: #5b6470;
+	--sl-color-gray-4: #8c949e;
+	--sl-color-gray-5: #e3e6ea;
+	--sl-color-gray-6: #f6f7f8;
+	--sl-color-gray-7: #fafafb;
+	--sl-color-black: #ffffff;
+	--sl-color-text: #1f252c;
 
-	/* Signal 700: the accent as text on a light ground. */
-	--sl-color-accent-low: #d3eef1;
-	--sl-color-accent: #0a7e8c;
-	--sl-color-accent-high: #075a64;
-	--sl-color-text: #15212a;
-	--sl-color-text-accent: #0a7e8c;
-	--sl-color-bg-nav: #f2f4f5;
+	--sl-color-accent-low: #fff4ed;
+	--sl-color-accent: #c2410c;
+	--sl-color-accent-high: #9a3412;
+	--sl-color-text-accent: #c2410c;
 
-	--sl-color-blue-low: #d3eef1;
-	--sl-color-blue: #0a7e8c;
-	--sl-color-blue-high: #075a64;
-	--sl-color-purple-low: #e2f1e4;
-	--sl-color-purple: #2e7d3a;
-	--sl-color-purple-high: #22602c;
-	--sl-color-green-low: #e2f1e4;
-	--sl-color-green: #2e7d3a;
-	--sl-color-green-high: #22602c;
-	--sl-color-orange-low: #fbf3e4;
-	--sl-color-orange: #9a620f;
-	--sl-color-orange-high: #7a4d0c;
-	--sl-color-red-low: #f8e1df;
-	--sl-color-red: #b83a30;
-	--sl-color-red-high: #8e2c24;
+	--sl-color-blue-low: #f6f7f8;
+	--sl-color-blue: #3a424c;
+	--sl-color-blue-high: #101418;
+	--sl-color-purple-low: #ecf7f0;
+	--sl-color-purple: #15803d;
+	--sl-color-purple-high: #14532d;
+	--sl-color-green-low: #ecf7f0;
+	--sl-color-green: #15803d;
+	--sl-color-green-high: #14532d;
+	--sl-color-orange-low: #fff4ed;
+	--sl-color-orange: #c2410c;
+	--sl-color-orange-high: #9a3412;
+	--sl-color-red-low: #fef0ef;
+	--sl-color-red: #b42318;
+	--sl-color-red-high: #7a1a12;
 }
 
-/* The wordmark, lowercase, as it is typed. */
+/* The wordmark. */
 .site-title {
-	font-family: var(--__sl-font-mono);
-	font-weight: 500;
-	letter-spacing: -0.01em;
-	text-transform: lowercase;
+	display: flex;
+	align-items: center;
+	font-size: 1.3125rem;
+	font-weight: 700;
+	letter-spacing: -0.035em;
+	line-height: 1;
 	color: var(--sl-color-white);
-	gap: 0.625rem;
+	text-decoration: none;
+	white-space: nowrap;
 }
 
-.site-title img {
-	height: 1.5rem;
+.wordmark-i {
+	/* The i's own dot, coloured: in Geist it lies 0.599–0.71em above the
+	 * baseline and the stem below 0.53em. At line-height 1 the baseline is
+	 * 0.85em down, so a stop at 0.285em falls between them. The tracking moves
+	 * to the margin so the box, and the colour, cover the whole glyph. */
+	display: inline-block;
+	letter-spacing: 0;
+	margin-right: -0.035em;
+	background: linear-gradient(var(--sl-color-accent) 0.285em, var(--sl-color-white) 0.285em);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
 }
 
-.hero > img {
-	width: min(45vw, 16rem);
-}
-
-/* Display: page titles in Mono 500. */
 h1#_top,
 .hero h1 {
-	font-family: var(--__sl-font-mono);
-	font-weight: 500;
-	letter-spacing: -0.02em;
-}
-
-.hero h1 {
-	text-transform: lowercase;
+	font-weight: 600;
+	letter-spacing: -0.03em;
+	line-height: 1.15;
 }
 
 .sl-markdown-content :is(h2, h3, h4) {
 	font-weight: 600;
-	letter-spacing: -0.01em;
+	letter-spacing: -0.02em;
 }
 
-/* Labels: Sans 600, small, uppercase, tracked. */
+.sl-markdown-content a {
+	text-underline-offset: 3px;
+}
+
+.sl-markdown-content code:not(pre code) {
+	padding: 0.125em 0.3125em;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 4px;
+	background: var(--sl-color-gray-6);
+	font-size: 0.875em;
+}
+
 .sl-markdown-content th {
-	font-size: 0.6875rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
 	color: var(--sl-color-gray-3);
 }
 
-/* Corners of 2, 4 or 6 px, and nothing rounder: it's an instrument. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	border-radius: 6px;
+	background-color: var(--sl-color-accent-low);
+	color: var(--sl-color-text-accent);
+	font-weight: 500;
+}
+
+.sidebar-content .group-label .large {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--sl-color-white);
+}
+
 .sl-link-button {
-	border-radius: 4px;
+	border-radius: 8px;
 }
 
 .sl-link-button.primary {
@@ -160,23 +181,33 @@ h1#_top,
 	border-color: var(--sl-color-text-accent);
 }
 
-site-search button,
-.starlight-aside,
-.sl-markdown-content code:not(pre code) {
-	border-radius: 4px;
+.social-icons a {
+	color: var(--sl-color-gray-3);
 }
 
-/* Cards are not states, so they stay ink on paper. */
+.social-icons a:hover {
+	color: var(--sl-color-white);
+}
+
+site-search button {
+	border-radius: 8px;
+	background: var(--sl-color-gray-6);
+}
+
+.starlight-aside {
+	border-radius: 8px;
+}
+
 .card {
 	--sl-card-border: var(--sl-color-gray-5);
 	--sl-card-bg: transparent;
 	border-color: var(--sl-color-gray-5);
-	border-radius: 6px;
+	border-radius: 10px;
 }
 
 .card .icon {
 	color: var(--sl-color-text-accent);
-	border-radius: 4px;
+	border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {
