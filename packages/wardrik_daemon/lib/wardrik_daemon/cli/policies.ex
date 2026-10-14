@@ -25,6 +25,7 @@ defmodule WardrikDaemon.CLI.Policies do
     [
       %Command{
         name: "policy judge",
+        group: "Decide",
         arguments: "NAME",
         options: "[--agent KEY|PREFIX/] [--last N]",
         summary: "try a policy's judge on the calls agents have made",

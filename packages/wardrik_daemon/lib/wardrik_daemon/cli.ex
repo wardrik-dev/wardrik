@@ -57,29 +57,63 @@ defmodule WardrikDaemon.CLI do
   @faint [:faint, :light_black]
   @audit_limit 100
 
-  @doc "Every command `wardrik` takes, in the order `wardrik help` lists them."
+  @doc """
+  Every command `wardrik` takes, in the order `wardrik help` lists them: by
+  group, and in a group as they are defined.
+  """
   @spec commands() :: [Command.t()]
   def commands do
+    Enum.sort_by(definitions(), &rank(&1.group))
+  end
+
+  # The jobs commands are listed under, in the order wardrik help lists them.
+  defp rank("Set up"), do: 0
+  defp rank("Talk to agents"), do: 1
+  defp rank("Decide"), do: 2
+  defp rank("Manage agents"), do: 3
+  defp rank("Tokens and secrets"), do: 4
+  defp rank("Run the daemon"), do: 5
+
+  defp definitions do
     [
       Init.command(),
-      %Command{name: "serve", summary: "run the daemon here, logging to the terminal"},
-      %Command{name: "start", summary: "run the daemon in the background"},
-      %Command{name: "stop", summary: "stop the daemon, and wait until it has"},
+      %Command{
+        name: "serve",
+        group: "Run the daemon",
+        summary: "run the daemon here, logging to the terminal"
+      },
+      %Command{
+        name: "start",
+        group: "Run the daemon",
+        summary: "run the daemon in the background"
+      },
+      %Command{
+        name: "stop",
+        group: "Run the daemon",
+        summary: "stop the daemon, and wait until it has"
+      },
       %Command{
         name: "status",
+        group: "Run the daemon",
         summary: "what the daemon, or its cluster, is running",
         details: ["With --json, the nodes as GET /v1/deployment/nodes lists them."],
         run: &status/2,
         json: &nodes/2
       },
-      %Command{name: "doctor", summary: "check what the daemon reads, running or not"},
+      %Command{
+        name: "doctor",
+        group: "Set up",
+        summary: "check what the daemon reads, running or not"
+      },
       %Command{
         name: "reload",
+        group: "Set up",
         summary: "read the agent and policy files again, everywhere",
         run: &reload/2
       },
       %Command{
         name: "audit",
+        group: "Run the daemon",
         options: "[--after N] [--limit N]",
         summary: "what people changed, oldest first",
         details: [
@@ -92,6 +126,7 @@ defmodule WardrikDaemon.CLI do
       },
       %Command{
         name: "ask",
+        group: "Talk to agents",
         arguments: "KEY MESSAGE",
         options: "[--no-wait]",
         summary: "send an agent a message, and follow its answer",
@@ -106,6 +141,7 @@ defmodule WardrikDaemon.CLI do
       },
       %Command{
         name: "watch",
+        group: "Talk to agents",
         arguments: "KEY",
         options: "[--json]",
         summary: "follow what an agent does, until Ctrl-C",
@@ -119,6 +155,7 @@ defmodule WardrikDaemon.CLI do
       },
       %Command{
         name: "history",
+        group: "Talk to agents",
         arguments: "KEY",
         summary: "what an agent has said",
         details: ["With --json, the agent as GET /v1/agents/KEY answers with it."],
@@ -128,6 +165,7 @@ defmodule WardrikDaemon.CLI do
       },
       %Command{
         name: "clear",
+        group: "Talk to agents",
         arguments: "KEY",
         summary: "empty an agent's conversation, and the labels of what it read",
         details: [
@@ -148,23 +186,46 @@ defmodule WardrikDaemon.CLI do
   # What bin/wardrik runs itself, listed for their help.
   defp script_commands do
     [
-      %Command{name: "service install", summary: "run the daemon under your user's systemd"},
-      %Command{name: "service uninstall", summary: "stop the service, and remove its unit"},
-      %Command{name: "service status", summary: "how systemd has the service"},
-      %Command{name: "service unit", summary: "print the unit install writes"},
+      %Command{
+        name: "service install",
+        group: "Run the daemon",
+        summary: "run the daemon under your user's systemd"
+      },
+      %Command{
+        name: "service uninstall",
+        group: "Run the daemon",
+        summary: "stop the service, and remove its unit"
+      },
+      %Command{
+        name: "service status",
+        group: "Run the daemon",
+        summary: "how systemd has the service"
+      },
+      %Command{
+        name: "service unit",
+        group: "Run the daemon",
+        summary: "print the unit install writes"
+      },
       %Command{
         name: "attach",
+        group: "Talk to agents",
         arguments: "[HOST]",
         summary: "the TUI, over SSH to HOST, localhost by default",
         count: {0, 1}
       },
-      %Command{name: "remote", summary: "an IEx shell on the daemon"},
-      %Command{name: "logs", summary: "follow the daemon's log"},
-      %Command{name: "pid", summary: "the daemon's process id"},
-      %Command{name: "version", summary: "print the version"},
-      %Command{name: "help", arguments: "[COMMAND]", summary: "every command, or one in full"},
+      %Command{name: "remote", group: "Run the daemon", summary: "an IEx shell on the daemon"},
+      %Command{name: "logs", group: "Run the daemon", summary: "follow the daemon's log"},
+      %Command{name: "pid", group: "Run the daemon", summary: "the daemon's process id"},
+      %Command{name: "version", group: "Run the daemon", summary: "print the version"},
+      %Command{
+        name: "help",
+        group: "Set up",
+        arguments: "[COMMAND]",
+        summary: "every command, or one in full"
+      },
       %Command{
         name: "completion",
+        group: "Set up",
         arguments: "SHELL",
         summary: "completion for bash, zsh or fish, to install",
         count: {1, 1},
@@ -441,7 +502,7 @@ defmodule WardrikDaemon.CLI do
   defp overview(terminal) do
     [
       "Usage: wardrik [--node NAME] COMMAND\n\n",
-      Command.listing(commands(), terminal.width),
+      Command.grouped(commands(), terminal.width),
       "\n\n",
       first_agent(Config.config_dir()),
       about(Config.config_dir())

@@ -8,19 +8,26 @@ defmodule WardrikDaemon.CLI.CommandTest do
   @commands [
     %Command{
       name: "ask",
+      group: "Talk to agents",
       arguments: "KEY MESSAGE",
       summary: "send an agent a message",
       count: {2, :any}
     },
     %Command{
       name: "token create",
+      group: "Tokens",
       arguments: "NAME",
       options: "[--can ACTIONS]",
       summary: "make a token",
       switches: [can: :string],
       count: {1, 1}
     },
-    %Command{name: "token list", summary: "list tokens", json: &Function.identity/1}
+    %Command{
+      name: "token list",
+      group: "Tokens",
+      summary: "list tokens",
+      json: &Function.identity/1
+    }
   ]
 
   test "find/2 takes the longest name the arguments open with" do
@@ -68,5 +75,20 @@ defmodule WardrikDaemon.CLI.CommandTest do
 
     assert plain(Command.listing(Enum.take(@commands, 1), 30)) ==
              "  ask KEY MESSAGE\n      send an agent a message"
+  end
+
+  test "grouped/2 lists each group under its heading, with one column for them all" do
+    assert plain(Command.grouped(@commands, 80)) ==
+             Enum.join(
+               [
+                 "Talk to agents:",
+                 "  ask KEY MESSAGE    send an agent a message",
+                 "",
+                 "Tokens:",
+                 "  token create NAME  make a token",
+                 "  token list         list tokens"
+               ],
+               "\n"
+             )
   end
 end

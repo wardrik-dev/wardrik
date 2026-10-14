@@ -88,8 +88,16 @@ defmodule Mix.Tasks.Wardrik.Docs do
   end
 
   defp cli do
+    commands = WardrikDaemon.CLI.commands()
+    code = code(commands)
     intro = WardrikDaemon.CLI.about("~/.config/wardrik")
-    commands = Enum.map_join(WardrikDaemon.CLI.commands(), "\n", &command/1)
+
+    groups =
+      commands
+      |> Enum.chunk_by(& &1.group)
+      |> Enum.map_join("\n", fn [%{group: group} | _rest] = chunk ->
+        ["## #{group}\n\n", Enum.map_join(chunk, "\n", &command(&1, code))]
+      end)
 
     page(
       "cli",
@@ -97,32 +105,55 @@ defmodule Mix.Tasks.Wardrik.Docs do
       1,
       "Every command wardrik takes, and what each does.",
       "WardrikDaemon.CLI.commands/0",
-      [intro, "\n\n", commands]
+      [code.(intro), "\n\n", groups]
     )
   end
 
-  defp command(command) do
+  defp command(command, code) do
     usage =
       Enum.reject(["wardrik", command.name, command.arguments, command.options], &(&1 == ""))
 
     details =
       command.details
       |> Enum.chunk_by(&String.starts_with?(&1, "  "))
-      |> Enum.map_join("\n\n", &details/1)
+      |> Enum.map_join("\n\n", &details(&1, code))
 
     [
-      "## wardrik #{command.name}\n\n",
-      sentence(command.summary),
+      "### wardrik #{command.name}\n\n",
+      code.(sentence(command.summary)),
       "\n\n```sh\n#{Enum.join(usage, " ")}\n```\n",
       if(details == "", do: "", else: "\n#{details}\n")
     ]
   end
 
   # Indented lines in a command's details are examples, and the rest is prose.
-  defp details(["  " <> _ | _] = lines),
+  defp details(["  " <> _ | _] = lines, _code),
     do: "```sh\n#{Enum.map_join(lines, "\n", &String.trim_leading/1)}\n```"
 
-  defp details(lines), do: Enum.join(lines, " ")
+  defp details(lines, code), do: code.(Enum.join(lines, " "))
+
+  # Prose written for a terminal, with what is typed or read set as code:
+  # commands, flags, environment variables, routes and paths.
+  defp code(commands) do
+    names =
+      commands
+      |> Enum.map(& &1.name)
+      |> Enum.sort_by(&String.length/1, :desc)
+      |> Enum.map_join("|", &Regex.escape/1)
+
+    pattern =
+      Regex.compile!(
+        "\\b(?:GET|POST|PUT|PATCH|DELETE) /\\S*[\\w}]" <>
+          "|\\bwardrik (?:#{names})(?: [A-Z][A-Z_]*)*\\b" <>
+          "|--[a-z][a-z-]*(?: [A-Z][A-Z_]*\\b)?" <>
+          "|\\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\\b" <>
+          "|~/[\\w./-]*[\\w/]" <>
+          "|\\b\\w[\\w.-]*(?:/(?:[@\\w.-]*[@\\w-])?)+" <>
+          "|\\b[\\w-]+\\.(?:yaml|md|json)\\b"
+      )
+
+    &Regex.replace(pattern, &1, "`\\0`")
+  end
 
   defp sentence(text),
     do: String.capitalize(String.first(text)) <> String.slice(text, 1..-1//1) <> "."

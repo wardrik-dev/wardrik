@@ -61,6 +61,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     [
       %Command{
         name: "agent spawn",
+        group: "Manage agents",
         arguments: "NAME",
         options: "[--org ORG] [--user USER] [--on NODE]",
         summary: "start an agent, writing its file from config.yaml's defaults if it has none",
@@ -76,6 +77,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       },
       %Command{
         name: "agent cancel",
+        group: "Manage agents",
         arguments: "KEY|PREFIX/",
         options: "[--all]",
         summary: "end the turn an agent is taking; it keeps running",
@@ -90,6 +92,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       },
       %Command{
         name: "agent stop",
+        group: "Manage agents",
         arguments: "KEY",
         summary: "stop an agent now, keeping its conversation; it wakes when asked again",
         details: [
@@ -101,6 +104,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       },
       %Command{
         name: "agent rm",
+        group: "Manage agents",
         arguments: "KEY|PREFIX/",
         options: "[--yes]",
         summary: "remove an agent, its conversation and its triggers, for good",
@@ -116,6 +120,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       },
       %Command{
         name: "agent move",
+        group: "Manage agents",
         arguments: "KEY [NODE]",
         options: "[--yes]",
         summary: "restart an agent on another node, with its conversation",
@@ -130,6 +135,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       },
       %Command{
         name: "agent edit",
+        group: "Manage agents",
         arguments: "KEY",
         summary: "edit the file that declares an agent, then read the files again",
         details: ["It opens the file in $VISUAL, or $EDITOR, or vi."],
