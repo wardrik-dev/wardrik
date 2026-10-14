@@ -176,12 +176,17 @@ wardrik token create ci \
 </div>
 <div>
 
-### Each person's own accounts
+### A vault, sealed per person
 
-A user's agents use that user's credentials, and never anyone else's.
+Secrets are sealed with AES-256-GCM, per user or org. One person's agents never read another's.
 
-```sh
-wardrik vault put GITHUB_TOKEN --user jon
+```yaml
+mcp:
+  github:
+    url: https://api.githubcopilot.com/mcp/
+    credential: github     # each user's own
+vault:
+  keys: ["${VAULT_KEY_NEW}", "${VAULT_KEY}"]
 ```
 
 </div>
