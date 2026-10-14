@@ -1,21 +1,18 @@
 ---
 title: An agent that writes its own skills
-description: An agent that writes down how it did each task worth repeating as a skill, reads the index of its skills in every turn, and tidies them once a week.
+description: An agent that writes down how it did each task as a skill, reads them next time, and tidies them weekly.
 sidebar:
   order: 3
 ---
 
-An agent that gets better at the work it is given. After a task worth repeating it writes down
-how it did it, as a skill in a file of its own, and the next time it reads that skill first. Once a
-week it reads them all again, merges the ones that overlap and fixes the ones that led it wrong.
-
-Nothing here is a feature of its own: it is files, a file read into every turn, and a trigger.
+After each task worth repeating, this agent writes down how it did it as a skill, and reads it first
+next time. Weekly, it tidies its skills. It's just files, an index read every turn, and a trigger.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one, and a key for
-  `web_search`.
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install);
+- a key for `web_search`.
 
 ## The agent
 
@@ -49,9 +46,9 @@ what to check, and what went wrong. Add a line for it to SKILLS.md, with its pat
 it. When a skill leads you wrong, fix it then, not later.
 ```
 
-`SKILLS.md` is read into every turn, and the skills themselves are not: the agent reads one when it
-needs it, so a hundred skills cost a hundred lines of index. Read the agent files again, and give it
-something to do twice:
+## Try it
+
+Give it the same kind of task twice:
 
 ```sh
 wardrik reload
@@ -60,33 +57,28 @@ wardrik ask researcher "What skills do you have now?"
 wardrik ask researcher "Do the same for speculative decoding."
 ```
 
-Follow the third turn with `wardrik watch researcher` in another terminal, and look for its
-`read_file` of the skill the first one wrote, before it searches.
+`wardrik watch researcher` during the third turn shows it reading the skill before searching.
 
 ## What it shows
 
-- **Files, read in when needed.** `context` reads only the index into each turn, and the agent
-  reads a skill with `read_file` when it fits. A file longer than its share of the turn is read from
-  its start and its end, and the agent is asked to fold it shorter. See
+- **Files read when needed.** Only the index is in every turn. See
   [Files and memory](/concepts/files-and-memory/).
-- **A trigger that keeps it in shape.** The Sunday run is an ordinary message on a clock, in the
-  agent's history like any other. See [Trigger an agent](/build/triggers/).
-- **A long life.** The agent keeps one conversation for as long as it runs, and summarises the older
-  part with its own model before it outgrows the context window: `compaction` sets when. What it
-  must not forget belongs in a skill or `MEMORY.md`, which no summary touches. See
+- **A trigger that keeps it in shape.** The Sunday run is a message on a clock. See
+  [Trigger an agent](/build/triggers/).
+- **A long life.** It summarises its older history before it outgrows the context window;
+  `compaction` sets when. What it must not forget goes in a skill or `MEMORY.md`. See
   [A history that grows](/concepts/durable-runs/#a-history-that-grows).
-- **Rules over its own files.** `delete_file(skills/*)` names the calls that delete a skill, so
-  deleting one waits on a person while writing them does not. See
+- **Rules over its own files.** Deleting a skill waits for a person; writing one doesn't. See
   [What a call acts on](/concepts/rules/#what-a-call-acts-on).
-- **Where a skill came from.** A file keeps whether the turn that wrote it had read content from
-  outside, such as a page `web_search` found. A turn that reads such a skill counts as having read
-  that content too, so a page cannot leave instructions in a skill that a gated tool then follows
-  with nobody asked. See [Content from outside](/concepts/outside-content/).
+- **Skills remember their source.** A skill written after reading a web page carries that label, so
+  a page can't plant instructions for later. See [Content from outside](/concepts/outside-content/).
 
-## Taking it further
+## Details
 
-- **One team's skills.** Keep the skills in a shared tree, written by one agent and read by the
-  others, each of which sees it under `shared/skills/`:
+### Taking it further
+
+- **One team's skills.** One agent writes a shared tree; the others read it under `shared/skills/`.
+  `config.yaml`'s [`workspace.shared`](/reference/config/#workspace) must let them mount it:
 
   ```yaml
   # the agent that writes them
@@ -101,5 +93,5 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   context: [shared/skills/SKILLS.md]
   ```
 
-- **A night's lessons.** A second trigger at 02:00 can ask it to read the day's conversation
-  back and keep what it learned in `MEMORY.md`, before the history is summarised away.
+- **A night's lessons.** A second trigger at 02:00 can ask it to keep the day's lessons in
+  `MEMORY.md` before the history is summarised.

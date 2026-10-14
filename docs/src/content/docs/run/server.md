@@ -1,37 +1,32 @@
 ---
 title: A server of its own
-description: Put one team's daemon on a server of its own, from a checkout, with Caddy in front for connecting accounts and a Slack app made from a manifest.
+description: "Put one team's daemon on its own server with deploy/single/up.sh: Caddy in front, a Slack app from the manifest."
 sidebar:
   order: 0
 ---
 
-One daemon on one server serves one team: its agents, its Slack workspace, the accounts it connects.
-`deploy/single/up.sh`, in a checkout, puts it there from your machine over SSH, and puts it there
-again with each new release.
+One daemon on one server serves one team. `deploy/single/up.sh`, run from a checkout on your
+machine, puts it there over SSH, and again with each new release.
 
-Rent a server for each team, and give each one a subdomain of a domain of yours, such as
-`acme.example.com`. Nothing is then asked of the team's own DNS, and the address their browsers come
-back to when they connect an account stays yours. Keep each team's secrets in an env file of its
-own on your machine, which every run copies to the server in place of what is there.
+Give each team its own server and a subdomain of yours, such as `acme.example.com`. The team's DNS
+is never touched, and the address browsers return to when they connect an account stays yours.
 
-## What the server needs
+## What you need
 
-- Ubuntu 24.04 or Debian 12, on x86_64 or aarch64, which SSH reaches as root or as a user sudo lets
-  do anything without a password.
-- The team's subdomain pointing at it, and ports 22, 80 and 443 open to it. Caddy gets the name a
-  certificate, so that people's browsers come back to the daemon over HTTPS when they
-  [connect an account](/build/accounts/); see [A public address](/run/public-address/).
-- Nothing else: the script makes the user the daemon runs as, and installs Caddy.
+- **The server:** Ubuntu 24.04 or Debian 12, x86_64 or aarch64, reachable over SSH as root or as a
+  user with passwordless sudo.
+- **The name:** the team's subdomain pointing at the server, with ports 22, 80 and 443 open. Caddy
+  gets a certificate for it; see [A public address](/run/public-address/).
+- **Your machine:** the checkout, SSH and Docker. Docker builds the release on the oldest Linux it
+  runs on, so it runs on the server whatever your machine is.
 
-Your own machine needs the checkout, SSH, and Docker, which builds the release in the Dockerfile's
-`tarball` stage, on the oldest Linux the release runs on, so it runs on the server whatever your
-machine is.
+The script makes the daemon's user and installs Caddy, so the server needs nothing else.
 
-## Steps
+## Put it on the server
 
 1. Make the team's [Slack app](/channels/slack/#a-slack-app) from the manifest, and keep its two
    tokens.
-2. Write the team's env file, readable by you alone, with those tokens and the model's key:
+2. Write the team's env file, readable by you alone:
 
    ```sh title="~/customers/acme/env"
    SLACK_BOT_TOKEN=xoxb-...
@@ -50,29 +45,18 @@ machine is.
      deploy/single/up.sh
    ```
 
-   It ends with `wardrik status` and `wardrik doctor` on the server.
+   It ends by running `wardrik status` and `wardrik doctor` on the server.
 
-4. Invite the Slack app to a channel, `/invite @yourapp`. The example agent answers there, and the
-   channel's approvers are asked what it waits on.
-5. Give the agents the team's tools: their [MCP servers](/build/mcp/) in `config.yaml`, and under
-   `oauth.providers` each account those servers sign in with, as
-   [Connect accounts](/build/accounts/) says. The daemon serves `acme.example.com/oauth` once a
-   provider is named, and `wardrik doctor` says whether it reaches the daemon.
+4. Invite the app to a channel with `/invite @yourapp`. The example agent answers there, and the
+   channel's approvers decide what it waits on.
+5. Add the team's [MCP servers](/build/mcp/) to `config.yaml`, and each account they sign in with
+   under `oauth.providers`; see [Connect accounts](/build/accounts/). `wardrik doctor` says whether
+   `acme.example.com/oauth` reaches the daemon.
 
-## What it leaves on the server
+## Change its config
 
-| Where | What | Run again |
-| --- | --- | --- |
-| The user `wardrik` | Runs the daemon as `wardrik.service` under its own systemd, from boot. The keys that let you in as `WARDRIK_HOST` let you in as `wardrik` too. | Kept, with keys added |
-| `~wardrik/.local/lib/wardrik` | The release, installed by `deploy/install.sh`, and the one before it | The new release, then a restart |
-| `~wardrik/.config/wardrik/env` | Your env file | Replaced by yours |
-| `~wardrik/.config/wardrik/config.yaml` | The org, the agents' model and policy, the callback's address, the Slack channel and its approvers | Kept: change it on the server |
-| `~wardrik/.config/wardrik/agents`, `policies` | An example agent offered in Slack, and the policy every agent is given | Kept, and a file missing is put back |
-| `~wardrik/.local/share/wardrik` | The store, and the vault's key unless the env file sets `WARDRIK_VAULT_KEY` | Kept |
-| `/etc/caddy/Caddyfile` | `/oauth/` and `/v1/hooks/` on the domain passed on to the daemon, and a 404 for anything else | Written again |
-
-The variables `WARDRIK_ORG`, `WARDRIK_MODEL` and `WARDRIK_APPROVERS` write `config.yaml` the first
-time only. From then on, change it on the server, and start the daemon again:
+`WARDRIK_ORG`, `WARDRIK_MODEL` and `WARDRIK_APPROVERS` write `config.yaml` the first time only.
+After that, edit it on the server and restart:
 
 ```sh
 ssh wardrik@203.0.113.7
@@ -81,23 +65,41 @@ systemctl --user restart wardrik
 wardrik doctor
 ```
 
-Agent and policy files are read again with `wardrik reload`, without a restart.
+Agent and policy files need only `wardrik reload`.
 
-## A new release
+## Ship a new release
 
-Run the script again, with the same variables. It builds the release from the checkout as it is,
-installs it beside the one running, and starts the daemon again on it, keeping the store, the vault
-and the config. The release before stays installed, to go back to; see
-[Upgrade and back up](/run/upgrade-and-back-up/).
+Run the script again with the same variables. It builds from the checkout as it is, installs the
+release beside the running one, and restarts the daemon on it. The store, the vault and the config
+stay, and so does the release before; see [Upgrade and back up](/run/upgrade-and-back-up/).
 
-`WARDRIK_TARBALL` installs a release tarball you already have rather than building one, and
-`WARDRIK_SSH_OPTS` passes ssh and scp more options, such as `-o Port=2200`.
+## Back it up
 
-## Backing it up
+Everything the team has is in `~wardrik/.local/share/wardrik` on the server: conversations,
+connected accounts and the vault, with the vault's key beside the store. A rented server's disk
+goes when the server does. Back up that directory, or keep the store elsewhere with
+[Storage](/run/storage/).
 
-Everything the team has, its conversations, connected accounts and the vault, is in
-`~wardrik/.local/share/wardrik` on the server, with the vault's key beside the store. On a rented
-server that is the server's own disk, which goes when the server does. Back up the
-directory, or keep the store elsewhere with [Storage](/run/storage/), and give the vault a key of
-its own in the env file, so that a server made again over the same store reads what the last one
-sealed.
+Give the vault its own key in the env file too. A server rebuilt over the same store can then read
+what the last one sealed.
+
+## Details
+
+### What the script leaves on the server
+
+| Where | What | Run again |
+| --- | --- | --- |
+| The user `wardrik` | Runs `wardrik.service` under its own systemd, from boot. The keys that log you in as `WARDRIK_HOST` log you in as `wardrik` too. | Kept, with keys added |
+| `~wardrik/.local/lib/wardrik` | The release from `deploy/install.sh`, and the one before | The new release, then a restart |
+| `~wardrik/.config/wardrik/env` | Your env file | Replaced by yours |
+| `~wardrik/.config/wardrik/config.yaml` | The org, model and policy, the callback's address, the Slack channel and its approvers | Kept |
+| `~wardrik/.config/wardrik/agents`, `policies` | An example agent offered in Slack, and the policy every agent gets | Kept; a missing file is put back |
+| `~wardrik/.local/share/wardrik` | The store, and the vault's key unless the env file sets `WARDRIK_VAULT_KEY` | Kept |
+| `/etc/caddy/Caddyfile` | `/oauth/` and `/v1/hooks/` passed to the daemon; 404 for anything else | Written again |
+
+### More variables
+
+- `WARDRIK_TARBALL` installs a release tarball you already have, instead of building one.
+- `WARDRIK_SSH_OPTS` passes more options to ssh and scp, such as `-o Port=2200`.
+
+Each team's env file stays on your machine, and every run copies it over the server's.

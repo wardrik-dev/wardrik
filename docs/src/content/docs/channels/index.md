@@ -1,13 +1,13 @@
 ---
 title: Channels
-description: The chat media agents are reached through, such as Slack. A channel is configured once, a room in it is bound to an agent by inviting its bot, the agent answers each conversation in a thread, and notices are posted in a room.
+description: "Chat apps people reach agents through, such as Slack: invite the bot into a room, and an agent answers there in threads."
 sidebar:
   order: 1
   label: Overview
 ---
 
-A *channel* is a chat medium Wardrik's agents are reached through, configured once under a name of
-your own: one Slack workspace's app, say. A *room* is a place in it, such as a Slack channel.
+A *channel* is a chat app your agents are reached through, such as one Slack workspace. A *room* is a
+place in it, such as a Slack channel. Invite the bot into a room, and an agent answers there.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -17,24 +17,20 @@ channels:
     app_token: ${SLACK_APP_TOKEN}
 ```
 
-`type` is which kind of channel it is; the rest of its settings are that kind's own. The kinds a
-release holds:
-
-| Type | |
-| --- | --- |
-| `slack` | [Slack](/channels/slack/), through a Slack app of Wardrik's own |
+The name, `slack`, is yours. `type` is the kind of channel; today that's [Slack](/channels/slack/).
+Every key is in [config.yaml › channels](/reference/config/#channels).
 
 ## Which agents a channel offers
 
-An agent is offered in a channel where its file names the channel:
+An agent is offered in a channel when its file lists it:
 
 ```yaml
 # in an agent file
 channels: [slack]
 ```
 
-A channel offers the agents of the deployment's [org](/concepts/agents/#keys-and-orgs) unless its
-`org` names others, or `*` for every org's:
+A channel offers your deployment's [org](/concepts/agents/#keys-and-orgs), unless its `org` names
+others, or `*` for all:
 
 ```yaml
 channels:
@@ -43,79 +39,42 @@ channels:
 
 ## A room's agent
 
-Inviting a channel's bot into a room gives the room an agent, and the bot always says where things
-stand:
+Invite the bot, and it says what happens next:
 
-- **One agent offered:** it answers there at once, when mentioned. The bot says what the agent is
-  for, from its `description`, and how to reach it, with a button to have it answer every message
-  instead, which makes the room the agent's own, and a menu to use another agent or stop.
-- **Several offered:** each with what it is for, and a button to use it.
-- **None offered:** a button to create one for the room, from `config.yaml`'s `defaults`, where
-  they name a policy. It is named after the room, offered in the channel, and kept as an agent the
-  [HTTP API](/build/http-api/) defined is, so whoever runs Wardrik can change it later. A channel's
-  `create: false` turns this off; the bot then says who can offer an agent.
+- **One agent offered:** it answers when mentioned. A button makes it answer every message.
+- **Several:** a button to use each.
+- **None:** a button to create one from `config.yaml`'s `defaults`, when they name a policy.
+  `create: false` turns this off.
 
-Taking the bot out of the room unbinds it. Each binding, each change to it, and each agent created
-is recorded in the audit log, as `wardrik.room.bound`, `wardrik.room.unbound` and
-`wardrik.agent.defined` [events](/reference/events/), with who made it.
+Remove the bot to unbind the room.
 
 ## Threads
 
-The room's agent answers in threads. A message posted in the room starts a thread of its own where
-it mentions the bot, or where the agent answers every message; a reply in that thread reaches the
-agent without a mention. Each thread is a conversation of its own: the agent reads what was said in
-the thread, and not what was said in another, though its [files and memory](/concepts/files-and-memory/)
-are shared among them all. Every thread runs on the agent's one definition, and every message the
-agent reads names who sent it.
+Mention the bot to start a thread; replies in it reach the agent without a mention. Each thread is
+its own conversation, but [files and memory](/concepts/files-and-memory/) are shared across all of
+them. Calls the [policy](/concepts/policy/) holds are asked in the thread, with buttons.
 
-What the agent answers is posted in the thread, and so is anything it asks before a call its
-[policy](/concepts/policy/) holds for a person, with buttons to answer it. Who decides a call,
-and how, is said there once they have, wherever they decided it. A call waiting on someone to
-[connect an account](/build/accounts/) says so once they have, and carries on. A turn
-that fails says why there. Replies are taken from the agent's [event log](/concepts/events/), so one held up by a
-restart, or refused by the channel for a while, is posted when the daemon can.
+## Who may answer
 
-While the agent waits on a person, a new message in the thread waits behind the question, and the
-question is posted again, so the thread never goes quiet.
+`approvers` may answer what an agent waits on; `approvers: anyone` lets everyone. `admins` may also
+answer, and change the org's agents where `defaults` names a policy, which holds what they define.
+Whoever asked for a turn can always answer. Without approvers,
+only they can, and a trigger's turn is answered from a shell. See
+[Who approves](/channels/slack/#who-approves).
 
-A channel's `approvers` may answer what an agent asks in its threads, each as the channel names
-people, and are asked it directly, where the channel can reach a person, with the thread saying who
-it waits on; `approvers: anyone` lets everyone in the channel answer, in the thread. Without them,
-only whoever asked for a turn answers what it waits on, and a turn nobody asked for, such as a
-trigger's, is answered from a shell. Whoever asked for a turn may answer what it waits on either
-way. A channel's `admins`, named alike, may also answer, and change
-its orgs' agents where `defaults` names a policy, which holds what they define:
+A [notice target](/build/notices/) can post into a room too, with its own approvers.
 
-```yaml
-channels:
-  slack:
-    type: slack
-    token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
-    approvers: ["@maria", "finance-lead@example.com"]
-    admins: ["@jon"]
-```
+## Details
 
-Everyone in a channel may read and message the agents of the orgs it offers, and none of their
-users' agents. A room says which agent answers there, and a message reaches it only where its sender
-may message that agent: anyone else is told so in the thread, and the agent is not asked. See
-`WardrikDaemon.Grants` for what each person may do.
-
-## Notices in a room
-
-A [notice target](/build/notices/) can be a room of a channel, with who may answer what it asks.
-Its approvers may answer in the channel as its own approvers do:
-
-```yaml
-notify:
-  ops:
-    channel: slack
-    room: "#ops"
-    approvers: ["@maria"]
-```
-
-## More kinds of channel
-
-A kind of channel is a package of its own, which names itself in its application's environment, as
-`wardrik_slack` names `type: slack`. A release that holds the package reads its channels from
-`config.yaml`; nothing else changes. See `WardrikChannel` for what one implements.
+- **Who can message an agent:** everyone in a channel can message the agents of the orgs it offers,
+  but not their users' agents. Others get a reply saying so.
+- **Every thread** runs on the agent's one definition, and every message names who sent it.
+- **Replies survive restarts:** they come from the agent's [event log](/concepts/events/), so one
+  delayed by a restart is posted when the daemon can. A waiting question is posted again if a new
+  message arrives behind it.
+- **Created agents** are named after the room and kept like an [HTTP API](/build/http-api/)
+  definition, so you can change them later.
+- **Audit:** bindings and created agents are recorded with who made them, as `wardrik.room.bound`,
+  `wardrik.room.unbound` and `wardrik.agent.defined` [events](/reference/events/).
+- **New kinds of channel** are packages that name themselves in their application's environment, as
+  `wardrik_slack` names `type: slack`.

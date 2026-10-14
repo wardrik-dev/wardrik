@@ -1,85 +1,89 @@
 ---
 title: A public address
-description: Serve the page a provider sends a browser back to over HTTPS, so people connect accounts from any browser, with Caddy in front of the daemon.
+description: "Give the daemon an HTTPS address, with Caddy in front, so people connect accounts from any browser."
 sidebar:
   order: 3
 ---
 
-When someone [connects an account](/build/accounts/) in a browser, the provider sends that browser
-back to the daemon with a code. Without a public address, the daemon takes it on its own machine's
-loopback, `http://127.0.0.1:4599`, so the browser has to be on that machine too. A daemon on a
-server, with people clicking a link in Slack from their own laptops, needs an address their browsers
-reach, over HTTPS: many providers accept no other redirect.
+When someone [connects an account](/build/accounts/), the provider sends their browser back to the
+daemon. Without a public address, that only works from a browser on the daemon's own machine. A
+daemon on a server, with people clicking links in Slack, needs an HTTPS address their browsers
+reach. Many providers accept no other.
 
-The daemon does not end TLS itself. Something in front of it does, such as Caddy, and passes
-requests under one path on to the daemon's callback listener, which serves nothing else.
+The daemon doesn't end TLS itself. Something in front does, such as Caddy, and passes one path on to
+the daemon.
 
-## With Caddy
+## Set it up with Caddy
 
-You need a domain name pointing at the server, such as `agents.example.com`, and ports 80 and 443
-open to it, so Caddy can get a certificate from Let's Encrypt.
+You need a domain pointing at the server, such as `agents.example.com`, with ports 80 and 443 open
+so Caddy can get a certificate.
 
-```text title="/etc/caddy/Caddyfile"
-agents.example.com {
-	handle /oauth/* {
-		reverse_proxy 127.0.0.1:4599
-	}
+1. Point Caddy at the daemon:
 
-	handle /v1/hooks/* {
-		reverse_proxy 127.0.0.1:4747
-	}
+   ```text title="/etc/caddy/Caddyfile"
+   agents.example.com {
+   	handle /oauth/* {
+   		reverse_proxy 127.0.0.1:4599
+   	}
 
-	handle {
-		respond 404
-	}
-}
-```
+   	handle /v1/hooks/* {
+   		reverse_proxy 127.0.0.1:4747
+   	}
 
-`/oauth/` goes to the callback listener, and `/v1/hooks/` to the HTTP API, for
-[webhook triggers](/build/triggers/#receiving-a-webhook); the rest of the HTTP API stays on the machine.
+   	handle {
+   		respond 404
+   	}
+   }
+   ```
 
-Tell the daemon the address, and restart it:
+   `/oauth/` reaches the account callback. `/v1/hooks/` reaches
+   [webhook triggers](/build/triggers/#receiving-a-webhook). The rest of the HTTP API stays on the
+   machine.
 
-```yaml title="~/.config/wardrik/config.yaml"
-base_url: https://agents.example.com
-```
+2. Tell the daemon its address:
 
-The callback is then `https://agents.example.com/oauth`; `oauth.redirect.url` names another where
-it lives elsewhere.
+   ```yaml title="~/.config/wardrik/config.yaml"
+   base_url: https://agents.example.com
+   ```
 
-```sh
-systemctl --user restart wardrik
-wardrik doctor
-```
+3. Restart and check:
 
-`wardrik doctor` asks the address for a check page, through Caddy, and says whether the daemon
-answered:
+   ```sh
+   systemctl --user restart wardrik
+   wardrik doctor
+   ```
 
-```
-ok    oauth       https://agents.example.com/oauth reaches the daemon's callback
-```
+   ```
+   ok    oauth       https://agents.example.com/oauth reaches the daemon's callback
+   ```
 
-Each provider's redirect URI is then the URL with `/callback/` and the provider's name after it:
-`https://agents.example.com/oauth/callback/github` for `github`. A provider the daemon registers
-with by itself is given it; for one registered by hand, with a `client_id`, enter it in the
-provider's settings.
-
-Caddy passes requests on with their path as it came, which is what the daemon serves: its pages are
-under the URL's own path, `/oauth` here. A front that strips the path before passing a request on
-reaches nothing.
+Each provider's redirect URI is then `https://agents.example.com/oauth/callback/NAME`, as
+`/oauth/callback/github`. The daemon gives it to providers it registers with itself. For one you
+registered by hand, with a `client_id`, enter it in the provider's settings.
 
 ## What is exposed
 
-Only the callback: `/oauth/callback/NAME` for each provider configured, and `/oauth/check`, which
-answers `wardrik doctor`. Anything else is a 404, and every page is kept from caches and referrers.
-A code that comes back finishes only a sign-in this deployment started, for the provider whose path
-it came to. The [HTTP API](/build/http-api/) has a listener of its own, and stays behind loopback.
+Only the callback: `/oauth/callback/NAME` for each provider, and `/oauth/check`, which
+`wardrik doctor` uses. Everything else is a 404. A code that comes back finishes only a sign-in this
+deployment started, for that provider. The [HTTP API](/build/http-api/) has its own listener, behind
+loopback.
 
-## Where the daemon listens
+## Details
 
-`oauth.redirect.ip` and `oauth.redirect.port` say where the callback listener listens: `127.0.0.1`
-and `4599` by default, which suits Caddy on the same machine. For a front on another machine, listen
-on an address of a private network between them, never a public one:
+### The callback's address
+
+The callback is `{base_url}/oauth`. `oauth.redirect.url` names another, where it lives elsewhere.
+
+### Keep the path
+
+The daemon serves its pages under the URL's own path, `/oauth` here. Caddy passes the path as it
+came. A front that strips the path reaches nothing.
+
+### Where the daemon listens
+
+`oauth.redirect.ip` and `oauth.redirect.port` set the callback listener, `127.0.0.1:4599` by
+default, which suits Caddy on the same machine. For a front on another machine, listen on a private
+network address, never a public one:
 
 ```yaml
 oauth:
@@ -88,18 +92,19 @@ oauth:
     ip: 10.0.0.12
 ```
 
-The Docker image's loopback is reachable from nowhere else, so there, listen on every interface of
-the container, `ip: 0.0.0.0`, and publish the port to the host's loopback alone,
-`-p 127.0.0.1:4599:4599`, for Caddy on the host.
+In Docker, listen on every interface of the container, `ip: 0.0.0.0`, and publish the port to the
+host's loopback only, `-p 127.0.0.1:4599:4599`, for Caddy on the host.
 
-## Other fronts
+### Other fronts
 
-Anything that ends TLS for a public name and passes requests on with their path will do: another
-reverse proxy, a cloud load balancer, or a tunnel. Point the name's `/oauth/` path at
-`http://127.0.0.1:4599`, keeping the path, and check it with `wardrik doctor`.
+Any front that ends TLS for a public name and keeps the path will do: another proxy, a cloud load
+balancer, or a tunnel. Point `/oauth/` at `http://127.0.0.1:4599` and check with `wardrik doctor`.
 
-## Providers that allow some domains only
+### Pages and caches
 
-Some providers' servers take a redirect only to domains they have allowed, and refuse the client
-the daemon registers with `invalid_redirect_uri` until they have. Ask the provider to allow your
-domain, giving the redirect URI the daemon registers for it.
+Every callback page is kept from caches and referrers.
+
+### Providers that allow some domains only
+
+Some providers refuse the daemon's client with `invalid_redirect_uri` until they allow your domain.
+Ask them to, with the redirect URI the daemon registers.
