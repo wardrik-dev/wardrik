@@ -25,19 +25,27 @@ agents.example.com {
 		reverse_proxy 127.0.0.1:4599
 	}
 
+	handle /v1/hooks/* {
+		reverse_proxy 127.0.0.1:4747
+	}
+
 	handle {
 		respond 404
 	}
 }
 ```
 
+`/oauth/` goes to the callback listener, and `/v1/hooks/` to the HTTP API, for
+[webhook triggers](/build/triggers/#receiving-a-webhook); the rest of the HTTP API stays on the machine.
+
 Tell the daemon the address, and restart it:
 
 ```yaml title="~/.config/wardrik/config.yaml"
-oauth:
-  redirect:
-    url: https://agents.example.com/oauth
+base_url: https://agents.example.com
 ```
+
+The callback is then `https://agents.example.com/oauth`; `oauth.redirect.url` names another where
+it lives elsewhere.
 
 ```sh
 systemctl --user restart wardrik

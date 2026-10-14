@@ -116,7 +116,7 @@ defmodule WardrikDaemon.CLI.InitTest do
     assert commands =~ "start key=unset"
 
     assert commands =~
-             "vault put ANTHROPIC_API_KEY --yes key=unset secret=unset\nstdin=sk-from-env"
+             "vault put ANTHROPIC_API_KEY key=unset secret=unset\nstdin=sk-from-env"
 
     assert commands =~ "ask assistant In two short sentences"
     assert commands =~ "doctor"
@@ -171,9 +171,36 @@ defmodule WardrikDaemon.CLI.InitTest do
     commands = log(log)
     assert commands =~ "start"
     refute commands =~ "service install"
-    assert commands =~ "vault put ANTHROPIC_API_KEY --yes"
+    assert commands =~ "vault put ANTHROPIC_API_KEY key="
     assert commands =~ "stdin=sk-flag"
     refute commands =~ "ask "
+  end
+
+  test "makes the vault's key before it starts the daemon, which takes its keys as it starts",
+       %{opts: opts, log: log, tmp_dir: dir} do
+    opts = Keyword.put(opts, :getenv, env(%{"ANTHROPIC_API_KEY" => "sk"}))
+
+    {output, 0} = alone(~w(--provider anthropic --yes --no-ask), opts)
+
+    assert {:ok, _key} = WardrikDaemon.VaultKey.read(Path.join(dir, "data/vault_key"))
+    {made, _length} = :binary.match(output, "Made a vault key")
+    {started, _length} = :binary.match(output, "Started the daemon.")
+    assert made < started
+    assert log(log) =~ "start"
+  end
+
+  test "asks a running daemon nothing once it has made the vault's key, and says to restart it",
+       %{opts: opts, log: log} do
+    System.put_env("WARDRIK_FAKE_RUNNING", "1")
+    opts = Keyword.put(opts, :getenv, env(%{"ANTHROPIC_API_KEY" => "sk"}))
+
+    {output, 0} = alone(~w(--provider anthropic --yes), opts)
+
+    assert output =~ "Made a vault key"
+    assert output =~ "the new one once restarted: wardrik stop, then wardrik start."
+    assert output =~ "Ask assistant once the daemon has restarted."
+    refute log(log) =~ "reload"
+    refute log(log) =~ "ask "
   end
 
   test "names the flag a question needs where no one can answer it", %{opts: opts} do

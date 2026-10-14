@@ -18,11 +18,12 @@ defmodule WardrikDaemon.CLI.Init do
        and to those the front door defines
     5. the public keys in `~/.ssh`, into `ssh/authorized_keys`, for
        `wardrik attach`
-    6. the daemon: under the user's systemd where they have one and want
-       it, with `wardrik service install`, and otherwise `wardrik start`; or
-       `wardrik reload` where one runs
-    7. the key, sealed with `wardrik vault put`, which reads it from
-       standard input
+    6. the vault's own key, made where there is none, and then the daemon,
+       which takes the vault's keys as it starts: under the user's systemd
+       where they have one and want it, with `wardrik service install`, and
+       otherwise `wardrik start`; or `wardrik reload` where one runs
+    7. the provider's key, sealed with `wardrik vault put`, which reads it
+       from standard input
     8. the agent, asked one short question with `wardrik ask`
     9. `wardrik doctor`, and the commands to try next
 
@@ -80,6 +81,7 @@ defmodule WardrikDaemon.CLI.Init do
     :key,
     :agent,
     wrote?: false,
+    restart?: false,
     failed?: false
   ]
 
@@ -171,6 +173,7 @@ defmodule WardrikDaemon.CLI.Init do
       &agent/1,
       &defaults/1,
       &ssh/1,
+      &vault_key/1,
       &daemon/1,
       &seal/1,
       &ask/1,
@@ -205,7 +208,9 @@ defmodule WardrikDaemon.CLI.Init do
 
   defp found(init) do
     running? = quiet(init, ["pid"]) == 0
-    keys = for {_provider, variable} <- providers(), init.getenv.(variable), do: variable
+
+    keys =
+      for {_provider, variable} <- providers(), init.getenv.(variable), uniq: true, do: variable
 
     say(init, [
       "Found:",
@@ -329,9 +334,10 @@ defmodule WardrikDaemon.CLI.Init do
     |> Enum.map(& &1.id)
   end
 
+  # A model the catalog only describes is still one ReqLLM calls, as every
+  # model of a coding plan is.
   defp current?(model) do
-    (model.capabilities || %{})[:chat] != false and not model.deprecated and
-      not model.retired and model.catalog_only != true
+    (model.capabilities || %{})[:chat] != false and not model.deprecated and not model.retired
   end
 
   # -- 3. the key --------------------------------------------------------------
@@ -506,7 +512,60 @@ defmodule WardrikDaemon.CLI.Init do
     end
   end
 
-  # -- 6. the daemon -----------------------------------------------------------
+  # -- 6. the vault's key, and the daemon ---------------------------------------
+
+  # The daemon takes the vault's keys as it starts, so the key is made before
+  # it: one already running reads it once restarted.
+  defp vault_key(%__MODULE__{key: nil} = init), do: {:ok, init}
+
+  defp vault_key(init) do
+    cond do
+      vault_keyed?(init) ->
+        {:ok, init}
+
+      make_key?(init) ->
+        made(init)
+
+      init.terminal.input? ->
+        {:error, "Nothing was sealed, so init stops here."}
+
+      true ->
+        {:error,
+         "The vault has no key of its own to seal #{init.variable} with; pass --yes to make " <>
+           "one, or set WARDRIK_VAULT_KEY"}
+    end
+  end
+
+  defp make_key?(%__MODULE__{terminal: %Terminal{input?: true}} = init) do
+    say(init, [
+      "The vault, which keeps #{init.variable}, has no key of its own yet."
+      | Enum.map(VaultKey.about(), &("  " <> &1))
+    ])
+
+    confirm(init, "Make one?")
+  end
+
+  defp make_key?(init), do: init.flags[:yes] == true
+
+  defp made(init) do
+    case VaultKey.make(init.data_dir) do
+      {:ok, file} ->
+        say(init, "Made a vault key, in #{file}.")
+        {:ok, %{init | restart?: init.running?}}
+
+      {:error, message} ->
+        {:error, message}
+    end
+  end
+
+  defp daemon(%__MODULE__{running?: true, restart?: true} = init) do
+    say(init, [
+      "The daemon runs, and took the vault's keys as it started, so it reads",
+      "the new one once restarted: wardrik stop, then wardrik start."
+    ])
+
+    {:ok, init}
+  end
 
   defp daemon(%__MODULE__{running?: true, wrote?: true} = init) do
     say(init, "The daemon runs, so it reads the new agent file with wardrik reload.")
@@ -540,40 +599,11 @@ defmodule WardrikDaemon.CLI.Init do
   defp seal(%__MODULE__{key: nil} = init), do: {:ok, init}
 
   defp seal(init) do
-    with {:ok, yes} <- vault_key(init) do
-      script = ~s(printf %s "$#{@secret}" | env -u #{@secret} "$0" vault put "$@")
+    script = ~s(printf %s "$#{@secret}" | env -u #{@secret} "$0" vault put "$@")
 
-      case streamed("sh", ["-c", script, init.wardrik, init.variable | yes],
-             env: [{@secret, init.key}]
-           ) do
-        0 -> {:ok, init}
-        _failed -> {:error, "#{init.variable} was not sealed, so init stops here."}
-      end
-    end
-  end
-
-  defp vault_key(init) do
-    cond do
-      vault_keyed?(init) ->
-        {:ok, []}
-
-      init.terminal.input? ->
-        say(init, [
-          "The vault, which keeps #{init.variable}, has no key of its own yet."
-          | Enum.map(VaultKey.about(), &("  " <> &1))
-        ])
-
-        if confirm(init, "Make one?"),
-          do: {:ok, ["--yes"]},
-          else: {:error, "Nothing was sealed, so init stops here."}
-
-      init.flags[:yes] ->
-        {:ok, ["--yes"]}
-
-      true ->
-        {:error,
-         "The vault has no key of its own to seal #{init.variable} with; pass --yes to make " <>
-           "one, or set WARDRIK_VAULT_KEY"}
+    case streamed("sh", ["-c", script, init.wardrik, init.variable], env: [{@secret, init.key}]) do
+      0 -> {:ok, init}
+      _failed -> {:error, "#{init.variable} was not sealed, so init stops here."}
     end
   end
 
@@ -588,6 +618,11 @@ defmodule WardrikDaemon.CLI.Init do
   end
 
   # -- 8. and 9. the agent's answer, and doctor -------------------------------
+
+  defp ask(%__MODULE__{restart?: true} = init) do
+    say(init, "Ask #{init.agent} once the daemon has restarted.")
+    {:ok, init}
+  end
 
   defp ask(%__MODULE__{flags: flags} = init) do
     if flags[:no_ask] do

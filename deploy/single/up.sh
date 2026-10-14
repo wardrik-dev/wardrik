@@ -130,15 +130,17 @@ defaults:
   model: $model
   policy: careful
 
-# Caddy passes $domain/oauth/ on to the daemon, where a browser comes back to
-# when someone connects an account. The daemon listens for it once a provider
-# is named: each account the agents' MCP servers sign in with.
-oauth:
-  redirect:
-    url: https://$domain/oauth
-  # providers:
-  #   shop:
-  #     resource: https://mcp.example.com/mcp
+# Where people and services reach the daemon, through Caddy: a browser comes
+# back to $domain/oauth/ when someone connects an account, and a webhook
+# trigger is sent requests under $domain/v1/hooks/.
+base_url: https://$domain
+
+# The daemon listens for the browser once a provider is named: each account
+# the agents' MCP servers sign in with.
+# oauth:
+#   providers:
+#     shop:
+#       resource: https://mcp.example.com/mcp
 
 channels:
   slack:
@@ -174,7 +176,8 @@ remote "wardrik@$server" bash -s -- "$name" <"$here/user.sh"
 
 cat <<EOF
 
-The daemon runs on $server, as wardrik, behind https://$domain/oauth.
+The daemon runs on $server, as wardrik, behind https://$domain: /oauth/ for accounts
+connected through a browser, and /v1/hooks/ for webhook triggers.
 
   ssh wardrik@$server .local/bin/wardrik status     what runs
   ssh wardrik@$server .local/bin/wardrik doctor     what it reads, and whether $domain reaches it
