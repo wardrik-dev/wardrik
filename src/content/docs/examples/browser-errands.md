@@ -1,28 +1,24 @@
 ---
 title: Errands in a browser
-description: An agent that runs errands on websites in a real browser, reading pages freely and asking you before each click or keystroke, with the arguments in front of you.
+description: An agent that runs errands on websites in a real browser, reading freely and asking before each click or keystroke.
 sidebar:
   order: 4
 ---
 
-An agent with a browser: it fills in forms, books, checks in and looks things up on sites that have
-no API. It reads pages as it likes, and every click, keystroke and form it would submit waits for
-you to approve it, with what it would do in front of you. Once you have watched it work, you can
-let it click on its own and keep only what it types waiting on you.
-
-The browser is Playwright's MCP server, which the daemon runs as a command.
+An agent that runs errands on sites with no API, in a real browser (Playwright's MCP server). It
+reads freely; every click and keystroke waits for your approval.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
-- Node, for `npx`, and Chrome, which `npx playwright install chrome` installs where it is not
-  already;
-- somewhere to approve from: `wardrik approve` in a shell, the
-  [terminal client](/build/tui/), Slack with [buttons](/channels/slack/), or the
-  [Telegram bridge](/examples/telegram-assistant/).
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install);
+- Node, for `npx`, and Chrome (`npx playwright install chrome`);
+- somewhere to approve from: `wardrik approve`, the [terminal client](/build/tui/),
+  [Slack](/channels/slack/), or the [Telegram bridge](/examples/telegram-assistant/).
 
-## The browser
+## The files
+
+### The browser
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -42,24 +38,18 @@ mcp:
       - browser_handle_dialog
 ```
 
-- `except` leaves out the two tools that run JavaScript in the page, so the agent works the page
-  as a person would.
-- `gated` lists every tool that does something on a page. A call to one waits on a person unless a
-  rule allows it by name, and once the agent has read a page, which is content from outside, it
-  waits however the rules allow it.
-- Reading, `browser_snapshot`, `browser_find` and the rest, is not gated, and neither is
-  `browser_navigate`: the agent goes where it decides to. A page could steer where that is, so give
-  this agent nothing in its files that you would mind a page learning.
+- `except` drops the tools that run JavaScript.
+- `gated` makes every action on a page wait for a person.
+- Reading and navigating aren't gated, so keep nothing in its files you'd mind a page learning.
 
-The service runs with systemd's `PATH`, which may not hold `npx`: name it by its full path, as
-`which npx` gives it. Restart the daemon and check the server:
+Under systemd, name `npx` by its full path (`which npx`). Restart and check:
 
 ```sh
 systemctl --user restart wardrik
 wardrik doctor
 ```
 
-## The agent
+### The agent
 
 ```markdown title="~/.config/wardrik/agents/errands.md"
 ---
@@ -82,16 +72,18 @@ ERRANDS.md is what you know about them and the sites they use. Keep it current. 
 done, say what you did and what came of it.
 ```
 
-`timeout` and `max_iterations` give a turn room for the many rounds an errand takes, and the budget
-is for one errand at a time. Read the agent files again, and send it on one:
+`timeout` and `max_iterations` give an errand room; the budget covers one errand.
+
+## Try it
+
+`httpbin.org/forms/post` is a practice form that posts nowhere:
 
 ```sh
 wardrik reload
 wardrik ask errands "Order a large pizza with bacon and onion on https://httpbin.org/forms/post, for delivery at 19:00, in the name of Jon."
 ```
 
-`httpbin.org/forms/post` is a practice form, which posts nothing anywhere. The turn parks as it
-reaches the form:
+The turn parks when it reaches the form:
 
 ```sh
 wardrik parked
@@ -103,15 +95,12 @@ wardrik parked
       after reading content from outside, which may be what asked for it
 ```
 
-`wardrik approve errands` asks which call to approve, and the agent carries on to the next thing it
-would do, which waits in turn. `wardrik parked` leaves out a call's arguments; a `notify` route to
-Slack, or the Telegram bridge pointed at this agent, shows each call with them: the fields it would
-fill and with what, the button it would press.
+`wardrik approve errands`, and it moves to the next step, which waits in turn. Slack and the Telegram
+bridge show each call's arguments.
 
 ## Letting it click
 
-Once you trust its judgement on a kind of errand, let it click and choose on its own, and keep what
-it types waiting on you. Its policy allows those tools after it has read a page:
+Once you trust it on a kind of errand, let it click and choose alone, and keep typing waiting:
 
 ```yaml
 policy:
@@ -126,33 +115,21 @@ policy:
   budget: {usd: 3.00, per: turn, on_exhausted: ask}
 ```
 
-`allow_after` allows a gated tool by name, as `allow` does, and keeps allowing it after the agent
-has read content labelled `outside`, where `allow` stops counting. It is this agent's: another
-agent given the same browser still asks before each click. The gated tools it does not name keep
-waiting on a person, and `ask` gives the ones that type questions of their own.
-
-A page is anyone's writing, and a click can buy something, so this is a choice about this agent's
-errands. With `--isolated` the browser holds none of your sessions, which leaves a page less to
-steer a click towards.
+`allow_after` keeps these allowed after reading a page. A click can buy something, so choose per
+agent.
 
 ## What it shows
 
-- **Content from outside.** Whatever a page says, a gated call after reading it waits on a person,
-  who sees the call it is. See [Content from outside](/concepts/outside-content/).
-- **Gated tools.** `gated` in `config.yaml` makes a server's tools wait unless a rule allows them
-  by name, so a policy written later with `default: allow` cannot let them through. See
-  [Gated tools](/concepts/rules/#gated-tools).
-- **Narrowing a server.** `except` leaves tools out altogether, by the names the server gives them.
-  See [Connect MCP servers](/build/mcp/#giving-an-agent-the-tools).
-- **A parked turn waits.** It does not time out, and an agent's `timeout` starts again when it
-  carries on, so an errand can wait for you through a meeting. See
-  [Waiting on a person](/concepts/approvals/).
+- **Content from outside.** See [Content from outside](/concepts/outside-content/).
+- **Gated tools.** See [Gated tools](/concepts/rules/#gated-tools).
+- **Narrowing a server.** See [Connect MCP servers](/build/mcp/#giving-an-agent-the-tools).
+- **A parked turn never times out.** See [Approvals](/concepts/approvals/).
 
-## Taking it further
+## Details
 
-- Give the [assistant in Telegram](/examples/telegram-assistant/) the browser, by adding
-  `browser/*` to its tools, and approve each step from your phone.
-- `--isolated` keeps the browser's profile in memory, so no cookie outlives the server; without it,
-  a site you are signed in to stays signed in.
-- The server writes each page it reads to `.playwright-mcp/` in its working directory, the daemon's
-  unless `cwd` says another; `--output-dir` puts them elsewhere.
+### Taking it further
+
+- Give the [Telegram assistant](/examples/telegram-assistant/) `browser/*` and approve each step from
+  your phone.
+- `--isolated` keeps the browser profile in memory, so no session outlives the server.
+- Pages it reads are saved to `.playwright-mcp/` in its working directory; `--output-dir` moves them.

@@ -1,13 +1,12 @@
 ---
 title: Connect accounts
-description: Give MCP servers credentials kept in the vault, each held by the user or org an agent works for, and let users connect their own accounts with OAuth.
+description: "Let each user connect their own accounts with OAuth, so their agents call MCP servers as them."
 sidebar:
   order: 2
 ---
 
-An MCP server names the credential it is reached with, and the vault holds it for whoever an
-agent works for: a user, or an org. Where the agent's owner holds none and an OAuth provider has the
-same name, the owner connects their own account, in a browser or with a code, the first time one of
+An MCP server names the credential it is reached with. Where the agent's owner doesn't hold it, and
+an OAuth provider has the same name, the owner connects their own account the first time one of
 their agents calls the server.
 
 ```yaml title="~/.config/wardrik/config.yaml"
@@ -26,8 +25,8 @@ mcp:
     credential: github
 ```
 
-`credential: github` names the credential each call to the server is made with. Restart the daemon
-after changing `config.yaml`, and `wardrik doctor` checks the vault and each server.
+Restart the daemon after changing `config.yaml`. `wardrik doctor` checks the vault and each server.
+The vault needs a key before anyone connects; see [Keep secrets in the vault](/build/vault/).
 
 ## Whose credential
 
@@ -39,7 +38,7 @@ The vault finds a credential for each call as the agent's owner holds it:
 Nothing falls back from one owner to another. A user's agent never reads its org's, and an org's
 agent never reads a user's, so whoever may ask an agent may use what its owner holds and nothing
 else. The deployment's own secrets reach an agent only where `vault.shared` names them; see
-[A secret you already hold](#a-secret-you-already-hold).
+[Shared secrets](/build/vault/#shared-secrets).
 
 Where the owner holds none and `oauth.providers` names a provider of the same name, the owner is
 asked to connect an account: the user, or the org for an agent that works for nobody. The account
@@ -48,66 +47,23 @@ is kept in the vault from then on, as theirs, and acts as them, so only their ag
 So a deployment can let each user connect GitHub as themselves, give an org's own agents one key,
 and share a single search key with every agent, all through `credential` and `vault.shared`.
 
-A call runs over a connection to the server for whoever's credential it used: a user's own, an
-org's, or the deployment's shared one. A server reached over HTTP is sent it as
-`authorization: Bearer <token>`; `credential_header` and `credential_scheme` send it another way. A
-server run as a command is given it in the environment variable `credential_env` names.
-
-## A key for the vault
-
-Tokens are sealed with AES-256-GCM, by the vault, and kept in the store, so every node of a cluster
-can use them. The vault needs a key before anyone connects. The first `wardrik vault put` asks to
-make one, and keeps it in `~/.local/share/wardrik/vault_key`, beside the store. With nothing to put
-yet, make the file yourself, and restart the daemon, which reads it as it starts:
-
-```sh
-openssl rand -base64 32 > ~/.local/share/wardrik/vault_key
-systemctl --user restart wardrik
-```
-
-To keep the key apart from the store, set `WARDRIK_VAULT_KEY` where the daemon reads its
-environment, such as `~/.config/wardrik/env`, or `vault.keys` in `config.yaml`.
-Either is used in place of the file. Without a key nothing is sealed or read, and every call needing
-a connected account fails; nothing falls back to plain text.
-
-Keep the key safe, and out of the store's backups: without it, what the vault sealed cannot be read,
-and with it and the store, it can.
-
-### Changing the key
-
-`vault.keys` takes several. The first seals, and any of them opens:
-
-```yaml
-vault:
-  keys: ["${WARDRIK_VAULT_KEY_NEW}", "${WARDRIK_VAULT_KEY}"]
-```
-
-`vault.keys` is used in place of `vault_key`, so to change the key the daemon made, set
-`WARDRIK_VAULT_KEY` to what the file holds.
-
-A token is sealed with the new key the next time it is refreshed, and a secret you put the next time
-you put it. Once a key is removed, a token sealed with it is not read, and its user connects again.
-
 ## Connecting
 
-The first time an agent calls a server for an owner who has not connected, and no secret they hold
-stands in, the call parks, and the agent waits:
+The first time an agent needs an account its owner hasn't connected, the call parks:
 
 > To use github__create_issue, connect github at its link. This carries on once it is connected.
 
 The link is never in the conversation, an event or a notice. A person finds it:
 
 - with `wardrik parked`, which prints `open URL`, or `enter CODE at URL`;
-- in Slack, with the notice's Show link button, which shows it to whoever pressed it;
+- in Slack, with the notice's **Show link** button, shown only to whoever pressed it;
 - over the HTTP API, at `GET /v1/agents/{key}/interrupts/{id}/authorization`.
 
-Once the account is connected, the call carries on by itself, with nobody approving it. A link is
-good for 15 minutes; a call after that parks on a new one.
+Once the account is connected, the call carries on by itself. A link is good for 15 minutes.
 
 ### Before any agent asks
 
-A person connects an account ahead of time, from any client, over the HTTP API with a token made
-`--for` them:
+A person can connect ahead of time over the HTTP API, with a token made `--for` them:
 
 ```sh
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections
@@ -115,34 +71,23 @@ curl -s -X POST -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/conne
 curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/connections/linear
 ```
 
-The list says, for each account the deployment offers, whether the person, their org or the
-deployment holds it, never a value. `POST` answers the link to authorize at, or that it is held
-already; nothing parks on it, and the account is held once they have authorized. `DELETE` forgets
-it, so the next call that needs it asks again. `?owner=org` acts on the org's instead, for a token
-that may `define` under the org. The audit records each account stored or removed, and who asked;
-see [the HTTP API](/build/http-api/#connect-accounts).
+The list says who holds each account, never a value. `POST` answers the link to authorize at.
+`DELETE` forgets the account. See [the HTTP API](/build/http-api/#connect-accounts).
 
-Until any user has connected, a server that needs an account to list its tools offers one tool,
-`github__connect`, so an agent can begin connecting. Once one has, its tools are kept in the store
-and offered on every node.
+## Where the browser goes back to
 
-### In a browser
+The provider sends the browser back to the daemon at its redirect URL, with `/callback/` and the
+provider's name after it. Register that as the redirect URI with a provider you registered by hand.
 
-The link opens the provider's page, and the provider sends the browser back to the daemon, at the
-deployment's redirect URL with `/callback/` and the provider's name after it. Register that as the
-redirect URI with a provider you registered by hand; the daemon gives it to a provider it registers
-with by itself.
-
-Without `oauth.redirect.url`, it is the daemon's own machine, on loopback:
-`http://127.0.0.1:4599/callback/github`, and the daemon opens the link in a browser there. The
-browser has to be on that machine, so for a daemon on another machine, forward the port first:
+Without `oauth.redirect.url`, it is the daemon's own machine: `http://127.0.0.1:4599/callback/github`.
+For a daemon on another machine, forward the port first:
 
 ```sh
 ssh -L 4599:127.0.0.1:4599 box
 ```
 
 For people connecting from their own browsers, such as from a link in Slack, give the daemon a
-public address over HTTPS, which many providers ask for anyway:
+public HTTPS address; see [A public address](/run/public-address/):
 
 ```yaml
 oauth:
@@ -150,24 +95,37 @@ oauth:
     url: https://agents.example.com/oauth
 ```
 
-The redirect URI is then `https://agents.example.com/oauth/callback/github`. See
-[A public address](/run/public-address/) for putting Caddy in front of the daemon, and checking
-it with `wardrik doctor`.
+Where a provider offers the device flow, the person can instead enter a code on any device. That
+needs no browser or open port on the daemon's side.
 
-### On another device
+## Details
 
-Where the provider offers the device flow (RFC 8628), the person is given a code to enter at the
-provider's page, from a phone or any browser anywhere, while the daemon asks the provider whether
-they have. Nothing comes back to the daemon, so one on a server with no browser and no open port can
-be connected from Slack.
+### Credentials on the wire
 
-### Which way
+A call runs over a connection made with whoever's credential it used: a user's own, an org's, or
+the deployment's shared one. A server reached over HTTP gets it as `authorization: Bearer <token>`;
+`credential_header` and `credential_scheme` change that. A server run as a command gets it in the
+variable `credential_env` names.
 
-`flow` on a provider is `browser`, `device`, or `auto`, the default. `auto` uses the device flow
-where the provider offers it and the daemon has no browser of its own to open, and the browser
-otherwise.
+### Connecting, in full
 
-## The provider
+- A call after a link's 15 minutes parks on a new link.
+- Connecting asks nobody to approve; the account is held once the person has authorized.
+- The connections list says whether the person, their org or the deployment holds each account.
+  `?owner=org` acts on the org's, for a token that may `define` under the org.
+- The audit records each account stored or removed, and who asked.
+- Until any user has connected, a server that needs an account to list its tools offers one tool,
+  `github__connect`, so an agent can begin. Once one has, its tools are kept in the store and
+  offered on every node.
+- Without `oauth.redirect.url`, the daemon opens the link in a browser on its own machine.
+
+### Which flow
+
+`flow` on a provider is `browser`, `device` (RFC 8628), or `auto`, the default. `auto` uses the
+device flow where the provider offers it and the daemon has no browser of its own; otherwise the
+browser.
+
+### The provider
 
 | Key | |
 | --- | --- |
@@ -175,12 +133,11 @@ otherwise.
 | `issuer` | the authorization server. Without it, it is found from the resource |
 | `client_id`, `client_secret` | a client registered with the provider by hand |
 | `scopes` | what to ask for. Without them, what the resource says it supports |
-| `authorization_params` | more to send with the authorization request in a browser, for a provider that needs them |
+| `authorization_params` | more to send with the authorization request in a browser |
 | `flow` | `browser`, `device` or `auto` |
 
-Some providers give a token they can refresh only when asked in their own way. Google gives one only
-with `access_type: offline`, and again after the first time only with `prompt: consent`, so a Google
-provider says:
+Google gives a refreshable token only with `access_type: offline`, and again after the first time
+only with `prompt: consent`:
 
 ```yaml
 authorization_params:
@@ -188,44 +145,13 @@ authorization_params:
   prompt: consent
 ```
 
-`authorization_params` cannot set what the daemon sends itself, such as `redirect_uri`, `state` or
-`scope`: a provider whose params name one does not read.
+`authorization_params` can't set what the daemon sends itself, such as `redirect_uri`, `state` or
+`scope`; a provider whose params name one doesn't read.
 
 Without a `client_id`, the daemon presents whichever identity the provider accepts: a client
-metadata document at `oauth.client.document_url`, which you host, or a client it registers with the
-provider itself. `client` also takes `name`, shown on the provider's page, and `client_uri`,
-`logo_uri`, `policy_uri` and `tos_uri`.
+metadata document at `oauth.client.document_url`, which you host, or a client it registers itself.
+`client` also takes `name`, shown on the provider's page, and `client_uri`, `logo_uri`,
+`policy_uri` and `tos_uri`.
 
-A token is refreshed before it runs out, without asking the user. A refresh the provider refuses
-asks the user to connect again, the same way.
-
-## A secret you already hold
-
-The vault also keeps a secret you put there yourself, for the deployment, an org or a user:
-
-```sh
-wardrik vault put linear                   # the deployment's, for agents where vault.shared names it
-wardrik vault put pagerduty --org acme     # acme's own agents'
-wardrik vault put sentry --user jon        # jon's agents', in the deployment's org
-wardrik vault ls                           # what it holds, and whose, never the values
-wardrik vault rm pagerduty --org acme
-```
-
-`vault put NAME` asks for the value and does not show it as you type, or reads it from a pipe.
-`--user USER` puts one for a single user, with `--org ORG` for one outside the deployment's org.
-A secret the agent's owner holds is found before an OAuth provider of the same name is asked for,
-so it stands in for an account they would otherwise connect. `vault ls` lists the accounts users
-connected too.
-
-An agent reads only what its owner holds: an agent that works for a user reads that user's secrets
-and accounts, and an org's agent the org's. Nothing falls back from one to the other, so a user's
-agent that needs the org's account asks the org's agent, which its own policy holds. The
-deployment's secrets reach agents only by name:
-
-```yaml title="~/.config/wardrik/config.yaml"
-vault:
-  shared: [linear]    # every agent may read the deployment's linear
-```
-
-A name `shared` lists is also read from the daemon's environment variable of that name, where the
-vault holds none.
+A token is refreshed before it runs out. A refresh the provider refuses asks the user to connect
+again.

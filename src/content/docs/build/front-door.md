@@ -1,16 +1,13 @@
 ---
 title: The front door
-description: The agent wardrik init writes, the one place to ask for what you want. It proposes the work, you approve it, and it defines and runs the agents that do it, so nobody writes their files by hand.
+description: "The agent wardrik init writes: ask it for an outcome, approve its plan, and it runs the work."
 sidebar:
   order: 0.5
 ---
 
-`wardrik init` writes one agent, `assistant`, and it is the front door: the one place to ask for
-what you want. Tell it an outcome, such as keeping an eye on a blog or a brief each morning, and it
-says its plan in plain words and proposes the work as the tool calls that do it. Once you approve
-them, the work runs on its own. It sets up standing work as workers, agents of your org that it
-defines with the triggers that start them, and it changes or retires them as you tell it. You never
-write a file for them, and need not think about agents at all.
+`wardrik init` writes one agent, `assistant`: the front door. Tell it an outcome, and it proposes
+the work as the tool calls that do it. Approve them, and the work runs on its own. You never write
+an agent file for it.
 
 ## Ask for an outcome
 
@@ -36,52 +33,43 @@ Waiting on a person for 1 call:
 wardrik approve default/assistant, or deny, decides it.
 ```
 
-`wardrik ask` follows the turn until it waits on you. Approve the call, and it runs as the front
-door wrote it:
+Approve the call, and it runs as the front door wrote it. Or deny it with a reason, and the front
+door proposes again:
 
 ```sh
-wardrik parked
 wardrik approve assistant call_8d2ebbfe28aa4ee1a269dee2
-```
-
-Or refuse it, saying why, and the front door reads the reason and proposes again:
-
-```sh
 wardrik deny assistant call_8d2ebbfe28aa4ee1a269dee2 "Once an hour is enough."
 ```
 
-`wardrik parked` does not show a call's arguments, so the front door says in its plan what each call
-does. A Slack notice and the [webhook](/build/notices/#webhooks) show them. See [Waiting on a person](/concepts/approvals/).
+`wardrik parked` lists what waits, without arguments, so the front door's plan says what each call
+does. Slack and the [webhook](/build/notices/#webhooks) show arguments. See
+[Approvals](/concepts/approvals/).
 
 ## See what runs
 
-The workers it defines are agents like any other, so `wardrik ls` lists them beside it, as
-`default/elixir-blog-watch`, with when each runs next and what it has spent today:
+The front door sets up standing work as workers: agents of your org, with the triggers that start
+them. They're agents like any other:
 
 ```sh
-wardrik ls
+wardrik ls                  # each worker, when it runs next, what it has spent today
+wardrik triggers            # when each runs next, and how it last ran
+wardrik show elixir-blog-watch
 ```
 
-`wardrik triggers` says when each runs next and how it last ran, and `wardrik show NAME` shows one in
-full. Or ask the front door, "What are you doing for me?", and it lists each piece of work, what it
-watches, how often, how it last ran, and what it may spend.
+Or ask the front door, "What are you doing for me?"
 
 ## Change and retire work
 
-Tell it in plain words: "check it every two hours instead", "less about hiring", "stop watching the
-Elixir blog". Each change is a call it proposes and you approve. Stopping a worker removes its
-triggers, so it never runs again and spends nothing; `wardrik agent rm NAME` removes it for good.
+Say it in plain words: "check it every two hours instead", "stop watching the Elixir blog". Each
+change is a call it proposes and you approve. Stopping a worker removes its triggers, so it spends
+nothing; `wardrik agent rm NAME` removes it for good.
 
-It proposes changes of its own too: a source one of its workers came across, a check that has found
-nothing for weeks, a feed in place of a search on a clock. Each is the call that makes it, so
-approving is all it takes.
+It proposes changes of its own too, such as a check that has found nothing for weeks.
 
 ## Where results go
 
-A worker's answers are kept in its history. Ask the front door what came of a piece of work, and it
-reads the worker and tells you; `wardrik history NAME` shows them as well. A task it hands a worker
-comes back to it as a message, which it passes on. See
-[Delegate to other agents](/build/delegation/).
+A worker's answers are kept in its history. Ask the front door what came of a piece of work, or run
+`wardrik history NAME`. See [Delegate to other agents](/build/delegation/).
 
 ## What it may do
 
@@ -102,20 +90,11 @@ You are Wardrik, the one place the people of this org come to get things done. â
 â€¦
 ```
 
-- `agents/*` lets it list and read the agents of its org, hand them tasks, define workers and change
-  their triggers; `self/*` lets it read its own definition. Reads run freely. Defining, asking and
-  changing triggers are changes, so each waits on a person.
-- `files` gives it a tree of files, and `context` reads its `MEMORY.md` into every turn: who it works
-  for, what they want more or less of, and the work it has set up and why.
-- `web_search` searches the web once its key is in the vault. A search made without one tells the
-  front door which key it lacks, and it tells you.
-- The budget allows 2,000,000 tokens a day, then waits on a person to approve more. Every worker it
-  defines is held to the same policy and budget, ahead of its own definition's and counted on its
-  own, so no worker can do or spend more than the front door may. It counts tokens because a budget
-  in dollars refuses a model the catalog cannot price, such as one a subscription pays for; where
-  yours is priced, `usd: 3.00` counts dollars instead. See [Budgets](/concepts/budgets/).
-- Workers run the model `config.yaml`'s `defaults` give, the one you chose where `init` wrote
-  `config.yaml`.
+- **`agents/*`** lets it read the agents of its org, hand them tasks, define workers and change their
+  triggers. Reads run freely; each change waits on a person.
+- **`files`** gives it a tree of files; `MEMORY.md` is read into every turn.
+- **The budget** allows 2,000,000 tokens a day, then asks. Every worker it defines is held to the
+  same policy and budget.
 
 To let it hand tasks to its workers without asking, allow the tool by name:
 
@@ -125,26 +104,29 @@ policy:
   budget: {per: day, tokens: 2000000}
 ```
 
-Once it has read content from outside, as its workers' findings from the web are, an `allow` rule
-stops counting and each call waits on a person again. See
-[Content from outside](/concepts/outside-content/).
-
 ## Its playbook
 
-The body of `assistant.md` is the front door's instructions, then its playbook: the shapes of work
-that run well, from a feed watch and a weekly sweep that follows a checklist the worker keeps, to a
-morning brief, a first response to incidents and acting on what a worker notices, each with the
-triggers, instructions and budget it suits. Edit either to fit your org, such as the sources your
-team reads or the MCP servers your deployment has, and read it again:
+The body of `assistant.md` is its instructions, then a playbook: shapes of work that run well, from
+a feed watch to a morning brief, each with the triggers and budget it suits. Edit it to fit your org,
+then `wardrik reload`. `init` writes the file only where there is none, so your changes survive.
 
-```sh
-wardrik reload
-```
+## In Slack
 
-`init` writes the file only where there is none, so it keeps your changes when it runs again.
+Add `channels: [slack]` to its file, and it answers in the Slack rooms its app is invited to, asking
+there before each call. See [Slack](/channels/slack/).
 
-## In a chat channel
+## Details
 
-Add `channels: [slack]` to its file, and it answers in the Slack rooms its app is invited to, as any
-agent does, and each call it proposes is asked there with Approve and Deny. See
-[Slack](/channels/slack/).
+- `wardrik ask` follows the turn until it waits on you.
+- A task it hands a worker comes back to it as a message, which it passes on.
+- `self/*` lets it read its own definition.
+- `MEMORY.md` holds who it works for, what they want more or less of, and the work it set up and why.
+- `web_search` works once its key is in the vault. A search without one tells the front door which
+  key it lacks, and it tells you.
+- The budget counts tokens because a dollar budget refuses a model the catalog can't price, such as
+  one a subscription pays for. Where yours is priced, `usd: 3.00` counts dollars instead. Workers'
+  spend is held to the front door's budget ahead of their own, counted on their own. See
+  [Budgets](/concepts/budgets/).
+- Workers run the model `config.yaml`'s `defaults` give.
+- Once it has read content from outside, as its workers' web findings are, an `allow` rule stops
+  counting and each call waits again. See [Content from outside](/concepts/outside-content/).

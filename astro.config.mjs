@@ -73,7 +73,15 @@ export default defineConfig({
 								{
 									label: 'Concepts',
 									items: [
-										'concepts/agents',
+										{
+											label: 'Agents',
+											items: [
+												'concepts/agents',
+												'concepts/turns',
+												'concepts/agent-lifecycle',
+												'concepts/durable-runs',
+											],
+										},
 										{
 											label: 'Policy',
 											items: [
@@ -85,7 +93,6 @@ export default defineConfig({
 												'concepts/judges',
 											],
 										},
-										'concepts/durable-runs',
 										'concepts/events',
 										'concepts/files-and-memory',
 									],

@@ -1,21 +1,19 @@
 ---
 title: Durable runs
-description: How a turn carries on when its node is lost, how the ledger keeps a tool call from running twice, and how an agent's history stays within what its model can read.
+description: "A turn survives a lost node, the ledger keeps a tool call from running twice, and a long history is summarised before it outgrows the model."
 sidebar:
-  order: 3
+  order: 1.3
 ---
 
-An agent's state is written to the store as it changes: its conversation, the messages waiting for
-it, and what it is doing. So whichever node holds the agent next, after a restart or a lost node,
-carries on from there.
+An agent writes its state to the store as it changes: its conversation, the messages waiting, and
+what it's doing. Whichever node holds the agent next, after a restart or a lost node, carries on
+from there.
 
 ## A turn lost part way
 
-Before a turn runs a round of tool calls, the agent writes the round to the store, and the calls run
-only once it is written. A turn whose node is lost comes back on another node at that round, with
-the same calls, rather than asking the model again and paying for an answer that may differ.
-
-What comes back depends on what was last written:
+Before a round of tool calls runs, the agent writes the round to the store. A turn whose node is
+lost comes back on another node at that round, with the same calls, rather than asking the model
+again.
 
 | When the node was lost | What happens |
 | --- | --- |
@@ -23,74 +21,38 @@ What comes back depends on what was last written:
 | A round of tool calls was running | The round runs again, through the ledger |
 | The model was answering, before any tool call | The turn starts again |
 
-Text the model had streamed but not finished is not kept.
-
 ## The ledger
 
-Running a round again would repeat whatever its calls did, so every call is claimed in the ledger
-before it runs and settled after, in the store. When a round runs again, the ledger decides each
-call:
+Every call is claimed in the ledger before it runs and settled after. When a round runs again, the
+ledger decides each call:
 
-- **A call that finished** is answered with what it returned, without running. Its
+- **A call that finished** is answered with what it returned, without running again. Its
   `tool_call.completed` event says `"replayed": true`.
-- **A call that began and never finished** may have done what it does. It waits on a person:
+- **A call that began and never finished** may have done its work, so it waits on a person:
 
   > github__create_issue may already have done what it does. It began before this agent was
   > interrupted. Approve to run it again, or deny to tell the agent it may have run.
 
-  Denying tells the model the call may have run, so it can find out.
-
-A tool worker that goes away part way through a call, or answers late, leaves its call in doubt the
-same way, and the ledger keeps the call as begun.
-
-The file tools run again without asking, since each finds a write it made already, and so do a tool
-worker's tools where the worker marks them read-only or idempotent. Every other tool asks.
-
-The daemon gives every agent the ledger, and clears a turn's claims once the turn ends.
+The file tools, and a tool worker's read-only or idempotent tools, run again without asking. Every
+other tool asks.
 
 ### Idempotency keys
 
-Each call has an idempotency key, the same each time the call runs:
+Each call has an idempotency key, the same every time the call runs:
 
 ```
 acme/triage/<trace>/<span>/<round>/<call>
 ```
 
-A tool with an effect outside Wardrik passes the key on, so the system it calls does not repeat the
-effect either: a payment provider, for one, takes it as its own idempotency key. A tool worker
-receives it with each call; see [Tools in your app](/build/tool-workers/). It is in the call's
-`tool_call.started` event as `tool.call.idempotency_key`.
-
-An MCP server is not sent the key.
-
-## Stopping and starting
-
-`wardrik stop` writes down what the daemon holds and waits, up to a minute, for it to stop. A turn
-running when it stops comes back as a lost one does, when the daemon starts again.
-
-A node killed outright, with `kill -9` or by losing its machine, comes back from what it last wrote.
-An agent writes each round of tool calls, each message it takes and each decision on its calls as
-it takes them, and the rest of its state at least every 30 seconds.
-
-## When something fails
-
-A model call that fails before the provider begins to answer, for a reason that may pass, such as a
-timeout, a dropped connection, a rate limit or a 5xx, is tried again after one second and again
-after five. Anything else fails the turn.
-
-A failed turn is not tried again. The agent goes back to `idle`, `wardrik ls` shows
-`idle, last failed`, `wardrik show` says why, and a `notify` route with `failed` says so. The next
-message starts a turn as usual.
+A tool with an outside effect passes the key on, so the system it calls doesn't repeat the effect
+either. A payment provider, for one, takes it as its own idempotency key. A
+[tool worker](/build/tool-workers/) receives it with each call.
 
 ## A history that grows
 
-An agent that runs for weeks keeps adding to one conversation. Before it outgrows what the model can
-read, the agent summarises the older part with its own model and keeps the most recent part word
-for word.
-
-By default it summarises once its history reaches 60% of the model's context window, as the model
-catalog gives it, or of 128,000 tokens where the catalog does not say, and keeps the last 25%. An
-agent file sets other amounts, or none:
+Before an agent's history outgrows what its model can read, the agent summarises the older part
+with its own model and keeps the most recent part word for word. By default it summarises at 60% of
+the model's context window and keeps the last 25%:
 
 ```yaml
 compaction: {at: 0.5, keep: 0.2}
@@ -98,8 +60,27 @@ compaction: {window: 200000}
 compaction: false
 ```
 
-It happens as a turn begins, before the messages it answers join the history, and is reported as
-`wardrik.conversation.compacted` on the turn's trace, with how many messages and tokens there were
-before and after. The summary is a model call of the turn's like any other, so the agent's policy
-decides it, its budget counts it, and stopping the turn stops it. If it fails, the history stays as
-it was and the turn runs regardless.
+## Details
+
+- **What's written when.** An agent writes each round of tool calls, each message it takes and each
+  decision as they happen, and the rest of its state at least every 30 seconds. A node killed
+  outright comes back from what it last wrote. Text the model had streamed but not finished isn't
+  kept.
+- **Stopping the daemon.** `wardrik stop` writes down what the daemon holds and waits up to a minute
+  for it to stop. A turn running then comes back as a lost one does.
+- **Denying an uncertain call** tells the model the call may have run, so it can find out.
+- **Tool workers.** A worker that goes away mid-call, or answers late, leaves the call in doubt the
+  same way.
+- **The ledger's lifetime.** The daemon gives every agent the ledger, and clears a turn's claims
+  once the turn ends.
+- **Where the key goes.** It's in the call's `tool_call.started` event as
+  `tool.call.idempotency_key`. An MCP server isn't sent it.
+- **Failed turns.** Retries are covered in [Turns](/concepts/turns/#limits-on-a-turn). A failed turn
+  isn't tried again: the agent goes back to `idle`, `wardrik ls` shows `idle, last failed`,
+  `wardrik show` says why, and a `notify` route with `failed` says so. The next message starts a
+  turn as usual.
+- **Compaction.** Where the model catalog doesn't give a context window, 128,000 tokens is used. It
+  happens as a turn begins, before the new messages join the history, and is reported as
+  `wardrik.conversation.compacted` with message and token counts before and after. The summary is a
+  model call like any other: the policy decides it, the budget counts it, stopping the turn stops
+  it. If it fails, the history stays as it was and the turn runs anyway.

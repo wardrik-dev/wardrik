@@ -1,32 +1,27 @@
 ---
 title: Watch your competitors
-description: An agent that watches your competitors' feeds and posts to a Slack channel when they change, checks what has no feed once a week, talks it over with the team in the thread, and changes what it looks for as they tell it.
+description: An agent that posts what changed at your competitors to Slack, and changes what it watches as the team replies.
 sidebar:
   order: 6
 ---
 
-An agent for a team that wants to know what its competitors are doing without anyone having to look.
-It reads their changelogs, their blogs and a Google Alert every half hour, and when one of them has
-something new, posts a brief to `#competitors`. Once a week it follows a checklist it keeps for
-itself, for what has no feed, such as pricing pages. Anyone can reply under a brief to ask what
-something means or to tell it what to watch, and it changes its checklist to suit. On Fridays it
-looks back over the week.
-
-It only searches and writes its own notes, so it needs no approvals: nothing it reads can get it to
-change anything outside its files.
+It reads competitors' feeds every half hour and posts what's new to `#competitors`. Mondays it checks
+pages with no feed; Fridays it reviews the week. Reply in a thread to change what it watches. It only
+searches and writes notes, so nothing needs approval.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
-- a key for `web_search`, where the daemon reads its keys;
-- a Slack app with a bot token and an app-level token, made as
-  [Slack](/channels/slack/#a-slack-app) makes one, and a Slack channel for it, here
-  `#competitors`.
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install);
+- a key for `web_search`;
+- a [Slack app](/channels/slack/#a-slack-app) with a bot token and an app-level token, and a channel,
+  here `#competitors`.
 
-## The channel
+## The files
 
-Name the Slack app in `config.yaml`, and `#competitors` as a room to post in:
+### config.yaml
+
+The Slack app, and `#competitors` as a room to post in:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -41,14 +36,14 @@ notify:
     room: "#competitors"
 ```
 
-Restart the daemon, which reads `config.yaml` as it starts:
+Restart the daemon:
 
 ```sh
 systemctl --user restart wardrik
 wardrik doctor
 ```
 
-## The agent
+### The agent
 
 ```markdown title="~/.config/wardrik/agents/competitors.md"
 ---
@@ -101,23 +96,16 @@ notes, and search when they ask something they do not hold. When someone tells y
 want more or less of, change WATCHLIST.md or HEARTBEAT.md, and say what you changed.
 ```
 
-- `feed` reads the three feeds every half hour, and asks the agent only when one has entries it
-  has not seen, with them under the prompt. A half hour with nothing new costs three requests and
-  no model call. See [Watching a feed](/build/triggers/#watching-a-feed) for where to find a
-  competitor's feeds, and how to make a Google Alert one.
-- `prompt_file` asks the agent, each Monday, to read `HEARTBEAT.md` and do what it says as it
-  stands then. The agent writes that file itself, so what it checks changes as the team tells it
-  to, and as the Friday review finds what is worth looking at. See
+- `feed` asks the agent only when there's something new. See
+  [Watching a feed](/build/triggers/#watching-a-feed).
+- `prompt_file` follows the `HEARTBEAT.md` it writes. See
   [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
-- `context` reads `WATCHLIST.md` and `LATEST.md` into every turn, so a reply in a thread knows what
-  the brief above it said.
-- `notify` posts what each triggered run answers to `#competitors`. A conversation in a thread
-  answers in its thread, and posts nothing else.
-- `channels` offers the agent in Slack, so it answers in the channel's threads.
-- The budget stops it for the day once it has spent $3, rather than asking. See
-  [Budgets](/concepts/budgets/).
+- `context` gives a thread reply the last brief; `notify` posts runs; `channels` answers threads.
+- The budget stops it at $3 a day. See [Budgets](/concepts/budgets/).
 
-Read the agent files again, and tell it who to watch:
+## Try it
+
+Tell it who to watch:
 
 ```sh
 wardrik reload
@@ -127,20 +115,13 @@ and who they hire. Write WATCHLIST.md, and a HEARTBEAT.md for your Monday sweeps
 wardrik ask competitors "Do this week's sweep now."
 ```
 
-Each answer is posted to `#competitors` as well. The news trigger's first run only notes what the
-feeds already hold, so its first brief comes with the next entry one of them adds.
-`wardrik triggers` says when each runs next, and how each last ran.
-
-## In Slack
-
-With the daemon running, invite the app to `#competitors`:
+The first news brief comes with the next new feed entry. Invite the app to the channel:
 
 ```
 /invite @yourapp
 ```
 
-The app says the agent answers there now. Reply under a brief, mentioning the app, and the agent
-answers in that thread; once it has, replies in the thread reach it without a mention:
+Mention the app under a brief, and it answers in the thread:
 
 > **Wardrik:** **Rivalco** · Launched a free plan for teams of up to three. rivalco.com/pricing …
 > ↳ **maria:** @Wardrik what does their free plan mean for our starter plan?
@@ -149,30 +130,27 @@ answers in that thread; once it has, replies in the thread reach it without a me
 > ↳ **Wardrik:** Done. I took hiring out of WATCHLIST.md, and HEARTBEAT.md now checks
 > rivalco.com/pricing on Mondays.
 
-Each thread is a conversation of its own, and every thread and every run share the agent's files,
-so what one thread changes, the next run follows. **Answer every message**, under the app's
-message in the channel, has the agent answer anything posted there, with no mention. See
+Threads share the agent's files, so what one changes, the next run follows. See
 [Threads in Slack](/channels/slack/#threads-in-slack).
 
 ## What it shows
 
-- **Feeds that cost nothing until they change.** The agent is asked only when a feed has
-  something new, so watching every half hour is cheap.
-- **A trigger that follows its own checklist.** The agent writes `HEARTBEAT.md`, and each run
-  reads it as it stands, so what it does changes without anyone editing its file.
-- **Posting and conversing in one place.** Triggered runs post to a room as notices; replies in the
-  room are threads the agent answers. See [Send notices](/build/notices/) and
-  [Channels](/channels/).
-- **Memory in files.** Its notes, its watchlist and its last brief are files every conversation
-  shares. See [Files and memory](/concepts/files-and-memory/).
-- **Nothing to approve.** Its only tools search and write its own files, so what a feed or a web
-  page says can mislead its notes at worst. Give it a tool that acts, such as posting to a CRM, and that tool's
-  calls ask a person once it has read the web. See
+- **Cheap watching:** a quiet feed costs no model call.
+- **A checklist it maintains** through `prompt_file`.
+- **Posting and conversing in one room.** See [Channels](/channels/).
+- **Memory in files** every thread shares. See [Files and memory](/concepts/files-and-memory/).
+- **Nothing to approve** until you give it a tool that acts. See
   [Content from outside](/concepts/outside-content/).
 
-## Taking it further
+## Details
 
-- Hand a question to several researchers at once with `deep_research` in its tools, for a Friday
-  review that goes deeper than a sweep can. See [Delegation](/concepts/agents/#delegation).
-- Share a tree with the team's other agents, `workspace: {shared: {team: acme}}`, and have it keep
-  a battlecard for each competitor in `shared/team/` for sales to read.
+### Answering everything
+
+**Answer every message**, under the app's message, makes it answer without a mention.
+
+### Taking it further
+
+- Add `deep_research` to its tools for a deeper Friday review. See
+  [Delegate to other agents](/build/delegation/).
+- Keep a battlecard per competitor in a [shared tree](/concepts/files-and-memory/#sharing-trees) for
+  sales.

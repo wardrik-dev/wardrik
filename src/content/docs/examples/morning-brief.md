@@ -1,31 +1,30 @@
 ---
 title: A morning brief
-description: An agent that reads up on what you follow, and on what waits for you on GitHub, and posts a short brief to Slack each weekday morning.
+description: An agent that posts what changed in what you follow, and what waits for you on GitHub, to Slack each weekday morning.
 sidebar:
   order: 1
 ---
 
-Each weekday morning this agent searches for what changed in the things you follow, looks at what
-waits for you on GitHub, and posts a brief of it to a Slack channel. It is one agent file and a few
-lines of `config.yaml`, and the quickest of these examples to have running.
+Each weekday morning it posts what changed in what you follow, and what waits for you on GitHub, to
+Slack. It's the quickest example to run.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
-- a key for `web_search`, where the daemon reads its keys. A search made without one tells the
-  agent which key it lacks;
-- a Slack app with a bot token, made as [Slack](/channels/slack/#a-slack-app) makes
-  one. This example only posts, so it needs no app-level token;
-- for the GitHub part, a personal access token that can read your repositories.
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install);
+- a key for `web_search`;
+- a [Slack app](/channels/slack/#a-slack-app) with a bot token. It only posts, so it needs no
+  app-level token;
+- a GitHub personal access token that can read your repositories.
 
-`SLACK_BOT_TOKEN` and `GITHUB_TOKEN` are read where `config.yaml` reads any `${NAME}`, as
-[Connect MCP servers](/build/mcp/) says.
+`${SLACK_BOT_TOKEN}` and `${GITHUB_TOKEN}` come from the environment or the vault; see
+[Connect MCP servers](/build/mcp/).
 
-## Where it posts
+## The files
 
-Name the Slack channel in `config.yaml`, as a room of the Slack app, and GitHub's MCP server
-beside it:
+### config.yaml
+
+The Slack room it posts to, and GitHub's MCP server:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 channels:
@@ -46,15 +45,14 @@ mcp:
     only: [get_me, search_issues, search_pull_requests]
 ```
 
-`only` gives the agent three of GitHub's reading tools and nothing else, so it has no way to change
-anything there. Restart the daemon, which reads `config.yaml` as it starts, and check it:
+`only` keeps GitHub read-only. Restart and check:
 
 ```sh
 systemctl --user restart wardrik
 wardrik doctor
 ```
 
-## The agent
+### The agent
 
 ```markdown title="~/.config/wardrik/agents/brief.md"
 ---
@@ -82,8 +80,9 @@ and the pull requests that wait on them last. Say nothing about what you left ou
 When they tell you what they follow, or what they want more or less of, keep it in FOLLOWING.md.
 ```
 
-`context` reads `FOLLOWING.md` into every turn, and `files` lets the agent keep it. Read the agent
-files again, and tell it what you follow:
+## Try it
+
+Tell it what you follow; it keeps that in `FOLLOWING.md`:
 
 ```sh
 wardrik reload
@@ -91,23 +90,24 @@ wardrik ask brief "I follow Elixir releases, the Postgres mailing lists, and any
 wardrik ask brief "Write this morning's brief now."
 ```
 
-Both answers reach Slack as well, since every turn the agent finishes is sent there; the second is
-what each morning brings. `wardrik triggers` says when it runs next.
+Both answers also reach Slack; the second is what each morning brings. `wardrik triggers` says when
+it runs next.
 
 ## What it shows
 
-- **A trigger.** `every` is cron, in UTC, and a run missed while the daemon was down runs once
-  when it comes back. See [Trigger an agent](/build/triggers/).
-- **Notices.** `finished` sends what each turn answered to the target, which suits an agent whose
-  answers someone reads elsewhere. See [Send notices](/build/notices/).
-- **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you can change by telling the
-  agent, rather than in its system prompt. See [Files and memory](/concepts/files-and-memory/).
-- **A budget.** Once the agent has spent a dollar in a day, `on_exhausted: deny` refuses its next
-  model call, which ends the turn, rather than asking. See [Budgets](/concepts/budgets/).
+- **A trigger.** Cron in UTC; a run missed while the daemon was down runs once when it's back. See
+  [Trigger an agent](/build/triggers/).
+- **Notices.** `finished` sends each answer to the room. See [Send notices](/build/notices/).
+- **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you change by telling the
+  agent. See [Files and memory](/concepts/files-and-memory/).
+- **A budget.** After a dollar a day, `on_exhausted: deny` ends the turn instead of asking. See
+  [Budgets](/concepts/budgets/).
 
-## Taking it further
+## Details
+
+### Taking it further
 
 - Change the cron to your morning: `"0 7 * * 1-5"` is 07:00 UTC.
-- Ask it things during the day, `wardrik ask brief "What did the Postgres list decide about..."`:
-  it is the same agent, with the same history.
+- Ask it things during the day, `wardrik ask brief "What did the Postgres list decide about..."`.
+  It's the same agent, with the same history.
 - Give it your issue tracker's MCP server as well, and ask for what is assigned to you.

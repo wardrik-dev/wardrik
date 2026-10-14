@@ -1,22 +1,15 @@
 ---
 title: Send notices
-description: Have agents tell people when they wait on a person, fail or answer, in a room of a channel such as Slack, or at a signed webhook.
+description: "Have agents tell people when they wait on a person, fail or answer, in a Slack room or at a signed webhook."
 sidebar:
   order: 7
 ---
 
-An agent nobody is watching can tell someone when it parks on a question, fails, or answers.
-`config.yaml` names the targets under `notify`, and each agent's definition routes its notices to
-them. A target is a room in one of [`channels`](/channels/), here one Slack app called `slack`, or
-a webhook:
+An agent nobody is watching can tell someone when it waits on a person, fails, or answers. Name the
+targets in `config.yaml`, then route each agent's notices to them. A target is a room in one of
+your [channels](/channels/), or a webhook:
 
 ```yaml title="~/.config/wardrik/config.yaml"
-channels:
-  slack:
-    type: slack
-    token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
-
 notify:
   ops:
     channel: slack
@@ -35,49 +28,34 @@ notify: [ops, audit]
 notify: {to: [ops], on: [parked, failed, finished]}
 ```
 
-`on` is what is sent: `parked`, `failed`, and `finished` for what a turn answered. It is
-`[parked, failed]` unless set. A notice is sent once, from the node holding the agent.
+`on` is `parked`, `failed`, and `finished` for what a turn answered; `[parked, failed]` unless set.
 
-A definition [sent over HTTP](/build/http-api/#define-an-agent) takes `notify` in the same forms,
-so an agent defined there, or by another agent, is heard too: `"notify": {"to": ["ops"], "on":
-["finished"]}` in the body of `PUT /v1/agents/{key}`. It holds while the agent sleeps and after a
-restart, and goes when the agent is forgotten.
+## What a notice says
 
-**Parked:** which agent is waiting, and for each call its tool, what the policy asks, whether the
-turn had read content from outside first, and its arguments. In Slack, each call has
-[Approve and Deny](/channels/slack/#what-a-notice-says-in-slack) buttons. **Failed:** why the turn
-failed. **Finished:** what the turn answered, which suits an agent a
-[trigger](/build/triggers/) asks.
-
-A turn waiting on several calls sends a notice again when some are decided and others still wait.
+- **Parked:** the agent, and for each waiting call its tool, the question, its arguments, and
+  whether the turn had read content from outside. In Slack each call has
+  [Approve and Deny](/channels/slack/#what-a-notice-says-in-slack).
+- **Failed:** why the turn failed.
+- **Finished:** what the turn answered. It suits an agent a [trigger](/build/triggers/) asks.
 
 ## Which orgs a target tells
 
-A target tells the agents of the deployment's [org](/concepts/agents/#keys-and-orgs) unless its
-`org` names others, or `*` for every org:
+A target tells the deployment's [org](/concepts/agents/#keys-and-orgs) unless its `org` says
+otherwise, or `*` for every org:
 
 ```yaml
-channels:
-  slack: {type: slack, token: "${SLACK_BOT_TOKEN}", app_token: "${SLACK_APP_TOKEN}"}
-  globex-slack: {type: slack, token: "${GLOBEX_SLACK_BOT_TOKEN}", app_token: "${GLOBEX_SLACK_APP_TOKEN}"}
-
 notify:
-  ops:
-    channel: slack
-    room: "#ops"
   globex-ops:
     org: globex
     channel: globex-slack
     room: "#globex-ops"
 ```
 
-An agent file that routes to another org's target does not read, and a definition sent over HTTP
-that does is refused, so one org's calls never reach another's channel, where its people could
-approve them.
+One org's calls never reach another org's room, where its people could approve them.
 
 ## Webhooks
 
-A `webhook` target is sent each notice as JSON, in a POST:
+A `webhook` target is sent each notice as JSON in a POST:
 
 ```json
 {
@@ -99,12 +77,8 @@ A `webhook` target is sent each notice as JSON, in a POST:
 }
 ```
 
-`event` is `turn_parked`, `turn_failed` or `turn_finished`, and is in the `x-wardrik-event` header
-too. `reason` is why a turn failed, and `text` what it answered. A call's `labels` say what its
-turn had read first, which may be what asked for it: `outside` for content from outside.
-
-With a `secret`, each body is signed, as `x-wardrik-signature: sha256=<hex>`: the HMAC-SHA256 of the
-raw body, keyed with the secret. Check it against the body as it arrived, before parsing it:
+With a `secret`, each body is signed as `x-wardrik-signature: sha256=<hex>`, the HMAC-SHA256 of the
+raw body. Check it before parsing:
 
 ```js
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -115,8 +89,19 @@ const ok =
   timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 ```
 
-The signature covers the body only, with no time in it, so a body sent again verifies again. Use
-`at` to refuse old ones if that matters to you.
+## Details
 
-An answer other than 2xx is a failure. A failure that may pass is tried up to three more times, and
-each try waits up to 10 seconds for an answer. A notice that still fails is logged and dropped.
+- A notice is sent once, from the node holding the agent.
+- A turn waiting on several calls sends a notice again when some are decided and others still wait.
+- A definition [sent over HTTP](/build/http-api/#define-an-agent) takes `notify` in the same forms,
+  as `"notify": {"to": ["ops"], "on": ["finished"]}`. It holds while the agent sleeps and after a
+  restart, and goes when the agent is forgotten.
+- An agent file routing to another org's target doesn't read; a definition over HTTP that does is
+  refused.
+- Webhook `event` is `turn_parked`, `turn_failed` or `turn_finished`, also in the `x-wardrik-event`
+  header. `reason` is why a turn failed, `text` what it answered, and a call's `labels` what its
+  turn had read first.
+- The signature covers the body only, with no time, so a body sent again verifies again. Use `at`
+  to refuse old ones.
+- An answer other than 2xx is a failure. A failure that may pass is tried up to three more times,
+  each waiting up to 10 seconds. A notice that still fails is logged and dropped.
