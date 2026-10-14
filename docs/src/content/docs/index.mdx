@@ -149,12 +149,15 @@ wardrik vault put GITHUB_TOKEN --user jon
 
 ### Budgets
 
-A daily cap on models and paid tools. When it runs out, the agent asks.
+A daily cap in dollars and tokens. When it runs out, the agent asks, and approving grants more.
 
 ```yaml
 budget:
   usd: 5.00
+  tokens: 1000000
   per: day
+  grant: {usd: 2.00, tokens: 250000}
+  on_exhausted: ask
 ```
 
 </div>
@@ -174,6 +177,86 @@ Every decision is an event, with who made it.
 
 </div>
 </div>
+
+</section>
+
+<section class="home-section">
+
+## One file, the whole agent
+
+<div class="agent-file">
+<div>
+
+```markdown title="~/.config/wardrik/agents/books.md"
+---
+description: Keeps the books for the accounting team.
+tools: [quickbooks/*, files]
+channels: [slack]
+triggers:
+  - name: close
+    every: "0 7 * * 1-5"
+    prompt: Reconcile yesterday's transactions.
+policy:
+  allow:
+    - quickbooks/list_*
+    - quickbooks/create_bill(amount < 1000)
+  ask:
+    quickbooks/create_bill(amount >= 1000): A bill over $1,000.
+  deny:
+    quickbooks/*(account = Payroll): Payroll is off limits.
+  budget:
+    usd: 10.00
+    tokens: 2000000
+    per: day
+    grant: {usd: 5.00}
+    on_exhausted: ask
+notify: {to: [accounting], on: [parked, failed]}
+---
+You keep the books. Say what you will post before you post it.
+```
+
+</div>
+<dl class="agent-notes">
+<div><dt><code>triggers</code></dt><dd>Reconciles at 7:00 UTC every weekday.</dd></div>
+<div><dt><code>allow</code>, <code>ask</code></dt><dd>Small bills post on their own. Big ones wait for you.</dd></div>
+<div><dt><code>deny</code></dt><dd>Payroll is refused, however it's asked.</dd></div>
+<div><dt><code>budget</code></dt><dd>$10 or 2M tokens a day. Then it asks, and approving grants $5 more.</dd></div>
+<div><dt><code>notify</code></dt><dd>Waiting and failed turns go to the accounting room.</dd></div>
+<div><dt><code>channels</code></dt><dd>The team talks to it in Slack.</dd></div>
+</dl>
+</div>
+
+<div class="ops">
+<div>
+
+```sh
+wardrik doctor
+```
+
+Checks every file before it ships.
+
+</div>
+<div>
+
+```sh
+wardrik reload
+```
+
+Applies changes on every node. No restart.
+
+</div>
+<div>
+
+```sh
+wardrik watch books
+```
+
+Follows everything it does, live.
+
+</div>
+</div>
+
+[Every key an agent file takes](/reference/agent-files/)
 
 </section>
 

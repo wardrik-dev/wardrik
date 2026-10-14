@@ -555,6 +555,65 @@ site-search button {
 	}
 }
 
+/* An agent file beside what its settings do. */
+.agent-file {
+	display: grid;
+	grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+	gap: 2rem 3rem;
+	align-items: start;
+	margin-top: 2rem;
+}
+
+.sl-markdown-content .agent-file > * {
+	margin: 0;
+}
+
+.sl-markdown-content .agent-notes > div {
+	margin: 0;
+	padding-block: 0.875rem;
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+
+.sl-markdown-content .agent-notes > div:first-child {
+	border-top: 0;
+	padding-top: 0;
+}
+
+.agent-notes dt {
+	font-weight: 400;
+}
+
+.sl-markdown-content .agent-notes dd {
+	margin: 0.25rem 0 0;
+	padding: 0;
+	color: var(--sl-color-gray-2);
+}
+
+/* What an operator runs, three across. */
+.ops {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 1.5rem;
+	margin-block: 2.5rem 1.5rem;
+}
+
+.sl-markdown-content .ops > div {
+	margin: 0;
+}
+
+.sl-markdown-content .ops p {
+	margin-top: 0.625rem;
+	color: var(--sl-color-gray-2);
+	font-size: 0.9375rem;
+}
+
+@media (max-width: 52rem) {
+	.agent-file,
+	.ops {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
 /* A transcript's marked lines are states, not a diff: no + or - beside them. */
 .expressive-code .ec-line.ins .code::before,
 .expressive-code .ec-line.del .code::before {
