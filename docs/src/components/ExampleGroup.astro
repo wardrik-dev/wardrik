@@ -1,0 +1,33 @@
+---
+// One group of the examples index, drawn from its folder, so a page added to
+// examples/<folder>/ appears here with no other change. A group with no pages
+// yet shows nothing.
+import { getCollection } from 'astro:content';
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+interface Props {
+	folder: string;
+	title: string;
+}
+
+const { folder, title } = Astro.props;
+const prefix = `examples/${folder}/`;
+
+const pages = (await getCollection('docs', (entry) => entry.id.startsWith(prefix))).sort(
+	(a, b) => (a.data.sidebar.order ?? 0) - (b.data.sidebar.order ?? 0),
+);
+const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+---
+
+{
+	pages.length > 0 && (
+		<>
+			<h2 id={slug}>{title}</h2>
+			<CardGrid>
+				{pages.map((page) => (
+					<LinkCard title={page.data.title} href={`/${page.id}/`} description={page.data.description} />
+				))}
+			</CardGrid>
+		</>
+	)
+}
