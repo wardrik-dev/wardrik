@@ -9,10 +9,35 @@ defmodule Wardrik.AgentID.PrefixTest do
     test "matches at segment boundaries" do
       acme = Prefix.new!(org: "acme")
 
-      assert Prefix.covers?(acme, ~A"acme/@jon/triage")
       assert Prefix.covers?(acme, ~A"acme/triage")
       refute Prefix.covers?(acme, ~A"acmecorp/triage")
       assert Prefix.covers?(Prefix.all(), ~A"globex/triage")
+    end
+
+    test "a tenant reaches its org's agents and every one of its users'" do
+      tenant = Prefix.tenant!("acme")
+
+      assert to_string(tenant) == "acme/*"
+      assert Prefix.parse("acme/*") == {:ok, tenant}
+      assert Prefix.expand("acme/*", "default") == {:ok, tenant}
+      assert Prefix.covers?(tenant, ~A"acme/triage")
+      assert Prefix.covers?(tenant, ~A"acme/@jon/triage")
+      refute Prefix.covers?(tenant, ~A"acmecorp/triage")
+      assert Prefix.covers?(tenant, Prefix.new!(org: "acme"))
+      assert Prefix.covers?(tenant, Prefix.new!(org: "acme", user: "jon"))
+      assert Prefix.covers?(Prefix.all(), tenant)
+      refute Prefix.covers?(Prefix.new!(org: "acme"), tenant)
+      assert {:error, _message} = Wardrik.AgentID.parse("acme/*")
+      assert {:error, _message} = Wardrik.AgentID.new("triage", org: "acme", user: "*")
+    end
+
+    test "reaches a user's agents only where it names the user" do
+      acme = Prefix.new!(org: "acme")
+
+      refute Prefix.covers?(acme, ~A"acme/@jon/triage")
+      refute Prefix.covers?(acme, ~A"acme/@jon/triage/1696.1234")
+      assert Prefix.covers?(Prefix.new!(org: "acme", user: "jon"), ~A"acme/@jon/triage")
+      assert Prefix.covers?(Prefix.all(), ~A"acme/@jon/triage")
     end
 
     test "reaches one user's agents" do
@@ -36,7 +61,9 @@ defmodule Wardrik.AgentID.PrefixTest do
     test "reaches every agent under another prefix it begins" do
       acme = Prefix.new!(org: "acme")
 
-      assert Prefix.covers?(acme, Prefix.new!(org: "acme", user: "jon"))
+      refute Prefix.covers?(acme, Prefix.new!(org: "acme", user: "jon"))
+      assert Prefix.covers?(acme, Prefix.of(~A"acme/books"))
+      assert Prefix.covers?(Prefix.all(), Prefix.new!(org: "acme", user: "jon"))
       assert Prefix.covers?(acme, acme)
       assert Prefix.covers?(Prefix.all(), acme)
       refute Prefix.covers?(Prefix.new!(org: "acme", user: "jon"), acme)

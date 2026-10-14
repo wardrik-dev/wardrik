@@ -256,7 +256,7 @@ A token for the HTTP API, printed once.
 wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]
 ```
 
---scope PREFIX is the agents it reaches: org/, org/@user/, or a key, org/name or org/@user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited. --for NAME is the person it is issued to, whom its decisions are recorded as made by; a scope naming a person's agents names theirs.
+--scope PREFIX is the agents it reaches: org/ (the org's own), org/@user/ (a user's), org/* (the org and all its users'), or a key, org/name or org/@user/name. --can ACTIONS limits it to some of read,message,decide,define,serve. A token that can define holds the agents it defines to --policy NAME, one of policies/, or to their own policies alone with --unlimited. --for NAME is the person it is issued to, whom its decisions are recorded as made by; a scope naming a person's agents names theirs.
 
 ## wardrik token list
 
@@ -282,7 +282,7 @@ Seal secrets in the vault, asking for a value not given.
 wardrik vault put NAME[=VALUE]... [--org ORG] [--user USER] [--yes]
 ```
 
-NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which credential: NAME reads where nothing more specific holds NAME. --org ORG seals it for an org, whose agents read it first, and --user USER for a user, within --org ORG or the deployment's org. Where the vault has no key, it asks to make one; --yes makes it without asking.
+NAME alone asks for its value without showing it, or reads it from standard input where that is not a terminal. NAME=VALUE stays in your shell's history. A secret is the deployment's, which agents read only where vault.shared names it. --org ORG seals it for an org, whose own agents read it, and --user USER for a user, whose agents read it, within --org ORG or the deployment's org. Where the vault has no key, it asks to make one; --yes makes it without asking.
 
 ## wardrik vault ls
 

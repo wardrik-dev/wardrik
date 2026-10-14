@@ -22,7 +22,8 @@ defmodule Wardrik.AgentID do
   `new/2` writes the host's own org and user values down through
   `Wardrik.AgentID.Segment`. A segment is the org, the user, the name or the
   external ID. It holds no `/` or whitespace, and does not begin with `@`, which
-  marks the user, or `_`, which is kept for the fleet's own records. A segment
+  marks the user, or `_`, which is kept for the fleet's own records, and is
+  not `*`, which a tenant's prefix is written with. A segment
   is in every event's `source`, every store key and every log line naming the
   agent, so a user's should be an opaque id rather than an email address.
 
@@ -81,7 +82,7 @@ defmodule Wardrik.AgentID do
   @doc "Whether `text` can be one segment of an ID: an org, a user, a name or an external ID."
   @spec segment?(term()) :: boolean()
   def segment?(text) when is_binary(text),
-    do: text not in [".", ".."] and Regex.match?(@segment, text)
+    do: text not in [".", "..", "*"] and Regex.match?(@segment, text)
 
   def segment?(_text), do: false
 

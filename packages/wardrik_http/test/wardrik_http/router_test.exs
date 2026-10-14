@@ -497,6 +497,7 @@ defmodule WardrikHTTP.RouterTest do
   describe "keys" do
     test "a user's agent is reached under @user, with every route after it", %{api: api} do
       name = "mine-#{System.unique_integer([:positive])}"
+      tenant = tenant(api)
 
       {key, _agent} =
         Fleet.start_agent(
@@ -507,18 +508,30 @@ defmodule WardrikHTTP.RouterTest do
       text = to_string(key)
 
       assert {:ok, %{status: 200, body: %{"agent" => %{"id" => ^text}}}} =
-               Req.get(api, url: "/v1/agents/test/@jon/#{name}")
+               Req.get(tenant, url: "/v1/agents/test/@jon/#{name}")
 
       assert {:ok, %{status: 200, body: %{"agent" => %{"id" => ^text}}}} =
-               Req.get(api, url: "/v1/agents/test/%40jon/#{name}")
+               Req.get(tenant, url: "/v1/agents/test/%40jon/#{name}")
 
       assert {:ok, %{status: 202}} =
-               Req.post(api, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
+               Req.post(tenant, url: "/v1/agents/#{key}/messages", json: %{"content" => "hi"})
 
-      assert_receive {:turn, [{:user, "From router-test (token " <> _rest = said}]}
+      assert_receive {:turn, [{:user, "From tenant (token " <> _rest = said}]}
       assert said =~ ~r/\):\nhi$/
 
-      assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/@ann/#{name}")
+      assert {:ok, %{status: 404}} = Req.get(tenant, url: "/v1/agents/test/@ann/#{name}")
+      assert {:ok, %{status: 404}} = Req.get(api, url: "/v1/agents/test/@jon/#{name}")
+    end
+
+    defp tenant(api) do
+      {:ok, secret, _token} =
+        Token.create(store(), "tenant",
+          scope: Prefix.tenant!("test"),
+          can: Grant.actions(),
+          ceiling: []
+        )
+
+      Req.merge(api, auth: {:bearer, secret})
     end
 
     test "a path that is not an agent's ID is refused, and one past it is no route", %{api: api} do
@@ -1292,7 +1305,7 @@ defmodule WardrikHTTP.RouterTest do
 
     test "lists, connects and forgets the person's own, or with owner=org the org's",
          %{api: api} do
-      jon = as(api, "test/", @jon)
+      jon = as(api, "test/*", @jon)
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(jon, url: "/v1/connections")
@@ -1334,7 +1347,7 @@ defmodule WardrikHTTP.RouterTest do
       assert {:ok, %{status: 200}} = Req.get(api, url: "/v1/connections?owner=org")
       assert {:ok, %{status: 400}} = Req.get(api, url: "/v1/connections?owner=someone")
 
-      globex = as(api, "globex/", @jon)
+      globex = as(api, "globex/*", @jon)
 
       assert {:ok, %{status: 200, body: %{"connections" => listed}}} =
                Req.get(globex, url: "/v1/connections")
@@ -1343,7 +1356,7 @@ defmodule WardrikHTTP.RouterTest do
 
       {:ok, secret, _token} =
         Token.create(store(), "reader",
-          scope: Prefix.parse!("test/"),
+          scope: Prefix.tenant!("test"),
           can: [:read],
           ceiling: [],
           for: @jon
@@ -1354,7 +1367,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "answer 501 where the host offers none", %{api: api} do
-      jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/", @jon)
+      jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
     end

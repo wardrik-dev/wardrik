@@ -9,11 +9,11 @@ defmodule WardrikDaemon.CLI.Vault do
   in the shell's history and, while the command runs, in the list of
   processes. Neither prints the value back.
 
-  A secret is the deployment's, which an MCP server's `credential: NAME`
-  reads where nothing more specific holds that name. `--org ORG` seals it for
-  an org, whose agents read it before the deployment's. `--user USER` seals it
-  for a user, whose agents read it first: within `--org ORG`, or the
-  deployment's org without it. An org or a user is one segment of an agent's
+  A secret is the deployment's, which an agent's `credential: NAME` reads
+  only where `vault.shared` in `config.yaml` names it. `--org ORG` seals it
+  for an org, whose own agents read it, and `--user USER` for a user, whose
+  agents read it: within `--org ORG`, or the deployment's org without it. An
+  agent reads its owner's alone, never its org's for a user's agent. An org or a user is one segment of an agent's
   key, and is shown as the key shows it, `acme` or `acme/@jon`. An account a
   user connects is kept in the vault too, and listed with the rest.
 
@@ -50,9 +50,9 @@ defmodule WardrikDaemon.CLI.Vault do
         details: [
           "NAME alone asks for its value without showing it, or reads it from standard",
           "input where that is not a terminal. NAME=VALUE stays in your shell's history.",
-          "A secret is the deployment's, which credential: NAME reads where nothing more",
-          "specific holds NAME. --org ORG seals it for an org, whose agents read it first,",
-          "and --user USER for a user, within --org ORG or the deployment's org.",
+          "A secret is the deployment's, which agents read only where vault.shared names it.",
+          "--org ORG seals it for an org, whose own agents read it, and --user USER for a",
+          "user, whose agents read it, within --org ORG or the deployment's org.",
           "Where the vault has no key, it asks to make one; --yes makes it without asking."
         ],
         switches: [yes: :boolean] ++ @owner,

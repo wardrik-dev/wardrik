@@ -31,7 +31,7 @@ defmodule WardrikOAuth.ConnectionsTest do
   end
 
   defp caller(org, user) do
-    {:ok, grant} = Grant.new(Prefix.new!(org: org))
+    {:ok, grant} = Grant.new(Prefix.tenant!(org))
 
     Caller.new(
       principal: Principal.new(:user, user, name: "Jon"),

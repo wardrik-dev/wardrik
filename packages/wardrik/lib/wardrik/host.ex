@@ -61,10 +61,12 @@ defmodule Wardrik.Host do
   work names the field, never an implementation.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Principal
 
   defstruct store: WardrikStore.new(adapter: WardrikStore.None),
             definitions: %Wardrik.Definition.None{},
@@ -121,6 +123,11 @@ defmodule Wardrik.Host do
   turn nobody asked for: a subject outside a caller's reach is one that does
   not exist to them.
 
+  An agent, as its `:agent` principal names it, is core's own: it may read
+  and message its owner's agents, as `Wardrik.AgentID.Prefix.owner/1` names
+  them, whatever the host's grants say, so a turn one agent asks of another
+  reads and messages for it what it could itself.
+
       {:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: ~A"acme/triage")
       Wardrik.Command.run(%Wardrik.Operations.Decide{agent: ~A"acme/triage", decisions: decisions}, caller)
   """
@@ -140,7 +147,19 @@ defmodule Wardrik.Host do
   end
 
   defp granted(_host, nil), do: []
-  defp granted(host, principal), do: Wardrik.Grants.grants(grants(host), principal)
+
+  defp granted(host, principal),
+    do:
+      own(Principal.type(principal), principal) ++ Wardrik.Grants.grants(grants(host), principal)
+
+  defp own(:agent, principal) do
+    {:ok, grant} =
+      Grant.new(Prefix.owner(AgentID.parse!(Principal.id(principal))), [:read, :message])
+
+    [grant]
+  end
+
+  defp own(_type, _principal), do: []
 
   @doc """
   A caller known as `:principal` who may do anything to every agent: one who

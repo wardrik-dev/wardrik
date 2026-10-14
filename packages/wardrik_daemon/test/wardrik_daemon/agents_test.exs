@@ -229,7 +229,7 @@ defmodule WardrikDaemon.AgentsTest do
   test "a definition shares only the trees the scope of the token that sent it covers",
        %{org: org} = context do
     Host.start_agents(context.dir)
-    defined = AgentID.parse!("#{org}/@jon/defined")
+    defined = AgentID.parse!("#{org}/defined")
     fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
 
     assert {:ok, _spec} =
@@ -238,11 +238,39 @@ defmodule WardrikDaemon.AgentsTest do
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
                definition: fields,
-               grant: grant(Prefix.new!(org: org, user: "jon"))
+               grant: grant(Prefix.of(defined))
              )
 
     assert message ==
-             "workspace shared team: #{org} belongs to #{org}/, which #{org}/@jon/ does not cover"
+             "workspace shared team: #{org} belongs to #{org}/, which #{defined} does not cover"
+  end
+
+  test "a user's agent shares its org's tree where config.yaml shares it with them",
+       %{org: org} = context do
+    {:ok, share} = WardrikWorkspace.Share.new("#{org}/runbooks", read: ["#{org}/*"])
+    Host.put_section(WardrikWorkspace, shared: [share])
+    Host.start_agents(context.dir)
+    defined = AgentID.parse!("#{org}/@jon/defined")
+    runbooks = %{"tree" => "#{org}/runbooks", "mode" => "read"}
+    fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"runbooks" => runbooks}}}
+
+    assert {:ok, _spec} =
+             Agents.put(Host.agents(), defined,
+               definition: fields,
+               grant: grant(Prefix.new!(org: org, user: "jon"))
+             )
+  end
+
+  test "a user's agent shares none of its org's trees", %{org: org} = context do
+    Host.start_agents(context.dir)
+    defined = AgentID.parse!("#{org}/@jon/defined")
+    fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
+
+    assert {:error, message} =
+             Agents.put(Host.agents(), defined, definition: fields, grant: grant(Prefix.all()))
+
+    assert message ==
+             "workspace shared team: #{org} belongs to #{org}/, which #{defined} is not under"
   end
 
   test "an agent the HTTP API defined is held to the ceiling of the token that sent it",
@@ -716,7 +744,7 @@ defmodule WardrikDaemon.AgentsTest do
        %{org: org} = context do
     Host.put_section(WardrikChannel,
       orgs: [slack: [org]],
-      approvers: [slack: ["@maria"]]
+      approvers: [slack: %WardrikDaemon.Approvers.Named{names: ["@maria"]}]
     )
 
     write(context, "books", "channels: [slack]\ndescription: Keeps the books.\n")
@@ -729,8 +757,15 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.start(Host.agents(), "slack", thread) == {:ok, pid}
     assert Agent.status(thread).model == Agent.status(AgentID.parse!("#{org}/books")).model
 
-    assert Agents.approvers(Host.agents(), "slack") == ["@maria"]
-    assert Agents.approvers(Host.agents(), "other") == []
+    assert Agents.asked(Host.agents(), "slack") == ["@maria"]
+    assert Agents.asked(Host.agents(), "other") == []
+
+    Host.put_section(WardrikChannel,
+      orgs: [slack: [org]],
+      approvers: [slack: %WardrikDaemon.Approvers.Anyone{}]
+    )
+
+    assert Agents.asked(Host.agents(), "slack") == []
   end
 
   test "no agents/ at all runs nothing", %{tmp_dir: dir} do

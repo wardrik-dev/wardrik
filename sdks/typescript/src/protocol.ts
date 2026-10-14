@@ -990,7 +990,7 @@ export interface TokenCreatedData {
     name: string;
   };
   /**
-   * The prefix of the agents it reaches, as acme/; empty for every agent.
+   * The prefix of the agents it reaches: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent.
    */
   scope: string;
   /**

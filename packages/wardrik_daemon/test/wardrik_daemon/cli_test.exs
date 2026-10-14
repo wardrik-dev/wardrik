@@ -217,8 +217,11 @@ defmodule WardrikDaemon.CLITest do
     {output, 0} = command(["token", "create", "org", "--scope", "acme", "--unlimited"])
     assert output =~ ") reaches the agents under acme/, for every action, with no ceiling."
 
+    {output, 0} = command(["token", "create", "tenant", "--scope", "acme/*", "--unlimited"])
+    assert output =~ ") reaches the agents under acme/*, for every action, with no ceiling."
+
     assert command(["token", "create", "bad", "--scope", "acme//triage", "--unlimited"]) ==
-             {~s("acme//triage" is not a prefix; a prefix is org/, org/@user/ or an agent ID\n),
+             {~s("acme//triage" is not a prefix; a prefix is org/*, org/, org/@user/ or an agent ID\n),
               1}
   end
 
@@ -399,10 +402,12 @@ defmodule WardrikDaemon.CLITest do
     terminal = watching(["watch", key, "--json"])
     assert_receive {:group, [%Group.Event{type: :joined} | _events], _info}
 
+    # Whatever else the agent writes as it settles is a line of its own, so
+    # the test waits for this one.
     event = %{"type" => "wardrik.message.delta", "data" => %{"delta" => "hi"}}
+    line = JSON.encode!(event) <> "\n"
     Wardrik.Event.Log.publish(key, %Wardrik.Event.Log.Entry{event: event, follows: 0})
-    assert_receive {:written, written}
-    assert written == JSON.encode!(event) <> "\n"
+    assert_receive {:written, ^line}
 
     send(terminal, :close)
     assert_receive {:watched, :ok}

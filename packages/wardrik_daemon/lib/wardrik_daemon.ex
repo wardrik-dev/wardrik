@@ -98,7 +98,7 @@ defmodule WardrikDaemon do
     store = Keyword.fetch!(opts, :store)
     audit = Wardrik.Audit
     oauth = WardrikOAuth.new([audit: audit] ++ oauth_settings(config))
-    vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :environment])
+    vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
     agents = Agents.new(store: store, config: config, audit: audit)
 
@@ -163,7 +163,7 @@ defmodule WardrikDaemon do
             creatable: {Agents, :creatable?, [agents]},
             create: {Agents, :create_in, [agents]},
             start: {Agents, :start, [agents]},
-            approvers: {Agents, :approvers, [agents]}
+            approvers: {Agents, :asked, [agents]}
           )
 
         [

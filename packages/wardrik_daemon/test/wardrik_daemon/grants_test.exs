@@ -58,17 +58,29 @@ defmodule WardrikDaemon.GrantsTest do
     assert Grants.grants(grants(), principal) == []
   end
 
-  test "a person in a channel reads and messages its orgs' agents, and decides where nobody is named" do
+  test "a person in a channel reads and messages its orgs' agents, and decides only where named" do
     channel(orgs: [chat: ["acme", "globex"]])
 
     assert can(in_chat("U1")) == [
-             {"acme/", [:read, :message, :decide]},
-             {"globex/", [:read, :message, :decide]}
+             {"acme/", [:read, :message]},
+             {"globex/", [:read, :message]}
            ]
 
-    channel(orgs: [chat: :all], approvers: [chat: ["U2"]])
+    channel(orgs: [chat: :all], approvers: [chat: %WardrikDaemon.Approvers.Named{names: ["U2"]}])
     assert can(in_chat("U1")) == [{"", [:read, :message]}]
     assert can(in_chat("U2")) == [{"", [:read, :message, :decide]}]
+  end
+
+  test "with approvers: anyone, everyone in the channel decides" do
+    channel(orgs: [chat: ["acme"]], approvers: [chat: %WardrikDaemon.Approvers.Anyone{}])
+    assert can(in_chat("U1")) == [{"acme/", [:read, :message, :decide]}]
+  end
+
+  test "a grant on the channel's orgs reaches none of their users' agents" do
+    channel(orgs: [chat: ["acme"]])
+    assert [grant] = in_chat("U1")
+    assert Grant.covers?(grant, AgentID.parse!("acme/books"))
+    refute Grant.covers?(grant, AgentID.parse!("acme/@bob/assistant"))
   end
 
   test "the approvers of a notify target posting in the channel decide there" do
@@ -92,7 +104,12 @@ defmodule WardrikDaemon.GrantsTest do
   end
 
   test "an admin defines only under the policy the defaults name", %{dir: dir} do
-    channel(orgs: [chat: ["acme"]], approvers: [chat: ["U2"]], admins: [chat: ["U1"]])
+    channel(
+      orgs: [chat: ["acme"]],
+      approvers: [chat: %WardrikDaemon.Approvers.Named{names: ["U2"]}],
+      admins: [chat: ["U1"]]
+    )
+
     assert can(in_chat("U1")) == [{"acme/", [:read, :message, :decide]}]
 
     File.mkdir_p!(Path.join(dir, "policies"))

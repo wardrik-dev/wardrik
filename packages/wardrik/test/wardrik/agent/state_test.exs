@@ -159,7 +159,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     defp decider(principal, can) do
-      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), can)
+      {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme", user: "jon"), can)
       Wardrik.Caller.new(principal: principal, grant: grant, host: Wardrik.Host.new())
     end
 

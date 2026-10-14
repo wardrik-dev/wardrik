@@ -14,7 +14,8 @@ defmodule Wardrik.Connections.Owner do
   The prefix of the owner `caller` asks about: `:person` for their own,
   within their org, or `:org` for their org's. A caller's org is the one
   its grant reaches, and its person the user its grant is for, else the
-  user it acts as.
+  user it acts as, whose agents its grant must reach as well: a grant on
+  the tenant, `acme/*`, does, and one on the org's own agents does not.
   """
   @spec owner(Caller.t(), :person | :org) :: {:ok, Prefix.t()} | {:error, Error.t()}
   def owner(%Caller{grant: grant} = caller, whose) do

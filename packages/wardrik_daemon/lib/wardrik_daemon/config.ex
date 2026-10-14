@@ -146,11 +146,13 @@ defmodule WardrikDaemon.Config do
   `trusted: true` for a server whose answers are the deployment's own, so
   they are not labelled `outside`. See `WardrikMCP.Server`.
 
-  A credential is kept in the vault, sealed, and found for each call the most
-  specific first: the agent's user's, sealed with `wardrik vault put NAME
-  --user USER`; its org's, with `--org ORG`; then the deployment's, with
-  `wardrik vault put NAME`. Where none holds it and `oauth` has a provider of
-  the same name, the agent's user, or its org where it has no user, is asked
+  A credential is kept in the vault, sealed, and found for each call as the
+  agent's owner holds it: the user it works for, sealed with `wardrik vault
+  put NAME --user USER`, or its org, with `--org ORG`, for an agent that
+  works for nobody; one never reads another's. The deployment's, sealed with
+  `wardrik vault put NAME`, reaches an agent only where `vault.shared` names
+  it, as does the daemon's environment variable of that name. Where the owner
+  holds none and `oauth` has a provider of the same name, the owner is asked
   to connect an account, which is kept in the vault from then on.
 
   `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
@@ -158,7 +160,7 @@ defmodule WardrikDaemon.Config do
   each under `callback/NAME`: an `https://` URL the deployment serves from
   something in front of the daemon, which passes requests on to where
   `redirect.ip` and `redirect.port` say, or, without it, this machine's
-  loopback; see `WardrikOAuth.Callback`. `vault` takes `keys`, as `WardrikVault` does; without them,
+  loopback; see `WardrikOAuth.Callback`. `vault` takes `keys` and `shared`, as `WardrikVault` does; without keys,
   or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
   which the first `wardrik vault put` asks to make. `ssh` takes
   `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
@@ -187,13 +189,26 @@ defmodule WardrikDaemon.Config do
   in a room: the deployment's own unless it says, or `*` for every org's.
   Someone in a room no agent is offered in may create one there, from
   `defaults`, where `defaults` name a policy, unless the channel's `create`
-  is `false`. A channel's `approvers` are asked what an agent asks in its
-  threads, as the channel names people, directly where the channel can
-  reach a person, and its `admins`, named alike, may change its orgs'
-  agents; see `WardrikDaemon.Grants` for what each may do.
+  is `false`. A channel's `approvers` decide what an agent waits on in its
+  rooms: the people it names, asked directly where the channel can reach a
+  person, or `anyone` in the channel; where it names none, whoever asked for
+  a turn decides it, and a shell decides the rest. Its `admins`, named
+  alike, may change its orgs' agents; see `WardrikDaemon.Grants` for what
+  each may do, and `WardrikDaemon.Approvers`.
   The rest of a channel's settings are its adapter's, which reads them; see
   `WardrikChannel`. An agent is offered in a channel's rooms where its file
   names the channel; see `WardrikDaemon.AgentFile`.
+
+  `workspace.shared` names the trees agents beyond their owners may mount,
+  each with the prefixes of the agents that may `read` it and those that
+  may `write` it; an agent still names each tree it mounts in its own file.
+  See `WardrikWorkspace.Share`.
+
+      workspace:
+        shared:
+          acme/runbooks:
+            read: ["acme/*"]
+            write: [acme/ops]
 
   `notify` names targets an agent's `notify` routes to, each one a
   `channel` of `channels` and a `room` in it, with who may answer it as
@@ -215,7 +230,7 @@ defmodule WardrikDaemon.Config do
   `:wardrik_daemon`, which the release reads once as it starts and
   `config.yaml` is merged over:
 
-      config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]
+      config :wardrik_daemon, WardrikVault, shared: ["SEARCH_API_KEY"]
   """
 
   alias WardrikDaemon.Cluster.DNSPoll
@@ -255,7 +270,7 @@ defmodule WardrikDaemon.Config do
   @client ~w(name document_url client_uri logo_uri policy_uri tos_uri)a
   @redirect ~w(url ip port open)a
   @provider ~w(resource issuer client_id client_secret scopes authorization_params flow)a
-  @vault ~w(keys)a
+  @vault ~w(keys shared)a
   @listener ~w(port ip)a
   @stores %{
     "postgres" => {WardrikEcto.Store, ~w(url), ~w(url)},
@@ -389,7 +404,7 @@ defmodule WardrikDaemon.Config do
     WardrikVault.new(
       store: store,
       keys: keys,
-      environment: Keyword.get(settings, :environment, [])
+      shared: Keyword.get(settings, :shared, [])
     )
   end
 
@@ -569,13 +584,40 @@ defmodule WardrikDaemon.Config do
       {"storage", storage} ->
         {WardrikStore, storage(table!(storage, ["storage"]))}
 
+      {"workspace", workspace} ->
+        {WardrikWorkspace, workspace(table!(workspace, ["workspace"]))}
+
       {section, _value} ->
         invalid!(
           [section],
           "is not a section; expected org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-            "channels, notify, cluster or storage"
+            "channels, notify, workspace, cluster or storage"
         )
     end)
+  end
+
+  # -- workspace -------------------------------------------------------------
+
+  # The trees agents beyond their owners may mount, and who.
+  defp workspace(workspace) do
+    known!(workspace, ["shared"], ["workspace"])
+
+    shared =
+      for {tree, who} <- table!(Map.get(workspace, "shared"), ["workspace", "shared"]) do
+        path = ["workspace", "shared", tree]
+        who = table!(who, path)
+        known!(who, ["read", "write"], path)
+
+        case WardrikWorkspace.Share.new(tree,
+               read: Map.get(who, "read", []),
+               write: Map.get(who, "write", [])
+             ) do
+          {:ok, share} -> share
+          {:error, message} -> invalid!(path, "does not read: " <> message)
+        end
+      end
+
+    [shared: shared]
   end
 
   # -- tools -----------------------------------------------------------------
@@ -840,7 +882,19 @@ defmodule WardrikDaemon.Config do
     end
   end
 
-  defp vault(vault), do: options(vault, @vault_keys, ["vault"])
+  defp vault(vault) do
+    vault = options(vault, @vault_keys, ["vault"])
+
+    case Keyword.get(vault, :shared, []) do
+      names when is_list(names) ->
+        if Enum.all?(names, &is_binary/1),
+          do: vault,
+          else: invalid!(["vault", "shared"], "is a list of credential names")
+
+      _other ->
+        invalid!(["vault", "shared"], "is a list of credential names")
+    end
+  end
 
   # -- listeners -------------------------------------------------------------
 
@@ -938,13 +992,13 @@ defmodule WardrikDaemon.Config do
         {orgs, settings} = Map.pop(settings, "org")
         {creates, settings} = Map.pop(settings, "create", true)
         {approvers, settings} = Map.pop(settings, "approvers", [])
+        approvers = approvers(approvers, path ++ ["approvers"])
         {admins, settings} = Map.pop(settings, "admins", [])
         adapter = adapter!(type, path ++ ["type"], adapters)
 
         unless is_boolean(creates),
           do: invalid!(path ++ ["create"], "is true or false")
 
-        approvers!(approvers, path ++ ["approvers"])
         approvers!(admins, path ++ ["admins"])
 
         case adapter.config(settings) do
@@ -970,6 +1024,15 @@ defmodule WardrikDaemon.Config do
       approvers: for({name, channel} <- read, do: {name, channel.approvers}),
       admins: for({name, channel} <- read, do: {name, channel.admins})
     ]
+  end
+
+  # Who decides in a channel: anyone in it, or the people it names.
+  defp approvers("anyone", _path), do: %WardrikDaemon.Approvers.Anyone{}
+
+  defp approvers(names, path) do
+    if is_list(names) and Enum.all?(names, &is_binary/1),
+      do: %WardrikDaemon.Approvers.Named{names: names},
+      else: invalid!(path, "is anyone, or a list of who may answer, as the channel names them")
   end
 
   defp approvers!(approvers, path) do
@@ -1162,7 +1225,7 @@ defmodule WardrikDaemon.Config do
       invalid!(
         ["the file"],
         "is a set of sections: org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
-          "channels, notify, cluster, storage"
+          "channels, notify, workspace, cluster, storage"
       )
 
   defp table!(_value, path), do: invalid!(path, "is a set of keys")

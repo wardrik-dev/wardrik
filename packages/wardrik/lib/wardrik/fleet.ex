@@ -266,7 +266,9 @@ defmodule Wardrik.Fleet do
   Messages arrive as `{:group, [%Group.Event{}], info}`, where each event's
   `key` is the agent ID's text. A state change re-registers metadata, so a
   `:registered` event carrying `previous_meta` is a change rather than a new
-  agent.
+  agent. Agents are matched by the start of their ID's text, so watching an
+  org's own agents, `acme/`, hears of its users' too: pass each event's key
+  through `Wardrik.AgentID.Prefix.covers?/2` where that matters.
 
       Wardrik.Fleet.watch(Wardrik.AgentID.Prefix.new!(org: "acme"))
       Wardrik.Fleet.watch()        # the whole cluster

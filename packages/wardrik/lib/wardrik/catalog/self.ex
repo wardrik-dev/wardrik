@@ -48,5 +48,5 @@ defmodule Wardrik.Catalog.Self do
   @spec run(module(), module(), AgentID.t(), map(), Wardrik.Tool.Context.t()) ::
           Wardrik.Tool.answer()
   def run(module, runner, agent, input, context),
-    do: Tools.run(module, runner, agent, input, Tools.caller(context, Prefix.of(agent)))
+    do: Tools.run(module, runner, agent, input, Prefix.of(agent), context)
 end

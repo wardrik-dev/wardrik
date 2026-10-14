@@ -39,8 +39,10 @@ worker's token needs to `serve`, and its scope is the agents that may be offered
 wardrik token create shop --scope acme/ --can serve
 ```
 
-An agent file that names no `org` is in the deployment's, `default` unless `config.yaml` names
-another, so a worker for such agents is made with `--scope default/`. See
+`acme/` is acme's own agents, none that work for a user. A worker whose tools every agent in acme
+may use, its users' agents included, as an app's per-user agents are, is made with
+`--scope 'acme/*'`. An agent file that names no `org` is in the deployment's, `default` unless
+`config.yaml` names another, so a worker for such agents is made with `--scope default/`. See
 [Tokens](/run/security/#tokens).
 
 Run as many workers under one token as you like: those offering a tool of the same name share its

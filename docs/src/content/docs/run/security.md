@@ -48,7 +48,8 @@ Every HTTP request presents a token that `wardrik token create` made:
 wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited]
 ```
 
-- **`--scope`** is the agents it reaches: `acme/`, `acme/@jon/` or one agent, `acme/@jon/triage`.
+- **`--scope`** is the agents it reaches: `acme/`, acme's own agents and none of its users';
+  `acme/@jon/`, jon's; `acme/*`, acme and every one of its users'; or one agent, `acme/@jon/triage`.
   `--all` reaches every agent. An agent outside the scope is answered as one that does not exist.
 - **`--can`** is what it may do, some of `read`, `message`, `decide`, `define` and `serve`, and all
   of them unless it says fewer. An action it may not take is refused with `403`.
@@ -81,19 +82,26 @@ not. An agent a revoked token defined keeps running, under the policy it was def
 ## Orgs
 
 Every agent belongs to an [org](/concepts/agents/#keys-and-orgs), and an org is the boundary
-between agents. What belongs to an org is kept to its agents:
+between agents. Within an org, an agent works for the org or for one of its users, and each is
+apart: what reaches the org's agents reaches none of its users', and what reaches one user's
+reaches neither the org's nor another user's, unless it names the whole tenant, `acme/*`. What
+belongs to an org, or to one of its users, is kept to their agents:
 
-- tokens scoped to the org, or to one of its users;
-- shared trees named for the org or one of its users;
-- the vault's credentials put for the org or one of its users, and the accounts they connect;
+- tokens scoped to the org, to one of its users, or to the tenant;
+- shared trees named for the org or one of its users, and those `workspace.shared` in
+  `config.yaml` shares with others;
+- the vault's credentials put for the org or one of its users, and the accounts they connect: an
+  agent reads its own owner's alone, never its org's for a user's agent;
+- what people in a channel may read and message: the agents of the orgs it offers, none of their
+  users';
 - MCP servers and notice targets, which serve the deployment's org unless `config.yaml` names
   others.
 
 Some things are the deployment's, whatever the org:
 
 - `policies/`, which any agent file can name;
-- the vault's credentials put for the deployment, which every agent reads where neither its user
-  nor its org holds one of the same name;
+- the vault's credentials put for the deployment, which an agent reads only where `vault.shared`
+  names them;
 - the credentials in an MCP server's `headers` or `env`, used for every org the server serves;
 - the terminal client, whose keys reach every org's agents.
 

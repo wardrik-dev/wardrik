@@ -14,7 +14,8 @@ defmodule WardrikDefinition.Context do
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
         seams: [ledger: %Wardrik.Ledger.Store{}],
-        config: [tool_prices: %{"web_search" => 0.005}]
+        config: [tool_prices: %{"web_search" => 0.005}],
+        shares: [runbooks_share]
       }
 
     * `org` - the org of an agent file that names none
@@ -40,6 +41,8 @@ defmodule WardrikDefinition.Context do
       `ledger`
     * `config` - `Wardrik.LLM.Config` options every agent gets, such as
       `tool_prices`
+    * `shares` - the trees the deployment lets agents beyond their owners
+      mount, as `WardrikWorkspace.Share`s
     * `triggers` - the trigger sources and webhook verifiers a definition's
       triggers may name, as `WardrikTrigger.Offered` finds them; this
       package's own by default
@@ -58,6 +61,7 @@ defmodule WardrikDefinition.Context do
             defaults: %{},
             seams: [],
             config: [],
+            shares: [],
             triggers: %WardrikTrigger.Offered{},
             names: %{host: "the host", config: "the host", policies: "the host's policies"}
 
@@ -75,6 +79,7 @@ defmodule WardrikDefinition.Context do
           defaults: %{String.t() => term()},
           seams: keyword(),
           config: keyword(),
+          shares: [WardrikWorkspace.Share.t()],
           triggers: WardrikTrigger.Offered.t(),
           names: %{host: String.t(), config: String.t(), policies: String.t()}
         }

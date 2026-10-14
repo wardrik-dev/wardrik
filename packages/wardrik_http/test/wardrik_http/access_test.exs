@@ -63,10 +63,13 @@ defmodule WardrikHTTP.AccessTest do
       {:ok, reader} = Grant.new(Wardrik.AgentID.Prefix.parse!("acme/"), [:read])
       {:ok, decider} = Grant.new(Wardrik.AgentID.Prefix.parse!("acme/@ops/"), [:decide])
 
-      assert :ok = Access.authorize(reader, :read, Wardrik.AgentID.parse!("acme/@ops/deploy"))
+      assert :ok = Access.authorize(reader, :read, Wardrik.AgentID.parse!("acme/deploy"))
 
       assert {:error, :forbidden} =
-               Access.authorize(reader, :decide, Wardrik.AgentID.parse!("acme/@ops/deploy"))
+               Access.authorize(reader, :decide, Wardrik.AgentID.parse!("acme/deploy"))
+
+      assert {:error, :not_found} =
+               Access.authorize(reader, :read, Wardrik.AgentID.parse!("acme/@ops/deploy"))
 
       assert {:error, :not_found} =
                Access.authorize(reader, :read, Wardrik.AgentID.parse!("globex/deploy"))
@@ -79,7 +82,7 @@ defmodule WardrikHTTP.AccessTest do
                )
 
       assert {:error, :forbidden} =
-               Access.authorize([reader, decider], :decide, Wardrik.AgentID.parse!("acme/@jon/x"))
+               Access.authorize([reader, decider], :decide, Wardrik.AgentID.parse!("acme/x"))
 
       assert {:error, :not_found} =
                Access.authorize([], :read, Wardrik.AgentID.parse!("acme/@ops/deploy"))

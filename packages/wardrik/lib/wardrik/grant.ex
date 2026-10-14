@@ -5,13 +5,15 @@ defmodule Wardrik.Grant do
 
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.new!(org: "acme"), [:read, :message])
 
-      Wardrik.Grant.allows?(grant, :message, ~A"acme/@jon/triage")  #=> true
-      Wardrik.Grant.allows?(grant, :decide, ~A"acme/@jon/triage")   #=> false
+      Wardrik.Grant.allows?(grant, :message, ~A"acme/triage")      #=> true
+      Wardrik.Grant.allows?(grant, :decide, ~A"acme/triage")       #=> false
+      Wardrik.Grant.allows?(grant, :message, ~A"acme/@jon/triage") #=> false
 
-  A scope reaches every agent, an org's, one person's, or one agent with
+  A scope reaches every agent, an org's own, one person's, or one agent with
   every external ID it answers for, and matches at segment boundaries:
   `acme/` never reaches `acmecorp/…`, and `acme/triage` never reaches
-  `acme/triage2`.
+  `acme/triage2`. An org's scope reaches none of its users' agents: someone
+  who may act on the org's agents and on their own holds a grant on each.
 
   ## Actions
 
@@ -110,6 +112,31 @@ defmodule Wardrik.Grant do
   @doc "Whether `grant` reaches the agent `id`: whether its scope covers it."
   @spec covers?(t(), AgentID.t()) :: boolean()
   def covers?(%__MODULE__{scope: scope}, %AgentID{} = id), do: Prefix.covers?(scope, id)
+
+  @doc """
+  What both `grant` and `other` let their holder do: the narrower of their
+  scopes, where one covers the other, and the actions both allow, under both
+  ceilings. `:error` where they reach no agent alike, or allow no action
+  alike.
+  """
+  @spec within(t(), t()) :: {:ok, t()} | :error
+  def within(%__MODULE__{} = grant, %__MODULE__{} = other) do
+    with {:ok, scope} <- narrower(grant.scope, other.scope),
+         [_ | _] = can <- Enum.filter(grant.can, &(&1 in other.can)) do
+      ceiling = if :define in can, do: grant.ceiling ++ other.ceiling, else: []
+      {:ok, %__MODULE__{scope: scope, can: can, ceiling: ceiling}}
+    else
+      _apart -> :error
+    end
+  end
+
+  defp narrower(scope, other) do
+    cond do
+      Prefix.covers?(scope, other) -> {:ok, other}
+      Prefix.covers?(other, scope) -> {:ok, scope}
+      true -> :error
+    end
+  end
 
   @doc "`hooks`, a definition's own, with `grant`'s ceiling ahead of them."
   @spec held(t(), [Hook.t()] | nil) :: [Hook.t()]

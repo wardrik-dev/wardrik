@@ -29,12 +29,14 @@ defmodule Wardrik.Catalog.Tools do
   read is outside content to the agent that reads it.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Catalog
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Query
   alias Wardrik.Resource
   alias Wardrik.Scope
@@ -76,12 +78,15 @@ defmodule Wardrik.Catalog.Tools do
   end
 
   @doc """
-  Runs `module`'s request of `subject` with `input` through `runner`, as
-  `caller`: the tool's answer, labelled with what it holds.
+  Runs `module`'s request of `subject` with `input` through `runner`, as the
+  calling agent reaching `reach` (see `caller/4`): the tool's answer,
+  labelled with what it holds.
   """
-  @spec run(module(), module(), term(), map(), Caller.t()) :: Wardrik.Tool.answer()
-  def run(module, runner, subject, input, %Caller{} = caller) do
-    with {:ok, request} <- module.new(subject, input),
+  @spec run(module(), module(), term(), map(), Prefix.t(), Wardrik.Tool.Context.t()) ::
+          Wardrik.Tool.answer()
+  def run(module, runner, subject, input, reach, context) do
+    with {:ok, caller} <- caller(context, reach, subject, module.action()),
+         {:ok, request} <- module.new(subject, input),
          {status, answer} when status in [:ok, :created] <- runner.run(request, caller) do
       {:ok, answer || "done", labels: module.labels(answer)}
     else
@@ -90,14 +95,36 @@ defmodule Wardrik.Catalog.Tools do
   end
 
   @doc """
-  The calling agent, as the caller of an operation reaching the agents under
-  `reach`: the agent the call's scope runs for, granted to read, send
-  messages to and define them, under its own hooks as ceiling, on the host
-  the scope carries.
+  The calling agent, as the caller of an operation taking `action` on
+  `subject`, reaching the agents under `reach`: the agent the call's scope
+  runs for, granted to read, send messages to and define them, under its own
+  hooks as ceiling, on the host the scope carries.
+
+  A read or a message is the asker's as well: where someone asked for the
+  turn, it reaches only what both the agent and they may, as the host's
+  `Wardrik.Grants` say of them, so an agent never reads or messages for
+  someone what they could not themselves. A change is the agent's own, held
+  to its ceiling and asked of a person as its policy says.
   """
-  @spec caller(Wardrik.Tool.Context.t(), Prefix.t()) :: Caller.t()
-  def caller(%Wardrik.Tool.Context{scope: scope}, reach) do
-    {:ok, grant} = Grant.new(reach, [:read, :message, :define], scope.hooks)
-    Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)
+  @spec caller(Wardrik.Tool.Context.t(), Prefix.t(), AgentID.t() | Prefix.t(), Grant.action()) ::
+          {:ok, Caller.t()} | {:error, Error.t()}
+  def caller(%Wardrik.Tool.Context{scope: scope, sender: sender}, reach, subject, action) do
+    {:ok, own} = Grant.new(reach, [:read, :message, :define], scope.hooks)
+
+    with {:ok, grant} <- asked(own, sender, subject, action, scope.host),
+         do: {:ok, Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)}
   end
+
+  defp asked(own, nil, _subject, _action, _host), do: {:ok, own}
+
+  defp asked(own, sender, subject, action, host) when action in [:read, :message] do
+    with {:ok, %Caller{grant: theirs}} <- Host.caller(host, principal: sender, subject: subject) do
+      case Grant.within(own, theirs) do
+        {:ok, grant} -> {:ok, grant}
+        :error -> {:error, Error.new(:forbidden, "Whoever asked may not #{action} #{subject}.")}
+      end
+    end
+  end
+
+  defp asked(own, _sender, _subject, _action, _host), do: {:ok, own}
 end

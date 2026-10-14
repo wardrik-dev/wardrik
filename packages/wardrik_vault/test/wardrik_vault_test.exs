@@ -39,29 +39,6 @@ defmodule WardrikVaultTest do
     end
   end
 
-  # Each person reaches their own agents in acme; "org" reaches all of
-  # acme, and "root" every agent.
-  defmodule People do
-    @moduledoc false
-    defstruct []
-  end
-
-  defimpl Wardrik.Grants, for: People do
-    alias Wardrik.AgentID.Prefix
-
-    def grants(_people, principal) do
-      scope =
-        case Wardrik.Principal.id(principal) do
-          "root" -> Prefix.all()
-          "org" -> Prefix.new!(org: "acme")
-          user -> Prefix.new!(org: "acme", user: user)
-        end
-
-      {:ok, grant} = Wardrik.Grant.new(scope, [:read, :message])
-      [grant]
-    end
-  end
-
   # The vault a test works on, which a test may give other grants or keys.
   defp vault, do: Process.get(:vault)
   defp grants(grants), do: Process.put(:vault, %{vault() | grants: grants})
@@ -225,20 +202,19 @@ defmodule WardrikVaultTest do
   end
 
   describe "as the host's Wardrik.Credentials" do
-    test "takes the user's, then the org's, then the deployment's", %{user: user} do
+    test "takes the owner's alone, never another's", %{user: user} do
       org = "org-#{user}"
-      scope = [org: org, user: user]
 
       :ok = WardrikVault.put(vault(), "tracker", nil, value: "deployment")
-      assert {:ok, credential} = Credential.resolve(call(scope), "tracker")
-      assert {Credential.reveal(credential), credential.owner} == {"deployment", nil}
+      assert {:error, :not_found} = Credential.resolve(call(org: org), "tracker")
 
       :ok = WardrikVault.put(vault(), "tracker", org, value: "org")
-      assert {:ok, credential} = Credential.resolve(call(scope), "tracker")
+      assert {:ok, credential} = Credential.resolve(call(org: org), "tracker")
       assert {Credential.reveal(credential), credential.owner} == {"org", org}
+      assert {:error, :not_found} = Credential.resolve(call(org: org, user: user), "tracker")
 
       :ok = WardrikVault.put(vault(), "tracker", {org, user}, value: "user")
-      assert {:ok, credential} = Credential.resolve(call(scope), "tracker")
+      assert {:ok, credential} = Credential.resolve(call(org: org, user: user), "tracker")
       assert {Credential.reveal(credential), credential.owner} == {"user", {org, user}}
 
       assert {:ok, credential} = Credential.resolve(call(org: org), "tracker")
@@ -251,33 +227,24 @@ defmodule WardrikVaultTest do
       assert {:error, :not_found} =
                Credential.resolve(call(org: "globex", user: user), "github")
 
+      assert {:error, :not_found} =
+               Credential.resolve(call(org: "acme", user: "someone-else"), "github")
+
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "github")
       assert Credential.reveal(credential) == "acme-token"
     end
 
-    test "a user's own reach only their turns, and those nobody asked for", %{user: user} do
+    test "is the agent's owner's, whoever asked for the turn", %{user: user} do
       :ok = WardrikVault.put(vault(), "tracker", {"acme", user}, value: "theirs")
-      :ok = WardrikVault.put(vault(), "tracker", "acme", value: "the org's")
 
-      resolved = fn sender, host ->
-        {:ok, credential} =
-          Credential.resolve(call(user: user, sender: sender, host: host), "tracker")
-
-        Credential.reveal(credential)
+      for sender <- [
+            nil,
+            Wardrik.Principal.new(:shell, "root"),
+            Wardrik.Principal.new(:user, user)
+          ] do
+        assert {:ok, credential} = Credential.resolve(call(user: user, sender: sender), "tracker")
+        assert Credential.reveal(credential) == "theirs"
       end
-
-      host = Wardrik.Host.new(store: store(), credentials: vault(), grants: %People{})
-      assert resolved.(nil, host) == "theirs"
-      assert resolved.(Wardrik.Principal.new(:user, user), host) == "theirs"
-      assert resolved.(Wardrik.Principal.new(:shell, "root"), host) == "theirs"
-      assert resolved.(Wardrik.Principal.new(:channel, "org"), host) == "the org's"
-      assert resolved.(Wardrik.Principal.new(:user, "someone-else"), host) == "the org's"
-
-      assert resolved.(
-               Wardrik.Principal.new(:user, user),
-               Wardrik.Host.new(store: store(), credentials: vault())
-             ) ==
-               "the org's"
     end
 
     test "a name nobody holds is not found, without a grants module that grants it", %{
@@ -289,34 +256,41 @@ defmodule WardrikVaultTest do
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), "nothing")
     end
 
-    test "a name the environment sets, as :environment names it, is the deployment's where nobody holds it",
-         %{user: user} do
-      name = environment_variable("from-the-environment")
+    test "a shared name is the deployment's, where the owner holds none", %{user: user} do
+      :ok = WardrikVault.put(vault(), "linear", nil, value: "deployment")
+      Process.put(:vault, %{vault() | shared: ["linear"]})
 
-      Process.put(:vault, %{vault() | environment: [name]})
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
+      assert {Credential.reveal(credential), credential.owner} == {"deployment", nil}
 
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
-      assert Credential.reveal(credential) == "from-the-environment"
-      assert credential.owner == nil
-
-      :ok = WardrikVault.put(vault(), name, {"acme", user}, value: "sealed")
-      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
+      :ok = WardrikVault.put(vault(), "linear", {"acme", user}, value: "sealed")
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), "linear")
       assert Credential.reveal(credential) == "sealed"
     end
 
-    test "a name the environment sets resolves where the vault has no key", %{user: user} do
+    test "a shared name the vault holds none of is the node's environment variable", %{user: user} do
+      name = environment_variable("from-the-environment")
+      Process.put(:vault, %{vault() | shared: [name]})
+
+      assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
+      assert {Credential.reveal(credential), credential.owner} == {"from-the-environment", nil}
+    end
+
+    test "a shared name resolves where the vault has no key", %{user: user} do
       name = environment_variable("keyless")
-      Process.put(:vault, %{vault() | keys: [], environment: [name]})
+      Process.put(:vault, %{vault() | keys: [], shared: [name]})
 
       assert {:ok, credential} = Credential.resolve(call(org: "acme", user: user), name)
       assert Credential.reveal(credential) == "keyless"
       assert {:error, :no_key} = Credential.resolve(call(org: "acme", user: user), "github")
     end
 
-    test "a name the environment sets is not read unless :environment names it", %{user: user} do
+    test "a name the deployment does not share reaches no agent", %{user: user} do
       name = environment_variable("unnamed")
+      :ok = WardrikVault.put(vault(), name, nil, value: "deployment")
 
       assert {:error, :not_found} = Credential.resolve(call(org: "acme", user: user), name)
+      assert {:error, :not_found} = Credential.resolve(call(org: "acme"), name)
     end
 
     test "a grant is handed to the grants module to answer, and to renew", %{user: user} do
@@ -365,10 +339,10 @@ defmodule WardrikVaultTest do
     test "a secret held for the name is the answer, and no grant is asked for", %{user: user} do
       grants(%Grants{})
       org = "org-#{user}"
-      :ok = WardrikVault.put(vault(), "github", org, value: "org-token")
+      :ok = WardrikVault.put(vault(), "github", {org, user}, value: "user-token")
 
       assert {:ok, credential} = Credential.resolve(call(org: org, user: user), "github")
-      assert Credential.reveal(credential) == "org-token"
+      assert Credential.reveal(credential) == "user-token"
       assert :ok = Credential.refused(call(org: org, user: user), "github")
       refute_received {:refused, _owner}
     end

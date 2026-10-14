@@ -234,10 +234,15 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  @doc "Whom to ask what an agent asks in the channel `channel`'s threads, as it names people."
-  @spec approvers(t(), String.t()) :: [String.t()]
+  @doc "Who decides what agents wait on in the channel `channel`, as its `approvers` say."
+  @spec approvers(t(), String.t()) :: WardrikDaemon.Approvers.t()
   def approvers(agents, channel) when is_binary(channel),
-    do: channel_setting(agents, :approvers, channel, [])
+    do: channel_setting(agents, :approvers, channel, %WardrikDaemon.Approvers.Named{names: []})
+
+  @doc "Whom to ask directly what an agent asks in the channel `channel`'s threads, as it names people."
+  @spec asked(t(), String.t()) :: [String.t()]
+  def asked(agents, channel) when is_binary(channel),
+    do: WardrikDaemon.Approvers.asked(approvers(agents, channel))
 
   @doc "Who may change the agents of the channel `channel`'s orgs, as it names people."
   @spec admins(t(), String.t()) :: [String.t()]

@@ -21,10 +21,10 @@ Its key is the credential `BRAVE_API_KEY`, which the host's
 `Wardrik.Credentials` resolve for each call. With
 [wardrik_vault](../wardrik_vault) that is the deployment's secret of that name
 (`wardrik vault put BRAVE_API_KEY`), or the environment variable where the
-vault holds none and is made to read it:
+vault holds none, where the vault shares it with every agent:
 
 ```elixir
-vault = WardrikVault.new(store: store, keys: [key], environment: ["BRAVE_API_KEY"])
+vault = WardrikVault.new(store: store, keys: [key], shared: ["BRAVE_API_KEY"])
 host = Wardrik.Host.new(store: store, credentials: vault)
 ```
 

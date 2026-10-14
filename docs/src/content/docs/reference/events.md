@@ -390,7 +390,7 @@ Someone made an API token.
 | `token` | object | yes |  |
 | `token.id` | string | yes |  |
 | `token.name` | string | yes |  |
-| `scope` | string | yes | The prefix of the agents it reaches, as acme/; empty for every agent. |
+| `scope` | string | yes | The prefix of the agents it reaches: acme/ for an org's own, acme/@jon/ for a user's, acme/* for the org and every one of its users', or empty for every agent. |
 | `can` | array of string | yes | What it may do to them. |
 | `for` | [principal](#principal) |  |  |
 | `actor` | [principal](#principal) |  |  |

@@ -4,6 +4,7 @@ defmodule Wardrik.CatalogTest do
 
   alias Wardrik.Agent.Message
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Call
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Agents
@@ -56,6 +57,16 @@ defmodule Wardrik.CatalogTest do
     defdelegate delete_trigger(a0, a1, a2), to: Kept
   end
 
+  # Whoever asks holds the grants a test gives.
+  defmodule Granted do
+    @moduledoc false
+    defstruct [:grants]
+  end
+
+  defimpl Wardrik.Grants, for: Granted do
+    def grants(%{grants: grants}, _principal), do: grants
+  end
+
   setup do
     :persistent_term.put(Kept, self())
     on_exit(fn -> :persistent_term.erase(Kept) end)
@@ -72,7 +83,10 @@ defmodule Wardrik.CatalogTest do
   defp scope(agent, source, opts \\ []),
     do:
       Wardrik.Test.scope(
-        [tools: [{source, agent}], id: agent, host: Host.new(definitions: %Kept{})] ++ opts
+        Keyword.merge(
+          [tools: [{source, agent}], id: agent, host: Host.new(definitions: %Kept{})],
+          opts
+        )
       )
 
   defp allowing(names), do: [hooks: [Wardrik.Hook.new("rules", Rules, allow: names)]]
@@ -303,6 +317,82 @@ defmodule Wardrik.CatalogTest do
                front
                |> scope(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => "a/b/c/d/e"})
+    end
+
+    test "reads and messages only what whoever asked may, and changes as itself" do
+      front = acme("front")
+      inside = echoing(acme("inside"), "ok")
+      outside = echoing(acme("outside"), "ok")
+      worker = acme("worker")
+      on_exit(fn -> Wardrik.Fleet.forget(worker) end)
+      {:ok, one} = Grant.new(Prefix.of(inside), [:read, :message])
+
+      scope =
+        scope(front, Agents,
+          host: Host.new(definitions: %Kept{}, grants: %Granted{grants: [one]}),
+          sender: Principal.new(:channel, "chat/U1"),
+          hooks: [Wardrik.Hook.new("front", Rules, allow: ["agent_define"])]
+        )
+
+      assert %Call{state: :done, result: {:ok, _snapshot}} =
+               Wardrik.Test.call(scope, "agent_read", %{"agent" => inside.name})
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
+               Wardrik.Test.call(scope, "agent_read", %{"agent" => outside.name})
+
+      assert %Call{state: :done, result: {:ok, %{"agent" => %{"id" => id}}}} =
+               Wardrik.Test.call(scope, "agent_define", %{
+                 "agent" => worker.name,
+                 "definition" => %{"instructions" => "Reconcile."}
+               })
+
+      assert id == to_string(worker)
+    end
+
+    test "an agent that asks another reads and messages for it what it could itself" do
+      asking = acme("asking")
+      front = acme("front")
+      inside = echoing(acme("inside"), "ok")
+
+      jons =
+        echoing(
+          AgentID.new!("mine-#{System.unique_integer([:positive])}", org: "acme", user: "jon"),
+          "ok"
+        )
+
+      scope = scope(front, Agents, sender: Principal.new(:agent, to_string(asking)))
+
+      assert %Call{state: :done, result: {:ok, _snapshot}} =
+               Wardrik.Test.call(scope, "agent_read", %{"agent" => inside.name})
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
+               Wardrik.Test.call(scope, "agent_read", %{"agent" => "@jon/" <> jons.name})
+    end
+
+    test "reaches none of its org's users' agents, and a user's agent none of the org's" do
+      front = acme("front")
+      org = Prefix.org(Prefix.owner(front))
+
+      jons =
+        echoing(
+          AgentID.new!("mine-#{System.unique_integer([:positive])}", org: org, user: "jon"),
+          "ok"
+        )
+
+      assert %Call{state: :done, result: {:ok, %{"agents" => agents}}} =
+               front |> scope(Agents) |> Wardrik.Test.call("agents_list", %{})
+
+      refute to_string(jons) in Enum.map(agents, & &1["id"])
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
+               front
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_read", %{"agent" => "@jon/" <> jons.name})
+
+      assert %Call{state: :done, result: {:error, %{"error" => %{"type" => "not_found"}}}} =
+               jons
+               |> scope(Agents)
+               |> Wardrik.Test.call("agent_read", %{"agent" => front.name})
     end
   end
 end

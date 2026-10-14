@@ -186,7 +186,7 @@ defmodule WardrikDefinition do
     _channels = channels!(fields["channels"], owner.org, context)
     _route = route!(fields["notify"], owner.org, context)
     spec = build(fields, system, context, file?, owner)
-    within!(spec, source)
+    within!(spec, owner, context, source)
 
     {:ok, %{spec | id: id}}
   rescue
@@ -272,13 +272,14 @@ defmodule WardrikDefinition do
 
   defp owner(id), do: AgentID.put_external_id(id, nil)
 
-  # A definition a token sent shares only the trees the token's scope covers.
-  defp within!(%Spec{config: config}, {:api, %Wardrik.Grant{scope: scope}}) do
+  # A definition a token sent shares only the trees the token's scope covers,
+  # or that the deployment shares with the agent.
+  defp within!(%Spec{config: config}, owner, context, {:api, %Wardrik.Grant{scope: scope}}) do
     for {WardrikWorkspace, workspace} <- config.tools,
-        do: ok!(WardrikWorkspace.Spec.within(workspace, scope))
+        do: ok!(WardrikWorkspace.Spec.within(workspace, scope, id: owner, shares: context.shares))
   end
 
-  defp within!(_spec, _source), do: :ok
+  defp within!(_spec, _owner, _context, _source), do: :ok
 
   defp ok!(:ok), do: :ok
   defp ok!({:error, message}), do: invalid!("workspace " <> message)
@@ -371,8 +372,8 @@ defmodule WardrikDefinition do
 
     names
     |> Enum.flat_map(fn
-      "files" -> [files!(fields, key)]
-      "*" -> tool!("*", context, modules?, key) ++ [files!(fields, key)]
+      "files" -> [files!(fields, key, context)]
+      "*" -> tool!("*", context, modules?, key) ++ [files!(fields, key, context)]
       name -> tool!(name, context, modules?, key)
     end)
     |> Enum.uniq()
@@ -404,7 +405,7 @@ defmodule WardrikDefinition do
   defp unreached!(_fields), do: :ok
 
   # The file tools over the agent's own tree, and the trees `workspace` shares.
-  defp files!(fields, key) do
+  defp files!(fields, key, context) do
     workspace = Map.get(fields, "workspace") || %{}
     if not is_map(workspace), do: invalid!("workspace is a set of settings: shared")
 
@@ -415,7 +416,7 @@ defmodule WardrikDefinition do
 
     {files, bytes} = context!(Map.get(fields, "context", []))
 
-    with {:ok, spec} <- workspace!(key, workspace),
+    with {:ok, spec} <- workspace!(key, workspace, context),
          {:ok, spec} <- WardrikWorkspace.Spec.context(spec, files),
          {:ok, spec} <- budget(spec, bytes) do
       {WardrikWorkspace, spec}
@@ -438,8 +439,10 @@ defmodule WardrikDefinition do
   defp budget(spec, nil), do: {:ok, spec}
   defp budget(spec, bytes), do: WardrikWorkspace.Spec.context_bytes(spec, bytes)
 
-  defp workspace!(key, workspace) do
-    case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{}) do
+  defp workspace!(key, workspace, context) do
+    case WardrikWorkspace.Spec.new(key, Map.get(workspace, "shared") || %{},
+           shares: context.shares
+         ) do
       {:ok, spec} -> {:ok, spec}
       {:error, message} -> {:error, "workspace " <> message}
     end

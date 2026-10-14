@@ -154,11 +154,13 @@ every tool the server does not mark read-only unless set, and
 `trusted: true` for a server whose answers are the deployment's own, so
 they are not labelled `outside`. See `WardrikMCP.Server`.
 
-A credential is kept in the vault, sealed, and found for each call the most
-specific first: the agent's user's, sealed with `wardrik vault put NAME
---user USER`; its org's, with `--org ORG`; then the deployment's, with
-`wardrik vault put NAME`. Where none holds it and `oauth` has a provider of
-the same name, the agent's user, or its org where it has no user, is asked
+A credential is kept in the vault, sealed, and found for each call as the
+agent's owner holds it: the user it works for, sealed with `wardrik vault
+put NAME --user USER`, or its org, with `--org ORG`, for an agent that
+works for nobody; one never reads another's. The deployment's, sealed with
+`wardrik vault put NAME`, reaches an agent only where `vault.shared` names
+it, as does the daemon's environment variable of that name. Where the owner
+holds none and `oauth` has a provider of the same name, the owner is asked
 to connect an account, which is kept in the vault from then on.
 
 `oauth` takes `client`, `redirect` and `providers`, as `WardrikOAuth.Supervisor`
@@ -166,7 +168,7 @@ takes them. `redirect.url` is where a provider sends the browser back to,
 each under `callback/NAME`: an `https://` URL the deployment serves from
 something in front of the daemon, which passes requests on to where
 `redirect.ip` and `redirect.port` say, or, without it, this machine's
-loopback; see `WardrikOAuth.Callback`. `vault` takes `keys`, as `WardrikVault` does; without them,
+loopback; see `WardrikOAuth.Callback`. `vault` takes `keys` and `shared`, as `WardrikVault` does; without keys,
 or `WARDRIK_VAULT_KEY`, the vault's key is `vault_key` in the data home,
 which the first `wardrik vault put` asks to make. `ssh` takes
 `port` and `ip`, as `WardrikDaemon.SSH` does, and so does `http`, as `WardrikHTTP`
@@ -195,13 +197,26 @@ finds those the release holds, and its `org`, whose agents it may offer
 in a room: the deployment's own unless it says, or `*` for every org's.
 Someone in a room no agent is offered in may create one there, from
 `defaults`, where `defaults` name a policy, unless the channel's `create`
-is `false`. A channel's `approvers` are asked what an agent asks in its
-threads, as the channel names people, directly where the channel can
-reach a person, and its `admins`, named alike, may change its orgs'
-agents; see `WardrikDaemon.Grants` for what each may do.
+is `false`. A channel's `approvers` decide what an agent waits on in its
+rooms: the people it names, asked directly where the channel can reach a
+person, or `anyone` in the channel; where it names none, whoever asked for
+a turn decides it, and a shell decides the rest. Its `admins`, named
+alike, may change its orgs' agents; see `WardrikDaemon.Grants` for what
+each may do, and `WardrikDaemon.Approvers`.
 The rest of a channel's settings are its adapter's, which reads them; see
 `WardrikChannel`. An agent is offered in a channel's rooms where its file
 names the channel; see `WardrikDaemon.AgentFile`.
+
+`workspace.shared` names the trees agents beyond their owners may mount,
+each with the prefixes of the agents that may `read` it and those that
+may `write` it; an agent still names each tree it mounts in its own file.
+See `WardrikWorkspace.Share`.
+
+    workspace:
+      shared:
+        acme/runbooks:
+          read: ["acme/*"]
+          write: [acme/ops]
 
 `notify` names targets an agent's `notify` routes to, each one a
 `channel` of `channels` and a `room` in it, with who may answer it as
@@ -223,4 +238,4 @@ own configuration may give a module settings of its own under
 `:wardrik_daemon`, which the release reads once as it starts and
 `config.yaml` is merged over:
 
-    config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]
+    config :wardrik_daemon, WardrikVault, shared: ["SEARCH_API_KEY"]

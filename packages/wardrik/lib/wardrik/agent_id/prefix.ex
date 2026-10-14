@@ -7,13 +7,20 @@ defmodule Wardrik.AgentID.Prefix do
   | Text | Covers |
   | --- | --- |
   | `""` | every agent |
-  | `acme/` | acme's agents, its users' included |
+  | `acme/*` | acme's agents and every one of its users', the whole tenant |
+  | `acme/` | acme's own agents, none of its users' |
   | `acme/@jon/` | jon's agents in acme |
   | `acme/triage` | acme's `triage`, for every external ID |
   | `acme/triage/1696.1234` | acme's `triage` for `1696.1234` alone |
 
   A prefix covers an ID where the ID's segments begin with the prefix's, so
-  `acme/triage` covers `acme/triage/1696.1234` and not `acme/triage2`.
+  `acme/triage` covers `acme/triage/1696.1234` and not `acme/triage2`, and
+  where it names the agent's owner whole: an agent that works for a user is
+  under a prefix naming that user, or under every agent's, and never under
+  its org's alone. An org's agents and each of its users' are apart, so
+  whatever reaches one of them reaches none of the others, unless it says it
+  reaches them all: `acme/*` is the tenant, for whatever acts across it, as a
+  tool worker serving every agent in it, or an operator looking over it.
   """
 
   alias Wardrik.AgentID
@@ -42,6 +49,17 @@ defmodule Wardrik.AgentID.Prefix do
     end
   end
 
+  @doc """
+  The tenant `org`: its own agents and every one of its users', written
+  `acme/*`.
+  """
+  @spec tenant(term()) :: {:ok, t()} | {:error, String.t()}
+  def tenant(org), do: written([Segment.to_segment(org), "*"])
+
+  @doc "`tenant/1`, raising `ArgumentError` where it answers an error."
+  @spec tenant!(term()) :: t()
+  def tenant!(org), do: ok!(tenant(org))
+
   @doc "`new/1`, raising `ArgumentError` where it answers an error."
   @spec new!(keyword()) :: t()
   def new!(opts), do: ok!(new(opts))
@@ -49,6 +67,13 @@ defmodule Wardrik.AgentID.Prefix do
   @doc "The agent `id` names, with every external ID it answers for."
   @spec of(AgentID.t()) :: t()
   def of(%AgentID{} = id), do: %__MODULE__{segments: AgentID.segments(id)}
+
+  @doc """
+  The agents of `id`'s owner: its org's own, or those of the user in it it
+  works for.
+  """
+  @spec owner(AgentID.t()) :: t()
+  def owner(%AgentID{org: org, user: user}), do: new!(org: org, user: user)
 
   @doc "The org whose agents `prefix` is under, or `nil` for every agent."
   @spec org(t()) :: String.t() | nil
@@ -60,18 +85,34 @@ defmodule Wardrik.AgentID.Prefix do
   def user(%__MODULE__{segments: [_org, "@" <> user | _rest]}), do: user
   def user(%__MODULE__{}), do: nil
 
-  @doc "Whether `id`, or every agent under another prefix, is under `prefix`."
+  @doc """
+  Whether `id`, or every agent under another prefix, is under `prefix`: its
+  segments begin with the prefix's, and the prefix names its owner whole,
+  the org and the user it works for, where it works for one. Every agent is
+  under `all/0`.
+  """
   @spec covers?(t(), AgentID.t() | t()) :: boolean()
   def covers?(%__MODULE__{segments: segments}, %AgentID{} = id),
-    do: List.starts_with?(AgentID.segments(id), segments)
+    do: under?(segments, AgentID.segments(id))
 
   def covers?(%__MODULE__{segments: segments}, %__MODULE__{segments: inner}),
-    do: List.starts_with?(inner, segments)
+    do: under?(segments, inner)
+
+  defp under?([], _inner), do: true
+  defp under?([org, "*"], inner), do: List.starts_with?(inner, [org])
+
+  defp under?(segments, inner),
+    do: List.starts_with?(inner, segments) and List.starts_with?(segments, owned(inner))
+
+  defp owned([org, "*" | _rest]), do: [org, "*"]
+  defp owned([org, "@" <> _user = user | _rest]), do: [org, user]
+  defp owned([org | _rest]), do: [org]
+  defp owned([]), do: []
 
   @doc """
-  The prefix `text` writes: `""` for every agent, `acme` or `acme/` for an
-  org's, `acme/@jon` or `acme/@jon/` for one user's, or an ID for that agent
-  and every external ID it answers for.
+  The prefix `text` writes: `""` for every agent, `acme/*` for a tenant,
+  `acme` or `acme/` for an org's own, `acme/@jon` or `acme/@jon/` for one
+  user's, or an ID for that agent and every external ID it answers for.
   """
   @spec parse(String.t()) :: {:ok, t()} | {:error, String.t()}
   def parse(""), do: {:ok, all()}
@@ -81,6 +122,7 @@ defmodule Wardrik.AgentID.Prefix do
 
     case String.split(trimmed, "/") do
       [org] -> scoped([org], text)
+      [org, "*"] -> scoped([org, "*"], text)
       [org, "@" <> _user = user] -> scoped([org, user], text)
       _id -> agent(AgentID.parse(trimmed), text)
     end
@@ -102,6 +144,7 @@ defmodule Wardrik.AgentID.Prefix do
     case String.split(text, "/") do
       ["@" <> _user, ""] -> AgentID.in_org(text, org, &parse/1)
       [_org, ""] -> parse(text)
+      [_org, "*"] -> parse(text)
       [_org, "@" <> _user, ""] -> parse(text)
       _id -> with {:ok, id} <- AgentID.expand(text, org), do: {:ok, of(id)}
     end
@@ -110,6 +153,7 @@ defmodule Wardrik.AgentID.Prefix do
   @doc false
   @spec patterns(t()) :: [:all | String.t()]
   def patterns(%__MODULE__{segments: []}), do: [:all]
+  def patterns(%__MODULE__{segments: [org, "*"]}), do: [org <> "/"]
 
   def patterns(%__MODULE__{segments: segments} = prefix) do
     case kind(segments) do
@@ -129,6 +173,7 @@ defmodule Wardrik.AgentID.Prefix do
   defp agent({:error, _message}, text), do: {:error, not_a_prefix(text)}
 
   defp written([org] = segments), do: checked(segments, [org])
+  defp written([org, "*"] = segments), do: checked(segments, [org])
   defp written([org, "@" <> user] = segments), do: checked(segments, [org, user])
 
   defp checked(segments, plain) do
@@ -145,12 +190,13 @@ defmodule Wardrik.AgentID.Prefix do
   defp ok!({:error, message}), do: raise(ArgumentError, message)
 
   defp not_a_prefix(text),
-    do: "#{inspect(text)} is not a prefix; a prefix is org/, org/@user/ or an agent ID"
+    do: "#{inspect(text)} is not a prefix; a prefix is org/*, org/, org/@user/ or an agent ID"
 
   defimpl String.Chars do
     def to_string(%{segments: []}), do: ""
 
     def to_string(%{segments: [_org] = segments}), do: Enum.join(segments ++ [""], "/")
+    def to_string(%{segments: [_org, "*"] = segments}), do: Enum.join(segments, "/")
 
     def to_string(%{segments: [_org, "@" <> _user] = segments}),
       do: Enum.join(segments ++ [""], "/")
