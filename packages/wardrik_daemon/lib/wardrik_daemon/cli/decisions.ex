@@ -37,6 +37,7 @@ defmodule WardrikDaemon.CLI.Decisions do
     [
       %Command{
         name: "parked",
+        group: "Decide",
         summary: "the calls agents are waiting on a person for",
         details: ["With --json, each call as an interrupt, with the agent it is for."],
         run: &parked/2,
@@ -44,6 +45,7 @@ defmodule WardrikDaemon.CLI.Decisions do
       },
       %Command{
         name: "approve",
+        group: "Decide",
         arguments: "[KEY [CALL [NOTE]]]",
         summary: "run a parked call, with a note for the agent",
         count: {0, :any},
@@ -52,6 +54,7 @@ defmodule WardrikDaemon.CLI.Decisions do
       },
       %Command{
         name: "deny",
+        group: "Decide",
         arguments: "[KEY [CALL [REASON]]]",
         summary: "refuse a parked call, saying why",
         count: {0, :any},

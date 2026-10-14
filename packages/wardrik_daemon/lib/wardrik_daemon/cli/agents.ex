@@ -32,6 +32,7 @@ defmodule WardrikDaemon.CLI.Agents do
     [
       %Command{
         name: "ls",
+        group: "Manage agents",
         arguments: "[QUERY]",
         summary: "the agents, or those a query picks",
         details: [
@@ -46,6 +47,7 @@ defmodule WardrikDaemon.CLI.Agents do
       },
       %Command{
         name: "show",
+        group: "Manage agents",
         arguments: "KEY",
         summary: "one agent in full: what it has and what it is doing",
         count: {1, 1},
@@ -53,6 +55,7 @@ defmodule WardrikDaemon.CLI.Agents do
       },
       %Command{
         name: "triggers",
+        group: "Manage agents",
         arguments: "[PREFIX]",
         summary: "when each trigger runs next, and how it last ran",
         count: {0, 1},

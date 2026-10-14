@@ -759,6 +759,10 @@ defmodule WardrikDaemon.CLITest do
       {:ok, text} = unanswered(["help"])
 
       for command <- CLI.commands(), do: assert(text =~ "  #{command.name}")
+
+      groups = CLI.commands() |> Enum.map(& &1.group) |> Enum.dedup()
+      assert groups == Enum.uniq(groups)
+      for group <- groups, do: assert(text =~ "#{group}:\n")
       assert text =~ "Usage: wardrik [--node NAME] COMMAND"
       assert text =~ WardrikDaemon.Config.config_dir()
       assert unanswered([]) == {:ok, text}

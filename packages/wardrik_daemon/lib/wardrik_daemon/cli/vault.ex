@@ -44,6 +44,7 @@ defmodule WardrikDaemon.CLI.Vault do
     [
       %Command{
         name: "vault put",
+        group: "Tokens and secrets",
         arguments: "NAME[=VALUE]...",
         options: "[--org ORG] [--user USER] [--yes]",
         summary: "seal secrets in the vault, asking for a value not given",
@@ -62,6 +63,7 @@ defmodule WardrikDaemon.CLI.Vault do
       },
       %Command{
         name: "vault ls",
+        group: "Tokens and secrets",
         options: "[--org ORG] [--user USER]",
         summary: "the vault's secrets and whose they are, never their values",
         details: [
@@ -75,6 +77,7 @@ defmodule WardrikDaemon.CLI.Vault do
       },
       %Command{
         name: "vault rm",
+        group: "Tokens and secrets",
         arguments: "NAME",
         options: "[--org ORG] [--user USER]",
         summary: "remove a secret from the vault",

@@ -1,7 +1,8 @@
 defmodule WardrikDaemon.CLI.Command do
   @moduledoc """
-  One command `wardrik` takes, defined once: its name, the arguments and
-  options it takes, a line saying what it does, and what runs it.
+  One command `wardrik` takes, defined once: its name, the job it is for, the
+  arguments and options it takes, a line saying what it does, and what runs
+  it.
 
   `WardrikDaemon.CLI.commands/0` lists them, and reading a command's
   arguments, its help and what a mistyped name was probably meant to be all
@@ -22,8 +23,9 @@ defmodule WardrikDaemon.CLI.Command do
 
   alias WardrikConsole.Suggestion
 
-  @enforce_keys [:name, :summary]
+  @enforce_keys [:name, :group, :summary]
   defstruct name: nil,
+            group: nil,
             arguments: "",
             options: "",
             summary: nil,
@@ -48,13 +50,15 @@ defmodule WardrikDaemon.CLI.Command do
           | :error
 
   @typedoc """
-  A command. `:name` is its words, `"token create"`; `:arguments` and
+  A command. `:name` is its words, `"token create"`; `:group` is the job it
+  is listed under, such as `"Decide"`; `:arguments` and
   `:options` are how its usage shows what follows them; `:switches` are its
   options as `OptionParser` reads them; and `:count` is how many words it
   takes after its name, fewest and most, `:any` for no most.
   """
   @type t() :: %__MODULE__{
           name: String.t(),
+          group: String.t(),
           arguments: String.t(),
           options: String.t(),
           summary: String.t(),
@@ -152,11 +156,33 @@ defmodule WardrikDaemon.CLI.Command do
   """
   @spec listing([t()], pos_integer()) :: Owl.Data.t()
   def listing(commands, width) do
-    column = commands |> Enum.map(&String.length(entry(&1))) |> Enum.max()
-    beside? = commands |> Enum.map(&String.length(&1.summary)) |> Enum.max() <= width - column - 4
+    commands |> lines(layout(commands, width)) |> Enum.intersperse("\n")
+  end
+
+  @doc """
+  Commands as `listing/2` gives them, under a heading for each group, in the
+  order the groups first come in, with one column for them all.
+  """
+  @spec grouped([t()], pos_integer()) :: Owl.Data.t()
+  def grouped(commands, width) do
+    layout = layout(commands, width)
 
     commands
-    |> Enum.map(fn command ->
+    |> Enum.chunk_by(& &1.group)
+    |> Enum.map(fn [%__MODULE__{group: group} | _rest] = chunk ->
+      Enum.intersperse([Owl.Data.tag(group <> ":", :bright) | lines(chunk, layout)], "\n")
+    end)
+    |> Enum.intersperse("\n\n")
+  end
+
+  defp layout(commands, width) do
+    column = commands |> Enum.map(&String.length(entry(&1))) |> Enum.max()
+    beside? = commands |> Enum.map(&String.length(&1.summary)) |> Enum.max() <= width - column - 4
+    {column, beside?}
+  end
+
+  defp lines(commands, {column, beside?}) do
+    Enum.map(commands, fn command ->
       name = ["  ", Owl.Data.tag(command.name, :bright), rest(command)]
 
       if beside?,
@@ -167,7 +193,6 @@ defmodule WardrikDaemon.CLI.Command do
         ],
         else: [name, "\n      ", command.summary]
     end)
-    |> Enum.intersperse("\n")
   end
 
   defp entry(command), do: command.name <> rest(command)

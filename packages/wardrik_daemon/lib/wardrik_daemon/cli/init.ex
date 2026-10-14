@@ -90,6 +90,7 @@ defmodule WardrikDaemon.CLI.Init do
   def command do
     %Command{
       name: "init",
+      group: "Set up",
       options:
         "[--provider P] [--model M] [--agent NAME] [--key-from-env VAR] [--yes] " <>
           "[--no-service] [--no-ask]",

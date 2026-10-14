@@ -32,6 +32,7 @@ defmodule WardrikDaemon.CLI.Tokens do
     [
       %Command{
         name: "token create",
+        group: "Tokens and secrets",
         arguments: "NAME",
         options:
           "(--scope PREFIX | --all) [--can ACTIONS] [--policy NAME | --unlimited] [--for NAME]",
@@ -56,9 +57,15 @@ defmodule WardrikDaemon.CLI.Tokens do
         count: {1, 1},
         run: &create/2
       },
-      %Command{name: "token list", summary: "the HTTP API's tokens", run: &list/2},
+      %Command{
+        name: "token list",
+        group: "Tokens and secrets",
+        summary: "the HTTP API's tokens",
+        run: &list/2
+      },
       %Command{
         name: "token revoke",
+        group: "Tokens and secrets",
         arguments: "ID",
         summary: "stop a token working",
         count: {1, 1},
