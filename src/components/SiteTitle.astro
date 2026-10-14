@@ -1,0 +1,8 @@
+---
+// The wordmark: Wardrik in Geist, its i's dot in Ember (see brand.css).
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title" aria-label={siteTitle} translate="no">
+	<span aria-hidden="true">Wardr<span class="wordmark-i">i</span>k</span>
+</a>

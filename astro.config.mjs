@@ -4,7 +4,7 @@ import starlight from '@astrojs/starlight';
 import { ExpressiveCodeTheme } from '@astrojs/starlight/expressive-code';
 import { defineConfig } from 'astro/config';
 
-// Code reads as the terminal does, on its dark ground, in light and dark alike.
+// Code sits on one dark ground, in light and dark alike.
 const terminal = ExpressiveCodeTheme.fromJSONString(
 	readFileSync(new URL('./src/styles/terminal-theme.json', import.meta.url), 'utf-8'),
 );
@@ -19,7 +19,7 @@ export default defineConfig({
 		starlight({
 			title: 'Wardrik',
 			description: 'An agent runtime built on OTP.',
-			logo: { light: './src/assets/mark-light.svg', dark: './src/assets/mark-dark.svg' },
+			components: { SiteTitle: './src/components/SiteTitle.astro' },
 			customCss: ['./src/styles/brand.css'],
 			expressiveCode: {
 				themes: [terminal],
@@ -27,16 +27,19 @@ export default defineConfig({
 				// A command is code like any other: no terminal window around it.
 				defaultProps: { frame: 'code' },
 				styleOverrides: {
-					borderRadius: '4px',
-					borderColor: '#1d2a31',
-					codeFontFamily: "'IBM Plex Mono', ui-monospace, monospace",
-					uiFontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+					borderRadius: '8px',
+					borderColor: '#23272e',
+					codeFontFamily: "'Geist Mono', ui-monospace, monospace",
+					codeFontSize: '0.84375rem',
+					uiFontFamily: "'Geist Sans', system-ui, sans-serif",
 					frames: {
 						shadowColor: 'transparent',
 						frameBoxShadowCssValue: 'none',
-						editorTabBarBackground: '#151d21',
-						editorActiveTabBackground: '#10181d',
-						editorTabBarBorderBottomColor: '#1d2a31',
+						editorTabBarBackground: '#0f1115',
+						editorActiveTabBackground: '#0f1115',
+						editorActiveTabForeground: '#9aa3ae',
+						editorActiveTabIndicatorBottomColor: 'transparent',
+						editorTabBarBorderBottomColor: '#22262d',
 					},
 				},
 			},
