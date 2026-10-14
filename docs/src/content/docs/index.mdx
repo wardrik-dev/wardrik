@@ -70,7 +70,7 @@ Text an agent reads can't override your policy.
 
 ### It survives a crashed server
 
-Kill a node mid-call. The agent resumes elsewhere, and the call runs once.
+Kill a node mid-call. The call still runs once.
 
 ```shellsession del={3} mark={5} ins={7}
 [it] laptop for Ana...
@@ -89,7 +89,7 @@ $ kill -9 "$(wardrik pid --node c)"
 
 ### Thousands of agents
 
-Idle agents sleep, and wake when asked. Run one per customer.
+Idle agents sleep. Run one per customer.
 
 ```http
 GET /v1/deployment/nodes
@@ -153,7 +153,7 @@ channels:
 
 ### Tools in your own code
 
-Tools run in your app, with your keys. MCP servers work too.
+Your code, your keys. MCP servers work too.
 
 ```ts
 wardrik.tool({
@@ -170,7 +170,7 @@ wardrik.tool({
 
 ### Scoped tokens
 
-A token reaches one org's agents, and what it defines stays inside its policy.
+Scoped to one org, capped by a policy.
 
 ```sh
 wardrik token create ci \
@@ -184,7 +184,7 @@ wardrik token create ci \
 
 ### A vault, sealed per person
 
-Secrets are sealed with AES-256-GCM, per user or org. One person's agents never read another's.
+Sealed with AES-256-GCM, per user or org.
 
 ```yaml
 mcp:
@@ -202,7 +202,7 @@ vault:
 
 ### Budgets
 
-A daily cap in dollars and tokens. When it runs out, the agent asks, and approving grants more.
+Daily caps in dollars and tokens. Then it asks.
 
 ```yaml
 budget:
