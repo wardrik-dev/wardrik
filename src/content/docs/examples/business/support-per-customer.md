@@ -93,7 +93,7 @@ await wardrik.work();
 ```
 
 - `agent.user` is the customer the agent works for, taken from its key, never from what the model
-  wrote. See [Whose call it is](/build/tool-workers/#whose-call-it-is).
+  wrote. See [Whose call it is](/build/write-tools/#whose-call-it-is).
 - `refund_order` changes something, so it's [gated](/concepts/rules/#gated-tools): only the policy's
   `allow` lets small refunds through.
 

@@ -108,11 +108,15 @@ wardrik doctor
 
 ### The status page
 
-Statuspage has no MCP server, so a few lines of your own code post to it:
+Statuspage has no MCP server, so a small app of your own posts to it, with the
+[TypeScript SDK](/build/tool-workers/):
 
 ```ts title="statuspage.ts"
 import { Wardrik } from "@wardrik/sdk";
 import { z } from "zod";
+
+const page = process.env.STATUSPAGE_PAGE_ID;
+const key = process.env.STATUSPAGE_API_KEY;
 
 const wardrik = new Wardrik({ name: "statuspage" });
 
@@ -120,30 +124,42 @@ wardrik.tool({
   name: "post_status",
   description: "Open an incident on the public status page, with its first update.",
   input: z.object({
-    name: z.string(),
+    name: z.string().describe("The incident's title, as customers see it"),
     status: z.enum(["investigating", "identified", "monitoring", "resolved"]),
-    body: z.string(),
+    body: z.string().describe("The first update, in plain words"),
   }),
-  run: (incident) =>
-    fetch(`https://api.statuspage.io/v1/pages/${process.env.STATUSPAGE_PAGE_ID}/incidents`, {
+  run: async (incident, { signal }) => {
+    const url = `https://api.statuspage.io/v1/pages/${page}/incidents`;
+    const response = await fetch(url, {
       method: "POST",
-      headers: {
-        authorization: `OAuth ${process.env.STATUSPAGE_API_KEY}`,
-        "content-type": "application/json",
-      },
+      headers: { authorization: `OAuth ${key}`, "content-type": "application/json" },
       body: JSON.stringify({ incident }),
-    }).then((response) => response.json()),
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Statuspage answered ${response.status}: ${await response.text()}`);
+    }
+
+    const { id, shortlink } = await response.json();
+    return { id, shortlink };
+  },
 });
 
 await wardrik.work();
 ```
+
+Give it a token that serves acme's agents, and run it:
 
 ```sh
 wardrik token create statuspage --scope acme/ --can serve
 WARDRIK_TOKEN=wardrik_... node statuspage.ts
 ```
 
-It isn't `readOnly`, so every post [waits for a person](/concepts/rules/#gated-tools).
+- It isn't `readOnly`, so every post [waits for a person](/concepts/rules/#gated-tools).
+- The Statuspage key stays in this app. The daemon never sees it.
+- [Your first tool, end to end](/build/first-tool/) builds this app from an empty folder and runs
+  it as a service. To run it on another machine or in a container, see
+  [Host your tools](/build/host-tools/).
 
 ### The policy
 

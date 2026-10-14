@@ -46,7 +46,7 @@ acme/triage/<trace>/<span>/<round>/<call>
 
 A tool with an outside effect passes the key on, so the system it calls doesn't repeat the effect
 either. A payment provider, for one, takes it as its own idempotency key. A
-[tool worker](/build/tool-workers/) receives it with each call.
+[tool worker](/build/write-tools/#running-a-call-twice) receives it with each call.
 
 ## A history that grows
 

@@ -37,7 +37,7 @@ Approving grants another limit's worth, or `grant`. `on_exhausted: deny` ends th
   budget refuses a model the catalog can't price; a token budget governs it, or a model a
   subscription pays for.
 - A tool call counts its cost, failed or not: what the tool reports, as a
-  [tool worker](/build/tool-workers/) can, or the price `config.yaml` lists under
+  [tool worker](/build/write-tools/#what-a-call-cost) can, or the price `config.yaml` lists under
   [`tools`](/reference/config/#tools). Tool calls are counted, never refused.
 - Each call's event carries what was counted, as `cost` on
   [`message.completed`](/reference/events/#wardrikmessagecompleted) and

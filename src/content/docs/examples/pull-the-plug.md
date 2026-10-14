@@ -138,7 +138,7 @@ It restarts on another node, idle. No call arrives: the stop is in the store.
 - **The ledger.** A finished call is never run twice. See
   [The ledger](/concepts/durable-runs/#the-ledger).
 - **Idempotency keys.** A retry carries the same key. See
-  [Running a call twice](/build/tool-workers/#running-a-call-twice).
+  [Running a call twice](/build/write-tools/#running-a-call-twice).
 - **Quorum.** With the store on the nodes, two of three carry on. See [Run a cluster](/run/cluster/).
 
 ## Details

@@ -131,7 +131,7 @@ await wardrik.work();
 - `readOnly` tools change nothing. The other two are [gated](/concepts/rules/#gated-tools): each
   call waits on a person unless a rule allows it by name.
 - `cost` reports what the paid keyword API charged; the budget counts it. See
-  [What a call cost](/build/tool-workers/#what-a-call-cost).
+  [What a call cost](/build/write-tools/#what-a-call-cost).
 - `idempotencyKey` goes to the platform, so a call run again after a lost node changes nothing
   twice.
 
