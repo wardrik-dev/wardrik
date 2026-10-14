@@ -93,7 +93,7 @@ belongs to an org, or to one of its users, is kept to their agents:
 - the vault's credentials put for the org or one of its users, and the accounts they connect: an
   agent reads its own owner's alone, never its org's for a user's agent;
 - what people in a channel may read and message: the agents of the orgs it offers, none of their
-  users' but those whose files name the channel;
+  users';
 - MCP servers and notice targets, which serve the deployment's org unless `config.yaml` names
   others.
 

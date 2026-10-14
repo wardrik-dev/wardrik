@@ -121,41 +121,6 @@ defmodule WardrikDaemon.GrantsTest do
     assert [%Grant{can: [:read, :message, :decide, :define], ceiling: [_ | _]}] = in_chat("U1")
   end
 
-  test "a user's agent the channel offers is reached as the org's, but never to define",
-       %{dir: dir} do
-    org = "offered-#{System.unique_integer([:positive])}"
-
-    channel(
-      orgs: [chat: [org]],
-      approvers: [chat: %WardrikDaemon.Approvers.Named{names: ["U2"]}],
-      admins: [chat: ["U1"]]
-    )
-
-    File.mkdir_p!(Path.join(dir, "agents"))
-
-    File.write!(
-      Path.join([dir, "agents", "digest.md"]),
-      "---\norg: #{org}\nuser: jon\nchannels: [chat]\n---\nDigest.\n"
-    )
-
-    File.write!(
-      Path.join([dir, "agents", "notes.md"]),
-      "---\norg: #{org}\nuser: ann\n---\nNotes.\n"
-    )
-
-    Host.start_agents(dir)
-    _files = Agents.files(Host.agents())
-
-    assert can(in_chat("U3")) == [
-             {"#{org}/", [:read, :message]},
-             {"#{org}/@jon/digest", [:read, :message]}
-           ]
-
-    assert {"#{org}/@jon/digest", [:read, :message, :decide]} in can(in_chat("U2"))
-    assert {"#{org}/@jon/digest", [:read, :message, :decide]} in can(in_chat("U1"))
-    refute Enum.any?(in_chat("U1"), &Grant.covers?(&1, AgentID.parse!("#{org}/@ann/notes")))
-  end
-
   test "anyone else holds nothing" do
     for type <- [:oauth, :webhook, :agent, :user] do
       assert Grants.grants(grants(), Principal.new(type, "acme/x")) == []
