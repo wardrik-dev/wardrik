@@ -169,13 +169,14 @@ defmodule WardrikDaemon.CLI.Vault do
   defp seal(vault, pairs, {kind, owner}, notes, opts) do
     by = opts[:by]
     audit = Wardrik.Host.audit(opts[:caller].host)
+    live? = WardrikVault.ready?(Wardrik.Host.credentials(opts[:caller].host))
 
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
       case WardrikVault.put(vault, name, owner, value: value) do
         :ok ->
           :ok = Audit.record(audit, {:secret_stored, name, prefix(owner)}, by: by)
-          {:cont, [sealed(kind, name, owner) | lines]}
+          {:cont, [sealed(kind, name, owner, live?) | lines]}
 
         {:error, reason} ->
           {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
@@ -187,14 +188,17 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(:deployment, name, nil) do
+  defp sealed(:deployment, name, nil, live?) do
     cond do
       System.get_env(name) ->
         "Sealed #{name}. The daemon's environment sets #{name} too, which ${#{name}} and " <>
           "model providers read before the vault."
 
-      Secrets.key?(name) ->
+      Secrets.key?(name) and live? ->
         "Sealed #{name}. Model calls read it now."
+
+      Secrets.key?(name) ->
+        "Sealed #{name}. Model calls read it once the daemon restarts."
 
       read_at_start?(name) ->
         "Sealed #{name}. config.yaml's ${#{name}} reads it when the daemon next starts."
@@ -204,7 +208,7 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(_kind, name, owner), do: "Sealed #{name} for #{shown(owner)}."
+  defp sealed(_kind, name, owner, _live?), do: "Sealed #{name} for #{shown(owner)}."
 
   # -- the key -----------------------------------------------------------------
 

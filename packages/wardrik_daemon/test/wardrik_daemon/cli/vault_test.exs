@@ -260,6 +260,17 @@ defmodule WardrikDaemon.CLI.VaultTest do
                {"Made a vault key, in #{dir}/vault_key.\n" <> restart() <> "Sealed #{name}.\n", 0}
     end
 
+    test "says model calls read a key it seals once the daemon restarts with the key it made" do
+      previous = System.get_env("ANTHROPIC_API_KEY")
+      System.delete_env("ANTHROPIC_API_KEY")
+      on_exit(fn -> if previous, do: System.put_env("ANTHROPIC_API_KEY", previous) end)
+
+      {output, 0} = command(["vault", "put", "ANTHROPIC_API_KEY=sk-ant", "--yes"])
+
+      assert output =~
+               "Sealed ANTHROPIC_API_KEY. Model calls read it once the daemon restarts.\n"
+    end
+
     test "says how to give it one where no one can answer", %{name: name} do
       {output, 1} = live(["vault", "put", name], "piped\n", piped: true)
 
