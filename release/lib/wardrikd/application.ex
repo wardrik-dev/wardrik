@@ -1,33 +1,21 @@
 defmodule Wardrikd.Application do
   @moduledoc """
-  The daemon's tree, started once every package's application is running.
+  The release's tree, started once every package's application is running.
 
   Core's own application would start the store as it boots, before the
   applications of a store kept elsewhere, such as Postgres through
   wardrik_ecto, have started. The release's application depends on all of
-  them, so starting Wardrik here starts it last.
+  them, so starting the store here starts it last.
 
-  What runs on the fleet starts after it, so once the fleet is up, and goes
-  with it: `WardrikPolicy.Supervisor` keeps the budgets, `WardrikTrigger`
-  runs the triggers, `WardrikHTTP.Access` keeps what tokens grant,
-  `WardrikHTTP.Workers` the tool workers' group, and `WardrikDaemon` the
-  rest. `WardrikDaemon.Cluster` connects this node to the others before the
-  fleet starts.
-
-  The store `config.yaml`'s `storage` names starts first, and
-  `WardrikDaemon.Host` holds the host after it, for the commands that reach
-  the node over rpc while the rest starts. Core and the daemon are handed
-  one `Wardrik.Host`, keeping everything in that store: `WardrikDaemon.Agents`
-  is where every surface's definitions go, `WardrikOAuth.Connections` offers
-  the accounts people and orgs connect, `WardrikHTTP.Tokens` makes the HTTP
-  API's tokens, `WardrikTrigger` takes the requests from outside that
-  triggers are sent, checked with secrets the vault holds for the agent's
-  user, org or deployment, else the environment's, and
-  `WardrikDaemon.Grants` says what each principal may do.
-
-  The store, and whether tool workers' answers are the deployment's own, are
-  what `config/runtime.exs` read of `config.yaml` as the node booted; see
-  `WardrikDaemon.Config.boot/1`.
+  What `config/runtime.exs` read of `config.yaml` as the node booted, the
+  store, the cluster and the HTTP API's settings, and what the release's
+  own configuration says of each module, are read here once, and handed
+  down: the store `storage` names starts first; `WardrikDaemon.Boot` holds it
+  and the cluster's settings, for the commands that reach the node over rpc
+  while it waits; `WardrikDaemon.Cluster` connects this node to the others,
+  and `WardrikDaemon.Cluster.Quorum` waits for enough of them; then
+  `WardrikDaemon.Tree` reads the rest of `config.yaml`, builds the host and
+  starts core and the daemon. See `WardrikDaemon.Config.boot/1`.
 
   `DurableServer`, which runs the fleet, the triggers and the budgets, logs
   its warnings and errors alone: at `info` it writes a line every few seconds
@@ -39,30 +27,16 @@ defmodule Wardrikd.Application do
   @impl Application
   def start(_type, _args) do
     :ok = Logger.put_application_level(:durable_server, :warning)
-    http = WardrikDaemon.Config.settings(WardrikHTTP)
-
-    store = WardrikStore.new(WardrikDaemon.Config.settings(WardrikStore))
-
-    host =
-      Wardrik.Host.new(
-        store: store,
-        definitions: WardrikDaemon.Agents,
-        connections: WardrikOAuth.Connections,
-        tokens: WardrikHTTP.Tokens,
-        triggers: WardrikTrigger,
-        grants: WardrikDaemon.Grants
-      )
+    base = Application.get_all_env(:wardrik_daemon)
+    store = WardrikStore.new(Keyword.get(base, WardrikStore, []))
+    cluster = Keyword.get(base, WardrikDaemon.Cluster, [])
 
     children = [
       {WardrikStore, store},
-      {WardrikDaemon.Host, host},
-      {Wardrik,
-       cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}], host: host},
-      {WardrikPolicy.Supervisor, store: store},
-      {WardrikTrigger, store: store, secrets: &WardrikDaemon.Secrets.for_agent(store, &1, &2)},
-      {WardrikHTTP.Access, store: store},
-      {WardrikHTTP.Workers, trusted: Keyword.get(http, :trusted_workers, false)},
-      {WardrikDaemon, host: host}
+      {WardrikDaemon.Boot, store: store, cluster: cluster},
+      {WardrikDaemon.Cluster, cluster},
+      {WardrikDaemon.Cluster.Quorum, store: store, cluster: cluster},
+      {WardrikDaemon.Tree, store: store, base: base}
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrikd.Supervisor)
