@@ -75,7 +75,7 @@ of them. A worker that goes away takes its tools with it, until it connects agai
 | `name` | the tool's name: letters, digits, `_` and `-`, up to 55. The daemon leaves out a tool whose name is not |
 | `description` | what the model is told the tool does |
 | `input` | a schema for its arguments, such as a `zod` object, sent to the model as JSON Schema |
-| `readOnly` | whether it changes nothing. A tool that is not read-only is [gated](/concepts/policy/#gated-tools): a call to it asks a person unless a policy allows it by name |
+| `readOnly` | whether it changes nothing. A tool that is not read-only is [gated](/concepts/rules/#gated-tools): a call to it asks a person unless a policy allows it by name |
 | `idempotent` | whether running a call twice is safe; see below |
 | `run` | the function, given the arguments, and `{ agent, run, idempotencyKey, signal, cost }` |
 
@@ -110,7 +110,7 @@ call can be matched with the turn it belongs to.
 ### What a call cost
 
 A call to a paid API can say what it cost, in US dollars, with `cost`. The call's
-`tool_call.completed` event carries it, and the agent's [budget](/concepts/policy/#budgets) counts
+`tool_call.completed` event carries it, and the agent's [budget](/concepts/budgets/) counts
 it. Said more than once, the amounts add up, and a call that throws after saying it is reported
 failed at what it said, since a paid API may charge for a call that fails.
 
@@ -169,7 +169,7 @@ http:
 ```
 
 Without it, a turn that has called a worker waits on a person before a gated tool's call runs. See
-[Content from outside](/concepts/policy/#content-from-outside).
+[Content from outside](/concepts/outside-content/).
 
 ## Driving agents too
 

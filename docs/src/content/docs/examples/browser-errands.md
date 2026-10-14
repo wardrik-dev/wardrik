@@ -15,7 +15,7 @@ The browser is Playwright's MCP server, which the daemon runs as a command.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
 - Node, for `npx`, and Chrome, which `npx playwright install chrome` installs where it is not
   already;
 - somewhere to approve from: `wardrik approve` in a shell, the
@@ -138,15 +138,15 @@ steer a click towards.
 ## What it shows
 
 - **Content from outside.** Whatever a page says, a gated call after reading it waits on a person,
-  who sees the call it is. See [Content from outside](/concepts/policy/#content-from-outside).
+  who sees the call it is. See [Content from outside](/concepts/outside-content/).
 - **Gated tools.** `gated` in `config.yaml` makes a server's tools wait unless a rule allows them
   by name, so a policy written later with `default: allow` cannot let them through. See
-  [Gated tools](/concepts/policy/#gated-tools).
+  [Gated tools](/concepts/rules/#gated-tools).
 - **Narrowing a server.** `except` leaves tools out altogether, by the names the server gives them.
   See [Connect MCP servers](/build/mcp/#giving-an-agent-the-tools).
 - **A parked turn waits.** It does not time out, and an agent's `timeout` starts again when it
   carries on, so an errand can wait for you through a meeting. See
-  [Waiting on a person](/concepts/policy/#waiting-on-a-person).
+  [Waiting on a person](/concepts/approvals/).
 
 ## Taking it further
 

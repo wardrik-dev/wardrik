@@ -111,7 +111,7 @@ A call an `allow` rule names is allowed by name. A gated tool, one that may chan
 as opening an issue, waits on a person unless its call is allowed by name, so `default: allow` alone
 never lets it run. An MCP server's or a tool worker's tools are gated unless they are marked
 read-only, and a server's `gated` in `config.yaml` decides instead; see
-[Gated tools](/concepts/policy/#gated-tools).
+[Gated tools](/concepts/rules/#gated-tools).
 
 ## After content from outside
 
@@ -191,4 +191,4 @@ or deny, and otherwise says nothing.
 A call's arguments may be written by what the run read, and so written to fool the judge. A judge is
 a second opinion beside the rules, not a replacement for them; try its thresholds on calls like the
 agent's before trusting them. See [Judged
-calls](/concepts/policy/#judged-calls).
+calls](/concepts/judges/).

@@ -122,11 +122,11 @@ an org's or a user's, or an account each user connects; see [Connect accounts](/
 - A tool the server does not mark read-only, with MCP's `readOnlyHint`, is gated: its calls wait on
   a person unless a policy's `allow` rule names them. `gated` decides instead: the tools that are,
   `true` for all of them, or `false` for none. A name ending in `*` names every tool it begins. See
-  [Gated tools](/concepts/policy/#gated-tools).
+  [Gated tools](/concepts/rules/#gated-tools).
 - `trusted: true` says the server's answers are the deployment's own. Without it, what a server
   returns is content from outside, and a turn that has read it, and every turn of that agent after
   it, waits on a person before a gated tool's call runs. See
-  [Content from outside](/concepts/policy/#content-from-outside).
+  [Content from outside](/concepts/outside-content/).
 
 ```yaml
 mcp:

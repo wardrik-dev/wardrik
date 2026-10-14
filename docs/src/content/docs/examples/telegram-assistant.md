@@ -16,7 +16,7 @@ Telegram for your messages and dials the daemon's HTTP API on loopback.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one, and a key for
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one, and a key for
   `web_search`;
 - Node 22.18 or later, for the bridge;
 - a Telegram bot. Message [@BotFather](https://t.me/BotFather), send `/newbot`, and keep the token
@@ -140,10 +140,10 @@ A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardri
 - **One tool allowed after the web.** An agent that reads what strangers wrote, knows about you,
   and can change things needs a person for the last of those. `message_me` only reaches you, so
   `allow_after` lets it through; any gated tool you add later still asks. See
-  [Allowing after content from outside](/concepts/policy/#allowing-after-content-from-outside).
+  [Allowing after content from outside](/concepts/outside-content/#allowing-after-content-from-outside).
 - **An allowance.** Past two dollars in a day, its next model call waits on you, with "This agent
   has spent $2.01 of $2.00 today. Approve to allow $2.00 more." See
-  [Budgets](/concepts/policy/#budgets).
+  [Budgets](/concepts/budgets/).
 - **A token for one job.** The bridge cannot reach another user's agents or define new ones, and
   revoking its token closes its streams and its worker's connection. See
   [Tokens](/run/security/#tokens).

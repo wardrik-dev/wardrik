@@ -43,6 +43,7 @@ defmodule WardrikPolicy.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:makeup_syntect, "~> 0.1", only: :dev, runtime: false},
       sibling(:wardrik),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}

@@ -187,7 +187,7 @@ as a sleeping agent wakes, and a turn already running finishes with what it star
 `wardrik clear AGENT` empties the conversation of an agent that is not running a turn or waiting on
 a person, keeping its files, triggers and config. It is how an agent that read content from outside
 is rid of it: until then, its gated tools ask a person on every turn. See
-[Policy and approvals](/concepts/policy/#content-from-outside).
+[Policy and approvals](/concepts/outside-content/).
 
 ## In a cluster
 
