@@ -49,8 +49,7 @@ defmodule Wardrik.Host do
   The host travels with the work, never with what is stored: each
   `Wardrik.Caller` carries it to the operation it calls, and each agent is
   handed it as it starts, wakes or restarts on another node (see
-  `Wardrik.Agent`), so several Wardrik instances on one node each answer
-  with their own.
+  `Wardrik.Agent`). A node runs one `Wardrik`, so one host; see `Wardrik`.
 
   A caller is made here for someone known by a principal, holding the grant
   the host's `Wardrik.Grants` gives them, or for someone who holds the node:
@@ -181,7 +180,7 @@ defmodule Wardrik.Host do
   @doc """
   The name of the `Wardrik.Audit` log `Wardrik` starts for this host, which
   surfaces record changes in; `Wardrik.Audit` unless `:audit` names
-  another, as a second instance on one node does.
+  another.
   """
   @spec audit(t()) :: GenServer.name()
   def audit(%__MODULE__{audit: audit}), do: audit

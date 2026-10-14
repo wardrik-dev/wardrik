@@ -57,7 +57,11 @@ defmodule Wardrik do
 
   Nothing of the host, its store included, is kept where a node finds it:
   it travels in the options of what is started with it, and in each
-  `Wardrik.Caller`, so two instances on one node each answer with their own.
+  `Wardrik.Caller`.
+
+  A node runs one `Wardrik`: core's own processes, as the event bus, the
+  event log and the tool runner, are registered under their module names.
+  To run several on one machine, run several nodes.
 
   ## Options
 
