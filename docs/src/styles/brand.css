@@ -618,6 +618,13 @@ site-search button {
 	background: var(--sl-color-gray-6);
 }
 
+.sl-markdown-content .hijack-rule {
+	padding-inline: 1rem;
+	font-size: 0.8125rem;
+	color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content .hijack-rule code,
 .sl-markdown-content .hijack-call code {
 	padding: 0;
 	border: 0;
