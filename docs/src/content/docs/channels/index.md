@@ -97,7 +97,8 @@ channels:
 ```
 
 Everyone in a channel may read and message the agents of the orgs it offers, and none of their
-users' agents. See `WardrikDaemon.Grants` for what each person may do.
+users' agents, but for a user's agent whose file names the channel: that one is reached as the org's
+are, its approvers deciding what it waits on, and nobody in the channel may redefine it. See `WardrikDaemon.Grants` for what each person may do.
 
 ## Notices in a room
 

@@ -29,7 +29,9 @@ defmodule WardrikDaemon.Grants do
           approvers: ["@maria", "ana@example.com"]   # or: anyone
 
   A grant reaches the agents of the channel's orgs, and none of their
-  users': see `Wardrik.AgentID.Prefix`.
+  users' (see `Wardrik.AgentID.Prefix`), but for a user's agent the channel
+  offers, whose file names the channel: each holds a grant on it as on the
+  org's, but to define it, which is its owner's alone.
   """
 
   alias Wardrik.AgentID.Prefix
@@ -76,10 +78,24 @@ defmodule WardrikDaemon.Grants do
         true -> {@everyone, []}
       end
 
-    for scope <- scopes(agents, channel) do
-      {:ok, grant} = Grant.new(scope, can, ceiling)
-      grant
-    end
+    orgs = scopes(agents, channel)
+
+    for(scope <- orgs, do: grant(scope, can, ceiling)) ++
+      for scope <- offered(agents, channel, orgs), do: grant(scope, can -- [:define], [])
+  end
+
+  defp grant(scope, can, ceiling) do
+    {:ok, grant} = Grant.new(scope, can, ceiling)
+    grant
+  end
+
+  # The agents the channel offers that its orgs' scopes do not reach, as a
+  # user's agent whose file names the channel: each its own scope, which no
+  # one in the channel may define.
+  defp offered(agents, channel, orgs) do
+    for %WardrikChannel.Offer{agent: id} <- Agents.offered(agents, channel),
+        not Enum.any?(orgs, &Prefix.covers?(&1, id)),
+        do: Prefix.of(id)
   end
 
   defp granted(_type, _principal, _grants), do: []
