@@ -17,14 +17,15 @@ Wardrik.LLM.Config.new(tools: [WardrikBrave.WebSearch])
 The agent calls it as `web_search`. Results are kept small, since each one
 becomes part of the turn that asked for it.
 
-Its key is the credential `BRAVE_API_KEY`, which the scope's
-`Wardrik.Credential` resolver resolves for each call. With
+Its key is the credential `BRAVE_API_KEY`, which the host's
+`Wardrik.Credentials` resolve for each call. With
 [wardrik_vault](../wardrik_vault) that is the deployment's secret of that name
 (`wardrik vault put BRAVE_API_KEY`), or the environment variable where the
-vault holds none and is started to read it:
+vault holds none and is made to read it:
 
 ```elixir
-children = [Wardrik, {WardrikVault, keys: [key], environment: ["BRAVE_API_KEY"]}]
+vault = WardrikVault.new(store: store, keys: [key], environment: ["BRAVE_API_KEY"])
+host = Wardrik.Host.new(store: store, credentials: vault)
 ```
 
 The pages it returns are ones anyone could have written, so a search is

@@ -10,20 +10,24 @@ defmodule WardrikMCP.ExpiryTest do
 
   defmodule Vault do
     @moduledoc false
-    @behaviour Wardrik.Credential
+    defstruct []
 
-    @impl true
     def resolve("stub", %Wardrik.Call{scope: scope}) do
       user = Scope.agent_id(scope).user
       {:ok, Credential.secret("token-#{user}", owner: user)}
     end
 
-    @impl true
     def refused(ref, %Wardrik.Call{scope: scope}) do
       user = Scope.agent_id(scope).user
       if pid = Process.whereis(WardrikMCP.ExpiryTest), do: send(pid, {:refused, ref, user})
       :ok
     end
+  end
+
+  defimpl Wardrik.Credentials, for: Vault do
+    def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+    def refused(_vault, ref, call), do: Vault.refused(ref, call)
+    def key(_vault, _name), do: :error
   end
 
   @flag Path.join(System.tmp_dir!(), "wardrik-refusal-#{System.unique_integer([:positive])}")
@@ -43,7 +47,9 @@ defmodule WardrikMCP.ExpiryTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root(Wardrik.AgentID.new!("a", org: "acme", user: user), credentials: Vault)
+    |> Scope.root(Wardrik.AgentID.new!("a", org: "acme", user: user),
+      host: Wardrik.Test.host(credentials: %Vault{})
+    )
   end
 
   describe "a connection built around a credential" do

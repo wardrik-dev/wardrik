@@ -16,16 +16,15 @@ defmodule WardrikSDK.MCPAuthorizedTest do
     Req.Test.set_req_test_to_shared()
     on_exit(&Req.Test.set_req_test_to_private/0)
 
-    start_supervised!({WardrikOAuth.Supervisor, loopback: false})
     stub_server(cimd: true)
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
 
     scope =
       Wardrik.Test.scope(
         tools: [{WardrikMCP, ref}],
         id: Wardrik.AgentID.parse!("acme/@#{owner}/assistant"),
-        credentials: WardrikVault,
-        host: Wardrik.Test.host()
+        host: host()
       )
 
     %{scope: scope}
@@ -44,7 +43,7 @@ defmodule WardrikSDK.MCPAuthorizedTest do
     refute prompt =~ "https://"
 
     assert {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
-    assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+    assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
 
     assert %Call{state: :done, result: {:ok, %{"result" => %{"content" => content}}}} =
              Wardrik.Test.resume(scope, call)

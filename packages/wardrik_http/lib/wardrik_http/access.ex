@@ -42,7 +42,7 @@ defmodule WardrikHTTP.Access do
 
   Each node also reads the records held on it through consensus every sweep,
   and ends the holders of one that is gone or cannot be read. What a node
-  read lasts one sweep. So a revocation that never reached a node, or a node
+  read lasts until a purge finds it a sweep old. So a revocation that never reached a node, or a node
   cut off from its quorum, refuses the record and ends its holders within a
   sweep.
 

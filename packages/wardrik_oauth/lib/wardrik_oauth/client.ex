@@ -49,11 +49,9 @@ defmodule WardrikOAuth.Client do
           req_options: keyword()
         }
 
-  @doc "Builds the client from the `:client` setting, see `WardrikOAuth.Config`, with overrides."
+  @doc "Builds the client from `opts`, as a deployment's `WardrikOAuth` `:client` names them."
   @spec new(keyword()) :: t()
-  def new(opts \\ []) do
-    struct!(__MODULE__, Keyword.merge(configured(), opts))
-  end
+  def new(opts \\ []), do: struct!(__MODULE__, opts)
 
   @doc """
   The metadata document, as JSON-ready data.
@@ -87,6 +85,4 @@ defmodule WardrikOAuth.Client do
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
-
-  defp configured, do: WardrikOAuth.Config.client()
 end

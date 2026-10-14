@@ -4,7 +4,7 @@
 # internals, which only core calls.
 [
   layers: [
-    http: ["WardrikHTTP", "WardrikHTTP.*"]
+    http: ["WardrikHTTP", "WardrikHTTP.*", "Wardrik.Tokens.WardrikHTTP.Tokens"]
   ],
   boundaries: [
     public: [
@@ -24,8 +24,13 @@
       "Wardrik.Command",
       "Wardrik.Compaction",
       "Wardrik.Connections",
+      "Wardrik.Connections.Owner",
       "Wardrik.Credential",
+      "Wardrik.Credentials",
+      "Wardrik.Credentials.None",
       "Wardrik.Definition",
+      "Wardrik.Definition.None",
+      "Wardrik.Definitions",
       "Wardrik.Delegation",
       "Wardrik.Deployment",
       "Wardrik.DeploymentOperation",
@@ -41,15 +46,19 @@
       "Wardrik.Fleet.Member",
       "Wardrik.FleetOperation",
       "Wardrik.Grant",
+      "Wardrik.Grants",
       "Wardrik.Hook",
       "Wardrik.Host",
-      "Wardrik.Label",
-      "Wardrik.Ledger",
-      "Wardrik.Ledger.Store",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
+      "Wardrik.Label",
+      "Wardrik.Ledger",
+      "Wardrik.Ledger.Guarded",
+      "Wardrik.Ledger.Key",
+      "Wardrik.Ledger.None",
+      "Wardrik.Ledger.Store",
       "Wardrik.Operations.*",
       "Wardrik.Principal",
       "Wardrik.Query",
@@ -63,7 +72,10 @@
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
-      "Wardrik.UUID"
+      "Wardrik.Triggers",
+      "Wardrik.UUID",
+      "Wardrik.Workspace",
+      "Wardrik.Workspace.None"
     ],
     internal: [
       "Wardrik.Agent.State",

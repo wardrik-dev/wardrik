@@ -182,7 +182,7 @@ defmodule WardrikDefinition do
 
     file? = match?({:file, _name}, source)
     system = optional_string!(fields["instructions"], "instructions") || ""
-    _triggers = triggers(fields["triggers"], files?(fields))
+    _triggers = triggers(fields["triggers"], files?(fields), context.triggers)
     _channels = channels!(fields["channels"], owner.org, context)
     _route = route!(fields["notify"], owner.org, context)
     spec = build(fields, system, context, file?, owner)
@@ -228,20 +228,24 @@ defmodule WardrikDefinition do
   def channels(fields), do: Map.get(fields, "channels") || []
 
   @doc """
-  The triggers a definition lists, which ask its agent something when they come round. They are
-  checked with the rest of the definition as `spec/4` reads it.
+  The triggers a definition lists, which ask its agent something when they come round, read
+  under `context`. They are checked with the rest of the definition as `spec/5` reads it.
   """
-  @spec triggers(fields()) :: [WardrikTrigger.trigger()]
-  def triggers(fields), do: triggers(fields["triggers"], files?(fields))
+  @spec triggers(fields(), Context.t()) :: [WardrikTrigger.trigger()]
+  def triggers(fields, %Context{} = context),
+    do: triggers(fields["triggers"], files?(fields), context.triggers)
 
   @doc """
-  `fields` with the trigger `name` set to `given`, as the body of
-  `PUT /v1/agents/{id}/triggers/{name}` writes one: whether it was added or
-  changed, and the trigger it reads into, or why it does not read.
+  `fields` with the trigger `name` set to the `:trigger` `opts` name, as the
+  body of `PUT /v1/agents/{id}/triggers/{name}` writes one, read under
+  `:context`: whether it was added or changed, and the trigger it reads
+  into, or why it does not read.
   """
-  @spec put_trigger(fields(), String.t(), map()) ::
+  @spec put_trigger(fields(), String.t(), trigger: map(), context: Context.t()) ::
           {:ok, fields(), :created | :changed, WardrikTrigger.trigger()} | {:error, String.t()}
-  def put_trigger(fields, name, given) when is_map(given) do
+  def put_trigger(fields, name, opts) do
+    %{} = given = Keyword.fetch!(opts, :trigger)
+    %Context{} = context = Keyword.fetch!(opts, :context)
     listed = named(fields["triggers"])
     trigger = Map.put(given, "name", name)
 
@@ -250,7 +254,7 @@ defmodule WardrikDefinition do
         do: {:changed, Enum.map(listed, &if(&1["name"] == name, do: trigger, else: &1))},
         else: {:created, listed ++ [trigger]}
 
-    read = triggers(listed, files?(fields))
+    read = triggers(listed, files?(fields), context.triggers)
     {:ok, Map.put(fields, "triggers", listed), status, Enum.find(read, &(&1.name == name))}
   catch
     {:invalid, message} -> {:error, message}
@@ -554,11 +558,11 @@ defmodule WardrikDefinition do
 
   # -- triggers -------------------------------------------------------------
 
-  defp triggers(nil, _files?), do: []
-  defp triggers(%{} = one, files?), do: triggers([one], files?)
+  defp triggers(nil, _files?, _offered), do: []
+  defp triggers(%{} = one, files?, offered), do: triggers([one], files?, offered)
 
-  defp triggers(list, files?) when is_list(list) do
-    triggers = list |> Enum.with_index(1) |> Enum.map(&trigger!(&1, files?))
+  defp triggers(list, files?, offered) when is_list(list) do
+    triggers = list |> Enum.with_index(1) |> Enum.map(&trigger!(&1, files?, offered))
 
     case triggers -- Enum.uniq_by(triggers, & &1.name) do
       [] -> triggers
@@ -566,7 +570,8 @@ defmodule WardrikDefinition do
     end
   end
 
-  defp triggers(_other, _files?), do: invalid!("triggers is a trigger, or a list of them")
+  defp triggers(_other, _files?, _offered),
+    do: invalid!("triggers is a trigger, or a list of them")
 
   # The triggers a checked definition lists, each with the name it is known by.
   defp named(nil), do: []
@@ -577,8 +582,8 @@ defmodule WardrikDefinition do
         do: Map.put_new(fields, "name", "trigger-#{index}")
   end
 
-  defp trigger!({%{} = fields, index}, files?) do
-    keys = @trigger_keys ++ WardrikTrigger.keys()
+  defp trigger!({%{} = fields, index}, files?, offered) do
+    keys = @trigger_keys ++ WardrikTrigger.keys(offered)
 
     case Map.keys(fields) -- keys do
       [] ->
@@ -591,14 +596,15 @@ defmodule WardrikDefinition do
     name = optional_string!(fields["name"], "trigger name") || "trigger-#{index}"
 
     with {:ok, fields} <- prompted(fields, name, files?),
-         {:ok, trigger} <- WardrikTrigger.decode(name, Map.delete(fields, "name")) do
+         {:ok, trigger} <-
+           WardrikTrigger.decode(name, Map.delete(fields, "name"), offered: offered) do
       trigger
     else
       {:error, message} -> invalid!("trigger #{fields["name"] || index}: #{message}")
     end
   end
 
-  defp trigger!({_other, index}, _files?),
+  defp trigger!({_other, index}, _files?, _offered),
     do: invalid!("trigger #{index} is not a set of keys")
 
   # A trigger's prompt_file is a prompt asking the agent to follow the file,

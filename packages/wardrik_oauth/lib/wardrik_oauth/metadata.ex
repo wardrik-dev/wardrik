@@ -204,7 +204,8 @@ defmodule WardrikOAuth.Metadata do
   end
 
   defp get(url, trust, opts) do
-    with {:ok, options} <- Egress.options(url, trust, Keyword.get(opts, :req_options, [])) do
+    with {:ok, options} <-
+           Egress.options(url, trust, Keyword.take(opts, [:req_options, :resolve])) do
       case Req.get(options) do
         {:ok, %Req.Response{status: 200, body: body}} when is_map(body) -> {:ok, body}
         {:ok, %Req.Response{status: status}} -> {:error, {:metadata_unavailable, url, status}}

@@ -10,7 +10,7 @@ defmodule Wardrik.Tool.Context do
       A tool that acts for that person asks `Wardrik.Grants` what they may do
     * `:call_id` - the id the model gave the call
     * `:idempotency_key` - what names this call to the systems it reaches,
-      the same when its turn is replayed; see `Wardrik.Ledger.idempotency_key/2`
+      the same when its turn is replayed; see `Wardrik.Ledger.Key.idempotency/2`
     * `:credentials` - the credentials the tool's annotations named, resolved
       for this call, by name; see `Wardrik.Tool.Annotations`
     * `:in_doubt` - whether the call runs again because it may already have
@@ -27,7 +27,6 @@ defmodule Wardrik.Tool.Context do
 
   alias Wardrik.Call
   alias Wardrik.Event
-  alias Wardrik.Ledger
   alias Wardrik.Scope
 
   @enforce_keys [:scope, :call_id, :idempotency_key, :progress]
@@ -60,7 +59,7 @@ defmodule Wardrik.Tool.Context do
       scope: scope,
       sender: scope.sender,
       call_id: id,
-      idempotency_key: Ledger.idempotency_key(call),
+      idempotency_key: Wardrik.Ledger.Key.idempotency(call),
       credentials: credentials,
       in_doubt: Keyword.get(opts, :in_doubt, false),
       progress: fn progress, total ->

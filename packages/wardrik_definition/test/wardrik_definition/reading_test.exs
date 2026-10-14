@@ -83,7 +83,7 @@ defmodule WardrikDefinition.ReadingTest do
   defp triggers(text, %{context: context} = test) do
     with {:ok, _spec} <- read(text, test),
          {:ok, _id, fields} <- WardrikDefinition.parse(text, "triage", context),
-         do: {:ok, WardrikDefinition.triggers(fields)}
+         do: {:ok, WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})}
   end
 
   test "reads a whole file into the agent's spec", context do
@@ -658,19 +658,31 @@ defmodule WardrikDefinition.ReadingTest do
       fields = %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]}
 
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
-               WardrikDefinition.triggers(fields)
+               WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})
 
       assert {:ok, fields, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
-               WardrikDefinition.put_trigger(fields, "trigger-1", %{unnamed | "every" => "2h"})
+               WardrikDefinition.put_trigger(fields, "trigger-1",
+                 trigger: %{unnamed | "every" => "2h"},
+                 context: %WardrikDefinition.Context{}
+               )
 
       assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
-               WardrikDefinition.put_trigger(fields, "sweep", unnamed)
+               WardrikDefinition.put_trigger(fields, "sweep",
+                 trigger: unnamed,
+                 context: %WardrikDefinition.Context{}
+               )
 
       assert ~w(trigger-1 trigger-2 sweep) ==
-               Enum.map(WardrikDefinition.triggers(fields), & &1.name)
+               Enum.map(
+                 WardrikDefinition.triggers(fields, %WardrikDefinition.Context{}),
+                 & &1.name
+               )
 
       assert {:error, "trigger sweep: prompt is a string" <> _rest} =
-               WardrikDefinition.put_trigger(fields, "sweep", %{"every" => "1h"})
+               WardrikDefinition.put_trigger(fields, "sweep",
+                 trigger: %{"every" => "1h"},
+                 context: %WardrikDefinition.Context{}
+               )
 
       {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-2")
       {:ok, fields} = WardrikDefinition.delete_trigger(fields, "trigger-1")

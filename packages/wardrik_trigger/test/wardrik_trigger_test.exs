@@ -15,7 +15,7 @@ defmodule WardrikTriggerTest.Watch do
   def encode(name), do: %{"watch" => name}
 
   @impl WardrikTrigger.Source
-  def check(name, cursor, _agent) do
+  def check(name, cursor, _opts) do
     answer =
       Agent.get_and_update(String.to_existing_atom(name), fn
         [next | rest] -> {next, rest}
@@ -61,16 +61,12 @@ defmodule WardrikTriggerTest do
     Turn.done(turn, [Context.assistant("done")])
   end
 
-  defp watching(_context) do
-    register_watch()
-  end
+  defp watching(_context), do: :ok
 
-  # Registers the test's source beside those the package registers, and puts
-  # them back after.
-  defp register_watch do
-    sources = Application.get_env(:wardrik_trigger, :wardrik_trigger_sources, [])
-    Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, sources ++ [watch: Watch])
-    on_exit(fn -> Application.put_env(:wardrik_trigger, :wardrik_trigger_sources, sources) end)
+  # The sources a host offers, the test's own beside those the package ships.
+  defp offered do
+    offered = %WardrikTrigger.Offered{}
+    %{offered | sources: Map.put(offered.sources, "watch", Watch)}
   end
 
   defp spawn_agent(key, runner) do
@@ -126,10 +122,12 @@ defmodule WardrikTriggerTest do
             },
             %{"every" => "90m", "prompt" => "Look.", "missed" => "skip"}
           ] do
-        {:ok, trigger} = WardrikTrigger.decode("sweep", fields)
+        {:ok, trigger} = WardrikTrigger.decode("sweep", fields, offered: offered())
         encoded = WardrikTrigger.encode(trigger)
 
-        assert {:ok, ^trigger} = WardrikTrigger.decode("sweep", Map.delete(encoded, "name"))
+        assert {:ok, ^trigger} =
+                 WardrikTrigger.decode("sweep", Map.delete(encoded, "name"), offered: offered())
+
         assert encoded["name"] == "sweep"
       end
 
@@ -149,47 +147,55 @@ defmodule WardrikTriggerTest do
                 missed: :skip,
                 jitter: 30_000
               }} =
-               WardrikTrigger.decode("sweep", %{
-                 "every" => "*/30 * * * *",
-                 "prompt" => "Look.",
-                 "overlap" => "queue",
-                 "missed" => "skip",
-                 "jitter" => 30
-               })
+               WardrikTrigger.decode(
+                 "sweep",
+                 %{
+                   "every" => "*/30 * * * *",
+                   "prompt" => "Look.",
+                   "overlap" => "queue",
+                   "missed" => "skip",
+                   "jitter" => 30
+                 },
+                 offered: offered()
+               )
 
       assert {:ok, %WardrikTrigger{every: {:interval, 1_800_000}, overlap: :skip, jitter: 0}} =
-               WardrikTrigger.decode("sweep", %{"every" => "30m", "prompt" => "Look."})
+               WardrikTrigger.decode("sweep", %{"every" => "30m", "prompt" => "Look."},
+                 offered: offered()
+               )
     end
 
     test "reads a registered source from the fields left" do
-      register_watch()
-
       fields = %{"every" => "1h", "prompt" => "What is new?", "watch" => "mentions"}
 
       assert {:ok, %WardrikTrigger{source: {Watch, "mentions"}} = trigger} =
-               WardrikTrigger.decode("mentions", fields)
+               WardrikTrigger.decode("mentions", fields, offered: offered())
 
       assert %{"watch" => "mentions", "every" => "1h"} = WardrikTrigger.encode(trigger)
-      assert "watch" in WardrikTrigger.keys()
+      assert "watch" in WardrikTrigger.keys(offered())
 
-      assert WardrikTrigger.decode("mentions", Map.put(fields, "watch", 1)) ==
+      assert WardrikTrigger.decode("mentions", Map.put(fields, "watch", 1), offered: offered()) ==
                {:error, "watch names the answers a test hands it"}
 
       assert {:error,
               "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, watch or webhook"} =
-               WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"})
+               WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"},
+                 offered: offered()
+               )
     end
 
     test "reads a webhook trigger as a kind of its own" do
       fields = %{"webhook" => %{"secret" => "${HOOK_SECRET}"}, "prompt" => "Look."}
 
       assert {:ok, %WardrikTrigger.Webhook{verify: "shared", overlap: :queue} = hook} =
-               WardrikTrigger.decode("issues", fields)
+               WardrikTrigger.decode("issues", fields, offered: offered())
 
       assert {:ok, ^hook} =
-               WardrikTrigger.decode("issues", Map.delete(WardrikTrigger.encode(hook), "name"))
+               WardrikTrigger.decode("issues", Map.delete(WardrikTrigger.encode(hook), "name"),
+                 offered: offered()
+               )
 
-      assert "webhook" in WardrikTrigger.keys()
+      assert "webhook" in WardrikTrigger.keys(offered())
     end
 
     test "says what does not read" do
@@ -331,7 +337,21 @@ defmodule WardrikTriggerTest do
     end
   end
 
-  describe "deliver/3" do
+  # Secrets are read for the agent a trigger asks, as a daemon's vault keeps
+  # one for each org, and from the environment past that.
+  defp deliver(key, name, request) do
+    secrets = fn
+      "WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "acme"} -> "acme's"
+      "WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "globex"} -> "globex's"
+      name, _agent -> System.get_env(name)
+    end
+
+    Wardrik.Triggers.deliver(%WardrikTrigger.Deliveries{secrets: secrets}, key, name,
+      request: request
+    )
+  end
+
+  describe "deliver/4" do
     setup %{key: key} do
       System.put_env("WARDRIK_TEST_HOOK", "s3cret")
       on_exit(fn -> System.delete_env("WARDRIK_TEST_HOOK") end)
@@ -373,13 +393,13 @@ defmodule WardrikTriggerTest do
       assert path == "/v1/hooks/#{key}/issues"
 
       request = request("d-1", ~s({"action":"opened"}))
-      assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :asked}
+      assert deliver(key, "issues", request) == {:ok, :asked}
 
       assert_receive {:asked, text, ["outside"]}
       assert text =~ ~r/\AAn event is below.\n\n## \S+\n\{"action":"opened"\}\z/
       assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :asked}}
 
-      assert WardrikTrigger.deliver(key, "issues", request) == {:ok, :seen}
+      assert deliver(key, "issues", request) == {:ok, :seen}
       refute_receive {:asked, _text, _labels}, 100
     end
 
@@ -388,7 +408,7 @@ defmodule WardrikTriggerTest do
       {:ok, _pid} = put.([])
 
       assert {:error, :forbidden, "The request's secret is not the trigger's."} =
-               WardrikTrigger.deliver(key, "issues", request("d-1", "{}", "guess"))
+               deliver(key, "issues", request("d-1", "{}", "guess"))
 
       refute_received {:asked, _text, _labels}
     end
@@ -402,20 +422,20 @@ defmodule WardrikTriggerTest do
       :ok = WardrikTrigger.delete(key, "busy")
 
       assert {:error, :unavailable, "The agent is busy" <> _rest} =
-               WardrikTrigger.deliver(key, "issues", request("d-1", "{}"))
+               deliver(key, "issues", request("d-1", "{}"))
 
       assert_receive %Event{payload: %Event.TriggerFired{name: "issues", outcome: :busy}}
 
       {:ok, _pid} = put.(overlap: :queue)
-      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
+      assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
       send(turn, :release)
     end
 
     test "says the agent has no such trigger to deliver to", %{key: key} do
-      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
+      assert deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
-      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
+      assert deliver(key, "issues", request("d-1", "{}")) == {:error, :not_found}
     end
 
     test "becomes the other kind when put under the same name", %{key: key, put: put} do
@@ -424,7 +444,7 @@ defmodule WardrikTriggerTest do
       spawn_agent(key, {__MODULE__, :labelled, [self()]})
 
       assert [%WardrikTrigger.Status{schedule: "on request"}] = WardrikTrigger.for_agent(key)
-      assert WardrikTrigger.deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
+      assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
       assert [%WardrikTrigger.Status{schedule: "@daily"}] = WardrikTrigger.for_agent(key)

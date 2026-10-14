@@ -26,9 +26,9 @@ defmodule Wardrik.Operations.RevokeToken do
 
   @impl Wardrik.Command
   def plan(%__MODULE__{id: id} = request, caller) do
-    case Host.tokens(caller.host).list(caller.host) do
+    case Tokens.list(Host.tokens(caller.host)) do
       :unsupported ->
-        {:error, Tokens.unsupported()}
+        {:error, Wardrik.Tokens.None.unsupported()}
 
       tokens ->
         if Enum.any?(tokens, &(&1.id == id)),
@@ -39,10 +39,10 @@ defmodule Wardrik.Operations.RevokeToken do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{id: id}} = change, caller) do
-    case Host.tokens(caller.host).revoke(caller.host, id) do
+    case Tokens.revoke(Host.tokens(caller.host), id) do
       :ok -> {:ok, nil, change.effect}
       {:error, :not_found} -> {:error, not_found(id)}
-      :unsupported -> {:error, Tokens.unsupported()}
+      :unsupported -> {:error, Wardrik.Tokens.None.unsupported()}
     end
   end
 

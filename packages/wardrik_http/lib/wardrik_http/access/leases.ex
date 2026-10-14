@@ -14,7 +14,7 @@ defmodule WardrikHTTP.Access.Leases do
   its own process and several at once, and keeps what it reads in the cache.
   It revokes on this node a record that is gone. At the first record that
   cannot be read it stops, and ends every holder on the node, as it does when
-  a sweep fails. It then purges what has lapsed from the cache.
+  a sweep fails. It then purges what is a sweep old from the cache.
   """
 
   use GenServer
@@ -83,7 +83,7 @@ defmodule WardrikHTTP.Access.Leases do
   @impl true
   def init(opts) do
     every = Keyword.fetch!(opts, :sweep)
-    :ok = Cache.new(every)
+    :ok = Cache.new()
     :ok = Group.join(Access, @group, %{})
 
     state = %__MODULE__{
@@ -202,7 +202,7 @@ defmodule WardrikHTTP.Access.Leases do
   end
 
   defp swept(state) do
-    :ok = Cache.purge()
+    :ok = Cache.purge(state.every)
     for from <- state.waiting, do: GenServer.reply(from, :ok)
     schedule(%{state | sweep: nil, waiting: []})
   end

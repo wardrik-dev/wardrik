@@ -1,10 +1,10 @@
 defmodule WardrikDaemon.CLITest do
   use ExUnit.Case, async: false
 
-  import Wardrik.Test, only: [store: 0, host: 0]
+  alias WardrikDaemon.Test.Host
 
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: WardrikDaemon.Test.Host.held()
+  setup do: Host.held()
 
   import ExUnit.CaptureIO
 
@@ -263,7 +263,7 @@ defmodule WardrikDaemon.CLITest do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join(dir, "policies/careful.yaml"), "ask: [github/*]\n")
     on_exit(fn -> File.rm_rf!(dir) end)
-    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
+    Host.start_agents(dir)
 
     {output, 0} =
       command([
@@ -282,7 +282,7 @@ defmodule WardrikDaemon.CLITest do
     assert line =~ ") reaches the agents under acme/, to define, under the ceiling careful."
 
     assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
-    [{_path, {:ok, careful}}] = WardrikDaemon.Agents.files()
+    [{_path, {:ok, careful}}] = WardrikDaemon.Agents.files(Host.agents())
     assert token.grant.ceiling == WardrikPolicy.hooks(%{careful | name: "ceiling/careful"})
 
     {list, 0} = command(["token", "list"])
@@ -502,10 +502,8 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "status and reload answer with the node's state" do
-    start_supervised!(
-      {WardrikDaemon.Agents,
-       dir: System.tmp_dir!() |> Path.join("wardrik-cli-#{System.unique_integer([:positive])}"),
-       store: Wardrik.Test.store()}
+    Host.start_agents(
+      Path.join(System.tmp_dir!(), "wardrik-cli-#{System.unique_integer([:positive])}")
     )
 
     assert {status, 0} = command(["status"])
@@ -516,7 +514,11 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "audit reads what people changed, a page at a time" do
-    :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, Wardrik.Principal.new(:user, "ops"))
+    :ok =
+      Wardrik.Audit.record(Wardrik.Audit, {:agents_reloaded, [node()]},
+        by: Wardrik.Principal.new(:user, "ops")
+      )
+
     last = String.to_integer(List.last(Audit.all())["sequence"])
     previous = to_string(last - 1)
 
@@ -580,7 +582,7 @@ defmodule WardrikDaemon.CLITest do
     You count.
     """)
 
-    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
+    Host.start_agents(dir)
     key = Wardrik.AgentID.parse!("#{org}/counter")
     Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
 
@@ -595,7 +597,7 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
     thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
-    {:ok, options} = WardrikDaemon.Agents.options(store(), thread)
+    {:ok, options} = WardrikDaemon.Agents.options(Host.agents(), thread)
     {:ok, _pid} = Wardrik.Fleet.spawn(thread, options)
     {output, 0} = command(["show", thread])
     assert output =~ "Counts what it is asked to."
@@ -604,7 +606,13 @@ defmodule WardrikDaemon.CLITest do
 
     defined = Wardrik.AgentID.parse!("#{org}/defined")
     {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
-    {:ok, spec} = WardrikDaemon.Agents.put(host(), defined, %{"description" => "Defined."}, grant)
+
+    {:ok, spec} =
+      WardrikDaemon.Agents.put(Host.agents(), defined,
+        definition: %{"description" => "Defined."},
+        grant: grant
+      )
+
     {:ok, _pid} = Wardrik.Fleet.put(spec)
     {output, 0} = command(["show", defined])
     assert output =~ "Defined."

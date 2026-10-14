@@ -11,6 +11,7 @@ defmodule Wardrik.Operations.Connect do
 
   alias Wardrik.Change
   alias Wardrik.Connections
+  alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Host
   alias Wardrik.Resource
@@ -33,7 +34,7 @@ defmodule Wardrik.Operations.Connect do
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
     connections = Host.connections(caller.host)
 
-    case connections.connect(caller.host, provider, Connections.owner_of(owner), caller.principal) do
+    case Connections.connect(connections, provider, Owner.owner_of(owner), by: caller.principal) do
       {:ok, :held} ->
         {:ok, Resource.connecting(provider, nil), change.effect}
 
@@ -47,7 +48,7 @@ defmodule Wardrik.Operations.Connect do
         {:error, Error.new(:unavailable, "#{provider} could not start a sign-in now.")}
 
       :unsupported ->
-        {:error, Connections.unsupported()}
+        {:error, Wardrik.Connections.None.unsupported()}
     end
   end
 

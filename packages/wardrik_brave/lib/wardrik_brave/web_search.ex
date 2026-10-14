@@ -13,8 +13,8 @@ defmodule WardrikBrave.WebSearch do
   What it answers is pages anyone could have written, so it is labelled
   `"outside"`; see `Wardrik.Tool.Annotations`.
 
-  Its key is the credential `BRAVE_API_KEY`, which the scope's
-  `Wardrik.Credential` resolver resolves for each call, such as `WardrikVault`
+  Its key is the credential `BRAVE_API_KEY`, which the
+  `Wardrik.Credentials` of the host resolve for each call, such as `WardrikVault`
   holding it as the deployment's secret.
   """
 

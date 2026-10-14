@@ -24,8 +24,12 @@ defmodule Wardrik do
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, Wardrik.Host, definitions: MyApp.Definitions,
-        connections: WardrikOAuth.Connections, triggers: WardrikTrigger, grants: MyApp.Grants
+      config :wardrik, Wardrik.Host,
+        definitions: {MyApp.Definitions, []},
+        grants: {MyApp.Grants, admins: ["maria"]}
+
+  Each seam is named by its module and the fields of its struct, as
+  `Wardrik.Host.configured/1` reads them.
 
   A host that starts it in its own tree instead, after the repo its store is
   kept in, says so, and hands it its options, and the same `Wardrik.Host` to
@@ -34,7 +38,12 @@ defmodule Wardrik do
       config :wardrik, start: :host
 
       store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
-      host = Wardrik.Host.new(store: store, definitions: MyApp.Definitions, grants: MyApp.Grants)
+      host =
+        Wardrik.Host.new(
+          store: store,
+          definitions: %MyApp.Definitions{store: store},
+          grants: %MyApp.Grants{admins: ["maria"]}
+        )
 
       children = [
         MyApp.Repo,
@@ -48,7 +57,11 @@ defmodule Wardrik do
 
   Nothing of the host, its store included, is kept where a node finds it:
   it travels in the options of what is started with it, and in each
-  `Wardrik.Caller`, so two instances on one node each answer with their own.
+  `Wardrik.Caller`.
+
+  A node runs one `Wardrik`: core's own processes, as the event bus, the
+  event log and the tool runner, are registered under their module names.
+  To run several on one machine, run several nodes.
 
   ## Options
 
@@ -78,7 +91,7 @@ defmodule Wardrik do
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
-        {Wardrik.Audit, Wardrik.Host.store(host)},
+        {Wardrik.Audit, store: Wardrik.Host.store(host), name: Wardrik.Host.audit(host)},
         Wardrik.LLM.ToolRunner,
         Wardrik.Tasks
       ] ++

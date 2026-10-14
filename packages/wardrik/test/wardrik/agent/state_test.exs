@@ -689,7 +689,7 @@ defmodule Wardrik.Agent.StateTest do
     end
 
     test "the host it runs on is never written, and every turn's scope carries it" do
-      host = Wardrik.Host.new(definitions: Wardrik.Test.Definitions)
+      host = Wardrik.Host.new(definitions: %Wardrik.Test.Definitions{})
       state = State.hosted(state(), host)
 
       refute Map.has_key?(Stored.dump(state), :host)

@@ -304,7 +304,6 @@ defmodule WardrikDaemon.AgentFile do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
-  alias WardrikDaemon.Agents
   alias WardrikDaemon.Config
   alias WardrikDaemon.Definition
 
@@ -313,27 +312,30 @@ defmodule WardrikDaemon.AgentFile do
   @doc """
   What a definition may name here, as `WardrikDefinition` reads it: the tools
   the daemon ships, and the MCP servers, channels and notify targets
-  `config.yaml` configures, with `policies` the policies in `policies/`, by
-  name.
+  `config` configures, and its `defaults`. A reading under the policies in
+  `policies/` puts them, by name, as the context's `:policies`.
   """
-  @spec context(%{String.t() => WardrikPolicy.t()}) :: WardrikDefinition.Context.t()
-  def context(policies \\ %{}) do
+  @spec context(Config.t()) :: WardrikDefinition.Context.t()
+  def context(%Config{} = config) do
     %WardrikDefinition.Context{
-      org: Config.org(),
+      org: Config.org(config),
       tools: @shipped,
-      servers: WardrikMCP |> Config.settings() |> Keyword.get(:servers, []),
+      servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
       mcp: WardrikMCP,
       sources: [
         workers: WardrikHTTP.Workers,
         self: Wardrik.Catalog.Self,
         agents: Wardrik.Catalog.Agents
       ],
-      channels: WardrikChannel |> Config.settings() |> Keyword.get(:orgs, []),
-      targets: WardrikNotify |> Config.settings() |> Keyword.get(:targets, []),
-      policies: policies,
-      defaults: Agents.defaults(),
-      seams: [credentials: WardrikVault, ledger: Wardrik.Ledger.Store],
-      config: [tool_prices: Keyword.get(Config.settings(__MODULE__), :tool_prices, %{})],
+      channels: config |> Config.section(WardrikChannel) |> Keyword.get(:orgs, []),
+      targets: config |> Config.section(WardrikNotify) |> Keyword.get(:targets, []),
+      policies: %{},
+      defaults: config |> Config.section(WardrikDaemon.Agents) |> Keyword.get(:defaults, %{}),
+      seams: [ledger: %Wardrik.Ledger.Store{}],
+      config: [
+        tool_prices: config |> Config.section(__MODULE__) |> Keyword.get(:tool_prices, %{})
+      ],
+      triggers: config.triggers,
       names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
     }
   end
@@ -348,14 +350,13 @@ defmodule WardrikDaemon.AgentFile do
   def text(fields, prompt), do: WardrikDefinition.text(fields, prompt)
 
   @doc """
-  Reads the spec of the agent `path` declares, with `policies` the policies in
-  `policies/`, by name.
+  Reads the spec of the agent `path` declares, under `context`, whose
+  `:policies` are the policies in `policies/`, by name.
   """
-  @spec read(Path.t(), %{String.t() => WardrikPolicy.t()}) ::
-          {:ok, Spec.t()} | {:error, String.t()}
-  def read(path, policies \\ %{}) do
-    with {:ok, definition} <- parse(path) do
-      case spec(definition, definition.id, policies) do
+  @spec read(WardrikDefinition.Context.t(), Path.t()) :: {:ok, Spec.t()} | {:error, String.t()}
+  def read(context, path) do
+    with {:ok, definition} <- parse(context, path) do
+      case spec(context, definition, definition.id) do
         {:ok, spec} -> {:ok, spec}
         {:error, message} -> {:error, "#{path}: #{message}"}
       end
@@ -367,12 +368,13 @@ defmodule WardrikDaemon.AgentFile do
   with its body as `instructions`, for the agent its `name`, `org` and `user`
   name. What its settings say is checked as `spec/3` builds a spec from it.
   """
-  @spec parse(Path.t()) :: {:ok, Definition.t()} | {:error, String.t()}
-  def parse(path) do
+  @spec parse(WardrikDefinition.Context.t(), Path.t()) ::
+          {:ok, Definition.t()} | {:error, String.t()}
+  def parse(context, path) do
     name = path |> Path.basename() |> Path.rootname()
 
     with {:ok, text} <- File.read(path),
-         {:ok, id, fields} <- WardrikDefinition.parse(text, name, context()) do
+         {:ok, id, fields} <- WardrikDefinition.parse(text, name, context) do
       {:ok, %Definition{id: id, fields: fields, source: {:file, Path.basename(path)}}}
     else
       {:error, reason} when is_atom(reason) -> {:error, "#{path}: #{:file.format_error(reason)}"}
@@ -381,64 +383,74 @@ defmodule WardrikDaemon.AgentFile do
   end
 
   @doc """
-  The `WardrikDaemon.Definition` a definition sent to the HTTP API writes for
-  the agent `id`, sent by a token holding `grant`, or by none for
+  The `WardrikDaemon.Definition` the definition `:fields` sent to the HTTP API
+  writes for the agent `id`, sent by a token holding `:grant`, or by none for
   `config.yaml`'s `defaults`. What its settings say is checked as `spec/3`
   builds a spec from it, the trees its workspace shares against the grant's
   scope among them.
   """
-  @spec define(AgentID.t(), map(), Wardrik.Grant.t() | nil) ::
-          {:ok, Definition.t()} | {:error, String.t()}
-  def define(%AgentID{} = id, fields, grant) when is_map(fields) do
-    with :ok <- WardrikDefinition.accept(id, fields, context()),
-         do: {:ok, %Definition{id: id, fields: fields, source: {:api, grant}}}
+  @spec define(WardrikDefinition.Context.t(), AgentID.t(),
+          fields: map(),
+          grant: Wardrik.Grant.t() | nil
+        ) :: {:ok, Definition.t()} | {:error, String.t()}
+  def define(context, %AgentID{} = id, opts) do
+    fields = Keyword.fetch!(opts, :fields)
+
+    with :ok <- WardrikDefinition.accept(id, fields, context),
+         do: {:ok, %Definition{id: id, fields: fields, source: {:api, opts[:grant]}}}
   end
 
   @doc """
-  Reads a definition sent to the HTTP API for the agent `id` into its spec,
-  as `define/3` and `spec/3` do, sent by no token.
+  Reads the definition `:fields` sent to the HTTP API for the agent `id`
+  into its spec, as `define/3` and `spec/3` do, sent by no token.
   """
-  @spec definition(AgentID.t(), map(), %{String.t() => WardrikPolicy.t()}) ::
+  @spec definition(WardrikDefinition.Context.t(), AgentID.t(), fields: map()) ::
           {:ok, Spec.t()} | {:error, String.t()}
-  def definition(%AgentID{} = id, fields, policies \\ %{}) do
-    with {:ok, definition} <- define(id, fields, nil), do: spec(definition, id, policies)
+  def definition(context, %AgentID{} = id, opts) do
+    with {:ok, definition} <- define(context, id, fields: Keyword.fetch!(opts, :fields)),
+         do: spec(context, definition, id)
   end
 
   @doc """
-  The spec `definition` writes for the agent `id`, with `policies` as `read/2`
-  takes them; see `WardrikDefinition.spec/5`.
+  The spec `definition` writes for the agent `id`, under `context` as
+  `read/2` takes it; see `WardrikDefinition.spec/5`.
   """
-  @spec spec(Definition.t(), AgentID.t(), %{String.t() => WardrikPolicy.t()}) ::
+  @spec spec(WardrikDefinition.Context.t(), Definition.t(), AgentID.t()) ::
           {:ok, Spec.t()} | {:error, String.t()}
-  def spec(%Definition{id: owner, fields: fields, source: source}, %AgentID{} = id, policies),
-    do: WardrikDefinition.spec(fields, owner, id, context(policies), source)
+  def spec(context, %Definition{id: owner, fields: fields, source: source}, %AgentID{} = id),
+    do: WardrikDefinition.spec(fields, owner, id, context, source)
 
   @doc """
   Where the notices of `definition`'s agent go, whether a file or the HTTP
   API wrote it, to the targets `config.yaml`'s `notify` keeps for its org;
   see `WardrikDefinition.route/3`.
   """
-  @spec route(Definition.t()) :: {:ok, WardrikNotify.Route.t()} | :none | {:error, String.t()}
-  def route(%Definition{id: id, fields: fields}),
-    do: WardrikDefinition.route(fields, id, context())
+  @spec route(WardrikDefinition.Context.t(), Definition.t()) ::
+          {:ok, WardrikNotify.Route.t()} | :none | {:error, String.t()}
+  def route(context, %Definition{id: id, fields: fields}),
+    do: WardrikDefinition.route(fields, id, context)
 
   @doc "The definition as the HTTP API writes one; see `WardrikDefinition.fields/1`."
   @spec fields(Definition.t()) :: map()
   def fields(%Definition{fields: fields}), do: WardrikDefinition.fields(fields)
 
-  @doc "The triggers `definition` lists; see `WardrikDefinition.triggers/1`."
-  @spec triggers(Definition.t()) :: [WardrikTrigger.trigger()]
-  def triggers(%Definition{fields: fields}), do: WardrikDefinition.triggers(fields)
+  @doc "The triggers `definition` lists, read under `context`; see `WardrikDefinition.triggers/2`."
+  @spec triggers(WardrikDefinition.Context.t(), Definition.t()) :: [WardrikTrigger.trigger()]
+  def triggers(context, %Definition{fields: fields}),
+    do: WardrikDefinition.triggers(fields, context)
 
   @doc """
-  `definition` with the trigger `name` set to `given`; see
-  `WardrikDefinition.put_trigger/3`.
+  `definition` with the trigger `name` set to the `:trigger` `opts` name,
+  read under `context`; see `WardrikDefinition.put_trigger/3`.
   """
-  @spec put_trigger(Definition.t(), String.t(), map()) ::
+  @spec put_trigger(WardrikDefinition.Context.t(), Definition.t(), String.t(), trigger: map()) ::
           {:ok, Definition.t(), :created | :changed, WardrikTrigger.trigger()}
           | {:error, String.t()}
-  def put_trigger(%Definition{fields: fields} = definition, name, given) do
-    with {:ok, fields, status, trigger} <- WardrikDefinition.put_trigger(fields, name, given),
+  def put_trigger(context, %Definition{fields: fields} = definition, name, opts) do
+    given = Keyword.fetch!(opts, :trigger)
+
+    with {:ok, fields, status, trigger} <-
+           WardrikDefinition.put_trigger(fields, name, trigger: given, context: context),
          do: {:ok, %{definition | fields: fields}, status, trigger}
   end
 

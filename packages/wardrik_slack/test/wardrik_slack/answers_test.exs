@@ -13,9 +13,8 @@ defmodule WardrikSlack.AnswersTest do
   # else holds anything.
   defmodule Held do
     @moduledoc false
-    @behaviour Wardrik.Grants
+    defstruct []
 
-    @impl true
     def grants(_host, principal) do
       case Wardrik.Principal.id(principal) do
         "slack/U1" -> [grant([:read, :message, :decide])]
@@ -28,6 +27,10 @@ defmodule WardrikSlack.AnswersTest do
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.all(), can)
       grant
     end
+  end
+
+  defimpl Wardrik.Grants, for: Held do
+    defdelegate grants(a0, a1), to: Held
   end
 
   setup do
@@ -52,7 +55,7 @@ defmodule WardrikSlack.AnswersTest do
   defp answering do
     context = %WardrikChannel.Context{
       channel: "slack",
-      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: Held)
+      host: Wardrik.Host.new(store: Wardrik.Test.store(), grants: %Held{})
     }
 
     [name: :slack, token: "xoxb-test", context: context, req_options: @req_options]

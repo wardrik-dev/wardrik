@@ -18,8 +18,8 @@ defmodule WardrikTrigger.Feed do
 
   A feed that cannot be read is logged and checked again next time, while the
   others are read as usual; the run fails only where none could be read.
-  `config :wardrik_trigger, WardrikTrigger.Feed, req_options: [...]` is merged
-  into every request.
+  The `:req_options` of the settings the host starts the triggers with for
+  this source are merged into every request; see `WardrikTrigger.start_link/1`.
   """
 
   @behaviour WardrikTrigger.Source
@@ -64,9 +64,10 @@ defmodule WardrikTrigger.Feed do
   def encode(urls), do: %{"feed" => urls}
 
   @impl WardrikTrigger.Source
-  def check(urls, cursor, _agent) do
+  def check(urls, cursor, opts) do
+    req_options = opts |> Keyword.get(:settings, []) |> Keyword.get(:req_options, [])
     cursor = cursor || %{}
-    read = Enum.map(urls, &{&1, read(&1, Map.get(cursor, &1))})
+    read = Enum.map(urls, &{&1, read(&1, Map.get(cursor, &1), req_options)})
 
     case Enum.reject(read, &match?({_url, {:error, _reason}}, &1)) do
       [] ->
@@ -85,16 +86,16 @@ defmodule WardrikTrigger.Feed do
   defp kept({url, {:ok, _items, state}}, cursor), do: Map.put(cursor, url, state)
   defp kept({_url, {:error, _reason}}, cursor), do: cursor
 
-  defp read(url, state) do
-    with {:error, reason} = failed <- fetched(url, state) do
+  defp read(url, state, req_options) do
+    with {:error, reason} = failed <- fetched(url, state, req_options) do
       Logger.warning("feed #{url} could not be read: #{reason}")
       failed
     end
   end
 
   # What a feed holds that `state` has not seen, and the state after.
-  defp fetched(url, state) do
-    case fetch(url, state) do
+  defp fetched(url, state, req_options) do
+    case fetch(url, state, req_options) do
       {:ok, :unchanged} ->
         {:ok, [], state}
 
@@ -121,10 +122,9 @@ defmodule WardrikTrigger.Feed do
   defp ids(nil), do: []
   defp ids(state), do: state.seen
 
-  defp fetch(url, state) do
+  defp fetch(url, state, req_options) do
     options =
-      [url: url, headers: conditional(state), decode_body: false]
-      |> Keyword.merge(Application.get_env(:wardrik_trigger, __MODULE__, [])[:req_options] || [])
+      Keyword.merge([url: url, headers: conditional(state), decode_body: false], req_options)
 
     case Req.get(options) do
       {:ok, %Req.Response{status: 304}} -> {:ok, :unchanged}

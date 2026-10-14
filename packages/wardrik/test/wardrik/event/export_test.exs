@@ -116,7 +116,7 @@ defmodule Wardrik.Event.ExportTest do
   test "reads the audit, and a forgotten agent's log", %{name: name} do
     {id, _pid} = Wardrik.Test.Fleet.start_agent()
     :ok = Wardrik.Fleet.forget(id)
-    :ok = Audit.record({:agent_forgotten, id}, nil)
+    :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: nil)
 
     assert id in Log.logs(store())
     assert hd(Log.logs(store())) == :audit

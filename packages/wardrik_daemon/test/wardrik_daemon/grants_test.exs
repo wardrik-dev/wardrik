@@ -11,37 +11,30 @@ defmodule WardrikDaemon.GrantsTest do
   alias Wardrik.Principal
   alias WardrikDaemon.Agents
   alias WardrikDaemon.Grants
+  alias WardrikDaemon.Test.Host
 
-  setup %{tmp_dir: dir} do
-    previous = Application.get_env(:wardrik_daemon, Agents)
+  setup %{tmp_dir: dir}, do: %{dir: dir}
 
-    on_exit(fn ->
-      Application.delete_env(:wardrik_daemon, WardrikChannel)
-      Application.delete_env(:wardrik_daemon, WardrikNotify)
-      Application.put_env(:wardrik_daemon, Agents, previous || [])
-    end)
-
-    %{dir: dir}
-  end
+  # The daemon's grants, read under the sections the test has put.
+  defp grants, do: Wardrik.Host.grants(Host.host(Host.agents()))
 
   # The test channel knows people by their id alone.
   defp channel(settings) do
-    Application.put_env(
-      :wardrik_daemon,
+    Host.put_section(
       WardrikChannel,
       Keyword.merge([channels: [chat: {WardrikDaemon.Test.Channel, []}]], settings)
     )
   end
 
   defp in_chat(user),
-    do: Grants.grants(Wardrik.Test.host(), WardrikChannel.principal(:chat, user, nil))
+    do: Grants.grants(grants(), WardrikChannel.principal(:chat, user, nil))
 
   defp can(grants), do: Enum.map(grants, &{to_string(&1.scope), &1.can})
 
   test "whoever holds the node may do anything to every agent" do
     for type <- [:shell, :terminal, :ssh] do
       assert [%Grant{can: can} = grant] =
-               Grants.grants(Wardrik.Test.host(), Principal.new(type, "jon"))
+               Grants.grants(grants(), Principal.new(type, "jon"))
 
       assert can == Grant.actions()
       assert Grant.covers?(grant, AgentID.parse!("anyone/@at/all"))
@@ -60,9 +53,9 @@ defmodule WardrikDaemon.GrantsTest do
 
     principal = Principal.new(:token, token.id, name: "ci")
 
-    assert Grants.grants(Wardrik.Test.host(), principal) == [token.grant]
+    assert Grants.grants(grants(), principal) == [token.grant]
     :ok = WardrikHTTP.Token.revoke(Wardrik.Test.store(), token.id)
-    assert Grants.grants(Wardrik.Test.host(), principal) == []
+    assert Grants.grants(grants(), principal) == []
   end
 
   test "a person in a channel reads and messages its orgs' agents, and decides where nobody is named" do
@@ -81,7 +74,7 @@ defmodule WardrikDaemon.GrantsTest do
   test "the approvers of a notify target posting in the channel decide there" do
     channel(orgs: [chat: ["acme"]])
 
-    Application.put_env(:wardrik_daemon, WardrikNotify,
+    Host.put_section(WardrikNotify,
       targets: [
         ops:
           {WardrikChannel.Notices,
@@ -104,16 +97,16 @@ defmodule WardrikDaemon.GrantsTest do
 
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
-    Application.put_env(:wardrik_daemon, Agents, defaults: %{"policy" => "careful"})
-    start_supervised!({Agents, dir: dir, store: Wardrik.Test.store()})
-    _files = Agents.files()
+    Host.put_section(Agents, defaults: %{"policy" => "careful"})
+    Host.start_agents(dir)
+    _files = Agents.files(Host.agents())
 
     assert [%Grant{can: [:read, :message, :decide, :define], ceiling: [_ | _]}] = in_chat("U1")
   end
 
   test "anyone else holds nothing" do
     for type <- [:oauth, :webhook, :agent, :user] do
-      assert Grants.grants(Wardrik.Test.host(), Principal.new(type, "acme/x")) == []
+      assert Grants.grants(grants(), Principal.new(type, "acme/x")) == []
     end
   end
 end

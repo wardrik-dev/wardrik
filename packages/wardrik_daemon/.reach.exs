@@ -4,7 +4,7 @@
 # internals, which only core calls.
 [
   layers: [
-    daemon: ["WardrikDaemon", "WardrikDaemon.*"],
+    daemon: ["WardrikDaemon", "WardrikDaemon.*", "Wardrik.Definition.WardrikDaemon.Agents", "Wardrik.Grants.WardrikDaemon.Grants"],
     docs: "Mix.Tasks.Wardrik.Docs"
   ],
   boundaries: [
@@ -26,8 +26,14 @@
       "Wardrik.Change",
       "Wardrik.Command",
       "Wardrik.Compaction",
+      "Wardrik.Connections",
+      "Wardrik.Connections.Owner",
       "Wardrik.Credential",
+      "Wardrik.Credentials",
+      "Wardrik.Credentials.None",
       "Wardrik.Definition",
+      "Wardrik.Definition.None",
+      "Wardrik.Definitions",
       "Wardrik.Delegation",
       "Wardrik.Deployment",
       "Wardrik.DeploymentOperation",
@@ -44,15 +50,18 @@
       "Wardrik.FleetOperation",
       "Wardrik.Grant",
       "Wardrik.Grants",
-      "Wardrik.Host",
       "Wardrik.Hook",
-      "Wardrik.Label",
-      "Wardrik.Ledger",
-      "Wardrik.Ledger.Store",
+      "Wardrik.Host",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
+      "Wardrik.Label",
+      "Wardrik.Ledger",
+      "Wardrik.Ledger.Guarded",
+      "Wardrik.Ledger.Key",
+      "Wardrik.Ledger.None",
+      "Wardrik.Ledger.Store",
       "Wardrik.Operations.*",
       "Wardrik.Principal",
       "Wardrik.Query",
@@ -62,10 +71,14 @@
       "Wardrik.Subject",
       "Wardrik.Test",
       "Wardrik.Test.*",
+      "Wardrik.Tokens",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
-      "Wardrik.UUID"
+      "Wardrik.Triggers",
+      "Wardrik.UUID",
+      "Wardrik.Workspace",
+      "Wardrik.Workspace.None"
     ],
     internal: [
       "Wardrik.Agent.State",

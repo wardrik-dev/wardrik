@@ -54,7 +54,7 @@ defmodule Wardrik.Operations.SetTrigger do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, name: name, fields: fields}} = change, caller) do
-    case Host.definitions(caller.host).put_trigger(caller.host, id, name, fields) do
+    case Wardrik.Definition.put_trigger(Host.definitions(caller.host), id, name, fields: fields) do
       {:ok, :created, trigger} -> {:created, %{"trigger" => trigger}, change.effect}
       {:ok, :changed, trigger} -> {:ok, %{"trigger" => trigger}, change.effect}
       {:error, :not_found} -> {:error, ReadDefinition.undefined(id)}

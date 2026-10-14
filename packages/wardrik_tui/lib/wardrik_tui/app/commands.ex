@@ -480,5 +480,6 @@ defmodule WardrikTUI.App.Commands do
   defp caller(term), do: Host.root(term.assigns.host, principal: term.assigns.principal)
 
   # A change this client made, recorded for the person using it.
-  defp record(term, action), do: Audit.record(action, term.assigns.principal)
+  defp record(term, action),
+    do: Audit.record(Host.audit(term.assigns.host), action, by: term.assigns.principal)
 end

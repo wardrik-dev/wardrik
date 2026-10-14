@@ -1,12 +1,15 @@
 defmodule Wardrik.Triggers.None do
   @moduledoc """
   The `Wardrik.Triggers` of a host that takes no requests for triggers:
-  `deliver/3` is `:unsupported`. A `Wardrik.Host` that names no `:triggers`
+  `deliver/4` is `:unsupported`. A `Wardrik.Host` that names no `:triggers`
   has it.
   """
 
-  @behaviour Wardrik.Triggers
+  defstruct []
 
-  @impl Wardrik.Triggers
-  def deliver(_id, _name, _request), do: :unsupported
+  @type t() :: %__MODULE__{}
+end
+
+defimpl Wardrik.Triggers, for: Wardrik.Triggers.None do
+  def deliver(_triggers, _id, _name, _opts), do: :unsupported
 end

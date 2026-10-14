@@ -27,7 +27,7 @@ defmodule Wardrik.Operations.Reload do
 
   @impl Wardrik.Command
   def plan(request, caller) do
-    case Host.definitions(caller.host).reloading() do
+    case Wardrik.Definition.reloading(Host.definitions(caller.host)) do
       [] -> {:error, Error.new(:unsupported, "This deployment reads no definitions again.")}
       nodes -> {:ok, Change.new(request, %Reloading{nodes: nodes})}
     end
@@ -35,7 +35,7 @@ defmodule Wardrik.Operations.Reload do
 
   @impl Wardrik.Command
   def make(%Change{effect: %Reloading{nodes: nodes} = effect}, caller) do
-    :ok = Wardrik.Definition.reload_on(Host.definitions(caller.host), nodes)
+    :ok = Wardrik.Definitions.reload_on(Host.definitions(caller.host), nodes)
     {:ok, %{"reloaded" => Enum.map(nodes, &to_string/1)}, effect}
   end
 end

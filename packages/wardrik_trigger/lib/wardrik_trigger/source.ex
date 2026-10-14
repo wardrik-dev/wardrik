@@ -9,12 +9,7 @@ defmodule WardrikTrigger.Source do
   which answers with one item every time, so the agent is asked on every run.
 
   A source is named in a trigger by a key of its own, which a package
-  registers in its application's environment:
-
-      def application,
-        do: [env: [wardrik_trigger_sources: [feed: MyApp.Feed]]]
-
-  so a trigger written as
+  registers (see `WardrikTrigger.Offered`), so a trigger written as
 
       %{"every" => "1h", "feed" => "https://example.com/feed.xml", "prompt" => "What is new?"}
 
@@ -51,16 +46,11 @@ defmodule WardrikTrigger.Source do
   @doc "Its options written as fields, as `decode/1` reads them back."
   @callback encode(opts :: term()) :: %{String.t() => term()}
 
-  @doc "What is new for `agent` since `cursor`, and the cursor to check from next time."
-  @callback check(opts :: term(), cursor() | nil, AgentID.t()) ::
+  @doc """
+  What is new for `:agent` since `cursor`, and the cursor to check from next
+  time. `:settings` are what the host started the triggers with for this
+  source, such as the options of its requests.
+  """
+  @callback check(opts :: term(), cursor() | nil, agent: AgentID.t(), settings: keyword()) ::
               {:ok, [Item.t()], cursor()} | {:error, String.t()}
-
-  @doc "Every source the loaded applications name, by its key."
-  @spec all() :: %{String.t() => module()}
-  def all do
-    for {app, _description, _version} <- Application.loaded_applications(),
-        {key, module} <- Application.get_env(app, :wardrik_trigger_sources, []),
-        into: %{},
-        do: {to_string(key), module}
-  end
 end

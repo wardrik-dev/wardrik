@@ -1,6 +1,8 @@
 defmodule WardrikWorkspace.ToolsTest do
   use ExUnit.Case, async: true
 
+  alias WardrikWorkspace.Test.Workspace
+
   alias Wardrik.Call
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.ToolRunner
@@ -15,7 +17,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
     scope =
       Config.new(tools: [{WardrikWorkspace, spec}])
-      |> Scope.root(key, name: "turn", host: Wardrik.Test.host(), hooks: hooks)
+      |> Scope.root(key, name: "turn", host: Workspace.host(), hooks: hooks)
 
     %{key: key, spec: spec, scope: scope}
   end
@@ -246,7 +248,12 @@ defmodule WardrikWorkspace.ToolsTest do
   describe "how much is listed or found" do
     defp put!(agent, path, content) do
       file = %WardrikWorkspace.File{content: content, by: "someone"}
-      {:ok, _version} = Store.write(Wardrik.Test.host(), agent.spec.tree.tree, path, file, nil)
+
+      {:ok, _version} =
+        Store.write(Workspace.workspace(), agent.spec.tree.tree, path,
+          file: file,
+          version: nil
+        )
     end
 
     defp hits(label, n), do: Enum.map_join(1..n, "\n", &"hit #{label} #{&1}")
@@ -333,7 +340,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
       scope =
         Config.new(tools: [{WardrikWorkspace, spec}])
-        |> Scope.root(key, name: "turn", host: Wardrik.Test.host())
+        |> Scope.root(key, name: "turn", host: Workspace.host())
 
       reader = %{key: key, spec: spec, scope: scope}
 
@@ -392,7 +399,11 @@ defmodule WardrikWorkspace.ToolsTest do
         })
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"], by: by}, _version} =
-               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
+               Store.read(
+                 Workspace.workspace(),
+                 "shared/#{tree}",
+                 "finding.md"
+               )
 
       assert by == to_string(writer.key)
 
@@ -421,13 +432,21 @@ defmodule WardrikWorkspace.ToolsTest do
         answered(clean, "write_file", %{"path" => path, "content" => " Now.", "append" => true})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"], content: "Deploy. Now."}, _version} =
-               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
+               Store.read(
+                 Workspace.workspace(),
+                 "shared/#{tree}",
+                 "finding.md"
+               )
 
       {:ok, _edited} =
         answered(clean, "edit_file", %{"path" => path, "old" => "Now", "new" => "Later"})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
-               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
+               Store.read(
+                 Workspace.workspace(),
+                 "shared/#{tree}",
+                 "finding.md"
+               )
 
       {:ok, %{"version" => version}} = answered(clean, "read_file", %{"path" => path})
 
@@ -439,13 +458,21 @@ defmodule WardrikWorkspace.ToolsTest do
         })
 
       assert {:ok, %WardrikWorkspace.File{labels: [], content: "Wait."}, _version} =
-               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
+               Store.read(
+                 Workspace.workspace(),
+                 "shared/#{tree}",
+                 "finding.md"
+               )
 
       {:ok, _appended} =
         answered(labelled, "write_file", %{"path" => path, "content" => " Go.", "append" => true})
 
       assert {:ok, %WardrikWorkspace.File{labels: ["outside"]}, _version} =
-               Store.read(Wardrik.Test.host(), "shared/#{tree}", "finding.md")
+               Store.read(
+                 Workspace.workspace(),
+                 "shared/#{tree}",
+                 "finding.md"
+               )
     end
 
     test "a file a run with no labels wrote labels nothing" do
@@ -483,7 +510,7 @@ defmodule WardrikWorkspace.ToolsTest do
 
     scope =
       Config.new(tools: [{WardrikWorkspace, spec}])
-      |> Scope.root(key, name: "turn", host: Wardrik.Test.host())
+      |> Scope.root(key, name: "turn", host: Workspace.host())
 
     %{key: key, spec: spec, scope: scope}
   end

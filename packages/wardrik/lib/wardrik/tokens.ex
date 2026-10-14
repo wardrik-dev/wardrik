@@ -1,27 +1,26 @@
-defmodule Wardrik.Tokens do
+defprotocol Wardrik.Tokens do
   @moduledoc """
   The tokens a deployment's callers present, each carrying a
   `Wardrik.Grant`: making one, listing them, and revoking one.
 
-  A host names the module once, as the `:tokens` of its `Wardrik.Host`, and
-  the operations on tokens ask it, handing each callback the host first, for
-  the store it keeps them in:
+  A host names the value once, as the `:tokens` of its `Wardrik.Host`, and
+  the operations on tokens ask it. The value carries what its
+  implementation needs, such as the store it keeps them in:
 
-      Wardrik.Host.new(tokens: WardrikHTTP.Tokens)
+      Wardrik.Host.new(tokens: %WardrikHTTP.Tokens{store: store})
 
-  | Operation | Callback |
+  | Operation | Function |
   | --- | --- |
-  | `Wardrik.Operations.CreateToken` | `create/4` |
+  | `Wardrik.Operations.CreateToken` | `create/3` |
   | `Wardrik.Operations.ListTokens` | `list/1` |
   | `Wardrik.Operations.RevokeToken` | `revoke/2` |
 
-  A host that makes none has `Wardrik.Tokens.None`, whose callbacks answer
+  A host that makes none has `Wardrik.Tokens.None`, whose functions answer
   `:unsupported`, and so does each operation. They act on the
   deployment, so only a caller whose grant reaches every agent takes them;
   see `Wardrik.Deployment`.
   """
 
-  alias Wardrik.Error
   alias Wardrik.Grant
   alias Wardrik.Principal
 
@@ -36,25 +35,19 @@ defmodule Wardrik.Tokens do
         }
 
   @doc """
-  Makes a token named `name` carrying `grant`, acting for `for`, or for
-  itself where `nil`: its secret, answered this once, and the token.
+  Makes a token named `name` carrying the `:grant` `opts` name, acting for
+  `:for`, a `Wardrik.Principal`, or for itself where `nil`: its secret,
+  answered this once, and the token.
   """
-  @callback create(
-              Wardrik.Host.t(),
-              name :: String.t(),
-              grant :: Grant.t(),
-              for :: Principal.t() | nil
-            ) ::
-              {:ok, secret :: String.t(), token()} | {:error, String.t()} | :unsupported
+  @spec create(t(), String.t(), grant: Grant.t(), for: Principal.t() | nil) ::
+          {:ok, secret :: String.t(), token()} | {:error, String.t()} | :unsupported
+  def create(tokens, name, opts)
 
   @doc "Every token, oldest first."
-  @callback list(Wardrik.Host.t()) :: [token()] | :unsupported
+  @spec list(t()) :: [token()] | :unsupported
+  def list(tokens)
 
   @doc "Stops the token `id` working: `{:error, :not_found}` where there is none."
-  @callback revoke(Wardrik.Host.t(), id :: String.t()) ::
-              :ok | {:error, :not_found} | :unsupported
-
-  @doc "The error each operation answers where the host makes no tokens."
-  @spec unsupported() :: Error.t()
-  def unsupported, do: Error.new(:unsupported, "This server makes no tokens.")
+  @spec revoke(t(), String.t()) :: :ok | {:error, :not_found} | :unsupported
+  def revoke(tokens, id)
 end

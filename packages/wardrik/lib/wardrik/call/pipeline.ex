@@ -70,7 +70,10 @@ defmodule Wardrik.Call.Pipeline do
   alias Wardrik.Credential
   alias Wardrik.Event
   alias Wardrik.Hook
+  alias Wardrik.Host
   alias Wardrik.Ledger
+  alias Wardrik.Ledger.Guarded
+  alias Wardrik.Ledger.Key
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
   alias Wardrik.LLM.Request
@@ -244,10 +247,10 @@ defmodule Wardrik.Call.Pipeline do
   # A call is claimed before it runs, so a replay knows it began, and settled
   # after, so a replay knows what it returned.
   defp claim(%Call{state: state, target: %Tool{}, scope: %Scope{ledger: ledger} = scope} = call)
-       when state in [:allowed, :approved] and ledger != nil do
-    key = Ledger.key(scope, Call.to_map(call))
+       when state in [:allowed, :approved] do
+    key = Key.of(scope, Call.to_map(call))
 
-    case Ledger.claim(ledger, scope.host, key, Call.to_map(call)) do
+    case Guarded.claim(ledger, key, call: Call.to_map(call), store: Host.store(scope.host)) do
       :ok ->
         Call.put_private(call, @claim, key)
 
@@ -312,10 +315,8 @@ defmodule Wardrik.Call.Pipeline do
 
   defp held(call), do: call
 
-  defp fetched(%Call{scope: %Scope{ledger: nil}}), do: :error
-
   defp fetched(%Call{scope: %Scope{ledger: ledger} = scope} = call),
-    do: Ledger.fetch(ledger, scope.host, Ledger.key(scope, Call.to_map(call)))
+    do: Guarded.fetch(ledger, Key.of(scope, Call.to_map(call)), store: Host.store(scope.host))
 
   defp not_run_again(call, reason) do
     "#{Call.name(call)} was not run again, and may already have done what it does. #{reason}"
@@ -374,12 +375,14 @@ defmodule Wardrik.Call.Pipeline do
   defp put_credential(call, ref, credential),
     do: Call.put_private(call, @credentials, Map.put(credentials(call), ref, credential))
 
-  # A model call goes where its dispatch says, with the key it supplies, and
-  # names the model it goes to as it is made.
+  # A model call goes where its dispatch says, with the key it supplies or
+  # else the host's credentials hold, and names the model it goes to as it is
+  # made.
   defp admitted(%Call{state: state, target: %Model{}} = call)
        when state in [:allowed, :approved] do
     case Dispatch.admit(call.scope, request(call)) do
       {:ok, admitted} ->
+        admitted = Wardrik.LLM.Key.put(admitted, call.scope.host)
         %{call | target: Model.new(admitted)} |> Call.put_private(@request, admitted)
 
       {:error, reason} ->
@@ -411,7 +414,7 @@ defmodule Wardrik.Call.Pipeline do
         call_id: call.id,
         name: name,
         arguments: args,
-        idempotency_key: Ledger.idempotency_key(call),
+        idempotency_key: Key.idempotency(call),
         decided_by: Call.decided_by(call)
       }
     )
@@ -529,7 +532,8 @@ defmodule Wardrik.Call.Pipeline do
         settle(call, ledger, key)
 
       :waiting ->
-        if Call.asked_by?(call, :tool), do: _ = Ledger.release(ledger, call.scope.host, key)
+        if Call.asked_by?(call, :tool),
+          do: _ = Guarded.release(ledger, key, store: Host.store(call.scope.host))
     end
 
     Call.put_private(call, @claim, nil)
@@ -538,7 +542,8 @@ defmodule Wardrik.Call.Pipeline do
   defp recorded(call), do: call
 
   defp settle(call, ledger, key) do
-    with {:error, reason} <- Ledger.settle(ledger, call.scope.host, key, call.result) do
+    with {:error, reason} <-
+           Guarded.settle(ledger, key, result: call.result, store: Host.store(call.scope.host)) do
       Logger.warning(
         "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
       )

@@ -19,7 +19,14 @@
       "Wardrik.Call",
       "Wardrik.Call.Ask",
       "Wardrik.Compaction",
+      "Wardrik.Connections",
+      "Wardrik.Connections.Owner",
       "Wardrik.Credential",
+      "Wardrik.Credentials",
+      "Wardrik.Credentials.None",
+      "Wardrik.Definition",
+      "Wardrik.Definition.None",
+      "Wardrik.Definitions",
       "Wardrik.Delegation",
       "Wardrik.Event",
       "Wardrik.Event.Bus",
@@ -30,24 +37,32 @@
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
       "Wardrik.Grant",
-      "Wardrik.Host",
+      "Wardrik.Grants",
       "Wardrik.Hook",
-      "Wardrik.Label",
-      "Wardrik.Ledger",
-      "Wardrik.Ledger.Store",
+      "Wardrik.Host",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
+      "Wardrik.Label",
+      "Wardrik.Ledger",
+      "Wardrik.Ledger.Guarded",
+      "Wardrik.Ledger.Key",
+      "Wardrik.Ledger.None",
+      "Wardrik.Ledger.Store",
       "Wardrik.Principal",
       "Wardrik.Scope",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
+      "Wardrik.Tokens",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
-      "Wardrik.UUID"
+      "Wardrik.Triggers",
+      "Wardrik.UUID",
+      "Wardrik.Workspace",
+      "Wardrik.Workspace.None"
     ],
     internal: [
       "Wardrik.Agent.State",
@@ -76,9 +91,9 @@
     forbidden: [
       # The package takes its settings as options of what the host starts,
       # and never reads or writes the application environment; nor does it
-      # name core's store or supervisors. WardrikChannel reads the adapters
-      # other applications name under :wardrik_channels, which is how a
-      # channel package makes itself known.
+      # name core's store or supervisors. WardrikChannel.discover/0 reads the
+      # adapters other applications name under :wardrik_channels, which is how
+      # a channel package makes itself known, once as a host starts.
       {["WardrikChannel", "WardrikChannel.*"],
        [
          "Application.get_env",

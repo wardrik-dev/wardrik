@@ -3,7 +3,7 @@ defmodule Wardrik.Audit do
   What people changed, and who changed it: one log for the whole cluster,
   beside each agent's own.
 
-      :ok = Wardrik.Audit.record({:agent_forgotten, ~A"acme/triage"}, by)
+      :ok = Wardrik.Audit.record(Wardrik.Host.audit(host), {:agent_forgotten, ~A"acme/triage"}, by: by)
 
   A surface people act through, the CLI, the TUI or the HTTP API, records
   each change it makes once it is made, with the `Wardrik.Principal` who
@@ -123,24 +123,36 @@ defmodule Wardrik.Audit do
     }
   end
 
-  @doc "Records `action`, made by `by`, in the audit log."
-  @spec record(action(), Principal.t() | nil) :: :ok
-  def record(action, by), do: GenServer.call(__MODULE__, {:record, new(action, by)})
+  @doc """
+  Records `action`, made by `:by`, in the audit log `audit`, the process
+  the host names as its `Wardrik.Host.audit/1`.
+  """
+  @spec record(GenServer.server(), action(), by: Principal.t() | nil) :: :ok
+  def record(audit, action, opts),
+    do: GenServer.call(audit, {:record, new(action, Keyword.fetch!(opts, :by))})
 
   @doc """
-  Records `actions`, made by `by` as one change, in the audit log: each its
-  own entry, all under one trace, so the entries say they were one change.
+  Records `actions`, made by `:by` as one change, in the audit log `audit`:
+  each its own entry, all under one trace, so the entries say they were one
+  change.
   """
-  @spec record_all([action()], Principal.t() | nil) :: :ok
-  def record_all(actions, by) when is_list(actions) do
+  @spec record_all(GenServer.server(), [action()], by: Principal.t() | nil) :: :ok
+  def record_all(audit, actions, opts) when is_list(actions) do
+    by = Keyword.fetch!(opts, :by)
     trace = Trace.root()
-    Enum.each(actions, &(:ok = GenServer.call(__MODULE__, {:record, new(&1, by, trace)})))
+    Enum.each(actions, &(:ok = GenServer.call(audit, {:record, new(&1, by, trace)})))
   end
 
   @doc false
-  @spec start_link(WardrikStore.t()) :: GenServer.on_start()
-  def start_link(store),
-    do: GenServer.start_link(__MODULE__, store, name: __MODULE__)
+  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
+
+  @doc false
+  @spec start_link(store: WardrikStore.t(), name: GenServer.name()) :: GenServer.on_start()
+  def start_link(opts),
+    do:
+      GenServer.start_link(__MODULE__, Keyword.fetch!(opts, :store),
+        name: Keyword.fetch!(opts, :name)
+      )
 
   # The head is found on the first write, not as the process starts.
   @impl true

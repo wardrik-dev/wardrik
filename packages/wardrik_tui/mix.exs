@@ -19,6 +19,8 @@ defmodule WardrikTUI.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
+      # Tests implement the host's seams in their own modules.
+      consolidate_protocols: Mix.env() != :test,
       deps: deps(),
       test_coverage: [summary: [threshold: 88]]
     ]

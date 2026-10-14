@@ -19,18 +19,18 @@ defmodule WardrikTUI.App.FleetTest do
   # answers, or says why it cannot.
   defmodule Created do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
+  end
 
-    @impl true
-    def put(_host, _id, _definition, _grant), do: {:error, "not here"}
+  defimpl Wardrik.Definition, for: Created do
+    use Wardrik.Definition.None
 
-    @impl true
-    def current(_host, _id), do: :none
+    def put(_definitions, _id, _opts), do: {:error, "not here"}
 
-    @impl true
-    def create(_host, %AgentID{name: "refused"}), do: {:error, "the defaults name no such tool"}
+    def create(_definitions, %AgentID{name: "refused"}),
+      do: {:error, "the defaults name no such tool"}
 
-    def create(_host, id),
+    def create(_definitions, id),
       do: {:ok, Spec.new(id: id, config: Config.new(model_spec: "test:model"))}
   end
 
@@ -61,7 +61,7 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
-          host: Wardrik.Host.new(store: Wardrik.Test.store(), definitions: Created),
+          host: Wardrik.Host.new(store: Wardrik.Test.store(), definitions: %Created{}),
           org: org,
           spawn_opts: spawn_opts,
           model: "test:model",

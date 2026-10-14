@@ -206,12 +206,14 @@ defmodule WardrikDaemon.Config do
 
   ## Where the settings go
 
-  The daemon keeps what it read in its own application environment, by the
-  module each section is for, and starts each package with its section as
-  options: `WardrikMCP.Supervisor` with what `mcp` says, `WardrikOAuth.Supervisor`
-  with `oauth`, and so on. `settings/1` reads them back. A release's own
-  configuration may give a module settings of its own under `:wardrik_daemon`,
-  which `config.yaml` is merged over:
+  `load/1` reads the file once, as the daemon's tree starts, into a
+  `WardrikDaemon.Config`: the directories, and each section by the module it
+  is for. The tree hands it to what it starts, and each package is started
+  with its section as options: `WardrikMCP.Supervisor` with what `mcp` says,
+  `WardrikOAuth` with `oauth`, and so on; `section/2` reads one. A release's
+  own configuration may give a module settings of its own under
+  `:wardrik_daemon`, which the release reads once as it starts and
+  `config.yaml` is merged over:
 
       config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]
   """
@@ -222,6 +224,29 @@ defmodule WardrikDaemon.Config do
 
   @typedoc "Settings by the module they are for, which the daemon starts with them."
   @type settings() :: [{module(), keyword()}]
+
+  @enforce_keys [:config_dir, :data_dir, :state_dir]
+  defstruct [
+    :config_dir,
+    :data_dir,
+    :state_dir,
+    sections: [],
+    adapters: %{},
+    triggers: %WardrikTrigger.Offered{}
+  ]
+
+  @typedoc """
+  What the daemon runs with: where it reads and writes, and what
+  `config.yaml` and the release say of each module.
+  """
+  @type t() :: %__MODULE__{
+          config_dir: Path.t(),
+          data_dir: Path.t(),
+          state_dir: Path.t(),
+          sections: settings(),
+          adapters: %{String.t() => module()},
+          triggers: WardrikTrigger.Offered.t()
+        }
 
   @transport ~w(command args env cwd url headers)a
   @server @transport ++
@@ -278,28 +303,103 @@ defmodule WardrikDaemon.Config do
   @org "default"
   @segment "an org holds no / or whitespace and does not begin with @ or _"
 
+  @doc """
+  A config with the directories `opts` name, each the environment's where
+  left out, and `:sections`, none by default. `:adapters` are the channel
+  adapters a `channels` type names, and `:triggers` the sources and
+  verifiers a trigger names, as the release found them registered as it
+  started; see `WardrikChannel.discover/0` and `WardrikTrigger.Offered`.
+  """
+  @spec new(keyword()) :: t()
+  def new(opts \\ []) do
+    %__MODULE__{
+      config_dir: Keyword.get_lazy(opts, :config_dir, &config_dir/0),
+      data_dir: Keyword.get_lazy(opts, :data_dir, &data_dir/0),
+      state_dir: Keyword.get_lazy(opts, :state_dir, &state_dir/0),
+      sections: Keyword.get(opts, :sections, []),
+      adapters: Keyword.get(opts, :adapters, %{}),
+      triggers: Keyword.get(opts, :triggers, %WardrikTrigger.Offered{})
+    }
+  end
+
   @doc "The deployment's org, as `config.yaml` names it, or `#{@org}` where it names none."
-  @spec org() :: String.t()
-  def org, do: WardrikDaemon |> settings() |> Keyword.get(:org, @org)
+  @spec org(t()) :: String.t()
+  def org(%__MODULE__{} = config), do: config |> section(WardrikDaemon) |> Keyword.get(:org, @org)
 
   @doc """
   The deployment's address, as `config.yaml`'s `base_url` names it, or where
   it names none, the HTTP API on this machine's loopback.
   """
-  @spec base_url() :: String.t()
-  def base_url do
-    Keyword.get_lazy(settings(WardrikDaemon), :base_url, fn ->
-      "http://127.0.0.1:#{Keyword.get(settings(WardrikHTTP), :port, 4747)}"
+  @spec base_url(t()) :: String.t()
+  def base_url(%__MODULE__{} = config) do
+    Keyword.get_lazy(section(config, WardrikDaemon), :base_url, fn ->
+      "http://127.0.0.1:#{Keyword.get(section(config, WardrikHTTP), :port, 4747)}"
     end)
   end
 
   @doc """
-  What the daemon keeps for `module`: what `config.yaml` says of it, merged
-  over what the release's configuration gives it. `[]` where neither says
+  What `config` says of `module`: what `config.yaml` says of it, merged over
+  what the release's configuration gives it. `[]` where neither says
   anything.
   """
-  @spec settings(module()) :: keyword()
-  def settings(module) when is_atom(module), do: Application.get_env(:wardrik_daemon, module, [])
+  @spec section(t(), module()) :: keyword()
+  def section(%__MODULE__{sections: sections}, module), do: Keyword.get(sections, module, [])
+
+  @doc """
+  Reads `config.yaml` from the config directory into a config, over the
+  release's own settings, `:base`.
+
+  The vault's keys come first, from `vault.keys`, the release's, or the key
+  file in the data home, so the rest of the file can read from the vault in
+  `:store` what the environment does not set; the keys are kept in the
+  config's `WardrikVault` section, as the vault is made from it.
+  `:config_dir`, `:data_dir` and `:state_dir` are as `new/1` takes them.
+  """
+  @spec load(keyword()) :: {:ok, t()} | {:error, String.t()}
+  def load(opts) do
+    store = Keyword.fetch!(opts, :store)
+    base = Keyword.get(opts, :base, [])
+    config = new(opts)
+
+    with {:ok, file} <- file(config.config_dir),
+         {:ok, early} <- read(file, only: ["vault"]),
+         vault = early_vault(store, merge(base, early), config.data_dir),
+         {:ok, read} <-
+           read(file, vault: &WardrikDaemon.Secrets.named(vault, &1), adapters: config.adapters) do
+      sections =
+        base
+        |> merge(read)
+        |> Keyword.update(WardrikVault, [keys: vault.keys], &Keyword.put(&1, :keys, vault.keys))
+
+      {:ok, %{config | sections: sections}}
+    end
+  end
+
+  # The vault the rest of the file reads from: no grants, as it reads only
+  # the deployment's secrets.
+  defp early_vault(store, sections, data_dir) do
+    settings = Keyword.get(sections, WardrikVault, [])
+
+    keys =
+      case Keyword.get(settings, :keys, []) do
+        [] -> WardrikDaemon.VaultKey.keys(data_dir)
+        keys -> keys
+      end
+
+    WardrikVault.new(
+      store: store,
+      keys: keys,
+      environment: Keyword.get(settings, :environment, [])
+    )
+  end
+
+  @doc "Each module's settings in `over`, merged over its settings in `base`."
+  @spec merge(settings(), settings()) :: settings()
+  def merge(base, over) do
+    Enum.reduce(over, base, fn {module, opts}, acc ->
+      Keyword.update(acc, module, opts, &Keyword.merge(&1, opts))
+    end)
+  end
 
   @doc "Where `config.yaml` is read from: `WARDRIK_CONFIG_DIR`, or `wardrik` under the XDG config home."
   @spec config_dir() :: Path.t()
@@ -340,6 +440,7 @@ defmodule WardrikDaemon.Config do
 
   @doc """
   The settings `file` configures, or none where there is no file.
+  `:adapters` are the channel adapters a channel's `type` may name.
 
   `${NAME}` reads the environment. Given `:vault`, a name the environment
   does not set is read from it: a function answering the deployment's secret
@@ -357,9 +458,9 @@ defmodule WardrikDaemon.Config do
   end
 
   @doc """
-  What a release keeps as it boots, before anything starts: the store
+  What a release reads as it boots, before anything starts: the store
   `storage` names, the cluster `cluster` describes, and the HTTP API's `http`,
-  for what the release starts before the daemon. A store kept on the nodes,
+  for what the release starts before the daemon reads the rest. A store kept on the nodes,
   as it is without `storage`, counts its quorum over the cluster's size.
 
       for {module, settings} <- WardrikDaemon.Config.boot(settings),
@@ -385,20 +486,6 @@ defmodule WardrikDaemon.Config do
         do: {module, settings}
   end
 
-  @doc """
-  Merges each module's settings over what the daemon keeps for it; see
-  `settings/1`. The store's are left out: it is running by then, and `boot/1`
-  gives them to a release before it starts.
-  """
-  @spec apply(settings()) :: :ok
-  def apply(settings) do
-    settings
-    |> Keyword.delete(WardrikStore)
-    |> Enum.each(fn {module, opts} ->
-      Application.put_env(:wardrik_daemon, module, Keyword.merge(settings(module), opts))
-    end)
-  end
-
   defp decode(text, file, opts) do
     case YamlElixir.read_from_string(text) do
       {:ok, nil} ->
@@ -408,7 +495,7 @@ defmodule WardrikDaemon.Config do
         document = document |> table!([]) |> only(opts[:only])
         env = env_file(Path.dirname(file))
         secret = &secret(&1, &2, opts[:vault], env)
-        {:ok, document |> interpolate([], secret) |> sections()}
+        {:ok, document |> interpolate([], secret) |> sections(Keyword.get(opts, :adapters, %{}))}
 
       {:error, error} ->
         {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
@@ -417,20 +504,20 @@ defmodule WardrikDaemon.Config do
     {:invalid, path, message} -> {:error, "#{file}: #{Enum.join(path, ".")} #{message}"}
   end
 
-  defp sections(document) do
+  defp sections(document, adapters) when is_map(adapters) do
     {org, document} = Map.pop(document, "org")
     {base_url, document} = Map.pop(document, "base_url")
     org = org!(org)
-    base_url = base_url(base_url)
+    base_url = addressed_at(base_url)
 
     [
       {WardrikDaemon, [org: org] ++ base_url}
-      | document |> sections(org) |> through_channels() |> addressed(base_url)
+      | document |> sections(org, adapters) |> through_channels() |> addressed(base_url)
     ]
   end
 
-  defp base_url(nil), do: []
-  defp base_url(url), do: [base_url: redirect_url!(url, ["base_url"])]
+  defp addressed_at(nil), do: []
+  defp addressed_at(url), do: [base_url: redirect_url!(url, ["base_url"])]
 
   # A setting further down that names no address of its own is under the
   # deployment's.
@@ -447,7 +534,7 @@ defmodule WardrikDaemon.Config do
     end)
   end
 
-  defp sections(document, org) do
+  defp sections(document, org, adapters) do
     Enum.map(document, fn
       {"defaults", defaults} ->
         {WardrikDaemon.Agents, defaults: defaults(defaults)}
@@ -474,7 +561,7 @@ defmodule WardrikDaemon.Config do
         {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
 
       {"channels", channels} ->
-        {WardrikChannel, channels(table!(channels, ["channels"]), org)}
+        {WardrikChannel, channels(table!(channels, ["channels"]), org, adapters)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -843,7 +930,7 @@ defmodule WardrikDaemon.Config do
   # -- channels --------------------------------------------------------------
 
   # Each channel, and the orgs whose agents it may offer.
-  defp channels(channels, org) do
+  defp channels(channels, org, adapters) do
     read =
       Enum.map(channels, fn {name, channel} ->
         path = ["channels", name]
@@ -852,7 +939,7 @@ defmodule WardrikDaemon.Config do
         {creates, settings} = Map.pop(settings, "create", true)
         {approvers, settings} = Map.pop(settings, "approvers", [])
         {admins, settings} = Map.pop(settings, "admins", [])
-        adapter = adapter!(type, path ++ ["type"])
+        adapter = adapter!(type, path ++ ["type"], adapters)
 
         unless is_boolean(creates),
           do: invalid!(path ++ ["create"], "is true or false")
@@ -890,13 +977,13 @@ defmodule WardrikDaemon.Config do
       do: invalid!(path, "is a list of who may answer, as the channel names them")
   end
 
-  defp adapter!(type, path) do
+  defp adapter!(type, path, adapters) do
     with true <- is_binary(type),
-         {:ok, adapter} <- WardrikChannel.adapter(type) do
+         {:ok, adapter} <- Map.fetch(adapters, type) do
       adapter
     else
       _unknown ->
-        case WardrikChannel.adapters() |> Map.keys() |> Enum.sort() do
+        case adapters |> Map.keys() |> Enum.sort() do
           [] -> invalid!(path, "is the kind of channel, and this release has none")
           types -> invalid!(path, "is the kind of channel: #{Enum.join(types, ", ")}")
         end

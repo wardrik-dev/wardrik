@@ -16,8 +16,7 @@ defmodule WardrikOAuth.CallbackTest do
     on_exit(&Req.Test.set_req_test_to_private/0)
 
     port = 4600 + System.unique_integer([:positive, :monotonic])
-    start_supervised!({WardrikOAuth.Supervisor, port: port})
-    :ok = configure([])
+    serve(port, [])
 
     %{port: port, owner: owner}
   end
@@ -26,19 +25,27 @@ defmodule WardrikOAuth.CallbackTest do
   # under the redirect settings `redirect`.
   defp flow(%{port: port, owner: owner}, server \\ [], redirect \\ []) do
     stub_server([cimd: true] ++ server)
-
-    configure(
-      providers: [github: [resource: resource(), scopes: ~w(repo)]],
-      redirect: [port: port, open: false] ++ redirect
-    )
+    if redirect != [], do: serve(port, redirect)
 
     id = AgentID.new!("a", org: "acme", user: owner)
-    scope = Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+    scope = Config.new() |> Scope.root(id, host: host())
 
     {:error, {:authorization_required, %{url: url}, _owner}} =
       Credential.resolve(Calls.tool("tool", %{}, scope), "github")
 
     %{scope: scope, url: url, state: state_of(url)}
+  end
+
+  # The callback answers under the settings it was started with, so it is
+  # started again with the redirect a test names.
+  defp serve(port, redirect) do
+    configure(
+      providers: [github: [resource: resource(), scopes: ~w(repo)]],
+      redirect: [port: port, open: false] ++ redirect
+    )
+
+    _ = stop_supervised(WardrikOAuth.Supervisor)
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), port: port})
   end
 
   defp get(port, target) do
@@ -134,7 +141,7 @@ defmodule WardrikOAuth.CallbackTest do
     assert response =~ "400 Bad Request"
     assert response =~ "access_denied: &lt;script&gt;"
     refute response =~ "<script>"
-    refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", context.owner})
+    refute WardrikOAuth.connected?(vault(), "github", {"acme", context.owner})
   end
 
   test "a callback with no code is refused", context do
@@ -146,7 +153,7 @@ defmodule WardrikOAuth.CallbackTest do
        context do
     %{url: url, state: state} = flow(context, [], url: "https://agents.example.com/oauth/")
     assert params_of(url)["redirect_uri"] == "https://agents.example.com/oauth/callback/github"
-    refute Callback.loopback?()
+    refute Callback.loopback?(oauth())
 
     assert get(context.port, "/callback/github?code=the-code&state=#{state}") =~ "404 Not Found"
 
@@ -182,12 +189,12 @@ defmodule WardrikOAuth.CallbackTest do
 
   test "a URL on loopback is this machine's, and opens the browser here" do
     configure(redirect: [url: "http://localhost:4599"])
-    assert Callback.loopback?()
-    assert Callback.redirect_uri("github") == "http://localhost:4599/callback/github"
+    assert Callback.loopback?(oauth())
+    assert Callback.redirect_uri(oauth(), "github") == "http://localhost:4599/callback/github"
 
     configure(redirect: [port: 4700])
-    assert Callback.loopback?()
-    assert Callback.url() == "http://127.0.0.1:4700"
+    assert Callback.loopback?(oauth())
+    assert Callback.url(oauth()) == "http://127.0.0.1:4700"
   end
 
   test "a path that is not a callback is not served", %{port: port} do
@@ -201,7 +208,9 @@ defmodule WardrikOAuth.CallbackTest do
 
     {listener, log} =
       ExUnit.CaptureLog.with_log(fn ->
-        {:ok, listener} = GenServer.start_link(Callback, port: port, retry: :timer.hours(1))
+        {:ok, listener} =
+          GenServer.start_link(Callback, oauth: oauth(), port: port, retry: :timer.hours(1))
+
         listener
       end)
 
@@ -222,7 +231,9 @@ defmodule WardrikOAuth.CallbackTest do
     {:ok, other} = :inet.port(held)
     :ok = :gen_tcp.close(held)
 
-    {:ok, listener} = GenServer.start_link(Callback, ip: {0, 0, 0, 0}, port: other)
+    {:ok, listener} =
+      GenServer.start_link(Callback, oauth: oauth(), ip: {0, 0, 0, 0}, port: other)
+
     assert {:ok, {{0, 0, 0, 0}, ^other}} = Callback.listening(listener)
   end
 end

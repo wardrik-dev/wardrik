@@ -11,17 +11,38 @@ defmodule WardrikDaemonTest do
 
   @moduletag :tmp_dir
 
-  setup do
-    Settings.keep()
+  # What the daemon's tree reads, over what the suite's release gives.
+  defp load(dir) do
+    Config.load(
+      store: store(),
+      adapters: WardrikChannel.discover(),
+      triggers: WardrikTrigger.Offered.discover(),
+      base: Host.config(dir).sections,
+      config_dir: dir,
+      data_dir: dir,
+      state_dir: dir
+    )
+  end
+
+  # The daemon, started as its tree starts it on what `dir` holds, with its
+  # config and host.
+  defp daemon(dir) do
+    {:ok, config} = load(dir)
+
+    agents = %{
+      Host.agents(dir)
+      | config: config,
+        context: WardrikDaemon.AgentFile.context(config)
+    }
+
+    host = Host.host(agents)
+    {start_supervised({WardrikDaemon, host: host, config: config}), config, host}
   end
 
   test "starts with no config.yaml at all, running the agent files and the HTTP API", %{
     tmp_dir: dir
   } do
-    assert {:ok, pid} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {{:ok, pid}, _config, _host} = daemon(dir)
 
     assert [WardrikDaemon.Agents, WardrikHTTP.Listener] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
@@ -41,9 +62,7 @@ defmodule WardrikDaemonTest do
     key = AgentID.parse!("daemon/defined-#{System.unique_integer([:positive])}")
     on_exit(fn -> Wardrik.Fleet.forget(key) end)
 
-    start_supervised!(
-      {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-    )
+    {{:ok, _pid}, _config, _host} = daemon(dir)
 
     {:ok, port} = WardrikHTTP.Listener.port()
 
@@ -74,14 +93,11 @@ defmodule WardrikDaemonTest do
     key = WardrikVault.generate_key()
     File.write!(Path.join(dir, "config.yaml"), "vault:\n  keys: [\"#{key}\"]\n")
 
-    assert {:ok, _pid} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {{:ok, _pid}, config, host} = daemon(dir)
 
-    assert Config.settings(WardrikVault)[:keys] == [key]
-    assert WardrikVault.Config.keys() == [key]
-    assert WardrikVault.Config.grants() == WardrikOAuth
+    assert Config.section(config, WardrikVault)[:keys] == [key]
+    assert Wardrik.Host.credentials(host).keys == [key]
+    assert %WardrikOAuth{} = Wardrik.Host.credentials(host).grants
   end
 
   test "starts what config.yaml configures with its section as options", %{tmp_dir: dir} do
@@ -98,17 +114,14 @@ defmodule WardrikDaemonTest do
         room: "#ops"
     """)
 
-    assert {:ok, pid} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {{:ok, pid}, config, _host} = daemon(dir)
 
     children = Enum.map(Supervisor.which_children(pid), &elem(&1, 0))
     assert WardrikNotify.Supervisor in children
     assert WardrikChannel.Supervisor in children
 
     assert [audit: {WardrikNotify.Webhook, _opts}, ops: {WardrikChannel.Notices, ops}] =
-             Enum.sort(Config.settings(WardrikNotify)[:targets])
+             Enum.sort(Config.section(config, WardrikNotify)[:targets])
 
     assert ops[:channel] == {WardrikDaemon.Test.Channel, []}
   end
@@ -117,22 +130,16 @@ defmodule WardrikDaemonTest do
     key = WardrikVault.generate_key()
     File.write!(Path.join(dir, "config.yml"), "vault:\n  keys: [\"#{key}\"]\n")
 
-    assert {:ok, _pid} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {{:ok, _pid}, _config, host} = daemon(dir)
 
-    assert WardrikVault.Config.keys() == [key]
+    assert Wardrik.Host.credentials(host).keys == [key]
   end
 
   test "refuses a config directory holding both config.yaml and config.yml", %{tmp_dir: dir} do
     File.write!(Path.join(dir, "config.yaml"), "")
     File.write!(Path.join(dir, "config.yml"), "")
 
-    assert {:error, {{:config, message}, _child}} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {:error, message} = load(dir)
 
     assert message =~ "holds both config.yaml and config.yml; keep one"
   end
@@ -140,31 +147,28 @@ defmodule WardrikDaemonTest do
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(Wardrik.Test.store(), name, nil, "127.0.0.1")
-    on_exit(fn -> WardrikVault.forget(Wardrik.Test.store(), name, nil) end)
+    :ok = WardrikVault.put(Settings.held_vault(), name, nil, value: "127.0.0.1")
+    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
 
     File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
-    assert {:ok, _pid} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {{:ok, _pid}, config, _host} = daemon(dir)
 
-    assert Config.settings(WardrikDaemon.SSH)[:ip] == {127, 0, 0, 1}
+    assert Config.section(config, WardrikDaemon.SSH)[:ip] == {127, 0, 0, 1}
   end
 
   test "reads storage from the environment alone, and says why it stops", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(Wardrik.Test.store(), name, nil, "postgres://localhost/wardrik")
-    on_exit(fn -> WardrikVault.forget(Wardrik.Test.store(), name, nil) end)
+
+    :ok =
+      WardrikVault.put(Settings.held_vault(), name, nil, value: "postgres://localhost/wardrik")
+
+    on_exit(fn -> WardrikVault.forget(Settings.held_vault(), name, nil) end)
 
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 
-    assert {:error, {{:config, message}, _child}} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {:error, message} = load(dir)
 
     assert message =~
              "storage.postgres.url names ${#{name}}, which is not set; storage reads " <>
@@ -174,10 +178,7 @@ defmodule WardrikDaemonTest do
   test "a config.yaml that does not read stops it, and says why", %{tmp_dir: dir} do
     File.write!(Path.join(dir, "config.yaml"), "nope: {}\n")
 
-    assert {:error, {{:config, message}, _child}} =
-             start_supervised(
-               {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-             )
+    assert {:error, message} = load(dir)
 
     assert message =~ "nope is not a section"
   end
@@ -193,20 +194,18 @@ defmodule WardrikDaemonTest do
       "---\norg: #{org}\npolicy:\n  budget:\n    tokens: 500\n---\nYou count.\n"
     )
 
-    start_supervised!(
-      {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
-    )
+    {{:ok, _pid}, config, host} = daemon(dir)
 
     Wardrik.Test.Fleet.await_update(fn ->
       Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")))
     end)
 
-    assert WardrikDaemon.status(store()) =~
+    assert WardrikDaemon.status(host, config) =~
              "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
   end
 
   test "status/0 names the node and counts the fleet" do
-    status = WardrikDaemon.status(store())
+    status = WardrikDaemon.status(Host.host(Host.agents()), Host.config())
 
     assert status =~ "on #{node()}, up "
     assert status =~ ~r/\d+ agents?/

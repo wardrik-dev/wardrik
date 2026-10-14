@@ -1,35 +1,21 @@
 defmodule WardrikDaemon.Test.Settings do
   @moduledoc false
-  # The daemon keeps what config.yaml says in its own application environment,
-  # and starts the vault with it. A test that changes either has them put
-  # back once it ends.
+  # The vault a test's host unseals with, as config.yaml's vault would give
+  # its keys; see WardrikDaemon.Test.Host.
 
-  import ExUnit.Callbacks, only: [on_exit: 1]
-
-  def keep do
-    daemon = Application.get_all_env(:wardrik_daemon)
-    vault = WardrikVault.Config.settings()
-
-    on_exit(fn ->
-      for {key, _value} <- Application.get_all_env(:wardrik_daemon),
-          not Keyword.has_key?(daemon, key),
-          do: Application.delete_env(:wardrik_daemon, key)
-
-      Application.put_all_env(wardrik_daemon: daemon)
-      :ignore = WardrikVault.start_link(vault)
-    end)
-  end
+  alias WardrikDaemon.Test.Host
 
   # A vault that seals with a key of its own, as the daemon would start it.
   def vault(keys \\ [WardrikVault.generate_key()]) do
-    Application.put_env(:wardrik_daemon, WardrikVault, keys: keys)
-    :ignore = WardrikVault.start_link(keys: keys)
+    Host.put_section(WardrikVault, keys: keys)
     :ok
   end
 
   def no_vault do
-    Application.delete_env(:wardrik_daemon, WardrikVault)
-    :ignore = WardrikVault.start_link([])
+    Host.put_section(WardrikVault, keys: [])
     :ok
   end
+
+  # The test's vault, as its host holds it.
+  def held_vault, do: Wardrik.Host.credentials(Host.host(Host.agents()))
 end

@@ -12,13 +12,12 @@ defmodule WardrikOAuth.DeviceTest do
   alias WardrikOAuth.Pending
 
   @grant "urn:ietf:params:oauth:grant-type:device_code"
-  @stubbed [plug: {Req.Test, WardrikOAuth.Stub}]
   # A device answer that has the poller wait a minute before it asks, for a
   # test that ends before then.
   @unhurried %{"interval" => 60}
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
     :ok = configure([])
 
     test = self()
@@ -37,7 +36,7 @@ defmodule WardrikOAuth.DeviceTest do
 
   defp metadata(opts) do
     stub_server(opts)
-    {:ok, metadata} = Metadata.discover(resource(), req_options: @stubbed)
+    {:ok, metadata} = Metadata.discover(resource(), requests())
     flush()
     metadata
   end
@@ -47,7 +46,7 @@ defmodule WardrikOAuth.DeviceTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+    Config.new() |> Scope.root(id, host: host())
   end
 
   defp provider(opts), do: [github: [resource: resource(), scopes: ~w(repo)] ++ opts]
@@ -57,7 +56,7 @@ defmodule WardrikOAuth.DeviceTest do
       metadata = metadata(device: true)
 
       assert {:ok, %Device{} = device} =
-               Device.request(metadata, registered(), scopes: ["repo"], req_options: @stubbed)
+               Device.request(metadata, registered(), [scopes: ["repo"]] ++ requests())
 
       assert device.user_code == "WDJB-MJHT"
       assert device.device_code == "dc_first"
@@ -81,18 +80,16 @@ defmodule WardrikOAuth.DeviceTest do
       }
 
       assert {:ok, %Device{verification_uri: "https://www.google.com/device", interval: 5}} =
-               Device.request(metadata(device: google), registered(), req_options: @stubbed)
+               Device.request(metadata(device: google), registered(), requests())
     end
 
     test "refuses an answer missing what a user needs" do
       assert {:error, :device_unreadable} =
-               Device.request(metadata(device: %{"user_code" => nil}), registered(),
-                 req_options: @stubbed
-               )
+               Device.request(metadata(device: %{"user_code" => nil}), registered(), requests())
     end
 
     test "says a server that offers no device grant does not" do
-      assert Device.request(metadata([]), registered()) ==
+      assert Device.request(metadata([]), registered(), requests()) ==
                {:error, {:no_device_flow, "https://auth.example.com"}}
     end
   end
@@ -112,7 +109,7 @@ defmodule WardrikOAuth.DeviceTest do
 
     defp poll(context, answers) do
       stub_server(device: true, tokens: answers)
-      Device.poll(context.metadata, registered(), context.device, req_options: @stubbed)
+      Device.poll(context.metadata, registered(), context.device, requests())
     end
 
     test "asks with the device code and grant, and reads a token", context do
@@ -207,7 +204,7 @@ defmodule WardrikOAuth.DeviceTest do
 
       assert log =~ "github was not connected for #{inspect({"acme", owner})}: :access_denied"
       assert Pending.under_way("github", {"acme", owner}) == :error
-      refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
     end
 
     test "stops asking the server once the flow is dropped", %{owner: owner} do

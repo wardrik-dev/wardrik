@@ -214,11 +214,13 @@ a server that is neither a command nor a URL, or a server whose name or
 
 ## Where the settings go
 
-The daemon keeps what it read in its own application environment, by the
-module each section is for, and starts each package with its section as
-options: `WardrikMCP.Supervisor` with what `mcp` says, `WardrikOAuth.Supervisor`
-with `oauth`, and so on. `settings/1` reads them back. A release's own
-configuration may give a module settings of its own under `:wardrik_daemon`,
-which `config.yaml` is merged over:
+`load/1` reads the file once, as the daemon's tree starts, into a
+`WardrikDaemon.Config`: the directories, and each section by the module it
+is for. The tree hands it to what it starts, and each package is started
+with its section as options: `WardrikMCP.Supervisor` with what `mcp` says,
+`WardrikOAuth` with `oauth`, and so on; `section/2` reads one. A release's
+own configuration may give a module settings of its own under
+`:wardrik_daemon`, which the release reads once as it starts and
+`config.yaml` is merged over:
 
     config :wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"]

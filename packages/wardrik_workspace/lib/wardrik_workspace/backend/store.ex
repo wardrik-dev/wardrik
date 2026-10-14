@@ -1,8 +1,10 @@
 defmodule WardrikWorkspace.Backend.Store do
   @moduledoc """
-  The default `WardrikWorkspace.Backend`: every file a record in the store of
-  the host each callback is handed, in the `:files` namespace under its tree and path, so a tree is wherever the
-  store is, on every node, on EKV, Postgres or a bucket alike.
+  A `Wardrik.Workspace` keeping every file a record in the store it holds,
+  in the `:files` namespace under its tree and path, so a tree is wherever
+  the store is, on every node, on EKV, Postgres or a bucket alike:
+
+      Wardrik.Host.new(store: store, workspace: %WardrikWorkspace.Backend.Store{store: store})
 
       files / agents/acme/@jon/triage//MEMORY.md
       files / shared/acme//findings/2026-09-30-db-failover.md
@@ -22,60 +24,65 @@ defmodule WardrikWorkspace.Backend.Store do
   a conditional write on that one key.
   """
 
-  @behaviour WardrikWorkspace.Backend
+  @enforce_keys [:store]
+  defstruct [:store]
+
+  @type t() :: %__MODULE__{store: WardrikStore.t()}
 
   alias WardrikWorkspace.File
 
   @ns :files
   @between "//"
 
-  @impl true
-  def read(host, tree, path) do
+  @doc false
+  def read(%__MODULE__{store: store}, tree, path) do
     with {:ok, key} <- key(tree, path) do
-      case WardrikStore.lookup(Wardrik.Host.store(host), @ns, key) do
+      case WardrikStore.lookup(store, @ns, key) do
         {%File{} = file, version} -> {:ok, file, version}
         _none -> :none
       end
     end
   end
 
-  @impl true
-  def write(host, tree, path, %File{} = file, version) do
+  @doc false
+  def write(%__MODULE__{store: store}, tree, path, opts) do
+    %File{} = file = Keyword.fetch!(opts, :file)
+
     with {:ok, key} <- key(tree, path),
-         do: WardrikStore.put(Wardrik.Host.store(host), @ns, key, file, if_vsn: version)
+         do: WardrikStore.put(store, @ns, key, file, if_vsn: Keyword.fetch!(opts, :version))
   end
 
-  @impl true
-  def delete(host, tree, path, version) do
+  @doc false
+  def delete(%__MODULE__{store: store}, tree, path, opts) do
     with {:ok, key} <- key(tree, path),
-         do: WardrikStore.delete(Wardrik.Host.store(host), @ns, key, if_vsn: version)
+         do: WardrikStore.delete(store, @ns, key, if_vsn: Keyword.fetch!(opts, :version))
   end
 
   # Every key under `tree//` is this tree's, whatever `prefix` adds to it, so
   # only the tree needs to be normalised.
-  @impl true
-  def list(host, tree, prefix) do
+  @doc false
+  def list(%__MODULE__{store: store} = workspace, tree, prefix) do
     with :ok <- normalised(tree, :not_a_tree) do
       root = tree <> @between
 
       files =
-        for key <- WardrikStore.keys(Wardrik.Host.store(host), @ns, root <> prefix),
+        for key <- WardrikStore.keys(store, @ns, root <> prefix),
             path = String.replace_prefix(key, root, ""),
-            {:ok, file, version} <- [read(host, tree, path)],
+            {:ok, file, version} <- [read(workspace, tree, path)],
             do: {path, file, version}
 
       {:ok, files}
     end
   end
 
-  @impl true
-  def paths(host, tree, prefix) do
+  @doc false
+  def paths(%__MODULE__{store: store}, tree, prefix) do
     with :ok <- normalised(tree, :not_a_tree) do
       root = tree <> @between
 
       {:ok,
        for(
-         key <- WardrikStore.keys(Wardrik.Host.store(host), @ns, root <> prefix),
+         key <- WardrikStore.keys(store, @ns, root <> prefix),
          do: String.replace_prefix(key, root, "")
        )}
     end
@@ -93,4 +100,12 @@ defmodule WardrikWorkspace.Backend.Store do
       do: :ok,
       else: {:error, {refusal, name}}
   end
+end
+
+defimpl Wardrik.Workspace, for: WardrikWorkspace.Backend.Store do
+  defdelegate read(workspace, tree, path), to: WardrikWorkspace.Backend.Store
+  defdelegate write(workspace, tree, path, opts), to: WardrikWorkspace.Backend.Store
+  defdelegate delete(workspace, tree, path, opts), to: WardrikWorkspace.Backend.Store
+  defdelegate list(workspace, tree, prefix), to: WardrikWorkspace.Backend.Store
+  defdelegate paths(workspace, tree, prefix), to: WardrikWorkspace.Backend.Store
 end

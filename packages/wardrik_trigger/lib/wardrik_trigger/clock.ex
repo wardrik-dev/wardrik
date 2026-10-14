@@ -15,6 +15,6 @@ defmodule WardrikTrigger.Clock do
   def encode(nil), do: %{}
 
   @impl WardrikTrigger.Source
-  def check(nil, cursor, _agent),
+  def check(nil, cursor, _opts),
     do: {:ok, [%Item{id: DateTime.to_iso8601(DateTime.utc_now())}], cursor}
 end

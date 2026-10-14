@@ -15,13 +15,16 @@ defmodule Wardrik.TriggersTest do
   # what it was handed; operations run in the test's process.
   defmodule Answering do
     @moduledoc false
-    @behaviour Wardrik.Triggers
+    defstruct []
 
-    @impl true
-    def deliver(id, name, request) do
+    def deliver(_triggers, id, name, request: request) do
       send(self(), {:deliver, id, name, request})
       Process.get(:answer)
     end
+  end
+
+  defimpl Wardrik.Triggers, for: Answering do
+    defdelegate deliver(a0, a1, a2, a3), to: Answering
   end
 
   @agent AgentID.parse!("acme/hooked")
@@ -36,7 +39,7 @@ defmodule Wardrik.TriggersTest do
     )
   end
 
-  defp deliver(answer, can \\ [:message], host \\ Host.new(triggers: Answering)) do
+  defp deliver(answer, can \\ [:message], host \\ Host.new(triggers: %Answering{})) do
     Process.put(:answer, answer)
 
     Command.run(

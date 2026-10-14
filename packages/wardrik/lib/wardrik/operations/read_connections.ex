@@ -8,6 +8,7 @@ defmodule Wardrik.Operations.ReadConnections do
   @behaviour Wardrik.Query
 
   alias Wardrik.Connections
+  alias Wardrik.Connections.Owner
   alias Wardrik.Host
 
   @enforce_keys [:owner]
@@ -23,8 +24,8 @@ defmodule Wardrik.Operations.ReadConnections do
 
   @impl Wardrik.Query
   def run(%__MODULE__{owner: owner}, caller) do
-    case Host.connections(caller.host).list(caller.host, Connections.owner_of(owner)) do
-      :unsupported -> {:error, Connections.unsupported()}
+    case Connections.list(Host.connections(caller.host), Owner.owner_of(owner)) do
+      :unsupported -> {:error, Wardrik.Connections.None.unsupported()}
       connections -> {:ok, Wardrik.Resource.connections(connections)}
     end
   end

@@ -5,17 +5,13 @@ defmodule WardrikOAuth.Supervisor do
   open a browser, and the callback the browser comes back to (see
   `WardrikOAuth.Callback`).
 
-      children = [
-        {WardrikOAuth.Supervisor,
-         client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
-         providers: [github: [resource: "https://api.githubcopilot.com/mcp/"]]}
-      ]
+      oauth = WardrikOAuth.new(providers: [github: [resource: "https://api.githubcopilot.com/mcp/"]])
+      children = [{WardrikOAuth.Supervisor, oauth: oauth}]
 
-  `:client`, `:providers`, `:redirect`, `:req_options`, `:resolver` and
-  `:poll_floor` are the settings every flow reads, as `WardrikOAuth.Config`
-  describes them; it keeps them as it starts. A deployment serving its own
-  redirect URI starts it with `callback: false` and calls
-  `WardrikOAuth.finish/2` from its own controller.
+  `:oauth` is the `WardrikOAuth` the callback answers under; each flow
+  carries its own. A deployment serving its own redirect URI starts it with
+  `callback: false` and calls `WardrikOAuth.finish/3` from its own
+  controller.
   """
 
   use Supervisor
@@ -23,7 +19,7 @@ defmodule WardrikOAuth.Supervisor do
   alias WardrikOAuth.Callback
   alias WardrikOAuth.Pending
 
-  @doc "Keeps the settings, and starts the flows' registry and supervisor, and the callback listener unless told not to."
+  @doc "Starts the flows' registry and supervisor, and the callback listener unless told not to."
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -31,8 +27,6 @@ defmodule WardrikOAuth.Supervisor do
 
   @impl Supervisor
   def init(opts) do
-    :ok = WardrikOAuth.Config.put(Keyword.take(opts, WardrikOAuth.Config.keys()))
-
     children =
       Pending.children() ++ [{Task.Supervisor, name: WardrikOAuth.Tasks}] ++ loopback(opts)
 

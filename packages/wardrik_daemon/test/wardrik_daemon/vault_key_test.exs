@@ -7,7 +7,6 @@ defmodule WardrikDaemon.VaultKeyTest do
   @moduletag :tmp_dir
 
   setup do
-    Settings.keep()
     Settings.no_vault()
   end
 
@@ -30,47 +29,24 @@ defmodule WardrikDaemon.VaultKeyTest do
     assert File.ls!(dir) == ["vault_key"]
   end
 
-  test "gives the vault the file's key where nothing else gives it one", %{tmp_dir: dir} do
-    assert VaultKey.load(dir) == :none
-    refute WardrikVault.ready?()
+  test "gives the vault the file's key, readable by its owner alone", %{tmp_dir: dir} do
+    assert VaultKey.keys(dir) == []
 
     {:ok, file} = VaultKey.make(dir)
     File.chmod!(file, 0o644)
 
-    assert VaultKey.load(dir) == :ok
-    assert WardrikVault.ready?()
-    assert WardrikVault.Config.keys() == [elem(VaultKey.read(file), 1)]
+    assert VaultKey.keys(dir) == [elem(VaultKey.read(file), 1)]
     assert File.stat!(file).mode |> Bitwise.band(0o777) == 0o600
-  end
-
-  test "leaves a key configured elsewhere in place", %{tmp_dir: dir} do
-    configured = WardrikVault.generate_key()
-    Application.put_env(:wardrik_daemon, WardrikVault, keys: [configured])
-    {:ok, _file} = VaultKey.make(dir)
-
-    assert VaultKey.load(dir) == :ok
-    assert WardrikVault.Config.keys() == [configured]
-  end
-
-  test "starts the vault with the release's settings, and accounts as OAuth grants", %{
-    tmp_dir: dir
-  } do
-    Application.put_env(:wardrik_daemon, WardrikVault, environment: ["SEARCH_API_KEY"])
-
-    assert VaultKey.load(dir) == :none
-    assert WardrikVault.Config.environment() == ["SEARCH_API_KEY"]
-    assert WardrikVault.Config.grants() == WardrikOAuth
   end
 
   test "says why a file holds no key, and makes none over it", %{tmp_dir: dir} do
     file = VaultKey.file(dir)
     File.write!(file, "c2hvcnQ=\n")
 
-    assert {:error, message} = VaultKey.load(dir)
+    assert {:error, message} = VaultKey.read(file)
     assert message =~ "#{file} holds no key the vault can use"
     assert VaultKey.make(dir) == {:error, message}
-    refute VaultKey.configured?()
-    refute WardrikVault.Config.configured?()
+    assert VaultKey.keys(dir) == []
   end
 
   test "says why it cannot write one", %{tmp_dir: dir} do

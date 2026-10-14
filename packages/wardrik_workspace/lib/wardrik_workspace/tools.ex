@@ -341,7 +341,9 @@ defmodule WardrikWorkspace.Tools do
         {:ok, %{"path" => shown_path(mount, path), "deleted" => false}}
 
       {:ok, _file, version} ->
-        mount.backend.delete(host, mount.tree, path, version)
+        host
+        |> Wardrik.Host.workspace()
+        |> Wardrik.Workspace.delete(mount.tree, path, version: version)
         |> removed(mount, path)
         |> again(fn -> delete(host, mount, path, tries - 1) end, tries)
 
@@ -376,7 +378,9 @@ defmodule WardrikWorkspace.Tools do
       at: DateTime.utc_now()
     }
 
-    case mount.backend.write(scope.host, mount.tree, path, file, version) do
+    workspace = Wardrik.Host.workspace(scope.host)
+
+    case Wardrik.Workspace.write(workspace, mount.tree, path, file: file, version: version) do
       {:ok, version} -> {:ok, written(mount, path, version)}
       {:error, :conflict} -> :conflict
       {:error, reason} -> unavailable(reason)
@@ -419,7 +423,8 @@ defmodule WardrikWorkspace.Tools do
 
   defp host(%Wardrik.Tool.Context{scope: scope}), do: scope.host
 
-  defp read(host, %Mount{backend: backend, tree: tree}, path), do: backend.read(host, tree, path)
+  defp read(host, %Mount{tree: tree}, path),
+    do: Wardrik.Workspace.read(Wardrik.Host.workspace(host), tree, path)
 
   defp existing(host, mount, path) do
     case read(host, mount, path) do
@@ -435,7 +440,7 @@ defmodule WardrikWorkspace.Tools do
     spec
     |> Spec.mounts()
     |> Enum.reduce_while({:ok, []}, fn mount, {:ok, seen} ->
-      case mount.backend.paths(host, mount.tree, "") do
+      case Wardrik.Workspace.paths(Wardrik.Host.workspace(host), mount.tree, "") do
         {:ok, paths} -> {:cont, {:ok, [seen(mount, paths, glob) | seen]}}
         {:error, reason} -> {:halt, unavailable(reason)}
       end

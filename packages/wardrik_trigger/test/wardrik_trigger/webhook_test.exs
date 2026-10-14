@@ -22,7 +22,7 @@ defmodule WardrikTrigger.WebhookTest do
                 verify: "shared",
                 prompt: "Look.",
                 overlap: :queue
-              } = hook} = Webhook.decode("issues", fields)
+              } = hook} = Webhook.decode("issues", fields, %WardrikTrigger.Offered{})
 
       assert WardrikTrigger.encode(hook) == %{
                "name" => "issues",
@@ -38,7 +38,8 @@ defmodule WardrikTrigger.WebhookTest do
                    fields
                    | "webhook" => %{"secret" => "${HOOK_SECRET}", "verify" => "standard"}
                  }
-                 |> Map.put("overlap", "skip")
+                 |> Map.put("overlap", "skip"),
+                 %WardrikTrigger.Offered{}
                )
     end
 
@@ -60,7 +61,7 @@ defmodule WardrikTrigger.WebhookTest do
             {Map.put(base, "every", "1h"),
              "every is not a setting of a webhook trigger, which asks as each request arrives"}
           ] do
-        assert Webhook.decode("issues", fields) == {:error, message}
+        assert Webhook.decode("issues", fields, %WardrikTrigger.Offered{}) == {:error, message}
       end
     end
 
@@ -70,29 +71,45 @@ defmodule WardrikTrigger.WebhookTest do
     end
   end
 
+  defp secret("WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "acme"}), do: "acme's"
+  defp secret("WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "globex"}), do: "globex's"
+  defp secret(name, _agent), do: System.get_env(name)
+
   describe "received/3" do
     test "reads the secret for the trigger's agent, so each org has its own" do
       body = ~s({"type":"invoice.paid"})
       opts = hook("WARDRIK_TEST_VAULTED")
 
       assert {:ok, %Item{id: "msg_1", title: "invoice.paid", text: ^body, labels: ["outside"]}} =
-               Webhook.received(opts, standard("msg_1", now(), body, "acme's"), @agent)
+               Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
+               )
 
       globex = Wardrik.AgentID.parse!("globex/hooked")
 
       assert {:error, :forbidden, _message} =
-               Webhook.received(opts, standard("msg_1", now(), body, "acme's"), globex)
+               Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
+                 agent: globex,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
+               )
 
       assert {:ok, %Item{}} =
-               Webhook.received(opts, standard("msg_1", now(), body, "globex's"), globex)
+               Webhook.received(opts, standard("msg_1", now(), body, "globex's"),
+                 agent: globex,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
+               )
     end
 
     test "is unavailable where the secret is not set" do
       assert {:error, :unavailable, _message} =
-               Webhook.received(
-                 hook("WARDRIK_TEST_UNSET"),
-                 standard("msg_1", now(), "{}", "x"),
-                 @agent
+               Webhook.received(hook("WARDRIK_TEST_UNSET"), standard("msg_1", now(), "{}", "x"),
+                 agent: @agent,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
     end
 
@@ -101,12 +118,20 @@ defmodule WardrikTrigger.WebhookTest do
       long = String.duplicate("a", 40_000)
 
       assert {:ok, %Item{text: text}} =
-               Webhook.received(opts, standard("m", now(), long, "acme's"), @agent)
+               Webhook.received(opts, standard("m", now(), long, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
+               )
 
       assert String.length(text) == 32_769
 
       assert {:ok, %Item{text: "(2 bytes that are not text)"}} =
-               Webhook.received(opts, standard("m", now(), <<255, 0>>, "acme's"), @agent)
+               Webhook.received(opts, standard("m", now(), <<255, 0>>, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
+               )
     end
   end
 

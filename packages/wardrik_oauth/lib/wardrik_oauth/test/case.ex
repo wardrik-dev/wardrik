@@ -5,9 +5,9 @@ defmodule WardrikOAuth.Test.Case do
   Requests are routed to a `Req.Test` stub through the `:req_options` setting,
   so discovery, registration, exchange and refresh all run their real request
   building against a stub that reports what it was sent. Each test starts with
-  the settings `configure/1` gives, and no provider; a test that starts
-  `WardrikOAuth.Supervisor` configures again after it, since the supervisor
-  keeps the settings it was started with.
+  the `WardrikOAuth` `configure/1` gives, and no provider, and a vault with a
+  key granting through it; `oauth/0`, `vault/0` and `host/0` answer them in
+  the test's own process.
 
       use WardrikOAuth.Test.Case
 
@@ -48,18 +48,18 @@ defmodule WardrikOAuth.Test.Case do
     end
   end
 
-  setup do
-    previous = %{oauth: WardrikOAuth.Config.settings(), vault: WardrikVault.Config.settings()}
+  @oauth :wardrik_oauth_test_oauth
+  @vault :wardrik_oauth_test_vault
 
-    :ignore = WardrikVault.start_link(keys: [WardrikVault.generate_key()], grants: WardrikOAuth)
+  setup do
+    Process.put(
+      @vault,
+      WardrikVault.new(store: Wardrik.Test.store(), keys: [WardrikVault.generate_key()])
+    )
+
     :ok = configure([])
     forget_registrations()
-
-    on_exit(fn ->
-      :ok = WardrikOAuth.Config.put(previous.oauth)
-      :ignore = WardrikVault.start_link(previous.vault)
-      forget_registrations()
-    end)
+    on_exit(&forget_registrations/0)
 
     %{owner: "jon-#{System.unique_integer([:positive])}"}
   end
@@ -72,18 +72,52 @@ defmodule WardrikOAuth.Test.Case do
         do: WardrikStore.delete(store, :oauth_clients, key)
   end
 
-  @doc "Configures `WardrikOAuth` with these options, plus the stub transport."
+  @doc """
+  Configures the test's `WardrikOAuth` with these options, plus the stub
+  transport, and has its vault grant through it, keeping the vault's keys.
+  """
   @spec configure(keyword()) :: :ok
   def configure(opts) do
     defaults = [
       req_options: [plug: {Req.Test, @stub}],
       redirect: [url: "https://wardrik.example.com/oauth"],
       client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
-      resolver: Resolver,
+      resolve: &Resolver.resolve/1,
       poll_floor: 0
     ]
 
-    WardrikOAuth.Config.put(Keyword.merge(defaults, opts))
+    oauth = WardrikOAuth.new(Keyword.merge(defaults, opts))
+    Process.put(@oauth, oauth)
+    Process.put(@vault, %{vault() | grants: oauth})
+    :ok
+  end
+
+  @doc "The test's `WardrikOAuth`, as `configure/1` last made it."
+  @spec oauth() :: WardrikOAuth.t()
+  def oauth, do: Process.get(@oauth)
+
+  @doc "The test's vault, which grants through `oauth/0`."
+  @spec vault() :: WardrikVault.t()
+  def vault, do: Process.get(@vault)
+
+  @doc "The options every request to the stub takes, under `oauth/0`."
+  @spec requests() :: keyword()
+  def requests, do: WardrikOAuth.requests(oauth())
+
+  @doc "Gives the test's vault `keys`, a new one by default, so what it sealed before cannot be read."
+  @spec rekey([String.t()]) :: :ok
+  def rekey(keys \\ [WardrikVault.generate_key()]) do
+    Process.put(@vault, %{vault() | keys: keys})
+    :ok
+  end
+
+  @doc "A host whose credentials are the test's vault, and whose connections are its sign-ins."
+  @spec host() :: Wardrik.Host.t()
+  def host do
+    Wardrik.Test.host(
+      credentials: vault(),
+      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault()}
+    )
   end
 
   @doc "The redirect URI the tests register for the `github` provider."

@@ -16,7 +16,7 @@ defmodule WardrikDaemon.CLI do
   `--json` answers `{"error": {"type": ..., "message": ...}}`.
 
   A node waiting for a quorum of its cluster answers every command with what
-  it is waiting for; see `WardrikDaemon.Cluster.waiting/1`.
+  it is waiting for; see `WardrikDaemon.Cluster.waiting/2`.
 
   A command that changes something records it in `Wardrik.Audit` once it
   has, for the account `bin/wardrik` says typed it.
@@ -38,6 +38,7 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Query
   alias Wardrik.Resource
   alias WardrikConsole.Nodes
+  alias WardrikDaemon.Boot
   alias WardrikDaemon.CLI.Agents
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Completion
@@ -186,13 +187,13 @@ defmodule WardrikDaemon.CLI do
   def started do
     cond do
       Process.whereis(WardrikDaemon.Agents) ->
-        _files = WardrikDaemon.Agents.files()
+        _files = WardrikDaemon.Agents.files(Host.definitions(WardrikDaemon.Host.get()))
         ""
 
-      reason = Cluster.refusal() ->
+      reason = Cluster.refusal(Boot.cluster()) ->
         raise reason
 
-      reason = Cluster.waiting(held_store()) ->
+      reason = waiting() ->
         reason
 
       true ->
@@ -208,7 +209,7 @@ defmodule WardrikDaemon.CLI do
   """
   @spec stopping() :: String.t()
   def stopping do
-    case Cluster.waiting(held_store()) do
+    case waiting() do
       nil ->
         ""
 
@@ -260,7 +261,7 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp dispatch({terminal, args}) do
-    case Cluster.waiting(held_store()) do
+    case waiting() do
       nil -> run(terminal, args)
       reason when args == ["status"] -> Terminal.puts(terminal, reason)
       reason -> failed(terminal, "unavailable", reason, "--json" in args)
@@ -287,7 +288,7 @@ defmodule WardrikDaemon.CLI do
   # as the ID or prefix it names. A KEY|PREFIX/ is a prefix where it ends in
   # /, an ID otherwise, and never every agent at once.
   defp named(%Command{arguments: arguments}, [word | rest]) do
-    org = Config.org()
+    org = Config.org(WardrikDaemon.Host.config())
 
     expanded =
       cond do
@@ -315,7 +316,8 @@ defmodule WardrikDaemon.CLI do
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
     by = Terminal.principal(terminal)
-    opts = Keyword.merge(opts, by: by, caller: Host.root(WardrikDaemon.Host.get(), principal: by))
+    caller = Host.root(WardrikDaemon.Host.get(), principal: by)
+    opts = Keyword.merge(opts, by: by, caller: caller, config: WardrikDaemon.Host.config())
 
     command
     |> respond(words, opts, terminal, json?)
@@ -509,19 +511,18 @@ defmodule WardrikDaemon.CLI do
 
   # -- the commands the daemon answers ----------------------------------------
 
-  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
+  # Asked of what the release booted with, held before the daemon's tree
+  # reads config.yaml, so a node waiting for its cluster can say how many it
+  # waits for.
+  defp waiting, do: Cluster.waiting(Boot.cluster(), Boot.store())
 
-  # The node's store, from the host the release holds before Wardrik starts,
-  # so a node waiting for its cluster can say how many it waits for.
-  defp held_store, do: Wardrik.Host.store(WardrikDaemon.Host.get())
-
-  defp status(_words, opts), do: {:ok, WardrikDaemon.status(store(opts))}
+  defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
 
   defp nodes(_words, opts), do: Query.run(%ReadNodes{}, opts[:caller])
 
   defp reload(_words, opts) do
     with {:ok, _reloaded} <- Operation.run(%Reload{}, opts[:caller]),
-         do: {:ok, WardrikDaemon.status(store(opts))}
+         do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
   end
 
   defp audit_page(_words, opts) do

@@ -18,10 +18,7 @@ defmodule WardrikTrigger.Webhook.Verifier do
       as the Standard Webhooks spec says
 
   A host that needs a service's own signature checked registers a module of
-  its own in its application's environment, and a trigger names it:
-
-      def application,
-        do: [env: [wardrik_trigger_verifiers: [acme_pay: MyApp.AcmePaySignature]]]
+  its own, and a trigger names it; see `WardrikTrigger.Offered`.
   """
 
   @typedoc "What a request that verifies says of itself."
@@ -33,15 +30,6 @@ defmodule WardrikTrigger.Webhook.Verifier do
   """
   @callback verify(headers :: [{String.t(), String.t()}], body :: binary(), secret :: String.t()) ::
               {:ok, delivery()} | {:error, String.t()}
-
-  @doc "Every verifier the loaded applications name, by its name."
-  @spec all() :: %{String.t() => module()}
-  def all do
-    for {app, _description, _version} <- Application.loaded_applications(),
-        {name, module} <- Application.get_env(app, :wardrik_trigger_verifiers, []),
-        into: %{},
-        do: {to_string(name), module}
-  end
 
   @doc "The value of the header `name` in `headers`, or `nil`."
   @spec header([{String.t(), String.t()}], String.t()) :: String.t() | nil

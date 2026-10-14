@@ -59,11 +59,9 @@ defmodule Wardrik.Operations.Define do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, definition: fields}} = change, caller) do
-    module = Host.definitions(caller.host)
-
     with {:ok, spec} <- read(caller.host, id, fields, caller.grant) do
       if spec.id != id,
-        do: raise(ArgumentError, "#{inspect(module)} wrote a spec for #{spec.id}, not #{id}")
+        do: raise(ArgumentError, "the host's definitions wrote a spec for #{spec.id}, not #{id}")
 
       with {result, snapshot} <- run(%{spec | hooks: Grant.held(caller.grant, spec.hooks)}),
            do: {result, snapshot, change.effect}
@@ -71,7 +69,7 @@ defmodule Wardrik.Operations.Define do
   end
 
   defp read(host, id, fields, grant) do
-    case Host.definitions(host).put(host, id, fields, grant) do
+    case Wardrik.Definition.put(Host.definitions(host), id, definition: fields, grant: grant) do
       {:ok, spec} -> {:ok, spec}
       {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
       {:error, message} -> {:error, Error.new(:invalid, message)}

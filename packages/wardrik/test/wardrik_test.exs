@@ -31,11 +31,11 @@ defmodule WardrikTest do
 
   test "the audit log is kept in the host's store, and the fleet starts with the host" do
     store = WardrikStore.new(adapter: WardrikStore.Memory, name: :wardrik_test_store)
-    host = Wardrik.Host.new(store: store, definitions: Wardrik.Test.Definitions)
+    host = Wardrik.Host.new(store: store, definitions: %Wardrik.Test.Definitions{})
 
     {:ok, {_flags, specs}} = Wardrik.init(fleet: [log: true], host: host)
 
-    assert %{start: {Wardrik.Audit, :start_link, [^store]}} =
+    assert %{start: {Wardrik.Audit, :start_link, [[store: ^store, name: Wardrik.Audit]]}} =
              Enum.find(specs, &(&1.id == Wardrik.Audit))
 
     assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [opts]}} =

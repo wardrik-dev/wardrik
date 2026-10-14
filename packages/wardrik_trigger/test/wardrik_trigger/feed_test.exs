@@ -5,6 +5,7 @@ defmodule WardrikTrigger.FeedTest do
   alias WardrikTrigger.Item
 
   @agent Wardrik.AgentID.parse!("acme/growth")
+  @settings [req_options: [plug: {Req.Test, WardrikTrigger.Feed}, retry: false]]
   @rss "https://example.com/rss"
   @atom "https://example.com/atom"
 
@@ -87,10 +88,12 @@ defmodule WardrikTrigger.FeedTest do
   describe "check/3" do
     test "only reads a feed the first time, and finds what it adds after" do
       serve(%{@rss => rss([{"1", "Old news"}])})
-      assert {:ok, [], cursor} = Feed.check([@rss], nil, @agent)
+      assert {:ok, [], cursor} = Feed.check([@rss], nil, agent: @agent, settings: @settings)
 
       serve(%{@rss => rss([{"2", "Free plan"}, {"1", "Old news"}])})
-      assert {:ok, [item], cursor} = Feed.check([@rss], cursor, @agent)
+
+      assert {:ok, [item], cursor} =
+               Feed.check([@rss], cursor, agent: @agent, settings: @settings)
 
       assert %Item{
                id: "2",
@@ -101,7 +104,7 @@ defmodule WardrikTrigger.FeedTest do
                labels: ["outside"]
              } = item
 
-      assert {:ok, [], _cursor} = Feed.check([@rss], cursor, @agent)
+      assert {:ok, [], _cursor} = Feed.check([@rss], cursor, agent: @agent, settings: @settings)
     end
 
     test "names an entry by its link where it has no guid, and clips a long summary" do
@@ -114,7 +117,7 @@ defmodule WardrikTrigger.FeedTest do
       """
 
       serve(%{@rss => body})
-      {:ok, [], cursor} = Feed.check([@rss], nil, @agent)
+      {:ok, [], cursor} = Feed.check([@rss], nil, agent: @agent, settings: @settings)
 
       serve(%{
         @rss => """
@@ -133,7 +136,9 @@ defmodule WardrikTrigger.FeedTest do
         """
       })
 
-      assert {:ok, [pricing, untitled], _cursor} = Feed.check([@rss], cursor, @agent)
+      assert {:ok, [pricing, untitled], _cursor} =
+               Feed.check([@rss], cursor, agent: @agent, settings: @settings)
+
       assert %Item{id: "https://example.com/3", at: ~U[2026-10-12 09:30:00Z]} = pricing
       assert String.length(pricing.text) == 501
       assert String.ends_with?(pricing.text, "…")
@@ -144,7 +149,7 @@ defmodule WardrikTrigger.FeedTest do
 
     test "reads Atom" do
       serve(%{@atom => atom([{"a", "Old"}])})
-      {:ok, [], cursor} = Feed.check([@atom], nil, @agent)
+      {:ok, [], cursor} = Feed.check([@atom], nil, agent: @agent, settings: @settings)
 
       serve(%{@atom => atom([{"b", "Seats"}, {"a", "Old"}])})
 
@@ -157,7 +162,7 @@ defmodule WardrikTrigger.FeedTest do
                   at: ~U[2026-10-12 08:00:00Z],
                   text: "Seats, in short."
                 }
-              ], _cursor} = Feed.check([@atom], cursor, @agent)
+              ], _cursor} = Feed.check([@atom], cursor, agent: @agent, settings: @settings)
     end
 
     test "asks again with the ETag and Last-Modified a feed answered with" do
@@ -172,7 +177,7 @@ defmodule WardrikTrigger.FeedTest do
         |> Plug.Conn.send_resp(200, rss([{"1", "Old news"}]))
       end)
 
-      {:ok, [], cursor} = Feed.check([@rss], nil, @agent)
+      {:ok, [], cursor} = Feed.check([@rss], nil, agent: @agent, settings: @settings)
       assert_receive {:asked, []}
 
       Req.Test.stub(Feed, fn conn ->
@@ -180,19 +185,21 @@ defmodule WardrikTrigger.FeedTest do
         Plug.Conn.send_resp(conn, 304, "")
       end)
 
-      assert {:ok, [], ^cursor} = Feed.check([@rss], cursor, @agent)
+      assert {:ok, [], ^cursor} = Feed.check([@rss], cursor, agent: @agent, settings: @settings)
       assert_receive {:asked, [~s("v1")]}
     end
 
     test "reads the feeds it can, and fails only where it can read none" do
       serve(%{@rss => rss([{"1", "Old news"}])})
-      {:ok, [], cursor} = Feed.check([@rss, @atom], nil, @agent)
+      {:ok, [], cursor} = Feed.check([@rss, @atom], nil, agent: @agent, settings: @settings)
       assert Map.keys(cursor) == [@rss]
 
       serve(%{@rss => {500, "down"}, @atom => "not a feed"})
 
       ExUnit.CaptureLog.capture_log(fn ->
-        assert {:error, reason} = Feed.check([@rss, @atom], cursor, @agent)
+        assert {:error, reason} =
+                 Feed.check([@rss, @atom], cursor, agent: @agent, settings: @settings)
+
         assert reason =~ "#{@rss}: it answered 500"
         assert reason =~ "#{@atom}: it is not RSS or Atom"
       end)

@@ -33,10 +33,9 @@ defmodule Wardrik.Scope do
   | `:hooks` | whether a tool call may run, and a model call be made |
   | `:dispatch` | what a model call actually is, and who pays for it |
   | `:retry` | whether a model call that failed is asked again |
-  | `:credentials` | where a secret a tool names comes from |
-  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks |
+  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, and whose credentials a call resolves |
 
-  `:hooks` to `:credentials` are the seams a host reaches through for one
+  `:hooks` to `:retry` are the seams a host reaches through for one
   agent. Each defaults to something inert, so a deployment that needs none of
   them configures none of them and no branch in the runtime has to handle
   their absence. `:host` is the deployment's, handed to every agent as it
@@ -110,17 +109,16 @@ defmodule Wardrik.Scope do
     :deadline,
     :dispatch,
     :retry,
-    :credentials,
-    :ledger,
     :journal,
     :batch,
     hooks: [],
-    labels: []
+    labels: [],
+    ledger: %Wardrik.Ledger.None{}
   ]
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:hooks, :dispatch, :retry, :credentials, :ledger, :timeout]
+  @seams [:hooks, :dispatch, :retry, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -132,8 +130,7 @@ defmodule Wardrik.Scope do
           hooks: [Wardrik.Hook.t()],
           dispatch: Wardrik.LLM.Dispatch.t() | nil,
           retry: Wardrik.LLM.Retry.t() | nil,
-          credentials: module() | nil,
-          ledger: module() | nil,
+          ledger: Wardrik.Ledger.t(),
           journal: pid() | nil,
           batch: String.t() | nil,
           labels: [Wardrik.Label.t()]
@@ -169,7 +166,6 @@ defmodule Wardrik.Scope do
       as configured
     * `:retry` - a `Wardrik.LLM.Retry`, or `nil` to ask a failed model call
       again after the waits the config's `:retries` lists
-    * `:credentials` - a `Wardrik.Credential` module, or `nil` to resolve none
     * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
       it runs, or `nil` to record none
     * `:journal` - the process a turn under this scope hands each batch of
@@ -186,8 +182,7 @@ defmodule Wardrik.Scope do
       hooks: Keyword.get(opts, :hooks) || [],
       dispatch: Keyword.get(opts, :dispatch),
       retry: Keyword.get(opts, :retry),
-      credentials: Keyword.get(opts, :credentials),
-      ledger: Keyword.get(opts, :ledger),
+      ledger: Keyword.get(opts, :ledger, %Wardrik.Ledger.None{}),
       journal: Keyword.get(opts, :journal),
       deadline: Keyword.get(opts, :deadline)
     }

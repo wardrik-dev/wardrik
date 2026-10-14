@@ -12,7 +12,7 @@ defmodule Wardrik.Application do
     case Application.get_env(:wardrik, :start, :application) do
       :application ->
         store = WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
-        seams = Application.get_env(:wardrik, Wardrik.Host, [])
+        seams = Wardrik.Host.configured(Application.get_env(:wardrik, Wardrik.Host, []))
         host = Wardrik.Host.new([store: store] ++ seams)
         fleet = Application.get_env(:wardrik, Wardrik.Fleet, [])
 

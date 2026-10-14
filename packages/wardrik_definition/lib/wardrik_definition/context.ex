@@ -13,7 +13,7 @@ defmodule WardrikDefinition.Context do
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
-        seams: [credentials: WardrikVault, ledger: Wardrik.Ledger.Store],
+        seams: [ledger: %Wardrik.Ledger.Store{}],
         config: [tool_prices: %{"web_search" => 0.005}]
       }
 
@@ -37,9 +37,12 @@ defmodule WardrikDefinition.Context do
     * `defaults` - definition keys every agent takes where its own
       definition says none: `idle_timeout`
     * `seams` - `Wardrik.Agent.Spec` options every agent gets, such as
-      `credentials` and `ledger`
+      `ledger`
     * `config` - `Wardrik.LLM.Config` options every agent gets, such as
       `tool_prices`
+    * `triggers` - the trigger sources and webhook verifiers a definition's
+      triggers may name, as `WardrikTrigger.Offered` finds them; this
+      package's own by default
     * `names` - how the messages a definition that does not read gives name
       the host, its settings and its policies
   """
@@ -55,6 +58,7 @@ defmodule WardrikDefinition.Context do
             defaults: %{},
             seams: [],
             config: [],
+            triggers: %WardrikTrigger.Offered{},
             names: %{host: "the host", config: "the host", policies: "the host's policies"}
 
   @type orgs() :: :all | [String.t()]
@@ -71,6 +75,7 @@ defmodule WardrikDefinition.Context do
           defaults: %{String.t() => term()},
           seams: keyword(),
           config: keyword(),
+          triggers: WardrikTrigger.Offered.t(),
           names: %{host: String.t(), config: String.t(), policies: String.t()}
         }
 end

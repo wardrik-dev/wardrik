@@ -158,8 +158,7 @@ Wardrik.Fleet.spawn(id,
   config: config,
   hooks: hooks,                    # may this call run?
   dispatch: MyApp.Gateway,         # which model, whose key, what did it cost?
-  credentials: WardrikVault,       # where a secret a tool names comes from
-  ledger: Wardrik.Ledger.Store,    # which calls already ran, if the turn is lost
+  ledger: %Wardrik.Ledger.Store{}, # which calls already ran, if the turn is lost
   timeout: :timer.minutes(10)
 )
 ```
@@ -168,7 +167,6 @@ Wardrik.Fleet.spawn(id,
 | --- | --- |
 | `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. Each hears what a call did once it is made. |
 | `:dispatch` | A `Wardrik.LLM.Dispatch`, which decides what a model call actually is just before it is made, and hears what it cost. |
-| `:credentials` | A `Wardrik.Credential` resolver, which finds the secret a tool names for the user it is working for. See [wardrik_vault](../wardrik_vault). |
 | `:ledger` | A `Wardrik.Ledger`, which records each tool call before it runs. See [A turn lost part way](#a-turn-lost-part-way). |
 | `:timeout` | A deadline for each turn. Work under it can narrow it, never widen it. |
 
@@ -300,24 +298,32 @@ as it does a call whose tool answers `{:in_doubt, reason}` because it cannot
 say how the call ended:
 
 ```elixir
-Wardrik.Fleet.spawn(id, config: config, ledger: Wardrik.Ledger.Store)
+Wardrik.Fleet.spawn(id, config: config, ledger: %Wardrik.Ledger.Store{})
 ```
 
 A tool with an effect outside Wardrik passes
-`Wardrik.Ledger.idempotency_key/2` to the system it calls, so that system
+`Wardrik.Ledger.Key.idempotency/2` to the system it calls, so that system
 does not repeat the effect either.
 
 ### The host
 
 What an operation asks beyond one agent is the host's: where definitions are
-kept, which accounts people connect, how tokens are made, where requests for
-triggers go, and what each principal may do. A `Wardrik.Host` names a module
-for each it offers, and the `None` module of each it does not. It is handed
+kept, which accounts people connect, where the secrets tools and model
+providers need come from, how tokens are made, where requests for triggers
+go, and what each principal may do. A `Wardrik.Host` names a value for each
+it offers, carrying that seam's own settings, and the `None` of each it does
+not. It is handed
 to `Wardrik` as it starts, which hands it to every agent, and to each
 surface the application starts after it, which builds its callers with it:
 
 ```elixir
-host = Wardrik.Host.new(definitions: MyApp.Definitions, grants: MyApp.Grants)
+host =
+  Wardrik.Host.new(
+    store: store,
+    definitions: %MyApp.Definitions{store: store},
+    credentials: WardrikVault.new(store: store, keys: [key]),
+    grants: %MyApp.Grants{admins: ["maria"]}
+  )
 
 children = [
   {Wardrik, host: host},
@@ -347,7 +353,7 @@ without notice.
 
 | | Modules |
 | --- | --- |
-| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Definition`, `Wardrik.Connections`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants` and the `None` module of each, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Store` |
+| Contracts a package implements, and what they are handed | `Wardrik.Tool`, `Wardrik.Tool.Context`, `Wardrik.Tool.Name`, `Wardrik.Tool.Result`, `Wardrik.Hook`, `Wardrik.Call`, `Wardrik.Call.Ask`, `Wardrik.Label`, `Wardrik.Scope`, `Wardrik.Credential`, `Wardrik.Credentials`, `Wardrik.Definition`, `Wardrik.Definitions`, `Wardrik.Connections`, `Wardrik.Connections.Owner`, `Wardrik.Tokens`, `Wardrik.Triggers`, `Wardrik.Grants` and the `None` of each, `Wardrik.Catalog`, `Wardrik.Catalog.Entry`, `Wardrik.Catalog.Tools`, `Wardrik.Catalog.Self`, `Wardrik.Catalog.Agents`, `Wardrik.Ledger`, `Wardrik.Ledger.Key`, `Wardrik.Ledger.None`, `Wardrik.Ledger.Store` |
 | Agents and the fleet | `Wardrik`, `Wardrik.Host`, `Wardrik.AgentID`, `Wardrik.AgentID.Prefix`, `Wardrik.AgentID.Segment`, `Wardrik.Fleet`, `Wardrik.Fleet.Member`, `Wardrik.Agent`, `Wardrik.Agent.Spec`, `Wardrik.Agent.Snapshot`, `Wardrik.Grant`, `Wardrik.Principal`, `Wardrik.LLM.Config`, `Wardrik.History`, `Wardrik.Compaction` |
 | What people changed | `Wardrik.Audit` |
 | Following what agents do | `Wardrik.Event`, `Wardrik.Event.Bus`, `Wardrik.Event.Export`, `Wardrik.Event.Log`, `Wardrik.Event.Log.Entry`, `Wardrik.Event.Codec.Value`, `Wardrik.Delegation`, `Wardrik.LLM.Message` |

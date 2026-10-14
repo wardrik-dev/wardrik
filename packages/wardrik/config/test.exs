@@ -19,4 +19,4 @@ config :req_llm,
   receive_timeout: 1_000
 
 # Every agent the suite starts asks these for the definition it runs on.
-config :wardrik, Wardrik.Host, definitions: Wardrik.Test.Definitions
+config :wardrik, Wardrik.Host, definitions: {Wardrik.Test.Definitions, []}

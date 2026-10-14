@@ -1,11 +1,13 @@
 defmodule WardrikDaemon.CLI.LifecycleTest do
   use ExUnit.Case, async: false
 
-  import Wardrik.Test, only: [store: 0, host: 0]
+  alias WardrikDaemon.Test.Host
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: WardrikDaemon.Test.Host.held()
+  setup do: Host.held()
 
   import ExUnit.CaptureIO
 
@@ -24,16 +26,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know.\n"
 
   setup %{tmp_dir: dir} do
-    previous = Application.get_env(:wardrik_daemon, WardrikDaemon.Agents)
-    Application.put_env(:wardrik_daemon, WardrikDaemon.Agents, defaults: @defaults)
+    Host.put_section(WardrikDaemon.Agents, defaults: @defaults)
 
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:wardrik_daemon, WardrikDaemon.Agents, previous),
-        else: Application.delete_env(:wardrik_daemon, WardrikDaemon.Agents)
-    end)
-
-    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
+    Host.start_agents(dir)
     org = "life-#{System.unique_integer([:positive])}"
     on_exit(fn -> Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
 
@@ -113,7 +108,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                  @prompt
 
       assert status(key) == :idle
-      assert [{_path, {:ok, _spec}}] = WardrikDaemon.Agents.files()
+
+      assert [{_path, {:ok, _spec}}] =
+               WardrikDaemon.Agents.files(Host.agents())
 
       assert command(["agent", "spawn", "helper", "--org", org]) ==
                {"#{key} runs already, on #{here}.\n", 0}
@@ -211,7 +208,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
                {"agents/broken.md is there already, and is kept as it is: wardrik reload " <>
                   "reads it, and wardrik status says why where it does not.\n", 1}
 
-      Application.put_env(:wardrik_daemon, WardrikDaemon.Agents,
+      Host.put_section(WardrikDaemon.Agents,
         defaults: %{"tools" => "web_search"}
       )
 
@@ -323,12 +320,17 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
 
       {:ok, spec} =
-        WardrikDaemon.Agents.put(host(), defined, %{"description" => "Defined."}, grant)
+        WardrikDaemon.Agents.put(Host.agents(), defined,
+          definition: %{"description" => "Defined."},
+          grant: grant
+        )
 
       {:ok, _pid} = Fleet.put(spec)
 
       assert command(["agent", "rm", defined, "--yes"]) == {"Removed #{defined}.\n", 0}
-      assert WardrikDaemon.Agents.get(host(), defined) == {:error, :not_found}
+
+      assert WardrikDaemon.Agents.get(Host.agents(), defined) ==
+               {:error, :not_found}
     end
 
     test "leaves an agent a file declares, and names the file", %{org: org} do
@@ -352,9 +354,8 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
       other = :"lifecycle-test@elsewhere"
       stop_supervised!(WardrikDaemon.Agents)
 
-      start_supervised!(
-        {WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store(), nodes: fn -> [other] end}
-      )
+      :ok = Host.put_nodes(fn -> [other] end)
+      Host.start_agents(dir)
 
       key = agent(org, "theirs")
 

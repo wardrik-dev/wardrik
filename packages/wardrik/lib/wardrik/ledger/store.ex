@@ -1,6 +1,8 @@
 defmodule Wardrik.Ledger.Store do
   @moduledoc """
-  A `Wardrik.Ledger` over the host's `WardrikStore`.
+  A `Wardrik.Ledger` over the host's `WardrikStore`, which each function is
+  handed as `:store`, so nothing of the store is kept with the agents that
+  name it.
 
   Entries are written under the `:claims` namespace, one per agent and call
   id, as the agent's ID, then `//`, which no ID holds, then the call id. A claim is a write conditional on nothing being written yet, so a second
@@ -13,7 +15,9 @@ defmodule Wardrik.Ledger.Store do
   ended.
   """
 
-  @behaviour Wardrik.Ledger
+  defstruct []
+
+  @type t() :: %__MODULE__{}
 
   alias Wardrik.Ledger.Entry
 
@@ -23,10 +27,8 @@ defmodule Wardrik.Ledger.Store do
   @spec key(Wardrik.Ledger.key()) :: String.t()
   def key({agent_id, call_id}), do: "#{agent_id}//#{call_id}"
 
-  @impl Wardrik.Ledger
-  def claim(host, key, call) do
-    store = Wardrik.Host.store(host)
-
+  @doc false
+  def claim(key, call, store) do
     case WardrikStore.put(store, @ns, key(key), Entry.claimed(call), if_vsn: nil) do
       {:ok, _vsn} -> :ok
       {:error, :conflict} -> held(store, key)
@@ -34,9 +36,8 @@ defmodule Wardrik.Ledger.Store do
     end
   end
 
-  @impl Wardrik.Ledger
-  def settle(host, key, result) do
-    store = Wardrik.Host.store(host)
+  @doc false
+  def settle(key, result, store) do
     encoded = key(key)
 
     case WardrikStore.lookup(store, @ns, encoded) do
@@ -53,9 +54,8 @@ defmodule Wardrik.Ledger.Store do
 
   # A claim that was settled since it was read is not the claim being
   # released, and stays.
-  @impl Wardrik.Ledger
-  def release(host, key) do
-    store = Wardrik.Host.store(host)
+  @doc false
+  def release(key, store) do
     encoded = key(key)
 
     case WardrikStore.lookup(store, @ns, encoded) do
@@ -74,10 +74,8 @@ defmodule Wardrik.Ledger.Store do
 
   # Every key a turn claims starts with its agent and its trace id, the calls of
   # its delegations included, which share the trace.
-  @impl Wardrik.Ledger
-  def forget(host, agent_id, trace_id) do
-    store = Wardrik.Host.store(host)
-
+  @doc false
+  def forget(agent_id, trace_id, store) do
     store
     |> WardrikStore.keys(@ns, "#{agent_id}//#{trace_id}/")
     |> Enum.reduce_while(:ok, fn encoded, :ok ->
@@ -91,9 +89,9 @@ defmodule Wardrik.Ledger.Store do
   defp continue(:ok), do: {:cont, :ok}
   defp continue({:error, reason}), do: {:halt, {:error, reason}}
 
-  @impl Wardrik.Ledger
-  def fetch(host, key) do
-    case WardrikStore.get(Wardrik.Host.store(host), @ns, key(key)) do
+  @doc false
+  def fetch(key, store) do
+    case WardrikStore.get(store, @ns, key(key)) do
       %Entry{} = entry -> {:ok, entry}
       _other -> :error
     end
@@ -114,4 +112,20 @@ defmodule Wardrik.Ledger.Store do
       other -> {:error, {:unexpected_entry, other}}
     end
   end
+end
+
+defimpl Wardrik.Ledger, for: Wardrik.Ledger.Store do
+  alias Wardrik.Ledger.Store
+
+  def claim(_ledger, key, opts),
+    do: Store.claim(key, Keyword.fetch!(opts, :call), Keyword.fetch!(opts, :store))
+
+  def settle(_ledger, key, opts),
+    do: Store.settle(key, Keyword.fetch!(opts, :result), Keyword.fetch!(opts, :store))
+
+  def fetch(_ledger, key, opts), do: Store.fetch(key, Keyword.fetch!(opts, :store))
+  def release(_ledger, key, opts), do: Store.release(key, Keyword.fetch!(opts, :store))
+
+  def forget(_ledger, agent_id, opts),
+    do: Store.forget(agent_id, Keyword.fetch!(opts, :trace), Keyword.fetch!(opts, :store))
 end

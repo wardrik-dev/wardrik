@@ -131,9 +131,10 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp policy_ceiling(name) do
-    with :error <- WardrikDaemon.Agents.ceiling(name) do
+    with :error <- WardrikDaemon.Agents.ceiling(WardrikDaemon.Host.agents(), name) do
       policies =
-        for {_path, {:ok, %WardrikPolicy{} = policy}} <- WardrikDaemon.Agents.files(),
+        for {_path, {:ok, %WardrikPolicy{} = policy}} <-
+              WardrikDaemon.Agents.files(WardrikDaemon.Host.agents()),
             do: policy
 
       {:error, "policies/ has no policy #{name}" <> policy_names(policies)}

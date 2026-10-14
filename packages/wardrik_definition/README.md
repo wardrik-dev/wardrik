@@ -22,7 +22,7 @@ context = %WardrikDefinition.Context{
   tools: [WardrikBrave.WebSearch],
   servers: [github: [orgs: :all]],
   mcp: WardrikMCP,
-  seams: [credentials: WardrikVault, ledger: Wardrik.Ledger.Store]
+  seams: [ledger: %Wardrik.Ledger.Store{}]
 }
 
 {:ok, id, fields} = WardrikDefinition.parse(File.read!("agents/triage.md"), "triage", context)

@@ -68,12 +68,11 @@ defmodule Wardrik.Test do
 
     if llm_stub, do: Wardrik.Test.LLMStub.copy()
     _loaded = ReqLLM.model("test:model")
-    ready!(Wardrik.Fleet)
 
     {:ok, _pid} =
       Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrik.Test.Supervisor)
 
-    Enum.each(wait, &ready!/1)
+    Enum.each([Wardrik.Fleet | wait], &ready!/1)
     ExUnit.after_suite(fn _results -> remove_store(settings()[:data_dir]) end)
     ExUnit.start(Keyword.merge([capture_log: true, assert_receive_timeout: 1_000], opts))
   end
@@ -88,7 +87,7 @@ defmodule Wardrik.Test do
 
   defp remove_store(dir) do
     Supervisor.stop(Wardrik.Test.Supervisor)
-    Supervisor.stop(Wardrik.Application)
+    :ok = Application.stop(:wardrik)
     _ = File.rm_rf(dir)
     _ = Application.stop(:os_mon)
     :ok
@@ -108,7 +107,7 @@ defmodule Wardrik.Test do
   """
   @spec host(keyword()) :: Wardrik.Host.t()
   def host(opts \\ []) do
-    seams = Application.get_env(:wardrik, Wardrik.Host, [])
+    seams = Wardrik.Host.configured(Application.get_env(:wardrik, Wardrik.Host, []))
     Wardrik.Host.new(Keyword.merge([store: store()] ++ seams, opts))
   end
 

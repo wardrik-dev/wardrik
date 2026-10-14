@@ -42,7 +42,7 @@ defmodule Wardrik.Operations.Spawning do
   def of(host, %AgentID{} = id, on) do
     member = Fleet.lookup(id)
 
-    case {member, Host.definitions(host).current(host, id)} do
+    case {member, Wardrik.Definition.current(Host.definitions(host), id)} do
       {%Member{asleep: false, node: node}, _current} ->
         {:ok, %__MODULE__{agent: id, start: :running, on: node}}
 
@@ -72,7 +72,7 @@ defmodule Wardrik.Operations.Spawning do
     do: spec |> started(on) |> made(effect)
 
   def make(host, %__MODULE__{agent: id, start: :new, on: on} = effect) do
-    case Host.definitions(host).create(host, id) do
+    case Wardrik.Definition.create(Host.definitions(host), id) do
       {:ok, spec} -> spec |> started(on) |> made(effect)
       {:error, :conflict, why} -> {:error, Error.new(:conflict, why)}
       {:error, why} -> {:error, Error.new(:invalid, why)}

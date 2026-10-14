@@ -4,7 +4,7 @@ defmodule WardrikSlackTest do
   @req_options [plug: {Req.Test, __MODULE__}, retry: false]
 
   test "is the adapter type: slack names" do
-    assert WardrikChannel.adapter("slack") == {:ok, WardrikSlack}
+    assert WardrikChannel.discover()["slack"] == WardrikSlack
   end
 
   test "reads a channel's tokens, and says which does not read" do

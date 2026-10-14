@@ -63,10 +63,6 @@ defmodule WardrikDaemon.Doctor do
     dir = Config.config_dir()
     vault = daemon_vault()
 
-    with {:ok, file} <- Config.file(dir),
-         {:ok, settings, _from_vault} <- read(file, vault),
-         do: Config.apply(settings)
-
     # Reading an agent file builds its tools, and a file naming every tool
     # names the tool workers, whose group the daemon starts. Here it starts
     # empty: a check is made with no worker connected.
@@ -83,7 +79,7 @@ defmodule WardrikDaemon.Doctor do
 
     with {:ok, _pid} <- Node.start(name, name_domain: name_domain(), hidden: true),
          {:ok, daemon} <- joined(daemon_node(target)) do
-      &:erpc.call(daemon, WardrikDaemon.Secrets, :named, [&1])
+      &:erpc.call(daemon, WardrikDaemon.Host, :secret, [&1])
     else
       _not_running -> nil
     end
@@ -112,9 +108,20 @@ defmodule WardrikDaemon.Doctor do
   @spec checks(Path.t(), (String.t() -> String.t() | nil) | nil) :: [check()]
   def checks(config_dir, vault \\ nil) do
     with {:ok, file} <- Config.file(config_dir),
-         {:ok, settings, from_vault} <- read(file, vault) do
-      [env(config_dir), config(file, from_vault, vault), store(settings), vault(settings)] ++
-        callback(settings, vault) ++ servers(settings) ++ agents(config_dir)
+         {:ok, read, from_vault} <- read(file, vault) do
+      # What the release's own configuration says of each module, which the
+      # daemon reads once as it starts, as config.yaml is merged over it.
+      settings = Config.merge(Application.get_all_env(:wardrik_daemon), read)
+
+      config =
+        Config.new(
+          config_dir: config_dir,
+          sections: settings,
+          triggers: WardrikTrigger.Offered.discover()
+        )
+
+      [env(config_dir), config(file, from_vault, vault), store(read), vault(settings)] ++
+        callback(settings, vault) ++ servers(settings) ++ agents(config)
     else
       {:error, message} -> [env(config_dir), {:error, "config", message}]
     end
@@ -165,7 +172,7 @@ defmodule WardrikDaemon.Doctor do
       secret
     end
 
-    case Config.read(file, vault: lookup) do
+    case Config.read(file, vault: lookup, adapters: WardrikChannel.discover()) do
       {:ok, settings} -> {:ok, settings, from_vault([])}
       {:error, message} -> {:error, message <> unread(vault, from_vault([]))}
     end
@@ -223,9 +230,7 @@ defmodule WardrikDaemon.Doctor do
   # release where it does not, and the key file in the data home where neither
   # gives one.
   defp vault(settings) do
-    keys =
-      Keyword.get(Keyword.get(settings, WardrikVault, []), :keys) ||
-        Keyword.get(Config.settings(WardrikVault), :keys, [])
+    keys = settings |> Keyword.get(WardrikVault, []) |> Keyword.get(:keys, [])
 
     if keys == [], do: key_file(settings), else: vault_keys(keys, settings)
   end
@@ -391,11 +396,11 @@ defmodule WardrikDaemon.Doctor do
 
   # -- agents ------------------------------------------------------------------
 
-  defp agents(config_dir) do
-    {policies, agents} = Agents.read_files(config_dir)
+  defp agents(config) do
+    {policies, agents} = Agents.read_files(config)
 
     case for({path, {:error, message}} <- policies ++ agents, do: {path, message}) do
-      [] -> [{:ok, "agents", read(length(agents), length(policies), config_dir)}]
+      [] -> [{:ok, "agents", read(length(agents), length(policies), config.config_dir)}]
       failed -> for {_path, message} <- failed, do: {:error, "agents", message}
     end
   end

@@ -42,7 +42,7 @@ defmodule WardrikTrigger.Webhook.Server do
   def load_state(_old_vsn, dumped), do: struct!(__MODULE__, dumped)
 
   @impl DurableServer
-  def init(%__MODULE__{} = state) do
+  def init(%__MODULE__{} = state, _info) do
     :ok = WardrikTrigger.join(state.agent, state.hook)
     {:ok, state, meta: meta(state), permanent: true}
   end
@@ -53,8 +53,19 @@ defmodule WardrikTrigger.Webhook.Server do
     {:reply, :ok, next, meta: meta(next), sync: true}
   end
 
-  def handle_call({:deliver, request}, _from, %__MODULE__{agent: agent, hook: hook} = state) do
-    with {:ok, item} <- Webhook.received(hook, request, agent),
+  def handle_call(
+        {:deliver, request, deliveries},
+        _from,
+        %__MODULE__{agent: agent, hook: hook} = state
+      ) do
+    received =
+      Webhook.received(hook, request,
+        agent: agent,
+        secrets: deliveries.secrets,
+        verifiers: deliveries.verifiers
+      )
+
+    with {:ok, item} <- received,
          false <- item.id in state.seen,
          {:ok, pid} <- Delivery.ready(agent, hook.overlap) do
       next = %{

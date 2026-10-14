@@ -1,36 +1,32 @@
-defmodule Wardrik.Connections do
+defprotocol Wardrik.Connections do
   @moduledoc """
   The accounts people and orgs connect, such as a GitHub sign-in: which
   ones a deployment offers, who holds each, and connecting or forgetting
   one before any agent asks for it.
 
-  A host names the module once, as the `:connections` of its
+  A host names the value once, as the `:connections` of its
   `Wardrik.Host`, and the operations on connections ask it, whichever
-  surface they came from, handing each callback the host first, for the
-  store it keeps them in:
+  surface they came from. The value carries what its implementation needs,
+  such as the vault it keeps accounts in:
 
-      Wardrik.Host.new(connections: WardrikOAuth.Connections)
+      Wardrik.Host.new(connections: WardrikOAuth.connections(oauth, vault))
 
-  | Operation | Callback |
+  | Operation | Function |
   | --- | --- |
   | `Wardrik.Operations.ReadConnections` | `list/2` |
   | `Wardrik.Operations.Connect` | `connect/4` |
   | `Wardrik.Operations.Disconnect` | `disconnect/3` |
 
-  A host that offers none has `Wardrik.Connections.None`, whose callbacks
+  A host that offers none has `Wardrik.Connections.None`, whose functions
   answer `:unsupported`, and so does each operation.
 
   An owner is a person in their org, `{org, user}`, or an org, as
   `Wardrik.Credential` resolves credentials for them: a person's call takes
   their own, then their org's, then the deployment's. The operations name
   an owner by the `Wardrik.AgentID.Prefix` of the agents it owns, so a
-  grant reaches a person's connections where it reaches their agents.
+  grant reaches a person's connections where it reaches their agents;
+  `Wardrik.Connections.Owner` finds it.
   """
-
-  alias Wardrik.AgentID.Prefix
-  alias Wardrik.Caller
-  alias Wardrik.Error
-  alias Wardrik.Principal
 
   @typedoc "A person in their org, or an org."
   @type owner() :: {String.t(), String.t()} | String.t()
@@ -42,85 +38,21 @@ defmodule Wardrik.Connections do
   @type connection() :: %{provider: String.t(), held_by: held_by()}
 
   @doc "The connections the deployment offers `owner`, and who holds each; never a value."
-  @callback list(Wardrik.Host.t(), owner()) :: [connection()] | :unsupported
+  @spec list(t(), owner()) :: [connection()] | :unsupported
+  def list(connections, owner)
 
   @doc """
-  Connects `provider` for `owner`, as `by` asked: `{:ok, :held}` where they
+  Connects `provider` for `owner`, as `:by` asked, a `Wardrik.Principal` or
+  `nil`: `{:ok, :held}` where they
   hold it already, else where they authorize it, as `Wardrik.Credential`'s
   links are. `{:error, :not_found}` is for a provider the deployment does
   not offer.
   """
-  @callback connect(Wardrik.Host.t(), provider :: String.t(), owner(), by :: Principal.t() | nil) ::
-              {:ok, :held} | {:ok, Wardrik.Call.Ask.link()} | {:error, term()} | :unsupported
+  @spec connect(t(), String.t(), owner(), by: Wardrik.Principal.t() | nil) ::
+          {:ok, :held} | {:ok, Wardrik.Call.Ask.link()} | {:error, term()} | :unsupported
+  def connect(connections, provider, owner, opts)
 
   @doc "Forgets `owner`'s `provider`: `{:error, :not_found}` where they hold none."
-  @callback disconnect(Wardrik.Host.t(), provider :: String.t(), owner()) ::
-              :ok | {:error, term()} | :unsupported
-
-  @doc "The error each operation answers where the host offers no connections."
-  @spec unsupported() :: Error.t()
-  def unsupported, do: Error.new(:unsupported, "This server offers no connections.")
-
-  @doc """
-  The prefix of the owner `caller` asks about: `:person` for their own,
-  within their org, or `:org` for their org's. A caller's org is the one
-  its grant reaches, and its person the user its grant is for, else the
-  user it acts as.
-  """
-  @spec owner(Caller.t(), :person | :org) :: {:ok, Prefix.t()} | {:error, Error.t()}
-  def owner(%Caller{grant: grant} = caller, whose) do
-    case {Prefix.org(grant.scope), whose} do
-      {nil, _whose} ->
-        {:error,
-         Error.new(
-           :invalid,
-           "This caller reaches every org, and connections belong to one; use a token for an org"
-         )}
-
-      {org, :org} ->
-        {:ok, Prefix.new!(org: org)}
-
-      {org, :person} ->
-        case Prefix.user(grant.scope) || user(caller.principal) do
-          nil ->
-            {:error,
-             Error.new(
-               :invalid,
-               "This caller acts for no person; ask for the org's connections with owner=org"
-             )}
-
-          user ->
-            {:ok, Prefix.new!(org: org, user: user)}
-        end
-    end
-  end
-
-  @doc """
-  The operation `module` asks for, about the owner `caller` asks about, as
-  `owner/2` finds it, with `fields` beside.
-  """
-  @spec request(module(), Caller.t(), :person | :org, keyword()) ::
-          {:ok, struct()} | {:error, Error.t()}
-  def request(module, caller, whose, fields \\ []) do
-    with {:ok, owner} <- owner(caller, whose),
-         do: {:ok, struct!(module, [owner: owner] ++ fields)}
-  end
-
-  defp user(nil), do: nil
-  defp user(principal), do: if(Principal.type(principal) == :user, do: Principal.id(principal))
-
-  @doc "The owner whose agents are under `prefix`."
-  @spec owner_of(Prefix.t()) :: owner()
-  def owner_of(prefix) do
-    case {Prefix.org(prefix), Prefix.user(prefix)} do
-      {org, nil} when is_binary(org) -> org
-      {org, user} -> {org, user}
-    end
-  end
-
-  @doc "The prefix of the agents `owner` owns: `nil`, the deployment's, is every agent."
-  @spec prefix(owner() | nil) :: Prefix.t()
-  def prefix(nil), do: Prefix.all()
-  def prefix({org, user}), do: Prefix.new!(org: org, user: user)
-  def prefix(org) when is_binary(org), do: Prefix.new!(org: org)
+  @spec disconnect(t(), String.t(), owner()) :: :ok | {:error, term()} | :unsupported
+  def disconnect(connections, provider, owner)
 end

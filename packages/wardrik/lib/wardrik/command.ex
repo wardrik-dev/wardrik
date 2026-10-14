@@ -24,6 +24,7 @@ defmodule Wardrik.Command do
   alias Wardrik.Change
   alias Wardrik.Effect
   alias Wardrik.Error
+  alias Wardrik.Host
 
   @typedoc """
   What a change answers once it is made: `:created` where it made something
@@ -74,7 +75,7 @@ defmodule Wardrik.Command do
   def make(%Change{request: %module{} = request} = change, %Caller{} = caller) do
     with :ok <- authorize(request, caller),
          {result, answer, made} when result in [:ok, :created] <- module.make(change, caller) do
-      :ok = Audit.record_all(Effect.audit(made), caller.principal)
+      :ok = Audit.record_all(Host.audit(caller.host), Effect.audit(made), by: caller.principal)
       {result, answer}
     end
   end

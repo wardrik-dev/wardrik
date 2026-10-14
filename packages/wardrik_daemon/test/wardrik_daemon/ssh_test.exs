@@ -9,6 +9,17 @@ defmodule WardrikDaemon.SSHTest do
 
   @host Wardrik.Host.new()
 
+  # The daemon's config reading `config` and writing under `data`, with what
+  # the release says of SSH, as a release with the TUI says it.
+  defp config(config, data, ssh \\ [entrypoint: {WardrikTUI.SSH, []}]) do
+    WardrikDaemon.Config.new(
+      config_dir: config,
+      data_dir: data,
+      state_dir: data,
+      sections: [{SSH, ssh}]
+    )
+  end
+
   defp public_key(dir, comment) do
     path = Path.join(dir, "key-#{System.unique_integer([:positive])}")
     {_out, 0} = System.cmd("ssh-keygen", ~w(-q -t ed25519 -N) ++ ["", "-f", path, "-C", comment])
@@ -18,7 +29,8 @@ defmodule WardrikDaemon.SSHTest do
   end
 
   test "listens only once the config directory holds keys", %{tmp_dir: dir} do
-    assert SSH.children(Path.join(dir, "config"), Path.join(dir, "data"), @host) == []
+    assert SSH.children(config(Path.join(dir, "config"), Path.join(dir, "data")), host: @host) ==
+             []
   end
 
   test "with keys but nothing to serve, as in a build without the TUI, says so and listens nowhere",
@@ -29,7 +41,7 @@ defmodule WardrikDaemon.SSHTest do
 
     log =
       capture_log(fn ->
-        assert SSH.children(config, Path.join(dir, "data"), @host, port: 2222) == []
+        assert SSH.children(config(config, Path.join(dir, "data"), port: 2222), host: @host) == []
       end)
 
     assert log =~ "this build has no TUI"
@@ -43,7 +55,7 @@ defmodule WardrikDaemon.SSHTest do
     File.mkdir_p!(Path.join(config, "ssh"))
     File.write!(Path.join([config, "ssh", "authorized_keys"]), "")
 
-    assert [{SSH, opts}] = SSH.children(config, Path.join(dir, "data"), @host)
+    assert [{SSH, opts}] = SSH.children(config(config, Path.join(dir, "data")), host: @host)
     assert opts[:port] == 2222
     assert opts[:ip] == {127, 0, 0, 1}
     assert {:public_key, verifier} = opts[:auth]
@@ -58,7 +70,7 @@ defmodule WardrikDaemon.SSHTest do
 
     File.chmod!(host_key, 0o644)
     File.chmod!(Path.dirname(host_key), 0o755)
-    SSH.children(config, Path.join(dir, "data"), @host)
+    SSH.children(config(config, Path.join(dir, "data")), host: @host)
 
     assert File.read!(host_key) == written
     assert mode(host_key) == 0o600
@@ -73,7 +85,7 @@ defmodule WardrikDaemon.SSHTest do
     config = Path.join(dir, "config")
     File.mkdir_p!(Path.join(config, "ssh"))
     File.write!(Path.join([config, "ssh", "authorized_keys"]), "")
-    [{SSH, opts}] = SSH.children(config, Path.join(dir, "data"), @host)
+    [{SSH, opts}] = SSH.children(config(config, Path.join(dir, "data")), host: @host)
 
     {:ok, held} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
     {:ok, port} = :inet.port(held)
