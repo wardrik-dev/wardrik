@@ -77,6 +77,7 @@ export interface ToolDefinition<Input extends StandardSchemaWithJSON = StandardS
   run(args: StandardSchemaWithJSON.InferOutput<Input>, context: ToolContext): unknown;
 }
 
+/** How long `work` offers this process's tools. */
 export interface WorkOptions {
   /** Ends the work, closing the socket. */
   signal?: AbortSignal | undefined;

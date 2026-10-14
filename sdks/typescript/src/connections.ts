@@ -18,6 +18,7 @@ export interface ConnectionOptions {
 export class Connections {
   readonly #http: Http;
 
+  /** @internal */
   constructor(http: Http) {
     this.#http = http;
   }

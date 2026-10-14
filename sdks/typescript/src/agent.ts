@@ -10,6 +10,7 @@ import type {
   WardrikEvent,
 } from "./protocol.ts";
 
+/** How `send` and `ask` send a message. */
 export interface SendOptions {
   /**
    * The message's id. A message sent twice with the same id is taken once, so
@@ -36,6 +37,7 @@ export class Agent {
   readonly #http: Http;
   readonly #path: string;
 
+  /** @internal */
   constructor(http: Http, key: string) {
     this.key = key;
     this.#http = http;

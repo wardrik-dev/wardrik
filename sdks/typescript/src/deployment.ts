@@ -6,6 +6,7 @@ export interface AuditPage {
   changes: Envelope[];
 }
 
+/** Which page of the audit log `audit` reads. */
 export interface AuditOptions {
   /** The sequence number of the last change already read; the start where left out. */
   startingAfter?: number;
@@ -25,6 +26,7 @@ export interface AuditOptions {
 export class Deployment {
   readonly #http: Http;
 
+  /** @internal */
   constructor(http: Http) {
     this.#http = http;
   }

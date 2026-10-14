@@ -7,8 +7,10 @@ import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
 
+/** This SDK's version. */
 export const version = "0.0.0";
 
+/** How `new Wardrik()` reaches the server. Each is optional. */
 export interface WardrikOptions {
   /** The server. `WARDRIK_URL`, else `http://127.0.0.1:4747`, the daemon's own. */
   url?: string;
@@ -106,6 +108,7 @@ export type Parked = Interrupt & { agent: { id: string } };
 export class Agents {
   readonly #http: Http;
 
+  /** @internal */
   constructor(http: Http) {
     this.#http = http;
   }
