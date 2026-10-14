@@ -257,7 +257,7 @@ defmodule WardrikDaemon.AgentFileTest do
   defp triggered(text, %{tmp_dir: dir} = context) do
     with {:ok, _spec} <- read(text, context),
          {:ok, definition} <- AgentFile.parse(ctx(), Path.join(dir, "triage.md")),
-         do: {:ok, AgentFile.triggers(definition)}
+         do: {:ok, AgentFile.triggers(ctx(), definition)}
   end
 
   test "reads one trigger, or a list of them", context do
@@ -525,25 +525,29 @@ defmodule WardrikDaemon.AgentFileTest do
                )
 
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
-               AgentFile.triggers(definition)
+               AgentFile.triggers(ctx(), definition)
 
       assert {:ok, definition, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
-               AgentFile.put_trigger(definition, "trigger-1", %{unnamed | "every" => "2h"})
+               AgentFile.put_trigger(ctx(), definition, "trigger-1",
+                 trigger: %{unnamed | "every" => "2h"}
+               )
 
       assert {:ok, definition, :created, %WardrikTrigger{name: "sweep"}} =
-               AgentFile.put_trigger(definition, "sweep", unnamed)
+               AgentFile.put_trigger(ctx(), definition, "sweep", trigger: unnamed)
 
       assert ~w(trigger-1 trigger-2 sweep) ==
-               Enum.map(AgentFile.triggers(definition), & &1.name)
+               Enum.map(AgentFile.triggers(ctx(), definition), & &1.name)
 
       assert {:error, "trigger sweep: prompt is a string" <> _rest} =
-               AgentFile.put_trigger(definition, "sweep", %{"every" => "1h"})
+               AgentFile.put_trigger(ctx(), definition, "sweep", trigger: %{"every" => "1h"})
 
       assert {:error, "trigger sweep: prompt_file names a file" <> _rest} =
-               AgentFile.put_trigger(definition, "sweep", %{
-                 "every" => "1h",
-                 "prompt_file" => "A.md"
-               })
+               AgentFile.put_trigger(ctx(), definition, "sweep",
+                 trigger: %{
+                   "every" => "1h",
+                   "prompt_file" => "A.md"
+                 }
+               )
 
       {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-2")
       {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-1")

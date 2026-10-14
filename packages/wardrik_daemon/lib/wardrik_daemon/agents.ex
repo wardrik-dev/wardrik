@@ -94,19 +94,21 @@ defmodule WardrikDaemon.Agents do
   @inventory :declared
 
   @enforce_keys [:store, :config, :context, :table, :nodes]
-  defstruct [:store, :config, :context, :table, :nodes]
+  defstruct [:store, :config, :context, :table, :nodes, audit: Wardrik.Audit]
 
   @typedoc """
   The daemon's `Wardrik.Definition`: definitions kept in `:store`, read
   under `:config`, with what each reading came to published to `:table`,
-  and `:nodes` the other nodes whose inventories count.
+  `:nodes` the other nodes whose inventories count, and `:audit` the
+  `Wardrik.Audit` log an agent a channel creates is recorded in.
   """
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
           config: WardrikDaemon.Config.t(),
           context: WardrikDefinition.Context.t(),
           table: :ets.tid(),
-          nodes: (-> [node()])
+          nodes: (-> [node()]),
+          audit: GenServer.name()
         }
 
   @typedoc "What became of one file: the spec or policy it writes, or why it writes neither."
@@ -116,7 +118,8 @@ defmodule WardrikDaemon.Agents do
   The daemon's definitions, kept in `:store` and read under `:config`, with
   a table of their own for what each reading comes to, which the process
   that makes the value owns. `:nodes` gives the other nodes whose
-  inventories count, `Node.list/0` unless given.
+  inventories count, `Node.list/0` unless given, and `:audit` the log of
+  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -127,7 +130,8 @@ defmodule WardrikDaemon.Agents do
       config: config,
       context: AgentFile.context(config),
       table: :ets.new(__MODULE__, [:public, read_concurrency: true]),
-      nodes: Keyword.get(opts, :nodes, &Node.list/0)
+      nodes: Keyword.get(opts, :nodes, &Node.list/0),
+      audit: Keyword.get(opts, :audit, Wardrik.Audit)
     }
   end
 
@@ -207,7 +211,7 @@ defmodule WardrikDaemon.Agents do
          :ok <- unkept(store, id, channel),
          {:ok, spec} <- defined(agents, id, fields, nil),
          {:ok, _pid} <- Fleet.put(spec) do
-      :ok = Wardrik.Audit.record({:agent_defined, id}, opts[:by])
+      :ok = Wardrik.Audit.record(agents.audit, {:agent_defined, id}, by: opts[:by])
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
     else
       {:error, :conflict, message} -> {:error, message}
@@ -488,7 +492,7 @@ defmodule WardrikDaemon.Agents do
   def put(%__MODULE__{} = agents, key, opts),
     do: defined(agents, key, Keyword.fetch!(opts, :definition), Keyword.fetch!(opts, :grant))
 
-  defp defined(%__MODULE__{store: store} = agents, key, fields, grant) do
+  defp defined(%__MODULE__{} = agents, key, fields, grant) do
     case owner(agents, key) do
       {:file, path, _spec} ->
         declared(key, path)
@@ -497,7 +501,7 @@ defmodule WardrikDaemon.Agents do
         with {:ok, definition} <-
                AgentFile.define(agents.context, key, fields: fields, grant: grant),
              {:ok, spec} <- AgentFile.spec(under(agents, policies), definition, key) do
-          :ok = keep(store, definition)
+          :ok = keep(agents, definition)
           :ok = routed(agents)
           {:ok, spec}
         end
@@ -533,11 +537,13 @@ defmodule WardrikDaemon.Agents do
   `{:error, :not_found}` where no definition is kept, or a conflict where an
   agent file declares `key`.
   """
-  def put_trigger(%__MODULE__{store: store} = agents, key, name, opts) do
+  def put_trigger(%__MODULE__{} = agents, key, name, opts) do
     with {:ok, definition} <- editable_definition(agents, key),
          {:ok, definition, status, trigger} <-
-           AgentFile.put_trigger(definition, name, Keyword.fetch!(opts, :fields)) do
-      :ok = keep(store, definition)
+           AgentFile.put_trigger(agents.context, definition, name,
+             trigger: Keyword.fetch!(opts, :fields)
+           ) do
+      :ok = keep(agents, definition)
       {:ok, status, WardrikTrigger.encode(trigger)}
     end
   end
@@ -547,10 +553,10 @@ defmodule WardrikDaemon.Agents do
   agent `key`, and stops it: `{:error, :not_found}` where neither is kept, or
   a conflict where an agent file declares `key`.
   """
-  def delete_trigger(%__MODULE__{store: store} = agents, key, name) do
+  def delete_trigger(%__MODULE__{} = agents, key, name) do
     with {:ok, definition} <- editable_definition(agents, key),
          {:ok, definition} <- AgentFile.delete_trigger(definition, name),
-         do: keep(store, definition)
+         do: keep(agents, definition)
   end
 
   defp editable_definition(%__MODULE__{store: store} = agents, key) do
@@ -580,9 +586,9 @@ defmodule WardrikDaemon.Agents do
   end
 
   # A trigger starts only once the definition listing it is kept.
-  defp keep(store, definition) do
+  defp keep(%__MODULE__{store: store, context: context}, definition) do
     :ok = Definition.put(store, definition)
-    WardrikTrigger.sync(definition.id, AgentFile.triggers(definition))
+    WardrikTrigger.sync(definition.id, AgentFile.triggers(context, definition))
   end
 
   @doc """
@@ -720,7 +726,7 @@ defmodule WardrikDaemon.Agents do
 
     agent_files =
       for {path, result} <- read,
-          do: {path, contained(path, fn _path -> put(state.store, result) end)}
+          do: {path, contained(path, fn _path -> put(agents, result) end)}
 
     prune(state, agent_files)
     state = %{state | files: policy_files ++ agent_files}
@@ -848,8 +854,8 @@ defmodule WardrikDaemon.Agents do
   # The definition is kept before the agent starts, so whatever finds the
   # agent finds what it is. An agent asleep is left asleep, and takes the
   # definition as it wakes.
-  defp put(store, {:ok, definition, spec}) do
-    :ok = keep(store, definition)
+  defp put(agents, {:ok, definition, spec}) do
+    :ok = keep(agents, definition)
 
     case Fleet.lookup(spec.id) do
       %{asleep: true} -> {:ok, spec}
@@ -857,7 +863,7 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  defp put(_store, {:error, _message} = error), do: error
+  defp put(_agents, {:error, _message} = error), do: error
 
   defp started(spec) do
     case Fleet.put(spec) do

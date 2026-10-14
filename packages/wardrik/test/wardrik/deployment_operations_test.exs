@@ -121,7 +121,7 @@ defmodule Wardrik.DeploymentOperationsTest do
 
   describe "the audit" do
     test "reads a page of the changes after a sequence number" do
-      :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, nil)
+      :ok = Wardrik.Audit.record(Wardrik.Audit, {:agents_reloaded, [node()]}, by: nil)
       [%{"sequence" => last} | _rest] = Enum.reverse(Audit.all())
       last = String.to_integer(last)
 

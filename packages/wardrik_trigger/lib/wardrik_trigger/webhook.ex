@@ -33,7 +33,6 @@ defmodule WardrikTrigger.Webhook do
   """
 
   alias WardrikTrigger.Item
-  alias WardrikTrigger.Webhook.Verifier
 
   require Logger
 
@@ -69,7 +68,8 @@ defmodule WardrikTrigger.Webhook do
 
   @doc """
   A webhook trigger named `name`, with `:secret`, `:verify`, `:prompt` and
-  `:overlap` as above. Raises `ArgumentError` on one that does not read.
+  `:overlap` as above; `:verifiers` names those `:verify` may name, this
+  package's own by default. Raises `ArgumentError` on one that does not read.
   """
   @spec new(String.t(), keyword()) :: t()
   def new(name, opts) when is_list(opts) do
@@ -77,14 +77,16 @@ defmodule WardrikTrigger.Webhook do
       name: WardrikTrigger.name!(name),
       prompt: WardrikTrigger.prompt!(Keyword.get(opts, :prompt)),
       secret: secret!(Keyword.get(opts, :secret)),
-      verify: verify!(Keyword.get(opts, :verify, "shared")),
+      verify:
+        verify!(
+          Keyword.get(opts, :verify, "shared"),
+          Keyword.get(opts, :verifiers, %WardrikTrigger.Offered{}.verifiers)
+        ),
       overlap: WardrikTrigger.overlap!(Keyword.get(opts, :overlap, :queue))
     }
   end
 
-  defp verify!(verify) do
-    verifiers = Verifier.all()
-
+  defp verify!(verify, verifiers) do
     if is_binary(verify) and Map.has_key?(verifiers, verify),
       do: verify,
       else:
@@ -109,8 +111,9 @@ defmodule WardrikTrigger.Webhook do
   and `overlap` are as a trigger on a clock writes them. It takes no
   `every`, `missed` or `jitter`.
   """
-  @spec decode(String.t(), map()) :: {:ok, t()} | {:error, String.t()}
-  def decode(name, %{"webhook" => own} = fields) when is_map(own) do
+  @spec decode(String.t(), map(), WardrikTrigger.Offered.t()) :: {:ok, t()} | {:error, String.t()}
+  def decode(name, %{"webhook" => own} = fields, %WardrikTrigger.Offered{} = offered)
+      when is_map(own) do
     with :ok <- only(fields, @fields, "a webhook trigger, which asks as each request arrives"),
          :ok <- only(own, ~w(secret verify), "webhook"),
          {:ok, secret} <- secret(own["secret"]),
@@ -119,6 +122,7 @@ defmodule WardrikTrigger.Webhook do
        new(name,
          secret: secret,
          verify: Map.get(own, "verify", "shared"),
+         verifiers: offered.verifiers,
          prompt: fields["prompt"],
          overlap: overlap
        )}
@@ -127,7 +131,7 @@ defmodule WardrikTrigger.Webhook do
     error in [ArgumentError] -> {:error, Exception.message(error)}
   end
 
-  def decode(_name, _fields),
+  def decode(_name, _fields, _offered),
     do: {:error, "webhook holds its secret, and how a request is verified"}
 
   defp only(fields, known, what) do
@@ -155,16 +159,18 @@ defmodule WardrikTrigger.Webhook do
   The item `request` holds for the `:agent` `opts` name, or why it is not
   delivered: `:forbidden` where its signature does not match, and
   `:unavailable` where it cannot be checked now, as when the secret is not
-  set. `:secrets` reads the secret by its name for the agent.
+  set. `:secrets` reads the secret by its name for the agent, and
+  `:verifiers` names each verifier a webhook may name, by its name.
   """
   @spec received(t(), Wardrik.Triggers.request(),
           agent: Wardrik.AgentID.t(),
-          secrets: WardrikTrigger.Deliveries.secrets()
+          secrets: WardrikTrigger.Deliveries.secrets(),
+          verifiers: %{String.t() => module()}
         ) :: {:ok, Item.t()} | {:error, :forbidden | :unavailable, String.t()}
   def received(%__MODULE__{} = hook, %{headers: headers, body: body}, opts) do
     agent = Keyword.fetch!(opts, :agent)
 
-    with {:ok, module} <- module(hook.verify),
+    with {:ok, module} <- module(Keyword.fetch!(opts, :verifiers), hook.verify),
          {:ok, secret} <- read(Keyword.fetch!(opts, :secrets), hook.secret, agent) do
       case module.verify(headers, body, secret) do
         {:ok, delivery} -> {:ok, item(delivery, body)}
@@ -173,8 +179,8 @@ defmodule WardrikTrigger.Webhook do
     end
   end
 
-  defp module(verify) do
-    case Map.fetch(Verifier.all(), verify) do
+  defp module(verifiers, verify) do
+    case Map.fetch(verifiers, verify) do
       {:ok, module} -> {:ok, module}
       :error -> {:error, :unavailable, "No webhook verifier #{verify} is loaded."}
     end

@@ -91,9 +91,9 @@
     forbidden: [
       # The package takes its settings as options of what the host starts,
       # and never reads or writes the application environment; nor does it
-      # name core's store or supervisors. WardrikChannel reads the adapters
-      # other applications name under :wardrik_channels, which is how a
-      # channel package makes itself known.
+      # name core's store or supervisors. WardrikChannel.discover/0 reads the
+      # adapters other applications name under :wardrik_channels, which is how
+      # a channel package makes itself known, once as a host starts.
       {["WardrikChannel", "WardrikChannel.*"],
        [
          "Application.get_env",

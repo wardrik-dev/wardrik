@@ -74,7 +74,8 @@ defmodule Wardrik.Host do
             tokens: %Wardrik.Tokens.None{},
             triggers: %Wardrik.Triggers.None{},
             grants: %Wardrik.Grants.None{},
-            workspace: %Wardrik.Workspace.None{}
+            workspace: %Wardrik.Workspace.None{},
+            audit: Wardrik.Audit
 
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
@@ -84,7 +85,8 @@ defmodule Wardrik.Host do
           tokens: Wardrik.Tokens.t(),
           triggers: Wardrik.Triggers.t(),
           grants: Wardrik.Grants.t(),
-          workspace: Wardrik.Workspace.t()
+          workspace: Wardrik.Workspace.t(),
+          audit: GenServer.name()
         }
 
   @seams [:definitions, :connections, :credentials, :tokens, :triggers, :grants, :workspace]
@@ -97,7 +99,7 @@ defmodule Wardrik.Host do
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    opts = Keyword.validate!(opts, [:store | @seams])
+    opts = Keyword.validate!(opts, [:store, :audit | @seams])
     struct!(__MODULE__, opts)
   end
 
@@ -175,6 +177,14 @@ defmodule Wardrik.Host do
   @doc "The `Wardrik.Triggers` requests from outside are delivered to."
   @spec triggers(t()) :: Wardrik.Triggers.t()
   def triggers(%__MODULE__{triggers: triggers}), do: triggers
+
+  @doc """
+  The name of the `Wardrik.Audit` log `Wardrik` starts for this host, which
+  surfaces record changes in; `Wardrik.Audit` unless `:audit` names
+  another, as a second instance on one node does.
+  """
+  @spec audit(t()) :: GenServer.name()
+  def audit(%__MODULE__{audit: audit}), do: audit
 
   @doc "The `Wardrik.Workspace` agents' files are kept in."
   @spec workspace(t()) :: Wardrik.Workspace.t()

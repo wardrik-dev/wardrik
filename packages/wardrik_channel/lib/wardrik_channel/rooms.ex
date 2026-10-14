@@ -126,7 +126,7 @@ defmodule WardrikChannel.Rooms do
       %Room{} ->
         :ok = context |> store() |> WardrikStore.delete(@ns, key(channel, room))
         :ok = WardrikChannel.Replies.forget(context, room)
-        Audit.record({:room_unbound, channel, room}, by)
+        Audit.record(audit(context), {:room_unbound, channel, room}, by: by)
 
       nil ->
         :ok
@@ -136,11 +136,12 @@ defmodule WardrikChannel.Rooms do
   defp bind(%Context{channel: channel} = context, room, agent, answers, by) do
     bound = %Room{channel: channel, room: room, agent: agent, answers: answers}
     {:ok, _vsn} = context |> store() |> WardrikStore.put(@ns, key(channel, room), bound)
-    :ok = Audit.record({:room_bound, channel, room, agent, answers}, by)
+    :ok = Audit.record(audit(context), {:room_bound, channel, room, agent, answers}, by: by)
     bound
   end
 
   defp key(channel, room), do: channel <> "/" <> room
 
   defp store(%Context{host: host}), do: Wardrik.Host.store(host)
+  defp audit(%Context{host: host}), do: Wardrik.Host.audit(host)
 end

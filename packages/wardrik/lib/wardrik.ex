@@ -87,7 +87,7 @@ defmodule Wardrik do
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
-        {Wardrik.Audit, Wardrik.Host.store(host)},
+        {Wardrik.Audit, store: Wardrik.Host.store(host), name: Wardrik.Host.audit(host)},
         Wardrik.LLM.ToolRunner,
         Wardrik.Tasks
       ] ++

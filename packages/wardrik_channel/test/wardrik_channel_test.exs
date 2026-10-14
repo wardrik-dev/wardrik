@@ -12,9 +12,8 @@ defmodule WardrikChannelTest do
     }
 
   test "finds an adapter by the type its application names" do
-    assert WardrikChannel.adapters()["test"] == WardrikChannel.Test.Adapter
-    assert WardrikChannel.adapter("test") == {:ok, WardrikChannel.Test.Adapter}
-    assert WardrikChannel.adapter("carrier-pigeon") == :error
+    assert WardrikChannel.discover()["test"] == WardrikChannel.Test.Adapter
+    refute Map.has_key?(WardrikChannel.discover(), "carrier-pigeon")
   end
 
   test "posts a notice in a room through the channel's adapter" do

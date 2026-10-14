@@ -514,7 +514,11 @@ defmodule WardrikDaemon.CLITest do
   end
 
   test "audit reads what people changed, a page at a time" do
-    :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, Wardrik.Principal.new(:user, "ops"))
+    :ok =
+      Wardrik.Audit.record(Wardrik.Audit, {:agents_reloaded, [node()]},
+        by: Wardrik.Principal.new(:user, "ops")
+      )
+
     last = String.to_integer(List.last(Audit.all())["sequence"])
     previous = to_string(last - 1)
 

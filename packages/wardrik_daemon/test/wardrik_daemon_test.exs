@@ -15,6 +15,8 @@ defmodule WardrikDaemonTest do
   defp load(dir) do
     Config.load(
       store: store(),
+      adapters: WardrikChannel.discover(),
+      triggers: WardrikTrigger.Offered.discover(),
       base: Host.config(dir).sections,
       config_dir: dir,
       data_dir: dir,

@@ -8,6 +8,8 @@ defmodule WardrikHTTP.AccessTest do
   alias Wardrik.Grant
   alias WardrikHTTP.Access
   alias WardrikHTTP.Access.Cache
+
+  @sweep :timer.seconds(15)
   alias WardrikHTTP.Access.Leases
 
   @ns :access_test
@@ -48,10 +50,12 @@ defmodule WardrikHTTP.AccessTest do
     end
   end
 
-  # Makes what this node read of `ref` lapse, as a sweep's time passing does.
+  # Makes what this node read of `ref` a sweep old, and purges it, as a
+  # sweep's time passing does.
   defp lapse(ref) do
-    [{^ref, value, _until}] = :ets.lookup(Cache, ref)
-    true = :ets.insert(Cache, {ref, value, System.monotonic_time(:millisecond) - 1})
+    [{^ref, value, _at}] = :ets.lookup(Cache, ref)
+    true = :ets.insert(Cache, {ref, value, System.monotonic_time(:millisecond) - @sweep})
+    :ok = Cache.purge(@sweep)
   end
 
   describe "authorize/3" do
@@ -137,17 +141,15 @@ defmodule WardrikHTTP.AccessTest do
     end
   end
 
-  test "a purge drops what has lapsed, and keeps the rest" do
+  test "a purge drops what is a sweep old, and keeps the rest" do
     lapsed = record()
     kept = record()
     {:ok, _value} = Access.get(store(), lapsed)
     {:ok, _value} = Access.get(store(), kept)
     lapse(lapsed)
 
-    :ok = Cache.purge()
-
     assert :ets.lookup(Cache, lapsed) == []
-    assert [{^kept, :granted, _until}] = :ets.lookup(Cache, kept)
+    assert [{^kept, :granted, _at}] = :ets.lookup(Cache, kept)
   end
 
   describe "revoke/1" do

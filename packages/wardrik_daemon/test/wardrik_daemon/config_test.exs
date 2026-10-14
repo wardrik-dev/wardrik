@@ -15,7 +15,7 @@ defmodule WardrikDaemon.ConfigTest do
   defp read_all(yaml, %{tmp_dir: dir}, opts \\ []) do
     file = Path.join(dir, "config.yaml")
     File.write!(file, yaml)
-    Config.read(file, opts)
+    Config.read(file, Keyword.put_new(opts, :adapters, WardrikChannel.discover()))
   end
 
   defp env(value) do

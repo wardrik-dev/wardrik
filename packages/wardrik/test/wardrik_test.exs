@@ -35,7 +35,7 @@ defmodule WardrikTest do
 
     {:ok, {_flags, specs}} = Wardrik.init(fleet: [log: true], host: host)
 
-    assert %{start: {Wardrik.Audit, :start_link, [^store]}} =
+    assert %{start: {Wardrik.Audit, :start_link, [[store: ^store, name: Wardrik.Audit]]}} =
              Enum.find(specs, &(&1.id == Wardrik.Audit))
 
     assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [opts]}} =

@@ -96,18 +96,23 @@ defmodule WardrikDaemon do
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do
     store = Keyword.fetch!(opts, :store)
-    oauth = WardrikOAuth.new(oauth_settings(config))
+    audit = Wardrik.Audit
+    oauth = WardrikOAuth.new([audit: audit] ++ oauth_settings(config))
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :environment])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
-    agents = Agents.new(store: store, config: config)
+    agents = Agents.new(store: store, config: config, audit: audit)
 
     Wardrik.Host.new(
       store: store,
+      audit: audit,
       definitions: agents,
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
-      triggers: %WardrikTrigger.Deliveries{secrets: &Secrets.for_agent(vault, &1, &2)},
+      triggers: %WardrikTrigger.Deliveries{
+        secrets: &Secrets.for_agent(vault, &1, &2),
+        verifiers: config.triggers.verifiers
+      },
       grants: %WardrikDaemon.Grants{store: store, agents: agents},
       workspace: %WardrikWorkspace.Backend.Store{store: store}
     )

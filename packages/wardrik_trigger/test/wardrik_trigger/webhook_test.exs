@@ -22,7 +22,7 @@ defmodule WardrikTrigger.WebhookTest do
                 verify: "shared",
                 prompt: "Look.",
                 overlap: :queue
-              } = hook} = Webhook.decode("issues", fields)
+              } = hook} = Webhook.decode("issues", fields, %WardrikTrigger.Offered{})
 
       assert WardrikTrigger.encode(hook) == %{
                "name" => "issues",
@@ -38,7 +38,8 @@ defmodule WardrikTrigger.WebhookTest do
                    fields
                    | "webhook" => %{"secret" => "${HOOK_SECRET}", "verify" => "standard"}
                  }
-                 |> Map.put("overlap", "skip")
+                 |> Map.put("overlap", "skip"),
+                 %WardrikTrigger.Offered{}
                )
     end
 
@@ -60,7 +61,7 @@ defmodule WardrikTrigger.WebhookTest do
             {Map.put(base, "every", "1h"),
              "every is not a setting of a webhook trigger, which asks as each request arrives"}
           ] do
-        assert Webhook.decode("issues", fields) == {:error, message}
+        assert Webhook.decode("issues", fields, %WardrikTrigger.Offered{}) == {:error, message}
       end
     end
 
@@ -82,7 +83,8 @@ defmodule WardrikTrigger.WebhookTest do
       assert {:ok, %Item{id: "msg_1", title: "invoice.paid", text: ^body, labels: ["outside"]}} =
                Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
                  agent: @agent,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
 
       globex = Wardrik.AgentID.parse!("globex/hooked")
@@ -90,13 +92,15 @@ defmodule WardrikTrigger.WebhookTest do
       assert {:error, :forbidden, _message} =
                Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
                  agent: globex,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
 
       assert {:ok, %Item{}} =
                Webhook.received(opts, standard("msg_1", now(), body, "globex's"),
                  agent: globex,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
     end
 
@@ -104,7 +108,8 @@ defmodule WardrikTrigger.WebhookTest do
       assert {:error, :unavailable, _message} =
                Webhook.received(hook("WARDRIK_TEST_UNSET"), standard("msg_1", now(), "{}", "x"),
                  agent: @agent,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
     end
 
@@ -115,7 +120,8 @@ defmodule WardrikTrigger.WebhookTest do
       assert {:ok, %Item{text: text}} =
                Webhook.received(opts, standard("m", now(), long, "acme's"),
                  agent: @agent,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
 
       assert String.length(text) == 32_769
@@ -123,7 +129,8 @@ defmodule WardrikTrigger.WebhookTest do
       assert {:ok, %Item{text: "(2 bytes that are not text)"}} =
                Webhook.received(opts, standard("m", now(), <<255, 0>>, "acme's"),
                  agent: @agent,
-                 secrets: &secret/2
+                 secrets: &secret/2,
+                 verifiers: %WardrikTrigger.Offered{}.verifiers
                )
     end
   end

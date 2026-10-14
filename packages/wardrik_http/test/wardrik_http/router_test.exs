@@ -1243,7 +1243,13 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "read the audit for a caller that reaches every agent", %{api: api} do
-      :ok = Wardrik.Audit.record({:agent_cleared, Wardrik.AgentID.parse!("test/exported")}, nil)
+      :ok =
+        Wardrik.Audit.record(
+          Wardrik.Audit,
+          {:agent_cleared, Wardrik.AgentID.parse!("test/exported")},
+          by: nil
+        )
+
       client = client(api, Prefix.all(), [:read])
 
       assert {:ok, %{status: 200, body: %{"events" => [event]}}} =
@@ -1573,7 +1579,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "pages its audit after a sequence number", %{api: api} do
-      :ok = Wardrik.Audit.record({:agents_reloaded, [node()]}, nil)
+      :ok = Wardrik.Audit.record(Wardrik.Audit, {:agents_reloaded, [node()]}, by: nil)
       reader = over_every_agent(api, [:read])
 
       assert {:ok, %{status: 403}} = Req.get(api, url: "/v1/deployment/audit")

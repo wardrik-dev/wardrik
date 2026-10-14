@@ -101,7 +101,8 @@ defmodule WardrikOAuth do
             redirect: [],
             req_options: [],
             resolve: &Egress.resolve/1,
-            poll_floor: :timer.seconds(5)
+            poll_floor: :timer.seconds(5),
+            audit: Wardrik.Audit
 
   @typedoc """
   What every flow runs with:
@@ -114,6 +115,7 @@ defmodule WardrikOAuth do
   | `:req_options` | merged into every request |
   | `:resolve` | answers a host's addresses, `WardrikOAuth.Egress.resolve/1` by default |
   | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |
+  | `:audit` | the `Wardrik.Audit` log a connection is recorded in, the host's `Wardrik.Host.audit/1` |
   """
   @type t() :: %__MODULE__{
           client: keyword(),
@@ -121,7 +123,8 @@ defmodule WardrikOAuth do
           redirect: keyword(),
           req_options: keyword(),
           resolve: (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term()}),
-          poll_floor: non_neg_integer()
+          poll_floor: non_neg_integer(),
+          audit: GenServer.name()
         }
 
   @doc "The settings `opts` name, each one left out at its default; see `t:t/0`."
@@ -570,13 +573,14 @@ defmodule WardrikOAuth do
   # the authorization that finished: whoever finished it is known only as
   # that, not as the user the token is kept for. The audit names who asked
   # for the connection, where someone did.
-  defp connected(%Flight{provider: %Provider{name: name}, owner: owner, by: asked}) do
+  defp connected(%Flight{provider: %Provider{name: name}, owner: owner, by: asked} = flight) do
     by = Wardrik.Principal.new(:oauth, name, name: "#{name} authorization")
 
     :ok =
       Wardrik.Audit.record(
+        flight.oauth.audit,
         {:secret_stored, name, Wardrik.Connections.Owner.prefix(owner)},
-        asked || by
+        by: asked || by
       )
 
     Credential.available(name, owner, by: by)

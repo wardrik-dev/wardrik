@@ -144,8 +144,11 @@ defmodule WardrikTrigger do
 
   @doc """
   Starts the supervisor the triggers run under, over the store the fleet
-  runs on, which `:store` names. `:log` is passed to `Group`. A request for
-  a webhook reaches it through `WardrikTrigger.Deliveries`.
+  runs on, which `:store` names. `:log` is passed to `Group`, and
+  `:settings` holds what each source is checked with, by its module, such
+  as `%{WardrikTrigger.Feed => [req_options: [...]]}`: every trigger on
+  this node is handed them as it starts, and keeps them out of the store. A
+  request for a webhook reaches it through `WardrikTrigger.Deliveries`.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
@@ -154,7 +157,8 @@ defmodule WardrikTrigger do
         name: @name,
         prefix: "triggers/",
         backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
-        group: [log: Keyword.get(opts, :log, false)]
+        group: [log: Keyword.get(opts, :log, false)],
+        init_info: %{settings: Keyword.get(opts, :settings, %{})}
       ] ++ WardrikStore.durable_shutdown()
     )
   end
@@ -254,13 +258,17 @@ defmodule WardrikTrigger do
   the clock's where none does: see `WardrikTrigger.Source`. Fields with
   `webhook` are a `WardrikTrigger.Webhook`'s, which `Webhook.decode/2` reads.
   """
-  @spec decode(String.t(), map()) :: {:ok, trigger()} | {:error, String.t()}
-  def decode(name, %{"webhook" => _own} = fields), do: Webhook.decode(name, fields)
+  @spec decode(String.t(), map(), offered: WardrikTrigger.Offered.t()) ::
+          {:ok, trigger()} | {:error, String.t()}
+  def decode(name, fields, opts \\ [])
 
-  def decode(name, fields) when is_map(fields) do
+  def decode(name, %{"webhook" => _own} = fields, opts),
+    do: Webhook.decode(name, fields, offered(opts))
+
+  def decode(name, fields, opts) when is_map(fields) do
     {own, rest} = Map.split(fields, @fields)
 
-    with {:ok, source} <- source(rest),
+    with {:ok, source} <- source(rest, offered(opts)),
          {:ok, every} <- every(own["every"]),
          {:ok, overlap} <- choice(own, "overlap", :skip, ~w(skip queue)),
          {:ok, missed} <- choice(own, "missed", :run_once, ~w(run_once skip)),
@@ -281,16 +289,17 @@ defmodule WardrikTrigger do
 
   @doc """
   The fields a trigger written as text may have: those every trigger has,
-  the key of each source a loaded application registers, and a webhook's.
+  the key of each source `offered` holds, and a webhook's.
   """
-  @spec keys() :: [String.t()]
-  def keys, do: @fields ++ Enum.sort(["webhook" | Map.keys(Source.all())])
+  @spec keys(WardrikTrigger.Offered.t()) :: [String.t()]
+  def keys(%WardrikTrigger.Offered{sources: sources}),
+    do: @fields ++ Enum.sort(["webhook" | Map.keys(sources)])
 
-  defp source(fields) do
-    sources = Source.all()
+  defp offered(opts), do: Keyword.get(opts, :offered, %WardrikTrigger.Offered{})
 
+  defp source(fields, %WardrikTrigger.Offered{sources: sources} = offered) do
     case fields |> Map.keys() |> Enum.filter(&Map.has_key?(sources, &1)) |> Enum.sort() do
-      [] -> clock(fields)
+      [] -> clock(fields, offered)
       [key] -> source(Map.fetch!(sources, key), fields)
       [one, other | _] -> {:error, "#{one} and #{other} each name a source; a trigger has one"}
     end
@@ -300,10 +309,10 @@ defmodule WardrikTrigger do
     with {:ok, opts} <- module.decode(fields), do: {:ok, {module, opts}}
   end
 
-  defp clock(fields) when map_size(fields) == 0, do: {:ok, {Clock, nil}}
+  defp clock(fields, _offered) when map_size(fields) == 0, do: {:ok, {Clock, nil}}
 
-  defp clock(fields) do
-    {last, others} = List.pop_at(keys(), -1)
+  defp clock(fields, offered) do
+    {last, others} = List.pop_at(keys(offered), -1)
 
     {:error,
      IO.iodata_to_binary([
@@ -364,11 +373,19 @@ defmodule WardrikTrigger do
     "#{div(ms, size)}#{unit}"
   end
 
-  @doc "What `trigger`'s source finds for `agent` since `cursor`; see `WardrikTrigger.Source`."
-  @spec check(t(), Source.cursor() | nil, AgentID.t()) ::
-          {:ok, [WardrikTrigger.Item.t()], Source.cursor()} | {:error, String.t()}
-  def check(%__MODULE__{source: {module, opts}}, cursor, %AgentID{} = agent),
-    do: module.check(opts, cursor, agent)
+  @doc """
+  What `trigger`'s source finds for `:agent` since `cursor`, under the
+  `:settings` the triggers were started with for each source; see
+  `WardrikTrigger.Source`.
+  """
+  @spec check(t(), Source.cursor() | nil,
+          agent: AgentID.t(),
+          settings: %{module() => keyword()}
+        ) :: {:ok, [WardrikTrigger.Item.t()], Source.cursor()} | {:error, String.t()}
+  def check(%__MODULE__{source: {module, opts}}, cursor, check) do
+    settings = check |> Keyword.get(:settings, %{}) |> Map.get(module, [])
+    module.check(opts, cursor, agent: Keyword.fetch!(check, :agent), settings: settings)
+  end
 
   @doc "When `every` runs, as a person reads it: the cron expression, or `every 30m`."
   @spec schedule(every()) :: String.t()

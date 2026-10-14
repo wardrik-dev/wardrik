@@ -112,7 +112,13 @@ defmodule WardrikDaemon.Doctor do
       # What the release's own configuration says of each module, which the
       # daemon reads once as it starts, as config.yaml is merged over it.
       settings = Config.merge(Application.get_all_env(:wardrik_daemon), read)
-      config = Config.new(config_dir: config_dir, sections: settings)
+
+      config =
+        Config.new(
+          config_dir: config_dir,
+          sections: settings,
+          triggers: WardrikTrigger.Offered.discover()
+        )
 
       [env(config_dir), config(file, from_vault, vault), store(read), vault(settings)] ++
         callback(settings, vault) ++ servers(settings) ++ agents(config)
@@ -166,7 +172,7 @@ defmodule WardrikDaemon.Doctor do
       secret
     end
 
-    case Config.read(file, vault: lookup) do
+    case Config.read(file, vault: lookup, adapters: WardrikChannel.discover()) do
       {:ok, settings} -> {:ok, settings, from_vault([])}
       {:error, message} -> {:error, message <> unread(vault, from_vault([]))}
     end

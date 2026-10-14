@@ -22,8 +22,8 @@ defmodule WardrikDaemon.Tree do
 
   `:store` is required. `:base` is what the release's own configuration says
   of each module, which `config.yaml` is merged over; `:config_dir`,
-  `:data_dir` and `:state_dir` are as `WardrikDaemon.Config.new/1` takes
-  them.
+  `:data_dir`, `:state_dir`, `:adapters` and `:triggers` are as
+  `WardrikDaemon.Config.new/1` takes them.
   """
 
   use Supervisor

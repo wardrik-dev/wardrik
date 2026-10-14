@@ -1,17 +1,16 @@
 defmodule WardrikHTTP.Access.Cache do
   @moduledoc """
   What this node last read of each record through consensus, and the records
-  revoked here, each kept for one sweep. See `WardrikHTTP.Access`.
+  revoked here, each kept until a purge finds it a sweep old: at least one
+  sweep, and less than two. See `WardrikHTTP.Access`.
 
-  An entry is `{ref, value, until}`, or `{ref, :revoked, until}` for a
-  revoked record, with `until` in monotonic milliseconds. A lookup after
-  `until` is a miss. `put/2` never replaces a revocation still in force;
-  `revoked/1` replaces whatever is there.
+  An entry is `{ref, value, at}`, or `{ref, :revoked, at}` for a revoked
+  record, with `at` the monotonic millisecond it was written. `put/2` never
+  replaces a revocation still held; `revoked/1` replaces whatever is there.
 
-  The table belongs to `WardrikHTTP.Access.Leases`, which purges what has lapsed
-  every sweep, and goes with it: a node whose table is new reads every record
-  through consensus again. It holds the sweep too, as `{#{inspect(__MODULE__)}, ms}`,
-  since entries are written from the processes reading a record.
+  The table belongs to `WardrikHTTP.Access.Leases`, which purges what is a
+  sweep old every sweep, as its own `:sweep` says, and goes with it: a node
+  whose table is new reads every record through consensus again.
   """
 
   alias WardrikHTTP.Access
@@ -19,8 +18,8 @@ defmodule WardrikHTTP.Access.Cache do
   @table __MODULE__
 
   @doc false
-  @spec new(pos_integer()) :: :ok
-  def new(sweep) do
+  @spec new() :: :ok
+  def new do
     _table =
       :ets.new(@table, [
         :named_table,
@@ -30,54 +29,48 @@ defmodule WardrikHTTP.Access.Cache do
         write_concurrency: true
       ])
 
-    true = :ets.insert(@table, {__MODULE__, sweep})
     :ok
   end
 
-  @doc "The value this node holds for `ref`, `:revoked`, or `:miss` where it holds nothing still good."
+  @doc "The value this node holds for `ref`, `:revoked`, or `:miss` where it holds nothing."
   @spec lookup(Access.ref()) :: {:ok, term()} | :revoked | :miss
   def lookup(ref) do
-    now = now()
-
     case :ets.lookup(@table, ref) do
-      [{^ref, :revoked, until}] when until > now -> :revoked
-      [{^ref, value, until}] when until > now -> {:ok, value}
-      _missing_or_lapsed -> :miss
+      [{^ref, :revoked, _at}] -> :revoked
+      [{^ref, value, _at}] -> {:ok, value}
+      [] -> :miss
     end
   end
 
-  @doc "Keeps `value` for `ref` for a sweep, unless `ref` was revoked here within one."
+  @doc "Keeps `value` for `ref`, unless `ref` was revoked here and is still held so."
   @spec put(Access.ref(), term()) :: :ok
   def put(ref, value) do
-    entry = {ref, value, now() + sweep()}
+    entry = {ref, value, now()}
 
     if not :ets.insert_new(@table, entry) do
-      now = now()
-      replaceable = [{:orelse, {:"=/=", :"$1", :revoked}, {:<, :"$2", now}}]
+      replaceable = [{:"=/=", :"$1", :revoked}]
 
       _replaced =
-        :ets.select_replace(@table, [{{ref, :"$1", :"$2"}, replaceable, [{:const, entry}]}])
+        :ets.select_replace(@table, [{{ref, :"$1", :_}, replaceable, [{:const, entry}]}])
     end
 
     :ok
   end
 
-  @doc "Refuses `ref` on this node for a sweep, whatever it held."
+  @doc "Refuses `ref` on this node until a purge finds it a sweep old, whatever it held."
   @spec revoked(Access.ref()) :: :ok
   def revoked(ref) do
-    true = :ets.insert(@table, {ref, :revoked, now() + sweep()})
+    true = :ets.insert(@table, {ref, :revoked, now()})
     :ok
   end
 
-  @doc "Drops every entry that has lapsed."
-  @spec purge() :: :ok
-  def purge do
-    now = now()
-    _dropped = :ets.select_delete(@table, [{{:_, :_, :"$1"}, [{:<, :"$1", now}], [true]}])
+  @doc "Drops every entry written `sweep` milliseconds ago or more."
+  @spec purge(pos_integer()) :: :ok
+  def purge(sweep) do
+    cutoff = now() - sweep
+    _dropped = :ets.select_delete(@table, [{{:_, :_, :"$1"}, [{:"=<", :"$1", cutoff}], [true]}])
     :ok
   end
-
-  defp sweep, do: :ets.lookup_element(@table, __MODULE__, 2)
 
   defp now, do: System.monotonic_time(:millisecond)
 end

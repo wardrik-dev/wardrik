@@ -163,9 +163,13 @@ defmodule WardrikDefinitionTest do
     fields = %{"triggers" => %{"every" => "1h", "prompt" => "Look."}}
 
     assert {:ok, fields, :created, %WardrikTrigger{name: "sweep"}} =
-             WardrikDefinition.put_trigger(fields, "sweep", %{"every" => "2h", "prompt" => "Go."})
+             WardrikDefinition.put_trigger(fields, "sweep",
+               trigger: %{"every" => "2h", "prompt" => "Go."},
+               context: %WardrikDefinition.Context{}
+             )
 
-    assert [%{name: "trigger-1"}, %{name: "sweep"}] = WardrikDefinition.triggers(fields)
+    assert [%{name: "trigger-1"}, %{name: "sweep"}] =
+             WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})
 
     assert {:ok, %{"triggers" => [%{"name" => "sweep"}]}} =
              WardrikDefinition.delete_trigger(fields, "trigger-1")

@@ -27,7 +27,6 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.AgentOperation
   alias Wardrik.Command
-  alias Wardrik.Connections
   alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export

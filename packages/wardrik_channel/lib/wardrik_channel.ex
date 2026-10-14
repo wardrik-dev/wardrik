@@ -29,8 +29,8 @@ defmodule WardrikChannel do
       def application,
         do: [env: [wardrik_channels: [slack: WardrikSlack]]]
 
-  `adapters/0` lists the types the loaded applications name, and `adapter/1`
-  finds one.
+  `discover/0` lists the types the loaded applications name, which a host
+  reads once, as it starts.
 
   ## What an adapter does
 
@@ -126,18 +126,17 @@ defmodule WardrikChannel do
   """
   @callback among?(user :: String.t(), names :: [String.t()], keyword()) :: boolean()
 
-  @doc "Every adapter the loaded applications name, by its type."
-  @spec adapters() :: %{String.t() => module()}
-  def adapters do
+  @doc """
+  Every adapter the loaded applications name, by its type. Read once, as a
+  host starts, and handed to what reads its channels' settings.
+  """
+  @spec discover() :: %{String.t() => module()}
+  def discover do
     for {app, _description, _version} <- Application.loaded_applications(),
         {type, module} <- Application.get_env(app, :wardrik_channels, []),
         into: %{},
         do: {to_string(type), module}
   end
-
-  @doc "The adapter of `type`, where a loaded application names one."
-  @spec adapter(String.t()) :: {:ok, module()} | :error
-  def adapter(type) when is_binary(type), do: Map.fetch(adapters(), type)
 
   @doc "The task supervisor a channel runs its work under."
   @spec tasks() :: atom()

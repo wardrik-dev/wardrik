@@ -9,8 +9,9 @@ defmodule Wardrikd.Application do
 
   What `config/runtime.exs` read of `config.yaml` as the node booted, the
   store, the cluster and the HTTP API's settings, and what the release's
-  own configuration says of each module, are read here once, and handed
-  down: the store `storage` names starts first; `WardrikDaemon.Boot` holds it
+  own configuration says of each module, and the channel adapters, trigger
+  sources and webhook verifiers the loaded applications register, are read
+  here once, and handed down: the store `storage` names starts first; `WardrikDaemon.Boot` holds it
   and the cluster's settings, for the commands that reach the node over rpc
   while it waits; `WardrikDaemon.Cluster` connects this node to the others,
   and `WardrikDaemon.Cluster.Quorum` waits for enough of them; then
@@ -36,7 +37,11 @@ defmodule Wardrikd.Application do
       {WardrikDaemon.Boot, store: store, cluster: cluster},
       {WardrikDaemon.Cluster, cluster},
       {WardrikDaemon.Cluster.Quorum, store: store, cluster: cluster},
-      {WardrikDaemon.Tree, store: store, base: base}
+      {WardrikDaemon.Tree,
+       store: store,
+       base: base,
+       adapters: WardrikChannel.discover(),
+       triggers: WardrikTrigger.Offered.discover()}
     ]
 
     Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrikd.Supervisor)

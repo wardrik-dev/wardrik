@@ -93,7 +93,7 @@ defmodule WardrikDaemon.CLI.Vault do
     with {:ok, owner} <- owner(opts),
          {:ok, pairs} when is_list(pairs) <- given(words),
          {:ok, notes, vault} <- key(opts, nil) do
-      seal(vault, pairs, owner, notes, opts[:by])
+      seal(vault, pairs, owner, notes, opts)
     else
       {:ok, {:ask, _name}} -> :live
       other -> other
@@ -106,7 +106,7 @@ defmodule WardrikDaemon.CLI.Vault do
          {:ok, notes, vault} <- key(opts, terminal),
          :ok <- Enum.each(notes, &Terminal.puts(terminal, &1)),
          {:ok, pairs} <- value(given, terminal) do
-      seal(vault, pairs, owner, [], opts[:by])
+      seal(vault, pairs, owner, [], opts)
     else
       :declined -> {:ok, "Nothing was sealed."}
       other -> other
@@ -163,14 +163,18 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp seal(_vault, [], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
+  defp seal(_vault, [], _owner, _notes, _opts), do: {:ok, "Nothing was sealed."}
 
-  defp seal(vault, pairs, {kind, owner}, notes, by) do
+  # The audit names who sealed it, in the log of the host they reached.
+  defp seal(vault, pairs, {kind, owner}, notes, opts) do
+    by = opts[:by]
+    audit = Wardrik.Host.audit(opts[:caller].host)
+
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
       case WardrikVault.put(vault, name, owner, value: value) do
         :ok ->
-          :ok = Audit.record({:secret_stored, name, prefix(owner)}, by)
+          :ok = Audit.record(audit, {:secret_stored, name, prefix(owner)}, by: by)
           {:cont, [sealed(kind, name, owner) | lines]}
 
         {:error, reason} ->
@@ -359,7 +363,14 @@ defmodule WardrikDaemon.CLI.Vault do
 
       if name in WardrikVault.names(vault(opts), owner) do
         :ok = removed(vault(opts), kind, name, owner)
-        :ok = Audit.record({:secret_removed, name, prefix(owner)}, opts[:by])
+
+        :ok =
+          Audit.record(
+            Wardrik.Host.audit(opts[:caller].host),
+            {:secret_removed, name, prefix(owner)},
+            by: opts[:by]
+          )
+
         {:ok, "Removed #{name}#{for_owner}."}
       else
         {:error, "The vault holds no #{name}#{for_owner}."}

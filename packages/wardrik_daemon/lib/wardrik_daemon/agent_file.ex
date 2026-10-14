@@ -335,6 +335,7 @@ defmodule WardrikDaemon.AgentFile do
       config: [
         tool_prices: config |> Config.section(__MODULE__) |> Keyword.get(:tool_prices, %{})
       ],
+      triggers: config.triggers,
       names: %{host: "the daemon", config: "config.yaml", policies: "policies/"}
     }
   end
@@ -433,19 +434,23 @@ defmodule WardrikDaemon.AgentFile do
   @spec fields(Definition.t()) :: map()
   def fields(%Definition{fields: fields}), do: WardrikDefinition.fields(fields)
 
-  @doc "The triggers `definition` lists; see `WardrikDefinition.triggers/1`."
-  @spec triggers(Definition.t()) :: [WardrikTrigger.trigger()]
-  def triggers(%Definition{fields: fields}), do: WardrikDefinition.triggers(fields)
+  @doc "The triggers `definition` lists, read under `context`; see `WardrikDefinition.triggers/2`."
+  @spec triggers(WardrikDefinition.Context.t(), Definition.t()) :: [WardrikTrigger.trigger()]
+  def triggers(context, %Definition{fields: fields}),
+    do: WardrikDefinition.triggers(fields, context)
 
   @doc """
-  `definition` with the trigger `name` set to `given`; see
-  `WardrikDefinition.put_trigger/3`.
+  `definition` with the trigger `name` set to the `:trigger` `opts` name,
+  read under `context`; see `WardrikDefinition.put_trigger/3`.
   """
-  @spec put_trigger(Definition.t(), String.t(), map()) ::
+  @spec put_trigger(WardrikDefinition.Context.t(), Definition.t(), String.t(), trigger: map()) ::
           {:ok, Definition.t(), :created | :changed, WardrikTrigger.trigger()}
           | {:error, String.t()}
-  def put_trigger(%Definition{fields: fields} = definition, name, given) do
-    with {:ok, fields, status, trigger} <- WardrikDefinition.put_trigger(fields, name, given),
+  def put_trigger(context, %Definition{fields: fields} = definition, name, opts) do
+    given = Keyword.fetch!(opts, :trigger)
+
+    with {:ok, fields, status, trigger} <-
+           WardrikDefinition.put_trigger(fields, name, trigger: given, context: context),
          do: {:ok, %{definition | fields: fields}, status, trigger}
   end
 

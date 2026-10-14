@@ -54,8 +54,8 @@ defmodule Wardrik.AuditTest do
   end
 
   test "numbers each change, says who made it, and tells those following", %{by: by, id: id} do
-    assert :ok = Audit.record({:agent_forgotten, id}, by)
-    assert :ok = Audit.record({:agent_cleared, id}, nil)
+    assert :ok = Audit.record(Wardrik.Audit, {:agent_forgotten, id}, by: by)
+    assert :ok = Audit.record(Wardrik.Audit, {:agent_cleared, id}, by: nil)
 
     assert {:ok,
             [
@@ -74,19 +74,19 @@ defmodule Wardrik.AuditTest do
   end
 
   test "carries on from the end, after starting again", %{by: by, id: id} do
-    :ok = Audit.record({:agent_stopped, id}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_stopped, id}, by: by)
     restart()
-    :ok = Audit.record({:agent_spawned, id, node()}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_spawned, id, node()}, by: by)
 
     assert sequences() == [1, 2]
   end
 
   test "writes past what another node wrote first", %{by: by, id: id} do
-    :ok = Audit.record({:agent_stopped, id}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_stopped, id}, by: by)
     written(2, DateTime.utc_now())
     written(3, DateTime.utc_now())
 
-    :ok = Audit.record({:agent_spawned, id, node()}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_spawned, id, node()}, by: by)
 
     assert {:ok, [_, %{"id" => "elsewhere"}, %{"id" => "elsewhere"}, spawned]} =
              Log.read(store(), :audit)
@@ -98,10 +98,12 @@ defmodule Wardrik.AuditTest do
     allow_store()
     expect(WardrikStore, :put, fn _store, _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
-    assert capture_log(fn -> assert :ok = Audit.record({:agent_stopped, id}, by) end) =~
+    assert capture_log(fn ->
+             assert :ok = Audit.record(Wardrik.Audit, {:agent_stopped, id}, by: by)
+           end) =~
              "Could not write wardrik.agent.stopped to the audit log: :unavailable"
 
-    :ok = Audit.record({:agent_spawned, id, node()}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_spawned, id, node()}, by: by)
 
     assert {:ok, [%{"type" => "wardrik.agent.spawned", "sequence" => "000000000001"}]} =
              Log.read(store(), :audit)
@@ -111,7 +113,7 @@ defmodule Wardrik.AuditTest do
     written(1, DateTime.add(DateTime.utc_now(), -31, :day))
     written(2, DateTime.add(DateTime.utc_now(), -31, :day))
 
-    :ok = Audit.record({:agent_stopped, id}, by)
+    :ok = Audit.record(Wardrik.Audit, {:agent_stopped, id}, by: by)
     # Trimmed after the reply; a second call waits for it.
     _state = :sys.get_state(Audit)
 
@@ -132,7 +134,7 @@ defmodule Wardrik.AuditTest do
     end)
 
     assert capture_log(fn ->
-             :ok = Audit.record({:agent_stopped, id}, by)
+             :ok = Audit.record(Wardrik.Audit, {:agent_stopped, id}, by: by)
              _state = :sys.get_state(Audit)
            end) == ""
   end

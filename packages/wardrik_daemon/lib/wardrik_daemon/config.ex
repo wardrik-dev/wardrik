@@ -226,7 +226,14 @@ defmodule WardrikDaemon.Config do
   @type settings() :: [{module(), keyword()}]
 
   @enforce_keys [:config_dir, :data_dir, :state_dir]
-  defstruct [:config_dir, :data_dir, :state_dir, sections: []]
+  defstruct [
+    :config_dir,
+    :data_dir,
+    :state_dir,
+    sections: [],
+    adapters: %{},
+    triggers: %WardrikTrigger.Offered{}
+  ]
 
   @typedoc """
   What the daemon runs with: where it reads and writes, and what
@@ -236,7 +243,9 @@ defmodule WardrikDaemon.Config do
           config_dir: Path.t(),
           data_dir: Path.t(),
           state_dir: Path.t(),
-          sections: settings()
+          sections: settings(),
+          adapters: %{String.t() => module()},
+          triggers: WardrikTrigger.Offered.t()
         }
 
   @transport ~w(command args env cwd url headers)a
@@ -296,7 +305,10 @@ defmodule WardrikDaemon.Config do
 
   @doc """
   A config with the directories `opts` name, each the environment's where
-  left out, and `:sections`, none by default.
+  left out, and `:sections`, none by default. `:adapters` are the channel
+  adapters a `channels` type names, and `:triggers` the sources and
+  verifiers a trigger names, as the release found them registered as it
+  started; see `WardrikChannel.discover/0` and `WardrikTrigger.Offered`.
   """
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -304,7 +316,9 @@ defmodule WardrikDaemon.Config do
       config_dir: Keyword.get_lazy(opts, :config_dir, &config_dir/0),
       data_dir: Keyword.get_lazy(opts, :data_dir, &data_dir/0),
       state_dir: Keyword.get_lazy(opts, :state_dir, &state_dir/0),
-      sections: Keyword.get(opts, :sections, [])
+      sections: Keyword.get(opts, :sections, []),
+      adapters: Keyword.get(opts, :adapters, %{}),
+      triggers: Keyword.get(opts, :triggers, %WardrikTrigger.Offered{})
     }
   end
 
@@ -350,7 +364,8 @@ defmodule WardrikDaemon.Config do
     with {:ok, file} <- file(config.config_dir),
          {:ok, early} <- read(file, only: ["vault"]),
          vault = early_vault(store, merge(base, early), config.data_dir),
-         {:ok, read} <- read(file, vault: &WardrikDaemon.Secrets.named(vault, &1)) do
+         {:ok, read} <-
+           read(file, vault: &WardrikDaemon.Secrets.named(vault, &1), adapters: config.adapters) do
       sections =
         base
         |> merge(read)
@@ -425,6 +440,7 @@ defmodule WardrikDaemon.Config do
 
   @doc """
   The settings `file` configures, or none where there is no file.
+  `:adapters` are the channel adapters a channel's `type` may name.
 
   `${NAME}` reads the environment. Given `:vault`, a name the environment
   does not set is read from it: a function answering the deployment's secret
@@ -479,7 +495,7 @@ defmodule WardrikDaemon.Config do
         document = document |> table!([]) |> only(opts[:only])
         env = env_file(Path.dirname(file))
         secret = &secret(&1, &2, opts[:vault], env)
-        {:ok, document |> interpolate([], secret) |> sections()}
+        {:ok, document |> interpolate([], secret) |> sections(Keyword.get(opts, :adapters, %{}))}
 
       {:error, error} ->
         {:error, "#{file}: is not YAML: #{Exception.message(error)}"}
@@ -488,7 +504,7 @@ defmodule WardrikDaemon.Config do
     {:invalid, path, message} -> {:error, "#{file}: #{Enum.join(path, ".")} #{message}"}
   end
 
-  defp sections(document) do
+  defp sections(document, adapters) when is_map(adapters) do
     {org, document} = Map.pop(document, "org")
     {base_url, document} = Map.pop(document, "base_url")
     org = org!(org)
@@ -496,7 +512,7 @@ defmodule WardrikDaemon.Config do
 
     [
       {WardrikDaemon, [org: org] ++ base_url}
-      | document |> sections(org) |> through_channels() |> addressed(base_url)
+      | document |> sections(org, adapters) |> through_channels() |> addressed(base_url)
     ]
   end
 
@@ -518,7 +534,7 @@ defmodule WardrikDaemon.Config do
     end)
   end
 
-  defp sections(document, org) do
+  defp sections(document, org, adapters) do
     Enum.map(document, fn
       {"defaults", defaults} ->
         {WardrikDaemon.Agents, defaults: defaults(defaults)}
@@ -545,7 +561,7 @@ defmodule WardrikDaemon.Config do
         {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
 
       {"channels", channels} ->
-        {WardrikChannel, channels(table!(channels, ["channels"]), org)}
+        {WardrikChannel, channels(table!(channels, ["channels"]), org, adapters)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -914,7 +930,7 @@ defmodule WardrikDaemon.Config do
   # -- channels --------------------------------------------------------------
 
   # Each channel, and the orgs whose agents it may offer.
-  defp channels(channels, org) do
+  defp channels(channels, org, adapters) do
     read =
       Enum.map(channels, fn {name, channel} ->
         path = ["channels", name]
@@ -923,7 +939,7 @@ defmodule WardrikDaemon.Config do
         {creates, settings} = Map.pop(settings, "create", true)
         {approvers, settings} = Map.pop(settings, "approvers", [])
         {admins, settings} = Map.pop(settings, "admins", [])
-        adapter = adapter!(type, path ++ ["type"])
+        adapter = adapter!(type, path ++ ["type"], adapters)
 
         unless is_boolean(creates),
           do: invalid!(path ++ ["create"], "is true or false")
@@ -961,13 +977,13 @@ defmodule WardrikDaemon.Config do
       do: invalid!(path, "is a list of who may answer, as the channel names them")
   end
 
-  defp adapter!(type, path) do
+  defp adapter!(type, path, adapters) do
     with true <- is_binary(type),
-         {:ok, adapter} <- WardrikChannel.adapter(type) do
+         {:ok, adapter} <- Map.fetch(adapters, type) do
       adapter
     else
       _unknown ->
-        case WardrikChannel.adapters() |> Map.keys() |> Enum.sort() do
+        case adapters |> Map.keys() |> Enum.sort() do
           [] -> invalid!(path, "is the kind of channel, and this release has none")
           types -> invalid!(path, "is the kind of channel: #{Enum.join(types, ", ")}")
         end
