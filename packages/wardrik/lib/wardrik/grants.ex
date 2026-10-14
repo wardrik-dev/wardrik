@@ -29,6 +29,10 @@ defmodule Wardrik.Grants do
   alias Wardrik.Grant
   alias Wardrik.Principal
 
-  @doc "What `principal` may do, as one grant on each scope they reach; `[]` for nothing."
-  @callback grants(principal :: Principal.t()) :: [Grant.t()]
+  @doc """
+  What `principal` may do on `host`, as one grant on each scope they reach;
+  `[]` for nothing. The host is the one the grants are asked through, for
+  the store a module keeps what it grants in.
+  """
+  @callback grants(Wardrik.Host.t(), principal :: Principal.t()) :: [Grant.t()]
 end

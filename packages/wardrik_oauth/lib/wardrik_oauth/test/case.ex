@@ -66,8 +66,10 @@ defmodule WardrikOAuth.Test.Case do
 
   # Clients registered dynamically are kept in the store, which outlives a test.
   defp forget_registrations do
-    for key <- WardrikStore.keys(:oauth_clients, ""),
-        do: WardrikStore.delete(:oauth_clients, key)
+    store = Wardrik.Test.store()
+
+    for key <- WardrikStore.keys(store, :oauth_clients),
+        do: WardrikStore.delete(store, :oauth_clients, key)
   end
 
   @doc "Configures `WardrikOAuth` with these options, plus the stub transport."

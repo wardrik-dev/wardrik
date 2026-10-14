@@ -33,13 +33,16 @@ defmodule WardrikDaemon.GrantsTest do
     )
   end
 
-  defp in_chat(user), do: Grants.grants(WardrikChannel.principal(:chat, user, nil))
+  defp in_chat(user),
+    do: Grants.grants(Wardrik.Test.host(), WardrikChannel.principal(:chat, user, nil))
 
   defp can(grants), do: Enum.map(grants, &{to_string(&1.scope), &1.can})
 
   test "whoever holds the node may do anything to every agent" do
     for type <- [:shell, :terminal, :ssh] do
-      assert [%Grant{can: can} = grant] = Grants.grants(Principal.new(type, "jon"))
+      assert [%Grant{can: can} = grant] =
+               Grants.grants(Wardrik.Test.host(), Principal.new(type, "jon"))
+
       assert can == Grant.actions()
       assert Grant.covers?(grant, AgentID.parse!("anyone/@at/all"))
     end
@@ -47,13 +50,19 @@ defmodule WardrikDaemon.GrantsTest do
 
   test "a token holds what it grants, until it is revoked" do
     {:ok, _secret, token} =
-      WardrikHTTP.Token.create("ci", Prefix.new!(org: "acme"), [:read, :message])
+      WardrikHTTP.Token.create(Wardrik.Test.store(), "ci",
+        scope: Prefix.new!(org: "acme"),
+        can: [
+          :read,
+          :message
+        ]
+      )
 
     principal = Principal.new(:token, token.id, name: "ci")
 
-    assert Grants.grants(principal) == [token.grant]
-    :ok = WardrikHTTP.Token.revoke(token.id)
-    assert Grants.grants(principal) == []
+    assert Grants.grants(Wardrik.Test.host(), principal) == [token.grant]
+    :ok = WardrikHTTP.Token.revoke(Wardrik.Test.store(), token.id)
+    assert Grants.grants(Wardrik.Test.host(), principal) == []
   end
 
   test "a person in a channel reads and messages its orgs' agents, and decides where nobody is named" do
@@ -96,7 +105,7 @@ defmodule WardrikDaemon.GrantsTest do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
     Application.put_env(:wardrik_daemon, Agents, defaults: %{"policy" => "careful"})
-    start_supervised!({Agents, dir: dir})
+    start_supervised!({Agents, dir: dir, store: Wardrik.Test.store()})
     _files = Agents.files()
 
     assert [%Grant{can: [:read, :message, :decide, :define], ceiling: [_ | _]}] = in_chat("U1")
@@ -104,7 +113,7 @@ defmodule WardrikDaemon.GrantsTest do
 
   test "anyone else holds nothing" do
     for type <- [:oauth, :webhook, :agent, :user] do
-      assert Grants.grants(Principal.new(type, "acme/x")) == []
+      assert Grants.grants(Wardrik.Test.host(), Principal.new(type, "acme/x")) == []
     end
   end
 end

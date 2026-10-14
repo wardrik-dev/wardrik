@@ -513,7 +513,7 @@ defmodule Wardrik.Agent do
   # effect unrecorded.
   defp log_ahead(state, events) do
     Enum.reduce_while(events, {:ok, state}, fn event, {:ok, state} ->
-      case Writer.append_ahead(state.log, event) do
+      case Writer.append_ahead(Host.store(state.host), state.log, event) do
         {:ok, log} ->
           {:cont, {:ok, State.logged(state, log)}}
 
@@ -541,7 +541,7 @@ defmodule Wardrik.Agent do
         }
       )
 
-    state = State.logged(state, Writer.open(state.log, started))
+    state = State.logged(state, Writer.open(Host.store(state.host), state.log, started))
     :ok = Bus.publish(started)
     {state, sync} = defined(state)
 
@@ -571,7 +571,7 @@ defmodule Wardrik.Agent do
   # slept or ran on a node since lost. It is asked once the log is open, as a
   # parked turn its new hooks decide again writes to it.
   defp defined(state) do
-    case Host.definitions(state.host).current(state.agent_id) do
+    case Host.definitions(state.host).current(state.host, state.agent_id) do
       {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
       :none -> {state, []}
     end
@@ -630,7 +630,7 @@ defmodule Wardrik.Agent do
 
   # A write the log could not make is the writer's to report.
   defp log(state, event) do
-    case Writer.append(state.log, event) do
+    case Writer.append(Host.store(state.host), state.log, event) do
       {:ok, log} -> State.logged(state, log)
       {:error, _reason, log} -> State.logged(state, log)
     end
@@ -819,8 +819,8 @@ defmodule Wardrik.Agent do
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      Wardrik.Ledger.forget(scope.ledger, agent_id, scope.source.trace.trace_id)
-      Log.trim(agent_id, through, cutoff)
+      Wardrik.Ledger.forget(scope.ledger, scope.host, agent_id, scope.source.trace.trace_id)
+      Log.trim(Host.store(scope.host), agent_id, through: through, before: cutoff)
     end)
 
     state

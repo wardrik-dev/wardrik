@@ -1,6 +1,8 @@
 defmodule WardrikHTTP.WorkerTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   import ExUnit.CaptureLog
 
   alias Wardrik.AgentID.Prefix
@@ -112,10 +114,18 @@ defmodule WardrikHTTP.WorkerTest do
 
   setup do
     {:ok, secret, _token} =
-      Token.create("worker-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "worker-test",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     listener = :"worker-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0, host: Wardrik.Host.new()})
+
+    start_supervised!(
+      {Listener, name: listener, port: 0, host: Wardrik.Host.new(store: Wardrik.Test.store())}
+    )
+
     {:ok, port} = Listener.port(listener)
 
     test = self()
@@ -208,7 +218,12 @@ defmodule WardrikHTTP.WorkerTest do
     scope =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store, hooks: allowing_echo())
+      |> Scope.root(context.agent,
+        name: "turn",
+        ledger: Ledger.Store,
+        hooks: allowing_echo(),
+        host: Wardrik.Test.host()
+      )
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
 
@@ -233,7 +248,7 @@ defmodule WardrikHTTP.WorkerTest do
     refute Map.has_key?(whose, "user")
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"ok" => true, "result" => %{"order" => "o_1"}}}}} =
-             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+             Ledger.fetch(Ledger.Store, Wardrik.Test.host(), Ledger.key(scope, call))
   end
 
   test "a call is answered with what its worker said it cost", context do
@@ -341,6 +356,7 @@ defmodule WardrikHTTP.WorkerTest do
       |> Scope.root(context.agent,
         name: "turn",
         ledger: Ledger.Store,
+        host: Wardrik.Test.host(),
         hooks: [Wardrik.Hook.new("rules", Wardrik.Test.Tools.Rules, allow: ["workers__leave"])]
       )
 
@@ -353,7 +369,7 @@ defmodule WardrikHTTP.WorkerTest do
     assert prompt =~ "The worker running leave went away before it answered."
 
     assert {:ok, %Ledger.Entry{result: nil}} =
-             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+             Ledger.fetch(Ledger.Store, Wardrik.Test.host(), Ledger.key(scope, call))
   end
 
   test "a call run again in doubt with no worker to run it stays in doubt", context do
@@ -367,7 +383,11 @@ defmodule WardrikHTTP.WorkerTest do
     connect(context, [tool("echo")])
 
     {:ok, second, _token} =
-      Token.create("second", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "second",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     log =
       capture_log(fn -> connect(context, [tool("echo", %{"readOnlyHint" => true})], second) end)
@@ -386,7 +406,11 @@ defmodule WardrikHTTP.WorkerTest do
       context,
       [tool("echo")],
       elem(
-        Token.create("elsewhere", Prefix.parse!("test/only/"), Grant.actions(), ceiling: []),
+        Token.create(store(), "elsewhere",
+          scope: Prefix.parse!("test/only/"),
+          can: Grant.actions(),
+          ceiling: []
+        ),
         1
       )
     )
@@ -422,7 +446,11 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a worker out of an agent's reach does not decide whether its call runs again", context do
     {:ok, elsewhere, _token} =
-      Token.create("elsewhere", Prefix.parse!("other/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "elsewhere",
+        scope: Prefix.parse!("other/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     connect(context, [tool("refund", %{"idempotentHint" => true})], elsewhere)
     connect(context, [tool("refund")])
@@ -448,10 +476,15 @@ defmodule WardrikHTTP.WorkerTest do
     scope =
       [tools: [{Workers, context.agent}]]
       |> Config.new()
-      |> Scope.root(context.agent, name: "turn", ledger: Ledger.Store, hooks: allowing_echo())
+      |> Scope.root(context.agent,
+        name: "turn",
+        ledger: Ledger.Store,
+        hooks: allowing_echo(),
+        host: Wardrik.Test.host()
+      )
 
     call = %{id: "call_1", name: "workers__echo", arguments: %{"order" => "o_1"}}
-    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+    :ok = Ledger.claim(Ledger.Store, Wardrik.Test.host(), Ledger.key(scope, call), call)
 
     assert %Wardrik.Call{state: :done} = ToolRunner.execute(call, scope)
 
@@ -471,7 +504,7 @@ defmodule WardrikHTTP.WorkerTest do
 
   test "a token that may not serve is refused the socket", %{port: port} do
     {:ok, secret, _token} =
-      Token.create("reader", Prefix.parse!("test/"), [:read])
+      Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
     assert {:error, %WebSockex.RequestError{code: 403}} =
              FakeWorker.start_link(port, secret, self(), [tool("echo")])
@@ -480,12 +513,16 @@ defmodule WardrikHTTP.WorkerTest do
   test "a worker's socket closes when its token is revoked",
        context do
     {:ok, secret, token} =
-      Token.create("revoked", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "revoked",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     worker = connect(context, [tool("echo")], secret)
     monitor = Process.monitor(worker)
 
-    :ok = Token.revoke(token.id)
+    :ok = Token.revoke(store(), token.id)
 
     assert_receive {:disconnected, {:remote, 1008, "The credential was revoked."}}, 2_000
     assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}

@@ -247,7 +247,7 @@ defmodule Wardrik.Call.Pipeline do
        when state in [:allowed, :approved] and ledger != nil do
     key = Ledger.key(scope, Call.to_map(call))
 
-    case Ledger.claim(ledger, key, Call.to_map(call)) do
+    case Ledger.claim(ledger, scope.host, key, Call.to_map(call)) do
       :ok ->
         Call.put_private(call, @claim, key)
 
@@ -315,7 +315,7 @@ defmodule Wardrik.Call.Pipeline do
   defp fetched(%Call{scope: %Scope{ledger: nil}}), do: :error
 
   defp fetched(%Call{scope: %Scope{ledger: ledger} = scope} = call),
-    do: Ledger.fetch(ledger, Ledger.key(scope, Call.to_map(call)))
+    do: Ledger.fetch(ledger, scope.host, Ledger.key(scope, Call.to_map(call)))
 
   defp not_run_again(call, reason) do
     "#{Call.name(call)} was not run again, and may already have done what it does. #{reason}"
@@ -525,8 +525,11 @@ defmodule Wardrik.Call.Pipeline do
   defp recorded(%Call{private: %{@claim => key}, scope: %Scope{ledger: ledger}} = call)
        when key != nil do
     case call.state do
-      :done -> settle(call, ledger, key)
-      :waiting -> if Call.asked_by?(call, :tool), do: _ = Ledger.release(ledger, key)
+      :done ->
+        settle(call, ledger, key)
+
+      :waiting ->
+        if Call.asked_by?(call, :tool), do: _ = Ledger.release(ledger, call.scope.host, key)
     end
 
     Call.put_private(call, @claim, nil)
@@ -535,7 +538,7 @@ defmodule Wardrik.Call.Pipeline do
   defp recorded(call), do: call
 
   defp settle(call, ledger, key) do
-    with {:error, reason} <- Ledger.settle(ledger, key, call.result) do
+    with {:error, reason} <- Ledger.settle(ledger, call.scope.host, key, call.result) do
       Logger.warning(
         "#{Call.name(call)} ran, but what it returned was not recorded: #{inspect(reason)}"
       )

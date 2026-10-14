@@ -2,6 +2,8 @@ defmodule Wardrik.OperationsTest do
   # The host's definitions module is one for the node, which these tests set.
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
@@ -54,66 +56,68 @@ defmodule Wardrik.OperationsTest do
     @triggers :operations_test_triggers
 
     @impl true
-    def put(_id, %{"refuse" => message}, _grant), do: {:error, message}
-    def put(_id, %{"elsewhere" => true}, _grant), do: {:ok, Spec.new(id: elsewhere())}
+    def put(_host, _id, %{"refuse" => message}, _grant), do: {:error, message}
+    def put(_host, _id, %{"elsewhere" => true}, _grant), do: {:ok, Spec.new(id: elsewhere())}
 
-    def put(id, fields, _grant) do
-      with :ok <- editable(id) do
-        {:ok, _vsn} = WardrikStore.put(@ns, to_string(id), fields)
+    def put(host, id, fields, _grant) do
+      with :ok <- editable(host, id) do
+        {:ok, _vsn} = WardrikStore.put(store(), @ns, to_string(id), fields)
         model = Map.get(fields, "model", "anthropic:claude-sonnet-5")
         {:ok, Spec.new(id: id, config: Config.new(model_spec: model))}
       end
     end
 
     @impl true
-    def get(id) do
-      case WardrikStore.get(@ns, to_string(id)) do
+    def get(_host, id) do
+      case WardrikStore.get(store(), @ns, to_string(id)) do
         nil -> {:error, :not_found}
         definition -> {:ok, definition}
       end
     end
 
     @impl true
-    def delete(id) do
-      with :ok <- editable(id) do
-        if get(id) == {:error, :not_found},
+    def delete(host, id) do
+      with :ok <- editable(host, id) do
+        if get(host, id) == {:error, :not_found},
           do: {:error, :not_found},
-          else: WardrikStore.delete(@ns, to_string(id))
+          else: WardrikStore.delete(store(), @ns, to_string(id))
       end
     end
 
     @impl true
-    def put_trigger(_id, _name, %{"refuse" => message}), do: {:error, message}
+    def put_trigger(_host, _id, _name, %{"refuse" => message}), do: {:error, message}
 
-    def put_trigger(id, name, fields) do
-      with :ok <- editable(id),
-           {:ok, _definition} <- get(id) do
-        status = if WardrikStore.get(@triggers, "#{id}//#{name}"), do: :changed, else: :created
-        {:ok, _vsn} = WardrikStore.put(@triggers, "#{id}//#{name}", fields)
+    def put_trigger(host, id, name, fields) do
+      with :ok <- editable(host, id),
+           {:ok, _definition} <- get(host, id) do
+        status =
+          if WardrikStore.get(store(), @triggers, "#{id}//#{name}"), do: :changed, else: :created
+
+        {:ok, _vsn} = WardrikStore.put(store(), @triggers, "#{id}//#{name}", fields)
         {:ok, status, Map.put(fields, "name", name)}
       end
     end
 
     @impl true
-    def delete_trigger(id, name) do
-      with :ok <- editable(id) do
-        if WardrikStore.get(@triggers, "#{id}//#{name}"),
-          do: WardrikStore.delete(@triggers, "#{id}//#{name}"),
+    def delete_trigger(host, id, name) do
+      with :ok <- editable(host, id) do
+        if WardrikStore.get(store(), @triggers, "#{id}//#{name}"),
+          do: WardrikStore.delete(store(), @triggers, "#{id}//#{name}"),
           else: {:error, :not_found}
       end
     end
 
     @impl true
-    def current(id) do
-      case get(id) do
+    def current(host, id) do
+      case get(host, id) do
         {:ok, fields} -> {:ok, spec(id, fields)}
         {:error, :not_found} -> :none
       end
     end
 
     @impl true
-    def create(id) do
-      with {:ok, _spec} <- put(id, %{"model" => "openai:gpt-5"}, nil),
+    def create(host, id) do
+      with {:ok, _spec} <- put(host, id, %{"model" => "openai:gpt-5"}, nil),
            do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
     end
 
@@ -127,7 +131,7 @@ defmodule Wardrik.OperationsTest do
     def elsewhere, do: AgentID.parse!("test/elsewhere")
 
     @impl true
-    def editable(id) do
+    def editable(_host, id) do
       if String.contains?(id.name, "-owned"),
         do: {:error, :conflict, "#{id} belongs to a file."},
         else: :ok
@@ -140,12 +144,12 @@ defmodule Wardrik.OperationsTest do
     use Wardrik.Definition
 
     @impl true
-    def put(id, _fields, _grant), do: {:ok, Spec.new(id: id)}
+    def put(_host, id, _fields, _grant), do: {:ok, Spec.new(id: id)}
   end
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
 
-  defp host(definitions \\ Kept), do: Host.new(definitions: definitions)
+  defp host(definitions \\ Kept), do: Wardrik.Test.host(definitions: definitions)
 
   defp caller(scope \\ "test/", can \\ Grant.actions(), host \\ host()) do
     {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
@@ -247,7 +251,7 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, %{"events" => [_first, _second]}} =
                Query.run(%ReadEvents{agent: id, limit: 2}, caller())
 
-      :ok = Log.trim(id, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       assert {:error, %Error{type: :gap, details: %{"oldest" => 3}}} =
                Query.run(%ReadEvents{agent: id, limit: 2}, caller())
@@ -726,14 +730,16 @@ defmodule Wardrik.OperationsTest do
       id = defined_id()
 
       {:ok, _vsn} =
-        WardrikStore.put(:operations_test_definitions, to_string(id), %{"model" => "openai:gpt-5"})
+        WardrikStore.put(store(), :operations_test_definitions, to_string(id), %{
+          "model" => "openai:gpt-5"
+        })
 
       assert {:ok, %{"from" => "definition"}} = Command.run(%Spawn{agent: id}, caller())
       assert Agent.status(id).model == "openai:gpt-5"
 
       fresh = defined_id("fresh")
       assert {:ok, %{"from" => "new"}} = Command.run(%Spawn{agent: fresh}, caller())
-      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(fresh)
+      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(host(), fresh)
 
       owned = defined_id("fresh-owned")
 

@@ -22,7 +22,7 @@ defmodule WardrikTUI.App.ContextTest do
     s =
       Breeze.Test.start!(App,
         size: {100, 30},
-        start_opts: [agent: id, agent_id: id, host: Wardrik.Host.new()],
+        start_opts: [agent: id, agent_id: id, host: Wardrik.Host.new(store: Wardrik.Test.store())],
         global_keybindings: App.keybindings()
       )
 
@@ -160,7 +160,10 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+             Wardrik.Caller.root(
+               principal: nil,
+               host: Wardrik.Host.new(store: Wardrik.Test.store())
+             )
            ) ==
              {:error, :not_parked}
 
@@ -171,17 +174,30 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"absent" => :approve},
-             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+             Wardrik.Caller.root(
+               principal: nil,
+               host: Wardrik.Host.new(store: Wardrik.Test.store())
+             )
            ) ==
              {:error, :stale_decision}
 
-    assert Agent.decide(pid, %{}, Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())) ==
+    assert Agent.decide(
+             pid,
+             %{},
+             Wardrik.Caller.root(
+               principal: nil,
+               host: Wardrik.Host.new(store: Wardrik.Test.store())
+             )
+           ) ==
              {:error, :stale_decision}
 
     assert Agent.decide(
              pid,
              %{"first" => :approve},
-             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+             Wardrik.Caller.root(
+               principal: nil,
+               host: Wardrik.Host.new(store: Wardrik.Test.store())
+             )
            ) == :ok
 
     assert_receive {:resumer, running, %{"first" => :approve}}
@@ -189,7 +205,10 @@ defmodule WardrikTUI.App.ContextTest do
     assert Agent.decide(
              pid,
              %{"second" => :approve},
-             Wardrik.Caller.root(principal: nil, host: Wardrik.Host.new())
+             Wardrik.Caller.root(
+               principal: nil,
+               host: Wardrik.Host.new(store: Wardrik.Test.store())
+             )
            ) ==
              {:error, :not_parked}
 

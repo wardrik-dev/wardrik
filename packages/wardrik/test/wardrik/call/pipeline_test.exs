@@ -1,6 +1,8 @@
 defmodule Wardrik.Call.PipelineTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.Test, only: [host: 0]
+
   alias ReqLLM.Context
   alias Wardrik.Call
   alias Wardrik.Call.Pipeline
@@ -106,7 +108,7 @@ defmodule Wardrik.Call.PipelineTest do
 
   defp scope(agent_id, opts) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
-    Config.new(tools: tools) |> Scope.root(agent_id, [name: "turn"] ++ opts)
+    Config.new(tools: tools) |> Scope.root(agent_id, [name: "turn", host: host()] ++ opts)
   end
 
   defp saying(answer), do: [Wardrik.Hook.new("saying", Saying, answer)]
@@ -324,7 +326,7 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
-               Ledger.fetch(Ledger.Store, Ledger.key(scope, Call.to_map(call)))
+               Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, Call.to_map(call)))
 
       assert [{%{in_doubt: true}, ^prompt}] = ToolRunner.parked([waiting])
     end
@@ -348,7 +350,7 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
-               Ledger.fetch(Ledger.Store, Ledger.key(scope, Call.to_map(call)))
+               Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, Call.to_map(call)))
     end
 
     test "again waits on a person", %{agent_id: agent_id} do

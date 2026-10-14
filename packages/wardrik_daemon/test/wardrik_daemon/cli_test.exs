@@ -1,6 +1,8 @@
 defmodule WardrikDaemon.CLITest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0, host: 0]
+
   # Commands run over rpc build their callers on the daemon's host.
   setup do: WardrikDaemon.Test.Host.held()
 
@@ -155,7 +157,7 @@ defmodule WardrikDaemon.CLITest do
     {output, 0} = command(["token", "create", name, "--scope", "acme/", "--unlimited"])
     [secret, "", line, ""] = String.split(output, "\n")
 
-    assert {:ok, token} = WardrikHTTP.Token.verify(secret)
+    assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
 
     assert line ==
              "#{name} (#{token.id}) reaches the agents under acme/, for every action, " <>
@@ -169,7 +171,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert command(["token", "revoke", token.id]) == {"Revoked #{token.id}.\n", 0}
     assert command(["token", "revoke", token.id]) == {"No token has the id #{token.id}.\n", 1}
-    assert :error = WardrikHTTP.Token.verify(secret)
+    assert :error = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
 
     assert [
              %{"type" => "wardrik.token.created", "data" => created},
@@ -190,13 +192,13 @@ defmodule WardrikDaemon.CLITest do
       command(["token", "create", "laptop", "--scope", "acme/", "--can", "read", "--for", "jon"])
 
     [secret | _rest] = String.split(output, "\n")
-    assert {:ok, token} = WardrikHTTP.Token.verify(secret)
+    assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
     assert output =~ "laptop (#{token.id}), for jon, reaches the agents under acme/"
     assert Wardrik.Principal.id(WardrikHTTP.Token.principal(token)) == "jon"
 
     {list, 0} = command(["token", "list"])
     assert list =~ "  #{token.id}  laptop, for jon,  the agents under acme/"
-    :ok = WardrikHTTP.Token.revoke(token.id)
+    :ok = WardrikHTTP.Token.revoke(Wardrik.Test.store(), token.id)
 
     assert [%{"data" => %{"for" => %{"type" => "user", "id" => "jon"}, "can" => ["read"]}}] =
              for(
@@ -261,7 +263,7 @@ defmodule WardrikDaemon.CLITest do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join(dir, "policies/careful.yaml"), "ask: [github/*]\n")
     on_exit(fn -> File.rm_rf!(dir) end)
-    start_supervised!({WardrikDaemon.Agents, dir: dir})
+    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
 
     {output, 0} =
       command([
@@ -279,7 +281,7 @@ defmodule WardrikDaemon.CLITest do
     [secret, "", line, ""] = String.split(output, "\n")
     assert line =~ ") reaches the agents under acme/, to define, under the ceiling careful."
 
-    assert {:ok, token} = WardrikHTTP.Token.verify(secret)
+    assert {:ok, token} = WardrikHTTP.Token.verify(Wardrik.Test.store(), secret)
     [{_path, {:ok, careful}}] = WardrikDaemon.Agents.files()
     assert token.grant.ceiling == WardrikPolicy.hooks(%{careful | name: "ceiling/careful"})
 
@@ -502,7 +504,8 @@ defmodule WardrikDaemon.CLITest do
   test "status and reload answer with the node's state" do
     start_supervised!(
       {WardrikDaemon.Agents,
-       dir: System.tmp_dir!() |> Path.join("wardrik-cli-#{System.unique_integer([:positive])}")}
+       dir: System.tmp_dir!() |> Path.join("wardrik-cli-#{System.unique_integer([:positive])}"),
+       store: Wardrik.Test.store()}
     )
 
     assert {status, 0} = command(["status"])
@@ -577,7 +580,7 @@ defmodule WardrikDaemon.CLITest do
     You count.
     """)
 
-    start_supervised!({WardrikDaemon.Agents, dir: dir})
+    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
     key = Wardrik.AgentID.parse!("#{org}/counter")
     Wardrik.Test.Fleet.await_update(fn -> Wardrik.Fleet.lookup(key) != nil end)
 
@@ -592,7 +595,7 @@ defmodule WardrikDaemon.CLITest do
     assert output =~ Path.join([dir, "agents", "counter.md"])
 
     thread = Wardrik.AgentID.put_external_id(key, "1696.1234")
-    {:ok, options} = WardrikDaemon.Agents.options(thread)
+    {:ok, options} = WardrikDaemon.Agents.options(store(), thread)
     {:ok, _pid} = Wardrik.Fleet.spawn(thread, options)
     {output, 0} = command(["show", thread])
     assert output =~ "Counts what it is asked to."
@@ -601,7 +604,7 @@ defmodule WardrikDaemon.CLITest do
 
     defined = Wardrik.AgentID.parse!("#{org}/defined")
     {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
-    {:ok, spec} = WardrikDaemon.Agents.put(defined, %{"description" => "Defined."}, grant)
+    {:ok, spec} = WardrikDaemon.Agents.put(host(), defined, %{"description" => "Defined."}, grant)
     {:ok, _pid} = Wardrik.Fleet.put(spec)
     {output, 0} = command(["show", defined])
     assert output =~ "Defined."

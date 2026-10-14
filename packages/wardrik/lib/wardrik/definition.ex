@@ -7,27 +7,29 @@ defmodule Wardrik.Definition do
 
   A host names the module once, as the `:definitions` of its
   `Wardrik.Host`, and every operation asks it, whichever surface it came
-  from, as does every agent as it starts or wakes:
+  from, as does every agent as it starts or wakes. Every callback but
+  `reload/0` and `reloading/0` is handed the host first, for the store it
+  keeps definitions in:
 
       host = Wardrik.Host.new(definitions: MyApp.Definitions)
       children = [{Wardrik, host: host}]
 
   The module decides what a definition may say, the seams its agent is
   given, whether it is kept, and who owns an agent. The operation checks the
-  caller's grant first, runs the spec `put/3` answers with
+  caller's grant first, runs the spec `put/4` answers with
   `Wardrik.Fleet.put/1`, and puts the grant's ceiling ahead of the spec's own
   hooks, so no module lets a definition loosen it; see `Wardrik.Grant`.
 
   | Callback | Operation | `Wardrik.Definition.None` |
   | --- | --- | --- |
-  | `put/3` | `Wardrik.Operations.Define` | `:unsupported` |
-  | `get/1` | `Wardrik.Operations.ReadDefinition` | `:unsupported` |
-  | `delete/1` | `Wardrik.Operations.Forget`, `ForgetAgents` | the agent is forgotten, and no definition with it |
-  | `put_trigger/3` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
-  | `delete_trigger/2` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
-  | `editable/1` | `Wardrik.Operations.Forget`, `ForgetAgents`, which keep what it refuses | every agent may be forgotten |
-  | `current/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, and an agent starting or waking | an agent starts and wakes as it was stored |
-  | `create/1` | `Wardrik.Operations.Spawn`, `SpawnOn`, for an agent nothing defines | `:unsupported`: such an agent is not found |
+  | `put/4` | `Wardrik.Operations.Define` | `:unsupported` |
+  | `get/2` | `Wardrik.Operations.ReadDefinition` | `:unsupported` |
+  | `delete/2` | `Wardrik.Operations.Forget`, `ForgetAgents` | the agent is forgotten, and no definition with it |
+  | `put_trigger/4` | `Wardrik.Operations.SetTrigger` | `:unsupported` |
+  | `delete_trigger/3` | `Wardrik.Operations.RemoveTrigger` | `:unsupported` |
+  | `editable/2` | `Wardrik.Operations.Forget`, `ForgetAgents`, which keep what it refuses | every agent may be forgotten |
+  | `current/2` | `Wardrik.Operations.Spawn`, `SpawnOn`, and an agent starting or waking | an agent starts and wakes as it was stored |
+  | `create/2` | `Wardrik.Operations.Spawn`, `SpawnOn`, for an agent nothing defines | `:unsupported`: such an agent is not found |
   | `reloading/0`, `reload/0` | `Wardrik.Operations.Reload`, on every node `reloading/0` names | no node, so `:unsupported` |
 
   A daemon's is `WardrikDaemon.Agents`, which reads a definition as it reads an
@@ -47,14 +49,20 @@ defmodule Wardrik.Definition do
   that builds the spec again later holds it under the same ceiling. The spec
   is for `id` and no other.
   """
-  @callback put(id :: Wardrik.AgentID.t(), definition :: map(), grant :: Wardrik.Grant.t()) ::
+  @callback put(
+              Wardrik.Host.t(),
+              id :: Wardrik.AgentID.t(),
+              definition :: map(),
+              grant :: Wardrik.Grant.t()
+            ) ::
               {:ok, Wardrik.Agent.Spec.t()}
               | {:error, String.t()}
               | {:error, :conflict, String.t()}
               | :unsupported
 
   @doc "The definition last put for the agent `id`, as it was sent."
-  @callback get(id :: Wardrik.AgentID.t()) :: {:ok, map()} | {:error, :not_found} | :unsupported
+  @callback get(Wardrik.Host.t(), id :: Wardrik.AgentID.t()) ::
+              {:ok, map()} | {:error, :not_found} | :unsupported
 
   @doc """
   Told that the agent `id` is to be forgotten, before it is:
@@ -62,7 +70,7 @@ defmodule Wardrik.Definition do
   none was, and `{:error, :conflict, message}` to refuse, which leaves the
   agent be.
   """
-  @callback delete(id :: Wardrik.AgentID.t()) ::
+  @callback delete(Wardrik.Host.t(), id :: Wardrik.AgentID.t()) ::
               :ok | {:error, :not_found} | {:error, :conflict, String.t()}
 
   @doc """
@@ -72,7 +80,12 @@ defmodule Wardrik.Definition do
   it. `{:error, :not_found}` is for an agent the module keeps no definition
   for, a message for fields that do not read.
   """
-  @callback put_trigger(id :: Wardrik.AgentID.t(), name :: String.t(), fields :: map()) ::
+  @callback put_trigger(
+              Wardrik.Host.t(),
+              id :: Wardrik.AgentID.t(),
+              name :: String.t(),
+              fields :: map()
+            ) ::
               {:ok, :created | :changed, map()}
               | {:error, :not_found}
               | {:error, String.t()}
@@ -83,7 +96,7 @@ defmodule Wardrik.Definition do
   Deletes the trigger `name` of the agent `id`: `:ok`, `{:error, :not_found}`
   where it has none, or a conflict.
   """
-  @callback delete_trigger(id :: Wardrik.AgentID.t(), name :: String.t()) ::
+  @callback delete_trigger(Wardrik.Host.t(), id :: Wardrik.AgentID.t(), name :: String.t()) ::
               :ok | {:error, :not_found} | {:error, :conflict, String.t()} | :unsupported
 
   @doc """
@@ -91,7 +104,8 @@ defmodule Wardrik.Definition do
   module, or a conflict saying why not, as one an agent file declares; it
   changes nothing.
   """
-  @callback editable(id :: Wardrik.AgentID.t()) :: :ok | {:error, :conflict, String.t()}
+  @callback editable(Wardrik.Host.t(), id :: Wardrik.AgentID.t()) ::
+              :ok | {:error, :conflict, String.t()}
 
   @doc """
   The spec the agent `id` runs on now, from the definition kept of it, or of
@@ -99,7 +113,8 @@ defmodule Wardrik.Definition do
   takes it as it starts, wakes, or restarts on another node, so a definition
   changed while it slept is the one it wakes with.
   """
-  @callback current(id :: Wardrik.AgentID.t()) :: {:ok, Wardrik.Agent.Spec.t()} | :none
+  @callback current(Wardrik.Host.t(), id :: Wardrik.AgentID.t()) ::
+              {:ok, Wardrik.Agent.Spec.t()} | :none
 
   @doc """
   Defines the agent `id`, which nothing defines yet, from what the host
@@ -107,7 +122,7 @@ defmodule Wardrik.Definition do
   saying why it cannot, or a conflict where something else already holds
   what it would write; `:unsupported` where it creates none.
   """
-  @callback create(id :: Wardrik.AgentID.t()) ::
+  @callback create(Wardrik.Host.t(), id :: Wardrik.AgentID.t()) ::
               {:ok, Wardrik.Agent.Spec.t()}
               | {:error, String.t()}
               | {:error, :conflict, String.t()}
@@ -137,7 +152,7 @@ defmodule Wardrik.Definition do
         use Wardrik.Definition
 
         @impl Wardrik.Definition
-        def put(id, definition, grant), do: ...
+        def put(host, id, definition, grant), do: ...
       end
   """
   defmacro __using__(_opts) do
@@ -145,28 +160,28 @@ defmodule Wardrik.Definition do
       @behaviour Wardrik.Definition
 
       @impl Wardrik.Definition
-      def put(_id, _definition, _grant), do: :unsupported
+      def put(_host, _id, _definition, _grant), do: :unsupported
 
       @impl Wardrik.Definition
-      def get(_id), do: :unsupported
+      def get(_host, _id), do: :unsupported
 
       @impl Wardrik.Definition
-      def delete(_id), do: {:error, :not_found}
+      def delete(_host, _id), do: {:error, :not_found}
 
       @impl Wardrik.Definition
-      def put_trigger(_id, _name, _fields), do: :unsupported
+      def put_trigger(_host, _id, _name, _fields), do: :unsupported
 
       @impl Wardrik.Definition
-      def delete_trigger(_id, _name), do: :unsupported
+      def delete_trigger(_host, _id, _name), do: :unsupported
 
       @impl Wardrik.Definition
-      def editable(_id), do: :ok
+      def editable(_host, _id), do: :ok
 
       @impl Wardrik.Definition
-      def current(_id), do: :none
+      def current(_host, _id), do: :none
 
       @impl Wardrik.Definition
-      def create(_id), do: :unsupported
+      def create(_host, _id), do: :unsupported
 
       @impl Wardrik.Definition
       def reload, do: :ok
@@ -187,18 +202,20 @@ defmodule Wardrik.Definition do
     Enum.each(nodes, &(:ok = :erpc.call(&1, module, :reload, [], :timer.minutes(1))))
   end
 
-  @doc "Whether `module` keeps a definition of the agent `id`."
-  @spec kept?(module(), Wardrik.AgentID.t()) :: boolean()
-  def kept?(module, id), do: match?({:ok, _definition}, module.get(id))
+  @doc "Whether the definitions of `host` keep one of the agent `id`."
+  @spec kept?(Wardrik.Host.t(), Wardrik.AgentID.t()) :: boolean()
+  def kept?(host, id),
+    do: match?({:ok, _definition}, Wardrik.Host.definitions(host).get(host, id))
 
   @doc """
-  Forgets the definition `module` keeps of the agent `id`, as the agent is
-  forgotten: whether one was kept, or a conflict where the module refuses.
+  Forgets the definition the definitions of `host` keep of the agent `id`,
+  as the agent is forgotten: whether one was kept, or a conflict where they
+  refuse.
   """
-  @spec forget(module(), Wardrik.AgentID.t()) ::
+  @spec forget(Wardrik.Host.t(), Wardrik.AgentID.t()) ::
           {:ok, boolean()} | {:error, :conflict, String.t()}
-  def forget(module, id) do
-    case module.delete(id) do
+  def forget(host, id) do
+    case Wardrik.Host.definitions(host).delete(host, id) do
       :ok -> {:ok, true}
       {:error, :not_found} -> {:ok, false}
       {:error, :conflict, why} -> {:error, :conflict, why}

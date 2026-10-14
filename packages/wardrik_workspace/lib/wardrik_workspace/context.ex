@@ -1,7 +1,8 @@
 defmodule WardrikWorkspace.Context do
   @moduledoc """
   What a workspace tells its agent as each turn begins, which
-  `WardrikWorkspace` gives the turn through `c:Wardrik.Tool.context/1`:
+  `WardrikWorkspace` gives the turn through `c:Wardrik.Tool.context/2`,
+  from the store of the turn's host:
 
     * the files `WardrikWorkspace.Spec.context/2` names, in the order named,
       within the spec's budget, 16 KB unless set otherwise, each with the
@@ -52,10 +53,13 @@ defmodule WardrikWorkspace.Context do
   edit_file change one over the version it shows.\
   """
 
-  @doc "What `spec` tells its agent before a turn, or `nil` where its workspace holds nothing yet."
-  @spec text(Spec.t()) :: Wardrik.Tool.context()
-  def text(%Spec{} = spec) do
-    read = read(spec)
+  @doc """
+  What `spec` tells its agent before a turn on `host`, or `nil` where its
+  workspace holds nothing yet.
+  """
+  @spec text(Spec.t(), Wardrik.Host.t()) :: Wardrik.Tool.context()
+  def text(%Spec{} = spec, host) do
+    read = read(spec, host)
 
     sections =
       Enum.reject(
@@ -64,7 +68,7 @@ defmodule WardrikWorkspace.Context do
           crowded(read),
           unwritten(read),
           unreadable(read),
-          listing(spec),
+          listing(spec, host),
           shared(spec)
         ],
         &is_nil/1
@@ -87,16 +91,16 @@ defmodule WardrikWorkspace.Context do
 
   # Each file `context` names, with as much of it as its share of the budget
   # holds.
-  defp read(%Spec{} = spec) do
-    found = Enum.map(spec.context, &found(spec, &1))
+  defp read(%Spec{} = spec, host) do
+    found = Enum.map(spec.context, &found(spec, host, &1))
     shares = shares(found, spec.context_bytes)
     Enum.map(found, &shown(&1, shares))
   end
 
-  defp found(spec, path) do
+  defp found(spec, host, path) do
     {:ok, mount, rest} = Spec.resolve(spec, path)
 
-    case mount.backend.read(mount.tree, rest) do
+    case mount.backend.read(host, mount.tree, rest) do
       {:ok, %File{} = file, version} -> %{path: path, state: :found, file: file, version: version}
       :none -> %{path: path, state: :unwritten}
       {:error, reason} -> %{path: path, state: :unreadable, reason: reason}
@@ -237,8 +241,8 @@ defmodule WardrikWorkspace.Context do
 
   # The files and folders at the top of the agent's own tree, but for those
   # read above.
-  defp listing(%Spec{tree: %Mount{} = mount, context: context}) do
-    case mount.backend.paths(mount.tree, "") do
+  defp listing(%Spec{tree: %Mount{} = mount, context: context}, host) do
+    case mount.backend.paths(host, mount.tree, "") do
       {:ok, paths} -> paths |> Enum.map(&top/1) |> Enum.uniq() |> Kernel.--(context) |> names()
       {:error, _reason} -> nil
     end

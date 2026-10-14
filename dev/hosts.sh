@@ -91,8 +91,16 @@ phoenix() {
 
   cd "$dir/host"
   perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_PACKAGES}\/wardrik", override: true},\n      {:wardrik_ecto, path: "$ENV{WARDRIK_PACKAGES}\/wardrik_ecto"},\n      $1/' mix.exs
-  perl -0pi -e 's/(      Host\.Repo,\n)/$1      Wardrik,\n/' lib/host/application.ex
-  grep -q '^      Wardrik,$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
+  perl -0pi -e 's/(      Host\.Repo,\n)/$1      {WardrikStore, Host.Wardrik.store()},\n      {Wardrik, host: Host.Wardrik.host()},\n/' lib/host/application.ex
+  grep -q '^      {Wardrik, host: Host.Wardrik.host()},$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
+  cat >lib/host/wardrik.ex <<'EOF'
+defmodule Host.Wardrik do
+  @moduledoc "Wardrik's store, kept in the Repo, and the host that keeps everything there."
+
+  def store, do: WardrikStore.new(adapter: WardrikEcto.Store, repo: Host.Repo)
+  def host, do: Wardrik.Host.new(store: store())
+end
+EOF
 
   perl -0pi -e 's/(# Import environment specific config)/# Wardrik, kept in the Repo and started after it.\nconfig :wardrik, start: :host\nconfig :wardrik, WardrikStore, adapter: WardrikEcto.Store, repo: Host.Repo\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \

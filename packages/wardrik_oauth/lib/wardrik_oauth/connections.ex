@@ -8,9 +8,9 @@ defmodule WardrikOAuth.Connections do
   A provider is held for an owner where the vault keeps anything under its
   name for them, a sign-in's token or a key someone sealed, read without
   unsealing it; the most specific holder is the one a call would use.
-  Connecting starts the provider's sign-in through `WardrikOAuth.hold/3`,
+  Connecting starts the provider's sign-in through `WardrikOAuth.hold/4`,
   with nothing parked on it, and forgetting removes what the vault keeps for
-  the owner.
+  the owner, all in the store of the host each callback is handed.
   """
 
   @behaviour Wardrik.Connections
@@ -18,8 +18,9 @@ defmodule WardrikOAuth.Connections do
   alias WardrikOAuth.Provider
 
   @impl Wardrik.Connections
-  def list(owner) do
-    held = for {kind, holder} <- holders(owner), do: {kind, WardrikVault.names(holder)}
+  def list(host, owner) do
+    store = Wardrik.Host.store(host)
+    held = for {kind, holder} <- holders(owner), do: {kind, WardrikVault.names(store, holder)}
 
     for provider <- Provider.all() do
       %{
@@ -34,10 +35,13 @@ defmodule WardrikOAuth.Connections do
   defp holders(org), do: [org: org, deployment: nil]
 
   @impl Wardrik.Connections
-  def connect(name, owner, by) do
+  def connect(host, name, owner, by) do
     case Provider.fetch(name) do
-      {:ok, provider} -> provider |> WardrikOAuth.hold(owner, by: by) |> connected()
-      :error -> {:error, :not_found}
+      {:ok, provider} ->
+        host |> Wardrik.Host.store() |> WardrikOAuth.hold(provider, owner, by: by) |> connected()
+
+      :error ->
+        {:error, :not_found}
     end
   end
 
@@ -47,9 +51,11 @@ defmodule WardrikOAuth.Connections do
   defp connected({:error, reason}), do: {:error, reason}
 
   @impl Wardrik.Connections
-  def disconnect(name, owner) do
-    if name in WardrikVault.names(owner),
-      do: WardrikOAuth.disconnect(name, owner),
+  def disconnect(host, name, owner) do
+    store = Wardrik.Host.store(host)
+
+    if name in WardrikVault.names(store, owner),
+      do: WardrikOAuth.disconnect(store, name, owner),
       else: {:error, :not_found}
   end
 end

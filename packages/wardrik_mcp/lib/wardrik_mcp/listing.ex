@@ -3,10 +3,10 @@ defmodule WardrikMCP.Listing do
   The tools a server reached as a user last listed to one of its users, kept
   for every node.
 
-  A user's connection hands what it listed to `remember/2`, which writes it to
-  `WardrikStore` under `namespace/0` and offers it to the deployment's connection
-  on every other connected node. A deployment's connection that starts later
-  reads it back with `recall/1`. Either way a node no user has connected
+  A user's connection hands what it listed to `remember/3`, which writes it to
+  its server's store under `namespace/0` and offers it to the deployment's
+  connection on every other connected node. A deployment's connection that
+  starts later reads it back with `recall/2`. Either way a node no user has connected
   through offers the server's own tools, and a call to one opens the calling
   user's connection there.
 
@@ -29,24 +29,24 @@ defmodule WardrikMCP.Listing do
 
   A listing the store already holds is not written again.
   """
-  @spec remember(atom(), [map()]) :: :ok
-  def remember(ref, listed) when is_atom(ref) and is_list(listed) do
-    if recall(ref) != listed, do: write(ref, listed)
+  @spec remember(WardrikStore.t(), atom(), [map()]) :: :ok
+  def remember(store, ref, listed) when is_atom(ref) and is_list(listed) do
+    if recall(store, ref) != listed, do: write(store, ref, listed)
 
     :erpc.multicast(Node.list(), Connection, :offer_listing, [ref, listed])
   end
 
   @doc "The `tools/list` entries last kept for `ref`, or `[]`."
-  @spec recall(atom()) :: [map()]
-  def recall(ref) when is_atom(ref) do
-    case stored(fn -> WardrikStore.get(@ns, key(ref)) end) do
+  @spec recall(WardrikStore.t(), atom()) :: [map()]
+  def recall(store, ref) when is_atom(ref) do
+    case stored(fn -> WardrikStore.get(store, @ns, key(ref)) end) do
       listed when is_list(listed) -> listed
       _nothing -> []
     end
   end
 
-  defp write(ref, listed) do
-    case stored(fn -> WardrikStore.put(@ns, key(ref), listed) end) do
+  defp write(store, ref, listed) do
+    case stored(fn -> WardrikStore.put(store, @ns, key(ref), listed) end) do
       {:ok, _vsn} ->
         :ok
 
@@ -55,8 +55,8 @@ defmodule WardrikMCP.Listing do
     end
   end
 
-  # EKV raises where its instance was never started, as a read of
-  # `WardrikStore.Memory` does, and a write to it exits.
+  # A host that names no store raises, as EKV does where its instance was
+  # never started and a read of `WardrikStore.Memory` does; a write to it exits.
   defp stored(fun) do
     fun.()
   rescue

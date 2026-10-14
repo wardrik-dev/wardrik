@@ -1,14 +1,10 @@
 defmodule WardrikStore.MemoryTest do
-  # The conformance suite runs on the adapter's own instance, which
-  # `WardrikStore.DurableTest` starts too.
-  use ExUnit.Case, async: false
-
-  alias WardrikStore.Memory
+  use ExUnit.Case, async: true
+  use WardrikStore.Conformance
 
   setup_all do
-    start_supervised!(Memory.child_spec([]))
-    :ok
+    store = WardrikStore.new(adapter: WardrikStore.Memory, name: :memory_conformance)
+    start_supervised!({WardrikStore, store})
+    %{store: store}
   end
-
-  use WardrikStore.Conformance, adapter: Memory
 end

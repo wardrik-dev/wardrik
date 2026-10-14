@@ -46,7 +46,7 @@ defmodule Wardrik.Operations.RemoveTrigger do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, name: name}} = change, caller) do
-    case Host.definitions(caller.host).delete_trigger(id, name) do
+    case Host.definitions(caller.host).delete_trigger(caller.host, id, name) do
       :ok -> {:ok, nil, change.effect}
       {:error, :not_found} -> {:error, Error.new(:not_found, "#{id} has no trigger #{name}.")}
       {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}

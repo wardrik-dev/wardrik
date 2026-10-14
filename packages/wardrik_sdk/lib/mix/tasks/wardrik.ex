@@ -146,8 +146,10 @@ defmodule Mix.Tasks.Wardrik do
 
     # Every agent this session starts is created on what the task was given.
     :ok = Mix.Tasks.Wardrik.Created.keep([config: config] ++ scope_opts(opts))
-    host = Wardrik.Host.new(definitions: Mix.Tasks.Wardrik.Created)
-    {:ok, spec} = Mix.Tasks.Wardrik.Created.create(agent_id)
+    # The store the application started on, as its environment names it.
+    store = WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
+    host = Wardrik.Host.new(store: store, definitions: Mix.Tasks.Wardrik.Created)
+    {:ok, spec} = Mix.Tasks.Wardrik.Created.create(host, agent_id)
     {:ok, _agent} = Wardrik.Fleet.put(spec)
 
     :ok =
@@ -297,5 +299,6 @@ defmodule Mix.Tasks.Wardrik.Created do
   def keep(fields), do: :persistent_term.put(@key, fields)
 
   @impl true
-  def create(id), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ :persistent_term.get(@key))}
+  def create(_host, id),
+    do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ :persistent_term.get(@key))}
 end

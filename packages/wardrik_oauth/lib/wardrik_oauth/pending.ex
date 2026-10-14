@@ -45,8 +45,9 @@ defmodule WardrikOAuth.Pending do
 
     @derive {Inspect, only: [:provider, :owner, :started_at, :expires_after]}
 
-    @enforce_keys [:state, :provider, :owner, :metadata, :registered, :url, :started_at]
+    @enforce_keys [:store, :state, :provider, :owner, :metadata, :registered, :url, :started_at]
     defstruct [
+      :store,
       :state,
       :provider,
       :owner,
@@ -61,6 +62,7 @@ defmodule WardrikOAuth.Pending do
     ]
 
     @type t() :: %__MODULE__{
+            store: WardrikStore.t(),
             state: String.t(),
             provider: Provider.t(),
             owner: term(),

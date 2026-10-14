@@ -7,12 +7,13 @@ defmodule WardrikDaemon.Definition do
   `WardrikDaemon.AgentFile.spec/3` builds the agent's `Wardrik.Agent.Spec`
   from one, and whatever says what an agent is reads it here: `wardrik show`
   and `wardrik ls`, `GET /v1/agents/{id}/definition`, and a surface starting
-  an agent through `WardrikDaemon.Agents.options/1`, on any node.
+  an agent through `WardrikDaemon.Agents.options/2`, on any node. Each
+  function is handed first the store definitions are kept in.
 
   An agent with an external ID has no definition of its own. It is one
   conversation of the agent without one, and runs on that agent's
   definition: `acme/books/1696.1234` is `acme/books`, in a thread of its
-  own. `of/1` finds the definition an agent runs on.
+  own. `of/2` finds the definition an agent runs on.
   """
 
   alias Wardrik.AgentID
@@ -36,16 +37,16 @@ defmodule WardrikDaemon.Definition do
         }
 
   @doc "Keeps `definition`, in place of any its agent had."
-  @spec put(t()) :: :ok
-  def put(%__MODULE__{id: %AgentID{external_id: nil} = id} = definition) do
-    {:ok, _vsn} = WardrikStore.put(@ns, to_string(id), definition)
+  @spec put(WardrikStore.t(), t()) :: :ok
+  def put(store, %__MODULE__{id: %AgentID{external_id: nil} = id} = definition) do
+    {:ok, _vsn} = WardrikStore.put(store, @ns, to_string(id), definition)
     :ok
   end
 
   @doc "The definition kept for the agent `id`."
-  @spec get(AgentID.t()) :: {:ok, t()} | {:error, :not_found}
-  def get(%AgentID{} = id) do
-    case WardrikStore.get(@ns, to_string(id)) do
+  @spec get(WardrikStore.t(), AgentID.t()) :: {:ok, t()} | {:error, :not_found}
+  def get(store, %AgentID{} = id) do
+    case WardrikStore.get(store, @ns, to_string(id)) do
       %__MODULE__{} = definition -> {:ok, definition}
       nil -> {:error, :not_found}
     end
@@ -55,18 +56,18 @@ defmodule WardrikDaemon.Definition do
   The definition the agent `id` runs on: its own, or, for an ID with an
   external ID, that of the agent without one.
   """
-  @spec of(AgentID.t()) :: {:ok, t()} | {:error, :not_found}
-  def of(%AgentID{} = id), do: id |> AgentID.put_external_id(nil) |> get()
+  @spec of(WardrikStore.t(), AgentID.t()) :: {:ok, t()} | {:error, :not_found}
+  def of(store, %AgentID{} = id), do: get(store, AgentID.put_external_id(id, nil))
 
   @doc "Every definition kept."
-  @spec all() :: [t()]
-  def all do
-    for key <- WardrikStore.keys(@ns, ""),
-        %__MODULE__{} = definition <- [WardrikStore.get(@ns, key)],
+  @spec all(WardrikStore.t()) :: [t()]
+  def all(store) do
+    for key <- WardrikStore.keys(store, @ns),
+        %__MODULE__{} = definition <- [WardrikStore.get(store, @ns, key)],
         do: definition
   end
 
   @doc "Forgets the definition kept for the agent `id`, if there is one."
-  @spec delete(AgentID.t()) :: :ok
-  def delete(%AgentID{} = id), do: :ok = WardrikStore.delete(@ns, to_string(id))
+  @spec delete(WardrikStore.t(), AgentID.t()) :: :ok
+  def delete(store, %AgentID{} = id), do: :ok = WardrikStore.delete(store, @ns, to_string(id))
 end

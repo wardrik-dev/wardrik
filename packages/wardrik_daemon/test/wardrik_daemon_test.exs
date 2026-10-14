@@ -1,6 +1,8 @@
 defmodule WardrikDaemonTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Config
@@ -21,10 +23,8 @@ defmodule WardrikDaemonTest do
                {WardrikDaemon, host: Host.host(), config_dir: dir, state_dir: dir, data_dir: dir}
              )
 
-    assert [WardrikDaemon.Agents, WardrikDaemon.Host, WardrikHTTP.Listener] =
+    assert [WardrikDaemon.Agents, WardrikHTTP.Listener] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
-
-    assert WardrikDaemon.Host.get() == Host.host()
   end
 
   test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
@@ -32,10 +32,9 @@ defmodule WardrikDaemonTest do
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
 
     {:ok, secret, _token} =
-      WardrikHTTP.Token.create(
-        "daemon-test",
-        Prefix.parse!("daemon/"),
-        Wardrik.Grant.actions(),
+      WardrikHTTP.Token.create(Wardrik.Test.store(), "daemon-test",
+        scope: Prefix.parse!("daemon/"),
+        can: Wardrik.Grant.actions(),
         ceiling: []
       )
 
@@ -141,8 +140,8 @@ defmodule WardrikDaemonTest do
   test "reads a ${NAME} the environment does not set from the vault", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_IP_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(name, nil, "127.0.0.1")
-    on_exit(fn -> WardrikVault.forget(name, nil) end)
+    :ok = WardrikVault.put(Wardrik.Test.store(), name, nil, "127.0.0.1")
+    on_exit(fn -> WardrikVault.forget(Wardrik.Test.store(), name, nil) end)
 
     File.write!(Path.join(dir, "config.yaml"), "ssh:\n  ip: \"${#{name}}\"\n")
 
@@ -157,8 +156,8 @@ defmodule WardrikDaemonTest do
   test "reads storage from the environment alone, and says why it stops", %{tmp_dir: dir} do
     :ok = Settings.vault()
     name = "DAEMON_TEST_DB_#{System.unique_integer([:positive])}"
-    :ok = WardrikVault.put(name, nil, "postgres://localhost/wardrik")
-    on_exit(fn -> WardrikVault.forget(name, nil) end)
+    :ok = WardrikVault.put(Wardrik.Test.store(), name, nil, "postgres://localhost/wardrik")
+    on_exit(fn -> WardrikVault.forget(Wardrik.Test.store(), name, nil) end)
 
     File.write!(Path.join(dir, "config.yaml"), "storage:\n  postgres:\n    url: \"${#{name}}\"\n")
 
@@ -202,11 +201,12 @@ defmodule WardrikDaemonTest do
       Enum.any?(Wardrik.Fleet.list(Prefix.parse!(org <> "/")))
     end)
 
-    assert WardrikDaemon.status() =~ "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
+    assert WardrikDaemon.status(store()) =~
+             "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
   end
 
   test "status/0 names the node and counts the fleet" do
-    status = WardrikDaemon.status()
+    status = WardrikDaemon.status(store())
 
     assert status =~ "on #{node()}, up "
     assert status =~ ~r/\d+ agents?/

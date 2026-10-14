@@ -4,10 +4,10 @@ defmodule Wardrik.Event.Log.Writer do
   message each model call is streaming.
 
   `Wardrik.Agent` holds one and hands it every event of its own, in the order they
-  reach it:
+  reach it, with the store the log is kept in:
 
-      writer = Writer.open(Writer.new(key, last_written), agent_started)
-      {:ok, writer} = Writer.append(writer, event)
+      writer = Writer.open(store, Writer.new(key, last_written), agent_started)
+      {:ok, writer} = Writer.append(store, writer, event)
 
   ## Numbering
 
@@ -18,7 +18,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   ## Owners
 
-  `open/2` writes the log down among `Wardrik.Event.Log.logs/0`, and finds
+  `open/3` writes the log down among `Wardrik.Event.Log.logs/1`, and finds
   the head. From the sequence the agent last wrote down, it
   reads forward through consensus to the first number nobody has written, and
   writes `agent.started` there. A conflict while it does is an owner before it
@@ -33,7 +33,7 @@ defmodule Wardrik.Event.Log.Writer do
 
   ## Ahead of the bus
 
-  `append_ahead/2` writes an event the agent has yet to publish, so it is in
+  `append_ahead/3` writes an event the agent has yet to publish, so it is in
   the log before the agent acts on it. Its copy arriving from the bus is passed
   over.
   """
@@ -81,22 +81,22 @@ defmodule Wardrik.Event.Log.Writer do
   Finds the head of the log and writes `started`, the agent's
   `Wardrik.Event.AgentStarted` event, after it, ahead of the bus.
   """
-  @spec open(t(), Event.t()) :: t()
-  def open(%__MODULE__{} = writer, %Event{payload: %Event.AgentStarted{}} = started) do
-    with {:error, reason} <- Log.opened(writer.agent_id),
+  @spec open(WardrikStore.t(), t(), Event.t()) :: t()
+  def open(store, %__MODULE__{} = writer, %Event{payload: %Event.AgentStarted{}} = started) do
+    with {:error, reason} <- Log.opened(store, writer.agent_id),
          do: Logger.warning("Could not list #{writer.agent_id}'s log: #{inspect(reason)}")
 
-    known = max(writer.head, Log.oldest(writer.agent_id, consistent: true) - 1)
-    start(%{writer | head: Log.head(writer.agent_id, known)}, started)
+    known = max(writer.head, Log.oldest(store, writer.agent_id, consistent: true) - 1)
+    start(store, %{writer | head: Log.head(store, writer.agent_id, known)}, started)
   end
 
-  defp start(writer, started) do
-    case put(writer, started) do
+  defp start(store, writer, started) do
+    case put(store, writer, started) do
       {:ok, writer} ->
         ahead(writer, started)
 
       {:conflict, writer} ->
-        start(%{writer | head: Log.head(writer.agent_id, writer.head + 1)}, started)
+        start(store, %{writer | head: Log.head(store, writer.agent_id, writer.head + 1)}, started)
 
       {:error, _reason, writer} ->
         writer
@@ -108,27 +108,29 @@ defmodule Wardrik.Event.Log.Writer do
   delivered when it is live, and dropped when `Wardrik.Event.Codec` does not send
   it. An event written ahead of the bus is passed over.
   """
-  @spec append(t(), Event.t()) :: result()
-  def append(%__MODULE__{} = writer, %Event{id: id} = event) do
+  @spec append(WardrikStore.t(), t(), Event.t()) :: result()
+  def append(store, %__MODULE__{} = writer, %Event{id: id} = event) do
     if id in writer.ahead,
       do: {:ok, %{writer | ahead: List.delete(writer.ahead, id)}},
-      else: write(writer, event)
+      else: write(store, writer, event)
   end
 
   @doc "Appends an event the agent has yet to publish. Its copy from the bus is passed over."
-  @spec append_ahead(t(), Event.t()) :: result()
-  def append_ahead(%__MODULE__{} = writer, %Event{} = event) do
-    with {:ok, writer} <- write(writer, event), do: {:ok, ahead(writer, event)}
+  @spec append_ahead(WardrikStore.t(), t(), Event.t()) :: result()
+  def append_ahead(store, %__MODULE__{} = writer, %Event{} = event) do
+    with {:ok, writer} <- write(store, writer, event), do: {:ok, ahead(writer, event)}
   end
 
   defp ahead(writer, event), do: %{writer | ahead: [event.id | writer.ahead]}
 
-  defp write(%__MODULE__{fenced: true} = writer, _event), do: {:error, :fenced, writer}
+  defp write(_store, %__MODULE__{fenced: true} = writer, _event), do: {:error, :fenced, writer}
 
-  defp write(writer, event) do
+  defp write(store, writer, event) do
     writer = follow(writer, event)
 
-    if Codec.durable?(Event.type(event)), do: durable(writer, event), else: live(writer, event)
+    if Codec.durable?(Event.type(event)),
+      do: durable(store, writer, event),
+      else: live(writer, event)
   end
 
   defp follow(writer, %Event{payload: %Event.ModelStarted{message_id: message_id}} = event),
@@ -146,19 +148,19 @@ defmodule Wardrik.Event.Log.Writer do
 
   # -- durable ---------------------------------------------------------------
 
-  defp durable(writer, event) do
-    case put(writer, event) do
-      {:conflict, writer} -> taken(writer, event)
+  defp durable(store, writer, event) do
+    case put(store, writer, event) do
+      {:conflict, writer} -> taken(store, writer, event)
       result -> result
     end
   end
 
-  defp put(writer, event) do
+  defp put(store, writer, event) do
     sequence = writer.head + 1
     {:ok, cloud_event} = Codec.encode(event, sequence: sequence)
     key = Log.key(writer.agent_id, sequence)
 
-    case WardrikStore.put(Log.namespace(), key, cloud_event, if_vsn: nil) do
+    case WardrikStore.put(store, Log.namespace(), key, cloud_event, if_vsn: nil) do
       {:ok, _vsn} ->
         entry = %Entry{event: cloud_event, sequence: sequence, follows: writer.head}
         :ok = Log.publish(writer.agent_id, entry)
@@ -176,14 +178,13 @@ defmodule Wardrik.Event.Log.Writer do
 
   # Something was written at this number first: this writer, on a write it
   # could not confirm, or an owner that has taken over.
-  defp taken(writer, event) do
+  defp taken(store, writer, event) do
     sequence = writer.head + 1
-
-    written =
-      WardrikStore.get(Log.namespace(), Log.key(writer.agent_id, sequence), consistent: true)
+    key = Log.key(writer.agent_id, sequence)
+    written = WardrikStore.get(store, Log.namespace(), key, consistent: true)
 
     if is_map(written) and written["id"] in writer.unconfirmed do
-      durable(%{writer | head: sequence, unconfirmed: []}, event)
+      durable(store, %{writer | head: sequence, unconfirmed: []}, event)
     else
       Logger.warning("#{writer.agent_id} has another owner, so this one stops writing its log")
       {:error, :fenced, %{writer | fenced: true}}

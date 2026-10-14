@@ -1,5 +1,7 @@
 defmodule WardrikDaemon.CLI.LifecycleTest do
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0, host: 0]
   use Mimic
 
   # Commands run over rpc build their callers on the daemon's host.
@@ -31,7 +33,7 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
         else: Application.delete_env(:wardrik_daemon, WardrikDaemon.Agents)
     end)
 
-    start_supervised!({WardrikDaemon.Agents, dir: dir})
+    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
     org = "life-#{System.unique_integer([:positive])}"
     on_exit(fn -> Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
 
@@ -319,11 +321,14 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     test "forgets the definition the HTTP API sent", %{org: org} do
       defined = AgentID.parse!("#{org}/defined")
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(defined))
-      {:ok, spec} = WardrikDaemon.Agents.put(defined, %{"description" => "Defined."}, grant)
+
+      {:ok, spec} =
+        WardrikDaemon.Agents.put(host(), defined, %{"description" => "Defined."}, grant)
+
       {:ok, _pid} = Fleet.put(spec)
 
       assert command(["agent", "rm", defined, "--yes"]) == {"Removed #{defined}.\n", 0}
-      assert WardrikDaemon.Agents.get(defined) == {:error, :not_found}
+      assert WardrikDaemon.Agents.get(host(), defined) == {:error, :not_found}
     end
 
     test "leaves an agent a file declares, and names the file", %{org: org} do
@@ -346,13 +351,17 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
     test "leaves an agent a file on another node declares", %{dir: dir, org: org} do
       other = :"lifecycle-test@elsewhere"
       stop_supervised!(WardrikDaemon.Agents)
-      start_supervised!({WardrikDaemon.Agents, dir: dir, nodes: fn -> [other] end})
+
+      start_supervised!(
+        {WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store(), nodes: fn -> [other] end}
+      )
+
       key = agent(org, "theirs")
 
       {:ok, _vsn} =
-        WardrikStore.put(:declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
+        WardrikStore.put(store(), :declared, "agents/#{other}", %{to_string(key) => "theirs.md"})
 
-      on_exit(fn -> WardrikStore.delete(:declared, "agents/#{other}") end)
+      on_exit(fn -> WardrikStore.delete(store(), :declared, "agents/#{other}") end)
 
       assert command(["agent", "rm", key, "--yes"]) ==
                {"#{key} is declared by agents/theirs.md on #{other}; change or remove that file, then wardrik reload reads it\n",

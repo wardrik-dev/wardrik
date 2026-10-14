@@ -3,23 +3,24 @@ defmodule Wardrik.Event.Export do
   Every log, read on from where a named reader last got to: the audit, and
   each agent's, a forgotten agent's included.
 
-      {:ok, page} = Wardrik.Event.Export.read("siem")
+      {:ok, page} = Wardrik.Event.Export.read(store, "siem")
       :ok = ship(page.events)
-      :ok = Wardrik.Event.Export.advance("siem", page.next)
+      :ok = Wardrik.Event.Export.advance(store, "siem", page.next)
 
   ## The cursor
 
   A reader is a name, and its cursor is the last sequence it has taken of
-  each log, kept in the store. It carries on from there on any node, and after
+  each log, kept in the store the logs are, which every function is handed
+  first. It carries on from there on any node, and after
   any restart.
 
-  `read/2` answers a page after the cursor and leaves the cursor where it
-  is. `advance/2` moves it to a page's `next` once the reader holds what the
+  `read/3` answers a page after the cursor and leaves the cursor where it
+  is. `advance/3` moves it to a page's `next` once the reader holds what the
   page held safely, so a page read again before then answers the same events,
   and each event reaches the reader at least once. `next` names only the logs
   the page read, so it stays small however many logs there are.
 
-  A page takes the logs in the order `Wardrik.Event.Log.logs/0` lists them,
+  A page takes the logs in the order `Wardrik.Event.Log.logs/1` lists them,
   each from its cursor, until it holds `:limit` events. Each event is the
   CloudEvent its log holds: its `source` names the log, and its `sequence`
   its place there.
@@ -46,7 +47,7 @@ defmodule Wardrik.Event.Export do
 
   @typedoc """
   A page: its events, oldest first within each log, the `next` that
-  `advance/2` takes to move the cursor past them, and the gaps it met.
+  `advance/3` takes to move the cursor past them, and the gaps it met.
   """
   @type t() :: %__MODULE__{events: [map()], next: String.t(), gaps: [gap()]}
 
@@ -59,17 +60,18 @@ defmodule Wardrik.Event.Export do
     * `:logs` - which logs to read, as a function given each one; every log
       by default
   """
-  @spec read(String.t(), keyword()) :: {:ok, t()}
-  def read(name, opts \\ []) when is_binary(name) do
-    cursor = cursor(name)
+  @spec read(WardrikStore.t(), String.t(), keyword()) :: {:ok, t()}
+  def read(store, name, opts \\ []) when is_binary(name) do
+    cursor = cursor(store, name)
     reads? = Keyword.get(opts, :logs, fn _log -> true end)
 
     start = {Keyword.get(opts, :limit, @default_limit), [], %{}, []}
 
     page =
-      Log.logs()
+      store
+      |> Log.logs()
       |> Enum.filter(reads?)
-      |> Enum.reduce_while(start, &page(&1, &2, cursor))
+      |> Enum.reduce_while(start, &page(store, &1, &2, cursor))
 
     {_left, events, next, gaps} = page
 
@@ -83,8 +85,8 @@ defmodule Wardrik.Event.Export do
 
   # The page with what `log` holds after the cursor added, as the events
   # left to take, the events taken, the positions after them, and the gaps.
-  defp page(log, page, cursor) do
-    case take(log, Map.get(cursor, text(log), 0), elem(page, 0)) do
+  defp page(store, log, page, cursor) do
+    case take(store, log, Map.get(cursor, text(log), 0), elem(page, 0)) do
       :none -> {:cont, page}
       taken -> taken |> added(log, page) |> continue()
     end
@@ -92,8 +94,8 @@ defmodule Wardrik.Event.Export do
 
   # What a log holds after `cursor`: its events, where a cursor past them
   # is, and the gap it met, or `:none` where it holds nothing more.
-  defp take(log, cursor, limit) do
-    case Log.read(log, starting_after: cursor, limit: limit, consistent: false) do
+  defp take(store, log, cursor, limit) do
+    case Log.read(store, log, starting_after: cursor, limit: limit, consistent: false) do
       {:ok, []} ->
         :none
 
@@ -101,7 +103,9 @@ defmodule Wardrik.Event.Export do
         {events, cursor + length(events), nil}
 
       {:gap, oldest} ->
-        {:ok, events} = Log.read(log, starting_after: oldest - 1, limit: limit, consistent: false)
+        {:ok, events} =
+          Log.read(store, log, starting_after: oldest - 1, limit: limit, consistent: false)
+
         {events, oldest - 1 + length(events), %{log: log, after: cursor, oldest: oldest}}
     end
   end
@@ -116,39 +120,39 @@ defmodule Wardrik.Event.Export do
 
   @doc """
   Moves the cursor of `name` to `next`, a page's, for each log the page read,
-  never back. `{:error, :invalid}` where `next` is not one `read/2` answered.
+  never back. `{:error, :invalid}` where `next` is not one `read/3` answered.
   """
-  @spec advance(String.t(), String.t()) :: :ok | {:error, :invalid | term()}
-  def advance(name, next) when is_binary(name) and is_binary(next) do
-    with {:ok, positions} <- decode(next), do: moved(name, positions)
+  @spec advance(WardrikStore.t(), String.t(), String.t()) :: :ok | {:error, :invalid | term()}
+  def advance(store, name, next) when is_binary(name) and is_binary(next) do
+    with {:ok, positions} <- decode(next), do: moved(store, name, positions)
   end
 
-  defp moved(name, positions) do
-    {cursor, vsn} = lookup(name)
+  defp moved(store, name, positions) do
+    {cursor, vsn} = lookup(store, name)
     cursor = Map.merge(cursor, positions, fn _log, at, to -> max(at, to) end)
 
-    case WardrikStore.put(@ns, name, cursor, if_vsn: vsn) do
+    case WardrikStore.put(store, @ns, name, cursor, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
-      {:error, :conflict} -> moved(name, positions)
+      {:error, :conflict} -> moved(store, name, positions)
       {:error, reason} -> {:error, reason}
     end
   end
 
   @doc "Deletes the cursor of `name`, so its next read starts at the beginning."
-  @spec forget(String.t()) :: :ok | {:error, term()}
-  def forget(name) when is_binary(name) do
-    case lookup(name) do
+  @spec forget(WardrikStore.t(), String.t()) :: :ok | {:error, term()}
+  def forget(store, name) when is_binary(name) do
+    case lookup(store, name) do
       {_cursor, nil} -> :ok
-      {_cursor, vsn} -> WardrikStore.delete(@ns, name, if_vsn: vsn)
+      {_cursor, vsn} -> WardrikStore.delete(store, @ns, name, if_vsn: vsn)
     end
   end
 
   @doc "The cursor of `name`: the last sequence taken of each log, by its text."
-  @spec cursor(String.t()) :: %{String.t() => non_neg_integer()}
-  def cursor(name) when is_binary(name), do: name |> lookup() |> elem(0)
+  @spec cursor(WardrikStore.t(), String.t()) :: %{String.t() => non_neg_integer()}
+  def cursor(store, name) when is_binary(name), do: store |> lookup(name) |> elem(0)
 
-  defp lookup(name) do
-    case WardrikStore.lookup(@ns, name) do
+  defp lookup(store, name) do
+    case WardrikStore.lookup(store, @ns, name) do
       {cursor, vsn} -> {cursor, vsn}
       nil -> {%{}, nil}
     end

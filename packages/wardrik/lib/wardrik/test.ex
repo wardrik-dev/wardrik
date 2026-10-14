@@ -20,7 +20,8 @@ defmodule Wardrik.Test do
 
   The runtime is the one `config :wardrik` names, so a suite that needs
   nothing kept sets `config :wardrik, WardrikStore, adapter: WardrikStore.Memory`
-  and nothing else.
+  and nothing else. `store/0` and `host/1` are the store and the host that
+  runtime started on, for a test to hand what it calls.
 
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
   starts an agent under a key of each test's own, `Wardrik.Test.LLMStub`
@@ -73,7 +74,7 @@ defmodule Wardrik.Test do
       Supervisor.start_link(children, strategy: :rest_for_one, name: Wardrik.Test.Supervisor)
 
     Enum.each(wait, &ready!/1)
-    ExUnit.after_suite(fn _results -> remove_store() end)
+    ExUnit.after_suite(fn _results -> remove_store(settings()[:data_dir]) end)
     ExUnit.start(Keyword.merge([capture_log: true, assert_receive_timeout: 1_000], opts))
   end
 
@@ -83,19 +84,32 @@ defmodule Wardrik.Test do
   # fleet stops first, then the fleet closes the store, and the OS monitor
   # closes its helper before the VM takes its ports. A file written while the
   # directory goes is left where it is.
-  defp remove_store do
+  defp remove_store(nil), do: Supervisor.stop(Wardrik.Test.Supervisor)
+
+  defp remove_store(dir) do
     Supervisor.stop(Wardrik.Test.Supervisor)
+    Supervisor.stop(Wardrik.Application)
+    _ = File.rm_rf(dir)
+    _ = Application.stop(:os_mon)
+    :ok
+  end
 
-    case WardrikStore.config()[:data_dir] do
-      nil ->
-        :ok
+  # What the suite's configuration names, as the `:wardrik` application read it
+  # as it started.
+  defp settings, do: Application.get_env(:wardrik, WardrikStore, [])
 
-      dir ->
-        Supervisor.stop(Wardrik.Fleet.Supervisor)
-        _ = File.rm_rf(dir)
-        _ = Application.stop(:os_mon)
-        :ok
-    end
+  @doc "The store the `:wardrik` application started on, as the suite's configuration names it."
+  @spec store() :: WardrikStore.t()
+  def store, do: WardrikStore.new(settings())
+
+  @doc """
+  The host the `:wardrik` application started on, with `store/0` and the
+  seams the suite's configuration names, and those `opts` name over them.
+  """
+  @spec host(keyword()) :: Wardrik.Host.t()
+  def host(opts \\ []) do
+    seams = Application.get_env(:wardrik, Wardrik.Host, [])
+    Wardrik.Host.new(Keyword.merge([store: store()] ++ seams, opts))
   end
 
   @doc """
@@ -104,14 +118,14 @@ defmodule Wardrik.Test do
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
   gives the whole config; `id:` names the agent, in place of one no other
   test uses. The rest is what `Wardrik.Scope.root/3` takes: the hooks, the
-  credentials, the ledger and the dispatch.
+  credentials, the ledger, the dispatch, and the host, `host/1` unless given.
   """
   @spec scope(keyword()) :: Scope.t()
   def scope(opts \\ []) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
     {config, opts} = Keyword.pop_lazy(opts, :config, fn -> Config.new(tools: tools) end)
     {id, opts} = Keyword.pop_lazy(opts, :id, &Wardrik.Test.Fleet.id/0)
-    Scope.root(config, id, opts)
+    Scope.root(config, id, Keyword.put_new_lazy(opts, :host, &host/0))
   end
 
   @doc """

@@ -1,6 +1,8 @@
 defmodule Wardrik.AuditTest do
   # One audit log for the node, emptied before each test.
   use ExUnit.Case, async: false
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   import ExUnit.CaptureLog
@@ -24,9 +26,9 @@ defmodule Wardrik.AuditTest do
   end
 
   defp empty do
-    for key <- WardrikStore.keys(Log.namespace(), "audit//") do
-      {_value, vsn} = WardrikStore.lookup(Log.namespace(), key)
-      :ok = WardrikStore.delete(Log.namespace(), key, if_vsn: vsn)
+    for key <- WardrikStore.keys(store(), Log.namespace(), "audit//") do
+      {_value, vsn} = WardrikStore.lookup(store(), Log.namespace(), key)
+      :ok = WardrikStore.delete(store(), Log.namespace(), key, if_vsn: vsn)
     end
 
     restart()
@@ -40,7 +42,7 @@ defmodule Wardrik.AuditTest do
   defp allow_store, do: Mimic.allow(WardrikStore, self(), Process.whereis(Audit))
 
   defp sequences do
-    {:ok, events} = Log.read(:audit, starting_after: Log.oldest(:audit) - 1)
+    {:ok, events} = Log.read(store(), :audit, starting_after: Log.oldest(store(), :audit) - 1)
     Enum.map(events, &String.to_integer(&1["sequence"]))
   end
 
@@ -48,7 +50,7 @@ defmodule Wardrik.AuditTest do
     event = %{"id" => "elsewhere", "time" => DateTime.to_iso8601(at)}
 
     {:ok, _vsn} =
-      WardrikStore.put(Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil)
+      WardrikStore.put(store(), Log.namespace(), Log.key(:audit, sequence), event, if_vsn: nil)
   end
 
   test "numbers each change, says who made it, and tells those following", %{by: by, id: id} do
@@ -63,7 +65,7 @@ defmodule Wardrik.AuditTest do
                 "data" => %{"actor" => %{"type" => "shell", "id" => "jon"}}
               },
               %{"type" => "wardrik.agent.cleared", "sequence" => "000000000002", "data" => data}
-            ]} = Log.read(:audit)
+            ]} = Log.read(store(), :audit)
 
     refute Map.has_key?(data, "actor")
 
@@ -87,14 +89,14 @@ defmodule Wardrik.AuditTest do
     :ok = Audit.record({:agent_spawned, id, node()}, by)
 
     assert {:ok, [_, %{"id" => "elsewhere"}, %{"id" => "elsewhere"}, spawned]} =
-             Log.read(:audit)
+             Log.read(store(), :audit)
 
     assert %{"type" => "wardrik.agent.spawned", "sequence" => "000000000004"} = spawned
   end
 
   test "leaves the number of a change the store failed to the next", %{by: by, id: id} do
     allow_store()
-    expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
+    expect(WardrikStore, :put, fn _store, _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
     assert capture_log(fn -> assert :ok = Audit.record({:agent_stopped, id}, by) end) =~
              "Could not write wardrik.agent.stopped to the audit log: :unavailable"
@@ -102,7 +104,7 @@ defmodule Wardrik.AuditTest do
     :ok = Audit.record({:agent_spawned, id, node()}, by)
 
     assert {:ok, [%{"type" => "wardrik.agent.spawned", "sequence" => "000000000001"}]} =
-             Log.read(:audit)
+             Log.read(store(), :audit)
   end
 
   test "drops what is older than the log keeps", %{by: by, id: id} do
@@ -113,7 +115,7 @@ defmodule Wardrik.AuditTest do
     # Trimmed after the reply; a second call waits for it.
     _state = :sys.get_state(Audit)
 
-    assert {:gap, 3} = Log.read(:audit)
+    assert {:gap, 3} = Log.read(store(), :audit)
     assert sequences() == [3]
   end
 
@@ -122,11 +124,11 @@ defmodule Wardrik.AuditTest do
     allow_store()
 
     stub(WardrikStore, :put, fn
-      _ns, "audit//dropped", _last, _opts ->
+      _store, _ns, "audit//dropped", _last, _opts ->
         {:error, :conflict}
 
-      ns, key, value, opts ->
-        call_original(WardrikStore, :put, [ns, key, value, opts])
+      store, ns, key, value, opts ->
+        call_original(WardrikStore, :put, [store, ns, key, value, opts])
     end)
 
     assert capture_log(fn ->

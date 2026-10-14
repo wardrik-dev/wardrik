@@ -1,5 +1,7 @@
 defmodule Wardrik.Event.LogTest do
   use ExUnit.Case, async: true
+
+  import Wardrik.Test, only: [store: 0]
   use Mimic
 
   alias Wardrik.Event
@@ -26,15 +28,16 @@ defmodule Wardrik.Event.LogTest do
         generation: "g1"
       })
 
-  defp open(agent_id, head \\ 0), do: Writer.open(Writer.new(agent_id, head), started(agent_id))
+  defp open(agent_id, head \\ 0),
+    do: Writer.open(store(), Writer.new(agent_id, head), started(agent_id))
 
   defp append!(writer, source, payload) do
-    {:ok, writer} = Writer.append(writer, Event.new(source, payload))
+    {:ok, writer} = Writer.append(store(), writer, Event.new(source, payload))
     writer
   end
 
   defp sequences(agent_id, starting_after \\ 0) do
-    {:ok, events} = Log.read(agent_id, starting_after: starting_after)
+    {:ok, events} = Log.read(store(), agent_id, starting_after: starting_after)
     Enum.map(events, &String.to_integer(&1["sequence"]))
   end
 
@@ -52,7 +55,7 @@ defmodule Wardrik.Event.LogTest do
               [
                 %{"type" => "wardrik.agent.started", "sequence" => "000000000001"},
                 %{"type" => "wardrik.run.started", "sequence" => "000000000002"}
-              ]} = Log.read(agent_id)
+              ]} = Log.read(store(), agent_id)
 
       assert_receive %Entry{sequence: 1, follows: 0, event: %{"type" => "wardrik.agent.started"}}
       assert_receive %Entry{sequence: 2, follows: 1, event: %{"type" => "wardrik.run.started"}}
@@ -140,8 +143,8 @@ defmodule Wardrik.Event.LogTest do
       decided =
         Event.new(source, %Event.CallDecided{call_id: "call_1", decision: :approve, by: nil})
 
-      {:ok, writer} = agent_id |> open() |> Writer.append_ahead(decided)
-      {:ok, _writer} = Writer.append(writer, decided)
+      {:ok, writer} = Writer.append_ahead(store(), open(agent_id), decided)
+      {:ok, _writer} = Writer.append(store(), writer, decided)
 
       assert EventLog.types(agent_id) == ["wardrik.agent.started", "wardrik.interrupt.resolved"]
     end
@@ -168,10 +171,10 @@ defmodule Wardrik.Event.LogTest do
       second = open(agent_id)
 
       assert {:error, :fenced, first} =
-               Writer.append(first, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(store(), first, Event.new(source, %Event.TurnStarted{messages: []}))
 
       assert {:error, :fenced, _first} =
-               Writer.append(first, Event.new(source, %Event.Result{text: "x"}))
+               Writer.append(store(), first, Event.new(source, %Event.Result{text: "x"}))
 
       append!(second, source, %Event.TurnResumed{decisions: %{}})
 
@@ -183,16 +186,17 @@ defmodule Wardrik.Event.LogTest do
     end
 
     test "an owner that finds one before it still writing moves past it", %{agent_id: agent_id} do
-      expect(WardrikStore, :put, fn ns, key, event, opts ->
+      expect(WardrikStore, :put, fn store, ns, key, event, opts ->
         {:ok, _vsn} =
-          call_original(WardrikStore, :put, [ns, key, %{event | "id" => "old"}, opts])
+          call_original(WardrikStore, :put, [store, ns, key, %{event | "id" => "old"}, opts])
 
         {:error, :conflict}
       end)
 
       open(agent_id)
 
-      assert {:ok, [%{"id" => "old"}, %{"type" => "wardrik.agent.started"}]} = Log.read(agent_id)
+      assert {:ok, [%{"id" => "old"}, %{"type" => "wardrik.agent.started"}]} =
+               Log.read(store(), agent_id)
     end
 
     test "a write the store made without confirming it is taken as its own", %{
@@ -201,13 +205,13 @@ defmodule Wardrik.Event.LogTest do
     } do
       writer = open(agent_id)
 
-      expect(WardrikStore, :put, fn ns, key, event, opts ->
-        {:ok, _vsn} = call_original(WardrikStore, :put, [ns, key, event, opts])
+      expect(WardrikStore, :put, fn store, ns, key, event, opts ->
+        {:ok, _vsn} = call_original(WardrikStore, :put, [store, ns, key, event, opts])
         {:error, :unavailable}
       end)
 
       assert {:error, :unavailable, writer} =
-               Writer.append(writer, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(store(), writer, Event.new(source, %Event.TurnStarted{messages: []}))
 
       append!(writer, source, %Event.TurnResumed{decisions: %{}})
 
@@ -222,12 +226,13 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id
     } do
       started = started(agent_id)
-      expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
-      writer = Writer.open(Writer.new(agent_id), started)
-      assert {:ok, []} = Log.read(agent_id)
+      expect(WardrikStore, :put, fn _store, _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
-      assert {:ok, _writer} = Writer.append(writer, started)
+      writer = Writer.open(store(), Writer.new(agent_id), started)
+      assert {:ok, []} = Log.read(store(), agent_id)
+
+      assert {:ok, _writer} = Writer.append(store(), writer, started)
       assert EventLog.types(agent_id) == ["wardrik.agent.started"]
     end
 
@@ -236,10 +241,11 @@ defmodule Wardrik.Event.LogTest do
       source: source
     } do
       writer = open(agent_id)
-      expect(WardrikStore, :put, fn _ns, _key, _event, _opts -> {:error, :unavailable} end)
+
+      expect(WardrikStore, :put, fn _store, _ns, _key, _event, _opts -> {:error, :unavailable} end)
 
       assert {:error, :unavailable, writer} =
-               Writer.append(writer, Event.new(source, %Event.TurnStarted{messages: []}))
+               Writer.append(store(), writer, Event.new(source, %Event.TurnStarted{messages: []}))
 
       append!(writer, source, %Event.TurnResumed{decisions: %{}})
 
@@ -258,24 +264,24 @@ defmodule Wardrik.Event.LogTest do
       end)
 
       assert {:ok, [%{"sequence" => "000000000003"}, %{"sequence" => "000000000004"}]} =
-               Log.read(agent_id, starting_after: 2, limit: 2)
+               Log.read(store(), agent_id, starting_after: 2, limit: 2)
 
-      assert {:ok, []} = Log.read(agent_id, starting_after: 5)
-      assert {:ok, []} = Log.read(Wardrik.AgentID.parse!("test/nobody"))
+      assert {:ok, []} = Log.read(store(), agent_id, starting_after: 5)
+      assert {:ok, []} = Log.read(store(), Wardrik.AgentID.parse!("test/nobody"))
     end
   end
 
   describe "trimming" do
     setup %{agent_id: agent_id, source: source} do
       old = fn payload -> %{Event.new(source, payload) | at: days_ago(31)} end
-      writer = Writer.open(Writer.new(agent_id), %{started(agent_id) | at: days_ago(31)})
+      writer = Writer.open(store(), Writer.new(agent_id), %{started(agent_id) | at: days_ago(31)})
 
       writer =
         Enum.reduce(
           [old.(%Event.TurnStarted{messages: []}), old.(%Event.TurnFinished{messages: []})],
           writer,
           fn event, w ->
-            {:ok, w} = Writer.append(w, event)
+            {:ok, w} = Writer.append(store(), w, event)
             w
           end
         )
@@ -292,26 +298,26 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id,
       cutoff: cutoff
     } do
-      assert :ok = Log.trim(agent_id, 5, cutoff)
+      assert :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
 
-      assert {:gap, 4} = Log.read(agent_id)
-      assert {:gap, 4} = Log.read(agent_id, starting_after: 2)
+      assert {:gap, 4} = Log.read(store(), agent_id)
+      assert {:gap, 4} = Log.read(store(), agent_id, starting_after: 2)
       assert sequences(agent_id, 3) == [4, 5]
-      assert Log.oldest(agent_id) == 4
+      assert Log.oldest(store(), agent_id) == 4
 
-      assert :ok = Log.trim(agent_id, 5, cutoff)
-      assert Log.oldest(agent_id) == 4
+      assert :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
+      assert Log.oldest(store(), agent_id) == 4
     end
 
     test "leaves the events to a trim that got there first", %{agent_id: agent_id, cutoff: cutoff} do
-      expect(WardrikStore, :put, fn _ns, _key, _dropped, _opts -> {:error, :conflict} end)
+      expect(WardrikStore, :put, fn _store, _ns, _key, _dropped, _opts -> {:error, :conflict} end)
 
-      assert {:error, :conflict} = Log.trim(agent_id, 5, cutoff)
+      assert {:error, :conflict} = Log.trim(store(), agent_id, through: 5, before: cutoff)
       assert sequences(agent_id) == [1, 2, 3, 4, 5]
     end
 
     test "drops none past the number it is given", %{agent_id: agent_id, cutoff: cutoff} do
-      assert :ok = Log.trim(agent_id, 2, cutoff)
+      assert :ok = Log.trim(store(), agent_id, through: 2, before: cutoff)
 
       assert sequences(agent_id, 2) == [3, 4, 5]
     end
@@ -320,7 +326,7 @@ defmodule Wardrik.Event.LogTest do
       agent_id: agent_id,
       cutoff: cutoff
     } do
-      :ok = Log.trim(agent_id, 5, cutoff)
+      :ok = Log.trim(store(), agent_id, through: 5, before: cutoff)
 
       open(agent_id)
 

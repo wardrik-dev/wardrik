@@ -13,17 +13,19 @@ defmodule WardrikHTTP.Tokens do
   # The grant is one already, so only the store failing stops the token
   # being made.
   @impl true
-  def create(name, grant, for) do
+  def create(host, name, grant, for) do
     {:ok, _secret, _token} =
-      Token.create(name, grant.scope, grant.can, ceiling: grant.ceiling, for: for)
+      host
+      |> Wardrik.Host.store()
+      |> Token.create(name, scope: grant.scope, can: grant.can, ceiling: grant.ceiling, for: for)
   end
 
   @impl true
-  def list, do: Token.list()
+  def list(host), do: host |> Wardrik.Host.store() |> Token.list()
 
   @impl true
-  def revoke(id) do
-    case Token.revoke(id) do
+  def revoke(host, id) do
+    case host |> Wardrik.Host.store() |> Token.revoke(id) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end

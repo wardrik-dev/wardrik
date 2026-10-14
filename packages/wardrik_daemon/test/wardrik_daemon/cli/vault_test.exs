@@ -1,6 +1,8 @@
 defmodule WardrikDaemon.CLI.VaultTest do
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   # Commands run over rpc build their callers on the daemon's host.
   setup do: WardrikDaemon.Test.Host.held()
 
@@ -76,8 +78,8 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}=one", "#{name}_B=two=three"]) ==
                {"Sealed #{name}.\nSealed #{name}_B.\n", 0}
 
-      assert WardrikVault.fetch(name, nil) == {:ok, "one"}
-      assert WardrikVault.fetch(name <> "_B", nil) == {:ok, "two=three"}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "one"}
+      assert WardrikVault.fetch(store(), name <> "_B", nil) == {:ok, "two=three"}
       assert changes(name) == [{"secret.stored", nil, "ops"}]
     end
 
@@ -91,10 +93,10 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}=deployment org's", "--user", "jon"]) ==
                {"Sealed #{name} for #{WardrikDaemon.Config.org()}/@jon.\n", 0}
 
-      assert WardrikVault.fetch(name, "acme") == {:ok, "org's"}
-      assert WardrikVault.fetch(name, {"acme", "jon"}) == {:ok, "jon's"}
+      assert WardrikVault.fetch(store(), name, "acme") == {:ok, "org's"}
+      assert WardrikVault.fetch(store(), name, {"acme", "jon"}) == {:ok, "jon's"}
 
-      assert WardrikVault.fetch(name, {WardrikDaemon.Config.org(), "jon"}) ==
+      assert WardrikVault.fetch(store(), name, {WardrikDaemon.Config.org(), "jon"}) ==
                {:ok, "deployment org's"}
     end
 
@@ -114,7 +116,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       System.delete_env("ANTHROPIC_API_KEY")
 
       on_exit(fn ->
-        WardrikVault.forget("ANTHROPIC_API_KEY", nil)
+        WardrikVault.forget(store(), "ANTHROPIC_API_KEY", nil)
 
         case previous do
           {nil, _config} -> System.delete_env("ANTHROPIC_API_KEY")
@@ -160,7 +162,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       {output, 0} = live(["vault", "put", name], "s3cret\n")
 
       assert output == "#{name}, which is not shown as you type: Sealed #{name}.\n"
-      assert WardrikVault.fetch(name, nil) == {:ok, "s3cret"}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "s3cret"}
 
       assert live(["vault", "put", name], "\n") ==
                {"#{name}, which is not shown as you type: Nothing was sealed.\n", 0}
@@ -168,12 +170,12 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "reads a value piped in, less the line ending it ends with", %{name: name} do
       assert live(["vault", "put", name], "piped\n", piped: true) == {"Sealed #{name}.\n", 0}
-      assert WardrikVault.fetch(name, nil) == {:ok, "piped"}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "piped"}
 
       assert live(["vault", "put", name], "two\nlines\r\n", piped: true) ==
                {"Sealed #{name}.\n", 0}
 
-      assert WardrikVault.fetch(name, nil) == {:ok, "two\nlines"}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "two\nlines"}
 
       assert {"Nothing came on standard input to seal. Pipe the value in" <> _how, 1} =
                live(["vault", "put", name], "", piped: true)
@@ -200,7 +202,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "says why a secret was not sealed", %{name: name} do
-      Mimic.stub(WardrikStore, :put, fn _ns, _key, _value -> {:error, :no_quorum} end)
+      Mimic.stub(WardrikStore, :put, fn _store, _ns, _key, _value -> {:error, :no_quorum} end)
 
       assert command(["vault", "put", "#{name}=v"]) ==
                {"#{name} was not sealed: :no_quorum\n", 1}
@@ -224,7 +226,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert output =~ "Make one? [Yn]: Made a vault key, in #{dir}/vault_key.\nSealed #{name}.\n"
 
       assert File.stat!(Path.join(dir, "vault_key")).mode |> Bitwise.band(0o777) == 0o600
-      assert WardrikVault.fetch(name, nil) == {:ok, "v"}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "v"}
 
       assert command(["vault", "put", "#{name}=again"]) == {"Sealed #{name}.\n", 0}
     end
@@ -279,10 +281,10 @@ defmodule WardrikDaemon.CLI.VaultTest do
   describe "vault ls" do
     test "names each secret and whose it is, never its value", %{name: name} do
       org = "org-#{name}"
-      :ok = WardrikVault.put(name, nil, "deployment-value")
-      :ok = WardrikVault.put(name, org, "org-value")
-      :ok = WardrikVault.put(name, {org, "jon"}, "jon-value")
-      :ok = WardrikVault.put(name, {org, "ann"}, "ann-value")
+      :ok = WardrikVault.put(store(), name, nil, "deployment-value")
+      :ok = WardrikVault.put(store(), name, org, "org-value")
+      :ok = WardrikVault.put(store(), name, {org, "jon"}, "jon-value")
+      :ok = WardrikVault.put(store(), name, {org, "ann"}, "ann-value")
 
       {output, 0} = command(["vault", "ls"])
 
@@ -299,7 +301,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "marks a name the daemon's environment sets too", %{name: name} do
-      :ok = WardrikVault.put(name, nil, "v")
+      :ok = WardrikVault.put(store(), name, nil, "v")
       System.put_env(name, "set")
       on_exit(fn -> System.delete_env(name) end)
 
@@ -309,7 +311,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "says where the vault holds nothing" do
-      Mimic.stub(WardrikStore, :keys, fn :vault -> [] end)
+      Mimic.stub(WardrikStore, :keys, fn _store, :vault -> [] end)
 
       assert command(["vault", "ls"]) ==
                {"The vault holds no secrets. wardrik vault put NAME seals one.\n", 0}
@@ -317,9 +319,9 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "answers --json with each secret's name and owner", %{name: name} do
       org = "org-#{name}"
-      :ok = WardrikVault.put(name, nil, "v")
-      :ok = WardrikVault.put(name, org, "v")
-      :ok = WardrikVault.put(name, {org, "jon"}, "v")
+      :ok = WardrikVault.put(store(), name, nil, "v")
+      :ok = WardrikVault.put(store(), name, org, "v")
+      :ok = WardrikVault.put(store(), name, {org, "jon"}, "v")
 
       {output, 0} = command(["vault", "ls", "--json"])
 
@@ -344,14 +346,14 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   describe "vault rm" do
     test "removes one secret, of the owner named", %{name: name} do
-      :ok = WardrikVault.put(name, nil, "v")
-      :ok = WardrikVault.put(name, "acme", "v")
+      :ok = WardrikVault.put(store(), name, nil, "v")
+      :ok = WardrikVault.put(store(), name, "acme", "v")
 
       assert command(["vault", "rm", name, "--org", "acme"]) == {"Removed #{name} for acme.\n", 0}
-      assert WardrikVault.fetch(name, "acme") == {:error, :not_found}
-      assert WardrikVault.fetch(name, nil) == {:ok, "v"}
+      assert WardrikVault.fetch(store(), name, "acme") == {:error, :not_found}
+      assert WardrikVault.fetch(store(), name, nil) == {:ok, "v"}
 
-      :ok = WardrikVault.put(name, {"acme", "jon"}, "v")
+      :ok = WardrikVault.put(store(), name, {"acme", "jon"}, "v")
 
       assert command(["vault", "rm", name, "--org", "acme", "--user", "jon"]) ==
                {"Removed #{name} for acme/@jon.\n", 0}

@@ -2,6 +2,8 @@ defmodule WardrikHTTP.RouterTest do
   # The audit is one for the node, which these tests read.
   use ExUnit.Case, async: false
 
+  import Wardrik.Test, only: [store: 0]
+
   alias ReqLLM.Context
   alias Wardrik.Agent
   alias Wardrik.Agent.Spec
@@ -23,18 +25,20 @@ defmodule WardrikHTTP.RouterTest do
     use Wardrik.Definition
 
     @impl true
-    def put(_key, %{"refuse" => message}, _grant), do: {:error, message}
-    def put(key, %{"owned" => true}, _grant), do: {:error, :conflict, "#{key} belongs to a file."}
+    def put(_host, _key, %{"refuse" => message}, _grant), do: {:error, message}
 
-    def put(_key, %{"elsewhere" => true}, _grant),
+    def put(_host, key, %{"owned" => true}, _grant),
+      do: {:error, :conflict, "#{key} belongs to a file."}
+
+    def put(_host, _key, %{"elsewhere" => true}, _grant),
       do: {:ok, Spec.new(id: Wardrik.AgentID.parse!("test/elsewhere"))}
 
-    def put(key, %{"allow" => names}, _grant) do
+    def put(_host, key, %{"allow" => names}, _grant) do
       own = [Wardrik.Hook.new("own", Wardrik.Test.Tools.Rules, allow: names)]
       {:ok, Spec.new(id: key, hooks: own)}
     end
 
-    def put(key, fields, _grant) do
+    def put(_host, key, fields, _grant) do
       config = Config.new(model_spec: Map.get(fields, "model", "anthropic:claude-sonnet-5"))
       {:ok, Spec.new(id: key, config: config)}
     end
@@ -50,56 +54,56 @@ defmodule WardrikHTTP.RouterTest do
     @triggers :router_test_triggers
 
     @impl true
-    def put(key, definition, grant) do
-      with {:ok, spec} <- Definition.put(key, definition, grant),
-           {:ok, _vsn} <- WardrikStore.put(@ns, to_string(key), definition),
+    def put(host, key, definition, grant) do
+      with {:ok, spec} <- Definition.put(host, key, definition, grant),
+           {:ok, _vsn} <- WardrikStore.put(store(), @ns, to_string(key), definition),
            do: {:ok, spec}
     end
 
     @impl true
-    def get(key) do
-      case WardrikStore.get(@ns, to_string(key)) do
+    def get(_host, key) do
+      case WardrikStore.get(store(), @ns, to_string(key)) do
         nil -> {:error, :not_found}
         definition -> {:ok, definition}
       end
     end
 
     @impl true
-    def delete(key) do
+    def delete(_host, key) do
       cond do
         String.contains?(key.name, "-owned") -> {:error, :conflict, "#{key} belongs to a file."}
-        WardrikStore.get(@ns, to_string(key)) == nil -> {:error, :not_found}
-        true -> WardrikStore.delete(@ns, to_string(key))
+        WardrikStore.get(store(), @ns, to_string(key)) == nil -> {:error, :not_found}
+        true -> WardrikStore.delete(store(), @ns, to_string(key))
       end
     end
 
     @impl true
-    def put_trigger(_key, _name, %{"refuse" => message}), do: {:error, message}
+    def put_trigger(_host, _key, _name, %{"refuse" => message}), do: {:error, message}
 
-    def put_trigger(key, name, fields) do
-      with :ok <- editable(key),
-           {:ok, _definition} <- get(key) do
+    def put_trigger(host, key, name, fields) do
+      with :ok <- editable(host, key),
+           {:ok, _definition} <- get(host, key) do
         status = if triggered(key, name), do: :changed, else: :created
         defaults = %{"name" => name, "overlap" => "skip", "missed" => "run_once", "jitter" => 0}
         trigger = Map.merge(defaults, fields)
-        {:ok, _vsn} = WardrikStore.put(@triggers, "#{key}//#{name}", trigger)
+        {:ok, _vsn} = WardrikStore.put(store(), @triggers, "#{key}//#{name}", trigger)
         {:ok, status, trigger}
       end
     end
 
     @impl true
-    def delete_trigger(key, name) do
-      with :ok <- editable(key) do
+    def delete_trigger(host, key, name) do
+      with :ok <- editable(host, key) do
         if triggered(key, name),
-          do: WardrikStore.delete(@triggers, "#{key}//#{name}"),
+          do: WardrikStore.delete(store(), @triggers, "#{key}//#{name}"),
           else: {:error, :not_found}
       end
     end
 
-    defp triggered(key, name), do: WardrikStore.get(@triggers, "#{key}//#{name}")
+    defp triggered(key, name), do: WardrikStore.get(store(), @triggers, "#{key}//#{name}")
 
     @impl true
-    def editable(key) do
+    def editable(_host, key) do
       if String.contains?(key.name, "-owned"),
         do: {:error, :conflict, "#{key} belongs to a file."},
         else: :ok
@@ -141,7 +145,7 @@ defmodule WardrikHTTP.RouterTest do
     @behaviour Wardrik.Connections
 
     @impl true
-    def list(owner) do
+    def list(_host, owner) do
       [
         %{provider: "github", held_by: if(owner == {"test", "jon"}, do: :person)},
         %{provider: "linear", held_by: nil}
@@ -149,16 +153,16 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     @impl true
-    def connect("github", {"test", "jon"}, _by), do: {:ok, :held}
+    def connect(_host, "github", {"test", "jon"}, _by), do: {:ok, :held}
 
-    def connect(provider, _owner, _by) when provider in ["github", "linear"],
+    def connect(_host, provider, _owner, _by) when provider in ["github", "linear"],
       do: {:ok, %{url: "https://auth.example.com/#{provider}", code: nil}}
 
-    def connect(_provider, _owner, _by), do: {:error, :not_found}
+    def connect(_host, _provider, _owner, _by), do: {:error, :not_found}
 
     @impl true
-    def disconnect("github", {"test", "jon"}), do: :ok
-    def disconnect(_provider, _owner), do: {:error, :not_found}
+    def disconnect(_host, "github", {"test", "jon"}), do: :ok
+    def disconnect(_host, _provider, _owner), do: {:error, :not_found}
   end
 
   # Hands the test each request a trigger is delivered, and answers by its
@@ -193,11 +197,20 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(:down), do: ~s(Down realm="test")
   end
 
-  @host Host.new(definitions: Definition, connections: Linked, triggers: Hooked)
+  @host Host.new(
+          store: Wardrik.Test.store(),
+          definitions: Definition,
+          connections: Linked,
+          triggers: Hooked
+        )
 
   setup do
     {:ok, secret, token} =
-      Token.create("router-test", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+      Token.create(store(), "router-test",
+        scope: Prefix.parse!("test/"),
+        can: Grant.actions(),
+        ceiling: []
+      )
 
     listener = :"router-#{System.unique_integer([:positive])}"
     start_supervised!({Listener, name: listener, port: 0, host: @host})
@@ -310,7 +323,11 @@ defmodule WardrikHTTP.RouterTest do
       {longer, _agent} = Fleet.start_agent([], longer_id)
 
       {:ok, secret, _token} =
-        Token.create("one-agent", Prefix.of(key), Grant.actions(), ceiling: [])
+        Token.create(store(), "one-agent",
+          scope: Prefix.of(key),
+          can: Grant.actions(),
+          ceiling: []
+        )
 
       one = Req.merge(api, auth: {:bearer, secret})
 
@@ -351,7 +368,7 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = echo_agent()
 
       {:ok, secret, _token} =
-        Token.create("watcher", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "watcher", scope: Prefix.parse!("test/"), can: [:read])
 
       watcher = Req.merge(api, auth: {:bearer, secret})
 
@@ -388,12 +405,16 @@ defmodule WardrikHTTP.RouterTest do
       {key, _agent} = echo_agent()
 
       {:ok, secret, token} =
-        Token.create("revoked", Prefix.parse!("test/"), Grant.actions(), ceiling: [])
+        Token.create(store(), "revoked",
+          scope: Prefix.parse!("test/"),
+          can: Grant.actions(),
+          ceiling: []
+        )
 
       revoked = Req.merge(api, auth: {:bearer, secret})
       stream = open(revoked, key, [])
 
-      :ok = Token.revoke(token.id)
+      :ok = Token.revoke(store(), token.id)
 
       assert ended(stream) == :ended
       assert {:ok, %{status: 401}} = Req.get(revoked, url: "/v1/agents")
@@ -499,7 +520,11 @@ defmodule WardrikHTTP.RouterTest do
 
     test "a token scoped to a user reaches that user's agents alone", %{api: api} do
       {:ok, secret, _token} =
-        Token.create("jon-only", Prefix.parse!("test/@jon/"), [:read], ceiling: [])
+        Token.create(store(), "jon-only",
+          scope: Prefix.parse!("test/@jon/"),
+          can: [:read],
+          ceiling: []
+        )
 
       jon = Req.merge(api, auth: {:bearer, secret})
       name = "scoped-#{System.unique_integer([:positive])}"
@@ -568,7 +593,7 @@ defmodule WardrikHTTP.RouterTest do
       assert body == %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}
 
       {:ok, secret, _token} =
-        Token.create("reader", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
       assert {:ok, %{status: 403}} =
                Req.get(api,
@@ -791,7 +816,7 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     test "are neither taken nor kept by a server with nothing to read them", %{api: api} do
-      api = listener(api, host: Host.new())
+      api = listener(api, host: Host.new(store: Wardrik.Test.store()))
       {key, _agent} = echo_agent()
 
       assert {:ok, %{status: 501, body: body}} = define(api, defined_key(), %{})
@@ -816,7 +841,11 @@ defmodule WardrikHTTP.RouterTest do
     # A client of the same listener holding a token that defines under `ceiling`.
     defp ceiled(api, ceiling) do
       {:ok, secret, _token} =
-        Token.create("ceiled", Prefix.parse!("test/"), [:define], ceiling: ceiling)
+        Token.create(store(), "ceiled",
+          scope: Prefix.parse!("test/"),
+          can: [:define],
+          ceiling: ceiling
+        )
 
       Req.merge(api, auth: {:bearer, secret})
     end
@@ -864,7 +893,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "a definition module that keeps definitions" do
     setup %{api: api} do
-      %{kept: listener(api, host: Host.new(definitions: Kept))}
+      %{kept: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))}
     end
 
     test "answers one back as it was sent, and forgets it with its agent", %{
@@ -933,7 +962,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "triggers" do
     setup %{api: api} do
-      kept = listener(api, host: Host.new(definitions: Kept))
+      kept = listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))
       key = Fleet.id("triggered")
       {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
@@ -1021,7 +1050,7 @@ defmodule WardrikHTTP.RouterTest do
       {key, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
-      :ok = Log.trim(key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       for headers <- [[], [{"accept", "text/event-stream"}]] do
         assert {:ok, %{status: 410, body: %{"error" => %{"type" => "gap", "oldest" => 3}}}} =
@@ -1155,7 +1184,9 @@ defmodule WardrikHTTP.RouterTest do
   describe "exports" do
     # A client for the same listener, holding a token of its own.
     defp client(api, scope, can) do
-      {:ok, secret, _token} = Token.create("export-test", scope, can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "export-test", scope: scope, can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1225,7 +1256,9 @@ defmodule WardrikHTTP.RouterTest do
   describe "connections" do
     defp as(api, scope, principal) do
       {:ok, secret, _token} =
-        Token.create("connections", Prefix.parse!(scope), Grant.actions(),
+        Token.create(store(), "connections",
+          scope: Prefix.parse!(scope),
+          can: Grant.actions(),
           ceiling: [],
           for: principal
         )
@@ -1287,14 +1320,19 @@ defmodule WardrikHTTP.RouterTest do
       refute Enum.any?(listed, &Map.has_key?(&1, "held_by"))
 
       {:ok, secret, _token} =
-        Token.create("reader", Prefix.parse!("test/"), [:read], ceiling: [], for: @jon)
+        Token.create(store(), "reader",
+          scope: Prefix.parse!("test/"),
+          can: [:read],
+          ceiling: [],
+          for: @jon
+        )
 
       reader = Req.merge(api, auth: {:bearer, secret})
       assert {:ok, %{status: 403}} = Req.post(reader, url: "/v1/connections/linear")
     end
 
     test "answer 501 where the host offers none", %{api: api} do
-      jon = api |> listener(host: Host.new()) |> as("test/", @jon)
+      jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
     end
@@ -1362,7 +1400,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "agents under a prefix" do
     setup %{api: api} do
-      %{api: listener(api, host: Host.new(definitions: Kept))}
+      %{api: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))}
     end
 
     defp under(org), do: Wardrik.AgentID.Prefix.new!(org: org)
@@ -1378,7 +1416,9 @@ defmodule WardrikHTTP.RouterTest do
     end
 
     defp scoped(api, org, can \\ Grant.actions()) do
-      {:ok, secret, _token} = Token.create("fleet", under(org), can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "fleet", scope: under(org), can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1444,7 +1484,9 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "an agent's life" do
     defp root(api) do
-      {:ok, secret, _token} = Token.create("root", Prefix.all(), Grant.actions(), ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "root", scope: Prefix.all(), can: Grant.actions(), ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1489,7 +1531,9 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "the deployment" do
     defp over_every_agent(api, can \\ Grant.actions()) do
-      {:ok, secret, _token} = Token.create("deployment", Prefix.all(), can, ceiling: [])
+      {:ok, secret, _token} =
+        Token.create(store(), "deployment", scope: Prefix.all(), can: can, ceiling: [])
+
       Req.merge(api, auth: {:bearer, secret})
     end
 
@@ -1598,10 +1642,10 @@ defmodule WardrikHTTP.RouterTest do
       {key, agent} = echo_agent()
       Agent.ask(agent, "hi")
       settled(agent)
-      :ok = Log.trim(key, 2, DateTime.add(DateTime.utc_now(), 1, :day))
+      :ok = Log.trim(store(), key, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
       {:ok, secret, _token} =
-        Token.create("reader", Prefix.parse!("test/"), [:read])
+        Token.create(store(), "reader", scope: Prefix.parse!("test/"), can: [:read])
 
       answers = [
         Req.get(api, url: "/v1/agents", auth: nil),

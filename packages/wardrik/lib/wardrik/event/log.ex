@@ -3,7 +3,7 @@ defmodule Wardrik.Event.Log do
   Each agent's events as CloudEvents, numbered and kept, so a client can
   resume from the last one it saw, on any node and across a `kill -9`.
 
-      {:ok, events} = Wardrik.Event.Log.read(~A"acme/triage", starting_after: 40)
+      {:ok, events} = Wardrik.Event.Log.read(store, ~A"acme/triage", starting_after: 40)
 
   A log is an agent's, named by its ID, or `:audit`, what people changed,
   which `Wardrik.Audit` writes. Each is read, followed and trimmed alike.
@@ -13,7 +13,7 @@ defmodule Wardrik.Event.Log do
   An agent's log has one writer. `Wardrik.Agent` is one process per ID across the cluster, and it is its log's
   only writer, through a `Wardrik.Event.Log.Writer`. It follows its own events,
   encodes each with `Wardrik.Event.Codec`, and writes the durable ones to
-  `WardrikStore` under the next sequence number, in the order they reach it. A
+  the host's `WardrikStore` under the next sequence number, in the order they reach it. A
   write is conditional on nothing being written under that number yet, so two
   owners of one agent can never both write it.
 
@@ -33,11 +33,13 @@ defmodule Wardrik.Event.Log do
 
   ## Reading it
 
-  `read/2` answers the events after a sequence number, oldest first. A read
+  Every read and write is handed the store the log is kept in.
+
+  `read/3` answers the events after a sequence number, oldest first. A read
   from before what the log still holds answers `{:gap, oldest}`, and the client
   starts again from the agent's snapshot, which carries the head sequence.
 
-  `logs/0` lists every log written to, a forgotten agent's included, which
+  `logs/1` lists every log written to, a forgotten agent's included, which
   `Wardrik.Event.Export` reads from end to end.
 
   ## Retention
@@ -86,20 +88,20 @@ defmodule Wardrik.Event.Log do
   Answers `{:gap, oldest}` when events after `:starting_after` have been
   dropped, where `oldest` is the first one still held.
   """
-  @spec read(log(), keyword()) :: {:ok, [map()]} | {:gap, pos_integer()}
-  def read(log, opts \\ []) when log?(log) do
+  @spec read(WardrikStore.t(), log(), keyword()) :: {:ok, [map()]} | {:gap, pos_integer()}
+  def read(store, log, opts \\ []) when log?(log) do
     next = Keyword.get(opts, :starting_after, 0) + 1
-    oldest = oldest(log)
+    oldest = oldest(store, log)
 
     if next < oldest,
       do: {:gap, oldest},
-      else: {:ok, take(log, next, opts)}
+      else: {:ok, take(store, log, next, opts)}
   end
 
   # Reads by number stop at the first one missing here. It is read again
   # through consensus before it is taken as the end, since this node's copy of
   # the store may be behind the node that wrote it.
-  defp take(log, sequence, opts) do
+  defp take(store, log, sequence, opts) do
     confirm = Keyword.get(opts, :consistent, true)
 
     Stream.unfold({sequence, Keyword.get(opts, :limit, @default_limit)}, fn
@@ -109,7 +111,7 @@ defmodule Wardrik.Event.Log do
       {sequence, limit} ->
         key = key(log, sequence)
 
-        case WardrikStore.get(@ns, key) || confirmed(key, confirm) do
+        case WardrikStore.get(store, @ns, key) || confirmed(store, key, confirm) do
           nil -> nil
           event -> {event, {sequence + 1, limit - 1}}
         end
@@ -117,22 +119,24 @@ defmodule Wardrik.Event.Log do
     |> Enum.to_list()
   end
 
-  defp confirmed(key, true), do: WardrikStore.get(@ns, key, consistent: true)
-  defp confirmed(_key, false), do: nil
+  defp confirmed(store, key, true), do: WardrikStore.get(store, @ns, key, consistent: true)
+  defp confirmed(_store, _key, false), do: nil
 
   @doc """
-  Writes `agent_id` down among the logs `logs/0` lists. Its writer's to call
+  Writes `agent_id` down among the logs `logs/1` lists. Its writer's to call
   as it opens the log.
   """
-  @spec opened(Wardrik.AgentID.t()) :: :ok | {:error, term()}
-  def opened(%Wardrik.AgentID{} = agent_id) do
-    with {:ok, _vsn} <- WardrikStore.put(@logs, to_string(agent_id), true), do: :ok
+  @spec opened(WardrikStore.t(), Wardrik.AgentID.t()) :: :ok | {:error, term()}
+  def opened(store, %Wardrik.AgentID{} = agent_id) do
+    with {:ok, _vsn} <- WardrikStore.put(store, @logs, to_string(agent_id), true), do: :ok
   end
 
   @doc "Every log written to: `:audit`, then each agent's, by its ID's text."
-  @spec logs() :: [log()]
-  def logs do
-    agents = @logs |> WardrikStore.keys() |> Enum.sort() |> Enum.map(&Wardrik.AgentID.parse!/1)
+  @spec logs(WardrikStore.t()) :: [log()]
+  def logs(store) do
+    agents =
+      store |> WardrikStore.keys(@logs) |> Enum.sort() |> Enum.map(&Wardrik.AgentID.parse!/1)
+
     [:audit | agents]
   end
 
@@ -152,27 +156,36 @@ defmodule Wardrik.Event.Log do
     do: Group.dispatch(__MODULE__, to_string(log), entry)
 
   @doc """
-  Drops the events of `log` written before `cutoff`, oldest first, and none
-  after the sequence `through`.
-  """
-  @spec trim(log(), non_neg_integer(), DateTime.t()) :: :ok | {:error, term()}
-  def trim(log, through, %DateTime{} = cutoff) when log?(log) do
-    {dropped, vsn} = lookup_dropped(log)
+  Drops the events of `log` written before `opts[:before]`, oldest first,
+  and none after the sequence `opts[:through]`.
 
-    case expired_through(log, dropped, through, cutoff) do
-      ^dropped -> :ok
-      last -> with :ok <- put_dropped(log, last, vsn), do: drop(log, dropped + 1, last)
+      Log.trim(store, log, through: head, before: cutoff)
+  """
+  @spec trim(WardrikStore.t(), log(), through: non_neg_integer(), before: DateTime.t()) ::
+          :ok | {:error, term()}
+  def trim(store, log, opts) when log?(log) do
+    opts = Keyword.validate!(opts, [:through, :before])
+    %DateTime{} = cutoff = Keyword.fetch!(opts, :before)
+    through = Keyword.fetch!(opts, :through)
+    {dropped, vsn} = lookup_dropped(store, log)
+
+    case expired_through(store, log, dropped, through, cutoff) do
+      ^dropped ->
+        :ok
+
+      last ->
+        with :ok <- put_dropped(store, log, last, vsn), do: drop(store, log, dropped + 1, last)
     end
   end
 
-  defp expired_through(log, sequence, through, cutoff) do
+  defp expired_through(store, log, sequence, through, cutoff) do
     next = sequence + 1
 
     with true <- next <= through,
-         %{"time" => time} <- WardrikStore.get(@ns, key(log, next)),
+         %{"time" => time} <- WardrikStore.get(store, @ns, key(log, next)),
          {:ok, at, _offset} <- DateTime.from_iso8601(time),
          :lt <- DateTime.compare(at, cutoff) do
-      expired_through(log, next, through, cutoff)
+      expired_through(store, log, next, through, cutoff)
     else
       _kept -> sequence
     end
@@ -180,19 +193,19 @@ defmodule Wardrik.Event.Log do
 
   # What has been dropped is written down before the events go, so a read never
   # finds them missing without being told of the gap.
-  defp put_dropped(log, last, vsn) do
-    case WardrikStore.put(@ns, dropped_key(log), last, if_vsn: vsn) do
+  defp put_dropped(store, log, last, vsn) do
+    case WardrikStore.put(store, @ns, dropped_key(log), last, if_vsn: vsn) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp drop(log, first, last) do
+  defp drop(store, log, first, last) do
     Enum.reduce_while(first..last//1, :ok, fn sequence, :ok ->
       key = key(log, sequence)
 
-      case WardrikStore.lookup(@ns, key) do
-        {_event, vsn} -> WardrikStore.delete(@ns, key, if_vsn: vsn) |> continue()
+      case WardrikStore.lookup(store, @ns, key) do
+        {_event, vsn} -> WardrikStore.delete(store, @ns, key, if_vsn: vsn) |> continue()
         nil -> {:cont, :ok}
       end
     end)
@@ -205,12 +218,12 @@ defmodule Wardrik.Event.Log do
   The first sequence `log` still holds, or would hold: `1` until events have
   been dropped. `consistent: true` reads it through consensus.
   """
-  @spec oldest(log(), keyword()) :: pos_integer()
-  def oldest(log, opts \\ []) when log?(log),
-    do: (WardrikStore.get(@ns, dropped_key(log), opts) || 0) + 1
+  @spec oldest(WardrikStore.t(), log(), keyword()) :: pos_integer()
+  def oldest(store, log, opts \\ []) when log?(log),
+    do: (WardrikStore.get(store, @ns, dropped_key(log), opts) || 0) + 1
 
-  defp lookup_dropped(log) do
-    case WardrikStore.lookup(@ns, dropped_key(log)) do
+  defp lookup_dropped(store, log) do
+    case WardrikStore.lookup(store, @ns, dropped_key(log)) do
       {dropped, vsn} -> {dropped, vsn}
       nil -> {0, nil}
     end
@@ -223,28 +236,28 @@ defmodule Wardrik.Event.Log do
   The numbers a log holds are written without a gap, so a gallop forward
   finds a number past the head, and a bisection back finds the head.
   """
-  @spec head(log(), non_neg_integer()) :: non_neg_integer()
-  def head(log, known) when log?(log) and is_integer(known) and known >= 0,
-    do: gallop(log, known, 1)
+  @spec head(WardrikStore.t(), log(), non_neg_integer()) :: non_neg_integer()
+  def head(store, log, known) when log?(log) and is_integer(known) and known >= 0,
+    do: gallop(store, log, known, 1)
 
-  defp gallop(log, known, step) do
-    if written?(log, known + step),
-      do: gallop(log, known + step, step * 2),
-      else: bisect(log, known, known + step)
+  defp gallop(store, log, known, step) do
+    if written?(store, log, known + step),
+      do: gallop(store, log, known + step, step * 2),
+      else: bisect(store, log, known, known + step)
   end
 
-  defp bisect(_log, known, missing) when missing - known <= 1, do: known
+  defp bisect(_store, _log, known, missing) when missing - known <= 1, do: known
 
-  defp bisect(log, known, missing) do
+  defp bisect(store, log, known, missing) do
     middle = div(known + missing, 2)
 
-    if written?(log, middle),
-      do: bisect(log, middle, missing),
-      else: bisect(log, known, middle)
+    if written?(store, log, middle),
+      do: bisect(store, log, middle, missing),
+      else: bisect(store, log, known, middle)
   end
 
-  defp written?(log, sequence),
-    do: WardrikStore.get(@ns, key(log, sequence), consistent: true) != nil
+  defp written?(store, log, sequence),
+    do: WardrikStore.get(store, @ns, key(log, sequence), consistent: true) != nil
 
   @doc "The store key the event of `log` at `sequence` is written under."
   @spec key(log(), pos_integer()) :: WardrikStore.key()

@@ -44,7 +44,11 @@ defmodule WardrikTrigger do
   by the host's `:secrets`, so each org can keep its own, and from the
   environment where the host gives none:
 
-      children = [Wardrik, {WardrikTrigger, secrets: &MyApp.Vault.secret/2}]
+      children = [
+        {WardrikStore, store},
+        {Wardrik, host: host},
+        {WardrikTrigger, store: store, secrets: &MyApp.Vault.secret/2}
+      ]
 
   `sync/2` brings an agent's triggers to a list, starting, changing and
   deleting them, and `sync(agent, [])` deletes them all; what keeps the
@@ -143,18 +147,19 @@ defmodule WardrikTrigger do
 
   @doc """
   Starts the supervisor the triggers run under, over the store the fleet
-  runs on. `:log` is passed to `Group`, and `:secrets` reads a webhook's
-  secret by its name for an agent, `System.get_env/1` of the name by default.
+  runs on, which `:store` names. `:log` is passed to `Group`, and `:secrets`
+  reads a webhook's secret by its name for an agent, `System.get_env/1` of
+  the name by default.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts \\ []) do
+  def start_link(opts) do
     :persistent_term.put(@secrets, Keyword.get(opts, :secrets, &environment/2))
 
     DurableServer.Supervisor.start_link(
       [
         name: @name,
         prefix: "triggers/",
-        backend: WardrikStore.durable_backend(),
+        backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
         group: [log: Keyword.get(opts, :log, false)]
       ] ++ WardrikStore.durable_shutdown()
     )

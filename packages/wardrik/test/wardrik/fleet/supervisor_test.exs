@@ -3,10 +3,20 @@ defmodule Wardrik.Fleet.SupervisorTest do
 
   alias Wardrik.Fleet.Supervisor
 
-  test "the fleet is running, with the store under it" do
+  test "the fleet is running" do
     assert is_pid(Process.whereis(Supervisor))
 
     children = Supervisor |> Elixir.Supervisor.which_children() |> Enum.map(&elem(&1, 0))
-    assert WardrikStore in children
+    assert children == [Wardrik.Fleet]
+  end
+
+  test "keeps the fleet in the host's store, and hands every agent the host" do
+    host = Wardrik.Test.host()
+
+    {:ok, {_flags, [%{start: {DurableServer.Supervisor, :start_link, [opts]}}]}} =
+      Supervisor.init(host: host)
+
+    assert opts[:backend] == WardrikStore.durable_backend(host.store)
+    assert opts[:init_info] == %{host: host}
   end
 end

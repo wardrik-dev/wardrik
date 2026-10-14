@@ -3,7 +3,7 @@ defmodule WardrikStore.Memory do
   A `WardrikStore` in this node's memory, for tests and for a node that keeps
   nothing.
 
-      {Wardrik, store: [adapter: WardrikStore.Memory]}
+      store = WardrikStore.new(adapter: WardrikStore.Memory)
 
   Every write is versioned, so conditional writes behave as they do on a
   durable adapter. It holds the fleet of one node through
@@ -16,89 +16,81 @@ defmodule WardrikStore.Memory do
 
   ## Instances
 
-  `:name` starts another instance beside the one the adapter uses, for a
-  test that wants a store of its own. Every function takes `name:` in its
-  options to work on that instance:
+  `:name` names the instance, `WardrikStore.Memory` unless given, so a test
+  that wants a store of its own starts one beside any other:
 
-      start_supervised!({WardrikStore.Memory, name: :mine})
-      WardrikStore.Memory.put(:ns, "a", 1, name: :mine)
-      WardrikStore.Memory.keys(:ns, "", name: :mine)
+      store = WardrikStore.new(adapter: WardrikStore.Memory, name: :mine)
+      start_supervised!({WardrikStore, store})
+      WardrikStore.put(store, :ns, "a", 1)
   """
 
   @behaviour WardrikStore
 
   use GenServer
 
-  @doc "Starts the store, empty, under `:name`, the adapter's own unless given."
-  @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts \\ []) do
-    name = Keyword.get(opts, :name, __MODULE__)
-    GenServer.start_link(__MODULE__, name, name: name)
-  end
+  @enforce_keys [:name]
+  defstruct [:name]
+
+  @typedoc "A store in memory: the name of its process and of the table it owns."
+  @type t() :: %__MODULE__{name: atom()}
 
   @impl WardrikStore
-  def child_spec(opts),
-    do: %{id: Keyword.get(opts, :name, __MODULE__), start: {__MODULE__, :start_link, [opts]}}
+  def build(opts), do: {:ok, %__MODULE__{name: Keyword.get(opts, :name, __MODULE__)}}
 
-  @impl WardrikStore
-  def check(_opts), do: {:ok, "in this node's memory"}
+  @doc "Starts the store, empty, under `name`."
+  @spec start_link(atom()) :: GenServer.on_start()
+  def start_link(name) when is_atom(name), do: GenServer.start_link(__MODULE__, name, name: name)
 
-  @impl WardrikStore
-  def quorum(_size), do: 1
+  @doc "Forgets everything `store` holds."
+  @spec clear(t()) :: :ok
+  def clear(%__MODULE__{name: name}), do: GenServer.call(name, :clear)
 
-  # Its reads are current because there is only the one node.
-  @impl WardrikStore
-  def durable_backend(opts), do: {WardrikStore.Durable, [store: __MODULE__] ++ opts}
+  defimpl WardrikStore.Adapter do
+    def child_spec(%{name: name}),
+      do: %{id: name, start: {WardrikStore.Memory, :start_link, [name]}}
 
-  @doc "Forgets everything."
-  @spec clear(keyword()) :: :ok
-  def clear(opts \\ []), do: GenServer.call(name(opts), :clear)
+    def check(_store), do: {:ok, "in this node's memory"}
+    def quorum(_store, _size), do: 1
 
-  @impl WardrikStore
-  def put(ns, key, value, opts),
-    do: GenServer.call(name(opts), {:put, {ns, key}, value, Keyword.fetch(opts, :if_vsn)})
+    # Its reads are current because there is only the one node.
+    def durable_backend(store), do: {WardrikStore.Durable, store: store}
 
-  @impl WardrikStore
-  def get(ns, key, opts) do
-    case lookup(ns, key, opts) do
-      {value, _vsn} -> value
-      nil -> nil
+    def put(%{name: name}, ns, key, value, opts),
+      do: GenServer.call(name, {:put, {ns, key}, value, Keyword.fetch(opts, :if_vsn)})
+
+    def get(store, ns, key, _opts) do
+      case lookup(store, ns, key) do
+        {value, _vsn} -> value
+        nil -> nil
+      end
     end
-  end
 
-  @impl WardrikStore
-  def lookup(ns, key, opts \\ []) do
-    case :ets.lookup(name(opts), {ns, key}) do
-      [{_key, value, vsn}] -> {value, vsn}
-      [] -> nil
+    def lookup(%{name: name}, ns, key) do
+      case :ets.lookup(name, {ns, key}) do
+        [{_key, value, vsn}] -> {value, vsn}
+        [] -> nil
+      end
     end
+
+    def delete(%{name: name}, ns, key, opts),
+      do: GenServer.call(name, {:delete, {ns, key}, Keyword.fetch(opts, :if_vsn)})
+
+    # The table is walked from the prefix to the first key past it, so no
+    # other key is read.
+    def keys(%{name: table}, ns, prefix) do
+      from = {ns, prefix}
+      first = if :ets.member(table, from), do: from, else: :ets.next(table, from)
+      walk(table, first, ns, prefix, [])
+    end
+
+    defp walk(table, {ns, key} = at, ns, prefix, keys) do
+      if String.starts_with?(key, prefix),
+        do: walk(table, :ets.next(table, at), ns, prefix, [key | keys]),
+        else: Enum.reverse(keys)
+    end
+
+    defp walk(_table, _past, _ns, _prefix, keys), do: Enum.reverse(keys)
   end
-
-  @impl WardrikStore
-  def delete(ns, key, opts),
-    do: GenServer.call(name(opts), {:delete, {ns, key}, Keyword.fetch(opts, :if_vsn)})
-
-  @doc """
-  Every key in `ns` starting with `prefix`, in order. The table is walked
-  from the prefix to the first key past it, so no other key is read.
-  """
-  @impl WardrikStore
-  def keys(ns, prefix, opts \\ []) do
-    table = name(opts)
-    from = {ns, prefix}
-    first = if :ets.member(table, from), do: from, else: :ets.next(table, from)
-    walk(table, first, ns, prefix, [])
-  end
-
-  defp walk(table, {ns, key} = at, ns, prefix, keys) do
-    if String.starts_with?(key, prefix),
-      do: walk(table, :ets.next(table, at), ns, prefix, [key | keys]),
-      else: Enum.reverse(keys)
-  end
-
-  defp walk(_table, _past, _ns, _prefix, keys), do: Enum.reverse(keys)
-
-  defp name(opts), do: Keyword.get(opts, :name, __MODULE__)
 
   @impl GenServer
   def init(name),

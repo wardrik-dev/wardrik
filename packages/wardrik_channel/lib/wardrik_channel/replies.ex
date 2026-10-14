@@ -49,6 +49,8 @@ defmodule WardrikChannel.Replies do
     * `:channels` - the channels it posts in, as `WardrikChannel.channels/2`
       makes them, handed to each room's process as it starts, wakes, or
       restarts on another node; required
+    * `:store` - the `WardrikStore` the fleet runs on, which the rooms are
+      kept in; required
     * `:name` - what it runs under, `supervisor/0` unless given; a channel's
       context names it as `:replies`
   """
@@ -68,14 +70,14 @@ defmodule WardrikChannel.Replies do
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
-    opts = Keyword.validate!(opts, [:channels, name: @name])
+    opts = Keyword.validate!(opts, [:channels, :store, name: @name])
     name = Keyword.fetch!(opts, :name)
 
     DurableServer.Supervisor.start_link(
       [
         name: name,
         prefix: "channel_replies/#{inspect(name)}/",
-        backend: WardrikStore.durable_backend(),
+        backend: opts |> Keyword.fetch!(:store) |> WardrikStore.durable_backend(),
         init_info: %{channels: Keyword.fetch!(opts, :channels)}
       ] ++ WardrikStore.durable_shutdown()
     )

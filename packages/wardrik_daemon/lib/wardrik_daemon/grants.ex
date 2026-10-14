@@ -39,21 +39,21 @@ defmodule WardrikDaemon.Grants do
   @deciders [:read, :message, :decide]
 
   @impl Wardrik.Grants
-  def grants(principal), do: granted(Principal.type(principal), principal)
+  def grants(host, principal), do: granted(Principal.type(principal), principal, host)
 
-  defp granted(type, _principal) when type in [:shell, :terminal, :ssh] do
+  defp granted(type, _principal, _host) when type in [:shell, :terminal, :ssh] do
     {:ok, root} = Grant.new(Prefix.all())
     [root]
   end
 
-  defp granted(:token, principal) do
-    case WardrikHTTP.Token.get(Principal.id(principal)) do
+  defp granted(:token, principal, host) do
+    case WardrikHTTP.Token.get(Wardrik.Host.store(host), Principal.id(principal)) do
       {:ok, token} -> [token.grant]
       :error -> []
     end
   end
 
-  defp granted(:channel, principal) do
+  defp granted(:channel, principal, _host) do
     {channel, user} = WardrikChannel.person(principal)
 
     {can, ceiling} =
@@ -69,7 +69,7 @@ defmodule WardrikDaemon.Grants do
     end
   end
 
-  defp granted(_type, _principal), do: []
+  defp granted(_type, _principal, _host), do: []
 
   # An admin defines only under a policy the deployment names for it.
   defp admin do

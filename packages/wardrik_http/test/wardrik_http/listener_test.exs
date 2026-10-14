@@ -9,7 +9,10 @@ defmodule WardrikHTTP.ListenerTest do
 
   test "serves the API on any free port, and says which" do
     listener = name()
-    start_supervised!({Listener, name: listener, port: 0, host: Wardrik.Host.new()})
+
+    start_supervised!(
+      {Listener, name: listener, port: 0, host: Wardrik.Host.new(store: Wardrik.Test.store())}
+    )
 
     assert {:ok, port} = Listener.port(listener)
     assert {:ok, %{status: 401}} = Req.get("http://127.0.0.1:#{port}/v1/agents", retry: false)
@@ -23,7 +26,11 @@ defmodule WardrikHTTP.ListenerTest do
     log =
       capture_log(fn ->
         start_supervised!(
-          {Listener, name: listener, port: port, retry: :timer.hours(1), host: Wardrik.Host.new()}
+          {Listener,
+           name: listener,
+           port: port,
+           retry: :timer.hours(1),
+           host: Wardrik.Host.new(store: Wardrik.Test.store())}
         )
 
         assert :error = Listener.port(listener)

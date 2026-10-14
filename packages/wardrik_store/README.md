@@ -11,10 +11,12 @@ packages write through, and the adapters that need nothing else.
 | [wardrik_ecto](../wardrik_ecto) | in a Postgres table, through an Ecto repo the host owns |
 | [wardrik_s3](../wardrik_s3) | in an S3 bucket |
 
-A deployment names its adapter once, as `Wardrik`'s `:store`:
+A deployment names its adapter once, as a store value it starts and hands to
+everything that keeps anything, `Wardrik` on its host among them:
 
 ```elixir
-{Wardrik, store: [adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"]}
+store = WardrikStore.new(adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik")
+children = [{WardrikStore, store}, {Wardrik, host: Wardrik.Host.new(store: store)}]
 ```
 
 ## Writing an adapter
@@ -24,7 +26,14 @@ its tests pass the shared suite:
 
 ```elixir
 defmodule MyStore.ConformanceTest do
-  use WardrikStore.Conformance, adapter: MyStore
+  use ExUnit.Case
+  use WardrikStore.Conformance
+
+  setup_all do
+    store = WardrikStore.new(adapter: MyStore)
+    start_supervised!({WardrikStore, store})
+    %{store: store}
+  end
 end
 ```
 

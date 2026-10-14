@@ -1,6 +1,8 @@
 defmodule Wardrik.LLM.ToolRunnerLedgerTest do
   use ExUnit.Case, async: true
 
+  import Wardrik.Test, only: [host: 0]
+
   alias Wardrik.Call
   alias Wardrik.Event
   alias Wardrik.Ledger
@@ -12,11 +14,11 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
   defmodule Unanswering do
     @behaviour Wardrik.Ledger
     @impl true
-    def claim(_key, _call), do: {:error, :store_down}
+    def claim(_host, _key, _call), do: {:error, :store_down}
     @impl true
-    def settle(_key, _result), do: :ok
+    def settle(_host, _key, _result), do: :ok
     @impl true
-    def fetch(_key), do: :error
+    def fetch(_host, _key), do: :error
   end
 
   # A tool that passes its call's idempotency key on, so it may run again.
@@ -64,7 +66,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
   end
 
   defp scope(agent_id, tools, ledger \\ Ledger.Store) do
-    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", ledger: ledger)
+    Config.new(tools: tools) |> Scope.root(agent_id, name: "turn", ledger: ledger, host: host())
   end
 
   defp call(id, name), do: %{id: id, name: name, arguments: %{}}
@@ -77,7 +79,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert_received {:ran, "refund"}
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"done" => true}}}} =
-             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+             Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, call))
   end
 
   test "a call already settled is answered from the ledger without running", %{agent_id: agent_id} do
@@ -114,7 +116,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
        %{agent_id: agent_id} do
     scope = scope(agent_id, [counted("refund")])
     call = call("call_1", "refund")
-    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+    :ok = Ledger.claim(Ledger.Store, host(), Ledger.key(scope, call), call)
 
     assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
              waiting = ToolRunner.execute(call, scope)
@@ -127,14 +129,14 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert_received {:ran, "refund"}
 
     assert {:ok, %Ledger.Entry{result: {:ok, _}}} =
-             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+             Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, call))
   end
 
   test "a call claimed and never settled runs again under its key where its tool says it may",
        %{agent_id: agent_id} do
     scope = scope(agent_id, [Rerunnable])
     call = call("call_1", "refund")
-    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+    :ok = Ledger.claim(Ledger.Store, host(), Ledger.key(scope, call), call)
 
     assert %Call{id: "call_1", state: :done} = ToolRunner.execute(call, scope)
 
@@ -142,7 +144,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert_received {:ran, "refund", ^key}
 
     assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
-             Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+             Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, call))
   end
 
   test "approving what a hook asked runs nothing the ledger holds as begun", %{
@@ -150,7 +152,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
   } do
     scope = scope(agent_id, [counted("deploy")])
     call = call("call_1", "deploy")
-    :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+    :ok = Ledger.claim(Ledger.Store, host(), Ledger.key(scope, call), call)
 
     approved = %{
       Call.tool(call)
@@ -184,7 +186,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     assert %Call{state: :waiting, asks: [%Call.Ask{by: :tool, prompt: "Connect GitHub first."}]} =
              ToolRunner.execute(call, scope)
 
-    assert :error = Ledger.fetch(Ledger.Store, Ledger.key(scope, call))
+    assert :error = Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, call))
   end
 
   test "a call the ledger cannot answer for does not run", %{agent_id: agent_id} do
@@ -230,7 +232,7 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     test "that began and never finished tells the model it may have run", %{agent_id: agent_id} do
       scope = scope(agent_id, [counted("deploy")])
       call = call("call_1", "deploy")
-      :ok = Ledger.claim(Ledger.Store, Ledger.key(scope, call), call)
+      :ok = Ledger.claim(Ledger.Store, host(), Ledger.key(scope, call), call)
 
       ToolRunner.refuse(call, scope, "Not today.")
 
@@ -253,11 +255,11 @@ defmodule Wardrik.LLM.ToolRunnerLedgerTest do
     ToolRunner.execute(call, Scope.batch(turn, 1))
     ToolRunner.execute(call, other)
 
-    assert :ok = Ledger.Store.forget(agent_id, turn.source.trace.trace_id)
+    assert :ok = Ledger.Store.forget(host(), agent_id, turn.source.trace.trace_id)
 
-    assert :error = Ledger.fetch(Ledger.Store, Ledger.key(Scope.batch(turn, 0), call))
-    assert :error = Ledger.fetch(Ledger.Store, Ledger.key(Scope.batch(turn, 1), call))
-    assert {:ok, _entry} = Ledger.fetch(Ledger.Store, Ledger.key(other, call))
+    assert :error = Ledger.fetch(Ledger.Store, host(), Ledger.key(Scope.batch(turn, 0), call))
+    assert :error = Ledger.fetch(Ledger.Store, host(), Ledger.key(Scope.batch(turn, 1), call))
+    assert {:ok, _entry} = Ledger.fetch(Ledger.Store, host(), Ledger.key(other, call))
   end
 
   test "idempotency_key/2 names one call in one turn", %{agent_id: agent_id} do

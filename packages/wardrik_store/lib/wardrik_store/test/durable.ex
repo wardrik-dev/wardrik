@@ -4,8 +4,9 @@ defmodule WardrikStore.Test.Durable do
   restart, through `WardrikStore.Durable`.
 
       test "holds a DurableServer in Postgres through a restart" do
-        :ignore = WardrikEcto.Store.start_link(repo: MyApp.Repo)
-        WardrikStore.Test.Durable.survives_a_restart(WardrikEcto.Store, :durable_over_postgres)
+        store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+        start_supervised!({WardrikStore, store})
+        WardrikStore.Test.Durable.survives_a_restart(store, :durable_over_postgres)
       end
 
   `name` names the `DurableServer.Supervisor` the check starts, and the prefix
@@ -26,7 +27,7 @@ defmodule WardrikStore.Test.Durable do
   end
 
   @doc "Counts to two under `store`, restarts the counter, and counts on to three."
-  @spec survives_a_restart(module(), atom()) :: 3
+  @spec survives_a_restart(WardrikStore.t(), atom()) :: 3
   def survives_a_restart(store, name) do
     ExUnit.Callbacks.start_supervised!(
       {DurableServer.Supervisor,

@@ -27,8 +27,10 @@ defmodule Wardrik.Operations.ReadEvents do
   def action, do: :read
 
   @impl Wardrik.Query
-  def run(%__MODULE__{agent: id, starting_after: starting_after, limit: limit}, _caller) do
-    case Log.read(id, starting_after: starting_after, limit: limit) do
+  def run(%__MODULE__{agent: id, starting_after: starting_after, limit: limit}, caller) do
+    store = Wardrik.Host.store(caller.host)
+
+    case Log.read(store, id, starting_after: starting_after, limit: limit) do
       {:ok, events} -> {:ok, %{"events" => events}}
       {:gap, oldest} -> {:error, gap(oldest)}
     end

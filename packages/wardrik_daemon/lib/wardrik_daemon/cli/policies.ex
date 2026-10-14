@@ -59,14 +59,14 @@ defmodule WardrikDaemon.CLI.Policies do
 
   defp tried(name, opts) do
     with {:ok, policy} <- JudgeReplay.policy(name),
-         {:ok, prefixes, where} <- prefixes(name, opts[:agent]),
+         {:ok, prefixes, where} <- prefixes(store(opts), name, opts[:agent]),
          {:ok, last} <- last(Keyword.get(opts, :last, @last)) do
-      {:ok, JudgeReplay.tried(policy.judge, prefixes, last), where}
+      {:ok, JudgeReplay.tried(store(opts), policy.judge, under: prefixes, last: last), where}
     end
   end
 
-  defp prefixes(name, nil) do
-    case JudgeReplay.using(name) do
+  defp prefixes(store, name, nil) do
+    case JudgeReplay.using(store, name) do
       [] ->
         {:error,
          "No agent runs under the policy #{name}; name some with --agent, as acme/books or acme/."}
@@ -76,7 +76,7 @@ defmodule WardrikDaemon.CLI.Policies do
     end
   end
 
-  defp prefixes(_name, text) do
+  defp prefixes(_store, _name, text) do
     with {:ok, prefix} <- Wardrik.AgentID.Prefix.expand(text, Config.org()),
          do: {:ok, [prefix], under(to_string(prefix))}
   end
@@ -192,4 +192,6 @@ defmodule WardrikDaemon.CLI.Policies do
 
   defp judged_document({:allow, :judged}), do: %{"decision" => "allow"}
   defp judged_document(:pass), do: %{"decision" => "none"}
+
+  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
 end

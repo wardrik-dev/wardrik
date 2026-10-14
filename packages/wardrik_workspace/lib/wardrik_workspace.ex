@@ -83,7 +83,7 @@ defmodule WardrikWorkspace do
 
   @doc "What the workspace tells its agent as each turn begins; see `WardrikWorkspace.Context`."
   @impl Wardrik.Tool
-  def context(%Spec{} = spec), do: Context.text(spec)
+  def context(%Spec{} = spec, %Wardrik.Scope{host: host}), do: Context.text(spec, host)
 
   @doc "Every file tool may run again after a lost node."
   @impl Wardrik.Tool

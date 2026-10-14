@@ -12,7 +12,7 @@ defmodule WardrikDaemon.Agents do
   `WardrikDaemon.Definition` is kept.
 
   A kept definition's `notify`, whether a file or the HTTP API wrote it, is
-  its agent's route: `routes/0` reads them from the store, and every node
+  its agent's route: `routes/1` reads them from the store, and every node
   connected puts them with `WardrikNotify.put_routes/1` as a reading ends
   and as the API keeps or forgets a definition. So an agent is routed while
   it sleeps and as it wakes, on whichever node holds it, and after a
@@ -41,11 +41,12 @@ defmodule WardrikDaemon.Agents do
   left as it was. An agent the HTTP API defined is in no inventory, and
   reading the files never touches it.
 
-  It is also the daemon's `Wardrik.Definition`. `put/3` reads a definition
+  It is also the daemon's `Wardrik.Definition`, keeping definitions in the
+  store of the host each callback is handed. `put/4` reads a definition
   sent to the HTTP API with `WardrikDaemon.AgentFile.define/3`, under the
   policies it last read, and keeps it with the grant of the token that sent
-  it; `get/1` answers it, `delete/1` forgets it, and `put_trigger/3` and
-  `delete_trigger/2` change one of its triggers. A key an agent file
+  it; `get/2` answers it, `delete/2` forgets it, and `put_trigger/4` and
+  `delete_trigger/3` change one of its triggers. A key an agent file
   declares, here or on any node connected to this one, belongs to the file:
   each of them refuses it with a conflict, so the API changes neither it nor
   its triggers.
@@ -72,7 +73,7 @@ defmodule WardrikDaemon.Agents do
   ## Defaults
 
   `config.yaml`'s `defaults` is what an agent is given where nothing else
-  says, read as a definition over the HTTP API is. `options/1` answers what
+  says, read as a definition over the HTTP API is. `options/2` answers what
   an agent starts with, for a surface that starts one, as the TUI does: what
   the definition it runs on writes, or the defaults' where none is kept.
   `wardrik agent spawn` writes a file from them.
@@ -99,12 +100,18 @@ defmodule WardrikDaemon.Agents do
   @type file() :: {Path.t(), {:ok, Spec.t() | WardrikPolicy.t()} | {:error, String.t()}}
 
   @doc """
-  Starts it, reading the files under `:dir`. `:nodes` gives the other nodes
-  whose inventories count, `Node.list/0` unless given.
+  Starts it, reading the files under `:dir` and keeping what they define in
+  `:store`. `:nodes` gives the other nodes whose inventories count,
+  `Node.list/0` unless given.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
-    state = %{dir: Keyword.fetch!(opts, :dir), nodes: Keyword.get(opts, :nodes, &Node.list/0)}
+    state = %{
+      dir: Keyword.fetch!(opts, :dir),
+      store: Keyword.fetch!(opts, :store),
+      nodes: Keyword.get(opts, :nodes, &Node.list/0)
+    }
+
     GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
@@ -138,11 +145,11 @@ defmodule WardrikDaemon.Agents do
   of the orgs `config.yaml` has the channel serve, each with its
   `description`. Sorted by ID.
   """
-  @spec offered(String.t()) :: [WardrikChannel.Offer.t()]
-  def offered(channel) when is_binary(channel) do
+  @spec offered(WardrikStore.t(), String.t()) :: [WardrikChannel.Offer.t()]
+  def offered(store, channel) when is_binary(channel) do
     orgs = channel_setting(:orgs, channel, [])
 
-    for %Definition{id: id, fields: fields} <- Definition.all(),
+    for %Definition{id: id, fields: fields} <- Definition.all(store),
         channel in AgentFile.channels(fields),
         orgs == :all or id.org in orgs do
       %WardrikChannel.Offer{agent: id, description: fields["description"]}
@@ -166,16 +173,16 @@ defmodule WardrikDaemon.Agents do
   `defaults`, offered in the channel. It is kept as a definition the HTTP API
   sent is, and recorded in `Wardrik.Audit` as defined by `by`.
   """
-  @spec create(String.t(), String.t(), Wardrik.Principal.t() | nil) ::
+  @spec create(WardrikStore.t(), String.t(), String.t(), Wardrik.Principal.t() | nil) ::
           {:ok, WardrikChannel.Offer.t()} | {:error, String.t()}
-  def create(channel, room, by) when is_binary(channel) and is_binary(room) do
+  def create(store, channel, room, by) when is_binary(channel) and is_binary(room) do
     description = "Answers in ##{room}."
     fields = Map.merge(defaults(), %{"channels" => [channel], "description" => description})
 
     with :ok <- creates(channel),
          {:ok, id} <- created_id(room, channel),
-         :ok <- unkept(id, channel),
-         {:ok, spec} <- put(id, fields, nil),
+         :ok <- unkept(store, id, channel),
+         {:ok, spec} <- defined(store, id, fields, nil),
          {:ok, _pid} <- Fleet.put(spec) do
       :ok = Wardrik.Audit.record({:agent_defined, id}, by)
       {:ok, %WardrikChannel.Offer{agent: id, description: description}}
@@ -190,9 +197,9 @@ defmodule WardrikDaemon.Agents do
   Starts `agent`, which answers in a thread of the channel `channel`, on the
   spec its definition writes, where it is not running.
   """
-  @spec start(String.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
-  def start(channel, %AgentID{} = agent) when is_binary(channel) do
-    with {:ok, options} <- options(agent) do
+  @spec start(WardrikStore.t(), String.t(), AgentID.t()) :: {:ok, pid()} | {:error, String.t()}
+  def start(store, channel, %AgentID{} = agent) when is_binary(channel) do
+    with {:ok, options} <- options(store, agent) do
       case Fleet.spawn(agent, options) do
         {:ok, pid} -> {:ok, pid}
         {:error, reason} -> {:error, "#{agent} did not start: #{inspect(reason)}"}
@@ -244,8 +251,8 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  defp unkept(id, channel) do
-    case Definition.get(id) do
+  defp unkept(store, id, channel) do
+    case Definition.get(store, id) do
       {:error, :not_found} ->
         :ok
 
@@ -270,23 +277,23 @@ defmodule WardrikDaemon.Agents do
   The options the agent `key` starts with, as `Wardrik.Fleet.spawn/2` takes
   them: those of `spec/1`.
   """
-  @spec options(AgentID.t()) :: {:ok, keyword()} | {:error, String.t()}
-  def options(key) do
-    with {:ok, spec} <- spec(key), do: {:ok, Spec.options(spec)}
+  @spec options(WardrikStore.t(), AgentID.t()) :: {:ok, keyword()} | {:error, String.t()}
+  def options(store, key) do
+    with {:ok, spec} <- spec(store, key), do: {:ok, Spec.options(spec)}
   end
 
   @doc """
   The spec the agent `key` runs on: `build/2`'s, from the definition it runs
-  on, as `WardrikDaemon.Definition.of/1` finds it, or from `defaults/0` where
-  none is kept.
+  on, as `WardrikDaemon.Definition.of/2` finds it in `store`, or from
+  `defaults/0` where none is kept.
   """
-  @spec spec(AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
-  def spec(key) do
+  @spec spec(WardrikStore.t(), AgentID.t()) :: {:ok, Spec.t()} | {:error, String.t()}
+  def spec(store, key) do
     # Asked first, so the files have been read once before the store is.
     policies = policies()
 
     definition =
-      case Definition.of(key) do
+      case Definition.of(store, key) do
         {:ok, definition} ->
           {:ok, definition}
 
@@ -309,9 +316,9 @@ defmodule WardrikDaemon.Agents do
   reading puts does, is brought to it then.
   """
   @impl Wardrik.Definition
-  def current(key) do
+  def current(host, key) do
     with {:ok, policies} <- read_policies(),
-         {:ok, definition} <- Definition.of(key),
+         {:ok, definition} <- Definition.of(Wardrik.Host.store(host), key),
          {:ok, spec} <- build(definition, key, policies) do
       {:ok, spec}
     else
@@ -340,11 +347,11 @@ defmodule WardrikDaemon.Agents do
   one that is there, which is a conflict saying what it declares.
   """
   @impl Wardrik.Definition
-  def create(%AgentID{} = key) do
+  def create(host, %AgentID{} = key) do
     path = Path.join([dir(), "agents", file_name(key) <> ".md"])
 
     with :ok <- untaken(path),
-         {:ok, _options} <- created(key),
+         {:ok, _options} <- created(Wardrik.Host.store(host), key),
          :ok <- write(path, AgentFile.text(created_fields(key))) do
       :ok = Wardrik.Definition.reload_on(__MODULE__, reloading())
       written(path)
@@ -369,8 +376,8 @@ defmodule WardrikDaemon.Agents do
   defp declaring({key, {path, _spec}}, path), do: key
   defp declaring(_declared, _path), do: nil
 
-  defp created(key) do
-    case options(key) do
+  defp created(store, key) do
+    case options(store, key) do
       {:ok, options} ->
         {:ok, options}
 
@@ -452,16 +459,18 @@ defmodule WardrikDaemon.Agents do
   or a conflict where an agent file declares it.
   """
   @impl Wardrik.Definition
-  def put(key, fields, grant) do
-    case owner(key) do
+  def put(host, key, fields, grant), do: defined(Wardrik.Host.store(host), key, fields, grant)
+
+  defp defined(store, key, fields, grant) do
+    case owner(store, key) do
       {:file, path, _spec} ->
         declared(key, path)
 
       {:api, policies} ->
         with {:ok, definition} <- AgentFile.define(key, fields, grant),
              {:ok, spec} <- AgentFile.spec(definition, key, policies) do
-          :ok = keep(definition)
-          :ok = routed()
+          :ok = keep(store, definition)
+          :ok = routed(store)
           {:ok, spec}
         end
     end
@@ -469,8 +478,9 @@ defmodule WardrikDaemon.Agents do
 
   @doc "The definition kept for the agent `key`, as the HTTP API writes one."
   @impl Wardrik.Definition
-  def get(key) do
-    with {:ok, definition} <- Definition.get(key), do: {:ok, AgentFile.fields(definition)}
+  def get(host, key) do
+    with {:ok, definition} <- Definition.get(Wardrik.Host.store(host), key),
+         do: {:ok, AgentFile.fields(definition)}
   end
 
   @doc """
@@ -479,13 +489,15 @@ defmodule WardrikDaemon.Agents do
   file declares `key`.
   """
   @impl Wardrik.Definition
-  def delete(key) do
-    case owner(key) do
+  def delete(host, key) do
+    store = Wardrik.Host.store(host)
+
+    case owner(store, key) do
       {:file, path, _spec} ->
         declared(key, path)
 
       {:api, _policies} ->
-        with {:ok, _definition} <- Definition.get(key), do: drop(key)
+        with {:ok, _definition} <- Definition.get(store, key), do: drop(store, key)
     end
   end
 
@@ -498,10 +510,10 @@ defmodule WardrikDaemon.Agents do
   agent file declares `key`.
   """
   @impl Wardrik.Definition
-  def put_trigger(key, name, fields) do
-    with {:ok, definition} <- defined(key),
+  def put_trigger(host, key, name, fields) do
+    with {:ok, definition} <- editable_definition(host, key),
          {:ok, definition, status, trigger} <- AgentFile.put_trigger(definition, name, fields) do
-      :ok = keep(definition)
+      :ok = keep(Wardrik.Host.store(host), definition)
       {:ok, status, WardrikTrigger.encode(trigger)}
     end
   end
@@ -512,14 +524,14 @@ defmodule WardrikDaemon.Agents do
   a conflict where an agent file declares `key`.
   """
   @impl Wardrik.Definition
-  def delete_trigger(key, name) do
-    with {:ok, definition} <- defined(key),
+  def delete_trigger(host, key, name) do
+    with {:ok, definition} <- editable_definition(host, key),
          {:ok, definition} <- AgentFile.delete_trigger(definition, name),
-         do: keep(definition)
+         do: keep(Wardrik.Host.store(host), definition)
   end
 
-  defp defined(key) do
-    with :ok <- editable(key), do: Definition.get(key)
+  defp editable_definition(host, key) do
+    with :ok <- editable(host, key), do: Definition.get(Wardrik.Host.store(host), key)
   end
 
   @doc """
@@ -527,8 +539,8 @@ defmodule WardrikDaemon.Agents do
   conflict where a file declares it.
   """
   @impl Wardrik.Definition
-  def editable(key) do
-    case owner(key) do
+  def editable(host, key) do
+    case owner(Wardrik.Host.store(host), key) do
       {:file, path, _spec} -> declared(key, path)
       {:api, _policies} -> :ok
     end
@@ -538,16 +550,16 @@ defmodule WardrikDaemon.Agents do
   Deletes the definition kept for the agent `key`, the triggers it lists
   and its route, as `wardrik agent rm` does once it has forgotten the agent.
   """
-  @spec drop(AgentID.t()) :: :ok
-  def drop(key) do
+  @spec drop(WardrikStore.t(), AgentID.t()) :: :ok
+  def drop(store, key) do
     :ok = WardrikTrigger.sync(key, [])
-    :ok = Definition.delete(key)
-    routed()
+    :ok = Definition.delete(store, key)
+    routed(store)
   end
 
   # A trigger starts only once the definition listing it is kept.
-  defp keep(definition) do
-    :ok = Definition.put(definition)
+  defp keep(store, definition) do
+    :ok = Definition.put(store, definition)
     WardrikTrigger.sync(definition.id, AgentFile.triggers(definition))
   end
 
@@ -566,23 +578,23 @@ defmodule WardrikDaemon.Agents do
   longer reads, as one naming a target `config.yaml` no longer has, routes
   nothing.
   """
-  @spec routes() :: %{AgentID.t() => WardrikNotify.Route.t()}
-  def routes do
-    for %Definition{id: id} = definition <- Definition.all(),
+  @spec routes(WardrikStore.t()) :: %{AgentID.t() => WardrikNotify.Route.t()}
+  def routes(store) do
+    for %Definition{id: id} = definition <- Definition.all(store),
         {:ok, route} <- [AgentFile.route(definition)],
         into: %{},
         do: {id, route}
   end
 
-  @doc "Puts `routes/0` to `WardrikNotify` on this node."
-  @spec route() :: :ok
-  def route, do: WardrikNotify.put_routes(routes())
+  @doc "Puts `routes/1` to `WardrikNotify` on this node."
+  @spec route(WardrikStore.t()) :: :ok
+  def route(store), do: WardrikNotify.put_routes(routes(store))
 
   # Every node reads the routes from the store, so whichever holds an agent
   # sends its notices.
-  defp routed do
-    :ok = route()
-    :erpc.multicast(Node.list(), __MODULE__, :route, [])
+  defp routed(store) do
+    :ok = route(store)
+    :erpc.multicast(Node.list(), __MODULE__, :route, [store])
   end
 
   defp declared(key, {path, node}),
@@ -599,7 +611,7 @@ defmodule WardrikDaemon.Agents do
 
   # Whether a file declares `key`, here with its spec or on another node, or
   # the policies a definition the API sends for it is read under.
-  defp owner(key) do
+  defp owner(store, key) do
     %{files: files, policies: policies} = loaded()
 
     file =
@@ -608,7 +620,7 @@ defmodule WardrikDaemon.Agents do
         _other -> nil
       end)
 
-    file || elsewhere(:ets.lookup_element(@table, :nodes, 2), key) || {:api, policies}
+    file || elsewhere(store, :ets.lookup_element(@table, :nodes, 2), key) || {:api, policies}
   end
 
   @impl true
@@ -638,9 +650,9 @@ defmodule WardrikDaemon.Agents do
   # The file another node connected to this one declares `key` in, with the
   # node, as its inventory has it. This node has not read it, so it has no
   # spec of it.
-  defp elsewhere(nodes, key) do
+  defp elsewhere(store, nodes, key) do
     Enum.find_value(nodes.(), fn node ->
-      case Map.fetch(WardrikStore.get(@inventory, inventory(node)) || %{}, to_string(key)) do
+      case Map.fetch(WardrikStore.get(store, @inventory, inventory(node)) || %{}, to_string(key)) do
         {:ok, path} -> {:file, {path, node}, nil}
         :error -> nil
       end
@@ -674,13 +686,14 @@ defmodule WardrikDaemon.Agents do
     {policy_files, read} = read_files(dir)
 
     agent_files =
-      for {path, result} <- read, do: {path, contained(path, fn _path -> put(result) end)}
+      for {path, result} <- read,
+          do: {path, contained(path, fn _path -> put(state.store, result) end)}
 
     prune(state, agent_files)
     state = %{state | files: policy_files ++ agent_files}
     problems = rebuild(state, MapSet.new(for {_path, {:ok, spec}} <- agent_files, do: spec.id))
-    forget_removed()
-    :ok = routed()
+    forget_removed(state.store)
+    :ok = routed(state.store)
 
     for {_path, {:error, message}} <- state.files, do: Logger.error(message)
     for message <- problems, do: Logger.error(message)
@@ -698,7 +711,7 @@ defmodule WardrikDaemon.Agents do
     policies = policies(state)
 
     for %{id: id, asleep: false} <- Fleet.list(),
-        {:ok, definition} <- [Definition.of(id)],
+        {:ok, definition} <- [Definition.of(state.store, id)],
         rebuilt?(definition, id, put),
         message <- rebuilt(definition, id, policies),
         do: message
@@ -713,10 +726,10 @@ defmodule WardrikDaemon.Agents do
   # A definition the HTTP API sent outlives its agent where something other
   # than the API removed it, as the TUI does; it goes once the store no
   # longer holds the agent.
-  defp forget_removed do
-    for %Definition{id: id, source: {:api, _grant}} <- Definition.all(),
+  defp forget_removed(store) do
+    for %Definition{id: id, source: {:api, _grant}} <- Definition.all(store),
         not Fleet.stored?(id),
-        do: :ok = drop(id)
+        do: :ok = drop(store, id)
   end
 
   defp rebuilt(definition, id, policies) do
@@ -762,21 +775,21 @@ defmodule WardrikDaemon.Agents do
     unread = for {name, {:error, _message}} <- named, into: MapSet.new(), do: name
     declared = for {name, {:ok, spec}} <- named, into: %{}, do: {to_string(spec.id), name}
 
-    previous = WardrikStore.get(@inventory, inventory(node())) || %{}
+    previous = WardrikStore.get(state.store, @inventory, inventory(node())) || %{}
     kept = Map.filter(previous, fn {_key, path} -> MapSet.member?(unread, path) end)
     inventory = Map.merge(kept, declared)
-    {:ok, _vsn} = WardrikStore.put(@inventory, inventory(node()), inventory)
+    {:ok, _vsn} = WardrikStore.put(state.store, @inventory, inventory(node()), inventory)
 
     for text <- Map.keys(previous) -- Map.keys(inventory),
         key = Wardrik.AgentID.parse!(text),
-        elsewhere(state.nodes, key) == nil,
-        do: retire(key)
+        elsewhere(state.store, state.nodes, key) == nil,
+        do: retire(state.store, key)
   end
 
   defp inventory(node), do: "agents/#{node}"
 
-  defp retire(key) do
-    :ok = drop(key)
+  defp retire(store, key) do
+    :ok = drop(store, key)
 
     case Fleet.stop(key) do
       :ok -> :ok
@@ -802,8 +815,8 @@ defmodule WardrikDaemon.Agents do
   # The definition is kept before the agent starts, so whatever finds the
   # agent finds what it is. An agent asleep is left asleep, and takes the
   # definition as it wakes.
-  defp put({:ok, definition, spec}) do
-    :ok = keep(definition)
+  defp put(store, {:ok, definition, spec}) do
+    :ok = keep(store, definition)
 
     case Fleet.lookup(spec.id) do
       %{asleep: true} -> {:ok, spec}
@@ -811,7 +824,7 @@ defmodule WardrikDaemon.Agents do
     end
   end
 
-  defp put({:error, _message} = error), do: error
+  defp put(_store, {:error, _message} = error), do: error
 
   defp started(spec) do
     case Fleet.put(spec) do

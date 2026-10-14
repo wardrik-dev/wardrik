@@ -1,15 +1,16 @@
 defmodule Wardrik do
   @moduledoc """
-  The supervisor of everything Wardrik runs. In order:
+  Everything Wardrik runs, under one supervisor, kept in the store the host
+  started before it. In order:
 
-    * The store's settings, kept where every read and write finds them; see
-      `WardrikStore.configure/1`.
     * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
-      `Wardrik.Audit`, `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
+      `Wardrik.Audit`, which writes to the host's store,
+      `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
     * What `:cluster` names, which connects this node to others before the
       fleet starts.
-    * `Wardrik.Fleet.Supervisor`, with `:fleet` and `:host`, which starts
-      the store first, and hands every agent the host as it starts.
+    * `Wardrik.Fleet.Supervisor`, with `:fleet` and `:host`, which keeps the
+      fleet in the host's store, and hands every agent the host as it
+      starts.
 
   Each child depends on the ones before it: an agent joins the bus as it
   starts and writes its log from what the bus delivers, and runs its turns
@@ -17,8 +18,9 @@ defmodule Wardrik do
   it, so an agent never holds a membership of a bus that is gone. The catalog
   load is a task that exits once done and is not started again.
 
-  The `:wardrik` application starts it by default, with the store, the fleet
-  and the host's seams as the application's environment holds them:
+  The `:wardrik` application starts it by default, after the store, with the
+  store, the fleet and the host's seams as the application's environment
+  holds them:
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
@@ -31,30 +33,29 @@ defmodule Wardrik do
 
       config :wardrik, start: :host
 
-      host = Wardrik.Host.new(definitions: MyApp.Definitions, grants: MyApp.Grants)
+      store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+      host = Wardrik.Host.new(store: store, definitions: MyApp.Definitions, grants: MyApp.Grants)
 
       children = [
         MyApp.Repo,
-        {Wardrik, store: [adapter: WardrikEcto.Store, repo: MyApp.Repo], host: host},
+        {WardrikStore, store},
+        {Wardrik, host: host},
         {MyAppWeb.Endpoint, host: host}
       ]
 
   The application then starts nothing. What runs on the fleet goes after it
   in the host's tree, which starts it once the fleet is up.
 
-  Nothing of the host is kept where a node finds it: it travels in the
-  options of what is started with it, and in each `Wardrik.Caller`, so two
-  instances on one node each answer with their own.
+  Nothing of the host, its store included, is kept where a node finds it:
+  it travels in the options of what is started with it, and in each
+  `Wardrik.Caller`, so two instances on one node each answer with their own.
 
   ## Options
 
-    * `:store` - the store's adapter, under `:adapter`, and its options;
-      `WardrikStore.EKV` with its defaults where none is given. See
-      `WardrikStore`.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
     * `:host` - the `Wardrik.Host` every agent is handed as it starts, for
-      the definition it runs on and the operations its tools call.
-      `Wardrik.Host.new/1` by default, which offers no seam.
+      the store it keeps its state in, the definition it runs on and the
+      operations its tools call. Required.
     * `:cluster` - the children that connect this node to others, started
       before the fleet. None by default.
 
@@ -69,29 +70,20 @@ defmodule Wardrik do
 
   @impl true
   def init(opts) do
-    opts =
-      Keyword.validate!(opts,
-        cluster: [],
-        store: [],
-        fleet: [],
-        host: Wardrik.Host.new()
-      )
+    opts = Keyword.validate!(opts, [:host, cluster: [], fleet: []])
+    host = Keyword.fetch!(opts, :host)
 
     children =
       [
-        %{id: {WardrikStore, :settings}, start: {WardrikStore, :configure, [opts[:store]]}},
         Wardrik.LLM.Catalog,
         Wardrik.Event.Bus,
         Wardrik.Event.Log,
-        Wardrik.Audit,
+        {Wardrik.Audit, Wardrik.Host.store(host)},
         Wardrik.LLM.ToolRunner,
         Wardrik.Tasks
       ] ++
         opts[:cluster] ++
-        [
-          {Wardrik.Fleet.Supervisor,
-           Keyword.merge(opts[:fleet], store: opts[:store], host: opts[:host])}
-        ]
+        [{Wardrik.Fleet.Supervisor, Keyword.put(opts[:fleet], :host, host)}]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end

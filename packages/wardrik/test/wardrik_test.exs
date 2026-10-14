@@ -1,7 +1,12 @@
 defmodule WardrikTest do
   use ExUnit.Case, async: false
 
-  test "the application starts Wardrik, and the fleet under it" do
+  test "the application starts the store, then Wardrik, and the fleet under it" do
+    ids =
+      for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Application), do: id
+
+    assert Enum.reverse(ids) == [WardrikStore, Wardrik]
+
     ids = for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Supervisor), do: id
 
     assert Wardrik.Fleet.Supervisor in ids
@@ -10,7 +15,7 @@ defmodule WardrikTest do
   test "what connects this node to others starts before the fleet" do
     cluster = {Agent, fn -> :connected end}
 
-    {:ok, {_flags, specs}} = Wardrik.init(cluster: [cluster])
+    {:ok, {_flags, specs}} = Wardrik.init(cluster: [cluster], host: Wardrik.Test.host())
     ids = Enum.map(specs, & &1.id)
 
     assert Enum.find_index(ids, &(&1 == Agent)) <
@@ -18,25 +23,29 @@ defmodule WardrikTest do
   end
 
   test "a child that restarts restarts the fleet, which comes after every other" do
-    {:ok, {flags, specs}} = Wardrik.init([])
+    {:ok, {flags, specs}} = Wardrik.init(host: Wardrik.Test.host())
 
     assert flags.strategy == :rest_for_one
     assert List.last(specs).id == Wardrik.Fleet.Supervisor
   end
 
-  test "the store's settings are kept first, and the fleet starts with them and the host" do
-    store = [adapter: WardrikStore.Memory]
-    host = Wardrik.Host.new(definitions: Wardrik.Test.Definitions)
+  test "the audit log is kept in the host's store, and the fleet starts with the host" do
+    store = WardrikStore.new(adapter: WardrikStore.Memory, name: :wardrik_test_store)
+    host = Wardrik.Host.new(store: store, definitions: Wardrik.Test.Definitions)
 
-    {:ok, {_flags, [settings | specs]}} =
-      Wardrik.init(store: store, fleet: [log: true], host: host)
+    {:ok, {_flags, specs}} = Wardrik.init(fleet: [log: true], host: host)
 
-    assert settings.start == {WardrikStore, :configure, [store]}
+    assert %{start: {Wardrik.Audit, :start_link, [^store]}} =
+             Enum.find(specs, &(&1.id == Wardrik.Audit))
 
     assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [opts]}} =
              Enum.find(specs, &(&1.id == Wardrik.Fleet.Supervisor))
 
-    assert Enum.sort(opts) == Enum.sort(log: true, store: store, host: host)
+    assert Enum.sort(opts) == Enum.sort(log: true, host: host)
+  end
+
+  test "needs a host" do
+    assert_raise KeyError, fn -> Wardrik.init([]) end
   end
 
   test "a host that starts Wardrik in its own tree has the application start nothing" do

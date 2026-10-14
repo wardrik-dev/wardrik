@@ -4,48 +4,53 @@ defmodule WardrikStore.MemoryInstanceTest do
   alias WardrikStore.Memory
 
   setup do
-    name = :"memory_#{System.unique_integer([:positive])}"
-    start_supervised!({Memory, name: name})
-    %{opts: [name: name]}
+    store =
+      WardrikStore.new(adapter: Memory, name: :"memory_#{System.unique_integer([:positive])}")
+
+    start_supervised!({WardrikStore, store})
+    %{store: store}
   end
 
-  test "clear/1 forgets everything", %{opts: opts} do
-    {:ok, _vsn} = Memory.put(:clear, "a", 1, opts)
-    :ok = Memory.clear(opts)
+  test "clear/1 forgets everything", %{store: store} do
+    {:ok, _vsn} = WardrikStore.put(store, :clear, "a", 1)
+    :ok = Memory.clear(store)
 
-    assert Memory.get(:clear, "a", opts) == nil
+    assert WardrikStore.get(store, :clear, "a") == nil
   end
 
-  test "an instance of its own holds what is written to it, and nothing else", %{opts: opts} do
-    {:ok, vsn} = Memory.put(:mine, "a", 1, opts)
+  test "an instance of its own holds what is written to it, and nothing else", %{store: store} do
+    {:ok, vsn} = WardrikStore.put(store, :mine, "a", 1)
 
-    assert Memory.lookup(:mine, "a", opts) == {1, vsn}
-    assert {:error, :conflict} = Memory.delete(:mine, "a", [if_vsn: vsn + 1] ++ opts)
-    assert :ok = Memory.delete(:mine, "a", [if_vsn: vsn] ++ opts)
-    assert Memory.lookup(:mine, "a", opts) == nil
+    assert WardrikStore.lookup(store, :mine, "a") == {1, vsn}
+    assert {:error, :conflict} = WardrikStore.delete(store, :mine, "a", if_vsn: vsn + 1)
+    assert :ok = WardrikStore.delete(store, :mine, "a", if_vsn: vsn)
+    assert WardrikStore.lookup(store, :mine, "a") == nil
   end
 
   test "lists the keys under a prefix in order, and none past it or in another namespace", %{
-    opts: opts
+    store: store
   } do
-    for key <- ~w(b/2 a b/1 b c ba), do: {:ok, _vsn} = Memory.put(:listed, key, key, opts)
-    {:ok, _vsn} = Memory.put(:other, "b/3", 3, opts)
-    {:ok, _vsn} = Memory.put(:zzz, "b/4", 4, opts)
+    for key <- ~w(b/2 a b/1 b c ba), do: {:ok, _vsn} = WardrikStore.put(store, :listed, key, key)
+    {:ok, _vsn} = WardrikStore.put(store, :other, "b/3", 3)
+    {:ok, _vsn} = WardrikStore.put(store, :zzz, "b/4", 4)
 
-    assert Memory.keys(:listed, "b", opts) == ~w(b b/1 b/2 ba)
-    assert Memory.keys(:listed, "b/", opts) == ~w(b/1 b/2)
-    assert Memory.keys(:listed, "", opts) == ~w(a b b/1 b/2 ba c)
-    assert Memory.keys(:listed, "d", opts) == []
-    assert Memory.keys(:nothing, "", opts) == []
+    assert WardrikStore.keys(store, :listed, "b") == ~w(b b/1 b/2 ba)
+    assert WardrikStore.keys(store, :listed, "b/") == ~w(b/1 b/2)
+    assert WardrikStore.keys(store, :listed, "") == ~w(a b b/1 b/2 ba c)
+    assert WardrikStore.keys(store, :listed, "d") == []
+    assert WardrikStore.keys(store, :nothing, "") == []
   end
 
   test "is kept in memory, and needs no other node" do
-    assert Memory.check([]) == {:ok, "in this node's memory"}
-    assert Memory.quorum(3) == 1
+    assert WardrikStore.check(adapter: Memory) == {:ok, "in this node's memory"}
+    assert WardrikStore.quorum(WardrikStore.new(adapter: Memory), 3) == 1
   end
 
-  test "holds a one-node fleet through WardrikStore.Durable" do
-    assert Memory.durable_backend(discovery_interval_ms: 200) ==
-             {WardrikStore.Durable, store: Memory, discovery_interval_ms: 200}
+  test "is named after the adapter unless named" do
+    assert WardrikStore.new(adapter: Memory).name == Memory
+  end
+
+  test "holds a one-node fleet through WardrikStore.Durable", %{store: store} do
+    assert WardrikStore.durable_backend(store) == {WardrikStore.Durable, store: store}
   end
 end

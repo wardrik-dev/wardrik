@@ -22,6 +22,7 @@ defmodule WardrikMCP.Server do
   | `:credential` | none | the name of the credential each call is made with, resolved for the call |
   | `:credential_header` | `authorization` | the header a resolved credential is sent in |
   | `:credential_env` | none | the variable a resolved credential is given to a command in |
+  | `:store` | none | the `WardrikStore` the tools a user's connection listed are kept in, for every node; see `WardrikMCP.Listing` |
   | `:stderr` | `:inherit` | where a command's own output goes: `:inherit`, `:discard`, or `{:file, path}` |
   | `:first_retry` | 1s | how long a connection that could not list the server's tools waits before asking again the first time, doubling each time after |
   | `:refresh_after` | 250ms | how long a connection waits after the server says its tools changed before listing them, so a burst of changes costs one listing |
@@ -95,6 +96,7 @@ defmodule WardrikMCP.Server do
     orgs: :all,
     gated: nil,
     trusted: false,
+    store: WardrikStore.new(adapter: WardrikStore.None),
     stderr: :inherit,
     inherit_env: ~w(HOME LANG LC_ALL LC_CTYPE LOGNAME PATH SHELL TERM TMPDIR USER),
     credential_header: "authorization",
@@ -122,6 +124,7 @@ defmodule WardrikMCP.Server do
           credential_header: String.t(),
           credential_scheme: String.t(),
           credential_env: String.t() | nil,
+          store: WardrikStore.t(),
           stderr: :inherit | :discard | {:file, Path.t()},
           inherit_env: [String.t()] | :all,
           timeout: timeout(),

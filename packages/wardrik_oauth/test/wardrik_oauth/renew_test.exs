@@ -28,7 +28,7 @@ defmodule WardrikOAuth.RenewTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault)
+    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
   end
 
   defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
@@ -51,11 +51,15 @@ defmodule WardrikOAuth.RenewTest do
     }
 
     token = struct(Token, Map.merge(fields, overrides))
-    :ok = WardrikVault.put("github", {"acme", owner}, Token.encode(token), kind: :grant)
+
+    :ok =
+      WardrikVault.put(Wardrik.Test.store(), "github", {"acme", owner}, Token.encode(token),
+        kind: :grant
+      )
   end
 
   defp kept(owner) do
-    {:ok, encoded} = WardrikVault.fetch("github", {"acme", owner})
+    {:ok, encoded} = WardrikVault.fetch(Wardrik.Test.store(), "github", {"acme", owner})
     {:ok, token} = Token.decode(encoded)
     token
   end
@@ -169,7 +173,11 @@ defmodule WardrikOAuth.RenewTest do
   test "a token that cannot be read is asked for again, and left where it is", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    :ok = WardrikVault.put("github", {"acme", owner}, "not a token", kind: :grant)
+
+    :ok =
+      WardrikVault.put(Wardrik.Test.store(), "github", {"acme", owner}, "not a token",
+        kind: :grant
+      )
 
     log =
       capture_log(fn ->
@@ -177,7 +185,9 @@ defmodule WardrikOAuth.RenewTest do
       end)
 
     assert log =~ "cannot be read (token_unreadable); asking again"
-    assert {:ok, "not a token"} = WardrikVault.fetch("github", {"acme", owner})
+
+    assert {:ok, "not a token"} =
+             WardrikVault.fetch(Wardrik.Test.store(), "github", {"acme", owner})
   end
 
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do

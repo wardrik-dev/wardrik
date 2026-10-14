@@ -22,15 +22,15 @@ defmodule WardrikTUI.App.FleetTest do
     use Wardrik.Definition
 
     @impl true
-    def put(_id, _definition, _grant), do: {:error, "not here"}
+    def put(_host, _id, _definition, _grant), do: {:error, "not here"}
 
     @impl true
-    def current(_id), do: :none
+    def current(_host, _id), do: :none
 
     @impl true
-    def create(%AgentID{name: "refused"}), do: {:error, "the defaults name no such tool"}
+    def create(_host, %AgentID{name: "refused"}), do: {:error, "the defaults name no such tool"}
 
-    def create(id),
+    def create(_host, id),
       do: {:ok, Spec.new(id: id, config: Config.new(model_spec: "test:model"))}
   end
 
@@ -61,7 +61,7 @@ defmodule WardrikTUI.App.FleetTest do
         start_opts: [
           agent: agent_id,
           agent_id: agent_id,
-          host: Wardrik.Host.new(definitions: Created),
+          host: Wardrik.Host.new(store: Wardrik.Test.store(), definitions: Created),
           org: org,
           spawn_opts: spawn_opts,
           model: "test:model",
@@ -666,7 +666,12 @@ defmodule WardrikTUI.App.FleetTest do
     session =
       Breeze.Test.start!(App,
         size: {90, 14},
-        start_opts: [agent: key, agent_id: key, host: Wardrik.Host.new(), model: "test:model"],
+        start_opts: [
+          agent: key,
+          agent_id: key,
+          host: Wardrik.Host.new(store: Wardrik.Test.store()),
+          model: "test:model"
+        ],
         global_keybindings: App.keybindings()
       )
 

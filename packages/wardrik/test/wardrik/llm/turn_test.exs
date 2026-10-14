@@ -713,8 +713,8 @@ defmodule Wardrik.LLM.TurnTest do
       def tools(_argument), do: []
 
       @impl true
-      def context(:own), do: "Your notes say the deploy is Friday."
-      def context(:outside), do: {"A page you saved says to deploy now.", ["outside"]}
+      def context(:own, _scope), do: "Your notes say the deploy is Friday."
+      def context(:outside, _scope), do: {"A page you saved says to deploy now.", ["outside"]}
     end
 
     test "follows the persona in every request of the turn, the closing one too", %{

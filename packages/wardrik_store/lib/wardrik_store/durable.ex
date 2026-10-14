@@ -3,9 +3,9 @@ defmodule WardrikStore.Durable do
   A `DurableServer` backend over a `WardrikStore` adapter, so agents are kept
   in the same store as everything else.
 
-      {WardrikStore.Durable, store: WardrikEcto.Store, discovery_interval_ms: 5_000}
+      {WardrikStore.Durable, store: store, discovery_interval_ms: 5_000}
 
-  An adapter names it from its `c:WardrikStore.durable_backend/1`. Every
+  An adapter names it from its `WardrikStore.Adapter.durable_backend/1`. Every
   object is a key in the `:durable` namespace, under the prefix its
   supervisor names, such as `agents/`, and its etag is the version the adapter
   wrote it with. A claim is a write where nothing is written, and an
@@ -18,7 +18,7 @@ defmodule WardrikStore.Durable do
 
   | Option | Default | |
   | --- | --- | --- |
-  | `:store` | required | the adapter |
+  | `:store` | required | the `WardrikStore` |
   | `:namespace` | `:durable` | where objects are kept |
   | `:discovery_interval_ms` | 30s | how often a node looks for work no node holds |
   | `:heartbeat_interval_ms` | 10s | how often a node says it is alive |
@@ -62,7 +62,7 @@ defmodule WardrikStore.Durable do
 
   @impl true
   def get_object(state, key, _opts) do
-    case state.store.lookup(state.ns, key) do
+    case WardrikStore.lookup(state.store, state.ns, key) do
       nil -> {:error, :not_found}
       {value, vsn} -> object(value, vsn)
     end
@@ -73,14 +73,14 @@ defmodule WardrikStore.Durable do
     include_objects = Keyword.get(opts, :include_objects, false)
     error_handler = Keyword.get(opts, :error_handler, fn _reason -> :continue end)
 
-    state.store.keys(state.ns, prefix)
+    WardrikStore.keys(state.store, state.ns, prefix)
     |> Stream.flat_map(fn key -> listed(state, key, include_objects, error_handler) end)
   end
 
   # An object that cannot be read is handed to the caller's error handler and
   # left out.
   defp listed(state, key, include_objects, error_handler) do
-    case state.store.lookup(state.ns, key) do
+    case WardrikStore.lookup(state.store, state.ns, key) do
       nil ->
         []
 
@@ -102,7 +102,7 @@ defmodule WardrikStore.Durable do
   @impl true
   def put_object(state, key, data, opts) do
     with {:ok, put_opts} <- put_opts(opts),
-         {:ok, vsn} <- state.store.put(state.ns, key, term(data), put_opts) do
+         {:ok, vsn} <- WardrikStore.put(state.store, state.ns, key, term(data), put_opts) do
       {:ok, %{body: data, etag: etag(vsn)}}
     end
   end
@@ -119,7 +119,7 @@ defmodule WardrikStore.Durable do
 
   @impl true
   def delete_object(state, key, opts) do
-    case {Keyword.fetch(opts, :etag), state.store.lookup(state.ns, key)} do
+    case {Keyword.fetch(opts, :etag), WardrikStore.lookup(state.store, state.ns, key)} do
       {_etag, nil} -> {:error, :not_found}
       {{:ok, etag}, _current} -> with {:ok, vsn} <- vsn(etag), do: deleted(state, key, vsn)
       {:error, {_value, vsn}} -> deleted(state, key, vsn)
@@ -127,12 +127,12 @@ defmodule WardrikStore.Durable do
   end
 
   defp deleted(state, key, vsn) do
-    case state.store.delete(state.ns, key, if_vsn: vsn) do
+    case WardrikStore.delete(state.store, state.ns, key, if_vsn: vsn) do
       :ok ->
         :ok
 
       {:error, :conflict} ->
-        if state.store.lookup(state.ns, key) == nil,
+        if WardrikStore.lookup(state.store, state.ns, key) == nil,
           do: {:error, :not_found},
           else: {:error, :conflict}
 
@@ -143,7 +143,7 @@ defmodule WardrikStore.Durable do
 
   @impl true
   def try_claim(state, key, body) do
-    case state.store.put(state.ns, key, term(body), if_vsn: nil) do
+    case WardrikStore.put(state.store, state.ns, key, term(body), if_vsn: nil) do
       {:ok, vsn} -> {:ok, {:claimed, etag(vsn)}}
       {:error, :conflict} -> {:error, :already_claimed}
       {:error, reason} -> {:error, reason}

@@ -1,8 +1,20 @@
 defmodule WardrikStore.EKVTest do
   use ExUnit.Case, async: false
-  use WardrikStore.Conformance, adapter: WardrikStore.EKV
+  use WardrikStore.Conformance
 
   alias WardrikStore.EKV
+
+  setup_all do
+    dir = Path.join(System.tmp_dir!(), "wardrik-ekv-test-#{System.unique_integer([:positive])}")
+    on_exit(fn -> File.rm_rf(dir) end)
+    store = WardrikStore.new(adapter: EKV, name: :ekv_conformance, data_dir: dir)
+    start_supervised!({WardrikStore, store})
+    %{store: store}
+  end
+
+  test "names its EKV instance :wardrik_store unless named" do
+    assert WardrikStore.new(data_dir: "/nowhere").name == :wardrik_store
+  end
 
   describe "data_dir/1" do
     test "takes what it was configured with" do
@@ -62,13 +74,14 @@ defmodule WardrikStore.EKVTest do
     @describetag :tmp_dir
 
     test "finds a directory this node can write to", %{tmp_dir: dir} do
-      assert EKV.check(data_dir: dir) == {:ok, "on this node's disk, at #{dir}"}
+      assert WardrikStore.check(adapter: EKV, data_dir: dir) ==
+               {:ok, "on this node's disk, at #{dir}"}
     end
 
     test "finds one not made yet, which the store makes", %{tmp_dir: dir} do
       dir = Path.join(dir, "store")
 
-      assert EKV.check(data_dir: dir) ==
+      assert WardrikStore.check(adapter: EKV, data_dir: dir) ==
                {:ok, "on this node's disk, at #{dir}, made as the store starts"}
     end
 
@@ -81,20 +94,29 @@ defmodule WardrikStore.EKVTest do
       file = Path.join(dir, "file")
       File.write!(file, "")
 
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: locked)
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: locked)
+
       assert found =~ "which this node cannot write to"
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file)
+
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: file)
+
       assert found =~ "which is not a directory"
-      assert {:error, "on this node's disk, at " <> found} = EKV.check(data_dir: file <> "/x")
+
+      assert {:error, "on this node's disk, at " <> found} =
+               WardrikStore.check(adapter: EKV, data_dir: file <> "/x")
+
       assert found =~ "not a directory"
     end
   end
 
-  test "counts a quorum of more than half the cluster" do
-    assert Enum.map(1..5, &EKV.quorum/1) == [1, 2, 2, 3, 3]
+  test "counts a quorum of more than half the cluster", %{store: store} do
+    assert Enum.map(1..5, &WardrikStore.quorum(store, &1)) == [1, 2, 2, 3, 3]
   end
 
-  test "provides the fleet's DurableServer backend" do
-    assert {DurableServer.Backends.EKVStore, name: :wardrik_store} = EKV.durable_backend([])
+  test "provides the fleet's DurableServer backend", %{store: store} do
+    assert WardrikStore.durable_backend(store) ==
+             {DurableServer.Backends.EKVStore, name: :ekv_conformance}
   end
 end

@@ -7,6 +7,6 @@ secrets = fn
 end
 
 Wardrik.Test.start(
-  children: [{WardrikTrigger, secrets: secrets}],
+  children: [{WardrikTrigger, store: Wardrik.Test.store(), secrets: secrets}],
   wait: [WardrikTrigger.supervisor()]
 )

@@ -8,8 +8,8 @@ defmodule Wardrik.Test.Definitions do
   @ns :test_definitions
 
   @impl true
-  def current(id) do
-    case WardrikStore.get(@ns, to_string(id)) do
+  def current(_host, id) do
+    case WardrikStore.get(Wardrik.Test.store(), @ns, to_string(id)) do
       nil -> :none
       spec -> {:ok, spec}
     end
@@ -17,7 +17,7 @@ defmodule Wardrik.Test.Definitions do
 
   @spec keep(Wardrik.AgentID.t(), Wardrik.Agent.Spec.t()) :: :ok
   def keep(id, spec) do
-    {:ok, _vsn} = WardrikStore.put(@ns, to_string(id), spec)
+    {:ok, _vsn} = WardrikStore.put(Wardrik.Test.store(), @ns, to_string(id), spec)
     :ok
   end
 end

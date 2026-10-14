@@ -30,10 +30,11 @@ defmodule WardrikHTTP.Access.Leases do
   @read_timeout 2_000
   @concurrency 16
 
-  @enforce_keys [:grace, :every]
-  defstruct [:grace, :every, sweep: nil, waiting: [], timer: nil]
+  @enforce_keys [:store, :grace, :every]
+  defstruct [:store, :grace, :every, sweep: nil, waiting: [], timer: nil]
 
   @type t() :: %__MODULE__{
+          store: WardrikStore.t(),
           grace: pos_integer(),
           every: pos_integer(),
           sweep: reference() | nil,
@@ -50,8 +51,8 @@ defmodule WardrikHTTP.Access.Leases do
   def tasks, do: @tasks
 
   @doc """
-  Starts the leases of this node, with `:grace` and `:sweep` in
-  milliseconds, as `WardrikHTTP.Access` takes them.
+  Starts the leases of this node, reading held records in `:store`, with
+  `:grace` and `:sweep` in milliseconds, as `WardrikHTTP.Access` takes them.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -84,7 +85,14 @@ defmodule WardrikHTTP.Access.Leases do
     every = Keyword.fetch!(opts, :sweep)
     :ok = Cache.new(every)
     :ok = Group.join(Access, @group, %{})
-    {:ok, schedule(%__MODULE__{grace: Keyword.fetch!(opts, :grace), every: every})}
+
+    state = %__MODULE__{
+      store: Keyword.fetch!(opts, :store),
+      grace: Keyword.fetch!(opts, :grace),
+      every: every
+    }
+
+    {:ok, schedule(state)}
   end
 
   @impl true
@@ -165,7 +173,7 @@ defmodule WardrikHTTP.Access.Leases do
 
   defp start_sweep(%{sweep: nil} = state) do
     refs = held()
-    task = Task.Supervisor.async_nolink(@tasks, fn -> check(refs) end)
+    task = Task.Supervisor.async_nolink(@tasks, fn -> check(state.store, refs) end)
     %{state | sweep: task.ref}
   end
 
@@ -173,9 +181,9 @@ defmodule WardrikHTTP.Access.Leases do
 
   # {:gone, refs} for the records no longer written, keeping what was read of
   # the rest; :unavailable at the first that cannot be read.
-  defp check(refs) do
+  defp check(store, refs) do
     refs
-    |> Task.async_stream(&{&1, Access.fetch(&1, timeout: @read_timeout)},
+    |> Task.async_stream(&{&1, Access.fetch(store, &1, timeout: @read_timeout)},
       max_concurrency: @concurrency,
       ordered: false,
       timeout: :infinity

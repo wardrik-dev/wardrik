@@ -3,8 +3,8 @@ defmodule WardrikOAuth.Registrations do
   The clients `WardrikOAuth` registered dynamically, kept so each is registered
   once.
 
-  One is kept per provider, issuer and redirect URI, in `WardrikStore` under
-  `:oauth_clients`. A client registered dynamically is a public one and has
+  One is kept per provider, issuer and redirect URI, in the store each
+  function is handed first, under `:oauth_clients`. A client registered dynamically is a public one and has
   no secret, so nothing kept here is secret. `WardrikOAuth` forgets a client a
   server answers `invalid_client` for, and registers a new one on the next
   flow.
@@ -13,9 +13,9 @@ defmodule WardrikOAuth.Registrations do
   @ns :oauth_clients
 
   @doc "The client registered for `provider` at `issuer` with `redirect_uri`, if one is kept."
-  @spec fetch(String.t(), String.t(), String.t()) :: {:ok, map()} | :error
-  def fetch(provider, issuer, redirect_uri) do
-    case WardrikStore.get(@ns, key(provider, issuer, redirect_uri)) do
+  @spec fetch(WardrikStore.t(), String.t(), String.t(), String.t()) :: {:ok, map()} | :error
+  def fetch(store, provider, issuer, redirect_uri) do
+    case WardrikStore.get(store, @ns, key(provider, issuer, redirect_uri)) do
       %{client_id: client_id, how: :dynamic} = registered when is_binary(client_id) ->
         {:ok, registered}
 
@@ -25,11 +25,17 @@ defmodule WardrikOAuth.Registrations do
   end
 
   @doc "Keeps a client registered for `provider` at `issuer`."
-  @spec put(String.t(), String.t(), map()) :: :ok | {:error, term()}
-  def put(provider, issuer, %{client_id: client_id, redirect_uri: redirect_uri} = registered) do
+  @spec put(WardrikStore.t(), String.t(), String.t(), map()) :: :ok | {:error, term()}
+  def put(
+        store,
+        provider,
+        issuer,
+        %{client_id: client_id, redirect_uri: redirect_uri} = registered
+      ) do
     kept = %{client_id: client_id, client_secret: nil, redirect_uri: redirect_uri, how: :dynamic}
+    key = key(provider, issuer, redirect_uri)
 
-    case WardrikStore.put(@ns, key(provider, issuer, redirect_uri), Map.merge(registered, kept)) do
+    case WardrikStore.put(store, @ns, key, Map.merge(registered, kept)) do
       {:ok, _vsn} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -39,12 +45,12 @@ defmodule WardrikOAuth.Registrations do
   Forgets the client kept for `provider` at `issuer` with `redirect_uri`,
   where it is the one with `client_id`.
   """
-  @spec forget(String.t(), String.t(), String.t(), String.t()) :: :ok
-  def forget(provider, issuer, redirect_uri, client_id) do
+  @spec forget(WardrikStore.t(), String.t(), String.t(), String.t(), String.t()) :: :ok
+  def forget(store, provider, issuer, redirect_uri, client_id) do
     key = key(provider, issuer, redirect_uri)
 
-    case WardrikStore.lookup(@ns, key) do
-      {%{client_id: ^client_id}, _vsn} -> WardrikStore.delete(@ns, key)
+    case WardrikStore.lookup(store, @ns, key) do
+      {%{client_id: ^client_id}, _vsn} -> WardrikStore.delete(store, @ns, key)
       _other -> :ok
     end
   end

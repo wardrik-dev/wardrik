@@ -23,7 +23,7 @@ defmodule Wardrik.CatalogTest do
     use Wardrik.Definition
 
     @impl true
-    def put(id, definition, grant) do
+    def put(_host, id, definition, grant) do
       tell({:put, id, definition, grant})
 
       if String.contains?(id.name, "filed"),
@@ -32,10 +32,10 @@ defmodule Wardrik.CatalogTest do
     end
 
     @impl true
-    def get(_id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
+    def get(_host, _id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
 
     @impl true
-    def put_trigger(id, name, fields) do
+    def put_trigger(_host, id, name, fields) do
       tell({:put_trigger, id, name, fields})
 
       if String.contains?(id.name, "filed"),
@@ -44,7 +44,7 @@ defmodule Wardrik.CatalogTest do
     end
 
     @impl true
-    def delete_trigger(id, name) do
+    def delete_trigger(_host, id, name) do
       tell({:delete_trigger, id, name})
       :ok
     end

@@ -47,7 +47,7 @@ defmodule WardrikOAuth.DeviceTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault)
+    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
   end
 
   defp provider(opts), do: [github: [resource: resource(), scopes: ~w(repo)] ++ opts]
@@ -207,7 +207,7 @@ defmodule WardrikOAuth.DeviceTest do
 
       assert log =~ "github was not connected for #{inspect({"acme", owner})}: :access_denied"
       assert Pending.under_way("github", {"acme", owner}) == :error
-      refute WardrikOAuth.connected?("github", {"acme", owner})
+      refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
     end
 
     test "stops asking the server once the flow is dropped", %{owner: owner} do
