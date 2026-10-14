@@ -13,6 +13,7 @@ defmodule WardrikDaemon.MixProject do
         "The Wardrik daemon: agent files, config.yaml, the wardrik command, and what a release runs beside core.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
+      docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit, :wardrik_protocol],
@@ -39,8 +40,19 @@ defmodule WardrikDaemon.MixProject do
   defp elixirc_paths(:dev), do: ["lib", "dev"]
   defp elixirc_paths(_env), do: ["lib"]
 
+  # The guides are the docs site's reference pages too: mix wardrik.docs
+  # writes them there.
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md", "guides/config.md", "guides/agent-files.md"],
+      groups_for_extras: [Reference: ~r"guides/"]
+    ]
+  end
+
   defp deps do
     [
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       sibling(:wardrik),
       sibling(:wardrik_brave),
       sibling(:wardrik_console),

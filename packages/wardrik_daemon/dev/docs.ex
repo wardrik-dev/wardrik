@@ -3,9 +3,9 @@ defmodule Mix.Tasks.Wardrik.Docs do
   @moduledoc """
   Writes the reference pages of the docs site, under
   `docs/src/content/docs/reference`, from what the code already says: the
-  commands `WardrikDaemon.CLI.commands/0` lists, the moduledocs of
-  `config.yaml`, agent files, policies and the HTTP API, and the protocol's
-  JSON Schemas in `packages/wardrik_protocol/priv/v1`.
+  commands `WardrikDaemon.CLI.commands/0` lists, the guides the packages'
+  docs carry as extras for `config.yaml`, agent files, policies and the HTTP
+  API, and the protocol's JSON Schemas in `packages/wardrik_protocol/priv/v1`.
 
       mix wardrik.docs           write them
       mix wardrik.docs --check   fail where one is not what it would write
@@ -17,6 +17,16 @@ defmodule Mix.Tasks.Wardrik.Docs do
 
   @dir Path.expand("../../../docs/src/content/docs/reference", __DIR__)
   @events "/reference/events/"
+  @site "https://docs.wardrik.dev/"
+  @edit "https://github.com/wardrik-dev/wardrik/edit/main/packages/"
+
+  # Each guide by the page it is on the site, where a guide links to it.
+  @guides %{
+    "config" => "config",
+    "agent-files" => "agent-files",
+    "policies" => "policies",
+    "http-api" => "http-api"
+  }
 
   @impl Mix.Task
   def run(args) do
@@ -30,9 +40,9 @@ defmodule Mix.Tasks.Wardrik.Docs do
   defp pages do
     [
       cli(),
-      moduledoc("config", "config.yaml", 2, WardrikDaemon.Config),
-      moduledoc("agent-files", "Agent files", 3, WardrikDaemon.AgentFile),
-      moduledoc("policies", "Policies", 4, WardrikPolicy),
+      guide(:wardrik_daemon, "config.md", 2),
+      guide(:wardrik_daemon, "agent-files.md", 3),
+      guide(:wardrik_policy, "policies.md", 4),
       http(),
       events()
     ]
@@ -53,12 +63,12 @@ defmodule Mix.Tasks.Wardrik.Docs do
 
   # -- pages -------------------------------------------------------------------
 
-  defp page(name, title, order, description, source, body) do
+  defp page(name, title, order, description, source, body, edit \\ false) do
     front = [
       "---\n",
       "title: #{JSON.encode!(title)}\n",
       "description: #{JSON.encode!(description)}\n",
-      "editUrl: false\n",
+      "editUrl: #{JSON.encode!(edit)}\n",
       "sidebar:\n  order: #{order}\n",
       "---\n\n",
       "<!-- Written by mix wardrik.docs from #{source}. Edit it there, not here. -->\n\n"
@@ -68,21 +78,42 @@ defmodule Mix.Tasks.Wardrik.Docs do
      IO.iodata_to_binary([front, body]) |> String.trim_trailing() |> Kernel.<>("\n")}
   end
 
-  defp moduledoc(name, title, order, module) do
-    doc = moduledoc!(module)
-    page(name, title, order, lead(doc), inspect(module), doc)
+  defp guide(package, file, order) do
+    {title, body} = read_guide(package, file)
+    source = "packages/#{package}/guides/#{file}"
+    edit = @edit <> "#{package}/guides/#{file}"
+    page(@guides[Path.rootname(file)], title, order, lead(body), source, body, edit)
   end
 
-  defp moduledoc!(module) do
-    {:docs_v1, _anno, _language, _format, %{"en" => doc}, _meta, _docs} = Code.fetch_docs(module)
-    doc
+  # A guide's title, its first line, and the rest with its links made the
+  # site's: one to a guide, as `agent-files.md`, or as `e:wardrik_daemon:agent-files.html`
+  # in backticks for another package's, to its page, and one to the site to the
+  # path alone.
+  defp read_guide(package, file) do
+    "# " <> text = File.read!(Path.join([package_dir(package), "guides", file]))
+    [title, body] = String.split(text, "\n", parts: 2)
+
+    link = ~r/\]\(`?(?:e:[a-z_]+:)?([a-z-]+)\.(?:md|html)(#[^)`]*)?`?\)/
+
+    body =
+      Regex.replace(link, String.trim_leading(body), fn _link, guide, anchor ->
+        "](/reference/#{Map.fetch!(@guides, guide)}/#{anchor})"
+      end)
+      |> String.replace("](" <> @site, "](/")
+
+    {title, body}
   end
+
+  # A package's own directory, or a dependency's, by path here or fetched from
+  # Hex, so a guide is found wherever its package is.
+  defp package_dir(package), do: Map.get(Mix.Project.deps_paths(), package, File.cwd!())
 
   # The first paragraph, as plain text.
   defp lead(doc) do
     doc
     |> String.split("\n\n", parts: 2)
     |> hd()
+    |> String.replace(~r/\[([^\]]+)\]\([^)]+\)/, "\\1")
     |> String.replace(~r/\s+/, " ")
     |> String.replace("`", "")
   end
@@ -159,22 +190,24 @@ defmodule Mix.Tasks.Wardrik.Docs do
     do: String.capitalize(String.first(text)) <> String.slice(text, 1..-1//1) <> "."
 
   defp http do
-    doc = moduledoc!(WardrikHTTP)
+    {title, body} = read_guide(:wardrik_http, "http-api.md")
+    edit = @edit <> "wardrik_http/guides/http-api.md"
 
     resources =
       for {name, schema} <- schemas(), resource?(name), do: schema(name, schema, @events)
 
     page(
       "http-api",
-      "HTTP API",
+      title,
       5,
-      lead(doc),
-      "WardrikHTTP and packages/wardrik_protocol/priv/v1",
+      lead(body),
+      "packages/wardrik_http/guides/http-api.md and packages/wardrik_protocol/priv/v1",
       [
-        doc,
+        body,
         "\n\n## Resources\n\nThe bodies the routes take and answer with.\n\n",
         Enum.intersperse(resources, "\n")
-      ]
+      ],
+      edit
     )
   end
 
@@ -296,10 +329,16 @@ defmodule Mix.Tasks.Wardrik.Docs do
   defp format(%{"format" => format}), do: " (#{format})"
   defp format(_field), do: ""
 
-  defp ref(ref, defs_page) do
-    name = ref |> String.split("/") |> List.last()
-    "[#{name}](#{defs_page}##{name})"
-  end
+  # A shared type and the envelope are on the events page, and a resource on
+  # the HTTP API's.
+  defp ref("urn:wardrik:schema:v1:defs#/$defs/" <> name, defs_page),
+    do: "[#{name}](#{defs_page}##{name})"
+
+  defp ref("urn:wardrik:schema:v1:cloudevent", _defs_page),
+    do: "[event](/reference/events/#the-envelope)"
+
+  defp ref("urn:wardrik:schema:v1:" <> name, _defs_page),
+    do: "[#{name}](/reference/http-api/##{name})"
 
   defp about(field) do
     Enum.join(

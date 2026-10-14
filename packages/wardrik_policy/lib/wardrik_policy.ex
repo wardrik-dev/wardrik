@@ -3,19 +3,24 @@ defmodule WardrikPolicy do
   A policy written as data: the tools an agent may call, the ones that ask a
   person first, and the ones it may not call at all.
 
-      policy =
-        WardrikPolicy.decode!(%{
-          "allow" => ["web_search", "linear/*"],
-          "ask" => %{"github/create_*" => "This opens an issue on GitHub."},
-          "deny" => ["run_lua"],
-          "default" => "allow"
-        })
+  ```elixir
+  policy =
+    WardrikPolicy.decode!(%{
+      "allow" => ["web_search", "linear/*"],
+      "ask" => %{"github/create_*" => "This opens an issue on GitHub."},
+      "deny" => ["run_lua"],
+      "default" => "allow"
+    })
 
-      Wardrik.Fleet.spawn(id, config: config, hooks: WardrikPolicy.hooks(policy))
+  Wardrik.Fleet.spawn(id, config: config, hooks: WardrikPolicy.hooks(policy))
+  ```
 
   A policy's rules are a `Wardrik.Hook`, named for the policy. It is plain data,
   so it is written to the store with the agent it governs and decides the
   same way on whichever node holds that agent.
+
+  The [Policies](policies.md) guide is the file format, every key a policy
+  file takes, for whoever writes one.
 
   ## Budgets
 
@@ -79,17 +84,8 @@ defmodule WardrikPolicy do
 
   ## Written down
 
-  `decode/1` reads the map form a file or a request writes a policy in, and
-  `encode/1` writes it back:
-
-      allow: [web_search, linear/*]
-      ask:
-        github/create_*: This opens an issue on GitHub.
-      deny: [run_lua]
-      default: allow
-
-  `allow`, `ask` and `deny` each take a list of patterns, or a map of pattern
-  to message, and `allow_after` a map of label to either. `budget` takes what
+  `decode/1` reads the map form a file or a request writes a policy in, as
+  the guide lists its keys, and `encode/1` writes it back. `budget` takes what
   `WardrikPolicy.Budget` describes, and `judge` what `WardrikPolicy.Judge`
   does.
 
