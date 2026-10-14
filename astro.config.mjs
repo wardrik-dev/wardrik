@@ -4,6 +4,7 @@ import starlight from '@astrojs/starlight';
 import { ExpressiveCodeTheme } from '@astrojs/starlight/expressive-code';
 import { defineConfig } from 'astro/config';
 import starlightSidebarTopics from 'starlight-sidebar-topics';
+import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
 
 // Code sits on one dark ground, in light and dark alike.
 const terminal = ExpressiveCodeTheme.fromJSONString(
@@ -87,13 +88,38 @@ export default defineConfig({
 							],
 						},
 						{
+							id: 'reference',
 							label: 'Reference',
 							link: '/reference/cli/',
-							items: [{ autogenerate: { directory: 'reference' } }],
+							items: [{ autogenerate: { directory: 'reference' } }, typeDocSidebarGroup],
 						},
 					],
-					{ exclude: ['/'] },
+					// The SDK reference's index pages are in no sidebar, but in this topic.
+					{ exclude: ['/'], topics: { reference: ['/sdk/**'] } },
 				),
+				// The TypeScript SDK's reference, written from its doc comments on each
+				// build. Its dependencies are not installed here, so types it imports
+				// show by name, and TypeDoc does not check the program. Constructors the
+				// client calls are @internal.
+				starlightTypeDoc({
+					entryPoints: ['../sdks/typescript/src/index.ts'],
+					tsconfig: '../sdks/typescript/tsconfig.json',
+					output: 'sdk/typescript',
+					sidebar: { label: 'TypeScript SDK', collapsed: true },
+					typeDoc: {
+						name: 'TypeScript SDK',
+						readme: '../sdks/typescript/README.md',
+						plugin: ['./typedoc-readme.mjs'],
+						useCodeBlocks: true,
+						parametersFormat: 'table',
+						interfacePropertiesFormat: 'table',
+						sort: ['source-order'],
+						disableSources: true,
+						skipErrorChecking: true,
+						excludeExternals: true,
+						excludeInternal: true,
+					},
+				}),
 			],
 		}),
 	],
