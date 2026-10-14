@@ -646,7 +646,15 @@ site-search button {
 	margin-top: 2rem;
 }
 
+/* Each item spans three rows of the grid, title, line and example, so a pair
+ * lines up row by row and their examples fill the same height. */
 .sl-markdown-content .team > div {
+	display: grid;
+	grid-row: span 3;
+	grid-template-rows: subgrid;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+	row-gap: 0;
 	margin: 0;
 	padding-top: 1.25rem;
 	border-top: 1px solid var(--sl-color-gray-5);
@@ -660,6 +668,22 @@ site-search button {
 .sl-markdown-content .team p {
 	margin: 0 0 1rem;
 	color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content .team .expressive-code {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.team .expressive-code .frame,
+.team .expressive-code pre {
+	flex: 1;
+}
+
+.team .expressive-code .frame {
+	display: flex;
+	flex-direction: column;
 }
 
 @media (max-width: 45rem) {
