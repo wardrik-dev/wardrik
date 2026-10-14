@@ -13,7 +13,7 @@ def run(%{url: url}, %Wardrik.Tool.Context{credentials: %{"github" => credential
   do: fetch(url, Wardrik.Credential.reveal(credential))
 ```
 
-The vault is the resolver that answers. It seals each credential with
+The vault is the host's `Wardrik.Credentials` that answers. It seals each credential with
 AES-256-GCM into Wardrik's store, so there is no separate service to run and
 nothing kept in plaintext, and finds a name for each call the most specific
 first: the call's user's, then its org's, then the deployment's.
@@ -26,27 +26,27 @@ end
 
 ```elixir
 # lib/my_app/application.ex
-children = [Wardrik, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
+vault = WardrikVault.new(store: store, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")])
+host = Wardrik.Host.new(store: store, credentials: vault)
+children = [{WardrikStore, store}, {Wardrik, host: host}]
 ```
 
 ```elixir
-Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
-
-WardrikVault.put("github", {"acme", "jon"}, "ghp_xxx")   # jon's, in acme
-WardrikVault.put("pagerduty", "acme", "pd_xxx")         # acme's
-WardrikVault.put("linear", nil, "lin_xxx")              # the deployment's
+WardrikVault.put(vault, "github", {"acme", "jon"}, value: "ghp_xxx")   # jon's, in acme
+WardrikVault.put(vault, "pagerduty", "acme", value: "pd_xxx")         # acme's
+WardrikVault.put(vault, "linear", nil, value: "lin_xxx")              # the deployment's
 ```
 
-A credential nobody holds yet can be asked for instead, by naming a grants
-module; [wardrik_oauth](../wardrik_oauth) is one:
+A credential nobody holds yet can be asked for instead, by giving the vault
+`WardrikVault.Grants`; [wardrik_oauth](../wardrik_oauth)'s are one:
 
 ```elixir
-{WardrikVault, keys: [...], grants: WardrikOAuth}
+WardrikVault.new(store: store, keys: keys, grants: oauth)
 ```
 
 A key a deployment sets as an environment variable can stand in for one
 nobody sealed, by naming it:
 
 ```elixir
-{WardrikVault, keys: [...], environment: ["SEARCH_API_KEY"]}
+WardrikVault.new(store: store, keys: keys, environment: ["SEARCH_API_KEY"])
 ```

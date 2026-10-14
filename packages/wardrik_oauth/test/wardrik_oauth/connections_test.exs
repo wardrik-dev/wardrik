@@ -15,7 +15,7 @@ defmodule WardrikOAuth.ConnectionsTest do
   alias Wardrik.Test.Audit
 
   setup %{owner: owner} do
-    start_supervised!({WardrikOAuth.Supervisor, callback: false})
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
 
     stub_server(cimd: true)
 
@@ -36,18 +36,18 @@ defmodule WardrikOAuth.ConnectionsTest do
     Caller.new(
       principal: Principal.new(:user, user, name: "Jon"),
       grant: grant,
-      host: Wardrik.Host.new(store: Wardrik.Test.store(), connections: WardrikOAuth.Connections)
+      host: host()
     )
   end
 
   defp list(caller) do
-    {:ok, request} = Connections.request(ReadConnections, caller, :person)
+    {:ok, request} = Connections.Owner.request(ReadConnections, caller, :person)
     {:ok, %{"connections" => connections}} = Query.run(request, caller)
     Map.new(connections, &{&1["provider"], &1["held_by"]})
   end
 
   defp connect(caller, provider) do
-    {:ok, request} = Connections.request(Connect, caller, :person, provider: provider)
+    {:ok, request} = Connections.Owner.request(Connect, caller, :person, provider: provider)
     Command.run(request, caller)
   end
 
@@ -76,12 +76,12 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
              Enum.reverse(Audit.about("secrets/linear"))
 
-    refute WardrikOAuth.connected?(Wardrik.Test.store(), "linear", org)
+    refute WardrikOAuth.connected?(vault(), "linear", org)
   end
 
   test "disconnecting removes it, recorded as the person who did", %{jon: jon, owner: owner} do
     authorize(jon, "linear")
-    {:ok, request} = Connections.request(Disconnect, jon, :person, provider: "linear")
+    {:ok, request} = Connections.Owner.request(Disconnect, jon, :person, provider: "linear")
 
     assert {:ok, nil} = Command.run(request, jon)
     assert list(jon)["linear"] == nil
@@ -109,11 +109,11 @@ defmodule WardrikOAuth.ConnectionsTest do
   end
 
   test "an org's account shows as the org's to its people", %{jon: jon, org: org} do
-    {:ok, request} = Connections.request(Connect, jon, :org, provider: "linear")
+    {:ok, request} = Connections.Owner.request(Connect, jon, :org, provider: "linear")
     {:ok, %{"authorization" => %{"url" => url}}} = Command.run(request, jon)
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
     assert list(jon)["linear"] == "org"
-    assert WardrikOAuth.connected?(Wardrik.Test.store(), "linear", org)
+    assert WardrikOAuth.connected?(vault(), "linear", org)
   end
 end

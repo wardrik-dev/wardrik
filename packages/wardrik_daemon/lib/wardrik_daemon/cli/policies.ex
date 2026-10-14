@@ -77,7 +77,8 @@ defmodule WardrikDaemon.CLI.Policies do
   end
 
   defp prefixes(_store, _name, text) do
-    with {:ok, prefix} <- Wardrik.AgentID.Prefix.expand(text, Config.org()),
+    with {:ok, prefix} <-
+           Wardrik.AgentID.Prefix.expand(text, Config.org(WardrikDaemon.Host.config())),
          do: {:ok, [prefix], under(to_string(prefix))}
   end
 

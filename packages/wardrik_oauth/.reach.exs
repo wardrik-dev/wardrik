@@ -4,7 +4,7 @@
 # internals, which only core calls.
 [
   layers: [
-    oauth: ["WardrikOAuth", "WardrikOAuth.*"]
+    oauth: ["WardrikOAuth", "WardrikOAuth.*", "WardrikVault.Grants.WardrikOAuth", "Wardrik.Connections.WardrikOAuth.Connections"]
   ],
   boundaries: [
     public: [
@@ -20,7 +20,13 @@
       "Wardrik.Call.Ask",
       "Wardrik.Compaction",
       "Wardrik.Connections",
+      "Wardrik.Connections.Owner",
       "Wardrik.Credential",
+      "Wardrik.Credentials",
+      "Wardrik.Credentials.None",
+      "Wardrik.Definition",
+      "Wardrik.Definition.None",
+      "Wardrik.Definitions",
       "Wardrik.Delegation",
       "Wardrik.Event",
       "Wardrik.Event.Bus",
@@ -31,24 +37,32 @@
       "Wardrik.Fleet",
       "Wardrik.Fleet.Member",
       "Wardrik.Grant",
+      "Wardrik.Grants",
       "Wardrik.Hook",
       "Wardrik.Host",
-      "Wardrik.Label",
-      "Wardrik.Ledger",
-      "Wardrik.Ledger.Store",
       "Wardrik.LLM.Config",
       "Wardrik.LLM.Cost",
       "Wardrik.LLM.Message",
       "Wardrik.LLM.Usage",
+      "Wardrik.Label",
+      "Wardrik.Ledger",
+      "Wardrik.Ledger.Guarded",
+      "Wardrik.Ledger.Key",
+      "Wardrik.Ledger.None",
+      "Wardrik.Ledger.Store",
       "Wardrik.Principal",
       "Wardrik.Scope",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
+      "Wardrik.Tokens",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
       "Wardrik.Tool.Result",
-      "Wardrik.UUID"
+      "Wardrik.Triggers",
+      "Wardrik.UUID",
+      "Wardrik.Workspace",
+      "Wardrik.Workspace.None"
     ],
     internal: [
       "Wardrik.Agent.State",

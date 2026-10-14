@@ -22,9 +22,8 @@ defmodule WardrikHTTP.RouterTest do
 
   defmodule Definition do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
 
-    @impl true
     def put(_host, _key, %{"refuse" => message}, _grant), do: {:error, message}
 
     def put(_host, key, %{"owned" => true}, _grant),
@@ -44,23 +43,26 @@ defmodule WardrikHTTP.RouterTest do
     end
   end
 
+  defimpl Wardrik.Definition, for: Definition do
+    use Wardrik.Definition.None
+    def put(d, key, opts), do: Definition.put(d, key, opts[:definition], opts[:grant])
+  end
+
   # Keeps what it is sent in WardrikStore, triggers beside definitions, and
   # refuses to change an agent whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
 
     @ns :router_test_definitions
     @triggers :router_test_triggers
 
-    @impl true
     def put(host, key, definition, grant) do
       with {:ok, spec} <- Definition.put(host, key, definition, grant),
            {:ok, _vsn} <- WardrikStore.put(store(), @ns, to_string(key), definition),
            do: {:ok, spec}
     end
 
-    @impl true
     def get(_host, key) do
       case WardrikStore.get(store(), @ns, to_string(key)) do
         nil -> {:error, :not_found}
@@ -68,7 +70,6 @@ defmodule WardrikHTTP.RouterTest do
       end
     end
 
-    @impl true
     def delete(_host, key) do
       cond do
         String.contains?(key.name, "-owned") -> {:error, :conflict, "#{key} belongs to a file."}
@@ -77,7 +78,6 @@ defmodule WardrikHTTP.RouterTest do
       end
     end
 
-    @impl true
     def put_trigger(_host, _key, _name, %{"refuse" => message}), do: {:error, message}
 
     def put_trigger(host, key, name, fields) do
@@ -91,7 +91,6 @@ defmodule WardrikHTTP.RouterTest do
       end
     end
 
-    @impl true
     def delete_trigger(host, key, name) do
       with :ok <- editable(host, key) do
         if triggered(key, name),
@@ -102,12 +101,21 @@ defmodule WardrikHTTP.RouterTest do
 
     defp triggered(key, name), do: WardrikStore.get(store(), @triggers, "#{key}//#{name}")
 
-    @impl true
     def editable(_host, key) do
       if String.contains?(key.name, "-owned"),
         do: {:error, :conflict, "#{key} belongs to a file."},
         else: :ok
     end
+  end
+
+  defimpl Wardrik.Definition, for: Kept do
+    use Wardrik.Definition.None
+    def put(d, key, opts), do: Kept.put(d, key, opts[:definition], opts[:grant])
+    defdelegate get(d, key), to: Kept
+    defdelegate delete(d, key), to: Kept
+    def put_trigger(d, key, name, opts), do: Kept.put_trigger(d, key, name, opts[:fields])
+    defdelegate delete_trigger(d, key, name), to: Kept
+    defdelegate editable(d, key), to: Kept
   end
 
   # Knows a request by its x-user header, as a person who may do anything
@@ -142,9 +150,8 @@ defmodule WardrikHTTP.RouterTest do
   # Offers github, held by jon in test, and linear, held by nobody.
   defmodule Linked do
     @moduledoc false
-    @behaviour Wardrik.Connections
+    defstruct []
 
-    @impl true
     def list(_host, owner) do
       [
         %{provider: "github", held_by: if(owner == {"test", "jon"}, do: :person)},
@@ -152,7 +159,6 @@ defmodule WardrikHTTP.RouterTest do
       ]
     end
 
-    @impl true
     def connect(_host, "github", {"test", "jon"}, _by), do: {:ok, :held}
 
     def connect(_host, provider, _owner, _by) when provider in ["github", "linear"],
@@ -160,18 +166,22 @@ defmodule WardrikHTTP.RouterTest do
 
     def connect(_host, _provider, _owner, _by), do: {:error, :not_found}
 
-    @impl true
     def disconnect(_host, "github", {"test", "jon"}), do: :ok
     def disconnect(_host, _provider, _owner), do: {:error, :not_found}
+  end
+
+  defimpl Wardrik.Connections, for: Linked do
+    defdelegate list(c, owner), to: Linked
+    defdelegate connect(c, provider, owner, opts), to: Linked
+    defdelegate disconnect(c, provider, owner), to: Linked
   end
 
   # Hands the test each request a trigger is delivered, and answers by its
   # body; operations run in the process serving the request.
   defmodule Hooked do
     @moduledoc false
-    @behaviour Wardrik.Triggers
+    defstruct []
 
-    @impl true
     def deliver(key, name, %{headers: headers, body: body}) do
       send(:persistent_term.get(__MODULE__), {:delivered, key, name, headers, body})
 
@@ -183,6 +193,10 @@ defmodule WardrikHTTP.RouterTest do
         _new -> {:ok, :asked}
       end
     end
+  end
+
+  defimpl Wardrik.Triggers, for: Hooked do
+    def deliver(_t, key, name, opts), do: Hooked.deliver(key, name, opts[:request])
   end
 
   # Cannot check any credential now, as an identity provider that is down.
@@ -197,12 +211,14 @@ defmodule WardrikHTTP.RouterTest do
     def challenge(:down), do: ~s(Down realm="test")
   end
 
-  @host Host.new(
-          store: Wardrik.Test.store(),
-          definitions: Definition,
-          connections: Linked,
-          triggers: Hooked
-        )
+  defp host,
+    do:
+      Host.new(
+        store: Wardrik.Test.store(),
+        definitions: %Definition{},
+        connections: %Linked{},
+        triggers: %Hooked{}
+      )
 
   setup do
     {:ok, secret, token} =
@@ -213,7 +229,7 @@ defmodule WardrikHTTP.RouterTest do
       )
 
     listener = :"router-#{System.unique_integer([:positive])}"
-    start_supervised!({Listener, name: listener, port: 0, host: @host})
+    start_supervised!({Listener, name: listener, port: 0, host: host()})
     {:ok, port} = Listener.port(listener)
 
     %{
@@ -226,7 +242,7 @@ defmodule WardrikHTTP.RouterTest do
   # another, and a client for it holding the same token.
   defp listener(api, options) do
     name = :"router-#{System.unique_integer([:positive])}"
-    options = Keyword.merge([name: name, port: 0, host: @host], options)
+    options = Keyword.merge([name: name, port: 0, host: host()], options)
 
     start_supervised!(Supervisor.child_spec({Listener, options}, id: name))
 
@@ -893,7 +909,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "a definition module that keeps definitions" do
     setup %{api: api} do
-      %{kept: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))}
+      %{kept: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))}
     end
 
     test "answers one back as it was sent, and forgets it with its agent", %{
@@ -962,7 +978,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "triggers" do
     setup %{api: api} do
-      kept = listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))
+      kept = listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))
       key = Fleet.id("triggered")
       {:ok, %{status: 201}} = Req.put(kept, url: "/v1/agents/#{key}", json: %{})
       on_exit(fn -> Wardrik.Fleet.forget(key) end)
@@ -1400,7 +1416,7 @@ defmodule WardrikHTTP.RouterTest do
 
   describe "agents under a prefix" do
     setup %{api: api} do
-      %{api: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: Kept))}
+      %{api: listener(api, host: Host.new(store: Wardrik.Test.store(), definitions: %Kept{}))}
     end
 
     defp under(org), do: Wardrik.AgentID.Prefix.new!(org: org)

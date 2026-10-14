@@ -92,7 +92,7 @@ defmodule WardrikDaemon.CLI.Agents do
 
   # A column for each thing any agent listed has, the key, status and node
   # always, under a faint heading.
-  defp table(store, members) do
+  defp table(_store, members) do
     headings = ["AGENT", "STATUS", "NODE", "NEXT RUN", "SPENT"]
 
     rows =
@@ -102,7 +102,7 @@ defmodule WardrikDaemon.CLI.Agents do
           status(member),
           where(member),
           next(member.id),
-          Enum.join(WardrikDaemon.spent(store, member.id), ", ")
+          Enum.join(WardrikDaemon.spent(WardrikDaemon.Host.agents(), member.id), ", ")
         ]
       end
 
@@ -166,8 +166,11 @@ defmodule WardrikDaemon.CLI.Agents do
   # writes none, or `nil` where none is kept.
   defp defined(opts, key) do
     case Definition.of(Wardrik.Host.store(opts[:caller].host), key) do
-      {:ok, definition} -> {definition, WardrikDaemon.Agents.build(definition, key)}
-      {:error, :not_found} -> nil
+      {:ok, definition} ->
+        {definition, WardrikDaemon.Agents.build(WardrikDaemon.Host.agents(), definition, key)}
+
+      {:error, :not_found} ->
+        nil
     end
   end
 
@@ -302,7 +305,7 @@ defmodule WardrikDaemon.CLI.Agents do
   end
 
   defp source(owner, {:file, name}) do
-    case WardrikDaemon.declared()[owner] do
+    case WardrikDaemon.Host.declared()[owner] do
       {path, _spec} -> path
       nil -> Path.join("agents", name)
     end
@@ -335,7 +338,8 @@ defmodule WardrikDaemon.CLI.Agents do
       for at <- trigger.next,
           do: "  next in #{WardrikDaemon.duration(max(DateTime.diff(at, now, :millisecond), 0))}"
 
-    urls = for path <- trigger.paths, do: "  " <> Config.base_url() <> path
+    urls =
+      for path <- trigger.paths, do: "  " <> Config.base_url(WardrikDaemon.Host.config()) <> path
 
     "#{trigger.schedule}#{next}#{urls}  #{ran(trigger, now)}"
   end

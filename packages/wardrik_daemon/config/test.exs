@@ -13,13 +13,9 @@ config :wardrik, WardrikStore,
       "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
     ])
 
-# An agent starts and wakes with its definition as it stands, as the release
-# starts the fleet; WardrikDaemon.Test.Host hands tests the same host.
-config :wardrik, Wardrik.Host,
-  definitions: WardrikDaemon.Agents,
-  connections: WardrikOAuth.Connections,
-  tokens: WardrikHTTP.Tokens,
-  grants: WardrikDaemon.Grants
+# The suite starts Wardrik itself, on the host a daemon builds, as the release
+# does; see test_helper.exs.
+config :wardrik, start: :host
 
 # What the daemon starts each package with, beside what config.yaml says.
 config :wardrik_daemon, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]

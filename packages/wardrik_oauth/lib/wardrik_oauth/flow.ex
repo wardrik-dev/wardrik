@@ -83,7 +83,7 @@ defmodule WardrikOAuth.Flow do
         {:ok, known}
 
       metadata.registration_endpoint ->
-        dynamic(metadata, client, provider)
+        dynamic(metadata, client, provider, opts)
 
       true ->
         {:error, {:no_registration, metadata.issuer}}
@@ -192,7 +192,7 @@ defmodule WardrikOAuth.Flow do
     {:ok, identity(client.document_url, provider, client, :cimd)}
   end
 
-  defp dynamic(%Metadata{} = metadata, %Client{} = client, %Provider{} = provider) do
+  defp dynamic(%Metadata{} = metadata, %Client{} = client, %Provider{} = provider, opts) do
     body =
       client
       |> Client.registration()
@@ -200,10 +200,10 @@ defmodule WardrikOAuth.Flow do
       |> device_grant(metadata)
 
     with {:ok, options} <-
-           Egress.options(
-             metadata.registration_endpoint,
-             metadata.trust,
-             [json: body] ++ client.req_options
+           Egress.options(metadata.registration_endpoint, metadata.trust,
+             req_options:
+               [json: body] ++ client.req_options ++ Keyword.get(opts, :req_options, []),
+             resolve: Keyword.get(opts, :resolve, &Egress.resolve/1)
            ) do
       case Req.post(options) do
         {:ok, %Req.Response{status: status, body: %{"client_id" => id}}}
@@ -241,7 +241,12 @@ defmodule WardrikOAuth.Flow do
     request =
       [form: form, headers: [accept: "application/json"]] ++ Keyword.get(opts, :req_options, [])
 
-    with {:ok, options} <- Egress.options(endpoint, trust, request) do
+    with {:ok, options} <-
+           Egress.options(
+             endpoint,
+             trust,
+             [req_options: request] ++ Keyword.take(opts, [:resolve])
+           ) do
       case Req.post(options) do
         {:ok, %Req.Response{status: 200, body: body}} when is_map(body) ->
           Token.from_response(body)

@@ -4,19 +4,20 @@ defmodule WardrikWorkspace.Mount do
   root, and each tree it shares at `shared/<name>`.
 
     * `:name` - `nil` for the agent's own tree, or the name it is shared under
-    * `:tree` - the tree, as its backend names it
+    * `:tree` - the tree, as the host's `Wardrik.Workspace` names it
     * `:mode` - `:write`, or `:read` for a tree the agent may only read
-    * `:backend` - the `WardrikWorkspace.Backend` that keeps it
+
+  Every tree is kept in the one `Wardrik.Workspace` of the host the agent
+  runs on, so nothing stored with an agent names where.
   """
 
   @enforce_keys [:tree]
-  defstruct [:name, :tree, mode: :write, backend: WardrikWorkspace.Backend.Store]
+  defstruct [:name, :tree, mode: :write]
 
   @type t() :: %__MODULE__{
           name: String.t() | nil,
           tree: String.t(),
-          mode: :write | :read,
-          backend: module()
+          mode: :write | :read
         }
 
   @doc "Where the mount's files are seen: `\"\"` for the agent's own, `shared/<name>/` for one it shares."

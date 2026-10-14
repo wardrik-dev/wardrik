@@ -162,7 +162,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
          end) do
       nil ->
         {:ok,
-         AgentID.new!(name, org: opts[:org] || WardrikDaemon.Config.org(), user: opts[:user])}
+         AgentID.new!(name,
+           org: opts[:org] || WardrikDaemon.Config.org(WardrikDaemon.Host.config()),
+           user: opts[:user]
+         )}
 
       {_text, message} ->
         {:error, message <> ": a name holds no / or whitespace, and does not begin with @ or _"}
@@ -176,7 +179,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     do: "Started #{key} on #{on(agent)} again, with its conversation."
 
   defp spawned(%{"from" => "definition", "agent" => agent}, key, _caller) do
-    case WardrikDaemon.declared()[key] do
+    case WardrikDaemon.Host.declared()[key] do
       {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
       nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
@@ -184,7 +187,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp spawned(%{"from" => "new", "agent" => agent}, key, caller) do
     {:ok, snapshot} = Query.run(%ReadAgent{agent: key}, caller)
-    {path, _spec} = WardrikDaemon.declared()[key]
+    {path, _spec} = WardrikDaemon.Host.declared()[key]
 
     [
       "Wrote #{shown(path)}, and started #{key} on #{on(agent)}, ",
@@ -258,7 +261,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp spawn_line(%AgentID{org: org, user: user, name: name}) do
     Enum.join(
       ["wardrik agent spawn", name] ++
-        if(org != WardrikDaemon.Config.org(), do: ["--org", org], else: []) ++
+        if(org != WardrikDaemon.Config.org(WardrikDaemon.Host.config()),
+          do: ["--org", org],
+          else: []
+        ) ++
         if(user, do: ["--user", user], else: []),
       " "
     )
@@ -422,7 +428,7 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   """
   @spec file(Wardrik.AgentID.t()) :: {:ok, Path.t()} | {:error, String.t()}
   def file(key) do
-    case {WardrikDaemon.declared()[key], Fleet.lookup(key)} do
+    case {WardrikDaemon.Host.declared()[key], Fleet.lookup(key)} do
       {{path, _spec}, _member} ->
         {:ok, path}
 

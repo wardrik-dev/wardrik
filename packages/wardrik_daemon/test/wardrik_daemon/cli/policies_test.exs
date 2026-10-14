@@ -2,8 +2,10 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   use ExUnit.Case, async: false
   use Mimic
 
+  alias WardrikDaemon.Test.Host
+
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: WardrikDaemon.Test.Host.held()
+  setup do: Host.held()
 
   import ExUnit.CaptureIO
 
@@ -33,8 +35,8 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join(dir, "policies/careful.yaml"), @careful)
     File.write!(Path.join(dir, "policies/plain.yaml"), "ask: [books/*]\n")
-    start_supervised!({WardrikDaemon.Agents, dir: dir, store: Wardrik.Test.store()})
-    _files = WardrikDaemon.Agents.files()
+    Host.start_agents(dir)
+    _files = WardrikDaemon.Agents.files(Host.agents())
 
     id = Wardrik.Test.Fleet.id("books")
 

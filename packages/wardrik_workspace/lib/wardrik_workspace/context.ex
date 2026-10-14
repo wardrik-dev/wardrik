@@ -100,7 +100,7 @@ defmodule WardrikWorkspace.Context do
   defp found(spec, host, path) do
     {:ok, mount, rest} = Spec.resolve(spec, path)
 
-    case mount.backend.read(host, mount.tree, rest) do
+    case Wardrik.Workspace.read(Wardrik.Host.workspace(host), mount.tree, rest) do
       {:ok, %File{} = file, version} -> %{path: path, state: :found, file: file, version: version}
       :none -> %{path: path, state: :unwritten}
       {:error, reason} -> %{path: path, state: :unreadable, reason: reason}
@@ -242,7 +242,7 @@ defmodule WardrikWorkspace.Context do
   # The files and folders at the top of the agent's own tree, but for those
   # read above.
   defp listing(%Spec{tree: %Mount{} = mount, context: context}, host) do
-    case mount.backend.paths(host, mount.tree, "") do
+    case Wardrik.Workspace.paths(Wardrik.Host.workspace(host), mount.tree, "") do
       {:ok, paths} -> paths |> Enum.map(&top/1) |> Enum.uniq() |> Kernel.--(context) |> names()
       {:error, _reason} -> nil
     end

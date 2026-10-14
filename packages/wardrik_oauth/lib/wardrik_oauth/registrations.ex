@@ -12,10 +12,11 @@ defmodule WardrikOAuth.Registrations do
 
   @ns :oauth_clients
 
-  @doc "The client registered for `provider` at `issuer` with `redirect_uri`, if one is kept."
-  @spec fetch(WardrikStore.t(), String.t(), String.t(), String.t()) :: {:ok, map()} | :error
-  def fetch(store, provider, issuer, redirect_uri) do
-    case WardrikStore.get(store, @ns, key(provider, issuer, redirect_uri)) do
+  @doc "The client registered for `provider` at `:issuer` with `:redirect_uri`, if one is kept."
+  @spec fetch(WardrikStore.t(), String.t(), issuer: String.t(), redirect_uri: String.t()) ::
+          {:ok, map()} | :error
+  def fetch(store, provider, opts) do
+    case WardrikStore.get(store, @ns, key(provider, opts[:issuer], opts[:redirect_uri])) do
       %{client_id: client_id, how: :dynamic} = registered when is_binary(client_id) ->
         {:ok, registered}
 
@@ -24,14 +25,15 @@ defmodule WardrikOAuth.Registrations do
     end
   end
 
-  @doc "Keeps a client registered for `provider` at `issuer`."
-  @spec put(WardrikStore.t(), String.t(), String.t(), map()) :: :ok | {:error, term()}
-  def put(
-        store,
-        provider,
-        issuer,
-        %{client_id: client_id, redirect_uri: redirect_uri} = registered
-      ) do
+  @doc "Keeps the client `:registered` for `provider` at `:issuer`."
+  @spec put(WardrikStore.t(), String.t(), issuer: String.t(), registered: map()) ::
+          :ok | {:error, term()}
+  def put(store, provider, opts) do
+    %{client_id: client_id, redirect_uri: redirect_uri} =
+      registered = Keyword.fetch!(opts, :registered)
+
+    issuer = Keyword.fetch!(opts, :issuer)
+
     kept = %{client_id: client_id, client_secret: nil, redirect_uri: redirect_uri, how: :dynamic}
     key = key(provider, issuer, redirect_uri)
 
@@ -42,12 +44,17 @@ defmodule WardrikOAuth.Registrations do
   end
 
   @doc """
-  Forgets the client kept for `provider` at `issuer` with `redirect_uri`,
-  where it is the one with `client_id`.
+  Forgets the client kept for `provider` at `:issuer` with
+  `:redirect_uri`, where it is the one with `:client_id`.
   """
-  @spec forget(WardrikStore.t(), String.t(), String.t(), String.t(), String.t()) :: :ok
-  def forget(store, provider, issuer, redirect_uri, client_id) do
-    key = key(provider, issuer, redirect_uri)
+  @spec forget(WardrikStore.t(), String.t(),
+          issuer: String.t(),
+          redirect_uri: String.t(),
+          client_id: String.t()
+        ) :: :ok
+  def forget(store, provider, opts) do
+    key = key(provider, Keyword.fetch!(opts, :issuer), Keyword.fetch!(opts, :redirect_uri))
+    client_id = Keyword.fetch!(opts, :client_id)
 
     case WardrikStore.lookup(store, @ns, key) do
       {%{client_id: ^client_id}, _vsn} -> WardrikStore.delete(store, @ns, key)

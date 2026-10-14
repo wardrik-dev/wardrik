@@ -30,8 +30,8 @@ defmodule WardrikHTTP.Workers do
   Wardrik writes it, never the model, so a worker serving many agents can
   answer each with what is theirs alone. A call made in a turn also carries
   the turn's run, as `_meta.run`, the id its events carry, and its
-  `Wardrik.Ledger.idempotency_key/2` as `_meta.idempotencyKey`. It waits for
-  the worker's answer for the group's `:timeout`. A call's
+  `Wardrik.Ledger.Key.idempotency/2` as `_meta.idempotencyKey`. It waits for
+  the worker's answer for its `:timeout`. A call's
   events name the credential whose worker answered it.
 
   A worker gone before it answers, or one that answers late, leaves its call
@@ -49,19 +49,24 @@ defmodule WardrikHTTP.Workers do
   by name.
 
   The group of workers is a child the host starts after Wardrik and
-  `WardrikHTTP.Access` in its own tree, and before `WardrikHTTP.Listener`:
+  `WardrikHTTP.Access` in its own tree, and before `WardrikHTTP.Listener`,
+  whose `:workers` option says what holds for each worker that connects
+  through it:
 
-      children = [Wardrik, WardrikHTTP.Access, {WardrikHTTP.Workers, trusted: true}]
-
-  Options:
+      children = [
+        {Wardrik, host: host},
+        {WardrikHTTP.Access, store: store},
+        WardrikHTTP.Workers,
+        {WardrikHTTP.Listener, host: host, workers: [trusted: true]}
+      ]
 
     * `:timeout` - how long a call waits for a worker's answer, in
       milliseconds, 60 seconds by default
     * `:trusted` - whether what workers answer is the deployment's own, so it
       is not labelled `"outside"`; `false` by default
 
-  A call is made in the process of the turn that makes it, so the group's
-  start keeps them in `:persistent_term`, where each call reads them.
+  A call is made in the process of the turn that makes it, so each worker's
+  settings travel with what it offers, as it joins the group.
   """
 
   @behaviour Wardrik.Tool
@@ -76,35 +81,34 @@ defmodule WardrikHTTP.Workers do
 
   @group "workers"
   @prefix "workers__"
-  @settings {__MODULE__, :settings}
   @defaults [timeout: :timer.seconds(60), trusted: false]
 
   @doc false
-  def child_spec(opts) do
-    opts = Keyword.validate!(opts, @defaults)
+  def child_spec([]) do
     group = Group.child_spec(name: __MODULE__)
-    %{group | id: __MODULE__, start: {__MODULE__, :start_link, [opts, group.start]}}
+    %{group | id: __MODULE__}
   end
-
-  @doc false
-  @spec start_link(keyword(), {module(), atom(), [term()]}) :: Supervisor.on_start()
-  def start_link(opts, {module, function, args}) do
-    :persistent_term.put(@settings, opts)
-    apply(module, function, args)
-  end
-
-  defp setting(key), do: @settings |> :persistent_term.get(@defaults) |> Keyword.fetch!(key)
 
   @doc """
-  Offers `tools` from the calling process, a worker's socket holding `caller`
-  that connected at `since`, in microseconds of system time, in place of
-  what it offered before, until it exits.
+  Offers `:tools` from the calling process, a worker's socket holding
+  `caller` that connected at `:since`, in microseconds of system time, in
+  place of what it offered before, until it exits, under the `:settings` its
+  listener gives workers.
   """
-  @spec offer(Caller.t(), [Tool.t()], integer()) :: :ok
-  def offer(%Caller{} = caller, tools, since) when is_list(tools) and is_integer(since) do
+  @spec offer(Caller.t(), tools: [Tool.t()], since: integer(), settings: keyword()) :: :ok
+  def offer(%Caller{} = caller, opts) do
+    tools = Keyword.fetch!(opts, :tools)
+    settings = Keyword.validate!(Keyword.get(opts, :settings, []), @defaults)
     _ = Group.leave(__MODULE__, @group)
     contested(caller, tools)
-    Group.join(__MODULE__, @group, %{caller: caller, tools: tools, since: since})
+
+    Group.join(__MODULE__, @group, %{
+      caller: caller,
+      tools: tools,
+      since: Keyword.fetch!(opts, :since),
+      timeout: settings[:timeout],
+      trusted: settings[:trusted]
+    })
   end
 
   defp contested(caller, tools) do
@@ -144,21 +148,28 @@ defmodule WardrikHTTP.Workers do
   """
   @impl Wardrik.Tool
   def annotations(%AgentID{} = id, @prefix <> name) do
-    offered = for %{tool: tool} <- offered(id), tool.name == name, do: tool
+    offers = for %{tool: %Tool{name: ^name}} = offer <- offered(id), do: offer
+    offered = Enum.map(offers, & &1.tool)
 
     %{
       gated: offered == [] or not Enum.all?(offered, & &1.read_only),
       in_doubt:
         if(offered != [] and Enum.all?(offered, &(&1.in_doubt == :rerun)), do: :rerun, else: :ask),
-      labels: workers_labels(),
-      timeout: 2 * setting(:timeout) + :timer.seconds(5)
+      labels: labels(offers),
+      timeout: 2 * waited(offers) + :timer.seconds(5)
     }
   end
 
-  def annotations(_id, _name),
-    do: %{gated: true, labels: workers_labels()}
+  def annotations(_id, _name), do: %{gated: true, labels: labels([])}
 
-  defp workers_labels, do: if(setting(:trusted), do: [], else: ["outside"])
+  # Trusted where every worker offering it is the deployment's own.
+  defp labels([_ | _] = offers),
+    do: if(Enum.all?(offers, & &1.trusted), do: [], else: ["outside"])
+
+  defp labels([]), do: ["outside"]
+
+  defp waited([_ | _] = offers), do: offers |> Enum.map(& &1.timeout) |> Enum.max()
+  defp waited([]), do: @defaults[:timeout]
 
   @doc false
   @spec call(AgentID.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Result.t()
@@ -175,7 +186,7 @@ defmodule WardrikHTTP.Workers do
   defp none(name, %Wardrik.Tool.Context{}),
     do: Result.error(:no_worker, "No worker offers #{name} now, so it did not run.")
 
-  defp ask(%{worker: worker, caller: caller}, name, input, meta) do
+  defp ask(%{worker: worker, caller: caller, timeout: timeout}, name, input, meta) do
     served = %{id: caller.id, name: caller.name}
     ref = Process.monitor(worker)
     send(worker, {:call, self(), ref, name, input, meta})
@@ -192,7 +203,7 @@ defmodule WardrikHTTP.Workers do
       {:DOWN, ^ref, :process, _pid, _reason} ->
         {:in_doubt, "The worker running #{name} went away before it answered.", served_by: served}
     after
-      setting(:timeout) ->
+      timeout ->
         Process.demonitor(ref, [:flush])
         send(worker, {:cancel, ref})
         {:in_doubt, "#{name} did not answer in time.", served_by: served}
@@ -218,11 +229,15 @@ defmodule WardrikHTTP.Workers do
   # credential whose worker offering it connected first.
   defp offered(id) do
     offers =
-      for {worker, %{caller: caller, tools: tools, since: since}} <-
-            Group.members(__MODULE__, @group),
+      for {worker, %{caller: caller, tools: tools} = joined} <- Group.members(__MODULE__, @group),
           Access.authorize(caller.grant, :serve, id) == :ok,
           tool <- tools,
-          do: %{worker: worker, caller: caller, tool: tool, since: since}
+          do:
+            Map.merge(Map.take(joined, [:since, :timeout, :trusted]), %{
+              worker: worker,
+              caller: caller,
+              tool: tool
+            })
 
     owners =
       offers

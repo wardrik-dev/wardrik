@@ -14,7 +14,8 @@ defmodule WardrikTrigger.Webhook do
       %{"webhook" => %{"secret" => "${ISSUES_HOOK_SECRET}"}, "prompt" => "..."}
 
   `secret` names the secret the sender holds, which is read for the
-  trigger's agent as each request arrives, as `WardrikTrigger.secret/2`
+  trigger's agent as each request arrives, by the `:secrets` of the
+  `WardrikTrigger.Deliveries` the host delivers through
   reads it, so it is kept in neither the trigger nor its definition.
   `verify` names how a request proves it holds it, a
   `WardrikTrigger.Webhook.Verifier`: `shared` by default, where the request
@@ -24,7 +25,7 @@ defmodule WardrikTrigger.Webhook do
   after.
 
   A service sends its requests to `path/2`, under the deployment's address,
-  and `WardrikTrigger.deliver/3` hands each to `WardrikTrigger.Webhook.Server`.
+  and `WardrikTrigger.Deliveries` hands each to `WardrikTrigger.Webhook.Server`.
   Each is a `WardrikTrigger.Item`, labelled `"outside"`: its id is the
   sender's delivery ID, its title the kind of event where the request says,
   and it shows the agent the body as it was sent, its first 32,768
@@ -52,7 +53,7 @@ defmodule WardrikTrigger.Webhook do
 
   @doc """
   The key the webhook trigger `name` of `agent` runs under, which
-  `WardrikTrigger.deliver/3` finds it by: apart from a trigger on a clock of
+  `WardrikTrigger.Deliveries` finds it by: apart from a trigger on a clock of
   the same name, since a name holds no `/`.
   """
   @spec key(Wardrik.AgentID.t(), String.t()) :: String.t()
@@ -151,15 +152,20 @@ defmodule WardrikTrigger.Webhook do
   defp overlap(_other), do: {:error, "overlap is one of skip, queue"}
 
   @doc """
-  The item `request` holds for `agent`, or why it is not delivered:
-  `:forbidden` where its signature does not match, and `:unavailable` where
-  it cannot be checked now, as when the secret is not set.
+  The item `request` holds for the `:agent` `opts` name, or why it is not
+  delivered: `:forbidden` where its signature does not match, and
+  `:unavailable` where it cannot be checked now, as when the secret is not
+  set. `:secrets` reads the secret by its name for the agent.
   """
-  @spec received(t(), Wardrik.Triggers.request(), Wardrik.AgentID.t()) ::
-          {:ok, Item.t()} | {:error, :forbidden | :unavailable, String.t()}
-  def received(%__MODULE__{} = hook, %{headers: headers, body: body}, agent) do
+  @spec received(t(), Wardrik.Triggers.request(),
+          agent: Wardrik.AgentID.t(),
+          secrets: WardrikTrigger.Deliveries.secrets()
+        ) :: {:ok, Item.t()} | {:error, :forbidden | :unavailable, String.t()}
+  def received(%__MODULE__{} = hook, %{headers: headers, body: body}, opts) do
+    agent = Keyword.fetch!(opts, :agent)
+
     with {:ok, module} <- module(hook.verify),
-         {:ok, secret} <- read(hook.secret, agent) do
+         {:ok, secret} <- read(Keyword.fetch!(opts, :secrets), hook.secret, agent) do
       case module.verify(headers, body, secret) do
         {:ok, delivery} -> {:ok, item(delivery, body)}
         {:error, message} -> {:error, :forbidden, message}
@@ -174,8 +180,8 @@ defmodule WardrikTrigger.Webhook do
     end
   end
 
-  defp read(name, agent) do
-    case WardrikTrigger.secret(name, agent) do
+  defp read(secrets, name, agent) do
+    case secrets.(name, agent) do
       secret when is_binary(secret) and secret != "" ->
         {:ok, secret}
 

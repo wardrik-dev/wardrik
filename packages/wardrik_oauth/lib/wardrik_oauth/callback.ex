@@ -3,7 +3,7 @@ defmodule WardrikOAuth.Callback do
   The page an authorization server sends a browser back to, served by
   Bandit.
 
-      {WardrikOAuth.Supervisor, redirect: [url: "https://agents.example.com/oauth"]}
+      {WardrikOAuth.Supervisor, oauth: WardrikOAuth.new(redirect: [url: "https://agents.example.com/oauth"])}
 
   Each provider has a path of its own under the deployment's redirect URL,
   so `https://agents.example.com/oauth/callback/github` is the redirect URI
@@ -48,44 +48,50 @@ defmodule WardrikOAuth.Callback do
   @doc false
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @doc "The redirect URI this listener answers on for `provider`."
-  @spec redirect_uri(String.t()) :: String.t()
-  def redirect_uri(provider) when is_binary(provider),
-    do: url() <> "/callback/" <> URI.encode(provider, &URI.char_unreserved?/1)
+  @doc "The redirect URI `oauth`'s listener answers on for `provider`."
+  @spec redirect_uri(WardrikOAuth.t(), String.t()) :: String.t()
+  def redirect_uri(oauth, provider) when is_binary(provider),
+    do: url(oauth) <> "/callback/" <> URI.encode(provider, &URI.char_unreserved?/1)
 
   @doc """
   The deployment's redirect URL, which every provider's redirect URI is
-  under: the one configured, or this machine's loopback.
+  under: the one `oauth` configures, or this machine's loopback.
   """
-  @spec url() :: String.t()
-  def url do
-    case Keyword.get(WardrikOAuth.Config.redirect(), :url) do
-      nil -> "http://127.0.0.1:#{port()}"
+  @spec url(WardrikOAuth.t()) :: String.t()
+  def url(%WardrikOAuth{redirect: redirect} = oauth) do
+    case Keyword.get(redirect, :url) do
+      nil -> "http://127.0.0.1:#{port(oauth)}"
       url -> String.trim_trailing(url, "/")
     end
   end
 
   @doc "Whether the browser comes back to this machine: no URL is configured, or it names loopback."
-  @spec loopback?() :: boolean()
-  def loopback? do
-    case Keyword.get(WardrikOAuth.Config.redirect(), :url) do
+  @spec loopback?(WardrikOAuth.t()) :: boolean()
+  def loopback?(%WardrikOAuth{redirect: redirect}) do
+    case Keyword.get(redirect, :url) do
       nil -> true
       url -> URI.parse(url).host in ["127.0.0.1", "localhost", "::1"]
     end
   end
 
   @doc "The path segments every page is served under: the redirect URL's own."
-  @spec prefix() :: [String.t()]
-  def prefix,
-    do: url() |> URI.parse() |> Map.get(:path) |> to_string() |> String.split("/", trim: true)
+  @spec prefix(WardrikOAuth.t()) :: [String.t()]
+  def prefix(oauth),
+    do:
+      oauth
+      |> url()
+      |> URI.parse()
+      |> Map.get(:path)
+      |> to_string()
+      |> String.split("/", trim: true)
 
   @doc "The port it listens on."
-  @spec port() :: :inet.port_number()
-  def port, do: Keyword.get(WardrikOAuth.Config.redirect(), :port, @default_port)
+  @spec port(WardrikOAuth.t()) :: :inet.port_number()
+  def port(%WardrikOAuth{redirect: redirect}), do: Keyword.get(redirect, :port, @default_port)
 
   @doc "The address it listens on."
-  @spec ip() :: :inet.ip_address()
-  def ip, do: Keyword.get(WardrikOAuth.Config.redirect(), :ip, @loopback)
+  @spec ip(WardrikOAuth.t()) :: :inet.ip_address()
+  def ip(%WardrikOAuth{redirect: redirect}), do: Keyword.get(redirect, :ip, @loopback)
 
   @doc """
   Whether `url`, the deployment's redirect URL, reaches this listener: asks
@@ -118,9 +124,12 @@ defmodule WardrikOAuth.Callback do
     # Bandit is linked to this process, and says why when it stops.
     Process.flag(:trap_exit, true)
 
+    oauth = Keyword.fetch!(opts, :oauth)
+
     state = %{
-      ip: Keyword.get(opts, :ip, ip()),
-      port: Keyword.get(opts, :port, port()),
+      oauth: oauth,
+      ip: Keyword.get(opts, :ip, ip(oauth)),
+      port: Keyword.get(opts, :port, port(oauth)),
       retry: Keyword.get(opts, :retry, @retry),
       server: nil
     }
@@ -147,7 +156,12 @@ defmodule WardrikOAuth.Callback do
   def handle_info({:EXIT, _other, _reason}, state), do: {:noreply, state}
 
   defp listen(%{ip: ip, port: port} = state, attempt) do
-    options = [plug: WardrikOAuth.Callback.Page, ip: ip, port: port, startup_log: false]
+    options = [
+      plug: {WardrikOAuth.Callback.Page, oauth: state.oauth},
+      ip: ip,
+      port: port,
+      startup_log: false
+    ]
 
     case Bandit.start_link(options) do
       {:ok, server} ->

@@ -1,8 +1,10 @@
 defmodule WardrikDaemon.CLI.InitTest do
   use ExUnit.Case, async: false
 
+  alias WardrikDaemon.Test.Host
+
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: WardrikDaemon.Test.Host.held()
+  setup do: Host.held()
 
   import ExUnit.CaptureIO
 
@@ -103,7 +105,12 @@ defmodule WardrikDaemon.CLI.InitTest do
                "You are Wardrik, the one place"
 
     assert text =~ "\n# Playbook\n"
-    assert {:ok, _spec} = WardrikDaemon.AgentFile.read(Path.join(config, "agents/assistant.md"))
+
+    assert {:ok, _spec} =
+             WardrikDaemon.AgentFile.read(
+               WardrikDaemon.AgentFile.context(Host.config(config)),
+               Path.join(config, "agents/assistant.md")
+             )
 
     commands = log(log)
     assert commands =~ "start key=unset"

@@ -21,27 +21,27 @@ defmodule WardrikOAuth.Callback.Page do
   ]
 
   @impl Plug
-  def init([]), do: []
+  def init(opts), do: Keyword.validate!(opts, [:oauth])
 
   @impl Plug
-  def call(%Plug.Conn{method: "GET"} = conn, []) do
+  def call(%Plug.Conn{method: "GET"} = conn, oauth: oauth) do
     conn = fetch_query_params(conn)
 
-    case under(conn.path_info, Callback.prefix()) do
-      ["callback", provider] -> callback(conn, provider)
+    case under(conn.path_info, Callback.prefix(oauth)) do
+      ["callback", provider] -> callback(conn, oauth, provider)
       ["check"] -> checked(conn)
       _elsewhere -> page(conn, 404, "Nothing here.")
     end
   end
 
-  def call(conn, []), do: page(conn, 404, "Nothing here.")
+  def call(conn, _opts), do: page(conn, 404, "Nothing here.")
 
   defp under(path, []), do: path
   defp under([segment | path], [segment | prefix]), do: under(path, prefix)
   defp under(_path, _prefix), do: :elsewhere
 
-  defp callback(conn, provider) do
-    case WardrikOAuth.Provider.fetch(provider) do
+  defp callback(conn, oauth, provider) do
+    case WardrikOAuth.Provider.fetch(oauth, provider) do
       {:ok, _provider} ->
         {status, message} = Callback.answer(provider, conn.query_params)
         page(conn, status, message)

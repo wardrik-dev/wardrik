@@ -70,29 +70,41 @@ defmodule WardrikTrigger.WebhookTest do
     end
   end
 
+  defp secret("WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "acme"}), do: "acme's"
+  defp secret("WARDRIK_TEST_VAULTED", %Wardrik.AgentID{org: "globex"}), do: "globex's"
+  defp secret(name, _agent), do: System.get_env(name)
+
   describe "received/3" do
     test "reads the secret for the trigger's agent, so each org has its own" do
       body = ~s({"type":"invoice.paid"})
       opts = hook("WARDRIK_TEST_VAULTED")
 
       assert {:ok, %Item{id: "msg_1", title: "invoice.paid", text: ^body, labels: ["outside"]}} =
-               Webhook.received(opts, standard("msg_1", now(), body, "acme's"), @agent)
+               Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2
+               )
 
       globex = Wardrik.AgentID.parse!("globex/hooked")
 
       assert {:error, :forbidden, _message} =
-               Webhook.received(opts, standard("msg_1", now(), body, "acme's"), globex)
+               Webhook.received(opts, standard("msg_1", now(), body, "acme's"),
+                 agent: globex,
+                 secrets: &secret/2
+               )
 
       assert {:ok, %Item{}} =
-               Webhook.received(opts, standard("msg_1", now(), body, "globex's"), globex)
+               Webhook.received(opts, standard("msg_1", now(), body, "globex's"),
+                 agent: globex,
+                 secrets: &secret/2
+               )
     end
 
     test "is unavailable where the secret is not set" do
       assert {:error, :unavailable, _message} =
-               Webhook.received(
-                 hook("WARDRIK_TEST_UNSET"),
-                 standard("msg_1", now(), "{}", "x"),
-                 @agent
+               Webhook.received(hook("WARDRIK_TEST_UNSET"), standard("msg_1", now(), "{}", "x"),
+                 agent: @agent,
+                 secrets: &secret/2
                )
     end
 
@@ -101,12 +113,18 @@ defmodule WardrikTrigger.WebhookTest do
       long = String.duplicate("a", 40_000)
 
       assert {:ok, %Item{text: text}} =
-               Webhook.received(opts, standard("m", now(), long, "acme's"), @agent)
+               Webhook.received(opts, standard("m", now(), long, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2
+               )
 
       assert String.length(text) == 32_769
 
       assert {:ok, %Item{text: "(2 bytes that are not text)"}} =
-               Webhook.received(opts, standard("m", now(), <<255, 0>>, "acme's"), @agent)
+               Webhook.received(opts, standard("m", now(), <<255, 0>>, "acme's"),
+                 agent: @agent,
+                 secrets: &secret/2
+               )
     end
   end
 

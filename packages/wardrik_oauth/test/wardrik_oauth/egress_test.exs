@@ -38,7 +38,10 @@ defmodule WardrikOAuth.EgressTest do
   describe "options/3" do
     test "pins a discovered URL to the public address it checked, keeping the name for TLS" do
       assert {:ok, options} =
-               Egress.options("https://auth.example.com:8443/token?x=1", :discovered, form: %{})
+               Egress.options("https://auth.example.com:8443/token?x=1", :discovered,
+                 req_options: [form: %{}],
+                 resolve: oauth().resolve
+               )
 
       assert options[:url] == "https://93.184.215.14:8443/token?x=1"
       assert options[:connect_options][:hostname] == "auth.example.com"
@@ -50,7 +53,7 @@ defmodule WardrikOAuth.EgressTest do
     test "refuses a discovered host with any address that is not public" do
       for host <- ["internal.example.com", "metadata.example.com", "mixed.example.com"] do
         assert {:error, {:private_address, ^host}} =
-                 Egress.options("https://#{host}/token", :discovered)
+                 Egress.options("https://#{host}/token", :discovered, resolve: oauth().resolve)
       end
     end
 

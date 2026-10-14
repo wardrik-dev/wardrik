@@ -23,11 +23,12 @@ defmodule WardrikOAuth.Browser do
   @doc """
   Whether this machine has a browser to open: a command that opens links,
   and a desktop for it to open them on, as macOS, WSL, and an X or Wayland
-  session have and a server reached over SSH does not.
+  session have and a server reached over SSH does not. `:opener` is as
+  `open/2` takes it.
   """
-  @spec available?() :: boolean()
-  def available? do
-    case opener() do
+  @spec available?(opener: String.t() | nil) :: boolean()
+  def available?(opts \\ []) do
+    case opener(opts[:opener]) do
       nil -> false
       opener -> desktop?(Path.basename(opener))
     end
@@ -41,10 +42,14 @@ defmodule WardrikOAuth.Browser do
 
   defp present?(variable), do: System.get_env(variable) not in [nil, ""]
 
-  @doc "Opens `url`, and says whether anything took it."
-  @spec open(String.t()) :: :ok | {:error, :no_browser}
-  def open(url) when is_binary(url) do
-    case opener() do
+  @doc """
+  Opens `url`, and says whether anything took it. `:opener` names the
+  command that opens it, as a deployment's redirect settings name one, else
+  the first of the usual ones this machine has.
+  """
+  @spec open(String.t(), opener: String.t() | nil) :: :ok | {:error, :no_browser}
+  def open(url, opts \\ []) when is_binary(url) do
+    case opener(opts[:opener]) do
       nil ->
         {:error, :no_browser}
 
@@ -60,10 +65,6 @@ defmodule WardrikOAuth.Browser do
     end
   end
 
-  defp opener do
-    case Keyword.get(WardrikOAuth.Config.redirect(), :opener) do
-      nil -> Enum.find_value(@openers, &System.find_executable/1)
-      named -> System.find_executable(named)
-    end
-  end
+  defp opener(nil), do: Enum.find_value(@openers, &System.find_executable/1)
+  defp opener(named), do: System.find_executable(named)
 end

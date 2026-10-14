@@ -1,12 +1,14 @@
 defmodule WardrikVault do
   @moduledoc """
-  Where credentials are kept, sealed with a key the deployment holds, in the
-  store every function is handed first, and the `Wardrik.Credential`
-  resolver that finds them in the store of the call's host.
+  Where credentials are kept, sealed with a key the deployment holds, in a
+  store, and the `Wardrik.Credentials` that find them for a call.
 
-      children = [{Wardrik, host: host}, {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")]}]
+  A vault is a value, holding its store, its keys and what it grants, and
+  every function is handed it first. A host names it once as its
+  `:credentials`, so every agent's calls resolve through it:
 
-      Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
+      vault = WardrikVault.new(store: store, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")])
+      host = Wardrik.Host.new(store: store, credentials: vault)
 
   Nothing else is needed: no database, no broker, no network. A single binary
   can hold its users' credentials across restarts and across the nodes the
@@ -16,13 +18,13 @@ defmodule WardrikVault do
   since two orgs may each have a user of the same name; an org; or the
   deployment, `nil`.
 
-      WardrikVault.put(store, "github", {"acme", "jon"}, "ghp_xxx")
-      WardrikVault.put(store, "pagerduty", "acme", "pd_xxx")
-      WardrikVault.put(store, "linear", nil, "lin_xxx")
+      WardrikVault.put(vault, "github", {"acme", "jon"}, value: "ghp_xxx")
+      WardrikVault.put(vault, "pagerduty", "acme", value: "pd_xxx")
+      WardrikVault.put(vault, "linear", nil, value: "lin_xxx")
 
   ## Resolving
 
-  `resolve/2` finds a name for the call's scope, the most specific first: the
+  `Wardrik.Credentials.resolve/3` finds a name for the call's scope, the most specific first: the
   call's user's, then its org's, then the deployment's. The credential it
   answers says whose it is as `:owner`. A name nobody holds answers
   `{:error, :not_found}`.
@@ -39,7 +41,7 @@ defmodule WardrikVault do
   has no key: a tool's key a deployment sets as an environment variable
   resolves so where nobody sealed one.
 
-      {WardrikVault, keys: [...], environment: ["SEARCH_API_KEY"]}
+      WardrikVault.new(store: store, keys: keys, environment: ["SEARCH_API_KEY"])
 
   A grant is an account its owner connected, and acts as them, so only its
   owner's calls reach it: a user's grant for their calls, an org's for the
@@ -51,15 +53,14 @@ defmodule WardrikVault do
 
   A credential is a secret someone put here, or a grant: what a user, or an
   org, gave by authorizing an account, kept here like any other and renewed by
-  the module `:grants` names, such as `WardrikOAuth`:
+  the `WardrikVault.Grants` `:grants` holds, such as `WardrikOAuth`'s:
 
-      {WardrikVault, keys: [...], grants: WardrikOAuth}
+      WardrikVault.new(store: store, keys: keys, grants: oauth)
 
-  A grant `resolve/2` finds is handed to that module to answer, renewing it
-  where it has run out. A name nobody holds that the module can grant is asked
-  for, of the call's user, or of its org where the call has no user, and the
-  call parks on where they authorize, until the module says they have. See
-  `WardrikVault.Grants`.
+  A grant a resolve finds is handed to them to answer, renewing it where it
+  has run out. A name nobody holds that they can grant is asked for, of the
+  call's user, or of its org where the call has no user, and the call parks
+  on where they authorize, until they say they have.
 
   ## Keys
 
@@ -74,14 +75,11 @@ defmodule WardrikVault do
   Without a key nothing is written and nothing is read: every call answers
   `{:error, :no_key}` rather than falling back to plaintext.
 
-  ## Starting it
+  ## Model providers' keys
 
-  Its settings are the options of `start_link/1`: `:keys`, `:grants` and
-  `:environment`, none of them by default. A host puts it in its tree before
-  anything that resolves credentials; it runs nothing, and keeps the settings
-  in `:persistent_term`, where every call reads them. Starting it again with
-  other settings replaces them, as a host does once a key is made. See
-  `WardrikVault.Config`.
+  `Wardrik.Credentials.key/2` answers a provider's key, such as
+  `ANTHROPIC_API_KEY`, as the deployment's secret of that name, so a model
+  call takes it where the environment sets none; see `Wardrik.LLM.Key`.
 
   The key seals the value only. Which owner has a credential of which name,
   and whether it is a grant, is visible to anyone who can read the store, and
@@ -89,15 +87,28 @@ defmodule WardrikVault do
   see `path/2`.
   """
 
-  @behaviour Wardrik.Credential
-
   require Logger
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Credential
   alias Wardrik.Scope
-  alias WardrikVault.Config
+  alias WardrikVault.Grants
   alias WardrikVault.Sealed
+
+  @enforce_keys [:store]
+  defstruct [:store, keys: [], grants: %Grants.None{}, environment: []]
+
+  @typedoc """
+  A vault: the store it keeps credentials in, the base64-encoded keys the
+  first of which seals, what it grants, and the names read from the node's
+  environment where it holds them for nobody a call reaches.
+  """
+  @type t() :: %__MODULE__{
+          store: WardrikStore.t(),
+          keys: [String.t()],
+          grants: Grants.t(),
+          environment: [String.t()]
+        }
 
   @ns :vault
   # The additional data a value is sealed with: its kind and its key, under
@@ -113,42 +124,52 @@ defmodule WardrikVault do
   @typedoc "A secret someone put, or a grant someone gave by authorizing."
   @type kind() :: :secret | :grant
 
-  @doc false
-  def child_spec(opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
-
   @doc """
-  Keeps `opts` as the vault's settings, in place of any it had, and answers
-  `:ignore`: nothing runs.
+  A vault keeping credentials in `:store`.
 
-    * `:keys` - the base64-encoded keys, the first of which seals
-    * `:grants` - the `WardrikVault.Grants` module that renews and asks for
-      grants
+    * `:keys` - the base64-encoded keys, the first of which seals; none by
+      default, so nothing is sealed or unsealed
+    * `:grants` - the `WardrikVault.Grants` that renew and ask for grants
     * `:environment` - the names read from the node's environment, as the
       deployment's, where the vault holds them for nobody a call reaches
+
+  Its inspected form shows its store and how many keys it holds, never a
+  key.
   """
-  @spec start_link(keyword()) :: :ignore
-  def start_link(opts \\ []) do
-    :ok = Config.put(opts)
-    :ignore
+  @spec new(keyword()) :: t()
+  def new(opts) do
+    opts = Keyword.validate!(opts, [:store, keys: [], grants: %Grants.None{}, environment: []])
+    struct!(__MODULE__, Keyword.update!(opts, :keys, &List.wrap/1))
   end
 
-  @impl Wardrik.Credential
-  def resolve(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
-    store = Wardrik.Host.store(scope.host)
+  @doc false
+  def resolve(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
+      when is_binary(name) do
     owners = owners(scope)
 
-    case find(store, name, owners) do
-      {:ok, owner, :secret, secret} -> {:ok, Credential.secret(secret, owner: owner)}
-      {:ok, owner, :grant, grant} -> Config.grants().renew(store, name, owner, grant)
-      {:unreadable, owner} -> ask(store, name, owner)
-      :none -> environment(name) || ask(store, name, hd(owners))
-      {:error, :no_key} -> environment(name) || {:error, :no_key}
-      {:error, reason} -> {:error, reason}
+    case find(vault, name, owners) do
+      {:ok, owner, :secret, secret} ->
+        {:ok, Credential.secret(secret, owner: owner)}
+
+      {:ok, owner, :grant, grant} ->
+        Grants.renew(vault.grants, name, owner, vault: vault, value: grant)
+
+      {:unreadable, owner} ->
+        ask(vault, name, owner)
+
+      :none ->
+        environment(vault, name) || ask(vault, name, hd(owners))
+
+      {:error, :no_key} ->
+        environment(vault, name) || {:error, :no_key}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp environment(name) do
-    with true <- name in Config.environment(),
+  defp environment(vault, name) do
+    with true <- name in vault.environment,
          secret when is_binary(secret) <- System.get_env(name) do
       {:ok, Credential.secret(secret, owner: nil)}
     else
@@ -156,14 +177,20 @@ defmodule WardrikVault do
     end
   end
 
-  @doc "Tells the grants module that the grant last resolved for `name` was refused."
-  @impl Wardrik.Credential
-  def refused(name, %Wardrik.Call{scope: %Scope{} = scope}) when is_binary(name) do
-    store = Wardrik.Host.store(scope.host)
-
-    case find(store, name, owners(scope)) do
-      {:ok, owner, :grant, _grant} -> Config.grants().refused(store, name, owner)
+  @doc false
+  def refused(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
+      when is_binary(name) do
+    case find(vault, name, owners(scope)) do
+      {:ok, owner, :grant, _grant} -> Grants.refused(vault.grants, name, owner, vault: vault)
       _secret_or_none -> :ok
+    end
+  end
+
+  @doc false
+  def key(%__MODULE__{} = vault, name) do
+    case lookup(vault, name, nil) do
+      {:ok, :secret, secret} -> {:ok, secret}
+      _grant_absent_or_unreadable -> :error
     end
   end
 
@@ -194,9 +221,9 @@ defmodule WardrikVault do
   # The first of `owners` holding `name`, passing over the grants of any but
   # the first. A grant that no longer unseals is asked for again; a secret
   # that does not is an error.
-  defp find(store, name, [own | _others] = owners) do
+  defp find(vault, name, [own | _others] = owners) do
     Enum.reduce_while(owners, :none, fn owner, :none ->
-      case lookup(store, name, owner) do
+      case lookup(vault, name, owner) do
         {:ok, :grant, _value} when owner != own -> {:cont, :none}
         {:error, :grant, _reason} when owner != own -> {:cont, :none}
         {:ok, kind, value} -> {:halt, {:ok, owner, kind, value}}
@@ -216,35 +243,33 @@ defmodule WardrikVault do
     {:unreadable, owner}
   end
 
-  defp ask(store, name, owner) do
-    grants = Config.grants()
-
-    if grants && grants.grants?(name),
-      do: grants.ask(store, name, owner),
+  defp ask(vault, name, owner) do
+    if Grants.grants?(vault.grants, name),
+      do: Grants.ask(vault.grants, name, owner, vault: vault),
       else: {:error, :not_found}
   end
 
   @doc """
-  Seals `value` and writes it down as `name` for `owner`, a secret unless
-  `kind: :grant` says it is one.
+  Seals the `:value` `opts` name and writes it down as `name` for `owner`, a
+  secret unless `kind: :grant` says it is one.
 
-  Overwrites whatever was there, so authorizing again is a `put/5`.
+  Overwrites whatever was there, so authorizing again is a `put/4`.
   """
-  @spec put(WardrikStore.t(), String.t(), owner(), String.t(), keyword()) ::
-          :ok | {:error, term()}
-  def put(store, name, owner, value, opts \\ []) when is_binary(name) and is_binary(value) do
-    kind = Keyword.get(opts, :kind, :secret)
+  @spec put(t(), String.t(), owner(), value: String.t(), kind: kind()) :: :ok | {:error, term()}
+  def put(%__MODULE__{} = vault, name, owner, opts) when is_binary(name) do
+    opts = Keyword.validate!(opts, [:value, kind: :secret])
+    value = Keyword.fetch!(opts, :value)
 
-    with {:ok, key} <- sealing_key() do
+    with {:ok, key} <- sealing_key(vault) do
       path = path(name, owner)
-      write(store, path, seal(key, path, kind, value))
+      write(vault.store, path, seal(key, path, opts[:kind], value))
     end
   end
 
   @doc "Unseals what is written as `name` for `owner`, a secret or a grant."
-  @spec fetch(WardrikStore.t(), String.t(), owner()) :: {:ok, String.t()} | {:error, term()}
-  def fetch(store, name, owner) do
-    case lookup(store, name, owner) do
+  @spec fetch(t(), String.t(), owner()) :: {:ok, String.t()} | {:error, term()}
+  def fetch(vault, name, owner) do
+    case lookup(vault, name, owner) do
       {:ok, _kind, value} -> {:ok, value}
       {:error, _kind, reason} -> {:error, reason}
       {:error, reason} -> {:error, reason}
@@ -255,13 +280,13 @@ defmodule WardrikVault do
   What is written as `name` for `owner`, with its kind, or why not: `:not_found`
   where nothing is, and the kind with the reason where it does not unseal.
   """
-  @spec lookup(WardrikStore.t(), String.t(), owner()) ::
+  @spec lookup(t(), String.t(), owner()) ::
           {:ok, kind(), String.t()} | {:error, term()} | {:error, kind(), term()}
-  def lookup(store, name, owner) do
+  def lookup(%__MODULE__{} = vault, name, owner) do
     path = path(name, owner)
 
-    with {:ok, keys} <- unsealing_keys(),
-         {:ok, %Sealed{} = sealed} <- read(store, path) do
+    with {:ok, keys} <- unsealing_keys(vault),
+         {:ok, %Sealed{} = sealed} <- read(vault.store, path) do
       case unseal(keys, path, sealed) do
         {:ok, value} -> {:ok, sealed.kind, value}
         {:error, reason} -> {:error, sealed.kind, reason}
@@ -270,20 +295,21 @@ defmodule WardrikVault do
   end
 
   @doc "Whether anything is written as `name` for `owner`."
-  @spec has?(WardrikStore.t(), String.t(), owner()) :: boolean()
-  def has?(store, name, owner), do: match?({:ok, _value}, fetch(store, name, owner))
+  @spec has?(t(), String.t(), owner()) :: boolean()
+  def has?(vault, name, owner), do: match?({:ok, _value}, fetch(vault, name, owner))
 
   @doc "Removes what is written as `name` for `owner`. Removing nothing is still `:ok`."
-  @spec forget(WardrikStore.t(), String.t(), owner()) :: :ok | {:error, term()}
-  def forget(store, name, owner), do: WardrikStore.delete(store, @ns, path(name, owner))
+  @spec forget(t(), String.t(), owner()) :: :ok | {:error, term()}
+  def forget(%__MODULE__{store: store}, name, owner),
+    do: WardrikStore.delete(store, @ns, path(name, owner))
 
   @doc """
   The names `owner` holds credentials of.
 
   Reads no credential and needs no key.
   """
-  @spec names(WardrikStore.t(), owner()) :: [String.t()]
-  def names(store, owner) do
+  @spec names(t(), owner()) :: [String.t()]
+  def names(%__MODULE__{store: store}, owner) do
     prefix = segment(owner) <> "/"
 
     for key <- WardrikStore.keys(store, @ns, prefix),
@@ -300,8 +326,8 @@ defmodule WardrikVault do
   written only as a hash of it, and reads back as `:hashed`; `names/2` lists
   what one such owner holds. Reads no credential and needs no key.
   """
-  @spec list(WardrikStore.t()) :: [{String.t(), owner() | :hashed}]
-  def list(store) do
+  @spec list(t()) :: [{String.t(), owner() | :hashed}]
+  def list(%__MODULE__{store: store}) do
     for key <- WardrikStore.keys(store, @ns),
         [owner, name] <- [String.split(key, "/")],
         do: {URI.decode(name), unsegment(owner)}
@@ -315,9 +341,13 @@ defmodule WardrikVault do
   @spec key?(term()) :: boolean()
   def key?(key), do: decode_key(key) != []
 
-  @doc "Whether this deployment gave the vault a key to work with."
-  @spec ready?() :: boolean()
-  def ready?, do: match?({:ok, _key}, sealing_key())
+  @doc "Whether `vault` holds a key it can work with."
+  @spec ready?(t()) :: boolean()
+  def ready?(vault), do: match?({:ok, _key}, sealing_key(vault))
+
+  @doc "Whether `vault` was given a key at all, usable or not; `ready?/1` says whether it is usable."
+  @spec configured?(t()) :: boolean()
+  def configured?(%__MODULE__{keys: keys}), do: keys != []
 
   @doc "The namespace secrets are written under in `WardrikStore`."
   @spec namespace() :: WardrikStore.ns()
@@ -381,21 +411,19 @@ defmodule WardrikVault do
 
   defp unseal(_keys, _path, %Sealed{version: version}), do: {:error, {:unknown_version, version}}
 
-  defp sealing_key do
-    case unsealing_keys() do
+  defp sealing_key(vault) do
+    case unsealing_keys(vault) do
       {:ok, [key | _rest]} -> {:ok, key}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp unsealing_keys do
-    case Enum.flat_map(configured_keys(), &decode_key/1) do
+  defp unsealing_keys(%__MODULE__{keys: keys}) do
+    case Enum.flat_map(keys, &decode_key/1) do
       [] -> {:error, :no_key}
       keys -> {:ok, keys}
     end
   end
-
-  defp configured_keys, do: Config.keys()
 
   defp decode_key(key) when is_binary(key) do
     case Base.decode64(key) do
@@ -423,4 +451,20 @@ defmodule WardrikVault do
   defp unsegment("_"), do: nil
   defp unsegment("~" <> _hash), do: :hashed
   defp unsegment(text), do: URI.decode(text)
+end
+
+defimpl Wardrik.Credentials, for: WardrikVault do
+  defdelegate resolve(vault, ref, call), to: WardrikVault
+  defdelegate refused(vault, ref, call), to: WardrikVault
+  defdelegate key(vault, name), to: WardrikVault
+end
+
+defimpl Inspect, for: WardrikVault do
+  def inspect(%WardrikVault{store: store, keys: keys}, opts) do
+    Inspect.Algebra.concat([
+      "#WardrikVault<",
+      Inspect.Algebra.to_doc(store, opts),
+      ", #{length(keys)} keys>"
+    ])
+  end
 end

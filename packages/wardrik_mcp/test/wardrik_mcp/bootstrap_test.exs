@@ -16,9 +16,8 @@ defmodule WardrikMCP.BootstrapTest do
 
   defmodule Vault do
     @moduledoc false
-    @behaviour Wardrik.Credential
+    defstruct []
 
-    @impl true
     def resolve("locked", %Wardrik.Call{scope: scope}), do: locked(Scope.agent_id(scope))
 
     defp locked(%AgentID{org: org, user: "connected"}),
@@ -27,6 +26,12 @@ defmodule WardrikMCP.BootstrapTest do
     defp locked(%AgentID{org: org, user: user}),
       do:
         {:error, {:authorization_required, %{url: "https://example.com/authorize"}, {org, user}}}
+  end
+
+  defimpl Wardrik.Credentials, for: Vault do
+    def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+    def refused(_vault, _ref, _call), do: :ok
+    def key(_vault, _name), do: :error
   end
 
   # The stub refuses to list its tools without a token, the way a server
@@ -39,7 +44,9 @@ defmodule WardrikMCP.BootstrapTest do
 
   defp scope(ref, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root(AgentID.new!("a", org: "acme", user: user), credentials: Vault)
+    |> Scope.root(AgentID.new!("a", org: "acme", user: user),
+      host: Wardrik.Test.host(credentials: %Vault{})
+    )
   end
 
   defp call(ref, user, tool) do

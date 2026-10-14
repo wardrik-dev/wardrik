@@ -17,7 +17,7 @@ defmodule WardrikOAuth.Pending do
   with it any polling; a flow that crashes takes only itself.
 
   A device flow's process asks the token endpoint every interval the server
-  named, and never more often than `WardrikOAuth.Config.poll_floor/0`,
+  named, and never more often than its `WardrikOAuth`'s `:poll_floor`,
   whether the user has entered the code, until they have, refused, or let it
   expire. A server that cannot be reached, or fails, is asked again at the
   next interval. What it found is handed to the `:done` function it was
@@ -31,7 +31,6 @@ defmodule WardrikOAuth.Pending do
 
   require Logger
 
-  alias WardrikOAuth.Config
   alias WardrikOAuth.Device
   alias WardrikOAuth.Flow
   alias WardrikOAuth.Metadata
@@ -45,9 +44,20 @@ defmodule WardrikOAuth.Pending do
 
     @derive {Inspect, only: [:provider, :owner, :started_at, :expires_after]}
 
-    @enforce_keys [:store, :state, :provider, :owner, :metadata, :registered, :url, :started_at]
+    @enforce_keys [
+      :oauth,
+      :vault,
+      :state,
+      :provider,
+      :owner,
+      :metadata,
+      :registered,
+      :url,
+      :started_at
+    ]
     defstruct [
-      :store,
+      :oauth,
+      :vault,
       :state,
       :provider,
       :owner,
@@ -62,7 +72,8 @@ defmodule WardrikOAuth.Pending do
     ]
 
     @type t() :: %__MODULE__{
-            store: WardrikStore.t(),
+            oauth: WardrikOAuth.t(),
+            vault: WardrikVault.t(),
             state: String.t(),
             provider: Provider.t(),
             owner: term(),
@@ -190,7 +201,7 @@ defmodule WardrikOAuth.Pending do
   defp polling(%{device: nil} = state), do: state
 
   defp polling(%{device: %Device{} = device} = state) do
-    interval = max(:timer.seconds(device.interval), Config.poll_floor())
+    interval = max(:timer.seconds(device.interval), state.flight.oauth.poll_floor)
     next_poll(Map.put(state, :interval, interval))
   end
 
@@ -217,7 +228,12 @@ defmodule WardrikOAuth.Pending do
   end
 
   defp poll(%{flight: flight, device: device} = state) do
-    case Device.poll(flight.metadata, flight.registered, device) do
+    case Device.poll(
+           flight.metadata,
+           flight.registered,
+           device,
+           WardrikOAuth.requests(flight.oauth)
+         ) do
       {:ok, %Token{} = token} ->
         ended(state, {:ok, token})
 

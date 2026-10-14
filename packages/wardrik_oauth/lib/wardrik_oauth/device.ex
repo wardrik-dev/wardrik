@@ -179,7 +179,12 @@ defmodule WardrikOAuth.Device do
     request =
       [form: form, headers: [accept: "application/json"]] ++ Keyword.get(opts, :req_options, [])
 
-    with {:ok, options} <- Egress.options(endpoint, trust, request) do
+    with {:ok, options} <-
+           Egress.options(
+             endpoint,
+             trust,
+             [req_options: request] ++ Keyword.take(opts, [:resolve])
+           ) do
       case Req.post(options) do
         {:ok, %Req.Response{status: status, body: body}} when is_map(body) -> {:ok, status, body}
         {:ok, %Req.Response{status: status}} -> {:ok, status, %{}}

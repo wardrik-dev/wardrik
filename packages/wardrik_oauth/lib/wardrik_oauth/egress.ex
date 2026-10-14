@@ -17,11 +17,9 @@ defmodule WardrikOAuth.Egress do
   that resolves elsewhere a moment later is not followed. No request follows
   a redirect, and each gives up after 15 seconds.
 
-  `WardrikOAuth.Config.resolver/0` names the module whose `resolve/1`
-  answers a host's addresses, this one by default.
+  A request's `:resolve` answers a host's addresses, `resolve/1` by default,
+  as the deployment's `WardrikOAuth` gives it.
   """
-
-  alias WardrikOAuth.Config
 
   @typedoc "Whose word a URL rests on."
   @type trust() :: :operator | :discovered
@@ -43,18 +41,21 @@ defmodule WardrikOAuth.Egress do
   defp allowed(_uri, url, _trust), do: {:error, {:insecure_url, url}}
 
   @doc """
-  The `Req` options for a request to `url` under `trust`, with `options` and
-  the configured `:req_options` merged in, or why it may not be made.
+  The `Req` options for a request to `url` under `trust`, with `:req_options`
+  merged in, or why it may not be made. `:resolve` answers the addresses a
+  `:discovered` URL's host resolves to.
   """
-  @spec options(String.t(), trust(), keyword()) :: {:ok, keyword()} | {:error, term()}
-  def options(url, trust, options \\ []) do
+  @spec options(String.t(), trust(),
+          req_options: keyword(),
+          resolve: (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term()})
+        ) :: {:ok, keyword()} | {:error, term()}
+  def options(url, trust, opts \\ []) do
     with :ok <- check(url, trust),
-         {:ok, target} <- target(url, trust) do
+         {:ok, target} <- target(url, trust, Keyword.get(opts, :resolve, &resolve/1)) do
       {:ok,
        [redirect: false, retry: false, receive_timeout: @timeout]
        |> Keyword.merge(target)
-       |> Keyword.merge(options)
-       |> Keyword.merge(Config.req_options())}
+       |> Keyword.merge(Keyword.get(opts, :req_options, []))}
     end
   end
 
@@ -76,12 +77,12 @@ defmodule WardrikOAuth.Egress do
     end
   end
 
-  defp target(url, :operator), do: {:ok, [url: url]}
+  defp target(url, :operator, _resolve), do: {:ok, [url: url]}
 
-  defp target(url, :discovered) do
+  defp target(url, :discovered, resolve) do
     %URI{host: host} = uri = URI.parse(url)
 
-    case Config.resolver().resolve(host) do
+    case resolve.(host) do
       {:ok, [_ | _] = addresses} ->
         if Enum.all?(addresses, &public?/1),
           do: {:ok, pinned(uri, hd(addresses))},

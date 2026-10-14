@@ -53,8 +53,12 @@ defmodule WardrikTrigger.Webhook.Server do
     {:reply, :ok, next, meta: meta(next), sync: true}
   end
 
-  def handle_call({:deliver, request}, _from, %__MODULE__{agent: agent, hook: hook} = state) do
-    with {:ok, item} <- Webhook.received(hook, request, agent),
+  def handle_call(
+        {:deliver, request, secrets},
+        _from,
+        %__MODULE__{agent: agent, hook: hook} = state
+      ) do
+    with {:ok, item} <- Webhook.received(hook, request, agent: agent, secrets: secrets),
          false <- item.id in state.seen,
          {:ok, pid} <- Delivery.ready(agent, hook.overlap) do
       next = %{

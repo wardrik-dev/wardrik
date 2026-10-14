@@ -28,6 +28,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.AgentOperation
   alias Wardrik.Command
   alias Wardrik.Connections
+  alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Event.Export
   alias Wardrik.Grant
@@ -93,7 +94,13 @@ defmodule WardrikHTTP.Router do
 
       :ok ->
         conn
-        |> WebSockAdapter.upgrade(WardrikHTTP.Worker, {conn.assigns.caller, store(conn)},
+        |> WebSockAdapter.upgrade(
+          WardrikHTTP.Worker,
+          %{
+            caller: conn.assigns.caller,
+            store: store(conn),
+            settings: Keyword.get(conn.assigns.options, :workers, [])
+          },
           timeout: @idle
         )
         |> halt()
@@ -345,8 +352,8 @@ defmodule WardrikHTTP.Router do
   # org's.
   defp connections(conn, module, fields) do
     case conn.query_params["owner"] do
-      nil -> Connections.request(module, caller(conn), :person, fields)
-      "org" -> Connections.request(module, caller(conn), :org, fields)
+      nil -> Owner.request(module, caller(conn), :person, fields)
+      "org" -> Owner.request(module, caller(conn), :org, fields)
       _other -> {:error, Error.new(:invalid, "owner is org, or left out for the caller's own")}
     end
   end

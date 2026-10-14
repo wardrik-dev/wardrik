@@ -1,6 +1,8 @@
 Mimic.copy(WardrikDaemon.AgentFile)
 Mimic.copy(WardrikDaemon.CLI)
 Mimic.copy(WardrikDaemon)
+Mimic.copy(WardrikDaemon.Host)
+Mimic.copy(WardrikDaemon.Boot)
 Mimic.copy(Wardrik.Deployment)
 Mimic.copy(Wardrik.Fleet)
 Mimic.copy(WardrikStore)
@@ -8,11 +10,30 @@ Mimic.copy(ReqLLM)
 
 # The tests that reach real services, which dev/services.sh starts, are
 # left out where nothing answers; see WardrikEcto.Test.Services.
+# The suite's fleet runs on the host a daemon builds from the suite's own
+# settings, held where a command run over rpc finds it, as the daemon's tree
+# holds it; see WardrikDaemon.Test.Host.
+store = Wardrik.Test.store()
+
+config =
+  WardrikDaemon.Config.new(
+    config_dir: System.tmp_dir!(),
+    sections: Application.get_all_env(:wardrik_daemon)
+  )
+
+host = WardrikDaemon.host(config, store: store)
+Application.put_env(:wardrik_daemon, WardrikDaemon.Test.Host, {host, config})
+
 Wardrik.Test.start(
   children: [
-    {WardrikPolicy.Supervisor, store: Wardrik.Test.store()},
-    {WardrikTrigger, store: Wardrik.Test.store()},
-    {WardrikHTTP.Access, store: Wardrik.Test.store()},
+    {WardrikStore, store},
+    {WardrikDaemon.Boot,
+     store: store, cluster: WardrikDaemon.Config.section(config, WardrikDaemon.Cluster)},
+    {WardrikDaemon.Host, host: host, config: config},
+    {Wardrik, host: host},
+    {WardrikPolicy.Supervisor, store: store},
+    {WardrikTrigger, store: store},
+    {WardrikHTTP.Access, store: store},
     WardrikHTTP.Workers
   ],
   wait: [WardrikPolicy.Meter.supervisor(), WardrikTrigger.supervisor()],

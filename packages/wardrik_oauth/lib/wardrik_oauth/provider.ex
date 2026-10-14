@@ -129,17 +129,16 @@ defmodule WardrikOAuth.Provider do
   def flow!(flow),
     do: raise(ArgumentError, "a provider's flow is auto, browser or device, not #{inspect(flow)}")
 
-  @doc "The provider configured under `name`, if there is one."
-  @spec fetch(String.t()) :: {:ok, t()} | :error
-  def fetch(name) when is_binary(name) do
-    Enum.find_value(configured(), :error, fn {configured, opts} ->
+  @doc "The provider `oauth` configures under `name`, if there is one."
+  @spec fetch(WardrikOAuth.t(), String.t()) :: {:ok, t()} | :error
+  def fetch(%WardrikOAuth{providers: providers}, name) when is_binary(name) do
+    Enum.find_value(providers, :error, fn {configured, opts} ->
       if to_string(configured) == name, do: {:ok, new(configured, opts)}
     end)
   end
 
-  @doc "Every provider this deployment configured."
-  @spec all() :: [t()]
-  def all, do: Enum.map(configured(), fn {name, opts} -> new(name, opts) end)
-
-  defp configured, do: WardrikOAuth.Config.providers()
+  @doc "Every provider `oauth` configures."
+  @spec all(WardrikOAuth.t()) :: [t()]
+  def all(%WardrikOAuth{providers: providers}),
+    do: Enum.map(providers, fn {name, opts} -> new(name, opts) end)
 end

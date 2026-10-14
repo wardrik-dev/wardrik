@@ -585,15 +585,12 @@ defmodule WardrikDaemon.ConfigTest do
       assert message =~ "base_url is an https:// URL, or http:// on loopback"
     end
 
-    test "base_url/0 is this machine's loopback where the file names none" do
-      previous = Application.get_env(:wardrik_daemon, WardrikDaemon)
-      on_exit(fn -> Application.put_env(:wardrik_daemon, WardrikDaemon, previous || []) end)
+    test "base_url/1 is this machine's loopback where the file names none" do
+      config = Config.new(sections: [{WardrikDaemon, org: "default"}, {WardrikHTTP, port: 4800}])
+      assert Config.base_url(config) == "http://127.0.0.1:4800"
 
-      Application.put_env(:wardrik_daemon, WardrikDaemon, org: "default")
-      assert Config.base_url() =~ ~r"\Ahttp://127\.0\.0\.1:\d+\z"
-
-      Application.put_env(:wardrik_daemon, WardrikDaemon, base_url: "https://agents.example.com")
-      assert Config.base_url() == "https://agents.example.com"
+      config = Config.new(sections: [{WardrikDaemon, base_url: "https://agents.example.com"}])
+      assert Config.base_url(config) == "https://agents.example.com"
     end
 
     test "oauth.redirect names where a browser comes back to, and where the daemon listens",
@@ -932,32 +929,45 @@ defmodule WardrikDaemon.ConfigTest do
     end
   end
 
-  describe "apply/1" do
-    @describetag tmp_dir: false
+  describe "load/1" do
+    test "reads the file over the release's settings, and keeps the vault's keys", %{
+      tmp_dir: dir
+    } do
+      File.write!(Path.join(dir, "config.yaml"), "org: acme\nvault:\n  keys: [\"${KEYED}\"]\n")
+      key = WardrikVault.generate_key()
+      System.put_env("KEYED", key)
+      on_exit(fn -> System.delete_env("KEYED") end)
 
-    test "leaves the store's settings, which a release took as it booted" do
-      before = Config.settings(WardrikStore)
-      :ok = Config.apply([{WardrikStore, adapter: WardrikStore.Memory}])
-      assert Config.settings(WardrikStore) == before
+      base = [{WardrikVault, environment: ["SEARCH_API_KEY"]}, {WardrikMCP, servers: []}]
+
+      assert {:ok, %Config{} = config} =
+               Config.load(
+                 store: Wardrik.Test.store(),
+                 base: base,
+                 config_dir: dir,
+                 data_dir: dir
+               )
+
+      assert Config.org(config) == "acme"
+      assert Config.section(config, WardrikVault)[:environment] == ["SEARCH_API_KEY"]
+      assert Config.section(config, WardrikVault)[:keys] == [key]
+      assert Config.section(config, WardrikMCP) == [servers: []]
+      assert config.config_dir == dir
     end
 
-    test "merges over what the daemon keeps for the module" do
-      module = :"Elixir.WardrikDaemon.ConfigTest.Package#{System.unique_integer([:positive])}"
-      Application.put_env(:wardrik_daemon, module, kept: 1, replaced: 1)
-      on_exit(fn -> Application.delete_env(:wardrik_daemon, module) end)
+    test "gives the vault the data home's key file where nothing else names one", %{tmp_dir: dir} do
+      {:ok, file} = WardrikDaemon.VaultKey.make(dir)
+      {:ok, key} = WardrikDaemon.VaultKey.read(file)
 
-      :ok = Config.apply([{module, replaced: 2}])
+      assert {:ok, config} =
+               Config.load(store: Wardrik.Test.store(), config_dir: dir, data_dir: dir)
 
-      assert Config.settings(module) == [kept: 1, replaced: 2]
+      assert Config.section(config, WardrikVault)[:keys] == [key]
     end
 
-    test "keeps every package's settings in the daemon's own application" do
-      WardrikDaemon.Test.Settings.keep()
-
-      :ok = Config.apply([{WardrikMCP, servers: [a: []]}])
-
-      assert Config.settings(WardrikMCP)[:servers] == [a: []]
-      assert Application.get_env(:wardrik_mcp, WardrikMCP) == nil
+    test "merges each module's settings over the release's", %{tmp_dir: _dir} do
+      assert Config.merge([{WardrikMCP, kept: 1, replaced: 1}], [{WardrikMCP, replaced: 2}]) ==
+               [{WardrikMCP, kept: 1, replaced: 2}]
     end
   end
 end

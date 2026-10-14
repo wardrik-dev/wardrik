@@ -16,7 +16,11 @@ defmodule WardrikSDK.WorkspacePolicyTest do
         tools: [{WardrikWorkspace, spec}],
         id: id,
         name: "turn",
-        hooks: WardrikPolicy.hooks(policy)
+        hooks: WardrikPolicy.hooks(policy),
+        host:
+          Wardrik.Test.host(
+            workspace: %WardrikWorkspace.Backend.Store{store: Wardrik.Test.store()}
+          )
       )
 
     assert {:ok, %{"ok" => true}} =

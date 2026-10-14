@@ -86,8 +86,6 @@ defmodule WardrikTrigger do
       raised or exited
   """
 
-  @behaviour Wardrik.Triggers
-
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias WardrikTrigger.Clock
@@ -128,7 +126,6 @@ defmodule WardrikTrigger do
   @type outcome() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
   @name WardrikTrigger.Triggers
-  @secrets {__MODULE__, :secrets}
   @fields ~w(every prompt overlap missed jitter)
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
   @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
@@ -147,14 +144,11 @@ defmodule WardrikTrigger do
 
   @doc """
   Starts the supervisor the triggers run under, over the store the fleet
-  runs on, which `:store` names. `:log` is passed to `Group`, and `:secrets`
-  reads a webhook's secret by its name for an agent, `System.get_env/1` of
-  the name by default.
+  runs on, which `:store` names. `:log` is passed to `Group`. A request for
+  a webhook reaches it through `WardrikTrigger.Deliveries`.
   """
   @spec start_link(keyword()) :: Supervisor.on_start()
   def start_link(opts) do
-    :persistent_term.put(@secrets, Keyword.get(opts, :secrets, &environment/2))
-
     DurableServer.Supervisor.start_link(
       [
         name: @name,
@@ -382,25 +376,14 @@ defmodule WardrikTrigger do
   def schedule({:interval, ms} = every) when rem(ms, 1_000) == 0, do: "every " <> written(every)
   def schedule({:interval, ms}), do: "every #{ms}ms"
 
-  @doc """
-  Delivers `request` to the trigger `name` of `agent`, as `Wardrik.Triggers`
-  describes: a webhook checks it, and asks the agent about it unless it has
-  before; a trigger on a clock is sent no requests.
-  """
-  @impl Wardrik.Triggers
-  def deliver(%AgentID{} = agent, name, request) when is_binary(name) do
+  @doc false
+  @spec lookup(AgentID.t(), String.t()) :: pid() | nil
+  def lookup(%AgentID{} = agent, name) when is_binary(name) do
     case DurableServer.Supervisor.lookup(@name, Webhook.key(agent, name)) do
-      {pid, _meta} -> GenServer.call(pid, {:deliver, request})
-      nil -> {:error, :not_found}
+      {pid, _meta} -> pid
+      nil -> nil
     end
   end
-
-  @doc "The secret `name` for `agent`, as the `:secrets` the triggers were started with reads it."
-  @spec secret(String.t(), AgentID.t()) :: String.t() | nil
-  def secret(name, %AgentID{} = agent) when is_binary(name),
-    do: :persistent_term.get(@secrets).(name, agent)
-
-  defp environment(name, _agent), do: System.get_env(name)
 
   @doc """
   The first time `trigger` names after `from`, with its jitter added.

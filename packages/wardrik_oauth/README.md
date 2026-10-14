@@ -13,22 +13,31 @@ end
 
 ```elixir
 # lib/my_app/application.ex
-children = [
-  Wardrik,
-  {WardrikVault, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: WardrikOAuth},
-  {WardrikOAuth.Supervisor,
-   client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
-   providers: [
-     github: [
-       resource: "https://api.githubcopilot.com/mcp/",
-       issuer: "https://github.com/login/oauth",
-       client_id: System.get_env("GITHUB_CLIENT_ID"),
-       client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-       scopes: ~w(repo),
-       flow: :auto
-     ]
-   ]}
-]
+oauth =
+  WardrikOAuth.new(
+    client: [name: "Wardrik", document_url: "https://wardrik.dev/oauth/client"],
+    providers: [
+      github: [
+        resource: "https://api.githubcopilot.com/mcp/",
+        issuer: "https://github.com/login/oauth",
+        client_id: System.get_env("GITHUB_CLIENT_ID"),
+        client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+        scopes: ~w(repo),
+        flow: :auto
+      ]
+    ]
+  )
+
+vault = WardrikVault.new(store: store, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")], grants: oauth)
+
+host =
+  Wardrik.Host.new(
+    store: store,
+    credentials: vault,
+    connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault}
+  )
+
+children = [{WardrikStore, store}, {Wardrik, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
 ```
 
 It finds the authorization server from the resource, and presents whichever

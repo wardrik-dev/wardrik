@@ -55,19 +55,15 @@ defmodule WardrikDaemon.SSH do
   @host_key "ssh_host_rsa_key"
 
   @doc """
-  The listener for a daemon whose config lives in `config_dir` and whose data
-  lives in `data_dir`, as `settings` place it, whose sessions run on `host`:
-  none where `config_dir` holds no `ssh/authorized_keys`, or where `settings`
-  names no `:entrypoint`.
+  The listener for a daemon run under `config`, as its `WardrikDaemon.SSH`
+  section places it, whose sessions run on the `:host` `opts` name: none
+  where the config directory holds no `ssh/authorized_keys`, or where the
+  section names no `:entrypoint`.
   """
-  @spec children(Path.t(), Path.t(), Wardrik.Host.t(), keyword()) :: [{module(), keyword()}]
-  def children(
-        config_dir,
-        data_dir,
-        host,
-        settings \\ Application.get_env(:wardrik_daemon, __MODULE__, [])
-      ) do
-    keys = Path.join([config_dir, "ssh", "authorized_keys"])
+  @spec children(WardrikDaemon.Config.t(), host: Wardrik.Host.t()) :: [{module(), keyword()}]
+  def children(%WardrikDaemon.Config{} = config, opts) do
+    settings = WardrikDaemon.Config.section(config, __MODULE__)
+    keys = Path.join([config.config_dir, "ssh", "authorized_keys"])
 
     case {File.exists?(keys), Keyword.fetch(settings, :entrypoint)} do
       {false, _entrypoint} ->
@@ -84,18 +80,20 @@ defmodule WardrikDaemon.SSH do
            port: Keyword.get(settings, :port, 2222),
            ip: Keyword.get(settings, :ip, {127, 0, 0, 1}),
            auth: {:public_key, fn user, key -> authorized?(keys, user, key) end},
-           system_dir: host_key!(Path.join(data_dir, "ssh")),
-           entrypoint: entrypoint(entrypoint, host)}
+           system_dir: host_key!(Path.join(config.data_dir, "ssh")),
+           entrypoint: entrypoint(entrypoint, config, Keyword.fetch!(opts, :host))}
         ]
     end
   end
 
   # A session finds an agent named without an org in the deployment's, and
   # runs what it asks on the daemon's host.
-  defp entrypoint({module, opts}, host),
+  defp entrypoint({module, opts}, config, host),
     do:
       {module,
-       opts |> Keyword.put_new(:org, WardrikDaemon.Config.org()) |> Keyword.put(:host, host)}
+       opts
+       |> Keyword.put_new(:org, WardrikDaemon.Config.org(config))
+       |> Keyword.put(:host, host)}
 
   @retry :timer.seconds(5)
 

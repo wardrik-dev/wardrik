@@ -13,7 +13,7 @@ defmodule WardrikOAuth.ResumeTest do
   alias WardrikOAuth.Pending
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
     stub_server(cimd: true)
     configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
@@ -22,11 +22,11 @@ defmodule WardrikOAuth.ResumeTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+    Config.new() |> Scope.root(id, host: host())
   end
 
   # Whoever finishes a flow is recorded as the flow: the provider's authorization.
-  defp oauth, do: Wardrik.Principal.new(:oauth, "github", name: "github authorization")
+  defp authorizer, do: Wardrik.Principal.new(:oauth, "github", name: "github authorization")
 
   # An agent holding a call parked to resolve github for `owner`, as the
   # runtime parks one whose tool names it, and the link it was sent to.
@@ -69,17 +69,17 @@ defmodule WardrikOAuth.ResumeTest do
         payload: %Event.CallDecided{call_id: "call_1", decision: :approve, by: by}
       }
 
-      assert by == oauth()
+      assert by == authorizer()
       assert_receive %Event{payload: %Event.TurnResumed{decisions: %{"call_1" => :approve}}}
       assert_receive {:resumed, %{"call_1" => :approve}}
     end
 
     test "stays parked while somebody else connects", %{owner: owner} do
       %{agent: agent} = park(owner)
-      [provider] = WardrikOAuth.Provider.all()
+      [provider] = WardrikOAuth.Provider.all(oauth())
 
       {:error, {:authorization_required, theirs, _whose}} =
-        WardrikOAuth.hold(Wardrik.Test.store(), provider, {"acme", "else"})
+        WardrikOAuth.hold(oauth(), provider, {"acme", "else"}, vault: vault())
 
       assert {:ok, "github"} = finish(theirs.url)
 
@@ -104,13 +104,13 @@ defmodule WardrikOAuth.ResumeTest do
 
   describe "a flow with nobody waiting" do
     test "finishes all the same", %{owner: owner} do
-      [provider] = WardrikOAuth.Provider.all()
+      [provider] = WardrikOAuth.Provider.all(oauth())
 
       {:error, {:authorization_required, link, _whose}} =
-        WardrikOAuth.hold(Wardrik.Test.store(), provider, {"acme", owner})
+        WardrikOAuth.hold(oauth(), provider, {"acme", owner}, vault: vault())
 
       assert {:ok, "github"} = finish(link.url)
-      assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
     end
   end
 end

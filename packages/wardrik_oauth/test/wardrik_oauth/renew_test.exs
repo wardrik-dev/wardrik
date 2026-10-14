@@ -10,7 +10,7 @@ defmodule WardrikOAuth.RenewTest do
   alias Wardrik.Test.Calls
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, loopback: false})
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), loopback: false})
     :ok = configure([])
 
     test = self()
@@ -28,7 +28,7 @@ defmodule WardrikOAuth.RenewTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+    Config.new() |> Scope.root(id, host: host())
   end
 
   defp call(owner), do: Calls.tool("tool", %{}, scope(owner))
@@ -53,13 +53,14 @@ defmodule WardrikOAuth.RenewTest do
     token = struct(Token, Map.merge(fields, overrides))
 
     :ok =
-      WardrikVault.put(Wardrik.Test.store(), "github", {"acme", owner}, Token.encode(token),
+      WardrikVault.put(vault(), "github", {"acme", owner},
+        value: Token.encode(token),
         kind: :grant
       )
   end
 
   defp kept(owner) do
-    {:ok, encoded} = WardrikVault.fetch(Wardrik.Test.store(), "github", {"acme", owner})
+    {:ok, encoded} = WardrikVault.fetch(vault(), "github", {"acme", owner})
     {:ok, token} = Token.decode(encoded)
     token
   end
@@ -143,10 +144,11 @@ defmodule WardrikOAuth.RenewTest do
       stub_server(cimd: true, token: renewed())
       configure(providers: provider())
       keep(owner)
+      call = call(owner)
 
       results =
         1..5
-        |> Enum.map(fn _n -> Task.async(fn -> resolve(owner) end) end)
+        |> Enum.map(fn _n -> Task.async(fn -> Credential.resolve(call, "github") end) end)
         |> Task.await_many()
 
       assert Enum.all?(results, &match?({:ok, _credential}, &1))
@@ -175,9 +177,7 @@ defmodule WardrikOAuth.RenewTest do
     configure(providers: provider())
 
     :ok =
-      WardrikVault.put(Wardrik.Test.store(), "github", {"acme", owner}, "not a token",
-        kind: :grant
-      )
+      WardrikVault.put(vault(), "github", {"acme", owner}, value: "not a token", kind: :grant)
 
     log =
       capture_log(fn ->
@@ -187,13 +187,13 @@ defmodule WardrikOAuth.RenewTest do
     assert log =~ "cannot be read (token_unreadable); asking again"
 
     assert {:ok, "not a token"} =
-             WardrikVault.fetch(Wardrik.Test.store(), "github", {"acme", owner})
+             WardrikVault.fetch(vault(), "github", {"acme", owner})
   end
 
   test "a vault with no key is an error, and starts nothing", %{owner: owner} do
     stub_server(cimd: true)
     configure(providers: provider())
-    :ignore = WardrikVault.start_link(keys: [], grants: WardrikOAuth)
+    rekey([])
 
     assert {:error, :no_key} = resolve(owner)
     refute_received {:oauth, _method, _path, _body}

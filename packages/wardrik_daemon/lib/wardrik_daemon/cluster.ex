@@ -48,13 +48,13 @@ defmodule WardrikDaemon.Cluster do
   which; see `WardrikStore.quorum/2`.
 
   A release reads `cluster` as it boots, before anything starts; see
-  `config/runtime.exs`. This supervisor runs a `WardrikDaemon.Cluster.Topology`
-  for the way the cluster is found, which connects to the nodes it finds, and
-  `WardrikDaemon.Cluster.Quorum` beside it holds the fleet back until a quorum of
-  them, as the store counts it, is connected. Core starts both before the
-  fleet, as its `:cluster`:
+  `config/runtime.exs`, and hands it to this supervisor, which runs a
+  `WardrikDaemon.Cluster.Topology` for the way the cluster is found, which
+  connects to the nodes it finds, and to `WardrikDaemon.Cluster.Quorum`
+  beside it, which holds the rest back until a quorum of them, as the store
+  counts it, is connected. Every function here is handed those settings:
 
-      {Wardrik, cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}]}
+      [{WardrikDaemon.Cluster, cluster}, {WardrikDaemon.Cluster.Quorum, store: store, cluster: cluster}]
 
   Nodes on one machine share a config directory. Only one of them listens for
   SSH, and for OAuth's callback, at a time; see `WardrikDaemon.SSH`.
@@ -66,12 +66,21 @@ defmodule WardrikDaemon.Cluster do
   alias WardrikDaemon.Cluster.Strategy
   alias WardrikDaemon.Cluster.Topology
 
-  @spec start_link([]) :: Supervisor.on_start()
-  def start_link([]), do: Supervisor.start_link(__MODULE__, [], name: __MODULE__)
+  @typedoc "What `config.yaml`'s `cluster` reads into: its `:topologies`, `:size` and `:nodes`."
+  @type settings() :: keyword()
+
+  @doc false
+  @spec child_spec(settings()) :: Supervisor.child_spec()
+  def child_spec(cluster),
+    do: %{id: __MODULE__, start: {__MODULE__, :start_link, [cluster]}, type: :supervisor}
+
+  @doc "Starts the topologies `cluster` names, or nothing where it names none."
+  @spec start_link(settings()) :: Supervisor.on_start()
+  def start_link(cluster), do: Supervisor.start_link(__MODULE__, cluster, name: __MODULE__)
 
   @impl true
-  def init([]) do
-    case topologies() do
+  def init(cluster) do
+    case topologies(cluster) do
       [] ->
         :ignore
 
@@ -81,34 +90,35 @@ defmodule WardrikDaemon.Cluster do
   end
 
   @doc "Whether `config.yaml` describes a cluster."
-  @spec configured?() :: boolean()
-  def configured?, do: topologies() != []
+  @spec configured?(settings()) :: boolean()
+  def configured?(cluster), do: topologies(cluster) != []
 
   @doc "The topologies that find the cluster's nodes."
-  @spec topologies() :: [Topology.t()]
-  def topologies, do: Keyword.get(settings(), :topologies, [])
+  @spec topologies(settings()) :: [Topology.t()]
+  def topologies(cluster), do: Keyword.get(cluster, :topologies, [])
 
   @doc "How many nodes the store counts a quorum over, and 1 where there is no cluster."
-  @spec size() :: pos_integer()
-  def size, do: Keyword.get(settings(), :size, 1)
+  @spec size(settings()) :: pos_integer()
+  def size(cluster), do: Keyword.get(cluster, :size, 1)
 
   @doc "The nodes `cluster.nodes` names, or none where the cluster is found by DNS."
-  @spec named() :: [node()]
-  def named, do: Keyword.get(settings(), :nodes, [])
+  @spec named(settings()) :: [node()]
+  def named(cluster), do: Keyword.get(cluster, :nodes, [])
 
   @doc "How many of the cluster's nodes must be connected, this one among them, as `store` counts them."
-  @spec quorum(WardrikStore.t()) :: pos_integer()
-  def quorum(store), do: WardrikStore.quorum(store, size())
+  @spec quorum(settings(), WardrikStore.t()) :: pos_integer()
+  def quorum(cluster, store), do: WardrikStore.quorum(store, size(cluster))
 
   @doc """
   The cluster's nodes this one is connected to, itself among them: those
   `cluster.nodes` names, or those DNS resolves to now.
   """
-  @spec members() :: [node()]
-  def members do
+  @spec members(settings()) :: [node()]
+  def members(cluster) do
     connected = MapSet.new([node() | Node.list()])
 
-    topologies()
+    cluster
+    |> topologies()
     |> Enum.flat_map(&Strategy.nodes(&1.strategy))
     |> Enum.uniq()
     |> Enum.filter(&MapSet.member?(connected, &1))
@@ -119,11 +129,13 @@ defmodule WardrikDaemon.Cluster do
   Why this node may not be one of the cluster's at all, or `nil` where it
   may: `cluster.nodes` does not name it.
   """
-  @spec refusal() :: String.t() | nil
-  def refusal do
-    if named() != [] and node() not in named() do
+  @spec refusal(settings()) :: String.t() | nil
+  def refusal(cluster) do
+    named = named(cluster)
+
+    if named != [] and node() not in named do
       "#{Nodes.display(node())} is not one of cluster.nodes: " <>
-        Enum.map_join(named(), ", ", &Nodes.display/1) <> "; start one of them with --node"
+        Enum.map_join(named, ", ", &Nodes.display/1) <> "; start one of them with --node"
     end
   end
 
@@ -131,16 +143,18 @@ defmodule WardrikDaemon.Cluster do
   Why this node cannot start its agents yet, or `nil` where it can: too few of
   the cluster's nodes are connected for a quorum, as `store` counts it.
   """
-  @spec waiting(WardrikStore.t()) :: String.t() | nil
-  def waiting(store) do
-    if configured?() and is_nil(refusal()), do: short_of_quorum(quorum(store), members())
+  @spec waiting(settings(), WardrikStore.t()) :: String.t() | nil
+  def waiting(cluster, store) do
+    if configured?(cluster) and is_nil(refusal(cluster)),
+      do: short_of_quorum(cluster, quorum(cluster, store), members(cluster))
   end
 
-  defp short_of_quorum(quorum, members) do
+  defp short_of_quorum(cluster, quorum, members) do
     case quorum - length(members) do
       needed when needed > 0 ->
         "#{Nodes.display(node())} is waiting for #{needed} more #{plural(needed, "node")} " <>
-          "to reach a quorum of #{quorum} of #{size()}" <> connected_to(members -- [node()])
+          "to reach a quorum of #{quorum} of #{size(cluster)}" <>
+          connected_to(members -- [node()])
 
       _enough ->
         nil
@@ -152,6 +166,4 @@ defmodule WardrikDaemon.Cluster do
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
-
-  defp settings, do: Application.get_env(:wardrik_daemon, __MODULE__, [])
 end

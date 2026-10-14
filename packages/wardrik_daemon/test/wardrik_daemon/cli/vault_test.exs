@@ -1,10 +1,10 @@
 defmodule WardrikDaemon.CLI.VaultTest do
   use ExUnit.Case, async: false
 
-  import Wardrik.Test, only: [store: 0]
+  alias WardrikDaemon.Test.Host
 
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: WardrikDaemon.Test.Host.held()
+  setup do: Host.held()
 
   import ExUnit.CaptureIO
 
@@ -17,7 +17,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   setup %{tmp_dir: dir} do
     previous = System.get_env("WARDRIK_DATA_HOME")
-    Settings.keep()
+    :ok = Host.use_dir(dir)
     :ok = Settings.vault()
     System.put_env("WARDRIK_DATA_HOME", dir)
 
@@ -66,6 +66,21 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   defp no_key, do: Settings.no_vault()
 
+  # The vault the daemon unseals with, or one with the key a command made.
+  defp vault do
+    held = Settings.held_vault()
+    if held.keys == [], do: %{held | keys: VaultKey.keys(data_dir())}, else: held
+  end
+
+  defp data_dir, do: System.get_env("WARDRIK_DATA_HOME")
+
+  # What a put says once it has made a key.
+  defp restart do
+    "The daemon reads it once restarted: wardrik stop, then wardrik start.\n" <>
+      "A node on another host needs a copy of #{VaultKey.file()}, as the cookie is, " <>
+      "or give every node vault.keys.\n"
+  end
+
   # What the audit log says of the secret `name`: each change, and whose it was.
   defp changes(name) do
     for %{"subject" => "secrets/" <> ^name, "type" => "wardrik." <> type, "data" => data} <-
@@ -78,8 +93,8 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "put", "#{name}=one", "#{name}_B=two=three"]) ==
                {"Sealed #{name}.\nSealed #{name}_B.\n", 0}
 
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "one"}
-      assert WardrikVault.fetch(store(), name <> "_B", nil) == {:ok, "two=three"}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "one"}
+      assert WardrikVault.fetch(vault(), name <> "_B", nil) == {:ok, "two=three"}
       assert changes(name) == [{"secret.stored", nil, "ops"}]
     end
 
@@ -91,12 +106,16 @@ defmodule WardrikDaemon.CLI.VaultTest do
                {"Sealed #{name} for acme/@jon.\n", 0}
 
       assert command(["vault", "put", "#{name}=deployment org's", "--user", "jon"]) ==
-               {"Sealed #{name} for #{WardrikDaemon.Config.org()}/@jon.\n", 0}
+               {"Sealed #{name} for #{WardrikDaemon.Config.org(Host.config())}/@jon.\n", 0}
 
-      assert WardrikVault.fetch(store(), name, "acme") == {:ok, "org's"}
-      assert WardrikVault.fetch(store(), name, {"acme", "jon"}) == {:ok, "jon's"}
+      assert WardrikVault.fetch(vault(), name, "acme") == {:ok, "org's"}
+      assert WardrikVault.fetch(vault(), name, {"acme", "jon"}) == {:ok, "jon's"}
 
-      assert WardrikVault.fetch(store(), name, {WardrikDaemon.Config.org(), "jon"}) ==
+      assert WardrikVault.fetch(
+               vault(),
+               name,
+               {WardrikDaemon.Config.org(Host.config()), "jon"}
+             ) ==
                {:ok, "deployment org's"}
     end
 
@@ -109,33 +128,22 @@ defmodule WardrikDaemon.CLI.VaultTest do
                   "${#{name}} and model providers read before the vault.\n", 0}
     end
 
-    test "gives a model provider its key at once, and takes it back on rm" do
-      previous =
-        {System.get_env("ANTHROPIC_API_KEY"), Application.get_env(:req_llm, :anthropic_api_key)}
-
+    test "seals a model provider's key, which model calls read from then on" do
+      previous = System.get_env("ANTHROPIC_API_KEY")
       System.delete_env("ANTHROPIC_API_KEY")
 
       on_exit(fn ->
-        WardrikVault.forget(store(), "ANTHROPIC_API_KEY", nil)
-
-        case previous do
-          {nil, _config} -> System.delete_env("ANTHROPIC_API_KEY")
-          {value, _config} -> System.put_env("ANTHROPIC_API_KEY", value)
-        end
-
-        case previous do
-          {_value, nil} -> Application.delete_env(:req_llm, :anthropic_api_key)
-          {_value, config} -> Application.put_env(:req_llm, :anthropic_api_key, config)
-        end
+        WardrikVault.forget(vault(), "ANTHROPIC_API_KEY", nil)
+        if previous, do: System.put_env("ANTHROPIC_API_KEY", previous)
       end)
 
       assert command(["vault", "put", "ANTHROPIC_API_KEY=sk-ant-vault"]) ==
-               {"Sealed ANTHROPIC_API_KEY. Every node reads it now.\n", 0}
+               {"Sealed ANTHROPIC_API_KEY. Model calls read it now.\n", 0}
 
-      assert ReqLLM.Keys.get(:anthropic) == {:ok, "sk-ant-vault", :application}
+      assert Wardrik.Credentials.key(vault(), "ANTHROPIC_API_KEY") == {:ok, "sk-ant-vault"}
 
       assert command(["vault", "rm", "ANTHROPIC_API_KEY"]) == {"Removed ANTHROPIC_API_KEY.\n", 0}
-      assert {:error, _none} = ReqLLM.Keys.get(:anthropic)
+      assert Wardrik.Credentials.key(vault(), "ANTHROPIC_API_KEY") == :error
     end
 
     test "says config.yaml reads a name it names when the daemon next starts",
@@ -162,7 +170,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
       {output, 0} = live(["vault", "put", name], "s3cret\n")
 
       assert output == "#{name}, which is not shown as you type: Sealed #{name}.\n"
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "s3cret"}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "s3cret"}
 
       assert live(["vault", "put", name], "\n") ==
                {"#{name}, which is not shown as you type: Nothing was sealed.\n", 0}
@@ -170,12 +178,12 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "reads a value piped in, less the line ending it ends with", %{name: name} do
       assert live(["vault", "put", name], "piped\n", piped: true) == {"Sealed #{name}.\n", 0}
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "piped"}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "piped"}
 
       assert live(["vault", "put", name], "two\nlines\r\n", piped: true) ==
                {"Sealed #{name}.\n", 0}
 
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "two\nlines"}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "two\nlines"}
 
       assert {"Nothing came on standard input to seal. Pipe the value in" <> _how, 1} =
                live(["vault", "put", name], "", piped: true)
@@ -223,12 +231,13 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert output =~ "It is kept in #{dir}/vault_key, beside the store"
       assert output =~ "openssl rand -base64 32 > #{dir}/vault_key"
       assert output =~ "WARDRIK_VAULT_KEY in the daemon's environment"
-      assert output =~ "Make one? [Yn]: Made a vault key, in #{dir}/vault_key.\nSealed #{name}.\n"
+      assert output =~ "Make one? [Yn]: Made a vault key, in #{dir}/vault_key.\n" <> restart()
+      assert output =~ "Sealed #{name}.\n"
 
       assert File.stat!(Path.join(dir, "vault_key")).mode |> Bitwise.band(0o777) == 0o600
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "v"}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "v"}
 
-      assert command(["vault", "put", "#{name}=again"]) == {"Sealed #{name}.\n", 0}
+      assert command(["vault", "put", "#{name}=again"]) == {restart() <> "Sealed #{name}.\n", 0}
     end
 
     test "makes it before asking for the value", %{name: name} do
@@ -236,7 +245,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert output =~
                "Made a vault key, in #{VaultKey.file()}.\n" <>
-                 "#{name}, which is not shown as you type: Sealed #{name}.\n"
+                 restart() <> "#{name}, which is not shown as you type: Sealed #{name}.\n"
     end
 
     test "makes none where told not to", %{name: name, tmp_dir: dir} do
@@ -248,7 +257,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "makes one with --yes, without asking", %{name: name, tmp_dir: dir} do
       assert command(["vault", "put", "#{name}=v", "--yes"]) ==
-               {"Made a vault key, in #{dir}/vault_key.\nSealed #{name}.\n", 0}
+               {"Made a vault key, in #{dir}/vault_key.\n" <> restart() <> "Sealed #{name}.\n", 0}
     end
 
     test "says how to give it one where no one can answer", %{name: name} do
@@ -256,13 +265,13 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
       assert output =~ "The vault has no key, and wardrik vault put --yes makes one.\n"
       assert output =~ "To set one instead: WARDRIK_VAULT_KEY"
-      refute VaultKey.configured?()
+      assert VaultKey.keys(data_dir()) == []
     end
 
     test "reads a key file written since the daemon started", %{name: name, tmp_dir: dir} do
       File.write!(Path.join(dir, "vault_key"), WardrikVault.generate_key())
 
-      assert command(["vault", "put", "#{name}=v"]) == {"Sealed #{name}.\n", 0}
+      assert command(["vault", "put", "#{name}=v"]) == {restart() <> "Sealed #{name}.\n", 0}
     end
 
     test "says why a key file holds no key, or a key set is not one", %{name: name, tmp_dir: dir} do
@@ -281,10 +290,10 @@ defmodule WardrikDaemon.CLI.VaultTest do
   describe "vault ls" do
     test "names each secret and whose it is, never its value", %{name: name} do
       org = "org-#{name}"
-      :ok = WardrikVault.put(store(), name, nil, "deployment-value")
-      :ok = WardrikVault.put(store(), name, org, "org-value")
-      :ok = WardrikVault.put(store(), name, {org, "jon"}, "jon-value")
-      :ok = WardrikVault.put(store(), name, {org, "ann"}, "ann-value")
+      :ok = WardrikVault.put(vault(), name, nil, value: "deployment-value")
+      :ok = WardrikVault.put(vault(), name, org, value: "org-value")
+      :ok = WardrikVault.put(vault(), name, {org, "jon"}, value: "jon-value")
+      :ok = WardrikVault.put(vault(), name, {org, "ann"}, value: "ann-value")
 
       {output, 0} = command(["vault", "ls"])
 
@@ -301,7 +310,7 @@ defmodule WardrikDaemon.CLI.VaultTest do
     end
 
     test "marks a name the daemon's environment sets too", %{name: name} do
-      :ok = WardrikVault.put(store(), name, nil, "v")
+      :ok = WardrikVault.put(vault(), name, nil, value: "v")
       System.put_env(name, "set")
       on_exit(fn -> System.delete_env(name) end)
 
@@ -319,9 +328,9 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
     test "answers --json with each secret's name and owner", %{name: name} do
       org = "org-#{name}"
-      :ok = WardrikVault.put(store(), name, nil, "v")
-      :ok = WardrikVault.put(store(), name, org, "v")
-      :ok = WardrikVault.put(store(), name, {org, "jon"}, "v")
+      :ok = WardrikVault.put(vault(), name, nil, value: "v")
+      :ok = WardrikVault.put(vault(), name, org, value: "v")
+      :ok = WardrikVault.put(vault(), name, {org, "jon"}, value: "v")
 
       {output, 0} = command(["vault", "ls", "--json"])
 
@@ -346,14 +355,14 @@ defmodule WardrikDaemon.CLI.VaultTest do
 
   describe "vault rm" do
     test "removes one secret, of the owner named", %{name: name} do
-      :ok = WardrikVault.put(store(), name, nil, "v")
-      :ok = WardrikVault.put(store(), name, "acme", "v")
+      :ok = WardrikVault.put(vault(), name, nil, value: "v")
+      :ok = WardrikVault.put(vault(), name, "acme", value: "v")
 
       assert command(["vault", "rm", name, "--org", "acme"]) == {"Removed #{name} for acme.\n", 0}
-      assert WardrikVault.fetch(store(), name, "acme") == {:error, :not_found}
-      assert WardrikVault.fetch(store(), name, nil) == {:ok, "v"}
+      assert WardrikVault.fetch(vault(), name, "acme") == {:error, :not_found}
+      assert WardrikVault.fetch(vault(), name, nil) == {:ok, "v"}
 
-      :ok = WardrikVault.put(store(), name, {"acme", "jon"}, "v")
+      :ok = WardrikVault.put(vault(), name, {"acme", "jon"}, value: "v")
 
       assert command(["vault", "rm", name, "--org", "acme", "--user", "jon"]) ==
                {"Removed #{name} for acme/@jon.\n", 0}

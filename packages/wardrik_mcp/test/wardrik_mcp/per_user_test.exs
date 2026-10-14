@@ -12,9 +12,8 @@ defmodule WardrikMCP.PerUserTest do
   # for an agent with no user, each saying whose it is.
   defmodule Vault do
     @moduledoc false
-    @behaviour Wardrik.Credential
+    defstruct []
 
-    @impl true
     def resolve("stub", %Wardrik.Call{scope: scope}), do: stub(Scope.agent_id(scope))
 
     defp stub(%AgentID{org: org, user: nil}),
@@ -40,11 +39,19 @@ defmodule WardrikMCP.PerUserTest do
     defp stub(%AgentID{}), do: {:error, :denied}
   end
 
+  defimpl Wardrik.Credentials, for: Vault do
+    def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+    def refused(_vault, _ref, _call), do: :ok
+    def key(_vault, _name), do: :error
+  end
+
   @moduletag server_opts: [credential: "stub", credential_env: "DEMO_TOKEN"]
 
   defp scope(ref, org, user) do
     Config.new(tools: [{WardrikMCP, ref}])
-    |> Scope.root(AgentID.new!("assistant", org: org, user: user), credentials: Vault)
+    |> Scope.root(AgentID.new!("assistant", org: org, user: user),
+      host: Wardrik.Test.host(credentials: %Vault{})
+    )
   end
 
   defp run(ref, user, tool, arguments), do: run(ref, "acme", user, tool, arguments)

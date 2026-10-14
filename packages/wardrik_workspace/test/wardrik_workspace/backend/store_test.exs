@@ -1,12 +1,14 @@
 defmodule WardrikWorkspace.Backend.StoreTest do
   use ExUnit.Case, async: true
-  use WardrikWorkspace.Backend.Conformance, backend: WardrikWorkspace.Backend.Store
+  use WardrikWorkspace.Backend.Conformance
+
+  alias WardrikWorkspace.Test.Workspace
 
   alias WardrikWorkspace.Backend.Store
   alias WardrikWorkspace.File
 
   setup do
-    %{host: Wardrik.Test.host()}
+    %{workspace: Workspace.workspace()}
   end
 
   @file_written %File{
@@ -21,13 +23,20 @@ defmodule WardrikWorkspace.Backend.StoreTest do
   describe "a tree or a path that is not normalised" do
     test "is refused as a tree, by every operation" do
       for tree <- ["", "/store-test", "store-test/", "store-test//notes"] do
-        assert Store.read(Wardrik.Test.host(), tree, "a.md") == {:error, {:not_a_tree, tree}}
-
-        assert Store.write(Wardrik.Test.host(), tree, "a.md", @file_written, nil) ==
+        assert Store.read(Workspace.workspace(), tree, "a.md") ==
                  {:error, {:not_a_tree, tree}}
 
-        assert Store.delete(Wardrik.Test.host(), tree, "a.md", 1) == {:error, {:not_a_tree, tree}}
-        assert Store.list(Wardrik.Test.host(), tree, "") == {:error, {:not_a_tree, tree}}
+        assert Store.write(Workspace.workspace(), tree, "a.md",
+                 file: @file_written,
+                 version: nil
+               ) ==
+                 {:error, {:not_a_tree, tree}}
+
+        assert Store.delete(Workspace.workspace(), tree, "a.md", version: 1) ==
+                 {:error, {:not_a_tree, tree}}
+
+        assert Store.list(Workspace.workspace(), tree, "") ==
+                 {:error, {:not_a_tree, tree}}
       end
     end
 
@@ -35,15 +44,20 @@ defmodule WardrikWorkspace.Backend.StoreTest do
       tree = "store-test/#{System.unique_integer([:positive])}"
 
       for path <- ["", "/a.md", "notes/", "notes//a.md"] do
-        assert Store.read(Wardrik.Test.host(), tree, path) == {:error, {:not_a_path, path}}
-
-        assert Store.write(Wardrik.Test.host(), tree, path, @file_written, nil) ==
+        assert Store.read(Workspace.workspace(), tree, path) ==
                  {:error, {:not_a_path, path}}
 
-        assert Store.delete(Wardrik.Test.host(), tree, path, 1) == {:error, {:not_a_path, path}}
+        assert Store.write(Workspace.workspace(), tree, path,
+                 file: @file_written,
+                 version: nil
+               ) ==
+                 {:error, {:not_a_path, path}}
+
+        assert Store.delete(Workspace.workspace(), tree, path, version: 1) ==
+                 {:error, {:not_a_path, path}}
       end
 
-      assert Store.list(Wardrik.Test.host(), tree, "") == {:ok, []}
+      assert Store.list(Workspace.workspace(), tree, "") == {:ok, []}
     end
   end
 end

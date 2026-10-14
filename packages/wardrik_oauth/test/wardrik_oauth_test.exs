@@ -8,7 +8,7 @@ defmodule WardrikOAuthTest do
   alias Wardrik.Test.Calls
 
   setup do
-    start_supervised!({WardrikOAuth.Supervisor, callback: false})
+    start_supervised!({WardrikOAuth.Supervisor, oauth: oauth(), callback: false})
     :ok = configure([])
 
     :ok
@@ -16,7 +16,7 @@ defmodule WardrikOAuthTest do
 
   defp scope(owner) do
     id = AgentID.new!("a", org: "acme", user: owner)
-    Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+    Config.new() |> Scope.root(id, host: host())
   end
 
   defp connect(owner, opts \\ []) do
@@ -32,7 +32,7 @@ defmodule WardrikOAuthTest do
   describe "who a token belongs to" do
     defp in_org(org, user) do
       id = AgentID.new!("a", org: org, user: user)
-      Config.new() |> Scope.root(id, credentials: WardrikVault, host: Wardrik.Test.host())
+      Config.new() |> Scope.root(id, host: host())
     end
 
     defp resolve_in(scope, ref), do: Credential.resolve(Calls.tool("tool", %{}, scope), ref)
@@ -47,7 +47,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       assert {:ok, _credential} = resolve_in(in_org("acme", owner), "github")
-      assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
 
       assert {:error, {:authorization_required, _link, _owner}} =
                resolve_in(in_org("globex", owner), "github")
@@ -66,22 +66,24 @@ defmodule WardrikOAuthTest do
 
       assert {:ok, credential} = resolve_in(in_org(org, nil), "github")
       assert credential.owner == org
-      assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", org)
+      assert WardrikOAuth.connected?(vault(), "github", org)
 
       assert {:error, {:authorization_required, _link, _owner}} =
                resolve_in(in_org(org, owner), "github")
 
-      refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {org, owner})
+      refute WardrikOAuth.connected?(vault(), "github", {org, owner})
     end
 
     test "calls that park at once share one flow", %{owner: owner} do
       stub_server(cimd: true)
       configure(providers: [github: [resource: resource(), scopes: ~w(repo)]])
 
+      scope = scope(owner)
+
       urls =
         1..4
         |> Enum.map(fn _n ->
-          Task.async(fn -> resolve_in(scope(owner), "github") end)
+          Task.async(fn -> resolve_in(scope, "github") end)
         end)
         |> Task.await_many()
         |> Enum.map(fn {:error, {:authorization_required, %{url: url}, _owner}} -> url end)
@@ -254,7 +256,7 @@ defmodule WardrikOAuthTest do
                )
 
       assert Credential.reveal(credential) == "at_first"
-      assert WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      assert WardrikOAuth.connected?(vault(), "github", {"acme", owner})
     end
 
     test "the credential says when it stops being good", %{owner: owner} do
@@ -395,7 +397,8 @@ defmodule WardrikOAuthTest do
     test "a machine with nothing to open a link with says so, and the flow stands" do
       configure(redirect: [opener: "no-such-browser-command"])
 
-      assert {:error, :no_browser} = WardrikOAuth.Browser.open("https://example.com")
+      assert {:error, :no_browser} =
+               WardrikOAuth.Browser.open("https://example.com", opener: oauth().redirect[:opener])
     end
   end
 
@@ -405,7 +408,7 @@ defmodule WardrikOAuthTest do
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
       # The key it was sealed with, rotated away without it.
-      :ignore = WardrikVault.start_link(keys: [WardrikVault.generate_key()], grants: WardrikOAuth)
+      rekey()
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
@@ -413,7 +416,7 @@ defmodule WardrikOAuthTest do
                  "github"
                )
 
-      refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
     end
 
     test "so does something that is not a token at all", %{owner: owner} do
@@ -421,9 +424,7 @@ defmodule WardrikOAuthTest do
       stub_server(cimd: true)
 
       :ok =
-        WardrikVault.put(Wardrik.Test.store(), "github", {"acme", owner}, "not json",
-          kind: :grant
-        )
+        WardrikVault.put(vault(), "github", {"acme", owner}, value: "not json", kind: :grant)
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
@@ -448,8 +449,8 @@ defmodule WardrikOAuthTest do
       url = connect(owner)
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      assert :ok = WardrikOAuth.disconnect(Wardrik.Test.store(), "github", {"acme", owner})
-      refute WardrikOAuth.connected?(Wardrik.Test.store(), "github", {"acme", owner})
+      assert :ok = WardrikOAuth.disconnect(vault(), "github", {"acme", owner})
+      refute WardrikOAuth.connected?(vault(), "github", {"acme", owner})
 
       assert {:error, {:authorization_required, _link, _owner}} =
                Credential.resolve(
@@ -462,11 +463,11 @@ defmodule WardrikOAuthTest do
       url = connect(owner)
       {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-      assert WardrikOAuth.connections(Wardrik.Test.store(), {"acme", owner}) == [
+      assert WardrikOAuth.connections(oauth(), {"acme", owner}, vault: vault()) == [
                %{provider: "github", connected?: true}
              ]
 
-      assert WardrikOAuth.connections(Wardrik.Test.store(), "nobody") == [
+      assert WardrikOAuth.connections(oauth(), "nobody", vault: vault()) == [
                %{provider: "github", connected?: false}
              ]
     end

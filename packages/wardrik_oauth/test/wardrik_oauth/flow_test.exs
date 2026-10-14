@@ -29,10 +29,7 @@ defmodule WardrikOAuth.FlowTest do
     configure(providers: [github: [resource: resource()]])
 
     {:ok, metadata} =
-      Metadata.discover(resource(),
-        issuer: issuer,
-        req_options: [plug: {Req.Test, WardrikOAuth.Stub}]
-      )
+      Metadata.discover(resource(), [issuer: issuer] ++ requests())
 
     metadata
   end
@@ -61,10 +58,7 @@ defmodule WardrikOAuth.FlowTest do
       stub_server()
 
       assert {:ok, metadata} =
-               Metadata.discover(resource(),
-                 issuer: "https://auth.example.com",
-                 req_options: [plug: {Req.Test, WardrikOAuth.Stub}]
-               )
+               Metadata.discover(resource(), [issuer: "https://auth.example.com"] ++ requests())
 
       assert metadata.issuer == "https://auth.example.com"
       refute_receive {:oauth, "GET", "/.well-known/oauth-protected-resource/mcp", _body}
@@ -79,39 +73,43 @@ defmodule WardrikOAuth.FlowTest do
       stub_server(resource_named: "https://elsewhere.example.com/mcp")
 
       assert {:error, {:resource_mismatch, _asked, "https://elsewhere.example.com/mcp"}} =
-               Metadata.discover(resource())
+               Metadata.discover(resource(), requests())
     end
 
     test "refuses metadata that names another issuer, or none" do
       stub_server(issuer_named: "https://evil.example.com")
 
       assert {:error, {:issuer_mismatch, "https://auth.example.com", "https://evil.example.com"}} =
-               Metadata.discover(resource())
+               Metadata.discover(resource(), requests())
 
       stub_server(issuer_named: nil)
 
       assert {:error, {:metadata_incomplete, "https://auth.example.com"}} =
-               Metadata.discover(resource())
+               Metadata.discover(resource(), requests())
     end
 
     test "refuses a discovered endpoint that is not https" do
       stub_server(endpoints: %{"token_endpoint" => "http://auth.example.com/token"})
 
       assert {:error, {:insecure_url, "http://auth.example.com/token"}} =
-               Metadata.discover(resource())
+               Metadata.discover(resource(), requests())
     end
 
     test "refuses an authorization server the resource names on a private address" do
       stub_server(as: "https://internal.example.com")
 
-      assert {:error, {:private_address, "internal.example.com"}} = Metadata.discover(resource())
+      assert {:error, {:private_address, "internal.example.com"}} =
+               Metadata.discover(resource(), requests())
     end
 
     test "trusts an issuer the deployment named, and its endpoints, wherever they are" do
       stub_server(as: "https://internal.example.com")
 
       assert {:ok, metadata} =
-               Metadata.discover(resource(), issuer: "https://internal.example.com")
+               Metadata.discover(
+                 resource(),
+                 [issuer: "https://internal.example.com"] ++ requests()
+               )
 
       assert metadata.trust == :operator
       assert metadata.token_endpoint == "https://internal.example.com/token"
@@ -120,7 +118,9 @@ defmodule WardrikOAuth.FlowTest do
     test "follows no redirect" do
       stub_server(redirect_prm: true)
 
-      assert {:error, {:metadata_unavailable, _url, 302}} = Metadata.discover(resource())
+      assert {:error, {:metadata_unavailable, _url, 302}} =
+               Metadata.discover(resource(), requests())
+
       refute_receive {:oauth, "GET", "/prm", _body}
     end
 
@@ -141,7 +141,7 @@ defmodule WardrikOAuth.FlowTest do
       Req.Test.stub(WardrikOAuth.Stub, fn conn -> Plug.Conn.resp(conn, 404, "no") end)
 
       assert {:error, {:metadata_unavailable, _url, 404}} =
-               Metadata.discover(resource(), req_options: [plug: {Req.Test, WardrikOAuth.Stub}])
+               Metadata.discover(resource(), requests())
     end
   end
 
@@ -153,7 +153,8 @@ defmodule WardrikOAuth.FlowTest do
                Flow.register(
                  metadata,
                  client(),
-                 provider(client_id: "Iv1.hand", client_secret: "s")
+                 provider(client_id: "Iv1.hand", client_secret: "s"),
+                 requests()
                )
 
       assert registered.how == :static
@@ -169,17 +170,18 @@ defmodule WardrikOAuth.FlowTest do
                Flow.register(
                  metadata,
                  client(),
-                 provider(client_id: "Iv1.hand", client_secret: "s")
+                 provider(client_id: "Iv1.hand", client_secret: "s"),
+                 requests()
                )
 
       assert {:ok, %{how: :static, client_secret: nil}} =
-               Flow.register(metadata, client(), provider(client_id: "Iv1.public"))
+               Flow.register(metadata, client(), provider(client_id: "Iv1.public"), requests())
     end
 
     test "presents its metadata document where the server takes one" do
       metadata = discover(cimd: true, register: true)
 
-      assert {:ok, registered} = Flow.register(metadata, client(), provider())
+      assert {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
 
       assert registered.how == :cimd
       assert registered.client_id == "https://wardrik.dev/oauth/client"
@@ -189,7 +191,7 @@ defmodule WardrikOAuth.FlowTest do
     test "registers a public client dynamically where the server does not take a document" do
       metadata = discover(register: true)
 
-      assert {:ok, registered} = Flow.register(metadata, client(), provider())
+      assert {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
 
       assert registered.how == :dynamic
       assert registered.client_id == "registered-id"
@@ -211,7 +213,9 @@ defmodule WardrikOAuth.FlowTest do
         how: :dynamic
       }
 
-      assert {:ok, ^known} = Flow.register(metadata, client(), provider(), known: known)
+      assert {:ok, ^known} =
+               Flow.register(metadata, client(), provider(), [known: known] ++ requests())
+
       refute_receive {:oauth, "POST", "/register", _body}
     end
 
@@ -219,14 +223,14 @@ defmodule WardrikOAuth.FlowTest do
       metadata = discover()
 
       assert {:error, {:no_registration, "https://auth.example.com"}} =
-               Flow.register(metadata, client(), provider())
+               Flow.register(metadata, client(), provider(), requests())
     end
   end
 
   describe "authorize_url/4" do
     test "carries PKCE, the state, the scopes and the resource" do
       metadata = discover(cimd: true)
-      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
       {_verifier, challenge} = Flow.pkce()
 
       url = Flow.authorize_url(metadata, registered, challenge, state: "st", scopes: ~w(repo))
@@ -245,7 +249,7 @@ defmodule WardrikOAuth.FlowTest do
 
     test "carries a provider's params, which cannot change what the flow sets itself" do
       metadata = discover(cimd: true)
-      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
       {_verifier, challenge} = Flow.pkce()
 
       params =
@@ -272,12 +276,10 @@ defmodule WardrikOAuth.FlowTest do
   describe "exchange/5 and refresh/4" do
     test "trades a code for a token, with the verifier and the resource" do
       metadata = discover(cimd: true)
-      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
 
       assert {:ok, token} =
-               Flow.exchange(metadata, registered, "the-code", "the-verifier",
-                 req_options: [plug: {Req.Test, WardrikOAuth.Stub}]
-               )
+               Flow.exchange(metadata, registered, "the-code", "the-verifier", requests())
 
       assert token.access_token == "at_first"
       assert token.refresh_token == "rt_first"
@@ -300,25 +302,23 @@ defmodule WardrikOAuth.FlowTest do
 
     test "a refusal is an error, not a token" do
       metadata = discover(cimd: true)
-      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
       stub_server(cimd: true, token: %{"error" => "invalid_grant"})
 
       assert {:error, {:token_refused, "invalid_grant", nil}} =
-               Flow.exchange(metadata, registered, "stale", "verifier",
-                 req_options: [plug: {Req.Test, WardrikOAuth.Stub}]
-               )
+               Flow.exchange(metadata, registered, "stale", "verifier", requests())
     end
 
     test "renewing keeps the refresh token where the server sends none back" do
       metadata = discover(cimd: true)
-      {:ok, registered} = Flow.register(metadata, client(), provider())
+      {:ok, registered} = Flow.register(metadata, client(), provider(), requests())
       {:ok, first} = Token.from_response(token())
       first = Token.bind(first, metadata, registered)
 
       stub_server(cimd: true, token: %{"access_token" => "at_second", "expires_in" => 3600})
 
       assert {:ok, renewed} =
-               Flow.refresh(first, req_options: [plug: {Req.Test, WardrikOAuth.Stub}])
+               Flow.refresh(first, requests())
 
       assert renewed.access_token == "at_second"
       assert renewed.refresh_token == "rt_first"
@@ -334,7 +334,7 @@ defmodule WardrikOAuth.FlowTest do
 
     test "a token that does not know where it came from is not renewed" do
       {:ok, unbound} = Token.from_response(token())
-      assert {:error, :not_renewable} = Flow.refresh(unbound)
+      assert {:error, :not_renewable} = Flow.refresh(unbound, requests())
     end
   end
 

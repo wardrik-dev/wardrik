@@ -29,7 +29,6 @@ defmodule WardrikDaemon.CLI.Vault do
 
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Audit
-  alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.CLI.Terminal
   alias WardrikDaemon.Config
@@ -93,8 +92,8 @@ defmodule WardrikDaemon.CLI.Vault do
   defp put(words, opts) do
     with {:ok, owner} <- owner(opts),
          {:ok, pairs} when is_list(pairs) <- given(words),
-         {:ok, notes} <- key(opts, nil) do
-      seal(store(opts), pairs, owner, notes, opts[:by])
+         {:ok, notes, vault} <- key(opts, nil) do
+      seal(vault, pairs, owner, notes, opts[:by])
     else
       {:ok, {:ask, _name}} -> :live
       other -> other
@@ -104,10 +103,10 @@ defmodule WardrikDaemon.CLI.Vault do
   defp put_asked(words, opts, terminal) do
     with {:ok, owner} <- owner(opts),
          {:ok, given} <- given(words),
-         {:ok, notes} <- key(opts, terminal),
+         {:ok, notes, vault} <- key(opts, terminal),
          :ok <- Enum.each(notes, &Terminal.puts(terminal, &1)),
          {:ok, pairs} <- value(given, terminal) do
-      seal(store(opts), pairs, owner, [], opts[:by])
+      seal(vault, pairs, owner, [], opts[:by])
     else
       :declined -> {:ok, "Nothing was sealed."}
       other -> other
@@ -164,15 +163,15 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp seal(_store, [], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
+  defp seal(_vault, [], _owner, _notes, _by), do: {:ok, "Nothing was sealed."}
 
-  defp seal(store, pairs, {kind, owner}, notes, by) do
+  defp seal(vault, pairs, {kind, owner}, notes, by) do
     pairs
     |> Enum.reduce_while(Enum.reverse(notes), fn {name, value}, lines ->
-      case WardrikVault.put(store, name, owner, value) do
+      case WardrikVault.put(vault, name, owner, value: value) do
         :ok ->
           :ok = Audit.record({:secret_stored, name, prefix(owner)}, by)
-          {:cont, [sealed(kind, name, owner, value) | lines]}
+          {:cont, [sealed(kind, name, owner) | lines]}
 
         {:error, reason} ->
           {:halt, {lines, "#{name} was not sealed: #{inspect(reason)}"}}
@@ -184,16 +183,14 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(:deployment, name, nil, value) do
-    :ok = placed(name, value)
-
+  defp sealed(:deployment, name, nil) do
     cond do
       System.get_env(name) ->
         "Sealed #{name}. The daemon's environment sets #{name} too, which ${#{name}} and " <>
           "model providers read before the vault."
 
       Secrets.key?(name) ->
-        "Sealed #{name}. Every node reads it now."
+        "Sealed #{name}. Model calls read it now."
 
       read_at_start?(name) ->
         "Sealed #{name}. config.yaml's ${#{name}} reads it when the daemon next starts."
@@ -203,35 +200,38 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp sealed(_kind, name, owner, _value), do: "Sealed #{name} for #{shown(owner)}."
+  defp sealed(_kind, name, owner), do: "Sealed #{name} for #{shown(owner)}."
 
   # -- the key -----------------------------------------------------------------
 
-  # Lines to say before sealing where the vault has a key, or has one made;
-  # :live where asking to make one needs a terminal.
+  # Lines to say before sealing, and the vault to seal with: the daemon's,
+  # where it has a key, else one with the key file's key, made where there is
+  # none; :live where asking to make one needs a terminal.
   defp key(opts, terminal) do
-    cond do
-      WardrikVault.ready?() ->
-        {:ok, []}
+    vault = Wardrik.Host.credentials(opts[:caller].host)
+    data_dir = opts[:config].data_dir
 
-      VaultKey.configured?() ->
+    cond do
+      WardrikVault.ready?(vault) ->
+        {:ok, [], vault}
+
+      WardrikVault.configured?(vault) ->
         {:error,
          "The vault's key is not one it can use, 32 bytes in base64. " <>
            "wardrik doctor says where it comes from."}
 
+      (keys = VaultKey.keys(data_dir)) != [] ->
+        {:ok, restart(), %{vault | keys: keys}}
+
       true ->
-        case VaultKey.load() do
-          :ok -> {:ok, spread()}
-          :none -> make(opts[:yes], terminal)
-          {:error, message} -> {:error, message}
-        end
+        make(%{vault | keys: []}, data_dir, opts[:yes], terminal)
     end
   end
 
-  defp make(true, _terminal), do: made()
-  defp make(_yes, nil), do: :live
+  defp make(vault, data_dir, true, _terminal), do: made(vault, data_dir)
+  defp make(_vault, _data_dir, _yes, nil), do: :live
 
-  defp make(_yes, %Terminal{input?: false}) do
+  defp make(_vault, _data_dir, _yes, %Terminal{input?: false}) do
     {:error,
      Enum.join(
        ["The vault has no key, and wardrik vault put --yes makes one." | why_a_key()],
@@ -239,42 +239,31 @@ defmodule WardrikDaemon.CLI.Vault do
      )}
   end
 
-  defp make(_yes, terminal) do
+  defp make(vault, data_dir, _yes, terminal) do
     Terminal.puts(terminal, Enum.join(["The vault has no key." | why_a_key()], "\n"))
 
-    if Owl.IO.confirm(message: "Make one?", default: true), do: made(), else: :declined
+    if Owl.IO.confirm(message: "Make one?", default: true),
+      do: made(vault, data_dir),
+      else: :declined
   end
 
   defp why_a_key, do: Enum.map(VaultKey.about(), &("  " <> &1))
 
-  defp made do
-    with {:ok, file} <- VaultKey.make(),
-         :ok <- VaultKey.load() do
-      {:ok, ["Made a vault key, in #{file}." | spread()]}
+  defp made(vault, data_dir) do
+    with {:ok, file} <- VaultKey.make(data_dir) do
+      {:ok, ["Made a vault key, in #{file}." | restart()],
+       %{vault | keys: VaultKey.keys(data_dir)}}
     end
   end
 
-  # Every other node running a daemon reads the key file too. One without a
-  # copy, on another host, is named, since what is sealed is unreadable there.
-  defp spread do
-    others = WardrikDaemon.daemons() -- [node()]
-
-    for {other, answer} <- Enum.zip(others, :erpc.multicall(others, VaultKey, :load, [])),
-        answer != {:ok, :ok},
-        do:
-          "#{Nodes.display(other)} has no key to read it with: copy #{VaultKey.file()} " <>
-            "to it, as the cookie is, or give every node vault.keys."
-  end
-
-  defp placed(name, secret) do
-    if Secrets.key?(name) do
-      :ok = Secrets.place(name, secret)
-
-      _answers =
-        :erpc.multicall(WardrikDaemon.daemons() -- [node()], Secrets, :place, [name, secret])
-    end
-
-    :ok
+  # The daemon took its vault's keys as it started, so it reads what this
+  # seals once it starts again. A node on another host needs a copy.
+  defp restart do
+    [
+      "The daemon reads it once restarted: wardrik stop, then wardrik start.",
+      "A node on another host needs a copy of #{VaultKey.file()}, as the cookie is, " <>
+        "or give every node vault.keys."
+    ]
   end
 
   defp read_at_start?(name) do
@@ -305,10 +294,10 @@ defmodule WardrikDaemon.CLI.Vault do
     if opts[:org] || opts[:user] do
       with {:ok, {kind, owner}} <- owner(opts),
            do:
-             {:ok, for(name <- WardrikVault.names(store(opts), owner), do: {{kind, name}, owner})}
+             {:ok, for(name <- WardrikVault.names(vault(opts), owner), do: {{kind, name}, owner})}
     else
       {:ok,
-       for({name, owner} <- WardrikVault.list(store(opts)), do: {{kind(owner), name}, owner})}
+       for({name, owner} <- WardrikVault.list(vault(opts)), do: {{kind(owner), name}, owner})}
     end
   end
 
@@ -368,8 +357,8 @@ defmodule WardrikDaemon.CLI.Vault do
     with {:ok, {kind, owner}} <- owner(opts) do
       for_owner = if kind == :deployment, do: "", else: " for #{shown(owner)}"
 
-      if name in WardrikVault.names(store(opts), owner) do
-        :ok = removed(store(opts), kind, name, owner)
+      if name in WardrikVault.names(vault(opts), owner) do
+        :ok = removed(vault(opts), kind, name, owner)
         :ok = Audit.record({:secret_removed, name, prefix(owner)}, opts[:by])
         {:ok, "Removed #{name}#{for_owner}."}
       else
@@ -378,12 +367,9 @@ defmodule WardrikDaemon.CLI.Vault do
     end
   end
 
-  defp removed(store, kind, name, owner) do
-    :ok = WardrikVault.forget(store, name, owner)
-    if kind == :deployment, do: placed(name, nil), else: :ok
-  end
+  defp removed(vault, _kind, name, owner), do: WardrikVault.forget(vault, name, owner)
 
-  defp store(opts), do: Wardrik.Host.store(opts[:caller].host)
+  defp vault(opts), do: Wardrik.Host.credentials(opts[:caller].host)
 
   # -- owners ------------------------------------------------------------------
 
@@ -420,7 +406,12 @@ defmodule WardrikDaemon.CLI.Vault do
   # The org and user a user's agents read their own secrets as, as their IDs
   # carry them: without --org, the deployment's org.
   defp user(org, user) do
-    id = Wardrik.AgentID.new!("vault", org: org || WardrikDaemon.Config.org(), user: user)
+    id =
+      Wardrik.AgentID.new!("vault",
+        org: org || WardrikDaemon.Config.org(WardrikDaemon.Host.config()),
+        user: user
+      )
+
     {id.org, id.user}
   end
 

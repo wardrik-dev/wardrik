@@ -254,10 +254,8 @@ defmodule WardrikDaemon.DoctorTest do
       assert message =~ "#{url}/check?nonce="
       assert message =~ "did not answer"
 
-      previous = WardrikOAuth.Config.settings()
-      on_exit(fn -> WardrikOAuth.Config.put(previous) end)
-      WardrikOAuth.Config.put(redirect: [url: url, port: port])
-      start_supervised!({WardrikOAuth.Callback, port: port})
+      oauth = WardrikOAuth.new(redirect: [url: url, port: port])
+      start_supervised!({WardrikOAuth.Callback, oauth: oauth, port: port})
 
       assert check(Doctor.checks(dir, vault), "oauth") ==
                {:ok, "oauth", "#{url} reaches the daemon's callback"}

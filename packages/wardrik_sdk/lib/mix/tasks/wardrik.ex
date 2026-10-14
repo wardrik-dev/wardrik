@@ -41,13 +41,11 @@ defmodule Mix.Tasks.Wardrik do
   The task is the host here, so it reads its own application's configuration,
   by the module each part is for, and starts each with it:
   `config :wardrik_sdk, WardrikMCP, servers: [...]` for `WardrikMCP.Supervisor`,
-  `config :wardrik_sdk, WardrikOAuth, providers: [...]` for
-  `WardrikOAuth.Supervisor`, and `config :wardrik_sdk, WardrikVault, keys: [...]`
-  for `WardrikVault`.
-
-  `--credentials` names a `Wardrik.Credential` module. Unnamed, the agent gets
-  `WardrikVault`, which reads a tool's key from the environment variable its
-  `:environment` names where the vault holds none. A tool that needs a
+  `config :wardrik_sdk, WardrikOAuth, providers: [...]` for `WardrikOAuth`,
+  and `config :wardrik_sdk, WardrikVault, keys: [...]` for the vault. It
+  starts the store and `Wardrik` itself, on a host whose credentials are
+  that vault, which reads a tool's key from the environment variable its
+  `:environment` names where it holds none. A tool that needs a
   credential the user has not authorized parks the turn on a link; open it,
   then answer `y` to run the call again.
 
@@ -112,7 +110,6 @@ defmodule Mix.Tasks.Wardrik do
           tools: :boolean,
           mcp: :keep,
           policy: :string,
-          credentials: :string,
           user: :string,
           org: :string,
           name: :string,
@@ -129,27 +126,43 @@ defmodule Mix.Tasks.Wardrik do
     distribute(opts)
     Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
+    # The task starts Wardrik on a host of its own, after the applications.
+    Application.put_env(:wardrik, :start, :host)
     Mix.Task.run("app.start")
 
-    start_mcp(opts)
-    start_oauth()
-    :ignore = WardrikVault.start_link(settings(WardrikVault))
+    store = WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
+    oauth = WardrikOAuth.new(settings(WardrikOAuth))
+    vault = WardrikVault.new([store: store, grants: oauth] ++ settings(WardrikVault))
+    config = config(opts)
+    created = struct!(Mix.Tasks.Wardrik.Created, fields: [config: config] ++ scope_opts(opts))
+
+    host =
+      Wardrik.Host.new(
+        store: store,
+        definitions: created,
+        credentials: vault,
+        connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
+        workspace: %WardrikWorkspace.Backend.Store{store: store}
+      )
+
+    {:ok, _wardrik} =
+      Supervisor.start_link([{WardrikStore, store}, {Wardrik, host: host}],
+        strategy: :rest_for_one
+      )
+
+    start_mcp(opts, store)
+    start_oauth(oauth)
 
     # After app.start, not before: starting the :logger application installs
     # the default handler, so removing it earlier is undone.
     silence_console_logging()
     redirect_logging(opts[:log] || System.get_env("WARDRIK_LOG"))
 
-    config = config(opts)
     org = opts[:org] || @org
     agent_id = Wardrik.AgentID.new!(opts[:name] || "assistant", org: org, user: opts[:user])
 
     # Every agent this session starts is created on what the task was given.
-    :ok = Mix.Tasks.Wardrik.Created.keep([config: config] ++ scope_opts(opts))
-    # The store the application started on, as its environment names it.
-    store = WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
-    host = Wardrik.Host.new(store: store, definitions: Mix.Tasks.Wardrik.Created)
-    {:ok, spec} = Mix.Tasks.Wardrik.Created.create(host, agent_id)
+    {:ok, spec} = Wardrik.Definition.create(created, agent_id)
     {:ok, _agent} = Wardrik.Fleet.put(spec)
 
     :ok =
@@ -213,7 +226,6 @@ defmodule Mix.Tasks.Wardrik do
       opts[:policy],
       &[Wardrik.Hook.new(&1, Module.safe_concat([&1]))]
     )
-    |> put_new_option(:credentials, credentials(opts), & &1)
     |> put_new_option(:timeout, opts[:timeout], &:timer.seconds/1)
   end
 
@@ -255,12 +267,12 @@ defmodule Mix.Tasks.Wardrik do
 
   # The MCP servers are the host's to run, not core's, and an agent naming one
   # is valid whether or not it is up.
-  defp start_mcp(opts) do
+  defp start_mcp(opts, store) do
     settings = settings(WardrikMCP)
 
     if Keyword.has_key?(opts, :mcp) or Keyword.get(settings, :servers, []) != [] do
       {:ok, _pid} =
-        WardrikMCP.Supervisor.start_link(Keyword.put(settings, :stderr, server_stderr(opts)))
+        WardrikMCP.Supervisor.start_link([store: store, stderr: server_stderr(opts)] ++ settings)
     end
   end
 
@@ -273,32 +285,23 @@ defmodule Mix.Tasks.Wardrik do
     end
   end
 
-  defp start_oauth do
-    settings = settings(WardrikOAuth)
-
-    if Keyword.get(settings, :providers, []) != [],
-      do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link(settings)
+  defp start_oauth(oauth) do
+    if WardrikOAuth.configured?(oauth),
+      do: {:ok, _pid} = WardrikOAuth.Supervisor.start_link(oauth: oauth)
   end
 
   defp settings(module), do: Application.get_env(:wardrik_sdk, module, [])
-
-  defp credentials(opts) do
-    if opts[:credentials], do: Module.safe_concat([opts[:credentials]]), else: WardrikVault
-  end
 end
 
 defmodule Mix.Tasks.Wardrik.Created do
   @moduledoc false
   # The agents `mix wardrik` starts: each one new, on the config and seams the
   # task was given, which it keeps no definition of.
-  use Wardrik.Definition
+  defstruct fields: []
+end
 
-  @key {__MODULE__, :fields}
+defimpl Wardrik.Definition, for: Mix.Tasks.Wardrik.Created do
+  use Wardrik.Definition.None
 
-  @spec keep(keyword()) :: :ok
-  def keep(fields), do: :persistent_term.put(@key, fields)
-
-  @impl true
-  def create(_host, id),
-    do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ :persistent_term.get(@key))}
+  def create(%{fields: fields}, id), do: {:ok, Wardrik.Agent.Spec.new([id: id] ++ fields)}
 end

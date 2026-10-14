@@ -1,25 +1,27 @@
 defmodule WardrikOAuth do
   @moduledoc """
-  Accounts users connect by authorizing: the `WardrikVault.Grants` module
-  that asks a user, or an org, for a grant, and renews the grants it gave.
+  Accounts users connect by authorizing: the settings every flow runs
+  with, and the `WardrikVault.Grants` that ask a user, or an org, for a
+  grant, and renew the grants they gave. A vault grants through them, and
+  the host's credentials are that vault:
 
-      children = [
-        Wardrik,
-        {WardrikVault, keys: [...], grants: WardrikOAuth},
-        {WardrikOAuth.Supervisor,
-         client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
-         providers: [
-           github: [
-             resource: "https://api.githubcopilot.com/mcp/",
-             issuer: "https://github.com/login/oauth",
-             client_id: System.get_env("GITHUB_CLIENT_ID"),
-             client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
-             scopes: ~w(repo)
-           ]
-         ]}
-      ]
+      oauth =
+        WardrikOAuth.new(
+          client: [name: "Wardrik", client_uri: "https://wardrik.dev"],
+          providers: [
+            github: [
+              resource: "https://api.githubcopilot.com/mcp/",
+              issuer: "https://github.com/login/oauth",
+              client_id: System.get_env("GITHUB_CLIENT_ID"),
+              client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+              scopes: ~w(repo)
+            ]
+          ]
+        )
 
-      Wardrik.Fleet.spawn(id, config: config, credentials: WardrikVault)
+      vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
+      host = Wardrik.Host.new(store: store, credentials: vault)
+      children = [{Wardrik, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has
@@ -77,15 +79,12 @@ defmodule WardrikOAuth do
   with no key is an error, and starts nothing.
   """
 
-  @behaviour WardrikVault.Grants
-
   require Logger
 
   alias Wardrik.Credential
   alias WardrikOAuth.Browser
   alias WardrikOAuth.Callback
   alias WardrikOAuth.Client
-  alias WardrikOAuth.Config
   alias WardrikOAuth.Device
   alias WardrikOAuth.Egress
   alias WardrikOAuth.Flow
@@ -96,34 +95,80 @@ defmodule WardrikOAuth do
   alias WardrikOAuth.Registrations
   alias WardrikOAuth.Token
 
-  @doc "Whether a provider named `name` is configured, so a user can be asked to authorize it."
-  @impl WardrikVault.Grants
-  def grants?(name), do: match?({:ok, _provider}, Provider.fetch(name))
+  @enforce_keys []
+  defstruct client: [],
+            providers: [],
+            redirect: [],
+            req_options: [],
+            resolve: &Egress.resolve/1,
+            poll_floor: :timer.seconds(5)
 
-  @doc "The credential a token held for `owner` answers with, renewed where it has run out."
-  @impl WardrikVault.Grants
-  def renew(store, name, owner, encoded) do
-    with {:ok, provider} <- provider(name), do: held(store, provider, owner, encoded)
+  @typedoc """
+  What every flow runs with:
+
+  | Key | What it is |
+  | --- | --- |
+  | `:client` | the identity this deployment presents, see `WardrikOAuth.Client` |
+  | `:providers` | what a user can authorize, see `WardrikOAuth.Provider` |
+  | `:redirect` | where a code comes back to: `:url`, `:ip`, `:port`, `:open`, `:opener`; see `WardrikOAuth.Callback` |
+  | `:req_options` | merged into every request |
+  | `:resolve` | answers a host's addresses, `WardrikOAuth.Egress.resolve/1` by default |
+  | `:poll_floor` | the fewest milliseconds between two polls of a device flow, 5 seconds by default |
+  """
+  @type t() :: %__MODULE__{
+          client: keyword(),
+          providers: keyword(),
+          redirect: keyword(),
+          req_options: keyword(),
+          resolve: (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term()}),
+          poll_floor: non_neg_integer()
+        }
+
+  @doc "The settings `opts` name, each one left out at its default; see `t:t/0`."
+  @spec new(keyword()) :: t()
+  def new(opts \\ []) do
+    keys = __MODULE__ |> struct() |> Map.from_struct() |> Map.keys()
+    struct!(__MODULE__, Keyword.validate!(opts, keys))
   end
 
-  @doc "Asks `owner` to authorize `name`, for a call to park on until they have."
-  @impl WardrikVault.Grants
-  def ask(store, name, owner) do
-    with {:ok, provider} <- provider(name), do: begin(store, provider, owner)
+  @doc "Whether `oauth` configures any provider."
+  @spec configured?(t()) :: boolean()
+  def configured?(%__MODULE__{providers: providers}), do: providers != []
+
+  @doc "The options every request to a server takes under `oauth`: its `:req_options` and `:resolve`."
+  @spec requests(t()) :: keyword()
+  def requests(%__MODULE__{} = oauth),
+    do: [req_options: oauth.req_options, resolve: oauth.resolve]
+
+  @doc false
+  def grants?(oauth, name), do: match?({:ok, _provider}, Provider.fetch(oauth, name))
+
+  @doc false
+  def renew(oauth, name, owner, opts) do
+    with {:ok, provider} <- provider(oauth, name),
+         do: held(oauth, vault(opts), provider, owner, Keyword.fetch!(opts, :value))
   end
 
-  @doc "Treats the token held for `owner` as expired, so the next resolve renews it."
-  @impl WardrikVault.Grants
-  def refused(store, name, owner) do
-    with {:ok, provider} <- provider(name),
-         do: single_flight(provider, owner, fn -> expire(store, provider, owner) end)
+  @doc false
+  def ask(oauth, name, owner, opts) do
+    with {:ok, provider} <- provider(oauth, name), do: begin(oauth, vault(opts), provider, owner)
+  end
+
+  @doc false
+  def refused(oauth, name, owner, opts) do
+    vault = vault(opts)
+
+    with {:ok, provider} <- provider(oauth, name),
+         do: single_flight(provider, owner, fn -> expire(vault, provider, owner) end)
 
     :ok
   end
 
-  defp expire(store, provider, owner) do
-    case current(store, provider, owner) do
-      %Token{} = token -> keep(store, provider, owner, Token.expire(token))
+  defp vault(opts), do: Keyword.fetch!(opts, :vault)
+
+  defp expire(vault, provider, owner) do
+    case current(vault, provider, owner) do
+      %Token{} = token -> keep(vault, provider, owner, Token.expire(token))
       nil -> :ok
     end
   end
@@ -136,16 +181,19 @@ defmodule WardrikOAuth do
   user before an agent ever asks. A secret the vault holds under the
   provider's name for `owner` is not a token, and is left be. `:by` is who
   asked, whom the token is recorded in the audit as stored by once it is.
-  The token is kept in `store`, the vault's.
+  The token is kept in the `:vault` `opts` name.
   """
-  @spec hold(WardrikStore.t(), Provider.t(), term(), keyword()) :: Credential.outcome()
-  def hold(store, %Provider{} = provider, owner, opts \\ []) do
-    case WardrikVault.lookup(store, provider.name, owner) do
-      {:ok, :grant, encoded} -> held(store, provider, owner, encoded)
+  @spec hold(t(), Provider.t(), term(), vault: WardrikVault.t(), by: Wardrik.Principal.t() | nil) ::
+          Credential.outcome()
+  def hold(%__MODULE__{} = oauth, %Provider{} = provider, owner, opts) do
+    vault = vault(opts)
+
+    case WardrikVault.lookup(vault, provider.name, owner) do
+      {:ok, :grant, encoded} -> held(oauth, vault, provider, owner, encoded)
       {:ok, :secret, _secret} -> {:error, :held_as_a_secret}
-      {:error, :not_found} -> begin(store, provider, owner, opts[:by])
+      {:error, :not_found} -> begin(oauth, vault, provider, owner, opts[:by])
       {:error, :no_key} -> {:error, :no_key}
-      {:error, _kind, reason} -> unreadable(store, provider, owner, reason)
+      {:error, _kind, reason} -> unreadable(oauth, vault, provider, owner, reason)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -159,12 +207,12 @@ defmodule WardrikOAuth do
   # A token nothing can read, sealed under a key rotated away or written in
   # another shape, is asked for again and replaced when the user finishes. It
   # is left where it is until then.
-  defp unreadable(store, %Provider{} = provider, owner, reason) do
+  defp unreadable(oauth, vault, %Provider{} = provider, owner, reason) do
     Logger.warning(
       "#{provider.name} for #{inspect(owner)} cannot be read (#{tag(reason)}); asking again"
     )
 
-    begin(store, provider, owner)
+    begin(oauth, vault, provider, owner)
   end
 
   defp tag(reason) when is_atom(reason), do: reason
@@ -183,7 +231,7 @@ defmodule WardrikOAuth do
       issuer, and must be there where the issuer says it sends one
 
   Only a browser flow still under way is finished; a device flow waits for
-  its code. The token is written, to the store the flow was begun with,
+  its code. The token is written, to the vault the flow was begun with,
   before the calls parked on it are told,
   through `Wardrik.Credential.available/3`, so the turn that carries on finds
   the credential it asked for. A callback that cannot be turned into a token
@@ -220,7 +268,7 @@ defmodule WardrikOAuth do
   # token is released rather than being lost.
   defp complete(%Flight{} = flight, code) do
     with {:ok, token} <- exchange(flight, code),
-         :ok <- keep(flight.store, flight.provider, flight.owner, token) do
+         :ok <- keep(flight.vault, flight.provider, flight.owner, token) do
       Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
       :ok = Pending.drop(flight.provider.name, flight.owner)
       connected(flight)
@@ -235,20 +283,22 @@ defmodule WardrikOAuth do
     end
   end
 
-  @doc "Forgets a user's token in `store`, so the next call asks them to authorize again."
-  @spec disconnect(WardrikStore.t(), String.t(), term()) :: :ok | {:error, term()}
-  def disconnect(store, provider, owner), do: WardrikVault.forget(store, provider, owner)
+  @doc "Forgets a user's token in `vault`, so the next call asks them to authorize again."
+  @spec disconnect(WardrikVault.t(), String.t(), term()) :: :ok | {:error, term()}
+  def disconnect(vault, provider, owner), do: WardrikVault.forget(vault, provider, owner)
 
-  @doc "Whether a user has authorized a provider, by what `store` holds."
-  @spec connected?(WardrikStore.t(), String.t(), term()) :: boolean()
-  def connected?(store, provider, owner),
-    do: match?({:ok, :grant, _token}, WardrikVault.lookup(store, provider, owner))
+  @doc "Whether a user has authorized a provider, by what `vault` holds."
+  @spec connected?(WardrikVault.t(), String.t(), term()) :: boolean()
+  def connected?(vault, provider, owner),
+    do: match?({:ok, :grant, _token}, WardrikVault.lookup(vault, provider, owner))
 
-  @doc "The providers this deployment can offer, and whether this owner has each in `store`."
-  @spec connections(WardrikStore.t(), term()) :: [%{provider: String.t(), connected?: boolean()}]
-  def connections(store, owner) do
-    for provider <- Provider.all() do
-      %{provider: provider.name, connected?: connected?(store, provider.name, owner)}
+  @doc "The providers `oauth` offers, and whether this owner has each in the `:vault` `opts` name."
+  @spec connections(t(), term(), vault: WardrikVault.t()) :: [
+          %{provider: String.t(), connected?: boolean()}
+        ]
+  def connections(oauth, owner, opts) do
+    for provider <- Provider.all(oauth) do
+      %{provider: provider.name, connected?: connected?(vault(opts), provider.name, owner)}
     end
   end
 
@@ -256,32 +306,32 @@ defmodule WardrikOAuth do
   The client identity this deployment presents, and the document to serve for
   it, naming every provider's redirect URI.
   """
-  @spec document() :: map()
-  def document do
-    uris = Provider.all() |> Enum.map(&redirect/1) |> Enum.uniq()
-    %{Client.document(Client.new()) | "redirect_uris" => uris}
+  @spec document(t()) :: map()
+  def document(%__MODULE__{} = oauth) do
+    uris = oauth |> Provider.all() |> Enum.map(&redirect(oauth, &1)) |> Enum.uniq()
+    %{Client.document(Client.new(oauth.client)) | "redirect_uris" => uris}
   end
 
-  defp held(store, provider, owner, encoded) do
+  defp held(oauth, vault, provider, owner, encoded) do
     case Token.decode(encoded) do
       {:ok, %Token{} = token} ->
         if Token.fresh?(token, System.system_time(:second)),
           do: {:ok, credential(token, owner)},
-          else: renewed(store, provider, owner)
+          else: renewed(oauth, vault, provider, owner)
 
       {:error, reason} ->
-        unreadable(store, provider, owner, reason)
+        unreadable(oauth, vault, provider, owner, reason)
     end
   end
 
-  defp renewed(store, provider, owner) do
-    case single_flight(provider, owner, fn -> refresh(store, provider, owner) end) do
+  defp renewed(oauth, vault, provider, owner) do
+    case single_flight(provider, owner, fn -> refresh(oauth, vault, provider, owner) end) do
       {:ok, %Token{} = fresh} ->
         {:ok, credential(fresh, owner)}
 
       :ask ->
         Logger.info("#{provider.name} could not be renewed for #{inspect(owner)}; asking again")
-        begin(store, provider, owner)
+        begin(oauth, vault, provider, owner)
 
       {:error, reason} ->
         {:error, reason}
@@ -290,14 +340,14 @@ defmodule WardrikOAuth do
 
   # Run holding the renewal lock. The token is read again first: whoever held
   # the lock before may have renewed it already.
-  defp refresh(store, provider, owner) do
-    case current(store, provider, owner) do
+  defp refresh(oauth, vault, provider, owner) do
+    case current(vault, provider, owner) do
       nil -> :ask
-      %Token{} = token -> refresh(store, provider, owner, token)
+      %Token{} = token -> refresh(oauth, vault, provider, owner, token)
     end
   end
 
-  defp refresh(store, provider, owner, %Token{} = token) do
+  defp refresh(oauth, vault, provider, owner, %Token{} = token) do
     cond do
       Token.fresh?(token, System.system_time(:second)) ->
         {:ok, token}
@@ -307,47 +357,55 @@ defmodule WardrikOAuth do
 
       true ->
         token
-        |> Flow.refresh(refresh_options(provider, token))
-        |> refreshed(store, provider, owner, token)
+        |> Flow.refresh(refresh_options(oauth, provider, token))
+        |> refreshed(oauth, vault, provider, owner, token)
     end
   end
 
-  defp refreshed({:ok, fresh}, store, provider, owner, _token) do
-    with :ok <- keep(store, provider, owner, fresh), do: {:ok, fresh}
+  defp refreshed({:ok, fresh}, _oauth, vault, provider, owner, _token) do
+    with :ok <- keep(vault, provider, owner, fresh), do: {:ok, fresh}
   end
 
   defp refreshed(
          {:error, {:token_refused, "invalid_grant", _}},
-         _store,
+         _oauth,
+         _vault,
          _provider,
          _owner,
          _token
        ),
        do: :ask
 
-  defp refreshed({:error, {:token_refused, "invalid_client", _}}, store, provider, _owner, token) do
+  defp refreshed(
+         {:error, {:token_refused, "invalid_client", _}},
+         oauth,
+         vault,
+         provider,
+         _owner,
+         token
+       ) do
     :ok =
-      Registrations.forget(
-        store,
-        provider.name,
-        token.issuer,
-        redirect(provider),
-        token.client_id
+      Registrations.forget(vault.store, provider.name,
+        issuer: token.issuer,
+        redirect_uri: redirect(oauth, provider),
+        client_id: token.client_id
       )
 
     :ask
   end
 
-  defp refreshed({:error, reason}, _store, _provider, _owner, _token), do: {:error, reason}
+  defp refreshed({:error, reason}, _oauth, _vault, _provider, _owner, _token),
+    do: {:error, reason}
 
   # A token from the issuer the deployment named is renewed under its trust,
   # and with the provider's secret where it was issued to the provider's own
   # client. Any other is renewed as a discovered server, with no secret.
-  defp refresh_options(%Provider{} = provider, %Token{} = token) do
+  defp refresh_options(oauth, %Provider{} = provider, %Token{} = token) do
     named? = is_binary(provider.issuer) and provider.issuer == token.issuer
     secret = if named? and token.client_id == provider.client_id, do: provider.client_secret
 
-    [trust: if(named?, do: :operator, else: :discovered), client_secret: secret]
+    [trust: if(named?, do: :operator, else: :discovered), client_secret: secret] ++
+      requests(oauth)
   end
 
   defp single_flight(%Provider{name: name}, owner, fun) do
@@ -357,8 +415,8 @@ defmodule WardrikOAuth do
     end
   end
 
-  defp current(store, provider, owner) do
-    with {:ok, :grant, encoded} <- WardrikVault.lookup(store, provider.name, owner),
+  defp current(vault, provider, owner) do
+    with {:ok, :grant, encoded} <- WardrikVault.lookup(vault, provider.name, owner),
          {:ok, %Token{} = token} <- Token.decode(encoded) do
       token
     else
@@ -371,11 +429,11 @@ defmodule WardrikOAuth do
   # begin one at a time for a user and provider across the cluster, and one
   # under way on any node is joined, so calls parking at once, on any node,
   # share one.
-  defp begin(store, %Provider{} = provider, owner, by \\ nil) do
+  defp begin(oauth, vault, %Provider{} = provider, owner, by \\ nil) do
     single_flight(provider, owner, fn ->
       case Pending.under_way(provider.name, owner) do
         {:ok, %Flight{} = flight} -> {:error, required(flight)}
-        :error -> open(store, provider, owner, by)
+        :error -> open(oauth, vault, provider, owner, by)
       end
     end)
   end
@@ -383,11 +441,12 @@ defmodule WardrikOAuth do
   defp required(%Flight{url: url, user_code: code, owner: owner}),
     do: {:authorization_required, %{url: url, code: code}, owner}
 
-  defp open(store, %Provider{} = provider, owner, by) do
-    with {:ok, metadata, registered} <- prepare(store, provider),
-         {:ok, flow} <- flow(provider, metadata) do
+  defp open(oauth, vault, %Provider{} = provider, owner, by) do
+    with {:ok, metadata, registered} <- prepare(oauth, vault, provider),
+         {:ok, flow} <- flow(oauth, provider, metadata) do
       flight = %Flight{
-        store: store,
+        oauth: oauth,
+        vault: vault,
         state: Flow.state(),
         provider: provider,
         owner: owner,
@@ -415,7 +474,7 @@ defmodule WardrikOAuth do
 
       flight = %{flight | verifier: verifier, url: url}
       {:ok, ^url} = Pending.start(flight)
-      opened(url, metadata.trust)
+      opened(flight.oauth, url, metadata.trust)
 
       {:error, required(flight)}
     else
@@ -425,8 +484,10 @@ defmodule WardrikOAuth do
 
   defp open(:device, %Flight{} = flight) do
     request =
-      Device.request(flight.metadata, flight.registered,
-        scopes: scopes(flight.provider, flight.metadata)
+      Device.request(
+        flight.metadata,
+        flight.registered,
+        [scopes: scopes(flight.provider, flight.metadata)] ++ requests(flight.oauth)
       )
 
     with {:ok, %Device{} = device} <- request do
@@ -452,18 +513,19 @@ defmodule WardrikOAuth do
   # The provider's flow, where `:auto` is the device grant only where the
   # server offers it and the browser flow could not finish: its redirect
   # comes back to this machine's loopback, and there is no browser here.
-  defp flow(%Provider{flow: :browser}, %Metadata{}), do: {:ok, :browser}
+  defp flow(_oauth, %Provider{flow: :browser}, %Metadata{}), do: {:ok, :browser}
 
-  defp flow(%Provider{flow: :device}, %Metadata{} = metadata) do
+  defp flow(_oauth, %Provider{flow: :device}, %Metadata{} = metadata) do
     if Device.offered?(metadata),
       do: {:ok, :device},
       else: {:error, {:no_device_flow, metadata.issuer}}
   end
 
-  defp flow(%Provider{flow: :auto}, %Metadata{} = metadata) do
-    if Device.offered?(metadata) and Callback.loopback?() and not Browser.available?(),
-      do: {:ok, :device},
-      else: {:ok, :browser}
+  defp flow(oauth, %Provider{flow: :auto}, %Metadata{} = metadata) do
+    if Device.offered?(metadata) and Callback.loopback?(oauth) and
+         not Browser.available?(opener: oauth.redirect[:opener]),
+       do: {:ok, :device},
+       else: {:ok, :browser}
   end
 
   # How a device flow ended: the token is written down, and the calls parked
@@ -488,7 +550,7 @@ defmodule WardrikOAuth do
   end
 
   defp authorized(%Flight{} = flight, %Token{} = token) do
-    case keep(flight.store, flight.provider, flight.owner, token) do
+    case keep(flight.vault, flight.provider, flight.owner, token) do
       :ok ->
         Logger.info("#{flight.provider.name} authorized for #{inspect(flight.owner)}")
         connected(flight)
@@ -512,7 +574,10 @@ defmodule WardrikOAuth do
     by = Wardrik.Principal.new(:oauth, name, name: "#{name} authorization")
 
     :ok =
-      Wardrik.Audit.record({:secret_stored, name, Wardrik.Connections.prefix(owner)}, asked || by)
+      Wardrik.Audit.record(
+        {:secret_stored, name, Wardrik.Connections.Owner.prefix(owner)},
+        asked || by
+      )
 
     Credential.available(name, owner, by: by)
   end
@@ -520,40 +585,56 @@ defmodule WardrikOAuth do
   # A flow whose callback comes back to this machine has a browser on it. One
   # answering somewhere else does not, and opens nothing. Only a URL Egress
   # allows is opened, so a server cannot have another program launched.
-  defp opened(url, trust) do
-    if Keyword.get(Config.redirect(), :open, Callback.loopback?()) and
+  defp opened(%__MODULE__{redirect: redirect} = oauth, url, trust) do
+    if Keyword.get(redirect, :open, Callback.loopback?(oauth)) and
          Egress.check(url, trust) == :ok,
-       do: Browser.open(url)
+       do: Browser.open(url, opener: redirect[:opener])
   end
 
   # A client registered dynamically before, for this issuer and redirect URI,
   # is used again; a new one is kept.
-  defp prepare(store, %Provider{} = provider) do
-    client = Client.new(redirect_uri: redirect(provider))
+  defp prepare(oauth, vault, %Provider{} = provider) do
+    client = Client.new(Keyword.put(oauth.client, :redirect_uri, redirect(oauth, provider)))
+    discovered = [issuer: provider.issuer] ++ requests(oauth)
 
-    with {:ok, metadata} <- Metadata.discover(provider.resource, issuer: provider.issuer),
-         {:ok, registered} <- registered(store, provider, metadata, client) do
+    with {:ok, metadata} <- Metadata.discover(provider.resource, discovered),
+         {:ok, registered} <- registered(oauth, vault, provider, metadata, client) do
       {:ok, metadata, registered}
     end
   end
 
-  defp registered(store, provider, metadata, client) do
+  defp registered(oauth, vault, provider, metadata, client) do
     known =
-      case Registrations.fetch(store, provider.name, metadata.issuer, redirect(provider)) do
+      case Registrations.fetch(vault.store, provider.name,
+             issuer: metadata.issuer,
+             redirect_uri: redirect(oauth, provider)
+           ) do
         {:ok, registered} -> registered
         :error -> nil
       end
 
-    with {:ok, registered} <- Flow.register(metadata, client, provider, known: known) do
+    with {:ok, registered} <-
+           Flow.register(metadata, client, provider, [known: known] ++ requests(oauth)) do
       if registered.how == :dynamic and is_nil(known),
-        do: Registrations.put(store, provider.name, metadata.issuer, registered)
+        do:
+          Registrations.put(vault.store, provider.name,
+            issuer: metadata.issuer,
+            registered: registered
+          )
 
       {:ok, registered}
     end
   end
 
   defp exchange(%Flight{} = flight, code),
-    do: Flow.exchange(flight.metadata, flight.registered, code, flight.verifier)
+    do:
+      Flow.exchange(
+        flight.metadata,
+        flight.registered,
+        code,
+        flight.verifier,
+        requests(flight.oauth)
+      )
 
   # A server that no longer knows a client registered dynamically has it
   # forgotten, so the next flow registers again.
@@ -561,23 +642,21 @@ defmodule WardrikOAuth do
          %Flight{registered: %{how: :dynamic} = registered} = flight,
          {:error, {:token_refused, "invalid_client", _description}}
        ) do
-    Registrations.forget(
-      flight.store,
-      flight.provider.name,
-      flight.metadata.issuer,
-      registered.redirect_uri,
-      registered.client_id
+    Registrations.forget(flight.vault.store, flight.provider.name,
+      issuer: flight.metadata.issuer,
+      redirect_uri: registered.redirect_uri,
+      client_id: registered.client_id
     )
   end
 
   defp forget_client(_flight, _trouble), do: :ok
 
-  defp keep(store, %Provider{} = provider, owner, %Token{} = token) do
-    WardrikVault.put(store, provider.name, owner, Token.encode(token), kind: :grant)
+  defp keep(vault, %Provider{} = provider, owner, %Token{} = token) do
+    WardrikVault.put(vault, provider.name, owner, value: Token.encode(token), kind: :grant)
   end
 
-  defp provider(name) do
-    case Provider.fetch(name) do
+  defp provider(oauth, name) do
+    case Provider.fetch(oauth, name) do
       {:ok, provider} -> {:ok, provider}
       :error -> {:error, {:no_such_provider, name}}
     end
@@ -585,5 +664,12 @@ defmodule WardrikOAuth do
 
   defp scopes(%Provider{} = provider, %Metadata{} = metadata), do: Flow.scopes(provider, metadata)
 
-  defp redirect(%Provider{name: name}), do: Callback.redirect_uri(name)
+  defp redirect(oauth, %Provider{name: name}), do: Callback.redirect_uri(oauth, name)
+end
+
+defimpl WardrikVault.Grants, for: WardrikOAuth do
+  defdelegate grants?(oauth, name), to: WardrikOAuth
+  defdelegate renew(oauth, name, owner, opts), to: WardrikOAuth
+  defdelegate ask(oauth, name, owner, opts), to: WardrikOAuth
+  defdelegate refused(oauth, name, owner, opts), to: WardrikOAuth
 end

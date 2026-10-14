@@ -2,54 +2,17 @@ defmodule WardrikDaemon do
   @moduledoc """
   The host a `wardrik` release runs beside core.
 
-  The release's tree starts it after core, `WardrikPolicy.Supervisor`, which
-  keeps the budgets its agents' policies set, `WardrikTrigger`, which runs
-  their triggers, `WardrikHTTP.Access`, which keeps what its tokens grant,
-  and `WardrikHTTP.Workers`, the tool workers connected to the cluster, so
-  all five start once the fleet is up. It gives core `WardrikDaemon.Cluster`
-  as its `:cluster`, which starts before the fleet, and is handed the same
-  `Wardrik.Host` as core:
-
-      host =
-        Wardrik.Host.new(
-          definitions: WardrikDaemon.Agents,
-          connections: WardrikOAuth.Connections,
-          tokens: WardrikHTTP.Tokens,
-          triggers: WardrikTrigger,
-          grants: WardrikDaemon.Grants
-        )
-
-      children = [
-        {WardrikStore, store},
-        {WardrikDaemon.Host, host},
-        {Wardrik,
-         cluster: [WardrikDaemon.Cluster, {WardrikDaemon.Cluster.Quorum, store}], host: host},
-        {WardrikPolicy.Supervisor, store: store},
-        {WardrikTrigger, store: store, secrets: &WardrikDaemon.Secrets.for_agent(store, &1, &2)},
-        {WardrikHTTP.Access, store: store},
-        WardrikHTTP.Workers,
-        {WardrikDaemon, host: host}
-      ]
-
-      Supervisor.init(children, strategy: :rest_for_one)
-
-  The store is started first, and everything that keeps anything is handed
-  it, on the host or in its own options. The host is held by
-  `WardrikDaemon.Host`, started before `Wardrik`, for the `wardrik` commands
-  that reach the node over rpc, and handed in the options of each of the
-  surfaces below that builds callers: the HTTP API, the channels and the TUI
-  over SSH.
-
-  As its supervisor starts, it reads `config.yaml`, or `config.yml`, from the
-  config directory into the settings it keeps (see `WardrikDaemon.Config`),
-  starts `WardrikVault` with the vault's, and the key in the data home where
-  nothing else gives it one (see `WardrikDaemon.VaultKey`), then starts what
-  those settings call for, each with its own section as options:
+  `WardrikDaemon.Tree` starts it last, once it has read `config.yaml`,
+  built the `Wardrik.Host` from it, and started core and what runs on the
+  fleet; see there. It is handed that host and the `WardrikDaemon.Config`
+  read, and starts what the config calls for, each with its own section as
+  options:
 
     * `WardrikMCP.Supervisor`, when a server is configured. Each command's stderr
       goes to `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured.
-    * `WardrikDaemon.Agents`, which runs the agents `agents/` declares.
+    * `WardrikDaemon.Agents`, which runs the agents `agents/` declares, as
+      the host's definitions.
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
       `WardrikDaemon.Agents.routes/1` for the routes as it starts, so one that
       restarts routes the agents as before.
@@ -64,11 +27,7 @@ defmodule WardrikDaemon do
       `http` says, to callers holding a token that `wardrik token create`
       made, on the host.
 
-  A `config.yaml` that does not read stops the boot, with the reason logged.
-
-  `:host` is required. `:config_dir`, `:state_dir` and `:data_dir` override
-  `WardrikDaemon.Config.config_dir/0`, `WardrikDaemon.Config.state_dir/0` and
-  `WardrikDaemon.Config.data_dir/0`.
+  `:host` and `:config` are required.
 
   ## From a shell
 
@@ -95,79 +54,73 @@ defmodule WardrikDaemon do
 
   use Supervisor
 
-  require Logger
-
   alias Wardrik.Fleet
   alias WardrikConsole.Nodes
+  alias WardrikDaemon.Agents
   alias WardrikDaemon.Cluster
   alias WardrikDaemon.Config
   alias WardrikDaemon.Secrets
-  alias WardrikDaemon.VaultKey
 
-  @spec start_link(keyword()) :: Supervisor.on_start()
+  @spec start_link(host: Wardrik.Host.t(), config: Config.t()) :: Supervisor.on_start()
   def start_link(opts) do
-    started = %{
-      host: Keyword.fetch!(opts, :host),
-      config_dir: Keyword.get_lazy(opts, :config_dir, &Config.config_dir/0),
-      state_dir: Keyword.get_lazy(opts, :state_dir, &Config.state_dir/0),
-      data_dir: Keyword.get_lazy(opts, :data_dir, &Config.data_dir/0)
-    }
-
+    started = Map.new(Keyword.validate!(opts, [:host, :config]))
     Supervisor.start_link(__MODULE__, started, name: __MODULE__)
   end
 
   @impl true
-  def init(%{host: host, config_dir: config_dir, state_dir: state_dir, data_dir: data_dir}) do
+  def init(%{host: host, config: config}) do
     store = Wardrik.Host.store(host)
+    agents = Wardrik.Host.definitions(host)
 
-    case boot(store, config_dir, data_dir) do
-      :ok ->
-        children =
-          mcp(store, Path.join([state_dir, "log", "mcp.log"])) ++
-            oauth() ++
-            [{WardrikDaemon.Agents, dir: config_dir, store: store}] ++
-            channels(host) ++
-            notify(store) ++
-            WardrikDaemon.SSH.children(config_dir, data_dir, host) ++
-            [{WardrikHTTP.Listener, [host: host] ++ listener()}]
+    children =
+      mcp(config, store) ++
+        oauth(host) ++
+        [{Agents, agents: agents}] ++
+        channels(config, host, agents) ++
+        notify(config, agents) ++
+        WardrikDaemon.SSH.children(config, host: host) ++
+        [{WardrikHTTP.Listener, [host: host] ++ listener(config)}]
 
-        Supervisor.init(children, strategy: :one_for_one)
-
-      {:error, message} ->
-        Logger.error(message)
-        exit({:config, message})
-    end
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
-  # The vault's key comes first, from vault.keys, the environment or the key
-  # file, so the rest of config.yaml can read from the vault what the
-  # environment does not set.
-  defp boot(store, config_dir, data_dir) do
-    with {:ok, file} <- Config.file(config_dir),
-         {:ok, vault} <- Config.read(file, only: ["vault"]),
-         :ok <- Config.apply(Keyword.take(vault, [WardrikVault])),
-         :ok <- vault_key(data_dir),
-         {:ok, settings} <- Config.read(file, vault: &Secrets.named(store, &1)) do
-      :ok = Config.apply(settings)
-      Secrets.apply(store)
-    end
+  @doc """
+  The host a daemon running under `config` offers, keeping everything in
+  `store`: its definitions, `WardrikDaemon.Agents`; the vault the config's
+  keys unseal, as its credentials, granting through `WardrikOAuth` with the
+  config's `oauth`; the accounts people connect through both; the HTTP API's
+  tokens; webhooks checked with the vault's secrets for each agent, else the
+  environment's; `WardrikDaemon.Grants`; and agents' files kept in the
+  store.
+  """
+  @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
+  def host(%Config{} = config, opts) do
+    store = Keyword.fetch!(opts, :store)
+    oauth = WardrikOAuth.new(oauth_settings(config))
+    vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :environment])
+    vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
+    agents = Agents.new(store: store, config: config)
+
+    Wardrik.Host.new(
+      store: store,
+      definitions: agents,
+      connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
+      credentials: vault,
+      tokens: %WardrikHTTP.Tokens{store: store},
+      triggers: %WardrikTrigger.Deliveries{secrets: &Secrets.for_agent(vault, &1, &2)},
+      grants: %WardrikDaemon.Grants{store: store, agents: agents},
+      workspace: %WardrikWorkspace.Backend.Store{store: store}
+    )
   end
 
-  # A key file that holds no key leaves the vault without one, as no file
-  # does; wardrik doctor says why.
-  defp vault_key(data_dir) do
-    case VaultKey.load(data_dir) do
-      {:error, message} -> Logger.warning("The vault has no key: " <> message)
-      _loaded_or_none -> :ok
-    end
+  defp oauth_settings(config),
+    do: Keyword.take(Config.section(config, WardrikOAuth), [:client, :providers, :redirect])
 
-    :ok
-  end
-
-  defp mcp(store, stderr) do
-    settings = Config.settings(WardrikMCP)
+  defp mcp(config, store) do
+    settings = Config.section(config, WardrikMCP)
 
     if Keyword.get(settings, :servers, []) != [] do
+      stderr = Path.join([config.state_dir, "log", "mcp.log"])
       File.mkdir_p!(Path.dirname(stderr))
       [{WardrikMCP.Supervisor, [store: store, stderr: {:file, stderr}] ++ settings}]
     else
@@ -175,50 +128,53 @@ defmodule WardrikDaemon do
     end
   end
 
-  defp oauth do
-    settings = Config.settings(WardrikOAuth)
+  # The host this daemon built offers its own sign-ins.
+  defp oauth(host) do
+    %WardrikOAuth.Connections{oauth: oauth} = Wardrik.Host.connections(host)
 
-    if Keyword.get(settings, :providers, []) != [],
-      do: [{WardrikOAuth.Supervisor, settings}],
+    if WardrikOAuth.configured?(oauth),
+      do: [{WardrikOAuth.Supervisor, oauth: oauth}],
       else: []
   end
 
-  defp notify(store) do
-    settings = Config.settings(WardrikNotify)
+  defp notify(config, agents) do
+    settings = Config.section(config, WardrikNotify)
 
     if Keyword.get(settings, :targets, []) != [],
-      do: [
-        {WardrikNotify.Supervisor, [routes: {WardrikDaemon.Agents, :routes, [store]}] ++ settings}
-      ],
+      do: [{WardrikNotify.Supervisor, [routes: {Agents, :routes, [agents]}] ++ settings}],
       else: []
   end
 
-  defp channels(host) do
-    case Keyword.get(Config.settings(WardrikChannel), :channels, []) do
+  defp channels(config, host, agents) do
+    case Keyword.get(Config.section(config, WardrikChannel), :channels, []) do
       [] ->
         []
 
       configured ->
-        store = Wardrik.Host.store(host)
-
         channels =
           WardrikChannel.channels(configured,
             host: host,
-            offered: {WardrikDaemon.Agents, :offered, [store]},
-            creatable: {WardrikDaemon.Agents, :creatable?, []},
-            create: {WardrikDaemon.Agents, :create, [store]},
-            start: {WardrikDaemon.Agents, :start, [store]},
-            approvers: {WardrikDaemon.Agents, :approvers, []}
+            offered: {Agents, :offered, [agents]},
+            creatable: {Agents, :creatable?, [agents]},
+            create: {Agents, :create_in, [agents]},
+            start: {Agents, :start, [agents]},
+            approvers: {Agents, :approvers, [agents]}
           )
 
         [
-          {WardrikChannel.Replies, channels: channels, store: store},
+          {WardrikChannel.Replies, channels: channels, store: Wardrik.Host.store(host)},
           {WardrikChannel.Supervisor, channels: channels}
         ]
     end
   end
 
-  defp listener, do: Keyword.take(Config.settings(WardrikHTTP), [:port, :ip])
+  # Tool workers' answers are the deployment's own where `http` trusts them.
+  defp listener(config) do
+    http = Config.section(config, WardrikHTTP)
+
+    [workers: [trusted: Keyword.get(http, :trusted_workers, false)]] ++
+      Keyword.take(http, [:port, :ip])
+  end
 
   @doc """
   What this node is running, as `wardrik status` prints it: the node, how long
@@ -226,15 +182,16 @@ defmodule WardrikDaemon do
   the fleet with what it is doing, on which node, and when a trigger asks it
   next, and each agent or policy file that does not read.
   """
-  @spec status(WardrikStore.t()) :: String.t()
-  def status(store) do
+  @spec status(Wardrik.Host.t(), Config.t()) :: String.t()
+  def status(host, config) do
+    agents = Wardrik.Host.definitions(host)
     members = Fleet.list()
     {uptime_ms, _since_last} = :erlang.statistics(:wall_clock)
 
     header =
       [
         "wardrik #{Application.spec(:wardrik, :vsn)} on #{Nodes.display(node())}, up #{duration(uptime_ms)}"
-        | cluster()
+        | cluster(Config.section(config, Cluster))
       ] ++ ["#{length(members)} #{agents(members)}"]
 
     rows =
@@ -244,13 +201,13 @@ defmodule WardrikDaemon do
               [
                 "  #{member.id}",
                 Wardrik.Fleet.Member.label(member)
-                | where(member) ++ spent(store, member.id) ++ next_run(member.id)
+                | where(member) ++ spent(agents, member.id) ++ next_run(member.id)
               ],
               "  "
             )
 
-    broken = for {_path, {:error, message}} <- agent_files(), do: "  #{message}"
-    unbuilt = for message <- definition_problems(), do: "  #{message}"
+    broken = for {_path, {:error, message}} <- Agents.files(agents), do: "  #{message}"
+    unbuilt = for message <- Agents.problems(agents), do: "  #{message}"
 
     Enum.join(
       header ++
@@ -263,11 +220,11 @@ defmodule WardrikDaemon do
 
   @doc """
   The agent files that read, by the ID of the agent each declares, with its
-  spec, from `files` as `WardrikDaemon.Agents.files/0` answers them.
+  spec, from `files` as `WardrikDaemon.Agents.files/1` answers them.
   """
   @spec declared([WardrikDaemon.Agents.file()]) ::
           %{Wardrik.AgentID.t() => {Path.t(), Wardrik.Agent.Spec.t()}}
-  def declared(files \\ agent_files()) do
+  def declared(files) do
     for {path, {:ok, %Wardrik.Agent.Spec{} = spec}} <- files,
         into: %{},
         do: {spec.id, {path, spec}}
@@ -285,10 +242,10 @@ defmodule WardrikDaemon do
   What the agent `key` has spent of each budget the spec its kept definition
   writes gives it, as its budgets say it; nothing where none is kept.
   """
-  @spec spent(WardrikStore.t(), Wardrik.AgentID.t()) :: [String.t()]
-  def spent(store, key) do
+  @spec spent(Agents.t(), Wardrik.AgentID.t()) :: [String.t()]
+  def spent(%Agents{store: store} = agents, key) do
     with {:ok, definition} <- WardrikDaemon.Definition.of(store, key),
-         {:ok, spec} <- WardrikDaemon.Agents.build(definition, key) do
+         {:ok, spec} <- Agents.build(agents, definition, key) do
       spent_by(spec, key)
     else
       {:error, _reason} -> []
@@ -332,29 +289,19 @@ defmodule WardrikDaemon do
     end
   end
 
-  @doc "The agent and policy files, as `WardrikDaemon.Agents.files/0` reads them, or none where it is not running."
-  @spec agent_files() :: [WardrikDaemon.Agents.file()]
-  def agent_files do
-    if Process.whereis(WardrikDaemon.Agents), do: WardrikDaemon.Agents.files(), else: []
-  end
-
-  defp definition_problems do
-    if Process.whereis(WardrikDaemon.Agents), do: WardrikDaemon.Agents.problems(), else: []
-  end
-
-  defp cluster do
+  defp cluster(cluster) do
     cond do
-      not Cluster.configured?() ->
+      not Cluster.configured?(cluster) ->
         []
 
-      Cluster.named() == [] ->
-        ["cluster of #{Cluster.size()}, found by DNS: " <> found(Cluster.members())]
+      Cluster.named(cluster) == [] ->
+        ["cluster of #{Cluster.size(cluster)}, found by DNS: " <> found(Cluster.members(cluster))]
 
       true ->
-        {up, down} = Enum.split_with(Cluster.named(), &(&1 in Cluster.members()))
+        {up, down} = Enum.split_with(Cluster.named(cluster), &(&1 in Cluster.members(cluster)))
 
         [
-          "cluster of #{Cluster.size()}: " <>
+          "cluster of #{Cluster.size(cluster)}: " <>
             nodes(up, "up") <> nodes(down, "; ", "not connected")
         ]
     end

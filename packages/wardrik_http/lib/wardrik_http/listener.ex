@@ -9,6 +9,8 @@ defmodule WardrikHTTP.Listener do
 
     * `:port` - the port to listen on, 4747 by default; `0` takes any free one
     * `:ip` - the address to listen on, `{127, 0, 0, 1}` by default
+    * `:workers` - what holds for the tool workers that connect, as
+      `WardrikHTTP.Workers` reads it: `:timeout` and `:trusted`
     * `:host` - the `Wardrik.Host` every request's operation runs on;
       required
     * `:authenticator` - the `WardrikHTTP.Authenticator` every request is
@@ -43,7 +45,9 @@ defmodule WardrikHTTP.Listener do
 
     state = %{
       listen: listen,
-      router: [host: Keyword.fetch!(opts, :host)] ++ Keyword.take(opts, [:authenticator]),
+      router:
+        [host: Keyword.fetch!(opts, :host), workers: Keyword.get(opts, :workers, [])] ++
+          Keyword.take(opts, [:authenticator]),
       retry: Keyword.get(opts, :retry, @retry),
       server: nil
     }

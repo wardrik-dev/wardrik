@@ -46,7 +46,7 @@ defmodule WardrikHTTP.Worker do
   @ping :timer.seconds(30)
 
   @enforce_keys [:caller]
-  defstruct [:caller, :since, next: 1, pending: %{}]
+  defstruct [:caller, :since, settings: [], next: 1, pending: %{}]
 
   @typep purpose() :: :initialize | :list | {pid(), reference(), reference()}
 
@@ -58,19 +58,19 @@ defmodule WardrikHTTP.Worker do
         }
 
   @impl WebSock
-  def init({%Caller{} = caller, store}) do
+  def init(%{caller: %Caller{} = caller, store: store, settings: settings}) do
     case WardrikHTTP.Access.hold(store, caller.ref) do
-      :ok -> start(caller)
+      :ok -> start(caller, settings)
       {:error, reason} -> {:stop, {:shutdown, reason}, close(reason), %__MODULE__{caller: caller}}
     end
   end
 
-  defp start(caller) do
+  defp start(caller, settings) do
     schedule_ping()
 
     {frame, state} =
       request(
-        %__MODULE__{caller: caller, since: System.system_time(:microsecond)},
+        %__MODULE__{caller: caller, since: System.system_time(:microsecond), settings: settings},
         "initialize",
         %{
           "protocolVersion" => @protocol,
@@ -148,7 +148,7 @@ defmodule WardrikHTTP.Worker do
 
   defp answered(:list, %{"result" => %{"tools" => listed}}, state) when is_list(listed) do
     tools = for entry <- listed, {:ok, tool} <- [Tool.listed(entry)], do: tool
-    :ok = Workers.offer(state.caller, tools, state.since)
+    :ok = Workers.offer(state.caller, tools: tools, since: state.since, settings: state.settings)
 
     :telemetry.execute([:wardrik, :workers, :listed], %{count: length(tools)}, %{
       worker: self(),
