@@ -97,7 +97,9 @@ channels:
 ```
 
 Everyone in a channel may read and message the agents of the orgs it offers, and none of their
-users' agents. See `WardrikDaemon.Grants` for what each person may do.
+users' agents. A room says which agent answers there, and a message reaches it only where its sender
+may message that agent: anyone else is told so in the thread, and the agent is not asked. See
+`WardrikDaemon.Grants` for what each person may do.
 
 ## Notices in a room
 

@@ -48,9 +48,10 @@ defmodule WardrikChannel do
 
   Someone writing in a room, or pressing a button, is the
   `Wardrik.Principal` `principal/3` makes, and may do what the host's
-  `Wardrik.Grants` says that principal may, such as decide what an agent
-  asks: `Wardrik.Host.caller/2`, on the host its context carries, makes
-  them a caller. A host that grants by what `config.yaml` names people, as a
+  `Wardrik.Grants` says that principal may, such as message the agent a
+  room answers with, or decide what an agent asks: `Wardrik.Host.caller/2`,
+  on the host its context carries, makes them a caller. A host whose grants
+  give someone nothing has every room ignore what they post, saying why. A host that grants by what `config.yaml` names people, as a
   channel's approvers, asks `among?/3` with the channel's adapter and
   options.
 
@@ -93,6 +94,9 @@ defmodule WardrikChannel do
   """
 
   alias Wardrik.AgentID
+  alias Wardrik.Command
+  alias Wardrik.Error
+  alias Wardrik.Operations.Ask
   alias WardrikChannel.Context
   alias WardrikChannel.Inbound
   alias WardrikChannel.Outbound
@@ -213,6 +217,12 @@ defmodule WardrikChannel do
   in the thread again. Answers the agent asked, or
   `:ignored` for a message in a room no agent answers in, or one the room's
   agent does not answer.
+
+  The message is the sender's, asked through `Wardrik.Operations.Ask` as
+  every surface asks an agent, holding what the host's `Wardrik.Grants`
+  give them: a room says which agent answers, and the sender's grants
+  whether they may reach it. One who may not is told so, and the agent is
+  neither started nor asked.
   """
   @spec received(Context.t(), Inbound.t()) ::
           {:asked, AgentID.t()} | :ignored | {:error, String.t()}
@@ -231,15 +241,29 @@ defmodule WardrikChannel do
   # Whether the agent waited on a person is asked before the message, so a
   # turn the message starts, and parks, is not taken for one already waiting.
   defp ask(context, inbound, thread, agent) do
-    with {:ok, _pid} <- Context.start(context, agent),
+    request = %Ask{agent: agent, id: inbound.id, text: inbound.text}
+
+    with {:ok, caller} <- reached(context, inbound.sender, agent),
+         {:ok, _pid} <- Context.start(context, agent),
          :ok <- Replies.follow(context, inbound.room, thread, agent),
          waiting? = match?([_ | _], Wardrik.Agent.parked(agent)),
-         :ok <- Wardrik.Agent.ask(agent, inbound.text, id: inbound.id, sender: inbound.sender) do
+         {:ok, _asked} <- Command.run(request, caller) do
       if waiting?, do: Replies.remind(context, inbound.room, thread)
       {:asked, agent}
     else
-      {:error, :not_found} -> {:error, "#{agent} stopped before it could be asked."}
+      {:error, %Error{type: :not_found}} -> {:error, "#{agent} stopped before it could be asked."}
+      {:error, %Error{message: message}} -> {:error, message}
       {:error, message} -> {:error, message}
+    end
+  end
+
+  defp reached(%Context{host: host}, sender, agent) do
+    case Wardrik.Host.caller(host, principal: sender, subject: agent) do
+      {:ok, caller} ->
+        {:ok, caller}
+
+      {:error, _unreached} ->
+        {:error, "#{AgentID.put_external_id(agent, nil)} is not one you may reach from here."}
     end
   end
 
