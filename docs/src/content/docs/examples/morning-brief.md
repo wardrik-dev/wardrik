@@ -12,7 +12,7 @@ lines of `config.yaml`, and the quickest of these examples to have running.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
 - a key for `web_search`, where the daemon reads its keys. A search made without one tells the
   agent which key it lacks;
 - a Slack app with a bot token, made as [Slack](/channels/slack/#a-slack-app) makes
@@ -103,7 +103,7 @@ what each morning brings. `wardrik triggers` says when it runs next.
 - **Memory in a file.** What you follow lives in `FOLLOWING.md`, which you can change by telling the
   agent, rather than in its system prompt. See [Files and memory](/concepts/files-and-memory/).
 - **A budget.** Once the agent has spent a dollar in a day, `on_exhausted: deny` refuses its next
-  model call, which ends the turn, rather than asking. See [Budgets](/concepts/policy/#budgets).
+  model call, which ends the turn, rather than asking. See [Budgets](/concepts/budgets/).
 
 ## Taking it further
 

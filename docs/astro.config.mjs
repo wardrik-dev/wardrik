@@ -70,7 +70,25 @@ export default defineConfig({
 										{ label: 'Quickstart', slug: 'getting-started/quickstart' },
 									],
 								},
-								{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
+								{
+									label: 'Concepts',
+									items: [
+										'concepts/agents',
+										{
+											label: 'Policy',
+											items: [
+												'concepts/policy',
+												'concepts/approvals',
+												'concepts/outside-content',
+												'concepts/budgets',
+												'concepts/judges',
+											],
+										},
+										'concepts/durable-runs',
+										'concepts/events',
+										'concepts/files-and-memory',
+									],
+								},
 								{ label: 'Build', items: [{ autogenerate: { directory: 'build' } }] },
 								{ label: 'Channels', items: [{ autogenerate: { directory: 'channels' } }] },
 								{ label: 'Run', items: [{ autogenerate: { directory: 'run' } }] },

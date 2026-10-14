@@ -110,7 +110,7 @@ call can be matched with the turn it belongs to.
 ### What a call cost
 
 A call to a paid API can say what it cost, in US dollars, with `cost`. The call's
-`tool_call.completed` event carries it, and the agent's [budget](/concepts/policy/#budgets) counts
+`tool_call.completed` event carries it, and the agent's [budget](/concepts/budgets/) counts
 it. Said more than once, the amounts add up, and a call that throws after saying it is reported
 failed at what it said, since a paid API may charge for a call that fails.
 
@@ -169,7 +169,7 @@ http:
 ```
 
 Without it, a turn that has called a worker waits on a person before a gated tool's call runs. See
-[Content from outside](/concepts/policy/#content-from-outside).
+[Content from outside](/concepts/outside-content/).
 
 ## Driving agents too
 

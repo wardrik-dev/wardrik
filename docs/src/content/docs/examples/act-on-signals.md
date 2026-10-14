@@ -296,7 +296,7 @@ and its arguments. Any approver decides each call on its own, in any order.
 Once every call is decided, the run carries on, records the decisions in `DECISIONS.md`, and posts
 its brief. Allowed calls, such as the draft campaign, already ran. From a terminal, `wardrik parked`,
 `wardrik approve` and `wardrik deny` do the same, with a note or a reason. See
-[Waiting on a person](/concepts/policy/#waiting-on-a-person).
+[Waiting on a person](/concepts/approvals/).
 
 ### Another signal: a webhook
 
@@ -406,7 +406,7 @@ The rest of the policy stays as it was. The `ask` rule names only calls over $50
 beats an `allow_after` naming the same call. A call with no `daily_budget`, such as a plain launch
 or pause, matches neither, so it waits as a gated call does. `wardrik reload` applies the rules to
 the running agent, and a waiting call they now allow runs. See
-[Changing the policy while it waits](/concepts/policy/#changing-the-policy-while-it-waits).
+[Changing the policy while it waits](/concepts/approvals/#changing-the-policy-while-it-waits).
 
 As it gets more rope:
 

@@ -51,7 +51,7 @@ wardrik deny assistant call_8d2ebbfe28aa4ee1a269dee2 "Once an hour is enough."
 ```
 
 `wardrik parked` does not show a call's arguments, so the front door says in its plan what each call
-does. A Slack notice and the [webhook](/build/notices/#webhooks) show them. See [Waiting on a person](/concepts/policy/#waiting-on-a-person).
+does. A Slack notice and the [webhook](/build/notices/#webhooks) show them. See [Waiting on a person](/concepts/approvals/).
 
 ## See what runs
 
@@ -113,7 +113,7 @@ You are Wardrik, the one place the people of this org come to get things done. â
   defines is held to the same policy and budget, ahead of its own definition's and counted on its
   own, so no worker can do or spend more than the front door may. It counts tokens because a budget
   in dollars refuses a model the catalog cannot price, such as one a subscription pays for; where
-  yours is priced, `usd: 3.00` counts dollars instead. See [Budgets](/concepts/policy/#budgets).
+  yours is priced, `usd: 3.00` counts dollars instead. See [Budgets](/concepts/budgets/).
 - Workers run the model `config.yaml`'s `defaults` give, the one you chose where `init` wrote
   `config.yaml`.
 
@@ -127,7 +127,7 @@ policy:
 
 Once it has read content from outside, as its workers' findings from the web are, an `allow` rule
 stops counting and each call waits on a person again. See
-[Content from outside](/concepts/policy/#content-from-outside).
+[Content from outside](/concepts/outside-content/).
 
 ## Its playbook
 

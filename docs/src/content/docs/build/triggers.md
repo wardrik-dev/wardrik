@@ -229,7 +229,7 @@ with why.
 
 **Content from outside.** Feed entries and webhook bodies are written by others, so once the agent
 reads them a gated tool's calls wait on a person. See
-[Content from outside](/concepts/policy/#content-from-outside).
+[Content from outside](/concepts/outside-content/).
 
 **Self-set triggers.** The audit records the agent as who set a trigger, and `wardrik triggers`
 lists it like any other.

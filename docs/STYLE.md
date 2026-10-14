@@ -25,6 +25,9 @@ Readers skim for the point, then read the part they need. Write for that.
 | Example | What it does, what it takes, the files, how to try it, what it shows. |
 | Reference | Generated from the code. Complete, in tables. The only place for every option. |
 
+A concept with several topics a reader looks up on their own gets a group: an overview page, then a
+page per topic. Policy is the model: Policy, Approvals, Content from outside, Budgets, Judged calls.
+
 ## Words
 
 - Prefer short, common words: "use", not "make use of".

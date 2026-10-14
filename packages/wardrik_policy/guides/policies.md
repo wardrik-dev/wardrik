@@ -183,4 +183,4 @@ or deny, and otherwise says nothing.
 A call's arguments may be written by what the run read, and so written to fool the judge. A judge is
 a second opinion beside the rules, not a replacement for them; try its thresholds on calls like the
 agent's before trusting them. See [Judged
-calls](https://docs.wardrik.dev/concepts/policy/#judged-calls).
+calls](https://docs.wardrik.dev/concepts/judges/).

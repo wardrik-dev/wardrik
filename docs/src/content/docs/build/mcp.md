@@ -126,7 +126,7 @@ an org's or a user's, or an account each user connects; see [Connect accounts](/
 - `trusted: true` says the server's answers are the deployment's own. Without it, what a server
   returns is content from outside, and a turn that has read it, and every turn of that agent after
   it, waits on a person before a gated tool's call runs. See
-  [Content from outside](/concepts/policy/#content-from-outside).
+  [Content from outside](/concepts/outside-content/).
 
 ```yaml
 mcp:
