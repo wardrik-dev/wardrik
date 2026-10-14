@@ -41,7 +41,9 @@ defmodule Wardrik.Operations.Deliver do
   def make(%Change{request: %__MODULE__{} = request} = change, caller) do
     delivery = %{headers: request.headers, body: request.body}
 
-    case Host.triggers(caller.host).deliver(request.agent, request.trigger, delivery) do
+    case Wardrik.Triggers.deliver(Host.triggers(caller.host), request.agent, request.trigger,
+           request: delivery
+         ) do
       {:ok, status} ->
         {:ok, %{"delivery" => %{"status" => Atom.to_string(status)}}, change.effect}
 

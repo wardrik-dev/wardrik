@@ -63,7 +63,7 @@ defmodule Wardrik.AgentLedgerTest do
   end
 
   defp opts(extra) do
-    [config: Config.new(tools: [{Effect, {"deploy", self()}}]), ledger: Wardrik.Ledger.Store] ++
+    [config: Config.new(tools: [{Effect, {"deploy", self()}}]), ledger: %Wardrik.Ledger.Store{}] ++
       extra
   end
 

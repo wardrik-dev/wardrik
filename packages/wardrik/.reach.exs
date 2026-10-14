@@ -50,8 +50,9 @@
     behaviour_candidate: [
       # Each operation implements Wardrik.AgentOperation and one of
       # Wardrik.Query or Wardrik.Command; the check groups modules by their
-      # public functions, and does not read the behaviours they declare.
-      ignore: [modules: ["Wardrik.Operations.*"]]
+      # public functions, and does not read the behaviours they declare. A
+      # protocol and its implementations share their functions by design.
+      ignore: [modules: ["Wardrik.Operations.*", "Wardrik.Ledger", "Wardrik.Ledger.*"]]
     ]
   ],
   checks: [

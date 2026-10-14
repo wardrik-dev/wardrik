@@ -2,16 +2,20 @@ defmodule Wardrik.CredentialTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.Credential
+  alias Wardrik.Host
   alias Wardrik.LLM.Config
+  alias Wardrik.LLM.Key
+  alias Wardrik.LLM.Request
   alias Wardrik.Scope
   alias Wardrik.Test.Calls
 
   defmodule Vault do
     @moduledoc false
-    @behaviour Wardrik.Credential
+    defstruct []
+  end
 
-    @impl true
-    def resolve("github", %Wardrik.Call{scope: scope}) do
+  defimpl Wardrik.Credentials, for: Vault do
+    def resolve(_vault, "github", %Wardrik.Call{scope: scope}) do
       case Scope.agent_id(scope).user do
         "jon" ->
           {:ok, Credential.secret("ghs_real", owner: "jon")}
@@ -25,34 +29,30 @@ defmodule Wardrik.CredentialTest do
       end
     end
 
-    def resolve("explodes", %Wardrik.Call{scope: %Scope{}}),
+    def resolve(_vault, "explodes", %Wardrik.Call{scope: %Scope{}}),
       do: raise("the vault is on fire")
 
-    def resolve(_ref, %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
+    def resolve(_vault, _ref, %Wardrik.Call{scope: %Scope{}}), do: {:error, :denied}
 
-    @impl true
-    def refused("explodes", _call), do: raise("the vault is on fire")
-    def refused(ref, %Wardrik.Call{}), do: send(self(), {:refused, ref}) && :ok
-  end
+    def refused(_vault, "explodes", _call), do: raise("the vault is on fire")
+    def refused(_vault, ref, %Wardrik.Call{}), do: send(self(), {:refused, ref}) && :ok
 
-  defmodule Plain do
-    @moduledoc false
-    @behaviour Wardrik.Credential
-
-    @impl true
-    def resolve(_ref, _call), do: {:error, :denied}
+    def key(_vault, "XAI_API_KEY"), do: {:ok, "sk-from-the-vault"}
+    def key(_vault, _name), do: :error
   end
 
   defp scope(opts \\ []) do
     {user, opts} = Keyword.pop(opts, :user)
-    Scope.root(Config.new(), Wardrik.AgentID.new!("assistant", org: "acme", user: user), opts)
+    {credentials, opts} = Keyword.pop(opts, :credentials, %Wardrik.Credentials.None{})
+    id = Wardrik.AgentID.new!("assistant", org: "acme", user: user)
+    Scope.root(Config.new(), id, [host: Host.new(credentials: credentials)] ++ opts)
   end
 
   describe "resolve/2" do
-    test "asks the scope's resolver, which sees who the work is for" do
+    test "asks the credentials of the scope's host, which see who the work is for" do
       assert {:ok, credential} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: Vault, user: "jon")),
+                 Calls.tool("tool", %{}, scope(credentials: %Vault{}, user: "jon")),
                  "github"
                )
 
@@ -64,52 +64,52 @@ defmodule Wardrik.CredentialTest do
     test "a user who has not connected is told where to, and whose the credential will be" do
       assert {:error, {:authorization_required, %{url: "https://example.com/connect"}, "someone"}} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: Vault, user: "someone")),
+                 Calls.tool("tool", %{}, scope(credentials: %Vault{}, user: "someone")),
                  "github"
                )
     end
 
     test "a credential can resolve to a placeholder for a proxy to exchange" do
       assert {:ok, %Credential{kind: :placeholder, value: "{{org.github}}"}} =
-               Credential.resolve(Calls.tool("tool", %{}, scope(credentials: Vault)), "github")
+               Credential.resolve(Calls.tool("tool", %{}, scope(credentials: %Vault{})), "github")
     end
 
     test "a name the resolver refuses is an error, not a raise" do
       assert {:error, :denied} =
-               Credential.resolve(Calls.tool("tool", %{}, scope(credentials: Vault)), "anything")
+               Credential.resolve(
+                 Calls.tool("tool", %{}, scope(credentials: %Vault{})),
+                 "anything"
+               )
     end
 
     test "a resolver that raises fails the call, not the turn" do
       assert {:error, {:resolver_failed, message}} =
                Credential.resolve(
-                 Calls.tool("tool", %{}, scope(credentials: Vault)),
+                 Calls.tool("tool", %{}, scope(credentials: %Vault{})),
                  "explodes"
                )
 
       assert message =~ "the vault is on fire"
     end
 
-    test "a scope with no resolver resolves nothing" do
+    test "a host with no credentials resolves nothing" do
       assert {:error, :no_resolver} =
                Credential.resolve(Calls.tool("tool", %{}, scope()), "github")
     end
   end
 
   describe "refused/2" do
-    test "tells the scope's resolver which credential was refused" do
-      call = Calls.tool("github__read", %{}, scope(user: "jon", credentials: Vault))
+    test "tells the credentials of the scope's host which credential was refused" do
+      call = Calls.tool("github__read", %{}, scope(user: "jon", credentials: %Vault{}))
 
       assert :ok = Credential.refused(call, "github")
       assert_received {:refused, "github"}
     end
 
-    test "passes over a resolver without it, one that raises, and a scope with none" do
-      assert :ok =
-               Credential.refused(Calls.tool("t", %{}, scope(credentials: Plain)), "x")
-
+    test "passes over credentials that raise, and a host with none" do
       assert :ok =
                Credential.refused(
-                 Calls.tool("t", %{}, scope(credentials: Vault)),
+                 Calls.tool("t", %{}, scope(credentials: %Vault{})),
                  "explodes"
                )
 
@@ -162,8 +162,33 @@ defmodule Wardrik.CredentialTest do
     end
   end
 
-  test "credentials/1 is a scope seam a host sets once" do
-    assert :credentials in Scope.seams()
-    assert scope(credentials: Vault).credentials == Vault
+  test "credentials are the host's, set once for every agent, and no agent's own" do
+    refute :credentials in Scope.seams()
+    assert scope(credentials: %Vault{}).host.credentials == %Vault{}
   end
+
+  describe "a model provider's key" do
+    test "rides a request that has none, from the host's credentials" do
+      request = request("xai:grok-4")
+      host = Host.new(credentials: %Vault{})
+
+      assert Key.put(request, host).opts[:api_key] == "sk-from-the-vault"
+    end
+
+    test "leaves one the request carries, and asks nothing where none is held" do
+      host = Host.new(credentials: %Vault{})
+      dispatched = Request.put_opts(request("xai:grok-4"), api_key: "sk-dispatched")
+
+      assert Key.put(dispatched, host).opts[:api_key] == "sk-dispatched"
+
+      configured = request("zai:glm-4.6")
+      assert Key.put(configured, host) == configured
+
+      unheld = request("groq:llama-3.3-70b-versatile")
+      assert Key.put(unheld, host) == unheld
+    end
+  end
+
+  defp request(model),
+    do: Request.new(Config.new(model_spec: model), ReqLLM.Context.new([]))
 end

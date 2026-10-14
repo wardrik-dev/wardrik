@@ -672,7 +672,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       scope = scope(Wardrik.AgentID.new!("whoami", org: "test", user: "jon"), [tool])
       call = call("call_1", "whoami", %{})
-      key = Wardrik.Ledger.idempotency_key(scope, call)
+      key = Wardrik.Ledger.Key.idempotency(scope, call)
 
       assert %Call{
                state: :done,
@@ -684,9 +684,8 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
   describe "a tool whose annotations name credentials" do
     defmodule Vault do
-      @behaviour Wardrik.Credential
+      defstruct []
 
-      @impl true
       def resolve("github", %Call{
             scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: "jon"}}}
           }),
@@ -728,7 +727,6 @@ defmodule Wardrik.LLM.ToolRunnerTest do
 
       def resolve(_ref, _call), do: {:error, :denied}
 
-      @impl true
       def refused("github", %Call{
             scope: %Scope{source: %{agent_id: %Wardrik.AgentID{user: user}}}
           }) do
@@ -736,6 +734,12 @@ defmodule Wardrik.LLM.ToolRunnerTest do
         Process.put(:refreshed, true)
         :ok
       end
+    end
+
+    defimpl Wardrik.Credentials, for: Vault do
+      def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+      def refused(_vault, ref, call), do: Vault.refused(ref, call)
+      def key(_vault, _name), do: :error
     end
 
     defmodule Needing do
@@ -765,7 +769,11 @@ defmodule Wardrik.LLM.ToolRunnerTest do
     defp needing(agent_id, user) do
       id = Wardrik.AgentID.new!(agent_id.name, org: agent_id.org, user: user)
       :ok = Wardrik.Event.Bus.subscribe(id)
-      Scope.root(Config.new(tools: [Needing]), id, name: "turn", credentials: Vault)
+
+      Scope.root(Config.new(tools: [Needing]), id,
+        name: "turn",
+        host: Wardrik.Host.new(credentials: %Vault{})
+      )
     end
 
     test "is handed them resolved for the call's user, and keeps none", %{agent_id: agent_id} do
@@ -821,7 +829,7 @@ defmodule Wardrik.LLM.ToolRunnerTest do
       assert error["code"] == "not_authorized"
       assert error["message"] =~ "issues needs github"
 
-      resolving_nothing = %{needing(agent_id, "jon") | credentials: nil}
+      resolving_nothing = %{needing(agent_id, "jon") | host: Wardrik.Host.new()}
 
       assert %Call{result: {:ok, %{"error" => %{"message" => message}}}} =
                ToolRunner.execute(call("call_2", "issues", %{}), resolving_nothing)

@@ -18,14 +18,14 @@ defmodule Wardrik.Tool.Annotations do
       known: its turn is replayed and the ledger holds it as begun and never
       finished, or the tool answered `{:in_doubt, reason}`. `:ask`, the
       default, parks it for a person, and `:rerun` runs it again, once, under
-      the same `Wardrik.Ledger.idempotency_key/2`. Declare `:rerun` for a tool
+      the same `Wardrik.Ledger.Key.idempotency/2`. Declare `:rerun` for a tool
       that passes that key on to the system it calls, or that changes
       nothing.
     * `:timeout` - how long one call may take, in milliseconds, for work that
       legitimately runs longer than a request; `Wardrik.LLM.ToolRunner` has a
       default.
     * `:credentials` - the credentials a call needs, by the names a
-      `Wardrik.Credential` resolver knows them by. The runtime resolves them
+      `Wardrik.Credentials` know them by. The runtime resolves them
       before the call runs and hands them to the tool in its
       `Wardrik.Tool.Context`; one the person has yet to authorize parks the
       call on its link.

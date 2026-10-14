@@ -63,7 +63,7 @@ defmodule Wardrik.Operations.CreateToken do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, caller) do
-    case Host.tokens(caller.host).create(caller.host, name, grant, for) do
+    case Tokens.create(Host.tokens(caller.host), name, grant: grant, for: for) do
       {:ok, secret, token} ->
         made = %TokenCreated{token: token}
         {:created, %{"secret" => secret, "token" => Wardrik.Resource.token(token)}, made}
@@ -72,7 +72,7 @@ defmodule Wardrik.Operations.CreateToken do
         {:error, Error.new(:invalid, message)}
 
       :unsupported ->
-        {:error, Tokens.unsupported()}
+        {:error, Wardrik.Tokens.None.unsupported()}
     end
   end
 

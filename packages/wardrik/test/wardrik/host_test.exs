@@ -13,9 +13,8 @@ defmodule Wardrik.HostTest do
   # Maria reads acme's agents and decides globex's; nobody else holds anything.
   defmodule Held do
     @moduledoc false
-    @behaviour Wardrik.Grants
+    defstruct []
 
-    @impl true
     def grants(_host, principal) do
       case Principal.id(principal) do
         "maria" ->
@@ -32,50 +31,72 @@ defmodule Wardrik.HostTest do
     end
   end
 
-  @host Host.new(grants: Held)
-
-  test "offers each seam it names, and the None module of each it leaves out" do
-    host = Host.new(grants: Held, tokens: Wardrik.Tokens.None)
-
-    assert Host.grants(host) == Held
-    assert Host.definitions(host) == Wardrik.Definition.None
-    assert Host.connections(host) == Wardrik.Connections.None
-    assert Host.tokens(host) == Wardrik.Tokens.None
-    assert Host.triggers(host) == Wardrik.Triggers.None
-    assert Host.store(host) == WardrikStore.new(adapter: WardrikStore.None)
-    assert_raise ArgumentError, fn -> Host.new(ledger: Held) end
+  defimpl Wardrik.Grants, for: Held do
+    defdelegate grants(a0, a1), to: Held
   end
 
-  test "each None module answers that the host offers nothing" do
+  defp host, do: Host.new(grants: %Held{})
+
+  test "offers each seam it names, and the None of each it leaves out" do
+    host = Host.new(grants: %Held{}, tokens: %Wardrik.Tokens.None{})
+
+    assert Host.grants(host) == %Held{}
+    assert Host.definitions(host) == %Wardrik.Definition.None{}
+    assert Host.connections(host) == %Wardrik.Connections.None{}
+    assert Host.credentials(host) == %Wardrik.Credentials.None{}
+    assert Host.tokens(host) == %Wardrik.Tokens.None{}
+    assert Host.triggers(host) == %Wardrik.Triggers.None{}
+    assert Host.store(host) == WardrikStore.new(adapter: WardrikStore.None)
+    assert_raise ArgumentError, fn -> Host.new(ledger: %Held{}) end
+  end
+
+  test "each None answers that the host offers nothing" do
     id = ~A"acme/triage"
     host = Host.new()
+    connections = Host.connections(host)
+    tokens = Host.tokens(host)
+    definitions = Host.definitions(host)
 
-    assert Wardrik.Connections.None.list(host, "acme") == :unsupported
-    assert Wardrik.Connections.None.connect(host, "github", "acme", nil) == :unsupported
-    assert Wardrik.Connections.None.disconnect(host, "github", "acme") == :unsupported
-    assert Wardrik.Tokens.None.create(host, "t", nil, nil) == :unsupported
-    assert Wardrik.Tokens.None.list(host) == :unsupported
-    assert Wardrik.Tokens.None.revoke(host, "t1") == :unsupported
-    assert Wardrik.Triggers.None.deliver(id, "issues", %{headers: [], body: ""}) == :unsupported
-    assert Wardrik.Grants.None.grants(host, Principal.new(:user, "maria")) == []
-    assert Wardrik.Definition.None.current(host, id) == :none
-    assert Wardrik.Definition.None.editable(host, id) == :ok
-    assert Wardrik.Definition.None.delete(host, id) == {:error, :not_found}
-    assert Wardrik.Definition.None.create(host, id) == :unsupported
-    assert Wardrik.Definition.None.reloading() == []
-    assert Wardrik.Definition.None.reload() == :ok
+    assert Wardrik.Connections.list(connections, "acme") == :unsupported
+    assert Wardrik.Connections.connect(connections, "github", "acme", nil) == :unsupported
+    assert Wardrik.Connections.disconnect(connections, "github", "acme") == :unsupported
+    assert Wardrik.Tokens.create(tokens, "t", grant: nil, for: nil) == :unsupported
+    assert Wardrik.Tokens.list(tokens) == :unsupported
+    assert Wardrik.Tokens.revoke(tokens, "t1") == :unsupported
+
+    assert Wardrik.Triggers.deliver(Host.triggers(host), id, "issues", %{headers: [], body: ""}) ==
+             :unsupported
+
+    assert Wardrik.Grants.grants(Host.grants(host), Principal.new(:user, "maria")) == []
+    assert Wardrik.Credentials.key(Host.credentials(host), "ANTHROPIC_API_KEY") == :error
+
+    assert Wardrik.Credentials.resolve(Host.credentials(host), "github", nil) ==
+             {:error, :no_resolver}
+
+    assert Wardrik.Credentials.refused(Host.credentials(host), "github", nil) == :ok
+    assert Wardrik.Definition.current(definitions, id) == :none
+    assert Wardrik.Definition.editable(definitions, id) == :ok
+    assert Wardrik.Definition.delete(definitions, id) == {:error, :not_found}
+    assert Wardrik.Definition.create(definitions, id) == :unsupported
+    assert Wardrik.Definition.reloading(definitions) == []
+    assert Wardrik.Definition.reload(definitions) == :ok
+  end
+
+  test "a configuration names each seam by its module and fields" do
+    assert Host.configured(grants: {Held, []}) == [grants: %Held{}]
   end
 
   test "a principal is a caller holding the grant that reaches what they act on" do
     maria = Principal.new(:user, "maria")
+    host = host()
 
-    assert {:ok, %Caller{principal: ^maria, grant: acme, host: @host}} =
-             Host.caller(@host, principal: maria, subject: ~A"acme/triage")
+    assert {:ok, %Caller{principal: ^maria, grant: acme, host: ^host}} =
+             Host.caller(host(), principal: maria, subject: ~A"acme/triage")
 
     assert acme.can == [:read]
 
     assert {:ok, %Caller{grant: globex}} =
-             Host.caller(@host, principal: maria, subject: Prefix.new!(org: "globex"))
+             Host.caller(host(), principal: maria, subject: Prefix.new!(org: "globex"))
 
     assert Grant.allows?(globex, :decide, ~A"globex/triage")
   end
@@ -84,13 +105,13 @@ defmodule Wardrik.HostTest do
     maria = Principal.new(:user, "maria")
 
     assert {:error, %Error{type: :not_found}} =
-             Host.caller(@host, principal: maria, subject: ~A"initech/triage")
+             Host.caller(host(), principal: maria, subject: ~A"initech/triage")
 
     assert {:error, %Error{type: :not_found}} =
-             Host.caller(@host, principal: Principal.new(:user, "jon"), subject: ~A"acme/triage")
+             Host.caller(host(), principal: Principal.new(:user, "jon"), subject: ~A"acme/triage")
 
     assert {:error, %Error{type: :not_found}} =
-             Host.caller(@host, principal: nil, subject: ~A"acme/triage")
+             Host.caller(host(), principal: nil, subject: ~A"acme/triage")
   end
 
   test "a host that names no grants module grants nobody anything" do
@@ -104,7 +125,8 @@ defmodule Wardrik.HostTest do
   test "a root caller holds the node, on the host" do
     jon = Principal.new(:terminal, "jon")
 
-    assert %Caller{principal: ^jon, host: @host, grant: grant} = Host.root(@host, principal: jon)
+    host = host()
+    assert %Caller{principal: ^jon, host: ^host, grant: grant} = Host.root(host, principal: jon)
     assert grant.scope == Prefix.all()
   end
 end

@@ -12,9 +12,9 @@ defmodule Wardrik.Credential do
       def run(%{url: url}, %Wardrik.Tool.Context{credentials: %{"github" => credential}}),
         do: fetch(url, credential)
 
-  A deployment names a `Wardrik.Credential` module on the scope, the way it names
-  a policy, and that module decides where secrets come from. A run with no
-  resolver resolves nothing, so the default costs nothing.
+  A deployment names its `Wardrik.Credentials` once, on its `Wardrik.Host`,
+  and that decides where secrets come from. A host with none resolves
+  nothing, so the default costs nothing.
 
   ## Names, and whose
 
@@ -60,14 +60,14 @@ defmodule Wardrik.Credential do
   credential is; the runtime compares what it is told and never reads it.
 
   A tool whose credential the system it reaches refuses answers
-  `{:refused, name}`; the runtime tells the resolver through `c:refused/2`,
+  `{:refused, name}`; the runtime tells the resolver through `refused/2`,
   resolves the name again and runs the tool once more.
 
   ## When a credential is refused
 
   A tool whose server refuses the credential it was given, with a 401 or a
-  403, says so with `refused/2` before it resolves again. A resolver that
-  implements `c:refused/2` stops handing out what it handed out last for
+  403, says so with `refused/2` before it resolves again. The host's
+  `Wardrik.Credentials` stop handing out what it handed out last for
   that reference, so the next resolve renews it, or asks the user again.
   """
 
@@ -119,19 +119,6 @@ defmodule Wardrik.Credential do
           | {:error, term()}
 
   @doc """
-  Resolves one reference for the principal the call's scope names.
-
-  Called in the process making the call, as often as the call is made. A
-  resolver that caches is free to; core asks every time.
-  """
-  @callback resolve(ref(), Call.t()) :: outcome()
-
-  @doc "Hears that the credential last resolved for `ref` was refused by the server it was for."
-  @callback refused(ref(), Call.t()) :: :ok
-
-  @optional_callbacks refused: 2
-
-  @doc """
   Says that `ref` can now be resolved for `owner`, so a call parked on it
   carries on.
 
@@ -139,7 +126,8 @@ defmodule Wardrik.Credential do
   holding a call parked to resolve `ref` for `owner` approves the call as
   `:by`, the `Wardrik.Principal` that connected it, and carries on with nobody
   asked. One asleep with such a call is woken to hear it. A resolver says it
-  once the credential is kept where the next `c:resolve/2` finds it.
+  once the credential is kept where the next `Wardrik.Credentials.resolve/3`
+  finds it.
   """
   @spec available(ref(), owner(), by: Wardrik.Principal.t() | nil) :: :ok
   def available(ref, owner, opts \\ []) when is_binary(ref) and is_list(opts) do
@@ -206,38 +194,31 @@ defmodule Wardrik.Credential do
   def reveal(%__MODULE__{value: value}), do: value
 
   @doc """
-  Asks the resolver of `call`'s scope for `ref`.
+  Asks the `Wardrik.Credentials` of the host `call`'s scope runs on for
+  `ref`.
 
-  Answers `{:error, :no_resolver}` where a deployment configured none, and
-  `{:error, {:resolver_failed, reason}}` where one raised: a resolver that
-  breaks must not take the turn with it.
+  Answers `{:error, :no_resolver}` where the host holds none, and
+  `{:error, {:resolver_failed, reason}}` where resolving raised: credentials
+  that break must not take the turn with them.
   """
   @spec resolve(Call.t(), ref()) :: outcome()
-  def resolve(%Call{scope: %Scope{credentials: nil}}, _ref), do: {:error, :no_resolver}
-
-  def resolve(%Call{scope: %Scope{credentials: resolver}} = call, ref) when is_atom(resolver) do
-    resolver.resolve(ref, call)
+  def resolve(%Call{scope: %Scope{host: host}} = call, ref) do
+    Wardrik.Credentials.resolve(Wardrik.Host.credentials(host), ref, call)
   catch
     kind, reason -> {:error, {:resolver_failed, Exception.format(kind, reason)}}
   end
 
   @doc """
-  Tells the resolver of `call`'s scope that the credential it resolved for
-  `ref` was refused. A resolver without `c:refused/2`, or one that raises, is
+  Tells the `Wardrik.Credentials` of the host `call`'s scope runs on that the
+  credential they resolved for `ref` was refused. Credentials that raise are
   passed over.
   """
   @spec refused(Call.t(), ref()) :: :ok
-  def refused(%Call{scope: %Scope{credentials: resolver}} = call, ref)
-      when is_atom(resolver) and resolver != nil do
-    if Code.ensure_loaded?(resolver) and function_exported?(resolver, :refused, 2),
-      do: resolver.refused(ref, call)
-
-    :ok
+  def refused(%Call{scope: %Scope{host: host}} = call, ref) do
+    :ok = Wardrik.Credentials.refused(Wardrik.Host.credentials(host), ref, call)
   catch
     _kind, _reason -> :ok
   end
-
-  def refused(%Call{}, _ref), do: :ok
 
   defimpl Inspect do
     def inspect(%Wardrik.Credential{kind: kind}, _opts) do

@@ -42,7 +42,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
   defp scope(agent_id, opts) do
     LLM.Config.new(tools: [refund_tool(self())])
-    |> Scope.root(agent_id, [name: "turn", ledger: Ledger.Store, host: host()] ++ opts)
+    |> Scope.root(agent_id, [name: "turn", ledger: %Ledger.Store{}, host: host()] ++ opts)
   end
 
   defp run_async(scope) do
@@ -77,7 +77,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
     scope =
       [tools: [Wardrik.Test.Tools.Fetch, Wardrik.Test.Tools.Deploy]]
       |> LLM.Config.new()
-      |> Scope.root(agent_id, name: "turn", ledger: Ledger.Store, hooks: rules, host: host())
+      |> Scope.root(agent_id, name: "turn", ledger: %Ledger.Store{}, hooks: rules, host: host())
 
     journaled = %{scope | journal: self()}
     task = Task.async(fn -> run(journaled, Context.new()) end)
@@ -121,9 +121,14 @@ defmodule Wardrik.LLM.TurnJournalTest do
     scope = scope(agent_id, [])
     response = LLMStub.tool_call("call_1", "refund", %{})
     [call] = ReqLLM.Response.classify(response).tool_calls
-    key = Ledger.key(Scope.batch(scope, 0), call)
-    :ok = Ledger.claim(Ledger.Store, host(), key, call)
-    :ok = Ledger.settle(Ledger.Store, host(), key, {:ok, %{"refunded" => true}})
+    key = Ledger.Key.of(Scope.batch(scope, 0), call)
+    :ok = Ledger.claim(%Ledger.Store{}, key, call: call, store: Wardrik.Test.store())
+
+    :ok =
+      Ledger.settle(%Ledger.Store{}, key,
+        result: {:ok, %{"refunded" => true}},
+        store: Wardrik.Test.store()
+      )
 
     LLMStub.stream([LLMStub.final_answer("Refunded.")])
 
@@ -149,7 +154,14 @@ defmodule Wardrik.LLM.TurnJournalTest do
     scope = scope(agent_id, [])
     response = LLMStub.tool_call("call_1", "refund", %{})
     [call] = ReqLLM.Response.classify(response).tool_calls
-    :ok = Ledger.claim(Ledger.Store, host(), Ledger.key(Scope.batch(scope, 0), call), call)
+
+    :ok =
+      Ledger.claim(
+        %Ledger.Store{},
+        Ledger.Key.of(Scope.batch(scope, 0), call),
+        call: call,
+        store: Wardrik.Test.store()
+      )
 
     parked = %LLM.Turn{
       context: Context.new([Context.user("refund it")]),
@@ -213,7 +225,7 @@ defmodule Wardrik.LLM.TurnJournalTest do
 
     scope =
       LLM.Config.new(tools: [research, refund_tool(test_pid)])
-      |> Scope.root(agent_id, name: "turn", ledger: Ledger.Store, host: host())
+      |> Scope.root(agent_id, name: "turn", ledger: %Ledger.Store{}, host: host())
 
     assert %LLM.Turn{state: :done, messages: _messages} =
              run(scope, Context.new([Context.user("look into it")]))

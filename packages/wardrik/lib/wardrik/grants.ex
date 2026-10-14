@@ -1,13 +1,14 @@
-defmodule Wardrik.Grants do
+defprotocol Wardrik.Grants do
   @moduledoc """
   What each person or system that reaches a deployment may do: the
   `Wardrik.Grant`s its host gives a `Wardrik.Principal`, however they came.
 
-  A host names the module once, as the `:grants` of its `Wardrik.Host`,
+  A host names the value once, as the `:grants` of its `Wardrik.Host`,
   and whatever knows someone by their principal alone asks it through
-  `Wardrik.Host.caller/2`:
+  `Wardrik.Host.caller/2`. The value carries what its implementation needs,
+  such as who administers each channel:
 
-      host = Wardrik.Host.new(grants: MyApp.Grants)
+      host = Wardrik.Host.new(grants: %MyApp.Grants{admins: admins})
 
       {:ok, caller} = Wardrik.Host.caller(host, principal: principal, subject: ~A"acme/triage")
       Wardrik.Command.run(%Wardrik.Operations.Decide{agent: ~A"acme/triage", decisions: decisions}, caller)
@@ -29,10 +30,7 @@ defmodule Wardrik.Grants do
   alias Wardrik.Grant
   alias Wardrik.Principal
 
-  @doc """
-  What `principal` may do on `host`, as one grant on each scope they reach;
-  `[]` for nothing. The host is the one the grants are asked through, for
-  the store a module keeps what it grants in.
-  """
-  @callback grants(Wardrik.Host.t(), principal :: Principal.t()) :: [Grant.t()]
+  @doc "What `principal` may do, as one grant on each scope they reach; `[]` for nothing."
+  @spec grants(t(), Principal.t()) :: [Grant.t()]
+  def grants(grants, principal)
 end

@@ -21,10 +21,9 @@ defmodule Wardrik.ConnectionsTest do
   # process, so they read it there.
   defmodule Offered do
     @moduledoc false
-    @behaviour Wardrik.Connections
+    defstruct []
 
-    @impl true
-    def list(_host, owner) do
+    def list(_connections, owner) do
       for provider <- Process.get(:offered, []),
           do: %{provider: provider, held_by: held_by(provider, owner)}
     end
@@ -39,8 +38,7 @@ defmodule Wardrik.ConnectionsTest do
 
     defp held_by(provider, org), do: if(held?(provider, org), do: :org)
 
-    @impl true
-    def connect(_host, provider, owner, by) do
+    def connect(_connections, provider, owner, by: by) do
       send(self(), {:connect, provider, owner, by})
 
       cond do
@@ -50,8 +48,7 @@ defmodule Wardrik.ConnectionsTest do
       end
     end
 
-    @impl true
-    def disconnect(_host, provider, owner) do
+    def disconnect(_connections, provider, owner) do
       if held?(provider, owner) do
         Process.put(:held, Map.update!(Process.get(:held), owner, &List.delete(&1, provider)))
         :ok
@@ -61,6 +58,12 @@ defmodule Wardrik.ConnectionsTest do
     end
 
     defp held?(provider, owner), do: provider in Map.get(Process.get(:held, %{}), owner, [])
+  end
+
+  defimpl Wardrik.Connections, for: Offered do
+    defdelegate list(a0, a1), to: Offered
+    defdelegate connect(a0, a1, a2, a3), to: Offered
+    defdelegate disconnect(a0, a1, a2), to: Offered
   end
 
   setup do
@@ -77,14 +80,14 @@ defmodule Wardrik.ConnectionsTest do
          scope,
          principal \\ @jon,
          can \\ Grant.actions(),
-         host \\ Host.new(connections: Offered)
+         host \\ Host.new(connections: %Offered{})
        ) do
     {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
     Caller.new(principal: principal, grant: grant, host: host)
   end
 
   defp read(caller, whose \\ :person) do
-    with {:ok, request} <- Connections.request(ReadConnections, caller, whose),
+    with {:ok, request} <- Connections.Owner.request(ReadConnections, caller, whose),
          do: Query.run(request, caller)
   end
 
@@ -100,14 +103,14 @@ defmodule Wardrik.ConnectionsTest do
 
     test "is of the person a scope names, else the person the caller acts as" do
       assert {:ok, request} =
-               Connections.request(ReadConnections, caller("acme/@jon/", nil), :person)
+               Connections.Owner.request(ReadConnections, caller("acme/@jon/", nil), :person)
 
       assert to_string(request.owner) == "acme/@jon/"
 
-      assert {:ok, request} = Connections.request(ReadConnections, caller("acme/"), :person)
+      assert {:ok, request} = Connections.Owner.request(ReadConnections, caller("acme/"), :person)
       assert to_string(request.owner) == "acme/@jon/"
 
-      assert {:ok, request} = Connections.request(ReadConnections, caller("acme/"), :org)
+      assert {:ok, request} = Connections.Owner.request(ReadConnections, caller("acme/"), :org)
       assert to_string(request.owner) == "acme/"
     end
 
@@ -139,7 +142,7 @@ defmodule Wardrik.ConnectionsTest do
   describe "connecting" do
     test "answers where to authorize, or that it is held, as the caller", %{provider: provider} do
       assert {:ok, request} =
-               Connections.request(Connect, caller("acme/"), :person, provider: provider)
+               Connections.Owner.request(Connect, caller("acme/"), :person, provider: provider)
 
       assert {:ok,
               %{
@@ -149,18 +152,21 @@ defmodule Wardrik.ConnectionsTest do
 
       assert_received {:connect, ^provider, {"acme", "jon"}, @jon}
 
-      {:ok, request} = Connections.request(Connect, caller("acme/"), :person, provider: "github")
+      {:ok, request} =
+        Connections.Owner.request(Connect, caller("acme/"), :person, provider: "github")
 
       assert {:ok, %{"provider" => "github", "connected" => true}} =
                Command.run(request, caller("acme/"))
     end
 
     test "is refused for an account not offered, without define, or for the org without it" do
-      {:ok, request} = Connections.request(Connect, caller("acme/"), :person, provider: "nothing")
+      {:ok, request} =
+        Connections.Owner.request(Connect, caller("acme/"), :person, provider: "nothing")
+
       assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/"))
 
       reader = caller("acme/", @jon, [:read])
-      {:ok, request} = Connections.request(Connect, reader, :org, provider: "github")
+      {:ok, request} = Connections.Owner.request(Connect, reader, :org, provider: "github")
       assert {:error, %Error{type: :forbidden}} = Command.run(request, reader)
     end
   end
@@ -168,7 +174,7 @@ defmodule Wardrik.ConnectionsTest do
   describe "disconnecting" do
     test "forgets the owner's account, and is recorded as the caller's" do
       {:ok, request} =
-        Connections.request(Disconnect, caller("acme/"), :person, provider: "github")
+        Connections.Owner.request(Disconnect, caller("acme/"), :person, provider: "github")
 
       assert {:ok, nil} = Command.run(request, caller("acme/"))
 

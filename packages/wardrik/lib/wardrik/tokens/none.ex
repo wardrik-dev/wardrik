@@ -1,17 +1,20 @@
 defmodule Wardrik.Tokens.None do
   @moduledoc """
-  The `Wardrik.Tokens` of a host that makes none: each callback is
+  The `Wardrik.Tokens` of a host that makes none: each function is
   `:unsupported`. A `Wardrik.Host` that names no `:tokens` has it.
   """
 
-  @behaviour Wardrik.Tokens
+  defstruct []
 
-  @impl Wardrik.Tokens
-  def create(_host, _name, _grant, _for), do: :unsupported
+  @type t() :: %__MODULE__{}
 
-  @impl Wardrik.Tokens
-  def list(_host), do: :unsupported
+  @doc "The error each operation answers where the host makes no tokens."
+  @spec unsupported() :: Wardrik.Error.t()
+  def unsupported, do: Wardrik.Error.new(:unsupported, "This server makes no tokens.")
+end
 
-  @impl Wardrik.Tokens
-  def revoke(_host, _id), do: :unsupported
+defimpl Wardrik.Tokens, for: Wardrik.Tokens.None do
+  def create(_tokens, _name, _opts), do: :unsupported
+  def list(_tokens), do: :unsupported
+  def revoke(_tokens, _id), do: :unsupported
 end

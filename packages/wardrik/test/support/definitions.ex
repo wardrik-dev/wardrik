@@ -3,11 +3,9 @@ defmodule Wardrik.Test.Definitions do
   # The suite's host's definitions, which config/test.exs names: the spec a
   # test keeps for an agent is the one it starts and wakes on, and an agent
   # nothing kept for starts as it was given.
-  use Wardrik.Definition
+  defstruct []
 
   @ns :test_definitions
-
-  @impl true
   def current(_host, id) do
     case WardrikStore.get(Wardrik.Test.store(), @ns, to_string(id)) do
       nil -> :none
@@ -20,4 +18,9 @@ defmodule Wardrik.Test.Definitions do
     {:ok, _vsn} = WardrikStore.put(Wardrik.Test.store(), @ns, to_string(id), spec)
     :ok
   end
+end
+
+defimpl Wardrik.Definition, for: Wardrik.Test.Definitions do
+  use Wardrik.Definition.None
+  defdelegate current(a0, a1), to: Wardrik.Test.Definitions
 end

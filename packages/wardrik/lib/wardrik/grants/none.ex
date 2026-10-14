@@ -5,8 +5,11 @@ defmodule Wardrik.Grants.None do
   any agent. A `Wardrik.Host` that names no `:grants` has it.
   """
 
-  @behaviour Wardrik.Grants
+  defstruct []
 
-  @impl Wardrik.Grants
-  def grants(_host, _principal), do: []
+  @type t() :: %__MODULE__{}
+end
+
+defimpl Wardrik.Grants, for: Wardrik.Grants.None do
+  def grants(_grants, _principal), do: []
 end

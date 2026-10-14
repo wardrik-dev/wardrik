@@ -50,16 +50,17 @@ defmodule Wardrik.OperationsTest do
   # whose name holds "-owned".
   defmodule Kept do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
 
     @ns :operations_test_definitions
     @triggers :operations_test_triggers
+    def put(_definitions, _id, definition: %{"refuse" => message}, grant: _grant),
+      do: {:error, message}
 
-    @impl true
-    def put(_host, _id, %{"refuse" => message}, _grant), do: {:error, message}
-    def put(_host, _id, %{"elsewhere" => true}, _grant), do: {:ok, Spec.new(id: elsewhere())}
+    def put(_definitions, _id, definition: %{"elsewhere" => true}, grant: _grant),
+      do: {:ok, Spec.new(id: elsewhere())}
 
-    def put(host, id, fields, _grant) do
+    def put(host, id, definition: fields, grant: _grant) do
       with :ok <- editable(host, id) do
         {:ok, _vsn} = WardrikStore.put(store(), @ns, to_string(id), fields)
         model = Map.get(fields, "model", "anthropic:claude-sonnet-5")
@@ -67,7 +68,6 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
     def get(_host, id) do
       case WardrikStore.get(store(), @ns, to_string(id)) do
         nil -> {:error, :not_found}
@@ -75,7 +75,6 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
     def delete(host, id) do
       with :ok <- editable(host, id) do
         if get(host, id) == {:error, :not_found},
@@ -84,10 +83,10 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
-    def put_trigger(_host, _id, _name, %{"refuse" => message}), do: {:error, message}
+    def put_trigger(_definitions, _id, _name, fields: %{"refuse" => message}),
+      do: {:error, message}
 
-    def put_trigger(host, id, name, fields) do
+    def put_trigger(host, id, name, fields: fields) do
       with :ok <- editable(host, id),
            {:ok, _definition} <- get(host, id) do
         status =
@@ -98,7 +97,6 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
     def delete_trigger(host, id, name) do
       with :ok <- editable(host, id) do
         if WardrikStore.get(store(), @triggers, "#{id}//#{name}"),
@@ -107,7 +105,6 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
     def current(host, id) do
       case get(host, id) do
         {:ok, fields} -> {:ok, spec(id, fields)}
@@ -115,9 +112,8 @@ defmodule Wardrik.OperationsTest do
       end
     end
 
-    @impl true
     def create(host, id) do
-      with {:ok, _spec} <- put(host, id, %{"model" => "openai:gpt-5"}, nil),
+      with {:ok, _spec} <- put(host, id, definition: %{"model" => "openai:gpt-5"}, grant: nil),
            do: {:ok, spec(id, %{"model" => "openai:gpt-5"})}
     end
 
@@ -130,7 +126,6 @@ defmodule Wardrik.OperationsTest do
 
     def elsewhere, do: AgentID.parse!("test/elsewhere")
 
-    @impl true
     def editable(_host, id) do
       if String.contains?(id.name, "-owned"),
         do: {:error, :conflict, "#{id} belongs to a file."},
@@ -138,18 +133,33 @@ defmodule Wardrik.OperationsTest do
     end
   end
 
+  defimpl Wardrik.Definition, for: Kept do
+    use Wardrik.Definition.None
+    defdelegate put(a0, a1, a2), to: Kept
+    defdelegate get(a0, a1), to: Kept
+    defdelegate delete(a0, a1), to: Kept
+    defdelegate put_trigger(a0, a1, a2, a3), to: Kept
+    defdelegate delete_trigger(a0, a1, a2), to: Kept
+    defdelegate current(a0, a1), to: Kept
+    defdelegate create(a0, a1), to: Kept
+    defdelegate editable(a0, a1), to: Kept
+  end
+
   # Reads definitions, and keeps none.
   defmodule Reading do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
+    def put(_definitions, id, _opts), do: {:ok, Spec.new(id: id)}
+  end
 
-    @impl true
-    def put(_host, id, _fields, _grant), do: {:ok, Spec.new(id: id)}
+  defimpl Wardrik.Definition, for: Reading do
+    use Wardrik.Definition.None
+    defdelegate put(a0, a1, a2), to: Reading
   end
 
   @jon %{"type" => "user", "id" => "jon", "name" => "Jon"}
 
-  defp host(definitions \\ Kept), do: Wardrik.Test.host(definitions: definitions)
+  defp host(definitions \\ %Kept{}), do: Wardrik.Test.host(definitions: definitions)
 
   defp caller(scope \\ "test/", can \\ Grant.actions(), host \\ host()) do
     {:ok, grant} = Grant.new(Prefix.parse!(scope), can)
@@ -739,7 +749,7 @@ defmodule Wardrik.OperationsTest do
 
       fresh = defined_id("fresh")
       assert {:ok, %{"from" => "new"}} = Command.run(%Spawn{agent: fresh}, caller())
-      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(host(), fresh)
+      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(%Kept{}, fresh)
 
       owned = defined_id("fresh-owned")
 
@@ -800,8 +810,8 @@ defmodule Wardrik.OperationsTest do
     test "defines, keeps and triggers nothing, and forgets an agent with no definition" do
       {id, _agent} = Fleet.start_agent()
 
-      for module <- [Wardrik.Definition.None, Reading] do
-        caller = caller("test/", Grant.actions(), host(module))
+      for definitions <- [%Wardrik.Definition.None{}, %Reading{}] do
+        caller = caller("test/", Grant.actions(), host(definitions))
 
         assert {:error, %Error{type: :unsupported}} =
                  Query.run(%ReadDefinition{agent: id}, caller)

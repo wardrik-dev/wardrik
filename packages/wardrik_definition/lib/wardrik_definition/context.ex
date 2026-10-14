@@ -13,7 +13,7 @@ defmodule WardrikDefinition.Context do
         targets: [ops: {WardrikNotify.Webhook, url: "https://ops.example.com", orgs: :all}],
         policies: %{"careful" => policy},
         defaults: %{"idle_timeout" => 900},
-        seams: [credentials: WardrikVault, ledger: Wardrik.Ledger.Store],
+        seams: [ledger: %Wardrik.Ledger.Store{}],
         config: [tool_prices: %{"web_search" => 0.005}]
       }
 
@@ -37,7 +37,7 @@ defmodule WardrikDefinition.Context do
     * `defaults` - definition keys every agent takes where its own
       definition says none: `idle_timeout`
     * `seams` - `Wardrik.Agent.Spec` options every agent gets, such as
-      `credentials` and `ledger`
+      `ledger`
     * `config` - `Wardrik.LLM.Config` options every agent gets, such as
       `tool_prices`
     * `names` - how the messages a definition that does not read gives name

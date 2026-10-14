@@ -244,7 +244,7 @@ defmodule Wardrik.Call.PipelineTest do
       |> call("call_1", "echo")
       |> Pipeline.run()
 
-      ledgered = scope(agent_id, tools: [echo], ledger: Ledger.Store)
+      ledgered = scope(agent_id, tools: [echo], ledger: %Ledger.Store{})
       ledgered |> call("call_2", "echo") |> Pipeline.run()
 
       ledgered = %{ledgered | hooks: saying(:pass)}
@@ -311,7 +311,7 @@ defmodule Wardrik.Call.PipelineTest do
   describe "a tool call in doubt" do
     test "waits on a person, and keeps its claim so a replay asks too", %{agent_id: agent_id} do
       quiet = tool("refund", fn _ -> {:in_doubt, "The worker went away before it answered."} end)
-      scope = scope(agent_id, tools: [quiet], ledger: Ledger.Store)
+      scope = scope(agent_id, tools: [quiet], ledger: %Ledger.Store{})
       call = call(scope, "call_1", "refund")
 
       assert %Call{state: :waiting, asks: [%Call.Ask{by: :doubt, prompt: prompt}]} =
@@ -326,13 +326,15 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: nil}} =
-               Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, Call.to_map(call)))
+               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, Call.to_map(call)),
+                 store: Wardrik.Test.store()
+               )
 
       assert [{%{in_doubt: true}, ^prompt}] = ToolRunner.parked([waiting])
     end
 
     test "runs once more under the same key where its tool says it may", %{agent_id: agent_id} do
-      scope = scope(agent_id, tools: [Refund], ledger: Ledger.Store)
+      scope = scope(agent_id, tools: [Refund], ledger: %Ledger.Store{})
       call = call(scope, "call_1", "refund")
 
       assert %Call{state: :done, result: {:ok, %{"refunded" => true}}} = Pipeline.run(call)
@@ -350,7 +352,9 @@ defmodule Wardrik.Call.PipelineTest do
       }
 
       assert {:ok, %Ledger.Entry{result: {:ok, %{"refunded" => true}}}} =
-               Ledger.fetch(Ledger.Store, host(), Ledger.key(scope, Call.to_map(call)))
+               Ledger.fetch(%Ledger.Store{}, Ledger.Key.of(scope, Call.to_map(call)),
+                 store: Wardrik.Test.store()
+               )
     end
 
     test "again waits on a person", %{agent_id: agent_id} do

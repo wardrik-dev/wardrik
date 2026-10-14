@@ -1,17 +1,20 @@
 defmodule Wardrik.Connections.None do
   @moduledoc """
-  The `Wardrik.Connections` of a host that offers none: each callback is
+  The `Wardrik.Connections` of a host that offers none: each function is
   `:unsupported`. A `Wardrik.Host` that names no `:connections` has it.
   """
 
-  @behaviour Wardrik.Connections
+  defstruct []
 
-  @impl Wardrik.Connections
-  def list(_host, _owner), do: :unsupported
+  @type t() :: %__MODULE__{}
 
-  @impl Wardrik.Connections
-  def connect(_host, _provider, _owner, _by), do: :unsupported
+  @doc "The error each operation answers where the host offers no connections."
+  @spec unsupported() :: Wardrik.Error.t()
+  def unsupported, do: Wardrik.Error.new(:unsupported, "This server offers no connections.")
+end
 
-  @impl Wardrik.Connections
-  def disconnect(_host, _provider, _owner), do: :unsupported
+defimpl Wardrik.Connections, for: Wardrik.Connections.None do
+  def list(_connections, _owner), do: :unsupported
+  def connect(_connections, _provider, _owner, _opts), do: :unsupported
+  def disconnect(_connections, _provider, _owner), do: :unsupported
 end

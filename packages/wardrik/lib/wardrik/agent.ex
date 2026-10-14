@@ -571,7 +571,7 @@ defmodule Wardrik.Agent do
   # slept or ran on a node since lost. It is asked once the log is open, as a
   # parked turn its new hooks decide again writes to it.
   defp defined(state) do
-    case Host.definitions(state.host).current(state.host, state.agent_id) do
+    case Wardrik.Definition.current(Host.definitions(state.host), state.agent_id) do
       {:ok, spec} -> {state |> State.configure(Spec.options(spec)) |> redecide(), [sync: true]}
       :none -> {state, []}
     end
@@ -819,7 +819,11 @@ defmodule Wardrik.Agent do
     cutoff = DateTime.add(DateTime.utc_now(), -Log.retention_days(), :day)
 
     Task.Supervisor.start_child(Wardrik.Tasks.supervisor(), fn ->
-      Wardrik.Ledger.forget(scope.ledger, scope.host, agent_id, scope.source.trace.trace_id)
+      Wardrik.Ledger.Guarded.forget(scope.ledger, agent_id,
+        trace: scope.source.trace.trace_id,
+        store: Host.store(scope.host)
+      )
+
       Log.trim(Host.store(scope.host), agent_id, through: through, before: cutoff)
     end)
 

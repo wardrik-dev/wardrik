@@ -9,6 +9,7 @@ defmodule Wardrik.Operations.Disconnect do
 
   alias Wardrik.Change
   alias Wardrik.Connections
+  alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Host
 
@@ -28,10 +29,10 @@ defmodule Wardrik.Operations.Disconnect do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
-    case Host.connections(caller.host).disconnect(
-           caller.host,
+    case Connections.disconnect(
+           Host.connections(caller.host),
            provider,
-           Connections.owner_of(owner)
+           Owner.owner_of(owner)
          ) do
       :ok ->
         {:ok, nil, change.effect}
@@ -43,7 +44,7 @@ defmodule Wardrik.Operations.Disconnect do
         {:error, Error.new(:unavailable, "#{provider} could not be forgotten now.")}
 
       :unsupported ->
-        {:error, Connections.unsupported()}
+        {:error, Wardrik.Connections.None.unsupported()}
     end
   end
 

@@ -24,51 +24,56 @@ defmodule Wardrik.DeploymentOperationsTest do
   # Reads its definitions again by telling the test that asked.
   defmodule Reloads do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
+    def put(_definitions, _id, _opts), do: {:error, "keeps none"}
 
-    @impl true
-    def put(_host, _id, _definition, _grant), do: {:error, "keeps none"}
-
-    @impl true
-    def reload do
+    def reload(_definitions) do
       send(:persistent_term.get({__MODULE__, :test}), :reloaded)
       :ok
     end
 
-    @impl true
-    def reloading, do: [node()]
+    def reloading(_definitions), do: [node()]
+  end
+
+  defimpl Wardrik.Definition, for: Reloads do
+    use Wardrik.Definition.None
+    defdelegate put(a0, a1, a2), to: Reloads
+    defdelegate reload(a0), to: Reloads
+    defdelegate reloading(a0), to: Reloads
   end
 
   # Keeps its tokens in the store, each with the secret "secret-" and its id.
   defmodule Tokens do
     @moduledoc false
-    @behaviour Wardrik.Tokens
+    defstruct []
 
     @ns :deployment_operations_test_tokens
+    def create(_tokens, "refused", _opts), do: {:error, "No token is named refused."}
 
-    @impl true
-    def create(_host, "refused", _grant, _for), do: {:error, "No token is named refused."}
-
-    def create(_host, name, grant, for) do
+    def create(_tokens, name, grant: grant, for: for) do
       id = Wardrik.UUID.v7()
       token = %{id: id, name: name, grant: grant, principal: for, created_at: DateTime.utc_now()}
       {:ok, _vsn} = WardrikStore.put(store(), @ns, id, token)
       {:ok, "secret-" <> id, token}
     end
 
-    @impl true
-    def list(_host),
+    def list(_tokens),
       do: store() |> WardrikStore.keys(@ns, "") |> Enum.map(&WardrikStore.get(store(), @ns, &1))
 
-    @impl true
-    def revoke(_host, id) do
+    def revoke(_tokens, id) do
       if WardrikStore.get(store(), @ns, id),
         do: WardrikStore.delete(store(), @ns, id),
         else: {:error, :not_found}
     end
   end
 
-  defp host, do: Wardrik.Test.host(definitions: Reloads, tokens: Tokens)
+  defimpl Wardrik.Tokens, for: Tokens do
+    defdelegate create(a0, a1, a2), to: Tokens
+    defdelegate list(a0), to: Tokens
+    defdelegate revoke(a0, a1), to: Tokens
+  end
+
+  defp host, do: Wardrik.Test.host(definitions: %Reloads{}, tokens: %Tokens{})
 
   defp root(host \\ host()),
     do: Caller.root(principal: Principal.new(:user, "jon", name: "Jon"), host: host)

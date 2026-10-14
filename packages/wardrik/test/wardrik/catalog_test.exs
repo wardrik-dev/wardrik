@@ -20,10 +20,9 @@ defmodule Wardrik.CatalogTest do
   # in the tool runner, so it finds the test by the name it registers.
   defmodule Kept do
     @moduledoc false
-    use Wardrik.Definition
+    defstruct []
 
-    @impl true
-    def put(_host, id, definition, grant) do
+    def put(_definitions, id, definition: definition, grant: grant) do
       tell({:put, id, definition, grant})
 
       if String.contains?(id.name, "filed"),
@@ -31,11 +30,9 @@ defmodule Wardrik.CatalogTest do
         else: {:ok, Wardrik.Agent.Spec.new(id: id, hooks: [])}
     end
 
-    @impl true
-    def get(_host, _id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
+    def get(_definitions, _id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
 
-    @impl true
-    def put_trigger(_host, id, name, fields) do
+    def put_trigger(_definitions, id, name, fields: fields) do
       tell({:put_trigger, id, name, fields})
 
       if String.contains?(id.name, "filed"),
@@ -43,13 +40,20 @@ defmodule Wardrik.CatalogTest do
         else: {:ok, :created, Map.put(fields, "name", name)}
     end
 
-    @impl true
-    def delete_trigger(_host, id, name) do
+    def delete_trigger(_definitions, id, name) do
       tell({:delete_trigger, id, name})
       :ok
     end
 
     defp tell(message), do: send(:persistent_term.get(__MODULE__), message)
+  end
+
+  defimpl Wardrik.Definition, for: Kept do
+    use Wardrik.Definition.None
+    defdelegate put(a0, a1, a2), to: Kept
+    defdelegate get(a0, a1), to: Kept
+    defdelegate put_trigger(a0, a1, a2, a3), to: Kept
+    defdelegate delete_trigger(a0, a1, a2), to: Kept
   end
 
   setup do
@@ -68,7 +72,7 @@ defmodule Wardrik.CatalogTest do
   defp scope(agent, source, opts \\ []),
     do:
       Wardrik.Test.scope(
-        [tools: [{source, agent}], id: agent, host: Host.new(definitions: Kept)] ++ opts
+        [tools: [{source, agent}], id: agent, host: Host.new(definitions: %Kept{})] ++ opts
       )
 
   defp allowing(names), do: [hooks: [Wardrik.Hook.new("rules", Rules, allow: names)]]

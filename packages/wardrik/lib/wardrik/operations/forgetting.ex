@@ -5,13 +5,14 @@ defmodule Wardrik.Operations.Forgetting do
   what was asked, one agent or a prefix.
 
   The host's `Wardrik.Definition` is asked of each agent: it says which it
-  keeps as the forget is planned, through `c:Wardrik.Definition.editable/1`,
+  keeps as the forget is planned, through `Wardrik.Definition.editable/2`,
   and forgets the definition of each removed, where it keeps one.
   """
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Definition
+  alias Wardrik.Definitions
   alias Wardrik.Fleet
   alias Wardrik.Host
 
@@ -34,7 +35,7 @@ defmodule Wardrik.Operations.Forgetting do
 
     {agents, kept} =
       Enum.reduce(ids, {[], []}, fn id, {agents, kept} ->
-        case definitions.editable(host, id) do
+        case Definition.editable(definitions, id) do
           :ok -> {[id | agents], kept}
           {:error, :conflict, why} -> {agents, [{id, why} | kept]}
         end
@@ -62,7 +63,7 @@ defmodule Wardrik.Operations.Forgetting do
   end
 
   defp forget(host, id) do
-    with {:ok, _kept} <- Definition.forget(host, id),
+    with {:ok, _kept} <- Definitions.forget(host, id),
          :ok <- Fleet.forget(id) do
       :ok
     else

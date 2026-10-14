@@ -24,8 +24,12 @@ defmodule Wardrik do
 
       config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
       config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, Wardrik.Host, definitions: MyApp.Definitions,
-        connections: WardrikOAuth.Connections, triggers: WardrikTrigger, grants: MyApp.Grants
+      config :wardrik, Wardrik.Host,
+        definitions: {MyApp.Definitions, []},
+        grants: {MyApp.Grants, admins: ["maria"]}
+
+  Each seam is named by its module and the fields of its struct, as
+  `Wardrik.Host.configured/1` reads them.
 
   A host that starts it in its own tree instead, after the repo its store is
   kept in, says so, and hands it its options, and the same `Wardrik.Host` to
@@ -34,7 +38,12 @@ defmodule Wardrik do
       config :wardrik, start: :host
 
       store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
-      host = Wardrik.Host.new(store: store, definitions: MyApp.Definitions, grants: MyApp.Grants)
+      host =
+        Wardrik.Host.new(
+          store: store,
+          definitions: %MyApp.Definitions{store: store},
+          grants: %MyApp.Grants{admins: ["maria"]}
+        )
 
       children = [
         MyApp.Repo,
