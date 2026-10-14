@@ -596,7 +596,7 @@ site-search button {
 /* The rest of what it does: a level below the proofs, in smaller type. */
 .home-specs {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0 2.5rem;
 	margin-top: 1.25rem;
 	font-size: 0.9375rem;
@@ -606,6 +606,12 @@ site-search button {
 	margin: 0;
 	padding-block: 0.875rem;
 	border-top: 1px solid var(--sl-color-gray-5);
+}
+
+@media (max-width: 30rem) {
+	.home-specs {
+		grid-template-columns: 1fr;
+	}
 }
 
 .home-specs dt {
