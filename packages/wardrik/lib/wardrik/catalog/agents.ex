@@ -28,7 +28,7 @@ defmodule Wardrik.Catalog.Agents do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Tools
-  alias Wardrik.Catalog.Tools.Bound
+  alias Wardrik.Catalog.Tools.Offering
   alias Wardrik.Error
   alias Wardrik.Resource
 
@@ -44,21 +44,21 @@ defmodule Wardrik.Catalog.Agents do
     reach = Prefix.owner(agent)
 
     agents =
-      for bound <- Tools.agent_operations(reach),
+      for offering <- Tools.agent_operations(reach),
           do:
-            Tools.tool(bound,
-              name: name(bound.module),
-              schema: aimed(bound.module.input()),
-              run: {__MODULE__, :run, [bound]}
+            Tools.tool(offering,
+              name: name(offering.module),
+              schema: aimed(offering.module.input()),
+              run: {__MODULE__, :run, [offering]}
             )
 
     fleet =
-      for bound <- Tools.fleet_operations(reach),
+      for offering <- Tools.fleet_operations(reach),
           do:
-            Tools.tool(bound,
-              name: name(bound.module),
-              schema: bound.module.input(),
-              run: {__MODULE__, :run_all, [bound]}
+            Tools.tool(offering,
+              name: name(offering.module),
+              schema: offering.module.input(),
+              run: {__MODULE__, :run_all, [offering]}
             )
 
     agents ++ fleet
@@ -80,23 +80,23 @@ defmodule Wardrik.Catalog.Agents do
   end
 
   @doc false
-  @spec run(Bound.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def run(%Bound{reach: reach} = bound, %{"agent" => name} = input, context)
+  @spec run(Offering.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def run(%Offering{reach: reach} = offering, %{"agent" => name} = input, context)
       when is_binary(name) do
     case AgentID.expand(name, Prefix.org(reach)) do
       {:ok, agent} ->
-        Tools.run(bound, agent, input: Map.delete(input, "agent"), context: context)
+        Tools.run(offering, agent, input: Map.delete(input, "agent"), context: context)
 
       {:error, message} ->
         {:error, Resource.error(Error.new(:invalid, message))}
     end
   end
 
-  def run(_bound, _input, _context),
+  def run(_offering, _input, _context),
     do: {:error, Resource.error(Error.new(:invalid, "Name the agent the call acts on, as agent"))}
 
   @doc false
-  @spec run_all(Bound.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def run_all(%Bound{reach: reach} = bound, input, context),
-    do: Tools.run(bound, reach, input: input, context: context)
+  @spec run_all(Offering.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def run_all(%Offering{reach: reach} = offering, input, context),
+    do: Tools.run(offering, reach, input: input, context: context)
 end

@@ -1,8 +1,9 @@
-defmodule Wardrik.Catalog.Tools.Bound do
+defmodule Wardrik.Catalog.Tools.Offering do
   @moduledoc """
-  One of the catalog's operations, offered as a tool to an agent: the
-  operation's module, what runs it, `Wardrik.Query` or `Wardrik.Command`, as
-  the catalog's lists say, and the agents the calling agent reaches with it.
+  One of the catalog's operations offered as a tool to an agent, as far as
+  its reach goes: the operation's module, what runs it, `Wardrik.Query` or
+  `Wardrik.Command`, as the catalog's lists say, and the agents the calling
+  agent reaches with it.
   See `Wardrik.Catalog.Tools`.
   """
 

@@ -743,6 +743,9 @@ defmodule WardrikHTTP.RouterTest do
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, _turn}
+    # A cancel reads the agent's status from the fleet, which hears of the
+    # turn just after the runner does.
+    Fleet.await_update(fn -> Wardrik.Fleet.lookup(key).status != :idle end)
 
     assert {:ok, %{status: 202}} = Req.post(api, url: "/v1/agents/#{key}/cancel")
     assert_receive %Event{payload: %Event.TurnInterrupted{}}

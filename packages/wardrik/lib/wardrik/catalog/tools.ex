@@ -33,7 +33,7 @@ defmodule Wardrik.Catalog.Tools do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Catalog
-  alias Wardrik.Catalog.Tools.Bound
+  alias Wardrik.Catalog.Tools.Offering
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
@@ -46,21 +46,21 @@ defmodule Wardrik.Catalog.Tools do
   The catalog's operations on an agent, offered to an agent reaching
   `reach`, queries then commands.
   """
-  @spec agent_operations(Prefix.t()) :: [Bound.t()]
+  @spec agent_operations(Prefix.t()) :: [Offering.t()]
   def agent_operations(reach),
     do:
-      bound(Catalog.agent_queries(), Query, reach) ++
-        bound(Catalog.agent_commands(), Command, reach)
+      offered(Catalog.agent_queries(), Query, reach) ++
+        offered(Catalog.agent_commands(), Command, reach)
 
   @doc """
   The catalog's operations on the agents under a prefix, offered to an agent
   reaching `reach`.
   """
-  @spec fleet_operations(Prefix.t()) :: [Bound.t()]
-  def fleet_operations(reach), do: bound(Catalog.fleet_queries(), Query, reach)
+  @spec fleet_operations(Prefix.t()) :: [Offering.t()]
+  def fleet_operations(reach), do: offered(Catalog.fleet_queries(), Query, reach)
 
-  defp bound(modules, runner, reach),
-    do: Enum.map(modules, &%Bound{module: &1, runner: runner, reach: reach})
+  defp offered(modules, runner, reach),
+    do: Enum.map(modules, &%Offering{module: &1, runner: runner, reach: reach})
 
   @doc """
   The annotations of the tool named `name`, where `commands` names a
@@ -71,12 +71,12 @@ defmodule Wardrik.Catalog.Tools do
     do: if(name in commands, do: %{gated: true}, else: %{})
 
   @doc """
-  The tool offering `bound`'s operation, named `:name`, taking `:schema`,
+  The tool for `offering`'s operation, named `:name`, taking `:schema`,
   which `:run`, a `{module, function, args}`, answers.
   """
-  @spec tool(Bound.t(), name: String.t(), schema: map(), run: {module(), atom(), list()}) ::
+  @spec tool(Offering.t(), name: String.t(), schema: map(), run: {module(), atom(), list()}) ::
           ReqLLM.Tool.t()
-  def tool(%Bound{module: module}, opts) do
+  def tool(%Offering{module: module}, opts) do
     opts = Keyword.validate!(opts, [:name, :schema, :run])
 
     Wardrik.Tool.new!(
@@ -88,7 +88,7 @@ defmodule Wardrik.Catalog.Tools do
   end
 
   @doc """
-  Runs `bound`'s operation on `subject` with `:input`, for the call
+  Runs `offering`'s operation on `subject` with `:input`, for the call
   `:context` is of, as the calling agent: the tool's answer, labelled with
   what it holds.
 
@@ -100,12 +100,15 @@ defmodule Wardrik.Catalog.Tools do
   for someone what they could not themselves. A change is the agent's own,
   held to its ceiling and asked of a person as its policy says.
   """
-  @spec run(Bound.t(), AgentID.t() | Prefix.t(), input: map(), context: Wardrik.Tool.Context.t()) ::
+  @spec run(Offering.t(), AgentID.t() | Prefix.t(),
+          input: map(),
+          context: Wardrik.Tool.Context.t()
+        ) ::
           Wardrik.Tool.answer()
-  def run(%Bound{module: module, runner: runner} = bound, subject, opts) do
+  def run(%Offering{module: module, runner: runner} = offering, subject, opts) do
     opts = Keyword.validate!(opts, [:input, :context])
 
-    with {:ok, caller} <- caller(bound, subject, Keyword.fetch!(opts, :context)),
+    with {:ok, caller} <- caller(offering, subject, Keyword.fetch!(opts, :context)),
          {:ok, request} <- module.new(subject, Keyword.fetch!(opts, :input)),
          {status, answer} when status in [:ok, :created] <- runner.run(request, caller) do
       {:ok, answer || "done", labels: module.labels(answer)}
@@ -114,7 +117,7 @@ defmodule Wardrik.Catalog.Tools do
     end
   end
 
-  defp caller(%Bound{module: module, reach: reach}, subject, context) do
+  defp caller(%Offering{module: module, reach: reach}, subject, context) do
     %Wardrik.Tool.Context{scope: scope, sender: sender} = context
     {:ok, own} = Grant.new(reach, [:read, :message, :define], scope.hooks)
 
