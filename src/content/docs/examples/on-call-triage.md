@@ -17,7 +17,7 @@ teams on the same daemon kept apart.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
 - a Linear API key and a GitHub token for a machine account, both able to read, and Linear's able
   to comment;
 - the team's runbooks as Markdown files in a directory on the daemon's machine;
@@ -210,9 +210,9 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 - **Named approvers.** A parked call reaches Slack with its arguments, and only `approvers` decide
   it. See [Who approves](/channels/slack/#who-approves).
 - **Trust by source.** The team's runbooks are not labelled `outside`; issues anyone can file are. See
-  [Content from outside](/concepts/policy/#content-from-outside).
+  [Content from outside](/concepts/outside-content/).
 - **A budget per agent.** The agent stops and asks once it has spent its day's $20. See
-  [Budgets](/concepts/policy/#budgets).
+  [Budgets](/concepts/budgets/).
 - **An audit trail.** One stream of CloudEvents, read with a token that can do nothing else.
 - **Orgs.** Servers, notice targets, credentials and tokens stay within the org they serve.
 

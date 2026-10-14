@@ -146,7 +146,7 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 person; the agent answers the next message as usual, and one taking no turn is left as it is. It
 answers the agents it stopped, as `{"cancelled": ["acme/triage"]}`. `DELETE .../conversation`
 empties the conversation, and with it the mark of
-[content from outside](/concepts/policy/#content-from-outside) it held, answering `409` while a turn
+[content from outside](/concepts/outside-content/) it held, answering `409` while a turn
 runs or waits on a person. `DELETE` stops the agent and removes its conversation and triggers, and
 answers `{"forgotten": ["acme/triage"], "kept": [], "failed": []}`.
 

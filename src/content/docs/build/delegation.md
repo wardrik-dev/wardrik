@@ -61,7 +61,7 @@ An agent that is forgotten hears nothing, and one forgotten before it answers te
 The answer holds what the delegate read. After it has read content from outside, such as a web page,
 so has the agent that hears its answer, and its gated calls wait on a person from then on, as they
 would had it read the page itself. Reading a delegate with `agent_read` does the same. See
-[Content from outside](/concepts/policy/#content-from-outside).
+[Content from outside](/concepts/outside-content/).
 
 ## Defining a worker
 

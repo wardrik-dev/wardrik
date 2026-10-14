@@ -17,7 +17,7 @@ judgement but where its calls are decided: outside it.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
 - a public repository, and a fine-grained GitHub token for it alone, with read and write access to
   its issues and nothing else. Whatever someone approves by mistake can reach no further than that;
 - a Slack app with a bot token and an app-level token, made as
@@ -116,7 +116,7 @@ its text, and nobody outside the channel has read it.
   makes after that to a person, however its `allow` rules name it. What it read stays in the agent's
   conversation, so every sweep after the first is held from its start, until `wardrik clear issues`
   empties it. See
-  [Content from outside](/concepts/policy/#content-from-outside).
+  [Content from outside](/concepts/outside-content/).
 - **Files remember.** `TRIAGE.md` was written by a turn that had read issues, and keeps its label.
   The next sweep, which reads it in through `context`, is labelled from its start, so nothing an
   issue leaves in the agent's notes is a way around the rule. See

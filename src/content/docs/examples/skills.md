@@ -14,7 +14,7 @@ Nothing here is a feature of its own: it is files, a file read into every turn, 
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one, and a key for
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one, and a key for
   `web_search`.
 
 ## The agent
@@ -77,11 +77,11 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   [A history that grows](/concepts/durable-runs/#a-history-that-grows).
 - **Rules over its own files.** `delete_file(skills/*)` names the calls that delete a skill, so
   deleting one waits on a person while writing them does not. See
-  [What a call acts on](/concepts/policy/#what-a-call-acts-on).
+  [What a call acts on](/concepts/rules/#what-a-call-acts-on).
 - **Where a skill came from.** A file keeps whether the turn that wrote it had read content from
   outside, such as a page `web_search` found. A turn that reads such a skill counts as having read
   that content too, so a page cannot leave instructions in a skill that a gated tool then follows
-  with nobody asked. See [Content from outside](/concepts/policy/#content-from-outside).
+  with nobody asked. See [Content from outside](/concepts/outside-content/).
 
 ## Taking it further
 

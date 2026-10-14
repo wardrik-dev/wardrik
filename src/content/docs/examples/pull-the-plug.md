@@ -180,7 +180,7 @@ A stop ends what an agent is doing now. To keep it from starting again:
 - **Its tools.** Revoke a tool worker's token, and its tools are gone from every agent at once; or
   deny a tool in the agent's policy, and `wardrik reload`. See
   [Policy and approvals](/concepts/policy/).
-- **Its spending.** A [budget](/concepts/policy/#budgets) with `on_exhausted: deny` ends any turn
+- **Its spending.** A [budget](/concepts/budgets/) with `on_exhausted: deny` ends any turn
   that would spend past it.
 - **The agent.** `/shutdown NAME` in the terminal client stops it and keeps its conversation, and
   `DELETE /v1/agents/{key}` removes one the HTTP API defined.

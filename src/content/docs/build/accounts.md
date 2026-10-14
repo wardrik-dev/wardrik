@@ -1,14 +1,14 @@
 ---
 title: Connect accounts
-description: Give MCP servers credentials kept in the vault, for each user, each org or the deployment, and let users connect their own accounts with OAuth.
+description: Give MCP servers credentials kept in the vault, each held by the user or org an agent works for, and let users connect their own accounts with OAuth.
 sidebar:
   order: 2
 ---
 
-An MCP server names the credential it is reached with, and the vault holds it: for each user, for
-each org, or for the whole deployment. Where none is held and an OAuth provider has the same name,
-the user connects their own account, in a browser or with a code, the first time one of their agents
-calls the server.
+An MCP server names the credential it is reached with, and the vault holds it for whoever an
+agent works for: a user, or an org. Where the agent's owner holds none and an OAuth provider has the
+same name, the owner connects their own account, in a browser or with a code, the first time one of
+their agents calls the server.
 
 ```yaml title="~/.config/wardrik/config.yaml"
 oauth:
@@ -31,31 +31,25 @@ after changing `config.yaml`, and `wardrik doctor` checks the vault and each ser
 
 ## Whose credential
 
-The vault looks a credential up for each call, the most specific first, and the first it holds is
-the one used:
+The vault finds a credential for each call as the agent's owner holds it:
 
-1. the agent's user's, where the agent works for one, and the turn is theirs;
-2. its org's;
-3. the deployment's.
+- an agent that works for a user reads that user's;
+- an agent that works for nobody reads its org's.
 
-A turn is the user's where they asked for it, with a token on their own agents, or from the
-server's shell, or where nobody did, as a trigger's. A turn someone else asked for, such as
-someone in a Slack channel that answers with the user's agent, never reaches the user's own.
+Nothing falls back from one owner to another. A user's agent never reads its org's, and an org's
+agent never reads a user's, so whoever may ask an agent may use what its owner holds and nothing
+else. The deployment's own secrets reach an agent only where `vault.shared` names them; see
+[A secret you already hold](#a-secret-you-already-hold).
 
-Where none of them holds it and `oauth.providers` names a provider of the same name, the agent's
-user is asked to connect an account, or its org where the agent has no user. The account is kept in
-the vault from then on, as theirs.
+Where the owner holds none and `oauth.providers` names a provider of the same name, the owner is
+asked to connect an account: the user, or the org for an agent that works for nobody. The account
+is kept in the vault from then on, as theirs, and acts as them, so only their agents reach it.
 
-A connected account acts as whoever connected it, so only their calls find it: an org's reaches
-the org's agents that have no user, and a user whose org connected one is asked to connect their
-own. A key put with `wardrik vault put` is not an account, and reaches the agents below its owner
-as the list says.
-
-So a deployment can let each user connect GitHub as themselves, give one org a shared key
-instead, and give every agent the same Linear key, all through `credential` alone.
+So a deployment can let each user connect GitHub as themselves, give an org's own agents one key,
+and share a single search key with every agent, all through `credential` and `vault.shared`.
 
 A call runs over a connection to the server for whoever's credential it used: a user's own, an
-org's, or the deployment's. A server reached over HTTP is sent it as
+org's, or the deployment's shared one. A server reached over HTTP is sent it as
 `authorization: Bearer <token>`; `credential_header` and `credential_scheme` send it another way. A
 server run as a command is given it in the environment variable `credential_env` names.
 
@@ -96,8 +90,8 @@ you put it. Once a key is removed, a token sealed with it is not read, and its u
 
 ## Connecting
 
-The first time an agent calls a server for a user who has not connected, and nothing their org or
-the deployment holds stands in, the call parks, and the agent waits:
+The first time an agent calls a server for an owner who has not connected, and no secret they hold
+stands in, the call parks, and the agent waits:
 
 > To use github__create_issue, connect github at its link. This carries on once it is connected.
 

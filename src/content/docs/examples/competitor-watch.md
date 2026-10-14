@@ -18,7 +18,7 @@ change anything outside its files.
 ## What it takes
 
 - the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#set-it-up) gives it one;
+  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
 - a key for `web_search`, where the daemon reads its keys;
 - a Slack app with a bot token and an app-level token, made as
   [Slack](/channels/slack/#a-slack-app) makes one, and a Slack channel for it, here
@@ -115,7 +115,7 @@ want more or less of, change WATCHLIST.md or HEARTBEAT.md, and say what you chan
   answers in its thread, and posts nothing else.
 - `channels` offers the agent in Slack, so it answers in the channel's threads.
 - The budget stops it for the day once it has spent $3, rather than asking. See
-  [Budgets](/concepts/policy/#budgets).
+  [Budgets](/concepts/budgets/).
 
 Read the agent files again, and tell it who to watch:
 
@@ -168,7 +168,7 @@ message in the channel, has the agent answer anything posted there, with no ment
 - **Nothing to approve.** Its only tools search and write its own files, so what a feed or a web
   page says can mislead its notes at worst. Give it a tool that acts, such as posting to a CRM, and that tool's
   calls ask a person once it has read the web. See
-  [Content from outside](/concepts/policy/#content-from-outside).
+  [Content from outside](/concepts/outside-content/).
 
 ## Taking it further
 
