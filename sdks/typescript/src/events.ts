@@ -4,6 +4,7 @@ import type { Http } from "./http.ts";
 import type { WardrikEvent } from "./protocol.ts";
 import { messages } from "./sse.ts";
 
+/** Where `events` starts following an agent's log. */
 export interface FollowOptions {
   /**
    * The sequence to follow the log after. Left out, the stream starts after
@@ -41,6 +42,7 @@ export class EventStream implements AsyncIterable<WardrikEvent> {
   #open!: () => void;
   #fail!: (error: unknown) => void;
 
+  /** @internal */
   constructor(http: Http, path: string, head: () => Promise<number>, options: FollowOptions = {}) {
     this.#http = http;
     this.#path = path;

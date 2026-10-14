@@ -7,8 +7,10 @@ import { agentPath, Http } from "./http.ts";
 import type { AgentDefinition, AgentSummary, Interrupt } from "./protocol.ts";
 import { Worker, type ToolDefinition, type WorkOptions } from "./worker.ts";
 
+/** This SDK's version. */
 export const version = "0.0.0";
 
+/** How `new Wardrik()` reaches the server. Each is optional. */
 export interface WardrikOptions {
   /** The server. `WARDRIK_URL`, else `http://127.0.0.1:4747`, the daemon's own. */
   url?: string;
@@ -26,12 +28,14 @@ const env = (name: string): string | undefined =>
 /**
  * A Wardrik server, as one token reaches it.
  *
- *     const wardrik = new Wardrik();
- *     const agent = await wardrik.agents.put("acme/triage", { model: "anthropic:claude-sonnet-5" });
+ * ```ts
+ * const wardrik = new Wardrik();
+ * const agent = await wardrik.agents.put("acme/triage", { model: "anthropic:claude-sonnet-5" });
  *
- *     for await (const event of agent.ask("What's on fire?")) {
- *       if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
- *     }
+ * for await (const event of agent.ask("What's on fire?")) {
+ *   if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
+ * }
+ * ```
  */
 export class Wardrik {
   readonly agents: Agents;
@@ -106,6 +110,7 @@ export type Parked = Interrupt & { agent: { id: string } };
 export class Agents {
   readonly #http: Http;
 
+  /** @internal */
   constructor(http: Http) {
     this.#http = http;
   }

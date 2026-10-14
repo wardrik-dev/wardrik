@@ -403,20 +403,7 @@ export interface Connecting {
    * Whether the owner holds it already.
    */
   connected: boolean;
-  authorization?: Authorization1;
-}
-/**
- * Where to authorize it, where it is not held yet.
- */
-export interface Authorization1 {
-  /**
-   * The page to open.
-   */
-  url: string;
-  /**
-   * The code to enter at the page, where one is needed.
-   */
-  code?: string;
+  authorization?: Authorization;
 }
 /**
  * The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.

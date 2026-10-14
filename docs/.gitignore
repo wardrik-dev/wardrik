@@ -19,3 +19,6 @@ pnpm-debug.log*
 
 # macOS-specific files
 .DS_Store
+
+# the TypeScript SDK reference, written on each build
+src/content/docs/sdk/

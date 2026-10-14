@@ -18,6 +18,7 @@ export class Export {
   readonly #http: Http;
   readonly #path: string;
 
+  /** @internal */
   constructor(http: Http, name: string) {
     this.name = name;
     this.#http = http;

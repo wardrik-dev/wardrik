@@ -26,16 +26,16 @@ const local = (node: unknown): unknown => {
   if (Array.isArray(node)) return node.map(local);
   if (node === null || typeof node !== "object") return node;
 
+  // A $ref with keys beside it becomes a type of its own, so the reference
+  // alone stands for the one shared type.
+  const ref = (node as Schema)["$ref"];
+  if (typeof ref === "string" && ref.startsWith(defsRef)) return { $ref: "#/$defs/" + ref.slice(defsRef.length) };
+  if (typeof ref === "string" && resourceOf(ref)) return { $ref: "#/$defs/" + resourceOf(ref) };
+
   const out: Schema = {};
   for (const [key, value] of Object.entries(node)) {
     if (key === "$schema" || key === "$id" || key === "examples") continue;
-    if (key === "$ref" && typeof value === "string" && value.startsWith(defsRef)) {
-      out[key] = "#/$defs/" + value.slice(defsRef.length);
-    } else if (key === "$ref" && typeof value === "string" && resourceOf(value)) {
-      out[key] = "#/$defs/" + resourceOf(value);
-    } else {
-      out[key] = local(value);
-    }
+    out[key] = local(value);
   }
   return out;
 };
