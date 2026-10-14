@@ -1,30 +1,26 @@
 ---
 title: First response for an on-call team
-description: An org's agent that picks up each new incident, reads the runbook and what changed, and proposes a first response that an on-call engineer approves in Slack, with a record of every call it made.
+description: A team's agent that proposes a first response to each new incident, for an on-call engineer to approve in Slack.
 sidebar:
   order: 5
 ---
 
-An agent that belongs to a team rather than a person. Every five minutes it looks for new
-incidents in Linear, finds the runbook that fits, looks at what changed on GitHub around when the
-incident began, and drafts a first response as a comment on the issue. The comment waits in the
-on-call channel until one of the on-call engineers approves it.
-
-It shows what a team needs from an agent before it lets one near production: rules a reviewer can
-read, approvals only named people can give, a budget, a record of everything it did, and other
-teams on the same daemon kept apart.
+Every five minutes this team agent checks Linear for new incidents, reads the matching runbook and
+recent GitHub changes, and drafts a comment. The comment waits in `#oncall` until an on-call engineer
+approves it.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one;
-- a Linear API key and a GitHub token for a machine account, both able to read, and Linear's able
-  to comment;
-- the team's runbooks as Markdown files in a directory on the daemon's machine;
-- a Slack app with a bot token and an app-level token, made as
-  [Slack](/channels/slack/#a-slack-app) makes one, in the on-call channel.
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install);
+- a Linear API key that can read and comment, and a GitHub token for a machine account that can read;
+- the team's runbooks as Markdown files on the daemon's machine;
+- a [Slack app](/channels/slack/#a-slack-app) with a bot token and an app-level token, in the on-call
+  channel.
 
-## The servers and the channel
+## The files
+
+### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
 org: acme
@@ -60,27 +56,19 @@ notify:
     approvers: ["@maria", "@jon", "@priya"]
 ```
 
-- `only` gives the agent the tools it needs and no others: Linear's reading tools and
-  `save_comment`, and GitHub's reading tools alone, so nothing it reads can get it to merge, push or
-  close anything.
-- `gated` makes `save_comment` wait on a person unless a rule allows it by name. What an issue says
-  is content from outside, written by whoever filed it, so once the agent has read one, a comment
-  waits on a person however a policy allows it.
-- `trusted: true` says the runbooks are the team's own, so reading them labels nothing; `only`
-  gives the agent the server's reading tools alone.
-- `approvers` are the on-call engineers' Slack ids. Anyone else in the channel who presses a button
-  is told only the approvers can answer.
+- `only` keeps GitHub read-only: nothing it reads can make it merge or push.
+- `gated` makes `save_comment` wait for a person.
+- `trusted: true` marks the runbooks as the team's own, so reading them labels nothing.
+- Only `approvers` can answer.
 
-Restart the daemon after changing `config.yaml`, and check each server:
+Restart and check:
 
 ```sh
 systemctl --user restart wardrik
 wardrik doctor
 ```
 
-## The policy
-
-A policy is a file the team can review like any other change:
+### The policy
 
 ```yaml title="~/.config/wardrik/policies/oncall.yaml"
 allow:
@@ -104,11 +92,9 @@ budget:
   on_exhausted: ask
 ```
 
-Reading is allowed by name, commenting asks, and what no rule names, such as a tool added to a
-server's `only` next month, asks too. Deleting its own files is refused outright, and the model is
-told why.
+Reading runs, commenting asks, anything unnamed asks, and deleting is refused.
 
-## The agent
+### The agent
 
 ```markdown title="~/.config/wardrik/agents/triage.md"
 ---
@@ -135,22 +121,30 @@ Keep the incidents you have seen in MEMORY.md, each with a line on what you said
 new, answer in one line.
 ```
 
-Read the agent files again; the first sweep runs five minutes later:
+## Try it
 
 ```sh
 wardrik reload
 wardrik show triage
 ```
 
-When it has a comment to make, `#oncall` gets the call, its arguments, the comment it would post
-and on which issue, with Approve and Deny. Pressing one decides it, and the message says who did.
-A denied comment tells the agent "Denied in Slack by" whoever pressed it, and it carries on.
+Within five minutes, `#oncall` gets its first proposed comment, with Approve and Deny.
 
-## A record of everything
+## What it shows
 
-Every message, model reply, tool call, decision and refusal is an event on the agent's stream, as a
-CloudEvent with OpenTelemetry's names and a W3C `traceparent`. A token that can only read follows it
-into whatever keeps your logs:
+- **Rules as data**, reviewable like code. See [Policy](/concepts/policy/).
+- **Named approvers.** See [Who approves](/channels/slack/#who-approves).
+- **Trust by source.** Runbooks aren't `outside`; issues are. See
+  [Content from outside](/concepts/outside-content/).
+- **A budget** of $20 a day. See [Budgets](/concepts/budgets/).
+- **An audit trail** and **orgs**, below.
+
+## Details
+
+### A record of everything
+
+Every message, call, decision and refusal is a CloudEvent with a W3C `traceparent`. A read-only token
+follows the stream into your logs:
 
 ```sh
 wardrik token create audit --scope acme/ --can read
@@ -158,14 +152,11 @@ curl -N -H "authorization: Bearer $AUDIT_TOKEN" -H "accept: text/event-stream" \
   http://127.0.0.1:4747/v1/agents/acme/triage/events
 ```
 
-A client that reconnects with the last `id:` it saw misses nothing kept. A decision made in Slack is
-in the stream as `interrupt.resolved`, and a refused call as `tool_call.denied`, with the rule's
-reason. See [The event stream](/concepts/events/).
+Reconnecting with the last `id:` misses nothing. See [The event stream](/concepts/events/).
 
-## Another team, the same daemon
+### Another team, the same daemon
 
-An org is the boundary between agents. A second team's agent names its org, and gets servers,
-channels and credentials of its own:
+A second team's agent names its own org, with its own servers and channels:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -182,14 +173,12 @@ notify:
     room: "#globex-oncall"
 ```
 
-An agent of `globex` cannot be given acme's servers or route its notices to acme's channel: its file
-does not read. A token scoped to `globex/` answers acme's agents as ones that do not exist. See
-[Orgs](/run/security/#orgs).
+A `globex` agent can't reach acme's servers, and a `globex/` token can't see acme's agents. See
+[Orgs](/run/orgs/).
 
-## Through a lost machine
+### Through a lost machine
 
-On three machines with the store in Postgres, the agent carries on when the one it runs on is
-lost, with a comment that waits on the on-call channel still waiting, and its sweep still on time:
+On three machines with Postgres, it carries on when one is lost, with waiting comments intact:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 storage:
@@ -200,28 +189,11 @@ cluster:
   nodes: [wardrik@ops1, wardrik@ops2, wardrik@ops3]
 ```
 
-Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on each. See
-[Run a cluster](/run/cluster/) and [Storage](/run/storage/).
+Each node needs `/srv/runbooks`. See [Run a cluster](/run/cluster/).
 
-## What it shows
+### Taking it further
 
-- **Rules as data.** The policy is a file outside the agent, decided before each call, and the same
-  on every node. See [Policy and approvals](/concepts/policy/).
-- **Named approvers.** A parked call reaches Slack with its arguments, and only `approvers` decide
-  it. See [Who approves](/channels/slack/#who-approves).
-- **Trust by source.** The team's runbooks are not labelled `outside`; issues anyone can file are. See
-  [Content from outside](/concepts/outside-content/).
-- **A budget per agent.** The agent stops and asks once it has spent its day's $20. See
-  [Budgets](/concepts/budgets/).
-- **An audit trail.** One stream of CloudEvents, read with a token that can do nothing else.
-- **Orgs.** Servers, notice targets, credentials and tokens stay within the org they serve.
-
-## Taking it further
-
-- Respond the moment an incident is filed, rather than within five minutes: a `webhook` trigger
-  that Linear, Sentry or Alertmanager calls asks the agent as each arrives. See
-  [Pointing a service at a trigger](/build/triggers/#pointing-a-service-at-a-trigger).
-- Point a second trigger at a weekly review: `every: "0 9 * * 1"`, asking for what the week's
-  incidents had in common, and keep the answer in a file the team reads.
-- Give the agent a runbook step it may take without asking, such as restarting one service, as a
-  [tool worker](/build/tool-workers/) whose tool the policy allows by name.
+- Respond instantly with a [webhook trigger](/build/triggers/#pointing-a-service-at-a-trigger) from
+  Linear, Sentry or Alertmanager.
+- Add a weekly review trigger.
+- Let it restart a service without asking, as a [tool worker](/build/tool-workers/) the policy allows.

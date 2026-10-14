@@ -1,26 +1,20 @@
 ---
 title: An assistant in Telegram
-description: A personal assistant you message from your phone, with a persona and memory it keeps in files, a heartbeat it sets itself, and Approve and Deny buttons for what it may not do alone.
+description: A personal assistant on your phone, with memory in files, a heartbeat it edits, and Approve and Deny buttons.
 sidebar:
   order: 2
 ---
 
-An assistant you talk to in Telegram. It keeps who it is, who you are and what it has learned in
-files of its own, wakes every half hour to follow a checklist it keeps, and writes to you first when
-something needs you. A change to its persona, and a day's spending past its allowance, come to you
-as a message with Approve and Deny.
-
-The daemon opens no port for any of it. A small bridge, `examples/telegram.ts` in the SDK, asks
-Telegram for your messages and dials the daemon's HTTP API on loopback.
+A personal assistant in Telegram. It remembers in files, wakes every half hour to follow its own
+checklist, and messages you first when something needs you. A small SDK bridge connects Telegram to
+the daemon, which opens no port.
 
 ## What it takes
 
-- the daemon, [installed](/getting-started/install/) and running, with a model provider's key as the
-  [Quickstart](/getting-started/quickstart/#1-install) gives it one, and a key for
-  `web_search`;
+- the daemon, [installed](/getting-started/install/), with a model provider's key from the
+  [Quickstart](/getting-started/quickstart/#1-install), and a key for `web_search`;
 - Node 22.18 or later, for the bridge;
-- a Telegram bot. Message [@BotFather](https://t.me/BotFather), send `/newbot`, and keep the token
-  it gives you.
+- a Telegram bot: message [@BotFather](https://t.me/BotFather), send `/newbot`, and keep the token.
 
 ## The agent
 
@@ -54,29 +48,28 @@ start, such as a heartbeat, send with message_me, and only what is worth interru
 run_lua's os.date tells you the time.
 ```
 
-`user: jon` makes it jon's agent, `default/@jon/assistant`. Read the agent files again:
+`user: jon` makes it jon's agent, `default/@jon/assistant`. Load it:
 
 ```sh
 wardrik reload
 wardrik ls @jon
 ```
 
-## The bridge
+## Try it
 
-The bridge's token reaches jon's agents and nothing else, and can read, message, decide and offer
-tools, but not define agents:
+Make the bridge a token that reaches only jon's agents and can't define new ones:
 
 ```sh
 wardrik token create telegram --scope default/@jon/ --can read,message,decide,serve
 ```
 
-Send your bot any message, then find your chat's id, the `chat.id` of the message Telegram holds:
+Send your bot any message, then find your chat's `chat.id`:
 
 ```sh
 curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getUpdates"
 ```
 
-Run the bridge from a copy of the repository:
+Run the bridge from a copy of the repository. It answers your chat alone:
 
 ```sh
 git clone https://github.com/wardrik-dev/wardrik
@@ -84,10 +77,6 @@ cd wardrik/sdks/typescript
 npm ci
 WARDRIK_TOKEN=wardrik_... TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... node examples/telegram.ts
 ```
-
-It answers your chat alone, and leaves every other one unanswered.
-
-## First words
 
 Tell it who it is, and approve the change to `SOUL.md` when Telegram asks:
 
@@ -100,59 +89,37 @@ Then who you are, and what to do on each heartbeat:
 > Write a HEARTBEAT.md: check reminders.md and message me about any reminder that is due, then
 > remove it. Say nothing between 22:00 and 07:00 my time.
 
-Now `remind me at four to call the bank` puts a line in `reminders.md`, and the first heartbeat
-after four messages you about it. The agent can change `HEARTBEAT.md` whenever you ask it to, or
-when it sees a reason to, so what it checks grows with what you hand it.
-
-`/stop` stops whatever it is doing.
-
-## How the bridge works
-
-It holds three things open at once:
-
-- **Your messages.** It long-polls Telegram's `getUpdates` and sends what you write with
-  `agent.send`, under an id it keeps, so it knows which turns answer you.
-- **The agent's events.** It follows `agent.events()`. A `message.completed` in a turn that answers
-  you goes back to the chat. A `run.interrupted`, from any turn, goes with the arguments of the call
-  it waits on, which the `message.completed` before it named, and Approve and Deny buttons; pressing
-  one calls `agent.approve` or `agent.reject`.
-- **A tool.** It offers `message_me`, as a [tool worker](/build/tool-workers/), so a turn you did
-  not start can still reach you. The agent has it because its file lists `workers/*`. A worker's
-  tool that is not read-only is gated, so it asks unless the policy allows it by name; and once the
-  agent has searched the web, what it read stays in its conversation, and an `allow` rule stops
-  counting for gated tools in every turn after. `allow_after` allows `message_me` and keeps
-  allowing it, since it reaches no one but you.
-
-A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardrik history
-@jon/assistant` shows it.
+Now `remind me at four to call the bank` adds a line to `reminders.md`, and the heartbeat after four
+messages you. `/stop` stops whatever it's doing.
 
 ## What it shows
 
-- **Files as memory.** `context` reads `SOUL.md`, `USER.md` and `MEMORY.md` into every turn, and
-  the agent sees the names of its other files, which cost only their names until it reads them.
-  The files are in the store, so they live wherever the agent does. See
-  [Files and memory](/concepts/files-and-memory/).
-- **A heartbeat it edits.** `prompt_file` asks it to follow `HEARTBEAT.md` as it stands each time.
-  See [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
-- **Rules outside the conversation.** The policy is not in the prompt, so no instruction to the
-  agent loosens it, and no summary of a long history loses it: a change to `SOUL.md` asks you
-  every time. See [Policy and approvals](/concepts/policy/).
-- **One tool allowed after the web.** An agent that reads what strangers wrote, knows about you,
-  and can change things needs a person for the last of those. `message_me` only reaches you, so
-  `allow_after` lets it through; any gated tool you add later still asks. See
-  [Allowing after content from outside](/concepts/outside-content/#allowing-after-content-from-outside).
-- **An allowance.** Past two dollars in a day, its next model call waits on you, with "This agent
-  has spent $2.01 of $2.00 today. Approve to allow $2.00 more." See
-  [Budgets](/concepts/budgets/).
-- **A token for one job.** The bridge cannot reach another user's agents or define new ones, and
-  revoking its token closes its streams and its worker's connection. See
-  [Tokens](/run/security/#tokens).
+- **Files as memory**, read into every turn. See [Files and memory](/concepts/files-and-memory/).
+- **A heartbeat it edits.** See
+  [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
+- **Rules outside the conversation.** Changing `SOUL.md` asks you every time. See
+  [Policy](/concepts/policy/).
+- **One tool allowed after the web.** `message_me` reaches only you, so `allow_after` lets it run.
+  See [Content from outside](/concepts/outside-content/#allowing-after-content-from-outside).
+- **An allowance.** Past $2 a day, it asks. See [Budgets](/concepts/budgets/).
+- **A token for one job.** See [Tokens](/run/tokens/).
 
-## Taking it further
+## Details
 
-- Give it the tools of your calendar's or your mail's MCP server, and add to `HEARTBEAT.md` what to
-  look for in them. Mail is anyone's to write, so gate the tools that send: see
-  [Let anyone try to hijack it](/examples/hijack-me/) for why that holds.
-- Run the bridge under systemd beside the daemon, or anywhere that reaches the daemon's port.
-- Give everyone in a family or a team an agent of their own, each with `user:` set and a bridge
-  whose token reaches only theirs.
+### How the bridge works
+
+- **Your messages:** it long-polls Telegram and sends each with `agent.send`.
+- **The agent's events:** answers to you go to the chat; a `run.interrupted` arrives with the call's
+  arguments and Approve and Deny buttons.
+- **A tool:** it offers `message_me` as a [tool worker](/build/tool-workers/), so a heartbeat can
+  reach you.
+
+A heartbeat's own answer stays in the agent's history: `wardrik history @jon/assistant`. Revoking
+the bridge's token closes its connections.
+
+### Taking it further
+
+- Add your calendar's or mail's MCP server. Mail is anyone's to write, so gate the tools that send;
+  see [Let anyone try to hijack it](/examples/hijack-me/).
+- Run the bridge under systemd beside the daemon.
+- Give each person their own agent (`user:`) and a bridge token that reaches only theirs.

@@ -1,6 +1,6 @@
 ---
 title: Examples
-description: Agents to copy and run, each a few files, from a morning brief to one that anyone may try to hijack.
+description: Agents to copy and run, each a few files.
 sidebar:
   order: 0
   label: Overview
@@ -8,10 +8,8 @@ sidebar:
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Each example is an agent you can have running in minutes: its agent file, what `config.yaml` needs,
-the commands to try it, and what it shows of how Wardrik works. Copy one, change its prompt, and it
-is yours. Each takes the daemon [installed](/getting-started/install/) and a model provider's key,
-as the [Quickstart](/getting-started/quickstart/) gives it one.
+Each example is a few files you can copy, run and change. Each needs the daemon
+[installed](/getting-started/install/) with a model provider's key.
 
 ## Everyday agents
 
@@ -19,22 +17,22 @@ as the [Quickstart](/getting-started/quickstart/) gives it one.
 	<LinkCard
 		title="A morning brief"
 		href="/examples/morning-brief/"
-		description="Searches what you follow and what waits for you on GitHub, and posts a brief to Slack each weekday."
+		description="Posts what you follow and what waits on GitHub to Slack each weekday."
 	/>
 	<LinkCard
 		title="An assistant in Telegram"
 		href="/examples/telegram-assistant/"
-		description="A persona and memory in files, a heartbeat it edits, and Approve and Deny on your phone."
+		description="A personal assistant on your phone, with memory and approvals."
 	/>
 	<LinkCard
 		title="An agent that writes its own skills"
 		href="/examples/skills/"
-		description="Writes down how it did each task worth repeating, reads the index every turn, and tidies weekly."
+		description="Writes down how it did each task, and reuses it next time."
 	/>
 	<LinkCard
 		title="Errands in a browser"
 		href="/examples/browser-errands/"
-		description="Works websites in a real browser, reading freely and asking before each click or keystroke."
+		description="Works websites in a real browser, asking before each click."
 	/>
 </CardGrid>
 
@@ -44,17 +42,17 @@ as the [Quickstart](/getting-started/quickstart/) gives it one.
 	<LinkCard
 		title="First response for an on-call team"
 		href="/examples/on-call-triage/"
-		description="Picks up each incident, reads the runbook, and proposes a response that named engineers approve in Slack."
+		description="Proposes a first response to each incident for on-call to approve."
 	/>
 	<LinkCard
 		title="Watch your competitors"
 		href="/examples/competitor-watch/"
-		description="Watches competitors' feeds, posts a brief to Slack when they change, and takes the team's replies as what to watch next."
+		description="Posts what changed at your competitors, and learns from replies."
 	/>
 	<LinkCard
 		title="An agent that acts on what it notices"
 		href="/examples/act-on-signals/"
-		description="Drafts a response to each competitor's launch on its own, and proposes the next steps as tool calls that run once the team approves them in Slack."
+		description="Drafts a response to each launch and proposes the next steps."
 	/>
 </CardGrid>
 
@@ -64,11 +62,11 @@ as the [Quickstart](/getting-started/quickstart/) gives it one.
 	<LinkCard
 		title="Pull the plug, then press stop"
 		href="/examples/pull-the-plug/"
-		description="Kill -9 an agent's node mid-task and it finishes, doing nothing twice. Stop it, and it stays stopped."
+		description="Kill its node mid-task: it finishes, doing nothing twice."
 	/>
 	<LinkCard
 		title="Let anyone try to hijack it"
 		href="/examples/hijack-me/"
-		description="Triages a public repository's issues with write access, and no issue can talk it into anything unseen."
+		description="Triages public issues with write access, and can't be talked round."
 	/>
 </CardGrid>

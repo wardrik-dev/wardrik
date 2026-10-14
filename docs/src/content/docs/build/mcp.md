@@ -1,12 +1,12 @@
 ---
 title: Connect MCP servers
-description: Give agents the tools of an MCP server, run as a command or reached over HTTP, and decide which of them they may call.
+description: "Give agents the tools of an MCP server, run as a command or reached over HTTP, and decide which they may call."
 sidebar:
   order: 1
 ---
 
-An MCP server's tools are named in `config.yaml`, under `mcp`, and an agent file gives them to an
-agent. A server is run as a command, or reached over HTTP:
+Name MCP servers in `config.yaml`, then give their tools to an agent. A server runs as a command, or
+is reached over HTTP:
 
 ```yaml title="~/.config/wardrik/config.yaml"
 mcp:
@@ -20,40 +20,31 @@ mcp:
     only: [read_file, list_directory]
 ```
 
-`${NAME}` is read from the daemon's environment, or, where that does not set it, from the vault, so
-the file need hold no secret. `wardrik vault put LINEAR_TOKEN` seals one.
-
-The daemon reads `config.yaml` when it starts, so restart it after changing one:
+`${NAME}` reads the environment, else the vault, so the file holds no secret:
+`wardrik vault put LINEAR_TOKEN` seals one. Restart the daemon after changing `config.yaml`:
 
 ```sh
 systemctl --user restart wardrik    # or: wardrik stop, then wardrik start
 wardrik doctor                      # each server, and whether it can be reached
 ```
 
-`wardrik reload` reads agent and policy files only.
+Every key a server takes is in [`config.yaml` › mcp](/reference/config/#mcp).
 
 ## Giving an agent the tools
 
-An agent file names a server's tools as `server/*`, by the name `config.yaml` gives the server:
+An agent file names a server's tools as `server/*`:
 
 ```yaml
 tools: [linear/*, notes/*]
 ```
 
-`*` gives an agent the tools of every server it can reach, with everything else. A file cannot
-name one tool of a server: narrow what the server offers with `only` or `except` in `config.yaml`,
-by the names the server gives its tools, or decide which calls may run with a
-[policy](/concepts/policy/).
-
-The model sees each tool as `server__tool`, such as `linear__search_issues`, with the server's own
-description and JSON Schema. A policy names it as `linear/search_issues`, or every tool of the
-server as `linear/*`. `prefix` gives the server's tools another name than the server's, for the
-model and for policies alike, while an agent file still names the server by its own.
+To narrow what a server offers, use `only` or `except` in `config.yaml`. To decide which calls may
+run, use a [policy](/concepts/policy/). A policy names a tool as `linear/search_issues`.
 
 ## Which orgs a server serves
 
-A server serves the agents of the deployment's [org](/concepts/agents/#keys-and-orgs) unless its
-`org` names others, or `*` for every org:
+A server serves the deployment's [org](/concepts/agents/#keys-and-orgs) unless its `org` says
+otherwise:
 
 ```yaml
 org: acme
@@ -69,64 +60,13 @@ mcp:
     org: "*"                               # every org's
 ```
 
-An agent file that names a server its org is not served by does not read, and says why;
-`wardrik status` lists it. A call from another org's agent is refused too, whatever it was given.
+A server's `headers` and `env` are the deployment's credentials, shared by every org it serves. To
+reach a service as each org or user, use a `credential`; see [Connect accounts](/build/accounts/).
 
-The credentials in a server's `headers` or `env` are the deployment's, so a server that every org
-shares reaches the service the same way for all of them. Give each org a server of its own, or
-reach it as each user with [Connect accounts](/build/accounts/).
+## Which calls need a person
 
-## A server run as a command
-
-`command` is the program, with `args`, `env` and `cwd` beside it. The command sees only a few of the
-daemon's environment variables, `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`,
-`TERM`, `TMPDIR` and `USER`, with the `env` it is given, so the keys the daemon holds stay with the
-daemon:
-
-```yaml
-mcp:
-  github:
-    command: github-mcp-server
-    args: [stdio]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
-```
-
-What a command writes to its standard error is kept in `~/.local/state/wardrik/log/mcp.log`.
-
-The service runs with systemd's `PATH`, not your shell's, so a program installed under your home
-directory, as `npx` often is, may be found by `wardrik doctor` and not by the service. Name such a
-program by its full path. In Docker, a command needs its program in the image: build your own
-`FROM ghcr.io/wardrik-dev/wardrik`.
-
-## A server reached over HTTP
-
-`url` is the server's Streamable HTTP endpoint, as it publishes it, with `headers` to send with
-every request:
-
-```yaml
-mcp:
-  linear:
-    url: https://mcp.linear.app/mcp
-    headers:
-      authorization: Bearer ${LINEAR_TOKEN}
-```
-
-A key in `headers` is the deployment's own: every agent reaches the server as the deployment. To
-keep it out of the environment, seal it with `wardrik vault put linear` and name it as the server's
-`credential: linear`, which sends it as `authorization: Bearer <token>`. A credential can also be
-an org's or a user's, or an account each user connects; see [Connect accounts](/build/accounts/).
-
-## What a server's tools may do
-
-- A tool the server does not mark read-only, with MCP's `readOnlyHint`, is gated: its calls wait on
-  a person unless a policy's `allow` rule names them. `gated` decides instead: the tools that are,
-  `true` for all of them, or `false` for none. A name ending in `*` names every tool it begins. See
-  [Gated tools](/concepts/rules/#gated-tools).
-- `trusted: true` says the server's answers are the deployment's own. Without it, what a server
-  returns is content from outside, and a turn that has read it, and every turn of that agent after
-  it, waits on a person before a gated tool's call runs. See
-  [Content from outside](/concepts/outside-content/).
+A tool the server doesn't mark read-only is gated: its calls wait on a person unless a policy allows
+them by name. A server's answers are content from outside unless it's `trusted`:
 
 ```yaml
 mcp:
@@ -139,20 +79,73 @@ mcp:
     trusted: true
 ```
 
-## Limits
+See [Gated tools](/concepts/rules/#gated-tools) and
+[Content from outside](/concepts/outside-content/).
 
-- `timeout` is how many seconds a call may take, 60 unless set.
-- `max_result_bytes` is how much of a call's result the model is given, 128 KB unless set. A longer
-  one is cut, and the model is told it was.
+## Details
 
-A result's structured content is given to the model where the server returns some, and its text
-otherwise. An image in a result is not read: the model is told there was one.
+### Names
 
-## When a server is down
+- `*` in an agent file gives every server the agent can reach, with everything else.
+- A file can't name one tool of a server; narrow it with `only` or `except`, by the server's own
+  tool names.
+- The model sees each tool as `server__tool`, such as `linear__search_issues`, with the server's own
+  description and JSON Schema.
+- `prefix` renames the server's tools for the model and policies; an agent file still names the
+  server by its own name.
+- `wardrik reload` reads agent and policy files only, never `config.yaml`.
 
-A server that is down offers no tools, and the agents with it carry on without them. The daemon
-connects again by itself, waiting longer each time, up to a minute between tries. A server that
-says its tools have changed is asked for them again.
+### Orgs
 
-A call stopped before it answers, by a timeout or a stopped turn, is cancelled on the server too.
-A server's progress reaches the event stream as `tool_call.progress`.
+- A file naming a server its org isn't served by doesn't read, and says why; `wardrik status` lists
+  it.
+- A call from another org's agent is refused, whatever it was given.
+
+### Commands
+
+- `command` takes `args`, `env` and `cwd`.
+- The command sees only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`,
+  `TMPDIR` and `USER` from the daemon's environment, plus its `env`. The daemon's keys stay with it.
+- Its standard error goes to `~/.local/state/wardrik/log/mcp.log`.
+- The service runs with systemd's `PATH`, not your shell's. Name a program under your home
+  directory, as `npx` often is, by its full path.
+- In Docker, the program must be in the image: build `FROM ghcr.io/wardrik-dev/wardrik`.
+
+```yaml
+mcp:
+  github:
+    command: github-mcp-server
+    args: [stdio]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
+```
+
+### Over HTTP
+
+- `url` is the server's Streamable HTTP endpoint, with `headers` sent on every request.
+- A key in `headers` is the deployment's: every agent reaches the server as the deployment.
+- To keep it out of the environment, seal it with `wardrik vault put linear` and name it as
+  `credential: linear`, sent as `authorization: Bearer <token>`.
+
+### Gating and trust
+
+- `gated` lists the gated tools, `true` for all, or `false` for none. A name ending in `*` names
+  every tool it begins.
+- Without `trusted: true`, a turn that read a server's answer, and every turn after it, waits on a
+  person before a gated call runs.
+
+### Limits
+
+- `timeout` is seconds a call may take, 60 unless set.
+- `max_result_bytes` is how much of a result the model gets, 128 KB unless set. A longer one is cut,
+  and the model is told.
+- Structured content is given where the server returns some, text otherwise. An image isn't read;
+  the model is told there was one.
+
+### When a server is down
+
+- A server that's down offers no tools; its agents carry on without them.
+- The daemon reconnects by itself, waiting longer each time, up to a minute.
+- A server that says its tools changed is asked for them again.
+- A call stopped before it answers, by a timeout or a stopped turn, is cancelled on the server too.
+- A server's progress reaches the event stream as `tool_call.progress`.
