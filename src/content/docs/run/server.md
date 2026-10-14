@@ -69,7 +69,7 @@ machine is.
 | `~wardrik/.config/wardrik/config.yaml` | The org, the agents' model and policy, the callback's address, the Slack channel and its approvers | Kept: change it on the server |
 | `~wardrik/.config/wardrik/agents`, `policies` | An example agent offered in Slack, and the policy every agent is given | Kept, and a file missing is put back |
 | `~wardrik/.local/share/wardrik` | The store, and the vault's key unless the env file sets `WARDRIK_VAULT_KEY` | Kept |
-| `/etc/caddy/Caddyfile` | `/oauth/` on the domain passed on to the daemon, and a 404 for anything else | Written again |
+| `/etc/caddy/Caddyfile` | `/oauth/` and `/v1/hooks/` on the domain passed on to the daemon, and a 404 for anything else | Written again |
 
 The variables `WARDRIK_ORG`, `WARDRIK_MODEL` and `WARDRIK_APPROVERS` write `config.yaml` the first
 time only. From then on, change it on the server, and start the daemon again:
