@@ -2,7 +2,7 @@
 title: Judged calls
 description: "A judge asks a model yes-or-no questions about each call, and decides by the probability of yes."
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Some decisions turn on what a call means, not its name: does it change the books, does it send

@@ -78,6 +78,7 @@ export default defineConfig({
 											label: 'Policy',
 											items: [
 												'concepts/policy',
+												'concepts/rules',
 												'concepts/approvals',
 												'concepts/outside-content',
 												'concepts/budgets',

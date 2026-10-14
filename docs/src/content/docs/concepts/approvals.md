@@ -2,7 +2,7 @@
 title: Approvals
 description: "A call that waits parks its turn until a person approves or denies it, from a shell, Slack, the terminal client or the API."
 sidebar:
-  order: 3
+  order: 4
 ---
 
 A call that waits parks the turn. Nothing more runs until each waiting call is decided. A parked

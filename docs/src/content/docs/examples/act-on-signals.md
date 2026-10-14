@@ -128,7 +128,7 @@ wardrik.tool({
 await wardrik.work();
 ```
 
-- `readOnly` tools change nothing. The other two are [gated](/concepts/policy/#gated-tools): each
+- `readOnly` tools change nothing. The other two are [gated](/concepts/rules/#gated-tools): each
   call waits on a person unless a rule allows it by name.
 - `cost` reports what the paid keyword API charged; the budget counts it. See
   [What a call cost](/build/tool-workers/#what-a-call-cost).

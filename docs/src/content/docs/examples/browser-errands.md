@@ -141,7 +141,7 @@ steer a click towards.
   who sees the call it is. See [Content from outside](/concepts/outside-content/).
 - **Gated tools.** `gated` in `config.yaml` makes a server's tools wait unless a rule allows them
   by name, so a policy written later with `default: allow` cannot let them through. See
-  [Gated tools](/concepts/policy/#gated-tools).
+  [Gated tools](/concepts/rules/#gated-tools).
 - **Narrowing a server.** `except` leaves tools out altogether, by the names the server gives them.
   See [Connect MCP servers](/build/mcp/#giving-an-agent-the-tools).
 - **A parked turn waits.** It does not time out, and an agent's `timeout` starts again when it

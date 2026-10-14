@@ -77,7 +77,7 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   [A history that grows](/concepts/durable-runs/#a-history-that-grows).
 - **Rules over its own files.** `delete_file(skills/*)` names the calls that delete a skill, so
   deleting one waits on a person while writing them does not. See
-  [What a call acts on](/concepts/policy/#what-a-call-acts-on).
+  [What a call acts on](/concepts/rules/#what-a-call-acts-on).
 - **Where a skill came from.** A file keeps whether the turn that wrote it had read content from
   outside, such as a page `web_search` found. A turn that reads such a skill counts as having read
   that content too, so a page cannot leave instructions in a skill that a gated tool then follows

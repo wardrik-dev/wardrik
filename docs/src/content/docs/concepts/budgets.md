@@ -2,7 +2,7 @@
 title: Budgets
 description: "Cap what an agent spends on models and paid tools, by turn, day, week, month or for good."
 sidebar:
-  order: 5
+  order: 6
 ---
 
 A budget caps what an agent spends on model calls and paid tools, in dollars, tokens or both:

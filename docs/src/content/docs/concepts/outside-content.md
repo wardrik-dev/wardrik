@@ -2,7 +2,7 @@
 title: Content from outside
 description: "Once an agent reads a stranger's words, every call that changes something waits for a person."
 sidebar:
-  order: 4
+  order: 5
 ---
 
 A turn carries a label for what it has read. Content from outside the deployment is labelled
@@ -13,7 +13,7 @@ A turn carries a label for what it has read. Content from outside the deployment
 - tool workers, unless `http.trusted_workers: true`;
 - a file written by a turn that had read outside content.
 
-Once a turn carries `outside`, every [gated](/concepts/policy/#gated-tools) call waits for a person, whatever `allow` says. What it
+Once a turn carries `outside`, every [gated](/concepts/rules/#gated-tools) call waits for a person, whatever `allow` says. What it
 read may be what asked for the call. The person is told so:
 
 > github__create_issue is allowed, but this run has read content from outside, which may be what
