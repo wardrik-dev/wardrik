@@ -67,9 +67,9 @@ Once an agent reads outside content, every call that changes something waits for
 </div>
 <div>
 
-### Pull the plug, and it carries on
+### It survives a crashed server
 
-Kill a node mid-call. The agent resumes on another, and the call runs once.
+Agents are fault-tolerant processes. Kill a node mid-call: the agent resumes on another, and the call runs once.
 
 ```shellsession del={3} mark={5} ins={7}
 [it] laptop for Ana...
@@ -89,26 +89,90 @@ $ kill -9 "$(wardrik pid --node c)"
 
 <section class="home-section">
 
-## Also included
+## Everything your team needs
 
-<dl class="home-specs">
+<div class="team">
 <div>
-<dt>Slack</dt>
-<dd>Answers in threads, and asks there before acting.</dd>
+
+### Approvals in Slack
+
+Choose who approves, channel by channel.
+
+```yaml
+channels:
+  slack:
+    type: slack
+    approvers: ["@maria", "@devon"]
+```
+
 </div>
 <div>
-<dt>Your own tools</dt>
-<dd>TypeScript SDK tools run in your process. MCP servers work too.</dd>
+
+### Tools in your own code
+
+Tools run in your app, with your keys. MCP servers work too.
+
+```ts
+wardrik.tool({
+  name: "refund_order",
+  input: z.object({ orderId: z.string() }),
+  run: ({ orderId }) => refund(orderId),
+});
+```
+
 </div>
 <div>
-<dt>Budgets</dt>
-<dd>A daily cap. When it runs out, the agent asks.</dd>
+
+### Scoped tokens
+
+A token reaches one org's agents, and what it defines stays inside its policy.
+
+```sh
+wardrik token create ci \
+  --scope acme/ --policy careful
+```
+
 </div>
 <div>
-<dt>A full record</dt>
-<dd>Every call and decision, with who approved it.</dd>
+
+### Each person's own accounts
+
+A user's agents use that user's credentials, and never anyone else's.
+
+```sh
+wardrik vault put GITHUB_TOKEN --user jon
+```
+
 </div>
-</dl>
+<div>
+
+### Budgets
+
+A daily cap on models and paid tools. When it runs out, the agent asks.
+
+```yaml
+budget:
+  usd: 5.00
+  per: day
+```
+
+</div>
+<div>
+
+### An audit trail
+
+Every decision is an event, with who made it.
+
+```json
+"type": "wardrik.interrupt.resolved",
+"data": {
+  "decision": "approved",
+  "resolved_by": {"type": "channel", "name": "maria"}
+}
+```
+
+</div>
+</div>
 
 </section>
 

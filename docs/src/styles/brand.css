@@ -631,35 +631,33 @@ site-search button {
 	margin-top: 2rem;
 }
 
-/* The rest of what it does: a level below the proofs, in smaller type. */
-.home-specs {
+/* What a team needs, each with the line of config or code that does it. */
+.team {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 0 2.5rem;
-	margin-top: 1.25rem;
-	font-size: 0.9375rem;
+	gap: 2.5rem 3rem;
+	margin-top: 2rem;
 }
 
-.home-specs > div {
+.sl-markdown-content .team > div {
 	margin: 0;
-	padding-block: 0.875rem;
+	padding-top: 1.25rem;
 	border-top: 1px solid var(--sl-color-gray-5);
 }
 
-@media (max-width: 30rem) {
-	.home-specs {
-		grid-template-columns: 1fr;
-	}
+.team h3 {
+	margin: 0 0 0.375rem;
+	font-size: 1.125rem;
 }
 
-.home-specs dt {
-	font-weight: 600;
-	color: var(--sl-color-white);
-}
-
-.home-specs dd {
-	margin: 0;
-	padding: 0;
+.sl-markdown-content .team p {
+	margin: 0 0 1rem;
 	color: var(--sl-color-gray-2);
+}
+
+@media (max-width: 45rem) {
+	.team {
+		grid-template-columns: minmax(0, 1fr);
+	}
 }
 
