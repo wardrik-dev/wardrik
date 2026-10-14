@@ -31,6 +31,16 @@ export default defineConfig({
 					borderColor: '#23272e',
 					codeFontFamily: "'Geist Mono', ui-monospace, monospace",
 					codeFontSize: '0.84375rem',
+					// Line markers in the brand's state colours: Ember for a call that
+					// waits on a person, green for done, red for stopped.
+					textMarkers: {
+						markBackground: '#fb8a4b24',
+						markBorderColor: '#fb8a4b',
+						insBackground: '#6ccb8e1f',
+						insBorderColor: '#6ccb8e',
+						delBackground: '#f38b821f',
+						delBorderColor: '#f38b82',
+					},
 					uiFontFamily: "'Geist Sans', system-ui, sans-serif",
 					frames: {
 						shadowColor: 'transparent',

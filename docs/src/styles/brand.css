@@ -408,25 +408,204 @@ site-search button {
 	color: var(--sl-color-white);
 }
 
-/* Starlight spaces each block from the one before it; in a grid, the cells
- * line up instead. */
-.home-split > div {
-	margin: 0;
+/* The signature band: how a call is decided, given the page's weight. A
+ * tinted ground runs to the window's edges without widening the page. */
+.home-band {
+	margin-block: 1rem 4rem;
+	padding-block: 3.5rem;
+	background: var(--sl-color-gray-6);
+	box-shadow: 0 0 0 100vmax var(--sl-color-gray-6);
+	clip-path: inset(0 -100vmax);
 }
 
-/* What Wardrik gives you, as a list rather than a wall of cards. */
-.home-specs {
-	margin-top: 1.5rem;
+.home-band h2 {
+	margin-top: 0;
+	font-size: clamp(1.875rem, calc(1rem + 2.5vmin), 2.5rem);
+	letter-spacing: -0.03em;
+	line-height: 1.1;
+}
+
+.home-lead {
+	max-width: 40rem;
+	font-size: 1.1875rem;
+	line-height: 1.6;
+	color: var(--sl-color-gray-2);
+}
+
+.decisions {
+	margin-block: 2rem 1.5rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 12px;
+	background: var(--sl-color-black);
+	overflow: hidden;
+}
+
+.decisions-row {
+	display: grid;
+	grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr) 9rem;
+	gap: 1.5rem;
+	align-items: center;
+	margin: 0;
+	padding: 0.875rem 1.25rem;
 	border-top: 1px solid var(--sl-color-gray-5);
 }
 
-.home-specs > div {
+.decisions-head {
+	border-top: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content .decisions code {
+	justify-self: start;
+	padding: 0;
+	border: 0;
+	background: none;
+	font-size: 0.875rem;
+	white-space: nowrap;
+}
+
+/* A call's outcome, in the state colours: Ember is the colour of a person
+ * deciding. */
+.outcome {
+	justify-self: start;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4375rem;
+	padding: 0.1875rem 0.625rem;
+	border-radius: 999px;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.outcome::before {
+	content: '';
+	width: 0.4375rem;
+	height: 0.4375rem;
+	border-radius: 999px;
+	background: currentColor;
+}
+
+.outcome-runs {
+	background: var(--sl-color-green-low);
+	color: var(--sl-color-green);
+}
+
+.outcome-waits {
+	background: var(--sl-color-accent-low);
+	color: var(--sl-color-text-accent);
+}
+
+.outcome-refused {
+	background: var(--sl-color-red-low);
+	color: var(--sl-color-red);
+}
+
+/* Too narrow for three columns of code: each call stacks over its rule. */
+@media (max-width: 52rem) {
+	.decisions-head {
+		display: none;
+	}
+
+	.decisions-row {
+		grid-template-columns: 1fr;
+		gap: 0.375rem;
+	}
+
+	.decisions-row:nth-child(2) {
+		border-top: 0;
+	}
+
+	.sl-markdown-content .decisions code {
+		white-space: normal;
+	}
+}
+
+/* A transcript's marked lines are states, not a diff: no + or - beside them. */
+.expressive-code .ec-line.ins .code::before,
+.expressive-code .ec-line.del .code::before {
+	content: ' ';
+}
+
+/* The two proofs, side by side a level below the band. */
+.home-proofs {
 	display: grid;
-	grid-template-columns: minmax(10rem, 15rem) 1fr;
-	gap: 0.25rem 2rem;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+	gap: 2.5rem 3rem;
+}
+
+.home-proofs > div {
 	margin: 0;
-	padding-block: 1rem;
-	border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+.home-proofs h3 {
+	margin-top: 0;
+	font-size: 1.375rem;
+}
+
+.hijack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.sl-markdown-content .hijack p {
+	margin: 0;
+}
+
+.hijack-issue {
+	padding: 0.875rem 1rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 8px;
+	color: var(--sl-color-white);
+}
+
+.hijack-issue span {
+	display: block;
+	margin-bottom: 0.25rem;
+	font-size: 0.8125rem;
+	color: var(--sl-color-gray-3);
+}
+
+.hijack-call {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	padding: 0.75rem 1rem;
+	border-radius: 8px;
+	background: var(--sl-color-gray-6);
+}
+
+.sl-markdown-content .hijack-call code {
+	padding: 0;
+	border: 0;
+	background: none;
+}
+
+.home-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin-top: 2rem;
+}
+
+/* The rest of what it does: a level below the proofs, in smaller type. */
+.home-specs {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+	gap: 0 2.5rem;
+	margin-top: 1.25rem;
+	font-size: 0.9375rem;
+}
+
+.home-specs > div {
+	margin: 0;
+	padding-block: 0.875rem;
+	border-top: 1px solid var(--sl-color-gray-5);
 }
 
 .home-specs dt {
@@ -440,26 +619,3 @@ site-search button {
 	color: var(--sl-color-gray-2);
 }
 
-@media (max-width: 40rem) {
-	.home-specs > div {
-		grid-template-columns: 1fr;
-	}
-}
-
-.home-next {
-	margin-top: 3rem;
-	padding-top: 1.5rem;
-	border-top: 1px solid var(--sl-color-gray-5);
-	font-size: 1.125rem;
-}
-
-.home-split {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-	gap: 1.5rem 2.5rem;
-	align-items: start;
-}
-
-.home-split > div > :first-child {
-	margin-top: 0;
-}
