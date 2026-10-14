@@ -228,7 +228,7 @@ channels: [slack]
 ## Over HTTP
 
 A definition sent with `PUT /v1/agents/{id}` takes the same keys, as JSON, with `instructions` in
-place of the body; the ID gives its name, org and user. Its `policy` may name a policy in
-`policies/` but not write one in place, and its `workspace` shares only the trees its token
-reaches. See the
+place of the body; the ID gives its name, org and user. Its `policy` may write rules in place, but
+not `allow_after`: name a policy in `policies/` that has it. Its `workspace` shares only the trees
+its token reaches. See the
 [HTTP API](/reference/http-api/#agents).
