@@ -411,21 +411,53 @@ site-search button {
 /* The signature band: how a call is decided, given the page's weight. A
  * tinted ground runs to the window's edges without widening the page. */
 .home-band {
-	margin-block: 1rem 4rem;
-	padding-block: 3.5rem;
+	margin-block: 0;
+	padding-block: clamp(3.5rem, 7vw, 5.5rem);
 	background: var(--sl-color-gray-6);
 	box-shadow: 0 0 0 100vmax var(--sl-color-gray-6);
 	clip-path: inset(0 -100vmax);
 }
 
-.home-band h2 {
+.home-band h2,
+.home-section h2 {
 	margin-top: 0;
+	margin-bottom: 1.25rem;
 	font-size: clamp(1.875rem, calc(1rem + 2.5vmin), 2.5rem);
 	letter-spacing: -0.03em;
 	line-height: 1.1;
 }
 
+/* Each part of the page is a section of its own, with room around it and a
+ * rule between the white ones. */
+.sl-markdown-content .home-section,
+.sl-markdown-content .home-band {
+	margin-top: 0;
+}
+
+.home-section {
+	padding-block: clamp(3.5rem, 7vw, 5.5rem);
+}
+
+.home-section h2 {
+	font-size: 1.75rem;
+	letter-spacing: -0.02em;
+}
+
+.home-section + .home-section {
+	border-top: 1px solid var(--sl-color-gray-5);
+}
+
+.home-band-end {
+	margin-top: 0;
+}
+
+/* The page ends on the band, not on Starlight's footer space. */
+.home-band-end .home-actions {
+	margin-bottom: 0;
+}
+
 .home-lead {
+	margin-bottom: 2.5rem;
 	max-width: 40rem;
 	font-size: 1.1875rem;
 	line-height: 1.6;
@@ -542,7 +574,13 @@ site-search button {
 
 .home-proofs h3 {
 	margin-top: 0;
-	font-size: 1.375rem;
+	margin-bottom: 0.75rem;
+	font-size: 1.5rem;
+	letter-spacing: -0.02em;
+}
+
+.home-proofs > div > * + * {
+	margin-top: 1.25rem;
 }
 
 .hijack {
