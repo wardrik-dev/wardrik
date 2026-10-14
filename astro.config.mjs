@@ -107,19 +107,11 @@ export default defineConfig({
 							link: '/examples/',
 							items: [
 								{ label: 'Overview', slug: 'examples' },
-								{
-									label: 'Everyday agents',
-									items: [
-										'examples/morning-brief',
-										'examples/telegram-assistant',
-										'examples/skills',
-										'examples/browser-errands',
-									],
-								},
-								{
-									label: 'For a team',
-									items: ['examples/on-call-triage', 'examples/competitor-watch', 'examples/act-on-signals'],
-								},
+								// Each group fills itself from its folder, so adding an example is adding a file.
+								{ label: 'For a team', items: [{ autogenerate: { directory: 'examples/team' } }] },
+								{ label: 'For you', items: [{ autogenerate: { directory: 'examples/you' } }] },
+								{ label: 'For a business', items: [{ autogenerate: { directory: 'examples/business' } }] },
+								{ label: 'For an enterprise', items: [{ autogenerate: { directory: 'examples/enterprise' } }] },
 								{ label: 'Try to break it', items: ['examples/pull-the-plug', 'examples/hijack-me'] },
 							],
 						},

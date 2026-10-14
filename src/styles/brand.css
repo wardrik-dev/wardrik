@@ -211,6 +211,11 @@ h1#_top,
 	color: var(--sl-color-gray-3);
 }
 
+/* A sidebar group whose folder has no pages yet stays out of sight. */
+.sidebar-content li:has(> details):not(:has(details a)) {
+	display: none;
+}
+
 /* A link outside any group reads like the links in one. */
 .sidebar-content a.large {
 	font-size: var(--sl-text-sm);

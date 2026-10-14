@@ -1,8 +1,8 @@
 ---
 title: An agent that acts on what it notices
-description: An agent that hears when a competitor moves, does the work that follows, and proposes the rest as calls the team approves in Slack.
+description: "Drafts a response to each competitor launch, and proposes the next steps as calls to approve."
 sidebar:
-  order: 7
+  order: 3
 ---
 
 This agent doesn't just report a competitor's launch. It drafts your response and proposes next
@@ -370,6 +370,18 @@ Approved, `wardrik triggers` lists the trigger and `wardrik audit` records the a
 A definition sent over HTTP has no `notify`, so its triggered runs post nothing to `#growth`; use
 `wardrik parked`, the [terminal client](/build/tui/) or the HTTP API. Slack threads still ask the
 approvers.
+
+### Steering it in a thread
+
+Reply under anything it posted, and it answers in the thread. Tell it what you want more or less
+of, and it edits the files it works from, so every later run follows:
+
+> **maria:** Stop following their hiring. Look at their pricing page every Monday instead.
+> ↳ **Wardrik:** Done. I took hiring out of WATCHLIST.md, and HEARTBEAT.md now checks
+> rivalco.com/pricing on Mondays.
+
+Threads share the agent's files. See [Threads in Slack](/channels/slack/#threads-in-slack) and
+[A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
 
 ### A record of what it did
 
