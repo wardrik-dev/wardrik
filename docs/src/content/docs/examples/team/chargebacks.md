@@ -106,6 +106,9 @@ wardrik token create disputes --scope acme/ --can serve
 WARDRIK_TOKEN=wardrik_... node disputes.ts
 ```
 
+These three can run inside your shop's own app, beside its web server, using its database code. See
+[Inside your app](/build/host-tools/#inside-your-app).
+
 ### The policy
 
 ```yaml title="~/.config/wardrik/policies/disputes.yaml"
