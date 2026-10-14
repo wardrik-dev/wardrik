@@ -1,89 +1,79 @@
 ---
 title: "Agent files"
-description: "Reads an agent file, one in agents/ under the config directory, into the WardrikDaemon.Definition it writes, and builds the Wardrik.Agent.Spec a definition writes."
-editUrl: false
+description: "An agent is a Markdown file in agents/ under the config directory. Its frontmatter says what it is and what it may do, and its body is its system prompt. This is ~/.config/wardrik/agents/triage.md:"
+editUrl: "https://github.com/wardrik-dev/wardrik/edit/main/packages/wardrik_daemon/guides/agent-files.md"
 sidebar:
   order: 3
 ---
 
-<!-- Written by mix wardrik.docs from WardrikDaemon.AgentFile. Edit it there, not here. -->
+<!-- Written by mix wardrik.docs from packages/wardrik_daemon/guides/agent-files.md. Edit it there, not here. -->
 
-Reads an agent file, one in `agents/` under the config directory, into the
-`WardrikDaemon.Definition` it writes, and builds the `Wardrik.Agent.Spec`
-a definition writes.
+An agent is a Markdown file in `agents/` under the config directory. Its frontmatter says what it is
+and what it may do, and its body is its system prompt. This is `~/.config/wardrik/agents/triage.md`:
 
-    ---
-    name: triage
-    description: Watches the incident queue and says what needs an engineer.
-    model: anthropic:claude-sonnet-5
-    tools: [web_search, linear/*]
-    org: acme
-    user: jon
-    timeout: 600
-    ---
-    You watch the incident queue. Summarise anything new, and say which
-    issues need an engineer.
+```markdown
+---
+description: Watches the incident queue and says what needs an engineer.
+model: anthropic:claude-sonnet-5
+tools: [web_search, linear/*]
+policy: careful
+---
+You watch the incident queue. Summarise anything new, and say which
+issues need an engineer.
+```
 
-The body after the frontmatter is the agent's system prompt, and a file
-with no frontmatter is all prompt.
+`wardrik reload` reads the agent files again and starts what changed. A file that doesn't read says
+why, and an agent already running keeps what it had. A file with no frontmatter is all prompt.
 
-| Key | What it gives the agent |
+## Keys
+
+| Key | Means |
 | --- | --- |
-| `name` | its name, and with `org` and `user` its ID in the fleet. The file's name without `.md` when absent |
-| `org` | the org it belongs to. `config.yaml`'s `org` when absent |
+| `name` | its name; the file's name without `.md` unless set |
+| `org` | the org it belongs to; `config.yaml`'s `org` unless set |
 | `user` | the user of its org it works for, if any |
 | `description` | what it is for, as `wardrik show` shows it |
-| `model` | the model, as `provider:model`. `Wardrik.LLM.Config`'s default when absent |
-| `tools` | what it may call; see below |
-| `workspace` | the trees it shares with other agents, under `shared`; see below |
-| `context` | the files read into each turn; see below |
-| `policy` | what its tool calls may do; see below |
-| `timeout` | how many seconds a turn may take |
-| `idle_timeout` | how many seconds it may have nothing to do before it sleeps, or `infinity`; `config.yaml`'s `defaults` when absent, and 900 where they set none. A sleeping agent wakes when something asks it; see `Wardrik.Agent` |
-| `max_iterations` | how many rounds of tool calls a turn may make, or `infinity` |
-| `retries` | how many seconds a turn waits before asking a failed model call again, one wait for each try; see below |
-| `compaction` | when it summarises its older history, as `at`, `keep` and `window`; see `Wardrik.Compaction`. `false` never does |
-| `triggers` | when it is asked something on a clock, or by a webhook; see below |
-| `notify` | who hears when it parks, fails or answers; see below |
-| `channels` | the chat channels it may be chosen to answer in; see below |
+| `model` | the model, as `provider:model` |
+| [`tools`](#tools) | what it may call |
+| [`workspace`](#workspace) | the trees of files it shares with other agents |
+| [`context`](#workspace) | the files read into each turn |
+| [`policy`](#policy) | what its tool calls may do |
+| `timeout` | seconds a turn may take |
+| `idle_timeout` | seconds it may have nothing to do before it sleeps, or `infinity`; 900 unless `config.yaml`'s `defaults` say otherwise. A sleeping agent wakes when something asks it |
+| `max_iterations` | rounds of tool calls a turn may make, or `infinity` |
+| [`retries`](#retries) | how long to wait before asking a failed model call again |
+| `compaction` | when it summarises its older history, as `at`, `keep` and `window`, or `false` never to |
+| [`triggers`](#triggers) | when it is asked something on a clock, by a feed, or by a webhook |
+| [`notify`](#notify) | who hears when it waits on a person, fails or answers |
+| [`channels`](#channels) | the chat channels it may answer in |
 
-Its ID is `org/name`, or `org/@user/name` for one that works for a user:
-the file above is `acme/@jon/triage`. See `Wardrik.Fleet`.
+Keys an agent file leaves out come from `config.yaml`'s [`defaults`](/reference/config/#defaults).
 
-## Tools
+Its ID is `org/name`, or `org/@user/name` for one that works for a user: the file above, with
+`org: acme` and `user: jon`, would be `acme/@jon/triage`. The CLI finds an agent of the deployment's
+org by its name alone.
 
-`tools` lists what the agent may call, and an agent whose file lists none
-has none.
+## tools
 
-  * a tool the daemon ships, by name: `web_search`, `deep_research`, `run_lua`
-  * `files`, the six file tools over the agent's own tree and the trees it
-    shares, as `WardrikWorkspace` describes them
-  * `server/*`, every tool of an MCP server as `config.yaml` names it. A
-    server's `only` and `except` narrow what it offers
-  * `workers/*`, every tool the connected tool workers offer the agent, as
-    `WardrikHTTP.Workers` describes them. A policy narrows what it may call
-  * `self/*`, the agent's operations on itself, as `Wardrik.Catalog.Self`
-    describes them: reading its snapshot and definition, defining itself
-    again, and setting and removing its own triggers, so it can change
-    what it watches. An agent its file declares keeps the definition and
-    triggers its file writes
-  * `agents/*`, its operations on the agents of its org, as
-    `Wardrik.Catalog.Agents` describes them, so it can delegate; see
-    below
-  * `*`, every tool the daemon ships, the file tools, every MCP server
-    the agent can reach, every tool worker's tools, and its operations on
-    itself and on the agents of its org
-  * a module implementing `Wardrik.Tool`
+What the agent may call. An agent whose file lists none has none.
 
-An agent reaches an MCP server that serves its org, as the server's `org`
-in `config.yaml` says. A file naming a server its agent cannot reach does
-not read, and says why.
+| Entry | Gives it |
+| --- | --- |
+| `web_search`, `deep_research`, `run_lua` | a tool the daemon ships, by name |
+| `files` | the file tools, over its own tree and the trees it shares |
+| `server/*` | every tool of an MCP server `config.yaml` names; a server's `only` and `except` narrow them |
+| `workers/*` | every tool the connected [tool workers](/build/tool-workers/) offer it |
+| `self/*` | its operations on itself: reading its snapshot and definition, and changing its own triggers |
+| `agents/*` | its operations on the other agents of its org; see [Delegating](#delegating) |
+| `*` | all of the above |
 
-## Delegating
+An agent reaches an MCP server that serves its org; a file naming one it can't reach doesn't read.
+A [policy](#policy) narrows what it may call.
 
-`agents/*` lets the agent work with the other agents of its org, each
-named by the `agent` its tools take, as `reconciler`, or `@jon/reconciler`
-for one that works for a user:
+### Delegating
+
+`agents/*` lets the agent work with the other agents of its org, each named as `reconciler`, or
+`@jon/reconciler` for one that works for a user:
 
 | Tool | Does |
 | --- | --- |
@@ -91,221 +81,154 @@ for one that works for a user:
 | `agent_read` | reads one's snapshot: its status, what it waits on, its conversation |
 | `agent_definition_read` | reads one's definition |
 | `agent_ask` | sends one a message, whose answer comes back later |
-| `agent_define` | defines one, a worker, from a whole definition, or defines it again |
+| `agent_define` | defines a worker, or defines one again |
 | `agent_trigger_set`, `agent_trigger_remove` | changes one's triggers |
 
-An agent that asks another something goes on with its turn. Once the turn
-that takes the message ends, the answer comes back to it as a message from
-that agent, holding the labels of what it read: after a delegate has read
-content from outside, so has the agent that hears its answer. A delegate
-whose turn fails, or is stopped, says so instead; one waiting on a person
-answers once someone decides. See "Answering another agent" in
-`Wardrik.Agent`.
+Asking and defining wait on a person, as every change does, unless the policy allows them:
 
-An agent defined this way is held to the policies and budget of the agent
-that defined it, ahead of its own definition's, so a worker is never
-looser than the agent that made it; it runs as an agent defined over HTTP
-does, and a file's agent refuses to be defined again. Asking and defining
-wait on a person, as every change does, unless the policy allows them:
+```yaml
+tools: [agents/*]
+policy:
+  allow: [agent_ask]
+```
 
-    tools: [agents/*]
-    policy:
-      allow: [agent_ask]
+An agent defined this way is held to the policies and budget of the agent that defined it, so a
+worker is never looser than the agent that made it. See
+[Delegate to other agents](/build/delegation/).
 
-## Workspace
+## workspace
 
-`files` gives the agent a tree of its own, kept in the store, and
-`workspace` shares others with it, each seen under `shared/<name>/`:
+`files` gives the agent a tree of its own, kept in the store, and `workspace` shares others with it,
+each seen under `shared/<name>/`:
 
-    tools: [files]
-    workspace:
-      shared:
-        team: acme                                  # acme's tree, read and written
-        runbooks: {tree: acme/runbooks, mode: read}
+```yaml
+tools: [files]
+workspace:
+  shared:
+    team: acme                                  # acme's tree, read and written
+    runbooks: {tree: acme/runbooks, mode: read}
+```
 
-A tree is reachable by the agents under the scope its name begins with, as
-`WardrikWorkspace.Spec` says, and by those `config.yaml`'s
-`workspace.shared` lets mount it, in the mode it lets them; a file naming
-one its agent cannot reach does not read. A conversation of the agent, one with an external ID, works
-in the agent's own tree, so what one thread keeps the next finds.
+A tree is reachable by the agents under the org or user its name begins with, and by those
+`config.yaml`'s [`workspace.shared`](/reference/config/#workspace) lets mount it, in the mode it lets them. A
+file naming one its agent can't reach doesn't read.
 
-As each turn begins the agent is told what its workspace holds: the files
-`context` names, up to 16 KB of them in all, and the names of the others at
-the top of its tree, which it reads when it needs them. So a `MEMORY.md` it
-keeps is there to find in every turn without filling the context:
+`context` names files read into every turn, up to 16 KB of them in all. The agent is also told the
+names of the other files at the top of its tree, which it reads when it needs them:
 
-    tools: [files]
-    context: [SOUL.md, shared/team/CONVENTIONS.md]
+```yaml
+tools: [files]
+context: [MEMORY.md, shared/team/CONVENTIONS.md]
+```
 
-A file longer than its share is read from its start and its end, and the
-agent is asked to make one of its own shorter. `max_bytes` reads more or
-less of them into each turn, from 1,024 to 262,144 bytes:
+`max_bytes` reads more or less into each turn, from 1,024 to 262,144 bytes:
 
-    context:
-      files: [SOUL.md, MEMORY.md]
-      max_bytes: 65536
+```yaml
+context:
+  files: [SOUL.md, MEMORY.md]
+  max_bytes: 65536
+```
 
-A file read into the turn labels it from its start with the labels of what
-the turns that wrote it had read, such as content from outside. See
-`WardrikWorkspace.Context`.
+A file longer than its share is read from its start and its end, and the agent is asked to make it
+shorter. See [Files and memory](/concepts/files-and-memory/).
 
-## Policy
+## policy
 
-`policy` is one of
+The name of a policy in `policies/`, as `policy: careful` for `policies/careful.yaml`, or rules
+written in place:
 
-  * the name of a policy in `policies/` under the config directory:
-    `policy: careful` for `policies/careful.yaml`
-  * rules written in place, as a policy file writes them:
+```yaml
+policy:
+  ask: [github/*]
+  deny: [run_lua]
+```
 
-        policy:
-          ask: [github/*]
-          deny: [run_lua]
+Without one, every call the agent's tools allow may run, apart from a gated tool's, which waits on a
+person. See [Policies](/reference/policies/) for what a policy holds.
 
-  * a module implementing `Wardrik.Hook`
+## retries
 
-and without one every call the agent's tools allow may run, apart from a
-gated tool's, which waits on a person unless a rule allows it by name. Rules,
-named or written in place, are a `WardrikPolicy`, and the agent carries them
-as its `Wardrik.Hook`s: they are written to the store with it and decide its
-calls on any node. A rule may name what a call acts on, as
-`write_file(notes/*)`. A policy with a `budget` limits what the agent spends
-on model calls too, parking it when the budget runs out until a person
-approves more.
+The waits, in seconds, before a model call that failed for a passing reason, such as a timeout, a
+dropped connection or a provider's 5xx, is asked again. The turn fails after the last.
 
-Once a turn has read content from outside, from `web_search`,
-`deep_research`, an MCP server `config.yaml` does not mark `trusted`, or a
-tool worker, it carries the label `outside`, there and in every turn after
-it, until `wardrik clear` empties the agent's conversation, and its `allow`
-rules stop counting for a gated tool's calls: each waits on a person, who
-sees what it would do. An `allow_after` rule for the label still counts,
-for a tool whose calls may follow what a stranger wrote:
+```yaml
+retries: [2, 10, 30]    # after 2s, then 10s, then 30s
+retries: []             # never ask again
+```
 
-    policy:
-      allow: [linear/*]
-      allow_after:
-        outside: [github/add_labels]
+`[1, 5]` unless `config.yaml`'s `defaults` say otherwise.
 
-See `WardrikPolicy`. A definition over HTTP cannot write one in place,
-though it may name a policy in `policies/` that has one.
+## triggers
 
-## Retries
+One trigger or a list of them, each asking the agent something on a clock, when a feed has something
+new, or when a service sends it a webhook:
 
-A model call that fails for a passing reason, such as a timeout, a dropped
-connection or a provider's 5xx, is asked again after each wait `retries`
-lists, in seconds, before the turn fails; see `Wardrik.LLM.Retry`.
+```yaml
+triggers:
+  - name: sweep
+    every: "*/30 * * * *"
+    prompt: Check the incident queue.
+  - name: rivals
+    every: 1h
+    feed: [https://rivalco.example/changelog.rss]
+    prompt: What changed at our competitors?
+  - name: issues
+    webhook:
+      secret: ${ISSUES_HOOK_SECRET}
+    prompt: An event is below. Triage it.
+```
 
-    retries: [2, 10, 30]    # after 2s, then 10s, then 30s
-    retries: []             # never ask again
+| Key | Means |
+| --- | --- |
+| `every` | a cron expression in UTC, quoted, or a duration of at least a minute, as `30m`, `2h` or `1d`; a webhook trigger has none |
+| `prompt` | what the agent is asked |
+| `prompt_file` | in place of `prompt`, a file in its workspace it is asked to read and follow, so it can edit its own checklist; needs `files` |
+| `name` | the trigger's name; `trigger-1`, `trigger-2` and so on by its place unless set |
+| `overlap` | `skip` leaves a busy agent be, `queue` asks it anyway; `skip` unless set, `queue` for a webhook |
+| `missed` | `run_once` runs once for what was missed while the daemon was down, `skip` lets it go; `run_once` unless set |
+| `jitter` | up to this many seconds added to each run |
+| `feed` | an RSS or Atom feed's URL, or a list of them; the agent is asked only when one has new entries, with them under the prompt. The first run only notes what a feed holds |
+| `webhook` | a service sends it requests in place of a clock; see below |
 
-`config.yaml`'s `defaults` when absent, and `[1, 5]` where they set none.
+A webhook trigger takes `secret`, the secret the service holds, as `${NAME}`, and `verify`:
+`shared`, where a request presents the secret as a bearer token or at the end of its path, or
+`standard`, where it is signed as the Standard Webhooks spec says. `shared` unless set. The service
+sends requests to `config.yaml`'s `base_url` and `/v1/hooks/{agent}/{trigger}`, which `wardrik
+triggers` prints, and the agent is asked about each once, with its body under the prompt. See
+[Trigger an agent](/build/triggers/).
 
-## Triggers
+## notify
 
-`triggers` is one trigger or a list of them, each a `WardrikTrigger`,
-that ask the agent, and none of its conversations, on a clock, when a
-feed it watches has something new, or when a service sends it a webhook:
+Routes the agent's notices to targets `config.yaml`'s [`notify`](/reference/config/#notify) names:
 
-    triggers:
-      - name: sweep
-        every: "*/30 * * * *"
-        prompt: Check the incident queue.
-      - name: digest
-        every: "0 17 * * 1-5"
-        prompt: Write up what happened today.
-        overlap: queue
-      - name: rivals
-        every: 1h
-        feed: [https://rivalco.example/changelog.rss, https://hnrss.org/newest?q=rivalco]
-        prompt: What changed at our competitors?
-      - name: issues
-        webhook:
-          secret: ${ISSUES_HOOK_SECRET}
-        prompt: An event is below. Triage it.
+```yaml
+notify: ops                      # waiting and failed turns, to ops
+notify: [ops, audit]
+notify: {to: [ops], on: [parked, failed, finished]}
+```
 
-  * `every` - a cron expression in UTC, quoted, since YAML reads a leading
-    `*` as something else; or a duration of at least a minute, as `30m`,
-    `2h` or `1d`. A `webhook` trigger has none
-  * `prompt` - what the agent is asked
-  * `prompt_file` - in place of `prompt`, a file in its workspace: each time
-    the trigger fires the agent is asked to read it and do what it says,
-    so the agent can edit the checklist it follows. It needs `files` in
-    `tools`
-  * `name` - the trigger's name, `trigger-1`, `trigger-2` and so on by
-    its place in the list when absent
-  * `overlap` - `skip` leaves an agent that is running or waiting on a
-    person be, and `queue` asks it anyway; `skip` by default, and `queue`
-    for a `webhook` trigger
-  * `missed` - `run_once`, the default, fires once for runs missed while
-    the daemon was down, and `skip` lets them go
-  * `jitter` - up to this many seconds added to each run
-  * `feed` - an RSS or Atom feed's URL, or a list of them, read on each
-    run: the agent is asked only when one has entries it has not seen,
-    with them under the prompt, as `WardrikTrigger.Feed` reads them. The
-    first run only notes what a feed already holds
-  * `webhook` - a service sends it requests in place of a clock, with its
-    own settings: `secret`, the secret the service holds, as `${NAME}`,
-    read for the agent as a tool's credential is, the vault's for its
-    user, org or deployment, else the environment; and `verify`, `shared`
-    by default, where a request presents the secret as a bearer token or
-    at the end of its path, or `standard`, where it is signed as the
-    Standard Webhooks spec says. The service sends them to
-    `config.yaml`'s `base_url` and `/v1/hooks/{key}/{name}`, and the agent
-    is asked about each once, with its body under the prompt, as
-    `WardrikTrigger.Webhook` reads it
+`on` lists what is sent: `parked` for a call waiting on a person, `failed`, and `finished` for what
+a turn answered. A target serves one org's agents; a file routing to another org's doesn't read.
 
-## Channels
+## channels
 
-`channels` lists the channels of `config.yaml`'s `channels` the agent is
-offered in. Inviting a channel's bot into a room then offers it there, as
-`WardrikChannel.Rooms` describes, where the channel serves the agent's org:
+The channels of `config.yaml`'s [`channels`](/reference/config/#channels) the agent may be offered in.
+Inviting a channel's bot into a room then offers it there:
 
-    channels: [slack]
-
-## Notify
-
-`notify` routes the agent's notices to targets `config.yaml`'s `notify`
-section names, as `WardrikNotify` describes them:
-
-    notify: ops                      # parked and failed turns, to ops
-    notify: [ops, audit]
-    notify: {to: [ops], on: [parked, failed, finished]}
-
-`on` lists what is sent: `parked`, `failed`, and `finished` for what a turn
-answered. A target tells the agents of the org its `org` in `config.yaml`
-names, and a file routing to one for another org does not read. A
-definition sent over HTTP takes `notify` too, and means the same by it.
-
-The agent resolves the credentials its tools name from `WardrikVault`: its
-user's, its org's or the deployment's, and an account its user, or its
-org, connects through `WardrikOAuth` where a provider is named for one
-nobody holds. It records every tool call in `Wardrik.Ledger.Store`, so a
-turn lost part way through runs no call twice.
-
-## Over HTTP
-
-`define/3` reads the body of `PUT /v1/agents/{id}` into a definition, for
-`WardrikHTTP` through `WardrikDaemon.Agents`, and `spec/3` builds its spec
-as it does a file's:
-
-    {"description": "Watches the incident queue.",
-     "instructions": "You watch the incident queue.",
-     "model": "anthropic:claude-sonnet-5",
-     "tools": ["web_search", "linear/*"],
-     "policy": {"ask": ["linear/*"]}}
-
-`wardrik_protocol`'s `agent_definition.json` is its schema. `instructions` is
-the system prompt, as a file's body is, and the other keys mean what they
-mean in a file. The ID gives the agent's `name`, `org` and `user`. Its
-`triggers` lists the agent's triggers as a file's does, and
-`put_trigger/3` and `delete_trigger/2` change one of them in a definition
-kept, for the triggers routes. Its `tools` and
-`policy` name what the daemon ships or configures, and never a module,
-and its `workspace` shares only the trees the scope of the token that
-sent it covers.
+```yaml
+channels: [slack]
+```
 
 ## Written by wardrik
 
-`wardrik agent spawn` writes a file here: the frontmatter it chooses, such
-as `config.yaml`'s `defaults`, and a short prompt to edit into what the
-agent is for. `wardrik init` writes the front door's, whose body is its
-instructions and a playbook to edit; see `WardrikDaemon.CLI.Init`.
+`wardrik agent spawn` writes a file here from `config.yaml`'s `defaults` and a short prompt to edit.
+`wardrik init` writes the front door's, whose body is its instructions and a playbook to edit; see
+[The front door](/build/front-door/).
+
+## Over HTTP
+
+A definition sent with `PUT /v1/agents/{id}` takes the same keys, as JSON, with `instructions` in
+place of the body; the ID gives its name, org and user. Its `policy` may name a policy in
+`policies/` but not write one in place, and its `workspace` shares only the trees its token
+reaches. See the
+[HTTP API](/reference/http-api/#agents).
