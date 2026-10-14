@@ -621,14 +621,66 @@ site-search button {
 }
 
 /* The two proofs, side by side a level below the band. */
+/* Each proof spans four rows, title, line, example and link, so a pair
+ * lines up row by row. */
 .home-proofs {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-	gap: 2.5rem 3rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 3.5rem 3rem;
 }
 
-.home-proofs > div {
+.sl-markdown-content .home-proofs > div {
+	display: grid;
+	grid-row: span 4;
+	grid-template-rows: subgrid;
+	grid-template-columns: minmax(0, 1fr);
+	row-gap: 0;
+	min-width: 0;
 	margin: 0;
+}
+
+.sl-markdown-content .home-proofs > div > * {
+	margin: 0 0 1.25rem;
+}
+
+.sl-markdown-content .home-proofs > div > :last-child {
+	margin-bottom: 0;
+}
+
+.sl-markdown-content .home-proofs .expressive-code,
+.sl-markdown-content .proof-example .expressive-code {
+	display: flex;
+	flex-direction: column;
+}
+
+.home-proofs .expressive-code .frame {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+}
+
+.home-proofs .expressive-code pre {
+	flex: 1;
+}
+
+.proof-example {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.sl-markdown-content .proof-example > * {
+	margin: 0;
+}
+
+.sl-markdown-content .proof-example .expressive-code {
+	flex: 1;
+}
+
+@media (max-width: 52rem) {
+	.home-proofs {
+		grid-template-columns: minmax(0, 1fr);
+	}
 }
 
 .home-proofs h3 {
@@ -638,9 +690,7 @@ site-search button {
 	letter-spacing: -0.02em;
 }
 
-.home-proofs > div > * + * {
-	margin-top: 1.25rem;
-}
+
 
 .hijack {
 	display: flex;
