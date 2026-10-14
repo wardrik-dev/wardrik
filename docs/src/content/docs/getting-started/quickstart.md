@@ -38,7 +38,7 @@ wardrik ls
 
 `wardrik ls` lists the worker it defined beside it, and `wardrik triggers` when that worker runs
 next. Ask it "What are you doing for me?", or tell it "check every hour" or "stop", and it proposes
-the change. See [The front door](/guides/front-door/).
+the change. See [The front door](/build/front-door/).
 
 ## Write an agent
 
@@ -89,13 +89,13 @@ streams what they do as [events](/reference/events/).
 
 ## Next
 
-- [The front door](/guides/front-door/): what it may do, where its results go, and the playbook it
+- [The front door](/build/front-door/): what it may do, where its results go, and the playbook it
   follows.
-- [Recipes](/recipes/): agents to copy and run, from a morning brief to one that anyone may try to
+- [Examples](/examples/): agents to copy and run, from a morning brief to one that anyone may try to
   hijack.
 - [Agents](/concepts/agents/): how an agent answers in turns, and where it runs.
 - [Policy and approvals](/concepts/policy/): what an agent's tool calls may do, and which wait on a
   person.
-- [Connect MCP servers](/guides/mcp/): give agents the tools of the services you use.
-- [Trigger an agent](/guides/triggers/): ask it something on a clock.
+- [Connect MCP servers](/build/mcp/): give agents the tools of the services you use.
+- [Trigger an agent](/build/triggers/): ask it something on a clock.
 - [Agent files](/reference/agent-files/): every key an agent file takes.

@@ -1,0 +1,14 @@
+---
+// The sidebar topics as tabs in the header, beside the wordmark.
+const { topics } = Astro.locals.starlightSidebarTopics;
+---
+
+<nav class="topic-tabs" aria-label="Sections">
+	{
+		topics.map((topic) => (
+			<a href={topic.link} aria-current={topic.isCurrent ? 'true' : undefined}>
+				{topic.label}
+			</a>
+		))
+	}
+</nav>

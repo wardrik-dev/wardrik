@@ -113,7 +113,7 @@ with `GET /v1/agents/{key}`, whose `sequence` is where its state was taken, and 
 from there.
 
 The TypeScript SDK follows a stream, reconnects, and resumes from the last sequence for you. See
-[Use the HTTP API](/guides/http-api/).
+[Use the HTTP API](/build/http-api/).
 
 ## Traces
 
@@ -128,4 +128,4 @@ A turn that carries on after a lost node, or after a person decides, keeps its t
 
 An agent nobody is watching can tell someone when it parks, fails or answers, in Slack or with a
 signed webhook. A notice is not an event: it is sent once, from the node holding the agent, to the
-targets an agent file routes it to. See [Send notices](/guides/notices/).
+targets an agent file routes it to. See [Send notices](/build/notices/).

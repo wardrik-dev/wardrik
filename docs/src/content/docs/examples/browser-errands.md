@@ -19,8 +19,8 @@ The browser is Playwright's MCP server, which the daemon runs as a command.
 - Node, for `npx`, and Chrome, which `npx playwright install chrome` installs where it is not
   already;
 - somewhere to approve from: `wardrik approve` in a shell, the
-  [terminal client](/guides/tui/), Slack with [buttons](/channels/slack/), or the
-  [Telegram bridge](/recipes/telegram-assistant/).
+  [terminal client](/build/tui/), Slack with [buttons](/channels/slack/), or the
+  [Telegram bridge](/examples/telegram-assistant/).
 
 ## The browser
 
@@ -143,14 +143,14 @@ steer a click towards.
   by name, so a policy written later with `default: allow` cannot let them through. See
   [Gated tools](/concepts/policy/#gated-tools).
 - **Narrowing a server.** `except` leaves tools out altogether, by the names the server gives them.
-  See [Connect MCP servers](/guides/mcp/#giving-an-agent-the-tools).
+  See [Connect MCP servers](/build/mcp/#giving-an-agent-the-tools).
 - **A parked turn waits.** It does not time out, and an agent's `timeout` starts again when it
   carries on, so an errand can wait for you through a meeting. See
   [Waiting on a person](/concepts/policy/#waiting-on-a-person).
 
 ## Taking it further
 
-- Give the [assistant in Telegram](/recipes/telegram-assistant/) the browser, by adding
+- Give the [assistant in Telegram](/examples/telegram-assistant/) the browser, by adding
   `browser/*` to its tools, and approve each step from your phone.
 - `--isolated` keeps the browser's profile in memory, so no cookie outlives the server; without it,
   a site you are signed in to stays signed in.

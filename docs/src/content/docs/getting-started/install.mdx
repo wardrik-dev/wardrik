@@ -56,7 +56,7 @@ wardrik init
 
 `wardrik init` says what it finds, then asks for a model provider, offering those whose key your
 shell already sets, a model, the provider's key, which it does not show as you type, and the first
-agent's name. It writes `agents/assistant.md`, the [front door](/guides/front-door/), which runs
+agent's name. It writes `agents/assistant.md`, the [front door](/build/front-door/), which runs
 that model and turns what you ask for into work that runs, and a `config.yaml` whose `defaults` give
 that model to each agent `wardrik agent spawn` starts and each worker the front door defines. It
 offers to let your SSH keys in for `wardrik attach`, starts the daemon, under your systemd from boot
@@ -117,12 +117,8 @@ The nodes of a cluster on one machine share the key. A node on another host need
 
 ## Upgrade
 
-Run the install script again. It puts the new release beside the old one and points `wardrik` at
-it, keeping the one before. The service runs the new release when it restarts:
-
-```sh
-systemctl --user restart wardrik
-```
+Run the install script again, and restart the service. See
+[Upgrade and back up](/run/upgrade-and-back-up/), which also covers going back to the release before.
 
 ## Remove it
 

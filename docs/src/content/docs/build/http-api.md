@@ -2,7 +2,7 @@
 title: Use the HTTP API
 description: Define an agent, ask it something, follow its answer and decide what it waits on, over HTTP or with the TypeScript SDK.
 sidebar:
-  order: 6
+  order: 4
 ---
 
 The daemon serves a JSON API on `127.0.0.1:4747`. It defines and removes agents, sends them
@@ -26,7 +26,7 @@ curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents
 
 `--scope acme/` reaches the agents whose keys begin `acme/`, and an agent outside it is answered as
 one that does not exist. A token that can define agents holds them to a policy, here `careful`,
-ahead of their own. See [Tokens](/operate/security/#tokens).
+ahead of their own. See [Tokens](/run/security/#tokens).
 
 ## Define an agent
 
@@ -51,7 +51,7 @@ gives the running agent what the definition says now, keeping its conversation.
 
 A definition takes `description`, `instructions` for the system prompt, `model`, `tools`,
 `workspace`, `context`, `policy`, `timeout`, `max_iterations`, `retries`, `compaction`, `triggers`
-and [`notify`](/guides/notices/), as an [agent file](/reference/agent-files/) does. It names tools and policies the
+and [`notify`](/build/notices/), as an [agent file](/reference/agent-files/) does. It names tools and policies the
 daemon ships or configures, never a module, shares only the trees its token's scope covers, and
 cannot trust outside content. A key an agent file declares belongs to the file, and is refused with
 `409`.
@@ -111,7 +111,7 @@ the answer.
 
 An interrupt with the reason `authorization` waits on a person to connect an account.
 `GET .../interrupts/{id}/authorization` answers where, as `{"url": ..., "code": ...}`, and the call
-carries on by itself once they have. See [Connect accounts](/guides/accounts/).
+carries on by itself once they have. See [Connect accounts](/build/accounts/).
 
 ## Connect accounts
 
@@ -167,11 +167,11 @@ Where an agent runs is the deployment's to say: `POST .../move` with `{"node": "
 or `spawn` with a node, takes a token over every agent.
 
 A definition's `triggers` lists the agent's triggers, and one is put or removed at
-`/triggers/{name}`; see [Trigger an agent](/guides/triggers/#over-http).
+`/triggers/{name}`; see [Trigger an agent](/build/triggers/#over-http).
 
 A service's webhooks reach a `webhook` trigger at `POST /v1/hooks/{key}/{name}`, with no token: the
 trigger checks each request's signature instead. See
-[Receiving a webhook](/guides/triggers/#receiving-a-webhook).
+[Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ## The deployment
 
@@ -237,4 +237,4 @@ for await (const event of agent.ask("What is on fire?")) {
 `ask` gives the events of the turn that answers the message, until it completes, fails or is
 cancelled. `wardrik.connections` lists, connects and forgets accounts, with `{owner: "org"}` for the
 org's, and `wardrik.deployment` lists the nodes, reloads and pages the audit. A request the API refuses throws a `WardrikError` with its `status`, `type` and
-`requestId`. The SDK also runs tools in your app; see [Tools in your app](/guides/tool-workers/).
+`requestId`. The SDK also runs tools in your app; see [Tools in your app](/build/tool-workers/).

@@ -3,6 +3,7 @@ title: Channels
 description: The chat media agents are reached through, such as Slack. A channel is configured once, a room in it is bound to an agent by inviting its bot, the agent answers each conversation in a thread, and notices are posted in a room.
 sidebar:
   order: 1
+  label: Overview
 ---
 
 A *channel* is a chat medium Wardrik's agents are reached through, configured once under a name of
@@ -51,7 +52,7 @@ stand:
 - **Several offered:** each with what it is for, and a button to use it.
 - **None offered:** a button to create one for the room, from `config.yaml`'s `defaults`, where
   they name a policy. It is named after the room, offered in the channel, and kept as an agent the
-  [HTTP API](/guides/http-api/) defined is, so whoever runs Wardrik can change it later. A channel's
+  [HTTP API](/build/http-api/) defined is, so whoever runs Wardrik can change it later. A channel's
   `create: false` turns this off; the bot then says who can offer an agent.
 
 Taking the bot out of the room unbinds it. Each binding, each change to it, and each agent created
@@ -70,7 +71,7 @@ agent reads names who sent it.
 What the agent answers is posted in the thread, and so is anything it asks before a call its
 [policy](/concepts/policy/) holds for a person, with buttons to answer it. Who decides a call,
 and how, is said there once they have, wherever they decided it. A call waiting on someone to
-[connect an account](/guides/accounts/) says so once they have, and carries on. A turn
+[connect an account](/build/accounts/) says so once they have, and carries on. A turn
 that fails says why there. Replies are taken from the agent's [event log](/concepts/events/), so one held up by a
 restart, or refused by the channel for a while, is posted when the daemon can.
 
@@ -98,7 +99,7 @@ Everyone in a channel may read and message the agents of the orgs it offers. See
 
 ## Notices in a room
 
-A [notice target](/guides/notices/) can be a room of a channel, with who may answer what it asks.
+A [notice target](/build/notices/) can be a room of a channel, with who may answer what it asks.
 Its approvers may answer in the channel as its own approvers do:
 
 ```yaml

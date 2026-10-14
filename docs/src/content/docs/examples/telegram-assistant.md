@@ -116,7 +116,7 @@ It holds three things open at once:
   you goes back to the chat. A `run.interrupted`, from any turn, goes with the arguments of the call
   it waits on, which the `message.completed` before it named, and Approve and Deny buttons; pressing
   one calls `agent.approve` or `agent.reject`.
-- **A tool.** It offers `message_me`, as a [tool worker](/guides/tool-workers/), so a turn you did
+- **A tool.** It offers `message_me`, as a [tool worker](/build/tool-workers/), so a turn you did
   not start can still reach you. The agent has it because its file lists `workers/*`. A worker's
   tool that is not read-only is gated, so it asks unless the policy allows it by name; and once the
   agent has searched the web, what it read stays in its conversation, and an `allow` rule stops
@@ -133,7 +133,7 @@ A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardri
   The files are in the store, so they live wherever the agent does. See
   [Files and memory](/concepts/files-and-memory/).
 - **A heartbeat it edits.** `prompt_file` asks it to follow `HEARTBEAT.md` as it stands each time.
-  See [A checklist the agent can edit](/guides/triggers/#a-checklist-the-agent-can-edit).
+  See [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
 - **Rules outside the conversation.** The policy is not in the prompt, so no instruction to the
   agent loosens it, and no summary of a long history loses it: a change to `SOUL.md` asks you
   every time. See [Policy and approvals](/concepts/policy/).
@@ -146,13 +146,13 @@ A heartbeat's own answer goes nowhere: it is in the agent's history, and `wardri
   [Budgets](/concepts/policy/#budgets).
 - **A token for one job.** The bridge cannot reach another user's agents or define new ones, and
   revoking its token closes its streams and its worker's connection. See
-  [Tokens](/operate/security/#tokens).
+  [Tokens](/run/security/#tokens).
 
 ## Taking it further
 
 - Give it the tools of your calendar's or your mail's MCP server, and add to `HEARTBEAT.md` what to
   look for in them. Mail is anyone's to write, so gate the tools that send: see
-  [Let anyone try to hijack it](/recipes/hijack-me/) for why that holds.
+  [Let anyone try to hijack it](/examples/hijack-me/) for why that holds.
 - Run the bridge under systemd beside the daemon, or anywhere that reaches the daemon's port.
 - Give everyone in a family or a team an agent of their own, each with `user:` set and a bridge
   whose token reaches only theirs.

@@ -18,7 +18,7 @@ Everything listens on loopback unless you say otherwise.
 | The HTTP API | 4747 | a request with a [token](#tokens) | `http.ip`, or `WARDRIK_HTTP_IP` |
 | The terminal client, over SSH | 2222 | a key in `ssh/authorized_keys` | `ssh.ip`, or `WARDRIK_SSH_IP` |
 | Erlang distribution, and epmd | 4369, and one it chooses | anything holding the cookie | `WARDRIK_DIST_INTERFACE`, with `WARDRIK_DIST_EXPOSED=1` |
-| The OAuth callback | 4599 | a provider sending a browser back | `oauth.redirect.ip`, behind HTTPS; see [A public address](/operate/public-address/) |
+| The OAuth callback | 4599 | a provider sending a browser back | `oauth.redirect.ip`, behind HTTPS; see [A public address](/run/public-address/) |
 
 The HTTP API speaks plain HTTP, and the terminal client SSH. To reach the API across a network, put
 a proxy in front of it that ends TLS: a token sent over plain HTTP can be read on the way.
@@ -38,7 +38,7 @@ An account on the host that can list processes can read the cookie from a comman
 A cluster across machines listens beyond loopback, which the daemon refuses unless
 `WARDRIK_DIST_EXPOSED=1` is set beside `WARDRIK_DIST_INTERFACE`. Do it only on a private network that
 authenticates its members and encrypts their traffic, such as Tailscale or WireGuard, and never on
-a public interface. See [Run a cluster](/operate/cluster/#on-several-machines).
+a public interface. See [Run a cluster](/run/cluster/#on-several-machines).
 
 ## Tokens
 
@@ -63,7 +63,7 @@ wardrik token create NAME (--scope PREFIX | --all) [--can ACTIONS] [--policy NAM
 | `message` | sending messages, and stopping a turn |
 | `decide` | approving and denying waiting calls, and their authorization links |
 | `define` | putting and removing agents and triggers |
-| `serve` | offering tools as a [worker](/guides/tool-workers/) |
+| `serve` | offering tools as a [worker](/build/tool-workers/) |
 
 ```sh
 wardrik token create ci --scope acme/ --policy careful
@@ -103,7 +103,7 @@ The terminal client is served once `~/.config/wardrik/ssh/authorized_keys` lists
 lists reaches every agent and everything the client does, including removing agents. A key logs in
 only under the names it is listed for, by its `principals` option, or else its comment's name before
 any `@`. Other options on a key, such as `from=` and `command=`, are not applied. There are no passwords, and no commands,
-subsystems or forwarding: only the client. See [The terminal client](/guides/tui/).
+subsystems or forwarding: only the client. See [The terminal client](/build/tui/).
 
 ## Secrets
 
@@ -115,7 +115,7 @@ subsystems or forwarding: only the client. See [The terminal client](/guides/tui
 - **Credentials and OAuth tokens** are sealed with AES-256-GCM by the vault, before they are stored.
   Where no key is configured, the first `wardrik vault put` makes `vault_key` beside the store, and
   anyone who can read both reads every secret; `WARDRIK_VAULT_KEY` or `vault.keys` keeps the key
-  apart. The daemon never puts it in its environment. See [Connect accounts](/guides/accounts/).
+  apart. The daemon never puts it in its environment. See [Connect accounts](/build/accounts/).
 - **An MCP server run as a command** is given only `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`,
   `PATH`, `SHELL`, `TERM`, `TMPDIR` and `USER` of the daemon's environment, beside what its own
   config sets, so the keys the daemon holds stay with it. It runs as the daemon's user, so it can

@@ -2,7 +2,7 @@
 title: The terminal client
 description: Watch and talk to agents, and decide what they wait on, in a terminal client the daemon serves over SSH.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 The daemon serves a terminal client over SSH: a transcript of the agent you are attached to, a
@@ -31,7 +31,7 @@ principals="jon,ana" ssh-ed25519 AAAAC3Nza... shared@desk
 ```
 
 A key listed there reaches every agent and may do anything the client does, including starting and
-removing agents. It is not limited the way a [token](/operate/security/#tokens) is.
+removing agents. It is not limited the way a [token](/run/security/#tokens) is.
 
 The daemon listens on port 2222, on loopback. `ssh` in `config.yaml` sets `port`, and `ip` to listen
 beyond loopback. Its host key is made on first start, under `~/.local/share/wardrik/ssh`.

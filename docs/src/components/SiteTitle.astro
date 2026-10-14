@@ -1,8 +1,12 @@
 ---
-// The wordmark: Wardrik in Geist, its i's dot in Ember (see brand.css).
+// The wordmark: Wardrik in Geist, its i's dot in Ember (see brand.css). The
+// header's only slot beside it is this one, so the topic tabs follow it here.
+import TopicTabs from './TopicTabs.astro';
+
 const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
 ---
 
 <a href={siteTitleHref} class="site-title" aria-label={siteTitle} translate="no">
 	<span aria-hidden="true">Wardr<span class="wordmark-i">i</span>k</span>
 </a>
+<TopicTabs />

@@ -103,12 +103,12 @@ want more or less of, change WATCHLIST.md or HEARTBEAT.md, and say what you chan
 
 - `feed` reads the three feeds every half hour, and asks the agent only when one has entries it
   has not seen, with them under the prompt. A half hour with nothing new costs three requests and
-  no model call. See [Watching a feed](/guides/triggers/#watching-a-feed) for where to find a
+  no model call. See [Watching a feed](/build/triggers/#watching-a-feed) for where to find a
   competitor's feeds, and how to make a Google Alert one.
 - `prompt_file` asks the agent, each Monday, to read `HEARTBEAT.md` and do what it says as it
   stands then. The agent writes that file itself, so what it checks changes as the team tells it
   to, and as the Friday review finds what is worth looking at. See
-  [A checklist the agent can edit](/guides/triggers/#a-checklist-the-agent-can-edit).
+  [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
 - `context` reads `WATCHLIST.md` and `LATEST.md` into every turn, so a reply in a thread knows what
   the brief above it said.
 - `notify` posts what each triggered run answers to `#competitors`. A conversation in a thread
@@ -161,7 +161,7 @@ message in the channel, has the agent answer anything posted there, with no ment
 - **A trigger that follows its own checklist.** The agent writes `HEARTBEAT.md`, and each run
   reads it as it stands, so what it does changes without anyone editing its file.
 - **Posting and conversing in one place.** Triggered runs post to a room as notices; replies in the
-  room are threads the agent answers. See [Send notices](/guides/notices/) and
+  room are threads the agent answers. See [Send notices](/build/notices/) and
   [Channels](/channels/).
 - **Memory in files.** Its notes, its watchlist and its last brief are files every conversation
   shares. See [Files and memory](/concepts/files-and-memory/).

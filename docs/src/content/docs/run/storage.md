@@ -25,7 +25,7 @@ Without `storage`, the store is on the node's disk, under `~/.local/share/wardri
 
 In a cluster, every node holds everything, and a write is made once more than half of the nodes
 have it. So three nodes carry on with one lost, and two stop when either is. A node starting waits
-until enough of the others are up. See [Run a cluster](/operate/cluster/).
+until enough of the others are up. See [Run a cluster](/run/cluster/).
 
 ## Postgres
 
