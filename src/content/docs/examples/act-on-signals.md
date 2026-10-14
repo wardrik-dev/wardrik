@@ -27,7 +27,7 @@ spent, waits. A budget caps what it spends in a day, model calls and paid tools 
 - an MCP server for wherever the team tracks its work, here GitHub's, with a token for a machine
   account that can read the repository and open issues in it;
 - the services it should act on, here an ad platform, offered as tools by an app of your own; see
-  [Tools in your app](/guides/tool-workers/). Any service with an MCP server works the same way;
+  [Tools in your app](/build/tool-workers/). Any service with an MCP server works the same way;
 - a Slack app with a bot token and an app-level token, made as
   [Slack](/channels/slack/#a-slack-app) makes one, and a Slack channel for it, here `#growth`.
 
@@ -80,7 +80,7 @@ wardrik doctor
 ## Tools that act
 
 An app of your own offers the agent the ad platform's tools, with the
-[TypeScript SDK](/guides/tool-workers/). It runs in your process with your keys; here `ads` stands
+[TypeScript SDK](/build/tool-workers/). It runs in your process with your keys; here `ads` stands
 for the platform's client:
 
 ```ts title="growth.ts"
@@ -143,7 +143,7 @@ await wardrik.work();
   [gated](/concepts/policy/#gated-tools): each call waits on a person unless a rule allows it by
   name.
 - `cost` says what a call to the paid keyword API cost, which the agent's budget counts. See
-  [What a call cost](/guides/tool-workers/#what-a-call-cost).
+  [What a call cost](/build/tool-workers/#what-a-call-cost).
 - `idempotencyKey` passes the daemon's key for each call on to the platform, so a call the daemon
   runs again, after a node is lost, changes nothing twice.
 
@@ -266,9 +266,9 @@ If nothing matters, answer "Nothing worth acting on." in one line.
 
 - `feed` reads the feeds every half hour, and asks the agent only when one has entries it has not
   seen, with them under the prompt. A run while the agent waits on a person lets it be, and the
-  next run finds the same entries. See [Watching a feed](/guides/triggers/#watching-a-feed).
+  next run finds the same entries. See [Watching a feed](/build/triggers/#watching-a-feed).
 - `prompt_file` asks it each Monday to follow `HEARTBEAT.md`, a checklist it edits itself. See
-  [A checklist the agent can edit](/guides/triggers/#a-checklist-the-agent-can-edit).
+  [A checklist the agent can edit](/build/triggers/#a-checklist-the-agent-can-edit).
 - `workspace` shares acme's tree with it as `shared/team/`, where the team reads its drafts and
   the team's other agents can too.
 - `context` reads `WATCHLIST.md` and `DECISIONS.md` into every turn, so what the team approved and
@@ -335,7 +335,7 @@ triggers:
 
 Seal the secret for the org with `wardrik vault put CRM_HOOK_SECRET --org acme`, and give the CRM the
 address `wardrik triggers` prints, which must be reachable from it. What a service sends is content
-from outside, as a feed's entries are. See [Receiving a webhook](/guides/triggers/#receiving-a-webhook).
+from outside, as a feed's entries are. See [Receiving a webhook](/build/triggers/#receiving-a-webhook).
 
 ## Letting it choose what it watches
 
@@ -393,7 +393,7 @@ what it watches as it proposes the rest, and the team can ask for a change in `#
 
 Approved, the trigger is set, `wardrik triggers` lists it, and `wardrik audit` records the agent as
 who set it. A definition sent over HTTP has no `notify`, so its triggered runs post nothing to
-`#growth`: find what they wait on with `wardrik parked`, in the [terminal client](/guides/tui/),
+`#growth`: find what they wait on with `wardrik parked`, in the [terminal client](/build/tui/),
 or over the HTTP API. A conversation in a Slack thread asks the approvers as before.
 
 ## A record of what it did

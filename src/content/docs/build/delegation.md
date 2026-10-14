@@ -2,7 +2,7 @@
 title: Delegate to other agents
 description: Let an agent ask the other agents of its org for work and hear the answer back, and define the workers it needs, under its own policy and budget.
 sidebar:
-  order: 1.5
+  order: 6.5
 ---
 
 An agent with `agents/*` in its tools works with the other agents of its org: it can see what each
@@ -81,7 +81,7 @@ none runs:
 
 A worker is held to the policies and budget of the agent that defined it, ahead of its own
 definition's, so it can never do what its definer could not. It is kept and runs as an agent defined
-over the [HTTP API](/guides/http-api/) does: `wardrik ls` lists it, and `wardrik reload` rebuilds it
+over the [HTTP API](/build/http-api/) does: `wardrik ls` lists it, and `wardrik reload` rebuilds it
 under the same limits. An agent its file declares refuses to be defined this way, as it refuses the
 HTTP API.
 

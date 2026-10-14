@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-When someone [connects an account](/guides/accounts/) in a browser, the provider sends that browser
+When someone [connects an account](/build/accounts/) in a browser, the provider sends that browser
 back to the daemon with a code. Without a public address, the daemon takes it on its own machine's
 loopback, `http://127.0.0.1:4599`, so the browser has to be on that machine too. A daemon on a
 server, with people clicking a link in Slack from their own laptops, needs an address their browsers
@@ -65,7 +65,7 @@ reaches nothing.
 Only the callback: `/oauth/callback/NAME` for each provider configured, and `/oauth/check`, which
 answers `wardrik doctor`. Anything else is a 404, and every page is kept from caches and referrers.
 A code that comes back finishes only a sign-in this deployment started, for the provider whose path
-it came to. The [HTTP API](/guides/http-api/) has a listener of its own, and stays behind loopback.
+it came to. The [HTTP API](/build/http-api/) has a listener of its own, and stays behind loopback.
 
 ## Where the daemon listens
 

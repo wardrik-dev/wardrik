@@ -19,11 +19,11 @@ Every agent belongs to an org, and may work for one of its users. Its key says w
 | `acme/triage` | acme's own `triage` |
 | `acme/@jon/triage` | jon's `triage`, in acme |
 
-An org is the boundary between agents. A [token](/operate/security/#tokens) reaches the agents of
+An org is the boundary between agents. A [token](/run/security/#tokens) reaches the agents of
 an org, `acme/`, or of one of its users, `acme/@jon/`. A
 [shared tree](/concepts/files-and-memory/#sharing-trees) belongs to an org or a user, and an
-[MCP server](/guides/mcp/#which-orgs-a-server-serves) and a
-[notice target](/guides/notices/#which-orgs-a-target-tells) serve one org unless `config.yaml` says
+[MCP server](/build/mcp/#which-orgs-a-server-serves) and a
+[notice target](/build/notices/#which-orgs-a-target-tells) serve one org unless `config.yaml` says
 others.
 
 The deployment has an org of its own, `default` unless `config.yaml` names another:
@@ -57,7 +57,7 @@ API.
   `defaults` and starts its agent. See [Agent files](/reference/agent-files/).
 - **A definition** is sent with `PUT /v1/agents/{key}`, by a token that can
   `define`, and takes effect at once. It says less than a file can: no notices, no modules, and only
-  the trees its token's scope covers. See [Use the HTTP API](/guides/http-api/).
+  the trees its token's scope covers. See [Use the HTTP API](/build/http-api/).
 
 An agent belongs to whichever made it. A file's agent is changed through its file: the HTTP API
 refuses, with `409`, to define it, remove it or change its triggers. Removing the file and running
@@ -68,7 +68,7 @@ with the definition it last had where no file declares it any more. To be rid of
 rm KEY` removes it for good once no file declares it. An agent the HTTP API defined is never touched by
 reading the files, and `wardrik agent rm KEY` removes it too.
 
-In a [cluster](/operate/cluster/) each node reads its own `agents/`, and an agent stops only once no
+In a [cluster](/run/cluster/) each node reads its own `agents/`, and an agent stops only once no
 node's files declare it.
 
 `wardrik agent cancel` ends the turn an agent is taking, `agent stop` stops it now, keeping its
@@ -108,7 +108,7 @@ A tool call may wait on a person, which parks the turn until it is decided. See
 ### Stopping a turn
 
 `wardrik agent cancel KEY`, `POST /v1/agents/{key}/cancel`, or `/stop` in the
-[terminal client](/guides/tui/), stops the running turn, drops the messages waiting behind it, and
+[terminal client](/build/tui/), stops the running turn, drops the messages waiting behind it, and
 abandons a parked one. A turn that stops within two seconds keeps what it said; one that does not is
 ended, and adds nothing. Stopping a turn does not stop the agent, which answers the next message as
 usual, and a stopped turn stays stopped on whichever node holds the agent next.
@@ -201,7 +201,7 @@ When a node is lost, its agents start again on the others, from what each last w
 - a turn that had not, starts again.
 
 The tools an agent has are made on the node it runs on, so an MCP server should be reachable from
-every node. See [Durable runs](/concepts/durable-runs/) and [Run a cluster](/operate/cluster/).
+every node. See [Durable runs](/concepts/durable-runs/) and [Run a cluster](/run/cluster/).
 
 ## Delegation
 

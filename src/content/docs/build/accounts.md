@@ -2,7 +2,7 @@
 title: Connect accounts
 description: Give MCP servers credentials kept in the vault, for each user, each org or the deployment, and let users connect their own accounts with OAuth.
 sidebar:
-  order: 3
+  order: 2
 ---
 
 An MCP server names the credential it is reached with, and the vault holds it: for each user, for
@@ -126,7 +126,7 @@ deployment holds it, never a value. `POST` answers the link to authorize at, or 
 already; nothing parks on it, and the account is held once they have authorized. `DELETE` forgets
 it, so the next call that needs it asks again. `?owner=org` acts on the org's instead, for a token
 that may `define` under the org. The audit records each account stored or removed, and who asked;
-see [the HTTP API](/guides/http-api/#connect-accounts).
+see [the HTTP API](/build/http-api/#connect-accounts).
 
 Until any user has connected, a server that needs an account to list its tools offers one tool,
 `github__connect`, so an agent can begin connecting. Once one has, its tools are kept in the store
@@ -157,7 +157,7 @@ oauth:
 ```
 
 The redirect URI is then `https://agents.example.com/oauth/callback/github`. See
-[A public address](/operate/public-address/) for putting Caddy in front of the daemon, and checking
+[A public address](/run/public-address/) for putting Caddy in front of the daemon, and checking
 it with `wardrik doctor`.
 
 ### On another device

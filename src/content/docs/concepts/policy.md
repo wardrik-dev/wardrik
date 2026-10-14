@@ -2,7 +2,7 @@
 title: Policy and approvals
 description: How each tool call an agent makes is decided before it runs, how a call waits on a person, and how a budget limits what an agent spends.
 sidebar:
-  order: 3
+  order: 2
 ---
 
 Every tool call an agent makes is decided before it runs. It runs, it waits on a person, or it is
@@ -142,7 +142,7 @@ mcp:
     gated: [create_*, issue_write]   # or true, for every tool, or false, for none
 ```
 
-A [tool worker](/guides/tool-workers/)'s tool is gated unless the worker marks it read-only too. A
+A [tool worker](/build/tool-workers/)'s tool is gated unless the worker marks it read-only too. A
 tool written in Elixir can say it is gated. The tools the daemon ships are not.
 
 ## Content from outside
@@ -225,10 +225,10 @@ A call can also be decided:
 - over the HTTP API, with a token that can `decide`:
   `POST /v1/agents/{key}/decisions` with `{"decisions": [{"id": "...", "decision": "approve"}]}`,
   an approval with a `"note"`, or `"decision": "reject"` with a `"reason"`;
-- in the [terminal client](/guides/tui/), with Ctrl-Y and Ctrl-N.
+- in the [terminal client](/build/tui/), with Ctrl-Y and Ctrl-N.
 
 `wardrik parked` and the HTTP API do not show a call's arguments. The Slack notice and the
-[webhook](/guides/notices/#webhooks) do.
+[webhook](/build/notices/#webhooks) do.
 
 Wherever a call is shown, it says what its turn had read first, which may be what asked for it:
 `wardrik parked` and the Slack notice say so under the question, and the HTTP API and the webhook
@@ -408,7 +408,7 @@ otherwise. A dollar budget refuses every call to a model the catalog cannot pric
 tokens alone governs such a model, or one a subscription pays for.
 
 A tool call counts what it cost, failed or not: what its tool reports, as a
-[tool worker](/guides/tool-workers/) can, or else the price `config.yaml` lists for it, which is how
+[tool worker](/build/tool-workers/) can, or else the price `config.yaml` lists for it, which is how
 a search API or an MCP server's tools are priced:
 
 ```yaml title="~/.config/wardrik/config.yaml"
@@ -434,7 +434,7 @@ not the same as nothing. What an agent cost over any period is a read of its log
 
 A tool that needs an account the user has not connected parks its call the same way, with a link
 to authorize instead of a question, and `wardrik parked` shows the link. The call carries on by
-itself once the account is connected. See [Connect accounts](/guides/accounts/).
+itself once the account is connected. See [Connect accounts](/build/accounts/).
 
 ## In Elixir
 

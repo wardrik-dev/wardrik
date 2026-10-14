@@ -144,4 +144,4 @@ writes them with its tools. A tree belongs to its agent's key rather than to the
 an agent removed and started again under the same key finds its files where it left them.
 
 Files are kept in the store's `files` namespace, under the tree and the path: an agent's
-`MEMORY.md` is `agents/acme/@jon/triage//MEMORY.md`. See [Storage](/operate/storage/).
+`MEMORY.md` is `agents/acme/@jon/triage//MEMORY.md`. See [Storage](/run/storage/).

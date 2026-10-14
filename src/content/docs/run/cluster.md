@@ -62,7 +62,7 @@ every 30 seconds, and in `wardrik status`:
 a is waiting for 1 more node to reach a quorum of 2 of 3; connected to a
 ```
 
-With the store in [Postgres or a bucket](/operate/storage/), nodes start and carry on without
+With the store in [Postgres or a bucket](/run/storage/), nodes start and carry on without
 waiting for each other.
 
 A node not in `cluster.nodes` refuses to start.

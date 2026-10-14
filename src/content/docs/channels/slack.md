@@ -177,14 +177,14 @@ model wrote; to change it, deny it and say what to do instead.
 
 A call waiting on an account to be connected has **Show link** instead of Approve, which shows the
 authorization link to whoever pressed it, and nobody else. See
-[Connect accounts](/guides/accounts/).
+[Connect accounts](/build/accounts/).
 
 **Finished:** what the agent answered, as the Markdown it wrote, which Slack renders.
 
 ## Who approves
 
 A channel's `approvers` lists who may press the buttons, each by `@handle`, email address or Slack
-user ID, with its `admins` and the approvers of [notice targets](/guides/notices/) posting in it,
+user ID, with its `admins` and the approvers of [notice targets](/build/notices/) posting in it,
 and anyone else is told only whoever asked, or the channel's approvers, can answer. Without any
 approvers, anyone in the channel may. Whoever asked for the turn may always answer what it waits
 on. An email address needs the bot token scope `users:read.email`. A member's ID is under **Copy
@@ -206,7 +206,7 @@ address by the address, a user ID as it is. One it cannot find is still named in
 daemon's log says so. Where it can message none of them, as when the **Messages Tab** is off, it asks
 in the thread instead.
 
-A [notice target](/guides/notices/)'s `approvers` answer in the room it posts in.
+A [notice target](/build/notices/)'s `approvers` answer in the room it posts in.
 
 ## Without buttons
 

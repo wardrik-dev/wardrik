@@ -166,7 +166,7 @@ A stop:
 - abandons a turn waiting on a person, without answering it.
 
 The agent answers its next message as usual. The other ways to stop one are the same stop:
-`agent.cancel()` in the SDK, and `/stop` in the [terminal client](/guides/tui/), where
+`agent.cancel()` in the SDK, and `/stop` in the [terminal client](/build/tui/), where
 `/stop default/` stops every agent under a prefix at once.
 
 ## Keeping it stopped
@@ -174,9 +174,9 @@ The agent answers its next message as usual. The other ways to stop one are the 
 A stop ends what an agent is doing now. To keep it from starting again:
 
 - **Its triggers.** Remove `triggers` from its file and `wardrik reload`, or delete one over the
-  HTTP API. See [Trigger an agent](/guides/triggers/#changing-and-removing-triggers).
+  HTTP API. See [Trigger an agent](/build/triggers/#changing-and-removing-triggers).
 - **Whoever messages it.** Revoke the token that sends it messages, `wardrik token revoke ID`. See
-  [Tokens](/operate/security/#tokens).
+  [Tokens](/run/security/#tokens).
 - **Its tools.** Revoke a tool worker's token, and its tools are gone from every agent at once; or
   deny a tool in the agent's policy, and `wardrik reload`. See
   [Policy and approvals](/concepts/policy/).
@@ -198,9 +198,9 @@ A stop ends what an agent is doing now. To keep it from starting again:
   [The ledger](/concepts/durable-runs/#the-ledger).
 - **Idempotency keys.** Each call has a key that is the same every time it runs. IT keeps what each
   call did under its key, as a provider's API does, so running a call again does nothing again. See
-  [Running a call twice](/guides/tool-workers/#running-a-call-twice).
+  [Running a call twice](/build/tool-workers/#running-a-call-twice).
 - **Quorum.** With the store on the nodes' disks, two of three carry on. With it in Postgres or a
-  bucket, one is enough. See [Run a cluster](/operate/cluster/).
+  bucket, one is enough. See [Run a cluster](/run/cluster/).
 
 ## Taking it further
 

@@ -70,7 +70,7 @@ Follow the third turn with `wardrik watch researcher` in another terminal, and l
   its start and its end, and the agent is asked to fold it shorter. See
   [Files and memory](/concepts/files-and-memory/).
 - **A trigger that keeps it in shape.** The Sunday run is an ordinary message on a clock, in the
-  agent's history like any other. See [Trigger an agent](/guides/triggers/).
+  agent's history like any other. See [Trigger an agent](/build/triggers/).
 - **A long life.** The agent keeps one conversation for as long as it runs, and summarises the older
   part with its own model before it outgrows the context window: `compaction` sets when. What it
   must not forget belongs in a skill or `MEMORY.md`, which no summary touches. See

@@ -102,7 +102,7 @@ and the service does not is on your shell's `PATH` and not on systemd's: name it
 
 **A node waits, and commands answer that the store is unavailable.** It is waiting for a quorum of
 its cluster. `wardrik status` says how many more nodes it needs. See
-[Run a cluster](/operate/cluster/#quorum).
+[Run a cluster](/run/cluster/#quorum).
 
 **The HTTP API or the terminal client does not answer.** Another process holds its port. The daemon
 says so in its log, and tries again every five seconds.

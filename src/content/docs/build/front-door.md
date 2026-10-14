@@ -51,7 +51,7 @@ wardrik deny assistant call_8d2ebbfe28aa4ee1a269dee2 "Once an hour is enough."
 ```
 
 `wardrik parked` does not show a call's arguments, so the front door says in its plan what each call
-does. A Slack notice and the [webhook](/guides/notices/#webhooks) show them. See [Waiting on a person](/concepts/policy/#waiting-on-a-person).
+does. A Slack notice and the [webhook](/build/notices/#webhooks) show them. See [Waiting on a person](/concepts/policy/#waiting-on-a-person).
 
 ## See what runs
 
@@ -81,7 +81,7 @@ approving is all it takes.
 A worker's answers are kept in its history. Ask the front door what came of a piece of work, and it
 reads the worker and tells you; `wardrik history NAME` shows them as well. A task it hands a worker
 comes back to it as a message, which it passes on. See
-[Delegate to other agents](/guides/delegation/).
+[Delegate to other agents](/build/delegation/).
 
 ## What it may do
 

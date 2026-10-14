@@ -121,6 +121,55 @@
 	color: transparent;
 }
 
+/* The topics: tabs in the header on a wide screen, a list atop the sidebar's
+ * menu on a narrow one. */
+.topic-tabs {
+	display: none;
+}
+
+@media (min-width: 50rem) {
+	.header .title-wrapper {
+		overflow: visible;
+	}
+
+	.topic-tabs {
+		display: flex;
+		gap: 1.75rem;
+		margin-inline-start: 2.5rem;
+	}
+
+	.topic-tabs a {
+		position: relative;
+		font-size: 0.875rem;
+		line-height: 1.25rem;
+		color: var(--sl-color-gray-3);
+		text-decoration: none;
+	}
+
+	.topic-tabs a:hover,
+	.topic-tabs a[aria-current] {
+		color: var(--sl-color-white);
+	}
+
+	.topic-tabs a[aria-current] {
+		font-weight: 500;
+	}
+
+	/* The current tab's rule sits on the header's bottom edge. */
+	.topic-tabs a[aria-current]::after {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+		bottom: calc((var(--sl-nav-height) - 1.25rem) / -2);
+		height: 2px;
+		background: var(--sl-color-accent);
+	}
+
+	.starlight-sidebar-topics {
+		display: none;
+	}
+}
+
 h1#_top,
 .hero h1 {
 	font-weight: 600;
@@ -149,6 +198,12 @@ h1#_top,
 	font-size: 0.8125rem;
 	font-weight: 600;
 	color: var(--sl-color-gray-3);
+}
+
+/* A link outside any group reads like the links in one. */
+.sidebar-content a.large {
+	font-size: var(--sl-text-sm);
+	font-weight: 400;
 }
 
 .sidebar-content a[aria-current='page'],

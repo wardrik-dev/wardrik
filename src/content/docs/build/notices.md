@@ -2,7 +2,7 @@
 title: Send notices
 description: Have agents tell people when they wait on a person, fail or answer, in a room of a channel such as Slack, or at a signed webhook.
 sidebar:
-  order: 4
+  order: 7
 ---
 
 An agent nobody is watching can tell someone when it parks on a question, fails, or answers.
@@ -38,7 +38,7 @@ notify: {to: [ops], on: [parked, failed, finished]}
 `on` is what is sent: `parked`, `failed`, and `finished` for what a turn answered. It is
 `[parked, failed]` unless set. A notice is sent once, from the node holding the agent.
 
-A definition [sent over HTTP](/guides/http-api/#define-an-agent) takes `notify` in the same forms,
+A definition [sent over HTTP](/build/http-api/#define-an-agent) takes `notify` in the same forms,
 so an agent defined there, or by another agent, is heard too: `"notify": {"to": ["ops"], "on":
 ["finished"]}` in the body of `PUT /v1/agents/{key}`. It holds while the agent sleeps and after a
 restart, and goes when the agent is forgotten.
@@ -47,7 +47,7 @@ restart, and goes when the agent is forgotten.
 turn had read content from outside first, and its arguments. In Slack, each call has
 [Approve and Deny](/channels/slack/#what-a-notice-says-in-slack) buttons. **Failed:** why the turn
 failed. **Finished:** what the turn answered, which suits an agent a
-[trigger](/guides/triggers/) asks.
+[trigger](/build/triggers/) asks.
 
 A turn waiting on several calls sends a notice again when some are decided and others still wait.
 

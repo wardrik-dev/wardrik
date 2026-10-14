@@ -184,7 +184,7 @@ notify:
 
 An agent of `globex` cannot be given acme's servers or route its notices to acme's channel: its file
 does not read. A token scoped to `globex/` answers acme's agents as ones that do not exist. See
-[Orgs](/operate/security/#orgs).
+[Orgs](/run/security/#orgs).
 
 ## Through a lost machine
 
@@ -201,7 +201,7 @@ cluster:
 ```
 
 Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on each. See
-[Run a cluster](/operate/cluster/) and [Storage](/operate/storage/).
+[Run a cluster](/run/cluster/) and [Storage](/run/storage/).
 
 ## What it shows
 
@@ -220,8 +220,8 @@ Every node runs the MCP servers its agents use, so `/srv/runbooks` is needed on 
 
 - Respond the moment an incident is filed, rather than within five minutes: a `webhook` trigger
   that Linear, Sentry or Alertmanager calls asks the agent as each arrives. See
-  [Pointing a service at a trigger](/guides/triggers/#pointing-a-service-at-a-trigger).
+  [Pointing a service at a trigger](/build/triggers/#pointing-a-service-at-a-trigger).
 - Point a second trigger at a weekly review: `every: "0 9 * * 1"`, asking for what the week's
   incidents had in common, and keep the answer in a file the team reads.
 - Give the agent a runbook step it may take without asking, such as restarting one service, as a
-  [tool worker](/guides/tool-workers/) whose tool the policy allows by name.
+  [tool worker](/build/tool-workers/) whose tool the policy allows by name.
