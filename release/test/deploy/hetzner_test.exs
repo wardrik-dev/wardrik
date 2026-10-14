@@ -40,7 +40,10 @@ defmodule Deploy.HetznerTest do
     config = Path.join(dir, "config.yaml")
     File.write!(config, text)
 
-    assert {:ok, settings} = with_env(text, fn -> WardrikDaemon.Config.read(config) end)
+    assert {:ok, settings} =
+             with_env(text, fn ->
+               WardrikDaemon.Config.read(config, adapters: WardrikChannel.discover())
+             end)
 
     github =
       settings
@@ -53,28 +56,12 @@ defmodule Deploy.HetznerTest do
     agent = Path.join(dir, "triage.md")
     File.write!(agent, written("/home/wardrik/.config/wardrik/agents/triage.md"))
 
-    with_settings(settings, fn ->
-      assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
-               WardrikDaemon.AgentFile.read(agent)
-    end)
-  end
+    context =
+      [config_dir: dir, sections: settings, triggers: WardrikTrigger.Offered.discover()]
+      |> WardrikDaemon.Config.new()
+      |> WardrikDaemon.AgentFile.context()
 
-  # The settings config.yaml makes, as the daemon applies them, put back after.
-  defp with_settings(settings, fun) do
-    previous =
-      for {module, _value} <- settings, do: {module, Application.get_env(:wardrik_daemon, module)}
-
-    for {module, value} <- settings, do: Application.put_env(:wardrik_daemon, module, value)
-
-    try do
-      fun.()
-    after
-      for {module, value} <- previous,
-          do:
-            if(value,
-              do: Application.put_env(:wardrik_daemon, module, value),
-              else: Application.delete_env(:wardrik_daemon, module)
-            )
-    end
+    assert {:ok, %Wardrik.Agent.Spec{id: %Wardrik.AgentID{name: "triage"}}} =
+             WardrikDaemon.AgentFile.read(context, agent)
   end
 end

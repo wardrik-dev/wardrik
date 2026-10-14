@@ -23,7 +23,8 @@ defmodule Wardrik.GrantTest do
   test "a grant reaches the agents its scope covers" do
     {:ok, grant} = Grant.new(@acme)
 
-    assert Grant.covers?(grant, ~A"acme/@jon/triage")
+    assert Grant.covers?(grant, ~A"acme/triage")
+    refute Grant.covers?(grant, ~A"acme/@jon/triage")
     refute Grant.covers?(grant, ~A"globex/triage")
     refute Grant.covers?(grant, ~A"acmecorp/triage")
 
@@ -54,9 +55,25 @@ defmodule Wardrik.GrantTest do
   test "allows?/3 wants the action and the reach both" do
     {:ok, grant} = Grant.new(@acme, [:read, :message])
 
-    assert Grant.allows?(grant, :message, ~A"acme/@jon/triage")
-    refute Grant.allows?(grant, :decide, ~A"acme/@jon/triage")
-    refute Grant.allows?(grant, :message, ~A"globex/@jon/triage")
+    assert Grant.allows?(grant, :message, ~A"acme/triage")
+    refute Grant.allows?(grant, :decide, ~A"acme/triage")
+    refute Grant.allows?(grant, :message, ~A"acme/@jon/triage")
+    refute Grant.allows?(grant, :message, ~A"globex/triage")
+  end
+
+  test "within/2 is what both grants let their holder do" do
+    {:ok, org} = Grant.new(@acme, [:read, :message, :define])
+    {:ok, one} = Grant.new(Prefix.of(~A"acme/triage"), [:read, :decide])
+
+    assert {:ok, %Grant{scope: scope, can: [:read]}} = Grant.within(org, one)
+    assert scope == Prefix.of(~A"acme/triage")
+    assert Grant.within(one, org) == Grant.within(org, one)
+
+    {:ok, globex} = Grant.new(Prefix.new!(org: "globex"))
+    assert Grant.within(org, globex) == :error
+
+    {:ok, decider} = Grant.new(@acme, [:decide])
+    assert Grant.within(org, decider) == :error
   end
 
   describe "a ceiling" do

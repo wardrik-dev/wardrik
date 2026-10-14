@@ -14,9 +14,15 @@ defmodule Wardrik.Event.ExportTest do
 
   setup :verify_on_exit!
 
+  # Logs are read in the order of their IDs' text, so `first` is the one
+  # whose text sorts first, whatever numbers the two were given.
   setup do
-    first = Wardrik.Test.Fleet.id("export")
-    second = Wardrik.Test.Fleet.id("export")
+    [first, second] =
+      Enum.sort_by(
+        [Wardrik.Test.Fleet.id("export"), Wardrik.Test.Fleet.id("export")],
+        &to_string/1
+      )
+
     name = "export-#{System.unique_integer([:positive])}"
 
     %{first: first, second: second, name: name, logs: &(&1 in [first, second])}

@@ -17,9 +17,9 @@ config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 # store config.yaml names, rather than with its own.
 config :wardrik, start: :host
 
-# A tool's key the vault holds for nobody a call reaches is read from the
-# environment variable of its name, as the deployment's.
-config :wardrik_daemon, WardrikVault, environment: ["BRAVE_API_KEY"]
+# The search key every agent may read: the deployment's, sealed with
+# `wardrik vault put BRAVE_API_KEY`, or the environment variable of its name.
+config :wardrik_daemon, WardrikVault, shared: ["BRAVE_API_KEY"]
 
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

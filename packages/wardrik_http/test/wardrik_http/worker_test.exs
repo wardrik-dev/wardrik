@@ -115,7 +115,7 @@ defmodule WardrikHTTP.WorkerTest do
   setup do
     {:ok, secret, _token} =
       Token.create(store(), "worker-test",
-        scope: Prefix.parse!("test/"),
+        scope: Prefix.tenant!("test"),
         can: Grant.actions(),
         ceiling: []
       )

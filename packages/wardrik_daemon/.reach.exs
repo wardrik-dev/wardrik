@@ -103,6 +103,14 @@
       {"Wardrik.Trace", ["Wardrik", "Wardrik.*"]}
     ]
   ],
+  smells: [
+    behaviour_candidate: [
+      # WardrikDaemon.Approvers is a protocol, and its implementations are the
+      # modules the check finds; it groups modules by their public functions,
+      # and does not read the protocol they implement.
+      ignore: [modules: ["WardrikDaemon.Approvers", "WardrikDaemon.Approvers.*"]]
+    ]
+  ],
   checks: [
     layer_coverage: [
       require_all_modules: true,

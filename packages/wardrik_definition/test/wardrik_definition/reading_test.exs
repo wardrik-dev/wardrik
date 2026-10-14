@@ -236,7 +236,6 @@ defmodule WardrikDefinition.ReadingTest do
                  """
                  ---
                  org: acme
-                 user: jon
                  tools: [files]
                  workspace:
                    shared:
@@ -248,12 +247,33 @@ defmodule WardrikDefinition.ReadingTest do
                )
 
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{} = files}] = spec.config.tools
-      assert files.tree.tree == "agents/acme/@jon/triage"
+      assert files.tree.tree == "agents/acme/triage"
 
       assert Enum.map(files.shared, &{&1.name, &1.tree, &1.mode}) == [
                {"runbooks", "shared/acme/runbooks", :read},
                {"team", "shared/acme", :write}
              ]
+    end
+
+    test "share a tree another owns where the host shares it with the agent", %{context: context} do
+      text = """
+      ---
+      org: acme
+      user: jon
+      tools: [files]
+      workspace:
+        shared:
+          runbooks: {tree: acme/runbooks, mode: read}
+      ---
+      """
+
+      assert {:error, message} = read(text, %{context: context})
+      assert message =~ "acme/runbooks belongs to acme/"
+
+      {:ok, share} = WardrikWorkspace.Share.new("acme/runbooks", read: ["acme/*"])
+      assert {:ok, spec} = read(text, %{context: %{context | shares: [share]}})
+      assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: [runbooks]}}] = spec.config.tools
+      assert {runbooks.tree, runbooks.mode} == {"shared/acme/runbooks", :read}
     end
 
     test "share no tree the agent's key does not reach", context do

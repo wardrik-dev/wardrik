@@ -100,13 +100,15 @@ defmodule Wardrik.FleetTest do
   describe "list/1" do
     test "reports every agent under a prefix, with what it is doing" do
       org = "org#{System.unique_integer([:positive])}"
-      one = AgentID.new!("one", org: org, user: "jon")
-      two = AgentID.new!("two", org: org, user: "sam")
+      one = AgentID.new!("one", org: org)
+      two = AgentID.new!("two", org: org)
+      jons = AgentID.new!("one", org: org, user: "jon")
       start(one, runner: runner(self()))
       start(two, runner: runner(self()))
+      start(jons, runner: runner(self()))
 
       assert [%{id: ^one}, %{id: ^two}] = Fleet.list(Prefix.new!(org: org))
-      assert [%{id: ^one}] = Fleet.list(Prefix.new!(org: org, user: "jon"))
+      assert [%{id: ^jons}] = Fleet.list(Prefix.new!(org: org, user: "jon"))
       assert Enum.all?(Fleet.list(Prefix.new!(org: org)), &(&1.status == :idle))
     end
 

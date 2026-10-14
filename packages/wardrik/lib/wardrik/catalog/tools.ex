@@ -29,29 +29,38 @@ defmodule Wardrik.Catalog.Tools do
   read is outside content to the agent that reads it.
   """
 
+  alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Catalog
+  alias Wardrik.Catalog.Tools.Offering
   alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Grant
+  alias Wardrik.Host
   alias Wardrik.Query
   alias Wardrik.Resource
   alias Wardrik.Scope
 
   @doc """
-  The catalog's operations on an agent, each with what runs it, queries then
-  commands.
+  The catalog's operations on an agent, offered to an agent reaching
+  `reach`, queries then commands.
   """
-  @spec agent_operations() :: [{module(), Query | Command}]
-  def agent_operations,
-    do: runners(Catalog.agent_queries(), Query) ++ runners(Catalog.agent_commands(), Command)
+  @spec agent_operations(Prefix.t()) :: [Offering.t()]
+  def agent_operations(reach),
+    do:
+      offered(Catalog.agent_queries(), Query, reach) ++
+        offered(Catalog.agent_commands(), Command, reach)
 
-  @doc "The catalog's operations on the agents under a prefix, each with what runs it."
-  @spec fleet_operations() :: [{module(), Query}]
-  def fleet_operations, do: runners(Catalog.fleet_queries(), Query)
+  @doc """
+  The catalog's operations on the agents under a prefix, offered to an agent
+  reaching `reach`.
+  """
+  @spec fleet_operations(Prefix.t()) :: [Offering.t()]
+  def fleet_operations(reach), do: offered(Catalog.fleet_queries(), Query, reach)
 
-  defp runners(modules, runner), do: Enum.map(modules, &{&1, runner})
+  defp offered(modules, runner, reach),
+    do: Enum.map(modules, &%Offering{module: &1, runner: runner, reach: reach})
 
   @doc """
   The annotations of the tool named `name`, where `commands` names a
@@ -62,26 +71,45 @@ defmodule Wardrik.Catalog.Tools do
     do: if(name in commands, do: %{gated: true}, else: %{})
 
   @doc """
-  The tool offering `module`, named `name`, taking `schema`, which `run`, a
-  `{module, function, args}`, answers.
+  The tool for `offering`'s operation, named `:name`, taking `:schema`,
+  which `:run`, a `{module, function, args}`, answers.
   """
-  @spec tool(module(), String.t(), map(), {module(), atom(), list()}) :: ReqLLM.Tool.t()
-  def tool(module, name, schema, run) do
+  @spec tool(Offering.t(), name: String.t(), schema: map(), run: {module(), atom(), list()}) ::
+          ReqLLM.Tool.t()
+  def tool(%Offering{module: module}, opts) do
+    opts = Keyword.validate!(opts, [:name, :schema, :run])
+
     Wardrik.Tool.new!(
-      name: name,
+      name: Keyword.fetch!(opts, :name),
       description: module.summary(),
-      parameter_schema: schema,
-      run: run
+      parameter_schema: Keyword.fetch!(opts, :schema),
+      run: Keyword.fetch!(opts, :run)
     )
   end
 
   @doc """
-  Runs `module`'s request of `subject` with `input` through `runner`, as
-  `caller`: the tool's answer, labelled with what it holds.
+  Runs `offering`'s operation on `subject` with `:input`, for the call
+  `:context` is of, as the calling agent: the tool's answer, labelled with
+  what it holds.
+
+  The agent may read, send messages to and define the agents its reach
+  covers, under its own hooks as ceiling, on the host the call's scope
+  carries. A read or a message is the asker's as well: where someone asked
+  for the turn, it reaches only what both the agent and they may, as the
+  host's `Wardrik.Grants` say of them, so an agent never reads or messages
+  for someone what they could not themselves. A change is the agent's own,
+  held to its ceiling and asked of a person as its policy says.
   """
-  @spec run(module(), module(), term(), map(), Caller.t()) :: Wardrik.Tool.answer()
-  def run(module, runner, subject, input, %Caller{} = caller) do
-    with {:ok, request} <- module.new(subject, input),
+  @spec run(Offering.t(), AgentID.t() | Prefix.t(),
+          input: map(),
+          context: Wardrik.Tool.Context.t()
+        ) ::
+          Wardrik.Tool.answer()
+  def run(%Offering{module: module, runner: runner} = offering, subject, opts) do
+    opts = Keyword.validate!(opts, [:input, :context])
+
+    with {:ok, caller} <- caller(offering, subject, Keyword.fetch!(opts, :context)),
+         {:ok, request} <- module.new(subject, Keyword.fetch!(opts, :input)),
          {status, answer} when status in [:ok, :created] <- runner.run(request, caller) do
       {:ok, answer || "done", labels: module.labels(answer)}
     else
@@ -89,15 +117,25 @@ defmodule Wardrik.Catalog.Tools do
     end
   end
 
-  @doc """
-  The calling agent, as the caller of an operation reaching the agents under
-  `reach`: the agent the call's scope runs for, granted to read, send
-  messages to and define them, under its own hooks as ceiling, on the host
-  the scope carries.
-  """
-  @spec caller(Wardrik.Tool.Context.t(), Prefix.t()) :: Caller.t()
-  def caller(%Wardrik.Tool.Context{scope: scope}, reach) do
-    {:ok, grant} = Grant.new(reach, [:read, :message, :define], scope.hooks)
-    Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)
+  defp caller(%Offering{module: module, reach: reach}, subject, context) do
+    %Wardrik.Tool.Context{scope: scope, sender: sender} = context
+    {:ok, own} = Grant.new(reach, [:read, :message, :define], scope.hooks)
+
+    with {:ok, grant} <- asked(own, sender, subject, module.action(), scope.host),
+         do: {:ok, Caller.agent(id: Scope.agent_id(scope), grant: grant, host: scope.host)}
   end
+
+  # A turn nobody asked for is the agent's own.
+  defp asked(own, nil, _subject, _action, _host), do: {:ok, own}
+
+  defp asked(own, sender, subject, action, host) when action in [:read, :message] do
+    with {:ok, %Caller{grant: theirs}} <- Host.caller(host, principal: sender, subject: subject) do
+      case Grant.within(own, theirs) do
+        {:ok, grant} -> {:ok, grant}
+        :error -> {:error, Error.new(:forbidden, "Whoever asked may not #{action} #{subject}.")}
+      end
+    end
+  end
+
+  defp asked(own, _sender, _subject, _action, _host), do: {:ok, own}
 end

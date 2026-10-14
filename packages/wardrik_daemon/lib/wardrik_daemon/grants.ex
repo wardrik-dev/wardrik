@@ -16,15 +16,20 @@ defmodule WardrikDaemon.Grants do
   the agents, and define them where `defaults` names a policy of
   `policies/`, which holds what they define as a ceiling. Someone its
   `approvers` name, or the `approvers` of a `notify` target that posts in
-  it, may read, message and decide. Anyone else may read and message, and
-  decide too where neither names anybody. Whoever asked for a turn may
-  decide what it waits on in any case; see `Wardrik.Agent.decide/3`.
+  it, may read, message and decide; with `approvers: anyone`, everyone in
+  it may. Anyone else may read and message, and decides only what they
+  asked for: whoever asked for a turn may decide what it waits on in any
+  case (see `Wardrik.Agent.decide/3`), and a turn nobody asked for, such as
+  a trigger's, is decided by those the channel names, or from a shell.
 
       channels:
         slack:
           type: slack
           admins: ["@jon"]
-          approvers: ["@maria", "ana@example.com"]
+          approvers: ["@maria", "ana@example.com"]   # or: anyone
+
+  A grant reaches the agents of the channel's orgs, and none of their
+  users': see `Wardrik.AgentID.Prefix`.
   """
 
   alias Wardrik.AgentID.Prefix
@@ -90,10 +95,10 @@ defmodule WardrikDaemon.Grants do
   end
 
   defp decides?(agents, channel, user) do
-    case deciders(agents, channel) do
-      [] -> true
-      named -> among?(agents, channel, user, named)
-    end
+    among = &among?(agents, channel, user, &1)
+
+    WardrikDaemon.Approvers.decides?(Agents.approvers(agents, channel), among) or
+      among.(notifying(agents, channel))
   end
 
   # As the channel's adapter knows people, from the channel's settings; never
@@ -108,17 +113,16 @@ defmodule WardrikDaemon.Grants do
   defp channels(agents),
     do: agents.config |> Config.section(WardrikChannel) |> Keyword.get(:channels, [])
 
-  # The channel's approvers, and those of the notify targets posting in it.
-  defp deciders(agents, channel) do
+  # The approvers of the notify targets posting in the channel.
+  defp notifying(agents, channel) do
     targets = agents.config |> Config.section(WardrikNotify) |> Keyword.get(:targets, [])
 
-    Agents.approvers(agents, channel) ++
-      for {name, posting} <- channels(agents),
-          Atom.to_string(name) == channel,
-          {_target, {_module, options}} <- targets,
-          Keyword.get(options, :channel) == posting,
-          approver <- Keyword.get(options, :approvers, []),
-          do: approver
+    for {name, posting} <- channels(agents),
+        Atom.to_string(name) == channel,
+        {_target, {_module, options}} <- targets,
+        Keyword.get(options, :channel) == posting,
+        approver <- Keyword.get(options, :approvers, []),
+        do: approver
   end
 
   defp scopes(agents, channel) do

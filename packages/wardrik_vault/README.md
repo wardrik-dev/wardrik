@@ -44,9 +44,10 @@ A credential nobody holds yet can be asked for instead, by giving the vault
 WardrikVault.new(store: store, keys: keys, grants: oauth)
 ```
 
-A key a deployment sets as an environment variable can stand in for one
-nobody sealed, by naming it:
+An agent reads only what its owner holds: its user's, or its org's. A
+deployment shares a credential with every agent by naming it, its own sealed
+secret of that name or, where it holds none, the environment variable:
 
 ```elixir
-WardrikVault.new(store: store, keys: keys, environment: ["SEARCH_API_KEY"])
+WardrikVault.new(store: store, keys: keys, shared: ["SEARCH_API_KEY"])
 ```

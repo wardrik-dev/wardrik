@@ -10,19 +10,29 @@ defmodule WardrikWorkspace.SpecTest do
   describe "new/2" do
     test "gives an agent its own tree, and shares the trees its key reaches" do
       assert {:ok, spec} =
-               Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{
+               Spec.new(Wardrik.AgentID.parse!("acme/triage"), %{
                  "team" => "acme",
-                 "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"},
-                 "mine" => "acme/@jon/notes/"
+                 "runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}
                })
 
-      assert spec.tree == %Mount{tree: "agents/acme/@jon/triage"}
+      assert spec.tree == %Mount{tree: "agents/acme/triage"}
 
       assert spec.shared == [
-               %Mount{name: "mine", tree: "shared/acme/@jon/notes"},
                %Mount{name: "runbooks", tree: "shared/acme/runbooks", mode: :read},
                %Mount{name: "team", tree: "shared/acme"}
              ]
+
+      assert {:ok, mine} =
+               Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{
+                 "mine" => "acme/@jon/notes/"
+               })
+
+      assert mine.shared == [%Mount{name: "mine", tree: "shared/acme/@jon/notes"}]
+    end
+
+    test "refuses a user's agent its org's trees" do
+      assert Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"}) ==
+               {:error, "shared team: acme belongs to acme/, which acme/@jon/triage is not under"}
     end
 
     test "refuses a tree under a scope the agent is not under" do
@@ -50,25 +60,77 @@ defmodule WardrikWorkspace.SpecTest do
     end
   end
 
-  describe "within/2" do
+  describe "shares" do
+    setup do
+      {:ok, runbooks} =
+        WardrikWorkspace.Share.new("acme/runbooks", read: ["acme/*"], write: ["acme/ops"])
+
+      %{shares: [runbooks]}
+    end
+
+    test "let an agent mount a tree another owns, in the mode they let it", %{shares: shares} do
+      read = %{"runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}}
+
+      assert {:ok, %{shared: [%Mount{name: "runbooks", mode: :read}]}} =
+               Spec.new(~A"acme/@jon/triage", read, shares: shares)
+
+      assert Spec.new(~A"acme/@jon/triage", %{"runbooks" => "acme/runbooks"}, shares: shares) ==
+               {:error,
+                "shared runbooks: acme/runbooks is shared with acme/@jon/triage to read; " <>
+                  "mount it with mode: read"}
+
+      assert {:ok, %{shared: [%Mount{mode: :write}]}} =
+               Spec.new(~A"acme/ops", %{"runbooks" => "acme/runbooks"}, shares: shares)
+
+      assert {:error, _message} = Spec.new(~A"globex/triage", read, shares: shares)
+      assert {:error, _message} = Spec.new(~A"acme/@jon/triage", read)
+    end
+
+    test "let a definition share what the deployment shares with its agent", %{shares: shares} do
+      read = %{"runbooks" => %{"tree" => "acme/runbooks", "mode" => "read"}}
+      {:ok, spec} = Spec.new(~A"acme/@jon/triage", read, shares: shares)
+      jon = Prefix.new!(org: "acme", user: "jon")
+
+      assert Spec.within(spec, jon, id: ~A"acme/@jon/triage", shares: shares) == :ok
+      assert {:error, _message} = Spec.within(spec, jon, id: ~A"acme/@jon/triage")
+    end
+
+    test "do not read where a tree or a prefix does not" do
+      assert {:error, message} = WardrikWorkspace.Share.new("acme/a/b/c", read: ["acme/*"])
+      assert message =~ "is not a tree"
+      assert {:error, message} = WardrikWorkspace.Share.new("acme/runbooks", read: ["/nope"])
+      assert message =~ "acme/runbooks read"
+      assert {:error, _message} = WardrikWorkspace.Share.new("acme/runbooks", write: "acme/*")
+    end
+  end
+
+  describe "within/3" do
     test "answers whether every tree shared is under a prefix" do
-      {:ok, spec} =
-        Spec.new(~A"acme/@jon/triage", %{"team" => "acme", "notes" => "acme/@jon/notes"})
+      {:ok, spec} = Spec.new(~A"acme/triage", %{"team" => "acme"})
 
-      assert Spec.within(spec, Prefix.new!(org: "acme")) == :ok
-      assert Spec.within(spec, Prefix.all()) == :ok
+      assert Spec.within(spec, Prefix.new!(org: "acme"), id: ~A"acme/triage") == :ok
+      assert Spec.within(spec, Prefix.all(), id: ~A"acme/triage") == :ok
 
-      assert Spec.within(spec, Prefix.new!(org: "acme", user: "jon")) ==
-               {:error, "shared team: acme belongs to acme/, which acme/@jon/ does not cover"}
+      assert Spec.within(spec, Prefix.of(~A"acme/triage"), id: ~A"acme/triage") ==
+               {:error, "shared team: acme belongs to acme/, which acme/triage does not cover"}
+
+      {:ok, jons} = Spec.new(~A"acme/@jon/triage", %{"notes" => "acme/@jon/notes"})
+
+      assert Spec.within(jons, Prefix.new!(org: "acme", user: "jon"), id: ~A"acme/@jon/triage") ==
+               :ok
+
+      assert Spec.within(jons, Prefix.new!(org: "acme"), id: ~A"acme/@jon/triage") ==
+               {:error,
+                "shared notes: acme/@jon/notes belongs to acme/@jon/, which acme/ does not cover"}
 
       {:ok, alone} = Spec.new(~A"acme/triage")
-      assert Spec.within(alone, Prefix.of(~A"acme/triage")) == :ok
+      assert Spec.within(alone, Prefix.of(~A"acme/triage"), id: ~A"acme/triage") == :ok
     end
   end
 
   describe "resolve/2" do
     setup do
-      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"})
+      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/triage"), %{"team" => "acme"})
       %{spec: spec}
     end
 
@@ -93,7 +155,7 @@ defmodule WardrikWorkspace.SpecTest do
 
   describe "context/2" do
     setup do
-      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/@jon/triage"), %{"team" => "acme"})
+      {:ok, spec} = Spec.new(Wardrik.AgentID.parse!("acme/triage"), %{"team" => "acme"})
       {:ok, spec: spec}
     end
 

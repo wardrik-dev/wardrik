@@ -195,6 +195,10 @@ defmodule Wardrik.OperationsTest do
     :ok = Event.Bus.subscribe(id, level: :lifecycle)
     Agent.ask(agent, "wait")
     assert_receive {:turn, _messages, turn}
+
+    # The runner hears of the turn before the agent's status reaches the
+    # fleet, which is what a cancel reads.
+    Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status != :idle end)
     {id, turn}
   end
 

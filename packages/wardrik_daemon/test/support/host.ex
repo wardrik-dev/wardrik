@@ -118,7 +118,7 @@ defmodule WardrikDaemon.Test.Host do
         Keyword.take(Config.section(config, WardrikOAuth), [:client, :providers, :redirect])
       )
 
-    settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :environment])
+    settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings)
 
     %{

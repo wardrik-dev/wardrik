@@ -204,8 +204,9 @@ defmodule WardrikDaemonTest do
              "#{org}/counter  idle  #{node()}  0 of 500 tokens today"
   end
 
-  test "status/0 names the node and counts the fleet" do
-    status = WardrikDaemon.status(Host.host(Host.agents()), Host.config())
+  test "status/0 names the node and counts the fleet", %{tmp_dir: dir} do
+    agents = Host.start_agents(dir)
+    status = WardrikDaemon.status(Host.host(agents), Host.config(dir))
 
     assert status =~ "on #{node()}, up "
     assert status =~ ~r/\d+ agents?/

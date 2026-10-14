@@ -30,7 +30,8 @@
 #   WARDRIK_ORG            the deployment's org, such as acme; default otherwise
 #   WARDRIK_MODEL          the agents' model, anthropic:claude-sonnet-5
 #   WARDRIK_APPROVERS      who approves what a Slack thread waits on, comma-separated
-#                          @handles, emails or member IDs; anyone in the channel without
+#                          @handles, emails or member IDs, or anyone; unset, whoever asked
+#                          answers, and wardrik approve on the server the rest
 #
 # The daemon runs as the user wardrik, which the keys that let you in as
 # WARDRIK_HOST let in too: ssh wardrik@SERVER, then wardrik status.
@@ -145,7 +146,9 @@ channels:
     token: \${SLACK_BOT_TOKEN}
     app_token: \${SLACK_APP_TOKEN}
 EOF
-  if [ -n "$approvers" ]; then
+  if [ "$approvers" = anyone ]; then
+    printf '    approvers: anyone\n'
+  elif [ -n "$approvers" ]; then
     printf '    approvers: ['
     IFS=, read -ra people <<<"$approvers"
     for i in "${!people[@]}"; do
@@ -154,6 +157,10 @@ EOF
       printf '"%s"' "$person"
     done
     printf ']\n'
+  else
+    printf '    # Who answers what agents wait on: ["@maria"], or anyone in the channel.\n'
+    printf '    # Unset, whoever asked answers, and wardrik approve the rest.\n'
+    printf '    # approvers: anyone\n'
   fi
 } >"$work/config/config.yaml"
 

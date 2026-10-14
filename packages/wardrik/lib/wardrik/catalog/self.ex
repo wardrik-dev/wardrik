@@ -20,18 +20,18 @@ defmodule Wardrik.Catalog.Self do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Catalog
   alias Wardrik.Catalog.Tools
+  alias Wardrik.Catalog.Tools.Offering
 
   @impl Wardrik.Tool
   def tools(%AgentID{} = agent) do
     agent = AgentID.put_external_id(agent, nil)
 
-    for {module, runner} <- Tools.agent_operations(),
+    for offering <- Tools.agent_operations(Prefix.of(agent)),
         do:
-          Tools.tool(
-            module,
-            name(module),
-            module.input(),
-            {__MODULE__, :run, [module, runner, agent]}
+          Tools.tool(offering,
+            name: name(offering.module),
+            schema: offering.module.input(),
+            run: {__MODULE__, :run, [offering, agent]}
           )
   end
 
@@ -45,8 +45,7 @@ defmodule Wardrik.Catalog.Self do
         (module.name() |> String.replace_prefix("agent.", "") |> String.replace(".", "_"))
 
   @doc false
-  @spec run(module(), module(), AgentID.t(), map(), Wardrik.Tool.Context.t()) ::
-          Wardrik.Tool.answer()
-  def run(module, runner, agent, input, context),
-    do: Tools.run(module, runner, agent, input, Tools.caller(context, Prefix.of(agent)))
+  @spec run(Offering.t(), AgentID.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def run(offering, agent, input, context),
+    do: Tools.run(offering, agent, input: input, context: context)
 end

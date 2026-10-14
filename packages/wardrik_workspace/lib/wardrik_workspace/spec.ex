@@ -10,8 +10,11 @@ defmodule WardrikWorkspace.Spec do
 
   The agent's own tree is `agents/<id>`, seen at the root of its paths. A
   shared tree is named like a prefix with a name after it, and is reachable by
-  the agents under that prefix: `acme` and `acme/runbooks` by acme's agents,
-  `acme/@jon/notes` by jon's. `new/2` refuses one the agent cannot reach, as
+  the agents under that prefix: `acme` and `acme/runbooks` by acme's own
+  agents, none of its users', and `acme/@jon/notes` by jon's. Others mount
+  it where the deployment shares it with them, by the
+  `WardrikWorkspace.Share`s `new/3` is handed: to read, or to read and
+  change. `new/3` refuses a tree the agent can reach neither way, as
   `Wardrik.AgentID.Prefix.covers?/2` decides, and sees each at
   `shared/<name>`, so `shared/` at the root of a path is never the agent's
   own.
@@ -25,6 +28,7 @@ defmodule WardrikWorkspace.Spec do
   alias Wardrik.AgentID.Prefix
   alias WardrikWorkspace.Mount
   alias WardrikWorkspace.Path
+  alias WardrikWorkspace.Share
 
   @context_bytes 16 * 1024
   @min_context_bytes 1024
@@ -45,16 +49,20 @@ defmodule WardrikWorkspace.Spec do
 
   @doc """
   The workspace of the agent `id`, sharing the trees `shared` names: a map
-  of name to a tree, or to `%{"tree" => tree, "mode" => "read"}`.
+  of name to a tree, or to `%{"tree" => tree, "mode" => "read"}`. A tree
+  another owns is mounted where one of `:shares`, the deployment's
+  `WardrikWorkspace.Share`s, lets the agent, in the mode it lets it.
   """
-  @spec new(AgentID.t(), map()) :: {:ok, t()} | {:error, String.t()}
-  def new(id, shared \\ %{})
+  @spec new(AgentID.t(), map(), shares: [Share.t()]) :: {:ok, t()} | {:error, String.t()}
+  def new(id, shared \\ %{}, opts \\ [])
 
-  def new(%AgentID{} = id, shared) when is_map(shared) do
+  def new(%AgentID{} = id, shared, opts) when is_map(shared) do
+    shares = Keyword.get(Keyword.validate!(opts, shares: []), :shares)
+
     shared
     |> Enum.sort()
     |> Enum.reduce_while({:ok, []}, fn {name, tree}, {:ok, mounts} ->
-      case mount(id, name, tree) do
+      case mount(id, name, tree, shares) do
         {:ok, mount} -> {:cont, {:ok, [mount | mounts]}}
         {:error, message} -> {:halt, {:error, message}}
       end
@@ -68,24 +76,26 @@ defmodule WardrikWorkspace.Spec do
     end
   end
 
-  def new(_id, _shared), do: {:error, "shared is a map of names to trees"}
+  def new(_id, _shared, _opts), do: {:error, "shared is a map of names to trees"}
 
-  defp mount(id, name, %{"tree" => tree} = settings) do
+  defp mount(id, name, %{"tree" => tree} = settings, shares) do
     with :ok <- known(name, settings),
          {:ok, mode} <- mode(name, Map.get(settings, "mode", "write")),
-         {:ok, mount} <- mount(id, name, tree),
-         do: {:ok, %{mount | mode: mode}}
+         do: mount(id, name, tree, mode, shares)
   end
 
-  defp mount(id, name, tree) when is_binary(name) and is_binary(tree) do
-    with :ok <- name(name),
-         {:ok, tree} <- tree(name, tree),
-         :ok <- reaches(id, name, tree),
-         do: {:ok, %Mount{name: name, tree: "shared/" <> tree}}
-  end
+  defp mount(id, name, tree, shares) when is_binary(tree),
+    do: mount(id, name, tree, :write, shares)
 
-  defp mount(_id, name, _tree),
+  defp mount(_id, name, _tree, _shares),
     do: {:error, "shared #{inspect(name)} names a tree, or a tree and a mode"}
+
+  defp mount(id, name, tree, mode, shares) when is_binary(name) and is_binary(tree) do
+    with :ok <- name(name),
+         {:ok, tree} <- tree("shared " <> name, tree),
+         :ok <- reaches(id, name, tree, mode, shares),
+         do: {:ok, %Mount{name: name, tree: "shared/" <> tree, mode: mode}}
+  end
 
   defp known(name, settings) do
     case Map.keys(settings) -- ["tree", "mode"] do
@@ -106,35 +116,50 @@ defmodule WardrikWorkspace.Spec do
          "shared #{inspect(name)} is not a name; a name is lowercase letters, digits, - and _"}
   end
 
+  @doc false
   # A tree is named as an org is, or as an agent would be: `acme`,
-  # `acme/runbooks` or `acme/@jon/notes`.
-  defp tree(name, tree) do
+  # `acme/runbooks` or `acme/@jon/notes`. `what` names it in a message.
+  @spec tree(String.t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def tree(what, tree) do
     trimmed = String.trim_trailing(tree, "/")
 
     case {String.split(trimmed, "/"), AgentID.parse(trimmed)} do
       {[org], _id} ->
-        if AgentID.segment?(org), do: {:ok, trimmed}, else: not_a_tree(name, tree)
+        if AgentID.segment?(org), do: {:ok, trimmed}, else: not_a_tree(what, tree)
 
       {_parts, {:ok, %AgentID{external_id: nil}}} ->
         {:ok, trimmed}
 
       {_parts, _not_a_name} ->
-        not_a_tree(name, tree)
+        not_a_tree(what, tree)
     end
   end
 
-  defp not_a_tree(name, tree),
+  defp not_a_tree(what, tree),
     do:
       {:error,
-       "shared #{name}: #{inspect(tree)} is not a tree; a tree is org, org/name or org/@user/name"}
+       "#{what}: #{inspect(tree)} is not a tree; a tree is org, org/name or org/@user/name"}
 
-  defp reaches(id, name, tree) do
+  # The tree's owner's agents mount it as they ask; another agent as a share
+  # lets it.
+  defp reaches(id, name, tree, mode, shares) do
     prefix = owners(tree)
+    shared = Share.mode(shares, tree, id)
 
-    if Prefix.covers?(prefix, id),
-      do: :ok,
-      else: {:error, "shared #{name}: #{tree} belongs to #{prefix}, which #{id} is not under"}
+    cond do
+      Prefix.covers?(prefix, id) -> :ok
+      allowed?(shared, mode) -> :ok
+      shared == {:ok, :read} -> read_only(name, tree, id)
+      true -> {:error, "shared #{name}: #{tree} belongs to #{prefix}, which #{id} is not under"}
+    end
   end
+
+  defp allowed?({:ok, :write}, _mode), do: true
+  defp allowed?({:ok, :read}, :read), do: true
+  defp allowed?(_shared, _mode), do: false
+
+  defp read_only(name, tree, id),
+    do: {:error, "shared #{name}: #{tree} is shared with #{id} to read; mount it with mode: read"}
 
   # A tree is reachable by the agents under the prefix its name begins with.
   defp owners(tree) do
@@ -146,15 +171,20 @@ defmodule WardrikWorkspace.Spec do
 
   @doc """
   `:ok` where every tree `spec` shares is reachable only by agents under
-  `prefix`, or a message naming one that is not: what a definition sent by a
-  token whose scope is `prefix` may share.
+  `prefix`, or is one `:shares` lets the agent `:id` mount as it does, or a
+  message naming one that is neither: what a definition sent by a token
+  whose scope is `prefix` may share.
   """
-  @spec within(t(), Prefix.t()) :: :ok | {:error, String.t()}
-  def within(%__MODULE__{shared: shared}, prefix) do
-    Enum.find_value(shared, :ok, fn %Mount{name: name, tree: "shared/" <> tree} ->
+  @spec within(t(), Prefix.t(), id: AgentID.t(), shares: [Share.t()]) ::
+          :ok | {:error, String.t()}
+  def within(%__MODULE__{shared: shared}, prefix, opts) do
+    opts = Keyword.validate!(opts, [:id, shares: []])
+    {id, shares} = {Keyword.fetch!(opts, :id), opts[:shares]}
+
+    Enum.find_value(shared, :ok, fn %Mount{name: name, tree: "shared/" <> tree, mode: mode} ->
       owners = owners(tree)
 
-      if not Prefix.covers?(prefix, owners),
+      if not (Prefix.covers?(prefix, owners) or allowed?(Share.mode(shares, tree, id), mode)),
         do:
           {:error, "shared #{name}: #{tree} belongs to #{owners}, which #{prefix} does not cover"}
     end)

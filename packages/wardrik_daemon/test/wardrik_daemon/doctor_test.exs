@@ -321,6 +321,25 @@ defmodule WardrikDaemon.DoctorTest do
     end
   end
 
+  describe "a channel" do
+    test "says who decides what its agents wait on", %{tmp_dir: dir} do
+      config(dir, """
+      channels:
+        named: {type: test, approvers: ["@maria", "@ana"]}
+        open: {type: test, approvers: anyone}
+        unset: {type: test}
+      """)
+
+      checks = Doctor.checks(dir)
+      assert check(checks, "channel named") == {:ok, "channel named", "@maria, @ana decide"}
+      assert check(checks, "channel open") == {:ok, "channel open", "anyone in it decides"}
+
+      assert check(checks, "channel unset") ==
+               {:ok, "channel unset",
+                "names no approvers: whoever asks decides their own turn, and a shell the rest"}
+    end
+  end
+
   describe "the agent files" do
     test "read, with the policies they name", %{tmp_dir: dir} do
       config(dir, "")

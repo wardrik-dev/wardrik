@@ -15,7 +15,9 @@ defmodule WardrikSlack.Answers do
   alias Wardrik.Error
   alias Wardrik.Operations.Decide
 
-  @refused "Only whoever asked, or this channel's approvers, can answer that."
+  @refused "Only whoever asked, or this channel's approvers, can answer that. " <>
+             "The channel's approvers in config.yaml name who else may, and " <>
+             "wardrik approve answers it from the server."
 
   @doc """
   Answers a button press, from the `block_actions` payload Slack sends over

@@ -24,30 +24,27 @@ defmodule WardrikVault do
 
   ## Resolving
 
-  `Wardrik.Credentials.resolve/3` finds a name for the call's scope, the most specific first: the
-  call's user's, then its org's, then the deployment's. The credential it
-  answers says whose it is as `:owner`. A name nobody holds answers
-  `{:error, :not_found}`.
+  `Wardrik.Credentials.resolve/3` finds a name for the agent a call is made
+  by, as its owner holds it: the user it works for, within its org, or its
+  org, for an agent that works for nobody. Nothing falls back from one
+  owner to another: a user's agent never reads its org's, and an org's
+  agent never reads a user's, so whoever may ask an agent may use what its
+  owner holds and nothing else. A name the owner does not hold answers
+  `{:error, :not_found}`. The credential answered says whose it is as
+  `:owner`.
 
-  A user's own are reached only by their own turns: a turn nobody asked
-  for, as a trigger's, or one whose sender the `Wardrik.Grants` of the
-  scope's host answers with a grant on that user's agents alone, or on
-  every agent. A turn anyone else asked for, someone in the org's channel
-  say, reaches the org's and the deployment's, and is asked of the org
-  where neither holds the name.
+  A name in `:shared` is one every agent may read where its owner does not
+  hold it: the deployment's, sealed with no owner, or, where the vault
+  holds none or has no key, the node's environment variable of that name.
+  The deployment says so, by name; a deployment's secret it does not name
+  reaches no agent's calls.
 
-  A name in `:environment` that the node's environment sets is the
-  deployment's where no owner the call reaches holds it here, or the vault
-  has no key: a tool's key a deployment sets as an environment variable
-  resolves so where nobody sealed one.
-
-      WardrikVault.new(store: store, keys: keys, environment: ["SEARCH_API_KEY"])
+      WardrikVault.new(store: store, keys: keys, shared: ["SEARCH_API_KEY"])
 
   A grant is an account its owner connected, and acts as them, so only its
-  owner's calls reach it: a user's grant for their calls, an org's for the
-  calls of its agents that have no user. A user whose org connected an
-  account is asked to connect their own, and a secret the org put reaches
-  them as before.
+  owner's agents reach it, and a deployment's is never shared. A name
+  nobody holds that the vault's grants can grant is asked of the owner, so
+  a user's agent asks them to connect their own.
 
   ## Grants
 
@@ -89,25 +86,23 @@ defmodule WardrikVault do
 
   require Logger
 
-  alias Wardrik.AgentID.Prefix
   alias Wardrik.Credential
   alias Wardrik.Scope
   alias WardrikVault.Grants
   alias WardrikVault.Sealed
 
   @enforce_keys [:store]
-  defstruct [:store, keys: [], grants: %Grants.None{}, environment: []]
+  defstruct [:store, keys: [], grants: %Grants.None{}, shared: []]
 
   @typedoc """
   A vault: the store it keeps credentials in, the base64-encoded keys the
-  first of which seals, what it grants, and the names read from the node's
-  environment where it holds them for nobody a call reaches.
+  first of which seals, what it grants, and the names every agent may read.
   """
   @type t() :: %__MODULE__{
           store: WardrikStore.t(),
           keys: [String.t()],
           grants: Grants.t(),
-          environment: [String.t()]
+          shared: [String.t()]
         }
 
   @ns :vault
@@ -130,58 +125,80 @@ defmodule WardrikVault do
     * `:keys` - the base64-encoded keys, the first of which seals; none by
       default, so nothing is sealed or unsealed
     * `:grants` - the `WardrikVault.Grants` that renew and ask for grants
-    * `:environment` - the names read from the node's environment, as the
-      deployment's, where the vault holds them for nobody a call reaches
+    * `:shared` - the names every agent may read where its owner holds
+      none: the deployment's, or the node's environment variable
 
   Its inspected form shows its store and how many keys it holds, never a
   key.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
-    opts = Keyword.validate!(opts, [:store, keys: [], grants: %Grants.None{}, environment: []])
+    opts = Keyword.validate!(opts, [:store, keys: [], grants: %Grants.None{}, shared: []])
     struct!(__MODULE__, Keyword.update!(opts, :keys, &List.wrap/1))
   end
 
   @doc false
   def resolve(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
       when is_binary(name) do
-    owners = owners(scope)
+    owner = owner(scope)
 
-    case find(vault, name, owners) do
-      {:ok, owner, :secret, secret} ->
+    case lookup(vault, name, owner) do
+      {:ok, :secret, secret} ->
         {:ok, Credential.secret(secret, owner: owner)}
 
-      {:ok, owner, :grant, grant} ->
+      {:ok, :grant, grant} ->
         Grants.renew(vault.grants, name, owner, vault: vault, value: grant)
 
-      {:unreadable, owner} ->
+      {:error, :grant, reason} ->
+        unreadable(name, owner, reason)
         ask(vault, name, owner)
 
-      :none ->
-        environment(vault, name) || ask(vault, name, hd(owners))
+      {:error, :not_found} ->
+        shared(vault, name, fn -> ask(vault, name, owner) end)
 
       {:error, :no_key} ->
-        environment(vault, name) || {:error, :no_key}
+        shared(vault, name, fn -> {:error, :no_key} end)
+
+      {:error, _kind, reason} ->
+        {:error, reason}
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp environment(vault, name) do
-    with true <- name in vault.environment,
-         secret when is_binary(secret) <- System.get_env(name) do
+  # A name the deployment shares with every agent: its own sealed secret,
+  # else the node's environment variable; `otherwise` where it shares none.
+  defp shared(vault, name, otherwise) do
+    with true <- name in vault.shared,
+         {:ok, secret} <- deployment(vault, name) do
       {:ok, Credential.secret(secret, owner: nil)}
     else
-      _unnamed_or_unset -> nil
+      _unshared_or_unset -> otherwise.()
+    end
+  end
+
+  defp deployment(vault, name) do
+    case lookup(vault, name, nil) do
+      {:ok, :secret, secret} -> {:ok, secret}
+      _absent_or_unreadable -> environment(name)
+    end
+  end
+
+  defp environment(name) do
+    case System.get_env(name) do
+      secret when is_binary(secret) -> {:ok, secret}
+      nil -> :error
     end
   end
 
   @doc false
   def refused(%__MODULE__{} = vault, name, %Wardrik.Call{scope: %Scope{} = scope})
       when is_binary(name) do
-    case find(vault, name, owners(scope)) do
-      {:ok, owner, :grant, _grant} -> Grants.refused(vault.grants, name, owner, vault: vault)
+    owner = owner(scope)
+
+    case lookup(vault, name, owner) do
+      {:ok, :grant, _grant} -> Grants.refused(vault.grants, name, owner, vault: vault)
       _secret_or_none -> :ok
     end
   end
@@ -194,53 +211,18 @@ defmodule WardrikVault do
     end
   end
 
-  # Whose credentials a scope reaches, the most specific first.
-  defp owners(%Scope{} = scope) do
+  # The owner of the agent a scope runs for.
+  defp owner(%Scope{} = scope) do
     case Scope.agent_id(scope) do
-      %Wardrik.AgentID{user: nil, org: org} ->
-        [org, nil]
-
-      %Wardrik.AgentID{org: org, user: user} = id ->
-        if theirs?(scope, id), do: [{org, user}, org, nil], else: [org, nil]
+      %Wardrik.AgentID{org: org, user: nil} -> org
+      %Wardrik.AgentID{org: org, user: user} -> {org, user}
     end
-  end
-
-  # A turn nobody asked for is the agent's own work, and so its user's.
-  defp theirs?(%Scope{sender: nil}, _id), do: true
-
-  defp theirs?(%Scope{sender: sender, host: host}, %Wardrik.AgentID{org: org, user: user} = id) do
-    case Wardrik.Host.caller(host, principal: sender, subject: id) do
-      {:ok, %Wardrik.Caller{grant: %Wardrik.Grant{scope: scope}}} ->
-        scope == Prefix.all() or Prefix.covers?(Prefix.new!(org: org, user: user), scope)
-
-      {:error, _unreached} ->
-        false
-    end
-  end
-
-  # The first of `owners` holding `name`, passing over the grants of any but
-  # the first. A grant that no longer unseals is asked for again; a secret
-  # that does not is an error.
-  defp find(vault, name, [own | _others] = owners) do
-    Enum.reduce_while(owners, :none, fn owner, :none ->
-      case lookup(vault, name, owner) do
-        {:ok, :grant, _value} when owner != own -> {:cont, :none}
-        {:error, :grant, _reason} when owner != own -> {:cont, :none}
-        {:ok, kind, value} -> {:halt, {:ok, owner, kind, value}}
-        {:error, :not_found} -> {:cont, :none}
-        {:error, :grant, reason} -> {:halt, unreadable(name, owner, reason)}
-        {:error, _kind, reason} -> {:halt, {:error, reason}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
   end
 
   defp unreadable(name, owner, reason) do
     Logger.warning(
       "#{name} for #{inspect(owner)} cannot be read (#{inspect(reason)}); asking again"
     )
-
-    {:unreadable, owner}
   end
 
   defp ask(vault, name, owner) do

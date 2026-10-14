@@ -20,6 +20,8 @@ defmodule WardrikDaemon.Doctor do
     * `mcp NAME` - for each MCP server, that the program a command server
       runs is on this machine, and that the host an HTTP server is reached at
       answers
+    * `channel NAME` - for each channel, who decides what its agents wait
+      on, as its `approvers` say; see `WardrikDaemon.Approvers`
     * `agents` - that every agent file and policy reads, as the daemon reads
       them, a line for each that does not
 
@@ -30,14 +32,15 @@ defmodule WardrikDaemon.Doctor do
   the vault reads as itself, `${NAME}`, and doctor says it could not check.
 
       $ wardrik doctor
-      ok    env         /home/me/.config/wardrik/env sets 3 variables
-      ok    config      /home/me/.config/wardrik/config.yaml reads
-      ok    store       on this node's disk, at /home/me/.local/share/wardrik/store
-      ok    vault       1 key, which seals
-      ok    oauth       https://agents.example.com/oauth reaches the daemon's callback
-      ok    mcp github  answers at api.githubcopilot.com:443; each user authorizes it
-      FAIL  mcp files   runs npx, which is not on this machine's PATH
-      ok    agents      2 agent files and 1 policy read
+      ok    env            /home/me/.config/wardrik/env sets 3 variables
+      ok    config         /home/me/.config/wardrik/config.yaml reads
+      ok    store          on this node's disk, at /home/me/.local/share/wardrik/store
+      ok    vault          1 key, which seals
+      ok    oauth          https://agents.example.com/oauth reaches the daemon's callback
+      ok    mcp github     answers at api.githubcopilot.com:443; each user authorizes it
+      FAIL  mcp files      runs npx, which is not on this machine's PATH
+      ok    channel slack  @maria decides
+      ok    agents         2 agent files and 1 policy read
 
   It exits with status 1 where a check fails. Where `config.yaml` does not
   read, no check after it runs.
@@ -121,7 +124,7 @@ defmodule WardrikDaemon.Doctor do
         )
 
       [env(config_dir), config(file, from_vault, vault), store(read), vault(settings)] ++
-        callback(settings, vault) ++ servers(settings) ++ agents(config)
+        callback(settings, vault) ++ servers(settings) ++ channels(settings) ++ agents(config)
     else
       {:error, message} -> [env(config_dir), {:error, "config", message}]
     end
@@ -393,6 +396,14 @@ defmodule WardrikDaemon.Doctor do
   defp describe(:econnrefused), do: "the connection was refused"
   defp describe(:timeout), do: "no answer within #{div(@connect_timeout, 1000)} seconds"
   defp describe(reason), do: inspect(reason)
+
+  # -- channels ----------------------------------------------------------------
+
+  defp channels(settings) do
+    for {name, approvers} <-
+          settings |> Keyword.get(WardrikChannel, []) |> Keyword.get(:approvers, []),
+        do: {:ok, "channel #{name}", WardrikDaemon.Approvers.described(approvers)}
+  end
 
   # -- agents ------------------------------------------------------------------
 

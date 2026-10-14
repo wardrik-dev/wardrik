@@ -44,8 +44,8 @@ defmodule Mix.Tasks.Wardrik do
   `config :wardrik_sdk, WardrikOAuth, providers: [...]` for `WardrikOAuth`,
   and `config :wardrik_sdk, WardrikVault, keys: [...]` for the vault. It
   starts the store and `Wardrik` itself, on a host whose credentials are
-  that vault, which reads a tool's key from the environment variable its
-  `:environment` names where it holds none. A tool that needs a
+  that vault, which shares the keys its `:shared` names with every agent,
+  read from the environment variable where it holds none. A tool that needs a
   credential the user has not authorized parks the turn on a link; open it,
   then answer `y` to run the call again.
 

@@ -210,8 +210,8 @@ asks the user to connect again, the same way.
 The vault also keeps a secret you put there yourself, for the deployment, an org or a user:
 
 ```sh
-wardrik vault put linear                   # every agent's, where nothing nearer holds linear
-wardrik vault put pagerduty --org acme     # acme's agents'
+wardrik vault put linear                   # the deployment's, for agents where vault.shared names it
+wardrik vault put pagerduty --org acme     # acme's own agents'
 wardrik vault put sentry --user jon        # jon's agents', in the deployment's org
 wardrik vault ls                           # what it holds, and whose, never the values
 wardrik vault rm pagerduty --org acme
@@ -219,6 +219,19 @@ wardrik vault rm pagerduty --org acme
 
 `vault put NAME` asks for the value and does not show it as you type, or reads it from a pipe.
 `--user USER` puts one for a single user, with `--org ORG` for one outside the deployment's org.
-A secret put for a user, or their org, is found before an OAuth provider of the same name is asked
-for, so it stands in for an account they would otherwise connect. `vault ls` lists the accounts
-users connected too.
+A secret the agent's owner holds is found before an OAuth provider of the same name is asked for,
+so it stands in for an account they would otherwise connect. `vault ls` lists the accounts users
+connected too.
+
+An agent reads only what its owner holds: an agent that works for a user reads that user's secrets
+and accounts, and an org's agent the org's. Nothing falls back from one to the other, so a user's
+agent that needs the org's account asks the org's agent, which its own policy holds. The
+deployment's secrets reach agents only by name:
+
+```yaml title="~/.config/wardrik/config.yaml"
+vault:
+  shared: [linear]    # every agent may read the deployment's linear
+```
+
+A name `shared` lists is also read from the daemon's environment variable of that name, where the
+vault holds none.

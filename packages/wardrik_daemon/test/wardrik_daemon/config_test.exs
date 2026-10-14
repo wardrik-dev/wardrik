@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.ConfigTest do
   use ExUnit.Case, async: false
 
+  alias WardrikDaemon.Approvers.Named
   alias WardrikDaemon.Config
 
   @moduletag :tmp_dir
@@ -160,6 +161,7 @@ defmodule WardrikDaemon.ConfigTest do
                        scopes: [repo]
                  vault:
                    keys: ["${#{key}}"]
+                   shared: [linear]
                  """,
                  context
                )
@@ -167,7 +169,40 @@ defmodule WardrikDaemon.ConfigTest do
       oauth = Keyword.fetch!(settings, WardrikOAuth)
       assert oauth[:client] == [name: "Acme agents"]
       assert oauth[:providers][:github][:scopes] == ["repo"]
-      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"]]
+      assert Keyword.fetch!(settings, WardrikVault) == [keys: ["a-vault-key"], shared: ["linear"]]
+    end
+
+    test "workspace.shared names who beyond a tree's owner may mount it", context do
+      assert {:ok, [{WardrikWorkspace, shared: [share]}]} =
+               read(
+                 """
+                 workspace:
+                   shared:
+                     acme/runbooks:
+                       read: ["acme/*"]
+                       write: [acme/ops]
+                 """,
+                 context
+               )
+
+      assert share.tree == "acme/runbooks"
+      assert Enum.map(share.read, &to_string/1) == ["acme/*"]
+      assert Enum.map(share.write, &to_string/1) == ["acme/ops"]
+
+      assert {:error, message} =
+               read("workspace:\n  shared:\n    acme/runbooks: {read: [\"/x\"]}\n", context)
+
+      assert message =~ "workspace.shared.acme/runbooks does not read"
+
+      assert {:error, message} =
+               read("workspace:\n  shared:\n    acme/runbooks: {all: true}\n", context)
+
+      assert message =~ "all"
+    end
+
+    test "vault.shared is a list of credential names", context do
+      assert {:error, message} = read(~s(vault:\n  shared: linear\n), context)
+      assert message =~ "vault.shared is a list of credential names"
     end
 
     test "a variable that is not set says which value names it", context do
@@ -456,18 +491,23 @@ defmodule WardrikDaemon.ConfigTest do
              ]
 
       assert Enum.sort(orgs) == [chat: ["default"], other: ["default"]]
-      assert Enum.sort(approvers) == [chat: [], other: []]
+      assert Enum.sort(approvers) == [chat: %Named{names: []}, other: %Named{names: []}]
       assert Enum.sort(admins) == [chat: [], other: []]
 
       assert {:ok, [{WardrikChannel, settings}]} =
                read("channels:\n  chat: {type: test, approvers: [\"@maria\"]}\n", context)
 
-      assert settings[:approvers] == [chat: ["@maria"]]
+      assert settings[:approvers] == [chat: %Named{names: ["@maria"]}]
+
+      assert {:ok, [{WardrikChannel, settings}]} =
+               read("channels:\n  chat: {type: test, approvers: anyone}\n", context)
+
+      assert settings[:approvers] == [chat: %WardrikDaemon.Approvers.Anyone{}]
 
       assert {:error, message} =
                read("channels:\n  chat: {type: test, approvers: maria}\n", context)
 
-      assert message =~ "channels.chat.approvers is a list of who may answer"
+      assert message =~ "channels.chat.approvers is anyone, or a list of who may answer"
 
       assert {:ok, [{WardrikChannel, settings}]} =
                read("channels:\n  chat: {type: test, admins: [\"@jon\"]}\n", context)
@@ -938,7 +978,7 @@ defmodule WardrikDaemon.ConfigTest do
       System.put_env("KEYED", key)
       on_exit(fn -> System.delete_env("KEYED") end)
 
-      base = [{WardrikVault, environment: ["SEARCH_API_KEY"]}, {WardrikMCP, servers: []}]
+      base = [{WardrikVault, shared: ["SEARCH_API_KEY"]}, {WardrikMCP, servers: []}]
 
       assert {:ok, %Config{} = config} =
                Config.load(
@@ -949,7 +989,7 @@ defmodule WardrikDaemon.ConfigTest do
                )
 
       assert Config.org(config) == "acme"
-      assert Config.section(config, WardrikVault)[:environment] == ["SEARCH_API_KEY"]
+      assert Config.section(config, WardrikVault)[:shared] == ["SEARCH_API_KEY"]
       assert Config.section(config, WardrikVault)[:keys] == [key]
       assert Config.section(config, WardrikMCP) == [servers: []]
       assert config.config_dir == dir

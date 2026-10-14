@@ -93,7 +93,7 @@ defmodule Wardrik.ConnectionsTest do
 
   describe "listing" do
     test "says who holds each account offered, never a value", %{provider: provider} do
-      assert {:ok, %{"connections" => connections}} = read(caller("acme/"))
+      assert {:ok, %{"connections" => connections}} = read(caller("acme/@jon/"))
 
       assert connections == [
                %{"provider" => "github", "held_by" => "person"},
@@ -107,8 +107,13 @@ defmodule Wardrik.ConnectionsTest do
 
       assert to_string(request.owner) == "acme/@jon/"
 
-      assert {:ok, request} = Connections.Owner.request(ReadConnections, caller("acme/"), :person)
+      assert {:ok, request} =
+               Connections.Owner.request(ReadConnections, caller("acme/*"), :person)
+
       assert to_string(request.owner) == "acme/@jon/"
+      assert {:ok, _list} = read(caller("acme/*"))
+
+      assert {:error, %Error{type: :not_found}} = read(caller("acme/"))
 
       assert {:ok, request} = Connections.Owner.request(ReadConnections, caller("acme/"), :org)
       assert to_string(request.owner) == "acme/"
@@ -135,35 +140,37 @@ defmodule Wardrik.ConnectionsTest do
                )
 
       assert {:error, %Error{type: :forbidden}} =
-               read(caller("acme/", @jon, [:message]))
+               read(caller("acme/@jon/", @jon, [:message]))
     end
   end
 
   describe "connecting" do
     test "answers where to authorize, or that it is held, as the caller", %{provider: provider} do
       assert {:ok, request} =
-               Connections.Owner.request(Connect, caller("acme/"), :person, provider: provider)
+               Connections.Owner.request(Connect, caller("acme/@jon/"), :person,
+                 provider: provider
+               )
 
       assert {:ok,
               %{
                 "connected" => false,
                 "authorization" => %{"url" => "https://auth.example.com/" <> _}
-              }} = Command.run(request, caller("acme/"))
+              }} = Command.run(request, caller("acme/@jon/"))
 
       assert_received {:connect, ^provider, {"acme", "jon"}, @jon}
 
       {:ok, request} =
-        Connections.Owner.request(Connect, caller("acme/"), :person, provider: "github")
+        Connections.Owner.request(Connect, caller("acme/@jon/"), :person, provider: "github")
 
       assert {:ok, %{"provider" => "github", "connected" => true}} =
-               Command.run(request, caller("acme/"))
+               Command.run(request, caller("acme/@jon/"))
     end
 
     test "is refused for an account not offered, without define, or for the org without it" do
       {:ok, request} =
-        Connections.Owner.request(Connect, caller("acme/"), :person, provider: "nothing")
+        Connections.Owner.request(Connect, caller("acme/@jon/"), :person, provider: "nothing")
 
-      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/"))
+      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/@jon/"))
 
       reader = caller("acme/", @jon, [:read])
       {:ok, request} = Connections.Owner.request(Connect, reader, :org, provider: "github")
@@ -174,23 +181,23 @@ defmodule Wardrik.ConnectionsTest do
   describe "disconnecting" do
     test "forgets the owner's account, and is recorded as the caller's" do
       {:ok, request} =
-        Connections.Owner.request(Disconnect, caller("acme/"), :person, provider: "github")
+        Connections.Owner.request(Disconnect, caller("acme/@jon/"), :person, provider: "github")
 
-      assert {:ok, nil} = Command.run(request, caller("acme/"))
+      assert {:ok, nil} = Command.run(request, caller("acme/@jon/"))
 
       assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
                List.last(Audit.about("secrets/github"))
 
       assert {:ok, %{"connections" => [%{"provider" => "github"} = github | _]}} =
-               read(caller("acme/"))
+               read(caller("acme/@jon/"))
 
       refute Map.has_key?(github, "held_by")
-      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/"))
+      assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/@jon/"))
     end
   end
 
   test "a host with no connections module offers none" do
     assert {:error, %Error{type: :unsupported}} =
-             read(caller("acme/", @jon, Grant.actions(), Host.new()))
+             read(caller("acme/@jon/", @jon, Grant.actions(), Host.new()))
   end
 end
