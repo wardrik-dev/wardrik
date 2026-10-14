@@ -124,8 +124,9 @@ wait on a person, as every change does, unless the policy allows them:
         runbooks: {tree: acme/runbooks, mode: read}
 
 A tree is reachable by the agents under the scope its name begins with, as
-`WardrikWorkspace.Spec` says, and a file naming one its agent cannot reach
-does not read. A conversation of the agent, one with an external ID, works
+`WardrikWorkspace.Spec` says, and by those `config.yaml`'s
+`workspace.shared` lets mount it, in the mode it lets them; a file naming
+one its agent cannot reach does not read. A conversation of the agent, one with an external ID, works
 in the agent's own tree, so what one thread keeps the next finds.
 
 As each turn begins the agent is told what its workspace holds: the files

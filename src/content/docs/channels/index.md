@@ -80,8 +80,10 @@ question is posted again, so the thread never goes quiet.
 
 A channel's `approvers` may answer what an agent asks in its threads, each as the channel names
 people, and are asked it directly, where the channel can reach a person, with the thread saying who
-it waits on; without them, anyone in the room may, in the thread. Whoever asked for a turn may
-answer what it waits on either way. A channel's `admins`, named alike, may also answer, and change
+it waits on; `approvers: anyone` lets everyone in the channel answer, in the thread. Without them,
+only whoever asked for a turn answers what it waits on, and a turn nobody asked for, such as a
+trigger's, is answered from a shell. Whoever asked for a turn may answer what it waits on either
+way. A channel's `admins`, named alike, may also answer, and change
 its orgs' agents where `defaults` names a policy, which holds what they define:
 
 ```yaml
@@ -94,8 +96,8 @@ channels:
     admins: ["@jon"]
 ```
 
-Everyone in a channel may read and message the agents of the orgs it offers. See
-`WardrikDaemon.Grants` for what each person may do.
+Everyone in a channel may read and message the agents of the orgs it offers, and none of their
+users' agents. See `WardrikDaemon.Grants` for what each person may do.
 
 ## Notices in a room
 

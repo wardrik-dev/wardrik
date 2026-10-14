@@ -24,9 +24,10 @@ export TOKEN=wardrik_...
 curl -s -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/agents
 ```
 
-`--scope acme/` reaches the agents whose keys begin `acme/`, and an agent outside it is answered as
-one that does not exist. A token that can define agents holds them to a policy, here `careful`,
-ahead of their own. See [Tokens](/run/security/#tokens).
+`--scope acme/` reaches acme's own agents, and an agent outside it is answered as one that does not
+exist. A user's agents are reached by a scope naming them, `acme/@jon/`, or by `acme/*`, the whole
+tenant: acme's agents and every one of its users'. A token that can define agents holds them to a
+policy, here `careful`, ahead of their own. See [Tokens](/run/security/#tokens).
 
 ## Define an agent
 

@@ -63,11 +63,23 @@ its name begins with:
 
 | Tree | Reachable by |
 | --- | --- |
-| `acme` | every agent of `acme` |
-| `acme/runbooks` | every agent of `acme` |
+| `acme` | `acme`'s own agents, none that work for a user |
+| `acme/runbooks` | `acme`'s own agents |
 | `acme/@jon/notes` | the agents of `acme` that work for `jon` |
 
-An agent file that shares a tree its agent cannot reach does not read, and says which tree and why.
+Anyone else mounts a tree only where `config.yaml` shares it with them, to read or to write, by the
+prefixes of the agents it lets in: `acme/*` is every agent in `acme`, its users' included.
+
+```yaml title="~/.config/wardrik/config.yaml"
+workspace:
+  shared:
+    acme/runbooks:
+      read: ["acme/*"]     # every agent in acme may read it
+      write: [acme/ops]    # and acme's ops agent change it
+```
+
+An agent shared a tree to read mounts it with `mode: read`. An agent file that shares a tree its
+agent cannot reach does not read, and says which tree and why.
 A tree holds only its own files: `acme` does not hold `acme/runbooks`, so a tree shared only to
 read stays that way however the trees above it are shared.
 
