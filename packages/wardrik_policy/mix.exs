@@ -13,6 +13,7 @@ defmodule WardrikPolicy.MixProject do
         "Policies for Wardrik agents written as data: what they may call, what asks a person first, and what they may spend.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
+      docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
@@ -29,8 +30,19 @@ defmodule WardrikPolicy.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
+  # The guides are the docs site's reference pages too: mix wardrik.docs
+  # writes them there.
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md", "guides/policies.md"],
+      groups_for_extras: [Reference: ~r"guides/"]
+    ]
+  end
+
   defp deps do
     [
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       sibling(:wardrik),
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}

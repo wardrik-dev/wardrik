@@ -13,6 +13,7 @@ defmodule WardrikHTTP.MixProject do
         "Wardrik's agents over HTTP: a versioned JSON API, each agent's event log as server-sent events, and tool workers.",
       source_url: @source_url,
       package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
+      docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_add_apps: [:mix, :ex_unit],
@@ -32,8 +33,19 @@ defmodule WardrikHTTP.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
+  # The guides are the docs site's reference pages too: mix wardrik.docs
+  # writes them there.
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md", "guides/http-api.md"],
+      groups_for_extras: [Reference: ~r"guides/"]
+    ]
+  end
+
   defp deps do
     [
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       sibling(:wardrik),
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
