@@ -275,12 +275,12 @@ triggers:
     prompt: Reconcile yesterday's transactions.
 policy:
   allow:
-    - quickbooks/list_*
-    - quickbooks/create_bill(amount < 1000)
+    - quickbooks/search_*
+    - quickbooks/create-bill(params.bill.Line.Amount < 1000)
   ask:
-    quickbooks/create_bill(amount >= 1000): A bill over $1,000.
+    quickbooks/create-bill(params.bill.Line.Amount >= 1000): A line over $1,000.
   deny:
-    quickbooks/*(account = Payroll): Payroll is off limits.
+    quickbooks/create_bill_payment: Paying bills is for people.
   budget:
     usd: 10.00
     tokens: 2000000
@@ -295,8 +295,8 @@ You keep the books. Say what you will post before you post it.
 </div>
 <dl class="agent-notes">
 <div><dt><code>triggers</code></dt><dd>Reconciles at 7:00 UTC every weekday.</dd></div>
-<div><dt><code>allow</code>, <code>ask</code></dt><dd>Small bills post on their own. Big ones wait for you.</dd></div>
-<div><dt><code>deny</code></dt><dd>Payroll is refused, however it's asked.</dd></div>
+<div><dt><code>allow</code>, <code>ask</code></dt><dd>Bills with every line under $1,000 post on their own. Bigger ones wait for you.</dd></div>
+<div><dt><code>deny</code></dt><dd>Paying a bill is refused, however it's asked.</dd></div>
 <div><dt><code>budget</code></dt><dd>$10 or 2M tokens a day. Then it asks, and approving grants $5 more.</dd></div>
 <div><dt><code>notify</code></dt><dd>Waiting and failed turns go to the accounting room.</dd></div>
 <div><dt><code>channels</code></dt><dd>The team talks to it in Slack.</dd></div>
