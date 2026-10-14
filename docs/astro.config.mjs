@@ -109,9 +109,9 @@ export default defineConfig({
 								{ label: 'Overview', slug: 'examples' },
 								// Each group fills itself from its folder, so adding an example is adding a file.
 								{ label: 'For a team', items: [{ autogenerate: { directory: 'examples/team' } }] },
-								{ label: 'For you', items: [{ autogenerate: { directory: 'examples/you' } }] },
-								{ label: 'For a business', items: [{ autogenerate: { directory: 'examples/business' } }] },
 								{ label: 'For an enterprise', items: [{ autogenerate: { directory: 'examples/enterprise' } }] },
+								{ label: 'For a business', items: [{ autogenerate: { directory: 'examples/business' } }] },
+								{ label: 'For you', items: [{ autogenerate: { directory: 'examples/you' } }] },
 								{ label: 'Try to break it', items: ['examples/pull-the-plug', 'examples/hijack-me'] },
 							],
 						},
