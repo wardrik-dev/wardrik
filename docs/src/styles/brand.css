@@ -621,8 +621,8 @@ site-search button {
 }
 
 /* The two proofs, side by side a level below the band. */
-/* Each proof spans three rows, title, line and example, so a pair lines up
- * row by row. */
+/* Each proof spans four rows, title, line, example and link, so a pair
+ * lines up row by row. */
 .home-proofs {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -631,7 +631,7 @@ site-search button {
 
 .sl-markdown-content .home-proofs > div {
 	display: grid;
-	grid-row: span 3;
+	grid-row: span 4;
 	grid-template-rows: subgrid;
 	grid-template-columns: minmax(0, 1fr);
 	row-gap: 0;
@@ -681,17 +681,6 @@ site-search button {
 	.home-proofs {
 		grid-template-columns: minmax(0, 1fr);
 	}
-}
-
-/* A proof's title is the way to its example. */
-.sl-markdown-content .home-proofs h3 a {
-	color: inherit;
-	text-decoration: none;
-}
-
-.sl-markdown-content .home-proofs h3 a:hover {
-	text-decoration: underline;
-	text-decoration-color: var(--sl-color-accent);
 }
 
 .home-proofs h3 {
