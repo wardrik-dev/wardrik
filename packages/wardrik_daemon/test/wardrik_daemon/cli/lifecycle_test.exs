@@ -28,8 +28,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
   setup %{tmp_dir: dir} do
     Host.put_section(WardrikDaemon.Agents, defaults: @defaults)
 
-    Host.start_agents(dir)
     org = "life-#{System.unique_integer([:positive])}"
+    Host.declare([org])
+    Host.start_agents(dir)
     on_exit(fn -> Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
 
     %{dir: dir, org: org, here: Nodes.display(node())}
@@ -149,6 +150,9 @@ defmodule WardrikDaemon.CLI.LifecycleTest do
 
       assert command(["agent", "spawn", "a", "--org", org, "--user", "_x"]) ==
                {"--user _x is not a user's name" <> rule, 1}
+
+      assert {"nobody is not an org config.yaml declares: default, " <> _orgs, 1} =
+               command(["agent", "spawn", "a", "--org", "nobody"])
     end
 
     test "starts a stopped agent again, as its file declares it or as it was", context do

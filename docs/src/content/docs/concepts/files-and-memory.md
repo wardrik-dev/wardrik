@@ -55,6 +55,8 @@ workspace:
 Anyone else mounts a tree only where `config.yaml` shares it, by agent prefix:
 
 ```yaml title="~/.config/wardrik/config.yaml"
+org: acme
+
 workspace:
   shared:
     acme/runbooks:

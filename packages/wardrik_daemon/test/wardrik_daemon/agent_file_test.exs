@@ -23,6 +23,7 @@ defmodule WardrikDaemon.AgentFileTest do
   defp ctx, do: AgentFile.context(Host.config(System.tmp_dir!()))
 
   setup do
+    Host.declare(["acme", "globex"])
     with_servers(linear: [transport: {:streamable_http, base_url: "https://mcp.linear.app/mcp"}])
   end
 
@@ -134,6 +135,11 @@ defmodule WardrikDaemon.AgentFileTest do
 
     assert {:ok, spec} = read("---\ntools: ['*']\norg: globex\n---\n", context)
     assert {WardrikMCP, :theirs} in spec.config.tools
+  end
+
+  test "an agent is refused in an org config.yaml does not declare", context do
+    assert {:error, message} = read("---\norg: globx\n---\n", context)
+    assert message =~ "globx is not an org config.yaml declares: default, acme, globex"
   end
 
   test "a server is refused to an agent of an org it does not serve", context do

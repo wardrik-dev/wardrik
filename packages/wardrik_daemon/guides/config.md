@@ -1,6 +1,6 @@
 # config.yaml
 
-What the daemon reads as it starts: the deployment's org and address, the MCP servers and channels
+What the daemon reads as it starts: the deployment's orgs and address, the MCP servers and channels
 agents reach, where secrets and the store are kept, and the defaults agents are given.
 
 ```yaml
@@ -40,7 +40,7 @@ notify:
 
 The file is `config.yaml` or `config.yml`, in YAML 1.2; a directory holding both is refused. The
 daemon reads it as it starts, so restart it after a change. It refuses a file with a variable that
-isn't set or a key nothing takes, and says where.
+isn't set, a key nothing takes, or a name it doesn't define, and says where.
 
 ## Secrets
 
@@ -57,6 +57,7 @@ set them.
 | Key | What it configures |
 | --- | --- |
 | [`org`](#org) | the deployment's org |
+| [`orgs`](#orgs) | the other orgs, and the servers, channels and notify targets each uses |
 | [`base_url`](#base_url) | the address people and services reach the daemon at |
 | [`defaults`](#defaults) | what an agent is given where nothing else says |
 | [`tools`](#tools) | what calls to a tool cost |
@@ -75,6 +76,48 @@ set them.
 
 The org an agent belongs to where its file names none, and the one the CLI finds an agent in when
 it is named without an org. `default` unless set.
+
+## orgs
+
+The orgs beside the deployment's own, each with the servers, channels and notify targets its agents
+use. Each is defined once, under `mcp`, `channels` or `notify`, and an org lists it by name.
+
+```yaml
+org: platform
+
+mcp:
+  stripe: {url: https://mcp.stripe.com, credential: STRIPE_AGENT_KEY}
+  github: {url: https://api.githubcopilot.com/mcp/, credential: GITHUB_TOKEN}
+  search: {url: https://search.example.com/mcp, credential: SEARCH_API_KEY}
+
+channels:
+  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", app_token: "${PAYMENTS_SLACK_APP_TOKEN}"}
+  growth-slack: {type: slack, token: "${GROWTH_SLACK_BOT_TOKEN}", app_token: "${GROWTH_SLACK_APP_TOKEN}"}
+
+orgs:
+  "*":
+    mcp: [search]
+  payments:
+    mcp: [stripe, github]
+    channels: [payments-slack]
+  growth:
+    mcp: [github]
+    channels: [growth-slack]
+
+vault:
+  shared: [SEARCH_API_KEY]
+```
+
+- An org's entry takes `mcp`, `channels` and `notify`, each a list of names. An entry may be empty,
+  `growth: {}`.
+- `"*"` lists what every org uses.
+- A server, channel or target no entry lists is the deployment's own org's.
+- An agent, a secret, a token's scope or a shared tree in an org that is neither `org` nor in
+  `orgs` is refused, as is a name its section doesn't define.
+
+Each org's agents reach a server with their org's own credential, so payments and growth each seal a
+`GITHUB_TOKEN` of their own. `vault.shared` lets every org use the deployment's `SEARCH_API_KEY`. See
+[Credentials](#credentials).
 
 ## base_url
 
@@ -126,7 +169,6 @@ mcp:
 | --- | --- |
 | `command`, `args`, `env`, `cwd` | the command that runs the server |
 | `url`, `headers` | where the server is reached over HTTP |
-| `org` | the org whose agents it serves, a list of them, or `*` for every org; the deployment's own unless set |
 | `only`, `except` | the tools it offers, by the names the server gives them |
 | `prefix` | what its tool names start with; the server's name unless set |
 | `timeout` | seconds a call may take; 60 unless set |
@@ -137,7 +179,8 @@ mcp:
 | `credential_header`, `credential_scheme` | the header a credential is sent in and its scheme; `authorization` and `Bearer` unless set |
 | `credential_env` | the variable a credential is given to a command in |
 
-A server's name and `prefix` may not hold `__`. See
+A server's name and `prefix` may not hold `__`. It serves the orgs that [`orgs`](#orgs) lists it
+for. See
 [Connect MCP servers](https://docs.wardrik.dev/build/mcp/).
 
 ### Credentials
@@ -177,13 +220,13 @@ Chat media agents are reached through, each by a name of the deployment's own.
 | Key | Means |
 | --- | --- |
 | `type` | the kind of channel, such as `slack` |
-| `org` | the org whose agents it may offer, or `*` for every org; the deployment's own unless set |
 | `approvers` | who decides what an agent waits on in its rooms: the people named, or `anyone` in the channel; where none are named, whoever asked for the turn decides, and a shell decides the rest |
 | `admins` | who may change its orgs' agents |
 | `create` | `false` stops people creating an agent in a room that has none; where `defaults` name a policy, one is made from them unless set |
 
-The rest of a channel's keys are its kind's, such as Slack's `token` and `app_token`. An agent is
-offered in a channel's rooms where its file lists the channel. See
+The rest of a channel's keys are its kind's, such as Slack's `token` and `app_token`. A channel
+offers the agents of the orgs that [`orgs`](#orgs) lists it for. An agent is offered in a channel's
+rooms where its file lists the channel. See
 [Channels](https://docs.wardrik.dev/channels/) and
 [Slack](https://docs.wardrik.dev/channels/slack/).
 
@@ -204,7 +247,7 @@ notify:
 ```
 
 A room target takes `channel`, `room`, and `approvers`, who may answer it. A webhook takes `url` and
-optionally `secret`. Either takes `org`, as an MCP server does. See
+optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) lists it for. See
 [Send notices](https://docs.wardrik.dev/build/notices/).
 
 ## workspace
@@ -214,6 +257,8 @@ that may `read` it and those that may `write` it. An agent still names each tree
 own [`workspace`](agent-files.md#workspace).
 
 ```yaml
+org: acme
+
 workspace:
   shared:
     acme/runbooks:

@@ -27,7 +27,9 @@ defmodule WardrikDaemon.CLI.VaultTest do
         else: System.delete_env("WARDRIK_DATA_HOME")
     end)
 
-    %{name: "TOKEN_#{System.unique_integer([:positive])}"}
+    name = "TOKEN_#{System.unique_integer([:positive])}"
+    Host.declare(["acme", "org-#{name}"])
+    %{name: name}
   end
 
   # Runs a command as over erl_call, answering what it printed and how it
@@ -316,8 +318,8 @@ defmodule WardrikDaemon.CLI.VaultTest do
       assert command(["vault", "ls", "--org", org, "--user", "jon"]) ==
                {"1 secret:\n  #{name}  #{org}/@jon's\n", 0}
 
-      assert command(["vault", "ls", "--org", "nobody-#{name}"]) ==
-               {"The vault holds no secrets for nobody-#{name}.\n", 0}
+      assert {output, 1} = command(["vault", "ls", "--org", "nobody-#{name}"])
+      assert output =~ "nobody-#{name} is not an org config.yaml declares: default, acme"
     end
 
     test "marks a name the daemon's environment sets too", %{name: name} do

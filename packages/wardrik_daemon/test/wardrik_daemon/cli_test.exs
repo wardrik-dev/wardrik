@@ -4,7 +4,10 @@ defmodule WardrikDaemon.CLITest do
   alias WardrikDaemon.Test.Host
 
   # Commands run over rpc build their callers on the daemon's host.
-  setup do: Host.held()
+  setup do
+    Host.declare(["acme"])
+    Host.held()
+  end
 
   import ExUnit.CaptureIO
 
@@ -219,6 +222,10 @@ defmodule WardrikDaemon.CLITest do
 
     {output, 0} = command(["token", "create", "tenant", "--scope", "acme/*", "--unlimited"])
     assert output =~ ") reaches the agents under acme/*, for every action, with no ceiling."
+
+    assert command(["token", "create", "typo", "--scope", "acmee/", "--unlimited"]) ==
+             {"--scope: acmee is not an org config.yaml declares: default, acme; did you mean acme?\n",
+              1}
 
     assert command(["token", "create", "bad", "--scope", "acme//triage", "--unlimited"]) ==
              {~s("acme//triage" is not a prefix; a prefix is org/*, org/, org/@user/ or an agent ID\n),
@@ -567,6 +574,7 @@ defmodule WardrikDaemon.CLITest do
   test "show gives an agent in full, and what its file gives it" do
     dir = Path.join(System.tmp_dir!(), "wardrik-cli-#{System.unique_integer([:positive])}")
     org = "show-#{System.unique_integer([:positive])}"
+    Host.declare(["acme", org])
     on_exit(fn -> File.rm_rf!(dir) end)
     on_exit(fn -> Wardrik.Fleet.forget_under(Wardrik.AgentID.Prefix.parse!(org <> "/")) end)
     File.mkdir_p!(Path.join(dir, "agents"))

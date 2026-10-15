@@ -36,10 +36,12 @@ defmodule WardrikDaemon.ConfigTest do
     end
 
     test "org is the deployment's org, default unless it says", context do
-      assert {:ok, [{WardrikDaemon, [org: "default"]}, {WardrikDaemon.SSH, _ssh}]} =
+      assert {:ok,
+              [{WardrikDaemon, [org: "default", orgs: ["default"]]}, {WardrikDaemon.SSH, _ssh}]} =
                read_all("ssh: {port: 2223}\n", context)
 
-      assert {:ok, [{WardrikDaemon, [org: "acme"]}]} = read_all("org: acme\n", context)
+      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"]]}]} =
+               read_all("org: acme\n", context)
 
       for org <- ["_acme", "@acme", "a/b"] do
         assert {:error, message} = read_all("org: #{inspect(org)}\n", context)
@@ -47,23 +49,32 @@ defmodule WardrikDaemon.ConfigTest do
       end
     end
 
-    test "a server and a target serve the deployment's org, the orgs they name, or every org",
-         context do
+    test "orgs declares the orgs beside the deployment's, and what each uses", context do
       yaml = """
       org: acme
       mcp:
         mine: {url: https://a.example.com/mcp}
-        theirs: {url: https://b.example.com/mcp, org: globex}
-        shared: {url: https://c.example.com/mcp, org: [acme, globex]}
-        public: {url: https://d.example.com/mcp, org: "*"}
+        theirs: {url: https://b.example.com/mcp}
+        shared: {url: https://c.example.com/mcp}
+        public: {url: https://d.example.com/mcp}
       notify:
         ops: {webhook: {url: https://hooks.example.com/a}}
-        globex: {org: globex, webhook: {url: https://hooks.example.com/b}}
+        globex: {webhook: {url: https://hooks.example.com/b}}
+      orgs:
+        "*":
+          mcp: [public]
+        acme:
+          mcp: [shared]
+        globex:
+          mcp: [theirs, shared]
+          notify: [globex]
+        initech:
       """
 
       assert {:ok, settings} = read_all(yaml, context)
-      servers = settings[WardrikMCP][:servers]
+      assert settings[WardrikDaemon][:orgs] == ["acme", "globex", "initech"]
 
+      servers = settings[WardrikMCP][:servers]
       assert servers[:mine][:orgs] == ["acme"]
       assert servers[:theirs][:orgs] == ["globex"]
       assert servers[:shared][:orgs] == ["acme", "globex"]
@@ -74,11 +85,34 @@ defmodule WardrikDaemon.ConfigTest do
       assert ops[:orgs] == ["acme"]
       assert {WardrikNotify.Webhook, globex} = targets[:globex]
       assert globex[:orgs] == ["globex"]
+    end
 
+    test "orgs refuses a name its section does not define, and says the nearest", context do
+      yaml = """
+      mcp:
+        github: {url: https://a.example.com/mcp}
+      orgs:
+        payments:
+          mcp: [githb]
+      """
+
+      assert {:error, message} = read_all(yaml, context)
+
+      assert message =~
+               "orgs.payments.mcp names githb, which mcp does not define; did you mean github?"
+
+      assert {:error, message} = read_all("orgs:\n  payments:\n    tools: [x]\n", context)
+      assert message =~ "orgs.payments.tools is not a setting"
+
+      assert {:error, message} = read_all("orgs:\n  _x: {}\n", context)
+      assert message =~ "orgs._x is not an org"
+    end
+
+    test "a server or a target names no org of its own", context do
       assert {:error, message} =
-               read_all("mcp:\n  x: {url: https://a.example.com/mcp, org: [_x]}\n", context)
+               read_all("mcp:\n  x: {url: https://a.example.com/mcp, org: globex}\n", context)
 
-      assert message =~ "mcp.x.org is an org, a list of them, or * for every org"
+      assert message =~ "mcp.x.org is not a setting"
     end
 
     test "a server with a command is started as one", context do
@@ -176,6 +210,7 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok, [{WardrikWorkspace, shared: [share]}]} =
                read(
                  """
+                 org: acme
                  workspace:
                    shared:
                      acme/runbooks:
@@ -193,6 +228,12 @@ defmodule WardrikDaemon.ConfigTest do
                read("workspace:\n  shared:\n    acme/runbooks: {read: [\"/x\"]}\n", context)
 
       assert message =~ "workspace.shared.acme/runbooks does not read"
+
+      assert {:error, message} =
+               read("workspace:\n  shared:\n    acme/runbooks: {read: [acmee/]}\n", context)
+
+      assert message =~
+               "workspace.shared.acme/runbooks names acmee is not an org config.yaml declares"
 
       assert {:error, message} =
                read("workspace:\n  shared:\n    acme/runbooks: {all: true}\n", context)
@@ -516,7 +557,15 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:error, message} = read("channels:\n  chat: {type: test, admins: jon}\n", context)
       assert message =~ "channels.chat.admins is a list"
 
-      yaml = "channels:\n  chat: {type: test, org: \"*\"}\n  acme: {type: test, org: [acme]}\n"
+      yaml = """
+      channels:
+        chat: {type: test}
+        acme: {type: test}
+      orgs:
+        "*": {channels: [chat]}
+        acme: {channels: [acme]}
+      """
+
       assert {:ok, [{WardrikChannel, settings}]} = read(yaml, context)
       assert Enum.sort(settings[:orgs]) == [acme: ["acme"], chat: :all]
       assert Enum.sort(settings[:creates]) == [acme: true, chat: true]
@@ -604,7 +653,8 @@ defmodule WardrikDaemon.ConfigTest do
          context do
       assert {:ok,
               [
-                {WardrikDaemon, [org: "default", base_url: "https://agents.example.com"]},
+                {WardrikDaemon,
+                 [org: "default", orgs: ["default"], base_url: "https://agents.example.com"]},
                 {WardrikOAuth, [redirect: redirect]}
               ]} =
                read_all(

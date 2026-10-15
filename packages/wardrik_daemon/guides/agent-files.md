@@ -22,7 +22,7 @@ why, and an agent already running keeps what it had. A file with no frontmatter 
 | Key | Means |
 | --- | --- |
 | `name` | its name; the file's name without `.md` unless set |
-| `org` | the org it belongs to; `config.yaml`'s `org` unless set |
+| `org` | the org it belongs to, one `config.yaml` declares; its `org` unless set |
 | `user` | the user of its org it works for, if any |
 | `description` | what it is for, as `wardrik show` shows it |
 | `model` | the model, as `provider:model` |

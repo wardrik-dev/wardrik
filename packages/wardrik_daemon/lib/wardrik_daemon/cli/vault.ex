@@ -401,7 +401,8 @@ defmodule WardrikDaemon.CLI.Vault do
              "--user",
              "a user's",
              " A user within an org is --org ORG --user USER."
-           ) do
+           ),
+         :ok <- declared(opts[:org]) do
       case {opts[:org], opts[:user]} do
         {nil, nil} -> {:ok, {:deployment, nil}}
         {org, nil} -> {:ok, {:org, org}}
@@ -409,6 +410,9 @@ defmodule WardrikDaemon.CLI.Vault do
       end
     end
   end
+
+  defp declared(nil), do: :ok
+  defp declared(org), do: WardrikDaemon.Config.declared(WardrikDaemon.Host.config(), org)
 
   defp segment(nil, _flag, _whose, _hint), do: :ok
 

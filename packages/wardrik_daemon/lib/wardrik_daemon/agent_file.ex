@@ -39,15 +39,16 @@ defmodule WardrikDaemon.AgentFile do
   @shipped [WardrikBrave.WebSearch, WardrikResearch.Deep, WardrikLua.Run]
 
   @doc """
-  What a definition may name here, as `WardrikDefinition` reads it: the tools
-  the daemon ships, and the MCP servers, channels and notify targets
-  `config` configures, and its `defaults`. A reading under the policies in
+  What a definition may name here, as `WardrikDefinition` reads it: the orgs
+  `config` declares, the tools the daemon ships, and the MCP servers,
+  channels and notify targets `config` configures, and its `defaults`. A reading under the policies in
   `policies/` puts them, by name, as the context's `:policies`.
   """
   @spec context(Config.t()) :: WardrikDefinition.Context.t()
   def context(%Config{} = config) do
     %WardrikDefinition.Context{
       org: Config.org(config),
+      orgs: Config.orgs(config),
       tools: @shipped,
       servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
       mcp: WardrikMCP,

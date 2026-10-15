@@ -5,10 +5,11 @@ defmodule WardrikDaemon.Config do
   whoever writes one.
 
   `read/1` refuses a file with a variable that is not set, a key nothing
-  takes, a server that is neither a command nor a URL, or a server whose
-  name or `prefix` holds `__`, and says where. `boot/1` reads what a release
-  needs before anything starts, `storage`, `cluster` and `http`, from the
-  environment alone. `org/1` and `base_url/1` read those settings.
+  takes, a server that is neither a command nor a URL, a server whose name
+  or `prefix` holds `__`, or an org that uses what the file does not define,
+  and says where. `boot/1` reads what a release needs before anything
+  starts, `storage`, `cluster` and `http`, from the environment alone.
+  `org/1`, `orgs/1` and `base_url/1` read those settings.
 
   ## Where the settings go
 
@@ -26,6 +27,7 @@ defmodule WardrikDaemon.Config do
   ```
   """
 
+  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Cluster.DNSPoll
   alias WardrikDaemon.Cluster.Epmd
   alias WardrikDaemon.Cluster.Topology
@@ -75,7 +77,7 @@ defmodule WardrikDaemon.Config do
     "webhook" => {WardrikNotify.Webhook, ~w(url secret), ~w(url)}
   }
 
-  @target "is a webhook, or a channel and a room in it, with the org it tells"
+  @target "is a webhook, or a channel and a room in it"
 
   @store_settings ~w(url bucket endpoint region prefix access_key_id secret_access_key)a
   @store_urls %{
@@ -111,6 +113,9 @@ defmodule WardrikDaemon.Config do
   @org "default"
   @segment "an org holds no / or whitespace and does not begin with @ or _"
 
+  # What an org in `orgs` may use, by the section that defines it.
+  @uses ~w(mcp channels notify)
+
   @doc """
   A config with the directories `opts` name, each the environment's where
   left out, and `:sections`, none by default. `:adapters` are the channel
@@ -133,6 +138,21 @@ defmodule WardrikDaemon.Config do
   @doc "The deployment's org, as `config.yaml` names it, or `#{@org}` where it names none."
   @spec org(t()) :: String.t()
   def org(%__MODULE__{} = config), do: config |> section(WardrikDaemon) |> Keyword.get(:org, @org)
+
+  @doc """
+  The orgs the deployment declares: its own, then each `orgs` names. An
+  agent, a secret or a token in any other is refused.
+  """
+  @spec orgs(t()) :: [String.t()]
+  def orgs(%__MODULE__{} = config),
+    do: config |> section(WardrikDaemon) |> Keyword.get_lazy(:orgs, fn -> [org(config)] end)
+
+  @doc "Whether `org` is one `config` declares, or why not, with the nearest that is."
+  @spec declared(t(), String.t()) :: :ok | {:error, String.t()}
+  def declared(%__MODULE__{} = config, org) do
+    orgs = orgs(config)
+    if org in orgs, do: :ok, else: {:error, undeclared(org, orgs)}
+  end
 
   @doc """
   The deployment's address, as `config.yaml`'s `base_url` names it, or where
@@ -315,12 +335,18 @@ defmodule WardrikDaemon.Config do
   defp sections(document, adapters) when is_map(adapters) do
     {org, document} = Map.pop(document, "org")
     {base_url, document} = Map.pop(document, "base_url")
+    {uses, document} = Map.pop(document, "orgs")
     org = org!(org)
     base_url = addressed_at(base_url)
+    uses = uses(uses, document)
+    orgs = Enum.uniq([org | Enum.sort(Map.keys(uses) -- ["*"])])
 
     [
-      {WardrikDaemon, [org: org] ++ base_url}
-      | document |> sections(org, adapters) |> through_channels() |> addressed(base_url)
+      {WardrikDaemon, [org: org, orgs: orgs] ++ base_url}
+      | document
+        |> sections({org, uses}, orgs, adapters)
+        |> through_channels()
+        |> addressed(base_url)
     ]
   end
 
@@ -342,7 +368,7 @@ defmodule WardrikDaemon.Config do
     end)
   end
 
-  defp sections(document, org, adapters) do
+  defp sections(document, owners, orgs, adapters) do
     Enum.map(document, fn
       {"defaults", defaults} ->
         {WardrikDaemon.Agents, defaults: defaults(defaults)}
@@ -351,7 +377,7 @@ defmodule WardrikDaemon.Config do
         {WardrikDaemon.AgentFile, tool_prices: prices(table!(tools, ["tools"]))}
 
       {"mcp", servers} ->
-        {WardrikMCP, servers: servers(table!(servers, ["mcp"]), org)}
+        {WardrikMCP, servers: servers(table!(servers, ["mcp"]), owners)}
 
       {"oauth", oauth} ->
         {WardrikOAuth, oauth(table!(oauth, ["oauth"]))}
@@ -366,10 +392,10 @@ defmodule WardrikDaemon.Config do
         {WardrikHTTP, http(http)}
 
       {"notify", targets} ->
-        {WardrikNotify, targets: targets(table!(targets, ["notify"]), org)}
+        {WardrikNotify, targets: targets(table!(targets, ["notify"]), owners)}
 
       {"channels", channels} ->
-        {WardrikChannel, channels(table!(channels, ["channels"]), org, adapters)}
+        {WardrikChannel, channels(table!(channels, ["channels"]), owners, adapters)}
 
       {"cluster", cluster} ->
         {WardrikDaemon.Cluster, cluster(table!(cluster, ["cluster"]))}
@@ -378,12 +404,12 @@ defmodule WardrikDaemon.Config do
         {WardrikStore, storage(table!(storage, ["storage"]))}
 
       {"workspace", workspace} ->
-        {WardrikWorkspace, workspace(table!(workspace, ["workspace"]))}
+        {WardrikWorkspace, workspace(table!(workspace, ["workspace"]), orgs)}
 
       {section, _value} ->
         invalid!(
           [section],
-          "is not a section; expected org, tools, defaults, mcp, oauth, vault, ssh, http, " <>
+          "is not a section; expected org, orgs, tools, defaults, mcp, oauth, vault, ssh, http, " <>
             "channels, notify, workspace, cluster or storage"
         )
     end)
@@ -392,7 +418,7 @@ defmodule WardrikDaemon.Config do
   # -- workspace -------------------------------------------------------------
 
   # The trees agents beyond their owners may mount, and who.
-  defp workspace(workspace) do
+  defp workspace(workspace, orgs) do
     known!(workspace, ["shared"], ["workspace"])
 
     shared =
@@ -405,12 +431,21 @@ defmodule WardrikDaemon.Config do
                read: Map.get(who, "read", []),
                write: Map.get(who, "write", [])
              ) do
-          {:ok, share} -> share
+          {:ok, share} -> declared!(share, orgs, path)
           {:error, message} -> invalid!(path, "does not read: " <> message)
         end
       end
 
     [shared: shared]
+  end
+
+  defp declared!(share, orgs, path) do
+    for prefix <- share.read ++ share.write,
+        org = Prefix.org(prefix),
+        org not in [nil | orgs],
+        do: invalid!(path, "names " <> undeclared(org, orgs))
+
+    share
   end
 
   # -- tools -----------------------------------------------------------------
@@ -451,32 +486,71 @@ defmodule WardrikDaemon.Config do
       else: invalid!(["org"], "is #{inspect(org)}, which is not an org; #{@segment}")
   end
 
-  # The orgs whose agents reach a server, or hear from a target: the
-  # deployment's own unless it says, or every org's for `*`.
-  defp orgs(nil, org, _path), do: [org]
-  defp orgs("*", _org, _path), do: :all
-  defp orgs(name, org, path) when is_binary(name), do: orgs([name], org, path)
+  # What each org `orgs` names uses, by section, with `*` for what every org
+  # does. Each name must be one the section defines.
+  defp uses(nil, _document), do: %{}
 
-  defp orgs([_ | _] = names, _org, path) do
-    if Enum.all?(names, &Wardrik.AgentID.segment?/1),
-      do: names,
-      else: invalid!(path, "is an org, a list of them, or * for every org; #{@segment}")
+  defp uses(orgs, document) do
+    Map.new(table!(orgs, ["orgs"]), fn {owner, used} ->
+      path = ["orgs", owner]
+
+      unless owner == "*" or Wardrik.AgentID.segment?(owner),
+        do: invalid!(path, "is not an org, or * for every org; #{@segment}")
+
+      used = table!(used, path)
+      known!(used, @uses, path)
+
+      {owner,
+       Map.new(used, fn {section, names} -> {section, used!(names, section, document, path)} end)}
+    end)
   end
 
-  defp orgs(_value, _org, path),
-    do: invalid!(path, "is an org, a list of them, or * for every org")
+  defp used!(names, section, document, path) do
+    path = path ++ [section]
+
+    unless is_list(names) and Enum.all?(names, &is_binary/1),
+      do: invalid!(path, "is a list of names #{section} defines")
+
+    defined = document |> Map.get(section) |> table!([section]) |> Map.keys()
+
+    for name <- names, name not in defined do
+      invalid!(path, "names #{name}, which #{section} does not define#{guess(name, defined)}")
+    end
+
+    names
+  end
+
+  # The orgs whose agents reach a server or a channel, or hear from a
+  # notify target: those whose `orgs` entry lists it, every org where `*`'s
+  # does, and the deployment's own where none does.
+  defp owners(section, name, {org, uses}) do
+    case for({owner, used} <- uses, name in Map.get(used, section, []), do: owner) do
+      [] -> [org]
+      owners -> if "*" in owners, do: :all, else: Enum.sort(owners)
+    end
+  end
+
+  defp undeclared(org, orgs),
+    do: "#{org} is not an org config.yaml declares: #{Enum.join(orgs, ", ")}#{guess(org, orgs)}"
+
+  defp guess(name, names) do
+    case Enum.max_by(names, &String.jaro_distance(&1, name), fn -> nil end) do
+      nil -> ""
+      best -> if String.jaro_distance(best, name) >= 0.8, do: "; did you mean #{best}?", else: ""
+    end
+  end
 
   # -- mcp -------------------------------------------------------------------
 
-  defp servers(servers, org) do
+  defp servers(servers, owners) do
     Enum.map(servers, fn {name, server} ->
       path = ["mcp", name]
-      {orgs, server} = Map.pop(table!(server, path), "org")
-      known!(server, @server_keys ++ ["org"], path)
+      server = table!(server, path)
+      known!(server, @server_keys, path)
       prefix!(Map.get(server, "prefix", name), path)
 
       {name(name),
-       [transport: transport(server, path), orgs: orgs(orgs, org, path ++ ["org"])] ++
+       [transport: transport(server, path), orgs: owners("mcp", name, owners)] ++
          Enum.map(Map.drop(server, @transport_keys), &server_option(&1, path))}
     end)
   end
@@ -725,12 +799,11 @@ defmodule WardrikDaemon.Config do
 
   # -- notify ----------------------------------------------------------------
 
-  defp targets(targets, org) do
+  defp targets(targets, owners) do
     Enum.map(targets, fn {name, target} ->
       path = ["notify", name]
-      {orgs, target} = Map.pop(table!(target, path), "org")
-      {module, options} = target(target, path)
-      {name(name), {module, options ++ [orgs: orgs(orgs, org, path ++ ["org"])]}}
+      {module, options} = target(table!(target, path), path)
+      {name(name), {module, options ++ [orgs: owners("notify", name, owners)]}}
     end)
   end
 
@@ -777,12 +850,11 @@ defmodule WardrikDaemon.Config do
   # -- channels --------------------------------------------------------------
 
   # Each channel, and the orgs whose agents it may offer.
-  defp channels(channels, org, adapters) do
+  defp channels(channels, owners, adapters) do
     read =
       Enum.map(channels, fn {name, channel} ->
         path = ["channels", name]
         {type, settings} = Map.pop(table!(channel, path), "type")
-        {orgs, settings} = Map.pop(settings, "org")
         {creates, settings} = Map.pop(settings, "create", true)
         {approvers, settings} = Map.pop(settings, "approvers", [])
         approvers = approvers(approvers, path ++ ["approvers"])
@@ -799,7 +871,7 @@ defmodule WardrikDaemon.Config do
             {name(name),
              %{
                channel: {adapter, options},
-               orgs: orgs(orgs, org, path ++ ["org"]),
+               orgs: owners("channels", name, owners),
                creates: creates,
                approvers: approvers,
                admins: admins
