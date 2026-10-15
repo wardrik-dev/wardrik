@@ -1,8 +1,7 @@
 defmodule WardrikHTTP.Auth do
   @moduledoc """
-  Lets through a request its `WardrikHTTP.Authenticator` knows, the listener's
-  `:authenticator` or `WardrikHTTP.Token`, and assigns its
-  `WardrikHTTP.Caller` as `:caller`.
+  Lets through a request the listener's `WardrikHTTP.Authenticator` knows, and
+  assigns its `WardrikHTTP.Caller` as `:caller`.
 
   A request from no caller the authenticator knows is answered 401, with the
   authenticator's challenge as `WWW-Authenticate`, and one whose credential
@@ -18,6 +17,7 @@ defmodule WardrikHTTP.Auth do
   import Plug.Conn
 
   alias Wardrik.Resource
+  alias WardrikHTTP.Authenticator
 
   @impl Plug
   def init(opts), do: opts
@@ -26,9 +26,9 @@ defmodule WardrikHTTP.Auth do
   def call(%Plug.Conn{path_info: ["v1", "hooks" | _rest]} = conn, _opts), do: conn
 
   def call(conn, _opts) do
-    {module, opts} = authenticator(conn.assigns.options[:authenticator])
+    authenticator = Keyword.fetch!(conn.assigns.options, :authenticator)
 
-    case module.authenticate(conn, opts) do
+    case Authenticator.authenticate(authenticator, conn) do
       {:ok, caller} ->
         assign(conn, :caller, caller)
 
@@ -40,14 +40,10 @@ defmodule WardrikHTTP.Auth do
         body = Resource.error("unauthorized", "No credential this server knows was presented.")
 
         conn
-        |> put_resp_header("www-authenticate", module.challenge(opts))
+        |> put_resp_header("www-authenticate", Authenticator.challenge(authenticator))
         |> refuse(401, body)
     end
   end
-
-  defp authenticator(nil), do: {WardrikHTTP.Token, []}
-  defp authenticator({module, opts}), do: {module, opts}
-  defp authenticator(module) when is_atom(module), do: {module, []}
 
   defp refuse(conn, status, body) do
     conn

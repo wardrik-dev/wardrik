@@ -12,9 +12,9 @@ defmodule WardrikHTTP.Token do
   itself where it names none: a decision made with it is recorded as that
   principal's.
 
-  It is the `WardrikHTTP.Authenticator` the API uses unless told otherwise,
-  reading `Authorization: Bearer wardrik_…` into a `WardrikHTTP.Caller`, from
-  the store of the listener's host.
+  `WardrikHTTP.Tokens` reads `Authorization: Bearer wardrik_…` into a
+  `WardrikHTTP.Caller` with `verify/2` and `caller/1`, as the API's
+  `WardrikHTTP.Authenticator` unless the listener is given another.
 
   A token that can `:define` is made with a `:ceiling`, the hooks every agent
   it defines is held to ahead of the definition's own, or with `ceiling: []`
@@ -33,8 +33,6 @@ defmodule WardrikHTTP.Token do
   one it does not. `ref/1` is the record a socket or a stream holds with
   `WardrikHTTP.Access.hold/2`, so `revoke/2` ends it.
   """
-
-  @behaviour WardrikHTTP.Authenticator
 
   alias Wardrik.Grant
   alias Wardrik.Principal
@@ -171,24 +169,6 @@ defmodule WardrikHTTP.Token do
       ref: ref(token)
     }
   end
-
-  @impl WardrikHTTP.Authenticator
-  def authenticate(conn, _opts) do
-    store = conn.assigns.options |> Keyword.fetch!(:host) |> Wardrik.Host.store()
-
-    with [header] <- Plug.Conn.get_req_header(conn, "authorization"),
-         [scheme, secret] <- String.split(header, " ", parts: 2, trim: true),
-         "bearer" <- String.downcase(scheme),
-         {:ok, token} <- verify(store, String.trim(secret)) do
-      {:ok, caller(token)}
-    else
-      {:error, :unavailable} = unavailable -> unavailable
-      _unknown -> {:error, :unauthorized}
-    end
-  end
-
-  @impl WardrikHTTP.Authenticator
-  def challenge(_opts), do: ~s(Bearer realm="wardrik")
 
   @doc "The record `token` is kept in, for `WardrikHTTP.Access.hold/2`."
   @spec ref(t()) :: Access.ref()
