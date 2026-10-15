@@ -52,6 +52,8 @@ defmodule Wardrik.MixProject do
       # view of who is running.
       {:durable_server, "~> 0.1.5"},
       {:group, "~> 0.2.1"},
+      # The time zones schedules and budget periods are read in.
+      {:tz, "~> 0.28"},
       # Where agents and their records are kept.
       sibling(:wardrik_store),
       # The store core's suite keeps its fleet in, as a release does.

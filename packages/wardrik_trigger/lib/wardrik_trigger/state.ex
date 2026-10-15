@@ -80,7 +80,7 @@ defmodule WardrikTrigger.State do
     %{
       agent: state.agent,
       name: state.trigger.name,
-      schedule: WardrikTrigger.schedule(state.trigger.every),
+      schedule: WardrikTrigger.Every.schedule(state.trigger.every),
       next: [state.next_at],
       paths: [],
       last_at: state.last_at,

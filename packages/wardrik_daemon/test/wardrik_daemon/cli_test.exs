@@ -649,7 +649,10 @@ defmodule WardrikDaemon.CLITest do
 
     :ok = Event.Bus.subscribe(key, level: :lifecycle)
     {:ok, _pid} = WardrikTrigger.put(key, "hourly", every: "0 * * * *", prompt: "Ping.")
-    {:ok, _pid} = WardrikTrigger.put(key, "tick", every: {:interval, 50}, prompt: "Ping.")
+
+    {:ok, _pid} =
+      WardrikTrigger.put(key, "tick", every: %WardrikTrigger.Interval{ms: 50}, prompt: "Ping.")
+
     # A trigger announces a firing before it records it, so the second
     # firing is the first that finds the one before it written down.
     assert_receive %Event{payload: %Event.TriggerFired{name: "tick", outcome: :no_agent}}
@@ -657,7 +660,7 @@ defmodule WardrikDaemon.CLITest do
 
     assert {output, 0} = command(["triggers", prefix])
     assert output =~ "2 triggers:"
-    assert output =~ ~r"  #{key}/hourly  0 \* \* \* \*  next in \d+[ms]  not run yet"
+    assert output =~ ~r"  #{key}/hourly  0 \* \* \* \* Etc/UTC  next in \d+[ms]  not run yet"
 
     assert output =~
              ~r"  #{key}/tick  every 50ms  next in \d+s  last run \d+s ago: no agent runs under the key"

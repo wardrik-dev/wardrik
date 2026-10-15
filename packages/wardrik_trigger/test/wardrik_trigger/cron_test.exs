@@ -1,12 +1,18 @@
 defmodule WardrikTrigger.CronTest do
   use ExUnit.Case, async: true
 
+  alias Wardrik.TimeZone
   alias WardrikTrigger.Cron
 
-  defp next(text, from) do
-    {:ok, cron} = Cron.parse(text)
+  defp next(text, from, opts \\ []) do
+    {:ok, cron} = Cron.parse(text, opts)
     {:ok, at} = Cron.next(cron, from)
     at
+  end
+
+  defp berlin do
+    {:ok, berlin} = TimeZone.new("Europe/Berlin")
+    [timezone: berlin]
   end
 
   describe "next/2" do
@@ -54,7 +60,40 @@ defmodule WardrikTrigger.CronTest do
     end
   end
 
-  describe "parse/1" do
+  describe "next/2 in a time zone" do
+    test "names the zone's own time of day, in summer and in winter" do
+      assert next("0 18 * * *", ~U[2026-07-01 00:00:00Z], berlin()) == ~U[2026-07-01 16:00:00Z]
+      assert next("0 18 * * *", ~U[2026-01-15 00:00:00Z], berlin()) == ~U[2026-01-15 17:00:00Z]
+    end
+
+    test "reads the day in the zone, not in UTC" do
+      # 23:30 UTC on the 24th is already the 25th in Berlin, a Friday.
+      assert next("0 9 * * 5", ~U[2026-09-24 23:30:00Z], berlin()) == ~U[2026-09-25 07:00:00Z]
+    end
+
+    test "runs a time the clocks skip once, at the first instant after the gap" do
+      # Berlin goes from 02:00 to 03:00 on 2026-03-29.
+      assert next("30 2 * * *", ~U[2026-03-28 12:00:00Z], berlin()) == ~U[2026-03-29 01:00:00Z]
+      assert next("*/15 * * * *", ~U[2026-03-29 00:50:00Z], berlin()) == ~U[2026-03-29 01:00:00Z]
+      assert next("*/15 * * * *", ~U[2026-03-29 01:00:00Z], berlin()) == ~U[2026-03-29 01:15:00Z]
+    end
+
+    test "runs a time the clocks repeat on its first pass only" do
+      # Berlin goes from 03:00 back to 02:00 on 2026-10-25.
+      assert next("30 2 * * *", ~U[2026-10-24 12:00:00Z], berlin()) == ~U[2026-10-25 00:30:00Z]
+      assert next("30 2 * * *", ~U[2026-10-25 00:30:00Z], berlin()) == ~U[2026-10-26 01:30:00Z]
+      assert next("*/15 * * * *", ~U[2026-10-25 00:45:00Z], berlin()) == ~U[2026-10-25 02:00:00Z]
+    end
+  end
+
+  describe "parse/2" do
+    test "reads in UTC unless given a zone" do
+      assert {:ok, %Cron{timezone: utc}} = Cron.parse("@daily")
+      assert to_string(utc) == "Etc/UTC"
+      assert {:ok, %Cron{timezone: berlin}} = Cron.parse("@daily", berlin())
+      assert to_string(berlin) == "Europe/Berlin"
+    end
+
     test "keeps the text it read" do
       assert {:ok, %Cron{source: "*/30 * * * *"}} = Cron.parse("  */30 * * * *  ")
     end

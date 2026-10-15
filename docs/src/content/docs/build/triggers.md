@@ -29,7 +29,7 @@ wardrik triggers
 
 ```text
 2 triggers:
-  default/triage/digest  0 17 * * 1-5  next in 3h 12m  not run yet
+  default/triage/digest  0 17 * * 1-5 Etc/UTC  next in 3h 12m  not run yet
   default/triage/sweep  every 30m  next in 29m  not run yet
 ```
 
@@ -41,10 +41,21 @@ follows it. Every key a trigger takes is in [Agent files](/reference/agent-files
 `every` is a cron expression or an interval.
 
 ```yaml
-every: "*/15 * * * *"    # every quarter of an hour, in UTC
-every: "0 9 * * 1"       # nine on Monday mornings
+every: "*/15 * * * *"    # every quarter of an hour
+every: "0 9 * * 1"       # nine on Monday mornings, in UTC
 every: "@daily"          # also @hourly, @weekly, @monthly and @yearly
 every: 2h                # an interval: s, m, h or d, at least a minute
+```
+
+A cron expression is read in UTC unless `timezone` names another, by its IANA name. This one runs at
+six in the evening in Berlin, summer and winter:
+
+```yaml
+triggers:
+  - name: report
+    every: "0 18 * * *"
+    timezone: Europe/Berlin
+    prompt: Write up what happened today.
 ```
 
 Quote a cron expression: YAML reads a leading `*` as something else. An interval counts from when
@@ -177,7 +188,7 @@ See [Send notices](/build/notices/).
 ## Changing and removing triggers
 
 `wardrik reload` gives each agent the triggers its file lists now and removes the rest. A changed
-`every` starts counting from the reload; other changes keep the next run where it was.
+`every` or `timezone` starts counting from the reload; other changes keep the next run where it was.
 
 ## Over HTTP
 
@@ -197,10 +208,15 @@ See [HTTP API](/reference/http-api/#triggers) for the routes and their answers.
 
 ## Details
 
-**Clock.** Cron has five fields, in UTC: minute, hour, day of the month, month, day of the week (0
-and 7 are Sunday). Fields take `*`, numbers, ranges like `1-5`, steps like `*/15`, and lists; names
+**Clock.** Cron has five fields, read on `timezone`'s clock, UTC unless it names another: minute,
+hour, day of the month, month, day of the week (0 and 7 are Sunday). Fields take `*`, numbers, ranges like `1-5`, steps like `*/15`, and lists; names
 like `MON` aren't read. Where both day fields are given, a day matching either runs. `jitter: 120`
 adds up to that many seconds to each run, so triggers on the same minute don't all fire at once.
+
+**Clock changes.** Where a zone's clocks go forward, a time they skip, such as 02:30, runs once at
+the first instant after the gap. Where they go back, a time they repeat runs on its first pass only,
+so `*/15` makes no run in the repeated hour. An interval counts elapsed time and takes no
+`timezone`. A changed `timezone` starts counting from the reload, as a changed `every` does.
 
 **Busy agents.** With `overlap: queue`, a running turn stops at its next step and the triggered
 message is answered in the turn after. A webhook trigger queues by default; with `overlap: skip` it

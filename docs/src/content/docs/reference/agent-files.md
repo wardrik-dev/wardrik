@@ -180,7 +180,8 @@ triggers:
 
 | Key | Means |
 | --- | --- |
-| `every` | a cron expression in UTC, quoted, or a duration of at least a minute, as `30m`, `2h` or `1d`; a webhook trigger has none |
+| `every` | a cron expression, quoted, or a duration of at least a minute, as `30m`, `2h` or `1d`; a webhook trigger has none |
+| `timezone` | the time zone a cron expression is read in, by its IANA name, as `Europe/Berlin`; `Etc/UTC` unless set. A duration takes none |
 | `prompt` | what the agent is asked |
 | `prompt_file` | in place of `prompt`, a file in its workspace it is asked to read and follow, so it can edit its own checklist; needs `files` |
 | `name` | the trigger's name; `trigger-1`, `trigger-2` and so on by its place unless set |

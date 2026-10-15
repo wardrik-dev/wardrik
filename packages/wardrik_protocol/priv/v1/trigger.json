@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:trigger",
   "title": "A trigger",
-  "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.",
+  "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and a cron expression its timezone, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -17,6 +17,10 @@
     "every": {
       "type": "string",
       "description": "A cron expression, or a duration such as 30m."
+    },
+    "timezone": {
+      "type": "string",
+      "description": "The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none."
     },
     "prompt": {
       "type": "string",
@@ -48,6 +52,7 @@
     {
       "name": "sweep",
       "every": "*/30 * * * *",
+      "timezone": "Etc/UTC",
       "prompt": "Check the queue.",
       "overlap": "skip",
       "missed": "run_once",

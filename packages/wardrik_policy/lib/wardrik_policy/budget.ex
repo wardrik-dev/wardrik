@@ -7,6 +7,7 @@ defmodule WardrikPolicy.Budget do
         usd: 5.00
         tokens: 200000
         per: day
+        timezone: America/New_York
         on_exhausted: ask
 
   | Field | What it decides |
@@ -14,6 +15,7 @@ defmodule WardrikPolicy.Budget do
   | `usd` | a limit in US dollars: each model call as `Wardrik.LLM.Cost` prices it, and each tool call at the price its tool reports or its config lists |
   | `tokens` | a limit in tokens, input and output together |
   | `per` | the period the limits cover: `turn`, `day`, `week`, `month`, or `total` for the agent's whole life. `day` unless set |
+  | `timezone` | the time zone a day, week or month begins in, by its IANA name. `Etc/UTC` unless set |
   | `grant` | how much more a person's approval allows, as `usd` and `tokens`. Another of each limit unless set |
   | `on_exhausted` | `ask`, which parks the agent until a person approves more, or `deny`, which ends the turn. `ask` unless set |
 
@@ -22,8 +24,10 @@ defmodule WardrikPolicy.Budget do
   for, whose calls cost nothing in dollars; a budget in dollars refuses a model
   the catalog cannot price.
 
-  Days, weeks and months are UTC calendar periods, and a week starts on
-  Monday. A turn's budget covers the model calls of that turn and every
+  Days, weeks and months are calendar periods in `timezone`, and a week
+  starts on Monday. Where the zone's clocks change, a day is 23 or 25
+  hours long. A budget whose `timezone` changes counts in the period that
+  zone names for now, which can start the period over. A turn's budget covers the model calls of that turn and every
   delegation under it.
 
   The limits are checked before each call, against what the calls before it
@@ -56,6 +60,7 @@ defmodule WardrikPolicy.Budget do
   alias Wardrik.Call
   alias Wardrik.LLM.Cost
   alias Wardrik.LLM.Usage
+  alias Wardrik.TimeZone
   alias WardrikPolicy.Meter
   alias WardrikPolicy.Spend
 
@@ -68,6 +73,7 @@ defmodule WardrikPolicy.Budget do
     :grant_usd,
     :grant_tokens,
     per: :day,
+    timezone: TimeZone.utc(),
     on_exhausted: :ask,
     meter: "budget"
   ]
@@ -81,11 +87,12 @@ defmodule WardrikPolicy.Budget do
           grant_usd: float() | nil,
           grant_tokens: pos_integer() | nil,
           per: period(),
+          timezone: TimeZone.t(),
           on_exhausted: :ask | :deny,
           meter: String.t()
         }
 
-  @keys ~w(usd tokens per grant on_exhausted)
+  @keys ~w(usd tokens per timezone grant on_exhausted)
   @periods %{
     "turn" => :turn,
     "day" => :day,
@@ -103,6 +110,7 @@ defmodule WardrikPolicy.Budget do
          :ok <- some_limit(usd, tokens),
          {:ok, grant_usd, grant_tokens} <- read_grant(fields["grant"]),
          {:ok, per} <- period(Map.get(fields, "per", "day")),
+         {:ok, timezone} <- timezone(fields),
          {:ok, on_exhausted} <- exhausted(Map.get(fields, "on_exhausted", "ask")) do
       {:ok,
        %__MODULE__{
@@ -111,6 +119,7 @@ defmodule WardrikPolicy.Budget do
          grant_usd: grant_usd,
          grant_tokens: grant_tokens,
          per: per,
+         timezone: timezone,
          on_exhausted: on_exhausted
        }}
     else
@@ -123,7 +132,8 @@ defmodule WardrikPolicy.Budget do
   end
 
   def decode(_fields),
-    do: {:error, "budget is a set of settings: usd, tokens, per, grant and on_exhausted"}
+    do:
+      {:error, "budget is a set of settings: usd, tokens, per, timezone, grant and on_exhausted"}
 
   @doc "The map `decode/1` reads `budget` back from."
   @spec encode(t()) :: map()
@@ -134,6 +144,7 @@ defmodule WardrikPolicy.Budget do
       "usd" => budget.usd,
       "tokens" => budget.tokens,
       "per" => Atom.to_string(budget.per),
+      "timezone" => to_string(budget.timezone),
       "on_exhausted" => Atom.to_string(budget.on_exhausted),
       "grant" => if(grant == %{}, do: nil, else: grant)
     }
@@ -313,23 +324,28 @@ defmodule WardrikPolicy.Budget do
   def dollars(micro_usd), do: "$" <> :erlang.float_to_binary(micro_usd / 1_000_000, decimals: 2)
 
   @doc """
-  The name of the period `now` falls in, for a turn traced as `trace_id`:
-  `day:2026-09-23`, `week:2026-W39`, `month:2026-09`, `turn:<trace>` or `total`.
+  The name of the period `now` falls in, in the budget's time zone, for a
+  turn traced as `trace_id`: `day:2026-09-23`, `week:2026-W39`,
+  `month:2026-09`, `turn:<trace>` or `total`.
   """
   @spec window(t(), String.t(), DateTime.t()) :: String.t()
   def window(%__MODULE__{per: :turn}, trace_id, _now), do: "turn:" <> trace_id
   def window(%__MODULE__{per: :total}, _trace_id, _now), do: "total"
 
-  def window(%__MODULE__{per: :day}, _trace_id, now),
-    do: "day:" <> Date.to_iso8601(DateTime.to_date(now))
+  def window(%__MODULE__{per: :day} = budget, _trace_id, now),
+    do: "day:" <> Date.to_iso8601(today(budget, now))
 
-  def window(%__MODULE__{per: :week}, _trace_id, now) do
-    {year, week} = :calendar.iso_week_number(Date.to_erl(DateTime.to_date(now)))
+  def window(%__MODULE__{per: :week} = budget, _trace_id, now) do
+    {year, week} = :calendar.iso_week_number(Date.to_erl(today(budget, now)))
     "week:#{year}-W#{String.pad_leading(Integer.to_string(week), 2, "0")}"
   end
 
-  def window(%__MODULE__{per: :month}, _trace_id, now),
-    do: "month:#{now.year}-#{String.pad_leading(Integer.to_string(now.month), 2, "0")}"
+  def window(%__MODULE__{per: :month} = budget, _trace_id, now) do
+    today = today(budget, now)
+    "month:#{today.year}-#{String.pad_leading(Integer.to_string(today.month), 2, "0")}"
+  end
+
+  defp today(budget, now), do: budget.timezone |> TimeZone.local(now) |> NaiveDateTime.to_date()
 
   @doc "How the period reads in a sentence: `today`, `this week`, `this turn`."
   @spec period_words(t()) :: String.t()
@@ -374,6 +390,12 @@ defmodule WardrikPolicy.Budget do
       :error -> {:error, "per is turn, day, week, month or total"}
     end
   end
+
+  defp timezone(%{"timezone" => name}) do
+    with {:error, message} <- TimeZone.new(name), do: {:error, "timezone: " <> message}
+  end
+
+  defp timezone(_fields), do: {:ok, TimeZone.utc()}
 
   defp exhausted("ask"), do: {:ok, :ask}
   defp exhausted("deny"), do: {:ok, :deny}

@@ -145,11 +145,13 @@ budget:
 | `usd` | a limit in US dollars, for model calls and for tool calls that have a price |
 | `tokens` | a limit in tokens, input and output together |
 | `per` | `turn`, `day`, `week`, `month`, or `total` for the agent's whole life; `day` unless set |
+| `timezone` | the time zone a day, week or month begins in, by its IANA name, as `Europe/Berlin`; `Etc/UTC` unless set |
 | `grant` | how much more a person's approval allows, as `usd` and `tokens`; another of each limit unless set |
 | `on_exhausted` | `ask` parks the agent until a person approves more; `deny` ends the turn; `ask` unless set |
 
-A budget sets `usd`, `tokens`, or both, and is spent when either is. Days, weeks and months are UTC
-calendar periods, and a week starts on Monday. A turn's budget covers every delegation under it.
+A budget sets `usd`, `tokens`, or both, and is spent when either is. Days, weeks and months are
+calendar periods in `timezone`, and a week starts on Monday. Where the zone's clocks change, a day
+is 23 or 25 hours long, and a changed `timezone` can start the current period over. A turn's budget covers every delegation under it.
 
 The limits are checked before each model call against what the calls before it spent, so the call
 that crosses one runs and the next stops. Tool calls are counted and never refused. A budget in
