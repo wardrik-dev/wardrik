@@ -4,7 +4,7 @@
 # never the internals, which only core calls.
 [
   layers: [
-    definition: ["WardrikDefinition", "WardrikDefinition.*"]
+    definition: ["WardrikDefinition", "WardrikDefinition.*", "Wardrik.Definition.WardrikDefinition.Kept"]
   ],
   boundaries: [
     public: [

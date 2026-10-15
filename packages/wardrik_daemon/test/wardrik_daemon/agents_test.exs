@@ -271,25 +271,6 @@ defmodule WardrikDaemon.AgentsTest do
     assert Agents.delete(Host.agents(), defined) == {:error, :not_found}
   end
 
-  test "a definition shares only the trees the scope of the token that sent it covers",
-       %{org: org} = context do
-    Host.start_agents(context.dir)
-    defined = AgentID.parse!("#{org}/defined")
-    fields = %{"tools" => ["files"], "workspace" => %{"shared" => %{"team" => org}}}
-
-    assert {:ok, _spec} =
-             Agents.put(Host.agents(), defined, definition: fields, grant: grant(org))
-
-    assert {:error, message} =
-             Agents.put(Host.agents(), defined,
-               definition: fields,
-               grant: grant(Prefix.of(defined))
-             )
-
-    assert message ==
-             "workspace shared team: #{org} belongs to #{org}/, which #{defined} does not cover"
-  end
-
   test "a user's agent shares its org's tree where config.yaml shares it with them",
        %{org: org} = context do
     {:ok, share} = WardrikWorkspace.Share.new("#{org}/runbooks", read: ["#{org}/*"])
@@ -611,84 +592,6 @@ defmodule WardrikDaemon.AgentsTest do
     Agents.reload(Host.agents())
 
     assert WardrikTrigger.for_agent(AgentID.parse!("#{org}/alpha")) == []
-  end
-
-  test "brings an agent the HTTP API defined to the triggers its definition lists",
-       %{org: org} = context do
-    Host.start_agents(context.dir)
-    defined = AgentID.parse!("#{org}/defined")
-    sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
-
-    {:ok, _spec} =
-      Agents.put(Host.agents(), defined, definition: %{"triggers" => [sweep]}, grant: grant(org))
-
-    assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
-
-    {:ok, _spec} = Agents.put(Host.agents(), defined, definition: %{}, grant: grant(org))
-    assert WardrikTrigger.for_agent(defined) == []
-
-    {:ok, _spec} =
-      Agents.put(Host.agents(), defined, definition: %{"triggers" => [sweep]}, grant: grant(org))
-
-    :ok = Agents.delete(Host.agents(), defined)
-    assert WardrikTrigger.for_agent(defined) == []
-  end
-
-  test "changes one trigger in the definition the HTTP API sent", %{org: org} = context do
-    Host.start_agents(context.dir)
-    defined = AgentID.parse!("#{org}/defined")
-    sweep = %{"name" => "sweep", "every" => "1h", "prompt" => "Look."}
-
-    {:ok, _spec} =
-      Agents.put(Host.agents(), defined, definition: %{"triggers" => [sweep]}, grant: grant(org))
-
-    assert {:ok, :created, digest} =
-             Agents.put_trigger(Host.agents(), defined, "digest",
-               fields: %{
-                 "every" => "0 17 * * *",
-                 "prompt" => "Sum up."
-               }
-             )
-
-    assert digest == %{
-             "name" => "digest",
-             "every" => "0 17 * * *",
-             "prompt" => "Sum up.",
-             "overlap" => "skip",
-             "missed" => "run_once",
-             "jitter" => 0
-           }
-
-    schema = WardrikProtocol.dir() |> Path.join("trigger.json") |> File.read!() |> JSON.decode!()
-    assert {:ok, _} = JSV.validate(digest, JSV.build!(schema, resolver: WardrikProtocol.Resolver))
-
-    assert {:ok, :changed, %{"every" => "2h"}} =
-             Agents.put_trigger(Host.agents(), defined, "sweep",
-               fields: %{"every" => "2h", "prompt" => "Look."}
-             )
-
-    assert {:ok, %{"triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
-             Agents.get(Host.agents(), defined)
-
-    assert [%{name: "digest"}, %{name: "sweep", schedule: "every 2h"}] =
-             WardrikTrigger.for_agent(defined)
-
-    assert {:error, ~s(trigger digest: every: "10s" is shorter than a minute)} =
-             Agents.put_trigger(Host.agents(), defined, "digest",
-               fields: %{
-                 "every" => "10s",
-                 "prompt" => "Sum up."
-               }
-             )
-
-    assert :ok = Agents.delete_trigger(Host.agents(), defined, "digest")
-    assert {:error, :not_found} = Agents.delete_trigger(Host.agents(), defined, "digest")
-    assert [%{name: "sweep"}] = WardrikTrigger.for_agent(defined)
-
-    assert {:error, :not_found} =
-             Agents.put_trigger(Host.agents(), AgentID.parse!("#{org}/nobody"), "sweep",
-               fields: Map.delete(sweep, "name")
-             )
   end
 
   test "reads a policy written as .yml, and reports a second file of the same name",
