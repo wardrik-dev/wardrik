@@ -51,6 +51,7 @@
       "Wardrik.Ledger.Store",
       "Wardrik.Principal",
       "Wardrik.Scope",
+      "Wardrik.Servers.Key",
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",

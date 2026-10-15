@@ -1,15 +1,20 @@
 defmodule WardrikMCP.ServerTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Server
 
   defp server(opts \\ []) do
-    Server.new(:github, Keyword.put_new(opts, :transport, {:stdio, command: "true"}))
+    Server.new(
+      Key.deployment("github"),
+      Keyword.put_new(opts, :transport, {:stdio, command: "true"})
+    )
   end
 
   describe "new/2" do
-    test "names itself after its ref, and takes the defaults" do
-      assert %Server{ref: :github, prefix: "github", only: nil, except: []} = server()
+    test "names itself after its key, and takes the defaults" do
+      assert %Server{key: %Key{name: "github"}, prefix: "github", only: nil, except: []} =
+               server()
     end
 
     test "takes a prefix of its own" do
@@ -23,7 +28,7 @@ defmodule WardrikMCP.ServerTest do
 
     test "rejects a transport it cannot start" do
       assert_raise ArgumentError, ~r/expected :transport/, fn ->
-        Server.new(:github, transport: "https://example.com")
+        Server.new(Key.deployment("github"), transport: "https://example.com")
       end
     end
 
@@ -125,7 +130,7 @@ defmodule WardrikMCP.ServerTest do
 
   describe "an HTTP server's URL" do
     defp http(url, opts \\ []) do
-      Server.new(:linear, transport: {:streamable_http, [base_url: url] ++ opts})
+      Server.new(Key.deployment("linear"), transport: {:streamable_http, [base_url: url] ++ opts})
     end
 
     test "is split so the path is not appended to twice" do

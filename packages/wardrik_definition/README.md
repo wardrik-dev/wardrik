@@ -20,7 +20,7 @@ agent takes, and the seams every agent gets.
 context = %WardrikDefinition.Context{
   org: "acme",
   tools: [WardrikBrave.WebSearch],
-  servers: [github: [orgs: :all]],
+  servers: [github: []],
   mcp: WardrikMCP,
   seams: [ledger: %Wardrik.Ledger.Store{}]
 }

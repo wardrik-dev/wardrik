@@ -43,6 +43,7 @@ defmodule WardrikMCP.Connection do
 
   require Logger
 
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Listing
   alias WardrikMCP.Offer
   alias WardrikMCP.Server
@@ -94,7 +95,7 @@ defmodule WardrikMCP.Connection do
 
   @doc false
   def child_spec(%Server{} = server) do
-    %{id: {__MODULE__, server.ref}, start: {__MODULE__, :start_link, [server]}}
+    %{id: {__MODULE__, server.key}, start: {__MODULE__, :start_link, [server]}}
   end
 
   @doc "Starts the deployment's own connection to `server`."
@@ -102,9 +103,9 @@ defmodule WardrikMCP.Connection do
   def start_link(%Server{} = server), do: start_link(server, :deployment, server.transport)
 
   @doc "Stops the connection a principal was using, if there is one."
-  @spec close(atom(), term()) :: :ok
-  def close(ref, principal) do
-    case GenServer.whereis(name(ref, principal)) do
+  @spec close(Key.t(), term()) :: :ok
+  def close(key, principal) do
+    case GenServer.whereis(name(key, principal)) do
       nil -> :ok
       connection -> GenServer.stop(connection, :normal)
     end
@@ -121,19 +122,19 @@ defmodule WardrikMCP.Connection do
   @spec start_link(Server.t(), term(), Server.transport(), timeout()) :: GenServer.on_start()
   def start_link(%Server{} = server, principal, transport, good_for \\ :infinity) do
     GenServer.start_link(__MODULE__, {server, principal, transport, good_for},
-      name: name(server.ref, principal)
+      name: name(server.key, principal)
     )
   end
 
   @doc """
-  What a server is offering, or `nil` when nothing is connected under that ref.
+  What a server is offering, or `nil` when nothing is connected under that key.
 
   A connection that has stopped offers nothing from the moment it stops, before
   the registry has dropped its entry.
   """
-  @spec offer(atom()) :: Offer.t() | nil
-  def offer(ref) do
-    case Registry.lookup(@registry, {:offer, ref}) do
+  @spec offer(Key.t()) :: Offer.t() | nil
+  def offer(key) do
+    case Registry.lookup(@registry, {:offer, key}) do
       [{pid, %Offer{} = offer}] -> if Process.alive?(pid), do: offer
       [] -> nil
     end
@@ -142,53 +143,53 @@ defmodule WardrikMCP.Connection do
   end
 
   @doc "The tools a server last reported."
-  @spec tools(atom()) :: [ReqLLM.Tool.t()]
-  def tools(ref) do
-    case offer(ref) do
+  @spec tools(Key.t()) :: [ReqLLM.Tool.t()]
+  def tools(key) do
+    case offer(key) do
       %Offer{tools: tools} -> tools
       nil -> []
     end
   end
 
   @doc """
-  The refs of every server a connection is running for, leaving out one that
+  The keys of every server a connection is running for, leaving out one that
   has stopped and is still to leave the registry.
 
   Empty on a host that started no registry, which is one running no MCP
   servers at all.
   """
-  @spec refs() :: [atom()]
-  def refs do
+  @spec keys() :: [Key.t()]
+  def keys do
     @registry
     # Every server offered is the answer.
     # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
     |> Registry.select([{{{:offer, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.flat_map(fn {ref, pid} -> if Process.alive?(pid), do: [ref], else: [] end)
+    |> Enum.flat_map(fn {key, pid} -> if Process.alive?(pid), do: [key], else: [] end)
     |> Enum.sort()
   rescue
     ArgumentError -> []
   end
 
-  @doc "The refs a principal has a connection to, as the registry holds them."
-  @spec refs_for(pid()) :: [{atom(), term()}]
-  def refs_for(client) when is_pid(client) do
-    for {:client, ref, principal} <- Registry.keys(@registry, client), do: {ref, principal}
+  @doc "The keys a principal has a connection to, as the registry holds them."
+  @spec keys_for(pid()) :: [{Key.t(), term()}]
+  def keys_for(client) when is_pid(client) do
+    for {:client, key, principal} <- Registry.keys(@registry, client), do: {key, principal}
   rescue
     ArgumentError -> []
   end
 
-  @doc "The `Anubis.Client` name for a ref and principal, whether or not it is running."
-  @spec client(atom(), term()) :: GenServer.name()
-  def client(ref, principal \\ :deployment),
-    do: {:via, Registry, {@registry, {:client, ref, principal}}}
+  @doc "The `Anubis.Client` name for a key and principal, whether or not it is running."
+  @spec client(Key.t(), term()) :: GenServer.name()
+  def client(key, principal \\ :deployment),
+    do: {:via, Registry, {@registry, {:client, key, principal}}}
 
   @doc "The connection running for this server and principal, or `nil`."
-  @spec whereis(atom(), term()) :: pid() | nil
-  def whereis(ref, principal \\ :deployment), do: GenServer.whereis(name(ref, principal))
+  @spec whereis(Key.t(), term()) :: pid() | nil
+  def whereis(key, principal \\ :deployment), do: GenServer.whereis(name(key, principal))
 
   @doc "Whether a connection is running for this server and principal."
-  @spec running?(atom(), term()) :: boolean()
-  def running?(ref, principal), do: not is_nil(whereis(ref, principal))
+  @spec running?(Key.t(), term()) :: boolean()
+  def running?(key, principal), do: not is_nil(whereis(key, principal))
 
   @doc """
   Asks a server for its tools again.
@@ -197,21 +198,21 @@ defmodule WardrikMCP.Connection do
   reported stand until it is. Asking again while a listing is already due
   costs nothing: the one already due answers both.
   """
-  @spec refresh(atom(), term()) :: :ok
-  def refresh(ref, principal \\ :deployment),
-    do: GenServer.cast(name(ref, principal), :list_tools)
+  @spec refresh(Key.t(), term()) :: :ok
+  def refresh(key, principal \\ :deployment),
+    do: GenServer.cast(name(key, principal), :list_tools)
 
   @doc """
   Offers the `tools/list` entries a user's connection on another node got
-  from `ref`, in place of the tool that authorizes.
+  from `key`, in place of the tool that authorizes.
 
   What `WardrikMCP.Listing.remember/3` runs on every other connected node. A node
-  with no connection to `ref`, or one that reaches it as the deployment, is
+  with no connection to `key`, or one that reaches it as the deployment, is
   left as it is.
   """
-  @spec offer_listing(atom(), [map()]) :: :ok
-  def offer_listing(ref, listed) when is_atom(ref) and is_list(listed),
-    do: GenServer.cast(name(ref, :deployment), {:offer_listing, listed})
+  @spec offer_listing(Key.t(), [map()]) :: :ok
+  def offer_listing(key, listed) when is_list(listed),
+    do: GenServer.cast(name(key, :deployment), {:offer_listing, listed})
 
   @doc """
   Waits until a server has reported its tools, and hands them back.
@@ -219,9 +220,9 @@ defmodule WardrikMCP.Connection do
   Returns `{:error, :timeout}` when it has not answered in time, which a server
   that is down never will.
   """
-  @spec await(atom(), term(), timeout()) :: {:ok, [ReqLLM.Tool.t()]} | {:error, :timeout}
-  def await(ref, principal \\ :deployment, timeout \\ :timer.seconds(30)) do
-    GenServer.call(name(ref, principal), :await, timeout)
+  @spec await(Key.t(), term(), timeout()) :: {:ok, [ReqLLM.Tool.t()]} | {:error, :timeout}
+  def await(key, principal \\ :deployment, timeout \\ :timer.seconds(30)) do
+    GenServer.call(name(key, principal), :await, timeout)
   catch
     :exit, {:timeout, _call} -> {:error, :timeout}
     :exit, reason -> {:error, reason}
@@ -234,9 +235,9 @@ defmodule WardrikMCP.Connection do
   unwatched. A connection that is busy or missing answers `:ok` all the same:
   the call still runs, and only its cancellation is lost.
   """
-  @spec watch(atom(), term()) :: :ok
-  def watch(ref, principal \\ :deployment) do
-    case GenServer.whereis(name(ref, principal)) do
+  @spec watch(Key.t(), term()) :: :ok
+  def watch(key, principal \\ :deployment) do
+    case GenServer.whereis(name(key, principal)) do
       nil -> :ok
       connection -> GenServer.call(connection, {:watch, self()}, @watch_timeout)
     end
@@ -253,7 +254,7 @@ defmodule WardrikMCP.Connection do
     if principal == :deployment do
       {tools, read_only} = remembered(server)
       offer = %Offer{server: server, tools: tools, read_only: read_only}
-      {:ok, _pid} = Registry.register(@registry, {:offer, server.ref}, offer)
+      {:ok, _pid} = Registry.register(@registry, {:offer, server.key}, offer)
     end
 
     state = %State{
@@ -286,7 +287,7 @@ defmodule WardrikMCP.Connection do
 
   @impl GenServer
   def handle_call(:await, _from, %State{listed?: true} = state) do
-    {:reply, {:ok, tools(state.server.ref)}, state}
+    {:reply, {:ok, tools(state.server.key)}, state}
   end
 
   def handle_call(:await, from, %State{} = state) do
@@ -362,7 +363,7 @@ defmodule WardrikMCP.Connection do
   def handle_info({:EXIT, _pid, _reason}, %State{} = state), do: {:noreply, state}
 
   def handle_info(:expired, %State{} = state) do
-    Logger.info("MCP server #{state.server.ref}: a user's credential expired; closing")
+    Logger.info("MCP server #{state.server.key}: a user's credential expired; closing")
 
     {:stop, :normal, state}
   end
@@ -415,24 +416,24 @@ defmodule WardrikMCP.Connection do
     offer(server, built(server, listed))
     listed(state, listed)
 
-    Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed")
+    Logger.info("MCP server #{server.key}: #{length(listed)} tools listed")
   end
 
   defp publish(%State{server: server} = state, listed) do
     hand_over(server, built(server, listed))
-    Listing.remember(server.store, server.ref, listed)
+    Listing.remember(server.store, server.key, listed)
     listed(state, listed)
 
-    Logger.info("MCP server #{server.ref}: #{length(listed)} tools listed as a user")
+    Logger.info("MCP server #{server.key}: #{length(listed)} tools listed as a user")
   end
 
   # `[:wardrik_mcp, :connection, :listed]` says a server's tools were published,
-  # with the ref and principal in its metadata.
+  # with the key and principal in its metadata.
   defp listed(%State{server: server, principal: principal}, listed) do
     :telemetry.execute(
       [:wardrik_mcp, :connection, :listed],
       %{count: length(listed)},
-      %{ref: server.ref, principal: principal}
+      %{key: server.key, principal: principal}
     )
   end
 
@@ -441,14 +442,14 @@ defmodule WardrikMCP.Connection do
   # deployment's connection too busy to answer is told rather than asked, so a
   # listing is late rather than lost.
   defp hand_over(%Server{} = server, tools) do
-    GenServer.call(name(server.ref, :deployment), {:offer, tools}, @offer_timeout)
+    GenServer.call(name(server.key, :deployment), {:offer, tools}, @offer_timeout)
   catch
     :exit, reason ->
       Logger.warning(
-        "MCP server #{server.ref}: a user's tools wait to be published: #{inspect(reason)}"
+        "MCP server #{server.key}: a user's tools wait to be published: #{inspect(reason)}"
       )
 
-      GenServer.cast(name(server.ref, :deployment), {:offer, tools})
+      GenServer.cast(name(server.key, :deployment), {:offer, tools})
   end
 
   # The tools a listing offers, and the remote names of those it marks
@@ -461,12 +462,12 @@ defmodule WardrikMCP.Connection do
   end
 
   defp remembered(%Server{credential: nil}), do: {[], []}
-  defp remembered(%Server{} = server), do: built(server, Listing.recall(server.store, server.ref))
+  defp remembered(%Server{} = server), do: built(server, Listing.recall(server.store, server.key))
 
   defp offer(%Server{} = server, {tools, read_only}) do
     Registry.update_value(
       @registry,
-      {:offer, server.ref},
+      {:offer, server.key},
       &%{&1 | tools: tools, read_only: read_only}
     )
   end
@@ -512,7 +513,7 @@ defmodule WardrikMCP.Connection do
   end
 
   defp answer_waiting(%State{} = state) do
-    tools = tools(state.server.ref)
+    tools = tools(state.server.key)
     Enum.each(state.waiting, &GenServer.reply(&1, {:ok, tools}))
 
     %{state | waiting: []}
@@ -521,7 +522,7 @@ defmodule WardrikMCP.Connection do
   defp start_client(%State{server: server, principal: principal} = state) do
     Anubis.Client.start_link(
       name: client_of(state),
-      transport_name: {:via, Registry, {@registry, {:transport, server.ref, principal}}},
+      transport_name: {:via, Registry, {@registry, {:transport, server.key, principal}}},
       transport: state.transport,
       client_info: client_info(state),
       capabilities: %{}
@@ -533,14 +534,14 @@ defmodule WardrikMCP.Connection do
   # than named: a server has no business knowing who is behind a connection
   # beyond the token it was given.
   defp client_info(%State{server: server, principal: :deployment}) do
-    %{"name" => "Wardrik (#{server.ref})", "version" => version()}
+    %{"name" => "Wardrik (#{server.key})", "version" => version()}
   end
 
   defp client_info(%State{server: server, principal: principal}) do
-    %{"name" => "Wardrik (#{server.ref}##{:erlang.phash2(principal)})", "version" => version()}
+    %{"name" => "Wardrik (#{server.key}##{:erlang.phash2(principal)})", "version" => version()}
   end
 
-  defp client_of(%State{server: server, principal: principal}), do: client(server.ref, principal)
+  defp client_of(%State{server: server, principal: principal}), do: client(server.key, principal)
 
   defp expire_with_credential(%State{} = state, :infinity), do: state
 
@@ -571,31 +572,31 @@ defmodule WardrikMCP.Connection do
   # tools are.
   defp retry(%State{principal: :deployment, server: %Server{credential: credential}} = state, why)
        when credential != nil do
-    Logger.info("MCP server #{state.server.ref} #{why}; offering to authorize instead")
-    if tools(state.server.ref) == [], do: offer(state.server, [Tool.connect(state.server)])
+    Logger.info("MCP server #{state.server.key} #{why}; offering to authorize instead")
+    if tools(state.server.key) == [], do: offer(state.server, [Tool.connect(state.server)])
 
     answer_waiting(%{state | listed?: true})
   end
 
   # `[:wardrik_mcp, :connection, :retrying]` says a server could not be listed
-  # and will be asked again, with the ref, principal and trouble in its metadata.
+  # and will be asked again, with the key, principal and trouble in its metadata.
   defp retry(%State{} = state, trouble) do
     delay = min((state.retry_ms || state.server.first_retry) * 2, @max_retry_ms)
 
-    Logger.warning("MCP server #{state.server.ref} #{trouble}; asking again in #{delay}ms")
+    Logger.warning("MCP server #{state.server.key} #{trouble}; asking again in #{delay}ms")
     if state.principal == :deployment, do: offer(state.server, [])
     Process.send_after(self(), :retry, delay)
 
     :telemetry.execute(
       [:wardrik_mcp, :connection, :retrying],
       %{delay_ms: delay},
-      %{ref: state.server.ref, principal: state.principal, trouble: trouble}
+      %{key: state.server.key, principal: state.principal, trouble: trouble}
     )
 
     %{state | retry_ms: delay}
   end
 
-  defp name(ref, principal), do: {:via, Registry, {@registry, {:connection, ref, principal}}}
+  defp name(key, principal), do: {:via, Registry, {@registry, {:connection, key, principal}}}
 
   defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
 end

@@ -3,9 +3,10 @@ defmodule WardrikMCP do
   MCP servers as tools an agent can call.
 
   A host starts `WardrikMCP.Supervisor` with the servers it wants reached, then
-  names one in a config the way it names any other tool:
+  names one by its `Wardrik.Servers.Key` in a config the way it names any
+  other tool:
 
-      Wardrik.LLM.Config.new(tools: [{WardrikMCP, :github}])
+      Wardrik.LLM.Config.new(tools: [{WardrikMCP, Wardrik.Servers.Key.deployment("github")}])
 
   The spec is a `Wardrik.Tool` source: it stands for however many tools that
   server offers, and it travels, so an agent that moves to another node builds
@@ -17,14 +18,14 @@ defmodule WardrikMCP do
 
       Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])
 
-  A server's `:orgs` limits which orgs' agents it serves. A call from an agent
-  of another org is refused, so an agent that is not to see a server's tools
-  names the servers it is given, rather than `:*`.
+  A server's `:serves` limits which agents it serves, by prefix. A call from an
+  agent under none of them is refused, so an agent that is not to see a
+  server's tools names the servers it is given, rather than `:*`.
 
   Both are read again for every turn, so a config outlives the servers it was
   built alongside.
 
-  Tool names are the server's ref, then the remote name: `github__create_issue`.
+  Tool names are the server's name, then the remote name: `github__create_issue`.
 
   ## Configuration
 
@@ -59,6 +60,7 @@ defmodule WardrikMCP do
 
   alias Wardrik.Credential
   alias Wardrik.Scope
+  alias Wardrik.Servers.Key
   alias Wardrik.Tool
   alias Wardrik.Tool.Result
   alias WardrikMCP.Connection
@@ -80,9 +82,8 @@ defmodule WardrikMCP do
   next turn, and one that disconnects takes its own away.
   """
   @impl Wardrik.Tool
-  @spec tools(atom()) :: [ReqLLM.Tool.t()]
-  def tools(:*), do: Enum.flat_map(servers(), &Connection.tools/1)
-  def tools(ref) when is_atom(ref), do: Connection.tools(ref)
+  @spec tools(Key.t() | :*) :: [ReqLLM.Tool.t()]
+  def tools(source), do: source |> keys() |> Enum.flat_map(&Connection.tools/1)
 
   @doc """
   What holds for the tool the agent knows as `name`: whether the server
@@ -94,8 +95,8 @@ defmodule WardrikMCP do
   nothing but who is connected.
   """
   @impl Wardrik.Tool
-  def annotations(ref, name) do
-    case offering(ref, name) do
+  def annotations(source, name) do
+    case offering(source, name) do
       {server, :connect} ->
         %{credentials: List.wrap(server.credential), timeout: @timeout}
 
@@ -112,13 +113,12 @@ defmodule WardrikMCP do
     end
   end
 
-  # The server offering the tool the agent knows as `name`, among `ref`'s or
-  # every connected server's for `:*`, and the tool's own name there and
-  # whether the server marks it read-only, or `:connect` for the tool that
-  # connects the server.
-  defp offering(ref, name) do
-    Enum.find_value(if(ref == :*, do: servers(), else: [ref]), fn ref ->
-      with %Offer{server: server, tools: tools, read_only: read_only} <- Connection.offer(ref),
+  # The server offering the tool the agent knows as `name`, among the
+  # source's, and the tool's own name there and whether the server marks it
+  # read-only, or `:connect` for the tool that connects the server.
+  defp offering(source, name) do
+    Enum.find_value(keys(source), fn key ->
+      with %Offer{server: server, tools: tools, read_only: read_only} <- Connection.offer(key),
            %ReqLLM.Tool{callback: {Tool, :invoke, [{__MODULE__, function, args}]}} <-
              Enum.find(tools, &(&1.name == name)) do
         offered(server, read_only, function, args)
@@ -128,15 +128,18 @@ defmodule WardrikMCP do
     end)
   end
 
-  defp offered(server, read_only, :call, [_ref, remote]),
+  defp offered(server, read_only, :call, [_key, remote]),
     do: {server, remote, remote in read_only}
 
-  defp offered(server, _read_only, :authorize, [_ref]), do: {server, :connect}
+  defp offered(server, _read_only, :authorize, [_key]), do: {server, :connect}
+
+  defp keys(:*), do: servers()
+  defp keys(%Key{} = key), do: [key]
 
   @doc """
   Calls a tool on a server and reports what it answered.
 
-  What a tool built by `WardrikMCP.Tool.build/2` runs; the ref and the remote
+  What a tool built by `WardrikMCP.Tool.build/2` runs; the key and the remote
   name are the ones it was built with, and `input` and `context` are what the
   runtime hands it; see `Wardrik.Tool`.
 
@@ -153,22 +156,22 @@ defmodule WardrikMCP do
   the runtime tells the resolver, resolves it afresh and calls again, which
   covers a token revoked or expired without warning.
   """
-  @spec call(atom(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def call(ref, name, input, %Wardrik.Tool.Context{} = context) do
-    with %Offer{server: server} <- Connection.offer(ref),
+  @spec call(Key.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def call(%Key{} = key, name, input, %Wardrik.Tool.Context{} = context) do
+    with %Offer{server: server} <- Connection.offer(key),
          :ok <- serves(server, context.scope),
          {:ok, principal} <- connected(server, context.credentials[server.credential]) do
-      :ok = Connection.watch(ref, principal)
-      answer = ref |> Connection.client(principal) |> request(server, name, input, context)
+      :ok = Connection.watch(key, principal)
+      answer = key |> Connection.client(principal) |> request(server, name, input, context)
 
       if refused?(answer) and Server.per_user?(server) do
-        Connection.close(ref, principal)
+        Connection.close(key, principal)
         {:refused, server.credential}
       else
         WardrikMCP.Tool.answer(answer, server)
       end
     else
-      nil -> Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
+      nil -> Result.error(:no_such_server, "no MCP server is connected as #{key}")
       {:error, reason} -> Result.error(:not_authorized, reason)
     end
   end
@@ -195,31 +198,31 @@ defmodule WardrikMCP do
   authorized yet never reaches it: the credential is named in the tool's
   annotations, so the runtime parks the call on the link first.
   """
-  @spec authorize(atom(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
-  def authorize(ref, _input, %Wardrik.Tool.Context{} = context) do
-    with %Offer{server: server} <- Connection.offer(ref),
+  @spec authorize(Key.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
+  def authorize(%Key{} = key, _input, %Wardrik.Tool.Context{} = context) do
+    with %Offer{server: server} <- Connection.offer(key),
          :ok <- serves(server, context.scope),
          {:ok, _principal} <- connected(server, context.credentials[server.credential]) do
-      Result.ok(%{"connected" => true, "server" => to_string(ref)})
+      Result.ok(%{"connected" => true, "server" => to_string(key)})
     else
-      nil -> Result.error(:no_such_server, "no MCP server is connected as #{inspect(ref)}")
+      nil -> Result.error(:no_such_server, "no MCP server is connected as #{key}")
       {:error, reason} -> Result.error(:not_authorized, reason)
     end
   end
 
   @doc "Connects to a server that was not in the configuration."
-  @spec connect(atom(), keyword()) :: {:ok, pid()} | {:error, term()}
-  def connect(ref, opts) when is_atom(ref) and is_list(opts) do
-    WardrikMCP.Supervisor.connect(Server.new(ref, opts))
+  @spec connect(Key.t(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def connect(%Key{} = key, opts) when is_list(opts) do
+    WardrikMCP.Supervisor.connect(Server.new(key, opts))
   end
 
   @doc "Stops a connection and drops the tools it was offering."
-  @spec disconnect(atom()) :: :ok | {:error, :not_found}
-  def disconnect(ref) when is_atom(ref), do: WardrikMCP.Supervisor.disconnect(ref)
+  @spec disconnect(Key.t()) :: :ok | {:error, :not_found}
+  def disconnect(%Key{} = key), do: WardrikMCP.Supervisor.disconnect(key)
 
-  @doc "The refs of every server currently connected."
-  @spec servers() :: [atom()]
-  def servers, do: Connection.refs()
+  @doc "The keys of every server currently connected."
+  @spec servers() :: [Key.t()]
+  def servers, do: Connection.keys()
 
   defp request(client, server, name, input, context) do
     opts = [timeout: server.timeout] ++ reporting(context)
@@ -227,21 +230,18 @@ defmodule WardrikMCP do
     Anubis.Client.call_tool(client, name, arguments(input), opts)
   catch
     :exit, {:noproc, _call} ->
-      {:error, Anubis.MCP.Error.transport(:not_connected, %{server: server.ref})}
+      {:error, Anubis.MCP.Error.transport(:not_connected, %{server: to_string(server.key)})}
 
     :exit, {:timeout, _call} ->
-      {:error, Anubis.MCP.Error.transport(:timeout, %{server: server.ref})}
+      {:error, Anubis.MCP.Error.transport(:timeout, %{server: to_string(server.key)})}
   end
 
-  # A server serves the agents of the orgs `:orgs` names, and no others.
-  defp serves(%Server{orgs: :all}, _scope), do: :ok
-
   defp serves(%Server{} = server, %Scope{} = scope) do
-    org = Scope.agent_id(scope).org
+    id = Scope.agent_id(scope)
 
-    if Server.for_org?(server, org),
+    if Server.serves?(server, id),
       do: :ok,
-      else: {:error, "#{server.ref} does not serve #{org}'s agents"}
+      else: {:error, "#{server.key} does not serve #{id}"}
   end
 
   # A server everyone shares is reached over the deployment's own connection.
@@ -253,12 +253,12 @@ defmodule WardrikMCP do
 
   defp connected(%Server{} = server, nil),
     do:
-      {:error, "#{server.ref} needs its credential, #{server.credential}, and none was resolved"}
+      {:error, "#{server.key} needs its credential, #{server.credential}, and none was resolved"}
 
   defp connected(%Server{} = server, %Credential{owner: owner} = credential) do
     principal = {:owner, owner}
 
-    if Connection.running?(server.ref, principal),
+    if Connection.running?(server.key, principal),
       do: {:ok, principal},
       else: open(server, principal, credential)
   end
@@ -267,11 +267,11 @@ defmodule WardrikMCP do
     with {:ok, transport} <- Server.with_credential(server, credential),
          good_for = Credential.remaining_ms(credential),
          {:ok, _pid} <- WardrikMCP.Supervisor.connect(server, principal, transport, good_for),
-         {:ok, _tools} <- Connection.await(server.ref, principal, :timer.seconds(30)) do
+         {:ok, _tools} <- Connection.await(server.key, principal, :timer.seconds(30)) do
       {:ok, principal}
     else
       {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, "#{server.ref} could not be reached: #{inspect(reason)}"}
+      {:error, reason} -> {:error, "#{server.key} could not be reached: #{inspect(reason)}"}
     end
   end
 

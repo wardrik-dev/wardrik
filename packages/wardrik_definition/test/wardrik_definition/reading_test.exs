@@ -3,6 +3,7 @@ defmodule WardrikDefinition.ReadingTest do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
 
   import Wardrik.AgentID, only: [sigil_A: 2]
@@ -44,7 +45,7 @@ defmodule WardrikDefinition.ReadingTest do
     %{
       context: %Context{
         tools: [Search, Lua],
-        servers: [linear: [], theirs: [orgs: ["globex"]]],
+        servers: [linear: [], theirs: [serves: [Wardrik.AgentID.Prefix.tenant!("globex")]]],
         mcp: Source,
         sources: [workers: Source, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: ["default"], acme: ["acme"], every: :all],
@@ -109,7 +110,7 @@ defmodule WardrikDefinition.ReadingTest do
     assert spec.description == "Watches the queue."
     assert spec.config.model_spec == "anthropic:claude-sonnet-5"
     assert spec.config.system == "You watch the incident queue."
-    assert spec.config.tools == [Search, {Source, :linear}]
+    assert spec.config.tools == [Search, {Source, Key.deployment("linear")}]
     assert spec.config.max_iterations == 12
     assert spec.timeout == 600_000
     assert spec.hooks == [%Wardrik.Hook{name: "WardrikDefinition.ReadingTest.Hook", module: Hook}]
@@ -209,7 +210,7 @@ defmodule WardrikDefinition.ReadingTest do
     assert spec.config.tools == [
              Search,
              Lua,
-             {Source, :linear},
+             {Source, Key.deployment("linear")},
              {Source, ~A"default/triage"},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
@@ -217,12 +218,12 @@ defmodule WardrikDefinition.ReadingTest do
            ]
 
     assert {:ok, spec} = read("---\ntools: ['*']\norg: globex\n---\n", context)
-    assert {Source, :theirs} in spec.config.tools
+    assert {Source, Key.deployment("theirs")} in spec.config.tools
   end
 
   test "a server is refused to an agent of an org it does not serve", context do
     assert {:error,
-            "tools names theirs/*, but config.yaml's theirs serves globex, and not default"} =
+            "tools names theirs/*, but config.yaml's theirs serves globex/*, and not default/triage"} =
              read("---\ntools: [theirs/*]\n---\n", context)
 
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
@@ -644,7 +645,7 @@ defmodule WardrikDefinition.ReadingTest do
 
       assert spec.id == ~A"acme/triage"
       assert spec.config.system == "You watch the incident queue."
-      assert spec.config.tools == [Search, {Source, :linear}]
+      assert spec.config.tools == [Search, {Source, Key.deployment("linear")}]
       assert spec.timeout == :timer.seconds(600)
 
       assert {:ok, %{config: %{system: nil, tools: []}}} = define(~A"default/blank", %{}, context)

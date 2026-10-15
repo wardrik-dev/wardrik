@@ -38,6 +38,7 @@ defmodule WardrikDefinition do
 
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.LLM.Config
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
@@ -471,7 +472,7 @@ defmodule WardrikDefinition do
       for {ref, opts} <- context.servers,
           context.mcp,
           reach(key, ref, opts, context) == :ok,
-          do: {context.mcp, ref}
+          do: {context.mcp, Wardrik.Servers.Key.deployment(Atom.to_string(ref))}
 
     context.tools ++ servers ++ for({_name, source} <- context.sources, do: {source, key})
   end
@@ -546,7 +547,7 @@ defmodule WardrikDefinition do
     with {:ok, ref} <- Map.fetch(configured, name),
          true <- context.mcp != nil,
          :ok <- reach(key, ref, Keyword.fetch!(context.servers, ref), context) do
-      {context.mcp, ref}
+      {context.mcp, Wardrik.Servers.Key.deployment(name)}
     else
       {:error, why} ->
         invalid!("tools names #{name}/*, but #{why}")
@@ -559,16 +560,18 @@ defmodule WardrikDefinition do
     end
   end
 
-  # Whether the agent `id` can reach the server `ref`: one serving its org.
-  defp reach(%AgentID{org: org}, ref, opts, context) do
-    case Keyword.get(opts, :orgs, :all) do
-      :all -> :ok
-      orgs -> if org in orgs, do: :ok, else: {:error, not_served(ref, orgs, org, context)}
-    end
+  # Whether the agent `id` can reach the server `ref`: one serving a prefix
+  # that covers it.
+  defp reach(%AgentID{} = id, ref, opts, context) do
+    serves = Keyword.get(opts, :serves, [Prefix.all()])
+
+    if Enum.any?(serves, &Prefix.covers?(&1, id)),
+      do: :ok,
+      else: {:error, not_served(ref, serves, id, context)}
   end
 
-  defp not_served(ref, orgs, org, context),
-    do: "#{context.names.config}'s #{ref} serves #{Enum.join(orgs, ", ")}, and not #{org}"
+  defp not_served(ref, serves, id, context),
+    do: "#{context.names.config}'s #{ref} serves #{Enum.join(serves, ", ")}, and not #{id}"
 
   defp configured_servers(configured) when map_size(configured) == 0, do: ""
 

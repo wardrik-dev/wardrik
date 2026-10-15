@@ -40,26 +40,26 @@ defmodule WardrikMCP.PerUserTest do
   end
 
   defimpl Wardrik.Credentials, for: Vault do
-    def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+    def resolve(_vault, key, call), do: Vault.resolve(key, call)
     def refused(_vault, _ref, _call), do: :ok
     def key(_vault, _name), do: :error
   end
 
   @moduletag server_opts: [credential: "stub", credential_env: "DEMO_TOKEN"]
 
-  defp scope(ref, org, user) do
-    Config.new(tools: [{WardrikMCP, ref}])
+  defp scope(key, org, user) do
+    Config.new(tools: [{WardrikMCP, key}])
     |> Scope.root(AgentID.new!("assistant", org: org, user: user),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
 
-  defp run(ref, user, tool, arguments), do: run(ref, "acme", user, tool, arguments)
+  defp run(key, user, tool, arguments), do: run(key, "acme", user, tool, arguments)
 
-  defp run(ref, org, user, tool, arguments) do
-    call = %{id: "call_1", name: "#{ref}__#{tool}", arguments: arguments}
+  defp run(key, org, user, tool, arguments) do
+    call = %{id: "call_1", name: "#{key}__#{tool}", arguments: arguments}
 
-    ToolRunner.execute(call, scope(ref, org, user))
+    ToolRunner.execute(call, scope(key, org, user))
   end
 
   defp text(call) do
@@ -68,86 +68,86 @@ defmodule WardrikMCP.PerUserTest do
     part.text
   end
 
-  test "the tools are listed once, over the deployment's own connection", %{ref: ref} do
-    names = Enum.map(WardrikMCP.tools(ref), & &1.name)
+  test "the tools are listed once, over the deployment's own connection", %{key: key} do
+    names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{ref}__echo" in names
-    assert "#{ref}__secret" in names
+    assert "#{key}__echo" in names
+    assert "#{key}__secret" in names
   end
 
-  test "a connected user calls over a connection carrying their own credential", %{ref: ref} do
+  test "a connected user calls over a connection carrying their own credential", %{key: key} do
     assert [message] =
              Wardrik.LLM.ToolRunner.messages([
-               run(ref, "connected", "secret", %{"name" => "DEMO_TOKEN"})
+               run(key, "connected", "secret", %{"name" => "DEMO_TOKEN"})
              ])
 
     [part] = message.content
     assert part.text =~ "token-for-connected"
   end
 
-  test "each user gets a connection of their own", %{ref: ref} do
-    run(ref, "connected", "echo", %{"value" => "hello"})
+  test "each user gets a connection of their own", %{key: key} do
+    run(key, "connected", "echo", %{"value" => "hello"})
 
-    assert Connection.running?(ref, {:owner, {"acme", "connected"}})
-    assert Connection.running?(ref, :deployment)
-    refute Connection.running?(ref, {:owner, {"acme", "someone-else"}})
+    assert Connection.running?(key, {:owner, {"acme", "connected"}})
+    assert Connection.running?(key, :deployment)
+    refute Connection.running?(key, {:owner, {"acme", "someone-else"}})
   end
 
   test "a user of the same name in another org calls over a connection of their own",
-       %{ref: ref} do
-    assert text(run(ref, "acme", "connected", "secret", %{"name" => "DEMO_TOKEN"})) =~
+       %{key: key} do
+    assert text(run(key, "acme", "connected", "secret", %{"name" => "DEMO_TOKEN"})) =~
              "token-for-connected"
 
-    globex = text(run(ref, "globex", "connected", "secret", %{"name" => "DEMO_TOKEN"}))
+    globex = text(run(key, "globex", "connected", "secret", %{"name" => "DEMO_TOKEN"}))
 
     assert globex =~ "token-for-globex-connected"
-    assert Connection.running?(ref, {:owner, {"acme", "connected"}})
-    assert Connection.running?(ref, {:owner, {"globex", "connected"}})
+    assert Connection.running?(key, {:owner, {"acme", "connected"}})
+    assert Connection.running?(key, {:owner, {"globex", "connected"}})
   end
 
-  test "a credential an org holds gives each org a connection of its own", %{ref: ref} do
-    assert text(run(ref, "acme", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~ "token-for-acme"
+  test "a credential an org holds gives each org a connection of its own", %{key: key} do
+    assert text(run(key, "acme", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~ "token-for-acme"
 
-    assert text(run(ref, "globex", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~
+    assert text(run(key, "globex", nil, "secret", %{"name" => "DEMO_TOKEN"})) =~
              "token-for-globex"
 
-    assert Connection.running?(ref, {:owner, "acme"})
-    assert Connection.running?(ref, {:owner, "globex"})
-    assert Connection.running?(ref, :deployment)
+    assert Connection.running?(key, {:owner, "acme"})
+    assert Connection.running?(key, {:owner, "globex"})
+    assert Connection.running?(key, :deployment)
   end
 
-  test "a user who has not authorized parks the call, with somewhere to go", %{ref: ref} do
+  test "a user who has not authorized parks the call, with somewhere to go", %{key: key} do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
-             run(ref, "unconnected", "echo", %{"value" => "hello"})
+             run(key, "unconnected", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To use #{ref}__echo, connect stub at its link"
+    assert prompt =~ "To use #{key}__echo, connect stub at its link"
     refute prompt =~ "https://"
     assert link == %{url: "https://example.com/connect", code: nil}
-    refute Connection.running?(ref, {:owner, {"acme", "unconnected"}})
+    refute Connection.running?(key, {:owner, {"acme", "unconnected"}})
   end
 
-  test "a user who authorizes on another device is given the code to enter", %{ref: ref} do
+  test "a user who authorizes on another device is given the code to enter", %{key: key} do
     assert %Wardrik.Call{state: :waiting, asks: [%{prompt: prompt, link: link}]} =
-             run(ref, "elsewhere", "echo", %{"value" => "hello"})
+             run(key, "elsewhere", "echo", %{"value" => "hello"})
 
-    assert prompt =~ "To use #{ref}__echo, connect stub at its link"
+    assert prompt =~ "To use #{key}__echo, connect stub at its link"
     refute prompt =~ "WDJB-MJHT"
     assert link == %{url: "https://example.com/device", code: "WDJB-MJHT"}
   end
 
-  test "a user the resolver refuses is told, and the turn carries on", %{ref: ref} do
+  test "a user the resolver refuses is told, and the turn carries on", %{key: key} do
     assert [message] =
-             Wardrik.LLM.ToolRunner.messages([run(ref, "refused", "echo", %{"value" => "hello"})])
+             Wardrik.LLM.ToolRunner.messages([run(key, "refused", "echo", %{"value" => "hello"})])
 
     [part] = message.content
     assert part.text =~ "not_authorized"
   end
 
-  test "the deployment's own connection is not given a user's credential", %{ref: ref} do
-    run(ref, "connected", "echo", %{"value" => "hello"})
+  test "the deployment's own connection is not given a user's credential", %{key: key} do
+    run(key, "connected", "echo", %{"value" => "hello"})
 
     deployment =
-      GenServer.whereis({:via, Registry, {WardrikMCP.Registry, {:connection, ref, :deployment}}})
+      GenServer.whereis({:via, Registry, {WardrikMCP.Registry, {:connection, key, :deployment}}})
 
     refute inspect(:sys.get_state(deployment)) =~ "token-for-connected"
   end

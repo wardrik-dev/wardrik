@@ -8,7 +8,7 @@ defmodule WardrikDefinition.Context do
         orgs: ["acme", "globex"],
         ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
         tools: [WardrikBrave.WebSearch],
-        servers: [github: [orgs: :all], books: [orgs: ["acme"]]],
+        servers: [github: [], books: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]]],
         mcp: WardrikMCP,
         sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: :all],
@@ -26,8 +26,9 @@ defmodule WardrikDefinition.Context do
       own, by org, `"*"` for every org's; each a name in `policies`
     * `tools` - the tools the host ships, each a module implementing
       `Wardrik.Tool`, named in a definition by its tool's name
-    * `servers` - the MCP servers, by name, each with the `orgs` it serves,
-      `:all` or a list, which a definition names as `server/*`
+    * `servers` - the MCP servers, by name, each with the prefixes it
+      `serves`, every agent's unless it says, which a definition names as
+      `server/*`
     * `mcp` - the tool source the servers' tools come through, such as
       `WardrikMCP`; with none, a definition names no server
     * `sources` - the tool sources a definition names as `name/*`, each a

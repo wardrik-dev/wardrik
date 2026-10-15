@@ -1,24 +1,28 @@
 defmodule WardrikMCP.StderrTest do
   use ExUnit.Case, async: false
 
-  import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_ref: 0, context: 0]
+  import WardrikMCP.Test.Case, only: [stub_options: 1, await_tools: 1, fresh_key: 0, context: 0]
 
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Server
 
-  defp start(ref, opts) do
-    start_supervised!({WardrikMCP.Supervisor, servers: [{ref, stub_options(opts)}]})
-    await_tools(ref)
+  defp start(key, opts) do
+    start_supervised!(
+      {WardrikMCP.Supervisor, servers: [{String.to_atom(key.name), stub_options(opts)}]}
+    )
+
+    await_tools(key)
   end
 
   test "a server's own output can be sent to a file instead of the terminal" do
     path = Path.join(System.tmp_dir!(), "wardrik-mcp-#{System.unique_integer([:positive])}.log")
     on_exit(fn -> File.rm(path) end)
 
-    ref = fresh_ref()
-    start(ref, stderr: {:file, path})
+    key = fresh_key()
+    start(key, stderr: {:file, path})
 
     assert {:ok, %{"ok" => true}} =
-             WardrikMCP.call(ref, "noise", %{"line" => "npm notice hello"}, context())
+             WardrikMCP.call(key, "noise", %{"line" => "npm notice hello"}, context())
 
     # The server writes the line before it answers, and Erlang's standard error
     # is unbuffered, so the file has it by the time the answer arrives.
@@ -26,17 +30,17 @@ defmodule WardrikMCP.StderrTest do
   end
 
   test "a server whose output is discarded still answers" do
-    ref = fresh_ref()
-    start(ref, stderr: :discard)
+    key = fresh_key()
+    start(key, stderr: :discard)
 
     assert {:ok, %{"result" => %{"content" => "noise made"}}} =
-             WardrikMCP.call(ref, "noise", %{"line" => "gone"}, context())
+             WardrikMCP.call(key, "noise", %{"line" => "gone"}, context())
   end
 
   describe "the transport it builds" do
     defp server(opts) do
       Server.new(
-        :stub,
+        Key.deployment("stub"),
         Keyword.merge(
           [transport: {:stdio, command: "npx", args: ["-y", "x"]}, inherit_env: :all],
           opts

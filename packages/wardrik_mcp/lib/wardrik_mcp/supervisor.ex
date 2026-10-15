@@ -2,8 +2,9 @@ defmodule WardrikMCP.Supervisor do
   @moduledoc """
   The registry and the connections behind `WardrikMCP`.
 
-  A host starts it with the servers it wants reached, each a ref and the
-  options `WardrikMCP.Server.new/2` takes:
+  A host starts it with the servers it wants reached, each a name and the
+  options `WardrikMCP.Server.new/2` takes. They are the deployment's own,
+  keyed by `Wardrik.Servers.Key.deployment/1`:
 
       children = [
         {WardrikMCP.Supervisor,
@@ -29,6 +30,7 @@ defmodule WardrikMCP.Supervisor do
 
   use Supervisor
 
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Connection
   alias WardrikMCP.Server
 
@@ -89,7 +91,7 @@ defmodule WardrikMCP.Supervisor do
     case Supervisor.start_child(@connections, {Connection, server}) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, :already_present} -> restart(server.ref)
+      {:error, :already_present} -> restart(server.key)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -104,7 +106,7 @@ defmodule WardrikMCP.Supervisor do
           {:ok, pid()} | {:error, term()}
   def connect(%Server{} = server, principal, transport, good_for \\ :infinity) do
     child = %{
-      id: {Connection, server.ref, principal},
+      id: {Connection, server.key, principal},
       start: {Connection, :start_link, [server, principal, transport, good_for]},
       restart: :transient
     }
@@ -117,21 +119,21 @@ defmodule WardrikMCP.Supervisor do
   end
 
   @doc "Stops the connection to a server, and forgets it."
-  @spec disconnect(atom()) :: :ok | {:error, :not_found}
-  def disconnect(ref) when is_atom(ref) do
-    with :ok <- Supervisor.terminate_child(@connections, {Connection, ref}) do
-      Supervisor.delete_child(@connections, {Connection, ref})
+  @spec disconnect(Key.t()) :: :ok | {:error, :not_found}
+  def disconnect(%Key{} = key) do
+    with :ok <- Supervisor.terminate_child(@connections, {Connection, key}) do
+      Supervisor.delete_child(@connections, {Connection, key})
     end
   end
 
   @doc "The servers this supervisor is connecting to, whether or not they answer."
   @spec servers() :: [Server.t()]
   def servers do
-    for ref <- Connection.refs(), offer = Connection.offer(ref), do: offer.server
+    for key <- Connection.keys(), offer = Connection.offer(key), do: offer.server
   end
 
-  defp restart(ref) do
-    case Supervisor.restart_child(@connections, {Connection, ref}) do
+  defp restart(key) do
+    case Supervisor.restart_child(@connections, {Connection, key}) do
       {:ok, pid} -> {:ok, pid}
       {:error, :running} -> {:error, :already_started}
       {:error, reason} -> {:error, reason}
@@ -143,8 +145,8 @@ defmodule WardrikMCP.Supervisor do
 
     opts
     |> Keyword.get(:servers, [])
-    |> Enum.map(fn {ref, server_opts} ->
-      Server.new(ref, Keyword.merge(defaults, server_opts))
+    |> Enum.map(fn {name, server_opts} ->
+      Server.new(Key.deployment(Atom.to_string(name)), Keyword.merge(defaults, server_opts))
     end)
   end
 end

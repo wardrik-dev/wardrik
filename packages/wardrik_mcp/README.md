@@ -35,11 +35,15 @@ children = [
 ```
 
 ```elixir
-Wardrik.LLM.Config.new(tools: [{WardrikMCP, :github}])   # one server
+github = Wardrik.Servers.Key.deployment("github")
+
+Wardrik.LLM.Config.new(tools: [{WardrikMCP, github}])    # one server
 Wardrik.LLM.Config.new(tools: [{WardrikMCP, :*}])        # every server connected
 ```
 
-`{WardrikMCP, :github}` stands for however many tools that server offers, and
+A server is named by its `Wardrik.Servers.Key`: whose it is, and its name.
+The servers the supervisor starts are the deployment's own. `{WardrikMCP,
+github}` stands for however many tools that server offers, and
 they arrive as `github__search_issues`, with the server's own JSON Schema. Each
 server connects on its own, so one that is down offers no tools and holds up
 nothing else.

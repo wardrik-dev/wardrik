@@ -29,7 +29,7 @@ defmodule WardrikMCP.BootstrapTest do
   end
 
   defimpl Wardrik.Credentials, for: Vault do
-    def resolve(_vault, ref, call), do: Vault.resolve(ref, call)
+    def resolve(_vault, key, call), do: Vault.resolve(key, call)
     def refused(_vault, _ref, _call), do: :ok
     def key(_vault, _name), do: :error
   end
@@ -42,71 +42,71 @@ defmodule WardrikMCP.BootstrapTest do
                transport_opts: [env: %{"STUB_REQUIRE_TOKEN" => "1"}]
              ]
 
-  defp scope(ref, user) do
-    Config.new(tools: [{WardrikMCP, ref}])
+  defp scope(key, user) do
+    Config.new(tools: [{WardrikMCP, key}])
     |> Scope.root(AgentID.new!("a", org: "acme", user: user),
       host: Wardrik.Test.host(credentials: %Vault{})
     )
   end
 
-  defp call(ref, user, tool) do
-    ToolRunner.execute(%{id: "c1", name: "#{ref}__#{tool}", arguments: %{}}, scope(ref, user))
+  defp call(key, user, tool) do
+    ToolRunner.execute(%{id: "c1", name: "#{key}__#{tool}", arguments: %{}}, scope(key, user))
   end
 
-  setup %{ref: ref} do
-    %{connect: "#{ref}__connect"}
+  setup %{key: key} do
+    %{connect: "#{key}__connect"}
   end
 
   test "offers the tool that authorizes, and nothing else", context do
-    %{ref: ref, connect: connect} = context
+    %{key: key, connect: connect} = context
 
-    assert Enum.map(WardrikMCP.tools(ref), & &1.name) == [connect]
+    assert Enum.map(WardrikMCP.tools(key), & &1.name) == [connect]
   end
 
   test "calling it parks on the link", context do
-    %{ref: ref} = context
+    %{key: key} = context
 
     assert %Wardrik.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
-             call(ref, "someone", "connect")
+             call(key, "someone", "connect")
 
     assert url =~ "https://example.com/authorize"
   end
 
   test "a user who authorizes gets the server's own tools in its place", context do
-    %{ref: ref, connect: connect} = context
+    %{key: key, connect: connect} = context
 
-    assert %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
+    assert %Wardrik.Call{state: :done} = call(key, "connected", "connect")
 
-    names = Enum.map(WardrikMCP.tools(ref), & &1.name)
+    names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{ref}__echo" in names
+    assert "#{key}__echo" in names
     refute connect in names
   end
 
   test "and a later listing by the deployment leaves those tools alone", context do
-    %{ref: ref, connect: connect} = context
-    %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
+    %{key: key, connect: connect} = context
+    %Wardrik.Call{state: :done} = call(key, "connected", "connect")
 
     # What a server saying its tools changed drives, without the wait that
     # collapses a burst of them. The deployment is still refused.
-    send(Connection.whereis(ref), :refresh)
-    {:ok, _listed} = Connection.await(ref)
+    send(Connection.whereis(key), :refresh)
+    {:ok, _listed} = Connection.await(key)
 
-    names = Enum.map(WardrikMCP.tools(ref), & &1.name)
+    names = Enum.map(WardrikMCP.tools(key), & &1.name)
 
-    assert "#{ref}__echo" in names
+    assert "#{key}__echo" in names
     refute connect in names
   end
 
   test "and those tools then run as that user", context do
-    %{ref: ref} = context
-    %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
+    %{key: key} = context
+    %Wardrik.Call{state: :done} = call(key, "connected", "connect")
 
-    secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
+    secret = %{id: "c2", name: "#{key}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 
     assert [message] =
              Wardrik.LLM.ToolRunner.messages([
-               ToolRunner.execute(secret, scope(ref, "connected"))
+               ToolRunner.execute(secret, scope(key, "connected"))
              ])
 
     [part] = message.content
@@ -114,45 +114,45 @@ defmodule WardrikMCP.BootstrapTest do
   end
 
   test "a listing made on another node takes the place of the tool that authorizes", context do
-    %{ref: ref} = context
+    %{key: key} = context
 
-    Connection.offer_listing(ref, [%{"name" => "echo", "description" => "Hands the value back."}])
+    Connection.offer_listing(key, [%{"name" => "echo", "description" => "Hands the value back."}])
 
-    assert {:ok, tools} = Connection.await(ref)
-    assert Enum.map(tools, & &1.name) == ["#{ref}__echo"]
+    assert {:ok, tools} = Connection.await(key)
+    assert Enum.map(tools, & &1.name) == ["#{key}__echo"]
   end
 
   describe "a connection started after a user has connected elsewhere" do
     # What a node that starts later has: the deployment's connection, and no
     # connection of any user's.
-    setup %{ref: ref, server_opts: opts} do
-      %Wardrik.Call{state: :done} = call(ref, "connected", "connect")
-      :ok = Connection.close(ref, {:owner, {"acme", "connected"}})
-      :ok = WardrikMCP.disconnect(ref)
+    setup %{key: key, server_opts: opts} do
+      %Wardrik.Call{state: :done} = call(key, "connected", "connect")
+      :ok = Connection.close(key, {:owner, {"acme", "connected"}})
+      :ok = WardrikMCP.disconnect(key)
 
-      {:ok, _pid} = WardrikMCP.Supervisor.connect(Server.new(ref, stub_options(opts)))
-      started_with = Enum.map(WardrikMCP.tools(ref), & &1.name)
-      await_tools(ref)
+      {:ok, _pid} = WardrikMCP.Supervisor.connect(Server.new(key, stub_options(opts)))
+      started_with = Enum.map(WardrikMCP.tools(key), & &1.name)
+      await_tools(key)
 
       %{started_with: started_with}
     end
 
     test "offers the server's own tools from the start", context do
-      %{ref: ref, connect: connect, started_with: names} = context
+      %{key: key, connect: connect, started_with: names} = context
 
-      assert "#{ref}__echo" in names
+      assert "#{key}__echo" in names
       refute connect in names
     end
 
     test "runs a call as the user who connected, over a connection it opens", context do
-      %{ref: ref} = context
-      refute Connection.running?(ref, {:owner, {"acme", "connected"}})
+      %{key: key} = context
+      refute Connection.running?(key, {:owner, {"acme", "connected"}})
 
-      secret = %{id: "c2", name: "#{ref}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
+      secret = %{id: "c2", name: "#{key}__secret", arguments: %{"name" => "DEMO_TOKEN"}}
 
       assert [message] =
                Wardrik.LLM.ToolRunner.messages([
-                 ToolRunner.execute(secret, scope(ref, "connected"))
+                 ToolRunner.execute(secret, scope(key, "connected"))
                ])
 
       [part] = message.content
@@ -160,12 +160,12 @@ defmodule WardrikMCP.BootstrapTest do
     end
 
     test "parks a call from a user who has not connected on the link", context do
-      %{ref: ref} = context
+      %{key: key} = context
 
-      echo = %{id: "c2", name: "#{ref}__echo", arguments: %{"value" => "hello"}}
+      echo = %{id: "c2", name: "#{key}__echo", arguments: %{"value" => "hello"}}
 
       assert %Wardrik.Call{state: :waiting, asks: [%{link: %{url: url}}]} =
-               ToolRunner.execute(echo, scope(ref, "someone"))
+               ToolRunner.execute(echo, scope(key, "someone"))
 
       assert url =~ "https://example.com/authorize"
     end

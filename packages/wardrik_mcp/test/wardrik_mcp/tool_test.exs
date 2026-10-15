@@ -3,11 +3,15 @@ defmodule WardrikMCP.ToolTest do
 
   alias Anubis.MCP.Error
   alias Anubis.MCP.Response
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Server
   alias WardrikMCP.Tool
 
   defp server(opts \\ []) do
-    Server.new(:stub, Keyword.put_new(opts, :transport, {:stdio, command: "true"}))
+    Server.new(
+      Key.deployment("stub"),
+      Keyword.put_new(opts, :transport, {:stdio, command: "true"})
+    )
   end
 
   defp answered(result, opts \\ []) do

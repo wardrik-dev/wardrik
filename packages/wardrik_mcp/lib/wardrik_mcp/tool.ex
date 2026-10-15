@@ -31,10 +31,10 @@ defmodule WardrikMCP.Tool do
     Wardrik.Tool.new!(
       name: Server.local_name(server, "connect"),
       description: """
-      Authorize this agent to use #{server.ref}. Call it when you need #{server.ref}       and no #{server.ref} tool is available yet: the user is asked to connect, and       #{server.ref}'s own tools appear once they have.
+      Authorize this agent to use #{server.key.name}. Call it when you need #{server.key.name}       and no #{server.key.name} tool is available yet: the user is asked to connect, and       #{server.key.name}'s own tools appear once they have.
       """,
       parameter_schema: %{"type" => "object", "properties" => %{}},
-      run: {WardrikMCP, :authorize, [server.ref]}
+      run: {WardrikMCP, :authorize, [server.key]}
     )
   end
 
@@ -49,7 +49,7 @@ defmodule WardrikMCP.Tool do
       name: Server.local_name(server, name),
       description: description(listed, server),
       parameter_schema: listed["inputSchema"] || %{"type" => "object", "properties" => %{}},
-      run: {WardrikMCP, :call, [server.ref, name]}
+      run: {WardrikMCP, :call, [server.key, name]}
     )
   end
 
@@ -75,7 +75,7 @@ defmodule WardrikMCP.Tool do
 
   defp description(listed, server) do
     (listed["description"] || listed["title"] || listed["name"]) <>
-      "\n\nFrom the #{server.ref} MCP server."
+      "\n\nFrom the #{server.key.name} MCP server."
   end
 
   defp text(%{"content" => content}, server) when is_list(content) do

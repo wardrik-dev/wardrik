@@ -4,7 +4,7 @@ defmodule WardrikMCP.Offer do
   the tools it last reported, and the remote names of those it marked
   `readOnlyHint`.
 
-  Held as the registry value under `{:offer, ref}` by `WardrikMCP.Connection`, so
+  Held as the registry value under `{:offer, key}` by `WardrikMCP.Connection`, so
   building a turn's tools and calling one read the same place and neither waits
   on a process.
   """

@@ -2,6 +2,7 @@ defmodule WardrikDefinitionTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
 
   defmodule Clock do
@@ -30,7 +31,7 @@ defmodule WardrikDefinitionTest do
     context = %Context{
       org: "acme",
       tools: [Clock],
-      servers: [books: [orgs: ["acme"]], wiki: []],
+      servers: [books: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]], wiki: []],
       mcp: Source,
       channels: [chat: :all, ops: ["globex"]],
       targets: [pager: {Source, orgs: :all}],
@@ -72,7 +73,7 @@ defmodule WardrikDefinitionTest do
 
     assert {:ok, spec} = spec(fields, context, id, {:file, "triage.md"})
     assert spec.config.system == "Watch the queue."
-    assert spec.config.tools == [Clock, {Source, :books}]
+    assert spec.config.tools == [Clock, {Source, Key.deployment("books")}]
     assert [_hook | _hooks] = spec.hooks
     assert spec.ledger == %Wardrik.Ledger.Store{}
     assert spec.idle_timeout == :timer.seconds(60)
@@ -89,7 +90,7 @@ defmodule WardrikDefinitionTest do
     assert {:error, "tools names nope/*, but Mode configures no server nope; it has " <> _} =
              spec(%{"tools" => ["nope/*"]}, context, id)
 
-    assert {:error, "tools names books/*, but Mode's books serves acme, and not globex"} =
+    assert {:error, "tools names books/*, but Mode's books serves acme/*, and not globex/triage"} =
              spec(%{"tools" => ["books/*"]}, context, AgentID.parse!("globex/triage"))
 
     assert {:error, "tools names web_search, which is not a tool Mode ships"} =

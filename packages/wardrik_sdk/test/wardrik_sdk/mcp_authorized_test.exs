@@ -12,7 +12,7 @@ defmodule WardrikSDK.MCPAuthorizedTest do
 
   @moduletag server_opts: [credential: "github", credential_env: "DEMO_TOKEN"]
 
-  setup %{ref: ref, owner: owner} do
+  setup %{key: key, owner: owner} do
     Req.Test.set_req_test_to_shared()
     on_exit(&Req.Test.set_req_test_to_private/0)
 
@@ -22,7 +22,7 @@ defmodule WardrikSDK.MCPAuthorizedTest do
 
     scope =
       Wardrik.Test.scope(
-        tools: [{WardrikMCP, ref}],
+        tools: [{WardrikMCP, key}],
         id: Wardrik.AgentID.parse!("acme/@#{owner}/assistant"),
         host: host()
       )
@@ -30,14 +30,14 @@ defmodule WardrikSDK.MCPAuthorizedTest do
     %{scope: scope}
   end
 
-  defp secret(ref, scope),
-    do: Wardrik.Test.call(scope, "#{ref}__secret", %{"name" => "DEMO_TOKEN"})
+  defp secret(key, scope),
+    do: Wardrik.Test.call(scope, "#{key.name}__secret", %{"name" => "DEMO_TOKEN"})
 
   test "parks on a link, then runs once the user has followed it", context do
-    %{ref: ref, scope: scope, owner: owner} = context
+    %{key: key, scope: scope, owner: owner} = context
 
     assert %Call{state: :waiting, asks: [%{prompt: prompt, link: %{url: url}}]} =
-             call = secret(ref, scope)
+             call = secret(key, scope)
 
     assert url =~ "https://auth.example.com/authorize"
     refute prompt =~ "https://"
@@ -52,9 +52,9 @@ defmodule WardrikSDK.MCPAuthorizedTest do
   end
 
   test "the token the server sees is the one the flow produced", context do
-    %{ref: ref, scope: scope} = context
+    %{key: key, scope: scope} = context
 
-    %Call{asks: [%{link: %{url: url}}]} = call = secret(ref, scope)
+    %Call{asks: [%{link: %{url: url}}]} = call = secret(key, scope)
     {:ok, "github"} = WardrikOAuth.finish(state_of(url), "the-code")
 
     assert %Call{result: {:ok, %{"result" => %{"content" => content}}}} =
