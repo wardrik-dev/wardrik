@@ -1,6 +1,7 @@
 defmodule Wardrik.Call.PipelineTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
   import Wardrik.Test, only: [host: 0, host: 1]
 
   alias ReqLLM.Context
@@ -52,6 +53,15 @@ defmodule Wardrik.Call.PipelineTest do
   defimpl Wardrik.LLM.Dispatch, for: Refusing do
     def admit(_refusing, _request, _opts), do: {:error, :over_budget}
     def settle(_refusing, _request, _opts), do: :ok
+  end
+
+  defmodule Unbooked do
+    defstruct []
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Unbooked do
+    def admit(_unbooked, request, _opts), do: {:ok, request}
+    def settle(_unbooked, _request, _opts), do: {:error, :ledger_down}
   end
 
   # A tool whose worker went away the first time, and that may run again
@@ -224,6 +234,21 @@ defmodule Wardrik.Call.PipelineTest do
 
       refute_received {:invoked, _request}
       refute_received {:settled, _call}
+    end
+
+    test "keeps its answer, and counts it, when the dispatch cannot settle it",
+         %{agent_id: agent_id} do
+      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Unbooked{}))
+      outcome = {:ok, response(%{input_tokens: 3, output_tokens: 4})}
+
+      log =
+        capture_log(fn ->
+          assert %Call{state: :done, result: ^outcome} =
+                   request() |> Pipeline.model(scope) |> Pipeline.run(answering(outcome))
+        end)
+
+      assert log =~ ":ledger_down"
+      assert_received {:settled, %Call{result: ^outcome}}
     end
 
     test "that failed before it was answered is heard by the dispatch alone",

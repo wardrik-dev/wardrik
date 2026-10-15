@@ -564,15 +564,24 @@ defmodule Wardrik.Call.Pipeline do
   defp settled(%Call{private: %{@made => true}, target: %Model{}} = call) do
     request = request(call)
 
-    :ok =
-      Dispatch.settle(Host.dispatch(call.scope.host), request,
-        outcome: call.result,
-        scope: call.scope
-      )
+    call =
+      case Usage.of(request, call.result) do
+        nil -> call
+        usage -> call |> Call.used(usage, request.model_spec) |> tap(&Hook.settle/1)
+      end
 
-    case Usage.of(request, call.result) do
-      nil -> call
-      usage -> call |> Call.used(usage, request.model_spec) |> tap(&Hook.settle/1)
+    dispatch = Host.dispatch(call.scope.host)
+
+    case Dispatch.settle(dispatch, request, outcome: call.result, scope: call.scope) do
+      :ok ->
+        call
+
+      {:error, reason} ->
+        Logger.error(
+          "#{inspect(dispatch.__struct__)} could not settle a call: #{inspect(reason)}"
+        )
+
+        call
     end
   end
 

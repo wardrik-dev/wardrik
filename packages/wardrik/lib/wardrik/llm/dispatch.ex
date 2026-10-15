@@ -70,7 +70,8 @@ defprotocol Wardrik.LLM.Dispatch do
   as a `Wardrik.Call` to a `Wardrik.Call.Model`; see `Wardrik.Call.Pipeline`. A
   deny fails the turn as `{:policy_denied, reason}` and an ask parks it, and
   in neither case is the dispatch asked. Every hook hears what an admitted
-  call used through `Wardrik.Hook.settle/1`.
+  call used through `Wardrik.Hook.settle/1`, before the dispatch settles it,
+  so a budget counts a call whatever its dispatch does with it.
 
   ## Refusing a call
 
@@ -78,9 +79,17 @@ defprotocol Wardrik.LLM.Dispatch do
   the provider is never reached, which is what a disabled model should do.
   Classify the reason so callers know whether to retry it; see `Wardrik.Failure`.
 
+  ## Failing to settle
+
+  By the time `settle/3` hears of a call, the provider has answered it. A
+  dispatch that cannot book it, a database write that failed say, answers
+  `{:error, reason}`: the reason is logged and the turn carries on with the
+  answer, since losing what was paid for to a bookkeeping error is worse
+  than losing the book entry.
+
   Both functions run in the turn's own process, so one that raises fails
   that turn, as any other crash in it does, and the agent takes its next
-  message.
+  message. Answer errors rather than raise them.
   """
 
   alias Wardrik.LLM.Request
@@ -113,7 +122,8 @@ defprotocol Wardrik.LLM.Dispatch do
 
   Called for every admitted request, including ones that failed or were
   interrupted, so a host that books usage never loses a call it admitted.
+  An `{:error, reason}` is logged, and the turn carries on.
   """
-  @spec settle(t(), Request.t(), keyword()) :: :ok
+  @spec settle(t(), Request.t(), keyword()) :: :ok | {:error, term()}
   def settle(dispatch, request, opts)
 end
