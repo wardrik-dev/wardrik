@@ -336,8 +336,9 @@ children = [
 Wardrik.Query.run(%Wardrik.Operations.ReadAgent{agent: id}, caller)
 ```
 
-Nothing of the host is kept on the node or with an agent, so two instances
-on one node each answer with their own.
+Nothing of the host is kept on the node or with an agent. A node runs one
+`Wardrik`, since core's own processes are registered under their module
+names; to run several on one machine, run several nodes.
 
 ### Failures
 
