@@ -255,7 +255,9 @@ defmodule WardrikDaemon.AgentsTest do
              )
 
     assert [%Wardrik.Hook{name: "careful", module: WardrikPolicy}] = spec.hooks
-    assert Agents.get(Host.agents(), defined) == {:ok, %{"policy" => "careful"}}
+
+    assert Agents.get(Host.agents(), defined) ==
+             {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
 
     assert {:error, message} =
              Agents.put(Host.agents(), defined,
@@ -264,11 +266,41 @@ defmodule WardrikDaemon.AgentsTest do
              )
 
     assert message =~ "policy names lax"
-    assert Agents.get(Host.agents(), defined) == {:ok, %{"policy" => "careful"}}
+
+    assert Agents.get(Host.agents(), defined) ==
+             {:ok, %Wardrik.Definition.Read{fields: %{"policy" => "careful"}, missing: []}}
 
     assert Agents.delete(Host.agents(), defined) == :ok
     assert Agents.get(Host.agents(), defined) == {:error, :not_found}
     assert Agents.delete(Host.agents(), defined) == {:error, :not_found}
+  end
+
+  test "a definition names a server its owner has yet to add, and offers it once they do",
+       %{org: org} = context do
+    Host.start_agents(context.dir)
+    defined = AgentID.parse!("#{org}/defined")
+    owner = Prefix.new!(org: org)
+
+    assert {:ok, spec} =
+             Agents.put(Host.agents(), defined,
+               definition: %{"tools" => ["crm/*"]},
+               grant: grant(org)
+             )
+
+    assert Wardrik.LLM.Config.tools(spec.config) == []
+
+    assert {:ok, %Wardrik.Definition.Read{missing: ["crm/*"]}} =
+             Agents.get(Host.agents(), defined)
+
+    remote = %WardrikMCP.Remote{
+      key: Wardrik.Servers.Key.new(owner, "crm"),
+      url: "https://mcp.crm.example/mcp",
+      auth: %WardrikMCP.Auth.None{},
+      filters: []
+    }
+
+    :ok = WardrikMCP.Remote.put(Wardrik.Host.store(Host.host()), remote)
+    assert {:ok, %Wardrik.Definition.Read{missing: []}} = Agents.get(Host.agents(), defined)
   end
 
   test "a user's agent shares its org's tree where config.yaml shares it with them",

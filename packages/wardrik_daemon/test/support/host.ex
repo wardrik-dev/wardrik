@@ -48,11 +48,12 @@ defmodule WardrikDaemon.Test.Host do
 
   def agents(dir) do
     config = config(dir)
+    agents = Wardrik.Host.definitions(host())
 
     %{
-      Wardrik.Host.definitions(host())
+      agents
       | config: config,
-        context: WardrikDaemon.AgentFile.context(config),
+        context: %{WardrikDaemon.AgentFile.context(config) | added: agents.context.added},
         nodes: Process.get(@nodes, &Node.list/0)
     }
   end

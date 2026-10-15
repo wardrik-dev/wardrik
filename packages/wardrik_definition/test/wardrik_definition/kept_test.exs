@@ -66,11 +66,17 @@ defmodule WardrikDefinition.KeptTest do
 
     assert {:ok, spec} = put(kept, id, %{"policy" => "careful", "tools" => ["web_search"]})
     assert [%Wardrik.Hook{name: "careful"}] = spec.hooks
-    assert Definition.get(kept, id) == {:ok, %{"policy" => "careful", "tools" => ["web_search"]}}
+
+    assert Definition.get(kept, id) ==
+             {:ok,
+              %Definition.Read{
+                fields: %{"policy" => "careful", "tools" => ["web_search"]},
+                missing: []
+              }}
 
     assert {:error, message} = put(kept, id, %{"policy" => "lax"})
     assert message =~ "policy names lax"
-    assert {:ok, %{"policy" => "careful"}} = Definition.get(kept, id)
+    assert {:ok, %Definition.Read{fields: %{"policy" => "careful"}}} = Definition.get(kept, id)
 
     assert Definition.delete(kept, id) == :ok
     assert Definition.get(kept, id) == {:error, :not_found}
@@ -181,8 +187,12 @@ defmodule WardrikDefinition.KeptTest do
                fields: %{"every" => "2h", "prompt" => "Look."}
              )
 
-    assert {:ok, %{"triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]}} =
-             Definition.get(kept, id)
+    assert {:ok,
+            %Definition.Read{
+              fields: %{
+                "triggers" => [%{"name" => "sweep", "every" => "2h"}, %{"name" => "digest"}]
+              }
+            }} = Definition.get(kept, id)
 
     assert [%{name: "digest"}, %{name: "sweep", schedule: "every 2h"}] =
              WardrikTrigger.for_agent(id)

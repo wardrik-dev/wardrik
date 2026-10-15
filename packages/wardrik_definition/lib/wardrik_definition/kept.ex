@@ -91,10 +91,17 @@ defmodule WardrikDefinition.Kept do
     end
   end
 
-  @doc "The definition kept for the agent `id`, as it was sent."
-  @spec get(t(), AgentID.t()) :: {:ok, map()} | {:error, :not_found}
-  def get(%__MODULE__{store: store}, %AgentID{} = id) do
-    with {:ok, record} <- Record.get(store, id), do: {:ok, Record.fields(record)}
+  @doc """
+  The definition kept for the agent `id`, as it was sent, with the tools it
+  names that offer nothing yet; see `WardrikDefinition.missing/3`.
+  """
+  @spec get(t(), AgentID.t()) :: {:ok, Wardrik.Definition.Read.t()} | {:error, :not_found}
+  def get(%__MODULE__{store: store} = kept, %AgentID{} = id) do
+    with {:ok, record} <- Record.get(store, id) do
+      fields = Record.fields(record)
+      missing = WardrikDefinition.missing(fields, record.id, context(kept, record.id))
+      {:ok, %Wardrik.Definition.Read{fields: fields, missing: missing}}
+    end
   end
 
   @doc "Forgets the definition kept for the agent `id`, or `{:error, :not_found}`."

@@ -73,7 +73,7 @@ answers an agent with is its key.
 | `GET /v1/interrupts` | the calls agents under `?prefix=`, or every one the token reaches, wait on a person for |
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
-| `GET /v1/agents/{key}/definition` | the definition last put, as it was sent |
+| `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
 | `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included; `409` where an agent file declares it |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |

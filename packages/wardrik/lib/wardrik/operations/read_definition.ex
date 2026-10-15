@@ -1,7 +1,10 @@
 defmodule Wardrik.Operations.ReadDefinition do
   @moduledoc """
   The definition last put for an agent, as it was sent, where the host's
-  `Wardrik.Definition` keeps them.
+  `Wardrik.Definition` keeps them, and the tools it names that offer nothing
+  yet, such as an MCP server its owner has not added:
+
+      %{"definition" => %{"tools" => ["crm/*"]}, "missing" => ["crm/*"]}
   """
 
   @behaviour Wardrik.AgentOperation
@@ -41,8 +44,8 @@ defmodule Wardrik.Operations.ReadDefinition do
   @impl Wardrik.Query
   def run(%__MODULE__{agent: id}, caller) do
     case Wardrik.Definition.get(Host.definitions(caller.host), id) do
-      {:ok, definition} ->
-        {:ok, definition}
+      {:ok, %Wardrik.Definition.Read{fields: fields, missing: missing}} ->
+        {:ok, %{"definition" => fields, "missing" => missing}}
 
       {:error, :not_found} ->
         {:error, undefined(id)}

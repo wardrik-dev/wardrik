@@ -81,7 +81,7 @@ answers an agent with is its key.
 | `GET /v1/interrupts` | the calls agents under `?prefix=`, or every one the token reaches, wait on a person for |
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
 | `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
-| `GET /v1/agents/{key}/definition` | the definition last put, as it was sent |
+| `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
 | `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included; `409` where an agent file declares it |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
@@ -308,7 +308,7 @@ One entry of GET /v1/agents.
 
 ### `agent_definition`
 
-The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.
+The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/definition answers, an agent file's included. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -387,6 +387,15 @@ The body of POST /v1/agents/{key}/decisions: what a person decides of the calls 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `decisions` | array of object | yes |  |
+
+### `definition_read`
+
+What GET /v1/agents/{key}/definition answers: the definition last put, as it was sent, and the tools it names that offer nothing yet.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `definition` | [agent_definition](/reference/http-api/#agent_definition) | yes |  |
+| `missing` | array of string | yes | The tools the definition names that offer nothing yet, such as server/* for an MCP server its owner has not added. Each offers its tools once what it names is there, without the definition being put again. |
 
 ### `error`
 

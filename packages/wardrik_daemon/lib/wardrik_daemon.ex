@@ -103,14 +103,15 @@ defmodule WardrikDaemon do
     oauth = WardrikOAuth.new([audit: audit, added: added] ++ oauth_settings(config))
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
-    agents = Agents.new(store: store, config: config, audit: audit)
+    servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
+    agents = Agents.new(store: store, config: config, audit: audit, servers: servers)
 
     Wardrik.Host.new(
       store: store,
       audit: audit,
       definitions: agents,
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
-      servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
+      servers: servers,
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
       triggers: %WardrikTrigger.Deliveries{

@@ -50,6 +50,7 @@ const resources: Record<string, string> = {
   "connecting.json": "Connecting",
   "connections.json": "Connections",
   "decisions.json": "Decisions",
+  "definition_read.json": "DefinitionRead",
   "error.json": "ErrorBody",
   "export.json": "ExportPage",
   "nodes.json": "Nodes",

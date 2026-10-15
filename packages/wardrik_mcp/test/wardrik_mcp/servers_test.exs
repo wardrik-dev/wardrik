@@ -276,6 +276,19 @@ defmodule WardrikMCP.ServersTest do
       assert WardrikMCP.annotations(key, "#{key.name}__echo").labels == ["outside"]
     end
 
+    test "is among the tools of its owner's servers/*, and of no one else's",
+         %{key: key, org: org} do
+      listed(key)
+      agent = AgentID.new!("assistant", org: org)
+      jon = AgentID.new!("assistant", org: org, user: "jon")
+
+      assert "#{key.name}__echo" in Enum.map(WardrikMCP.Added.tools(agent), & &1.name)
+      assert WardrikMCP.Added.tools(jon) == []
+      assert WardrikMCP.Added.tools(AgentID.new!("assistant", org: "globex")) == []
+      assert WardrikMCP.Added.annotations(agent, "#{key.name}__post").gated
+      assert WardrikMCP.Added.annotations(agent, "gone__post") == %{labels: ["outside"]}
+    end
+
     test "is closed everywhere as it is removed", %{key: key} do
       listed(key)
       assert :ok = Wardrik.Servers.remove(servers(), key.owner, name: key.name, by: nil)

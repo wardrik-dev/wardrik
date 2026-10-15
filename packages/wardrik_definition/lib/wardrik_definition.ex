@@ -40,6 +40,7 @@ defmodule WardrikDefinition do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.LLM.Config
+  alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
   alias WardrikPolicy.Pattern
 
@@ -229,6 +230,28 @@ defmodule WardrikDefinition do
     route!(fields["notify"], org, context)
   catch
     {:invalid, message} -> {:error, message}
+  end
+
+  @doc """
+  The tools the definition `fields` of the agent `owner` names that offer
+  nothing yet, read under `context`: each `server/*` naming a server the
+  owner has not added, and the host does not configure. Each offers its
+  tools once the owner adds it, without the definition being put again.
+  """
+  @spec missing(fields(), AgentID.t(), Context.t()) :: [String.t()]
+  def missing(fields, %AgentID{} = owner, %Context{} = context) do
+    case Wardrik.Servers.list(context.added, Prefix.owner(owner)) do
+      :unsupported ->
+        []
+
+      listed ->
+        for name <- List.wrap(fields["tools"]),
+            [server, "*"] <- [String.split(name, "/", parts: 2)],
+            source(name, context) == :none,
+            not Map.has_key?(configured(context), server),
+            not added?(listed, server),
+            do: name
+    end
   end
 
   @doc "The channels a definition offers its agent in, by name."
@@ -472,7 +495,7 @@ defmodule WardrikDefinition do
       for {ref, opts} <- context.servers,
           context.mcp,
           reach(key, ref, opts, context) == :ok,
-          do: {context.mcp, Wardrik.Servers.Key.deployment(Atom.to_string(ref))}
+          do: {context.mcp, Key.deployment(Atom.to_string(ref))}
 
     context.tools ++ servers ++ for({_name, source} <- context.sources, do: {source, key})
   end
@@ -541,24 +564,38 @@ defmodule WardrikDefinition do
     end
   end
 
+  # A server the agent's owner added comes first, then one the host
+  # configures; one neither has is the owner's to add, where the host lets
+  # owners add servers.
   defp server!(name, context, key) do
-    configured = Map.new(Keyword.keys(context.servers), &{Atom.to_string(&1), &1})
+    owner = Prefix.owner(key)
+    added = Wardrik.Servers.list(context.added, owner)
 
-    with {:ok, ref} <- Map.fetch(configured, name),
-         true <- context.mcp != nil,
-         :ok <- reach(key, ref, Keyword.fetch!(context.servers, ref), context) do
-      {context.mcp, Wardrik.Servers.Key.deployment(name)}
-    else
-      {:error, why} ->
-        invalid!("tools names #{name}/*, but #{why}")
-
-      _none ->
-        invalid!(
-          "tools names #{name}/*, but #{context.names.config} configures no server #{name}" <>
-            configured_servers(configured)
-        )
+    cond do
+      context.mcp == nil -> invalid!(unconfigured(name, context))
+      added?(added, name) -> {context.mcp, Key.new(owner, name)}
+      ref = configured(context)[name] -> configured!(name, ref, context, key)
+      added != :unsupported -> {context.mcp, Key.new(owner, name)}
+      true -> invalid!(unconfigured(name, context))
     end
   end
+
+  defp configured!(name, ref, context, key) do
+    case reach(key, ref, Keyword.fetch!(context.servers, ref), context) do
+      :ok -> {context.mcp, Key.deployment(name)}
+      {:error, why} -> invalid!("tools names #{name}/*, but #{why}")
+    end
+  end
+
+  defp configured(context), do: Map.new(Keyword.keys(context.servers), &{Atom.to_string(&1), &1})
+
+  defp added?(:unsupported, _name), do: false
+  defp added?(listed, name), do: Enum.any?(listed, &(&1.name == name))
+
+  defp unconfigured(name, context),
+    do:
+      "tools names #{name}/*, but #{context.names.config} configures no server #{name}" <>
+        configured_servers(configured(context))
 
   # Whether the agent `id` can reach the server `ref`: one serving a prefix
   # that covers it.

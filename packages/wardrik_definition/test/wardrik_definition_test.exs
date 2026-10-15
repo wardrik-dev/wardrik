@@ -2,6 +2,7 @@ defmodule WardrikDefinitionTest do
   use ExUnit.Case, async: true
 
   alias Wardrik.AgentID
+  alias Wardrik.AgentID.Prefix
   alias Wardrik.Servers.Key
   alias WardrikDefinition.Context
 
@@ -23,6 +24,25 @@ defmodule WardrikDefinitionTest do
 
     @impl Wardrik.Tool
     def tools(_argument), do: []
+  end
+
+  # The servers owners added, by owner.
+  defmodule Added do
+    defstruct by: %{}
+  end
+
+  defimpl Wardrik.Servers, for: Added do
+    def list(%Added{by: by}, owner) do
+      for name <- Map.get(by, to_string(owner), []),
+          do: %Wardrik.Servers.Listed{
+            name: name,
+            url: "https://#{name}.example/mcp",
+            auth: "none"
+          }
+    end
+
+    def add(_added, _owner, _opts), do: :unsupported
+    def remove(_added, _owner, _opts), do: :unsupported
   end
 
   setup do
@@ -114,6 +134,34 @@ defmodule WardrikDefinitionTest do
              spec(%{"tools" => ["workers/*"]}, %{context | sources: [workers: Source]}, id)
 
     assert spec.config.tools == [{Source, id}]
+  end
+
+  test "names a server its owner added, and one its owner has yet to add",
+       %{context: context, id: id} do
+    context = %{context | added: %Added{by: %{"acme/" => ["crm"]}}}
+    owner = Prefix.owner(id)
+
+    assert {:ok, spec} = spec(%{"tools" => ["crm/*", "books/*", "later/*"]}, context, id)
+
+    assert spec.config.tools == [
+             {Source, Key.new(owner, "crm")},
+             {Source, Key.deployment("books")},
+             {Source, Key.new(owner, "later")}
+           ]
+
+    fields = %{"tools" => ["clock", "crm/*", "books/*", "later/*"]}
+    assert WardrikDefinition.missing(fields, id, context) == ["later/*"]
+
+    jon = AgentID.parse!("acme/@jon/triage")
+    assert WardrikDefinition.missing(%{"tools" => ["crm/*"]}, jon, context) == ["crm/*"]
+  end
+
+  test "names no server it has not configured where owners add none",
+       %{context: context, id: id} do
+    assert WardrikDefinition.missing(%{"tools" => ["nope/*"]}, id, context) == []
+
+    assert {:error, "tools names nope/*, but Mode configures no server nope" <> _} =
+             spec(%{"tools" => ["nope/*"]}, context, id)
   end
 
   test "a definition a token sent names no module, and holds after no label",

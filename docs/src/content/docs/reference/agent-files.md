@@ -61,13 +61,16 @@ What the agent may call. An agent whose file lists none has none.
 | --- | --- |
 | `web_search`, `deep_research`, `run_lua` | a tool the daemon ships, by name |
 | `files` | the file tools, over its own tree and the trees it shares |
-| `server/*` | every tool of an MCP server `config.yaml` names; a server's `only` and `except` narrow them |
+| `server/*` | every tool of an MCP server its owner added, else one `config.yaml` names; a server's `only` and `except` narrow them |
 | `workers/*` | every tool the connected [tool workers](/build/tool-workers/) offer it |
 | `self/*` | its operations on itself: reading its snapshot and definition, and changing its own triggers |
 | `agents/*` | its operations on the other agents of its org; see [Delegating](#delegating) |
+| `servers/*` | every tool of the MCP servers its owner has added as the daemon runs |
 | `*` | all of the above |
 
 An agent reaches an MCP server that serves its org; a file naming one it can't reach doesn't read.
+A server its owner hasn't added yet offers nothing until they add it, and the definition lists it
+as missing when it is read.
 A [policy](#policy) narrows what it may call.
 
 ### Delegating

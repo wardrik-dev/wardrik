@@ -55,7 +55,8 @@ defmodule WardrikDaemon.AgentFile do
       sources: [
         workers: WardrikHTTP.Workers,
         self: Wardrik.Catalog.Self,
-        agents: Wardrik.Catalog.Agents
+        agents: Wardrik.Catalog.Agents,
+        servers: WardrikMCP.Added
       ],
       channels: config |> Config.section(WardrikChannel) |> Keyword.get(:orgs, []),
       targets: config |> Config.section(WardrikNotify) |> Keyword.get(:targets, []),

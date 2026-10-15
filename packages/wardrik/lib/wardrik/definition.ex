@@ -59,8 +59,12 @@ defprotocol Wardrik.Definition do
           | :unsupported
   def put(definitions, id, opts)
 
-  @doc "The definition last put for the agent `id`, as it was sent."
-  @spec get(t(), Wardrik.AgentID.t()) :: {:ok, map()} | {:error, :not_found} | :unsupported
+  @doc """
+  The definition last put for the agent `id`, as it was sent, with the tools
+  it names that offer nothing yet; see `Wardrik.Definition.Read`.
+  """
+  @spec get(t(), Wardrik.AgentID.t()) ::
+          {:ok, Wardrik.Definition.Read.t()} | {:error, :not_found} | :unsupported
   def get(definitions, id)
 
   @doc """

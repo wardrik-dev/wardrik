@@ -118,8 +118,10 @@ defmodule WardrikDaemon.Agents do
   The daemon's definitions, kept in `:store` and read under `:config`, with
   a table of their own for what each reading comes to, which the process
   that makes the value owns. `:nodes` gives the other nodes whose
-  inventories count, `Node.list/0` unless given, and `:audit` the log of
-  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given.
+  inventories count, `Node.list/0` unless given, `:audit` the log of
+  `Wardrik.Host.audit/1`, `Wardrik.Audit` unless given, and `:servers` the
+  `Wardrik.Servers` whose servers a definition names as its owner's,
+  `Wardrik.Servers.None` unless given.
   """
   @spec new(keyword()) :: t()
   def new(opts) do
@@ -128,7 +130,10 @@ defmodule WardrikDaemon.Agents do
     %__MODULE__{
       store: Keyword.fetch!(opts, :store),
       config: config,
-      context: AgentFile.context(config),
+      context: %{
+        AgentFile.context(config)
+        | added: Keyword.get(opts, :servers, %Wardrik.Servers.None{})
+      },
       table: :ets.new(__MODULE__, [:public, read_concurrency: true]),
       nodes: Keyword.get(opts, :nodes, &Node.list/0),
       audit: Keyword.get(opts, :audit, Wardrik.Audit)

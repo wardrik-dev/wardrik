@@ -38,6 +38,17 @@ defmodule WardrikMCP.Remotes do
     :exit, {:noproc, _call} -> nil
   end
 
+  @doc """
+  The servers `owner` added, by key: none where this node runs no
+  `WardrikMCP.Supervisor`.
+  """
+  @spec added(Wardrik.AgentID.Prefix.t()) :: [Key.t()]
+  def added(owner) do
+    GenServer.call(__MODULE__, {:added, owner})
+  catch
+    :exit, {:noproc, _call} -> []
+  end
+
   @impl GenServer
   def init(settings), do: {:ok, settings}
 
@@ -45,6 +56,9 @@ defmodule WardrikMCP.Remotes do
   def handle_call({:offer, key}, _from, settings) do
     {:reply, Connection.offer(key) || started(key, settings), settings}
   end
+
+  def handle_call({:added, owner}, _from, %{store: store} = settings),
+    do: {:reply, for(remote <- Remote.list(store, owner), do: remote.key), settings}
 
   defp started(key, %{store: store, check: check}) do
     with {:ok, remote} <- Remote.fetch(store, key),

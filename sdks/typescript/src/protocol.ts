@@ -187,7 +187,7 @@ export interface AgentSummary {
   outcome?: "ok" | "failed" | "interrupted";
 }
 /**
- * The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.
+ * The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/definition answers, an agent file's included. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.
  */
 export interface AgentDefinition {
   /**
@@ -463,6 +463,16 @@ export interface Decisions {
       reason?: string;
     }[]
   ];
+}
+/**
+ * What GET /v1/agents/{key}/definition answers: the definition last put, as it was sent, and the tools it names that offer nothing yet.
+ */
+export interface DefinitionRead {
+  definition: AgentDefinition;
+  /**
+   * The tools the definition names that offer nothing yet, such as server/* for an MCP server its owner has not added. Each offers its tools once what it names is there, without the definition being put again.
+   */
+  missing: string[];
 }
 /**
  * What every answer of 400 and above holds. A 410 adds oldest, the first sequence the log still holds.
