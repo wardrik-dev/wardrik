@@ -6,27 +6,12 @@ editUrl: false
 hero:
   title: Agents that act.<br />Rules that hold.
   tagline: A self-hosted agent runtime for your tools. Set what runs, what needs approval, and what stays off limits.
-  image:
-    html: |
-      <div class="incident-example" aria-label="Illustrative incident response: an agent investigates, then waits for approval before changing production">
-        <div class="incident-head"><span class="incident-brand">rik<span aria-hidden="true">.</span></span><span class="incident-agent">acme/oncall</span></div>
-        <div class="incident-context"><span class="example-label">Example · Incident response</span><h2>Checkout errors after a deploy.</h2><p>The agent checks the evidence. You decide the fix.</p></div>
-        <ol class="incident-steps"><li><span class="step-check" aria-hidden="true">✓</span><span>Read the alert and production logs</span></li><li><span class="step-check" aria-hidden="true">✓</span><span>Correlate errors with the latest deploy</span></li><li><span class="step-check" aria-hidden="true">✓</span><span>Find the rollback in your runbook</span></li></ol>
-        <div class="approval">
-          <div class="approval-head"><span class="approval-pill">Waiting for approval</span><span class="approval-environment">Production</span></div>
-          <div class="approval-tool">Run the rollback workflow</div>
-          <p class="approval-why">Changes to production need an on-call engineer.</p>
-          <dl class="approval-details"><div><dt>Tool</dt><dd>github/actions_run_trigger</dd></div><div><dt>Workflow</dt><dd>rollback.yml</dd></div></dl>
-          <div class="approval-actions" aria-hidden="true"><span class="approval-approve">Approve</span><span class="approval-deny">Deny</span></div>
-        </div>
-        <div class="incident-footer">Policy checked before execution · Decision recorded</div>
-      </div>
   actions:
     - text: Start building
       link: /getting-started/quickstart/
       icon: right-arrow
-    - text: See incident response
-      link: /examples/team/incident-responder/
+    - text: Explore examples
+      link: /examples/
       variant: minimal
 ---
 
