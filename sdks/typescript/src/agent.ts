@@ -1,10 +1,10 @@
 import { EventStream, type FollowOptions } from "./events.ts";
 import { agentPath, type Http } from "./http.ts";
 import type {
-  AgentDefinition,
   AgentSnapshot,
   Authorization,
   Decisions,
+  DefinitionRead,
   Trigger,
   TriggerDefinition,
   WardrikEvent,
@@ -49,8 +49,11 @@ export class Agent {
     return this.#http.json("GET", this.#path, options);
   }
 
-  /** The definition last put, where the server keeps definitions. */
-  definition(): Promise<AgentDefinition> {
+  /**
+   * The definition last put, where the server keeps definitions, and the tools it names that offer
+   * nothing yet, such as an MCP server its owner has not added.
+   */
+  definition(): Promise<DefinitionRead> {
     return this.#http.json("GET", this.#path + "/definition");
   }
 

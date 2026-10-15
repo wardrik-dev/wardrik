@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:wardrik:schema:v1:agent_definition",
   "title": "An agent's definition",
-  "description": "The body of PUT /v1/agents/{key}, and of GET /v1/agents/{key}/definition, which answers an agent file's definition too. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.",
+  "description": "The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/definition answers, an agent file's included. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

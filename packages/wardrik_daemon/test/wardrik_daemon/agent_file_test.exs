@@ -142,6 +142,7 @@ defmodule WardrikDaemon.AgentFileTest do
              {WardrikHTTP.Workers, ~A"default/triage"},
              {Wardrik.Catalog.Self, ~A"default/triage"},
              {Wardrik.Catalog.Agents, ~A"default/triage"},
+             {WardrikMCP.Added, ~A"default/triage"},
              {WardrikWorkspace, files}
            ]
 

@@ -71,7 +71,7 @@ defmodule Wardrik.OperationsTest do
     def get(_host, id) do
       case WardrikStore.get(store(), @ns, to_string(id)) do
         nil -> {:error, :not_found}
-        definition -> {:ok, definition}
+        fields -> {:ok, %Wardrik.Definition.Read{fields: fields, missing: []}}
       end
     end
 
@@ -107,7 +107,7 @@ defmodule Wardrik.OperationsTest do
 
     def current(host, id) do
       case get(host, id) do
-        {:ok, fields} -> {:ok, spec(id, fields)}
+        {:ok, %Wardrik.Definition.Read{fields: fields}} -> {:ok, spec(id, fields)}
         {:error, :not_found} -> :none
       end
     end
@@ -506,7 +506,7 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, %{"request" => %{"model" => "gpt-5"}}} =
                Command.run(%Define{agent: id, definition: %{"model" => "openai:gpt-5"}}, caller())
 
-      assert {:ok, %{"model" => "openai:gpt-5"}} =
+      assert {:ok, %{"definition" => %{"model" => "openai:gpt-5"}, "missing" => []}} =
                Query.run(%ReadDefinition{agent: id}, caller())
 
       assert Audit.about("agents/#{id}") ==
@@ -753,7 +753,9 @@ defmodule Wardrik.OperationsTest do
 
       fresh = defined_id("fresh")
       assert {:ok, %{"from" => "new"}} = Command.run(%Spawn{agent: fresh}, caller())
-      assert {:ok, %{"model" => "openai:gpt-5"}} = Kept.get(%Kept{}, fresh)
+
+      assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
+               Kept.get(%Kept{}, fresh)
 
       owned = defined_id("fresh-owned")
 

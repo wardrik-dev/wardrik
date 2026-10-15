@@ -166,11 +166,14 @@ defmodule WardrikDaemon.CLI.Agents do
   end
 
   # The definition the agent runs on, with the spec it writes now or why it
-  # writes none, or `nil` where none is kept.
+  # writes none, and the tools it names that offer nothing yet, or `nil`
+  # where none is kept.
   defp defined(opts, key) do
     case Record.of(Wardrik.Host.store(opts[:caller].host), key) do
       {:ok, definition} ->
-        {definition, WardrikDaemon.Agents.build(WardrikDaemon.Host.agents(), definition, key)}
+        agents = WardrikDaemon.Host.agents()
+        {:ok, read} = Wardrik.Definition.get(agents, definition.id)
+        {definition, WardrikDaemon.Agents.build(agents, definition, key), read.missing}
 
       {:error, :not_found} ->
         nil
@@ -205,7 +208,7 @@ defmodule WardrikDaemon.CLI.Agents do
     )
   end
 
-  defp described(lines, {%Record{fields: %{"description" => description}}, _spec})
+  defp described(lines, {%Record{fields: %{"description" => description}}, _spec, _missing})
        when is_binary(description),
        do: [description, "" | lines]
 
@@ -243,10 +246,10 @@ defmodule WardrikDaemon.CLI.Agents do
   defp given(nil, _key),
     do: [{"definition", Owl.Data.tag("none kept; it was started without one", @faint)}]
 
-  defp given({_definition, {:error, message}}, _key),
+  defp given({_definition, {:error, message}, _missing}, _key),
     do: [{"definition", Owl.Data.tag("does not build: " <> message, :red)}]
 
-  defp given({_definition, {:ok, spec}}, key) do
+  defp given({_definition, {:ok, spec}, missing}, key) do
     policies =
       for %Wardrik.Hook{module: module} = hook <- spec.hooks,
           module not in [WardrikPolicy.Budget, WardrikPolicy.Ceiling],
@@ -257,8 +260,15 @@ defmodule WardrikDaemon.CLI.Agents do
         do: [{"policy", Owl.Data.tag("none; any call its tools allow runs", @faint)}],
         else: policies
 
-    [{"tools", tools(spec)} | policies] ++
-      for spent <- WardrikDaemon.spent_by(spec, key), do: {"budget", spent}
+    [{"tools", tools(spec)} | missing(missing)] ++
+      policies ++ for spent <- WardrikDaemon.spent_by(spec, key), do: {"budget", spent}
+  end
+
+  defp missing(names) do
+    for name <- names,
+        do:
+          {"missing",
+           [name, "  ", Owl.Data.tag("offers nothing until its owner adds it", @faint)]}
   end
 
   # A policy by its name, or as the file's own, with how many rules of each
@@ -302,7 +312,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # Where the definition was written, and whose it is for a conversation.
   defp written(nil, _key), do: []
 
-  defp written({%Record{id: owner, source: source}, _spec}, key) do
+  defp written({%Record{id: owner, source: source}, _spec, _missing}, key) do
     conversation = if owner == key, do: [], else: [{"conversation", "of #{owner}"}]
     conversation ++ [{"file", source(owner, source)}]
   end

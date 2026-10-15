@@ -66,7 +66,7 @@ defmodule WardrikHTTP.RouterTest do
     def get(_host, key) do
       case WardrikStore.get(store(), @ns, to_string(key)) do
         nil -> {:error, :not_found}
-        definition -> {:ok, definition}
+        fields -> {:ok, %Wardrik.Definition.Read{fields: fields, missing: []}}
       end
     end
 
@@ -969,8 +969,10 @@ defmodule WardrikHTTP.RouterTest do
 
       assert {:ok, %{status: 201}} = define(kept, key, definition)
 
-      assert {:ok, %{status: 200, body: ^definition}} =
+      assert {:ok, %{status: 200, body: %{"definition" => ^definition, "missing" => []} = body}} =
                Req.get(kept, url: "/v1/agents/#{key}/definition")
+
+      conforms(body, "definition_read")
 
       assert {:ok, %{status: 200, body: %{"forgotten" => [_forgotten], "kept" => []}}} =
                Req.delete(kept, url: "/v1/agents/#{key}")
@@ -1699,7 +1701,7 @@ defmodule WardrikHTTP.RouterTest do
   end
 
   describe "the resources' schemas" do
-    @resources ~w(agent agent_snapshot authorization decisions trigger trigger_definition export error connections connecting nodes)
+    @resources ~w(agent agent_snapshot authorization decisions definition_read trigger trigger_definition export error connections connecting nodes)
 
     defp schema(name) do
       WardrikProtocol.dir()

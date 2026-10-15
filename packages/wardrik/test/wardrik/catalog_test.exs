@@ -31,7 +31,13 @@ defmodule Wardrik.CatalogTest do
         else: {:ok, Wardrik.Agent.Spec.new(id: id, hooks: [])}
     end
 
-    def get(_definitions, _id), do: {:ok, %{"description" => "Watches.", "triggers" => []}}
+    def get(_definitions, _id),
+      do:
+        {:ok,
+         %Wardrik.Definition.Read{
+           fields: %{"description" => "Watches.", "triggers" => []},
+           missing: []
+         }}
 
     def put_trigger(_definitions, id, name, fields: fields) do
       tell({:put_trigger, id, name, fields})
@@ -151,8 +157,10 @@ defmodule Wardrik.CatalogTest do
     end
 
     test "a read runs without waiting on anyone", %{agent: agent} do
-      assert %Call{state: :done, result: {:ok, %{"description" => "Watches."}}} =
-               agent |> scope(Self) |> Wardrik.Test.call("self_definition_read", %{})
+      assert %Call{
+               state: :done,
+               result: {:ok, %{"definition" => %{"description" => "Watches."}, "missing" => []}}
+             } = agent |> scope(Self) |> Wardrik.Test.call("self_definition_read", %{})
     end
 
     test "answers what does not read, or what another surface declares, as it would there",
@@ -257,7 +265,11 @@ defmodule Wardrik.CatalogTest do
                |> scope(Agents)
                |> Wardrik.Test.call("agent_read", %{"agent" => reconciler.name})
 
-      assert %Call{state: :done, labels: [], result: {:ok, %{"description" => "Watches."}}} =
+      assert %Call{
+               state: :done,
+               labels: [],
+               result: {:ok, %{"definition" => %{"description" => "Watches."}}}
+             } =
                front
                |> scope(Agents)
                |> Wardrik.Test.call("agent_definition_read", %{"agent" => reconciler.name})

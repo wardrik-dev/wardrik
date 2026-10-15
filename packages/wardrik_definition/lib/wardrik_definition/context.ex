@@ -9,6 +9,7 @@ defmodule WardrikDefinition.Context do
         ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
         tools: [WardrikBrave.WebSearch],
         servers: [github: [], books: [serves: [Wardrik.AgentID.Prefix.tenant!("acme")]]],
+        added: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
         mcp: WardrikMCP,
         sources: [workers: WardrikHTTP.Workers, self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents],
         channels: [slack: :all],
@@ -29,6 +30,11 @@ defmodule WardrikDefinition.Context do
     * `servers` - the MCP servers, by name, each with the prefixes it
       `serves`, every agent's unless it says, which a definition names as
       `server/*`
+    * `added` - the MCP servers orgs and people add as the host runs, as
+      `Wardrik.Servers`; a definition names one of its owner's as
+      `server/*` too, and one its owner has not added yet offers nothing
+      until they do. With `Wardrik.Servers.None`, the default, a definition
+      names only `servers`
     * `mcp` - the tool source the servers' tools come through, such as
       `WardrikMCP`; with none, a definition names no server
     * `sources` - the tool sources a definition names as `name/*`, each a
@@ -61,6 +67,7 @@ defmodule WardrikDefinition.Context do
             ceilings: %{},
             tools: [],
             servers: [],
+            added: %Wardrik.Servers.None{},
             mcp: nil,
             sources: [],
             channels: [],
@@ -81,6 +88,7 @@ defmodule WardrikDefinition.Context do
           ceilings: %{String.t() => String.t()},
           tools: [module()],
           servers: [{atom(), keyword()}],
+          added: Wardrik.Servers.t(),
           mcp: module() | nil,
           sources: [{atom(), module()}],
           channels: [{atom(), orgs()}],

@@ -81,8 +81,14 @@ defmodule WardrikDaemonTest do
 
     assert Wardrik.Fleet.lookup(key)
 
-    assert {:ok, %{status: 200, body: %{"policy" => "careful", "instructions" => "You help."}}} =
-             Req.get(api, url: "definition")
+    assert {:ok,
+            %{
+              status: 200,
+              body: %{
+                "definition" => %{"policy" => "careful", "instructions" => "You help."},
+                "missing" => []
+              }
+            }} = Req.get(api, url: "definition")
 
     assert {:ok, %{status: 200, body: %{"forgotten" => [_key]}}} = Req.delete(api)
     assert Wardrik.Fleet.lookup(key) == nil
