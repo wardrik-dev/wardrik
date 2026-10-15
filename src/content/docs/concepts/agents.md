@@ -38,8 +38,10 @@ An org is the boundary between agents. [Tokens](/run/tokens/),
 [notice targets](/build/notices/#which-orgs-a-target-tells) each reach one org unless configured
 otherwise.
 
-The deployment's own org is `default`, unless `config.yaml` sets `org`. The CLI finds an agent of
-that org by its name alone, and a user's by `@user/name`:
+The deployment's own org is `default`, unless `config.yaml` sets `org`. Other orgs are declared
+under `orgs`; see [Orgs](/run/orgs/#declare-an-org).
+
+The CLI finds an agent of the deployment's org by its name alone, and a user's by `@user/name`:
 
 ```sh
 wardrik ask triage "What changed today?"      # acme/triage

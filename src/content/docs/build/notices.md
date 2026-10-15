@@ -40,15 +40,25 @@ notify: {to: [ops], on: [parked, failed, finished]}
 
 ## Which orgs a target tells
 
-A target tells the deployment's [org](/concepts/agents/#keys-and-orgs) unless its `org` says
-otherwise, or `*` for every org:
+A target tells the deployment's [org](/concepts/agents/#keys-and-orgs). To tell another org, list it
+under that org in `orgs`, with the channel it posts through:
 
 ```yaml
+channels:
+  globex-slack:
+    type: slack
+    token: ${GLOBEX_SLACK_BOT_TOKEN}
+    app_token: ${GLOBEX_SLACK_APP_TOKEN}
+
 notify:
   globex-ops:
-    org: globex
     channel: globex-slack
     room: "#globex-ops"
+
+orgs:
+  globex:
+    channels: [globex-slack]
+    notify: [globex-ops]
 ```
 
 One org's calls never reach another org's room, where its people could approve them.

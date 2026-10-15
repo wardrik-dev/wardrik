@@ -43,22 +43,29 @@ run, use a [policy](/concepts/policy/). A policy names a tool as `linear/search_
 
 ## Which orgs a server serves
 
-A server serves the deployment's [org](/concepts/agents/#keys-and-orgs) unless its `org` says
-otherwise:
+A server serves the deployment's [org](/concepts/agents/#keys-and-orgs). To serve other orgs, list
+it under each in `orgs`:
 
 ```yaml
 org: acme
 
 mcp:
-  linear:                                  # acme's agents
+  linear:                                  # acme's: no org lists it
     url: https://mcp.linear.app/mcp
-  globex-crm:
+  globex-crm:                              # globex's alone
     url: https://crm.globex.example/mcp
-    org: globex                            # globex's agents alone
-  docs:
+  docs:                                    # every org's
     url: https://docs.example.com/mcp
-    org: "*"                               # every org's
+
+orgs:
+  "*":
+    mcp: [docs]
+  globex:
+    mcp: [globex-crm]
 ```
+
+A name `mcp` doesn't define is refused, as is an org that isn't declared. See
+[`orgs`](/reference/config/#orgs).
 
 A server's `headers` and `env` are the deployment's credentials, shared by every org it serves. To
 reach a service as each org or user, use a `credential`; see [Connect accounts](/build/accounts/).

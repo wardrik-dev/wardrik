@@ -39,6 +39,9 @@ curl -s -X PUT -H "authorization: Bearer $TOKEN" -H "content-type: application/j
   }'
 ```
 
+Here `acme` is the deployment's org, `org: acme` in `config.yaml`. An org `config.yaml` doesn't
+[declare](/run/orgs/#declare-an-org) is refused.
+
 It answers `201` with the agent's snapshot, and starts the agent. Putting it again answers `200`,
 keeping the conversation. A definition takes the keys of an [agent file](/reference/agent-files/),
 with `instructions` as the system prompt.

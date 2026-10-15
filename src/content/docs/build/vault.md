@@ -16,7 +16,8 @@ wardrik vault rm pagerduty --org acme
 ```
 
 `vault put NAME` asks for the value without showing it, or reads it from a pipe. `--org ORG` with
-`--user USER` puts one for a user outside the deployment's org. `vault ls` lists the accounts users
+`--user USER` puts one for a user outside the deployment's org. The org must be one `config.yaml`
+declares; see [Orgs](/run/orgs/#declare-an-org). `vault ls` lists the accounts users
 connected too.
 
 ## Whose secret

@@ -24,6 +24,8 @@ Thousands of these cost almost nothing: an agent nobody is talking to sleeps unt
 ### config.yaml
 
 ```yaml title="~/.config/wardrik/config.yaml"
+org: shop
+
 channels:
   slack:
     type: slack
@@ -34,7 +36,6 @@ notify:
   support:
     channel: slack
     room: "#support"
-    org: shop
     approvers: ["@maria", "@sam"]
 ```
 

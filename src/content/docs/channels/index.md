@@ -29,12 +29,16 @@ An agent is offered in a channel when its file lists it:
 channels: [slack]
 ```
 
-A channel offers your deployment's [org](/concepts/agents/#keys-and-orgs), unless its `org` names
-others, or `*` for all:
+A channel offers your deployment's [org](/concepts/agents/#keys-and-orgs). To offer another org's
+agents, list it under that org in `orgs`, or under `"*"` for every org:
 
 ```yaml
 channels:
-  globex-slack: {type: slack, org: globex, token: "${GLOBEX_SLACK_BOT_TOKEN}"}
+  globex-slack: {type: slack, token: "${GLOBEX_SLACK_BOT_TOKEN}", app_token: "${GLOBEX_SLACK_APP_TOKEN}"}
+
+orgs:
+  globex:
+    channels: [globex-slack]
 ```
 
 ## A room's agent
