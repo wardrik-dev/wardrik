@@ -112,6 +112,7 @@ export default defineConfig({
 											items: ['build/tool-workers', 'build/first-tool', 'build/write-tools', 'build/host-tools'],
 										},
 										'build/http-api',
+										'build/embed',
 										'build/triggers',
 										'build/delegation',
 										'build/notices',
