@@ -17,7 +17,7 @@ defmodule WardrikDaemon.JudgeReplay do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Event.Log
   alias WardrikDaemon.Agents
-  alias WardrikDaemon.Definition
+  alias WardrikDefinition.Record
   alias WardrikPolicy.Judge
 
   @page 500
@@ -80,7 +80,7 @@ defmodule WardrikDaemon.JudgeReplay do
   """
   @spec using(WardrikStore.t(), String.t()) :: [Prefix.t()]
   def using(store, name) do
-    for %Definition{id: id, fields: %{"policy" => ^name}} <- Definition.all(store),
+    for %Record{id: id, fields: %{"policy" => ^name}} <- Record.all(store),
         do: Prefix.of(id)
   end
 

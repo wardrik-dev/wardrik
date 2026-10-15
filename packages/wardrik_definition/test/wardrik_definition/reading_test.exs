@@ -70,7 +70,7 @@ defmodule WardrikDefinition.ReadingTest do
   # The spec a definition sent to the HTTP API writes for `id`, sent by no token.
   defp define(id, fields, %{context: context}) do
     with :ok <- WardrikDefinition.accept(id, fields, context),
-         do: WardrikDefinition.spec(fields, id, id, context, {:api, nil})
+         do: WardrikDefinition.spec(fields, id, id, context, :defaults)
   end
 
   # Where the notices of the agent a file `text` declares go, once the file reads.
@@ -656,7 +656,7 @@ defmodule WardrikDefinition.ReadingTest do
                  ~A"acme/triage",
                  ~A"acme/other",
                  context.context,
-                 {:api, nil}
+                 :defaults
                )
     end
 

@@ -43,7 +43,7 @@ defmodule WardrikDefinitionTest do
     %{context: context, id: AgentID.parse!("acme/triage")}
   end
 
-  defp spec(fields, context, id, source \\ {:api, nil}),
+  defp spec(fields, context, id, source \\ :defaults),
     do: WardrikDefinition.spec(fields, id, id, context, source)
 
   test "takes the keys its schema lists, in order" do

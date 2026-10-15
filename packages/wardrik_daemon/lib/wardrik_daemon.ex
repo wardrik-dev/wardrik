@@ -249,7 +249,7 @@ defmodule WardrikDaemon do
   """
   @spec spent(Agents.t(), Wardrik.AgentID.t()) :: [String.t()]
   def spent(%Agents{store: store} = agents, key) do
-    with {:ok, definition} <- WardrikDaemon.Definition.of(store, key),
+    with {:ok, definition} <- WardrikDefinition.Record.of(store, key),
          {:ok, spec} <- Agents.build(agents, definition, key) do
       spent_by(spec, key)
     else
