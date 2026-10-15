@@ -115,8 +115,10 @@ vault:
   entry may be empty, `growth: {}`.
 - `ceiling` names a policy in `policies/` that every agent of the org is held to, ahead of its own,
   whether a file, the HTTP API or a channel defined it. A definition can narrow it, never widen it.
+  Its budget is the org's: all of the org's agents spend from it together.
   An org whose ceiling `policies/` doesn't hold runs none of its agents.
-- `"*"` lists what every org uses, and its `ceiling` holds every org, beside the org's own.
+- `"*"` lists what every org uses, and its `ceiling` holds every org, beside the org's own; each
+  org spends its budget apart.
 - A server, channel or target no entry lists is the deployment's own org's.
 - An agent, a secret, a token's scope or a shared tree in an org that is neither `org` nor in
   `orgs` is refused, as is a name its section doesn't define.

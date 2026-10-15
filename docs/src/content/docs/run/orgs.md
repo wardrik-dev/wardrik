@@ -56,9 +56,13 @@ budget:
 - It holds every agent in the org, and each of its users' agents: those from files, from the HTTP
   API, and from channels.
 - An agent's own policy can narrow it, never widen it.
-- `"*"`'s ceiling holds every org, beside each org's own.
+- Its budget is the org's: every agent of the org, its users' included, spends from it together.
+  Once they have spent it, the next model call any of them makes asks or stops, and approving it
+  grants more to all of them. Each agent's own budget still counts apart.
+- `"*"`'s ceiling holds every org, beside each org's own, and each org spends its budget apart.
 - A ceiling `policies/` doesn't hold stops the org's agents, rather than running them without it.
-- `wardrik show` lists it among the agent's policies, as `orgs/payments/payments-ceiling`.
+- `wardrik show` lists it among the agent's policies, as `orgs/payments/payments-ceiling`, and
+  what the org has spent of its budget, as `$12.40 of $20.00 today across payments`.
 
 A [token](/run/tokens/#what-agents-it-defines-may-do) can add a ceiling of its own over the agents it
 defines.

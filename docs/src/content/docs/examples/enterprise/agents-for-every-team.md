@@ -93,8 +93,8 @@ budget:
 ```
 
 - **Stripe writes always wait,** whatever a team's own definition says.
-- **Each agent is capped** at $20 a day. A team's definition can set a lower limit, never a higher
-  one.
+- **The team is capped** at $20 a day, all of its agents together. An agent's own definition can
+  set itself a lower limit beside it.
 - `growth-ceiling.yaml` is Growth's, written the same way.
 
 ### A token per team
