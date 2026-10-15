@@ -1,4 +1,5 @@
 ---
+import RikMark from './RikMark.astro';
 const scenarios = [
 	{ name: 'Incident response', agent: 'acme/oncall', title: 'Checkout errors after a deploy.', summary: 'Investigate freely. Ask before changing production.', href: '/examples/team/incident-responder/' },
 	{ name: 'Financial controls', agent: 'acme/books', title: 'A $2,400 bill waits for review.', summary: 'Reconcile transactions. Payments stay off limits.', href: '/examples/business/books/' },
@@ -21,7 +22,7 @@ const scenarios = [
 				inert={index !== 0}
 			>
 				<header class="scenario-header">
-					<span class="scenario-brand">rik<span aria-hidden="true">.</span></span>
+					<span class="scenario-brand"><RikMark /></span>
 					<span class="scenario-agent">{scenario.agent}</span>
 				</header>
 				<div class="scenario-body">
@@ -190,8 +191,8 @@ const scenarios = [
 			try {
 				if (!this.motion.matches) {
 					this.animation = outgoing.animate([
-						{ transform: 'translate3d(0, 0, 0) rotate(0)', opacity: 1 },
-						{ transform: 'translate3d(2.5rem, -.5rem, 0) rotate(4deg)', opacity: 0 },
+						{ transform: 'translate3d(0, 0, 0)', opacity: 1 },
+						{ transform: 'translate3d(0, -.5rem, 0) scale(.985)', opacity: 0 },
 					], { duration: 280, easing: 'cubic-bezier(.4, 0, .6, 1)', fill: 'forwards' });
 					await this.animation.finished;
 				}
@@ -258,16 +259,15 @@ const scenarios = [
 <style>
 	.scenario-deck { display: block; width: 100%; padding: 1.5rem .5rem 0; text-align: start; }
 	.deck-stage { display: grid; isolation: isolate; overflow: clip; overflow-clip-margin: 1.5rem; }
-	.scenario-card { grid-area: 1 / 1; position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--sl-color-gray-5); border-radius: 12px; background: var(--sl-color-black); box-shadow: 0 20px 48px -32px rgb(16 20 24 / 0.35); transform-origin: 50% 80%; transition: transform 520ms cubic-bezier(.22, 1, .36, 1), opacity 280ms ease; }
+	.scenario-card { grid-area: 1 / 1; position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--sl-color-gray-5); border-radius: 10px; background: linear-gradient(155deg, color-mix(in srgb, var(--sl-color-gray-6) 70%, var(--sl-color-black)), var(--sl-color-black) 60%); box-shadow: 0 20px 56px -36px light-dark(rgb(16 20 24 / 0.18), rgb(0 0 0 / 0.45)); transform-origin: 50% 80%; transition: transform 520ms cubic-bezier(.22, 1, .36, 1), opacity 280ms ease; }
 	.scenario-card[data-position='0'] { z-index: 5; transform: translate3d(0, 0, 0); }
-	.scenario-card[data-position='1'] { z-index: 4; transform: translate3d(9px, -11px, 0) rotate(2deg) scale(.985); }
-	.scenario-card[data-position='2'] { z-index: 3; transform: translate3d(-7px, -21px, 0) rotate(-2deg) scale(.965); }
+	.scenario-card[data-position='1'] { z-index: 4; transform: translate3d(0, -8px, 0) scale(.98); }
+	.scenario-card[data-position='2'] { z-index: 3; transform: translate3d(0, -16px, 0) scale(.96); }
 	.scenario-card[data-position='3'], .scenario-card[data-position='4'] { z-index: 1; opacity: 0; transform: translate3d(0, -27px, 0) scale(.95); }
 	.scenario-card:not([data-position='0']) { pointer-events: none; }
 	.scenario-card:not([data-position='0']) :is(.scenario-header, .scenario-body) { visibility: hidden; }
 	.scenario-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .875rem 1.25rem; border-bottom: 1px solid var(--sl-color-gray-5); }
-	.scenario-brand { color: var(--sl-color-white); font-size: 1.125rem; font-weight: 700; letter-spacing: -.04em; }
-	.scenario-brand > span { color: var(--sl-color-accent); }
+	.scenario-brand { font-size: 1.125rem; }
 	.scenario-agent { color: var(--sl-color-gray-3); font: .6875rem var(--__sl-font-mono); overflow-wrap: anywhere; }
 	.scenario-body { display: flex; flex-direction: column; flex: 1; padding: 1.125rem 1.25rem; }
 	.scenario-label { margin: 0 0 .5rem; color: var(--sl-color-gray-3); font-size: .6875rem; }
@@ -282,7 +282,7 @@ const scenarios = [
 	code { color: var(--sl-color-gray-2); font: .6875rem var(--__sl-font-mono); overflow-wrap: anywhere; }
 	.scenario-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 	.scenario-muted { color: var(--sl-color-gray-3); font-size: .6875rem; }
-	.state { display: inline-flex; align-items: center; gap: .375rem; padding: .1875rem .5rem; border-radius: 999px; font-size: .625rem; font-weight: 600; white-space: nowrap; }
+	.state { display: inline-flex; align-items: center; gap: .375rem; padding: .1875rem .5rem; border-radius: 4px; font-size: .625rem; font-weight: 500; white-space: nowrap; }
 	.state::before { content: ''; width: .3125rem; height: .3125rem; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 	.state-ask { background: var(--sl-color-accent-low); color: var(--sl-color-text-accent); }
 	.state-run { background: var(--sl-color-green-low); color: var(--sl-color-green); }
@@ -290,8 +290,8 @@ const scenarios = [
 	.example-actions { display: flex; gap: .5rem; }
 	.example-actions > span { padding: .25rem .75rem; border: 1px solid var(--sl-color-gray-5); border-radius: 5px; color: var(--sl-color-white); font-size: .6875rem; }
 	.example-actions > span:first-child { background: var(--sl-color-white); color: var(--sl-color-black); }
-	.scenario-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .875rem; border-top: 1px solid var(--sl-color-gray-5); color: var(--sl-color-text-accent); font-size: .75rem; text-decoration: none; }
-	.scenario-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+	.scenario-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: .875rem; border-top: 1px solid var(--sl-color-gray-5); color: var(--home-link-color, var(--sl-color-text-accent)); font-size: .75rem; text-decoration: none; }
+	.scenario-link:hover { color: var(--sl-color-text-accent); text-decoration: underline; text-underline-offset: 3px; }
 	.scenario-receipt { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: .75rem 0; }
 	.scenario-receipt > strong { color: var(--sl-color-white); font-size: 2.5rem; font-weight: 500; letter-spacing: -.04em; line-height: 1.2; }
 	.scenario-receipt strong > span { color: var(--sl-color-gray-3); font-size: 1.25rem; }
