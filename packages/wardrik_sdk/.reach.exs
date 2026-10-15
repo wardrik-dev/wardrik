@@ -57,6 +57,7 @@
       "Wardrik.Subagent",
       "Wardrik.Test",
       "Wardrik.Test.*",
+      "Wardrik.TimeZone",
       "Wardrik.Tokens",
       "Wardrik.Tool",
       "Wardrik.Tool.Context",
