@@ -1,42 +1,68 @@
-defmodule Wardrik.LLM.Dispatch do
+defprotocol Wardrik.LLM.Dispatch do
   @moduledoc """
   The seam every model call passes through.
 
   A turn does not call a provider directly. It builds a `Wardrik.LLM.Request`,
   and `Wardrik.Call.Pipeline` asks the dispatch to admit it, makes the call the
-  dispatch hands back, and reports what happened. A host that has to decide which model a call lands
-  on, or which key pays for it, does both here, once, rather than wrapping the
-  runtime.
+  dispatch hands back, and reports what happened. A host that has to decide
+  which model a call lands on, or which key pays for it, does both here, once,
+  rather than wrapping the runtime.
 
-      Wardrik.Fleet.spawn(id, config: config, dispatch: MyApp.Gateway)
+  A host names the value once, as the `:dispatch` of its `Wardrik.Host`, and
+  every model call of every agent goes through it. The value carries what its
+  implementation needs, such as the gateway it routes to, and is never stored
+  with an agent:
 
-  `c:admit/2` is the only place a credential enters a call, and `c:settle/3`
-  is the only place its usage leaves one. A host that enforces that rule gets a
+      Wardrik.Host.new(store: store, dispatch: %MyApp.Gateway{keys: keys})
+
+  `admit/3` is the only place a credential enters a call, and `settle/3` is
+  the only place its usage leaves one. A host that enforces that rule gets a
   structural guarantee out of it: a call that skipped the gateway has no key
   and cannot have been made.
 
       defmodule MyApp.Gateway do
-        @behaviour Wardrik.LLM.Dispatch
+        defstruct [:keys]
+      end
 
-        @impl true
-        def admit(request, scope) do
+      defimpl Wardrik.LLM.Dispatch, for: MyApp.Gateway do
+        def admit(gateway, request, scope: scope) do
           org = Wardrik.Scope.agent_id(scope).org
 
-          with {:ok, key, model} <- MyApp.Keys.for(org, request.model_spec) do
+          with {:ok, key, model} <- MyApp.Keys.for(gateway.keys, org, request.model_spec) do
             {:ok, request |> Request.put_model(model) |> Request.put_opts(api_key: key)}
           end
         end
 
-        @impl true
-        def settle(request, {:ok, response}, scope) do
-          MyApp.Billing.record(Wardrik.Scope.agent_id(scope).org, request.model_spec, response.usage)
-        end
+        def settle(_gateway, request, outcome: {:ok, response}, scope: scope),
+          do: MyApp.Billing.record(Wardrik.Scope.agent_id(scope).org, request.model_spec, response.usage)
 
-        def settle(_request, _outcome, _scope), do: :ok
+        def settle(_gateway, _request, _opts), do: :ok
       end
 
-  Without a dispatch the request is made as it stands, so a deployment that
-  reads its key from the environment configures nothing.
+  A host that names none has `Wardrik.LLM.Dispatch.Direct`, which makes each
+  request as it stands, so a deployment that reads its key from the
+  environment configures nothing.
+
+  ## One dispatch around another
+
+  A dispatch can hold another and hand it each request, so what the host
+  adds, such as recording what each call cost, stays its own while another
+  decides where the call goes:
+
+      defmodule MyApp.Metered do
+        defstruct inner: %Wardrik.LLM.Dispatch.Direct{}
+      end
+
+      defimpl Wardrik.LLM.Dispatch, for: MyApp.Metered do
+        def admit(metered, request, opts), do: Wardrik.LLM.Dispatch.admit(metered.inner, request, opts)
+
+        def settle(metered, request, opts) do
+          :ok = MyApp.Costs.record(request, opts[:outcome], opts[:scope])
+          Wardrik.LLM.Dispatch.settle(metered.inner, request, opts)
+        end
+      end
+
+  Changing where calls go is then changing `:inner`, and nothing else.
 
   ## Hooks first
 
@@ -44,27 +70,29 @@ defmodule Wardrik.LLM.Dispatch do
   as a `Wardrik.Call` to a `Wardrik.Call.Model`; see `Wardrik.Call.Pipeline`. A
   deny fails the turn as `{:policy_denied, reason}` and an ask parks it, and
   in neither case is the dispatch asked. Every hook hears what an admitted
-  call used through `Wardrik.Hook.settle/1`.
+  call used through `Wardrik.Hook.settle/1`, before the dispatch settles it,
+  so a budget counts a call whatever its dispatch does with it.
 
   ## Refusing a call
 
-  An `{:error, reason}` from `c:admit/2` fails the turn with that reason and
+  An `{:error, reason}` from `admit/3` fails the turn with that reason and
   the provider is never reached, which is what a disabled model should do.
   Classify the reason so callers know whether to retry it; see `Wardrik.Failure`.
 
-  ## A dispatch that is a value
+  ## Failing to settle
 
-  A dispatch written as data is named with the module that reads it, as
-  `{module, value}`. The module implements each callback with the value as one
-  more argument, `admit/3` and `settle/4`, and the value is written to the
-  store with the agent.
+  By the time `settle/3` hears of a call, the provider has answered it. A
+  dispatch that cannot book it, a database write that failed say, answers
+  `{:error, reason}`: the reason is logged and the turn carries on with the
+  answer, since losing what was paid for to a bookkeeping error is worse
+  than losing the book entry.
+
+  Both functions run in the turn's own process, so one that raises fails
+  that turn, as any other crash in it does, and the agent takes its next
+  message. Answer errors rather than raise them.
   """
 
   alias Wardrik.LLM.Request
-  alias Wardrik.Scope
-
-  @typedoc "A dispatch as a scope holds it: a module, or a module and the value it reads."
-  @type t() :: module() | {module(), term()}
 
   @typedoc """
   How a model call ended: with its response, interrupted with the text that
@@ -79,80 +107,23 @@ defmodule Wardrik.LLM.Dispatch do
           | {:error, term(), String.t()}
 
   @doc """
-  Decides what a call actually is, immediately before it is made.
+  Decides what a call actually is, immediately before it is made, under the
+  `:scope` of the turn making it.
 
   Return the request to make, which may be the one given. Returning an error
   fails the turn without reaching the provider.
   """
-  @callback admit(Request.t(), Scope.t()) :: {:ok, Request.t()} | {:error, term()}
-  @callback admit(Request.t(), Scope.t(), value :: term()) ::
-              {:ok, Request.t()} | {:error, term()}
+  @spec admit(t(), Request.t(), keyword()) :: {:ok, Request.t()} | {:error, term()}
+  def admit(dispatch, request, opts)
 
   @doc """
-  Reports how a call went, once it has.
+  Reports how a call went, as its `:outcome`, under the `:scope` of the turn
+  that made it.
 
   Called for every admitted request, including ones that failed or were
-  interrupted, so a host that books usage never loses a call it admitted. Its
-  return value is ignored and a failure here does not fail the turn.
+  interrupted, so a host that books usage never loses a call it admitted.
+  An `{:error, reason}` is logged, and the turn carries on.
   """
-  @callback settle(Request.t(), outcome(), Scope.t()) :: any()
-  @callback settle(Request.t(), outcome(), Scope.t(), value :: term()) :: any()
-
-  @optional_callbacks admit: 2, admit: 3, settle: 3, settle: 4
-
-  require Logger
-
-  @doc """
-  Admits `request` under `scope` through its dispatch, passing the request
-  through where there is none.
-  """
-  @spec admit(Scope.t(), Request.t()) :: {:ok, Request.t()} | {:error, term()}
-  def admit(%Scope{dispatch: nil}, %Request{} = request), do: {:ok, request}
-
-  def admit(%Scope{dispatch: dispatch} = scope, %Request{} = request) do
-    case call(dispatch, :admit, [request, scope]) do
-      {:ok, %Request{} = admitted} -> {:ok, admitted}
-      {:error, reason} -> {:error, reason}
-      other -> {:error, {:invalid_admit_result, other}}
-    end
-  catch
-    kind, reason -> {:error, {:dispatch_failed, Exception.format(kind, reason)}}
-  end
-
-  @doc """
-  Reports `outcome` for `request` to the dispatch.
-
-  A dispatch that fails here is logged and ignored: the call already happened,
-  and losing the answer to a bookkeeping error would be worse than losing the
-  book entry.
-  """
-  @spec settle(Scope.t(), Request.t(), outcome()) :: :ok
-  def settle(%Scope{dispatch: nil}, %Request{}, _outcome), do: :ok
-
-  def settle(%Scope{dispatch: dispatch} = scope, %Request{} = request, outcome),
-    do: optional(dispatch, :settle, [request, outcome, scope])
-
-  defp optional(dispatch, function, args) do
-    if implements?(dispatch, function, length(args)), do: call(dispatch, function, args)
-    :ok
-  catch
-    kind, reason ->
-      Logger.error(
-        "Dispatch #{name(dispatch)} failed in #{function}: #{Exception.format(kind, reason)}"
-      )
-
-      :ok
-  end
-
-  defp call({module, value}, function, args), do: apply(module, function, args ++ [value])
-  defp call(module, function, args), do: apply(module, function, args)
-
-  defp implements?({module, _value}, function, arity), do: exports?(module, function, arity + 1)
-  defp implements?(module, function, arity), do: exports?(module, function, arity)
-
-  defp exports?(module, function, arity),
-    do: Code.ensure_loaded?(module) and function_exported?(module, function, arity)
-
-  defp name({module, _value}), do: inspect(module)
-  defp name(module), do: inspect(module)
+  @spec settle(t(), Request.t(), keyword()) :: :ok | {:error, term()}
+  def settle(dispatch, request, opts)
 end

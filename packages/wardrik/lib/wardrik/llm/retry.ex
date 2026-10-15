@@ -14,17 +14,20 @@ defmodule Wardrik.LLM.Retry do
   handed. Failing over is the two together:
 
       defmodule MyApp.Failover do
-        @behaviour Wardrik.LLM.Dispatch
+        defstruct [:models]
+      end
 
-        @impl true
-        def admit(%Request{attempts: []} = request, _scope), do: {:ok, request}
+      defimpl Wardrik.LLM.Dispatch, for: MyApp.Failover do
+        def admit(_failover, %Request{attempts: []} = request, _opts), do: {:ok, request}
 
-        def admit(%Request{attempts: attempts} = request, _scope) do
-          case Enum.at(MyApp.models(), length(attempts)) do
+        def admit(failover, %Request{attempts: attempts} = request, _opts) do
+          case Enum.at(failover.models, length(attempts)) do
             nil -> {:error, :no_model_left}
             model -> {:ok, Request.put_model(request, model)}
           end
         end
+
+        def settle(_failover, _request, _opts), do: :ok
       end
 
   Without a retry on the scope, `Wardrik.LLM.Retry.Backoff` asks again after
@@ -36,7 +39,7 @@ defmodule Wardrik.LLM.Retry do
 
   ## A retry that is a value
 
-  As a dispatch can be, a retry is named `{module, value}` where it is data:
+  A retry is named `{module, value}` where it is data:
   the module implements `again/3`, with the value as its last argument, and
   the value is written to the store with the agent.
   """

@@ -54,7 +54,7 @@ defmodule Wardrik.LLM.Request do
   @doc """
   Adds or replaces options on a request.
 
-  What a host reaches for in `c:Wardrik.LLM.Dispatch.admit/2` to supply the key a
+  What a host reaches for in `Wardrik.LLM.Dispatch.admit/3` to supply the key a
   call runs under, or the endpoint it goes to.
 
       Wardrik.LLM.Request.put_opts(request, api_key: key, base_url: gateway)

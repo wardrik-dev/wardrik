@@ -227,18 +227,15 @@ defmodule Wardrik.ScopeTest do
   end
 
   describe "the seams a host reaches through" do
-    test "hooks and dispatch default to nothing and are inherited by children" do
+    test "hooks default to nothing and are inherited by children" do
       plain = Scope.root(Config.new(), ~A"acme/assistant")
 
       assert plain.hooks == []
-      assert plain.dispatch == nil
 
       hooks = [%Wardrik.Hook{name: "some", module: SomeHook}]
-      wired = Scope.root(Config.new(), ~A"acme/assistant", hooks: hooks, dispatch: SomeGateway)
-      child = Scope.child(wired, name: "branch")
+      wired = Scope.root(Config.new(), ~A"acme/assistant", hooks: hooks)
 
-      assert child.hooks == hooks
-      assert child.dispatch == SomeGateway
+      assert Scope.child(wired, name: "branch").hooks == hooks
     end
   end
 end

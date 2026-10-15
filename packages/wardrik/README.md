@@ -157,7 +157,6 @@ store key, so give a user as an id rather than an email address.
 Wardrik.Fleet.spawn(id,
   config: config,
   hooks: hooks,                    # may this call run?
-  dispatch: MyApp.Gateway,         # which model, whose key, what did it cost?
   ledger: %Wardrik.Ledger.Store{}, # which calls already ran, if the turn is lost
   timeout: :timer.minutes(10)
 )
@@ -166,9 +165,11 @@ Wardrik.Fleet.spawn(id,
 | Seam | What it decides |
 | --- | --- |
 | `:hooks` | A list of `Wardrik.Hook`s, each handed every tool call and model call before it happens. A hook may deny a call, ask a person about it, or leave it be, and the strictest answer wins. Each hears what a call did once it is made. |
-| `:dispatch` | A `Wardrik.LLM.Dispatch`, which decides what a model call actually is just before it is made, and hears what it cost. |
 | `:ledger` | A `Wardrik.Ledger`, which records each tool call before it runs. See [A turn lost part way](#a-turn-lost-part-way). |
 | `:timeout` | A deadline for each turn. Work under it can narrow it, never widen it. |
+
+Which model a call lands on and who pays for it is the host's dispatch, the
+same for every agent; see [The host](#the-host).
 
 Every call, to a tool or a model, passes the seams in one order, as
 `Wardrik.Call.Pipeline` sets out: the hooks decide it, the ledger claims it
@@ -310,9 +311,9 @@ does not repeat the effect either.
 What an operation asks beyond one agent is the host's: where definitions are
 kept, which accounts people connect, where the secrets tools and model
 providers need come from, how tokens are made, where requests for triggers
-go, and what each principal may do. A `Wardrik.Host` names a value for each
-it offers, carrying that seam's own settings, and the `None` of each it does
-not. It is handed
+go, what each principal may do, and what each model call actually is. A
+`Wardrik.Host` names a value for each it offers, carrying that seam's own
+settings, and the default of each it does not. It is handed
 to `Wardrik` as it starts, which hands it to every agent, and to each
 surface the application starts after it, which builds its callers with it:
 
@@ -322,7 +323,8 @@ host =
     store: store,
     definitions: %MyApp.Definitions{store: store},
     credentials: WardrikVault.new(store: store, keys: [key]),
-    grants: %MyApp.Grants{admins: ["maria"]}
+    grants: %MyApp.Grants{admins: ["maria"]},
+    dispatch: %MyApp.Gateway{keys: keys}
   )
 
 children = [

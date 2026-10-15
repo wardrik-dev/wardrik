@@ -657,7 +657,6 @@ defmodule Wardrik.AgentTest do
           [
             runner: reporting_runner(test_pid),
             hooks: [%Wardrik.Hook{name: "some", module: SomeHook}],
-            dispatch: SomeGateway,
             timeout: 60_000
           ],
           Wardrik.AgentID.new!("seams-#{System.unique_integer([:positive])}",
@@ -671,7 +670,6 @@ defmodule Wardrik.AgentTest do
       assert_receive {:scope, scope}
       assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
       assert scope.hooks == [%Wardrik.Hook{name: "some", module: SomeHook}]
-      assert scope.dispatch == SomeGateway
       assert Wardrik.Scope.remaining_ms(scope) > 55_000
     end
 
@@ -682,8 +680,7 @@ defmodule Wardrik.AgentTest do
         start_agent(
           [
             runner: reporting_runner(test_pid),
-            hooks: [%Wardrik.Hook{name: "some", module: SomeHook}],
-            dispatch: SomeGateway
+            hooks: [%Wardrik.Hook{name: "some", module: SomeHook}]
           ],
           Wardrik.AgentID.new!("configure-#{System.unique_integer([:positive])}",
             org: "acme",
@@ -704,7 +701,6 @@ defmodule Wardrik.AgentTest do
 
       assert_receive {:scope, scope}
       assert scope.hooks == [%Wardrik.Hook{name: "other", module: OtherHook}]
-      assert scope.dispatch == nil
       assert %Wardrik.AgentID{org: "acme", user: "7"} = Wardrik.Scope.agent_id(scope)
       assert Agent.status(agent).model == "anthropic:claude-sonnet-5"
     end
@@ -722,7 +718,7 @@ defmodule Wardrik.AgentTest do
       assert_receive {:scope, scope}
       assert %Wardrik.AgentID{org: "test", user: nil} = Wardrik.Scope.agent_id(scope)
       assert scope.hooks == []
-      assert scope.dispatch == nil
+      assert Wardrik.Host.dispatch(scope.host) == %Wardrik.LLM.Dispatch.Direct{}
       assert Wardrik.Scope.remaining_ms(scope) == :infinity
     end
   end

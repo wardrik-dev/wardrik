@@ -3,15 +3,15 @@ defmodule Wardrik.Host do
   What the host running Wardrik answers that core cannot: the store
   everything is kept in, where agents' definitions are kept, which accounts
   people connect, where secrets come from, how callers' tokens are made,
-  where requests for triggers go, what each principal may do, and where
-  agents' files are kept.
+  where requests for triggers go, what each principal may do, where
+  agents' files are kept, and what each model call actually is.
 
   `:store` is a `WardrikStore`, the one the host started, or
   `WardrikStore.None`'s where it names none, which raises on the first read
   or write. Each of the others is a value implementing one protocol, which
   carries its own settings, such as the store it keeps things in:
 
-  | Field | Protocol | None |
+  | Field | Protocol | Default |
   | --- | --- | --- |
   | `:definitions` | `Wardrik.Definition` | `%Wardrik.Definition.None{}` |
   | `:connections` | `Wardrik.Connections` | `%Wardrik.Connections.None{}` |
@@ -20,6 +20,7 @@ defmodule Wardrik.Host do
   | `:triggers` | `Wardrik.Triggers` | `%Wardrik.Triggers.None{}` |
   | `:grants` | `Wardrik.Grants` | `%Wardrik.Grants.None{}` |
   | `:workspace` | `Wardrik.Workspace` | `%Wardrik.Workspace.None{}` |
+  | `:dispatch` | `Wardrik.LLM.Dispatch` | `%Wardrik.LLM.Dispatch.Direct{}` |
 
   A host names its store and the seams it offers once, as it starts
   `Wardrik`, and hands the same host to whatever surface it starts after it:
@@ -40,11 +41,12 @@ defmodule Wardrik.Host do
         {MyApp.Endpoint, host: host}
       ]
 
-  A seam it does not name is its None, which answers each function with
-  `:unsupported`, or with what having none means in that function's own
-  terms, as `[]` grants; so every field is always a value its protocol
-  answers for, and an operation asks it without first asking whether there
-  is one.
+  A seam it does not name is its default: a None, which answers each
+  function with `:unsupported`, or with what having none means in that
+  function's own terms, as `[]` grants, and for `:dispatch` `Direct`, which
+  makes each model call as it stands. So every field is always a value its
+  protocol answers for, and code asks it without first asking whether
+  there is one.
 
   The host travels with the work, never with what is stored: each
   `Wardrik.Caller` carries it to the operation it calls, and each agent is
@@ -76,6 +78,7 @@ defmodule Wardrik.Host do
             triggers: %Wardrik.Triggers.None{},
             grants: %Wardrik.Grants.None{},
             workspace: %Wardrik.Workspace.None{},
+            dispatch: %Wardrik.LLM.Dispatch.Direct{},
             audit: Wardrik.Audit
 
   @type t() :: %__MODULE__{
@@ -87,10 +90,20 @@ defmodule Wardrik.Host do
           triggers: Wardrik.Triggers.t(),
           grants: Wardrik.Grants.t(),
           workspace: Wardrik.Workspace.t(),
+          dispatch: Wardrik.LLM.Dispatch.t(),
           audit: GenServer.name()
         }
 
-  @seams [:definitions, :connections, :credentials, :tokens, :triggers, :grants, :workspace]
+  @seams [
+    :definitions,
+    :connections,
+    :credentials,
+    :tokens,
+    :triggers,
+    :grants,
+    :workspace,
+    :dispatch
+  ]
 
   @doc """
   The host keeping everything in the `:store` `opts` names, offering the
@@ -207,6 +220,10 @@ defmodule Wardrik.Host do
   @doc "The `Wardrik.Workspace` agents' files are kept in."
   @spec workspace(t()) :: Wardrik.Workspace.t()
   def workspace(%__MODULE__{workspace: workspace}), do: workspace
+
+  @doc "The `Wardrik.LLM.Dispatch` every model call is admitted and settled through."
+  @spec dispatch(t()) :: Wardrik.LLM.Dispatch.t()
+  def dispatch(%__MODULE__{dispatch: dispatch}), do: dispatch
 
   @doc "The `Wardrik.Grants` that says what each principal may do."
   @spec grants(t()) :: Wardrik.Grants.t()

@@ -31,6 +31,19 @@ defmodule Wardrik.LLM.TurnTest do
     LLM.Config.new(tools: tools) |> Scope.root(agent_id, name: "turn")
   end
 
+  defmodule Failover do
+    defstruct []
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Failover do
+    def admit(_failover, %LLM.Request{attempts: []} = request, _opts), do: {:ok, request}
+
+    def admit(_failover, request, _opts),
+      do: {:ok, LLM.Request.put_model(request, "test:fallback")}
+
+    def settle(_failover, _request, _opts), do: :ok
+  end
+
   describe "the persona" do
     test "is prepended per call rather than stored in the conversation", %{agent_id: agent_id} do
       test_pid = self()
@@ -397,7 +410,7 @@ defmodule Wardrik.LLM.TurnTest do
         {:ok, LLMStub.final_answer("done")}
       end)
 
-      scope = retrying(agent_id, [0], dispatch: __MODULE__.Failover)
+      scope = retrying(agent_id, [0], host: Wardrik.Host.new(dispatch: %Failover{}))
 
       capture_log(fn ->
         assert %LLM.Turn{state: :done} = run(scope, Context.new([Context.user("hi")]))
@@ -885,31 +898,39 @@ defmodule Wardrik.LLM.TurnTest do
   end
 
   defmodule Routing do
-    @behaviour Wardrik.LLM.Dispatch
+    defstruct [:test]
+  end
 
-    @impl true
-    def admit(request, _scope, _test) do
-      {:ok, LLM.Request.put_model(request, {:anthropic, model: "routed"})}
+  defimpl Wardrik.LLM.Dispatch, for: Routing do
+    def admit(_routing, request, _opts),
+      do: {:ok, LLM.Request.put_model(request, {:anthropic, model: "routed"})}
+
+    def settle(routing, _request, opts) do
+      send(routing.test, {:settled, elem(opts[:outcome], 0)})
+      :ok
     end
-
-    @impl true
-    def settle(_request, outcome, _scope, test), do: send(test, {:settled, elem(outcome, 0)})
   end
 
   defmodule Refusing do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(_request, _scope), do: {:error, :over_budget}
+    defstruct []
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Refusing do
+    def admit(_refusing, _request, _opts), do: {:error, :over_budget}
+    def settle(_refusing, _request, _opts), do: :ok
   end
 
   defmodule Recording do
-    @behaviour Wardrik.LLM.Dispatch
+    defstruct [:test]
+  end
 
-    @impl true
-    def admit(request, _scope, _test), do: {:ok, request}
+  defimpl Wardrik.LLM.Dispatch, for: Recording do
+    def admit(_recording, request, _opts), do: {:ok, request}
 
-    @impl true
-    def settle(_request, outcome, _scope, test), do: send(test, {:settled, outcome})
+    def settle(recording, _request, opts) do
+      send(recording.test, {:settled, opts[:outcome]})
+      :ok
+    end
   end
 
   # A hook named with a value: the Agent holding the memo a person approved,
@@ -953,7 +974,10 @@ defmodule Wardrik.LLM.TurnTest do
 
       scope =
         LLM.Config.new(model_spec: {:openai, model: "configured"})
-        |> Scope.root(agent_id, name: "turn", dispatch: {Routing, self()})
+        |> Scope.root(agent_id,
+          name: "turn",
+          host: Wardrik.Host.new(dispatch: %Routing{test: self()})
+        )
 
       assert %LLM.Turn{state: :done, messages: _messages} =
                run(scope, Context.new([Context.user("hi")]))
@@ -964,7 +988,12 @@ defmodule Wardrik.LLM.TurnTest do
     test "every admitted call is reported once it has been made", %{agent_id: agent_id} do
       LLMStub.stream([LLMStub.final_answer("done")])
 
-      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: {Routing, self()})
+      scope =
+        LLM.Config.new()
+        |> Scope.root(agent_id,
+          name: "turn",
+          host: Wardrik.Host.new(dispatch: %Routing{test: self()})
+        )
 
       assert %LLM.Turn{state: :done, messages: _messages} =
                run(scope, Context.new([Context.user("hi")]))
@@ -983,7 +1012,11 @@ defmodule Wardrik.LLM.TurnTest do
       end)
 
       scope =
-        LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: {Recording, self()})
+        LLM.Config.new()
+        |> Scope.root(agent_id,
+          name: "turn",
+          host: Wardrik.Host.new(dispatch: %Recording{test: self()})
+        )
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :closed} =
@@ -999,7 +1032,11 @@ defmodule Wardrik.LLM.TurnTest do
       Mimic.stub(ReqLLM, :stream_text, fn _model, _context, _opts -> {:error, :rate_limited} end)
 
       scope =
-        LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: {Recording, self()})
+        LLM.Config.new()
+        |> Scope.root(agent_id,
+          name: "turn",
+          host: Wardrik.Host.new(dispatch: %Recording{test: self()})
+        )
 
       capture_log(fn ->
         assert %LLM.Turn{state: :failed, error: :rate_limited} =
@@ -1012,7 +1049,9 @@ defmodule Wardrik.LLM.TurnTest do
     test "a refused call fails the turn without reaching the provider", %{agent_id: agent_id} do
       reject(&ReqLLM.stream_text/3)
 
-      scope = LLM.Config.new() |> Scope.root(agent_id, name: "turn", dispatch: Refusing)
+      scope =
+        LLM.Config.new()
+        |> Scope.root(agent_id, name: "turn", host: Wardrik.Host.new(dispatch: %Refusing{}))
 
       log =
         capture_log(fn ->
@@ -1385,14 +1424,5 @@ defmodule Wardrik.LLM.TurnTest do
         _fewer -> {:again, 0}
       end
     end
-  end
-
-  defmodule Failover do
-    @moduledoc false
-    @behaviour Wardrik.LLM.Dispatch
-
-    @impl true
-    def admit(%LLM.Request{attempts: []} = request, _scope), do: {:ok, request}
-    def admit(request, _scope), do: {:ok, LLM.Request.put_model(request, "test:fallback")}
   end
 end

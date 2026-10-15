@@ -1,7 +1,8 @@
 defmodule Wardrik.Call.PipelineTest do
   use ExUnit.Case, async: true
 
-  import Wardrik.Test, only: [host: 0]
+  import ExUnit.CaptureLog
+  import Wardrik.Test, only: [host: 0, host: 1]
 
   alias ReqLLM.Context
   alias Wardrik.Call
@@ -28,24 +29,39 @@ defmodule Wardrik.Call.PipelineTest do
   end
 
   defmodule Routing do
-    @behaviour Wardrik.LLM.Dispatch
+    defstruct []
+  end
 
-    @impl true
-    def admit(request, _scope) do
+  defimpl Wardrik.LLM.Dispatch, for: Routing do
+    def admit(_routing, request, _opts) do
       {:ok,
        request
        |> Request.put_model({:anthropic, model: "claude-sonnet-5"})
        |> Request.put_opts(api_key: "key")}
     end
 
-    @impl true
-    def settle(_request, outcome, _scope), do: send(self(), {:dispatch_settled, outcome})
+    def settle(_routing, _request, outcome: outcome, scope: _scope) do
+      send(self(), {:dispatch_settled, outcome})
+      :ok
+    end
   end
 
   defmodule Refusing do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(_request, _scope), do: {:error, :over_budget}
+    defstruct []
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Refusing do
+    def admit(_refusing, _request, _opts), do: {:error, :over_budget}
+    def settle(_refusing, _request, _opts), do: :ok
+  end
+
+  defmodule Unbooked do
+    defstruct []
+  end
+
+  defimpl Wardrik.LLM.Dispatch, for: Unbooked do
+    def admit(_unbooked, request, _opts), do: {:ok, request}
+    def settle(_unbooked, _request, _opts), do: {:error, :ledger_down}
   end
 
   # A tool whose worker went away the first time, and that may run again
@@ -108,7 +124,8 @@ defmodule Wardrik.Call.PipelineTest do
 
   defp scope(agent_id, opts) do
     {tools, opts} = Keyword.pop(opts, :tools, [])
-    Config.new(tools: tools) |> Scope.root(agent_id, [name: "turn", host: host()] ++ opts)
+    {host, opts} = Keyword.pop_lazy(opts, :host, &host/0)
+    Config.new(tools: tools) |> Scope.root(agent_id, [name: "turn", host: host] ++ opts)
   end
 
   defp saying(answer), do: [Wardrik.Hook.new("saying", Saying, answer)]
@@ -146,7 +163,11 @@ defmodule Wardrik.Call.PipelineTest do
   describe "a model call" do
     test "is decided by the hooks before the dispatch, which a call that waits never reaches",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying({:ask, "Over budget.", :day}), dispatch: Routing)
+      scope =
+        scope(agent_id,
+          hooks: saying({:ask, "Over budget.", :day}),
+          host: host(dispatch: %Routing{})
+        )
 
       assert %Call{state: :waiting, scope: %Scope{}, private: private} =
                waiting =
@@ -159,7 +180,7 @@ defmodule Wardrik.Call.PipelineTest do
     end
 
     test "a hook refuses before the dispatch", %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying({:deny, "No."}), dispatch: Routing)
+      scope = scope(agent_id, hooks: saying({:deny, "No."}), host: host(dispatch: %Routing{}))
 
       assert %Call{state: :denied, denied: %Call.Denial{by: "saying", reason: "No."}} =
                request() |> Pipeline.model(scope) |> Pipeline.run(answering({:ok, nil}))
@@ -169,7 +190,7 @@ defmodule Wardrik.Call.PipelineTest do
 
     test "a person approved goes ahead without the hooks, admitted by the dispatch",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying({:ask, "Spend?"}), dispatch: Routing)
+      scope = scope(agent_id, hooks: saying({:ask, "Spend?"}), host: host(dispatch: %Routing{}))
       waiting = request() |> Pipeline.model(scope) |> Pipeline.decide()
 
       approved = Pipeline.answer(waiting, :approve)
@@ -187,7 +208,7 @@ defmodule Wardrik.Call.PipelineTest do
 
     test "is heard by the dispatch and the hooks, with the model as it was made",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), dispatch: Routing)
+      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
       outcome = {:ok, response(%{input_tokens: 3, output_tokens: 4})}
 
       request() |> Pipeline.model(scope) |> Pipeline.run(answering(outcome))
@@ -206,7 +227,7 @@ defmodule Wardrik.Call.PipelineTest do
     end
 
     test "the dispatch refuses is answered with why, and never made", %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), dispatch: Refusing)
+      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Refusing{}))
 
       assert %Call{state: :done, result: {:error, :over_budget}} =
                request() |> Pipeline.model(scope) |> Pipeline.run(answering({:ok, nil}))
@@ -215,9 +236,24 @@ defmodule Wardrik.Call.PipelineTest do
       refute_received {:settled, _call}
     end
 
+    test "keeps its answer, and counts it, when the dispatch cannot settle it",
+         %{agent_id: agent_id} do
+      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Unbooked{}))
+      outcome = {:ok, response(%{input_tokens: 3, output_tokens: 4})}
+
+      log =
+        capture_log(fn ->
+          assert %Call{state: :done, result: ^outcome} =
+                   request() |> Pipeline.model(scope) |> Pipeline.run(answering(outcome))
+        end)
+
+      assert log =~ ":ledger_down"
+      assert_received {:settled, %Call{result: ^outcome}}
+    end
+
     test "that failed before it was answered is heard by the dispatch alone",
          %{agent_id: agent_id} do
-      scope = scope(agent_id, hooks: saying(:pass), dispatch: Routing)
+      scope = scope(agent_id, hooks: saying(:pass), host: host(dispatch: %Routing{}))
 
       request() |> Pipeline.model(scope) |> Pipeline.run(answering({:error, :closed}))
 

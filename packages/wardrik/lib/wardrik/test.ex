@@ -117,7 +117,7 @@ defmodule Wardrik.Test do
   `tools:` names the tools, as `Wardrik.LLM.Config` takes them, or `config:`
   gives the whole config; `id:` names the agent, in place of one no other
   test uses. The rest is what `Wardrik.Scope.root/3` takes: the hooks, the
-  credentials, the ledger, the dispatch, and the host, `host/1` unless given.
+  ledger, and the host, `host/1` unless given.
   """
   @spec scope(keyword()) :: Scope.t()
   def scope(opts \\ []) do
