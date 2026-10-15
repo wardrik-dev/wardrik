@@ -26,7 +26,9 @@ defmodule WardrikPolicy do
 
   A policy with a `WardrikPolicy.Budget` limits what the agent spends on model
   calls. `hooks/1` gives the budget a hook of its own, after the rules, named
-  for the policy with `/budget` added.
+  for the policy with `/budget` added. `ceiling/2` gives it as an org's
+  `WardrikPolicy.Ceiling` instead, which all of the org's agents spend from
+  together.
 
   ## Deciding
 
@@ -104,6 +106,7 @@ defmodule WardrikPolicy do
   alias Wardrik.Call
   alias Wardrik.Hook
   alias WardrikPolicy.Budget
+  alias WardrikPolicy.Ceiling
   alias WardrikPolicy.Judge
   alias WardrikPolicy.Pattern
   alias WardrikPolicy.Rule
@@ -133,14 +136,26 @@ defmodule WardrikPolicy do
   apart.
   """
   @spec hooks(t()) :: [Hook.t()]
-  def hooks(%__MODULE__{} = policy) do
+  def hooks(%__MODULE__{} = policy),
+    do: hooks(policy, fn name, budget -> Hook.new(name, Budget, budget) end)
+
+  @doc """
+  The hooks `policy` is as the ceiling of `org`: `hooks/1`'s, but its budget
+  is a `WardrikPolicy.Ceiling`, which every agent of the org spends from
+  together.
+  """
+  @spec ceiling(t(), String.t()) :: [Hook.t()]
+  def ceiling(%__MODULE__{} = policy, org),
+    do: hooks(policy, fn name, budget -> Hook.new(name, Ceiling, Ceiling.new(budget, org)) end)
+
+  defp hooks(policy, budget_hook) do
     name = policy.name || "policy"
 
     [
       Hook.new(name, __MODULE__, %{policy | budget: nil, judge: nil}),
       policy.judge && Hook.new(name <> "/judge", Judge, policy.judge),
       policy.budget &&
-        Hook.new(name <> "/budget", Budget, %{policy.budget | meter: name <> "/budget"})
+        budget_hook.(name <> "/budget", %{policy.budget | meter: name <> "/budget"})
     ]
     |> Enum.filter(& &1)
   end

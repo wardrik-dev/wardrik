@@ -164,17 +164,28 @@ defmodule WardrikPolicy.Budget do
   end
 
   @impl Wardrik.Hook
-  def call(%Call{target: %Call.Model{model_spec: spec}, scope: scope}, %__MODULE__{} = budget) do
+  def call(%Call{scope: scope} = call, %__MODULE__{} = budget),
+    do: check(budget, call, key: spend_key(scope, budget), spender: "This agent has spent")
+
+  @doc """
+  What `budget` says of `call` when what it may still spend is counted under
+  the meter `key`: model calls are checked, every other call passes. An ask
+  carries `key` as its memo, so approving it grants more there. `spender`
+  opens the sentence saying the limit was reached, as `This agent has spent`.
+  `WardrikPolicy.Ceiling` checks an org's agents together this way.
+  """
+  @spec check(t(), Call.t(), key: String.t(), spender: String.t()) :: Wardrik.Hook.decision()
+  def check(%__MODULE__{} = budget, %Call{target: %Call.Model{model_spec: spec}}, opts) do
     if budget.usd != nil and not Cost.priced?(spec),
       do: {:deny, @unpriced},
-      else: metered(spend_key(scope, budget), budget)
+      else: metered(Keyword.fetch!(opts, :key), budget, Keyword.fetch!(opts, :spender))
   end
 
-  def call(%Call{}, %__MODULE__{}), do: :pass
+  def check(%__MODULE__{}, %Call{}, _opts), do: :pass
 
   # The memo an ask carries is the meter it read, so an approval grants more
   # to the period that ran out.
-  defp metered(key, budget) do
+  defp metered(key, budget, spender) do
     case Meter.read(key) do
       {:ok, spend} ->
         cond do
@@ -182,10 +193,10 @@ defmodule WardrikPolicy.Budget do
             :pass
 
           budget.on_exhausted == :ask ->
-            {:ask, exhausted(budget, spend) <> " " <> more(budget), key}
+            {:ask, reached(budget, spend, spender) <> " " <> more(budget), key}
 
           true ->
-            {:deny, exhausted(budget, spend)}
+            {:deny, reached(budget, spend, spender)}
         end
 
       {:error, reason} ->
@@ -208,21 +219,28 @@ defmodule WardrikPolicy.Budget do
 
   def approved(%Call{}, _memo, %__MODULE__{}), do: :ok
 
-  # A call is counted at the cost it carries, the figure its event carries
-  # too; a tool call that said nothing of cost counts nothing.
   @impl Wardrik.Hook
-  def settle(%Call{target: %Call.Model{usage: usage}} = call, %__MODULE__{} = budget),
-    do: spend(call, budget, Usage.tokens(usage))
+  def settle(%Call{scope: scope} = call, %__MODULE__{} = budget),
+    do: record(budget, call, key: spend_key(scope, budget))
 
-  def settle(%Call{target: %Call.Tool{}, cost: %{}} = call, %__MODULE__{} = budget),
-    do: spend(call, budget, 0)
+  @doc """
+  Counts what `call` spent against `budget` under the meter `key`: a model
+  call at its cost and tokens, a tool call at the cost it carries, failed or
+  not. A tool call that said nothing of cost counts nothing.
+  """
+  @spec record(t(), Call.t(), key: String.t()) :: :ok
+  def record(%__MODULE__{}, %Call{target: %Call.Model{usage: usage}} = call, opts),
+    do: spend(call, Keyword.fetch!(opts, :key), Usage.tokens(usage))
 
-  def settle(%Call{}, %__MODULE__{}), do: :ok
+  def record(%__MODULE__{}, %Call{target: %Call.Tool{}, cost: %{}} = call, opts),
+    do: spend(call, Keyword.fetch!(opts, :key), 0)
 
-  defp spend(%Call{scope: scope} = call, budget, tokens) do
+  def record(%__MODULE__{}, %Call{}, _opts), do: :ok
+
+  defp spend(%Call{scope: scope} = call, key, tokens) do
     micro_usd = if call.cost, do: call.cost.micro_usd, else: 0
 
-    with {:error, reason} <- scope |> spend_key(budget) |> Meter.spend(micro_usd, tokens) do
+    with {:error, reason} <- Meter.spend(key, micro_usd, tokens) do
       Logger.error(
         "#{scope.source.agent_id} spent #{dollars(micro_usd)} and #{tokens} tokens that were not recorded: #{inspect(reason)}"
       )
@@ -243,7 +261,12 @@ defmodule WardrikPolicy.Budget do
 
   def spent(%__MODULE__{} = budget, scope), do: scope |> spend_key(budget) |> read()
 
-  defp read(key) do
+  @doc """
+  What has been spent against `budget` under the meter `key`, or `nil` where
+  the meter cannot be read.
+  """
+  @spec read(String.t()) :: Spend.t() | nil
+  def read(key) do
     case Meter.read(key) do
       {:ok, spend} -> spend
       {:error, _reason} -> nil
@@ -258,9 +281,14 @@ defmodule WardrikPolicy.Budget do
   def spending(%__MODULE__{} = budget, agent) do
     case spent(budget, agent) do
       nil -> nil
-      %Spend{} = spend -> "#{amounts(budget, spend)} #{period_words(budget)}"
+      %Spend{} = spend -> said(budget, spend)
     end
   end
+
+  @doc "`spend` against `budget`, as a phrase: `$1.20 of $5.00 today`."
+  @spec said(t(), Spend.t()) :: String.t()
+  def said(%__MODULE__{} = budget, %Spend{} = spend),
+    do: "#{amounts(budget, spend)} #{period_words(budget)}"
 
   defp spend_key(%Wardrik.Scope{source: source}, budget) do
     Spend.key(
@@ -275,8 +303,7 @@ defmodule WardrikPolicy.Budget do
       (budget.tokens != nil and spend.tokens >= budget.tokens + spend.granted_tokens)
   end
 
-  defp exhausted(budget, spend),
-    do: "This agent has spent #{amounts(budget, spend)} #{period_words(budget)}."
+  defp reached(budget, spend, spender), do: "#{spender} #{said(budget, spend)}."
 
   defp amounts(budget, spend) do
     [

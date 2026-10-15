@@ -750,12 +750,13 @@ defmodule WardrikDefinition do
   # -- scalars ---------------------------------------------------------------
 
   # The policies the host holds every agent of `org` to, ahead of its own,
-  # each named for where the host sets it, so its budget meters apart.
+  # each named for where the host sets it, so its budget meters apart, and
+  # every agent of the org spends from it together.
   defp ceilings(context, org) do
     for owner <- ["*", org], name = context.ceilings[owner], name != nil do
       case Map.fetch(context.policies, name) do
         {:ok, policy} ->
-          WardrikPolicy.hooks(%{policy | name: "orgs/#{owner}/#{name}"})
+          WardrikPolicy.ceiling(%{policy | name: "orgs/#{owner}/#{name}"}, org)
 
         :error ->
           invalid!(

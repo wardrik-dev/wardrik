@@ -160,7 +160,7 @@ defmodule WardrikDaemon.AgentsTest do
     alpha = AgentID.parse!("#{org}/alpha")
 
     assert WardrikDaemon.spent_by(spec, alpha) == [
-             "orgs/#{org}/team: $0.00 of $5.00 today",
+             "orgs/#{org}/team: $0.00 of $5.00 today across #{org}",
              "careful: 0 of 500 tokens today"
            ]
 

@@ -249,7 +249,7 @@ defmodule WardrikDaemon.CLI.Agents do
   defp given({_definition, {:ok, spec}}, key) do
     policies =
       for %Wardrik.Hook{module: module} = hook <- spec.hooks,
-          module != WardrikPolicy.Budget,
+          module not in [WardrikPolicy.Budget, WardrikPolicy.Ceiling],
           do: {"policy", policy(hook)}
 
     policies =

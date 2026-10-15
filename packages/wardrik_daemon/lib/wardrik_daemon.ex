@@ -257,16 +257,20 @@ defmodule WardrikDaemon do
     end
   end
 
+  # Budgets an agent spends alone, and ceilings its org spends together.
+  @budgets [WardrikPolicy.Budget, WardrikPolicy.Ceiling]
+
   @doc """
   What the agent `key` has spent of each budget `spec` gives it, as its
-  budgets say it, each named for its policy where it has more than one.
+  budgets say it, each named for its policy where it has more than one. An
+  org's ceiling says what all of the org's agents have spent together.
   """
   @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
   def spent_by(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
-    budgets = for %Wardrik.Hook{module: WardrikPolicy.Budget} = hook <- hooks, do: hook
+    budgets = for %Wardrik.Hook{module: module} = hook <- hooks, module in @budgets, do: hook
 
-    for %Wardrik.Hook{name: name, value: budget} <- budgets,
-        spent = WardrikPolicy.Budget.spending(budget, key),
+    for %Wardrik.Hook{name: name, module: module, value: budget} <- budgets,
+        spent = module.spending(budget, key),
         spent != nil do
       if match?([_one], budgets), do: spent, else: "#{whose(Path.dirname(name))}: #{spent}"
     end
