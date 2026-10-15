@@ -23,14 +23,15 @@ defmodule WardrikMCP.Added do
 
   @doc """
   What holds for the tool `name`, as `WardrikMCP.annotations/2` says for
-  the server offering it; one no server of the owner's offers any more is
-  labelled `"outside"`, as every owner's server's answers are.
+  the server offering it; one no server of the owner's offers any more waits
+  on a person, and is labelled `"outside"`, as every owner's server's answers
+  are.
   """
   @impl Wardrik.Tool
   def annotations(%AgentID{} = id, name) do
     case Enum.filter(keys(id), &offers?(&1, name)) do
       [key | _rest] -> WardrikMCP.annotations(key, name)
-      [] -> %{labels: ["outside"]}
+      [] -> %{gated: true, labels: ["outside"]}
     end
   end
 
