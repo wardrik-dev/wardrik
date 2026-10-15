@@ -89,6 +89,64 @@ mcp:
 See [Gated tools](/concepts/rules/#gated-tools) and
 [Content from outside](/concepts/outside-content/).
 
+## Servers added at runtime
+
+An org or a person can add an MCP server for their own agents while the daemon runs, with no change
+to `config.yaml`. Maria works with a token for her own agents:
+
+```sh
+wardrik token create maria --scope acme/@maria/ --can read,message,define --unlimited
+```
+
+Her agent can name a server before she adds it. It offers nothing from it yet, and its definition
+says so:
+
+```ts
+import { Wardrik } from "@wardrik/sdk";
+
+const wardrik = new Wardrik({ token: process.env.MARIA_TOKEN });
+
+const triage = await wardrik.agents.put("acme/@maria/triage", {
+  instructions: "Triage new Linear issues and label each by area.",
+  tools: ["linear/*"],
+});
+
+console.log((await triage.definition()).missing); // [ 'linear/*' ]
+```
+
+She adds Linear's hosted server, and signs in to Linear at the link it answers:
+
+```ts
+const added = await wardrik.servers.add({
+  name: "linear",
+  url: "https://mcp.linear.app/mcp",
+  auth: { oauth: {} },
+});
+
+console.log(added.authorization?.url); // where she signs in to Linear
+console.log((await triage.definition()).missing); // []
+```
+
+Once she has signed in, her agent calls Linear's tools on its next turn, without being defined
+again:
+
+```ts
+for await (const event of triage.ask("What came in overnight?")) {
+  if (event.type === "wardrik.message.delta") process.stdout.write(event.data.delta);
+}
+```
+
+- A server serves its owner's agents alone. Maria's serves the agents under `acme/@maria/`; one
+  added with a token for `acme/` serves the org's own agents. A person's agents don't reach the
+  org's servers.
+- `linear/*` names the owner's server first, else one `config.yaml` names. `servers/*` gives an
+  agent the tools of every server its owner adds, as they add them.
+- `wardrik show` lists a server the agent names and its owner hasn't added as `missing`.
+- `wardrik.servers.remove("linear")` takes its tools away on the next turn, and forgets her sign-in.
+- A server signs in with nothing, in a browser, or with a secret its owner keeps in the vault; see
+  [Servers](/reference/http-api/#servers). What it answers is content from outside, and every tool
+  it doesn't mark read-only waits on a person.
+
 ## Details
 
 ### Names
