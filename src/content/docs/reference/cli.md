@@ -8,6 +8,8 @@ sidebar:
 
 <!-- Written by mix wardrik.docs from WardrikDaemon.CLI.commands/0. Edit it there, not here. -->
 
+rik is a short name for wardrik: `rik ls` is `wardrik ls`.
+
 The daemon reads `config.yaml`, and the agents in `agents/`, from
 `~/.config/wardrik`. `wardrik help COMMAND` says more about one.
 

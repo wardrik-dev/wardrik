@@ -17,6 +17,10 @@ wardrik init
 `~/.config/wardrik/agents/assistant.md`. [Install](/getting-started/install/) covers Docker and
 scripted setup.
 
+:::tip[rik is wardrik]
+The install also adds `rik`, a short name for `wardrik`. Every command here works with either.
+:::
+
 ## 2. Ask for an outcome
 
 The front door is where you ask for what you want. Tell it an outcome:
