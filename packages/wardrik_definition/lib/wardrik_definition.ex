@@ -368,7 +368,7 @@ defmodule WardrikDefinition do
        id: id,
        description: optional_string!(fields["description"], "description"),
        config: config,
-       hooks: policy(fields["policy"], context, modules?),
+       hooks: ceilings(context, id.org) ++ policy(fields["policy"], context, modules?),
        timeout: fields["timeout"] && seconds!(fields["timeout"])
      ] ++ context.seams)
     |> put(:idle_timeout, fields["idle_timeout"] || context.defaults["idle_timeout"], &idle!/1)
@@ -743,6 +743,24 @@ defmodule WardrikDefinition do
   end
 
   # -- scalars ---------------------------------------------------------------
+
+  # The policies the host holds every agent of `org` to, ahead of its own,
+  # each named for where the host sets it, so its budget meters apart.
+  defp ceilings(context, org) do
+    for owner <- ["*", org], name = context.ceilings[owner], name != nil do
+      case Map.fetch(context.policies, name) do
+        {:ok, policy} ->
+          WardrikPolicy.hooks(%{policy | name: "orgs/#{owner}/#{name}"})
+
+        :error ->
+          invalid!(
+            "#{context.names.config} holds #{org}'s agents to the ceiling #{name}, " <>
+              "which is not a policy in #{context.names.policies}"
+          )
+      end
+    end
+    |> List.flatten()
+  end
 
   defp policy(nil, _context, _modules?), do: []
 

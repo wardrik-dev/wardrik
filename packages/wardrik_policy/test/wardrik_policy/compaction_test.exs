@@ -39,6 +39,7 @@ defmodule WardrikPolicy.CompactionTest do
       WardrikPolicy.Meter.spend(
         WardrikPolicy.Spend.key(
           scope.source.agent_id,
+          "policy/budget",
           WardrikPolicy.Budget.window(policy.budget, "", DateTime.utc_now())
         ),
         0,

@@ -34,6 +34,35 @@ which orgs are: an agent file, an agent defined over the API, `wardrik vault put
 `wardrik agent spawn --org` and `wardrik token create --scope`. A typo is caught the same way. See
 [`orgs`](/reference/config/#orgs).
 
+## Hold an org to a ceiling
+
+A ceiling is a policy every agent of the org is held to, ahead of its own:
+
+```yaml title="~/.config/wardrik/config.yaml"
+orgs:
+  payments:
+    ceiling: payments-ceiling
+```
+
+```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
+ask:
+  stripe/stripe_api_write: This changes money in Stripe.
+deny: [run_lua]
+budget:
+  usd: 20.00
+  per: day
+```
+
+- It holds every agent in the org, and each of its users' agents: those from files, from the HTTP
+  API, and from channels.
+- An agent's own policy can narrow it, never widen it.
+- `"*"`'s ceiling holds every org, beside each org's own.
+- A ceiling `policies/` doesn't hold stops the org's agents, rather than running them without it.
+- `wardrik show` lists it among the agent's policies, as `orgs/payments/payments-ceiling`.
+
+A [token](/run/tokens/#what-agents-it-defines-may-do) can add a ceiling of its own over the agents it
+defines.
+
 ## What stays inside an org
 
 What reaches the org's agents reaches none of its users'. What reaches one user's agents reaches

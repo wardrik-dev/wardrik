@@ -11,7 +11,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   it to some of `read,message,decide,define,serve`. A token that can define
   agents holds them to a ceiling: `--policy NAME`, a policy `policies/`
   holds, which every agent it defines is held to ahead of its own, or
-  `--unlimited`, which holds them to their own policies alone. `--for NAME`
+  `--unlimited`, which adds none beyond their org's. `--for NAME`
   is the person it is issued to, whom a decision made with it is recorded
   as made by; without it, the token itself. A scope naming a person's agents
   names theirs.
@@ -42,7 +42,7 @@ defmodule WardrikDaemon.CLI.Tokens do
           "org/* (the org and all its users'), or a key, org/name or org/@user/name.",
           "--can ACTIONS limits it to some of read,message,decide,define,serve.",
           "A token that can define holds the agents it defines to --policy NAME, one of",
-          "policies/, or to their own policies alone with --unlimited.",
+          "policies/, or to none beyond their org's with --unlimited.",
           "--for NAME is the person it is issued to, whom its decisions are recorded as made by;",
           "a scope naming a person's agents names theirs."
         ],
@@ -140,7 +140,7 @@ defmodule WardrikDaemon.CLI.Tokens do
       {nil, nil} when defines? ->
         {:error,
          "A token that can define agents holds them to a policy: add --policy NAME, " <>
-           "one of policies/, or --unlimited to hold them to their own policies alone"}
+           "one of policies/, or --unlimited to add none beyond their org's"}
 
       {nil, nil} ->
         {:ok, []}

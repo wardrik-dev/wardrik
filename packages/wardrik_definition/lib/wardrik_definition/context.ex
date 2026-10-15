@@ -6,6 +6,7 @@ defmodule WardrikDefinition.Context do
       %WardrikDefinition.Context{
         org: "acme",
         orgs: ["acme", "globex"],
+        ceilings: %{"*" => "base", "acme" => "acme-ceiling"},
         tools: [WardrikBrave.WebSearch],
         servers: [github: [orgs: :all], books: [orgs: ["acme"]]],
         mcp: WardrikMCP,
@@ -21,6 +22,8 @@ defmodule WardrikDefinition.Context do
 
     * `org` - the org of an agent file that names none
     * `orgs` - the orgs an agent may be in, or `:any`, the default
+    * `ceilings` - the policy each org's agents are held to ahead of their
+      own, by org, `"*"` for every org's; each a name in `policies`
     * `tools` - the tools the host ships, each a module implementing
       `Wardrik.Tool`, named in a definition by its tool's name
     * `servers` - the MCP servers, by name, each with the `orgs` it serves,
@@ -54,6 +57,7 @@ defmodule WardrikDefinition.Context do
 
   defstruct org: "default",
             orgs: :any,
+            ceilings: %{},
             tools: [],
             servers: [],
             mcp: nil,
@@ -73,6 +77,7 @@ defmodule WardrikDefinition.Context do
   @type t() :: %__MODULE__{
           org: String.t(),
           orgs: :any | [String.t()],
+          ceilings: %{String.t() => String.t()},
           tools: [module()],
           servers: [{atom(), keyword()}],
           mcp: module() | nil,

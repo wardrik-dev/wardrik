@@ -62,7 +62,15 @@ defmodule WardrikPolicy.Budget do
   @unpriced "This agent's budget is in dollars, and the catalog has no price for its model, so " <>
               "what its calls cost cannot be counted. A budget in tokens alone can count them."
 
-  defstruct [:usd, :tokens, :grant_usd, :grant_tokens, per: :day, on_exhausted: :ask]
+  defstruct [
+    :usd,
+    :tokens,
+    :grant_usd,
+    :grant_tokens,
+    per: :day,
+    on_exhausted: :ask,
+    meter: "budget"
+  ]
 
   @typedoc "The period a budget covers."
   @type period() :: :turn | :day | :week | :month | :total
@@ -73,7 +81,8 @@ defmodule WardrikPolicy.Budget do
           grant_usd: float() | nil,
           grant_tokens: pos_integer() | nil,
           per: period(),
-          on_exhausted: :ask | :deny
+          on_exhausted: :ask | :deny,
+          meter: String.t()
         }
 
   @keys ~w(usd tokens per grant on_exhausted)
@@ -219,7 +228,7 @@ defmodule WardrikPolicy.Budget do
   def spent(%__MODULE__{per: :turn}, %Wardrik.AgentID{}), do: nil
 
   def spent(%__MODULE__{} = budget, %Wardrik.AgentID{} = agent),
-    do: agent |> Spend.key(window(budget, "", DateTime.utc_now())) |> read()
+    do: agent |> Spend.key(budget.meter, window(budget, "", DateTime.utc_now())) |> read()
 
   def spent(%__MODULE__{} = budget, scope), do: scope |> spend_key(budget) |> read()
 
@@ -243,7 +252,11 @@ defmodule WardrikPolicy.Budget do
   end
 
   defp spend_key(%Wardrik.Scope{source: source}, budget) do
-    Spend.key(source.agent_id, window(budget, source.trace.trace_id, DateTime.utc_now()))
+    Spend.key(
+      source.agent_id,
+      budget.meter,
+      window(budget, source.trace.trace_id, DateTime.utc_now())
+    )
   end
 
   defp exhausted?(budget, spend) do

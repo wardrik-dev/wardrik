@@ -77,10 +77,11 @@ defmodule WardrikPolicy.BudgetTest do
       end)
 
       policy = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0, "grant" => %{"usd" => 0.5}}})
-      scope = Scope.root(Config.new(), agent, hooks: WardrikPolicy.hooks(policy))
+      hooks = WardrikPolicy.hooks(policy)
+      scope = Scope.root(Config.new(), agent, hooks: hooks)
 
       %{
-        budget: policy.budget,
+        budget: List.last(hooks).value,
         scope: scope,
         request: Request.new(Config.new(), Context.new())
       }
@@ -118,7 +119,7 @@ defmodule WardrikPolicy.BudgetTest do
                WardrikPolicy.hooks(policy)
 
       assert budget.module == Budget
-      assert budget.value == policy.budget
+      assert budget.value == %{policy.budget | meter: "careful/budget"}
       assert [%Hook{name: "policy"}] = WardrikPolicy.hooks(WardrikPolicy.decode!(%{}))
     end
 
@@ -239,6 +240,28 @@ defmodule WardrikPolicy.BudgetTest do
       assert %Spend{micro_usd: micro_usd, tokens: tokens} = Budget.spent(budget, scope)
       assert tokens == 3 * (input + output)
       assert micro_usd == 3 * each
+    end
+
+    test "counts a call once against each budget, and grants to one alone", context do
+      %{scope: scope, request: request} = context
+      own = WardrikPolicy.decode!(%{"budget" => %{"usd" => 0.01}}, "own")
+      ceiling = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1.0}}, "ceiling/team")
+      hooks = WardrikPolicy.hooks(ceiling) ++ WardrikPolicy.hooks(own)
+      scope = %{scope | hooks: hooks}
+      [ceiling_budget, own_budget] = for %Hook{module: Budget, value: b} <- hooks, do: b
+
+      spend(scope, request, {:ok, costing(0.02)})
+
+      assert %Spend{micro_usd: 20_000} = Budget.spent(ceiling_budget, scope)
+      assert %Spend{micro_usd: 20_000} = Budget.spent(own_budget, scope)
+
+      assert %Call{state: :waiting} = waiting = decide(scope, request)
+      :ok = approve(waiting, scope)
+
+      assert %Spend{granted_micro_usd: granted} = Budget.spent(own_budget, scope)
+      assert granted > 0
+
+      assert %Spend{granted_micro_usd: 0} = Budget.spent(ceiling_budget, scope)
     end
 
     test "counts a model call at the cost the call carries, as its event does", context do

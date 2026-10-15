@@ -144,6 +144,50 @@ defmodule WardrikDaemon.AgentsTest do
     assert %{} = Agent.status(AgentID.parse!("#{org}/alpha"))
   end
 
+  test "an org's ceiling holds its agents ahead of their own policy", %{org: org} = context do
+    write_policy(context, "team", "deny: [run_lua]\nbudget:\n  usd: 5.0\n")
+    write_policy(context, "careful", "ask: [web_search]\nbudget:\n  tokens: 500\n")
+    write(context, "alpha", "policy: careful\n")
+    ceiling(org, "team")
+
+    Host.start_agents(context.dir)
+
+    assert [_team, _careful, {_alpha, {:ok, spec}}] = Agents.files(Host.agents())
+
+    assert ["orgs/#{org}/team", "orgs/#{org}/team/budget", "careful", "careful/budget"] ==
+             Enum.map(spec.hooks, & &1.name)
+
+    alpha = AgentID.parse!("#{org}/alpha")
+
+    assert WardrikDaemon.spent_by(spec, alpha) == [
+             "orgs/#{org}/team: $0.00 of $5.00 today",
+             "careful: 0 of 500 tokens today"
+           ]
+
+    assert {:deny, _why} =
+             WardrikPolicy.decide(hd(spec.hooks).value, "run_lua", [], %{})
+
+    assert %{} = Agent.status(alpha)
+  end
+
+  test "an org held to a ceiling policies/ does not hold runs none of its agents",
+       %{org: org} = context do
+    write(context, "alpha", "")
+    ceiling(org, "nowhere")
+
+    Host.start_agents(context.dir)
+
+    assert [{_alpha, {:error, message}}] = Agents.files(Host.agents())
+
+    assert message =~
+             "config.yaml holds #{org}'s agents to the ceiling nowhere, which is not a policy in policies/"
+  end
+
+  defp ceiling(org, name) do
+    own = Keyword.get(Host.sections(), WardrikDaemon, [])
+    Host.put_section(WardrikDaemon, Keyword.put(own, :ceilings, %{org => name}))
+  end
+
   test "notify started after it routes the agents its files route", %{org: org} = context do
     targets = [audit: {WardrikNotify.Webhook, url: "https://hooks.test"}]
     Host.put_section(WardrikNotify, targets: targets)

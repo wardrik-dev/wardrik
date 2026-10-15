@@ -49,16 +49,18 @@ orgs:
   payments:
     mcp: [stripe, github]
     channels: [payments-slack]
+    ceiling: payments-ceiling
   growth:
     mcp: [github]
     channels: [growth-slack]
+    ceiling: growth-ceiling
 
 vault:
   shared: [SEARCH_API_KEY]
 ```
 
-- **Each team is declared once,** under `orgs`, with what it uses. A misspelt org or server is
-  refused at startup, with the nearest name.
+- **Each team is declared once,** under `orgs`, with what it uses and the ceiling it's held to. A
+  misspelt org or server is refused at startup, with the nearest name.
 - **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
   token.
 - **Each team has its own Slack app,** offering only its own org's agents.
@@ -78,7 +80,7 @@ See [Orgs](/run/orgs/) for everything an org keeps apart.
 
 ### A ceiling per team
 
-A ceiling is a policy every agent a token defines is held to, ahead of its own:
+A ceiling is a policy every agent of the org is held to, ahead of its own, however it was defined:
 
 ```yaml title="~/.config/wardrik/policies/payments-ceiling.yaml"
 ask:
@@ -93,17 +95,19 @@ budget:
 - **Stripe writes always wait,** whatever a team's own definition says.
 - **Each agent is capped** at $20 a day. A team's definition can set a lower limit, never a higher
   one.
+- `growth-ceiling.yaml` is Growth's, written the same way.
 
 ### A token per team
 
 ```sh
-wardrik token create payments-platform --scope payments/ --can read,define,message --policy payments-ceiling
-wardrik token create growth-platform --scope growth/ --can read,define,message --policy growth-ceiling
+wardrik token create payments-platform --scope payments/ --can read,define,message --unlimited
+wardrik token create growth-platform --scope growth/ --can read,define,message --unlimited
 ```
 
 - `--scope` keeps each token to its team's own agents; another team's are answered as if they
   didn't exist.
-- `--policy` is the ceiling. See [Tokens](/run/tokens/).
+- `--unlimited` adds no ceiling of the token's own. The org's holds every agent it defines. See
+  [Tokens](/run/tokens/).
 
 ## Try it
 
@@ -128,7 +132,7 @@ agents can't reach Stripe at all.
 
 - **Isolation by org.** Agents, credentials, tokens and channels stay inside their team.
 - **Self-service within limits.** Teams build their own agents; the platform team's ceiling holds
-  every one.
+  every one, from the API, files or Slack.
 - **Spend limits per agent,** set once for a whole team.
 - **One audit trail.** Every change people make, and every call and decision agents make, is on
   record.
@@ -163,6 +167,7 @@ that person's credentials. A token for them is scoped the same way:
 
 ### Taking it further
 
-- Give a third team an entry under `orgs`, a Slack app and a ceiling: no other change is needed.
+- Give a third team an entry under `orgs`, with a Slack app and a ceiling: no other change is
+  needed.
 - Let a team's agents read a shared runbook tree with `workspace.shared`. See
   [Sharing trees](/concepts/files-and-memory/#sharing-trees).

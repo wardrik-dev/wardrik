@@ -3,7 +3,7 @@ defmodule WardrikPolicy.Meter do
   One budget period's `WardrikPolicy.Spend`, owned by one process across the
   cluster.
 
-  A meter is a `DurableServer` keyed by `WardrikPolicy.Spend.key/2`, started on
+  A meter is a `DurableServer` keyed by `WardrikPolicy.Spend.key/3`, started on
   whichever node asks for it first and found there by every node after. Every
   spend and grant for the period is a call to that one process, so they are
   counted in order, however many delegations settle at once, with no lock and

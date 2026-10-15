@@ -128,6 +128,21 @@ defmodule WardrikDefinitionTest do
              WardrikDefinition.accept(AgentID.parse!("acme/triage/t1"), %{}, context)
   end
 
+  test "an org's ceilings come ahead of the agent's own policy", %{context: context, id: id} do
+    {:ok, base} = WardrikPolicy.decode(%{"deny" => ["run_lua"]})
+    policies = Map.put(context.policies, "base", base)
+    context = %{context | policies: policies, ceilings: %{"*" => "base", "acme" => "careful"}}
+
+    assert {:ok, spec} = spec(%{"policy" => %{"ask" => ["web_search"]}}, context, id)
+    assert ["orgs/*/base", "orgs/acme/careful", "policy"] = Enum.map(spec.hooks, & &1.name)
+
+    context = %{context | ceilings: %{"acme" => "missing"}}
+
+    assert {:error,
+            "Mode holds acme's agents to the ceiling missing, which is not a policy in " <>
+              "the org's policies"} = spec(%{}, context, id)
+  end
+
   test "an agent is in one of the orgs the context declares", %{context: context, id: id} do
     context = %{context | orgs: ["globex"]}
 

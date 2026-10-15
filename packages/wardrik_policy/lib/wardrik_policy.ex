@@ -128,7 +128,9 @@ defmodule WardrikPolicy do
 
   @doc """
   The hooks `policy` is: its rules, named for the policy or `policy` where it
-  has no name, then its judge and its budget where it has them.
+  has no name, then its judge and its budget where it has them. The budget
+  meters under its hook's name, so each budget an agent is held to counts
+  apart.
   """
   @spec hooks(t()) :: [Hook.t()]
   def hooks(%__MODULE__{} = policy) do
@@ -137,7 +139,8 @@ defmodule WardrikPolicy do
     [
       Hook.new(name, __MODULE__, %{policy | budget: nil, judge: nil}),
       policy.judge && Hook.new(name <> "/judge", Judge, policy.judge),
-      policy.budget && Hook.new(name <> "/budget", Budget, policy.budget)
+      policy.budget &&
+        Hook.new(name <> "/budget", Budget, %{policy.budget | meter: name <> "/budget"})
     ]
     |> Enum.filter(& &1)
   end

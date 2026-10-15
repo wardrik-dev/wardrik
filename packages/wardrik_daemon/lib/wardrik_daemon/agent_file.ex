@@ -40,7 +40,7 @@ defmodule WardrikDaemon.AgentFile do
 
   @doc """
   What a definition may name here, as `WardrikDefinition` reads it: the orgs
-  `config` declares, the tools the daemon ships, and the MCP servers,
+  `config` declares and the ceilings it holds them to, the tools the daemon ships, and the MCP servers,
   channels and notify targets `config` configures, and its `defaults`. A reading under the policies in
   `policies/` puts them, by name, as the context's `:policies`.
   """
@@ -49,6 +49,7 @@ defmodule WardrikDaemon.AgentFile do
     %WardrikDefinition.Context{
       org: Config.org(config),
       orgs: Config.orgs(config),
+      ceilings: Config.ceilings(config),
       tools: @shipped,
       servers: config |> Config.section(WardrikMCP) |> Keyword.get(:servers, []),
       mcp: WardrikMCP,
