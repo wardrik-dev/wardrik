@@ -14,7 +14,7 @@ defmodule WardrikHTTP.Listener do
     * `:host` - the `Wardrik.Host` every request's operation runs on;
       required
     * `:authenticator` - the `WardrikHTTP.Authenticator` every request is
-      known by, alone or as `{module, opts}`; `WardrikHTTP.Token` by default
+      known by; `%WardrikHTTP.Tokens{}` over the host's store by default
     * `:retry` - milliseconds between tries, 5000 by default
     * `:name` - the process's name, `WardrikHTTP.Listener` by default
   """
@@ -42,12 +42,20 @@ defmodule WardrikHTTP.Listener do
     Process.flag(:trap_exit, true)
 
     listen = [port: Keyword.get(opts, :port, @port), ip: Keyword.get(opts, :ip, @ip)]
+    host = Keyword.fetch!(opts, :host)
+
+    authenticator =
+      Keyword.get_lazy(opts, :authenticator, fn ->
+        %WardrikHTTP.Tokens{store: Wardrik.Host.store(host)}
+      end)
 
     state = %{
       listen: listen,
-      router:
-        [host: Keyword.fetch!(opts, :host), workers: Keyword.get(opts, :workers, [])] ++
-          Keyword.take(opts, [:authenticator]),
+      router: [
+        host: host,
+        authenticator: authenticator,
+        workers: Keyword.get(opts, :workers, [])
+      ],
       retry: Keyword.get(opts, :retry, @retry),
       server: nil
     }

@@ -5,6 +5,10 @@ defmodule WardrikHTTP.Tokens do
   `Wardrik.Host`'s `:tokens`:
 
       Wardrik.Host.new(store: store, tokens: %WardrikHTTP.Tokens{store: store})
+
+  It is also the `WardrikHTTP.Authenticator` `WardrikHTTP.Listener` uses
+  unless given another: a request presenting `Authorization: Bearer wardrik_…`
+  comes from the caller its token makes, `WardrikHTTP.Token.caller/1`.
   """
 
   alias WardrikHTTP.Token
@@ -33,6 +37,19 @@ defmodule WardrikHTTP.Tokens do
   def list(%__MODULE__{store: store}), do: Token.list(store)
 
   @doc false
+  def authenticate(%__MODULE__{store: store}, conn) do
+    with [header] <- Plug.Conn.get_req_header(conn, "authorization"),
+         [scheme, secret] <- String.split(header, " ", parts: 2, trim: true),
+         "bearer" <- String.downcase(scheme),
+         {:ok, token} <- Token.verify(store, String.trim(secret)) do
+      {:ok, Token.caller(token)}
+    else
+      {:error, :unavailable} = unavailable -> unavailable
+      _unknown -> {:error, :unauthorized}
+    end
+  end
+
+  @doc false
   def revoke(%__MODULE__{store: store}, id) do
     case Token.revoke(store, id) do
       :ok -> :ok
@@ -45,4 +62,9 @@ defimpl Wardrik.Tokens, for: WardrikHTTP.Tokens do
   defdelegate create(tokens, name, opts), to: WardrikHTTP.Tokens
   defdelegate list(tokens), to: WardrikHTTP.Tokens
   defdelegate revoke(tokens, id), to: WardrikHTTP.Tokens
+end
+
+defimpl WardrikHTTP.Authenticator, for: WardrikHTTP.Tokens do
+  defdelegate authenticate(tokens, conn), to: WardrikHTTP.Tokens
+  def challenge(_tokens), do: ~s(Bearer realm="wardrik")
 end

@@ -122,10 +122,11 @@ defmodule WardrikHTTP.RouterTest do
   # under test/; a sign-in would answer a caller the same way.
   defmodule Signed do
     @moduledoc false
-    @behaviour WardrikHTTP.Authenticator
+    defstruct []
+  end
 
-    @impl true
-    def authenticate(conn, _opts) do
+  defimpl WardrikHTTP.Authenticator, for: Signed do
+    def authenticate(_signed, conn) do
       case Plug.Conn.get_req_header(conn, "x-user") do
         [user] ->
           {:ok, grant} = Grant.new(Prefix.parse!("test/"))
@@ -143,8 +144,7 @@ defmodule WardrikHTTP.RouterTest do
       end
     end
 
-    @impl true
-    def challenge(_opts), do: ~s(Signed realm="test")
+    def challenge(_signed), do: ~s(Signed realm="test")
   end
 
   # Offers github, held by jon in test, and linear, held by nobody.
@@ -202,13 +202,12 @@ defmodule WardrikHTTP.RouterTest do
   # Cannot check any credential now, as an identity provider that is down.
   defmodule Down do
     @moduledoc false
-    @behaviour WardrikHTTP.Authenticator
+    defstruct []
+  end
 
-    @impl true
-    def authenticate(_conn, :down), do: {:error, :unavailable}
-
-    @impl true
-    def challenge(:down), do: ~s(Down realm="test")
+  defimpl WardrikHTTP.Authenticator, for: Down do
+    def authenticate(_down, _conn), do: {:error, :unavailable}
+    def challenge(_down), do: ~s(Down realm="test")
   end
 
   defp host,
@@ -303,7 +302,7 @@ defmodule WardrikHTTP.RouterTest do
     test "another authenticator knows the caller, and decisions are its principal's", %{
       api: api
     } do
-      signed = listener(api, authenticator: Signed)
+      signed = listener(api, authenticator: %Signed{})
 
       assert {:ok, %{status: 401} = response} = Req.get(signed, url: "/v1/agents")
       assert Req.Response.get_header(response, "www-authenticate") == [~s(Signed realm="test")]
@@ -327,7 +326,7 @@ defmodule WardrikHTTP.RouterTest do
     test "a credential the authenticator cannot check now is answered unavailable", %{
       api: api
     } do
-      down = listener(api, authenticator: {Down, :down})
+      down = listener(api, authenticator: %Down{})
 
       assert {:ok, %{status: 503, body: body}} = Req.get(down, url: "/v1/agents")
       assert body["error"]["type"] == "unavailable"
