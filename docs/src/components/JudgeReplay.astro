@@ -1,0 +1,93 @@
+---
+import { Code } from '@astrojs/starlight/components';
+import CliTranscript from './CliTranscript.astro';
+
+const policy = `judge:
+  model: typesafe:jev-latest
+  questions:
+    - question: Does this email promise a refund?
+      tools: [email/send]
+      ask: 0.5
+      message: Refund promises need review.`;
+
+const replay = [
+	[{ text: '! ', tone: 'waiting' }, { text: 'email/send  acme/support  ' }, { text: '2026-10-14 18:30:08Z', tone: 'muted' }],
+	[{ text: '    arguments  ', tone: 'muted' }, { text: '{"body":"We’ll refund your annual plan."}' }],
+	[{ text: '    0.94       ', tone: 'waiting' }, { text: 'Does this email promise a refund?' }],
+	[{ text: '    judge      ', tone: 'muted' }, { text: 'asks a person: Refund promises need review.', tone: 'waiting' }],
+	[{ text: '    decided    ', tone: 'muted' }, { text: 'allowed by support', tone: 'ready' }],
+];
+---
+
+<section class="home-section judge-replay" aria-labelledby="judge-replay">
+	<div class="judge-panel">
+		<p class="home-eyebrow">Judged calls</p>
+		<h2 id="judge-replay">Try your judge on yesterday’s calls.</h2>
+		<p class="home-lead">Ask a model about each call. Test its decisions on recorded calls.</p>
+		<div class="judge-columns">
+			<ol class="judge-guide" role="list">
+				<li class="judge-instruction">
+					<p class="judge-step-label">Step <span class="judge-number">1</span></p>
+					<h3>Define the question</h3>
+					<p>Store the model key and add a <code>judge</code> to <code>policies/careful.yaml</code>. Existing rules still apply.</p>
+				</li>
+				<li class="judge-instruction">
+					<p class="judge-step-label">Step <span class="judge-number">2</span></p>
+					<h3>Compare decisions</h3>
+					<p>Replay recent calls from <code>acme/support</code>. Compare the judge’s decision with the recorded one.</p>
+				</li>
+				<li class="judge-instruction">
+					<p class="judge-step-label">Step <span class="judge-number">3</span></p>
+					<h3>Refine the judge</h3>
+					<p>Adjust the question or threshold and replay again. Each replay reads your edits.</p>
+				</li>
+				<li class="judge-instruction">
+					<p class="judge-step-label">Step <span class="judge-number">4</span></p>
+					<h3>Apply the policy</h3>
+					<p>Assign <code>policy: careful</code> to the agent, then run <code>rik reload</code>.</p>
+				</li>
+			</ol>
+			<div class="judge-examples">
+				<div class="judge-example">
+					<p class="judge-example-label">Policy setup</p>
+					<Code code="rik vault put TYPESAFE_API_KEY" lang="sh" />
+					<Code code={policy} lang="yaml" title="policies/careful.yaml" meta="mark={6}" />
+				</div>
+				<div class="judge-example">
+					<p class="judge-example-label">Replay comparison</p>
+					<CliTranscript
+						command="rik policy judge careful --agent acme/support --last 20"
+						lines={replay}
+						caption="Illustrative excerpt · ! marks a changed decision"
+					/>
+					<p class="judge-result"><strong>0.94</strong> exceeds <code>ask: 0.5</code>. This call would need approval.</p>
+				</div>
+			</div>
+		</div>
+		<p class="judge-scope">Replay evaluates executed calls with fresh model requests. Tools and past decisions stay unchanged. <a href="/concepts/judges/#tuning-a-judge">Tune a judge</a></p>
+	</div>
+</section>
+
+<style>
+	.judge-replay { margin-top: 0; }
+	.judge-panel { padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid var(--sl-color-gray-5); border-radius: 12px; background: var(--sl-color-gray-6); }
+	.judge-panel .home-lead { margin-top: 0; margin-bottom: 2.5rem; }
+	.judge-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 2rem 3rem; align-items: start; }
+	.judge-replay .judge-guide { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; margin: 0; padding: 0; list-style: none; }
+	.judge-guide > li { min-width: 0; margin: 0; }
+	.judge-instruction + .judge-instruction { padding-top: 1.25rem; margin-top: 1.25rem; border-top: 1px solid var(--sl-color-gray-5); }
+	.judge-instruction .judge-step-label { margin: 0 0 0.5rem; color: var(--sl-color-gray-3); font-family: var(--sl-font-mono); font-size: 0.6875rem; line-height: 1.4; text-transform: uppercase; letter-spacing: 0.06em; }
+	.judge-replay h3 { margin: 0 0 0.5rem; font-size: 1.0625rem; line-height: 1.3; }
+	.judge-instruction p { margin: 0; color: var(--sl-color-gray-2); font-size: 0.875rem; line-height: 1.65; }
+	.judge-instruction code { overflow-wrap: anywhere; }
+	.judge-examples { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; min-width: 0; margin: 0; }
+	.judge-example { min-width: 0; margin: 0; }
+	.judge-example .judge-example-label { margin: 0 0 0.75rem; color: var(--sl-color-gray-3); font-size: 0.75rem; font-weight: 500; }
+	.judge-example :global(.expressive-code + .expressive-code) { margin-top: 0.75rem; }
+	.judge-example .judge-result { margin: 0.875rem 0 0; color: var(--sl-color-gray-2); font-size: 0.8125rem; }
+	.judge-result strong { color: var(--sl-color-text-accent); }
+	.judge-replay .judge-scope { margin: 2rem 0 0; padding-top: 1.25rem; border-top: 1px solid var(--sl-color-gray-5); font-size: 0.8125rem; color: var(--sl-color-gray-3); }
+	@media (max-width: 52rem) {
+		.judge-columns { grid-template-columns: minmax(0, 1fr); }
+	}
+</style>

@@ -1,0 +1,40 @@
+---
+interface Props {
+	command?: string;
+	lines: { text: string; tone?: string }[][];
+	caption?: string;
+	label?: string;
+}
+
+const { command, lines, caption, label = `${command ?? 'CLI'} example output` } = Astro.props;
+---
+
+<figure class="cli-transcript">
+	{command && <div class="cli-command"><span aria-hidden="true">❯</span><code>{command}</code><span class="cli-example">Example output</span></div>}
+	<pre tabindex="0" aria-label={label}><code>{lines.map((line, index) => <Fragment>{line.map(({ text, tone }) => <span class={tone}>{text}</span>)}{index < lines.length - 1 ? '\n' : ''}</Fragment>)}</code></pre>
+	{caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+	.cli-transcript { margin: 0; min-width: 0; overflow: hidden; border: 1px solid #23272e; border-radius: 10px; background: #0f1115; color: #e6e8eb; }
+	.cli-command { display: flex; align-items: baseline; gap: 0.75rem; padding: 1rem 1.25rem; border-bottom: 1px solid #23272e; }
+	.cli-command > span:first-child { color: #6ccb8e; }
+	.cli-transcript .cli-command code { padding: 0; border: 0; background: none; color: #f4f5f7; font-size: 0.8125rem; overflow-wrap: anywhere; }
+	.cli-example { flex-shrink: 0; margin-inline-start: auto; color: #9aa3ae; font-size: 0.75rem; }
+	.cli-transcript pre { margin: 0; padding: 1.25rem; border: 0; overflow-x: auto; background: none; font-size: 0.8125rem; line-height: 1.85; white-space: pre; }
+	.cli-transcript pre code { padding: 0; border: 0; background: none; font-size: inherit; }
+	.cli-transcript figcaption { margin: 0; padding: 0.75rem 1.25rem; border-top: 1px solid #23272e; color: #9aa3ae; font-size: 0.75rem; }
+	.agent { color: #e6e8eb; }
+	.muted { color: #9aa3ae; }
+	.ready { color: #6ccb8e; }
+	.waiting { color: #fb8a4b; }
+	.schedule { color: #f5d08a; }
+	.budget { color: #a7c7fa; }
+	.failed { color: #f38b82; }
+	@media (max-width: 40rem) {
+		.cli-command { flex-wrap: wrap; gap: 0.5rem; padding-inline: 1rem; }
+		.cli-command code { flex: 1; min-width: 0; }
+		.cli-transcript pre { padding: 1rem; }
+		.cli-example { display: none; }
+	}
+</style>

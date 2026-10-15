@@ -1,0 +1,164 @@
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import CliTranscript from './CliTranscript.astro';
+
+// Fictional deployment excerpts. Keep the fields and spacing the CLI prints;
+// colour and the notes below help readers interpret them on the homepage.
+type Token = { text: string; tone?: string };
+const token = (text: string, tone?: string): Token => ({ text, tone });
+
+const headings = ['AGENT', 'STATUS', 'NODE', 'NEXT RUN', 'SPENT'];
+const agents = [
+	['acme/books', 'asleep', '', 'in 16h 30m', '$1.24 of $10.00 today'],
+	['acme/release-watch', 'asleep', '', 'in 1h 30m', '$0.42 of $3.00 today'],
+	['acme/support', 'idle', 'wardrik@ops1', '', '84500 of 1000000 tokens today'],
+	['acme/@maya/morning-brief', 'asleep', '', 'in 18h 30m', '27756 of 400000 tokens today'],
+	['northwind/support', 'idle', 'wardrik@ops2', '', '12000 of 1000000 tokens today'],
+];
+const widths = headings.map((heading, column) =>
+	Math.max(heading.length, ...agents.map((row) => row[column].length)),
+);
+const fleet = [
+	headings.map((heading, column) => token(heading.padEnd(widths[column]) + '  ', 'muted')),
+	...agents.map((row) => row.map((value, column) => {
+		const tone = ['agent', value === 'idle' ? 'ready' : 'muted', 'muted', 'schedule', 'budget'][column];
+		return token(column === row.length - 1 ? value : value.padEnd(widths[column]) + '  ', tone);
+	})),
+];
+
+const triggers = [
+	['acme/books/close', '0 7 * * 1-5', '16h 30m'],
+	['acme/release-watch/check', '0 10,16 * * 1-5', '1h 30m'],
+	['acme/@maya/morning-brief/daily', '0 9 * * 1-5', '18h 30m'],
+	['northwind/support/triage', '0 8 * * 1-5', '17h 30m'],
+];
+const schedules = [
+	[token(`${triggers.length} triggers:`, 'muted')],
+	...triggers.map(([key, cron, next]) => [
+		token(`  ${key}  `, 'agent'),
+		token(cron, 'schedule'),
+		token(' America/Los_Angeles', 'schedule'),
+		token(`  next in ${next}`, 'ready'),
+		token('  not run yet', 'muted'),
+	]),
+];
+
+const changes = [
+	['41', '2026-10-14T17:05:12Z', 'secret.stored', 'secrets/SEARCH_API_KEY', 'maya'],
+	['42', '2026-10-14T17:12:40Z', 'agents.reloaded', 'agents', 'maya'],
+	['43', '2026-10-14T18:30:08Z', 'room.bound', 'rooms/slack/C012SUPPORT', 'slack/U012MAYA'],
+	['44', '2026-10-14T20:04:19Z', 'secret.stored', 'secrets/github', 'github'],
+	['45', '2026-10-14T21:02:51Z', 'agents.reloaded', 'agents', 'devon'],
+];
+const audit = changes.map(([sequence, at, type, subject, actor]) => [
+	token(`${sequence}  `, 'muted'),
+	token(`${at}  `, 'muted'),
+	token(`${type}  `, 'schedule'),
+	token(`${subject}  `, 'agent'),
+	token(`by ${actor}`, 'ready'),
+]);
+
+const approvals = [
+	[token('1 waiting:', 'waiting')],
+	[token('  acme/books  ', 'agent'), token('call_bill  ', 'waiting'), token('quickbooks/create-bill  ', 'agent'), token('A line over $1,000.', 'waiting')],
+	[],
+	[token('❯ ', 'ready'), token('rik approve acme/books call_bill "Matched to invoice INV-2048."', 'agent')],
+	[token('Approved call_bill for acme/books.', 'ready')],
+	[],
+	[token('❯ ', 'ready'), token('rik parked', 'agent')],
+	[token('Nothing is waiting on a person.', 'muted')],
+];
+
+const views = [
+	{
+		label: 'Fleet', command: 'rik ls', lines: fleet,
+		description: 'Shared workers and personal assistants across Acme and Northwind.',
+		caption: 'Illustrative output · two organizations',
+		notes: [
+			{ title: 'Status & node', tone: 'ready', body: 'Asleep agents retain their conversations. Idle agents are awake on the named node.', href: '/concepts/agent-lifecycle/#sleeping' },
+			{ title: 'Next run', tone: 'schedule', body: 'Time until the next scheduled trigger. Blank means none is scheduled.', href: '/build/triggers/' },
+			{ title: 'Spent', tone: 'budget', body: 'Dollars or tokens used against the current budget. Maya’s brief has spent 27,756 of 400,000 daily tokens.', href: '/concepts/budgets/' },
+		],
+		next: 'rik ls attention', nextDescription: 'Find agents waiting for approval.', href: '/reference/cli/#wardrik-ls',
+	},
+	{
+		label: 'Schedules', command: 'rik triggers', lines: schedules,
+		description: 'Bookkeeping, release checks, briefings, and support triage.',
+		caption: 'Illustrative output · four scheduled triggers',
+		notes: [
+			{ title: 'Schedule & timezone', tone: 'schedule', body: 'Release Watch checks at 10:00 and 16:00 on weekdays in Los Angeles, following daylight saving time.', href: '/build/triggers/#on-a-clock' },
+			{ title: 'Next run', tone: 'ready', body: 'A countdown to each trigger’s next run.', href: '/reference/cli/#wardrik-triggers' },
+			{ title: 'Last outcome', tone: 'muted', body: 'When the trigger last ran and how it ended, or “not run yet”.', href: '/build/triggers/' },
+		],
+		next: 'rik triggers acme/', nextDescription: 'Filter by organization.', href: '/reference/cli/#wardrik-triggers',
+	},
+	{
+		label: 'Audit', command: 'rik audit', lines: audit,
+		description: 'Trace reloads, channel bindings, and credentials to their actors.',
+		caption: 'Illustrative output · consecutive changes, oldest first',
+		notes: [
+			{ title: 'Sequence & time', tone: 'muted', body: 'Sequence numbers and UTC timestamps. Continue with --after.', href: '/reference/cli/#wardrik-audit' },
+			{ title: 'Action & subject', tone: 'schedule', body: 'The change and the resource it affected.', href: '/reference/cli/#wardrik-audit' },
+			{ title: 'Who changed it', tone: 'ready', body: 'The actor follows “by”. Use rik watch for tool calls and approvals.', href: '/reference/cli/#wardrik-watch' },
+		],
+		next: 'rik audit --after 45 --json', nextDescription: 'Read the next page as JSON.', href: '/reference/cli/#wardrik-audit',
+	},
+	{
+		label: 'Approvals', command: 'rik parked', lines: approvals,
+		description: 'A $2,400 bill waits for approval under Acme’s policy.',
+		caption: 'Illustrative output · review, approve, check the queue',
+		notes: [
+			{ title: 'The waiting call', tone: 'waiting', body: 'Agent, call ID, tool, and policy reason. Here, a bill line exceeds $1,000.', href: '/reference/cli/#wardrik-parked' },
+			{ title: 'Your decision', tone: 'ready', body: 'Approve runs the exact call. Deny gives the agent your reason. Waiting turns survive node failures.', href: '/concepts/approvals/' },
+			{ title: 'Your note', tone: 'muted', body: 'The note accompanies the result and guides the agent’s next steps. The call’s arguments stay unchanged.', href: '/reference/cli/#wardrik-approve' },
+		],
+		next: 'rik deny acme/books CALL_ID "Duplicate invoice."', nextDescription: 'Refuse a waiting call with a reason.', href: '/reference/cli/#wardrik-deny',
+	},
+];
+---
+
+<div class="operator-console">
+	<Tabs>
+		{views.map((view) => (
+			<TabItem label={view.label}>
+				<div class="operator-intro"><p>{view.description}</p></div>
+				<CliTranscript command={view.command} lines={view.lines} caption={view.caption} />
+				<dl class="operator-notes">
+					{view.label === 'Fleet' && <div class="operator-key-guide">
+						<dt><a href="/concepts/agents/#keys-and-orgs">Agent key</a></dt>
+						<dd><code>acme/@maya/morning-brief</code> is Maya’s morning brief at Acme: organization / user / agent name. The user is optional. <code>acme/support</code> and <code>northwind/support</code> belong to separate organizations.</dd>
+					</div>}
+					{view.notes.map((note) => (
+						<div>
+							<dt><a href={note.href}>{note.title}</a></dt>
+							<dd>{note.body}</dd>
+						</div>
+					))}
+					<div class="operator-next"><dt>Try next</dt><dd><a href={view.href}><code>{view.next}</code></a><span>{view.nextDescription}</span></dd></div>
+				</dl>
+			</TabItem>
+		))}
+	</Tabs>
+</div>
+
+<style>
+	.operator-console { min-width: 0; }
+	.operator-console :global([role='tablist']) { margin: 0; }
+	.operator-console :global([role='tab']) { padding: 0.75rem 1.25rem; font-size: 0.875rem; }
+	.operator-console :global([role='tabpanel']) { min-width: 0; }
+	.operator-console .operator-intro { margin: 1.5rem 0 1.25rem; }
+	.operator-console .operator-intro p { margin: 0; color: var(--sl-color-gray-2); font-size: 0.9375rem; }
+	.operator-console .operator-notes { margin: 1.5rem 0 0; }
+	.operator-notes > div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 0.5rem 1.5rem; margin: 0; padding-block: 1rem; border-bottom: 1px solid var(--sl-color-gray-5); }
+	.operator-notes > div:last-child { border-bottom: 0; }
+	.operator-notes dt { padding: 0; color: var(--sl-color-white); font-size: 0.9375rem; font-weight: 500; line-height: 1.7; }
+	.operator-notes dt a { color: var(--home-link-color, var(--sl-color-text-accent)); text-decoration: none; }
+	.operator-notes dt a:hover { color: var(--sl-color-text-accent); text-decoration: underline; }
+	.operator-console .operator-notes dd { min-width: 0; margin: 0; padding: 0; color: var(--sl-color-gray-2); font-size: 0.9375rem; line-height: 1.7; text-wrap: pretty; }
+	.operator-notes code { font-size: 0.8125rem; overflow-wrap: anywhere; }
+	.operator-next span { display: block; margin-top: 0.5rem; }
+	.operator-next a { color: var(--home-link-color, var(--sl-color-text-accent)); }
+	@media (max-width: 40rem) {
+		.operator-notes > div { grid-template-columns: minmax(0, 1fr); }
+	}
+</style>
