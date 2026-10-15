@@ -33,7 +33,8 @@ Approving grants another limit's worth, or `grant`. `on_exhausted: deny` ends th
   included. They share one meter, and a grant frees them all.
 - An agent held to several budgets, such as its own and its [org's ceiling](/run/orgs/#hold-an-org-to-a-ceiling),
   counts each apart. A call counts once in each, and more approved on one loosens no other.
-- Days, weeks and months are UTC; weeks start on Monday. A `turn` budget covers one turn and what
+- Days, weeks and months are UTC unless `timezone` names another zone, as `Europe/Berlin`; weeks
+  start on Monday. A `turn` budget covers one turn and what
   it delegates. Tokens count input and output together.
 - Prices come from the provider when it reports a cost, otherwise from the model catalog. A dollar
   budget refuses a model the catalog can't price; a token budget governs it, or a model a

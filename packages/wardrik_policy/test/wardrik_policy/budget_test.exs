@@ -14,19 +14,21 @@ defmodule WardrikPolicy.BudgetTest do
   alias Wardrik.LLM.Tokens
   alias Wardrik.Scope
   alias Wardrik.Test.LLMStub
+  alias Wardrik.TimeZone
   alias WardrikPolicy.Budget
   alias WardrikPolicy.Spend
 
   describe "decode/1 and encode/1" do
     test "round-trip, with the defaults filled in" do
       assert {:ok, budget} = Budget.decode(%{"usd" => 5})
-      assert budget == %Budget{usd: 5.0, per: :day, on_exhausted: :ask}
+      assert budget == %Budget{usd: 5.0, per: :day, timezone: TimeZone.utc(), on_exhausted: :ask}
       assert Budget.grant(budget) == {5_000_000, 0}
 
       full = %{
         "usd" => 2.5,
         "tokens" => 100_000,
         "per" => "week",
+        "timezone" => "Europe/Berlin",
         "grant" => %{"usd" => 1, "tokens" => 5000},
         "on_exhausted" => "deny"
       }
@@ -52,9 +54,30 @@ defmodule WardrikPolicy.BudgetTest do
       assert {:error, "budget on_exhausted is ask or deny"} =
                Budget.decode(%{"usd" => 1, "on_exhausted" => "no"})
 
+      assert {:error, ~s(budget timezone: "Moon/Base" is not a time zone)} =
+               Budget.decode(%{"usd" => 1, "timezone" => "Moon/Base"})
+
       assert {:error, "budget dollars is not a setting" <> _} =
                Budget.decode(%{"usd" => 1, "dollars" => 1})
     end
+  end
+
+  test "window/3 names the period a moment falls in, in the budget's time zone" do
+    {:ok, berlin} = TimeZone.new("Europe/Berlin")
+    now = ~U[2026-09-30 22:30:00Z]
+
+    assert Budget.window(%Budget{usd: 1.0, per: :day}, "t1", now) == "day:2026-09-30"
+
+    assert Budget.window(%Budget{usd: 1.0, per: :day, timezone: berlin}, "t1", now) ==
+             "day:2026-10-01"
+
+    assert Budget.window(%Budget{usd: 1.0, per: :month}, "t1", now) == "month:2026-09"
+
+    assert Budget.window(%Budget{usd: 1.0, per: :month, timezone: berlin}, "t1", now) ==
+             "month:2026-10"
+
+    assert Budget.window(%Budget{usd: 1.0, per: :week, timezone: berlin}, "t1", now) ==
+             "week:2026-W40"
   end
 
   test "window/3 names the UTC period a moment falls in" do
@@ -417,7 +440,13 @@ defmodule WardrikPolicy.BudgetTest do
 
   test "a budget is part of a policy's written form" do
     written = %{
-      "budget" => %{"usd" => 5.0, "tokens" => 1000, "per" => "day", "on_exhausted" => "ask"},
+      "budget" => %{
+        "usd" => 5.0,
+        "tokens" => 1000,
+        "per" => "day",
+        "timezone" => "Asia/Tokyo",
+        "on_exhausted" => "ask"
+      },
       "default" => "allow"
     }
 
