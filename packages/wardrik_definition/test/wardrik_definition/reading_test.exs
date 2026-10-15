@@ -492,7 +492,13 @@ defmodule WardrikDefinition.ReadingTest do
   end
 
   test "reads one trigger, or a list of them", context do
-    assert {:ok, [%WardrikTrigger{name: "trigger-1", every: {:cron, "*/30 * * * *"}}]} =
+    assert {:ok,
+            [
+              %WardrikTrigger{
+                name: "trigger-1",
+                every: %WardrikTrigger.Cron{source: "*/30 * * * *"}
+              }
+            ]} =
              triggers(
                "---\ntriggers:\n  every: \"*/30 * * * *\"\n  prompt: Look.\n---\n",
                context
@@ -509,6 +515,7 @@ defmodule WardrikDefinition.ReadingTest do
                    jitter: 10
                  - name: digest
                    every: "0 17 * * 1-5"
+                   timezone: Europe/Berlin
                    prompt: Write up the day.
                    overlap: queue
                    missed: skip
@@ -518,9 +525,20 @@ defmodule WardrikDefinition.ReadingTest do
              )
 
     assert [
-             %WardrikTrigger{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
-             %WardrikTrigger{name: "digest", overlap: :queue, missed: :skip}
+             %WardrikTrigger{
+               name: "sweep",
+               every: %WardrikTrigger.Interval{ms: 1_800_000},
+               jitter: 10_000
+             },
+             %WardrikTrigger{
+               name: "digest",
+               every: %WardrikTrigger.Cron{timezone: berlin},
+               overlap: :queue,
+               missed: :skip
+             }
            ] = two
+
+    assert to_string(berlin) == "Europe/Berlin"
 
     assert {:ok, []} = triggers("---\n---\n", context)
   end
@@ -529,6 +547,8 @@ defmodule WardrikDefinition.ReadingTest do
     for {settings, refusal} <- [
           {"{every: 10s, prompt: Look.}", "trigger 1: every: \"10s\" is shorter than a minute"},
           {"{name: sweep, every: 30m}", "trigger sweep: prompt is a string"},
+          {"{name: sweep, every: 30m, timezone: Europe/Berlin, prompt: Look.}",
+           ~s(trigger sweep: timezone applies to a cron expression; every: "30m" counts elapsed time)},
           {"{every: 30m, prompt: Look., when: now}", "trigger when is not a setting"},
           {"[{name: a, every: 30m, prompt: x}, {name: a, every: 1h, prompt: y}]",
            "trigger names a twice"},
@@ -680,7 +700,8 @@ defmodule WardrikDefinition.ReadingTest do
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
                WardrikDefinition.triggers(fields, %WardrikDefinition.Context{})
 
-      assert {:ok, fields, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
+      assert {:ok, fields, :changed,
+              %WardrikTrigger{every: %WardrikTrigger.Interval{ms: 7_200_000}}} =
                WardrikDefinition.put_trigger(fields, "trigger-1",
                  trigger: %{unnamed | "every" => "2h"},
                  context: %WardrikDefinition.Context{}

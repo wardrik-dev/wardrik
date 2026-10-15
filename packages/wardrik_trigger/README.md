@@ -22,12 +22,16 @@ WardrikTrigger.put(~A"acme/triage", "sweep",
   prompt: "Check the incident queue.")
 
 WardrikTrigger.sync(~A"acme/triage", [
-  WardrikTrigger.new("digest", every: "0 17 * * 1-5", prompt: "Write up today.")
+  WardrikTrigger.new("digest",
+    every: "0 17 * * 1-5",
+    timezone: "Europe/Berlin",
+    prompt: "Write up today.")
 ])
 ```
 
-`every` is a five-field cron expression read in UTC, or a duration of at
-least a minute, as `"30m"`. A trigger writes down its next run before it
+`every` is a five-field cron expression, read in `timezone`, `Etc/UTC`
+unless it names another, or a duration of at least a minute, as `"30m"`,
+which counts elapsed time. A trigger writes down its next run before it
 asks the agent, so a firing lost to a crash is not made again, and it
 announces each firing on the agent's events as `{:trigger_fired, name,
 outcome}`.

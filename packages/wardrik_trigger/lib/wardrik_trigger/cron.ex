@@ -1,10 +1,11 @@
 defmodule WardrikTrigger.Cron do
   @moduledoc """
-  A five-field cron expression, read in UTC, and the times it names.
+  A five-field cron expression, read in a time zone, and the times it names.
 
-      {:ok, cron} = WardrikTrigger.Cron.parse("*/30 9-17 * * 1-5")
+      {:ok, berlin} = Wardrik.TimeZone.new("Europe/Berlin")
+      {:ok, cron} = WardrikTrigger.Cron.parse("0 18 * * 1-5", timezone: berlin)
       WardrikTrigger.Cron.next(cron, ~U[2026-09-24 09:10:00Z])
-      #=> {:ok, ~U[2026-09-24 09:30:00Z]}
+      #=> {:ok, ~U[2026-09-24 16:00:00Z]}
 
   The fields are minute (0-59), hour (0-23), day of the month (1-31), month
   (1-12) and day of the week (0-7, where 0 and 7 are Sunday). Each is `*`, a
@@ -14,18 +15,32 @@ defmodule WardrikTrigger.Cron do
 
   Where both the day of the month and the day of the week are restricted, a
   day matching either one matches, as in Vixie cron.
+
+  ## Time zones
+
+  The fields name times on the zone's clock, `Etc/UTC` unless `parse/2` is
+  given another, so `0 18 * * *` in `Europe/Berlin` runs at six in the
+  evening there in summer and in winter alike. Where the zone's clocks skip
+  a time, as 02:30 on the night they go forward, it runs at the first
+  instant after the gap, once. Where they repeat one, as 02:30 on the night
+  they go back, it runs on the first pass only, so `*/15` makes no run in
+  the repeated hour. A duration, as `every: 15m`, counts elapsed time and
+  ignores zones.
   """
 
-  @enforce_keys [:source, :minutes, :hours, :days, :months, :weekdays, :day_rule]
-  defstruct [:source, :minutes, :hours, :days, :months, :weekdays, :day_rule]
+  alias Wardrik.TimeZone
+
+  @enforce_keys [:source, :timezone, :minutes, :hours, :days, :months, :weekdays, :day_rule]
+  defstruct [:source, :timezone, :minutes, :hours, :days, :months, :weekdays, :day_rule]
 
   @typedoc """
-  A parsed expression: the text it came from, the values each field allows,
-  and whether a day must match the day of the month, the day of the week,
-  either, or neither.
+  A parsed expression: the text it came from, the zone it is read in, the
+  values each field allows, and whether a day must match the day of the
+  month, the day of the week, either, or neither.
   """
   @type t() :: %__MODULE__{
           source: String.t(),
+          timezone: TimeZone.t(),
           minutes: MapSet.t(non_neg_integer()),
           hours: MapSet.t(non_neg_integer()),
           days: MapSet.t(pos_integer()),
@@ -49,14 +64,18 @@ defmodule WardrikTrigger.Cron do
   # no day at all.
   @max_steps 20_000
 
-  @doc "Reads `text`, answering why it does not read when it does not."
-  @spec parse(String.t()) :: {:ok, t()} | {:error, String.t()}
-  def parse(text) when is_binary(text) do
+  @doc """
+  Reads `text` in `:timezone`, `Etc/UTC` by default, answering why it does
+  not read when it does not.
+  """
+  @spec parse(String.t(), timezone: TimeZone.t()) :: {:ok, t()} | {:error, String.t()}
+  def parse(text, opts \\ []) when is_binary(text) do
     source = String.trim(text)
+    timezone = Keyword.get_lazy(opts, :timezone, &TimeZone.utc/0)
 
     with {:ok, fields} <- split(Map.get(@aliases, source, source)),
          {:ok, sets} <- sets(fields),
-         cron = build(source, fields, sets),
+         cron = build(source, timezone, fields, sets),
          {:ok, _next} <- next(cron, ~U[2000-01-01 00:00:00Z]) do
       {:ok, cron}
     else
@@ -83,9 +102,10 @@ defmodule WardrikTrigger.Cron do
     end)
   end
 
-  defp build(source, [_minute, _hour, day, _month, weekday], sets) do
+  defp build(source, timezone, [_minute, _hour, day, _month, weekday], sets) do
     %__MODULE__{
       source: source,
+      timezone: timezone,
       minutes: sets.minutes,
       hours: sets.hours,
       days: sets.days,
@@ -170,31 +190,42 @@ defmodule WardrikTrigger.Cron do
   end
 
   @doc """
-  The first minute `cron` names after `from`, or `{:error, :never}` for an
-  expression naming no day that exists, such as the 31st of February.
+  The first minute `cron` names after `from`, as an instant in UTC, or
+  `{:error, :never}` for an expression naming no day that exists, such as
+  the 31st of February.
   """
   @spec next(t(), DateTime.t()) :: {:ok, DateTime.t()} | {:error, :never}
-  def next(%__MODULE__{} = cron, %DateTime{} = from) do
+  def next(%__MODULE__{timezone: timezone} = cron, %DateTime{} = from) do
     start =
-      from
-      |> DateTime.shift_zone!("Etc/UTC")
-      |> DateTime.truncate(:second)
+      timezone
+      |> TimeZone.local(from)
+      |> NaiveDateTime.truncate(:second)
       |> Map.put(:second, 0)
-      |> DateTime.add(60)
+      |> NaiveDateTime.add(60)
 
-    seek(cron, start, @max_steps)
+    seek(cron, start, from, @max_steps)
   end
 
-  defp seek(_cron, _at, 0), do: {:error, :never}
+  defp seek(_cron, _at, _from, 0), do: {:error, :never}
 
-  defp seek(cron, at, steps) do
+  defp seek(cron, at, from, steps) do
     cond do
-      at.month not in cron.months -> seek(cron, next_month(at), steps - 1)
-      not day?(cron, at) -> seek(cron, next_day(at), steps - 1)
-      at.hour not in cron.hours -> seek(cron, next_hour(at), steps - 1)
-      at.minute not in cron.minutes -> seek(cron, DateTime.add(at, 60), steps - 1)
-      true -> {:ok, at}
+      at.month not in cron.months -> seek(cron, next_month(at), from, steps - 1)
+      not day?(cron, at) -> seek(cron, next_day(at), from, steps - 1)
+      at.hour not in cron.hours -> seek(cron, next_hour(at), from, steps - 1)
+      at.minute not in cron.minutes -> seek(cron, NaiveDateTime.add(at, 60), from, steps - 1)
+      true -> after_from(cron, at, from, steps)
     end
+  end
+
+  # A time the clocks repeat reads as its first pass, which can fall before
+  # `from` once the second pass has begun; the search goes on past it.
+  defp after_from(cron, at, from, steps) do
+    instant = TimeZone.at(cron.timezone, at)
+
+    if DateTime.after?(instant, from),
+      do: {:ok, instant},
+      else: seek(cron, NaiveDateTime.add(at, 60), from, steps - 1)
   end
 
   defp day?(%__MODULE__{day_rule: :any}, _at), do: true
@@ -208,13 +239,22 @@ defmodule WardrikTrigger.Cron do
   defp weekday(at), do: at |> Date.day_of_week() |> rem(7)
 
   defp next_month(at) do
-    date = at |> DateTime.to_date() |> Date.beginning_of_month() |> Date.shift(month: 1)
-    DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
+    date = at |> NaiveDateTime.to_date() |> Date.beginning_of_month() |> Date.shift(month: 1)
+    NaiveDateTime.new!(date, ~T[00:00:00])
   end
 
-  defp next_day(at) do
-    DateTime.new!(Date.add(DateTime.to_date(at), 1), ~T[00:00:00], "Etc/UTC")
+  defp next_day(at), do: NaiveDateTime.new!(Date.add(NaiveDateTime.to_date(at), 1), ~T[00:00:00])
+
+  defp next_hour(at), do: at |> Map.put(:minute, 0) |> NaiveDateTime.add(3600)
+end
+
+defimpl WardrikTrigger.Every, for: WardrikTrigger.Cron do
+  def next(cron, from) do
+    {:ok, at} = WardrikTrigger.Cron.next(cron, from)
+    at
   end
 
-  defp next_hour(at), do: at |> Map.put(:minute, 0) |> DateTime.add(3600)
+  def schedule(cron), do: "#{cron.source} #{cron.timezone}"
+
+  def encode(cron), do: %{"every" => cron.source, "timezone" => to_string(cron.timezone)}
 end

@@ -63,5 +63,21 @@ defmodule WardrikTrigger.StateTest do
       assert State.configure(state, hourly, ~U[2026-09-24 09:20:00Z]).next_at ==
                ~U[2026-09-24 10:00:00Z]
     end
+
+    test "goes on from now when the time zone changes" do
+      state = state(every: "0 18 * * *")
+
+      berlin =
+        WardrikTrigger.new("sweep",
+          every: "0 18 * * *",
+          timezone: "Europe/Berlin",
+          prompt: "Look."
+        )
+
+      assert state.next_at == ~U[2026-09-24 18:00:00Z]
+
+      assert State.configure(state, berlin, ~U[2026-09-24 09:20:00Z]).next_at ==
+               ~U[2026-09-24 16:00:00Z]
+    end
   end
 end

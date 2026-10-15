@@ -7,6 +7,11 @@ defmodule WardrikTrigger do
         every: "*/30 * * * *",
         prompt: "Check the incident queue.")
 
+      WardrikTrigger.put(~A"acme/triage", "digest",
+        every: "0 17 * * 1-5",
+        timezone: "Europe/Berlin",
+        prompt: "Write up today.")
+
   Each trigger is a `DurableServer` keyed by the agent's ID and the
   trigger's name, so one process in the cluster owns it, and it carries on
   from its store on another node when its own is lost. When it comes due it
@@ -59,9 +64,13 @@ defmodule WardrikTrigger do
 
   ## Options
 
-    * `:every` - required. A five-field cron expression read in UTC, see
+    * `:every` - required. A five-field cron expression, see
       `WardrikTrigger.Cron`; a duration of at least a minute, as `"30m"`,
-      `"2h"` or `"1d"`; or `{:interval, ms}`
+      `"2h"` or `"1d"`; or a `WardrikTrigger.Cron` or
+      `WardrikTrigger.Interval` already made
+    * `:timezone` - the name of the time zone a cron expression written as
+      text is read in, as `"Europe/Berlin"`; `"Etc/UTC"` by default. A
+      duration counts elapsed time, so it takes none
     * `:prompt` - required. What the agent is asked
     * `:overlap` - what a firing does when the agent is running or waiting
       on a person: `:skip`, the default, leaves it be, and `:queue` asks
@@ -88,8 +97,11 @@ defmodule WardrikTrigger do
 
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
+  alias Wardrik.TimeZone
   alias WardrikTrigger.Clock
   alias WardrikTrigger.Cron
+  alias WardrikTrigger.Every
+  alias WardrikTrigger.Interval
   alias WardrikTrigger.Kind
   alias WardrikTrigger.Source
   alias WardrikTrigger.Status
@@ -106,8 +118,8 @@ defmodule WardrikTrigger do
     source: {Clock, nil}
   ]
 
-  @typedoc "When a trigger runs: a cron expression's text, or every so many milliseconds."
-  @type every() :: {:cron, String.t()} | {:interval, pos_integer()}
+  @typedoc "When a trigger runs: a cron expression in its time zone, or every so many milliseconds."
+  @type every() :: Cron.t() | Interval.t()
 
   @type t() :: %__MODULE__{
           name: String.t(),
@@ -126,9 +138,8 @@ defmodule WardrikTrigger do
   @type outcome() :: :asked | :nothing_new | :busy | :no_agent | :missed | :failed
 
   @name WardrikTrigger.Triggers
-  @fields ~w(every prompt overlap missed jitter)
+  @fields ~w(every timezone prompt overlap missed jitter)
   @units %{"s" => 1_000, "m" => 60_000, "h" => 3_600_000, "d" => 86_400_000}
-  @sizes Enum.sort_by(@units, &elem(&1, 1), :desc)
 
   @doc false
   @spec supervisor() :: atom()
@@ -171,7 +182,7 @@ defmodule WardrikTrigger do
   def new(name, opts) when is_list(opts) do
     %__MODULE__{
       name: name!(name),
-      every: every!(Keyword.get(opts, :every)),
+      every: every!(Keyword.get(opts, :every), Keyword.fetch(opts, :timezone)),
       prompt: prompt!(Keyword.get(opts, :prompt)),
       overlap: overlap!(Keyword.get(opts, :overlap, :skip)),
       missed: one_of!(Keyword.get(opts, :missed, :run_once), [:run_once, :skip], :missed),
@@ -191,33 +202,53 @@ defmodule WardrikTrigger do
   def name!(name),
     do: raise(ArgumentError, "a trigger's name is a string, got #{inspect(name)}")
 
-  defp every!({:interval, ms} = every) when is_integer(ms) and ms > 0, do: every
+  defp every!(%Interval{ms: ms} = every, :error) when is_integer(ms) and ms > 0, do: every
+  defp every!(%Cron{} = every, :error), do: every
 
-  defp every!({:cron, text}) when is_binary(text), do: every!(text)
-
-  defp every!(text) when is_binary(text) do
+  defp every!(text, timezone) when is_binary(text) do
     case Regex.run(~r/^\s*(\d+)\s*([smhd])\s*$/, text) do
       [_, n, unit] ->
+        no_timezone!(timezone, text)
         interval!(String.to_integer(n) * Map.fetch!(@units, unit), text)
 
       nil ->
-        case Cron.parse(text) do
-          {:ok, cron} -> {:cron, cron.source}
+        case Cron.parse(text, timezone: timezone!(timezone)) do
+          {:ok, cron} -> cron
           {:error, message} -> raise ArgumentError, "every: #{message}"
         end
     end
   end
 
-  defp every!(other) do
+  defp every!(%struct{}, {:ok, _timezone}) when struct in [Cron, Interval],
+    do: raise(ArgumentError, "timezone goes with every written as text; a Cron holds its own")
+
+  defp every!(other, _timezone) do
     raise ArgumentError,
-          "every is a cron expression, a duration such as \"30m\", or {:interval, ms}, " <>
+          "every is a cron expression, a duration such as \"30m\", a Cron or an Interval, " <>
             "got #{inspect(other)}"
   end
 
   defp interval!(ms, text) when ms < 60_000,
     do: raise(ArgumentError, "every: #{inspect(text)} is shorter than a minute")
 
-  defp interval!(ms, _text), do: {:interval, ms}
+  defp interval!(ms, _text), do: %Interval{ms: ms}
+
+  defp timezone!(:error), do: TimeZone.utc()
+
+  defp timezone!({:ok, name}) do
+    case TimeZone.new(name) do
+      {:ok, timezone} -> timezone
+      {:error, message} -> raise ArgumentError, "timezone: #{message}"
+    end
+  end
+
+  defp no_timezone!(:error, _text), do: :ok
+
+  defp no_timezone!({:ok, _name}, text) do
+    raise ArgumentError,
+          "timezone applies to a cron expression; every: #{inspect(String.trim(text))} " <>
+            "counts elapsed time"
+  end
 
   @doc false
   @spec prompt!(term()) :: String.t()
@@ -252,7 +283,7 @@ defmodule WardrikTrigger do
 
       WardrikTrigger.decode("sweep", %{"every" => "*/30 * * * *", "prompt" => "Look.", "overlap" => "queue"})
 
-  `every` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
+  `every`, `timezone` and `prompt` are as `new/2` takes them, `overlap` is `skip` or
   `queue`, `missed` is `run_once` or `skip`, and `jitter` is whole seconds.
   The fields left are the source's, which one of them names by its key, and
   the clock's where none does: see `WardrikTrigger.Source`. Fields with
@@ -274,13 +305,16 @@ defmodule WardrikTrigger do
          {:ok, missed} <- choice(own, "missed", :run_once, ~w(run_once skip)),
          {:ok, jitter} <- seconds(own["jitter"]) do
       {:ok,
-       new(name,
-         every: every,
-         prompt: own["prompt"],
-         overlap: overlap,
-         missed: missed,
-         jitter: jitter,
-         source: source
+       new(
+         name,
+         [
+           every: every,
+           prompt: own["prompt"],
+           overlap: overlap,
+           missed: missed,
+           jitter: jitter,
+           source: source
+         ] ++ for({"timezone", timezone} <- own, do: {:timezone, timezone})
        )}
     end
   rescue
@@ -364,15 +398,6 @@ defmodule WardrikTrigger do
   @spec encode(trigger()) :: %{String.t() => term()}
   def encode(trigger), do: Kind.encode(trigger)
 
-  @doc false
-  @spec written(every()) :: String.t()
-  def written({:cron, text}), do: text
-
-  def written({:interval, ms}) do
-    {unit, size} = Enum.find(@sizes, fn {_unit, size} -> rem(ms, size) == 0 end)
-    "#{div(ms, size)}#{unit}"
-  end
-
   @doc """
   What `trigger`'s source finds for `:agent` since `cursor`, under the
   `:settings` the triggers were started with for each source; see
@@ -386,12 +411,6 @@ defmodule WardrikTrigger do
     settings = check |> Keyword.get(:settings, %{}) |> Map.get(module, [])
     module.check(opts, cursor, agent: Keyword.fetch!(check, :agent), settings: settings)
   end
-
-  @doc "When `every` runs, as a person reads it: the cron expression, or `every 30m`."
-  @spec schedule(every()) :: String.t()
-  def schedule({:cron, text}), do: text
-  def schedule({:interval, ms} = every) when rem(ms, 1_000) == 0, do: "every " <> written(every)
-  def schedule({:interval, ms}), do: "every #{ms}ms"
 
   @doc false
   @spec lookup(AgentID.t(), String.t()) :: pid() | nil
@@ -407,16 +426,7 @@ defmodule WardrikTrigger do
   """
   @spec next(t(), DateTime.t()) :: DateTime.t()
   def next(%__MODULE__{every: every, jitter: jitter}, %DateTime{} = from) do
-    at =
-      case every do
-        {:interval, ms} ->
-          DateTime.add(from, ms, :millisecond)
-
-        {:cron, text} ->
-          {:ok, cron} = Cron.parse(text)
-          {:ok, at} = Cron.next(cron, from)
-          at
-      end
+    at = Every.next(every, from)
 
     if jitter > 0, do: DateTime.add(at, :rand.uniform(jitter + 1) - 1, :millisecond), else: at
   end
@@ -532,9 +542,9 @@ defimpl WardrikTrigger.Kind, for: WardrikTrigger do
   def encode(%WardrikTrigger{source: {module, opts}} = trigger) do
     opts
     |> module.encode()
+    |> Map.merge(WardrikTrigger.Every.encode(trigger.every))
     |> Map.merge(%{
       "name" => trigger.name,
-      "every" => WardrikTrigger.written(trigger.every),
       "prompt" => trigger.prompt,
       "overlap" => to_string(trigger.overlap),
       "missed" => to_string(trigger.missed),

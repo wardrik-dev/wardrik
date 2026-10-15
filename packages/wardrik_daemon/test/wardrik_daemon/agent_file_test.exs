@@ -280,7 +280,13 @@ defmodule WardrikDaemon.AgentFileTest do
                context
              )
 
-    assert [%WardrikTrigger{name: "trigger-1", every: {:cron, "*/30 * * * *"}, overlap: :skip}] =
+    assert [
+             %WardrikTrigger{
+               name: "trigger-1",
+               every: %WardrikTrigger.Cron{source: "*/30 * * * *"},
+               overlap: :skip
+             }
+           ] =
              one
 
     assert {:ok, two} =
@@ -303,7 +309,11 @@ defmodule WardrikDaemon.AgentFileTest do
              )
 
     assert [
-             %WardrikTrigger{name: "sweep", every: {:interval, 1_800_000}, jitter: 10_000},
+             %WardrikTrigger{
+               name: "sweep",
+               every: %WardrikTrigger.Interval{ms: 1_800_000},
+               jitter: 10_000
+             },
              %WardrikTrigger{name: "digest", overlap: :queue, missed: :skip}
            ] = two
 
@@ -536,7 +546,8 @@ defmodule WardrikDaemon.AgentFileTest do
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
                Record.triggers(definition, context: ctx())
 
-      assert {:ok, definition, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
+      assert {:ok, definition, :changed,
+              %WardrikTrigger{every: %WardrikTrigger.Interval{ms: 7_200_000}}} =
                Record.put_trigger(definition, "trigger-1",
                  trigger: %{unnamed | "every" => "2h"},
                  context: ctx()

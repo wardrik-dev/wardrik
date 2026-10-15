@@ -36,12 +36,14 @@ defmodule WardrikTriggerTest do
   alias Wardrik.Fleet
   alias Wardrik.LLM.Turn
   alias Wardrik.Test.AgentRunners
+  alias WardrikTrigger.Cron
+  alias WardrikTrigger.Interval
   alias WardrikTrigger.Item
   alias WardrikTriggerTest.Watch
 
   # Short enough to fire within an assert_receive, long enough that a test
   # sees each firing it waits for.
-  @every {:interval, 50}
+  @every %WardrikTrigger.Interval{ms: 50}
 
   setup do
     key = Wardrik.Test.Fleet.id("triggered")
@@ -76,16 +78,27 @@ defmodule WardrikTriggerTest do
 
   describe "new/2" do
     test "reads a duration as an interval" do
-      assert %WardrikTrigger{every: {:interval, 1_800_000}} =
+      assert %WardrikTrigger{every: %Interval{ms: 1_800_000}} =
                WardrikTrigger.new("sweep", every: "30m", prompt: "Look.")
 
-      assert %WardrikTrigger{every: {:interval, 86_400_000}} =
+      assert %WardrikTrigger{every: %Interval{ms: 86_400_000}} =
                WardrikTrigger.new("sweep", every: "1d", prompt: "Look.")
     end
 
-    test "keeps a cron expression as the text it read" do
-      assert %WardrikTrigger{every: {:cron, "*/30 * * * *"}} =
+    test "reads a cron expression in UTC, or in the time zone it is given" do
+      assert %WardrikTrigger{every: %Cron{source: "*/30 * * * *", timezone: utc}} =
                WardrikTrigger.new("sweep", every: " */30 * * * * ", prompt: "Look.")
+
+      assert to_string(utc) == "Etc/UTC"
+
+      assert %WardrikTrigger{every: %Cron{source: "0 18 * * *", timezone: berlin}} =
+               WardrikTrigger.new("report",
+                 every: "0 18 * * *",
+                 timezone: "Europe/Berlin",
+                 prompt: "Report."
+               )
+
+      assert to_string(berlin) == "Europe/Berlin"
     end
 
     test "refuses what it cannot read" do
@@ -105,6 +118,18 @@ defmodule WardrikTriggerTest do
         WardrikTrigger.new("a/b", every: "30m", prompt: "Look.")
       end
 
+      assert_raise ArgumentError, ~r/timezone: "Mars\/Olympus" is not a time zone/, fn ->
+        WardrikTrigger.new("sweep", every: "@daily", timezone: "Mars/Olympus", prompt: "Look.")
+      end
+
+      assert_raise ArgumentError, ~r/timezone applies to a cron expression/, fn ->
+        WardrikTrigger.new("sweep", every: "30m", timezone: "Europe/Berlin", prompt: "Look.")
+      end
+
+      assert_raise ArgumentError, ~r/a Cron holds its own/, fn ->
+        WardrikTrigger.new("sweep", every: @every, timezone: "Europe/Berlin", prompt: "Look.")
+      end
+
       assert_raise ArgumentError, ~r/overlap is one of :skip, :queue/, fn ->
         WardrikTrigger.new("sweep", every: "30m", prompt: "Look.", overlap: :interrupt)
       end
@@ -120,6 +145,7 @@ defmodule WardrikTriggerTest do
               "overlap" => "queue",
               "jitter" => 30
             },
+            %{"every" => "0 18 * * 1-5", "timezone" => "Europe/Berlin", "prompt" => "Report."},
             %{"every" => "90m", "prompt" => "Look.", "missed" => "skip"}
           ] do
         {:ok, trigger} = WardrikTrigger.decode("sweep", fields, offered: offered())
@@ -132,7 +158,15 @@ defmodule WardrikTriggerTest do
       end
 
       assert %{"every" => "2h", "overlap" => "skip", "missed" => "run_once", "jitter" => 0} =
+               encoded =
                WardrikTrigger.encode(WardrikTrigger.new("sweep", every: "120m", prompt: "Look."))
+
+      refute Map.has_key?(encoded, "timezone")
+
+      assert %{"every" => "@daily", "timezone" => "Etc/UTC"} =
+               WardrikTrigger.encode(
+                 WardrikTrigger.new("sweep", every: "@daily", prompt: "Look.")
+               )
     end
   end
 
@@ -141,7 +175,7 @@ defmodule WardrikTriggerTest do
       assert {:ok,
               %WardrikTrigger{
                 name: "sweep",
-                every: {:cron, "*/30 * * * *"},
+                every: %Cron{source: "*/30 * * * *"},
                 prompt: "Look.",
                 overlap: :queue,
                 missed: :skip,
@@ -159,7 +193,7 @@ defmodule WardrikTriggerTest do
                  offered: offered()
                )
 
-      assert {:ok, %WardrikTrigger{every: {:interval, 1_800_000}, overlap: :skip, jitter: 0}} =
+      assert {:ok, %WardrikTrigger{every: %Interval{ms: 1_800_000}, overlap: :skip, jitter: 0}} =
                WardrikTrigger.decode("sweep", %{"every" => "30m", "prompt" => "Look."},
                  offered: offered()
                )
@@ -178,7 +212,7 @@ defmodule WardrikTriggerTest do
                {:error, "watch names the answers a test hands it"}
 
       assert {:error,
-              "when is not a setting; expected every, prompt, overlap, missed, jitter, feed, watch or webhook"} =
+              "when is not a setting; expected every, timezone, prompt, overlap, missed, jitter, feed, watch or webhook"} =
                WardrikTrigger.decode("mentions", %{"every" => "1h", "when" => "now"},
                  offered: offered()
                )
@@ -201,7 +235,7 @@ defmodule WardrikTriggerTest do
     test "says what does not read" do
       for {fields, message} <- [
             {%{"when" => "now"},
-             "when is not a setting; expected every, prompt, overlap, missed, jitter, feed or webhook"},
+             "when is not a setting; expected every, timezone, prompt, overlap, missed, jitter, feed or webhook"},
             {%{"prompt" => "Look."}, ~s(every is a cron expression, or a duration such as "30m")},
             {%{"every" => "30m", "prompt" => "Look.", "overlap" => "interrupt"},
              "overlap is one of skip, queue"},
@@ -209,7 +243,13 @@ defmodule WardrikTriggerTest do
              "missed is one of run_once, skip"},
             {%{"every" => "30m", "prompt" => "Look.", "jitter" => 1.5},
              "jitter is a whole number of seconds"},
-            {%{"every" => "30s", "prompt" => "Look."}, ~s(every: "30s" is shorter than a minute)}
+            {%{"every" => "30s", "prompt" => "Look."}, ~s(every: "30s" is shorter than a minute)},
+            {%{"every" => "@daily", "timezone" => "CET+1", "prompt" => "Look."},
+             ~s(timezone: "CET+1" is not a time zone)},
+            {%{"every" => "@daily", "timezone" => 1, "prompt" => "Look."},
+             "timezone: a time zone is a name such as Europe/Berlin, got 1"},
+            {%{"every" => "1h", "timezone" => "Europe/Berlin", "prompt" => "Look."},
+             ~s(timezone applies to a cron expression; every: "1h" counts elapsed time)}
           ] do
         assert WardrikTrigger.decode("sweep", fields) == {:error, message}
       end
@@ -447,7 +487,7 @@ defmodule WardrikTriggerTest do
       assert deliver(key, "issues", request("d-1", "{}")) == {:ok, :asked}
 
       {:ok, _pid} = WardrikTrigger.put(key, "issues", every: "@daily", prompt: "Look.")
-      assert [%WardrikTrigger.Status{schedule: "@daily"}] = WardrikTrigger.for_agent(key)
+      assert [%WardrikTrigger.Status{schedule: "@daily Etc/UTC"}] = WardrikTrigger.for_agent(key)
     end
   end
 
@@ -456,7 +496,7 @@ defmodule WardrikTriggerTest do
       {:ok, _pid} = WardrikTrigger.put(key, "sweep", every: "@daily", prompt: "Look.")
 
       assert [
-               %WardrikTrigger.Status{name: "sweep", agent: ^key, schedule: "@daily"} =
+               %WardrikTrigger.Status{name: "sweep", agent: ^key, schedule: "@daily Etc/UTC"} =
                  status
              ] =
                WardrikTrigger.for_agent(key)

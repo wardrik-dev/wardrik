@@ -169,6 +169,7 @@ defmodule WardrikDefinition.KeptTest do
     assert digest == %{
              "name" => "digest",
              "every" => "0 17 * * *",
+             "timezone" => "Etc/UTC",
              "prompt" => "Sum up.",
              "overlap" => "skip",
              "missed" => "run_once",
