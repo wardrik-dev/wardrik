@@ -5,34 +5,28 @@ sidebar:
   order: 4.5
 ---
 
-Wardrik is a set of Elixir libraries, so an Elixir application can run agents itself instead of
-talking to a daemon. Your app keeps Wardrik in its own database and starts it in its own tree. You
-decide who may do what, and your code calls operations directly.
+Wardrik is a set of Elixir libraries, so a Phoenix app can run agents itself. Your app keeps Wardrik
+in its own database, starts it in its own tree, and decides what each of its users may do.
 
-This guide adds Wardrik to a Phoenix app with a Postgres `Repo`, then the parts you choose: budgets,
-triggers, the HTTP API and sign-ins to other services.
+This guide builds one example from start to end. Its users are `%MyApp.Accounts.User{}` structs
+with an `id`, an `org` and an `email`, as your own sign-in gives them. Each user gets agents of
+their own. Then, if you want them, you add the HTTP API and let users connect their GitHub
+accounts.
 
 ## 1. Add the packages
 
-Depend on the packages you use by path, from a checkout of Wardrik beside your app or a git
-submodule in it. Each one finds the packages it needs beside it, so list only your own:
-
 ```elixir title="mix.exs"
 defp deps do
-  wardrik = System.get_env("WARDRIK_PATH", "vendor/wardrik")
-
   [
-    {:wardrik, path: "#{wardrik}/packages/wardrik"},
-    {:wardrik_ecto, path: "#{wardrik}/packages/wardrik_ecto"},
-    {:wardrik_policy, path: "#{wardrik}/packages/wardrik_policy"},
-    {:wardrik_trigger, path: "#{wardrik}/packages/wardrik_trigger"}
+    {:wardrik, "~> 0.1"},
+    {:wardrik_ecto, "~> 0.1"},
+    {:wardrik_definition, "~> 0.1"},
+    {:wardrik_policy, "~> 0.1"},
+    {:wardrik_trigger, "~> 0.1"}
     # ...
   ]
 end
 ```
-
-`WARDRIK_PATH` is your app's own setting: point it at another checkout while you work on Wardrik
-itself.
 
 ## 2. Create its table
 
@@ -49,7 +43,51 @@ end
 
 [Storage](/run/storage/#postgres) says what goes in it.
 
-## 3. Build the host
+## 3. Say who may do what
+
+Wardrik knows a user as a `Wardrik.Principal`, and asks your app what they may do. Here, a user
+may read and message their org's agents, and do anything with their own:
+
+```elixir title="lib/my_app/grants.ex"
+defmodule MyApp.Grants do
+  @moduledoc """
+  What each signed-in user may do with agents: read and message their org's,
+  and everything with their own.
+  """
+
+  alias Wardrik.AgentID.Prefix
+
+  defstruct []
+
+  @doc "Who `user` is to Wardrik: a user, known by their org and id."
+  def principal(%MyApp.Accounts.User{} = user),
+    do: Wardrik.Principal.new(:user, "#{user.org}/#{user.id}", name: user.email)
+
+  @doc "The agents `user` owns: `acme/@42/`."
+  def own(%MyApp.Accounts.User{} = user), do: Prefix.new!(org: user.org, user: to_string(user.id))
+
+  @doc "What the user `id` of `org` may do."
+  def of(org, id) do
+    {:ok, org_agents} = Wardrik.Grant.new(Prefix.new!(org: org), [:read, :message])
+    {:ok, own_agents} = Wardrik.Grant.new(Prefix.new!(org: org, user: id))
+    [org_agents, own_agents]
+  end
+end
+
+defimpl Wardrik.Grants, for: MyApp.Grants do
+  def grants(_grants, principal) do
+    case {Wardrik.Principal.type(principal), String.split(Wardrik.Principal.id(principal), "/")} do
+      {:user, [org, id]} -> MyApp.Grants.of(org, id)
+      _other -> []
+    end
+  end
+end
+```
+
+Maria, user 42 of `acme`, owns the agents under `acme/@42/`, such as `acme/@42/support`. A user of
+another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
+
+## 4. Build the host
 
 Tell Wardrik your app starts it:
 
@@ -57,37 +95,60 @@ Tell Wardrik your app starts it:
 config :wardrik, start: :host
 ```
 
-Then build a `Wardrik.Host`: the store, and a value for each seam you offer. A seam you leave out
-answers that it isn't supported.
+Then build a `Wardrik.Host`: the store in your `Repo`, your grants, and definitions kept in the
+store. Keep it all in one module:
 
 ```elixir title="lib/my_app/agents.ex"
 defmodule MyApp.Agents do
+  @moduledoc "Wardrik in this app: where it keeps everything, what runs, and what users do with agents."
+
+  alias Wardrik.AgentID
+  alias Wardrik.Operations.Ask
+  alias Wardrik.Operations.Define
+
   def store, do: WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
 
   def host do
-    Wardrik.Host.new(store: store(), grants: %MyApp.Grants{})
+    store = store()
+
+    Wardrik.Host.new(
+      store: store,
+      grants: %MyApp.Grants{},
+      definitions: %WardrikDefinition.Kept{store: store, contexts: context()}
+    )
   end
+
+  def context, do: %WardrikDefinition.Context{}
 end
 ```
 
-`grants` answers what each person may do. Your sign-in decides who they are; see `Wardrik.Grants`.
+`WardrikDefinition.Kept` keeps each agent's definition in the store. `context/0` is what a
+definition may name, such as tools and policies; see `WardrikDefinition.Context`.
 
-## 4. Start it in your tree
+## 5. Start it in your tree
 
-Start Wardrik after your `Repo`, then what runs on it. A line you leave out is a part you don't run:
+List what runs, then start it after your `Repo`:
+
+```elixir title="lib/my_app/agents.ex"
+def children do
+  store = store()
+  host = host()
+
+  [
+    {WardrikStore, store},
+    {Wardrik, host: host},
+    {WardrikPolicy.Supervisor, store: store},
+    {WardrikTrigger, store: store}
+  ]
+end
+```
 
 ```elixir title="lib/my_app/application.ex"
-store = MyApp.Agents.store()
-host = MyApp.Agents.host()
+children =
+  [MyAppWeb.Telemetry, MyApp.Repo] ++
+    MyApp.Agents.children() ++
+    [{Phoenix.PubSub, name: MyApp.PubSub}, MyAppWeb.Endpoint]
 
-wardrik = [
-  {WardrikStore, store},
-  {Wardrik, host: host},
-  {WardrikPolicy.Supervisor, store: store},
-  {WardrikTrigger, store: store}
-]
-
-children = [MyApp.Repo] ++ wardrik ++ [MyAppWeb.Endpoint]
 Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 ```
 
@@ -98,56 +159,293 @@ Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 | `WardrikPolicy.Supervisor` | the meters [budgets](/concepts/budgets/) count in |
 | `WardrikTrigger` | [triggers](/build/triggers/): clocks, feeds and webhooks |
 
-Under `:rest_for_one`, a restart of one restarts everything after it, so the parts always run on
-the Wardrik before them.
+Under `:rest_for_one`, a restart of one restarts everything after it, so each part runs on the
+Wardrik before it.
 
-## 5. Run operations
+## 6. Define an agent and ask it
 
-Your code acts on agents through the same operations the HTTP API runs, as a caller your grants
-know:
+Your code acts as the signed-in user. It finds their caller, then runs an operation, which checks
+their grant and records what it changed in the audit log:
 
-```elixir
-id = Wardrik.AgentID.new!("support", org: "acme")
-{:ok, caller} = Wardrik.Host.caller(host, principal: maria, subject: id)
-Wardrik.Query.run(%Wardrik.Operations.ReadAgent{agent: id}, caller)
+```elixir title="lib/my_app/agents.ex"
+def define(user, name, definition) do
+  agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
+
+  with {:ok, caller} <- caller(user, agent),
+       do: Wardrik.Command.run(%Define{agent: agent, definition: definition}, caller)
+end
+
+def ask(user, agent, text) do
+  with {:ok, caller} <- caller(user, agent),
+       {:ok, request} <- Ask.new(agent, %{"content" => text}),
+       do: Wardrik.Command.run(request, caller)
+end
+
+defp caller(user, subject),
+  do: Wardrik.Host.caller(host(), principal: MyApp.Grants.principal(user), subject: subject)
 ```
 
-Each one checks the caller's grant and records what it changed in the audit log.
+Define Maria's support agent, ask it something, and read the answer from its log. The model's key
+is `ANTHROPIC_API_KEY` in your environment:
+
+```elixir
+maria = %MyApp.Accounts.User{id: 42, org: "acme", email: "maria@acme.example"}
+
+{:created, _agent} =
+  MyApp.Agents.define(maria, "support", %{
+    "model" => "anthropic:claude-sonnet-5",
+    "instructions" => "Answer questions about orders in two sentences."
+  })
+
+agent = Wardrik.AgentID.new!("support", org: "acme", user: "42")
+:ok = Wardrik.Event.Log.subscribe(agent)
+{:ok, %{"message" => %{"id" => _id}}} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
+
+receive do
+  %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.completed", "data" => data}} ->
+    for %{"role" => "assistant", "parts" => parts} <- data["messages"],
+        %{"type" => "text", "content" => text} <- parts,
+        do: IO.puts(text)
+
+  %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.failed", "data" => data}} ->
+    IO.inspect(data["error"])
+end
+```
+
+Every event an agent writes reaches its subscribers, so a LiveView can show a turn as it streams.
+[Events](/concepts/events/) lists them. Nobody else reaches Maria's agent: the grant on `acme/`
+covers the org's own agents, not its users'. Anyone else is told it isn't there.
 
 ## Serve the HTTP API
 
-To let other programs reach your agents, such as the TypeScript SDK, start the API's listener on a
-port of its own, and have your proxy forward `/v1/` to it:
+To let other programs reach the agents, such as the TypeScript SDK, add `{:wardrik_http, "~> 0.1"}`.
+The API knows each request by an authenticator of yours. This one reads a token your app gives
+its user, signed with your endpoint's secret:
 
-```elixir
-wardrik ++
-  [
-    {WardrikHTTP.Access, store: store},
-    WardrikHTTP.Workers,
-    {WardrikHTTP.Listener, host: host, port: 4850, authenticator: %MyApp.Session{}}
-  ]
+```elixir title="lib/my_app_web/session.ex"
+defmodule MyAppWeb.Session do
+  @moduledoc """
+  Knows a request to the agents' API by a token this app gave its user,
+  signed with the endpoint's secret.
+  """
+
+  @enforce_keys [:endpoint]
+  defstruct [:endpoint]
+
+  @doc "A token `user` presents as `Authorization: Bearer TOKEN`."
+  def token(%MyApp.Accounts.User{} = user),
+    do: Phoenix.Token.sign(MyAppWeb.Endpoint, "agents", user)
+end
+
+defimpl WardrikHTTP.Authenticator, for: MyAppWeb.Session do
+  import Plug.Conn
+
+  @day 86_400
+
+  def authenticate(session, conn) do
+    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
+         {:ok, user} <- Phoenix.Token.verify(session.endpoint, "agents", token, max_age: @day) do
+      {:ok, grant} = Wardrik.Grant.new(MyApp.Grants.own(user))
+
+      {:ok,
+       %WardrikHTTP.Caller{
+         id: "session/#{user.id}",
+         name: user.email,
+         principal: MyApp.Grants.principal(user),
+         grant: grant
+       }}
+    else
+      _no_session -> {:error, :unauthorized}
+    end
+  end
+
+  def challenge(_session), do: ~s(Bearer realm="my_app")
+end
 ```
 
-The listener knows each request by its `authenticator`, a struct implementing
-`WardrikHTTP.Authenticator`. Without one, requests present tokens made with `WardrikHTTP.Token`. The
-[HTTP API guide](/build/http-api/) is every route.
+A request reaches the user's own agents, as its grant says. Start the API's listener on a port of
+its own, at the end of the list `children/0` gives:
+
+```elixir title="lib/my_app/agents.ex"
+{WardrikHTTP.Access, store: store},
+WardrikHTTP.Workers,
+{WardrikHTTP.Listener,
+ host: host, port: 4850, authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
+```
+
+Have your proxy forward `/v1/` to port 4850. Then Maria's programs list her agents with the token
+your app gave her:
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" https://myapp.example.com/v1/agents
+```
+
+The [HTTP API guide](/build/http-api/) is every route.
 
 ## Let people connect accounts
 
-To have tools sign people in to other services, keep their tokens in a vault that grants through
-`WardrikOAuth`, offer both on the host, and start its supervisor:
+An agent can call GitHub's MCP server as the user it works for. Each user connects their own
+GitHub account once, and their agents use it from then on. Add the packages:
 
-```elixir
-oauth = WardrikOAuth.new(client: [name: "My app"], providers: providers, redirect: [url: url])
-vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
-connections = %WardrikOAuth.Connections{oauth: oauth, vault: vault}
-
-host = Wardrik.Host.new(store: store, credentials: vault, connections: connections)
-# after {Wardrik, host: host}:
-{WardrikOAuth.Supervisor, oauth: oauth}
+```elixir title="mix.exs"
+{:wardrik_vault, "~> 0.1"},
+{:wardrik_oauth, "~> 0.1"},
+{:wardrik_mcp, "~> 0.1"}
 ```
 
-[Connect accounts](/build/accounts/) is how people sign in.
+### Give it a key and a GitHub app
+
+Tokens are kept in the store, sealed with a key you hold. Make one, and keep it as
+`WARDRIK_VAULT_KEY` wherever the app runs:
+
+```sh
+mix run -e 'IO.puts(WardrikVault.generate_key())'
+```
+
+Register an OAuth app on GitHub. Its callback URL is your app's URL, then `/oauth/callback/github`,
+such as `https://myapp.example.com/oauth/callback/github`. Set `MY_APP_URL`, `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET`.
+
+### Offer the vault and the sign-in on the host
+
+The vault keeps each user's token, and asks them to sign in where they have none. In
+`MyApp.Agents`, `host/0` and `context/0` become:
+
+```elixir title="lib/my_app/agents.ex"
+def host do
+  store = store()
+  vault = vault()
+
+  Wardrik.Host.new(
+    store: store,
+    grants: %MyApp.Grants{},
+    definitions: %WardrikDefinition.Kept{store: store, contexts: context()},
+    credentials: vault,
+    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
+  )
+end
+
+def context, do: %WardrikDefinition.Context{servers: [github: [orgs: :all]], mcp: WardrikMCP}
+
+def vault,
+  do:
+    WardrikVault.new(
+      store: store(),
+      keys: [System.fetch_env!("WARDRIK_VAULT_KEY")],
+      grants: oauth()
+    )
+
+def oauth do
+  WardrikOAuth.new(
+    client: [name: "My app"],
+    providers: [
+      github: [
+        resource: "https://api.githubcopilot.com/mcp/",
+        issuer: "https://github.com/login/oauth",
+        client_id: System.get_env("GITHUB_CLIENT_ID"),
+        client_secret: System.get_env("GITHUB_CLIENT_SECRET"),
+        scopes: ~w(repo)
+      ]
+    ],
+    redirect: [url: System.get_env("MY_APP_URL", "http://localhost:4000") <> "/oauth"]
+  )
+end
+```
+
+`context/0` now lets a definition name the server's tools as `github/*`. Start the sign-ins and the
+server's connections in `children/0`, after `{Wardrik, host: host}`:
+
+```elixir title="lib/my_app/agents.ex"
+{WardrikOAuth.Supervisor, oauth: oauth(), callback: false},
+{WardrikMCP.Supervisor,
+ store: store,
+ servers: [
+   github: [
+     transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
+     credential: "github"
+   ]
+ ]},
+```
+
+`credential: "github"` makes each call with the token of the user the agent works for.
+
+### Take GitHub's callback in your app
+
+GitHub sends the browser back to your app. `callback: false` above leaves that to your router:
+
+```elixir title="lib/my_app_web/router.ex"
+scope "/oauth", MyAppWeb do
+  get "/callback/:provider", OAuthController, :callback
+end
+```
+
+```elixir title="lib/my_app_web/controllers/oauth_controller.ex"
+defmodule MyAppWeb.OAuthController do
+  use MyAppWeb, :controller
+
+  def callback(conn, %{"provider" => provider, "state" => state, "code" => code} = params) do
+    case WardrikOAuth.finish(state, code, provider: provider, iss: params["iss"]) do
+      {:ok, _provider} ->
+        text(conn, "Connected. Go back to your agent.")
+
+      {:error, _reason} ->
+        conn |> put_status(400) |> text("That sign-in did not finish. Open its link again.")
+    end
+  end
+
+  def callback(conn, _params),
+    do: conn |> put_status(400) |> text("This is where a sign-in comes back to.")
+end
+```
+
+### Connect, then use it
+
+Add two functions to `MyApp.Agents`, with `Wardrik.Operations.Connect` and
+`Wardrik.Operations.ReadConnections` among its aliases:
+
+```elixir title="lib/my_app/agents.ex"
+def connect(user, provider) do
+  owner = MyApp.Grants.own(user)
+
+  with {:ok, caller} <- caller(user, owner),
+       do: Wardrik.Command.run(%Connect{owner: owner, provider: provider}, caller)
+end
+
+def connections(user) do
+  owner = MyApp.Grants.own(user)
+
+  with {:ok, caller} <- caller(user, owner),
+       do: Wardrik.Query.run(%ReadConnections{owner: owner}, caller)
+end
+```
+
+Give Maria an agent that uses GitHub, and the link to connect her account:
+
+```elixir
+{:created, _agent} =
+  MyApp.Agents.define(maria, "triage", %{
+    "model" => "anthropic:claude-sonnet-5",
+    "instructions" => "Sort new issues in acme/shop by how urgent they are.",
+    "tools" => ["github/*"]
+  })
+
+{:ok, %{"connected" => false, "authorization" => %{"url" => url}}} =
+  MyApp.Agents.connect(maria, "github")
+```
+
+Show her `url`. She signs in at GitHub, comes back to `/oauth/callback/github`, and the vault keeps
+her token. Her connections then say she holds it:
+
+```elixir
+{:ok, %{"connections" => [%{"provider" => "github", "held_by" => "person"}]}} =
+  MyApp.Agents.connections(maria)
+```
+
+If her agent calls GitHub before she connects, the call waits. `connect/2` gives her a link, and
+the call carries on once she signs in. GitHub's tools that change something wait for a
+person to approve them; see [Approvals](/concepts/approvals/).
+
+[Connect accounts](/build/accounts/) covers whose credentials a call uses.
 
 ## Details
 
