@@ -51,7 +51,8 @@ A token that can `define` needs `--policy` or `--unlimited`.
 
 - `--policy NAME` holds every agent the token defines to a policy in `policies/`, ahead of the
   definition's own. A definition can narrow it, never widen it.
-- `--unlimited` holds those agents to their own policies alone.
+- `--unlimited` adds no ceiling. Their org's [ceiling](/run/orgs/#hold-an-org-to-a-ceiling) and
+  their own policies still hold them.
 
 ## Revoke a token
 
