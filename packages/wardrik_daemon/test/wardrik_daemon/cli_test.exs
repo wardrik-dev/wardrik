@@ -257,7 +257,7 @@ defmodule WardrikDaemon.CLITest do
   test "token create holds a token that can define to a policy, or to none said outright" do
     assert command(["token", "create", "unsaid", "--all"]) ==
              {"A token that can define agents holds them to a policy: add --policy NAME, " <>
-                "one of policies/, or --unlimited to hold them to their own policies alone\n", 1}
+                "one of policies/, or --unlimited to add none beyond their org's\n", 1}
 
     assert {_output, 1} = command(["token", "create", "unsaid", "--all", "--can", "define"])
 

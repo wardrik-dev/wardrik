@@ -257,16 +257,25 @@ defmodule WardrikDaemon do
     end
   end
 
-  @doc "What the agent `key` has spent of each budget `spec` gives it, as its budgets say it."
+  @doc """
+  What the agent `key` has spent of each budget `spec` gives it, as its
+  budgets say it, each named for its policy where it has more than one.
+  """
   @spec spent_by(Wardrik.Agent.Spec.t() | nil, Wardrik.AgentID.t()) :: [String.t()]
   def spent_by(%Wardrik.Agent.Spec{hooks: hooks}, key) when is_list(hooks) do
-    for %Wardrik.Hook{module: WardrikPolicy.Budget, value: budget} <- hooks,
+    budgets = for %Wardrik.Hook{module: WardrikPolicy.Budget} = hook <- hooks, do: hook
+
+    for %Wardrik.Hook{name: name, value: budget} <- budgets,
         spent = WardrikPolicy.Budget.spending(budget, key),
-        spent != nil,
-        do: spent
+        spent != nil do
+      if match?([_one], budgets), do: spent, else: "#{whose(Path.dirname(name))}: #{spent}"
+    end
   end
 
   def spent_by(_spec, _key), do: []
+
+  defp whose("policy"), do: "its own"
+  defp whose(policy), do: policy
 
   @doc """
   How long until a trigger next asks the agent `key`, in milliseconds, or

@@ -37,10 +37,13 @@ defmodule WardrikDaemon.ConfigTest do
 
     test "org is the deployment's org, default unless it says", context do
       assert {:ok,
-              [{WardrikDaemon, [org: "default", orgs: ["default"]]}, {WardrikDaemon.SSH, _ssh}]} =
+              [
+                {WardrikDaemon, [org: "default", orgs: ["default"], ceilings: %{}]},
+                {WardrikDaemon.SSH, _ssh}
+              ]} =
                read_all("ssh: {port: 2223}\n", context)
 
-      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"]]}]} =
+      assert {:ok, [{WardrikDaemon, [org: "acme", orgs: ["acme"], ceilings: %{}]}]} =
                read_all("org: acme\n", context)
 
       for org <- ["_acme", "@acme", "a/b"] do
@@ -85,6 +88,25 @@ defmodule WardrikDaemon.ConfigTest do
       assert ops[:orgs] == ["acme"]
       assert {WardrikNotify.Webhook, globex} = targets[:globex]
       assert globex[:orgs] == ["globex"]
+    end
+
+    test "orgs holds an org, or every org, to a ceiling", context do
+      yaml = """
+      orgs:
+        "*": {ceiling: base}
+        payments: {ceiling: payments-ceiling}
+        growth: {}
+      """
+
+      assert {:ok, settings} = read_all(yaml, context)
+
+      assert settings[WardrikDaemon][:ceilings] == %{
+               "*" => "base",
+               "payments" => "payments-ceiling"
+             }
+
+      assert {:error, message} = read_all("orgs:\n  payments: {ceiling: [a]}\n", context)
+      assert message =~ "orgs.payments.ceiling is the name of a policy in policies/"
     end
 
     test "orgs refuses a name its section does not define, and says the nearest", context do
@@ -654,7 +676,12 @@ defmodule WardrikDaemon.ConfigTest do
       assert {:ok,
               [
                 {WardrikDaemon,
-                 [org: "default", orgs: ["default"], base_url: "https://agents.example.com"]},
+                 [
+                   org: "default",
+                   orgs: ["default"],
+                   ceilings: %{},
+                   base_url: "https://agents.example.com"
+                 ]},
                 {WardrikOAuth, [redirect: redirect]}
               ]} =
                read_all(

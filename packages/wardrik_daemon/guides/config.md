@@ -57,7 +57,7 @@ set them.
 | Key | What it configures |
 | --- | --- |
 | [`org`](#org) | the deployment's org |
-| [`orgs`](#orgs) | the other orgs, and the servers, channels and notify targets each uses |
+| [`orgs`](#orgs) | the other orgs, what each uses, and the ceiling each is held to |
 | [`base_url`](#base_url) | the address people and services reach the daemon at |
 | [`defaults`](#defaults) | what an agent is given where nothing else says |
 | [`tools`](#tools) | what calls to a tool cost |
@@ -80,7 +80,8 @@ it is named without an org. `default` unless set.
 ## orgs
 
 The orgs beside the deployment's own, each with the servers, channels and notify targets its agents
-use. Each is defined once, under `mcp`, `channels` or `notify`, and an org lists it by name.
+use, and the ceiling they are held to. Each server, channel and target is defined once, under `mcp`,
+`channels` or `notify`, and an org lists it by name.
 
 ```yaml
 org: platform
@@ -97,9 +98,11 @@ channels:
 orgs:
   "*":
     mcp: [search]
+    ceiling: base
   payments:
     mcp: [stripe, github]
     channels: [payments-slack]
+    ceiling: payments-ceiling
   growth:
     mcp: [github]
     channels: [growth-slack]
@@ -108,9 +111,12 @@ vault:
   shared: [SEARCH_API_KEY]
 ```
 
-- An org's entry takes `mcp`, `channels` and `notify`, each a list of names. An entry may be empty,
-  `growth: {}`.
-- `"*"` lists what every org uses.
+- An org's entry takes `mcp`, `channels` and `notify`, each a list of names, and `ceiling`. An
+  entry may be empty, `growth: {}`.
+- `ceiling` names a policy in `policies/` that every agent of the org is held to, ahead of its own,
+  whether a file, the HTTP API or a channel defined it. A definition can narrow it, never widen it.
+  An org whose ceiling `policies/` doesn't hold runs none of its agents.
+- `"*"` lists what every org uses, and its `ceiling` holds every org, beside the org's own.
 - A server, channel or target no entry lists is the deployment's own org's.
 - An agent, a secret, a token's scope or a shared tree in an org that is neither `org` nor in
   `orgs` is refused, as is a name its section doesn't define.

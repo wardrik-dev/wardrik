@@ -9,6 +9,7 @@ defmodule WardrikPolicy.MeterTest do
       key:
         Spend.key(
           Wardrik.AgentID.parse!("meter-#{System.unique_integer([:positive])}/a"),
+          "policy/budget",
           "day:2026-09-23"
         )
     }

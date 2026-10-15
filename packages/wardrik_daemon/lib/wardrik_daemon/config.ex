@@ -147,6 +147,14 @@ defmodule WardrikDaemon.Config do
   def orgs(%__MODULE__{} = config),
     do: config |> section(WardrikDaemon) |> Keyword.get_lazy(:orgs, fn -> [org(config)] end)
 
+  @doc """
+  The policy of `policies/` each org's agents are held to, ahead of their
+  own, by org, with `*`'s holding every org's.
+  """
+  @spec ceilings(t()) :: %{String.t() => String.t()}
+  def ceilings(%__MODULE__{} = config),
+    do: config |> section(WardrikDaemon) |> Keyword.get(:ceilings, %{})
+
   @doc "Whether `org` is one `config` declares, or why not, with the nearest that is."
   @spec declared(t(), String.t()) :: :ok | {:error, String.t()}
   def declared(%__MODULE__{} = config, org) do
@@ -342,7 +350,7 @@ defmodule WardrikDaemon.Config do
     orgs = Enum.uniq([org | Enum.sort(Map.keys(uses) -- ["*"])])
 
     [
-      {WardrikDaemon, [org: org, orgs: orgs] ++ base_url}
+      {WardrikDaemon, [org: org, orgs: orgs, ceilings: ceilings_of(uses)] ++ base_url}
       | document
         |> sections({org, uses}, orgs, adapters)
         |> through_channels()
@@ -497,12 +505,23 @@ defmodule WardrikDaemon.Config do
       unless owner == "*" or Wardrik.AgentID.segment?(owner),
         do: invalid!(path, "is not an org, or * for every org; #{@segment}")
 
-      used = table!(used, path)
-      known!(used, @uses, path)
+      {ceiling, used} = Map.pop(table!(used, path), "ceiling")
+      known!(used, ["ceiling" | @uses], path)
 
       {owner,
-       Map.new(used, fn {section, names} -> {section, used!(names, section, document, path)} end)}
+       used
+       |> Map.new(fn {section, names} -> {section, used!(names, section, document, path)} end)
+       |> Map.put("ceiling", ceiling!(ceiling, path ++ ["ceiling"]))}
     end)
+  end
+
+  defp ceiling!(nil, _path), do: nil
+  defp ceiling!(name, _path) when is_binary(name) and name != "", do: name
+  defp ceiling!(_name, path), do: invalid!(path, "is the name of a policy in policies/")
+
+  # The ceiling policy each org is held to, `*`'s holding every org.
+  defp ceilings_of(uses) do
+    for {owner, %{"ceiling" => name}} <- uses, name != nil, into: %{}, do: {owner, name}
   end
 
   defp used!(names, section, document, path) do
