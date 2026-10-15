@@ -5,7 +5,7 @@ template: splash
 editUrl: false
 hero:
   title: Agents that act.<br />Rules that hold.
-  tagline: A self-hosted agent runtime for your tools. Set what runs, what needs approval, and what stays off limits.
+  tagline: A self-hosted runtime for your agents and tools. Set what runs, what needs approval, and what stays off limits.
   actions:
     - text: Start building
       link: /getting-started/quickstart/
@@ -16,6 +16,10 @@ hero:
 ---
 
 import { LinkButton } from '@astrojs/starlight/components';
+import CliTranscript from '../../components/CliTranscript.astro';
+import JudgeReplay from '../../components/JudgeReplay.astro';
+import OperatorConsole from '../../components/OperatorConsole.astro';
+import RikMark from '../../components/RikMark.astro';
 
 <nav class="audience-grid home-audiences" aria-label="Explore Wardrik for your work">
 <a href="/examples/enterprise/agents-for-every-team/"><span class="audience-label">Platform teams <span aria-hidden="true">↗</span></span><p>Give teams agents under a shared policy.</p></a>
@@ -25,6 +29,8 @@ import { LinkButton } from '@astrojs/starlight/components';
 </nav>
 
 <section class="home-band" aria-labelledby="every-call">
+
+<p class="home-eyebrow">Policy, enforced by the runtime</p>
 
 <h2 id="every-call">Every call is decided before it runs.</h2>
 
@@ -42,7 +48,12 @@ import { LinkButton } from '@astrojs/starlight/components';
 
 </section>
 
-<section class="home-section">
+<section class="home-section" aria-labelledby="built-to-keep-going">
+
+<p class="home-eyebrow">Reliable by design</p>
+<h2 id="built-to-keep-going">Built to keep going.</h2>
+<p class="home-lead">Persistent conversations. Recoverable work. Boundaries that hold.</p>
+
 <div class="home-proofs">
 <div>
 
@@ -61,19 +72,19 @@ Reading outside content makes gated calls wait for approval. Only your policy ca
 </div>
 <div>
 
-### Work carries on after a node fails
+### Work survives a node failure
 
 Turns resume on another node. Completed calls aren’t repeated; uncertain writes wait for approval.
 
-```shellsession del={3} mark={5} ins={7}
-[it] laptop for Ana...
-$ kill -9 "$(wardrik pid --node c)"
-[it] laptop for Ana: stopped before it happened
-
-[agent] carries on on wardrik_b@localhost
-[it] laptop for Ana...
-[it] laptop for Ana: done
-```
+<CliTranscript label="Node failure and recovery" lines={[
+  [{text: '[it] laptop for Ana...'}],
+  [{text: '❯ ', tone: 'ready'}, {text: 'kill -9 "$(rik pid --node c)"'}],
+  [{text: '[it] laptop for Ana: stopped before it happened', tone: 'failed'}],
+  [],
+  [{text: '[agent] carries on on wardrik_b@localhost', tone: 'ready'}],
+  [{text: '[it] laptop for Ana...'}],
+  [{text: '[it] laptop for Ana: done', tone: 'ready'}],
+]} />
 
 [Pull the plug yourself](/examples/pull-the-plug/)
 
@@ -107,7 +118,7 @@ cluster:
 ```
 
 ```sh
-wardrik agent move acme/triage wardrik@box2
+rik agent move acme/triage wardrik@box2
 ```
 
 </div>
@@ -120,11 +131,11 @@ wardrik agent move acme/triage wardrik@box2
 
 <section class="home-section home-tint">
 
-<p class="home-eyebrow">Controls your team can operate</p>
+<p class="home-eyebrow">Tools and teams</p>
 
 ## Set the boundaries. See what happens.
 
-<p class="home-lead">Manage policies, credentials, budgets, and decisions in one runtime.</p>
+<p class="home-lead">Connect your tools. Scope access, spend, and approvals.</p>
 
 <div class="team">
 <div>
@@ -145,9 +156,9 @@ channels:
 </div>
 <div>
 
-### MCP and tools in your own code
+### Your tools, connected
 
-Connect MCP servers or register tools in your app. Your service keys stay with your code.
+Connect MCP servers or register tools in your app. Keep service keys with your code.
 
 ```ts
 wardrik.tool({
@@ -167,7 +178,7 @@ wardrik.tool({
 Scope access by org or user. Agents can narrow their org’s policy, never widen it.
 
 ```sh
-wardrik token create ci \
+rik token create ci \
   --scope acme/ --policy careful
 ```
 
@@ -176,9 +187,9 @@ wardrik token create ci \
 </div>
 <div>
 
-### Each account's own credentials
+### Credentials per account
 
-OAuth accounts and encrypted credentials, scoped per user or org. You hold the keys.
+Scope OAuth accounts and encrypted credentials per user or org.
 
 ```yaml
 mcp:
@@ -214,7 +225,7 @@ budget:
 
 ### Decisions with a record
 
-Stream calls and approvals live. Resume where you left off or export to your SIEM.
+Stream calls and approvals. Resume the stream or export to your SIEM.
 
 ```json
 "type": "wardrik.interrupt.resolved",
@@ -231,23 +242,22 @@ Stream calls and approvals live. Resume where you left off or export to your SIE
 
 </section>
 
-<section class="home-section">
+<section class="home-section home-standing">
 
 <p class="home-eyebrow">Standing work, under your control</p>
 
 ## Ask for an outcome. Let agents do the work.
 
-The assistant defines workers and delegates tasks. Schedules, feeds, or webhooks start the work; your policy controls approvals.
+<p class="home-lead">The assistant creates workers and delegates tasks. Your policy decides what needs approval.</p>
 
-```shellsession mark={4-5}
-$ wardrik ask assistant "Tell me when the Elixir blog has a new post"
-I'll set up a watcher on that feed, checked every 30 minutes.
-
-Waiting on a person for 1 call:
-  ? agent_define  call_8d2ebbfe…
-
-$ wardrik approve assistant call_8d2ebbfe…
-```
+<CliTranscript command={'rik ask assistant "Tell me when the Elixir blog has a new post"'} lines={[
+  [{text: "I'll set up a watcher on that feed, checked every 30 minutes."}],
+  [],
+  [{text: 'Waiting on a person for 1 call:', tone: 'waiting'}],
+  [{text: '  ? agent_define  call_feed', tone: 'waiting'}],
+  [],
+  [{text: '❯ ', tone: 'ready'}, {text: 'rik approve assistant call_feed'}],
+]} caption="Illustrative output · approve the watcher before it is created" />
 
 [Meet the assistant](/build/front-door/) · [Triggers](/build/triggers/) · [Delegation](/build/delegation/) · [Files and memory](/concepts/files-and-memory/)
 
@@ -255,12 +265,14 @@ $ wardrik approve assistant call_8d2ebbfe…
 
 <section class="home-section home-tint">
 
+<p class="home-eyebrow">Readable, reviewable configuration</p>
+
 ## Or write the file yourself
 
 <div class="agent-file">
 <div>
 
-```markdown title="~/.config/wardrik/agents/books.md"
+```markdown title="~/.config/wardrik/agents/books.md" mark={8}
 ---
 description: Keeps the books for the accounting team.
 tools: [quickbooks/*, files]
@@ -268,6 +280,7 @@ channels: [slack]
 triggers:
   - name: close
     every: "0 7 * * 1-5"
+    timezone: America/Los_Angeles
     prompt: Reconcile yesterday's transactions.
 policy:
   allow:
@@ -290,7 +303,7 @@ You keep the books. Say what you will post before you post it.
 
 </div>
 <dl class="agent-notes">
-<div><dt><code>triggers</code></dt><dd>Reconciles at 7:00 UTC every weekday.</dd></div>
+<div><dt><code>triggers</code>, <code>timezone</code></dt><dd>Reconciles weekdays at 7:00 Los Angeles time, following daylight saving time.</dd></div>
 <div><dt><code>allow</code>, <code>ask</code></dt><dd>Bills with all lines under $1,000 post automatically. The rest wait for you.</dd></div>
 <div><dt><code>deny</code></dt><dd>Bill payments are always refused.</dd></div>
 <div><dt><code>budget</code></dt><dd>$10 or 2M tokens daily. Approval grants $5 more.</dd></div>
@@ -299,60 +312,62 @@ You keep the books. Say what you will post before you post it.
 </dl>
 </div>
 
-<div class="ops">
-<div>
-
-```sh
-wardrik doctor
-```
-
-Checks your configuration.
-
-</div>
-<div>
-
-```sh
-wardrik reload
-```
-
-Reloads every node without a restart.
-
-</div>
-<div>
-
-```sh
-wardrik watch books
-```
-
-Follows the agent’s events live.
-
-</div>
-</div>
-
 [Every key an agent file takes](/reference/agent-files/)
 
 </section>
 
-<section class="home-section home-install" aria-labelledby="install">
+<section class="home-section home-operators" aria-labelledby="for-operators">
+
+<p class="home-eyebrow">For operators</p>
+<h2 id="for-operators" class="operator-title"><RikMark /> <span class="operator-title-label">CLI</span></h2>
+
+<p class="home-lead">See the fleet. Know what’s next.</p>
+
+<OperatorConsole />
+
+<div class="operator-footer">
+
+<p class="operator-utilities">Check configuration with <a href="/reference/cli/#wardrik-doctor"><code>rik doctor</code></a>, reload files with <a href="/reference/cli/#wardrik-reload"><code>rik reload</code></a>, or follow events with <a href="/reference/cli/#wardrik-watch"><code>rik watch acme/books</code></a>.</p>
+
+[Explore the CLI](/reference/cli/) · [Run a cluster](/run/cluster/)
+
+</div>
+
+</section>
+
+<JudgeReplay />
+
+<section class="home-section home-install home-tint" aria-labelledby="install">
+
+<div class="install-layout">
+<div>
 
 <p class="home-eyebrow">Your infrastructure. Your rules.</p>
 <h2 id="install">Put your first agent to work.</h2>
 
 <p class="home-lead">Install a binary or Docker image. Bring your model provider.</p>
 
-```sh
-curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
-wardrik init
-```
-
 <div class="home-actions">
 <LinkButton href="/getting-started/quickstart/" icon="right-arrow">Quickstart</LinkButton>
 <LinkButton href="/examples/" variant="minimal">Examples</LinkButton>
 </div>
 
+</div>
+<div class="install-command">
+
+```sh wrap
+curl -fsSL https://github.com/wardrik-dev/wardrik/releases/latest/download/install.sh | sh
+rik init
+```
+
+[All installation options](/getting-started/install/)
+
+</div>
+</div>
+
 </section>
 
 <footer class="home-footer">
-<span class="home-footer-brand">Wardrik <span class="home-footer-rik">/ rik</span></span>
+<span class="home-footer-brand">Wardrik <span class="home-footer-rik"><RikMark /></span></span>
 <nav aria-label="Project resources"><a href="/run/security/">Security</a><a href="/run/upgrade-and-back-up/">Upgrades &amp; backups</a><a href="https://github.com/wardrik-dev/wardrik">Source on GitHub</a><a href="https://github.com/wardrik-dev/wardrik/blob/main/LICENSE">Apache-2.0</a></nav>
 </footer>
