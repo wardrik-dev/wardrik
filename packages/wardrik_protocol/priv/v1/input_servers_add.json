@@ -41,6 +41,29 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "oauth"
+          ],
+          "properties": {
+            "oauth": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The owner signs in in a browser, as the server's own authorization server asks; the token is kept for them.",
+              "properties": {
+                "scopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The scopes to ask for, the server's own unless it says."
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
             "secret"
           ],
           "properties": {
@@ -86,6 +109,17 @@
     }
   },
   "examples": [
+    {
+      "name": "social",
+      "url": "https://mcp.social.example/mcp",
+      "auth": {
+        "oauth": {
+          "scopes": [
+            "write"
+          ]
+        }
+      }
+    },
     {
       "name": "crm",
       "url": "https://mcp.crm.example/mcp",

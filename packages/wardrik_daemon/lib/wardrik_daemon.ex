@@ -11,7 +11,8 @@ defmodule WardrikDaemon do
     * `WardrikMCP.Supervisor`, with the servers configured and those orgs and
       people add, kept in the store. Each command's stderr goes to
       `log/mcp.log` in the state directory.
-    * `WardrikOAuth.Supervisor`, when a provider is configured.
+    * `WardrikOAuth.Supervisor`, when a provider is configured, or the vault
+      has a key to keep the tokens of servers people add and sign in to.
     * `WardrikDaemon.Agents`, which runs the agents `agents/` declares, as
       the host's definitions.
     * `WardrikNotify.Supervisor`, when a notify target is configured. It asks
@@ -98,7 +99,8 @@ defmodule WardrikDaemon do
   def host(%Config{} = config, opts) do
     store = Keyword.fetch!(opts, :store)
     audit = Wardrik.Audit
-    oauth = WardrikOAuth.new([audit: audit] ++ oauth_settings(config))
+    added = %WardrikMCP.Servers.Providers{store: store}
+    oauth = WardrikOAuth.new([audit: audit, added: added] ++ oauth_settings(config))
     vault_settings = Keyword.take(Config.section(config, WardrikVault), [:keys, :shared])
     vault = WardrikVault.new([store: store, grants: oauth] ++ vault_settings)
     agents = Agents.new(store: store, config: config, audit: audit)
@@ -108,7 +110,7 @@ defmodule WardrikDaemon do
       audit: audit,
       definitions: agents,
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
-      servers: %WardrikMCP.Servers{store: store},
+      servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault},
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
       triggers: %WardrikTrigger.Deliveries{
@@ -135,11 +137,12 @@ defmodule WardrikDaemon do
     ]
   end
 
-  # The host this daemon built offers its own sign-ins.
+  # The host this daemon built offers its own sign-ins, and those of the
+  # servers people add, which keep their tokens in a vault with a key.
   defp oauth(host) do
-    %WardrikOAuth.Connections{oauth: oauth} = Wardrik.Host.connections(host)
+    %WardrikOAuth.Connections{oauth: oauth, vault: vault} = Wardrik.Host.connections(host)
 
-    if WardrikOAuth.configured?(oauth),
+    if WardrikOAuth.configured?(oauth) or WardrikVault.configured?(vault),
       do: [{WardrikOAuth.Supervisor, oauth: oauth}],
       else: []
   end

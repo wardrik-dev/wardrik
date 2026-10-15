@@ -41,13 +41,11 @@ defmodule WardrikOAuth.Callback.Page do
   defp under(_path, _prefix), do: :elsewhere
 
   defp callback(conn, oauth, provider) do
-    case WardrikOAuth.Provider.fetch(oauth, provider) do
-      {:ok, _provider} ->
-        {status, message} = Callback.answer(provider, conn.query_params)
-        page(conn, status, message)
-
-      :error ->
-        page(conn, 404, "Nothing here.")
+    if provider in WardrikOAuth.Provider.names(oauth) do
+      {status, message} = Callback.answer(provider, conn.query_params)
+      page(conn, status, message)
+    else
+      page(conn, 404, "Nothing here.")
     end
   end
 

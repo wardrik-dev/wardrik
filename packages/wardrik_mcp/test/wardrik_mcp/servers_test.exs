@@ -96,6 +96,7 @@ defmodule WardrikMCP.ServersTest do
     def key(_vault, _name), do: :error
   end
 
+  @key WardrikVault.generate_key()
   @reachable &__MODULE__.reachable/1
 
   def reachable(_url), do: :ok
@@ -116,7 +117,25 @@ defmodule WardrikMCP.ServersTest do
     "http://127.0.0.1:#{port}/mcp"
   end
 
-  defp servers, do: %WardrikMCP.Servers{store: Wardrik.Test.store(), check: @reachable}
+  defp servers do
+    store = Wardrik.Test.store()
+    oauth = oauth(store)
+    vault = WardrikVault.new(store: store, keys: [@key], grants: oauth)
+    %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault, check: @reachable}
+  end
+
+  # Sign-ins discovered at a stub that answers no metadata, with the servers
+  # owners added as providers, and a configured one named taken.
+  defp oauth(store) do
+    WardrikOAuth.new(
+      added: %WardrikMCP.Servers.Providers{store: store},
+      providers: [taken: [resource: "https://taken.example/mcp"]],
+      redirect: [url: "https://wardrik.example/oauth", open: false],
+      req_options: [plug: &__MODULE__.no_metadata/1]
+    )
+  end
+
+  def no_metadata(conn), do: Plug.Conn.send_resp(conn, 404, "")
 
   defp keep(%{key: key}, url, auth) do
     :ok = Remote.put(Wardrik.Test.store(), %Remote{key: key, url: url, auth: auth, filters: []})
@@ -192,9 +211,21 @@ defmodule WardrikMCP.ServersTest do
       assert message =~ "not a server's name"
 
       assert {:error, %Error{message: message}} =
-               add.(name, %{"url" => "https://x.example", "auth" => %{"oauth" => %{}}})
+               add.(name, %{
+                 "url" => "https://x.example",
+                 "auth" => %{"oauth" => %{"scopes" => "write"}}
+               })
 
-      assert message =~ "auth is"
+      assert message =~ "scopes are a list"
+    end
+
+    test "refuses the name of an account the deployment offers", %{owner: owner} do
+      fields = %{"url" => "https://x.example/mcp", "auth" => %{"none" => %{}}}
+
+      assert {:error, %Error{type: :conflict, message: message}} =
+               Wardrik.Servers.add(servers(), owner, name: "taken", fields: fields, by: nil)
+
+      assert message =~ "an account this deployment offers"
     end
 
     test "refuses a URL its check refuses", %{name: name, owner: owner} do

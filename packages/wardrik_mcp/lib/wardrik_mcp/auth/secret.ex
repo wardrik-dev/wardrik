@@ -12,9 +12,10 @@ defmodule WardrikMCP.Auth.Secret do
   @type t() :: %__MODULE__{name: String.t(), header: String.t(), scheme: String.t()}
 
   defimpl WardrikMCP.Auth do
-    def options(%{name: name, header: header, scheme: scheme}),
+    def options(%{name: name, header: header, scheme: scheme}, _key),
       do: [credential: name, credential_header: header, credential_scheme: scheme]
 
     def name(_secret), do: "secret"
+    def provider(_secret, _key, _url), do: :none
   end
 end

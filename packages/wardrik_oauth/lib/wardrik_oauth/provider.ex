@@ -44,6 +44,10 @@ defmodule WardrikOAuth.Provider do
       a browser sent back to this machine cannot be, because the redirect
       comes back to loopback and there is no browser here to open; in a
       browser otherwise
+
+  `:trust` is whose word its `:resource` rests on, as `WardrikOAuth.Egress`
+  holds a URL to: `:operator` for one the deployment configures, and
+  `:discovered` for one added for an owner, `WardrikOAuth.Providers`.
   """
 
   @derive {Inspect, except: [:client_secret]}
@@ -56,7 +60,8 @@ defmodule WardrikOAuth.Provider do
     :client_secret,
     scopes: [],
     authorization_params: %{},
-    flow: :auto
+    flow: :auto,
+    trust: :operator
   ]
 
   @typedoc "A provider a user can authorize."
@@ -68,7 +73,8 @@ defmodule WardrikOAuth.Provider do
           client_secret: String.t() | nil,
           scopes: [String.t()],
           authorization_params: %{optional(String.t()) => String.t()},
-          flow: flow()
+          flow: flow(),
+          trust: WardrikOAuth.Egress.trust()
         }
 
   @typedoc """
@@ -129,16 +135,28 @@ defmodule WardrikOAuth.Provider do
   def flow!(flow),
     do: raise(ArgumentError, "a provider's flow is auto, browser or device, not #{inspect(flow)}")
 
-  @doc "The provider `oauth` configures under `name`, if there is one."
-  @spec fetch(WardrikOAuth.t(), String.t()) :: {:ok, t()} | :error
-  def fetch(%WardrikOAuth{providers: providers}, name) when is_binary(name) do
-    Enum.find_value(providers, :error, fn {configured, opts} ->
+  @doc """
+  The provider `name` is for `owner`: the one `oauth` configures under it,
+  else one its `:added` holds for them.
+  """
+  @spec fetch(WardrikOAuth.t(), String.t(), WardrikVault.owner()) :: {:ok, t()} | :error
+  def fetch(%WardrikOAuth{providers: providers, added: added}, name, owner)
+      when is_binary(name) do
+    Enum.find_value(providers, fn {configured, opts} ->
       if to_string(configured) == name, do: {:ok, new(configured, opts)}
-    end)
+    end) || WardrikOAuth.Providers.fetch(added, name, owner: owner)
   end
 
   @doc "Every provider `oauth` configures."
   @spec all(WardrikOAuth.t()) :: [t()]
   def all(%WardrikOAuth{providers: providers}),
     do: Enum.map(providers, fn {name, opts} -> new(name, opts) end)
+
+  @doc """
+  Every name a sign-in may come back for: those `oauth` configures, and
+  those its `:added` holds for any owner.
+  """
+  @spec names(WardrikOAuth.t()) :: [String.t()]
+  def names(%WardrikOAuth{added: added} = oauth),
+    do: Enum.map(all(oauth), & &1.name) ++ WardrikOAuth.Providers.names(added)
 end

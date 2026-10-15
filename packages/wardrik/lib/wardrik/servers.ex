@@ -6,7 +6,7 @@ defprotocol Wardrik.Servers do
   A host names the value once, as the `:servers` of its `Wardrik.Host`, and
   the operations on servers ask it, whichever surface they came from:
 
-      Wardrik.Host.new(servers: %WardrikMCP.Servers{store: store})
+      Wardrik.Host.new(servers: %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault})
 
   | Operation | Function |
   | --- | --- |

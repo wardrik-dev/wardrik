@@ -22,7 +22,7 @@ defmodule WardrikVaultTest do
   end
 
   defimpl WardrikVault.Grants, for: Grants do
-    def grants?(_grants, name), do: name == "github"
+    def grants?(_grants, name, _owner), do: name == "github"
 
     def renew(_grants, name, owner, opts) do
       %WardrikVault{} = Keyword.fetch!(opts, :vault)
@@ -414,7 +414,7 @@ defmodule WardrikVaultTest do
     test "grants nothing without grants of its own", %{user: user} do
       none = %WardrikVault.Grants.None{}
 
-      refute WardrikVault.Grants.grants?(none, "github")
+      refute WardrikVault.Grants.grants?(none, "github", "acme")
 
       assert WardrikVault.Grants.renew(none, "github", user, vault: vault(), value: "t") ==
                {:error, :not_found}

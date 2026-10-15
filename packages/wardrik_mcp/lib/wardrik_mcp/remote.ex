@@ -62,7 +62,7 @@ defmodule WardrikMCP.Remote do
         serves: [remote.key.owner],
         store: store,
         idle_after: @idle_after
-      ] ++ Auth.options(remote.auth) ++ remote.filters
+      ] ++ Auth.options(remote.auth, remote.key) ++ remote.filters
     )
   end
 
@@ -111,6 +111,18 @@ defmodule WardrikMCP.Remote do
         do: remote
   end
 
+  @doc "Every server any owner added, for each one signed in to."
+  @spec all(WardrikStore.t()) :: [t()]
+  def all(store) do
+    for text <- WardrikStore.keys(store, @ns, ""),
+        remote = WardrikStore.get(store, @ns, text),
+        do: remote
+  end
+
+  @doc "The sign-in its owner reaches `remote` through, or `:none`; see `WardrikMCP.Auth.provider/3`."
+  @spec provider(t()) :: {:ok, WardrikOAuth.Provider.t()} | :none
+  def provider(%__MODULE__{} = remote), do: Auth.provider(remote.auth, remote.key, remote.url)
+
   @doc "Forgets the server `key` names."
   @spec delete(WardrikStore.t(), Key.t()) :: :ok | {:error, :not_found}
   def delete(store, %Key{} = key) do
@@ -156,8 +168,22 @@ defmodule WardrikMCP.Remote do
     end
   end
 
+  defp auth(%{"oauth" => %{} = oauth}) do
+    case Map.get(oauth, "scopes", []) do
+      scopes when is_list(scopes) ->
+        if Enum.all?(scopes, &is_binary/1),
+          do: {:ok, %Auth.OAuth{scopes: scopes}},
+          else: {:error, "auth's oauth scopes are text"}
+
+      _other ->
+        {:error, "auth's oauth scopes are a list"}
+    end
+  end
+
   defp auth(_auth),
-    do: {:error, ~s(auth is {"none": {}}, or {"secret": {"name": ...}} naming a vault secret)}
+    do:
+      {:error,
+       ~s(auth is {"none": {}}, {"oauth": {}}, or {"secret": {"name": ...}} naming a vault secret)}
 
   defp text(fields, key, default) do
     case Map.get(fields, key, default) do

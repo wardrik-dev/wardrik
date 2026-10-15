@@ -39,7 +39,7 @@ defmodule WardrikOAuth.Connections do
 
   @doc false
   def connect(%__MODULE__{oauth: oauth, vault: vault}, name, owner, opts) do
-    case Provider.fetch(oauth, name) do
+    case Provider.fetch(oauth, name, owner) do
       {:ok, provider} ->
         oauth |> WardrikOAuth.hold(provider, owner, vault: vault, by: opts[:by]) |> connected()
 

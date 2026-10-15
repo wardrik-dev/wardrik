@@ -79,11 +79,13 @@ defmodule WardrikOAuth.Metadata do
   Options:
 
     * `:issuer` - skip the resource leg and ask this issuer directly
+    * `:trust` - whose word `resource` rests on, `:operator` unless it says;
+      see `WardrikOAuth.Egress`
     * `:req_options` - merged into every request
   """
   @spec discover(String.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def discover(resource, opts \\ []) when is_binary(resource) do
-    with :ok <- Egress.check(resource, :operator),
+    with :ok <- Egress.check(resource, Keyword.get(opts, :trust, :operator)),
          {:ok, issuer, trust, scopes} <- issuer(resource, opts),
          {:ok, metadata} <- authorization_server(issuer, trust, opts) do
       {:ok, %{metadata | resource: resource, trust: trust, resource_scopes: scopes}}
@@ -116,7 +118,7 @@ defmodule WardrikOAuth.Metadata do
   end
 
   defp from_resource(resource, opts) do
-    case get(well_known(resource, @resource_metadata), :operator, opts) do
+    case get(well_known(resource, @resource_metadata), Keyword.get(opts, :trust, :operator), opts) do
       {:ok, %{"resource" => named, "authorization_servers" => [issuer | _rest]} = body}
       when is_binary(named) and is_binary(issuer) ->
         if same_resource?(named, resource),
