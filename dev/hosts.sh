@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Builds the Hex packages of Wardrik and of its Postgres and S3 stores from
-# this checkout, as mix hex.build has them, and compiles Wardrik's alone
-# without its optional dependencies, warnings and all. Then makes new
-# applications that depend on those packages, and checks Wardrik inside each:
-# a Phoenix app that keeps it in its own Repo and starts it in its own tree,
-# with wardrik_ecto, and a bare Mix app that keeps it in an S3 bucket, with
+# Checks Wardrik inside applications that depend on this checkout by path, as
+# an application with Wardrik in a git submodule does: a Phoenix app that
+# keeps it in its own Repo and starts it, its budgets' meters and its
+# triggers in its own tree, with wardrik_ecto, wardrik_policy and
+# wardrik_trigger, and a bare Mix app that keeps it in an S3 bucket, with
 # wardrik_s3. Neither depends on :ekv, and the bare one not on :ecto_sql
 # either, so each shows Wardrik compiling and running without what it leaves
-# out.
+# out. First it builds the Hex packages as mix hex.build has them, and
+# compiles Wardrik's alone, from those, without its optional dependencies,
+# warnings and all.
 #
 #   dev/services.sh && dev/hosts.sh     both
 #   dev/hosts.sh phoenix                one of them: phoenix or bare
@@ -54,15 +55,14 @@ quietly() {
 }
 
 # Each package is built as it would be published, naming the packages beside
-# it by version; an app depending on it overrides Wardrik with the one built
-# here.
+# it by version. Unpacked side by side, Wardrik's finds them by path.
 package() {
   say "Building the Hex packages, and compiling Wardrik's without its optional dependencies"
   # Hex goes in this run's archives, as phx_new does.
   quietly mix local.hex --force
   rm -rf "$WARDRIK_PACKAGES"
 
-  for package in wardrik wardrik_ecto wardrik_s3; do
+  for package in wardrik_protocol wardrik_store wardrik wardrik_ecto wardrik_s3 wardrik_policy wardrik_trigger; do
     (cd "$repo/packages/$package" &&
       quietly env WARDRIK_HEX=1 mix hex.build --unpack --output "$WARDRIK_PACKAGES/$package")
   done
@@ -90,8 +90,8 @@ phoenix() {
     --no-live --no-mailer --no-install >/dev/null)
 
   cd "$dir/host"
-  perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_PACKAGES}\/wardrik", override: true},\n      {:wardrik_ecto, path: "$ENV{WARDRIK_PACKAGES}\/wardrik_ecto"},\n      $1/' mix.exs
-  perl -0pi -e 's/(      Host\.Repo,\n)/$1      {WardrikStore, Host.Wardrik.store()},\n      {Wardrik, host: Host.Wardrik.host()},\n/' lib/host/application.ex
+  WARDRIK_REPO=$repo perl -0pi -e 's/(\{:phoenix, )/{:wardrik, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik"},\n      {:wardrik_ecto, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik_ecto"},\n      {:wardrik_policy, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik_policy"},\n      {:wardrik_trigger, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik_trigger"},\n      $1/' mix.exs
+  perl -0pi -e 's/(      Host\.Repo,\n)/$1      {WardrikStore, Host.Wardrik.store()},\n      {Wardrik, host: Host.Wardrik.host()},\n      {WardrikPolicy.Supervisor, store: Host.Wardrik.store()},\n      {WardrikTrigger, store: Host.Wardrik.store()},\n/' lib/host/application.ex
   grep -q '^      {Wardrik, host: Host.Wardrik.host()},$' lib/host/application.ex || die "host's children have no Host.Repo to start Wardrik after"
   cat >lib/host/wardrik.ex <<'EOF'
 defmodule Host.Wardrik do
@@ -102,7 +102,7 @@ defmodule Host.Wardrik do
 end
 EOF
 
-  perl -0pi -e 's/(# Import environment specific config)/# Wardrik, kept in the Repo and started after it.\nconfig :wardrik, start: :host\nconfig :wardrik, WardrikStore, adapter: WardrikEcto.Store, repo: Host.Repo\n\n$1/' config/config.exs
+  perl -0pi -e 's/(# Import environment specific config)/# Wardrik, kept in the Repo and started after it.\nconfig :wardrik, start: :host\nconfig :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false\n\n$1/' config/config.exs
   printf '\nconfig :host, Host.Repo, url: "%s"\nconfig :logger, level: :warning\n' \
     "$database_url" >>config/dev.exs
 
@@ -121,8 +121,8 @@ EOF
   quietly mix ecto.migrate
   cd "$repo"
 
-  WARDRIK_HOST_STORE=WardrikEcto.Store WARDRIK_HOST_WITHOUT=EKV WARDRIK_HOST_REPO=Host.Repo \
-    check host
+  WARDRIK_HOST=Host.Wardrik WARDRIK_HOST_STORE=WardrikEcto.Store WARDRIK_HOST_WITHOUT=EKV \
+    WARDRIK_HOST_REPO=Host.Repo WARDRIK_HOST_TREE=policy,trigger check host
 }
 
 bare() {
@@ -142,12 +142,20 @@ bare() {
   (cd "$dir" && mix new bare >/dev/null)
 
   cd "$dir/bare"
-  perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_PACKAGES}\/wardrik", override: true},\n      {:wardrik_s3, path: "$ENV{WARDRIK_PACKAGES}\/wardrik_s3"},/' mix.exs
+  WARDRIK_REPO=$repo perl -0pi -e 's/# \{:dep_from_hexpm, "~> 0.3.0"\},/{:wardrik, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik"},\n      {:wardrik_s3, path: "$ENV{WARDRIK_REPO}\/packages\/wardrik_s3"},/' mix.exs
+  cat >lib/wardrik.ex <<'EOF'
+defmodule Bare.Wardrik do
+  @moduledoc "Wardrik's store, as the application's config names it for Wardrik to start on."
+
+  def store, do: WardrikStore.new(Application.fetch_env!(:wardrik, WardrikStore))
+end
+EOF
   mkdir -p config
   cat >config/config.exs <<'EOF'
 import Config
 
 config :logger, level: :warning
+config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false
 EOF
   cat >config/runtime.exs <<'EOF'
 import Config
@@ -165,7 +173,8 @@ EOF
 
   cd "$repo"
 
-  WARDRIK_HOST_STORE=WardrikS3.Store WARDRIK_HOST_WITHOUT=EKV,Ecto,Postgrex check bare
+  WARDRIK_HOST=Bare.Wardrik WARDRIK_HOST_STORE=WardrikS3.Store \
+    WARDRIK_HOST_WITHOUT=EKV,Ecto,Postgrex check bare
 }
 
 package
