@@ -19,6 +19,7 @@ defmodule WardrikDefinition.MixProject do
         plt_local_path: "priv/plts"
       ],
       start_permanent: Mix.env() == :prod,
+      consolidate_protocols: Mix.env() != :test,
       deps: deps()
     ]
   end
