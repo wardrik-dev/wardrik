@@ -111,5 +111,11 @@
       forbid_multiple_matches: true,
       ignore: ["Wardrik.Test.*"]
     ]
+  ],
+  smells: [
+    behaviour_candidate: [
+      # A protocol and its implementations share their functions by design.
+      ignore: [modules: ["WardrikMCP.Auth", "WardrikMCP.Auth.*"]]
+    ]
   ]
 ]

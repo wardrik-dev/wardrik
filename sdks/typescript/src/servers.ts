@@ -7,9 +7,10 @@ export interface ServerOptions {
   signal?: AbortSignal;
 }
 
-/** How the owner's agents sign in to a server: with nothing, or a secret the owner keeps in the vault. */
+/** How the owner's agents sign in to a server: with nothing, in a browser, or a secret the owner keeps in the vault. */
 export type ServerAuth =
   | { none: Record<string, never> }
+  | { oauth: { scopes?: string[] } }
   | { secret: { name: string; header?: string; scheme?: string } };
 
 /** A server to add: its name, its URL, how its agents sign in, and which of its tools they take. */

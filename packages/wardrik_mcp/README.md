@@ -76,7 +76,10 @@ through the `Wardrik.Servers` operations every surface offers: over HTTP,
 it to its owner's agents alone:
 
 ```elixir
-host = Wardrik.Host.new(store: store, servers: %WardrikMCP.Servers{store: store})
+oauth = WardrikOAuth.new(added: %WardrikMCP.Servers.Providers{store: store})
+vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
+servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
+host = Wardrik.Host.new(store: store, credentials: vault, servers: servers)
 
 children = [
   {Wardrik, host: host},
@@ -85,8 +88,10 @@ children = [
 ```
 
 Such a server is reached over Streamable HTTP at an `https` URL whose host
-has public addresses, signs in with nothing or with a secret its owner keeps
-in the vault, and is named by its `Wardrik.Servers.Key`. Each node starts its
+has public addresses, signs in with nothing, in a browser, or with a secret
+its owner keeps in the vault, and is named by its `Wardrik.Servers.Key`. A
+server signed in to is one of `WardrikOAuth`'s providers through
+`WardrikMCP.Servers.Providers`, for its owner alone. Each node starts its
 connection the first time an agent's tools are built with it, and stops it
 after a quarter of an hour with no call; `WardrikMCP.Remote` says what an
 owner can set, and what they cannot.

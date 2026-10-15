@@ -226,7 +226,7 @@ defmodule WardrikVault do
   end
 
   defp ask(vault, name, owner) do
-    if Grants.grants?(vault.grants, name),
+    if Grants.grants?(vault.grants, name, owner),
       do: Grants.ask(vault.grants, name, owner, vault: vault),
       else: {:error, :not_found}
   end

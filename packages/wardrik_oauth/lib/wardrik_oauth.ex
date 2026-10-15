@@ -98,6 +98,7 @@ defmodule WardrikOAuth do
   @enforce_keys []
   defstruct client: [],
             providers: [],
+            added: %WardrikOAuth.Providers.None{},
             redirect: [],
             req_options: [],
             resolve: &Egress.resolve/1,
@@ -111,6 +112,7 @@ defmodule WardrikOAuth do
   | --- | --- |
   | `:client` | the identity this deployment presents, see `WardrikOAuth.Client` |
   | `:providers` | what a user can authorize, see `WardrikOAuth.Provider` |
+  | `:added` | providers added beyond those, each for an owner, see `WardrikOAuth.Providers` |
   | `:redirect` | where a code comes back to: `:url`, `:ip`, `:port`, `:open`, `:opener`; see `WardrikOAuth.Callback` |
   | `:req_options` | merged into every request |
   | `:resolve` | answers a host's addresses, `WardrikOAuth.Egress.resolve/1` by default |
@@ -120,6 +122,7 @@ defmodule WardrikOAuth do
   @type t() :: %__MODULE__{
           client: keyword(),
           providers: keyword(),
+          added: WardrikOAuth.Providers.t(),
           redirect: keyword(),
           req_options: keyword(),
           resolve: (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term()}),
@@ -144,24 +147,26 @@ defmodule WardrikOAuth do
     do: [req_options: oauth.req_options, resolve: oauth.resolve]
 
   @doc false
-  def grants?(oauth, name), do: match?({:ok, _provider}, Provider.fetch(oauth, name))
+  def grants?(oauth, name, owner),
+    do: match?({:ok, _provider}, Provider.fetch(oauth, name, owner))
 
   @doc false
   def renew(oauth, name, owner, opts) do
-    with {:ok, provider} <- provider(oauth, name),
+    with {:ok, provider} <- provider(oauth, name, owner),
          do: held(oauth, vault(opts), provider, owner, Keyword.fetch!(opts, :value))
   end
 
   @doc false
   def ask(oauth, name, owner, opts) do
-    with {:ok, provider} <- provider(oauth, name), do: begin(oauth, vault(opts), provider, owner)
+    with {:ok, provider} <- provider(oauth, name, owner),
+         do: begin(oauth, vault(opts), provider, owner)
   end
 
   @doc false
   def refused(oauth, name, owner, opts) do
     vault = vault(opts)
 
-    with {:ok, provider} <- provider(oauth, name),
+    with {:ok, provider} <- provider(oauth, name, owner),
          do: single_flight(provider, owner, fn -> expire(vault, provider, owner) end)
 
     :ok
@@ -311,7 +316,7 @@ defmodule WardrikOAuth do
   """
   @spec document(t()) :: map()
   def document(%__MODULE__{} = oauth) do
-    uris = oauth |> Provider.all() |> Enum.map(&redirect(oauth, &1)) |> Enum.uniq()
+    uris = oauth |> Provider.names() |> Enum.map(&Callback.redirect_uri(oauth, &1)) |> Enum.uniq()
     %{Client.document(Client.new(oauth.client)) | "redirect_uris" => uris}
   end
 
@@ -599,7 +604,7 @@ defmodule WardrikOAuth do
   # is used again; a new one is kept.
   defp prepare(oauth, vault, %Provider{} = provider) do
     client = Client.new(Keyword.put(oauth.client, :redirect_uri, redirect(oauth, provider)))
-    discovered = [issuer: provider.issuer] ++ requests(oauth)
+    discovered = [issuer: provider.issuer, trust: provider.trust] ++ requests(oauth)
 
     with {:ok, metadata} <- Metadata.discover(provider.resource, discovered),
          {:ok, registered} <- registered(oauth, vault, provider, metadata, client) do
@@ -659,8 +664,8 @@ defmodule WardrikOAuth do
     WardrikVault.put(vault, provider.name, owner, value: Token.encode(token), kind: :grant)
   end
 
-  defp provider(oauth, name) do
-    case Provider.fetch(oauth, name) do
+  defp provider(oauth, name, owner) do
+    case Provider.fetch(oauth, name, owner) do
       {:ok, provider} -> {:ok, provider}
       :error -> {:error, {:no_such_provider, name}}
     end
@@ -672,7 +677,7 @@ defmodule WardrikOAuth do
 end
 
 defimpl WardrikVault.Grants, for: WardrikOAuth do
-  defdelegate grants?(oauth, name), to: WardrikOAuth
+  defdelegate grants?(oauth, name, owner), to: WardrikOAuth
   defdelegate renew(oauth, name, owner, opts), to: WardrikOAuth
   defdelegate ask(oauth, name, owner, opts), to: WardrikOAuth
   defdelegate refused(oauth, name, owner, opts), to: WardrikOAuth

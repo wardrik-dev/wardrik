@@ -6,7 +6,8 @@ defmodule WardrikMCP.Auth.None do
   @type t() :: %__MODULE__{}
 
   defimpl WardrikMCP.Auth do
-    def options(_none), do: []
+    def options(_none, _key), do: []
     def name(_none), do: "none"
+    def provider(_none, _key, _url), do: :none
   end
 end
