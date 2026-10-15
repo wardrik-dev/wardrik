@@ -18,6 +18,7 @@ defmodule WardrikDaemon.AgentsTest do
 
   setup %{tmp_dir: dir} do
     org = "agents-#{System.unique_integer([:positive])}"
+    Host.declare([org, "acme"])
 
     on_exit(fn ->
       prefix = Prefix.parse!(org <> "/")

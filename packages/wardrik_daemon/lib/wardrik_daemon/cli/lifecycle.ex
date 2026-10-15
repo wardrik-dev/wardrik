@@ -163,15 +163,16 @@ defmodule WardrikDaemon.CLI.Lifecycle do
       {opts[:user], "--user #{opts[:user]} is not a user's name"}
     ]
 
+    config = WardrikDaemon.Host.config()
+
     case Enum.find(named, fn {text, _message} ->
            text != nil and not AgentID.segment?(text)
          end) do
       nil ->
-        {:ok,
-         AgentID.new!(name,
-           org: opts[:org] || WardrikDaemon.Config.org(WardrikDaemon.Host.config()),
-           user: opts[:user]
-         )}
+        org = opts[:org] || WardrikDaemon.Config.org(config)
+
+        with :ok <- WardrikDaemon.Config.declared(config, org),
+             do: {:ok, AgentID.new!(name, org: org, user: opts[:user])}
 
       {_text, message} ->
         {:error, message <> ": a name holds no / or whitespace, and does not begin with @ or _"}

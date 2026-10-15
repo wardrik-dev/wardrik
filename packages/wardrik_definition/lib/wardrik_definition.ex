@@ -133,8 +133,8 @@ defmodule WardrikDefinition do
   The agent an agent file's `text` declares, and the definition it writes:
   its frontmatter, with its body as `instructions`. Its `name`, `org` and
   `user` give the agent's ID, `name` the file's own name where it has none
-  and `org` the context's. What its settings say is checked as `spec/4`
-  reads them.
+  and `org` the context's, which must be one of its `orgs`. What its
+  settings say is checked as `spec/4` reads them.
   """
   @spec parse(String.t(), String.t(), Context.t()) ::
           {:ok, AgentID.t(), fields()} | {:error, String.t()}
@@ -149,8 +149,9 @@ defmodule WardrikDefinition do
 
   @doc """
   Whether `fields`, sent to the HTTP API, read as a definition of the agent
-  `id`: keys it takes, and nothing only an operator may write. What its
-  settings say is checked as `spec/4` reads them.
+  `id`: keys it takes, an org of the context's `orgs`, and nothing only an
+  operator may write. What its settings say is checked as `spec/4` reads
+  them.
   """
   @spec accept(AgentID.t(), fields(), Context.t()) :: :ok | {:error, String.t()}
   def accept(%AgentID{} = id, fields, %Context{} = context) when is_map(fields) do
@@ -158,6 +159,7 @@ defmodule WardrikDefinition do
       do: invalid!("#{id} is a conversation of #{owner(id)}; define #{owner(id)}")
 
     known!(fields, @keys)
+    declared!(id.org, context)
     held_after!(fields["policy"], context)
     optional_string!(fields["instructions"], "instructions")
     :ok
@@ -281,6 +283,16 @@ defmodule WardrikDefinition do
 
   defp within!(_spec, _owner, _context, _source), do: :ok
 
+  defp declared!(_org, %Context{orgs: :any}), do: :ok
+
+  defp declared!(org, %Context{orgs: orgs} = context) do
+    unless org in orgs,
+      do:
+        invalid!(
+          "#{org} is not an org #{context.names.config} declares: #{Enum.join(orgs, ", ")}"
+        )
+  end
+
   defp ok!(:ok), do: :ok
   defp ok!({:error, message}), do: invalid!("workspace " <> message)
 
@@ -322,6 +334,7 @@ defmodule WardrikDefinition do
         user: optional_string!(fields["user"], "user")
       )
 
+    declared!(id.org, context)
     fields = Map.drop(fields, ~w(name org user))
     fields = if body == "", do: fields, else: Map.put(fields, "instructions", body)
 

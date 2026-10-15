@@ -29,31 +29,37 @@ mcp:
   stripe:
     url: https://mcp.stripe.com
     credential: STRIPE_AGENT_KEY
-    org: payments
   github:
     url: https://api.githubcopilot.com/mcp/
     credential: GITHUB_TOKEN
-    org: [payments, growth]
 
 channels:
   payments-slack:
     type: slack
-    org: payments
     token: ${PAYMENTS_SLACK_BOT_TOKEN}
     app_token: ${PAYMENTS_SLACK_APP_TOKEN}
     approvers: ["@payments-lead"]
   growth-slack:
     type: slack
-    org: growth
     token: ${GROWTH_SLACK_BOT_TOKEN}
     app_token: ${GROWTH_SLACK_APP_TOKEN}
     approvers: ["@growth-lead"]
+
+orgs:
+  payments:
+    mcp: [stripe, github]
+    channels: [payments-slack]
+  growth:
+    mcp: [github]
+    channels: [growth-slack]
 
 vault:
   shared: [SEARCH_API_KEY]
 ```
 
-- **Servers belong to orgs.** Stripe serves Payments alone; GitHub serves both, each with its own
+- **Each team is declared once,** under `orgs`, with what it uses. A misspelt org or server is
+  refused at startup, with the nearest name.
+- **Servers are defined once.** Stripe serves Payments alone; GitHub serves both, each with its own
   token.
 - **Each team has its own Slack app,** offering only its own org's agents.
 - **Shared secrets are named.** Every agent may read `SEARCH_API_KEY`; no other deployment secret
@@ -157,6 +163,6 @@ that person's credentials. A token for them is scoped the same way:
 
 ### Taking it further
 
-- Give a third team an org, a Slack app and a ceiling: no other change is needed.
+- Give a third team an entry under `orgs`, a Slack app and a ceiling: no other change is needed.
 - Let a team's agents read a shared runbook tree with `workspace.shared`. See
   [Sharing trees](/concepts/files-and-memory/#sharing-trees).

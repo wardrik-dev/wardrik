@@ -128,6 +128,19 @@ defmodule WardrikDefinitionTest do
              WardrikDefinition.accept(AgentID.parse!("acme/triage/t1"), %{}, context)
   end
 
+  test "an agent is in one of the orgs the context declares", %{context: context, id: id} do
+    context = %{context | orgs: ["globex"]}
+
+    assert {:error, "acme is not an org Mode declares: globex"} =
+             WardrikDefinition.accept(id, %{}, context)
+
+    assert {:error, "acme is not an org Mode declares: globex"} =
+             WardrikDefinition.parse("---\norg: acme\n---\n", "triage", context)
+
+    assert {:ok, _id, _fields} =
+             WardrikDefinition.parse("---\norg: globex\n---\n", "triage", context)
+  end
+
   test "reads an agent file into the agent it declares and its definition", %{context: context} do
     text = "---\nname: triage\nuser: jon\nmodel: test:model\n---\nWatch the queue.\n"
 

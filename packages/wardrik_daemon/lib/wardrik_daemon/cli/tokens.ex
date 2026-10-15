@@ -104,11 +104,23 @@ defmodule WardrikDaemon.CLI.Tokens do
   # One of --scope and --all.
   defp scope(opts) do
     case {opts[:scope], opts[:all]} do
-      {scope, nil} when is_binary(scope) -> Prefix.parse(scope)
+      {scope, nil} when is_binary(scope) -> scope |> Prefix.parse() |> declared()
       {nil, true} -> {:ok, Prefix.all()}
       _neither_or_both -> {:error, :usage}
     end
   end
+
+  defp declared({:ok, scope}) do
+    case Prefix.org(scope) do
+      nil -> {:ok, scope}
+      org -> declared(WardrikDaemon.Config.declared(WardrikDaemon.Host.config(), org), scope)
+    end
+  end
+
+  defp declared(error), do: error
+
+  defp declared(:ok, scope), do: {:ok, scope}
+  defp declared({:error, message}, _scope), do: {:error, "--scope: " <> message}
 
   # What a token that can define holds its agents to: a policy of policies/,
   # or, said outright, nothing but their own.

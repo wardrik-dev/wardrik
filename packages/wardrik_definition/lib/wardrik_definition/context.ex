@@ -5,6 +5,7 @@ defmodule WardrikDefinition.Context do
 
       %WardrikDefinition.Context{
         org: "acme",
+        orgs: ["acme", "globex"],
         tools: [WardrikBrave.WebSearch],
         servers: [github: [orgs: :all], books: [orgs: ["acme"]]],
         mcp: WardrikMCP,
@@ -19,6 +20,7 @@ defmodule WardrikDefinition.Context do
       }
 
     * `org` - the org of an agent file that names none
+    * `orgs` - the orgs an agent may be in, or `:any`, the default
     * `tools` - the tools the host ships, each a module implementing
       `Wardrik.Tool`, named in a definition by its tool's name
     * `servers` - the MCP servers, by name, each with the `orgs` it serves,
@@ -51,6 +53,7 @@ defmodule WardrikDefinition.Context do
   """
 
   defstruct org: "default",
+            orgs: :any,
             tools: [],
             servers: [],
             mcp: nil,
@@ -69,6 +72,7 @@ defmodule WardrikDefinition.Context do
 
   @type t() :: %__MODULE__{
           org: String.t(),
+          orgs: :any | [String.t()],
           tools: [module()],
           servers: [{atom(), keyword()}],
           mcp: module() | nil,

@@ -28,6 +28,12 @@ defmodule WardrikDaemon.Test.Host do
 
   def sections, do: Process.get(@sections, [])
 
+  # Declares `orgs` beside the deployment's own, as config.yaml's orgs does.
+  def declare(orgs) do
+    own = Keyword.get(sections(), WardrikDaemon, [])
+    put_section(WardrikDaemon, Keyword.put(own, :orgs, [Config.org(config()) | orgs]))
+  end
+
   def config(dir) do
     base = config()
 

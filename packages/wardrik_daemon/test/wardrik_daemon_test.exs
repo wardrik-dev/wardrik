@@ -49,6 +49,7 @@ defmodule WardrikDaemonTest do
   end
 
   test "defines the agents sent to its HTTP API as it reads agent files", %{tmp_dir: dir} do
+    File.write!(Path.join(dir, "config.yaml"), "orgs:\n  daemon: {}\n")
     File.mkdir_p!(Path.join(dir, "policies"))
     File.write!(Path.join([dir, "policies", "careful.yaml"]), "deny: [run_lua]\n")
 
@@ -187,6 +188,7 @@ defmodule WardrikDaemonTest do
     org = "status-#{System.unique_integer([:positive])}"
     on_exit(fn -> Wardrik.Fleet.forget_under(Prefix.parse!(org <> "/")) end)
 
+    File.write!(Path.join(dir, "config.yaml"), "orgs:\n  #{org}: {}\n")
     File.mkdir_p!(Path.join(dir, "agents"))
 
     File.write!(

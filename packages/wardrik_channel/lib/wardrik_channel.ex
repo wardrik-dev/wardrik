@@ -35,7 +35,7 @@ defmodule WardrikChannel do
   ## What an adapter does
 
     * `config/1` reads a channel's settings, as `config.yaml` writes them
-      with `type` and `org` taken out, and answers the options its other
+      less the keys every channel takes, and answers the options its other
       callbacks take, or where they do not read.
     * `child_spec/1` is what a channel runs, such as its connection to the
       medium, started by `WardrikChannel.Supervisor` with the channel's
@@ -111,9 +111,10 @@ defmodule WardrikChannel do
   @type channels() :: %{String.t() => {module(), keyword(), Context.t()}}
 
   @doc """
-  Reads a channel's settings, as `config.yaml` writes them, less `type` and
-  `org`. Answers the options its callbacks take, or the key that does not
-  read, as a path within the channel, and why.
+  Reads a channel's settings, as `config.yaml` writes them, less the keys
+  every channel takes: `type`, `approvers`, `admins` and `create`. Answers
+  the options its callbacks take, or the key that does not read, as a path
+  within the channel, and why.
   """
   @callback config(settings :: map()) :: {:ok, keyword()} | {:error, [String.t()], String.t()}
 
