@@ -8,8 +8,9 @@ defmodule WardrikDaemon do
   read, and starts what the config calls for, each with its own section as
   options:
 
-    * `WardrikMCP.Supervisor`, when a server is configured. Each command's stderr
-      goes to `log/mcp.log` in the state directory.
+    * `WardrikMCP.Supervisor`, with the servers configured and those orgs and
+      people add, kept in the store. Each command's stderr goes to
+      `log/mcp.log` in the state directory.
     * `WardrikOAuth.Supervisor`, when a provider is configured.
     * `WardrikDaemon.Agents`, which runs the agents `agents/` declares, as
       the host's definitions.
@@ -90,8 +91,8 @@ defmodule WardrikDaemon do
   keys unseal, as its credentials, granting through `WardrikOAuth` with the
   config's `oauth`; the accounts people connect through both; the HTTP API's
   tokens; webhooks checked with the vault's secrets for each agent, else the
-  environment's; `WardrikDaemon.Grants`; and agents' files kept in the
-  store.
+  environment's; `WardrikDaemon.Grants`; agents' files kept in the store;
+  and the MCP servers orgs and people add, kept there too.
   """
   @spec host(Config.t(), store: WardrikStore.t()) :: Wardrik.Host.t()
   def host(%Config{} = config, opts) do
@@ -107,6 +108,7 @@ defmodule WardrikDaemon do
       audit: audit,
       definitions: agents,
       connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault},
+      servers: %WardrikMCP.Servers{store: store},
       credentials: vault,
       tokens: %WardrikHTTP.Tokens{store: store},
       triggers: %WardrikTrigger.Deliveries{
@@ -121,16 +123,16 @@ defmodule WardrikDaemon do
   defp oauth_settings(config),
     do: Keyword.take(Config.section(config, WardrikOAuth), [:client, :providers, :redirect])
 
+  # Orgs and people may add servers whenever the daemon runs, so it always
+  # runs, with the configured ones beside.
   defp mcp(config, store) do
-    settings = Config.section(config, WardrikMCP)
+    stderr = Path.join([config.state_dir, "log", "mcp.log"])
+    File.mkdir_p!(Path.dirname(stderr))
 
-    if Keyword.get(settings, :servers, []) != [] do
-      stderr = Path.join([config.state_dir, "log", "mcp.log"])
-      File.mkdir_p!(Path.dirname(stderr))
-      [{WardrikMCP.Supervisor, [store: store, stderr: {:file, stderr}] ++ settings}]
-    else
-      []
-    end
+    [
+      {WardrikMCP.Supervisor,
+       [store: store, stderr: {:file, stderr}] ++ Config.section(config, WardrikMCP)}
+    ]
   end
 
   # The host this daemon built offers its own sign-ins.

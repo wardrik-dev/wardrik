@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:servers",
+  "title": "Servers",
+  "description": "The MCP servers an owner added for their agents: what GET /v1/servers answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "servers"
+  ],
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "url",
+          "auth"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "What the owner's agents call it."
+          },
+          "url": {
+            "type": "string",
+            "description": "The server's URL."
+          },
+          "auth": {
+            "enum": [
+              "oauth",
+              "secret",
+              "none"
+            ],
+            "description": "How its agents sign in to it."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "servers": [
+        {
+          "name": "crm",
+          "url": "https://mcp.crm.example/mcp",
+          "auth": "secret"
+        }
+      ]
+    }
+  ]
+}

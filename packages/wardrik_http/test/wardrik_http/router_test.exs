@@ -176,6 +176,38 @@ defmodule WardrikHTTP.RouterTest do
     defdelegate disconnect(c, provider, owner), to: Linked
   end
 
+  # Has test/@jon/'s docs, adds docs and crm, the second behind a sign-in,
+  # and has taken already.
+  defmodule Added do
+    @moduledoc false
+    defstruct []
+
+    def list(_servers, owner) do
+      if to_string(owner) == "test/@jon/",
+        do: [%Wardrik.Servers.Listed{name: "docs", url: "https://docs.example/mcp", auth: "none"}],
+        else: []
+    end
+
+    def add(_servers, _owner, name: "docs", fields: _fields, by: _by), do: {:ok, :connected}
+
+    def add(_servers, _owner, name: "crm", fields: _fields, by: _by),
+      do: {:ok, %{url: "https://auth.example.com/crm", code: nil}}
+
+    def add(_servers, _owner, _opts),
+      do: {:error, Wardrik.Error.new(:conflict, "taken is there already.")}
+
+    def remove(_servers, _owner, name: "docs", by: _by), do: :ok
+
+    def remove(_servers, owner, name: name, by: _by),
+      do: {:error, Wardrik.Error.new(:not_found, "#{owner} added no #{name}.")}
+  end
+
+  defimpl Wardrik.Servers, for: Added do
+    defdelegate list(s, owner), to: Added
+    defdelegate add(s, owner, opts), to: Added
+    defdelegate remove(s, owner, opts), to: Added
+  end
+
   # Hands the test each request a trigger is delivered, and answers by its
   # body; operations run in the process serving the request.
   defmodule Hooked do
@@ -216,6 +248,7 @@ defmodule WardrikHTTP.RouterTest do
         store: Wardrik.Test.store(),
         definitions: %Definition{},
         connections: %Linked{},
+        servers: %Added{},
         triggers: %Hooked{}
       )
 
@@ -1372,6 +1405,52 @@ defmodule WardrikHTTP.RouterTest do
       jon = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
 
       assert {:ok, %{status: 501}} = Req.get(jon, url: "/v1/connections")
+    end
+  end
+
+  describe "servers" do
+    test "lists, adds and removes the person's own, or with owner=org the org's", %{api: api} do
+      jon = as(api, "test/*", @jon)
+
+      assert {:ok, %{status: 200, body: %{"servers" => [%{"name" => "docs"}]} = body}} =
+               Req.get(jon, url: "/v1/servers")
+
+      conforms(body, "servers")
+
+      assert {:ok, %{status: 200, body: %{"servers" => []}}} =
+               Req.get(jon, url: "/v1/servers?owner=org")
+
+      docs = %{"name" => "docs", "url" => "https://docs.example/mcp", "auth" => %{"none" => %{}}}
+
+      assert {:ok, %{status: 201, body: %{"server" => "docs", "connected" => true} = body}} =
+               Req.post(jon, url: "/v1/servers", json: docs)
+
+      conforms(body, "server_added")
+
+      assert {:ok, %{status: 201, body: %{"connected" => false, "authorization" => link}}} =
+               Req.post(jon, url: "/v1/servers", json: %{docs | "name" => "crm"})
+
+      assert link == %{"url" => "https://auth.example.com/crm"}
+
+      assert {:ok, %{status: 409}} =
+               Req.post(jon, url: "/v1/servers", json: %{docs | "name" => "taken"})
+
+      assert {:ok, %{status: 204}} = Req.delete(jon, url: "/v1/servers/docs")
+
+      assert Audit.about("servers/test/@jon/docs") |> List.last() ==
+               {"server.removed", %{"type" => "user", "id" => "jon"}}
+
+      assert {:ok, %{status: 404}} = Req.delete(jon, url: "/v1/servers/nothing")
+    end
+
+    test "are refused a body without a name, and answer 501 where the host offers none",
+         %{api: api} do
+      jon = as(api, "test/*", @jon)
+
+      assert {:ok, %{status: 400}} = Req.post(jon, url: "/v1/servers", json: %{"url" => "x"})
+
+      none = api |> listener(host: Host.new(store: Wardrik.Test.store())) |> as("test/*", @jon)
+      assert {:ok, %{status: 501}} = Req.get(none, url: "/v1/servers")
     end
   end
 

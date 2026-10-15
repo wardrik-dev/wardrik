@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_servers_list",
+  "title": "servers.list",
+  "description": "What listing the MCP servers an owner added takes: nothing but the owner.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {},
+  "examples": [
+    {}
+  ]
+}

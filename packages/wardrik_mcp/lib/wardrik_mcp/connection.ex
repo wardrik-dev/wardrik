@@ -27,7 +27,9 @@ defmodule WardrikMCP.Connection do
   from the start. A per-user connection stops on its own once nothing has called
   through it for a quarter of an hour, and again when the credential it was
   built around is about to expire: the call after that resolves a fresh one
-  and opens a connection carrying it.
+  and opens a connection carrying it. The deployment's connection runs for
+  as long as the node does, or stops as its server's `:idle_after` says,
+  as one `WardrikMCP.Remotes` started does.
 
   ## Cancelling what a caller stopped waiting for
 
@@ -178,6 +180,19 @@ defmodule WardrikMCP.Connection do
     ArgumentError -> []
   end
 
+  @doc "The principals a connection to the server `key` names is running for."
+  @spec principals(Key.t()) :: [term()]
+  def principals(%Key{} = key) do
+    @registry
+    # Every connection to one server is the answer.
+    # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
+    |> Registry.select([
+      {{{:connection, :"$1", :"$2"}, :_, :_}, [{:==, :"$1", {:const, key}}], [:"$2"]}
+    ])
+  rescue
+    ArgumentError -> []
+  end
+
   @doc "The `Anubis.Client` name for a key and principal, whether or not it is running."
   @spec client(Key.t(), term()) :: GenServer.name()
   def client(key, principal \\ :deployment),
@@ -264,7 +279,8 @@ defmodule WardrikMCP.Connection do
       used_at: System.monotonic_time(:millisecond)
     }
 
-    {:ok, expire_with_credential(state, good_for), {:continue, :connect}}
+    {:ok, state |> expire_with_credential(good_for) |> schedule_idle_check(),
+     {:continue, :connect}}
   end
 
   @impl GenServer
@@ -369,7 +385,7 @@ defmodule WardrikMCP.Connection do
   end
 
   def handle_info(:idle_check, %State{} = state) do
-    if idle_for(state) >= @idle_after and state.watching == %{} do
+    if idle_for(state) >= idle_after(state) and state.watching == %{} do
       {:stop, :normal, state}
     else
       {:noreply, schedule_idle_check(%{state | idling?: false})}
@@ -414,6 +430,7 @@ defmodule WardrikMCP.Connection do
   # the owner's to change, so a user's connection hands its list over.
   defp publish(%State{principal: :deployment, server: server} = state, listed) do
     offer(server, built(server, listed))
+    keep(server, listed)
     listed(state, listed)
 
     Logger.info("MCP server #{server.key}: #{length(listed)} tools listed")
@@ -461,8 +478,13 @@ defmodule WardrikMCP.Connection do
      for(%{"name" => name, "annotations" => %{"readOnlyHint" => true}} <- offered, do: name)}
   end
 
-  defp remembered(%Server{credential: nil}), do: {[], []}
   defp remembered(%Server{} = server), do: built(server, Listing.recall(server.store, server.key))
+
+  # A server's own connection that may stop keeps what it listed, so the
+  # next one offers it from the start; one that runs for as long as the node
+  # does needs nothing kept.
+  defp keep(%Server{idle_after: :infinity}, _listed), do: :ok
+  defp keep(%Server{} = server, listed), do: Listing.remember(server.store, server.key, listed)
 
   defp offer(%Server{} = server, {tools, read_only}) do
     Registry.update_value(
@@ -551,16 +573,23 @@ defmodule WardrikMCP.Connection do
     state
   end
 
-  defp schedule_idle_check(%State{principal: :deployment} = state), do: state
   defp schedule_idle_check(%State{idling?: true} = state), do: state
+  defp schedule_idle_check(%State{} = state), do: schedule_idle_check(state, idle_after(state))
+
+  defp schedule_idle_check(%State{} = state, :infinity), do: state
 
   # One check runs at a time: a connection listed again on every notification
   # would otherwise carry a timer per listing for as long as it lives.
-  defp schedule_idle_check(%State{} = state) do
-    Process.send_after(self(), :idle_check, @idle_after)
+  defp schedule_idle_check(%State{} = state, after_ms) do
+    Process.send_after(self(), :idle_check, after_ms)
 
     %{state | idling?: true}
   end
+
+  # A server's own connection runs for as long as the server says; one that
+  # carries someone's credential stops a quarter of an hour after its last call.
+  defp idle_after(%State{principal: :deployment, server: server}), do: server.idle_after
+  defp idle_after(%State{}), do: @idle_after
 
   defp idle_for(%State{used_at: used_at}),
     do: System.monotonic_time(:millisecond) - used_at

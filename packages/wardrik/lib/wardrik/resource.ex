@@ -138,6 +138,28 @@ defmodule Wardrik.Resource do
   def connecting(provider, link),
     do: %{"provider" => provider, "connected" => false, "authorization" => authorization(link)}
 
+  @doc "The MCP servers an owner added, each by its name, URL and how its agents sign in."
+  @spec servers([Wardrik.Servers.Listed.t()]) :: map()
+  def servers(servers) do
+    %{
+      "servers" =>
+        for(
+          %Wardrik.Servers.Listed{name: name, url: url, auth: auth} <- servers,
+          do: %{"name" => name, "url" => url, "auth" => auth}
+        )
+    }
+  end
+
+  @doc """
+  A server added: its agents can call it now where `link` is `nil`, else
+  once someone signs in where it says.
+  """
+  @spec server_added(String.t(), Wardrik.Call.Ask.link() | nil) :: map()
+  def server_added(name, nil), do: %{"server" => name, "connected" => true}
+
+  def server_added(name, link),
+    do: %{"server" => name, "connected" => false, "authorization" => authorization(link)}
+
   @doc """
   A page of an export: its events, the `next` that moves the export past
   them, and where a log was trimmed before the export got to it.

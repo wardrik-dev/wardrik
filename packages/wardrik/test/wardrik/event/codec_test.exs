@@ -10,6 +10,7 @@ defmodule Wardrik.Event.CodecTest do
   alias Wardrik.Event.Source
   alias Wardrik.Grant
   alias Wardrik.Principal
+  alias Wardrik.Servers.Key
 
   @schemas WardrikProtocol.dir()
   @agent Wardrik.AgentID.parse!("acme/@ops/triage")
@@ -172,7 +173,9 @@ defmodule Wardrik.Event.CodecTest do
       {:token_created, "tok_1", "ci", grant, Principal.new(:user, "jon")},
       {:token_revoked, "tok_1"},
       {:secret_stored, "GITHUB_TOKEN", Prefix.all()},
-      {:secret_removed, "GITHUB_TOKEN", Prefix.new!(org: "acme", user: "jon")}
+      {:secret_removed, "GITHUB_TOKEN", Prefix.new!(org: "acme", user: "jon")},
+      {:server_added, Key.new(prefix, "crm"), "https://mcp.crm.example/mcp"},
+      {:server_removed, Key.new(prefix, "crm")}
     ]
   end
 

@@ -2,9 +2,10 @@ defmodule Wardrik.Host do
   @moduledoc """
   What the host running Wardrik answers that core cannot: the store
   everything is kept in, where agents' definitions are kept, which accounts
-  people connect, where secrets come from, how callers' tokens are made,
-  where requests for triggers go, what each principal may do, where
-  agents' files are kept, and what each model call actually is.
+  people connect, which MCP servers they add, where secrets come from, how
+  callers' tokens are made, where requests for triggers go, what each
+  principal may do, where agents' files are kept, and what each model call
+  actually is.
 
   `:store` is a `WardrikStore`, the one the host started, or
   `WardrikStore.None`'s where it names none, which raises on the first read
@@ -15,6 +16,7 @@ defmodule Wardrik.Host do
   | --- | --- | --- |
   | `:definitions` | `Wardrik.Definition` | `%Wardrik.Definition.None{}` |
   | `:connections` | `Wardrik.Connections` | `%Wardrik.Connections.None{}` |
+  | `:servers` | `Wardrik.Servers` | `%Wardrik.Servers.None{}` |
   | `:credentials` | `Wardrik.Credentials` | `%Wardrik.Credentials.None{}` |
   | `:tokens` | `Wardrik.Tokens` | `%Wardrik.Tokens.None{}` |
   | `:triggers` | `Wardrik.Triggers` | `%Wardrik.Triggers.None{}` |
@@ -73,6 +75,7 @@ defmodule Wardrik.Host do
   defstruct store: WardrikStore.new(adapter: WardrikStore.None),
             definitions: %Wardrik.Definition.None{},
             connections: %Wardrik.Connections.None{},
+            servers: %Wardrik.Servers.None{},
             credentials: %Wardrik.Credentials.None{},
             tokens: %Wardrik.Tokens.None{},
             triggers: %Wardrik.Triggers.None{},
@@ -85,6 +88,7 @@ defmodule Wardrik.Host do
           store: WardrikStore.t(),
           definitions: Wardrik.Definition.t(),
           connections: Wardrik.Connections.t(),
+          servers: Wardrik.Servers.t(),
           credentials: Wardrik.Credentials.t(),
           tokens: Wardrik.Tokens.t(),
           triggers: Wardrik.Triggers.t(),
@@ -97,6 +101,7 @@ defmodule Wardrik.Host do
   @seams [
     :definitions,
     :connections,
+    :servers,
     :credentials,
     :tokens,
     :triggers,
@@ -196,6 +201,10 @@ defmodule Wardrik.Host do
   @doc "The `Wardrik.Connections` the accounts people and orgs connect are asked of."
   @spec connections(t()) :: Wardrik.Connections.t()
   def connections(%__MODULE__{connections: connections}), do: connections
+
+  @doc "The `Wardrik.Servers` the MCP servers orgs and people add are asked of."
+  @spec servers(t()) :: Wardrik.Servers.t()
+  def servers(%__MODULE__{servers: servers}), do: servers
 
   @doc "The `Wardrik.Credentials` tools' credentials and providers' keys are resolved through."
   @spec credentials(t()) :: Wardrik.Credentials.t()

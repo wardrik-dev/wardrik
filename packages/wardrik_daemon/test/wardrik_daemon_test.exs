@@ -39,12 +39,11 @@ defmodule WardrikDaemonTest do
     {start_supervised({WardrikDaemon, host: host, config: config}), config, host}
   end
 
-  test "starts with no config.yaml at all, running the agent files and the HTTP API", %{
-    tmp_dir: dir
-  } do
+  test "starts with no config.yaml at all, running the agent files, the servers people add and the HTTP API",
+       %{tmp_dir: dir} do
     assert {{:ok, pid}, _config, _host} = daemon(dir)
 
-    assert [WardrikDaemon.Agents, WardrikHTTP.Listener] =
+    assert [WardrikDaemon.Agents, WardrikHTTP.Listener, WardrikMCP.Supervisor] =
              pid |> Supervisor.which_children() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
   end
 

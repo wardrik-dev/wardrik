@@ -31,6 +31,7 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Error
   alias Wardrik.Event.Export
   alias Wardrik.Grant
+  alias Wardrik.Operations.AddServer
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Cancel
   alias Wardrik.Operations.CancelAgents
@@ -52,7 +53,9 @@ defmodule WardrikHTTP.Router do
   alias Wardrik.Operations.ReadDefinition
   alias Wardrik.Operations.ReadEvents
   alias Wardrik.Operations.ReadNodes
+  alias Wardrik.Operations.ReadServers
   alias Wardrik.Operations.Reload
+  alias Wardrik.Operations.RemoveServer
   alias Wardrik.Operations.RemoveTrigger
   alias Wardrik.Operations.SetTrigger
   alias Wardrik.Operations.Spawn
@@ -149,6 +152,22 @@ defmodule WardrikHTTP.Router do
 
   delete "/v1/connections/:provider",
     do: run(conn, Command, connections(conn, Disconnect, provider: provider), 204)
+
+  # The MCP servers a caller added for their own agents, or with owner=org
+  # their org's.
+  get "/v1/servers", do: run(conn, Query, servers(conn, ReadServers, %{}), 200)
+
+  post "/v1/servers",
+    do:
+      run(
+        conn,
+        Command,
+        with({:ok, fields} <- object(conn.body_params), do: servers(conn, AddServer, fields)),
+        201
+      )
+
+  delete "/v1/servers/:name",
+    do: run(conn, Command, servers(conn, RemoveServer, %{"name" => name}), 204)
 
   # The deployment itself, to a token over every agent.
   post "/v1/deployment/reload", do: run(conn, Command, {:ok, %Reload{}}, 200)
@@ -350,9 +369,21 @@ defmodule WardrikHTTP.Router do
   # The request about the caller's own connections, or with owner=org their
   # org's.
   defp connections(conn, module, fields) do
+    with {:ok, whose} <- whose(conn), do: Owner.request(module, caller(conn), whose, fields)
+  end
+
+  # The request about the caller's own servers, or with owner=org their org's,
+  # from the operation's catalog input.
+  defp servers(conn, module, input) do
+    with {:ok, whose} <- whose(conn),
+         {:ok, owner} <- Owner.owner(caller(conn), whose),
+         do: module.new(owner, input)
+  end
+
+  defp whose(conn) do
     case conn.query_params["owner"] do
-      nil -> Owner.request(module, caller(conn), :person, fields)
-      "org" -> Owner.request(module, caller(conn), :org, fields)
+      nil -> {:ok, :person}
+      "org" -> {:ok, :org}
       _other -> {:error, Error.new(:invalid, "owner is org, or left out for the caller's own")}
     end
   end
