@@ -65,6 +65,7 @@ defmodule WardrikMCP do
   alias Wardrik.Tool.Result
   alias WardrikMCP.Connection
   alias WardrikMCP.Offer
+  alias WardrikMCP.Remotes
   alias WardrikMCP.Server
 
   @timeout :timer.seconds(60)
@@ -83,7 +84,7 @@ defmodule WardrikMCP do
   """
   @impl Wardrik.Tool
   @spec tools(Key.t() | :*) :: [ReqLLM.Tool.t()]
-  def tools(source), do: source |> keys() |> Enum.flat_map(&Connection.tools/1)
+  def tools(source), do: source |> keys() |> Enum.flat_map(&offered/1)
 
   @doc """
   What holds for the tool the agent knows as `name`: whether the server
@@ -118,7 +119,7 @@ defmodule WardrikMCP do
   # read-only, or `:connect` for the tool that connects the server.
   defp offering(source, name) do
     Enum.find_value(keys(source), fn key ->
-      with %Offer{server: server, tools: tools, read_only: read_only} <- Connection.offer(key),
+      with %Offer{server: server, tools: tools, read_only: read_only} <- offer(key),
            %ReqLLM.Tool{callback: {Tool, :invoke, [{__MODULE__, function, args}]}} <-
              Enum.find(tools, &(&1.name == name)) do
         offered(server, read_only, function, args)
@@ -135,6 +136,18 @@ defmodule WardrikMCP do
 
   defp keys(:*), do: servers()
   defp keys(%Key{} = key), do: [key]
+
+  # What a server is offering on this node: one of the deployment's own, or
+  # one an owner added, whose connection starts here the first time it is
+  # asked for.
+  defp offer(key), do: Connection.offer(key) || Remotes.offer(key)
+
+  defp offered(key) do
+    case offer(key) do
+      %Offer{tools: tools} -> tools
+      nil -> []
+    end
+  end
 
   @doc """
   Calls a tool on a server and reports what it answered.
@@ -158,7 +171,7 @@ defmodule WardrikMCP do
   """
   @spec call(Key.t(), String.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
   def call(%Key{} = key, name, input, %Wardrik.Tool.Context{} = context) do
-    with %Offer{server: server} <- Connection.offer(key),
+    with %Offer{server: server} <- offer(key),
          :ok <- serves(server, context.scope),
          {:ok, principal} <- connected(server, context.credentials[server.credential]) do
       :ok = Connection.watch(key, principal)
@@ -200,7 +213,7 @@ defmodule WardrikMCP do
   """
   @spec authorize(Key.t(), map(), Wardrik.Tool.Context.t()) :: Wardrik.Tool.answer()
   def authorize(%Key{} = key, _input, %Wardrik.Tool.Context{} = context) do
-    with %Offer{server: server} <- Connection.offer(key),
+    with %Offer{server: server} <- offer(key),
          :ok <- serves(server, context.scope),
          {:ok, _principal} <- connected(server, context.credentials[server.credential]) do
       Result.ok(%{"connected" => true, "server" => to_string(key)})
@@ -220,9 +233,19 @@ defmodule WardrikMCP do
   @spec disconnect(Key.t()) :: :ok | {:error, :not_found}
   def disconnect(%Key{} = key), do: WardrikMCP.Supervisor.disconnect(key)
 
-  @doc "The keys of every server currently connected."
+  @doc """
+  The keys of the deployment's own servers, those `WardrikMCP.Supervisor`
+  was started with or `connect/2` added, which `:*` names.
+  """
   @spec servers() :: [Key.t()]
-  def servers, do: Connection.keys()
+  def servers, do: for(server <- WardrikMCP.Supervisor.servers(), do: server.key)
+
+  @doc "Stops every connection to the server `key` names on this node."
+  @spec close(Key.t()) :: :ok
+  def close(%Key{} = key) do
+    for principal <- Connection.principals(key), do: Connection.close(key, principal)
+    :ok
+  end
 
   defp request(client, server, name, input, context) do
     opts = [timeout: server.timeout] ++ reporting(context)

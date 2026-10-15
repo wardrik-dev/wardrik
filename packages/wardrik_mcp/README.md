@@ -67,3 +67,27 @@ offers only `github__connect`, which asks them to authorize; see
 [wardrik_oauth](../wardrik_oauth).
 
 `WardrikMCP.Server` lists every option a server takes.
+
+## Servers owners add
+
+An org or a person adds a server of their own as the deployment runs,
+through the `Wardrik.Servers` operations every surface offers: over HTTP,
+`POST /v1/servers`. `WardrikMCP.Servers` keeps each in the store, and serves
+it to its owner's agents alone:
+
+```elixir
+host = Wardrik.Host.new(store: store, servers: %WardrikMCP.Servers{store: store})
+
+children = [
+  {Wardrik, host: host},
+  {WardrikMCP.Supervisor, store: store}
+]
+```
+
+Such a server is reached over Streamable HTTP at an `https` URL whose host
+has public addresses, signs in with nothing or with a secret its owner keeps
+in the vault, and is named by its `Wardrik.Servers.Key`. Each node starts its
+connection the first time an agent's tools are built with it, and stops it
+after a quarter of an hour with no call; `WardrikMCP.Remote` says what an
+owner can set, and what they cannot.
+

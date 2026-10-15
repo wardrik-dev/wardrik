@@ -20,7 +20,11 @@ defmodule WardrikMCP.Supervisor do
     * `:first_retry`, `:refresh_after` - the same for how long a connection
       waits before listing a server's tools again; see `WardrikMCP.Server`
     * `:store` - the `WardrikStore` every server keeps the tools a user's
-      connection listed in; see `WardrikMCP.Listing`
+      connection listed in; see `WardrikMCP.Listing`. With one,
+      `WardrikMCP.Remotes` runs too, reaching the servers owners added and
+      keep there; see `WardrikMCP.Servers`
+    * `:check` - whether the URL of a server an owner added may be reached;
+      see `WardrikMCP.Remotes`
 
   Every connection starts with the supervisor and keeps trying on its own, so a
   server that is down holds up neither the others nor the node, and one that
@@ -55,20 +59,30 @@ defmodule WardrikMCP.Supervisor do
         {Task.Supervisor, name: @tasks},
         WardrikMCP.Notifications
       ] ++
-        pool(servers) ++
+        pool(servers, opts) ++
         [
           connections(Enum.map(servers, &{Connection, &1})),
           {DynamicSupervisor, name: @principals, strategy: :one_for_one}
-        ]
+        ] ++ remotes(opts)
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
   # Anubis reaches an HTTP server through a Finch pool it names and does not
-  # start. Nothing else here needs one, so a deployment of commands runs none.
-  defp pool(servers) do
-    if Enum.any?(servers, &Server.http?/1), do: [{Finch, name: Anubis.Finch}], else: []
+  # start. Nothing else here needs one, so a deployment of commands that
+  # reaches no server an owner added runs none.
+  defp pool(servers, opts) do
+    if Enum.any?(servers, &Server.http?/1) or Keyword.has_key?(opts, :store),
+      do: [{Finch, name: Anubis.Finch}],
+      else: []
   end
+
+  defp remotes(opts),
+    do:
+      if(Keyword.has_key?(opts, :store),
+        do: [{WardrikMCP.Remotes, Keyword.take(opts, [:store, :check])}],
+        else: []
+      )
 
   # The connections sit under one supervisor of their own so that a connection
   # that crashes restarts alone, while a registry that crashes takes every
@@ -126,10 +140,21 @@ defmodule WardrikMCP.Supervisor do
     end
   end
 
-  @doc "The servers this supervisor is connecting to, whether or not they answer."
+  @doc """
+  The servers this supervisor was started with or `connect/1` added, whether
+  or not they answer; not those `WardrikMCP.Remotes` started for owners.
+  """
   @spec servers() :: [Server.t()]
   def servers do
-    for key <- Connection.keys(), offer = Connection.offer(key), do: offer.server
+    # The configured servers are this supervisor's children, and no other
+    # record of them is kept.
+    # credo:disable-for-next-line Wardrik.Credo.Check.NoScans
+    for {{Connection, key}, pid, _type, _modules} <- Supervisor.which_children(@connections),
+        is_pid(pid),
+        offer = Connection.offer(key),
+        do: offer.server
+  catch
+    :exit, {:noproc, _call} -> []
   end
 
   defp restart(key) do

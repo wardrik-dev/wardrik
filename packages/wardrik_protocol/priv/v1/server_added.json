@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:server_added",
+  "title": "A server added",
+  "description": "What POST /v1/servers answers: that the owner's agents can call the server now, or where someone signs in to it first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "server",
+    "connected"
+  ],
+  "properties": {
+    "server": {
+      "type": "string",
+      "description": "The server's name."
+    },
+    "connected": {
+      "type": "boolean",
+      "description": "Whether its agents can call it now."
+    },
+    "authorization": {
+      "$ref": "urn:wardrik:schema:v1:authorization",
+      "description": "Where to sign in to it, where someone has to first."
+    }
+  },
+  "examples": [
+    {
+      "server": "docs",
+      "connected": true
+    },
+    {
+      "server": "crm",
+      "connected": false,
+      "authorization": {
+        "url": "https://auth.crm.example/authorize?client_id=…&state=…"
+      }
+    }
+  ]
+}

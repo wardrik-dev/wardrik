@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:server.removed",
+  "title": "wardrik.server.removed",
+  "description": "Someone removed an MCP server an owner had added.",
+  "type": "object",
+  "properties": {
+    "server": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "description": "The org, as acme/, or the user, as acme/@jon/, whose agents it serves."
+    },
+    "actor": {
+      "$ref": "urn:wardrik:schema:v1:defs#/$defs/principal"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "server",
+    "owner"
+  ]
+}

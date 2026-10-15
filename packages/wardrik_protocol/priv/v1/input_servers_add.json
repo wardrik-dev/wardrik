@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wardrik:schema:v1:input_servers_add",
+  "title": "servers.add",
+  "description": "What adding an MCP server for an owner's agents takes: its name, its URL, how they sign in to it, and which of its tools they take.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "url",
+    "auth"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+      "description": "What the owner's agents call it: their definitions name its tools as name/*, and each tool arrives as name__tool. Letters, digits, - and _, up to 32, never __."
+    },
+    "url": {
+      "type": "string",
+      "description": "The server's whole URL, over https, reached as Streamable HTTP."
+    },
+    "auth": {
+      "description": "How the owner's agents sign in to it.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "none"
+          ],
+          "properties": {
+            "none": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "It takes no credential."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "secret"
+          ],
+          "properties": {
+            "secret": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "description": "A key the owner keeps in the vault, sent with every call.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The secret's name in the owner's vault."
+                },
+                "header": {
+                  "type": "string",
+                  "description": "The header it is sent in; authorization unless it says."
+                },
+                "scheme": {
+                  "type": "string",
+                  "description": "What comes before it in the header; Bearer unless it says, and nothing where it is empty."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "only": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The server's own names of the tools to take, every one unless it says."
+    },
+    "except": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The server's own names of the tools to leave."
+    }
+  },
+  "examples": [
+    {
+      "name": "crm",
+      "url": "https://mcp.crm.example/mcp",
+      "auth": {
+        "secret": {
+          "name": "crm-key"
+        }
+      }
+    },
+    {
+      "name": "docs",
+      "url": "https://docs.example.com/mcp",
+      "auth": {
+        "none": {}
+      },
+      "only": [
+        "search"
+      ]
+    }
+  ]
+}

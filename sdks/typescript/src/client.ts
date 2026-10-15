@@ -1,6 +1,7 @@
 import type { StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { Agent } from "./agent.ts";
 import { Connections } from "./connections.ts";
+import { Servers } from "./servers.ts";
 import { Deployment } from "./deployment.ts";
 import { Export } from "./export.ts";
 import { agentPath, Http } from "./http.ts";
@@ -43,6 +44,8 @@ export class Wardrik {
   readonly connections: Connections;
   /** The deployment itself, for a token over every agent. */
   readonly deployment: Deployment;
+  /** The MCP servers the token's person, or their org, adds for their own agents. */
+  readonly servers: Servers;
 
   readonly #http: Http;
   readonly #worker: Worker;
@@ -57,6 +60,7 @@ export class Wardrik {
     this.agents = new Agents(this.#http);
     this.connections = new Connections(this.#http);
     this.deployment = new Deployment(this.#http);
+    this.servers = new Servers(this.#http);
   }
 
   /** The agent under `key`, `org/name` or `org/@user/name`. */

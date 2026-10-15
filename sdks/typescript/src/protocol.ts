@@ -534,6 +534,39 @@ export interface Nodes {
   asleep: number;
 }
 /**
+ * What POST /v1/servers answers: that the owner's agents can call the server now, or where someone signs in to it first.
+ */
+export interface ServerAdded {
+  /**
+   * The server's name.
+   */
+  server: string;
+  /**
+   * Whether its agents can call it now.
+   */
+  connected: boolean;
+  authorization?: Authorization;
+}
+/**
+ * The MCP servers an owner added for their agents: what GET /v1/servers answers.
+ */
+export interface Servers {
+  servers: {
+    /**
+     * What the owner's agents call it.
+     */
+    name: string;
+    /**
+     * The server's URL.
+     */
+    url: string;
+    /**
+     * How its agents sign in to it.
+     */
+    auth: "oauth" | "secret" | "none";
+  }[];
+}
+/**
  * A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and a cron expression its timezone, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.
  */
 export interface Trigger {
@@ -930,6 +963,33 @@ export interface SecretStoredData {
   actor?: Principal;
 }
 /**
+ * Someone added an MCP server for an owner's agents.
+ */
+export interface ServerAddedData {
+  server: {
+    name: string;
+    url: string;
+  };
+  /**
+   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   */
+  owner: string;
+  actor?: Principal;
+}
+/**
+ * Someone removed an MCP server an owner had added.
+ */
+export interface ServerRemovedData {
+  server: {
+    name: string;
+  };
+  /**
+   * The org, as acme/, or the user, as acme/@jon/, whose agents it serves.
+   */
+  owner: string;
+  actor?: Principal;
+}
+/**
  * A named step ended.
  */
 export interface StepCompletedData {
@@ -1112,6 +1172,8 @@ export interface EventData {
   "wardrik.run.started": RunStartedData;
   "wardrik.secret.removed": SecretRemovedData;
   "wardrik.secret.stored": SecretStoredData;
+  "wardrik.server.added": ServerAddedData;
+  "wardrik.server.removed": ServerRemovedData;
   "wardrik.step.completed": StepCompletedData;
   "wardrik.step.started": StepStartedData;
   "wardrik.subagent.completed": SubagentCompletedData;

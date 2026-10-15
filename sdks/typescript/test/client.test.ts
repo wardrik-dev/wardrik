@@ -363,6 +363,33 @@ describe("connections", () => {
     await server.close();
   });
 });
+describe("servers", () => {
+  test("list, add and remove, for the person or with owner=org", async () => {
+    const list = { servers: [{ name: "crm", url: "https://mcp.crm.example/mcp", auth: "secret" as const }] };
+    const added = { server: "crm", connected: true };
+    server.on("GET", "/v1/servers", (_request, response) => json(response, 200, list));
+    server.on("POST", "/v1/servers", (_request, response) => json(response, 201, added));
+    server.on("DELETE", "/v1/servers/crm", (_request, response) => json(response, 204));
+
+    const crm = { name: "crm", url: "https://mcp.crm.example/mcp", auth: { secret: { name: "crm-key" } } };
+    assert.deepEqual(await wardrik.servers.list(), list);
+    assert.deepEqual(await wardrik.servers.add(crm, { owner: "org" }), added);
+    await wardrik.servers.remove("crm");
+
+    assert.deepEqual(
+      server.received.map((request) => [request.method, request.path]),
+      [
+        ["GET", "/v1/servers"],
+        ["POST", "/v1/servers?owner=org"],
+        ["DELETE", "/v1/servers/crm"],
+      ],
+    );
+    assert.deepEqual(server.received[1]!.body, crm);
+
+    await server.close();
+  });
+});
+
 
 describe("deployment", () => {
   test("lists its nodes, reloads and pages the audit as the API takes them", async () => {

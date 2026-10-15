@@ -327,6 +327,29 @@ Someone sealed a secret in the vault.
 | `owner` | string |  | The org, as acme/, or the user, as acme/@jon/, it is kept for; none where it is the whole deployment's. |
 | `actor` | [principal](#principal) |  |  |
 
+### `wardrik.server.added`
+
+Someone added an MCP server for an owner's agents.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `server` | object | yes |  |
+| `server.name` | string | yes |  |
+| `server.url` | string | yes |  |
+| `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
+| `actor` | [principal](#principal) |  |  |
+
+### `wardrik.server.removed`
+
+Someone removed an MCP server an owner had added.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `server` | object | yes |  |
+| `server.name` | string | yes |  |
+| `owner` | string | yes | The org, as acme/, or the user, as acme/@jon/, whose agents it serves. |
+| `actor` | [principal](#principal) |  |  |
+
 ### `wardrik.step.completed`
 
 A named step ended.

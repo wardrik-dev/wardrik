@@ -77,6 +77,11 @@ defmodule Wardrik.Audit do
     * `{:secret_stored, name, owner}`, `{:secret_removed, name, owner}` - a
       secret was sealed in the vault, or taken out, for the org or user
       `owner` names, or for the whole deployment where it is every agent
+
+  MCP servers orgs and people add:
+
+    * `{:server_added, key, url}` - the server `key` names was added at `url`
+    * `{:server_removed, key}`
   """
   @type action() ::
           {:agent_defined, AgentID.t()}
@@ -97,6 +102,8 @@ defmodule Wardrik.Audit do
           | {:token_revoked, String.t()}
           | {:secret_stored, String.t(), Prefix.t()}
           | {:secret_removed, String.t(), Prefix.t()}
+          | {:server_added, Wardrik.Servers.Key.t(), String.t()}
+          | {:server_removed, Wardrik.Servers.Key.t()}
 
   @typedoc """
   A change, who made it, and when, under a UUIDv7 of its own, at the root of

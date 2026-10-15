@@ -206,5 +206,6 @@ Every answer has a `request-id` header, which the daemon's log names too.
 ### SDK extras
 
 `wardrik.connections` lists, connects and forgets accounts, with `{owner: "org"}` for the org's.
+`wardrik.servers` lists, adds and removes the MCP servers the person or org adds for their agents.
 `wardrik.deployment` lists nodes, reloads and pages the audit. A refused request throws a
 `WardrikError` with its `status`, `type` and `requestId`.

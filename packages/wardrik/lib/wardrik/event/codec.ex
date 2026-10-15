@@ -452,6 +452,11 @@ defmodule Wardrik.Event.Codec do
   defp change({:secret_stored, name, owner}), do: secret("secret.stored", name, owner)
   defp change({:secret_removed, name, owner}), do: secret("secret.removed", name, owner)
 
+  defp change({:server_added, key, url}),
+    do: server("server.added", key, %{"name" => key.name, "url" => url})
+
+  defp change({:server_removed, key}), do: server("server.removed", key, %{"name" => key.name})
+
   defp agent_change(type, id, data),
     do: {type, "agents/#{id}", Map.put(data, "agent", %{"id" => to_string(id)})}
 
@@ -459,6 +464,11 @@ defmodule Wardrik.Event.Codec do
   defp secret(type, name, owner) do
     data = Value.put(%{"secret" => %{"name" => name}}, "owner", owned_by(owner))
     {type, "secrets/" <> name, data}
+  end
+
+  defp server(type, key, server) do
+    data = %{"server" => server, "owner" => to_string(key.owner)}
+    {type, "servers/#{key}", data}
   end
 
   defp owned_by(owner) do

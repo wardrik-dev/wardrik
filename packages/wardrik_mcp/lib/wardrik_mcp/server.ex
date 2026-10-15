@@ -26,6 +26,7 @@ defmodule WardrikMCP.Server do
   | `:stderr` | `:inherit` | where a command's own output goes: `:inherit`, `:discard`, or `{:file, path}` |
   | `:first_retry` | 1s | how long a connection that could not list the server's tools waits before asking again the first time, doubling each time after |
   | `:refresh_after` | 250ms | how long a connection waits after the server says its tools changed before listing them, so a burst of changes costs one listing |
+  | `:idle_after` | `:infinity` | how long the server's own connection, the one that lists its tools, runs with no call through it before it stops; one that stops keeps the tools it listed in `:store`, and starts again when an agent's tools are next built |
   | `:inherit_env` | `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `TMPDIR`, `USER` | the variables a command keeps from the node's own environment, or `:all` |
 
   An HTTP transport takes the server's whole URL as `:base_url`: the path is
@@ -104,7 +105,8 @@ defmodule WardrikMCP.Server do
     timeout: :timer.seconds(60),
     max_result_bytes: 128 * 1024,
     first_retry: :timer.seconds(1),
-    refresh_after: 250
+    refresh_after: 250,
+    idle_after: :infinity
   ]
 
   @typedoc "A transport as `Anubis.Client` takes it."
@@ -130,7 +132,8 @@ defmodule WardrikMCP.Server do
           timeout: timeout(),
           max_result_bytes: pos_integer() | :infinity,
           first_retry: pos_integer(),
-          refresh_after: non_neg_integer()
+          refresh_after: non_neg_integer(),
+          idle_after: timeout()
         }
 
   @doc """
