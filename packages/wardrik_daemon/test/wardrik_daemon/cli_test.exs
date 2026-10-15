@@ -772,6 +772,7 @@ defmodule WardrikDaemon.CLITest do
       assert groups == Enum.uniq(groups)
       for group <- groups, do: assert(text =~ "#{group}:\n")
       assert text =~ "Usage: wardrik [--node NAME] COMMAND"
+      assert text =~ "rik ls is wardrik ls"
       assert text =~ WardrikDaemon.Config.config_dir()
       assert unanswered([]) == {:ok, text}
     end

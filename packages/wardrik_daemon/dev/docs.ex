@@ -175,7 +175,7 @@ defmodule Mix.Tasks.Wardrik.Docs do
     pattern =
       Regex.compile!(
         "\\b(?:GET|POST|PUT|PATCH|DELETE) /\\S*[\\w}]" <>
-          "|\\bwardrik (?:#{names})(?: [A-Z][A-Z_]*)*\\b" <>
+          "|\\b(?:wardrik|rik) (?:#{names})(?: [A-Z][A-Z_]*)*\\b" <>
           "|--[a-z][a-z-]*(?: [A-Z][A-Z_]*\\b)?" <>
           "|\\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\\b" <>
           "|~/[\\w./-]*[\\w/]" <>

@@ -34,6 +34,10 @@ on them carries on. See [Docker](#docker) for editing `/config` and ports.
 	</TabItem>
 </Tabs>
 
+:::tip[rik is wardrik]
+`rik` is a short name for `wardrik`: `rik ls` is `wardrik ls`. The Docker image has it too.
+:::
+
 ## 2. Set it up
 
 ```sh
@@ -79,8 +83,8 @@ Your data stays in `~/.local/share/wardrik` until you delete it.
 
 ### The install script
 
-It checks the release against `SHA256SUMS`, runs it once, and also installs `rik` as a short name
-unless that's taken. It needs glibc 2.35+ and OpenSSL 3.
+It checks the release against `SHA256SUMS`, runs it once, and installs `rik` beside `wardrik` unless
+another `rik` is on your `PATH`. It needs glibc 2.35+ and OpenSSL 3.
 
 - `WARDRIK_VERSION=0.1.0` installs a specific version.
 - `sh install.sh wardrik-0.1.0-linux-x86_64.tar.gz` installs a tarball you have.

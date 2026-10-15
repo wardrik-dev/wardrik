@@ -522,6 +522,8 @@ defmodule WardrikDaemon.CLI do
   @spec about(Path.t()) :: String.t()
   def about(config_dir) do
     """
+    rik is a short name for wardrik: rik ls is wardrik ls.
+
     The daemon reads config.yaml, and the agents in agents/, from
     #{config_dir}. wardrik help COMMAND says more about one.
 
