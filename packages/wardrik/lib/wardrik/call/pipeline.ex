@@ -380,7 +380,7 @@ defmodule Wardrik.Call.Pipeline do
   # made.
   defp admitted(%Call{state: state, target: %Model{}} = call)
        when state in [:allowed, :approved] do
-    case Dispatch.admit(call.scope, request(call)) do
+    case Dispatch.admit(Host.dispatch(call.scope.host), request(call), scope: call.scope) do
       {:ok, admitted} ->
         admitted = Wardrik.LLM.Key.put(admitted, call.scope.host)
         %{call | target: Model.new(admitted)} |> Call.put_private(@request, admitted)
@@ -563,7 +563,12 @@ defmodule Wardrik.Call.Pipeline do
 
   defp settled(%Call{private: %{@made => true}, target: %Model{}} = call) do
     request = request(call)
-    :ok = Dispatch.settle(call.scope, request, call.result)
+
+    :ok =
+      Dispatch.settle(Host.dispatch(call.scope.host), request,
+        outcome: call.result,
+        scope: call.scope
+      )
 
     case Usage.of(request, call.result) do
       nil -> call

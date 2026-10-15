@@ -1,8 +1,6 @@
 defmodule Wardrik.LLM.DispatchTest do
   use ExUnit.Case, async: true
 
-  import ExUnit.CaptureLog
-
   alias ReqLLM.Context
   alias Wardrik.LLM.Config
   alias Wardrik.LLM.Dispatch
@@ -10,123 +8,73 @@ defmodule Wardrik.LLM.DispatchTest do
   alias Wardrik.Scope
 
   defmodule Routing do
-    @behaviour Wardrik.LLM.Dispatch
+    defstruct [:model]
+  end
 
-    @impl true
-    def admit(request, scope) do
+  defimpl Wardrik.LLM.Dispatch, for: Routing do
+    def admit(routing, request, scope: scope) do
       {:ok,
        request
-       |> Request.put_model({:anthropic, model: "claude-sonnet-5"})
+       |> Request.put_model(routing.model)
        |> Request.put_opts(api_key: "key-for-#{Scope.agent_id(scope).org}")}
     end
 
-    @impl true
-    def settle(request, outcome, scope),
-      do: send(self(), {:settled, request, outcome, Scope.agent_id(scope).org})
+    def settle(_routing, request, outcome: outcome, scope: scope) do
+      send(self(), {:settled, request, outcome, Scope.agent_id(scope).org})
+      :ok
+    end
   end
 
-  defmodule Refusing do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(_request, _scope), do: {:error, :over_budget}
+  defmodule Metered do
+    defstruct [:inner]
   end
 
-  defmodule Confused do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(_request, _scope), do: :yes_please
+  defimpl Wardrik.LLM.Dispatch, for: Metered do
+    def admit(metered, request, opts), do: Dispatch.admit(metered.inner, request, opts)
+
+    def settle(metered, request, opts) do
+      send(self(), {:metered, opts[:outcome]})
+      Dispatch.settle(metered.inner, request, opts)
+    end
   end
 
-  defmodule BrokenAdmit do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(_request, _scope), do: raise("gateway is down")
-  end
-
-  defmodule Valued do
-    @behaviour Wardrik.LLM.Dispatch
-
-    @impl true
-    def admit(request, _scope, model), do: {:ok, Request.put_model(request, model)}
-
-    @impl true
-    def settle(_request, outcome, _scope, model),
-      do: send(self(), {:settled_with, model, outcome})
-  end
-
-  defmodule BrokenSettle do
-    @behaviour Wardrik.LLM.Dispatch
-    @impl true
-    def admit(request, _scope), do: {:ok, request}
-    @impl true
-    def settle(_request, _outcome, _scope), do: raise("ledger is down")
-  end
-
-  defp scope(dispatch) do
-    Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"), dispatch: dispatch)
-  end
-
+  defp scope, do: Scope.root(Config.new(), Wardrik.AgentID.parse!("acme/assistant"))
   defp request, do: Request.new(Config.new(), Context.new())
 
-  describe "admit/2" do
-    test "passes the request through untouched when there is no dispatch" do
-      assert Dispatch.admit(scope(nil), request()) == {:ok, request()}
+  describe "Direct" do
+    test "admits a request as it stands and is told nothing" do
+      direct = %Dispatch.Direct{}
+
+      assert Dispatch.admit(direct, request(), scope: scope()) == {:ok, request()}
+      assert Dispatch.settle(direct, request(), outcome: {:error, :nope}, scope: scope()) == :ok
     end
 
-    test "lets a host reroute the call and supply the key it runs under" do
-      assert {:ok, admitted} = Dispatch.admit(scope(Routing), request())
+    test "is a host's dispatch where it names none" do
+      assert Wardrik.Host.dispatch(Wardrik.Host.new()) == %Dispatch.Direct{}
+    end
+  end
+
+  describe "a host's dispatch" do
+    test "reroutes the call and supplies the key it runs under, from its own settings" do
+      routing = %Routing{model: {:anthropic, model: "claude-sonnet-5"}}
+
+      assert {:ok, admitted} = Dispatch.admit(routing, request(), scope: scope())
       assert admitted.model_spec == {:anthropic, model: "claude-sonnet-5"}
       assert admitted.opts[:api_key] == "key-for-acme"
+
+      assert :ok = Dispatch.settle(routing, admitted, outcome: {:error, :nope}, scope: scope())
+      assert_received {:settled, ^admitted, {:error, :nope}, "acme"}
     end
 
-    test "a refusal is reported as it stands, so the provider is never reached" do
-      assert Dispatch.admit(scope(Refusing), request()) == {:error, :over_budget}
-    end
+    test "can hold another, which decides where the call goes" do
+      metered = %Metered{inner: %Routing{model: {:anthropic, model: "claude-sonnet-5"}}}
 
-    test "an answer that is not a request is an error rather than a crash" do
-      assert {:error, {:invalid_admit_result, :yes_please}} =
-               Dispatch.admit(scope(Confused), request())
-    end
-
-    test "a dispatch that raises fails the call instead of the runtime" do
-      assert {:error, {:dispatch_failed, message}} = Dispatch.admit(scope(BrokenAdmit), request())
-      assert message =~ "gateway is down"
-    end
-  end
-
-  describe "settle/3" do
-    test "does nothing when there is no dispatch" do
-      assert Dispatch.settle(scope(nil), request(), {:error, :nope}) == :ok
-    end
-
-    test "reports the outcome with the request that produced it" do
-      assert Dispatch.settle(scope(Routing), request(), {:error, :nope}) == :ok
-      assert_received {:settled, _request, {:error, :nope}, "acme"}
-    end
-
-    test "is optional, so a dispatch that only admits is complete" do
-      assert Dispatch.settle(scope(Refusing), request(), {:error, :nope}) == :ok
-    end
-
-    test "a failure while booking is logged and does not lose the answer" do
-      log =
-        capture_log(fn ->
-          assert Dispatch.settle(scope(BrokenSettle), request(), {:error, :nope}) == :ok
-        end)
-
-      assert log =~ "ledger is down"
-    end
-  end
-
-  describe "a dispatch that is a value" do
-    test "is handed its value in every callback" do
-      scope = scope({Valued, {:anthropic, model: "claude-sonnet-5"}})
-
-      assert {:ok, admitted} = Dispatch.admit(scope, request())
+      assert {:ok, admitted} = Dispatch.admit(metered, request(), scope: scope())
       assert admitted.model_spec == {:anthropic, model: "claude-sonnet-5"}
 
-      :ok = Dispatch.settle(scope, admitted, {:error, :boom})
-      assert_received {:settled_with, {:anthropic, model: "claude-sonnet-5"}, {:error, :boom}}
+      assert :ok = Dispatch.settle(metered, admitted, outcome: {:error, :boom}, scope: scope())
+      assert_received {:metered, {:error, :boom}}
+      assert_received {:settled, ^admitted, {:error, :boom}, "acme"}
     end
   end
 end

@@ -31,9 +31,8 @@ defmodule Wardrik.Scope do
   | `:labels` | what the run has read, as `Wardrik.Label`s, for its hooks to weigh; see `Wardrik.Call.label/2` |
   | `:deadline` | when the work must stop |
   | `:hooks` | whether a tool call may run, and a model call be made |
-  | `:dispatch` | what a model call actually is, and who pays for it |
   | `:retry` | whether a model call that failed is asked again |
-  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, and whose credentials a call resolves |
+  | `:host` | the `Wardrik.Host` the agent runs on, whose seams an operation a tool calls asks, whose credentials a call resolves, and whose dispatch every model call goes through |
 
   `:hooks` to `:retry` are the seams a host reaches through for one
   agent. Each defaults to something inert, so a deployment that needs none of
@@ -107,7 +106,6 @@ defmodule Wardrik.Scope do
     :host,
     :sender,
     :deadline,
-    :dispatch,
     :retry,
     :journal,
     :batch,
@@ -118,7 +116,7 @@ defmodule Wardrik.Scope do
 
   # An agent carries `:timeout` rather than `:deadline`, and resolves it when
   # each turn's scope is built.
-  @seams [:hooks, :dispatch, :retry, :ledger, :timeout]
+  @seams [:hooks, :retry, :ledger, :timeout]
 
   @typedoc "The config a run was given, where its events go, and what it may do."
   @type t() :: %__MODULE__{
@@ -128,7 +126,6 @@ defmodule Wardrik.Scope do
           sender: Wardrik.Principal.t() | nil,
           deadline: integer() | nil,
           hooks: [Wardrik.Hook.t()],
-          dispatch: Wardrik.LLM.Dispatch.t() | nil,
           retry: Wardrik.LLM.Retry.t() | nil,
           ledger: Wardrik.Ledger.t(),
           journal: pid() | nil,
@@ -162,8 +159,6 @@ defmodule Wardrik.Scope do
       already holds one
     * `:hooks` - the `Wardrik.Hook`s every call is checked against, `[]` to
       allow everything
-    * `:dispatch` - a `Wardrik.LLM.Dispatch` module, or `nil` to call the provider
-      as configured
     * `:retry` - a `Wardrik.LLM.Retry`, or `nil` to ask a failed model call
       again after the waits the config's `:retries` lists
     * `:ledger` - a `Wardrik.Ledger` module, which records each tool call before
@@ -180,7 +175,6 @@ defmodule Wardrik.Scope do
       host: Keyword.get_lazy(opts, :host, &Wardrik.Host.new/0),
       sender: Keyword.get(opts, :sender),
       hooks: Keyword.get(opts, :hooks) || [],
-      dispatch: Keyword.get(opts, :dispatch),
       retry: Keyword.get(opts, :retry),
       ledger: Keyword.get(opts, :ledger, %Wardrik.Ledger.None{}),
       journal: Keyword.get(opts, :journal),
