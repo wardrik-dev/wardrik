@@ -43,10 +43,10 @@ answered as one that doesn't exist, `404`, and an action it wasn't given is refu
 
 | Action | Routes |
 | --- | --- |
-| `read` | listing agents, snapshots, definitions, events and connections; the deployment's nodes and audit |
+| `read` | listing agents, snapshots, definitions, events, connections and servers; the deployment's nodes and audit |
 | `message` | messages, cancelling, and clearing the conversation |
 | `decide` | decisions, and authorization links |
-| `define` | putting and deleting agents and triggers, connecting accounts, and reloading the deployment |
+| `define` | putting and deleting agents and triggers, connecting accounts, adding and removing servers, and reloading the deployment |
 | `serve` | `/v1/workers` |
 
 A token acts for the person it was made `--for`, or for itself, and a decision made with it is
@@ -101,6 +101,9 @@ answers an agent with is its key.
 | `GET /v1/connections` | the accounts the caller's org is offered, and whether they, the org or the deployment holds each |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
 | `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, `204` |
+| `GET /v1/servers` | the MCP servers the caller added for their own agents |
+| `POST /v1/servers` | adds an MCP server for the caller's agents, `201`: that they can call it now, or where to sign in to it first |
+| `DELETE /v1/servers/{name}` | removes the server, so the caller's agents can no longer call it, `204` |
 | `POST /v1/deployment/reload` | has every node read its agent and policy files again, and answers those nodes |
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
@@ -222,6 +225,32 @@ A caller's connections are its person's, within the org its token reaches: the u
 else the user it was made `--for`. With `?owner=org` they are the org's, for a token that may
 `define` under the org. The account is held once the person has authorized it at the link. A
 secret's value is never answered.
+
+### Servers
+
+```http
+POST /v1/servers
+
+{"name": "crm", "url": "https://mcp.crm.example/mcp",
+ "auth": {"secret": {"name": "crm-key"}}}
+
+{"server": "crm", "connected": true}
+```
+
+```http
+GET /v1/servers
+
+{"servers": [{"name": "crm", "url": "https://mcp.crm.example/mcp", "auth": "secret"}]}
+```
+
+A caller's servers are its person's, as connections are, and with `?owner=org` the org's. A server
+serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
+Streamable HTTP at an `https` URL whose host has public addresses, and signs in with nothing,
+`{"none": {}}`, or a secret the owner keeps in the vault, `{"secret": {"name": ...}}`, sent as
+`Authorization: Bearer` unless `header` and `scheme` say otherwise. `only` and `except` list the
+server's own names of the tools to take or leave. Every tool the server does not mark `readOnlyHint`
+waits on a person unless a policy allows it, and what it answers is labelled `outside`. A name a
+server of the deployment's own that serves the owner names its tools with already is a `409`.
 
 ### The deployment
 
@@ -386,6 +415,24 @@ The deployment's nodes, each with how many agents run on it, and how many agents
 | --- | --- | --- | --- |
 | `nodes` | array of object | yes |  |
 | `asleep` | integer | yes | How many agents sleep, on no node, until something asks them. |
+
+### `server_added`
+
+What POST /v1/servers answers: that the owner's agents can call the server now, or where someone signs in to it first.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `server` | string | yes | The server's name. |
+| `connected` | boolean | yes | Whether its agents can call it now. |
+| `authorization` | [authorization](/reference/http-api/#authorization) |  | Where to sign in to it, where someone has to first. |
+
+### `servers`
+
+The MCP servers an owner added for their agents: what GET /v1/servers answers.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `servers` | array of object | yes |  |
 
 ### `trigger`
 
