@@ -20,7 +20,7 @@ defmodule WardrikDaemon.CLI.Agents do
   alias WardrikConsole.Nodes
   alias WardrikDaemon.CLI.Command
   alias WardrikDaemon.Config
-  alias WardrikDaemon.Definition
+  alias WardrikDefinition.Record
   alias WardrikPolicy.Pattern
   alias WardrikTrigger.Status
 
@@ -168,7 +168,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # The definition the agent runs on, with the spec it writes now or why it
   # writes none, or `nil` where none is kept.
   defp defined(opts, key) do
-    case Definition.of(Wardrik.Host.store(opts[:caller].host), key) do
+    case Record.of(Wardrik.Host.store(opts[:caller].host), key) do
       {:ok, definition} ->
         {definition, WardrikDaemon.Agents.build(WardrikDaemon.Host.agents(), definition, key)}
 
@@ -205,7 +205,7 @@ defmodule WardrikDaemon.CLI.Agents do
     )
   end
 
-  defp described(lines, {%Definition{fields: %{"description" => description}}, _spec})
+  defp described(lines, {%Record{fields: %{"description" => description}}, _spec})
        when is_binary(description),
        do: [description, "" | lines]
 
@@ -302,7 +302,7 @@ defmodule WardrikDaemon.CLI.Agents do
   # Where the definition was written, and whose it is for a conversation.
   defp written(nil, _key), do: []
 
-  defp written({%Definition{id: owner, source: source}, _spec}, key) do
+  defp written({%Record{id: owner, source: source}, _spec}, key) do
     conversation = if owner == key, do: [], else: [{"conversation", "of #{owner}"}]
     conversation ++ [{"file", source(owner, source)}]
   end
@@ -316,6 +316,9 @@ defmodule WardrikDaemon.CLI.Agents do
 
   defp source(_owner, {:api, _grant}),
     do: Owl.Data.tag("none; it was defined over the HTTP API", @faint)
+
+  defp source(_owner, :defaults),
+    do: Owl.Data.tag("none; it was made from config.yaml's defaults", @faint)
 
   # -- triggers ----------------------------------------------------------------
 

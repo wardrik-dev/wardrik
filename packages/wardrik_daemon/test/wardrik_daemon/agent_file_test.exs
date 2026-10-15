@@ -4,6 +4,7 @@ defmodule WardrikDaemon.AgentFileTest do
   alias Wardrik.Agent.Spec
   alias WardrikDaemon.AgentFile
   alias WardrikDaemon.Test.Host
+  alias WardrikDefinition.Record
 
   import Wardrik.AgentID, only: [sigil_A: 2]
 
@@ -21,6 +22,12 @@ defmodule WardrikDaemon.AgentFileTest do
 
   # What a definition may name here, under the sections the test has put.
   defp ctx, do: AgentFile.context(Host.config(System.tmp_dir!()))
+
+  # The spec a definition from the defaults writes, as one sent over HTTP reads.
+  defp definition(context, id, fields: fields) do
+    with {:ok, record} <- Record.define(context, id, fields: fields, source: :defaults),
+         do: Record.spec(record, id, context: context)
+  end
 
   setup do
     Host.declare(["acme", "globex"])
@@ -93,7 +100,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert spec.idle_timeout == :infinity
 
       assert {:ok, spec} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+               definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                  fields: %{"timeout" => 600}
                )
 
@@ -153,7 +160,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert {:ok, _spec} = read("---\ntools: [theirs/*]\norg: globex\n---\n", context)
 
     assert {:error, message} =
-             AgentFile.definition(ctx(), Wardrik.AgentID.parse!("default/triage"),
+             definition(ctx(), Wardrik.AgentID.parse!("default/triage"),
                fields: %{
                  "tools" => ["theirs/*"]
                }
@@ -183,7 +190,7 @@ defmodule WardrikDaemon.AgentFileTest do
         "context" => ["shared/team/NOTES.md"]
       }
 
-      assert {:ok, spec} = AgentFile.definition(ctx(), id, fields: fields)
+      assert {:ok, spec} = definition(ctx(), id, fields: fields)
 
       assert [{WardrikWorkspace, %WardrikWorkspace.Spec{shared: [team]} = files}] =
                spec.config.tools
@@ -193,9 +200,9 @@ defmodule WardrikDaemon.AgentFileTest do
       assert files.context == ["shared/team/NOTES.md"]
 
       {:ok, grant} = Wardrik.Grant.new(Wardrik.AgentID.Prefix.of(id))
-      {:ok, definition} = AgentFile.define(ctx(), id, fields: fields, grant: grant)
+      {:ok, definition} = Record.define(ctx(), id, fields: fields, source: {:api, grant})
 
-      assert AgentFile.spec(ctx(), definition, id) ==
+      assert Record.spec(definition, id, context: ctx()) ==
                {:error,
                 "workspace shared team: acme belongs to acme/, which acme/triage does not cover"}
     end
@@ -225,7 +232,7 @@ defmodule WardrikDaemon.AgentFileTest do
     assert rule.after == "outside"
 
     assert {:error, message} =
-             AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+             definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                fields: %{
                  "policy" => %{"allow_after" => %{"outside" => ["github/add_labels"]}}
                }
@@ -238,7 +245,7 @@ defmodule WardrikDaemon.AgentFileTest do
       WardrikPolicy.decode!(%{"allow_after" => %{"outside" => ["github/add_labels"]}}, "careful")
 
     assert {:ok, _spec} =
-             AgentFile.definition(
+             definition(
                %{ctx() | policies: %{"careful" => careful}},
                Wardrik.AgentID.parse!("acme/triage"),
                fields: %{"policy" => "careful"}
@@ -263,7 +270,7 @@ defmodule WardrikDaemon.AgentFileTest do
   defp triggered(text, %{tmp_dir: dir} = context) do
     with {:ok, _spec} <- read(text, context),
          {:ok, definition} <- AgentFile.parse(ctx(), Path.join(dir, "triage.md")),
-         do: {:ok, AgentFile.triggers(ctx(), definition)}
+         do: {:ok, Record.triggers(definition, context: ctx())}
   end
 
   test "reads one trigger, or a list of them", context do
@@ -313,8 +320,8 @@ defmodule WardrikDaemon.AgentFileTest do
 
     test "offers the agent in the channels it names", context do
       assert {:ok, %Spec{}} = read("---\nchannels: [slack, every]\n---\n", context)
-      assert AgentFile.channels(%{"channels" => ["slack"]}) == ["slack"]
-      assert AgentFile.channels(%{}) == []
+      assert WardrikDefinition.channels(%{"channels" => ["slack"]}) == ["slack"]
+      assert WardrikDefinition.channels(%{}) == []
     end
 
     test "refuses a channel config.yaml does not name, or keeps for another org", context do
@@ -346,7 +353,7 @@ defmodule WardrikDaemon.AgentFileTest do
       route = fn text ->
         File.write!(path, text)
         {:ok, definition} = AgentFile.parse(ctx(), path)
-        AgentFile.route(ctx(), definition)
+        Record.route(definition, context: ctx())
       end
 
       assert {:ok, %WardrikNotify.Route{targets: [:ops], on: [:parked, :failed]}} =
@@ -364,13 +371,13 @@ defmodule WardrikDaemon.AgentFileTest do
       id = Wardrik.AgentID.parse!("acme/triage")
 
       {:ok, definition} =
-        AgentFile.define(ctx(), id, fields: %{"notify" => ["ops", "audit"]}, grant: nil)
+        Record.define(ctx(), id, fields: %{"notify" => ["ops", "audit"]}, source: :defaults)
 
       assert {:ok, %WardrikNotify.Route{targets: [:ops, :audit], on: [:parked, :failed]}} =
-               AgentFile.route(ctx(), definition)
+               Record.route(definition, context: ctx())
 
       assert {:error, "notify names globex, which config.yaml's notify keeps for another org"} =
-               AgentFile.definition(ctx(), id, fields: %{"notify" => "globex"})
+               definition(ctx(), id, fields: %{"notify" => "globex"})
     end
 
     test "refuses a target config.yaml does not name, and a kind that is not one", context do
@@ -408,9 +415,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
       assert Enum.sort(
                expected(
-                 AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
-                   fields: %{"?" => 1}
-                 )
+                 definition(ctx(), Wardrik.AgentID.parse!("acme/triage"), fields: %{"?" => 1})
                )
              ) ==
                Enum.sort(properties)
@@ -434,9 +439,7 @@ defmodule WardrikDaemon.AgentFileTest do
         assert Enum.sort(Map.keys(example)) == Enum.sort(Map.keys(schema["properties"]))
 
         assert {:ok, %Spec{}} =
-                 AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
-                   fields: example
-                 )
+                 definition(ctx(), Wardrik.AgentID.parse!("acme/triage"), fields: example)
       end
     end
   end
@@ -444,7 +447,7 @@ defmodule WardrikDaemon.AgentFileTest do
   describe "definition/3" do
     test "reads a definition into the spec of the agent under its key" do
       assert {:ok, spec} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+               definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                  fields: %{
                    "description" => "Watches the queue.",
                    "instructions" => "You watch the incident queue.",
@@ -466,7 +469,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
     test "an empty definition is an agent with no prompt and no tools" do
       assert {:ok, spec} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("default/blank"), fields: %{})
+               definition(ctx(), Wardrik.AgentID.parse!("default/blank"), fields: %{})
 
       assert spec.config.system == nil
       assert spec.config.tools == []
@@ -476,7 +479,7 @@ defmodule WardrikDaemon.AgentFileTest do
       careful = WardrikPolicy.decode!(%{"deny" => ["run_lua"]}, "careful")
 
       assert {:ok, named} =
-               AgentFile.definition(
+               definition(
                  %{
                    ctx()
                    | policies: %{
@@ -490,7 +493,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert named.hooks == WardrikPolicy.hooks(careful)
 
       assert {:ok, written} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+               definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                  fields: %{
                    "policy" => %{"ask" => ["github/*"]}
                  }
@@ -501,7 +504,7 @@ defmodule WardrikDaemon.AgentFileTest do
 
     test "never names a module" do
       assert {:error, message} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+               definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                  fields: %{
                    "tools" => ["WardrikLua.Run"]
                  }
@@ -510,7 +513,7 @@ defmodule WardrikDaemon.AgentFileTest do
       assert message == "tools names WardrikLua.Run, which is not a tool the daemon ships"
 
       assert {:error, message} =
-               AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
+               definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
                  fields: %{
                    "policy" => "WardrikDaemon.AgentFileTest.Policy"
                  }
@@ -525,44 +528,46 @@ defmodule WardrikDaemon.AgentFileTest do
       unnamed = %{"every" => "1h", "prompt" => "Look."}
 
       assert {:ok, definition} =
-               AgentFile.define(ctx(), id,
+               Record.define(ctx(), id,
                  fields: %{"triggers" => [unnamed, %{"every" => "1d", "prompt" => "Sum up."}]},
-                 grant: nil
+                 source: :defaults
                )
 
       assert [%WardrikTrigger{name: "trigger-1"}, %WardrikTrigger{name: "trigger-2"}] =
-               AgentFile.triggers(ctx(), definition)
+               Record.triggers(definition, context: ctx())
 
       assert {:ok, definition, :changed, %WardrikTrigger{every: {:interval, 7_200_000}}} =
-               AgentFile.put_trigger(ctx(), definition, "trigger-1",
-                 trigger: %{unnamed | "every" => "2h"}
+               Record.put_trigger(definition, "trigger-1",
+                 trigger: %{unnamed | "every" => "2h"},
+                 context: ctx()
                )
 
       assert {:ok, definition, :created, %WardrikTrigger{name: "sweep"}} =
-               AgentFile.put_trigger(ctx(), definition, "sweep", trigger: unnamed)
+               Record.put_trigger(definition, "sweep", trigger: unnamed, context: ctx())
 
       assert ~w(trigger-1 trigger-2 sweep) ==
-               Enum.map(AgentFile.triggers(ctx(), definition), & &1.name)
+               Enum.map(Record.triggers(definition, context: ctx()), & &1.name)
 
       assert {:error, "trigger sweep: prompt is a string" <> _rest} =
-               AgentFile.put_trigger(ctx(), definition, "sweep", trigger: %{"every" => "1h"})
-
-      assert {:error, "trigger sweep: prompt_file names a file" <> _rest} =
-               AgentFile.put_trigger(ctx(), definition, "sweep",
-                 trigger: %{
-                   "every" => "1h",
-                   "prompt_file" => "A.md"
-                 }
+               Record.put_trigger(definition, "sweep",
+                 trigger: %{"every" => "1h"},
+                 context: ctx()
                )
 
-      {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-2")
-      {:ok, definition} = AgentFile.delete_trigger(definition, "trigger-1")
-      assert {:error, :not_found} = AgentFile.delete_trigger(definition, "trigger-1")
-      {:ok, definition} = AgentFile.delete_trigger(definition, "sweep")
-      assert AgentFile.fields(definition) == %{}
+      assert {:error, "trigger sweep: prompt_file names a file" <> _rest} =
+               Record.put_trigger(definition, "sweep",
+                 trigger: %{"every" => "1h", "prompt_file" => "A.md"},
+                 context: ctx()
+               )
+
+      {:ok, definition} = Record.delete_trigger(definition, "trigger-2")
+      {:ok, definition} = Record.delete_trigger(definition, "trigger-1")
+      assert {:error, :not_found} = Record.delete_trigger(definition, "trigger-1")
+      {:ok, definition} = Record.delete_trigger(definition, "sweep")
+      assert Record.fields(definition) == %{}
 
       assert {:error, "trigger 1: every: \"10s\" is shorter than a minute"} =
-               AgentFile.definition(ctx(), id,
+               definition(ctx(), id,
                  fields: %{"triggers" => %{"every" => "10s", "prompt" => "Look."}}
                )
     end
@@ -572,15 +577,13 @@ defmodule WardrikDaemon.AgentFileTest do
       {:ok, definition} = AgentFile.parse(ctx(), Path.join(context.tmp_dir, "triage.md"))
 
       assert %{"triggers" => [%{"every" => "1h", "prompt" => "Look."}]} =
-               AgentFile.fields(definition)
+               Record.fields(definition)
     end
 
     test "takes who the agent is from its key" do
       for key <- ~w(name org user) do
         assert {:error, message} =
-                 AgentFile.definition(ctx(), Wardrik.AgentID.parse!("acme/triage"),
-                   fields: %{key => "x"}
-                 )
+                 definition(ctx(), Wardrik.AgentID.parse!("acme/triage"), fields: %{key => "x"})
 
         assert message =~ "#{key} is not a setting; expected one of description, instructions"
       end

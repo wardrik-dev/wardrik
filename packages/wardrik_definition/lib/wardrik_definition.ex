@@ -8,7 +8,7 @@ defmodule WardrikDefinition do
 
       fields = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["web_search"]}
       id = ~A"acme/triage"
-      {:ok, spec} = WardrikDefinition.spec(fields, id, id, context, {:api, nil})
+      {:ok, spec} = WardrikDefinition.spec(fields, id, id, context, :defaults)
 
   `wardrik_protocol`'s `agent_definition.json` is the schema, and the keys a
   definition takes are read from it as this compiles: `keys/0`. An agent
@@ -24,11 +24,16 @@ defmodule WardrikDefinition do
 
     * `{:file, name}` - an agent file the host's operator wrote, which may
       name modules as tools and policies
-    * `{:api, grant}` - a definition a token holding `grant` sent, or `nil`
-      for one no token sent. It names no modules, writes no policy that
-      holds after a label, and shares only the trees the grant's scope
-      covers. The grant's ceiling is the host's to hold it under, as
-      `Wardrik.Grant.held/2` does
+    * `{:api, grant}` - a definition a token holding `grant` sent. It names
+      no modules, writes no policy that holds after a label, and shares only
+      the trees the grant's scope covers. The grant's ceiling is the host's
+      to hold it under, as `Wardrik.Grant.held/2` does
+    * `:defaults` - one the host wrote from its defaults, which no token
+      sent. It names no modules and writes no policy that holds after a
+      label
+
+  `WardrikDefinition.Record` keeps a definition in the store with its
+  source.
   """
 
   alias Wardrik.Agent.Spec
@@ -52,7 +57,7 @@ defmodule WardrikDefinition do
   @retries "is a list of whole numbers of seconds, one wait for each try"
   @prompt "You are a helpful assistant. Answer briefly, and say what you do not know."
 
-  @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t() | nil}
+  @type source() :: {:file, String.t()} | {:api, Wardrik.Grant.t()} | :defaults
   @type fields() :: %{String.t() => term()}
 
   @doc "The keys a definition takes, in the order its schema lists them."

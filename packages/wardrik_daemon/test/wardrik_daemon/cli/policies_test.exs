@@ -14,7 +14,7 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
   alias Wardrik.Event.Log.Writer
   alias Wardrik.Event.Source
   alias WardrikDaemon.CLI
-  alias WardrikDaemon.Definition
+  alias WardrikDefinition.Record
 
   @moduletag :tmp_dir
 
@@ -41,13 +41,13 @@ defmodule WardrikDaemon.CLI.PoliciesTest do
     id = Wardrik.Test.Fleet.id("books")
 
     :ok =
-      Definition.put(Wardrik.Test.store(), %Definition{
+      Record.put(Wardrik.Test.store(), %Record{
         id: id,
         fields: %{"policy" => "careful"},
-        source: {:api, nil}
+        source: :defaults
       })
 
-    on_exit(fn -> Definition.delete(Wardrik.Test.store(), id) end)
+    on_exit(fn -> Record.delete(Wardrik.Test.store(), id) end)
 
     %{id: id}
   end
