@@ -258,11 +258,13 @@ defmodule Mix.Tasks.Wardrik do
   defp ambient(opts), do: if(Keyword.has_key?(opts, :tool), do: [], else: [{WardrikMCP, :*}])
 
   defp configured!(configured, name) do
-    Enum.find(configured, fn ref -> to_string(ref) == name end) ||
-      Mix.raise(
-        "no MCP server is configured as #{name}; config :wardrik_sdk, WardrikMCP has " <>
-          Enum.map_join(configured, ", ", &to_string/1)
-      )
+    if Enum.any?(configured, &(to_string(&1) == name)),
+      do: Wardrik.Servers.Key.deployment(name),
+      else:
+        Mix.raise(
+          "no MCP server is configured as #{name}; config :wardrik_sdk, WardrikMCP has " <>
+            Enum.map_join(configured, ", ", &to_string/1)
+        )
   end
 
   # The MCP servers are the host's to run, not core's, and an agent naming one
