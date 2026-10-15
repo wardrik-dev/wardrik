@@ -246,8 +246,10 @@ GET /v1/servers
 A caller's servers are its person's, as connections are, and with `?owner=org` the org's. A server
 serves its owner's agents alone, and each of its tools arrives as `crm__tool`. It is reached over
 Streamable HTTP at an `https` URL whose host has public addresses, and signs in with nothing,
-`{"none": {}}`, or a secret the owner keeps in the vault, `{"secret": {"name": ...}}`, sent as
-`Authorization: Bearer` unless `header` and `scheme` say otherwise. `only` and `except` list the
+`{"none": {}}`, in a browser as the server's own authorization server asks, `{"oauth": {"scopes":
+[...]}}`, which answers the link to sign in at, or a secret the owner keeps in the vault,
+`{"secret": {"name": ...}}`, sent as `Authorization: Bearer` unless `header` and `scheme` say
+otherwise. Removing one signed in to forgets its token. `only` and `except` list the
 server's own names of the tools to take or leave. Every tool the server does not mark `readOnlyHint`
 waits on a person unless a policy allows it, and what it answers is labelled `outside`. A name a
 server of the deployment's own that serves the owner names its tools with already is a `409`.
