@@ -1,0 +1,16 @@
+---
+import Hero from '@astrojs/starlight/components/Hero.astro';
+import Wordmark from './Wordmark.astro';
+
+const isHome = Astro.url.pathname === '/';
+---
+
+{isHome ? (
+  <section class="home-hero" aria-labelledby="_top">
+    <div class="home-brand">
+      <Wordmark />
+      <span>Agents, governed.</span>
+    </div>
+    <Hero />
+  </section>
+) : <Hero />}

@@ -19,7 +19,10 @@ export default defineConfig({
 		starlight({
 			title: 'Wardrik',
 			description: 'An agent runtime built on OTP.',
-			components: { SiteTitle: './src/components/SiteTitle.astro' },
+			components: {
+				SiteTitle: './src/components/SiteTitle.astro',
+				Hero: './src/components/HomeHero.astro',
+			},
 			customCss: ['./src/styles/brand.css'],
 			expressiveCode: {
 				themes: [terminal],
