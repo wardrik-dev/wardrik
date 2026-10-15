@@ -10,7 +10,7 @@ defmodule WardrikMCP.PoolTest do
       :telemetry.attach(
         {__MODULE__, test},
         [:wardrik_mcp, :connection, :retrying],
-        fn _event, _measurements, %{ref: ref}, _config -> send(test, {:retrying, ref}) end,
+        fn _event, _measurements, %{key: key}, _config -> send(test, {:retrying, key}) end,
         nil
       )
 
@@ -26,7 +26,7 @@ defmodule WardrikMCP.PoolTest do
     )
 
     assert Process.whereis(Anubis.Finch)
-    assert_receive {:retrying, :remote}, 5_000
+    assert_receive {:retrying, %Wardrik.Servers.Key{name: "remote"}}, 5_000
   end
 
   test "a deployment of commands runs no pool" do
@@ -35,6 +35,6 @@ defmodule WardrikMCP.PoolTest do
     )
 
     refute Process.whereis(Anubis.Finch)
-    assert_receive {:retrying, :local}, 5_000
+    assert_receive {:retrying, %Wardrik.Servers.Key{name: "local"}}, 5_000
   end
 end

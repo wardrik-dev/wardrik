@@ -67,6 +67,7 @@
       "Wardrik.Query",
       "Wardrik.Resource",
       "Wardrik.Scope",
+      "Wardrik.Servers.Key",
       "Wardrik.Subagent",
       "Wardrik.Subject",
       "Wardrik.Test",

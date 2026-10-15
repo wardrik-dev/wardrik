@@ -1,6 +1,7 @@
 defmodule WardrikDaemon.ConfigTest do
   use ExUnit.Case, async: false
 
+  alias Wardrik.AgentID.Prefix
   alias WardrikDaemon.Approvers.Named
   alias WardrikDaemon.Config
 
@@ -78,10 +79,10 @@ defmodule WardrikDaemon.ConfigTest do
       assert settings[WardrikDaemon][:orgs] == ["acme", "globex", "initech"]
 
       servers = settings[WardrikMCP][:servers]
-      assert servers[:mine][:orgs] == ["acme"]
-      assert servers[:theirs][:orgs] == ["globex"]
-      assert servers[:shared][:orgs] == ["acme", "globex"]
-      assert servers[:public][:orgs] == :all
+      assert servers[:mine][:serves] == [Prefix.tenant!("acme")]
+      assert servers[:theirs][:serves] == [Prefix.tenant!("globex")]
+      assert servers[:shared][:serves] == [Prefix.tenant!("acme"), Prefix.tenant!("globex")]
+      assert servers[:public][:serves] == [Prefix.all()]
 
       targets = settings[WardrikNotify][:targets]
       assert {WardrikNotify.Webhook, ops} = targets[:ops]

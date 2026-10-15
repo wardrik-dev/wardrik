@@ -26,9 +26,9 @@ defmodule WardrikMCP.Notifications do
   @doc false
   @spec handle(:telemetry.event_name(), map(), map(), term()) :: :ok
   def handle(@event, _measurements, %{method: "tools/list_changed"}, _config) do
-    for {ref, principal} <- Connection.refs_for(self()) do
-      Logger.info("MCP server #{ref}: said its tools changed; asking again")
-      Connection.refresh(ref, principal)
+    for {key, principal} <- Connection.keys_for(self()) do
+      Logger.info("MCP server #{key}: said its tools changed; asking again")
+      Connection.refresh(key, principal)
     end
 
     :ok

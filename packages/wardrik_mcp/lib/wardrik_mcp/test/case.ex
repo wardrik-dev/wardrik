@@ -5,8 +5,8 @@ defmodule WardrikMCP.Test.Case do
 
       use WardrikMCP.Test.Case
 
-      test "the stub offers its tools", %{ref: ref} do
-        assert "stub__echo" in Enum.map(WardrikMCP.tools(ref), & &1.name)
+      test "the stub offers its tools", %{key: key} do
+        assert "\#{key}__echo" in Enum.map(WardrikMCP.tools(key), & &1.name)
       end
 
   The supervisor is started for the test and stopped with it. `@server_opts`
@@ -22,13 +22,14 @@ defmodule WardrikMCP.Test.Case do
   end
 
   setup context do
-    ref = fresh_ref()
+    name = fresh_name()
     opts = Map.get(context, :server_opts, [])
 
-    start_supervised!({WardrikMCP.Supervisor, servers: [{ref, stub_options(opts)}]})
-    await_tools(ref)
+    start_supervised!({WardrikMCP.Supervisor, servers: [{name, stub_options(opts)}]})
+    key = Wardrik.Servers.Key.deployment(Atom.to_string(name))
+    await_tools(key)
 
-    %{ref: ref}
+    %{key: key}
   end
 
   @doc """
@@ -38,9 +39,13 @@ defmodule WardrikMCP.Test.Case do
   @spec context(Wardrik.Scope.t()) :: Wardrik.Tool.Context.t()
   def context(scope \\ Wardrik.Test.scope()), do: Wardrik.Test.context(scope)
 
-  @doc "A ref no other test is using, so servers started in one test do not reach another."
-  @spec fresh_ref() :: atom()
-  def fresh_ref, do: :"stub_#{System.unique_integer([:positive])}"
+  @doc "A name no other test is using, so servers started in one test do not reach another."
+  @spec fresh_name() :: atom()
+  def fresh_name, do: :"stub_#{System.unique_integer([:positive])}"
+
+  @doc "The key of a deployment server no other test is using."
+  @spec fresh_key() :: Wardrik.Servers.Key.t()
+  def fresh_key, do: Wardrik.Servers.Key.deployment(Atom.to_string(fresh_name()))
 
   @doc """
   The options for a server that runs the stub, with `opts` merged in. A
@@ -57,11 +62,11 @@ defmodule WardrikMCP.Test.Case do
   end
 
   @doc "Waits until a server has reported its tools, or fails the test."
-  @spec await_tools(atom(), timeout()) :: [ReqLLM.Tool.t()]
-  def await_tools(ref, timeout \\ :timer.seconds(30)) do
-    case WardrikMCP.Connection.await(ref, :deployment, timeout) do
+  @spec await_tools(Wardrik.Servers.Key.t(), timeout()) :: [ReqLLM.Tool.t()]
+  def await_tools(key, timeout \\ :timer.seconds(30)) do
+    case WardrikMCP.Connection.await(key, :deployment, timeout) do
       {:ok, tools} -> tools
-      {:error, :timeout} -> raise "MCP server #{ref} reported no tools in time"
+      {:error, :timeout} -> raise "MCP server #{key} reported no tools in time"
     end
   end
 

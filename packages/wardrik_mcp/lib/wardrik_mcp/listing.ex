@@ -15,6 +15,7 @@ defmodule WardrikMCP.Listing do
   """
 
   require Logger
+  alias Wardrik.Servers.Key
   alias WardrikMCP.Connection
 
   @ns :mcp_tools
@@ -24,34 +25,34 @@ defmodule WardrikMCP.Listing do
   def namespace, do: @ns
 
   @doc """
-  Keeps the `tools/list` entries a user's connection got from `ref`, and
-  offers them on every other connected node.
+  Keeps the `tools/list` entries a user's connection got from the server
+  `key`, and offers them on every other connected node.
 
   A listing the store already holds is not written again.
   """
-  @spec remember(WardrikStore.t(), atom(), [map()]) :: :ok
-  def remember(store, ref, listed) when is_atom(ref) and is_list(listed) do
-    if recall(store, ref) != listed, do: write(store, ref, listed)
+  @spec remember(WardrikStore.t(), Key.t(), [map()]) :: :ok
+  def remember(store, %Key{} = key, listed) when is_list(listed) do
+    if recall(store, key) != listed, do: write(store, key, listed)
 
-    :erpc.multicast(Node.list(), Connection, :offer_listing, [ref, listed])
+    :erpc.multicast(Node.list(), Connection, :offer_listing, [key, listed])
   end
 
-  @doc "The `tools/list` entries last kept for `ref`, or `[]`."
-  @spec recall(WardrikStore.t(), atom()) :: [map()]
-  def recall(store, ref) when is_atom(ref) do
-    case stored(fn -> WardrikStore.get(store, @ns, key(ref)) end) do
+  @doc "The `tools/list` entries last kept for the server `key`, or `[]`."
+  @spec recall(WardrikStore.t(), Key.t()) :: [map()]
+  def recall(store, %Key{} = key) do
+    case stored(fn -> WardrikStore.get(store, @ns, to_string(key)) end) do
       listed when is_list(listed) -> listed
       _nothing -> []
     end
   end
 
-  defp write(store, ref, listed) do
-    case stored(fn -> WardrikStore.put(store, @ns, key(ref), listed) end) do
+  defp write(store, key, listed) do
+    case stored(fn -> WardrikStore.put(store, @ns, to_string(key), listed) end) do
       {:ok, _vsn} ->
         :ok
 
       trouble ->
-        Logger.warning("MCP server #{ref}: its tools could not be kept: #{inspect(trouble)}")
+        Logger.warning("MCP server #{key}: its tools could not be kept: #{inspect(trouble)}")
     end
   end
 
@@ -64,6 +65,4 @@ defmodule WardrikMCP.Listing do
   catch
     :exit, reason -> {:error, reason}
   end
-
-  defp key(ref), do: Atom.to_string(ref)
 end

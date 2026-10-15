@@ -569,10 +569,15 @@ defmodule WardrikDaemon.Config do
       prefix!(Map.get(server, "prefix", name), path)
 
       {name(name),
-       [transport: transport(server, path), orgs: owners("mcp", name, owners)] ++
+       [transport: transport(server, path), serves: serves(owners("mcp", name, owners))] ++
          Enum.map(Map.drop(server, @transport_keys), &server_option(&1, path))}
     end)
   end
+
+  # The agents a server serves: every org's, or each named org's whole tenant,
+  # its users' agents with its own.
+  defp serves(:all), do: [Prefix.all()]
+  defp serves(orgs), do: Enum.map(orgs, &Prefix.tenant!/1)
 
   defp prefix!("workers", path),
     do:

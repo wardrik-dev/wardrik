@@ -2,17 +2,17 @@ defmodule WardrikMCP.Server do
   @moduledoc """
   One MCP server as Wardrik is configured to reach it.
 
-      WardrikMCP.Server.new(:github,
+      WardrikMCP.Server.new(Wardrik.Servers.Key.deployment("github"),
         transport: {:stdio, command: "npx", args: ["-y", "@modelcontextprotocol/server-github"]},
         only: ~w(search_issues create_issue)
       )
 
   | Field | Default | What it decides |
   | --- | --- | --- |
-  | `:ref` | required | what this server is called here, and the prefix on its tool names |
+  | `:key` | required | whose server this is and what it is called among theirs, a `Wardrik.Servers.Key`; its name is the prefix on its tool names |
   | `:transport` | required | `{:stdio, opts}` or `{:streamable_http, opts}`, as `Anubis.Client` takes them |
-  | `:prefix` | the ref | what every tool name from this server starts with, which may not hold `__` |
-  | `:orgs` | `:all` | the orgs whose agents may call its tools, or `:all` of them |
+  | `:prefix` | the key's name | what every tool name from this server starts with, which may not hold `__` |
+  | `:serves` | every agent | the prefixes whose agents may call its tools, as `Wardrik.AgentID.Prefix`es |
   | `:only` | every tool | the remote names to take |
   | `:except` | none | the remote names to leave |
   | `:gated` | every tool the server does not mark `readOnlyHint` | the remote names whose calls wait on a person unless a hook allows them by name, a name ending in `*` naming every tool it begins, `true` for all of them, or `false` for none; see `c:Wardrik.Tool.gated?/1` |
@@ -84,16 +84,16 @@ defmodule WardrikMCP.Server do
   results not varying per connection.
   """
 
-  @enforce_keys [:ref, :transport]
+  @enforce_keys [:key, :transport]
   defstruct [
-    :ref,
+    :key,
     :transport,
     :prefix,
     :only,
     :credential,
     :credential_env,
     except: [],
-    orgs: :all,
+    serves: [Wardrik.AgentID.Prefix.all()],
     gated: nil,
     trusted: false,
     store: WardrikStore.new(adapter: WardrikStore.None),
@@ -112,12 +112,12 @@ defmodule WardrikMCP.Server do
 
   @typedoc "A configured server."
   @type t() :: %__MODULE__{
-          ref: atom(),
+          key: Wardrik.Servers.Key.t(),
           transport: transport(),
           prefix: String.t(),
           only: [String.t()] | nil,
           except: [String.t()],
-          orgs: [String.t()] | :all,
+          serves: [Wardrik.AgentID.Prefix.t()],
           gated: [String.t()] | boolean() | nil,
           trusted: boolean(),
           credential: Wardrik.Credential.ref() | nil,
@@ -134,16 +134,16 @@ defmodule WardrikMCP.Server do
         }
 
   @doc """
-  Builds a server from its ref and options.
+  Builds a server from its key and options.
 
   Raises on a missing or unknown transport, and on an option this struct does
   not have.
   """
-  @spec new(atom(), keyword()) :: t()
-  def new(ref, opts) when is_atom(ref) and is_list(opts) do
-    server = struct!(__MODULE__, Keyword.put(opts, :ref, ref))
+  @spec new(Wardrik.Servers.Key.t(), keyword()) :: t()
+  def new(%Wardrik.Servers.Key{} = key, opts) when is_list(opts) do
+    server = struct!(__MODULE__, Keyword.put(opts, :key, key))
 
-    %{server | prefix: server.prefix || to_string(ref)}
+    %{server | prefix: server.prefix || key.name}
     |> validate_prefix!()
     |> validate_transport!()
     |> split_url()
@@ -167,7 +167,7 @@ defmodule WardrikMCP.Server do
   """
   @spec with_credential(t(), Wardrik.Credential.t()) :: {:ok, transport()} | {:error, String.t()}
   def with_credential(%__MODULE__{transport: {:stdio, _opts}, credential_env: nil} = server, _c) do
-    {:error, "#{server.ref} runs a command and sets no :credential_env to give a token to"}
+    {:error, "#{server.key} runs a command and sets no :credential_env to give a token to"}
   end
 
   def with_credential(%__MODULE__{transport: {:stdio, opts}} = server, credential) do
@@ -184,10 +184,10 @@ defmodule WardrikMCP.Server do
     {:ok, {layer, Keyword.put(opts, :headers, Map.put(headers, server.credential_header, value))}}
   end
 
-  @doc "Whether the agents of `org` may call this server's tools."
-  @spec for_org?(t(), String.t()) :: boolean()
-  def for_org?(%__MODULE__{orgs: :all}, _org), do: true
-  def for_org?(%__MODULE__{orgs: orgs}, org), do: org in orgs
+  @doc "Whether the agent `id` may call this server's tools: one of `:serves` covers it."
+  @spec serves?(t(), Wardrik.AgentID.t()) :: boolean()
+  def serves?(%__MODULE__{serves: serves}, %Wardrik.AgentID{} = id),
+    do: Enum.any?(serves, &Wardrik.AgentID.Prefix.covers?(&1, id))
 
   @doc "Whether a remote tool name is one this server offers to an agent."
   @spec offers?(t(), String.t()) :: boolean()
