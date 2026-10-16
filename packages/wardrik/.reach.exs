@@ -111,7 +111,7 @@
     layer_coverage: [
       require_all_modules: true,
       forbid_multiple_matches: true,
-      ignore: ["Wardrik.Test.*", "Wardrik.OrgGrants"]
+      ignore: ["Wardrik.Test.*", "Wardrik.OrgGrants", "Wardrik.ByOrg"]
     ]
   ]
 ]

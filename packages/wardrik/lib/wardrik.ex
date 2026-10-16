@@ -10,7 +10,7 @@ defmodule Wardrik do
         Wardrik.new(
           store: Wardrik.store(repo: MyApp.Repo),
           grants: %MyApp.Grants{},
-          context: [tools: [MyApp.Tools.Search]]
+          context: Wardrik.context(tools: [MyApp.Tools.Search])
         )
 
       children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
@@ -32,7 +32,9 @@ defmodule Wardrik do
   `:context` lets it name, and so are the files it works on.
 
   The store is a value of its own, made by `store/1`, so a seam that keeps
-  something, such as a vault of credentials, is made with the same one. A
+  something, such as a vault of credentials, is made with the same one. So
+  is the context, made by `context/1`, so an application can read it
+  differently for each agent. A
   surface the application starts after Wardrik, such as the HTTP API, takes
   the store or `host/1`. A node runs one Wardrik, since core's own
   processes are registered under their module names.
@@ -40,11 +42,10 @@ defmodule Wardrik do
   ## Options
 
     * `:store` - where everything is kept, as `store/1` makes it. Required.
-    * `:context` - what a definition may name, as the fields of
-      `WardrikDefinition.Context`: the `tools` the application ships, the
-      MCP `servers`, the `policies`, and so on. `sources` names `self`, an
-      agent's operations on itself, and `agents`, those on the other agents
-      of its org, unless given.
+    * `:context` - what each agent's definition may name: `context/1`'s, or
+      a value of the application's own implementing
+      `WardrikDefinition.Contexts`, which gives each agent its context.
+      `context([])` by default.
     * `:grants`, `:credentials`, `:connections`, `:servers`, `:tokens`,
       `:triggers`, `:dispatch` - the host's seams, each a value implementing
       core's protocol of that name, as `Wardrik.Host` lists them. One left
@@ -77,23 +78,14 @@ defmodule Wardrik do
   """
   @spec new(keyword()) :: t()
   def new(opts) do
-    opts = Keyword.validate!(opts, [:store, context: [], fleet: []] ++ @seams)
+    opts = Keyword.validate!(opts, [:store, fleet: [], context: context([])] ++ @seams)
     store = Keyword.fetch!(opts, :store)
-
-    context =
-      struct!(
-        Context,
-        Keyword.merge(
-          [sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]],
-          opts[:context]
-        )
-      )
 
     host =
       Wardrik.Host.new(
         [
           store: store,
-          definitions: %WardrikDefinition.Kept{store: store, contexts: context},
+          definitions: %WardrikDefinition.Kept{store: store, contexts: opts[:context]},
           workspace: %WardrikWorkspace.Backend.Store{store: store}
         ] ++ Keyword.take(opts, @seams)
       )
@@ -129,6 +121,26 @@ defmodule Wardrik do
               "Wardrik.store/1 names one store, by repo:, url:, bucket: or data_dir:, " <>
                 "and #{inspect(settings)} does not"
     end
+  end
+
+  @doc """
+  What a definition may name, as the fields of `WardrikDefinition.Context`
+  in `fields`: the `tools` the application ships, the MCP `servers`, the
+  `policies`, and so on. `sources` names `self`, an agent's operations on
+  itself, and `agents`, those on the other agents of its org, unless
+  given.
+
+      Wardrik.context(tools: [MyApp.Tools.Search])
+  """
+  @spec context(keyword()) :: Context.t()
+  def context(fields) do
+    struct!(
+      Context,
+      Keyword.merge(
+        [sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]],
+        fields
+      )
+    )
   end
 
   @doc "The `Wardrik.Host` the agents run on, for a surface started after Wardrik."

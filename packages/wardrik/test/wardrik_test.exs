@@ -37,6 +37,18 @@ defmodule WardrikTest do
     end
   end
 
+  describe "context/1" do
+    test "offers what its fields name, and an agent's operations unless they name sources" do
+      assert %WardrikDefinition.Context{
+               tools: [],
+               sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]
+             } = Wardrik.context([])
+
+      assert %WardrikDefinition.Context{tools: [Search], sources: [self: Wardrik.Catalog.Self]} =
+               Wardrik.context(tools: [Search], sources: [self: Wardrik.Catalog.Self])
+    end
+  end
+
   describe "new/1" do
     test "needs a store" do
       assert_raise KeyError, fn -> Wardrik.new([]) end
@@ -50,21 +62,16 @@ defmodule WardrikTest do
       assert %WardrikWorkspace.Backend.Store{store: ^store} = Wardrik.Host.workspace(host)
     end
 
-    test "lets a definition name what :context offers, and an agent's operations by default" do
+    test "reads each definition against :context, context([]) by default" do
       offered = fn wardrik -> Wardrik.Host.definitions(Wardrik.host(wardrik)).contexts end
 
-      assert %WardrikDefinition.Context{
-               tools: [],
-               sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]
-             } = offered.(Wardrik.new(store: store()))
+      assert offered.(Wardrik.new(store: store())) == Wardrik.context([])
 
-      assert %WardrikDefinition.Context{tools: [Search], sources: [self: Wardrik.Catalog.Self]} =
-               offered.(
-                 Wardrik.new(
-                   store: store(),
-                   context: [tools: [Search], sources: [self: Wardrik.Catalog.Self]]
-                 )
-               )
+      context = Wardrik.context(tools: [Search])
+      assert offered.(Wardrik.new(store: store(), context: context)) == context
+
+      by_org = %Wardrik.ByOrg{contexts: %{"acme" => context}}
+      assert offered.(Wardrik.new(store: store(), context: by_org)) == by_org
     end
 
     test "offers the seams it is given, and the None of each it is not" do

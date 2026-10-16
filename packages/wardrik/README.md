@@ -36,7 +36,9 @@ end
 [budgets](../wardrik_policy) count in, and [triggers](../wardrik_trigger), in
 that order. Each agent's definition is kept in the store, read by
 [wardrik_definition](../wardrik_definition) against what `context:` lets it
-name, and so are the files it works on.
+name, and so are the files it works on. `Wardrik.context/1` makes one context
+for every agent; a value of your own implementing `WardrikDefinition.Contexts`
+gives each agent its own.
 
 `Wardrik.store/1` keeps everything in Postgres through your repo (`repo:`), in
 an S3 bucket (`bucket:`), or on each node's disk (`data_dir:`, with

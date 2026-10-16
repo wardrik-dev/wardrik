@@ -103,7 +103,9 @@ end
 ```
 
 Each agent's definition is kept in the store, and so are the files it works on. `context:` says
-what a definition may name, such as the tools your app ships; see `Wardrik.new/1`.
+what a definition may name, such as the tools your app ships:
+`context: Wardrik.context(tools: [MyApp.Tools.Search])`. A value of your own implementing
+`WardrikDefinition.Contexts` gives each agent a context of its own, such as one per org.
 
 ## 5. Start it in your tree
 
@@ -301,7 +303,7 @@ def wardrik do
     grants: %MyApp.Grants{},
     credentials: vault,
     connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
-    context: [servers: [github: [orgs: :all]], mcp: WardrikMCP]
+    context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
   )
 end
 
