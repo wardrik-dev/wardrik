@@ -93,8 +93,6 @@ defmodule MyApp.Agents do
   @moduledoc "Wardrik in this app: where it keeps everything, what runs, and what users do with agents."
 
   alias Wardrik.AgentID
-  alias Wardrik.Operations.Ask
-  alias Wardrik.Operations.Define
 
   def store, do: Wardrik.store(repo: MyApp.Repo)
 
@@ -138,25 +136,20 @@ Wardrik always runs on the Wardrik before it.
 
 ## 6. Define an agent and ask it
 
-Your code acts as the signed-in user. It finds their caller, then runs an operation, which checks
-their grant and records what it changed in the audit log:
+Your code acts as the signed-in user, in a session `Wardrik.as/3` makes. Each function of
+`Wardrik` checks their grant, and records what it changed in the audit log:
 
 ```elixir title="lib/my_app/agents.ex"
 def define(user, name, definition) do
   agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-
-  with {:ok, caller} <- caller(user, agent),
-       do: Wardrik.Command.run(%Define{agent: agent, definition: definition}, caller)
+  Wardrik.agent_define(session(user), agent, definition)
 end
 
-def ask(user, agent, text) do
-  with {:ok, caller} <- caller(user, agent),
-       {:ok, request} <- Ask.new(agent, %{"content" => text}),
-       do: Wardrik.Command.run(request, caller)
-end
+def ask(user, agent, text), do: Wardrik.agent_ask(session(user), agent, text)
 
-defp caller(user, subject),
-  do: Wardrik.caller(wardrik(), principal: MyApp.Grants.principal(user), subject: subject)
+def subscribe(user, agent), do: Wardrik.agent_subscribe(session(user), agent)
+
+defp session(user), do: Wardrik.as(wardrik(), MyApp.Grants.principal(user))
 ```
 
 Define Maria's support agent, ask it something, and read the answer from its log. The model's key
@@ -165,15 +158,15 @@ is `ANTHROPIC_API_KEY` in your environment:
 ```elixir
 maria = %MyApp.Accounts.User{id: 42, org: "acme", email: "maria@acme.example"}
 
-{:created, _agent} =
+{:ok, _snapshot} =
   MyApp.Agents.define(maria, "support", %{
     "model" => "anthropic:claude-sonnet-5",
     "instructions" => "Answer questions about orders in two sentences."
   })
 
 agent = Wardrik.AgentID.new!("support", org: "acme", user: "42")
-:ok = Wardrik.Event.Log.subscribe(agent)
-{:ok, _message_id} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
+:ok = MyApp.Agents.subscribe(maria, agent)
+{:ok, %Wardrik.Agent.Message{}} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
 
 receive do
   %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.completed", "data" => data}} ->
@@ -380,29 +373,19 @@ end
 
 ### Connect, then use it
 
-Add two functions to `MyApp.Agents`, with `Wardrik.Operations.Connect` and
-`Wardrik.Operations.ReadConnections` among its aliases:
+Add two functions to `MyApp.Agents`:
 
 ```elixir title="lib/my_app/agents.ex"
-def connect(user, provider) do
-  owner = MyApp.Grants.own(user)
+def connect(user, provider),
+  do: Wardrik.connections_connect(session(user), MyApp.Grants.own(user), provider)
 
-  with {:ok, caller} <- caller(user, owner),
-       do: Wardrik.Command.run(%Connect{owner: owner, provider: provider}, caller)
-end
-
-def connections(user) do
-  owner = MyApp.Grants.own(user)
-
-  with {:ok, caller} <- caller(user, owner),
-       do: Wardrik.Query.run(%ReadConnections{owner: owner}, caller)
-end
+def connections(user), do: Wardrik.connections_list(session(user), MyApp.Grants.own(user))
 ```
 
 Give Maria an agent that uses GitHub, and the link to connect her account:
 
 ```elixir
-{:created, _agent} =
+{:ok, _snapshot} =
   MyApp.Agents.define(maria, "triage", %{
     "model" => "anthropic:claude-sonnet-5",
     "instructions" => "Sort new issues in acme/shop by how urgent they are.",
