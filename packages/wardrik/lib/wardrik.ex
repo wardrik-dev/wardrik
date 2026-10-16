@@ -53,7 +53,9 @@ defmodule Wardrik do
     * a change whose outcome the agent's log shows answers that it was
       taken, as `agent_ask/4` answers the message queued; `agent_subscribe/2`
       and `agent_stream/3` follow what happens next
-    * a removal answers `:ok`
+    * a removal answers what it removed, as it was, as an Ecto delete does
+    * a change whose outcome nothing can answer at once answers `:ok`, as
+      `agent_cancel/2` and `agent_forget/2` do
 
   Each answers `{:ok, value}`, `:ok` or `{:error, %Wardrik.Error{}}`, and
   has a variant ending in `!` that answers the value or raises the error.
@@ -381,11 +383,14 @@ defmodule Wardrik do
   def agent_read(%Session{} = session, %AgentID{} = agent),
     do: read(session, %Operations.ReadAgent{agent: agent})
 
-  @doc "Empties `agent`'s conversation, and the labels of what it read."
+  @doc "Empties `agent`'s conversation, and the labels of what it read, and answers its snapshot."
   @doc group: "Talking to an agent"
-  @spec agent_clear(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_clear(%Session{} = session, %AgentID{} = agent),
-    do: session |> change(%Operations.Clear{agent: agent}) |> acknowledged()
+  @spec agent_clear(Session.t(), AgentID.t()) ::
+          {:ok, Wardrik.Agent.Snapshot.t()} | {:error, Error.t()}
+  def agent_clear(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, nil} <- change(session, %Operations.Clear{agent: agent}),
+         do: agent_read(session, agent)
+  end
 
   @doc "Every agent under `prefix`, awake or asleep, as the fleet lists each."
   @doc group: "Talking to an agent"
@@ -473,11 +478,21 @@ defmodule Wardrik do
   def agents_cancel(%Session{} = session, %Prefix{} = prefix),
     do: change(session, %Operations.CancelAgents{prefix: prefix})
 
-  @doc "Stops `agent` now, keeping its conversation: it wakes when something asks it."
+  @doc """
+  Stops `agent` now, keeping its conversation, and answers it as the fleet
+  lists it, asleep: it wakes when something asks it.
+  """
   @doc group: "Agent lifecycle"
-  @spec agent_stop(Session.t(), AgentID.t()) :: :ok | {:error, Error.t()}
-  def agent_stop(%Session{} = session, %AgentID{} = agent),
-    do: session |> change(%Operations.Stop{agent: agent}) |> acknowledged()
+  @spec agent_stop(Session.t(), AgentID.t()) ::
+          {:ok, Wardrik.Fleet.Member.t()} | {:error, Error.t()}
+  def agent_stop(%Session{} = session, %AgentID{} = agent) do
+    with {:ok, _stopped} <- change(session, %Operations.Stop{agent: agent}) do
+      case Wardrik.Fleet.lookup(agent) do
+        nil -> {:error, Wardrik.AgentOperation.not_found(agent)}
+        member -> {:ok, member}
+      end
+    end
+  end
 
   @doc "Removes `agent`, with everything it had, and the definition the host keeps of it."
   @doc group: "Agent lifecycle"
@@ -508,11 +523,12 @@ defmodule Wardrik do
       when is_binary(name) and is_map(fields),
       do: change(session, %Operations.SetTrigger{agent: agent, name: name, fields: fields})
 
-  @doc "Removes `agent`'s trigger `name`."
+  @doc "Removes `agent`'s trigger `name`, and answers it as `agent_trigger_set/4` would."
   @doc group: "Triggers"
-  @spec agent_trigger_remove(Session.t(), AgentID.t(), String.t()) :: :ok | {:error, Error.t()}
+  @spec agent_trigger_remove(Session.t(), AgentID.t(), String.t()) ::
+          {:ok, map()} | {:error, Error.t()}
   def agent_trigger_remove(%Session{} = session, %AgentID{} = agent, name) when is_binary(name),
-    do: session |> change(%Operations.RemoveTrigger{agent: agent, name: name}) |> acknowledged()
+    do: change(session, %Operations.RemoveTrigger{agent: agent, name: name})
 
   @doc """
   Hands `agent`'s trigger `trigger` a request from outside, its `:headers`
@@ -560,11 +576,12 @@ defmodule Wardrik do
     change(session, %Operations.AddServer{owner: owner, name: server.name, fields: fields})
   end
 
-  @doc "Removes the MCP server `name` `owner` added."
+  @doc "Removes the MCP server `name` `owner` added, and answers it."
   @doc group: "Servers and connections"
-  @spec servers_remove(Session.t(), Prefix.t(), String.t()) :: :ok | {:error, Error.t()}
+  @spec servers_remove(Session.t(), Prefix.t(), String.t()) ::
+          {:ok, Server.t()} | {:error, Error.t()}
   def servers_remove(%Session{} = session, %Prefix{} = owner, name) when is_binary(name),
-    do: session |> change(%Operations.RemoveServer{owner: owner, name: name}) |> acknowledged()
+    do: change(session, %Operations.RemoveServer{owner: owner, name: name})
 
   @doc "The accounts the deployment offers `owner`, and who holds each."
   @doc group: "Servers and connections"
@@ -583,15 +600,13 @@ defmodule Wardrik do
       when is_binary(provider),
       do: change(session, %Operations.Connect{owner: owner, provider: provider})
 
-  @doc "Forgets `owner`'s account at `provider`."
+  @doc "Forgets `owner`'s account at `provider`, and answers the connection as it was."
   @doc group: "Servers and connections"
-  @spec connections_disconnect(Session.t(), Prefix.t(), String.t()) :: :ok | {:error, Error.t()}
+  @spec connections_disconnect(Session.t(), Prefix.t(), String.t()) ::
+          {:ok, Connection.t()} | {:error, Error.t()}
   def connections_disconnect(%Session{} = session, %Prefix{} = owner, provider)
       when is_binary(provider),
-      do:
-        session
-        |> change(%Operations.Disconnect{owner: owner, provider: provider})
-        |> acknowledged()
+      do: change(session, %Operations.Disconnect{owner: owner, provider: provider})
 
   # -- tokens -----------------------------------------------------------------------
 
@@ -624,11 +639,11 @@ defmodule Wardrik do
     change(session, %Operations.CreateToken{name: name, grant: grant, for: opts[:for]})
   end
 
-  @doc "Stops the token `id` working."
+  @doc "Stops the token `id` working, and answers it, without its secret."
   @doc group: "Tokens"
-  @spec tokens_revoke(Session.t(), String.t()) :: :ok | {:error, Error.t()}
+  @spec tokens_revoke(Session.t(), String.t()) :: {:ok, Token.t()} | {:error, Error.t()}
   def tokens_revoke(%Session{} = session, id) when is_binary(id),
-    do: session |> change(%Operations.RevokeToken{id: id}) |> acknowledged()
+    do: change(session, %Operations.RevokeToken{id: id})
 
   # -- the deployment ---------------------------------------------------------------
 
@@ -730,7 +745,7 @@ defmodule Wardrik do
 
   @doc "As `agent_clear/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"
-  @spec agent_clear!(Session.t(), AgentID.t()) :: :ok
+  @spec agent_clear!(Session.t(), AgentID.t()) :: Wardrik.Agent.Snapshot.t()
   def agent_clear!(session, agent), do: unwrap(agent_clear(session, agent))
 
   @doc "As `agents_list/2`, answering the value, or raising the `Wardrik.Error`."
@@ -778,7 +793,7 @@ defmodule Wardrik do
 
   @doc "As `agent_stop/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Agent lifecycle"
-  @spec agent_stop!(Session.t(), AgentID.t()) :: :ok
+  @spec agent_stop!(Session.t(), AgentID.t()) :: Wardrik.Fleet.Member.t()
   def agent_stop!(session, agent), do: unwrap(agent_stop(session, agent))
 
   @doc "As `agent_forget/2`, answering the value, or raising the `Wardrik.Error`."
@@ -801,7 +816,7 @@ defmodule Wardrik do
 
   @doc "As `agent_trigger_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Triggers"
-  @spec agent_trigger_remove!(Session.t(), AgentID.t(), String.t()) :: :ok
+  @spec agent_trigger_remove!(Session.t(), AgentID.t(), String.t()) :: map()
   def agent_trigger_remove!(session, agent, name),
     do: unwrap(agent_trigger_remove(session, agent, name))
 
@@ -823,7 +838,7 @@ defmodule Wardrik do
 
   @doc "As `servers_remove/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec servers_remove!(Session.t(), Prefix.t(), String.t()) :: :ok
+  @spec servers_remove!(Session.t(), Prefix.t(), String.t()) :: Server.t()
   def servers_remove!(session, owner, name), do: unwrap(servers_remove(session, owner, name))
 
   @doc "As `connections_list/2`, answering the value, or raising the `Wardrik.Error`."
@@ -839,7 +854,7 @@ defmodule Wardrik do
 
   @doc "As `connections_disconnect/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Servers and connections"
-  @spec connections_disconnect!(Session.t(), Prefix.t(), String.t()) :: :ok
+  @spec connections_disconnect!(Session.t(), Prefix.t(), String.t()) :: Connection.t()
   def connections_disconnect!(session, owner, provider),
     do: unwrap(connections_disconnect(session, owner, provider))
 
@@ -856,7 +871,7 @@ defmodule Wardrik do
 
   @doc "As `tokens_revoke/2`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Tokens"
-  @spec tokens_revoke!(Session.t(), String.t()) :: :ok
+  @spec tokens_revoke!(Session.t(), String.t()) :: Token.t()
   def tokens_revoke!(session, id), do: unwrap(tokens_revoke(session, id))
 
   @doc "As `deployment_nodes/1`, answering the value, or raising the `Wardrik.Error`."

@@ -311,7 +311,7 @@ defmodule WardrikTUI.App.Commands do
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
     case Wardrik.agent_stop(session(term), id) do
-      :ok ->
+      {:ok, _member} ->
         term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
 
       {:error, %Error{type: :not_found}} ->

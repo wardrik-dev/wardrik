@@ -183,7 +183,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp revoke([id], opts) do
-    with :ok <- Wardrik.tokens_revoke(opts[:session], id),
+    with {:ok, _token} <- Wardrik.tokens_revoke(opts[:session], id),
          do: {:ok, "Revoked #{id}."}
   end
 

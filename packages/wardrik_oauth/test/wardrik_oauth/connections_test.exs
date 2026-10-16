@@ -82,7 +82,9 @@ defmodule WardrikOAuth.ConnectionsTest do
     authorize(jon, "linear")
     {:ok, request} = Connections.Owner.request(Disconnect, jon, :person, provider: "linear")
 
-    assert {:ok, nil} = Command.run(request, jon)
+    assert {:ok, %Wardrik.Connections.Connection{provider: "linear", held_by: :person}} =
+             Command.run(request, jon)
+
     assert list(jon)["linear"] == nil
 
     assert {"secret.removed", %{"type" => "user", "id" => ^owner}} =

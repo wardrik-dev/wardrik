@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.RevokeToken do
   @moduledoc """
   Stops the token `id` working through the host's `Wardrik.Tokens`, and
-  ends what is open on it.
+  ends what is open on it. The answer is the token as it was.
   """
 
   @behaviour Wardrik.DeploymentOperation
@@ -39,8 +39,12 @@ defmodule Wardrik.Operations.RevokeToken do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{id: id}} = change, caller) do
-    case Tokens.revoke(Host.tokens(caller.host), id) do
-      :ok -> {:ok, nil, change.effect}
+    tokens = Host.tokens(caller.host)
+
+    with listed when is_list(listed) <- Tokens.list(tokens),
+         :ok <- Tokens.revoke(tokens, id) do
+      {:ok, Enum.find(listed, &(&1.id == id)), change.effect}
+    else
       {:error, :not_found} -> {:error, not_found(id)}
       :unsupported -> {:error, Wardrik.Tokens.None.unsupported()}
     end
@@ -49,7 +53,7 @@ defmodule Wardrik.Operations.RevokeToken do
   defp not_found(id), do: Error.new(:not_found, "No token has the id #{id}.")
 
   @impl Wardrik.Command
-  def render(nil), do: nil
+  def render(_token), do: nil
 
   defimpl Wardrik.Effect do
     def preview(%{id: id}), do: %{"revoking_token" => %{"id" => id}}

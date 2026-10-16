@@ -712,7 +712,7 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp clear([key], opts) do
-    with :ok <- Wardrik.agent_clear(opts[:session], key),
+    with {:ok, _snapshot} <- Wardrik.agent_clear(opts[:session], key),
          do: {:ok, "Cleared #{key}'s conversation."}
   end
 

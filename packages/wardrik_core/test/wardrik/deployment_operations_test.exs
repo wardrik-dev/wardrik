@@ -184,7 +184,9 @@ defmodule Wardrik.DeploymentOperationsTest do
       assert Enum.any?(tokens, &(&1.id == id))
       assert %{"tokens" => [_ | _]} = ListTokens.render(tokens)
 
-      assert {:ok, nil} = Command.run(%RevokeToken{id: id}, root())
+      assert {:ok, %Wardrik.Tokens.Token{id: ^id, secret: nil}} =
+               Command.run(%RevokeToken{id: id}, root())
+
       assert [_created, {"token.revoked", _actor}] = Audit.about("tokens/" <> id)
 
       assert {:error, %Error{type: :not_found}} = Command.run(%RevokeToken{id: id}, root())

@@ -257,7 +257,9 @@ defmodule WardrikDaemon.CLI.Lifecycle do
 
   defp stop([key], opts) do
     asleep? = match?(%Member{asleep: true}, member(key, opts[:session]))
-    with :ok <- Wardrik.agent_stop(opts[:session], key), do: {:ok, stopped(key, asleep?)}
+
+    with {:ok, _member} <- Wardrik.agent_stop(opts[:session], key),
+         do: {:ok, stopped(key, asleep?)}
   end
 
   # The agent `key` as the fleet lists it, read before a stop or a cancel,

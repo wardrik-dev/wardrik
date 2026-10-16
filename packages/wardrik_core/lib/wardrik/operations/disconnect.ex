@@ -1,7 +1,8 @@
 defmodule Wardrik.Operations.Disconnect do
   @moduledoc """
   Forgets an owner's account, through the host's `Wardrik.Connections`, so
-  the next call that needs it asks them to connect again.
+  the next call that needs it asks them to connect again. The answer is the
+  connection as it was.
   """
 
   @behaviour Wardrik.FleetOperation
@@ -29,14 +30,13 @@ defmodule Wardrik.Operations.Disconnect do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
-    case Connections.disconnect(
-           Host.connections(caller.host),
-           provider,
-           Owner.owner_of(owner)
-         ) do
-      :ok ->
-        {:ok, nil, change.effect}
+    connections = Host.connections(caller.host)
+    whose = Owner.owner_of(owner)
 
+    with listed when is_list(listed) <- Connections.list(connections, whose),
+         :ok <- Connections.disconnect(connections, provider, whose) do
+      {:ok, Enum.find(listed, &(&1.provider == provider)), change.effect}
+    else
       {:error, :not_found} ->
         {:error, Error.new(:not_found, "#{owner} holds no #{provider}.")}
 
@@ -49,7 +49,7 @@ defmodule Wardrik.Operations.Disconnect do
   end
 
   @impl Wardrik.Command
-  def render(nil), do: nil
+  def render(_connection), do: nil
 
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, provider: provider}),

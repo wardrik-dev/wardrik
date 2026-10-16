@@ -101,9 +101,14 @@ defmodule Wardrik.OperationsTest do
 
     def delete_trigger(host, id, name) do
       with :ok <- editable(host, id) do
-        if WardrikStore.get(store(), @triggers, "#{id}//#{name}"),
-          do: WardrikStore.delete(store(), @triggers, "#{id}//#{name}"),
-          else: {:error, :not_found}
+        case WardrikStore.get(store(), @triggers, "#{id}//#{name}") do
+          nil ->
+            {:error, :not_found}
+
+          fields ->
+            :ok = WardrikStore.delete(store(), @triggers, "#{id}//#{name}")
+            {:ok, Map.put(fields, "name", name)}
+        end
       end
     end
 
@@ -696,7 +701,8 @@ defmodule Wardrik.OperationsTest do
                  caller()
                )
 
-      assert {:ok, nil} = Command.run(%RemoveTrigger{agent: id, name: "sweep"}, caller())
+      assert {:ok, %{"name" => "sweep", "every" => "2h"}} =
+               Command.run(%RemoveTrigger{agent: id, name: "sweep"}, caller())
 
       assert {:error, %Error{type: :not_found, message: message}} =
                Command.run(%RemoveTrigger{agent: id, name: "sweep"}, caller())

@@ -129,12 +129,18 @@ defmodule WardrikDefinition.Kept do
     end
   end
 
-  @doc "Deletes the trigger `name` of the definition kept for the agent `id`, and stops it."
-  @spec delete_trigger(t(), AgentID.t(), String.t()) :: :ok | {:error, :not_found}
+  @doc """
+  Deletes the trigger `name` of the definition kept for the agent `id`, and
+  stops it: the trigger it was, as `put_trigger/4` answers one.
+  """
+  @spec delete_trigger(t(), AgentID.t(), String.t()) :: {:ok, map()} | {:error, :not_found}
   def delete_trigger(%__MODULE__{store: store} = kept, %AgentID{} = id, name) do
     with {:ok, record} <- Record.get(store, id),
+         trigger =
+           Enum.find(Record.triggers(record, context: context(kept, id)), &(&1.name == name)),
          {:ok, record} <- Record.delete_trigger(record, name),
-         do: keep(kept, record)
+         :ok <- keep(kept, record),
+         do: {:ok, WardrikTrigger.encode(trigger)}
   end
 
   @doc """

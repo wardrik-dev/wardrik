@@ -202,7 +202,9 @@ defmodule WardrikDefinition.KeptTest do
                fields: %{"every" => "10s", "prompt" => "Sum up."}
              )
 
-    assert :ok = Definition.delete_trigger(kept, id, "digest")
+    assert {:ok, %{"name" => "digest", "prompt" => "Sum up."}} =
+             Definition.delete_trigger(kept, id, "digest")
+
     assert {:error, :not_found} = Definition.delete_trigger(kept, id, "digest")
     assert [%{name: "sweep"}] = WardrikTrigger.for_agent(id)
 

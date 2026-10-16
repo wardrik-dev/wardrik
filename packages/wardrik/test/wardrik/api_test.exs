@@ -83,7 +83,7 @@ defmodule Wardrik.APITest do
              })
 
     assert trigger["name"] == "sweep"
-    assert :ok = Wardrik.agent_trigger_remove(session, agent, "sweep")
+    assert {:ok, %{"name" => "sweep"}} = Wardrik.agent_trigger_remove(session, agent, "sweep")
     assert :ok = Wardrik.agent_forget(session, agent)
     assert {:error, %Error{type: :not_found}} = Wardrik.agent_read(session, agent)
   end
@@ -106,7 +106,7 @@ defmodule Wardrik.APITest do
     assert {:ok, [%Entry{sequence: ^first}]} =
              Wardrik.agent_events(session, agent, after: sequence, limit: 1)
 
-    assert :ok = Wardrik.agent_clear(session, agent)
+    assert {:ok, %Snapshot{agent: ^agent}} = Wardrik.agent_clear(session, agent)
   end
 
   test "a stream follows what the agent writes after what it read", %{session: session} do
@@ -147,7 +147,7 @@ defmodule Wardrik.APITest do
   test "an agent is stopped, spawned, cancelled and moved", %{session: session, root: root} do
     agent = start({AgentRunners, :echo, [self(), "ok"]})
 
-    assert :ok = Wardrik.agent_stop(session, agent)
+    assert {:ok, %Member{id: ^agent, asleep: true}} = Wardrik.agent_stop(session, agent)
     assert {:ok, %Member{id: ^agent, asleep: false}} = Wardrik.agent_spawn(session, agent)
     assert :ok = Wardrik.agent_cancel(session, agent)
     assert {:ok, []} = Wardrik.agents_cancel(session, Prefix.of(agent))
@@ -216,11 +216,11 @@ defmodule Wardrik.APITest do
                "prompt" => "Look."
              })
 
-    assert :ok = Wardrik.agent_trigger_remove!(session, agent, "s")
-    assert :ok = Wardrik.agent_clear!(session, agent)
+    assert %{"name" => "s"} = Wardrik.agent_trigger_remove!(session, agent, "s")
+    assert %Snapshot{} = Wardrik.agent_clear!(session, agent)
     assert :ok = Wardrik.agent_cancel!(session, agent)
     assert [] = Wardrik.agents_cancel!(session, Prefix.of(agent))
-    assert :ok = Wardrik.agent_stop!(session, agent)
+    assert %Member{asleep: true} = Wardrik.agent_stop!(session, agent)
     assert %Member{} = Wardrik.agent_spawn!(session, agent)
     assert %Member{} = Wardrik.agent_move!(root, agent, node())
     assert %Wardrik.Deployment.Nodes{} = Wardrik.deployment_nodes!(root)
