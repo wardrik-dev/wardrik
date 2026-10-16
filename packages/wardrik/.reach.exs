@@ -5,11 +5,12 @@
 # calls.
 [
   layers: [
-    wardrik: ["Wardrik", "Wardrik.Migration"]
+    wardrik: ["Wardrik", "Wardrik.Migration", "Wardrik.Session", "Wardrik.Stream"]
   ],
   boundaries: [
     public: [
       "Wardrik.Agent",
+      "Wardrik.Agent.Message",
       "Wardrik.Agent.Snapshot",
       "Wardrik.Agent.Spec",
       "Wardrik.AgentID",
@@ -30,6 +31,7 @@
       "Wardrik.Credentials",
       "Wardrik.Credentials.None",
       "Wardrik.Definition",
+      "Wardrik.Definition.Read",
       "Wardrik.Definition.None",
       "Wardrik.Definitions",
       "Wardrik.Delegation",

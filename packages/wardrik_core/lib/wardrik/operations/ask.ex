@@ -1,8 +1,9 @@
 defmodule Wardrik.Operations.Ask do
   @moduledoc """
   Sends an agent a message from the caller's principal, which it answers in
-  a turn of its own: the answer is the message's ID, and the agent's log
-  says the rest. Where the caller is an agent, made with
+  a turn of its own: the answer is the `Wardrik.Agent.Message` sent, with
+  the `sequence` of the agent's log it was sent at, and the log says the
+  rest from there. Where the caller is an agent, made with
   `Wardrik.Caller.agent/1`, the turn that takes the message sends it the
   answer as a message of its own; see "Answering another agent" in
   `Wardrik.Agent`.
@@ -16,6 +17,8 @@ defmodule Wardrik.Operations.Ask do
   @behaviour Wardrik.Command
 
   alias Wardrik.Agent
+  alias Wardrik.Agent.Message
+  alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentOperation
   alias Wardrik.Change
   alias Wardrik.Error
@@ -73,14 +76,19 @@ defmodule Wardrik.Operations.Ask do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}} = change, caller) do
-    case Agent.ask(agent, text, id: id, sender: caller.principal, reply_to: caller.reply_to) do
-      :ok -> {:ok, id, change.effect}
+    message = Message.new(text, id, sender: caller.principal, reply_to: caller.reply_to)
+
+    with %Snapshot{sequence: sequence} <- Agent.snapshot(agent),
+         message = %{message | sequence: sequence},
+         :ok <- Agent.queue(agent, message) do
+      {:ok, message, change.effect}
+    else
       {:error, :not_found} -> {:error, AgentOperation.not_found(agent)}
     end
   end
 
   @impl Wardrik.Command
-  def render(id), do: %{"message" => %{"id" => id}}
+  def render(%Message{id: id}), do: %{"message" => %{"id" => id}}
 
   defimpl Wardrik.Effect do
     def preview(%{agent: agent, id: id, text: text}),

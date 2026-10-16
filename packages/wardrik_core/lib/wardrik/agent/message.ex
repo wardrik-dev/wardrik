@@ -35,19 +35,27 @@ defmodule Wardrik.Agent.Message do
   takes the message sends each of them its answer as a message of its own;
   see "Answering another agent" in `Wardrik.Agent`. Most messages list none,
   and are answered in the log alone.
+
+  ## Where its turn is in the log
+
+  `sequence` is the last event the agent's log had written as the message
+  was sent, where its sender read it first, as `Wardrik.Operations.Ask`
+  does, and `nil` otherwise. The turn that answers it is written after it,
+  so a client follows the log from there to read that turn.
   """
 
   alias Wardrik.Principal
 
   @enforce_keys [:id, :text]
-  defstruct [:id, :text, :sender, labels: [], reply_to: []]
+  defstruct [:id, :text, :sender, :sequence, labels: [], reply_to: []]
 
   @type t() :: %__MODULE__{
           id: String.t(),
           text: String.t(),
           sender: Principal.t() | nil,
           labels: [Wardrik.Label.t()],
-          reply_to: [Wardrik.AgentID.t()]
+          reply_to: [Wardrik.AgentID.t()],
+          sequence: non_neg_integer() | nil
         }
 
   @doc """

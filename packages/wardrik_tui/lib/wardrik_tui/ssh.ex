@@ -32,11 +32,8 @@ defmodule WardrikTUI.SSH do
 
   alias Wardrik.Agent
   alias Wardrik.AgentID
-  alias Wardrik.Command
   alias Wardrik.Error
   alias Wardrik.Fleet
-  alias Wardrik.Host
-  alias Wardrik.Operations.Spawn
 
   @doc "Starts a session for `opts[:session]`, and answers its pid."
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -46,7 +43,8 @@ defmodule WardrikTUI.SSH do
     host = Keyword.fetch!(opts, :host)
     principal = Wardrik.Principal.new(:ssh, to_string(session.username))
 
-    with {:ok, id} <- attach(session.username, org, Host.root(host, principal: principal)) do
+    with {:ok, id} <-
+           attach(session.username, org, Wardrik.Session.root(host: host, principal: principal)) do
       start_opts = [
         agent: id,
         agent_id: id,
@@ -75,13 +73,13 @@ defmodule WardrikTUI.SSH do
   defp write(session, string),
     do: Termite.SSH.Adapter.write(%Termite.SSH.Adapter{channel_pid: session.channel_pid}, string)
 
-  defp attach(username, org, caller) do
+  defp attach(username, org, as) do
     case choose(Fleet.list(), username, org) do
       {:attach, id} ->
         {:ok, id}
 
       {:start, id} ->
-        case Command.run(%Spawn{agent: id}, caller) do
+        case Wardrik.agent_spawn(as, id) do
           {:ok, _answer} -> {:ok, id}
           {:error, %Error{message: message}} -> {:error, message}
         end

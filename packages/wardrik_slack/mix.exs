@@ -37,6 +37,7 @@ defmodule WardrikSlack.MixProject do
   defp deps do
     [
       sibling(:wardrik_core),
+      sibling(:wardrik),
       sibling(:wardrik_notify),
       sibling(:wardrik_channel),
       {:req, "~> 0.7"},

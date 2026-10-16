@@ -2,8 +2,6 @@ defmodule Wardrik.RunningTest do
   use ExUnit.Case, async: false
 
   alias Wardrik.AgentID
-  alias Wardrik.Operations.Define
-  alias Wardrik.Operations.ReadDefinition
 
   setup_all do
     dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
@@ -56,20 +54,19 @@ defmodule Wardrik.RunningTest do
       "tools" => ["search"]
     }
 
-    {:ok, caller} = Wardrik.caller(wardrik, principal: maria(), subject: agent)
+    session = Wardrik.as(wardrik, maria())
 
-    assert {:created, _snapshot} =
-             Wardrik.Command.run(%Define{agent: agent, definition: definition}, caller)
+    assert {:ok, _snapshot} = Wardrik.agent_define(session, agent, definition)
 
     assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Answer briefly."}}} =
-             Wardrik.Query.run(%ReadDefinition{agent: agent}, caller)
+             Wardrik.agent_definition_read(session, agent)
   end
 
   test "a user reaches nothing their grant does not", %{wardrik: wardrik} do
     agent = AgentID.new!("support", org: "globex")
 
     assert {:error, %Wardrik.Error{type: :not_found}} =
-             Wardrik.caller(wardrik, principal: maria(), subject: agent)
+             wardrik |> Wardrik.as(maria()) |> Wardrik.agent_read(agent)
   end
 
   test "an agent spawned in the fleet runs, as a host that spawns its own does" do

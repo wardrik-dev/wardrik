@@ -25,18 +25,14 @@ defmodule WardrikDaemon.CLI do
   alias Wardrik.Agent
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Command, as: Operation
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Host
-  alias Wardrik.Operations.Ask
-  alias Wardrik.Operations.Clear
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.ReadAudit
   alias Wardrik.Operations.ReadNodes
-  alias Wardrik.Operations.Reload
-  alias Wardrik.Query
   alias Wardrik.Resource
+  alias Wardrik.Session
   alias WardrikConsole.Nodes
   alias WardrikDaemon.Boot
   alias WardrikDaemon.CLI.Agents
@@ -377,8 +373,15 @@ defmodule WardrikDaemon.CLI do
   defp answer(terminal, %Command{} = command, words, opts) do
     json? = Keyword.get(opts, :json, false) and command.json != nil
     by = Terminal.principal(terminal)
-    caller = Host.root(WardrikDaemon.Host.get(), principal: by)
-    opts = Keyword.merge(opts, by: by, caller: caller, config: WardrikDaemon.Host.config())
+    host = WardrikDaemon.Host.get()
+
+    opts =
+      Keyword.merge(opts,
+        by: by,
+        caller: Host.root(host, principal: by),
+        session: Session.root(host: host, principal: by),
+        config: WardrikDaemon.Host.config()
+      )
 
     command
     |> respond(words, opts, terminal, json?)
@@ -582,23 +585,25 @@ defmodule WardrikDaemon.CLI do
   defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
 
   defp nodes(_words, opts) do
-    with {:ok, nodes} <- Query.run(%ReadNodes{}, opts[:caller]),
+    with {:ok, nodes} <- Wardrik.deployment_nodes(opts[:session]),
          do: {:ok, ReadNodes.render(nodes)}
   end
 
   defp reload(_words, opts) do
-    with {:ok, _reloaded} <- Operation.run(%Reload{}, opts[:caller]),
+    with {:ok, _reloaded} <- Wardrik.deployment_reload(opts[:session]),
          do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
   end
 
   defp audit_page(_words, opts) do
     limit = opts[:limit] || @audit_limit
 
-    request = %ReadAudit{starting_after: opts[:after] || 0, limit: limit}
-
     if limit in 1..500,
       do:
-        with({:ok, read} <- Query.run(request, opts[:caller]), do: {:ok, ReadAudit.render(read)}),
+        with(
+          {:ok, read} <-
+            Wardrik.deployment_audit(opts[:session], after: opts[:after] || 0, limit: limit),
+          do: {:ok, ReadAudit.render(read)}
+        ),
       else: {:error, "--limit is a number from 1 to 500"}
   end
 
@@ -642,13 +647,10 @@ defmodule WardrikDaemon.CLI do
   defp ask(words, opts), do: if(opts[:no_wait], do: asked(words, opts), else: :live)
 
   defp asked([key | words], opts) do
-    with {:ok, _answer} <- ask_operation(key, words, opts[:caller]), do: {:ok, "Asked #{key}."}
+    with {:ok, _message} <- asking(key, words, opts[:session]), do: {:ok, "Asked #{key}."}
   end
 
-  defp ask_operation(key, words, caller) do
-    with {:ok, ask} <- Ask.new(key, %{"content" => Enum.join(words, " ")}),
-         do: Operation.run(ask, caller)
-  end
+  defp asking(key, words, session), do: Wardrik.agent_ask(session, key, Enum.join(words, " "))
 
   defp answer_followed([key | words], opts, terminal) do
     if match?(%{state: :parked}, Agent.status(key)) do
@@ -658,7 +660,7 @@ defmodule WardrikDaemon.CLI do
       )
     end
 
-    case Follow.turn(key, terminal, fn -> sent(ask_operation(key, words, opts[:caller])) end) do
+    case Follow.turn(key, terminal, fn -> sent(asking(key, words, opts[:session])) end) do
       {:error, %Error{} = error} -> {:error, error}
       :parked -> {:ok, Owl.Data.tag("wardrik approve #{key}, or deny, decides it.", @faint)}
       :failed -> :error
@@ -705,12 +707,12 @@ defmodule WardrikDaemon.CLI do
   end
 
   defp snapshot([key], opts) do
-    with {:ok, snapshot} <- Query.run(%ReadAgent{agent: key}, opts[:caller]),
+    with {:ok, snapshot} <- Wardrik.agent_read(opts[:session], key),
          do: {:ok, ReadAgent.render(snapshot)}
   end
 
   defp clear([key], opts) do
-    with {:ok, nil} <- Operation.run(%Clear{agent: key}, opts[:caller]),
+    with :ok <- Wardrik.agent_clear(opts[:session], key),
          do: {:ok, "Cleared #{key}'s conversation."}
   end
 

@@ -264,8 +264,12 @@ defmodule Wardrik.Agent do
         reply_to: Keyword.get(opts, :reply_to, [])
       )
 
-    cast(agent, {:ask, message})
+    queue(agent, message)
   end
+
+  @doc "Queues `message` for the agent to answer, as `ask/3` does with the message it makes."
+  @spec queue(agent(), Message.t()) :: :ok | {:error, :not_found}
+  def queue(agent, %Message{} = message), do: cast(agent, {:ask, message})
 
   @spec get_context(agent()) :: Context.t() | {:error, :not_found}
   def get_context(agent), do: call(agent, :get_context)

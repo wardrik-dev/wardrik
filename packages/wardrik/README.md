@@ -9,16 +9,17 @@ def deps do
 end
 ```
 
-Describe Wardrik once, start it after your repo, and make each user's caller
-with it:
+Describe Wardrik once, start it after your repo, and act on the agents as
+each user, in a session:
 
 ```elixir
 wardrik = Wardrik.new(store: Wardrik.store(repo: MyApp.Repo), grants: %MyApp.Grants{})
 
 children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
-{:ok, caller} = Wardrik.caller(wardrik, principal: maria, subject: agent)
-Wardrik.Command.run(%Wardrik.Operations.Define{agent: agent, definition: definition}, caller)
+session = Wardrik.as(wardrik, maria)
+{:ok, _snapshot} = Wardrik.agent_define(session, agent, definition)
+{:ok, message} = Wardrik.agent_ask(session, agent, "Where is order 1001?")
 ```
 
 Create its table from a migration of your own:

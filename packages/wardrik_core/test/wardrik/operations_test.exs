@@ -344,8 +344,11 @@ defmodule Wardrik.OperationsTest do
       :ok = Event.Bus.subscribe(id)
       {:ok, ask} = Ask.new(id, %{"id" => "m1", "content" => "hi"})
 
-      assert {:ok, "m1"} = Command.run(ask, caller())
-      assert Ask.render("m1") == %{"message" => %{"id" => "m1"}}
+      assert {:ok, %Agent.Message{id: "m1", sequence: sequence} = message} =
+               Command.run(ask, caller())
+
+      assert is_integer(sequence)
+      assert Ask.render(message) == %{"message" => %{"id" => "m1"}}
       assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
       assert Principal.id(sender) == "jon"
       assert_receive {:turn, _messages}
