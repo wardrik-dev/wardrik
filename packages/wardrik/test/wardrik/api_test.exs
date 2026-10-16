@@ -38,9 +38,11 @@ defmodule Wardrik.APITest do
 
   defp id(name), do: AgentID.new!("#{name}-#{System.unique_integer([:positive])}", org: "acme")
 
-  # An agent that echoes, or parks on the call "call_1", run without a model.
+  # An agent that echoes, or parks on the call "call_1", run without a model,
+  # and so without compacting its history, which reads the model catalog.
   defp start(runner) do
-    {id, _pid} = Wardrik.Test.Fleet.start_agent([runner: runner], id("agent"))
+    config = Wardrik.LLM.Config.new(history: nil)
+    {id, _pid} = Wardrik.Test.Fleet.start_agent([runner: runner, config: config], id("agent"))
     id
   end
 
