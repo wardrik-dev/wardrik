@@ -16,6 +16,17 @@ defmodule WardrikStore.Durable do
   write, on every node. `WardrikEcto.Store` and `WardrikS3.Store` do.
   `WardrikStore.EKV` names DurableServer's own EKV backend instead.
 
+  A server's metadata names the process that holds it, and so the node that
+  process ran on. It is kept as DurableServer's object stores keep it, an
+  encoded binary DurableServer reads back itself, not as a term the adapter
+  decodes: an adapter decodes with `[:safe]`, which refuses a node name the
+  reading VM has never seen, and a node that replaces another under a new
+  name, as a rolling deploy starts one, has seen none of the names before
+  it. Metadata kept as a term by earlier versions is still read, and is kept
+  as a binary when its server is next written. An object the adapter cannot
+  decode is left out of listings, through the caller's error handler, and
+  answered as an error, so it stops no other object being read.
+
   | Option | Default | |
   | --- | --- | --- |
   | `:store` | required | the `WardrikStore` |
@@ -62,8 +73,9 @@ defmodule WardrikStore.Durable do
 
   @impl true
   def get_object(state, key, _opts) do
-    case WardrikStore.lookup(state.store, state.ns, key) do
+    case read(state, key) do
       nil -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
       {value, vsn} -> object(value, vsn)
     end
   end
@@ -80,8 +92,12 @@ defmodule WardrikStore.Durable do
   # An object that cannot be read is handed to the caller's error handler and
   # left out.
   defp listed(state, key, include_objects, error_handler) do
-    case WardrikStore.lookup(state.store, state.ns, key) do
+    case read(state, key) do
       nil ->
+        []
+
+      {:error, reason} ->
+        _handled = error_handler.({:decode_failed, key, reason})
         []
 
       {value, vsn} when include_objects ->
@@ -119,9 +135,10 @@ defmodule WardrikStore.Durable do
 
   @impl true
   def delete_object(state, key, opts) do
-    case {Keyword.fetch(opts, :etag), WardrikStore.lookup(state.store, state.ns, key)} do
+    case {Keyword.fetch(opts, :etag), read(state, key)} do
       {_etag, nil} -> {:error, :not_found}
       {{:ok, etag}, _current} -> with {:ok, vsn} <- vsn(etag), do: deleted(state, key, vsn)
+      {:error, {:error, reason}} -> {:error, reason}
       {:error, {_value, vsn}} -> deleted(state, key, vsn)
     end
   end
@@ -132,7 +149,7 @@ defmodule WardrikStore.Durable do
         :ok
 
       {:error, :conflict} ->
-        if WardrikStore.lookup(state.store, state.ns, key) == nil,
+        if read(state, key) == nil,
           do: {:error, :not_found},
           else: {:error, :conflict}
 
@@ -197,15 +214,21 @@ defmodule WardrikStore.Durable do
     with {:ok, body} <- body(value), do: {:ok, %{body: body, etag: etag(vsn)}}
   end
 
+  # An adapter raises on a value it cannot decode.
+  defp read(state, key) do
+    WardrikStore.lookup(state.store, state.ns, key)
+  rescue
+    error in ArgumentError -> {:error, error}
+  end
+
   defp body(value) do
-    case StoredState.from_storage_term(value) do
-      {:ok, stored_state} -> {:ok, stored_state}
-      :not_stored_state -> {:ok, value}
-      {:error, reason} -> {:error, reason}
+    with :not_stored_state <- StoredState.from_object_store_term(value),
+         :not_stored_state <- StoredState.from_storage_term(value) do
+      {:ok, value}
     end
   end
 
-  defp term(%StoredState{} = stored_state), do: StoredState.to_storage_term(stored_state)
+  defp term(%StoredState{} = stored_state), do: StoredState.to_object_store_term(stored_state)
   defp term(data), do: data
 
   defp etag(vsn), do: vsn |> :erlang.term_to_binary() |> Base.url_encode64(padding: false)
