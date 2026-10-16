@@ -43,8 +43,16 @@ defmodule WardrikMCP.Servers do
   @spec list(t(), Prefix.t()) :: [Server.t()]
   def list(%__MODULE__{store: store}, owner) do
     for remote <- Remote.list(store, owner),
-        do: %Server{name: remote.key.name, url: remote.url, auth: Auth.name(remote.auth)}
+        do: %Server{
+          name: remote.key.name,
+          url: remote.url,
+          auth: Auth.name(remote.auth),
+          secret: secret(remote.auth)
+        }
   end
+
+  defp secret(%Auth.Secret{name: name}), do: name
+  defp secret(_auth), do: nil
 
   @doc false
   @spec add(t(), Prefix.t(), keyword()) ::
