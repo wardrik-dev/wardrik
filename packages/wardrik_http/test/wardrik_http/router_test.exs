@@ -93,9 +93,14 @@ defmodule WardrikHTTP.RouterTest do
 
     def delete_trigger(host, key, name) do
       with :ok <- editable(host, key) do
-        if triggered(key, name),
-          do: WardrikStore.delete(store(), @triggers, "#{key}//#{name}"),
-          else: {:error, :not_found}
+        case triggered(key, name) do
+          nil ->
+            {:error, :not_found}
+
+          trigger ->
+            :ok = WardrikStore.delete(store(), @triggers, "#{key}//#{name}")
+            {:ok, trigger}
+        end
       end
     end
 

@@ -117,15 +117,14 @@ defmodule WardrikHost.GuideTest do
       "instructions" => "Answer in one sentence."
     }
 
-    assert {:created, _snapshot} = agents().define(user, name, definition)
+    assert {:ok, %Wardrik.Agent.Snapshot{}} = agents().define(user, name, definition)
     %{user: user, agent: Wardrik.AgentID.new!(name, org: "acme", user: to_string(user.id))}
   end
 
   test "a user defines an agent of their own, and asks it", %{user: user, agent: agent} do
-    :ok = Wardrik.Event.Log.subscribe(agent)
+    :ok = agents().subscribe(user, agent)
 
-    assert {:ok, message_id} = agents().ask(user, agent, "What changed this week?")
-    assert is_binary(message_id)
+    assert {:ok, %Wardrik.Agent.Message{}} = agents().ask(user, agent, "What changed this week?")
 
     assert_receive %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.started"}}, 10_000
   end
@@ -152,7 +151,7 @@ defmodule WardrikHost.GuideTest do
   test "a user's agent may name the GitHub server's tools", %{user: user} do
     definition = %{"model" => "anthropic:claude-sonnet-5", "tools" => ["github/*"]}
 
-    assert {:created, _snapshot} =
+    assert {:ok, %Wardrik.Agent.Snapshot{}} =
              agents().define(user, "triage-#{System.unique_integer([:positive])}", definition)
   end
 

@@ -2,7 +2,7 @@ defmodule Wardrik.Operations.RemoveServer do
   @moduledoc """
   Removes an MCP server an owner added, through the host's
   `Wardrik.Servers`: its agents lose its tools on their next turn, and every
-  connection to it is stopped.
+  connection to it is stopped. The answer is the server as it was.
   """
 
   @behaviour Wardrik.Catalog.Entry
@@ -47,18 +47,19 @@ defmodule Wardrik.Operations.RemoveServer do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, name: name}} = change, caller) do
-    case Wardrik.Servers.remove(Host.servers(caller.host), owner,
-           name: name,
-           by: caller.principal
-         ) do
-      :ok -> {:ok, nil, change.effect}
+    servers = Host.servers(caller.host)
+
+    with listed when is_list(listed) <- Wardrik.Servers.list(servers, owner),
+         :ok <- Wardrik.Servers.remove(servers, owner, name: name, by: caller.principal) do
+      {:ok, Enum.find(listed, &(&1.name == name)), change.effect}
+    else
       {:error, %Error{} = error} -> {:error, error}
       :unsupported -> {:error, Wardrik.Servers.None.unsupported()}
     end
   end
 
   @impl Wardrik.Command
-  def render(nil), do: nil
+  def render(_server), do: nil
 
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, name: name}),

@@ -66,8 +66,15 @@ defmodule Wardrik.Operations.AddServer do
   end
 
   defp added(%__MODULE__{name: name, fields: fields}, link) do
-    [auth] = Map.keys(fields["auth"])
-    %Wardrik.Servers.Server{name: name, url: fields["url"], auth: auth, authorization: link}
+    [{auth, how}] = Map.to_list(fields["auth"])
+
+    %Wardrik.Servers.Server{
+      name: name,
+      url: fields["url"],
+      auth: auth,
+      secret: how["name"],
+      authorization: link
+    }
   end
 
   @impl Wardrik.Command

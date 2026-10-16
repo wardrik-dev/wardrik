@@ -192,7 +192,7 @@ defmodule Wardrik.ConnectionsTest do
       {:ok, request} =
         Connections.Owner.request(Disconnect, caller("acme/@jon/"), :person, provider: "github")
 
-      assert {:ok, nil} = Command.run(request, caller("acme/@jon/"))
+      assert {:ok, %Connection{provider: "github"}} = Command.run(request, caller("acme/@jon/"))
 
       assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
                List.last(Audit.about("secrets/github"))

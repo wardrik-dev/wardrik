@@ -93,11 +93,12 @@ defprotocol Wardrik.Definition do
   def put_trigger(definitions, id, name, opts)
 
   @doc """
-  Deletes the trigger `name` of the agent `id`: `:ok`, `{:error, :not_found}`
-  where it has none, or a conflict.
+  Deletes the trigger `name` of the agent `id`: the trigger it was, as
+  `put_trigger/4` answers one, `{:error, :not_found}` where it has none, or
+  a conflict.
   """
   @spec delete_trigger(t(), Wardrik.AgentID.t(), String.t()) ::
-          :ok | {:error, :not_found} | {:error, :conflict, String.t()} | :unsupported
+          {:ok, map()} | {:error, :not_found} | {:error, :conflict, String.t()} | :unsupported
   def delete_trigger(definitions, id, name)
 
   @doc """

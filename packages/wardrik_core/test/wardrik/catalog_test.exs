@@ -49,7 +49,7 @@ defmodule Wardrik.CatalogTest do
 
     def delete_trigger(_definitions, id, name) do
       tell({:delete_trigger, id, name})
-      :ok
+      {:ok, %{"name" => name}}
     end
 
     defp tell(message), do: send(:persistent_term.get(__MODULE__), message)

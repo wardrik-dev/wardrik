@@ -46,6 +46,7 @@ defmodule Wardrik.MixProject do
       {:ekv, "~> 0.4.3", optional: true},
       {:ecto_sql, "~> 3.14", optional: true},
       {:postgrex, "~> 0.22.4", optional: true},
+      {:nimble_options, "~> 1.1"},
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

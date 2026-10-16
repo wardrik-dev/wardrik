@@ -13,14 +13,10 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.Error
   alias Wardrik.Fleet
   alias Wardrik.Host
-  alias Wardrik.Operations.Ask
-  alias Wardrik.Operations.Cancel
-  alias Wardrik.Operations.CancelAgents
-  alias Wardrik.Operations.Forget
   alias Wardrik.Operations.Move
   alias Wardrik.Operations.Spawn
   alias Wardrik.Operations.SpawnOn
-  alias Wardrik.Operations.Stop
+  alias Wardrik.Session
   alias WardrikConsole.Nodes
   alias WardrikTUI.App.Connection
   alias WardrikTUI.App.Display
@@ -295,7 +291,7 @@ defmodule WardrikTUI.App.Commands do
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        {:ok, cancelled} = Operation.run(%CancelAgents{prefix: prefix}, caller(term))
+        {:ok, cancelled} = Wardrik.agents_cancel(session(term), prefix)
 
         Display.append(term, View.stopped_under(prefix, length(cancelled)))
 
@@ -305,8 +301,8 @@ defmodule WardrikTUI.App.Commands do
   end
 
   defp stop_one(term, id) do
-    case Operation.run(%Cancel{agent: id}, caller(term)) do
-      {:ok, _answer} -> Display.append(term, View.stopped(id))
+    case Wardrik.agent_cancel(session(term), id) do
+      :ok -> Display.append(term, View.stopped(id))
       {:error, %Error{type: :not_found}} -> Display.append(term, View.no_such_agent(id))
     end
   end
@@ -314,8 +310,8 @@ defmodule WardrikTUI.App.Commands do
   # Stops an agent and keeps its store, so `/spawn` brings it back as it was.
   # The attached agent may be shut down; the status row then says so.
   defp shutdown(term, id, name) do
-    case Operation.run(%Stop{agent: id}, caller(term)) do
-      {:ok, _answer} ->
+    case Wardrik.agent_stop(session(term), id) do
+      {:ok, _member} ->
         term |> Connection.refresh_fleet() |> Display.append(View.shut_down(id, name))
 
       {:error, %Error{type: :not_found}} ->
@@ -378,7 +374,7 @@ defmodule WardrikTUI.App.Commands do
     {removed, failed} =
       Enum.split_with(
         ids,
-        &match?({:ok, _answer}, Operation.run(%Forget{agent: &1}, caller(term)))
+        &(Wardrik.agent_forget(session(term), &1) == :ok)
       )
 
     term = assign(term, views: Map.drop(term.assigns.views, removed))
@@ -472,11 +468,12 @@ defmodule WardrikTUI.App.Commands do
     term
   end
 
-  defp asked(term, id, text) do
-    with {:ok, ask} <- Ask.new(id, %{"content" => text}), do: Operation.run(ask, caller(term))
-  end
+  defp asked(term, id, text), do: Wardrik.agent_ask(session(term), id, text)
 
   # Whoever uses this client holds the node, as a shell on it does.
+  defp session(term), do: Session.root(host: term.assigns.host, principal: term.assigns.principal)
+
+  # The same, as the caller a planned change is made by.
   defp caller(term), do: Host.root(term.assigns.host, principal: term.assigns.principal)
 
   # A change this client made, recorded for the person using it.

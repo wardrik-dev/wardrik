@@ -1,7 +1,8 @@
 defmodule Wardrik.Operations.RemoveTrigger do
   @moduledoc """
   Removes one of an agent's triggers, through the host's
-  `Wardrik.Definition`, which keeps them with the agent's definition.
+  `Wardrik.Definition`, which keeps them with the agent's definition. The
+  answer is the trigger as it was.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -47,7 +48,7 @@ defmodule Wardrik.Operations.RemoveTrigger do
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, name: name}} = change, caller) do
     case Wardrik.Definition.delete_trigger(Host.definitions(caller.host), id, name) do
-      :ok -> {:ok, nil, change.effect}
+      {:ok, trigger} -> {:ok, trigger, change.effect}
       {:error, :not_found} -> {:error, Error.new(:not_found, "#{id} has no trigger #{name}.")}
       {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
       :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
@@ -55,7 +56,7 @@ defmodule Wardrik.Operations.RemoveTrigger do
   end
 
   @impl Wardrik.Command
-  def render(nil), do: nil
+  def render(_trigger), do: nil
 
   defimpl Wardrik.Effect do
     def preview(%{agent: id, name: name}),

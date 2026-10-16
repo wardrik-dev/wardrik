@@ -8,6 +8,8 @@
   ],
   boundaries: [
     public: [
+      "Wardrik",
+      "Wardrik.Session",
       "Wardrik.Core",
       "Wardrik.Agent",
       "Wardrik.Agent.Snapshot",

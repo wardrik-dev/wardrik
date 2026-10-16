@@ -114,7 +114,7 @@ defmodule Wardrik.ServersTest do
     assert [{"server.added", %{"type" => "user", "id" => "jon"}} | _] =
              Audit.about("servers/acme/@jon/docs")
 
-    assert {:ok, nil} = run(RemoveServer, jon, :person, %{"name" => "docs"})
+    assert {:ok, %Server{name: "docs"}} = run(RemoveServer, jon, :person, %{"name" => "docs"})
     assert {:ok, []} = run(ReadServers, jon, :person, %{})
     assert {"server.removed", _by} = List.last(Audit.about("servers/acme/@jon/docs"))
   end

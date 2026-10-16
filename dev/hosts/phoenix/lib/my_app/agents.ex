@@ -2,10 +2,6 @@ defmodule MyApp.Agents do
   @moduledoc "Wardrik in this app: where it keeps everything, what runs, and what users do with agents."
 
   alias Wardrik.AgentID
-  alias Wardrik.Operations.Ask
-  alias Wardrik.Operations.Connect
-  alias Wardrik.Operations.Define
-  alias Wardrik.Operations.ReadConnections
 
   def store, do: Wardrik.store(repo: MyApp.Repo)
 
@@ -71,31 +67,17 @@ defmodule MyApp.Agents do
 
   def define(user, name, definition) do
     agent = AgentID.new!(name, org: user.org, user: to_string(user.id))
-
-    with {:ok, caller} <- caller(user, agent),
-         do: Wardrik.Command.run(%Define{agent: agent, definition: definition}, caller)
+    Wardrik.agent_define(session(user), agent, definition)
   end
 
-  def ask(user, agent, text) do
-    with {:ok, caller} <- caller(user, agent),
-         {:ok, request} <- Ask.new(agent, %{"content" => text}),
-         do: Wardrik.Command.run(request, caller)
-  end
+  def ask(user, agent, text), do: Wardrik.agent_ask(session(user), agent, text)
 
-  def connect(user, provider) do
-    owner = MyApp.Grants.own(user)
+  def subscribe(user, agent), do: Wardrik.agent_subscribe(session(user), agent)
 
-    with {:ok, caller} <- caller(user, owner),
-         do: Wardrik.Command.run(%Connect{owner: owner, provider: provider}, caller)
-  end
+  def connect(user, provider),
+    do: Wardrik.connections_connect(session(user), MyApp.Grants.own(user), provider)
 
-  def connections(user) do
-    owner = MyApp.Grants.own(user)
+  def connections(user), do: Wardrik.connections_list(session(user), MyApp.Grants.own(user))
 
-    with {:ok, caller} <- caller(user, owner),
-         do: Wardrik.Query.run(%ReadConnections{owner: owner}, caller)
-  end
-
-  defp caller(user, subject),
-    do: Wardrik.caller(wardrik(), principal: MyApp.Grants.principal(user), subject: subject)
+  defp session(user), do: Wardrik.as(wardrik(), MyApp.Grants.principal(user))
 end

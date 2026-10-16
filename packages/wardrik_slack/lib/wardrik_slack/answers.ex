@@ -5,15 +5,13 @@ defmodule WardrikSlack.Answers do
   The person pressing is the principal `WardrikChannel.principal/3` makes of
   them, and may do what the host's `Wardrik.Grants` says, as
   `Wardrik.Host.caller/2` answers it on the host the channel's context
-  carries: they decide a call
-  as `Wardrik.Operations.Decide` takes it, so where their grant allows
-  `:decide` on the agent, or where they asked for the turn that waits; and
-  they are shown where to connect an account where their grant allows
-  `:decide`.
+  carries: they decide a call with `Wardrik.agent_approve/4` or
+  `Wardrik.agent_deny/4`, so where their grant allows `:decide` on the
+  agent, or where they asked for the turn that waits; and they are shown
+  where to connect an account where their grant allows `:decide`.
   """
 
   alias Wardrik.Error
-  alias Wardrik.Operations.Decide
 
   @refused "Only whoever asked, or this channel's approvers, can answer that. " <>
              "The channel's approvers in config.yaml name who else may, and " <>
@@ -70,9 +68,18 @@ defmodule WardrikSlack.Answers do
 
   defp pressed(action, payload, {user, caller}, agent, call, name) do
     note = note(payload, call)
-    decision = decision(action, note, user["username"] || user["name"] || user["id"])
 
-    case Wardrik.Command.run(%Decide{agent: agent, decisions: %{call => decision}}, caller) do
+    session =
+      Wardrik.Session.new(host: caller.host, principal: caller.principal, grant: caller.grant)
+
+    case decide(
+           action,
+           session,
+           agent,
+           call,
+           note,
+           user["username"] || user["name"] || user["id"]
+         ) do
       {:ok, _decided} -> decided(payload, action, note, user, call, name)
       {:error, %Error{type: :forbidden}} -> WardrikSlack.ephemeral(@refused)
       {:error, %Error{type: :not_found}} -> WardrikSlack.ephemeral("#{agent} is not running.")
@@ -96,10 +103,17 @@ defmodule WardrikSlack.Answers do
   defp link_text({%{link: %{url: url}}, _prompt}), do: "Open #{url}"
   defp link_text(_answered), do: "That is no longer waiting on anyone to connect."
 
-  defp decision("wardrik_approve", nil, _who), do: :approve
-  defp decision("wardrik_approve", note, _who), do: {:approve, note}
-  defp decision(_deny, nil, who), do: {:deny, "Denied in Slack by #{who}."}
-  defp decision(_deny, note, who), do: {:deny, "Denied in Slack by #{who}: #{note}"}
+  defp decide("wardrik_approve", session, agent, call, nil, _who),
+    do: Wardrik.agent_approve(session, agent, call)
+
+  defp decide("wardrik_approve", session, agent, call, note, _who),
+    do: Wardrik.agent_approve(session, agent, call, note: note)
+
+  defp decide(_deny, session, agent, call, nil, who),
+    do: Wardrik.agent_deny(session, agent, call, reason: "Denied in Slack by #{who}.")
+
+  defp decide(_deny, session, agent, call, note, who),
+    do: Wardrik.agent_deny(session, agent, call, reason: "Denied in Slack by #{who}: #{note}")
 
   # What was written in the call's box as the button was pressed, where
   # anything was.

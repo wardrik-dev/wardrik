@@ -1,7 +1,7 @@
 defmodule WardrikDaemon.CLI.Tokens do
   @moduledoc """
   `wardrik token`: the HTTP API's tokens, made, listed and revoked on the
-  daemon, as `Wardrik.Operations.CreateToken`, `ListTokens` and `RevokeToken`.
+  daemon, as `Wardrik.tokens_create/4`, `tokens_list/1` and `tokens_revoke/2`.
   They are made from a shell on the server alone, never over the API.
 
   `token create NAME` makes a token printed once. `--scope PREFIX` is the
@@ -18,12 +18,9 @@ defmodule WardrikDaemon.CLI.Tokens do
   """
 
   alias Wardrik.AgentID.Prefix
-  alias Wardrik.Command, as: Operation
   alias Wardrik.Grant
   alias Wardrik.Operations.CreateToken
   alias Wardrik.Operations.ListTokens
-  alias Wardrik.Operations.RevokeToken
-  alias Wardrik.Query
   alias WardrikDaemon.CLI.Command
 
   @doc "The token commands, for `WardrikDaemon.CLI.commands/0`."
@@ -80,11 +77,7 @@ defmodule WardrikDaemon.CLI.Tokens do
     with {:ok, scope} <- scope(opts),
          {:ok, ceiling} <- ceiling(opts, can),
          {:ok, grant} <- Grant.new(scope, can, ceiling),
-         {:created, issued} <-
-           Operation.run(
-             %CreateToken{name: name, grant: grant, for: issued(opts[:for])},
-             opts[:caller]
-           ) do
+         {:ok, issued} <- Wardrik.tokens_create(opts[:session], name, grant, issued(opts[:for])) do
       %{"secret" => secret, "token" => token} = CreateToken.render(issued)
 
       {:ok,
@@ -100,8 +93,8 @@ defmodule WardrikDaemon.CLI.Tokens do
     end
   end
 
-  defp issued(nil), do: nil
-  defp issued(person), do: Wardrik.Principal.new(:user, person)
+  defp issued(nil), do: []
+  defp issued(person), do: [for: Wardrik.Principal.new(:user, person)]
 
   # One of --scope and --all.
   defp scope(opts) do
@@ -167,7 +160,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
   defp list(_words, opts) do
-    with {:ok, tokens} <- Query.run(%ListTokens{}, opts[:caller]),
+    with {:ok, tokens} <- Wardrik.tokens_list(opts[:session]),
          do: {:ok, listed(ListTokens.render(tokens)["tokens"])}
   end
 
@@ -190,7 +183,7 @@ defmodule WardrikDaemon.CLI.Tokens do
   end
 
   defp revoke([id], opts) do
-    with {:ok, nil} <- Operation.run(%RevokeToken{id: id}, opts[:caller]),
+    with {:ok, _token} <- Wardrik.tokens_revoke(opts[:session], id),
          do: {:ok, "Revoked #{id}."}
   end
 

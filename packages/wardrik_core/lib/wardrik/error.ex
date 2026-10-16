@@ -14,15 +14,22 @@ defmodule Wardrik.Error do
   | `:unavailable` | it could not happen now | `503` |
 
   `details` holds whatever else a surface may answer beside the message.
+
+  It is an exception, so a function that answers it in `{:error, error}` has
+  a bang variant that raises it.
   """
 
-  @enforce_keys [:type, :message]
-  defstruct [:type, :message, details: %{}]
+  defexception [:type, :message, details: %{}]
 
   @type type() ::
           :not_found | :forbidden | :invalid | :conflict | :gap | :unsupported | :unavailable
 
-  @type t() :: %__MODULE__{type: type(), message: String.t(), details: map()}
+  @type t() :: %__MODULE__{
+          __exception__: true,
+          type: type(),
+          message: String.t(),
+          details: map()
+        }
 
   @doc "An error of `type`, saying `message`, with `details` beside it."
   @spec new(type(), String.t(), map()) :: t()
