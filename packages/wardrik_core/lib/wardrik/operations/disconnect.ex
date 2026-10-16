@@ -2,7 +2,7 @@ defmodule Wardrik.Operations.Disconnect do
   @moduledoc """
   Forgets an owner's account, through the host's `Wardrik.Connections`, so
   the next call that needs it asks them to connect again. The answer is the
-  connection as it was.
+  connection as it was: held by the owner, a person or an org.
   """
 
   @behaviour Wardrik.FleetOperation
@@ -10,6 +10,7 @@ defmodule Wardrik.Operations.Disconnect do
 
   alias Wardrik.Change
   alias Wardrik.Connections
+  alias Wardrik.Connections.Connection
   alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Host
@@ -30,13 +31,12 @@ defmodule Wardrik.Operations.Disconnect do
 
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{owner: owner, provider: provider}} = change, caller) do
-    connections = Host.connections(caller.host)
     whose = Owner.owner_of(owner)
 
-    with listed when is_list(listed) <- Connections.list(connections, whose),
-         :ok <- Connections.disconnect(connections, provider, whose) do
-      {:ok, Enum.find(listed, &(&1.provider == provider)), change.effect}
-    else
+    case Connections.disconnect(Host.connections(caller.host), provider, whose) do
+      :ok ->
+        {:ok, %Connection{provider: provider, held_by: held_by(whose)}, change.effect}
+
       {:error, :not_found} ->
         {:error, Error.new(:not_found, "#{owner} holds no #{provider}.")}
 
@@ -50,6 +50,10 @@ defmodule Wardrik.Operations.Disconnect do
 
   @impl Wardrik.Command
   def render(_connection), do: nil
+
+  # An owner forgets only an account of their own.
+  defp held_by({_org, _user}), do: :person
+  defp held_by(org) when is_binary(org), do: :org
 
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, provider: provider}),

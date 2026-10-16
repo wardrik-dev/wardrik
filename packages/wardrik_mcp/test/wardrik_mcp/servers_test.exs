@@ -173,8 +173,14 @@ defmodule WardrikMCP.ServersTest do
       assert {:ok, :connected} =
                Wardrik.Servers.add(servers(), owner, name: name, fields: fields, by: nil)
 
-      assert [%Server{name: ^name, url: "https://mcp.example.com/mcp", auth: "secret"}] =
-               Wardrik.Servers.list(servers(), owner)
+      assert [
+               %Server{
+                 name: ^name,
+                 url: "https://mcp.example.com/mcp",
+                 auth: "secret",
+                 secret: "k"
+               }
+             ] = Wardrik.Servers.list(servers(), owner)
 
       assert Wardrik.Servers.list(servers(), Prefix.new!(org: "acme", user: "jon")) == []
 
