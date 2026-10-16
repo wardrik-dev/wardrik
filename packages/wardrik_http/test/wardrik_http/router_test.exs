@@ -154,8 +154,11 @@ defmodule WardrikHTTP.RouterTest do
 
     def list(_host, owner) do
       [
-        %{provider: "github", held_by: if(owner == {"test", "jon"}, do: :person)},
-        %{provider: "linear", held_by: nil}
+        %Wardrik.Connections.Connection{
+          provider: "github",
+          held_by: if(owner == {"test", "jon"}, do: :person)
+        },
+        %Wardrik.Connections.Connection{provider: "linear", held_by: nil}
       ]
     end
 
@@ -184,7 +187,7 @@ defmodule WardrikHTTP.RouterTest do
 
     def list(_servers, owner) do
       if to_string(owner) == "test/@jon/",
-        do: [%Wardrik.Servers.Listed{name: "docs", url: "https://docs.example/mcp", auth: "none"}],
+        do: [%Wardrik.Servers.Server{name: "docs", url: "https://docs.example/mcp", auth: "none"}],
         else: []
     end
 
@@ -1616,8 +1619,10 @@ defmodule WardrikHTTP.RouterTest do
 
       assert %{asleep: true} = Wardrik.Fleet.lookup(key)
 
-      assert {:ok, %{status: 200, body: %{"from" => "store", "agent" => %{"asleep" => false}}}} =
+      assert {:ok, %{status: 200, body: %{"agent" => %{"asleep" => false}} = body}} =
                Req.post(api, url: "/v1/agents/#{key}/spawn")
+
+      refute Map.has_key?(body, "from")
 
       assert {:ok, %{status: 404}} = Req.post(api, url: "/v1/agents/test/nobody/stop")
     end
@@ -1636,7 +1641,7 @@ defmodule WardrikHTTP.RouterTest do
                  json: %{"node" => here}
                )
 
-      assert {:ok, %{status: 200, body: %{"from" => "running"}}} =
+      assert {:ok, %{status: 200, body: %{"agent" => %{"node" => ^here}}}} =
                Req.post(root(api), url: "/v1/agents/#{key}/spawn", json: %{"node" => here})
 
       assert {:ok, %{status: 400}} =

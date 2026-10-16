@@ -23,7 +23,6 @@ defmodule Wardrik.Operations.Spawning do
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
   alias Wardrik.Host
-  alias Wardrik.Operations.Spawned
 
   @enforce_keys [:agent, :start, :on]
   defstruct [:agent, :start, :on]
@@ -96,23 +95,22 @@ defmodule Wardrik.Operations.Spawning do
   defp made({:error, reason}, %__MODULE__{agent: id}),
     do: {:error, Error.new(:unavailable, "#{id} did not start: #{inspect(reason)}")}
 
-  @doc "What a start answers once made: the agent as the fleet lists it, and how it started."
-  @spec answer(t()) :: Spawned.t()
-  def answer(%__MODULE__{agent: id} = effect),
-    do: %Spawned{agent: Fleet.lookup(id), from: from(effect)}
+  @doc "What a start answers once made: the agent, as the fleet lists it."
+  @spec answer(t()) :: Member.t()
+  def answer(%__MODULE__{agent: id}), do: Fleet.lookup(id)
 
   @doc false
-  @spec from(t()) :: Spawned.from()
-  def from(%__MODULE__{start: :running}), do: :running
-  def from(%__MODULE__{start: :asleep}), do: :store
-  def from(%__MODULE__{start: {:defined, _spec}}), do: :definition
-  def from(%__MODULE__{start: :new}), do: :new
+  @spec from(t()) :: String.t()
+  def from(%__MODULE__{start: :running}), do: "running"
+  def from(%__MODULE__{start: :asleep}), do: "store"
+  def from(%__MODULE__{start: {:defined, _spec}}), do: "definition"
+  def from(%__MODULE__{start: :new}), do: "new"
 
   defimpl Wardrik.Effect do
     alias Wardrik.Operations.Spawning
 
     def preview(%{agent: id, on: on} = effect) do
-      spawning = %{"agent" => to_string(id), "from" => Atom.to_string(Spawning.from(effect))}
+      spawning = %{"agent" => to_string(id), "from" => Spawning.from(effect)}
 
       %{
         "spawning" =>

@@ -1,8 +1,8 @@
 defmodule Wardrik.Operations.AddServer do
   @moduledoc """
   Adds an MCP server for an owner's agents, through the host's
-  `Wardrik.Servers`: a `Wardrik.Servers.Added`, with the link where someone
-  signs in to it first, or none where its agents can call it now. Recorded in the audit once it is added, as
+  `Wardrik.Servers`: the `Wardrik.Servers.Server`, with the link where
+  someone signs in to it first, or none where its agents can call it now. Recorded in the audit once it is added, as
   whoever asked for it.
   """
 
@@ -65,7 +65,10 @@ defmodule Wardrik.Operations.AddServer do
     end
   end
 
-  defp added(request, link), do: %Wardrik.Servers.Added{name: request.name, authorization: link}
+  defp added(%__MODULE__{name: name, fields: fields}, link) do
+    [auth] = Map.keys(fields["auth"])
+    %Wardrik.Servers.Server{name: name, url: fields["url"], auth: auth, authorization: link}
+  end
 
   @impl Wardrik.Command
   def render(added), do: Resource.server_added(added)

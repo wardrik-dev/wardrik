@@ -25,7 +25,7 @@ defprotocol Wardrik.Servers do
   alias Wardrik.AgentID.Prefix
 
   @doc "The servers `owner` added."
-  @spec list(t(), Prefix.t()) :: [Wardrik.Servers.Listed.t()] | :unsupported
+  @spec list(t(), Prefix.t()) :: [Wardrik.Servers.Server.t()] | :unsupported
   def list(servers, owner)
 
   @doc """

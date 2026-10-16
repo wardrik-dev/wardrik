@@ -43,12 +43,10 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   alias Wardrik.Operations.CancelAgents
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.ForgetAgents
-  alias Wardrik.Operations.Forgotten
   alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.Move
   alias Wardrik.Operations.ReadAgent
   alias Wardrik.Operations.Spawn
-  alias Wardrik.Operations.Spawned
   alias Wardrik.Operations.SpawnOn
   alias Wardrik.Operations.Stop
   alias Wardrik.Query
@@ -152,8 +150,11 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp spawn_agent([name], opts) do
     with {:ok, key} <- key(name, opts),
          {:ok, node} <- named_node(opts[:on]),
-         {:ok, spawned} <- Operation.run(spawning(key, node), opts[:caller]),
-         do: {:ok, spawned(spawned, key, opts[:caller])}
+         {:ok, change} <- Operation.plan(spawning(key, node), opts[:caller]),
+         {:ok, agent} <- Operation.make(change, opts[:caller]) do
+      %{"spawning" => %{"from" => from}} = Operation.preview(change)
+      {:ok, spawned(from, agent, key, opts[:caller])}
+    end
   end
 
   defp spawning(key, nil), do: %Spawn{agent: key}
@@ -182,20 +183,20 @@ defmodule WardrikDaemon.CLI.Lifecycle do
     end
   end
 
-  defp spawned(%Spawned{from: :running, agent: agent}, key, _caller),
+  defp spawned("running", agent, key, _caller),
     do: "#{key} runs already, on #{on(agent)}."
 
-  defp spawned(%Spawned{from: :store, agent: agent}, key, _caller),
+  defp spawned("store", agent, key, _caller),
     do: "Started #{key} on #{on(agent)} again, with its conversation."
 
-  defp spawned(%Spawned{from: :definition, agent: agent}, key, _caller) do
+  defp spawned("definition", agent, key, _caller) do
     case WardrikDaemon.Host.declared()[key] do
       {path, _spec} -> "Started #{key} on #{on(agent)}, as #{shown(path)} declares it."
       nil -> "Started #{key} on #{on(agent)}, on the definition kept for it."
     end
   end
 
-  defp spawned(%Spawned{from: :new, agent: agent}, key, caller) do
+  defp spawned("new", agent, key, caller) do
     {:ok, snapshot} = Query.run(%ReadAgent{agent: key}, caller)
     snapshot = ReadAgent.render(snapshot)
     {path, _spec} = WardrikDaemon.Host.declared()[key]
@@ -332,12 +333,14 @@ defmodule WardrikDaemon.CLI.Lifecycle do
   defp them(_keys), do: "them"
 
   defp removed(change, caller) do
-    with {:ok, %Forgotten{agents: gone, kept: kept, failed: failed}} <-
-           Operation.make(change, caller) do
+    with {:ok, outcomes} <- Operation.make(change, caller) do
+      outcomes = Enum.sort_by(outcomes, fn {key, _outcome} -> to_string(key) end)
+      gone = for {key, :forgotten} <- outcomes, do: key
+      failed = for {key, {:failed, why}} <- outcomes, do: "#{key} was not removed: #{why}"
+
       lines =
         if(gone == [], do: [], else: ["Removed #{listed(gone)}."]) ++
-          for({_key, why} <- kept, do: why) ++
-          for {key, why} <- failed, do: "#{key} was not removed: #{why}"
+          for({_key, {:kept, why}} <- outcomes, do: why) ++ failed
 
       if failed == [], do: {:ok, Enum.join(lines, "\n")}, else: {:error, Enum.join(lines, "\n")}
     end

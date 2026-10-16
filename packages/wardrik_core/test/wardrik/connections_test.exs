@@ -6,7 +6,7 @@ defmodule Wardrik.ConnectionsTest do
   alias Wardrik.Caller
   alias Wardrik.Command
   alias Wardrik.Connections
-  alias Wardrik.Connections.Connecting
+  alias Wardrik.Connections.Connection
   alias Wardrik.Error
   alias Wardrik.Grant
   alias Wardrik.Host
@@ -26,7 +26,7 @@ defmodule Wardrik.ConnectionsTest do
 
     def list(_connections, owner) do
       for provider <- Process.get(:offered, []),
-          do: %{provider: provider, held_by: held_by(provider, owner)}
+          do: %Connection{provider: provider, held_by: held_by(provider, owner)}
     end
 
     defp held_by(provider, {org, _user} = person) do
@@ -97,8 +97,8 @@ defmodule Wardrik.ConnectionsTest do
       assert {:ok, connections} = read(caller("acme/@jon/"))
 
       assert connections == [
-               %{provider: "github", held_by: :person},
-               %{provider: provider, held_by: nil}
+               %Connection{provider: "github", held_by: :person},
+               %Connection{provider: provider, held_by: nil}
              ]
 
       assert ReadConnections.render(connections) == %{
@@ -159,7 +159,7 @@ defmodule Wardrik.ConnectionsTest do
                  provider: provider
                )
 
-      assert {:ok, %Connecting{authorization: %{url: "https://auth.example.com/" <> _}} = asked} =
+      assert {:ok, %Connection{authorization: %{url: "https://auth.example.com/" <> _}} = asked} =
                Command.run(request, caller("acme/@jon/"))
 
       assert %{"connected" => false, "authorization" => %{"url" => _url}} = Connect.render(asked)
@@ -169,7 +169,7 @@ defmodule Wardrik.ConnectionsTest do
       {:ok, request} =
         Connections.Owner.request(Connect, caller("acme/@jon/"), :person, provider: "github")
 
-      assert {:ok, %Connecting{provider: "github", authorization: nil} = held} =
+      assert {:ok, %Connection{provider: "github", held_by: :person, authorization: nil} = held} =
                Command.run(request, caller("acme/@jon/"))
 
       assert Connect.render(held) == %{"provider" => "github", "connected" => true}
@@ -197,7 +197,9 @@ defmodule Wardrik.ConnectionsTest do
       assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
                List.last(Audit.about("secrets/github"))
 
-      assert {:ok, [%{provider: "github", held_by: nil} | _]} = read(caller("acme/@jon/"))
+      assert {:ok, [%Connection{provider: "github", held_by: nil} | _]} =
+               read(caller("acme/@jon/"))
+
       assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/@jon/"))
     end
   end

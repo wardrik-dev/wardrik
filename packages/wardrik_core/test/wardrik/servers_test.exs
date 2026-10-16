@@ -15,7 +15,7 @@ defmodule Wardrik.ServersTest do
   alias Wardrik.Operations.RemoveServer
   alias Wardrik.Principal
   alias Wardrik.Query
-  alias Wardrik.Servers.Listed
+  alias Wardrik.Servers.Server
   alias Wardrik.Test.Audit
 
   # Keeps the servers it is given in the test's process, as :added, a map
@@ -28,7 +28,7 @@ defmodule Wardrik.ServersTest do
 
     def add(_servers, owner, name: name, fields: fields, by: by) do
       send(self(), {:add, owner, name, by})
-      listed = %Listed{name: name, url: fields["url"], auth: auth(fields["auth"])}
+      listed = %Server{name: name, url: fields["url"], auth: auth(fields["auth"])}
 
       cond do
         Enum.any?(list(nil, owner), &(&1.name == name)) ->
@@ -92,7 +92,13 @@ defmodule Wardrik.ServersTest do
       "auth" => %{"none" => %{}}
     }
 
-    assert {:created, %Wardrik.Servers.Added{name: "docs", authorization: nil} = added} =
+    assert {:created,
+            %Server{
+              name: "docs",
+              url: "https://docs.example.com/mcp",
+              auth: "none",
+              authorization: nil
+            } = added} =
              run(AddServer, jon, :person, docs)
 
     assert AddServer.render(added) == %{"server" => "docs", "connected" => true}
@@ -100,7 +106,7 @@ defmodule Wardrik.ServersTest do
     assert_received {:add, owner, "docs", @jon}
     assert to_string(owner) == "acme/@jon/"
 
-    assert {:ok, [%Listed{name: "docs", auth: "none"}] = servers} =
+    assert {:ok, [%Server{name: "docs", auth: "none"}] = servers} =
              run(ReadServers, jon, :person, %{})
 
     assert %{"servers" => [%{"name" => "docs", "auth" => "none"}]} = ReadServers.render(servers)
@@ -121,7 +127,7 @@ defmodule Wardrik.ServersTest do
     }
 
     assert {:created,
-            %Wardrik.Servers.Added{
+            %Server{
               name: "crm",
               authorization: %{url: "https://auth.example.com/crm"}
             } = added} =

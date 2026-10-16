@@ -3,8 +3,9 @@ defmodule Wardrik.Operations.Spawn do
   Starts an agent wherever the fleet puts it: one asleep wakes, one the
   host defines starts on its definition, and one nothing defines yet is
   defined as the host's `c:Wardrik.Definition.create/1` says; see
-  `Wardrik.Operations.Spawning`. Starting one on a node of the caller's
-  choosing is `Wardrik.Operations.SpawnOn`.
+  `Wardrik.Operations.Spawning`. The answer is the agent, as the fleet
+  lists it. Starting one on a node of the caller's choosing is
+  `Wardrik.Operations.SpawnOn`.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -36,5 +37,5 @@ defmodule Wardrik.Operations.Spawn do
   end
 
   @impl Wardrik.Command
-  def render(spawned), do: Wardrik.Resource.spawned(spawned)
+  def render(member), do: %{"agent" => Wardrik.Resource.agent(member)}
 end

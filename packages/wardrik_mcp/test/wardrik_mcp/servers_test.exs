@@ -9,7 +9,7 @@ defmodule WardrikMCP.ServersTest do
   alias Wardrik.LLM.ToolRunner
   alias Wardrik.Scope
   alias Wardrik.Servers.Key
-  alias Wardrik.Servers.Listed
+  alias Wardrik.Servers.Server
   alias WardrikMCP.Auth
   alias WardrikMCP.Connection
   alias WardrikMCP.Listing
@@ -173,7 +173,7 @@ defmodule WardrikMCP.ServersTest do
       assert {:ok, :connected} =
                Wardrik.Servers.add(servers(), owner, name: name, fields: fields, by: nil)
 
-      assert [%Listed{name: ^name, url: "https://mcp.example.com/mcp", auth: "secret"}] =
+      assert [%Server{name: ^name, url: "https://mcp.example.com/mcp", auth: "secret"}] =
                Wardrik.Servers.list(servers(), owner)
 
       assert Wardrik.Servers.list(servers(), Prefix.new!(org: "acme", user: "jon")) == []

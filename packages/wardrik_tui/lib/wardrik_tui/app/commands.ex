@@ -19,7 +19,6 @@ defmodule WardrikTUI.App.Commands do
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.Move
   alias Wardrik.Operations.Spawn
-  alias Wardrik.Operations.Spawned
   alias Wardrik.Operations.SpawnOn
   alias Wardrik.Operations.Stop
   alias WardrikConsole.Nodes
@@ -119,10 +118,11 @@ defmodule WardrikTUI.App.Commands do
   # started again, or, in the background, left alone and named.
   defp spawn_agent(term, id, name, options, prompt, mode) do
     with {:ok, placement} <- placement(options),
-         {:ok, %Spawned{from: from}} <- Operation.run(spawning(id, placement), caller(term)) do
+         {:ok, change} <- Operation.plan(spawning(id, placement), caller(term)),
+         {:ok, _agent} <- Operation.make(change, caller(term)) do
       pid = Fleet.whereis(id)
 
-      if from == :running,
+      if match?(%{"spawning" => %{"from" => "running"}}, Operation.preview(change)),
         do: existing_agent(term, id, name, pid, prompt, mode),
         else: started(term, id, name, pid, prompt, mode)
     else

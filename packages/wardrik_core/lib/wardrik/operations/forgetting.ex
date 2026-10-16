@@ -15,7 +15,6 @@ defmodule Wardrik.Operations.Forgetting do
   alias Wardrik.Definitions
   alias Wardrik.Fleet
   alias Wardrik.Host
-  alias Wardrik.Operations.Forgotten
 
   @enforce_keys [:agents, :kept, :asked]
   defstruct [:agents, :kept, :asked]
@@ -73,10 +72,21 @@ defmodule Wardrik.Operations.Forgetting do
     end
   end
 
-  @doc "What a forget answers once made: the agents removed, kept with why, and not removed with why."
-  @spec answer(t(), [{AgentID.t(), String.t()}]) :: Forgotten.t()
-  def answer(%__MODULE__{agents: agents, kept: kept}, failed),
-    do: %Forgotten{agents: agents, kept: kept, failed: failed}
+  @typedoc "What became of an agent a forget reached."
+  @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
+
+  @doc """
+  What a forget answers once made: each agent it reached, by ID, with what
+  became of it: removed, kept with why, or not removed with why.
+  """
+  @spec answer(t(), [{AgentID.t(), String.t()}]) :: %{AgentID.t() => outcome()}
+  def answer(%__MODULE__{agents: agents, kept: kept}, failed) do
+    Map.new(
+      Enum.map(agents, &{&1, :forgotten}) ++
+        for({id, why} <- kept, do: {id, {:kept, why}}) ++
+        for({id, why} <- failed, do: {id, {:failed, why}})
+    )
+  end
 
   defimpl Wardrik.Effect do
     alias Wardrik.Resource

@@ -2,7 +2,7 @@ defmodule Wardrik.Operations.ReadServers do
   @moduledoc """
   The MCP servers an owner added, through the host's `Wardrik.Servers`:
   each one's name, URL and how its agents sign in to it, a
-  `Wardrik.Servers.Listed`.
+  `Wardrik.Servers.Server`.
   """
 
   @behaviour Wardrik.Catalog.Entry

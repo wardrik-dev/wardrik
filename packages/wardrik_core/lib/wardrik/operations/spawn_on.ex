@@ -37,5 +37,5 @@ defmodule Wardrik.Operations.SpawnOn do
   end
 
   @impl Wardrik.Command
-  def render(spawned), do: Wardrik.Resource.spawned(spawned)
+  def render(member), do: %{"agent" => Wardrik.Resource.agent(member)}
 end

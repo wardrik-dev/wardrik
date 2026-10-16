@@ -409,7 +409,7 @@ Give Maria an agent that uses GitHub, and the link to connect her account:
     "tools" => ["github/*"]
   })
 
-{:ok, %Wardrik.Connections.Connecting{authorization: %{url: url}}} =
+{:ok, %Wardrik.Connections.Connection{authorization: %{url: url}}} =
   MyApp.Agents.connect(maria, "github")
 ```
 
@@ -417,7 +417,8 @@ Show her `url`. She signs in at GitHub, comes back to `/oauth/callback/github`, 
 her token. Her connections then say she holds it:
 
 ```elixir
-{:ok, [%{provider: "github", held_by: :person}]} = MyApp.Agents.connections(maria)
+{:ok, [%Wardrik.Connections.Connection{provider: "github", held_by: :person}]} =
+  MyApp.Agents.connections(maria)
 ```
 
 If her agent calls GitHub before she connects, the call waits. `connect/2` gives her a link, and

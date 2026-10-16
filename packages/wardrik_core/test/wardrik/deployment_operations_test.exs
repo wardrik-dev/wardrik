@@ -22,7 +22,7 @@ defmodule Wardrik.DeploymentOperationsTest do
   alias Wardrik.Query
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Fleet
-  alias Wardrik.Tokens.Issued
+  alias Wardrik.Tokens.Token
 
   # Reads its definitions again by telling the test that asked.
   defmodule Reloads do
@@ -55,9 +55,17 @@ defmodule Wardrik.DeploymentOperationsTest do
 
     def create(_tokens, name, grant: grant, for: for) do
       id = Wardrik.UUID.v7()
-      token = %{id: id, name: name, grant: grant, principal: for, created_at: DateTime.utc_now()}
+
+      token = %Token{
+        id: id,
+        name: name,
+        grant: grant,
+        principal: for,
+        created_at: DateTime.utc_now()
+      }
+
       {:ok, _vsn} = WardrikStore.put(store(), @ns, id, token)
-      {:ok, "secret-" <> id, token}
+      {:ok, %{token | secret: "secret-" <> id}}
     end
 
     def list(_tokens),
@@ -162,8 +170,9 @@ defmodule Wardrik.DeploymentOperationsTest do
                }
              }
 
-      assert {:created, %Issued{secret: "secret-" <> id} = issued} = Command.make(change, root())
-      assert %{"secret" => "secret-" <> ^id, "token" => token} = CreateToken.render(issued)
+      assert {:created, %Token{secret: "secret-" <> id} = made} = Command.make(change, root())
+      assert %{"secret" => "secret-" <> ^id, "token" => token} = CreateToken.render(made)
+      refute inspect(made) =~ "secret-"
 
       assert %{"id" => ^id, "name" => "ci", "scope" => "test/", "can" => ["read"], "for" => "ana"} =
                token

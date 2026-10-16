@@ -36,13 +36,12 @@ defmodule Wardrik.Resource do
   """
 
   alias Wardrik.Agent.Snapshot
-  alias Wardrik.Connections.Connecting
+  alias Wardrik.Connections.Connection
   alias Wardrik.Deployment.Nodes
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet.Member
-  alias Wardrik.Operations.Forgotten
-  alias Wardrik.Operations.Spawned
-  alias Wardrik.Servers.Added
+  alias Wardrik.Servers.Server
+  alias Wardrik.Tokens.Token
 
   @doc "An agent as the fleet lists it."
   @spec agent(Member.t()) :: map()
@@ -103,8 +102,8 @@ defmodule Wardrik.Resource do
   reaches, and allows; the names of the hooks of its ceiling, where it can
   define agents; and the person it acts for, where it acts for one.
   """
-  @spec token(Wardrik.Tokens.token()) :: map()
-  def token(token) do
+  @spec token(Token.t()) :: map()
+  def token(%Token{} = token) do
     %{
       "id" => token.id,
       "name" => token.name,
@@ -120,43 +119,43 @@ defmodule Wardrik.Resource do
   end
 
   @doc "The connections an owner is offered, and who holds each, where anyone does."
-  @spec connections([Wardrik.Connections.connection()]) :: map()
+  @spec connections([Connection.t()]) :: map()
   def connections(connections) do
     %{
       "connections" =>
         for(
-          %{provider: provider, held_by: held_by} <- connections,
+          %Connection{provider: provider, held_by: held_by} <- connections,
           do: Value.put(%{"provider" => provider}, "held_by", held_by && to_string(held_by))
         )
     }
   end
 
   @doc "A connection asked for: held already, or where to authorize it."
-  @spec connecting(Connecting.t()) :: map()
-  def connecting(%Connecting{provider: provider, authorization: nil}),
+  @spec connecting(Connection.t()) :: map()
+  def connecting(%Connection{provider: provider, authorization: nil}),
     do: %{"provider" => provider, "connected" => true}
 
-  def connecting(%Connecting{provider: provider, authorization: link}),
+  def connecting(%Connection{provider: provider, authorization: link}),
     do: %{"provider" => provider, "connected" => false, "authorization" => authorization(link)}
 
   @doc "The MCP servers an owner added, each by its name, URL and how its agents sign in."
-  @spec servers([Wardrik.Servers.Listed.t()]) :: map()
+  @spec servers([Server.t()]) :: map()
   def servers(servers) do
     %{
       "servers" =>
         for(
-          %Wardrik.Servers.Listed{name: name, url: url, auth: auth} <- servers,
+          %Server{name: name, url: url, auth: auth} <- servers,
           do: %{"name" => name, "url" => url, "auth" => auth}
         )
     }
   end
 
   @doc "A server added: its agents can call it now, or once someone signs in where it says."
-  @spec server_added(Added.t()) :: map()
-  def server_added(%Added{name: name, authorization: nil}),
+  @spec server_added(Server.t()) :: map()
+  def server_added(%Server{name: name, authorization: nil}),
     do: %{"server" => name, "connected" => true}
 
-  def server_added(%Added{name: name, authorization: link}),
+  def server_added(%Server{name: name, authorization: link}),
     do: %{"server" => name, "connected" => false, "authorization" => authorization(link)}
 
   @doc "The calls agents wait on a person for, each as an interrupt with the agent it is for."
@@ -171,24 +170,24 @@ defmodule Wardrik.Resource do
     }
   end
 
-  @doc "What a forget did: the agents removed, kept with why, and not removed with why."
-  @spec forgotten(Forgotten.t()) :: map()
-  def forgotten(%Forgotten{agents: agents, kept: kept, failed: failed}) do
+  @doc """
+  What a forget did, as `%{id => outcome}`: the agents removed, those kept
+  with why, and those not removed with why, each by ID.
+  """
+  @spec forgotten(%{Wardrik.AgentID.t() => Wardrik.Operations.Forgetting.outcome()}) :: map()
+  def forgotten(outcomes) do
+    sorted = Enum.sort_by(outcomes, fn {id, _outcome} -> to_string(id) end)
+
     %{
-      "forgotten" => Enum.map(agents, &to_string/1),
-      "kept" => reasons(kept),
-      "failed" => reasons(failed)
+      "forgotten" => for({id, :forgotten} <- sorted, do: to_string(id)),
+      "kept" => reasons(for {id, {:kept, why}} <- sorted, do: {id, why}),
+      "failed" => reasons(for {id, {:failed, why}} <- sorted, do: {id, why})
     }
   end
 
   @doc "Agents, each with why, as `[{id, why}]` holds them."
   @spec reasons([{Wardrik.AgentID.t(), String.t()}]) :: [map()]
   def reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
-
-  @doc "An agent started: as the fleet lists it, and what it started from."
-  @spec spawned(Spawned.t()) :: map()
-  def spawned(%Spawned{agent: member, from: from}),
-    do: %{"agent" => agent(member), "from" => Atom.to_string(from)}
 
   @doc "The agents a cancel stopped."
   @spec cancelled([Wardrik.AgentID.t()]) :: map()

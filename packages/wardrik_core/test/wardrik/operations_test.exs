@@ -27,7 +27,6 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Operations.Define
   alias Wardrik.Operations.Forget
   alias Wardrik.Operations.ForgetAgents
-  alias Wardrik.Operations.Forgotten
   alias Wardrik.Operations.ListAgents
   alias Wardrik.Operations.ListParked
   alias Wardrik.Operations.Move
@@ -38,7 +37,6 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Operations.RemoveTrigger
   alias Wardrik.Operations.SetTrigger
   alias Wardrik.Operations.Spawn
-  alias Wardrik.Operations.Spawned
   alias Wardrik.Operations.SpawnOn
   alias Wardrik.Operations.Stop
   alias Wardrik.Principal
@@ -586,7 +584,7 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, change} = Command.plan(%Forget{agent: id}, caller())
       assert Command.preview(change) == %{"forgetting" => [to_string(id)], "keeping" => []}
 
-      assert {:ok, %Forgotten{agents: [^id], kept: [], failed: []} = forgotten} =
+      assert {:ok, %{^id => :forgotten} = forgotten} =
                Command.make(change, caller())
 
       assert Forget.render(forgotten) ==
@@ -599,7 +597,7 @@ defmodule Wardrik.OperationsTest do
 
     test "removes an agent the host kept no definition for, unless the host keeps it" do
       {id, _agent} = Fleet.start_agent()
-      assert {:ok, %Forgotten{agents: [^id]}} = Command.run(%Forget{agent: id}, caller())
+      assert {:ok, %{^id => :forgotten}} = Command.run(%Forget{agent: id}, caller())
       assert Wardrik.Fleet.lookup(id) == nil
 
       {owned, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
@@ -625,7 +623,7 @@ defmodule Wardrik.OperationsTest do
                "keeping" => [%{"id" => to_string(owned), "why" => "#{owned} belongs to a file."}]
              }
 
-      assert {:ok, %Forgotten{agents: [^gone], kept: [{^owned, _why}], failed: []} = forgotten} =
+      assert {:ok, %{^gone => :forgotten, ^owned => {:kept, _why}} = forgotten} =
                Command.make(change, caller("#{org}/"))
 
       assert %{"kept" => [%{"id" => kept}]} = ForgetAgents.render(forgotten)
@@ -756,7 +754,7 @@ defmodule Wardrik.OperationsTest do
     test "leaves an agent running as it is, and wakes one asleep" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %Spawned{from: :running}} = Command.run(%Spawn{agent: id}, caller())
+      assert {:ok, %Member{id: ^id, asleep: false}} = Command.run(%Spawn{agent: id}, caller())
       :ok = Wardrik.Fleet.stop(id)
 
       assert {:ok, change} = Command.plan(%Spawn{agent: id}, caller())
@@ -765,10 +763,8 @@ defmodule Wardrik.OperationsTest do
                "spawning" => %{"agent" => to_string(id), "from" => "store"}
              }
 
-      assert {:ok, %Spawned{from: :store, agent: %Member{asleep: false}} = spawned} =
-               Command.make(change, caller())
-
-      assert %{"from" => "store", "agent" => %{"asleep" => false}} = Spawn.render(spawned)
+      assert {:ok, %Member{asleep: false} = member} = Command.make(change, caller())
+      assert %{"agent" => %{"asleep" => false}} = Spawn.render(member)
 
       assert Audit.about("agents/#{id}") == [{"agent.spawned", @jon}]
     end
@@ -781,11 +777,15 @@ defmodule Wardrik.OperationsTest do
           "model" => "openai:gpt-5"
         })
 
-      assert {:ok, %Spawned{from: :definition}} = Command.run(%Spawn{agent: id}, caller())
+      assert {:ok, change} = Command.plan(%Spawn{agent: id}, caller())
+      assert %{"spawning" => %{"from" => "definition"}} = Command.preview(change)
+      assert {:ok, %Member{id: ^id}} = Command.make(change, caller())
       assert Agent.status(id).model == "openai:gpt-5"
 
       fresh = defined_id("fresh")
-      assert {:ok, %Spawned{from: :new}} = Command.run(%Spawn{agent: fresh}, caller())
+      assert {:ok, change} = Command.plan(%Spawn{agent: fresh}, caller())
+      assert %{"spawning" => %{"from" => "new"}} = Command.preview(change)
+      assert {:ok, %Member{id: ^fresh}} = Command.make(change, caller())
 
       assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
                Kept.get(%Kept{}, fresh)
@@ -806,11 +806,11 @@ defmodule Wardrik.OperationsTest do
       id = defined_id("placed")
       root = root()
 
-      assert {:ok, %Spawned{from: :new, agent: %Member{node: node}} = spawned} =
+      assert {:ok, %Member{node: node} = member} =
                Command.run(%SpawnOn{agent: id, node: node()}, root)
 
       assert node == node()
-      assert %{"from" => "new", "agent" => %{"node" => _node}} = SpawnOn.render(spawned)
+      assert %{"agent" => %{"node" => _node}} = SpawnOn.render(member)
 
       assert {:error, %Error{type: :forbidden}} =
                Command.plan(%SpawnOn{agent: id, node: node()}, caller())
@@ -871,7 +871,7 @@ defmodule Wardrik.OperationsTest do
 
       assert Wardrik.Fleet.lookup(id)
 
-      assert {:ok, %Forgotten{agents: [^id]}} = Command.run(%Forget{agent: id}, none)
+      assert {:ok, %{^id => :forgotten}} = Command.run(%Forget{agent: id}, none)
       assert Wardrik.Fleet.lookup(id) == nil
     end
   end

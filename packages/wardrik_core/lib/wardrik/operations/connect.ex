@@ -1,8 +1,9 @@
 defmodule Wardrik.Operations.Connect do
   @moduledoc """
   Connects an account for an owner before any agent asks for it, through
-  the host's `Wardrik.Connections`: a `Wardrik.Connections.Connecting`, with
-  the link to authorize it at, or none where they hold it already. Nothing parks on it. The connection is recorded in
+  the host's `Wardrik.Connections`: the `Wardrik.Connections.Connection`,
+  as listed once it is asked for, with the link to authorize it at, or none
+  where it is held already. Nothing parks on it. The connection is recorded in
   the audit once it is held, as whoever asked for it.
   """
 
@@ -11,7 +12,7 @@ defmodule Wardrik.Operations.Connect do
 
   alias Wardrik.Change
   alias Wardrik.Connections
-  alias Wardrik.Connections.Connecting
+  alias Wardrik.Connections.Connection
   alias Wardrik.Connections.Owner
   alias Wardrik.Error
   alias Wardrik.Host
@@ -37,10 +38,10 @@ defmodule Wardrik.Operations.Connect do
 
     case Connections.connect(connections, provider, Owner.owner_of(owner), by: caller.principal) do
       {:ok, :held} ->
-        {:ok, %Connecting{provider: provider, authorization: nil}, change.effect}
+        {:ok, listed(connections, owner, provider, nil), change.effect}
 
       {:ok, link} ->
-        {:ok, %Connecting{provider: provider, authorization: link}, change.effect}
+        {:ok, listed(connections, owner, provider, link), change.effect}
 
       {:error, :not_found} ->
         {:error, Error.new(:not_found, "No account named #{provider} is offered.")}
@@ -51,6 +52,17 @@ defmodule Wardrik.Operations.Connect do
       :unsupported ->
         {:error, Wardrik.Connections.None.unsupported()}
     end
+  end
+
+  defp listed(connections, owner, provider, link) do
+    %Connection{} =
+      connection =
+      Enum.find(
+        Connections.list(connections, Owner.owner_of(owner)),
+        &(&1.provider == provider)
+      )
+
+    %{connection | authorization: link}
   end
 
   @impl Wardrik.Command
