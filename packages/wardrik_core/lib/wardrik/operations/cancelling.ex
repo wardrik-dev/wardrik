@@ -32,10 +32,6 @@ defmodule Wardrik.Operations.Cancelling do
   def make(%__MODULE__{agents: agents} = effect),
     do: %{effect | agents: Enum.filter(agents, &(Agent.interrupt(&1) == :ok))}
 
-  @doc "What a cancel answers once made: the agents it stopped."
-  @spec answer(t()) :: map()
-  def answer(%__MODULE__{agents: agents}), do: %{"cancelled" => Enum.map(agents, &to_string/1)}
-
   defimpl Wardrik.Effect do
     def preview(%{agents: agents}), do: %{"cancelling" => Enum.map(agents, &to_string/1)}
 

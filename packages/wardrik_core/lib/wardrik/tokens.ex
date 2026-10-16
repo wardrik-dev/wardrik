@@ -23,28 +23,19 @@ defprotocol Wardrik.Tokens do
 
   alias Wardrik.Grant
   alias Wardrik.Principal
-
-  @typedoc "A token as the host keeps it; never its secret."
-  @type token() :: %{
-          required(:id) => String.t(),
-          required(:name) => String.t(),
-          required(:grant) => Grant.t(),
-          required(:principal) => Principal.t() | nil,
-          required(:created_at) => DateTime.t(),
-          optional(atom()) => term()
-        }
+  alias Wardrik.Tokens.Token
 
   @doc """
   Makes a token named `name` carrying the `:grant` `opts` name, acting for
-  `:for`, a `Wardrik.Principal`, or for itself where `nil`: its secret,
-  answered this once, and the token.
+  `:for`, a `Wardrik.Principal`, or for itself where `nil`: the token, with
+  its secret, answered this once.
   """
   @spec create(t(), String.t(), grant: Grant.t(), for: Principal.t() | nil) ::
-          {:ok, secret :: String.t(), token()} | {:error, String.t()} | :unsupported
+          {:ok, Token.t()} | {:error, String.t()} | :unsupported
   def create(tokens, name, opts)
 
-  @doc "Every token, oldest first."
-  @spec list(t()) :: [token()] | :unsupported
+  @doc "Every token, oldest first, none with its secret."
+  @spec list(t()) :: [Token.t()] | :unsupported
   def list(tokens)
 
   @doc "Stops the token `id` working: `{:error, :not_found}` where there is none."

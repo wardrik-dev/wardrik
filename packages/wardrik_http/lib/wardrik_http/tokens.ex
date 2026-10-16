@@ -24,17 +24,29 @@ defmodule WardrikHTTP.Tokens do
   def create(%__MODULE__{store: store}, name, opts) do
     grant = Keyword.fetch!(opts, :grant)
 
-    {:ok, _secret, _token} =
+    {:ok, secret, token} =
       Token.create(store, name,
         scope: grant.scope,
         can: grant.can,
         ceiling: grant.ceiling,
         for: opts[:for]
       )
+
+    {:ok, %{kept(token) | secret: secret}}
   end
 
   @doc false
-  def list(%__MODULE__{store: store}), do: Token.list(store)
+  def list(%__MODULE__{store: store}), do: store |> Token.list() |> Enum.map(&kept/1)
+
+  defp kept(%Token{} = token) do
+    %Wardrik.Tokens.Token{
+      id: token.id,
+      name: token.name,
+      grant: token.grant,
+      principal: token.principal,
+      created_at: token.created_at
+    }
+  end
 
   @doc false
   def authenticate(%__MODULE__{store: store}, conn) do

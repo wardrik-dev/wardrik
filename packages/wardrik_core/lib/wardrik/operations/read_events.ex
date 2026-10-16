@@ -1,7 +1,8 @@
 defmodule Wardrik.Operations.ReadEvents do
   @moduledoc """
   A page of an agent's log: up to `limit` events after the sequence number
-  `starting_after`, oldest first. Where the log was trimmed past it, the error is
+  `starting_after`, oldest first, each a `Wardrik.Event.Log.Entry`, as a
+  subscriber to the log receives it. Where the log was trimmed past it, the error is
   a `:gap` whose `details` hold `oldest`, the first event still kept.
   """
 
@@ -10,6 +11,7 @@ defmodule Wardrik.Operations.ReadEvents do
 
   alias Wardrik.Error
   alias Wardrik.Event.Log
+  alias Wardrik.Event.Log.Entry
 
   @enforce_keys [:agent, :limit]
   defstruct [:agent, :limit, starting_after: 0]
@@ -31,10 +33,13 @@ defmodule Wardrik.Operations.ReadEvents do
     store = Wardrik.Host.store(caller.host)
 
     case Log.read(store, id, starting_after: starting_after, limit: limit) do
-      {:ok, events} -> {:ok, %{"events" => events}}
+      {:ok, events} -> {:ok, Entry.numbered(events, starting_after)}
       {:gap, oldest} -> {:error, gap(oldest)}
     end
   end
+
+  @impl Wardrik.Query
+  def render(entries), do: %{"events" => Enum.map(entries, & &1.event)}
 
   @doc "The error for events asked for before `oldest`, the first a log still keeps."
   @spec gap(pos_integer()) :: Error.t()

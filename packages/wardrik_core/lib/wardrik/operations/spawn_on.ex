@@ -35,4 +35,7 @@ defmodule Wardrik.Operations.SpawnOn do
   def make(%Change{effect: %Spawning{} = effect}, caller) do
     with {:ok, made} <- Spawning.make(caller.host, effect), do: {:ok, Spawning.answer(made), made}
   end
+
+  @impl Wardrik.Command
+  def render(member), do: %{"agent" => Wardrik.Resource.agent(member)}
 end

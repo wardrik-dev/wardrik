@@ -57,6 +57,9 @@ defmodule Wardrik.Operations.RemoveServer do
     end
   end
 
+  @impl Wardrik.Command
+  def render(nil), do: nil
+
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, name: name}),
       do: %{"removing" => %{"owner" => to_string(owner), "server" => name}}

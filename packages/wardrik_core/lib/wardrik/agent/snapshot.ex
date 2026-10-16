@@ -6,17 +6,18 @@ defmodule Wardrik.Agent.Snapshot do
 
       %Wardrik.Agent.Snapshot{} = Wardrik.Agent.snapshot(~A"acme/@jon/assistant")
 
-  `generation` changes when an agent is forgotten and started again under the
-  same key, and survives a restart. `trace_id` is the current turn's, or `nil`
-  between turns. `sequence` is the last event its `Wardrik.Event.Log` has
-  written, for a client to read and follow the log from. `labels` are what
-  its history holds, as `Wardrik.Label`s, which every turn carries until the
-  history is cleared.
+  `agent` is the agent's ID. `generation` changes when an agent is
+  forgotten and started again under the same key, and survives a restart.
+  `trace_id` is the current turn's, or `nil` between turns. `sequence` is
+  the last event its `Wardrik.Event.Log` has written, for a client to read
+  and follow the log from. `labels` are what its history holds, as
+  `Wardrik.Label`s, which every turn carries until the history is cleared.
   """
 
   alias Wardrik.Agent.State
 
   @enforce_keys [
+    :agent,
     :generation,
     :status,
     :context,
@@ -29,6 +30,7 @@ defmodule Wardrik.Agent.Snapshot do
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
+          agent: Wardrik.AgentID.t(),
           generation: String.t(),
           status: Wardrik.Agent.State.View.status(),
           context: ReqLLM.Context.t(),

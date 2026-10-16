@@ -1,15 +1,14 @@
 defmodule Wardrik.Operations.ListParked do
   @moduledoc """
-  Every call an agent under a prefix waits on a person for, as an interrupt
-  with the agent it is for, the agents in the order `Wardrik.Fleet.list/1`
-  gives them.
+  Every call an agent under a prefix waits on a person for, with the agent
+  it is for, as `{id, {call, prompt}}`, the agents in the order
+  `Wardrik.Fleet.list/1` gives them.
   """
 
   @behaviour Wardrik.FleetOperation
   @behaviour Wardrik.Query
 
   alias Wardrik.Agent
-  alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
 
@@ -26,13 +25,16 @@ defmodule Wardrik.Operations.ListParked do
 
   @impl Wardrik.Query
   def run(%__MODULE__{prefix: prefix}, _caller) do
-    interrupts =
+    parked =
       for %Member{status: :parked, id: id} <- Fleet.list(prefix),
           calls = Agent.parked(id),
           is_list(calls),
           waiting <- calls,
-          do: Map.put(Value.interrupt(waiting), "agent", %{"id" => to_string(id)})
+          do: {id, waiting}
 
-    {:ok, %{"interrupts" => interrupts}}
+    {:ok, parked}
   end
+
+  @impl Wardrik.Query
+  def render(parked), do: Wardrik.Resource.interrupts(parked)
 end

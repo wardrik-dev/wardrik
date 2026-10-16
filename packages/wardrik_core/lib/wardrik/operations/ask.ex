@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.Ask do
   @moduledoc """
   Sends an agent a message from the caller's principal, which it answers in
-  a turn of its own: the answer says the message's ID, and the agent's log
+  a turn of its own: the answer is the message's ID, and the agent's log
   says the rest. Where the caller is an agent, made with
   `Wardrik.Caller.agent/1`, the turn that takes the message sends it the
   answer as a message of its own; see "Answering another agent" in
@@ -74,10 +74,13 @@ defmodule Wardrik.Operations.Ask do
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: agent, id: id, text: text}} = change, caller) do
     case Agent.ask(agent, text, id: id, sender: caller.principal, reply_to: caller.reply_to) do
-      :ok -> {:ok, %{"message" => %{"id" => id}}, change.effect}
+      :ok -> {:ok, id, change.effect}
       {:error, :not_found} -> {:error, AgentOperation.not_found(agent)}
     end
   end
+
+  @impl Wardrik.Command
+  def render(id), do: %{"message" => %{"id" => id}}
 
   defimpl Wardrik.Effect do
     def preview(%{agent: agent, id: id, text: text}),

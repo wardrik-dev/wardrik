@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.ListAgents do
   @moduledoc """
-  Every agent under a prefix, awake or asleep, as `Wardrik.Resource.agent/1`
-  shapes each, sorted by ID. A caller whose grant does not allow `:read`
+  Every agent under a prefix, awake or asleep, as the fleet lists each, a
+  `Wardrik.Fleet.Member`, sorted by ID. A caller whose grant does not allow `:read`
   under the prefix is refused, not shown an empty list.
   """
 
@@ -40,6 +40,8 @@ defmodule Wardrik.Operations.ListAgents do
   def action, do: :read
 
   @impl Wardrik.Query
-  def run(%__MODULE__{prefix: prefix}, _caller),
-    do: {:ok, %{"agents" => Enum.map(Fleet.list(prefix), &Resource.agent/1)}}
+  def run(%__MODULE__{prefix: prefix}, _caller), do: {:ok, Fleet.list(prefix)}
+
+  @impl Wardrik.Query
+  def render(members), do: %{"agents" => Enum.map(members, &Resource.agent/1)}
 end

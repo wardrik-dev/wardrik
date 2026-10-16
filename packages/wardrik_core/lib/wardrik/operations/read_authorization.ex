@@ -40,11 +40,14 @@ defmodule Wardrik.Operations.ReadAuthorization do
     end
   end
 
-  defp answer({:ok, link}, _id, _interrupt), do: {:ok, Resource.authorization(link)}
+  defp answer({:ok, link}, _id, _interrupt), do: {:ok, link}
 
   defp answer(:none, _id, interrupt),
     do: {:error, Error.new(:not_found, "#{interrupt} waits on no authorization.")}
 
   defp answer(:not_waiting, id, interrupt),
     do: {:error, Error.new(:not_found, "#{id} is not waiting on #{interrupt}.")}
+
+  @impl Wardrik.Query
+  def render(link), do: Resource.authorization(link)
 end

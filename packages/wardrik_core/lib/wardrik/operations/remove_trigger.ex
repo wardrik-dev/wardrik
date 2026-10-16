@@ -54,6 +54,9 @@ defmodule Wardrik.Operations.RemoveTrigger do
     end
   end
 
+  @impl Wardrik.Command
+  def render(nil), do: nil
+
   defimpl Wardrik.Effect do
     def preview(%{agent: id, name: name}),
       do: %{"removing" => %{"agent" => to_string(id), "trigger" => name}}

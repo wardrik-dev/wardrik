@@ -25,7 +25,7 @@ defmodule WardrikMCP.Servers do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
   alias Wardrik.Servers.Key
-  alias Wardrik.Servers.Listed
+  alias Wardrik.Servers.Server
   alias WardrikMCP.Auth
   alias WardrikMCP.Remote
 
@@ -40,10 +40,10 @@ defmodule WardrikMCP.Servers do
         }
 
   @doc false
-  @spec list(t(), Prefix.t()) :: [Listed.t()]
+  @spec list(t(), Prefix.t()) :: [Server.t()]
   def list(%__MODULE__{store: store}, owner) do
     for remote <- Remote.list(store, owner),
-        do: %Listed{name: remote.key.name, url: remote.url, auth: Auth.name(remote.auth)}
+        do: %Server{name: remote.key.name, url: remote.url, auth: Auth.name(remote.auth)}
   end
 
   @doc false

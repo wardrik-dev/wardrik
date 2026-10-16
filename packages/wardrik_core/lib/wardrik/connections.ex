@@ -34,11 +34,8 @@ defprotocol Wardrik.Connections do
   @typedoc "Who holds a connection for an owner: them, their org, the deployment, or nobody."
   @type held_by() :: :person | :org | :deployment | nil
 
-  @typedoc "A connection the deployment offers, and who holds it."
-  @type connection() :: %{provider: String.t(), held_by: held_by()}
-
   @doc "The connections the deployment offers `owner`, and who holds each; never a value."
-  @spec list(t(), owner()) :: [connection()] | :unsupported
+  @spec list(t(), owner()) :: [Wardrik.Connections.Connection.t()] | :unsupported
   def list(connections, owner)
 
   @doc """

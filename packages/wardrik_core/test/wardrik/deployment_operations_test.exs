@@ -7,7 +7,9 @@ defmodule Wardrik.DeploymentOperationsTest do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Caller
   alias Wardrik.Command
+  alias Wardrik.Deployment.Nodes
   alias Wardrik.Error
+  alias Wardrik.Event.Log.Entry
   alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.Operations.CreateToken
@@ -20,6 +22,7 @@ defmodule Wardrik.DeploymentOperationsTest do
   alias Wardrik.Query
   alias Wardrik.Test.Audit
   alias Wardrik.Test.Fleet
+  alias Wardrik.Tokens.Token
 
   # Reads its definitions again by telling the test that asked.
   defmodule Reloads do
@@ -52,9 +55,17 @@ defmodule Wardrik.DeploymentOperationsTest do
 
     def create(_tokens, name, grant: grant, for: for) do
       id = Wardrik.UUID.v7()
-      token = %{id: id, name: name, grant: grant, principal: for, created_at: DateTime.utc_now()}
+
+      token = %Token{
+        id: id,
+        name: name,
+        grant: grant,
+        principal: for,
+        created_at: DateTime.utc_now()
+      }
+
       {:ok, _vsn} = WardrikStore.put(store(), @ns, id, token)
-      {:ok, "secret-" <> id, token}
+      {:ok, %{token | secret: "secret-" <> id}}
     end
 
     def list(_tokens),
@@ -91,8 +102,9 @@ defmodule Wardrik.DeploymentOperationsTest do
       assert Command.preview(change) == %{"reloading" => %{"nodes" => [to_string(node())]}}
       refute_received :reloaded
 
-      assert {:ok, %{"reloaded" => [node]}} = Command.make(change, root())
-      assert node == to_string(node())
+      assert {:ok, [node]} = Command.make(change, root())
+      assert node == node()
+      assert Reload.render([node]) == %{"reloaded" => [to_string(node)]}
       assert_received :reloaded
       assert Enum.any?(Audit.about("agents"), &match?({"agents.reloaded", %{"id" => "jon"}}, &1))
 
@@ -108,12 +120,17 @@ defmodule Wardrik.DeploymentOperationsTest do
     test "count the agents running on each, and those asleep" do
       {_id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %{"nodes" => [%{"name" => name, "agents" => agents}], "asleep" => asleep}} =
+      assert {:ok, %Nodes{nodes: [{node, agents}], asleep: asleep} = nodes} =
                Query.run(%ReadNodes{}, root())
 
-      assert name == to_string(node())
+      assert node == node()
       assert agents >= 1
       assert is_integer(asleep)
+
+      assert ReadNodes.render(nodes) == %{
+               "nodes" => [%{"name" => to_string(node), "agents" => agents}],
+               "asleep" => asleep
+             }
 
       assert {:error, %Error{type: :forbidden}} = Query.run(%ReadNodes{}, caller())
     end
@@ -125,11 +142,12 @@ defmodule Wardrik.DeploymentOperationsTest do
       [%{"sequence" => last} | _rest] = Enum.reverse(Audit.all())
       last = String.to_integer(last)
 
-      assert {:ok, %{"changes" => [%{"type" => "wardrik.agents.reloaded"}]}} =
+      assert {:ok,
+              [%Entry{sequence: ^last, event: %{"type" => "wardrik.agents.reloaded"}}] = read} =
                Query.run(%ReadAudit{starting_after: last - 1, limit: 1}, root())
 
-      assert {:ok, %{"changes" => []}} =
-               Query.run(%ReadAudit{starting_after: last, limit: 10}, root())
+      assert %{"changes" => [%{"type" => "wardrik.agents.reloaded"}]} = ReadAudit.render(read)
+      assert {:ok, []} = Query.run(%ReadAudit{starting_after: last, limit: 10}, root())
 
       assert {:error, %Error{type: :forbidden}} =
                Query.run(%ReadAudit{limit: 10}, caller())
@@ -152,8 +170,9 @@ defmodule Wardrik.DeploymentOperationsTest do
                }
              }
 
-      assert {:created, %{"secret" => "secret-" <> id, "token" => token}} =
-               Command.make(change, root())
+      assert {:created, %Token{secret: "secret-" <> id} = made} = Command.make(change, root())
+      assert %{"secret" => "secret-" <> ^id, "token" => token} = CreateToken.render(made)
+      refute inspect(made) =~ "secret-"
 
       assert %{"id" => ^id, "name" => "ci", "scope" => "test/", "can" => ["read"], "for" => "ana"} =
                token
@@ -161,8 +180,9 @@ defmodule Wardrik.DeploymentOperationsTest do
       refute Map.has_key?(token, "ceiling")
       assert [{"token.created", %{"id" => "jon"}}] = Audit.about("tokens/" <> id)
 
-      assert {:ok, %{"tokens" => tokens}} = Query.run(%ListTokens{}, root())
-      assert Enum.any?(tokens, &(&1["id"] == id))
+      assert {:ok, tokens} = Query.run(%ListTokens{}, root())
+      assert Enum.any?(tokens, &(&1.id == id))
+      assert %{"tokens" => [_ | _]} = ListTokens.render(tokens)
 
       assert {:ok, nil} = Command.run(%RevokeToken{id: id}, root())
       assert [_created, {"token.revoked", _actor}] = Audit.about("tokens/" <> id)

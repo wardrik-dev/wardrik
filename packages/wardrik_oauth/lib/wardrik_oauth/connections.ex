@@ -26,7 +26,7 @@ defmodule WardrikOAuth.Connections do
     held = for {kind, holder} <- holders(owner), do: {kind, WardrikVault.names(vault, holder)}
 
     for provider <- Provider.all(oauth) do
-      %{
+      %Wardrik.Connections.Connection{
         provider: provider.name,
         held_by: Enum.find_value(held, fn {kind, names} -> provider.name in names && kind end)
       }

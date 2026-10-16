@@ -44,4 +44,7 @@ defmodule Wardrik.Operations.ForgetAgents do
     {made, failed} = Forgetting.make(caller.host, effect)
     {:ok, Forgetting.answer(made, failed), made}
   end
+
+  @impl Wardrik.Command
+  def render(forgotten), do: Wardrik.Resource.forgotten(forgotten)
 end

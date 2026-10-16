@@ -42,8 +42,8 @@ defmodule WardrikOAuth.ConnectionsTest do
 
   defp list(caller) do
     {:ok, request} = Connections.Owner.request(ReadConnections, caller, :person)
-    {:ok, %{"connections" => connections}} = Query.run(request, caller)
-    Map.new(connections, &{&1["provider"], &1["held_by"]})
+    {:ok, connections} = Query.run(request, caller)
+    Map.new(connections, &{&1.provider, &1.held_by})
   end
 
   defp connect(caller, provider) do
@@ -52,26 +52,25 @@ defmodule WardrikOAuth.ConnectionsTest do
   end
 
   defp authorize(caller, provider) do
-    {:ok, %{"authorization" => %{"url" => url}}} = connect(caller, provider)
+    {:ok, %{authorization: %{url: url}}} = connect(caller, provider)
     {:ok, ^provider} = WardrikOAuth.finish(state_of(url), "the-code")
   end
 
   test "lists what the person holds, and what they do not", %{jon: jon} do
     authorize(jon, "github")
 
-    assert list(jon) == %{"github" => "person", "linear" => nil}
+    assert list(jon) == %{"github" => :person, "linear" => nil}
   end
 
   test "connecting answers a link, and once the browser is back the account is held",
        %{jon: jon, org: org, owner: owner} do
-    assert {:ok, %{"connected" => false, "authorization" => %{"url" => url}}} =
-             connect(jon, "linear")
+    assert {:ok, %{authorization: %{url: url}}} = connect(jon, "linear")
 
     assert list(jon)["linear"] == nil
     assert {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon)["linear"] == "person"
-    assert {:ok, %{"connected" => true}} = connect(jon, "linear")
+    assert list(jon)["linear"] == :person
+    assert {:ok, %{authorization: nil}} = connect(jon, "linear")
 
     assert [{"secret.stored", %{"type" => "user", "id" => ^owner}} | _] =
              Enum.reverse(Audit.about("secrets/linear"))
@@ -105,15 +104,15 @@ defmodule WardrikOAuth.ConnectionsTest do
     assert {:error, %Error{type: :not_found}} =
              Command.run(%Connect{owner: globex, provider: "github"}, jon)
 
-    assert list(jon)["github"] == "person"
+    assert list(jon)["github"] == :person
   end
 
   test "an org's account shows as the org's to its people", %{jon: jon, org: org} do
     {:ok, request} = Connections.Owner.request(Connect, jon, :org, provider: "linear")
-    {:ok, %{"authorization" => %{"url" => url}}} = Command.run(request, jon)
+    {:ok, %{authorization: %{url: url}}} = Command.run(request, jon)
     {:ok, "linear"} = WardrikOAuth.finish(state_of(url), "the-code")
 
-    assert list(jon)["linear"] == "org"
+    assert list(jon)["linear"] == :org
     assert WardrikOAuth.connected?(vault(), "linear", org)
   end
 end

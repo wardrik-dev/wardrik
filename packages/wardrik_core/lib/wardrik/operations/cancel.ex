@@ -3,7 +3,7 @@ defmodule Wardrik.Operations.Cancel do
   Drops what an agent is doing, and what is queued behind it: the turn it is
   taking, or the calls it waits on a person for. An agent taking no turn is
   left as it is, and nothing is recorded; see
-  `Wardrik.Operations.Cancelling`.
+  `Wardrik.Operations.Cancelling`. The answer is the agents it stopped.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -36,6 +36,9 @@ defmodule Wardrik.Operations.Cancel do
   @impl Wardrik.Command
   def make(%Change{effect: %Cancelling{} = effect}, _caller) do
     made = Cancelling.make(effect)
-    {:ok, Cancelling.answer(made), made}
+    {:ok, made.agents, made}
   end
+
+  @impl Wardrik.Command
+  def render(agents), do: Wardrik.Resource.cancelled(agents)
 end

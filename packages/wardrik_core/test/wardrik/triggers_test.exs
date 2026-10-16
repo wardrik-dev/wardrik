@@ -49,10 +49,11 @@ defmodule Wardrik.TriggersTest do
   end
 
   test "hands the host the request, and says what came of it" do
-    assert {:ok, %{"delivery" => %{"status" => "asked"}}} = deliver({:ok, :asked})
+    assert {:ok, :asked} = deliver({:ok, :asked})
+    assert Deliver.render(:asked) == %{"delivery" => %{"status" => "asked"}}
     assert_received {:deliver, @agent, "issues", %{headers: [{"x-id", "1"}], body: "{}"}}
 
-    assert {:ok, %{"delivery" => %{"status" => "seen"}}} = deliver({:ok, :seen})
+    assert {:ok, :seen} = deliver({:ok, :seen})
   end
 
   test "answers what the host refuses as an error of its kind" do

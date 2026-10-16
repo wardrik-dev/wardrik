@@ -173,7 +173,7 @@ maria = %MyApp.Accounts.User{id: 42, org: "acme", email: "maria@acme.example"}
 
 agent = Wardrik.AgentID.new!("support", org: "acme", user: "42")
 :ok = Wardrik.Event.Log.subscribe(agent)
-{:ok, %{"message" => %{"id" => _id}}} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
+{:ok, _message_id} = MyApp.Agents.ask(maria, agent, "Where is order 1001?")
 
 receive do
   %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.completed", "data" => data}} ->
@@ -409,7 +409,7 @@ Give Maria an agent that uses GitHub, and the link to connect her account:
     "tools" => ["github/*"]
   })
 
-{:ok, %{"connected" => false, "authorization" => %{"url" => url}}} =
+{:ok, %Wardrik.Connections.Connection{authorization: %{url: url}}} =
   MyApp.Agents.connect(maria, "github")
 ```
 
@@ -417,7 +417,7 @@ Show her `url`. She signs in at GitHub, comes back to `/oauth/callback/github`, 
 her token. Her connections then say she holds it:
 
 ```elixir
-{:ok, %{"connections" => [%{"provider" => "github", "held_by" => "person"}]}} =
+{:ok, [%Wardrik.Connections.Connection{provider: "github", held_by: :person}]} =
   MyApp.Agents.connections(maria)
 ```
 

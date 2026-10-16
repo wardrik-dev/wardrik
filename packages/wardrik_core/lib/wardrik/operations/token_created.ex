@@ -7,7 +7,7 @@ defmodule Wardrik.Operations.TokenCreated do
   @enforce_keys [:token]
   defstruct [:token]
 
-  @type t() :: %__MODULE__{token: Wardrik.Tokens.token()}
+  @type t() :: %__MODULE__{token: Wardrik.Tokens.Token.t()}
 
   defimpl Wardrik.Effect do
     def preview(%{token: token}), do: %{"token" => Wardrik.Resource.token(token)}

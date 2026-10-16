@@ -19,6 +19,7 @@ defmodule WardrikDaemon.CLI.Decisions do
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Command, as: Operation
   alias Wardrik.Error
+  alias Wardrik.Event.Codec.Value
   alias Wardrik.Operations.Decide
   alias Wardrik.Operations.ListParked
   alias Wardrik.Operations.ReadAgent
@@ -78,7 +79,10 @@ defmodule WardrikDaemon.CLI.Decisions do
     end
   end
 
-  defp interrupts(_words, opts), do: Query.run(%ListParked{prefix: Prefix.all()}, opts[:caller])
+  defp interrupts(_words, opts) do
+    with {:ok, parked} <- Query.run(%ListParked{prefix: Prefix.all()}, opts[:caller]),
+         do: {:ok, ListParked.render(parked)}
+  end
 
   defp row_of(key, %{"id" => id, "message" => prompt} = interrupt),
     do: "  #{key}  #{id}  #{Pattern.shown(interrupt["name"] || "model")}  #{prompt}"
@@ -92,8 +96,8 @@ defmodule WardrikDaemon.CLI.Decisions do
   # or event carries it.
   defp link(key, %{"reason" => "authorization", "id" => id}, caller) do
     case Query.run(%ReadAuthorization{agent: key, interrupt: id}, caller) do
-      {:ok, %{"url" => url, "code" => code}} -> "\n      enter #{code} at #{url}"
-      {:ok, %{"url" => url}} -> "\n      open #{url}"
+      {:ok, %{url: url, code: code}} when is_binary(code) -> "\n      enter #{code} at #{url}"
+      {:ok, %{url: url}} -> "\n      open #{url}"
       {:error, _gone} -> ""
     end
   end
@@ -208,7 +212,7 @@ defmodule WardrikDaemon.CLI.Decisions do
 
   # The CLI's caller may read every agent.
   defp parked_under(prefix, caller) do
-    {:ok, %{"interrupts" => interrupts}} = Query.run(%ListParked{prefix: prefix}, caller)
-    for %{"agent" => %{"id" => id}} = interrupt <- interrupts, do: {AgentID.parse!(id), interrupt}
+    {:ok, parked} = Query.run(%ListParked{prefix: prefix}, caller)
+    for {id, waiting} <- parked, do: {id, Value.interrupt(waiting)}
   end
 end

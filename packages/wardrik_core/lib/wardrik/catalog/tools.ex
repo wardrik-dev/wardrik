@@ -111,7 +111,7 @@ defmodule Wardrik.Catalog.Tools do
     with {:ok, caller} <- caller(offering, subject, Keyword.fetch!(opts, :context)),
          {:ok, request} <- module.new(subject, Keyword.fetch!(opts, :input)),
          {status, answer} when status in [:ok, :created] <- runner.run(request, caller) do
-      {:ok, answer || "done", labels: module.labels(answer)}
+      {:ok, module.render(answer) || "done", labels: module.labels(answer)}
     else
       {:error, %Error{} = error} -> {:error, Resource.error(error)}
     end

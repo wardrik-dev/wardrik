@@ -1,7 +1,7 @@
 defmodule Wardrik.Operations.ReadAgent do
   @moduledoc """
   An agent's snapshot: what it is doing, what it waits on, and its
-  conversation, as `Wardrik.Resource.snapshot/2` shapes it.
+  conversation, as a `Wardrik.Agent.Snapshot`.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -9,6 +9,7 @@ defmodule Wardrik.Operations.ReadAgent do
   @behaviour Wardrik.Query
 
   alias Wardrik.Agent
+  alias Wardrik.Agent.Snapshot
   alias Wardrik.AgentOperation
   alias Wardrik.Resource
 
@@ -33,7 +34,7 @@ defmodule Wardrik.Operations.ReadAgent do
   def new(%Wardrik.AgentID{} = agent, _input), do: {:ok, %__MODULE__{agent: agent}}
 
   @impl Wardrik.Catalog.Entry
-  def labels(%{"labels" => labels}), do: labels
+  def labels(%Snapshot{labels: labels}), do: labels
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id
@@ -45,7 +46,10 @@ defmodule Wardrik.Operations.ReadAgent do
   def run(%__MODULE__{agent: id}, _caller) do
     case Agent.snapshot(id) do
       {:error, :not_found} -> {:error, AgentOperation.not_found(id)}
-      snapshot -> {:ok, Resource.snapshot(id, snapshot)}
+      snapshot -> {:ok, snapshot}
     end
   end
+
+  @impl Wardrik.Query
+  def render(snapshot), do: Resource.snapshot(snapshot)
 end

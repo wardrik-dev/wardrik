@@ -23,7 +23,6 @@ defmodule Wardrik.Operations.Spawning do
   alias Wardrik.Fleet
   alias Wardrik.Fleet.Member
   alias Wardrik.Host
-  alias Wardrik.Resource
 
   @enforce_keys [:agent, :start, :on]
   defstruct [:agent, :start, :on]
@@ -96,10 +95,9 @@ defmodule Wardrik.Operations.Spawning do
   defp made({:error, reason}, %__MODULE__{agent: id}),
     do: {:error, Error.new(:unavailable, "#{id} did not start: #{inspect(reason)}")}
 
-  @doc "What a start answers once made: the agent as the fleet lists it, and how it started."
-  @spec answer(t()) :: map()
-  def answer(%__MODULE__{agent: id} = effect),
-    do: %{"agent" => Resource.agent(Fleet.lookup(id)), "from" => from(effect)}
+  @doc "What a start answers once made: the agent, as the fleet lists it."
+  @spec answer(t()) :: Member.t()
+  def answer(%__MODULE__{agent: id}), do: Fleet.lookup(id)
 
   @doc false
   @spec from(t()) :: String.t()

@@ -581,7 +581,10 @@ defmodule WardrikDaemon.CLI do
 
   defp status(_words, opts), do: {:ok, WardrikDaemon.status(opts[:caller].host, opts[:config])}
 
-  defp nodes(_words, opts), do: Query.run(%ReadNodes{}, opts[:caller])
+  defp nodes(_words, opts) do
+    with {:ok, nodes} <- Query.run(%ReadNodes{}, opts[:caller]),
+         do: {:ok, ReadNodes.render(nodes)}
+  end
 
   defp reload(_words, opts) do
     with {:ok, _reloaded} <- Operation.run(%Reload{}, opts[:caller]),
@@ -591,8 +594,11 @@ defmodule WardrikDaemon.CLI do
   defp audit_page(_words, opts) do
     limit = opts[:limit] || @audit_limit
 
+    request = %ReadAudit{starting_after: opts[:after] || 0, limit: limit}
+
     if limit in 1..500,
-      do: Query.run(%ReadAudit{starting_after: opts[:after] || 0, limit: limit}, opts[:caller]),
+      do:
+        with({:ok, read} <- Query.run(request, opts[:caller]), do: {:ok, ReadAudit.render(read)}),
       else: {:error, "--limit is a number from 1 to 500"}
   end
 
@@ -698,7 +704,10 @@ defmodule WardrikDaemon.CLI do
     with {:ok, snapshot} <- snapshot([key], opts), do: {:ok, conversation(snapshot["messages"])}
   end
 
-  defp snapshot([key], opts), do: Query.run(%ReadAgent{agent: key}, opts[:caller])
+  defp snapshot([key], opts) do
+    with {:ok, snapshot} <- Query.run(%ReadAgent{agent: key}, opts[:caller]),
+         do: {:ok, ReadAgent.render(snapshot)}
+  end
 
   defp clear([key], opts) do
     with {:ok, nil} <- Operation.run(%Clear{agent: key}, opts[:caller]),

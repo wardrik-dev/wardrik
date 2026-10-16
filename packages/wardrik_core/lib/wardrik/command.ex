@@ -17,6 +17,9 @@ defmodule Wardrik.Command do
   `make/2` checks the grant again, since it may come much later, and does
   what the plan's `Wardrik.Effect` says. What the audit records is what the
   change made, as that effect's entries, all under one trace.
+
+  A change answers a value, or `nil` where it has nothing to say. A surface
+  that sends it on as JSON sends what the module's `c:render/1` makes of it.
   """
 
   alias Wardrik.Audit
@@ -47,6 +50,9 @@ defmodule Wardrik.Command do
   """
   @callback make(change :: Change.t(), caller :: Caller.t()) ::
               {:ok | :created, term(), Wardrik.Effect.t()} | {:error, Error.t()}
+
+  @doc "`answer`, one `c:make/2` gave, as `JSON.encode!/1` takes it, as every surface sends it."
+  @callback render(answer :: term()) :: term()
 
   @doc "Plans `request`, and makes the change."
   @spec run(struct(), Caller.t()) :: answer() | {:error, Error.t()}

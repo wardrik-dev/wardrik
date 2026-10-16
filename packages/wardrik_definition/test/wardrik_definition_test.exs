@@ -34,7 +34,7 @@ defmodule WardrikDefinitionTest do
   defimpl Wardrik.Servers, for: Added do
     def list(%Added{by: by}, owner) do
       for name <- Map.get(by, to_string(owner), []),
-          do: %Wardrik.Servers.Listed{
+          do: %Wardrik.Servers.Server{
             name: name,
             url: "https://#{name}.example/mcp",
             auth: "none"

@@ -54,4 +54,7 @@ defmodule Wardrik.Operations.Forget do
           else: {:error, AgentOperation.not_found(id)}
     end
   end
+
+  @impl Wardrik.Command
+  def render(forgotten), do: Wardrik.Resource.forgotten(forgotten)
 end

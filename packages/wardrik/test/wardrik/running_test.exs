@@ -61,7 +61,7 @@ defmodule Wardrik.RunningTest do
     assert {:created, _snapshot} =
              Wardrik.Command.run(%Define{agent: agent, definition: definition}, caller)
 
-    assert {:ok, %{"definition" => %{"instructions" => "Answer briefly."}}} =
+    assert {:ok, %Wardrik.Definition.Read{fields: %{"instructions" => "Answer briefly."}}} =
              Wardrik.Query.run(%ReadDefinition{agent: agent}, caller)
   end
 

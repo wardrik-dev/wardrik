@@ -45,6 +45,9 @@ defmodule Wardrik.Operations.Clear do
     end
   end
 
+  @impl Wardrik.Command
+  def render(nil), do: nil
+
   defimpl Wardrik.Effect do
     def preview(%{agent: id}), do: %{"clearing" => to_string(id)}
     def audit(%{agent: id}), do: [{:agent_cleared, id}]

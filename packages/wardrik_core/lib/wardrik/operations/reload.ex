@@ -3,7 +3,7 @@ defmodule Wardrik.Operations.Reload do
   Has every node the host's `Wardrik.Definition` names in
   `c:Wardrik.Definition.reloading/0` read its definitions again, as
   `c:Wardrik.Definition.reload/0`, and bring the agents it runs to what
-  they say now.
+  they say now. The answer is the nodes that read them.
   """
 
   @behaviour Wardrik.DeploymentOperation
@@ -36,6 +36,9 @@ defmodule Wardrik.Operations.Reload do
   @impl Wardrik.Command
   def make(%Change{effect: %Reloading{nodes: nodes} = effect}, caller) do
     :ok = Wardrik.Definitions.reload_on(Host.definitions(caller.host), nodes)
-    {:ok, %{"reloaded" => Enum.map(nodes, &to_string/1)}, effect}
+    {:ok, nodes, effect}
   end
+
+  @impl Wardrik.Command
+  def render(nodes), do: %{"reloaded" => Enum.map(nodes, &to_string/1)}
 end

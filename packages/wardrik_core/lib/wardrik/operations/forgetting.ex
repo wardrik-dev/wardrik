@@ -72,25 +72,27 @@ defmodule Wardrik.Operations.Forgetting do
     end
   end
 
-  @doc "What a forget answers once made: the agents removed, kept with why, and not removed with why."
-  @spec answer(t(), [{AgentID.t(), String.t()}]) :: map()
+  @typedoc "What became of an agent a forget reached."
+  @type outcome() :: :forgotten | {:kept, String.t()} | {:failed, String.t()}
+
+  @doc """
+  What a forget answers once made: each agent it reached, by ID, with what
+  became of it: removed, kept with why, or not removed with why.
+  """
+  @spec answer(t(), [{AgentID.t(), String.t()}]) :: %{AgentID.t() => outcome()}
   def answer(%__MODULE__{agents: agents, kept: kept}, failed) do
-    %{
-      "forgotten" => Enum.map(agents, &to_string/1),
-      "kept" => reasons(kept),
-      "failed" => reasons(failed)
-    }
+    Map.new(
+      Enum.map(agents, &{&1, :forgotten}) ++
+        for({id, why} <- kept, do: {id, {:kept, why}}) ++
+        for({id, why} <- failed, do: {id, {:failed, why}})
+    )
   end
 
-  @doc false
-  @spec reasons([{AgentID.t(), String.t()}]) :: [map()]
-  def reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
-
   defimpl Wardrik.Effect do
-    alias Wardrik.Operations.Forgetting
+    alias Wardrik.Resource
 
     def preview(%{agents: agents, kept: kept}),
-      do: %{"forgetting" => Enum.map(agents, &to_string/1), "keeping" => Forgetting.reasons(kept)}
+      do: %{"forgetting" => Enum.map(agents, &to_string/1), "keeping" => Resource.reasons(kept)}
 
     def audit(%{agents: agents, asked: %Prefix{} = prefix}),
       do: for(id <- agents, do: {:agent_forgotten, id, prefix})

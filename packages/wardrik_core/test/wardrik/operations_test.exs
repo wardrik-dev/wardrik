@@ -6,6 +6,7 @@ defmodule Wardrik.OperationsTest do
 
   alias ReqLLM.Context
   alias Wardrik.Agent
+  alias Wardrik.Agent.Snapshot
   alias Wardrik.Agent.Spec
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
@@ -14,6 +15,7 @@ defmodule Wardrik.OperationsTest do
   alias Wardrik.Error
   alias Wardrik.Event
   alias Wardrik.Event.Log
+  alias Wardrik.Fleet.Member
   alias Wardrik.Grant
   alias Wardrik.Host
   alias Wardrik.LLM.Config
@@ -206,9 +208,10 @@ defmodule Wardrik.OperationsTest do
     test "reads what the caller's grant reaches and allows" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %{"agent" => %{"id" => text}}} =
+      assert {:ok, %Snapshot{agent: ^id} = snapshot} =
                Query.run(%ReadAgent{agent: id}, caller("test/", [:read]))
 
+      assert %{"agent" => %{"id" => text}, "sequence" => _sequence} = ReadAgent.render(snapshot)
       assert text == to_string(id)
     end
 
@@ -262,8 +265,10 @@ defmodule Wardrik.OperationsTest do
       Agent.ask(agent, "hi")
       assert_receive %Event{payload: %Event.TurnFinished{}}
 
-      assert {:ok, %{"events" => [_first, _second]}} =
+      assert {:ok, [%Log.Entry{sequence: 1, follows: 0} = first, %Log.Entry{sequence: 2}]} =
                Query.run(%ReadEvents{agent: id, limit: 2}, caller())
+
+      assert ReadEvents.render([first]) == %{"events" => [first.event]}
 
       :ok = Log.trim(store(), id, through: 2, before: DateTime.add(DateTime.utc_now(), 1, :day))
 
@@ -283,8 +288,11 @@ defmodule Wardrik.OperationsTest do
       Agent.ask(agent, "open an issue")
       assert_receive %Event{payload: %Event.TurnParked{}}
 
-      assert {:ok, %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}} =
+      assert {:ok, ^link} =
                Query.run(%ReadAuthorization{agent: id, interrupt: "call_1"}, caller())
+
+      assert ReadAuthorization.render(link) ==
+               %{"url" => "https://github.com/login/device", "code" => "WDJB-MJHT"}
 
       assert {:error, %Error{type: :not_found}} =
                Query.run(%ReadAuthorization{agent: id, interrupt: "nope"}, caller())
@@ -336,7 +344,8 @@ defmodule Wardrik.OperationsTest do
       :ok = Event.Bus.subscribe(id)
       {:ok, ask} = Ask.new(id, %{"id" => "m1", "content" => "hi"})
 
-      assert {:ok, %{"message" => %{"id" => "m1"}}} = Command.run(ask, caller())
+      assert {:ok, "m1"} = Command.run(ask, caller())
+      assert Ask.render("m1") == %{"message" => %{"id" => "m1"}}
       assert_receive %Event{payload: %Event.MessageQueued{message: %{sender: sender}}}
       assert Principal.id(sender) == "jon"
       assert_receive {:turn, _messages}
@@ -381,8 +390,10 @@ defmodule Wardrik.OperationsTest do
       {:ok, decided} =
         decide(id, [%{"id" => "call_1", "decision" => "reject", "reason" => "No."}])
 
-      assert {:ok, %{"decisions" => [%{"id" => "call_1", "decision" => "rejected"}]}} =
-               Command.run(decided, caller())
+      assert {:ok, %{"call_1" => {:deny, "No."}} = decisions} = Command.run(decided, caller())
+
+      assert Decide.render(decisions) ==
+               %{"decisions" => [%{"id" => "call_1", "decision" => "rejected"}]}
 
       assert_receive %Event{payload: %Event.CallDecided{call_id: "call_1", by: by}}
       assert Principal.id(by) == "jon"
@@ -432,8 +443,8 @@ defmodule Wardrik.OperationsTest do
     test "stops what the agent is doing, and is recorded" do
       {id, _turn} = busy_agent()
 
-      assert {:ok, %{"cancelled" => [text]}} = Command.run(%Cancel{agent: id}, caller())
-      assert text == to_string(id)
+      assert {:ok, [^id]} = Command.run(%Cancel{agent: id}, caller())
+      assert Cancel.render([id]) == %{"cancelled" => [to_string(id)]}
       assert_receive %Event{payload: %Event.TurnInterrupted{}}
       assert Audit.about("agents/#{id}") == [{"agent.cancelled", @jon}]
 
@@ -446,7 +457,7 @@ defmodule Wardrik.OperationsTest do
 
       assert {:ok, change} = Command.plan(%Cancel{agent: id}, caller())
       assert Command.preview(change) == %{"cancelling" => []}
-      assert {:ok, %{"cancelled" => []}} = Command.make(change, caller())
+      assert {:ok, []} = Command.make(change, caller())
       assert Audit.about("agents/#{id}") == []
     end
 
@@ -460,7 +471,8 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, change} = Command.plan(%CancelAgents{prefix: prefix}, caller("#{org}/"))
       assert Command.preview(change) == %{"cancelling" => [to_string(busy), to_string(other)]}
 
-      assert {:ok, %{"cancelled" => [_, _]}} = Command.make(change, caller("#{org}/"))
+      assert {:ok, [_, _] = cancelled} = Command.make(change, caller("#{org}/"))
+      assert %{"cancelled" => [_, _]} = CancelAgents.render(cancelled)
       assert Audit.about("agents/#{idle}") == []
 
       entries =
@@ -500,14 +512,21 @@ defmodule Wardrik.OperationsTest do
     test "starts the agent, then brings it to a new definition" do
       id = defined_id()
 
-      assert {:created, %{"request" => %{"model" => "claude-sonnet-5"}}} =
+      assert {:created, %Snapshot{agent: ^id} = created} =
                Command.run(%Define{agent: id, definition: %{}}, caller())
 
-      assert {:ok, %{"request" => %{"model" => "gpt-5"}}} =
+      assert %{"request" => %{"model" => "claude-sonnet-5"}} = Define.render(created)
+
+      assert {:ok, %Snapshot{} = defined} =
                Command.run(%Define{agent: id, definition: %{"model" => "openai:gpt-5"}}, caller())
 
-      assert {:ok, %{"definition" => %{"model" => "openai:gpt-5"}, "missing" => []}} =
+      assert %{"request" => %{"model" => "gpt-5"}} = Define.render(defined)
+
+      assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}} = read} =
                Query.run(%ReadDefinition{agent: id}, caller())
+
+      assert ReadDefinition.render(read) ==
+               %{"definition" => %{"model" => "openai:gpt-5"}, "missing" => []}
 
       assert Audit.about("agents/#{id}") ==
                [{"agent.defined", @jon}, {"agent.defined", @jon}]
@@ -565,8 +584,11 @@ defmodule Wardrik.OperationsTest do
       assert {:ok, change} = Command.plan(%Forget{agent: id}, caller())
       assert Command.preview(change) == %{"forgetting" => [to_string(id)], "keeping" => []}
 
-      assert {:ok, %{"forgotten" => [_id], "kept" => [], "failed" => []}} =
+      assert {:ok, %{^id => :forgotten} = forgotten} =
                Command.make(change, caller())
+
+      assert Forget.render(forgotten) ==
+               %{"forgotten" => [to_string(id)], "kept" => [], "failed" => []}
 
       assert Wardrik.Fleet.lookup(id) == nil
       assert {:error, %Error{type: :not_found}} = Query.run(%ReadDefinition{agent: id}, caller())
@@ -575,7 +597,7 @@ defmodule Wardrik.OperationsTest do
 
     test "removes an agent the host kept no definition for, unless the host keeps it" do
       {id, _agent} = Fleet.start_agent()
-      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, caller())
+      assert {:ok, %{^id => :forgotten}} = Command.run(%Forget{agent: id}, caller())
       assert Wardrik.Fleet.lookup(id) == nil
 
       {owned, _agent} = Fleet.start_agent([], Fleet.id("kept-owned"))
@@ -601,8 +623,11 @@ defmodule Wardrik.OperationsTest do
                "keeping" => [%{"id" => to_string(owned), "why" => "#{owned} belongs to a file."}]
              }
 
-      assert {:ok, %{"forgotten" => [_gone], "kept" => [_owned], "failed" => []}} =
+      assert {:ok, %{^gone => :forgotten, ^owned => {:kept, _why}} = forgotten} =
                Command.make(change, caller("#{org}/"))
+
+      assert %{"kept" => [%{"id" => kept}]} = ForgetAgents.render(forgotten)
+      assert kept == to_string(owned)
 
       assert Wardrik.Fleet.lookup(gone) == nil
       assert Wardrik.Fleet.lookup(owned)
@@ -624,10 +649,10 @@ defmodule Wardrik.OperationsTest do
     test "answers every agent under the prefix, and refuses a caller who may not read them" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %{"agents" => agents}} =
-               Query.run(%ListAgents{prefix: Prefix.parse!("test/")}, caller())
-
-      assert Enum.any?(agents, &(&1["id"] == to_string(id)))
+      assert {:ok, members} = Query.run(%ListAgents{prefix: Prefix.parse!("test/")}, caller())
+      assert %Member{} = member = Enum.find(members, &(&1.id == id))
+      assert %{"agents" => [%{"id" => text}]} = ListAgents.render([member])
+      assert text == to_string(id)
 
       assert {:error, %Error{type: :forbidden}} =
                Query.run(%ListAgents{prefix: Prefix.parse!("test/")}, caller("test/", [:message]))
@@ -637,10 +662,12 @@ defmodule Wardrik.OperationsTest do
       id = parked_agent()
       assert Fleet.await_update(fn -> Wardrik.Fleet.lookup(id).status == :parked end)
 
-      assert {:ok, %{"interrupts" => interrupts}} =
+      assert {:ok, [{^id, {%{id: "call_1"}, _prompt}}] = parked} =
                Query.run(%ListParked{prefix: Prefix.of(id)}, caller())
 
-      assert [%{"id" => "call_1", "agent" => %{"id" => text}}] = interrupts
+      assert %{"interrupts" => [%{"id" => "call_1", "agent" => %{"id" => text}}]} =
+               ListParked.render(parked)
+
       assert text == to_string(id)
     end
   end
@@ -655,10 +682,12 @@ defmodule Wardrik.OperationsTest do
     test "are set, changed and removed, and each change recorded", %{id: id} do
       fields = %{"every" => "1h", "prompt" => "Look."}
 
-      assert {:created, %{"trigger" => %{"name" => "sweep"}}} =
+      assert {:created, %{"name" => "sweep"} = trigger} =
                Command.run(%SetTrigger{agent: id, name: "sweep", fields: fields}, caller())
 
-      assert {:ok, %{"trigger" => %{"every" => "2h"}}} =
+      assert SetTrigger.render(trigger) == %{"trigger" => trigger}
+
+      assert {:ok, %{"every" => "2h"}} =
                Command.run(
                  %SetTrigger{agent: id, name: "sweep", fields: %{fields | "every" => "2h"}},
                  caller()
@@ -709,11 +738,11 @@ defmodule Wardrik.OperationsTest do
     test "puts an agent to sleep with its conversation, and leaves one asleep be" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %{"stopped" => [text]}} = Command.run(%Stop{agent: id}, caller())
-      assert text == to_string(id)
+      assert {:ok, [^id]} = Command.run(%Stop{agent: id}, caller())
+      assert Stop.render([id]) == %{"stopped" => [to_string(id)]}
       assert %{asleep: true} = Wardrik.Fleet.lookup(id)
 
-      assert {:ok, %{"stopped" => []}} = Command.run(%Stop{agent: id}, caller())
+      assert {:ok, []} = Command.run(%Stop{agent: id}, caller())
       assert Audit.about("agents/#{id}") == [{"agent.stopped", @jon}]
 
       assert {:error, %Error{type: :not_found}} =
@@ -725,7 +754,7 @@ defmodule Wardrik.OperationsTest do
     test "leaves an agent running as it is, and wakes one asleep" do
       {id, _agent} = Fleet.start_agent()
 
-      assert {:ok, %{"from" => "running"}} = Command.run(%Spawn{agent: id}, caller())
+      assert {:ok, %Member{id: ^id, asleep: false}} = Command.run(%Spawn{agent: id}, caller())
       :ok = Wardrik.Fleet.stop(id)
 
       assert {:ok, change} = Command.plan(%Spawn{agent: id}, caller())
@@ -734,8 +763,8 @@ defmodule Wardrik.OperationsTest do
                "spawning" => %{"agent" => to_string(id), "from" => "store"}
              }
 
-      assert {:ok, %{"from" => "store", "agent" => %{"asleep" => false}}} =
-               Command.make(change, caller())
+      assert {:ok, %Member{asleep: false} = member} = Command.make(change, caller())
+      assert %{"agent" => %{"asleep" => false}} = Spawn.render(member)
 
       assert Audit.about("agents/#{id}") == [{"agent.spawned", @jon}]
     end
@@ -748,11 +777,15 @@ defmodule Wardrik.OperationsTest do
           "model" => "openai:gpt-5"
         })
 
-      assert {:ok, %{"from" => "definition"}} = Command.run(%Spawn{agent: id}, caller())
+      assert {:ok, change} = Command.plan(%Spawn{agent: id}, caller())
+      assert %{"spawning" => %{"from" => "definition"}} = Command.preview(change)
+      assert {:ok, %Member{id: ^id}} = Command.make(change, caller())
       assert Agent.status(id).model == "openai:gpt-5"
 
       fresh = defined_id("fresh")
-      assert {:ok, %{"from" => "new"}} = Command.run(%Spawn{agent: fresh}, caller())
+      assert {:ok, change} = Command.plan(%Spawn{agent: fresh}, caller())
+      assert %{"spawning" => %{"from" => "new"}} = Command.preview(change)
+      assert {:ok, %Member{id: ^fresh}} = Command.make(change, caller())
 
       assert {:ok, %Wardrik.Definition.Read{fields: %{"model" => "openai:gpt-5"}}} =
                Kept.get(%Kept{}, fresh)
@@ -773,10 +806,11 @@ defmodule Wardrik.OperationsTest do
       id = defined_id("placed")
       root = root()
 
-      assert {:ok, %{"from" => "new", "agent" => %{"node" => node}}} =
+      assert {:ok, %Member{node: node} = member} =
                Command.run(%SpawnOn{agent: id, node: node()}, root)
 
-      assert node == to_string(node())
+      assert node == node()
+      assert %{"agent" => %{"node" => _node}} = SpawnOn.render(member)
 
       assert {:error, %Error{type: :forbidden}} =
                Command.plan(%SpawnOn{agent: id, node: node()}, caller())
@@ -801,7 +835,8 @@ defmodule Wardrik.OperationsTest do
                }
              }
 
-      assert {:ok, %{"agent" => _agent}} = Command.make(change, root)
+      assert {:ok, %Member{id: ^id} = member} = Command.make(change, root)
+      assert %{"agent" => %{"id" => _id}} = Move.render(member)
       assert Audit.about("agents/#{id}") == []
 
       assert {:error, %Error{type: :forbidden}} =
@@ -836,7 +871,7 @@ defmodule Wardrik.OperationsTest do
 
       assert Wardrik.Fleet.lookup(id)
 
-      assert {:ok, %{"forgotten" => [_id]}} = Command.run(%Forget{agent: id}, none)
+      assert {:ok, %{^id => :forgotten}} = Command.run(%Forget{agent: id}, none)
       assert Wardrik.Fleet.lookup(id) == nil
     end
   end

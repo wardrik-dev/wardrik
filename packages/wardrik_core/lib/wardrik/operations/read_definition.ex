@@ -4,7 +4,7 @@ defmodule Wardrik.Operations.ReadDefinition do
   `Wardrik.Definition` keeps them, and the tools it names that offer nothing
   yet, such as an MCP server its owner has not added:
 
-      %{"definition" => %{"tools" => ["crm/*"]}, "missing" => ["crm/*"]}
+      %Wardrik.Definition.Read{fields: %{"tools" => ["crm/*"]}, missing: ["crm/*"]}
   """
 
   @behaviour Wardrik.AgentOperation
@@ -44,8 +44,8 @@ defmodule Wardrik.Operations.ReadDefinition do
   @impl Wardrik.Query
   def run(%__MODULE__{agent: id}, caller) do
     case Wardrik.Definition.get(Host.definitions(caller.host), id) do
-      {:ok, %Wardrik.Definition.Read{fields: fields, missing: missing}} ->
-        {:ok, %{"definition" => fields, "missing" => missing}}
+      {:ok, %Wardrik.Definition.Read{} = read} ->
+        {:ok, read}
 
       {:error, :not_found} ->
         {:error, undefined(id)}
@@ -54,6 +54,10 @@ defmodule Wardrik.Operations.ReadDefinition do
         {:error, Error.new(:unsupported, "This server does not keep agents' definitions.")}
     end
   end
+
+  @impl Wardrik.Query
+  def render(%Wardrik.Definition.Read{fields: fields, missing: missing}),
+    do: %{"definition" => fields, "missing" => missing}
 
   @doc "The error for the agent `id`, where no definition of it is kept."
   @spec undefined(Wardrik.AgentID.t()) :: Error.t()

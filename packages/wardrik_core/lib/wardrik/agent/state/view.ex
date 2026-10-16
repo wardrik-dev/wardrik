@@ -86,6 +86,7 @@ defmodule Wardrik.Agent.State.View do
   @spec snapshot(State.t()) :: Snapshot.t()
   def snapshot(%State{} = state) do
     %Snapshot{
+      agent: state.agent_id,
       generation: state.generation,
       status: status(state),
       context: state.context,

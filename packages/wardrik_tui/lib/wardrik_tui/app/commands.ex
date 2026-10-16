@@ -118,10 +118,11 @@ defmodule WardrikTUI.App.Commands do
   # started again, or, in the background, left alone and named.
   defp spawn_agent(term, id, name, options, prompt, mode) do
     with {:ok, placement} <- placement(options),
-         {:ok, %{"from" => from}} <- Operation.run(spawning(id, placement), caller(term)) do
+         {:ok, change} <- Operation.plan(spawning(id, placement), caller(term)),
+         {:ok, _agent} <- Operation.make(change, caller(term)) do
       pid = Fleet.whereis(id)
 
-      if from == "running",
+      if match?(%{"spawning" => %{"from" => "running"}}, Operation.preview(change)),
         do: existing_agent(term, id, name, pid, prompt, mode),
         else: started(term, id, name, pid, prompt, mode)
     else
@@ -294,8 +295,7 @@ defmodule WardrikTUI.App.Commands do
   defp stop_under(term, target) do
     case Prefix.expand(target, term.assigns.org) do
       {:ok, prefix} ->
-        {:ok, %{"cancelled" => cancelled}} =
-          Operation.run(%CancelAgents{prefix: prefix}, caller(term))
+        {:ok, cancelled} = Operation.run(%CancelAgents{prefix: prefix}, caller(term))
 
         Display.append(term, View.stopped_under(prefix, length(cancelled)))
 
