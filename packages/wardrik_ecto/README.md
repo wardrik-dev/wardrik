@@ -10,20 +10,29 @@ def deps do
 end
 ```
 
-Start Wardrik after your repo, and name the repo as its store:
+`:ecto_sql` and `:postgrex` are optional: an application with a repo has
+them already, and one that keeps the store elsewhere compiles neither.
+
+An application embedding [Wardrik](../wardrik) has this package already. It
+starts Wardrik after its repo, and names the repo as its store:
 
 ```elixir
-# config/config.exs
-config :wardrik, start: :host
+children = [
+  MyApp.Repo,
+  {Wardrik, Wardrik.new(store: Wardrik.store(repo: MyApp.Repo))},
+  MyAppWeb.Endpoint
+]
+```
 
-# lib/my_app/application.ex
+A host that puts its own tree together names the adapter:
+
+```elixir
 store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
-host = Wardrik.Host.new(store: store)
 
 children = [
   MyApp.Repo,
   {WardrikStore, store},
-  {Wardrik, host: host},
+  {Wardrik.Core, host: Wardrik.Host.new(store: store)},
   MyAppWeb.Endpoint
 ]
 ```

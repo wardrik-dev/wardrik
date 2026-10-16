@@ -34,7 +34,7 @@ defmodule WardrikMCP.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_oauth),
       sibling(:wardrik_vault),
       {:anubis_mcp, "~> 2.0"},

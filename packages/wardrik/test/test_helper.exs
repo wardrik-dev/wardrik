@@ -1,6 +1,3 @@
-Mimic.copy(WardrikStore)
-Mimic.copy(WardrikStore.Memory)
-Mimic.copy(Wardrik.Fleet)
-Mimic.copy(DurableServer.Supervisor)
+Mimic.copy(WardrikEcto.Migration)
 
-Wardrik.Test.start(llm_stub: true)
+ExUnit.start(capture_log: true, assert_receive_timeout: 1_000)

@@ -229,5 +229,5 @@ defmodule WardrikHTTP.Worker do
   defp close(:not_found), do: {1008, "The credential was revoked."}
   defp close(:unavailable), do: {1013, "The credential cannot be checked now. Try again."}
 
-  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
+  defp version, do: :wardrik_core |> Application.spec(:vsn) |> to_string()
 end

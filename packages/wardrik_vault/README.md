@@ -28,7 +28,7 @@ end
 # lib/my_app/application.ex
 vault = WardrikVault.new(store: store, keys: [System.fetch_env!("WARDRIK_VAULT_KEY")])
 host = Wardrik.Host.new(store: store, credentials: vault)
-children = [{WardrikStore, store}, {Wardrik, host: host}]
+children = [{WardrikStore, store}, {Wardrik.Core, host: host}]
 ```
 
 ```elixir

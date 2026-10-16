@@ -37,7 +37,7 @@ host =
     connections: %WardrikOAuth.Connections{oauth: oauth, vault: vault}
   )
 
-children = [{WardrikStore, store}, {Wardrik, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
+children = [{WardrikStore, store}, {Wardrik.Core, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
 ```
 
 It finds the authorization server from the resource, and presents whichever

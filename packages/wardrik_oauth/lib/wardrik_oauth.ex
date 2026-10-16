@@ -21,7 +21,7 @@ defmodule WardrikOAuth do
 
       vault = WardrikVault.new(store: store, keys: keys, grants: oauth)
       host = Wardrik.Host.new(store: store, credentials: vault)
-      children = [{Wardrik, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
+      children = [{Wardrik.Core, host: host}, {WardrikOAuth.Supervisor, oauth: oauth}]
 
   A credential named `github` that the vault holds for nobody the call
   reaches is then asked for: of the call's user, or of its org where it has

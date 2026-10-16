@@ -55,7 +55,7 @@ defmodule WardrikHTTP.Access do
   own tree, before `WardrikHTTP.Workers`:
 
       children = [
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {WardrikHTTP.Access, store: store, grace: 1_000, sweep: 15_000},
         WardrikHTTP.Workers
       ]

@@ -24,8 +24,10 @@ defmodule Wardrik.Host do
   | `:workspace` | `Wardrik.Workspace` | `%Wardrik.Workspace.None{}` |
   | `:dispatch` | `Wardrik.LLM.Dispatch` | `%Wardrik.LLM.Dispatch.Direct{}` |
 
-  A host names its store and the seams it offers once, as it starts
-  `Wardrik`, and hands the same host to whatever surface it starts after it:
+  `Wardrik`, of the `wardrik` package, builds the host of an application
+  embedding Wardrik from its options. A host that puts its own tree
+  together names its store and the seams it offers once, as it starts
+  `Wardrik.Core`, and hands the same host to whatever surface it starts after it:
 
       store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
 
@@ -39,7 +41,7 @@ defmodule Wardrik.Host do
       children = [
         MyApp.Repo,
         {WardrikStore, store},
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {MyApp.Endpoint, host: host}
       ]
 
@@ -53,7 +55,7 @@ defmodule Wardrik.Host do
   The host travels with the work, never with what is stored: each
   `Wardrik.Caller` carries it to the operation it calls, and each agent is
   handed it as it starts, wakes or restarts on another node (see
-  `Wardrik.Agent`). A node runs one `Wardrik`, so one host; see `Wardrik`.
+  `Wardrik.Agent`). A node runs one `Wardrik.Core`, so one host; see `Wardrik.Core`.
 
   A caller is made here for someone known by a principal, holding the grant
   the host's `Wardrik.Grants` gives them, or for someone who holds the node:
@@ -121,17 +123,6 @@ defmodule Wardrik.Host do
     opts = Keyword.validate!(opts, [:store, :audit | @seams])
     struct!(__MODULE__, opts)
   end
-
-  @doc """
-  The seams a configuration names, as `new/1` takes them: each a module and
-  the fields of its struct, as an application's configuration holds them,
-  where no struct can be written.
-
-      config :wardrik, Wardrik.Host, definitions: {MyApp.Definitions, []}
-  """
-  @spec configured([{atom(), {module(), keyword()}}]) :: keyword()
-  def configured(seams) when is_list(seams),
-    do: for({seam, {module, fields}} <- seams, do: {seam, struct!(module, fields)})
 
   @doc """
   The person or system `:principal` names as a caller of an operation on
@@ -219,7 +210,7 @@ defmodule Wardrik.Host do
   def triggers(%__MODULE__{triggers: triggers}), do: triggers
 
   @doc """
-  The name of the `Wardrik.Audit` log `Wardrik` starts for this host, which
+  The name of the `Wardrik.Audit` log `Wardrik.Core` starts for this host, which
   surfaces record changes in; `Wardrik.Audit` unless `:audit` names
   another.
   """

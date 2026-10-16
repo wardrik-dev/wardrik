@@ -34,7 +34,6 @@ defmodule Wardrikd.MixProject do
     [
       wardrikd: [
         include_executables_for: [:unix],
-        applications: [wardrik: :permanent],
         steps: [:assemble, :tar]
       ]
     ]

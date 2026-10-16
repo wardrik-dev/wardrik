@@ -69,7 +69,7 @@ take every kind alike, and a new kind is a struct, a server and that protocol.
 
 ```elixir
 children = [
-  {Wardrik, host: Wardrik.Host.new(triggers: WardrikTrigger)},
+  {Wardrik.Core, host: Wardrik.Host.new(triggers: WardrikTrigger)},
   {WardrikTrigger, secrets: &MyApp.Vault.secret/2}
 ]
 

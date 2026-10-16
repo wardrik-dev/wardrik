@@ -33,7 +33,7 @@ defmodule WardrikSDK.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_brave),
       sibling(:wardrik_console),
       sibling(:wardrik_definition),

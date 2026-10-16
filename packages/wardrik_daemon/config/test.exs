@@ -4,18 +4,16 @@ config :logger, level: :warning
 
 # The fleet writes to a real store, so the suite gets one of its own, unique
 # per run so two suites can run side by side. test_helper.exs removes it.
-config :wardrik, WardrikStore,
-  adapter: WardrikStore.EKV,
-  data_dir:
-    Path.join([
-      System.tmp_dir!(),
-      "wardrik-test",
-      "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
-    ])
-
-# The suite starts Wardrik itself, on the host a daemon builds, as the release
-# does; see test_helper.exs.
-config :wardrik, start: :host
+config :wardrik_core, Wardrik.Test,
+  store: [
+    adapter: WardrikStore.EKV,
+    data_dir:
+      Path.join([
+        System.tmp_dir!(),
+        "wardrik-test",
+        "#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
+      ])
+  ]
 
 # What the daemon starts each package with, beside what config.yaml says.
 config :wardrik_daemon, WardrikNotify, req_options: [plug: {Req.Test, WardrikNotify.Stub}]

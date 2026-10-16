@@ -61,14 +61,14 @@ defmodule WardrikStore do
 
   ## Starting it
 
-  A host starts the store, then hands the same value to `Wardrik` on its
+  A host starts the store, then hands the same value to `Wardrik.Core` on its
   `Wardrik.Host`, and to whatever else it starts that stores anything. A
   store kept through a host's repo starts after it:
 
       store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
       host = Wardrik.Host.new(store: store)
 
-      children = [MyApp.Repo, {WardrikStore, store}, {Wardrik, host: host}]
+      children = [MyApp.Repo, {WardrikStore, store}, {Wardrik.Core, host: host}]
 
   `check/1` looks at a store without starting it, for `wardrik doctor`.
   """

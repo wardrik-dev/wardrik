@@ -12,7 +12,7 @@ defmodule WardrikChannel.Supervisor do
         )
 
       children = [
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {WardrikChannel.Replies, channels: channels},
         {WardrikChannel.Supervisor, channels: channels}
       ]

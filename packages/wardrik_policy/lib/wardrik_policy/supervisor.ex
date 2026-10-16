@@ -4,7 +4,7 @@ defmodule WardrikPolicy.Supervisor do
   runs on, which `:store` names. A host that governs agents with budgets
   starts it once per node, after Wardrik in its own tree:
 
-      children = [{WardrikStore, store}, {Wardrik, host: host}, {WardrikPolicy.Supervisor, store: store}]
+      children = [{WardrikStore, store}, {Wardrik.Core, host: host}, {WardrikPolicy.Supervisor, store: store}]
 
   Without it a budget cannot be read, and a call it governs is refused.
   """

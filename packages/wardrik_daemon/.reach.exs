@@ -9,7 +9,7 @@
   ],
   boundaries: [
     public: [
-      "Wardrik",
+      "Wardrik.Core",
       "Wardrik.Agent",
       "Wardrik.Agent.Snapshot",
       "Wardrik.Agent.Spec",

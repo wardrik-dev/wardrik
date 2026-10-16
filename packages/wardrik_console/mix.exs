@@ -31,7 +31,7 @@ defmodule WardrikConsole.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       {:owl, "~> 0.13"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

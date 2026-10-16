@@ -30,7 +30,7 @@ defmodule WardrikBrave.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       {:req, "~> 0.7"},
       {:plug, "~> 1.16", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}

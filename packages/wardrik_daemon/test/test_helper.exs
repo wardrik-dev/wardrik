@@ -30,7 +30,7 @@ Wardrik.Test.start(
     {WardrikDaemon.Boot,
      store: store, cluster: WardrikDaemon.Config.section(config, WardrikDaemon.Cluster)},
     {WardrikDaemon.Host, host: host, config: config},
-    {Wardrik, host: host},
+    {Wardrik.Core, host: host},
     {WardrikPolicy.Supervisor, store: store},
     {WardrikTrigger, store: store},
     {WardrikHTTP.Access, store: store},

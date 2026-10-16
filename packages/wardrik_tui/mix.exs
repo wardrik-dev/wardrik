@@ -33,7 +33,7 @@ defmodule WardrikTUI.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_console),
       # Pinned: pre-1.0.
       {:breeze, "0.5.1"},

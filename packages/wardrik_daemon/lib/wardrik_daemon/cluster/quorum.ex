@@ -5,7 +5,7 @@ defmodule WardrikDaemon.Cluster.Quorum do
   Core starts it after `WardrikDaemon.Cluster` and before the fleet, both as its
   `:cluster`:
 
-      {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
+      {Wardrik.Core, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
 
   It does not return from starting until `WardrikDaemon.Cluster.waiting/2` has
   nothing to say: until a quorum of the cluster's nodes, as the store counts

@@ -1,60 +1,109 @@
 defmodule WardrikTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
+  use Mimic
 
-  test "the application starts the store, then Wardrik, and the fleet under it" do
-    ids =
-      for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Application), do: id
-
-    assert Enum.reverse(ids) == [WardrikStore, Wardrik]
-
-    ids = for {id, _pid, _type, _modules} <- Supervisor.which_children(Wardrik.Supervisor), do: id
-
-    assert Wardrik.Fleet.Supervisor in ids
+  defmodule Search do
+    @moduledoc false
   end
 
-  test "what connects this node to others starts before the fleet" do
-    cluster = {Agent, fn -> :connected end}
+  defp data_dir, do: Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
 
-    {:ok, {_flags, specs}} = Wardrik.init(cluster: [cluster], host: Wardrik.Test.host())
-    ids = Enum.map(specs, & &1.id)
+  defp store, do: Wardrik.store(data_dir: data_dir())
 
-    assert Enum.find_index(ids, &(&1 == Agent)) <
-             Enum.find_index(ids, &(&1 == Wardrik.Fleet.Supervisor))
+  describe "store/1" do
+    test "is the store its settings name" do
+      assert %WardrikStore.EKV{} = store()
+
+      assert %WardrikEcto.Store{repo: MyApp.Repo, discovery_interval_ms: 50} =
+               Wardrik.store(repo: MyApp.Repo, discovery_interval_ms: 50)
+
+      bucket = [
+        bucket: "wardrik",
+        endpoint: "http://127.0.0.1:59000",
+        region: "auto",
+        access_key_id: "id",
+        secret_access_key: "secret"
+      ]
+
+      assert %WardrikS3.Store{bucket: "wardrik"} = Wardrik.store(bucket)
+    end
+
+    test "names one store" do
+      assert_raise ArgumentError, ~r/names one store/, fn -> Wardrik.store([]) end
+
+      assert_raise ArgumentError, ~r/names one store/, fn ->
+        Wardrik.store(repo: MyApp.Repo, data_dir: data_dir())
+      end
+    end
   end
 
-  test "a child that restarts restarts the fleet, which comes after every other" do
-    {:ok, {flags, specs}} = Wardrik.init(host: Wardrik.Test.host())
+  describe "new/1" do
+    test "needs a store" do
+      assert_raise KeyError, fn -> Wardrik.new([]) end
+    end
 
-    assert flags.strategy == :rest_for_one
-    assert List.last(specs).id == Wardrik.Fleet.Supervisor
+    test "keeps definitions and agents' files in the store" do
+      store = store()
+      host = Wardrik.host(Wardrik.new(store: store))
+
+      assert %WardrikDefinition.Kept{store: ^store} = Wardrik.Host.definitions(host)
+      assert %WardrikWorkspace.Backend.Store{store: ^store} = Wardrik.Host.workspace(host)
+    end
+
+    test "lets a definition name what :context offers, and an agent's operations by default" do
+      offered = fn wardrik -> Wardrik.Host.definitions(Wardrik.host(wardrik)).contexts end
+
+      assert %WardrikDefinition.Context{
+               tools: [],
+               sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]
+             } = offered.(Wardrik.new(store: store()))
+
+      assert %WardrikDefinition.Context{tools: [Search], sources: [self: Wardrik.Catalog.Self]} =
+               offered.(
+                 Wardrik.new(
+                   store: store(),
+                   context: [tools: [Search], sources: [self: Wardrik.Catalog.Self]]
+                 )
+               )
+    end
+
+    test "offers the seams it is given, and the None of each it is not" do
+      wardrik =
+        Wardrik.new(store: store(), grants: %Wardrik.OrgGrants{org: "acme"})
+
+      assert %Wardrik.OrgGrants{org: "acme"} = Wardrik.Host.grants(Wardrik.host(wardrik))
+      assert %Wardrik.Credentials.None{} = Wardrik.Host.credentials(Wardrik.host(wardrik))
+    end
+
+    test "takes no option it does not know" do
+      assert_raise ArgumentError, fn ->
+        Wardrik.new(store: store(), workspace: nil)
+      end
+    end
   end
 
-  test "the audit log is kept in the host's store, and the fleet starts with the host" do
-    store = WardrikStore.new(adapter: WardrikStore.Memory, name: :wardrik_test_store)
-    host = Wardrik.Host.new(store: store, definitions: %Wardrik.Test.Definitions{})
+  test "starts the store, core, the meters and the triggers, each after the one before" do
+    wardrik = Wardrik.new(store: store(), fleet: [log: false])
 
-    {:ok, {_flags, specs}} = Wardrik.init(fleet: [log: true], host: host)
+    assert {:ok, {%{strategy: :rest_for_one}, specs}} = Wardrik.init(wardrik)
 
-    assert %{start: {Wardrik.Audit, :start_link, [[store: ^store, name: Wardrik.Audit]]}} =
-             Enum.find(specs, &(&1.id == Wardrik.Audit))
+    assert Enum.map(specs, & &1.id) == [
+             WardrikStore,
+             Wardrik.Core,
+             WardrikPolicy.Supervisor,
+             WardrikTrigger.Triggers
+           ]
 
-    assert %{start: {Wardrik.Fleet.Supervisor, :start_link, [opts]}} =
-             Enum.find(specs, &(&1.id == Wardrik.Fleet.Supervisor))
-
-    assert Enum.sort(opts) == Enum.sort(log: true, host: host)
+    assert %{start: {Wardrik.Core, :start_link, [opts]}} = Enum.at(specs, 1)
+    assert opts[:fleet] == [log: false]
+    assert opts[:host] == Wardrik.host(wardrik)
   end
 
-  test "needs a host" do
-    assert_raise KeyError, fn -> Wardrik.init([]) end
-  end
+  test "makes and drops the store's table in Postgres, as wardrik_ecto does" do
+    expect(WardrikEcto.Migration, :up, fn [version: 1] -> :ok end)
+    expect(WardrikEcto.Migration, :down, fn [version: 1] -> :ok end)
 
-  test "a host that starts Wardrik in its own tree has the application start nothing" do
-    Application.put_env(:wardrik, :start, :host)
-    on_exit(fn -> Application.delete_env(:wardrik, :start) end)
-
-    {:ok, pid} = Wardrik.Application.start(:normal, [])
-
-    assert Supervisor.which_children(pid) == []
-    Supervisor.stop(pid)
+    assert Wardrik.Migration.up(version: 1) == :ok
+    assert Wardrik.Migration.down(version: 1) == :ok
   end
 end

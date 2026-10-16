@@ -35,8 +35,8 @@ defmodule Wardrik.AuditTest do
   end
 
   defp restart do
-    :ok = Supervisor.terminate_child(Wardrik.Supervisor, Audit)
-    {:ok, _pid} = Supervisor.restart_child(Wardrik.Supervisor, Audit)
+    :ok = Supervisor.terminate_child(Wardrik.Core, Audit)
+    {:ok, _pid} = Supervisor.restart_child(Wardrik.Core, Audit)
   end
 
   defp allow_store, do: Mimic.allow(WardrikStore, self(), Process.whereis(Audit))

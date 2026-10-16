@@ -28,7 +28,7 @@ defmodule WardrikDefinition.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_policy),
       sibling(:wardrik_trigger),
       sibling(:wardrik_workspace),

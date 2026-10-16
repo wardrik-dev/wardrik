@@ -1,102 +1,168 @@
 defmodule Wardrik do
   @moduledoc """
-  Everything Wardrik runs, under one supervisor, kept in the store the host
-  started before it. In order:
+  Wardrik inside an application: agents kept in the application's own store,
+  started in its own tree, and reached as the people it knows.
 
-    * `Wardrik.LLM.Catalog`, `Wardrik.Event.Bus`, `Wardrik.Event.Log`,
-      `Wardrik.Audit`, which writes to the host's store,
-      `Wardrik.LLM.ToolRunner`, and `Wardrik.Tasks`.
-    * What `:cluster` names, which connects this node to others before the
-      fleet starts.
-    * `Wardrik.Fleet.Supervisor`, with `:fleet` and `:host`, which keeps the
-      fleet in the host's store, and hands every agent the host as it
-      starts.
+  `new/1` reads the options once, into a value the application starts and
+  makes its callers with:
 
-  Each child depends on the ones before it: an agent joins the bus as it
-  starts and writes its log from what the bus delivers, and runs its turns
-  under the task supervisor. A child that restarts restarts every child after
-  it, so an agent never holds a membership of a bus that is gone. The catalog
-  load is a task that exits once done and is not started again.
-
-  The `:wardrik` application starts it by default, after the store, with the
-  store, the fleet and the host's seams as the application's environment
-  holds them:
-
-      config :wardrik, WardrikStore, adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik"
-      config :wardrik, Wardrik.Fleet, log: false
-      config :wardrik, Wardrik.Host,
-        definitions: {MyApp.Definitions, []},
-        grants: {MyApp.Grants, admins: ["maria"]}
-
-  Each seam is named by its module and the fields of its struct, as
-  `Wardrik.Host.configured/1` reads them.
-
-  A host that starts it in its own tree instead, after the repo its store is
-  kept in, says so, and hands it its options, and the same `Wardrik.Host` to
-  each surface it starts after it:
-
-      config :wardrik, start: :host
-
-      store = WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
-      host =
-        Wardrik.Host.new(
-          store: store,
-          definitions: %MyApp.Definitions{store: store},
-          grants: %MyApp.Grants{admins: ["maria"]}
+      wardrik =
+        Wardrik.new(
+          store: Wardrik.store(repo: MyApp.Repo),
+          grants: %MyApp.Grants{},
+          context: [tools: [MyApp.Tools.Search]]
         )
 
-      children = [
-        MyApp.Repo,
-        {WardrikStore, store},
-        {Wardrik, host: host},
-        {MyAppWeb.Endpoint, host: host}
-      ]
+      children = [MyApp.Repo, {Wardrik, wardrik}, MyAppWeb.Endpoint]
 
-  The application then starts nothing. What runs on the fleet goes after it
-  in the host's tree, which starts it once the fleet is up.
+      {:ok, caller} = Wardrik.caller(wardrik, principal: maria, subject: agent)
+      Wardrik.Command.run(%Wardrik.Operations.Cancel{agent: agent}, caller)
 
-  Nothing of the host, its store included, is kept where a node finds it:
-  it travels in the options of what is started with it, and in each
-  `Wardrik.Caller`.
+  `{Wardrik, wardrik}` starts, in order, under `:rest_for_one`, so a restart
+  of one restarts everything after it:
 
-  A node runs one `Wardrik`: core's own processes, as the event bus, the
-  event log and the tool runner, are registered under their module names.
-  To run several on one machine, run several nodes.
+  | Child | What it runs |
+  | --- | --- |
+  | the store | where everything is kept |
+  | `Wardrik.Core` | the agents |
+  | the meters | what budgets count in |
+  | the triggers | clocks, feeds and webhooks |
+
+  Each agent's definition is kept in the store, read against what
+  `:context` lets it name, and so are the files it works on.
+
+  The store is a value of its own, made by `store/1`, so a seam that keeps
+  something, such as a vault of credentials, is made with the same one. A
+  surface the application starts after Wardrik, such as the HTTP API, takes
+  the store or `host/1`. A node runs one Wardrik, since core's own
+  processes are registered under their module names.
 
   ## Options
 
+    * `:store` - where everything is kept, as `store/1` makes it. Required.
+    * `:context` - what a definition may name, as the fields of
+      `WardrikDefinition.Context`: the `tools` the application ships, the
+      MCP `servers`, the `policies`, and so on. `sources` names `self`, an
+      agent's operations on itself, and `agents`, those on the other agents
+      of its org, unless given.
+    * `:grants`, `:credentials`, `:connections`, `:servers`, `:tokens`,
+      `:triggers`, `:dispatch` - the host's seams, each a value implementing
+      core's protocol of that name, as `Wardrik.Host` lists them. One left
+      out is that protocol's None: no grants, no credentials, and so on.
     * `:fleet` - the options of `Wardrik.Fleet.Supervisor`.
-    * `:host` - the `Wardrik.Host` every agent is handed as it starts, for
-      the store it keeps its state in, the definition it runs on and the
-      operations its tools call. Required.
-    * `:cluster` - the children that connect this node to others, started
-      before the fleet. None by default.
-
-          {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
   """
 
   use Supervisor
 
-  @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts \\ []),
-    do: Supervisor.start_link(__MODULE__, opts, name: Wardrik.Supervisor)
+  alias WardrikDefinition.Context
+
+  @enforce_keys [:host]
+  defstruct [:host, fleet: []]
+
+  @type t() :: %__MODULE__{host: Wardrik.Host.t(), fleet: keyword()}
+
+  @seams [:grants, :credentials, :connections, :servers, :tokens, :triggers, :dispatch]
+
+  # The setting that names each store.
+  @stores [
+    repo: WardrikEcto.Store,
+    url: WardrikEcto.Store,
+    bucket: WardrikS3.Store,
+    data_dir: WardrikStore.EKV
+  ]
+
+  @doc """
+  Wardrik as `opts` describe it, made without starting anything. Raises
+  where an option is not one of those above, or where `:store` is missing.
+  """
+  @spec new(keyword()) :: t()
+  def new(opts) do
+    opts = Keyword.validate!(opts, [:store, context: [], fleet: []] ++ @seams)
+    store = Keyword.fetch!(opts, :store)
+
+    context =
+      struct!(
+        Context,
+        Keyword.merge(
+          [sources: [self: Wardrik.Catalog.Self, agents: Wardrik.Catalog.Agents]],
+          opts[:context]
+        )
+      )
+
+    host =
+      Wardrik.Host.new(
+        [
+          store: store,
+          definitions: %WardrikDefinition.Kept{store: store, contexts: context},
+          workspace: %WardrikWorkspace.Backend.Store{store: store}
+        ] ++ Keyword.take(opts, @seams)
+      )
+
+    %__MODULE__{host: host, fleet: opts[:fleet]}
+  end
+
+  @doc """
+  The store `settings` name, made without starting anything. One of:
+
+    * `repo: MyApp.Repo` - in Postgres, through an Ecto repo the application
+      starts before Wardrik, whose table a migration of its own creates with
+      `Wardrik.Migration`. `url:` names a database for a repo of the store's
+      own instead.
+    * `bucket: "wardrik"` - in an S3 bucket, with its `endpoint`, `region`,
+      `access_key_id` and `secret_access_key`, under a `prefix`.
+    * `data_dir: "/var/lib/my_app/wardrik"` - on each node's disk, for an
+      application that adds `{:ekv, "~> 0.4.3"}` to its dependencies.
+
+  `discovery_interval_ms` is how often a node looks for agents no node
+  holds. Raises where `settings` name no store, or more than one.
+
+      Wardrik.store(repo: MyApp.Repo)
+  """
+  @spec store(keyword()) :: WardrikStore.t()
+  def store(settings) do
+    case Enum.uniq(for {key, store} <- @stores, Keyword.has_key?(settings, key), do: store) do
+      [adapter] ->
+        WardrikStore.new([adapter: adapter] ++ settings)
+
+      _none_or_several ->
+        raise ArgumentError,
+              "Wardrik.store/1 names one store, by repo:, url:, bucket: or data_dir:, " <>
+                "and #{inspect(settings)} does not"
+    end
+  end
+
+  @doc "The `Wardrik.Host` the agents run on, for a surface started after Wardrik."
+  @spec host(t()) :: Wardrik.Host.t()
+  def host(%__MODULE__{host: host}), do: host
+
+  @doc """
+  The caller `:principal` is to an operation on `:subject`, an agent or the
+  agents under a prefix, holding the first grant `:grants` gives them that
+  reaches it, or `:not_found` where none does. See `Wardrik.Host.caller/2`.
+  """
+  @spec caller(t(), keyword()) :: {:ok, Wardrik.Caller.t()} | {:error, Wardrik.Error.t()}
+  def caller(%__MODULE__{host: host}, opts), do: Wardrik.Host.caller(host, opts)
+
+  @doc "The child that runs `wardrik`."
+  @spec child_spec(t()) :: Supervisor.child_spec()
+  def child_spec(%__MODULE__{} = wardrik),
+    do: %{id: __MODULE__, start: {__MODULE__, :start_link, [wardrik]}, type: :supervisor}
+
+  @doc "Starts `wardrik`, as `child_spec/1` does."
+  @spec start_link(t()) :: Supervisor.on_start()
+  def start_link(%__MODULE__{} = wardrik),
+    do: Supervisor.start_link(__MODULE__, wardrik, name: __MODULE__)
 
   @impl true
-  def init(opts) do
-    opts = Keyword.validate!(opts, [:host, cluster: [], fleet: []])
-    host = Keyword.fetch!(opts, :host)
+  def init(%__MODULE__{host: host, fleet: fleet}) do
+    store = Wardrik.Host.store(host)
 
-    children =
-      [
-        Wardrik.LLM.Catalog,
-        Wardrik.Event.Bus,
-        Wardrik.Event.Log,
-        {Wardrik.Audit, store: Wardrik.Host.store(host), name: Wardrik.Host.audit(host)},
-        Wardrik.LLM.ToolRunner,
-        Wardrik.Tasks
-      ] ++
-        opts[:cluster] ++
-        [{Wardrik.Fleet.Supervisor, Keyword.put(opts[:fleet], :host, host)}]
+    children = [
+      {WardrikStore, store},
+      {Wardrik.Core, host: host, fleet: fleet},
+      {WardrikPolicy.Supervisor, store: store},
+      {WardrikTrigger, store: store}
+    ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end

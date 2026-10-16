@@ -627,5 +627,5 @@ defmodule WardrikMCP.Connection do
 
   defp name(key, principal), do: {:via, Registry, {@registry, {:connection, key, principal}}}
 
-  defp version, do: :wardrik |> Application.spec(:vsn) |> to_string()
+  defp version, do: :wardrik_core |> Application.spec(:vsn) |> to_string()
 end

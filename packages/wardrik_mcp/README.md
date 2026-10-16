@@ -82,7 +82,7 @@ servers = %WardrikMCP.Servers{store: store, oauth: oauth, vault: vault}
 host = Wardrik.Host.new(store: store, credentials: vault, servers: servers)
 
 children = [
-  {Wardrik, host: host},
+  {Wardrik.Core, host: host},
   {WardrikMCP.Supervisor, store: store}
 ]
 ```

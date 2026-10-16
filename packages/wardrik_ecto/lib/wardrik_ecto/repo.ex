@@ -9,7 +9,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) and Code.ensure_loaded?(Postgrex) do
     application's in the same database.
     """
 
-    use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
+    use Ecto.Repo, otp_app: :wardrik_ecto, adapter: Ecto.Adapters.Postgres
 
     @impl true
     def init(_context, config),

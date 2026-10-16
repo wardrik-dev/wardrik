@@ -2,8 +2,6 @@ import Config
 
 config :logger, level: :warning
 
-config :wardrik, WardrikStore, adapter: WardrikStore.Memory
-
 # The MCP client library logs every transport failure at error level. The
 # suite reaches servers that are down on purpose, and the test around each one
 # asserts on what the connection does about it.

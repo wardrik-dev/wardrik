@@ -54,7 +54,7 @@ defmodule WardrikDaemon.MixProject do
     [
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:makeup_syntect, "~> 0.1", only: :dev, runtime: false},
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_brave),
       sibling(:wardrik_console),
       sibling(:wardrik_definition),
@@ -75,6 +75,10 @@ defmodule WardrikDaemon.MixProject do
       {:owl, "~> 0.13"},
       # The store a daemon keeps where config.yaml names none.
       {:ekv, "~> 0.4.3"},
+      # Postgres, the store config.yaml may name instead, which wardrik_ecto
+      # leaves to the application.
+      {:ecto_sql, "~> 3.14"},
+      {:postgrex, "~> 0.22.4"},
       # What serves the TUI over SSH, where the release carries it.
       {:termite_ssh, "~> 0.1.2", optional: true},
       # The TUI the SSH tests serve, as a release that carries it does.

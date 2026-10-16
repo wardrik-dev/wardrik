@@ -59,6 +59,14 @@ def deps do
 end
 ```
 
+Start it in your application's tree, keeping everything on the node's disk:
+
+```elixir
+children = [{Wardrik, Wardrik.new(store: [data_dir: "/var/lib/my_app/wardrik"])}]
+```
+
+Then run an agent:
+
 ```elixir
 config =
   Wardrik.LLM.Config.new(
@@ -73,13 +81,15 @@ id = Wardrik.AgentID.new!("assistant", org: "acme", user: "42")
 :ok = Wardrik.Agent.ask(id, "What changed in Elixir this year?")
 ```
 
-See [packages/wardrik](packages/wardrik) for the seams a host reaches
+[Embed in your app](https://docs.wardrik.dev/build/embed/) keeps Wardrik in a
+Phoenix app's own Postgres and lets its users reach their agents. See
+[packages/wardrik_core](packages/wardrik_core) for the seams a host reaches
 through: who an agent works for, which of its calls may run, and which model a
 call lands on and who pays for it.
 
 ## How it fits together
 
-**Core** (`wardrik`) runs agents, and only that. It has the fleet that keeps
+**Core** (`wardrik_core`) runs agents, and only that. It has the fleet that keeps
 one process per agent across a cluster, the turn loop, the contracts for
 tools, hooks, credentials and stores, and the event stream. It ships no tools
 and has no dependency you did not ask for.
@@ -88,6 +98,10 @@ and has no dependency you did not ask for.
 it: tools an agent calls, places to keep its state, where its credentials come
 from, the policies that decide its calls, and the surfaces people reach it
 through. Take the ones you need.
+
+**Wardrik** (`wardrik`) puts core and the packages an application embeds
+together behind one child, `{Wardrik, Wardrik.new(...)}`, kept in the
+application's own store.
 
 **The daemon** (`wardrik_daemon`) puts them together behind the `wardrik`
 command, reading agents, policies and settings from files. The
@@ -103,7 +117,8 @@ tools that run in your own process.
 
 | Package | Description |
 | --- | --- |
-| [wardrik](packages/wardrik) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
+| [wardrik](packages/wardrik) | Wardrik inside your application: core and what it runs with, started as one child of your tree |
+| [wardrik_core](packages/wardrik_core) | The agent runtime: agents, the fleet, turns, tools, hooks, stores and events |
 | [wardrik_protocol](packages/wardrik_protocol) | The JSON Schemas of events and the HTTP API, which every client is checked or generated against |
 | [wardrik_definition](packages/wardrik_definition) | An agent's definition, from an agent file, the HTTP API or a host's own store, read into the spec it runs on |
 | [wardrik_store](packages/wardrik_store) | Where agents and their records are kept: the store behaviour, its EKV and in-memory adapters, and the suite an adapter passes |

@@ -42,8 +42,10 @@ defmodule Mix.Tasks.Wardrik do
   by the module each part is for, and starts each with it:
   `config :wardrik_sdk, WardrikMCP, servers: [...]` for `WardrikMCP.Supervisor`,
   `config :wardrik_sdk, WardrikOAuth, providers: [...]` for `WardrikOAuth`,
-  and `config :wardrik_sdk, WardrikVault, keys: [...]` for the vault. It
-  starts the store and `Wardrik` itself, on a host whose credentials are
+  `config :wardrik_sdk, WardrikVault, keys: [...]` for the vault, and
+  `config :wardrik_sdk, WardrikStore, [...]` for the store, kept on this
+  node's disk where it names none. It
+  starts the store and `Wardrik.Core` itself, on a host whose credentials are
   that vault, which shares the keys its `:shared` names with every agent,
   read from the environment variable where it holds none. A tool that needs a
   credential the user has not authorized parks the turn on a link; open it,
@@ -126,11 +128,9 @@ defmodule Mix.Tasks.Wardrik do
     distribute(opts)
     Enum.each(Keyword.get_values(opts, :connect), &Node.connect(:"#{&1}"))
 
-    # The task starts Wardrik on a host of its own, after the applications.
-    Application.put_env(:wardrik, :start, :host)
     Mix.Task.run("app.start")
 
-    store = WardrikStore.new(Application.get_env(:wardrik, WardrikStore, []))
+    store = WardrikStore.new(settings(WardrikStore))
     oauth = WardrikOAuth.new(settings(WardrikOAuth))
     vault = WardrikVault.new([store: store, grants: oauth] ++ settings(WardrikVault))
     config = config(opts)
@@ -146,7 +146,7 @@ defmodule Mix.Tasks.Wardrik do
       )
 
     {:ok, _wardrik} =
-      Supervisor.start_link([{WardrikStore, store}, {Wardrik, host: host}],
+      Supervisor.start_link([{WardrikStore, store}, {Wardrik.Core, host: host}],
         strategy: :rest_for_one
       )
 

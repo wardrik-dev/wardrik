@@ -51,7 +51,7 @@ defmodule WardrikTrigger do
 
       children = [
         {WardrikStore, store},
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {WardrikTrigger, store: store, secrets: &MyApp.Vault.secret/2}
       ]
 

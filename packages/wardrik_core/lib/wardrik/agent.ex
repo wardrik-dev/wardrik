@@ -118,7 +118,7 @@ defmodule Wardrik.Agent do
   ## The host it runs on
 
   Each time the agent starts, wakes from the store, or restarts on another
-  node, the fleet hands it the `Wardrik.Host` that `Wardrik` was started
+  node, the fleet hands it the `Wardrik.Host` that `Wardrik.Core` was started
   with (see `Wardrik.Fleet.Supervisor`). It keeps it in memory and never
   writes it down, so what the store holds of an agent names no module of
   the host's. As it starts it asks the host's `Wardrik.Definition` for the

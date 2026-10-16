@@ -9,22 +9,27 @@ def deps do
 end
 ```
 
-Start Wardrik in your own tree, and name the bucket as its store:
+An application embedding [Wardrik](../wardrik) has it already, and names the
+bucket as its store:
 
 ```elixir
-# config/config.exs
-config :wardrik, start: :host
+store =
+  Wardrik.store(
+    bucket: "wardrik",
+    endpoint: "https://<account>.r2.cloudflarestorage.com",
+    region: "auto",
+    access_key_id: System.fetch_env!("R2_ACCESS_KEY_ID"),
+    secret_access_key: System.fetch_env!("R2_SECRET_ACCESS_KEY")
+  )
 
-# lib/my_app/application.ex
-{Wardrik,
- store: [
-   adapter: WardrikS3.Store,
-   bucket: "wardrik",
-   endpoint: "https://<account>.r2.cloudflarestorage.com",
-   region: "auto",
-   access_key_id: System.fetch_env!("R2_ACCESS_KEY_ID"),
-   secret_access_key: System.fetch_env!("R2_SECRET_ACCESS_KEY")
- ]}
+children = [{Wardrik, Wardrik.new(store: store)}]
+```
+
+A host that puts its own tree together names the adapter:
+
+```elixir
+store = WardrikStore.new(adapter: WardrikS3.Store, bucket: "wardrik", ...)
+children = [{WardrikStore, store}, {Wardrik.Core, host: Wardrik.Host.new(store: store)}]
 ```
 
 Everything is kept under `wardrik/`, or the `:prefix` you name, one prefix to
