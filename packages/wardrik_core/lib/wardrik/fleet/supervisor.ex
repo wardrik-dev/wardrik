@@ -13,16 +13,16 @@ defmodule Wardrik.Fleet.Supervisor do
       to the store
     * `:log` - passed to `Group`, `false` by default
 
-  `Wardrik` starts it with its `:fleet` and its `:host`.
+  `Wardrik.Core` starts it with its `:fleet` and its `:host`.
 
   ## Joining other nodes
 
   The fleet writes to the store as it starts, and a store counting a quorum
   over several nodes can write only once enough of them are connected. What
-  connects them is `Wardrik`'s `:cluster`, which it starts before this and
+  connects them is `Wardrik.Core`'s `:cluster`, which it starts before this and
   keeps running beside it:
 
-      {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
+      {Wardrik.Core, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum]}
   """
 
   use Supervisor

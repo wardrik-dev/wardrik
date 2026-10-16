@@ -106,8 +106,6 @@ budget meters, the triggers, the tokens' grants and the tool workers' group,
 and handed the same `Wardrik.Host` as Wardrik:
 
 ```elixir
-config :wardrik, start: :host
-
 host =
   Wardrik.Host.new(
     definitions: WardrikDaemon.Agents,
@@ -118,7 +116,7 @@ host =
   )
 
 children = [
-  {Wardrik, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum], host: host},
+  {Wardrik.Core, cluster: [WardrikDaemon.Cluster, WardrikDaemon.Cluster.Quorum], host: host},
   WardrikPolicy.Supervisor,
   WardrikTrigger,
   WardrikHTTP.Access,

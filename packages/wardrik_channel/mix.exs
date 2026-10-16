@@ -34,7 +34,7 @@ defmodule WardrikChannel.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       sibling(:wardrik_notify),
       sibling(:wardrik_store),
       {:durable_server, "~> 0.1.5"},

@@ -12,11 +12,11 @@ packages write through, and the adapters that need nothing else.
 | [wardrik_s3](../wardrik_s3) | in an S3 bucket |
 
 A deployment names its adapter once, as a store value it starts and hands to
-everything that keeps anything, `Wardrik` on its host among them:
+everything that keeps anything, `Wardrik.Core` on its host among them:
 
 ```elixir
 store = WardrikStore.new(adapter: WardrikStore.EKV, data_dir: "/var/lib/wardrik")
-children = [{WardrikStore, store}, {Wardrik, host: Wardrik.Host.new(store: store)}]
+children = [{WardrikStore, store}, {Wardrik.Core, host: Wardrik.Host.new(store: store)}]
 ```
 
 ## Writing an adapter

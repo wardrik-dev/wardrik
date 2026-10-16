@@ -54,7 +54,7 @@ defmodule WardrikHTTP.Workers do
   through it:
 
       children = [
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {WardrikHTTP.Access, store: store},
         WardrikHTTP.Workers,
         {WardrikHTTP.Listener, host: host, workers: [trusted: true]}

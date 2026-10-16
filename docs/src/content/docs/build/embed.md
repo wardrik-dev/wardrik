@@ -13,16 +13,12 @@ with an `id`, an `org` and an `email`, as your own sign-in gives them. Each user
 their own. Then, if you want them, you add the HTTP API and let users connect their GitHub
 accounts.
 
-## 1. Add the packages
+## 1. Add the package
 
 ```elixir title="mix.exs"
 defp deps do
   [
-    {:wardrik, "~> 0.1"},
-    {:wardrik_ecto, "~> 0.1"},
-    {:wardrik_definition, "~> 0.1"},
-    {:wardrik_policy, "~> 0.1"},
-    {:wardrik_trigger, "~> 0.1"}
+    {:wardrik, "~> 0.1"}
     # ...
   ]
 end
@@ -36,8 +32,8 @@ Wardrik keeps everything in one table. Create it from a migration of your own:
 defmodule MyApp.Repo.Migrations.AddWardrik do
   use Ecto.Migration
 
-  def up, do: WardrikEcto.Migration.up(version: 1)
-  def down, do: WardrikEcto.Migration.down(version: 1)
+  def up, do: Wardrik.Migration.up(version: 1)
+  def down, do: Wardrik.Migration.down(version: 1)
 end
 ```
 
@@ -87,16 +83,10 @@ end
 Maria, user 42 of `acme`, owns the agents under `acme/@42/`, such as `acme/@42/support`. A user of
 another org reaches none of them. [Agents](/concepts/agents/) explains IDs.
 
-## 4. Build the host
+## 4. Describe Wardrik
 
-Tell Wardrik your app starts it:
-
-```elixir title="config/config.exs"
-config :wardrik, start: :host
-```
-
-Then build a `Wardrik.Host`: the store in your `Repo`, your grants, and definitions kept in the
-store. Keep it all in one module:
+`Wardrik.new/1` takes everything Wardrik needs from your app: the store in your `Repo`, and your
+grants. Keep it in one module:
 
 ```elixir title="lib/my_app/agents.ex"
 defmodule MyApp.Agents do
@@ -106,41 +96,21 @@ defmodule MyApp.Agents do
   alias Wardrik.Operations.Ask
   alias Wardrik.Operations.Define
 
-  def store, do: WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+  def store, do: Wardrik.store(repo: MyApp.Repo)
 
-  def host do
-    store = store()
-
-    Wardrik.Host.new(
-      store: store,
-      grants: %MyApp.Grants{},
-      definitions: %WardrikDefinition.Kept{store: store, contexts: context()}
-    )
-  end
-
-  def context, do: %WardrikDefinition.Context{}
+  def wardrik, do: Wardrik.new(store: store(), grants: %MyApp.Grants{})
 end
 ```
 
-`WardrikDefinition.Kept` keeps each agent's definition in the store. `context/0` is what a
-definition may name, such as tools and policies; see `WardrikDefinition.Context`.
+Each agent's definition is kept in the store, and so are the files it works on. `context:` says
+what a definition may name, such as the tools your app ships; see `Wardrik.new/1`.
 
 ## 5. Start it in your tree
 
 List what runs, then start it after your `Repo`:
 
 ```elixir title="lib/my_app/agents.ex"
-def children do
-  store = store()
-  host = host()
-
-  [
-    {WardrikStore, store},
-    {Wardrik, host: host},
-    {WardrikPolicy.Supervisor, store: store},
-    {WardrikTrigger, store: store}
-  ]
-end
+def children, do: [{Wardrik, wardrik()}]
 ```
 
 ```elixir title="lib/my_app/application.ex"
@@ -152,15 +122,17 @@ children =
 Supervisor.start_link(children, strategy: :rest_for_one, name: MyApp.Supervisor)
 ```
 
-| Child | What it runs |
-| --- | --- |
-| `WardrikStore` | the store, in your `Repo` |
-| `Wardrik` | the agents |
-| `WardrikPolicy.Supervisor` | the meters [budgets](/concepts/budgets/) count in |
-| `WardrikTrigger` | [triggers](/build/triggers/): clocks, feeds and webhooks |
+`{Wardrik, ...}` runs, in order:
 
-Under `:rest_for_one`, a restart of one restarts everything after it, so each part runs on the
-Wardrik before it.
+| Part | What it runs |
+| --- | --- |
+| The store | everything Wardrik keeps, in your `Repo` |
+| The agents | the fleet, its event log and its audit log |
+| The meters | what [budgets](/concepts/budgets/) count in |
+| The triggers | [triggers](/build/triggers/): clocks, feeds and webhooks |
+
+Under `:rest_for_one`, a restart of one restarts everything after it, so what you start after
+Wardrik always runs on the Wardrik before it.
 
 ## 6. Define an agent and ask it
 
@@ -182,7 +154,7 @@ def ask(user, agent, text) do
 end
 
 defp caller(user, subject),
-  do: Wardrik.Host.caller(host(), principal: MyApp.Grants.principal(user), subject: subject)
+  do: Wardrik.caller(wardrik(), principal: MyApp.Grants.principal(user), subject: subject)
 ```
 
 Define Maria's support agent, ask it something, and read the answer from its log. The model's key
@@ -264,13 +236,22 @@ end
 ```
 
 A request reaches the user's own agents, as its grant says. Start the API's listener on a port of
-its own, at the end of the list `children/0` gives:
+its own, after Wardrik:
 
 ```elixir title="lib/my_app/agents.ex"
-{WardrikHTTP.Access, store: store},
-WardrikHTTP.Workers,
-{WardrikHTTP.Listener,
- host: host, port: 4850, authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
+def children do
+  wardrik = wardrik()
+
+  [
+    {Wardrik, wardrik},
+    {WardrikHTTP.Access, store: store()},
+    WardrikHTTP.Workers,
+    {WardrikHTTP.Listener,
+     host: Wardrik.host(wardrik),
+     port: 4850,
+     authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
+  ]
+end
 ```
 
 Have your proxy forward `/v1/` to port 4850. Then Maria's programs list her agents with the token
@@ -306,26 +287,23 @@ Register an OAuth app on GitHub. Its callback URL is your app's URL, then `/oaut
 such as `https://myapp.example.com/oauth/callback/github`. Set `MY_APP_URL`, `GITHUB_CLIENT_ID` and
 `GITHUB_CLIENT_SECRET`.
 
-### Offer the vault and the sign-in on the host
+### Offer the vault and the sign-in
 
-The vault keeps each user's token, and asks them to sign in where they have none. In
-`MyApp.Agents`, `host/0` and `context/0` become:
+The vault keeps each user's token in the store, and asks them to sign in where they have none. In
+`MyApp.Agents`, `wardrik/0` becomes:
 
 ```elixir title="lib/my_app/agents.ex"
-def host do
-  store = store()
+def wardrik do
   vault = vault()
 
-  Wardrik.Host.new(
-    store: store,
+  Wardrik.new(
+    store: store(),
     grants: %MyApp.Grants{},
-    definitions: %WardrikDefinition.Kept{store: store, contexts: context()},
     credentials: vault,
-    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
+    connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
+    context: [servers: [github: [orgs: :all]], mcp: WardrikMCP]
   )
 end
-
-def context, do: %WardrikDefinition.Context{servers: [github: [orgs: :all]], mcp: WardrikMCP}
 
 def vault,
   do:
@@ -352,13 +330,13 @@ def oauth do
 end
 ```
 
-`context/0` now lets a definition name the server's tools as `github/*`. Start the sign-ins and the
-server's connections in `children/0`, after `{Wardrik, host: host}`:
+`context:` now lets a definition name the server's tools as `github/*`. Start the sign-ins and the
+server's connections in `children/0`, after `{Wardrik, wardrik}`:
 
 ```elixir title="lib/my_app/agents.ex"
 {WardrikOAuth.Supervisor, oauth: oauth(), callback: false},
 {WardrikMCP.Supervisor,
- store: store,
+ store: store(),
  servers: [
    github: [
      transport: {:streamable_http, base_url: "https://api.githubcopilot.com/mcp/"},
@@ -453,6 +431,12 @@ person to approve them; see [Approvals](/concepts/approvals/).
 
 Wardrik's own processes are registered under their module names, so a node runs one. To run
 several on one machine, run several nodes.
+
+### Keeping it elsewhere
+
+`Wardrik.store/1` keeps everything in your `Repo` with `repo:`, in an S3 bucket with `bucket:`,
+or on each node's disk with `data_dir:`, which needs `{:ekv, "~> 0.4.3"}` among your
+dependencies. [Storage](/run/storage/) compares them.
 
 ### Logs
 

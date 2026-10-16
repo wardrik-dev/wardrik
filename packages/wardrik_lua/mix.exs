@@ -31,7 +31,7 @@ defmodule WardrikLua.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       {:lua, "~> 1.0"},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

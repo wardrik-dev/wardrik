@@ -11,7 +11,7 @@ defprotocol Wardrik.Definition do
   its implementation needs, such as the store it keeps definitions in:
 
       host = Wardrik.Host.new(definitions: %MyApp.Definitions{store: store})
-      children = [{Wardrik, host: host}]
+      children = [{Wardrik.Core, host: host}]
 
   The implementation decides what a definition may say, the seams its agent
   is given, whether it is kept, and who owns an agent. The operation checks

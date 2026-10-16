@@ -82,10 +82,6 @@ defmodule Wardrik.HostTest do
     assert Wardrik.Definition.reload(definitions) == :ok
   end
 
-  test "a configuration names each seam by its module and fields" do
-    assert Host.configured(grants: {Held, []}) == [grants: %Held{}]
-  end
-
   test "a principal is a caller holding the grant that reaches what they act on" do
     maria = Principal.new(:user, "maria")
     host = host()

@@ -37,7 +37,7 @@ defmodule Wardrik.Fleet do
   definitions leaves every agent to wake as it slept, and `put/1` is how a
   sleeping agent is given a new definition.
 
-  The host is the one `Wardrik` was started with, which the fleet's
+  The host is the one `Wardrik.Core` was started with, which the fleet's
   supervisor hands every agent; nothing here takes one.
 
   ## Durability

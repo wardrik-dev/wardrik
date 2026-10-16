@@ -47,7 +47,7 @@ defmodule WardrikHTTP.MixProject do
     [
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:makeup_syntect, "~> 0.1", only: :dev, runtime: false},
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       {:bandit, "~> 1.8"},
       {:plug, "~> 1.16"},
       {:websock_adapter, "~> 0.6.0"},

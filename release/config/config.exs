@@ -13,10 +13,6 @@ config :os_mon, start_cpu_sup: false, start_disksup: false, start_memsup: false
 # code names. A build without the TUI leaves this out and serves nothing there.
 config :wardrik_daemon, WardrikDaemon.SSH, entrypoint: {WardrikTUI.SSH, []}
 
-# Wardrik is started by Wardrikd.Application, after the applications of the
-# store config.yaml names, rather than with its own.
-config :wardrik, start: :host
-
 # The search key every agent may read: the deployment's, sealed with
 # `wardrik vault put BRAVE_API_KEY`, or the environment variable of its name.
 config :wardrik_daemon, WardrikVault, shared: ["BRAVE_API_KEY"]

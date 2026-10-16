@@ -32,7 +32,7 @@ defmodule WardrikVault.MixProject do
 
   defp deps do
     [
-      sibling(:wardrik),
+      sibling(:wardrik_core),
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

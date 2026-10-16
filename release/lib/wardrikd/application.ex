@@ -2,10 +2,9 @@ defmodule Wardrikd.Application do
   @moduledoc """
   The release's tree, started once every package's application is running.
 
-  Core's own application would start the store as it boots, before the
-  applications of a store kept elsewhere, such as Postgres through
-  wardrik_ecto, have started. The release's application depends on all of
-  them, so starting the store here starts it last.
+  The store starts here, once the applications of a store kept elsewhere,
+  such as Postgres through wardrik_ecto, have started: the release's
+  application depends on all of them, so it starts last.
 
   What `config/runtime.exs` read of `config.yaml` as the node booted, the
   store, the cluster and the HTTP API's settings, and what the release's

@@ -10,7 +10,7 @@ defmodule WardrikDaemon.Tree do
 
     * `WardrikDaemon.Host`, which holds the host and the config for the
       `wardrik` commands that reach the node over rpc
-    * `Wardrik`, core, whose fleet every agent runs in
+    * `Wardrik.Core`, whose fleet every agent runs in
     * `WardrikPolicy.Supervisor`, which keeps the budgets agents' policies set
     * `WardrikTrigger`, which runs their triggers
     * `WardrikHTTP.Access`, which keeps what tokens grant
@@ -50,7 +50,7 @@ defmodule WardrikDaemon.Tree do
 
         children = [
           {WardrikDaemon.Host, host: host, config: config},
-          {Wardrik, host: host},
+          {Wardrik.Core, host: host},
           {WardrikPolicy.Supervisor, store: store},
           {WardrikTrigger, store: store},
           {WardrikHTTP.Access, store: store},

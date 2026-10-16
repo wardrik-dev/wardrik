@@ -31,8 +31,10 @@ defmodule WardrikEcto.MixProject do
   defp deps do
     [
       sibling(:wardrik_store),
-      {:ecto_sql, "~> 3.14"},
-      {:postgrex, "~> 0.22.4"},
+      # Optional: a host keeps the store in Postgres through its own repo, and
+      # one that keeps it elsewhere compiles neither.
+      {:ecto_sql, "~> 3.14", optional: true},
+      {:postgrex, "~> 0.22.4", optional: true},
       {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]

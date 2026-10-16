@@ -9,7 +9,7 @@ defmodule WardrikDefinition.Kept do
 
       children = [
         {WardrikStore, store},
-        {Wardrik, host: host},
+        {Wardrik.Core, host: host},
         {WardrikTrigger, store: store}
       ]
 

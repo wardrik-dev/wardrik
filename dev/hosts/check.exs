@@ -2,14 +2,14 @@
 # `mix run check.exs`, so it runs against the application as it runs: the
 # store it keeps Wardrik in passes WardrikStore.Conformance, an agent spawned
 # in its fleet is kept there, what it leaves out of its dependencies is not
-# loaded, and what it starts after Wardrik runs on that store.
+# loaded, and the budgets and triggers Wardrik runs keep in that store.
 #
 #   WARDRIK_HOST           the application's module whose store/0 is Wardrik's store
 #   WARDRIK_HOST_STORE     the adapter the application configured
 #   WARDRIK_HOST_WITHOUT   modules it must not have, separated by commas
 #   WARDRIK_HOST_REPO      the application's repo, where the store is kept in it
-#   WARDRIK_HOST_TREE      what it starts after Wardrik: policy, trigger, and
-#                          agents for the embedding guide's code
+#   WARDRIK_HOST_TREE      what it starts after Wardrik: agents for the embedding
+#                          guide's code
 #   WARDRIK_HOST_APP       the application's namespace, where it runs the guide's code
 
 ExUnit.start(autorun: false)
@@ -69,7 +69,6 @@ end
 defmodule WardrikHost.TreeTest do
   use ExUnit.Case, async: false
 
-  @tag :policy
   test "an agent held to a budget is kept, and a budget's meter counts in the store" do
     policy = WardrikPolicy.decode!(%{"budget" => %{"usd" => 1}})
     id = Wardrik.AgentID.new!("budgeted-#{System.unique_integer([:positive])}", org: "host")
@@ -87,7 +86,6 @@ defmodule WardrikHost.TreeTest do
            )
   end
 
-  @tag :trigger
   test "the triggers' supervisor runs" do
     assert is_pid(Process.whereis(WardrikTrigger.supervisor()))
   end
@@ -173,7 +171,7 @@ defmodule WardrikHost.GuideTest do
 end
 
 excluded =
-  for part <- [:policy, :trigger, :agents], not WardrikHost.tree?(Atom.to_string(part)), do: part
+  for part <- [:agents], not WardrikHost.tree?(Atom.to_string(part)), do: part
 
 ExUnit.configure(exclude: excluded)
 

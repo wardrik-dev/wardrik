@@ -18,10 +18,16 @@ defmodule Wardrik.Test do
       call = Wardrik.Test.call(scope, "search", %{"query" => "otp"})
       assert %Wardrik.Call{state: :done, result: {:ok, _found}} = call
 
-  The runtime is the one `config :wardrik` names, so a suite that needs
-  nothing kept sets `config :wardrik, WardrikStore, adapter: WardrikStore.Memory`
-  and nothing else. `store/0` and `host/1` are the store and the host that
-  runtime started on, for a test to hand what it calls.
+  The runtime keeps everything in a `WardrikStore.Memory` store, unless the
+  suite's configuration names another, and runs on a host offering the
+  seams it names, each by its module and the fields of its struct:
+
+      config :wardrik_core, Wardrik.Test,
+        store: [adapter: WardrikStore.EKV, data_dir: "/tmp/my-suite"],
+        host: [definitions: {MyApp.Definitions, []}]
+
+  `store/0` and `host/1` are the store and the host that runtime started on,
+  for a test to hand what it calls.
 
   The modules under this one stand in for parts of a run: `Wardrik.Test.Fleet`
   starts an agent under a key of each test's own, `Wardrik.Test.LLMStub`
@@ -38,13 +44,12 @@ defmodule Wardrik.Test do
   @doc """
   Starts ExUnit once the runtime is ready.
 
-  Waits for the fleet, then starts what `children:` names
-  in order, as a host's tree starts them after Wardrik, then waits for every
-  supervisor `wait:` names, as `DurableServer.Supervisor.wait_until_ready/2`
-  does:
+  Starts what `children:` names in order, `children/0` by default, waits
+  for the fleet, then waits for every supervisor `wait:` names, as
+  `DurableServer.Supervisor.wait_until_ready/2` does:
 
       Wardrik.Test.start(
-        children: [WardrikPolicy.Supervisor],
+        children: Wardrik.Test.children() ++ [{WardrikPolicy.Supervisor, store: Wardrik.Test.store()}],
         wait: [WardrikPolicy.Meter.supervisor()]
       )
 
@@ -62,7 +67,7 @@ defmodule Wardrik.Test do
   """
   @spec start(keyword()) :: :ok
   def start(opts \\ []) do
-    {children, opts} = Keyword.pop(opts, :children, [])
+    {children, opts} = Keyword.pop_lazy(opts, :children, &children/0)
     {wait, opts} = Keyword.pop(opts, :wait, [])
     {llm_stub, opts} = Keyword.pop(opts, :llm_stub, false)
 
@@ -87,27 +92,38 @@ defmodule Wardrik.Test do
 
   defp remove_store(dir) do
     Supervisor.stop(Wardrik.Test.Supervisor)
-    :ok = Application.stop(:wardrik)
     _ = File.rm_rf(dir)
     _ = Application.stop(:os_mon)
     :ok
   end
 
-  # What the suite's configuration names, as the `:wardrik` application read it
-  # as it started.
-  defp settings, do: Application.get_env(:wardrik, WardrikStore, [])
+  @doc """
+  The store, then core on `host/1`: the runtime a suite starts by default,
+  before what runs on it.
+  """
+  @spec children() :: [Supervisor.child_spec() | {module(), term()}]
+  def children, do: [{WardrikStore, store()}, {Wardrik.Core, host: host()}]
 
-  @doc "The store the `:wardrik` application started on, as the suite's configuration names it."
+  # The store's settings, as the suite's configuration names them.
+  defp settings,
+    do: Keyword.get(config(), :store, adapter: WardrikStore.Memory)
+
+  defp config, do: Application.get_env(:wardrik_core, __MODULE__, [])
+
+  @doc "The store the runtime started on, as the suite's configuration names it."
   @spec store() :: WardrikStore.t()
   def store, do: WardrikStore.new(settings())
 
   @doc """
-  The host the `:wardrik` application started on, with `store/0` and the
-  seams the suite's configuration names, and those `opts` name over them.
+  The host the runtime started on, with `store/0` and the seams the suite's
+  configuration names, and those `opts` name over them.
   """
   @spec host(keyword()) :: Wardrik.Host.t()
   def host(opts \\ []) do
-    seams = Wardrik.Host.configured(Application.get_env(:wardrik, Wardrik.Host, []))
+    seams =
+      for {seam, {module, fields}} <- Keyword.get(config(), :host, []),
+          do: {seam, struct!(module, fields)}
+
     Wardrik.Host.new(Keyword.merge([store: store()] ++ seams, opts))
   end
 

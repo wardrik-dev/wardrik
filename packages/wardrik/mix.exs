@@ -9,12 +9,13 @@ defmodule Wardrik.MixProject do
       app: :wardrik,
       version: @version,
       elixir: "~> 1.20",
-      description: "An agent runtime built on OTP.",
+      description:
+        "Agents inside your Elixir application, kept in its store and started in its tree.",
       source_url: @source_url,
-      package: package(),
+      package: [licenses: ["Apache-2.0"], links: %{"GitHub" => @source_url}],
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit, :mimic],
+        plt_add_apps: [:mix, :ex_unit, :ecto_sql, :ekv],
         plt_core_path: "priv/plts",
         plt_local_path: "priv/plts"
       ],
@@ -25,44 +26,27 @@ defmodule Wardrik.MixProject do
     ]
   end
 
-  def application do
-    [
-      extra_applications: [:logger],
-      mod: {Wardrik.Application, []}
-    ]
-  end
+  def application, do: [extra_applications: [:logger]]
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
-  # priv/plts is the dialyzer cache, not the package's.
-  defp package do
-    [
-      licenses: ["Apache-2.0"],
-      links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
-    ]
-  end
-
   defp deps do
     [
-      {:req_llm, "~> 1.21"},
-
-      # Durability and fleet: agents that survive a node, and a cluster-wide
-      # view of who is running.
-      {:durable_server, "~> 0.1.5"},
-      {:group, "~> 0.2.1"},
-      # The time zones schedules and budget periods are read in.
-      {:tz, "~> 0.28"},
-      # Where agents and their records are kept.
+      sibling(:wardrik_core),
       sibling(:wardrik_store),
-      # The store core's suite keeps its fleet in, as a release does.
-      {:ekv, "~> 0.4.3", only: :test},
-      # Test only, and in dev for dialyzer: Wardrik.Test.LLMStub stubs with it.
-      {:mimic, "~> 1.7", only: [:dev, :test]},
-      # The schemas of what operations take, which the catalog's surfaces
-      # describe them by, and the codec's tests check what it writes against.
-      sibling(:wardrik_protocol),
+      sibling(:wardrik_definition),
+      sibling(:wardrik_policy),
+      sibling(:wardrik_trigger),
+      sibling(:wardrik_workspace),
+      sibling(:wardrik_ecto),
+      sibling(:wardrik_s3),
+      # The stores an application may name, each of which it adds itself: on
+      # each node's disk, or in Postgres through its own repo.
+      {:ekv, "~> 0.4.3", optional: true},
+      {:ecto_sql, "~> 3.14", optional: true},
+      {:postgrex, "~> 0.22.4", optional: true},
+      {:mimic, "~> 1.7", only: :test},
       {:wardrik_precommit, path: "../../tools/precommit", only: [:dev, :test], runtime: false}
     ]
   end

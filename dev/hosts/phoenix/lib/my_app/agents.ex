@@ -7,22 +7,19 @@ defmodule MyApp.Agents do
   alias Wardrik.Operations.Define
   alias Wardrik.Operations.ReadConnections
 
-  def store, do: WardrikStore.new(adapter: WardrikEcto.Store, repo: MyApp.Repo)
+  def store, do: Wardrik.store(repo: MyApp.Repo)
 
-  def host do
-    store = store()
+  def wardrik do
     vault = vault()
 
-    Wardrik.Host.new(
-      store: store,
+    Wardrik.new(
+      store: store(),
       grants: %MyApp.Grants{},
-      definitions: %WardrikDefinition.Kept{store: store, contexts: context()},
       credentials: vault,
-      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault}
+      connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
+      context: [servers: [github: [orgs: :all]], mcp: WardrikMCP]
     )
   end
-
-  def context, do: %WardrikDefinition.Context{servers: [github: [orgs: :all]], mcp: WardrikMCP}
 
   def vault,
     do:
@@ -50,13 +47,10 @@ defmodule MyApp.Agents do
 
   def children do
     store = store()
-    host = host()
+    wardrik = wardrik()
 
     [
-      {WardrikStore, store},
-      {Wardrik, host: host},
-      {WardrikPolicy.Supervisor, store: store},
-      {WardrikTrigger, store: store},
+      {Wardrik, wardrik},
       {WardrikOAuth.Supervisor, oauth: oauth(), callback: false},
       {WardrikMCP.Supervisor,
        store: store,
@@ -69,7 +63,9 @@ defmodule MyApp.Agents do
       {WardrikHTTP.Access, store: store},
       WardrikHTTP.Workers,
       {WardrikHTTP.Listener,
-       host: host, port: 4850, authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
+       host: Wardrik.host(wardrik),
+       port: 4850,
+       authenticator: %MyAppWeb.Session{endpoint: MyAppWeb.Endpoint}}
     ]
   end
 
@@ -101,5 +97,5 @@ defmodule MyApp.Agents do
   end
 
   defp caller(user, subject),
-    do: Wardrik.Host.caller(host(), principal: MyApp.Grants.principal(user), subject: subject)
+    do: Wardrik.caller(wardrik(), principal: MyApp.Grants.principal(user), subject: subject)
 end

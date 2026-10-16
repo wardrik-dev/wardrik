@@ -201,7 +201,7 @@ defmodule WardrikDaemon do
 
     header =
       [
-        "wardrik #{Application.spec(:wardrik, :vsn)} on #{Nodes.display(node())}, up #{duration(uptime_ms)}"
+        "wardrik #{Application.spec(:wardrik_core, :vsn)} on #{Nodes.display(node())}, up #{duration(uptime_ms)}"
         | cluster(Config.section(config, Cluster))
       ] ++ ["#{length(members)} #{agents(members)}"]
 

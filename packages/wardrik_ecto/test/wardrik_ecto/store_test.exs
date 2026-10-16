@@ -199,5 +199,5 @@ defmodule WardrikEcto.StoreTest do
 end
 
 defmodule WardrikEcto.StoreTest.Idle do
-  use Ecto.Repo, otp_app: :wardrik, adapter: Ecto.Adapters.Postgres
+  use Ecto.Repo, otp_app: :wardrik_ecto, adapter: Ecto.Adapters.Postgres
 end
