@@ -17,7 +17,7 @@ defmodule MyApp.Agents do
       grants: %MyApp.Grants{},
       credentials: vault,
       connections: %WardrikOAuth.Connections{oauth: oauth(), vault: vault},
-      context: [servers: [github: [orgs: :all]], mcp: WardrikMCP]
+      context: Wardrik.context(servers: [github: [orgs: :all]], mcp: WardrikMCP)
     )
   end
 

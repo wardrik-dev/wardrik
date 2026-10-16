@@ -8,8 +8,17 @@ defmodule Wardrik.RunningTest do
   setup_all do
     dir = Path.join(System.tmp_dir!(), "wardrik-#{System.unique_integer([:positive])}")
 
+    # Each org's agents read their definitions against a context of the org's own.
+    context = %Wardrik.ByOrg{
+      contexts: %{"acme" => Wardrik.context(tools: [Wardrik.RunningTest.Search])}
+    }
+
     wardrik =
-      Wardrik.new(store: Wardrik.store(data_dir: dir), grants: %Wardrik.OrgGrants{org: "acme"})
+      Wardrik.new(
+        store: Wardrik.store(data_dir: dir),
+        grants: %Wardrik.OrgGrants{org: "acme"},
+        context: context
+      )
 
     start_supervised!({Wardrik, wardrik})
     :ok = DurableServer.Supervisor.wait_until_ready(Wardrik.Fleet, timeout: 10_000)
@@ -18,11 +27,34 @@ defmodule Wardrik.RunningTest do
     %{wardrik: wardrik}
   end
 
+  defmodule Search do
+    @moduledoc false
+    @behaviour Wardrik.Tool
+
+    @impl true
+    def tool do
+      ReqLLM.Tool.new!(
+        name: "search",
+        description: "Searches.",
+        parameter_schema: [],
+        callback: {__MODULE__, :run}
+      )
+    end
+
+    def run(_input), do: {:ok, "nothing"}
+  end
+
   defp maria, do: Wardrik.Principal.new(:user, "maria")
 
-  test "a user defines an agent their grant reaches, kept in the store", %{wardrik: wardrik} do
+  test "a user defines an agent their grant reaches, read against its org's context, and kept",
+       %{wardrik: wardrik} do
     agent = AgentID.new!("support", org: "acme")
-    definition = %{"model" => "anthropic:claude-sonnet-5", "instructions" => "Answer briefly."}
+
+    definition = %{
+      "model" => "anthropic:claude-sonnet-5",
+      "instructions" => "Answer briefly.",
+      "tools" => ["search"]
+    }
 
     {:ok, caller} = Wardrik.caller(wardrik, principal: maria(), subject: agent)
 
