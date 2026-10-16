@@ -1,6 +1,8 @@
 defmodule WardrikStore.DurableTest do
   use ExUnit.Case, async: false
 
+  alias DurableServer.Meta
+  alias DurableServer.StoredState
   alias WardrikStore.Adapter.WardrikStore.Memory, as: Impl
   alias WardrikStore.Durable
   alias WardrikStore.Memory
@@ -171,6 +173,62 @@ defmodule WardrikStore.DurableTest do
     assert {:error, %ArgumentError{}} = Durable.get_object(state, key, [])
   end
 
+  test "keeps a server's metadata as an encoded binary, and reads it back", %{
+    state: state,
+    store: store
+  } do
+    key = unique()
+    {:ok, _object} = Durable.put_object(state, key, stored(self()), [])
+
+    assert {%{"meta" => meta}, _vsn} = WardrikStore.lookup(store, :durable, key)
+    assert is_binary(meta)
+
+    assert {:ok, %{body: %StoredState{state: %{"turns" => 1}, meta: %Meta{pid: pid}}}} =
+             Durable.get_object(state, key, [])
+
+    assert pid == self()
+  end
+
+  test "reads metadata an earlier version kept as a term", %{state: state, store: store} do
+    key = unique()
+
+    {:ok, _vsn} =
+      WardrikStore.put(store, :durable, key, StoredState.to_storage_term(stored(self())))
+
+    assert {:ok, %{body: %StoredState{meta: %Meta{pid: pid}}}} =
+             Durable.get_object(state, key, [])
+
+    assert pid == self()
+  end
+
+  test "an object its store cannot decode stops no other being read", %{state: state} do
+    prefix = unique() <> "/"
+    {:ok, _object} = Durable.put_object(state, prefix <> "good", stored(self()), [])
+    {:ok, _object} = Durable.put_object(state, prefix <> "unreadable", stored(self()), [])
+
+    Mimic.stub(Impl, :lookup, fn store, ns, key ->
+      if String.ends_with?(key, "unreadable"),
+        do: raise(ArgumentError, "invalid or unsafe external representation of a term"),
+        else: Mimic.call_original(Impl, :lookup, [store, ns, key])
+    end)
+
+    test = self()
+
+    assert [%{key: good}] =
+             state
+             |> Durable.list_all_objects_stream(prefix,
+               include_objects: true,
+               error_handler: &send(test, &1)
+             )
+             |> Enum.to_list()
+
+    assert good == prefix <> "good"
+    assert_received {:decode_failed, unreadable, %ArgumentError{}}
+    assert unreadable == prefix <> "unreadable"
+    assert {:error, %ArgumentError{}} = Durable.get_object(state, unreadable, [])
+    assert {:error, %ArgumentError{}} = Durable.delete_object(state, unreadable)
+  end
+
   test "passes through data that is no stored state", %{state: state} do
     assert Durable.encode(state, %{"heartbeat" => 1}) == {:ok, %{"heartbeat" => 1}}
     assert Durable.decode(state, %{"heartbeat" => 1}) == {:ok, %{"heartbeat" => 1}}
@@ -181,4 +239,11 @@ defmodule WardrikStore.DurableTest do
   end
 
   defp unique, do: "durable-test/#{System.unique_integer([:positive])}"
+
+  defp stored(pid),
+    do: %StoredState{
+      vsn: 1,
+      state: %{"turns" => 1},
+      meta: %Meta{module: __MODULE__, pid: pid, status: :running}
+    }
 end
