@@ -10,8 +10,8 @@ defmodule Wardrik.Operations.Decide do
 
   `new/2` reads decisions as `wardrik_protocol`'s `decisions.json` describes
   them: each the `id` of a call, `approve` with a `note` for the agent where
-  one is given, or `reject` with a `reason`. The answer lists each call with
-  what was decided, `approved` or `rejected`.
+  one is given, or `reject` with a `reason`. The answer is the decisions
+  taken, by call ID.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -81,7 +81,7 @@ defmodule Wardrik.Operations.Decide do
   def make(%Change{request: %__MODULE__{agent: agent, decisions: decisions}} = change, caller) do
     case Agent.decide(agent, decisions, caller) do
       :ok ->
-        {:ok, %{"decisions" => Enum.map(Enum.sort(decisions), &decided/1)}, change.effect}
+        {:ok, decisions, change.effect}
 
       {:error, :not_found} ->
         {:error, AgentOperation.not_found(agent)}
@@ -105,6 +105,9 @@ defmodule Wardrik.Operations.Decide do
          Error.new(:unavailable, "#{agent} could not record the decision, so it was not taken.")}
     end
   end
+
+  @impl Wardrik.Command
+  def render(decisions), do: %{"decisions" => Enum.map(Enum.sort(decisions), &decided/1)}
 
   defp decided({id, decision}), do: %{"id" => id, "decision" => verdict(decision)}
 

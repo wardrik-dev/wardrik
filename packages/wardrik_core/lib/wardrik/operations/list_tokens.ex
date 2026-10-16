@@ -22,7 +22,10 @@ defmodule Wardrik.Operations.ListTokens do
   def run(_request, caller) do
     case Tokens.list(Host.tokens(caller.host)) do
       :unsupported -> {:error, Wardrik.Tokens.None.unsupported()}
-      tokens -> {:ok, %{"tokens" => Enum.map(tokens, &Wardrik.Resource.token/1)}}
+      tokens -> {:ok, tokens}
     end
   end
+
+  @impl Wardrik.Query
+  def render(tokens), do: %{"tokens" => Enum.map(tokens, &Wardrik.Resource.token/1)}
 end

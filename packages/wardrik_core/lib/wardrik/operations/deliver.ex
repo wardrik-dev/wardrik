@@ -1,8 +1,9 @@
 defmodule Wardrik.Operations.Deliver do
   @moduledoc """
   Hands a request from outside to one of an agent's triggers, which checks
-  it and asks the agent; see `Wardrik.Triggers`. The answer says whether the
-  agent was asked, or had been asked about the same request before.
+  it and asks the agent; see `Wardrik.Triggers`. The answer is the
+  delivery's status: whether the agent was asked, or had been asked about
+  the same request before.
 
   The caller's grant must let it message the agent, so a surface that takes
   such requests from anyone grants just that, on just that agent; the
@@ -45,7 +46,7 @@ defmodule Wardrik.Operations.Deliver do
            request: delivery
          ) do
       {:ok, status} ->
-        {:ok, %{"delivery" => %{"status" => Atom.to_string(status)}}, change.effect}
+        {:ok, status, change.effect}
 
       {:error, :not_found} ->
         {:error, no_trigger(request)}
@@ -60,6 +61,9 @@ defmodule Wardrik.Operations.Deliver do
         {:error, Error.new(:unsupported, "This server takes no requests for triggers.")}
     end
   end
+
+  @impl Wardrik.Command
+  def render(status), do: %{"delivery" => %{"status" => Atom.to_string(status)}}
 
   defp no_trigger(request),
     do: Error.new(:not_found, "#{request.agent} has no trigger #{request.trigger} to deliver to.")

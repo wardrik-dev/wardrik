@@ -23,6 +23,7 @@ defmodule Wardrik.Test.FakeAgent do
   def handle_call(:snapshot, _from, owner) do
     {:reply,
      %Wardrik.Agent.Snapshot{
+       agent: Wardrik.AgentID.parse!("acme/fake"),
        status: status(),
        context: ReqLLM.Context.new(),
        parked: [],

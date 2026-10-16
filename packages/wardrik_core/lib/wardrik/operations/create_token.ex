@@ -1,8 +1,9 @@
 defmodule Wardrik.Operations.CreateToken do
   @moduledoc """
   Makes a token through the host's `Wardrik.Tokens`, carrying `grant`, acting
-  for `for`, or for itself where `nil`. It answers the secret this once;
-  the audit records the token, never the secret.
+  for `for`, or for itself where `nil`. It answers a `Wardrik.Tokens.Issued`,
+  with the secret given this once; the audit records the token, never the
+  secret.
 
   A token acting for a person whose scope names another person's agents,
   `acme/@maria/` for `jon`, is refused: it would act as one on what is the
@@ -65,8 +66,8 @@ defmodule Wardrik.Operations.CreateToken do
   def make(%Change{request: %__MODULE__{name: name, grant: grant, for: for}}, caller) do
     case Tokens.create(Host.tokens(caller.host), name, grant: grant, for: for) do
       {:ok, secret, token} ->
-        made = %TokenCreated{token: token}
-        {:created, %{"secret" => secret, "token" => Wardrik.Resource.token(token)}, made}
+        {:created, %Wardrik.Tokens.Issued{secret: secret, token: token},
+         %TokenCreated{token: token}}
 
       {:error, message} ->
         {:error, Error.new(:invalid, message)}
@@ -75,6 +76,10 @@ defmodule Wardrik.Operations.CreateToken do
         {:error, Wardrik.Tokens.None.unsupported()}
     end
   end
+
+  @impl Wardrik.Command
+  def render(%Wardrik.Tokens.Issued{secret: secret, token: token}),
+    do: %{"secret" => secret, "token" => Wardrik.Resource.token(token)}
 
   defimpl Wardrik.Effect do
     alias Wardrik.Event.Codec.Value

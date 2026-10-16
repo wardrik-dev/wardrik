@@ -1,8 +1,8 @@
 defmodule Wardrik.Operations.AddServer do
   @moduledoc """
   Adds an MCP server for an owner's agents, through the host's
-  `Wardrik.Servers`: the link where someone signs in to it first, or that
-  its agents can call it now. Recorded in the audit once it is added, as
+  `Wardrik.Servers`: a `Wardrik.Servers.Added`, with the link where someone
+  signs in to it first, or none where its agents can call it now. Recorded in the audit once it is added, as
   whoever asked for it.
   """
 
@@ -58,12 +58,17 @@ defmodule Wardrik.Operations.AddServer do
            fields: request.fields,
            by: caller.principal
          ) do
-      {:ok, :connected} -> {:created, Resource.server_added(request.name, nil), change.effect}
-      {:ok, link} -> {:created, Resource.server_added(request.name, link), change.effect}
+      {:ok, :connected} -> {:created, added(request, nil), change.effect}
+      {:ok, link} -> {:created, added(request, link), change.effect}
       {:error, %Error{} = error} -> {:error, error}
       :unsupported -> {:error, Wardrik.Servers.None.unsupported()}
     end
   end
+
+  defp added(request, link), do: %Wardrik.Servers.Added{name: request.name, authorization: link}
+
+  @impl Wardrik.Command
+  def render(added), do: Resource.server_added(added)
 
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, name: name, fields: fields}),

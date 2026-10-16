@@ -124,8 +124,8 @@ defmodule WardrikHost.GuideTest do
   test "a user defines an agent of their own, and asks it", %{user: user, agent: agent} do
     :ok = Wardrik.Event.Log.subscribe(agent)
 
-    assert {:ok, %{"message" => %{"id" => _id}}} =
-             agents().ask(user, agent, "What changed this week?")
+    assert {:ok, message_id} = agents().ask(user, agent, "What changed this week?")
+    assert is_binary(message_id)
 
     assert_receive %Wardrik.Event.Log.Entry{event: %{"type" => "wardrik.run.started"}}, 10_000
   end
@@ -157,10 +157,7 @@ defmodule WardrikHost.GuideTest do
   end
 
   test "a user's connections offer GitHub, which they have not connected", %{user: user} do
-    assert {:ok, %{"connections" => [%{"provider" => "github"} = github]}} =
-             agents().connections(user)
-
-    refute Map.has_key?(github, "held_by")
+    assert {:ok, [%{provider: "github", held_by: nil}]} = agents().connections(user)
   end
 
   test "the sign-in callback is the app's own route" do

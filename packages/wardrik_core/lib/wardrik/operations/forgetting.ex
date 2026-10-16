@@ -15,6 +15,7 @@ defmodule Wardrik.Operations.Forgetting do
   alias Wardrik.Definitions
   alias Wardrik.Fleet
   alias Wardrik.Host
+  alias Wardrik.Operations.Forgotten
 
   @enforce_keys [:agents, :kept, :asked]
   defstruct [:agents, :kept, :asked]
@@ -73,24 +74,15 @@ defmodule Wardrik.Operations.Forgetting do
   end
 
   @doc "What a forget answers once made: the agents removed, kept with why, and not removed with why."
-  @spec answer(t(), [{AgentID.t(), String.t()}]) :: map()
-  def answer(%__MODULE__{agents: agents, kept: kept}, failed) do
-    %{
-      "forgotten" => Enum.map(agents, &to_string/1),
-      "kept" => reasons(kept),
-      "failed" => reasons(failed)
-    }
-  end
-
-  @doc false
-  @spec reasons([{AgentID.t(), String.t()}]) :: [map()]
-  def reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
+  @spec answer(t(), [{AgentID.t(), String.t()}]) :: Forgotten.t()
+  def answer(%__MODULE__{agents: agents, kept: kept}, failed),
+    do: %Forgotten{agents: agents, kept: kept, failed: failed}
 
   defimpl Wardrik.Effect do
-    alias Wardrik.Operations.Forgetting
+    alias Wardrik.Resource
 
     def preview(%{agents: agents, kept: kept}),
-      do: %{"forgetting" => Enum.map(agents, &to_string/1), "keeping" => Forgetting.reasons(kept)}
+      do: %{"forgetting" => Enum.map(agents, &to_string/1), "keeping" => Resource.reasons(kept)}
 
     def audit(%{agents: agents, asked: %Prefix{} = prefix}),
       do: for(id <- agents, do: {:agent_forgotten, id, prefix})

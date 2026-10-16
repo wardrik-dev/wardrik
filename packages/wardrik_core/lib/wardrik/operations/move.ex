@@ -4,7 +4,7 @@ defmodule Wardrik.Operations.Move do
   had; what it is doing is interrupted, which its plan names; see
   `Wardrik.Operations.Moving`. Where an agent runs is the deployment's to
   say, so only a caller whose grant reaches every agent may move one; see
-  `Wardrik.Deployment`.
+  `Wardrik.Deployment`. The answer is the agent as the fleet lists it now.
   """
 
   @behaviour Wardrik.DeploymentOperation
@@ -41,6 +41,9 @@ defmodule Wardrik.Operations.Move do
   @impl Wardrik.Command
   def make(%Change{effect: %Moving{agent: id} = effect}, _caller) do
     with {:ok, made} <- Moving.make(effect),
-         do: {:ok, %{"agent" => Resource.agent(Fleet.lookup(id))}, made}
+         do: {:ok, Fleet.lookup(id), made}
   end
+
+  @impl Wardrik.Command
+  def render(member), do: %{"agent" => Resource.agent(member)}
 end

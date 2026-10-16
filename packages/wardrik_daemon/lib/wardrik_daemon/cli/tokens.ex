@@ -80,11 +80,13 @@ defmodule WardrikDaemon.CLI.Tokens do
     with {:ok, scope} <- scope(opts),
          {:ok, ceiling} <- ceiling(opts, can),
          {:ok, grant} <- Grant.new(scope, can, ceiling),
-         {:created, %{"secret" => secret, "token" => token}} <-
+         {:created, issued} <-
            Operation.run(
              %CreateToken{name: name, grant: grant, for: issued(opts[:for])},
              opts[:caller]
            ) do
+      %{"secret" => secret, "token" => token} = CreateToken.render(issued)
+
       {:ok,
        Enum.join(
          [
@@ -165,8 +167,8 @@ defmodule WardrikDaemon.CLI.Tokens do
   defp policy_names(policies), do: "; it has " <> Enum.map_join(policies, ", ", & &1.name)
 
   defp list(_words, opts) do
-    with {:ok, %{"tokens" => tokens}} <- Query.run(%ListTokens{}, opts[:caller]),
-         do: {:ok, listed(tokens)}
+    with {:ok, tokens} <- Query.run(%ListTokens{}, opts[:caller]),
+         do: {:ok, listed(ListTokens.render(tokens)["tokens"])}
   end
 
   defp listed(tokens) do

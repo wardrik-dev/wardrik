@@ -1,7 +1,8 @@
 defmodule Wardrik.Resource do
   @moduledoc """
-  What operations answer with, as maps `JSON.encode!/1` takes: the shapes
-  every surface answers in, as the HTTP API does.
+  What operations' answers are as JSON, as maps `JSON.encode!/1` takes: the
+  shapes every surface answers in, as the HTTP API does. Each operation's
+  `render/1` makes its answer one of these.
 
   Names follow the event data's: OpenTelemetry's attribute names without
   their `gen_ai.` prefix, as nested objects, and messages and interrupts in
@@ -35,8 +36,13 @@ defmodule Wardrik.Resource do
   """
 
   alias Wardrik.Agent.Snapshot
+  alias Wardrik.Connections.Connecting
+  alias Wardrik.Deployment.Nodes
   alias Wardrik.Event.Codec.Value
   alias Wardrik.Fleet.Member
+  alias Wardrik.Operations.Forgotten
+  alias Wardrik.Operations.Spawned
+  alias Wardrik.Servers.Added
 
   @doc "An agent as the fleet lists it."
   @spec agent(Member.t()) :: map()
@@ -52,9 +58,9 @@ defmodule Wardrik.Resource do
     |> Value.put("outcome", member.outcome && to_string(member.outcome))
   end
 
-  @doc "An agent's snapshot, for the agent `id`."
-  @spec snapshot(Wardrik.AgentID.t(), Snapshot.t()) :: map()
-  def snapshot(%Wardrik.AgentID{} = id, %Snapshot{} = snapshot) do
+  @doc "An agent's snapshot."
+  @spec snapshot(Snapshot.t()) :: map()
+  def snapshot(%Snapshot{agent: id} = snapshot) do
     {provider, model} = Value.model(snapshot.status.model)
 
     %{
@@ -82,15 +88,12 @@ defmodule Wardrik.Resource do
     end
   end
 
-  @doc """
-  The deployment's `nodes`, each with how many agents run on it as `counts`
-  has them, and how many agents sleep on none.
-  """
-  @spec nodes([node()], %{node() => non_neg_integer()}, non_neg_integer()) :: map()
-  def nodes(nodes, counts, asleep) do
+  @doc "The deployment's nodes, each with how many agents run on it, and how many sleep on none."
+  @spec nodes(Nodes.t()) :: map()
+  def nodes(%Nodes{nodes: nodes, asleep: asleep}) do
     %{
       "nodes" =>
-        for(node <- nodes, do: %{"name" => to_string(node), "agents" => Map.get(counts, node, 0)}),
+        for({node, agents} <- nodes, do: %{"name" => to_string(node), "agents" => agents}),
       "asleep" => asleep
     }
   end
@@ -128,14 +131,12 @@ defmodule Wardrik.Resource do
     }
   end
 
-  @doc """
-  A connection asked for: held already where `link` is `nil`, else where
-  to authorize it.
-  """
-  @spec connecting(String.t(), Wardrik.Call.Ask.link() | nil) :: map()
-  def connecting(provider, nil), do: %{"provider" => provider, "connected" => true}
+  @doc "A connection asked for: held already, or where to authorize it."
+  @spec connecting(Connecting.t()) :: map()
+  def connecting(%Connecting{provider: provider, authorization: nil}),
+    do: %{"provider" => provider, "connected" => true}
 
-  def connecting(provider, link),
+  def connecting(%Connecting{provider: provider, authorization: link}),
     do: %{"provider" => provider, "connected" => false, "authorization" => authorization(link)}
 
   @doc "The MCP servers an owner added, each by its name, URL and how its agents sign in."
@@ -150,15 +151,52 @@ defmodule Wardrik.Resource do
     }
   end
 
-  @doc """
-  A server added: its agents can call it now where `link` is `nil`, else
-  once someone signs in where it says.
-  """
-  @spec server_added(String.t(), Wardrik.Call.Ask.link() | nil) :: map()
-  def server_added(name, nil), do: %{"server" => name, "connected" => true}
+  @doc "A server added: its agents can call it now, or once someone signs in where it says."
+  @spec server_added(Added.t()) :: map()
+  def server_added(%Added{name: name, authorization: nil}),
+    do: %{"server" => name, "connected" => true}
 
-  def server_added(name, link),
+  def server_added(%Added{name: name, authorization: link}),
     do: %{"server" => name, "connected" => false, "authorization" => authorization(link)}
+
+  @doc "The calls agents wait on a person for, each as an interrupt with the agent it is for."
+  @spec interrupts([{Wardrik.AgentID.t(), {Wardrik.Tool.call(), String.t()}}]) :: map()
+  def interrupts(parked) do
+    %{
+      "interrupts" =>
+        for(
+          {id, waiting} <- parked,
+          do: Map.put(Value.interrupt(waiting), "agent", %{"id" => to_string(id)})
+        )
+    }
+  end
+
+  @doc "What a forget did: the agents removed, kept with why, and not removed with why."
+  @spec forgotten(Forgotten.t()) :: map()
+  def forgotten(%Forgotten{agents: agents, kept: kept, failed: failed}) do
+    %{
+      "forgotten" => Enum.map(agents, &to_string/1),
+      "kept" => reasons(kept),
+      "failed" => reasons(failed)
+    }
+  end
+
+  @doc "Agents, each with why, as `[{id, why}]` holds them."
+  @spec reasons([{Wardrik.AgentID.t(), String.t()}]) :: [map()]
+  def reasons(pairs), do: for({id, why} <- pairs, do: %{"id" => to_string(id), "why" => why})
+
+  @doc "An agent started: as the fleet lists it, and what it started from."
+  @spec spawned(Spawned.t()) :: map()
+  def spawned(%Spawned{agent: member, from: from}),
+    do: %{"agent" => agent(member), "from" => Atom.to_string(from)}
+
+  @doc "The agents a cancel stopped."
+  @spec cancelled([Wardrik.AgentID.t()]) :: map()
+  def cancelled(ids), do: %{"cancelled" => Enum.map(ids, &to_string/1)}
+
+  @doc "The agents a stop put to sleep."
+  @spec stopped([Wardrik.AgentID.t()]) :: map()
+  def stopped(ids), do: %{"stopped" => Enum.map(ids, &to_string/1)}
 
   @doc """
   A page of an export: its events, the `next` that moves the export past

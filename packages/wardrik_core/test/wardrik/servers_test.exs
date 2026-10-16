@@ -92,20 +92,24 @@ defmodule Wardrik.ServersTest do
       "auth" => %{"none" => %{}}
     }
 
-    assert {:created, %{"server" => "docs", "connected" => true}} =
+    assert {:created, %Wardrik.Servers.Added{name: "docs", authorization: nil} = added} =
              run(AddServer, jon, :person, docs)
+
+    assert AddServer.render(added) == %{"server" => "docs", "connected" => true}
 
     assert_received {:add, owner, "docs", @jon}
     assert to_string(owner) == "acme/@jon/"
 
-    assert {:ok, %{"servers" => [%{"name" => "docs", "auth" => "none"}]}} =
+    assert {:ok, [%Listed{name: "docs", auth: "none"}] = servers} =
              run(ReadServers, jon, :person, %{})
+
+    assert %{"servers" => [%{"name" => "docs", "auth" => "none"}]} = ReadServers.render(servers)
 
     assert [{"server.added", %{"type" => "user", "id" => "jon"}} | _] =
              Audit.about("servers/acme/@jon/docs")
 
     assert {:ok, nil} = run(RemoveServer, jon, :person, %{"name" => "docs"})
-    assert {:ok, %{"servers" => []}} = run(ReadServers, jon, :person, %{})
+    assert {:ok, []} = run(ReadServers, jon, :person, %{})
     assert {"server.removed", _by} = List.last(Audit.about("servers/acme/@jon/docs"))
   end
 
@@ -117,11 +121,14 @@ defmodule Wardrik.ServersTest do
     }
 
     assert {:created,
-            %{
-              "server" => "crm",
-              "connected" => false,
-              "authorization" => %{"url" => "https://auth.example.com/crm"}
-            }} = run(AddServer, caller("acme/"), :org, crm)
+            %Wardrik.Servers.Added{
+              name: "crm",
+              authorization: %{url: "https://auth.example.com/crm"}
+            } = added} =
+             run(AddServer, caller("acme/"), :org, crm)
+
+    assert %{"server" => "crm", "connected" => false, "authorization" => %{"url" => _url}} =
+             AddServer.render(added)
   end
 
   test "the seam's refusal is the operation's" do

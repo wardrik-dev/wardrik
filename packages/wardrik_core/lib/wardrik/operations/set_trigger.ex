@@ -55,14 +55,17 @@ defmodule Wardrik.Operations.SetTrigger do
   @impl Wardrik.Command
   def make(%Change{request: %__MODULE__{agent: id, name: name, fields: fields}} = change, caller) do
     case Wardrik.Definition.put_trigger(Host.definitions(caller.host), id, name, fields: fields) do
-      {:ok, :created, trigger} -> {:created, %{"trigger" => trigger}, change.effect}
-      {:ok, :changed, trigger} -> {:ok, %{"trigger" => trigger}, change.effect}
+      {:ok, :created, trigger} -> {:created, trigger, change.effect}
+      {:ok, :changed, trigger} -> {:ok, trigger, change.effect}
       {:error, :not_found} -> {:error, ReadDefinition.undefined(id)}
       {:error, :conflict, message} -> {:error, Error.new(:conflict, message)}
       {:error, message} -> {:error, Error.new(:invalid, message)}
       :unsupported -> {:error, Error.new(:unsupported, "This server keeps no triggers.")}
     end
   end
+
+  @impl Wardrik.Command
+  def render(trigger), do: %{"trigger" => trigger}
 
   defimpl Wardrik.Effect do
     def preview(%{agent: id, name: name, fields: fields}),

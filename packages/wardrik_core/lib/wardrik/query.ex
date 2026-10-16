@@ -7,10 +7,12 @@ defmodule Wardrik.Query do
   through `run/2`, which checks the caller's grant before the module reads
   anything:
 
-      {:ok, snapshot} = Wardrik.Query.run(%Wardrik.Operations.ReadAgent{agent: id}, caller)
+      {:ok, %Wardrik.Agent.Snapshot{}} =
+        Wardrik.Query.run(%Wardrik.Operations.ReadAgent{agent: id}, caller)
 
-  What a query answers is what `Wardrik.Resource` shapes, as `JSON.encode!/1`
-  takes it, so every surface answers alike.
+  A query answers a value, such as the snapshot above. A surface that sends
+  it on as JSON sends what the module's `c:render/1` makes of it, as
+  `Wardrik.Resource` shapes it, so every surface answers alike.
   """
 
   alias Wardrik.Caller
@@ -19,6 +21,9 @@ defmodule Wardrik.Query do
   @doc "What `request` reads, for `caller`, whose grant allows it."
   @callback run(request :: struct(), caller :: Caller.t()) ::
               {:ok, term()} | {:error, Error.t()}
+
+  @doc "`answer`, one `c:run/2` gave, as `JSON.encode!/1` takes it, as every surface sends it."
+  @callback render(answer :: term()) :: term()
 
   @doc """
   What `request` reads, where `caller`'s grant allows the module's action on

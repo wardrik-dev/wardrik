@@ -317,11 +317,12 @@ defmodule WardrikHTTP.Router do
 
   defp answer(conn, {kind, request, status}, key), do: run(conn, kind, request.(key), status)
 
-  # Runs the operation a route built, or answers why it could not be built.
+  # Runs the operation a route built, and answers what it answered as its
+  # module renders it, or why it could not be built.
   defp run(conn, Query, request, status) do
-    with {:ok, request} <- request,
-         {:ok, body} <- Query.run(request, caller(conn)) do
-      json(conn, status, body)
+    with {:ok, %module{} = request} <- request,
+         {:ok, answer} <- Query.run(request, caller(conn)) do
+      json(conn, status, module.render(answer))
     else
       {:error, error} -> error(conn, error)
     end
@@ -338,15 +339,17 @@ defmodule WardrikHTTP.Router do
   end
 
   defp run(conn, Command, request, status) do
-    answered = with {:ok, request} <- request, do: Command.run(request, caller(conn))
-
-    case answered do
-      {:ok, nil} -> send_resp(conn, 204, "")
-      {:ok, body} -> json(conn, status, body)
-      {:created, body} -> json(conn, 201, body)
+    with {:ok, %module{} = request} <- request,
+         {result, answer} when result in [:ok, :created] <- Command.run(request, caller(conn)) do
+      made(conn, result, module.render(answer), status)
+    else
       {:error, error} -> error(conn, error)
     end
   end
+
+  defp made(conn, :ok, nil, _status), do: send_resp(conn, 204, "")
+  defp made(conn, :ok, body, status), do: json(conn, status, body)
+  defp made(conn, :created, body, _status), do: json(conn, 201, body)
 
   # The request of `module` under the prefix ?prefix= names: where it names
   # none, the caller's whole scope, or for a request that must name one, why

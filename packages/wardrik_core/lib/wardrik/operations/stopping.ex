@@ -24,10 +24,6 @@ defmodule Wardrik.Operations.Stopping do
   def make(%__MODULE__{agents: agents} = effect),
     do: %{effect | agents: Enum.filter(agents, &(Fleet.stop(&1) == :ok))}
 
-  @doc "What a stop answers once made: the agents it stopped."
-  @spec answer(t()) :: map()
-  def answer(%__MODULE__{agents: agents}), do: %{"stopped" => Enum.map(agents, &to_string/1)}
-
   defimpl Wardrik.Effect do
     def preview(%{agents: agents}), do: %{"stopping" => Enum.map(agents, &to_string/1)}
     def audit(%{agents: agents}), do: for(id <- agents, do: {:agent_stopped, id})

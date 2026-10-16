@@ -2,7 +2,8 @@ defmodule Wardrik.Operations.Stop do
   @moduledoc """
   Stops an agent now, keeping its conversation: it sleeps as it was until
   something asks it again, or it is started; see
-  `Wardrik.Operations.Stopping`. One asleep already is left as it is.
+  `Wardrik.Operations.Stopping`. One asleep already is left as it is. The
+  answer is the agents it stopped.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -35,6 +36,9 @@ defmodule Wardrik.Operations.Stop do
   @impl Wardrik.Command
   def make(%Change{effect: %Stopping{} = effect}, _caller) do
     made = Stopping.make(effect)
-    {:ok, Stopping.answer(made), made}
+    {:ok, made.agents, made}
   end
+
+  @impl Wardrik.Command
+  def render(agents), do: Wardrik.Resource.stopped(agents)
 end

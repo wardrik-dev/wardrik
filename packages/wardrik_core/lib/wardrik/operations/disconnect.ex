@@ -48,6 +48,9 @@ defmodule Wardrik.Operations.Disconnect do
     end
   end
 
+  @impl Wardrik.Command
+  def render(nil), do: nil
+
   defimpl Wardrik.Effect do
     def preview(%{owner: owner, provider: provider}),
       do: %{"disconnecting" => %{"owner" => to_string(owner), "provider" => provider}}

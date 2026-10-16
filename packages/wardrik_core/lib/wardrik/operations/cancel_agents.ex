@@ -2,7 +2,8 @@ defmodule Wardrik.Operations.CancelAgents do
   @moduledoc """
   Drops what every agent under a prefix is doing, and what is queued behind
   it: each agent taking a turn, or waiting on a person, as it is planned.
-  The agents stay up; see `Wardrik.Operations.Cancelling`.
+  The agents stay up; see `Wardrik.Operations.Cancelling`. The answer is
+  the agents it stopped.
   """
 
   @behaviour Wardrik.FleetOperation
@@ -30,6 +31,9 @@ defmodule Wardrik.Operations.CancelAgents do
   @impl Wardrik.Command
   def make(%Change{effect: %Cancelling{} = effect}, _caller) do
     made = Cancelling.make(effect)
-    {:ok, Cancelling.answer(made), made}
+    {:ok, made.agents, made}
   end
+
+  @impl Wardrik.Command
+  def render(agents), do: Wardrik.Resource.cancelled(agents)
 end

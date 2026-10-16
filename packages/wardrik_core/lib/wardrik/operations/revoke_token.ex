@@ -48,6 +48,9 @@ defmodule Wardrik.Operations.RevokeToken do
 
   defp not_found(id), do: Error.new(:not_found, "No token has the id #{id}.")
 
+  @impl Wardrik.Command
+  def render(nil), do: nil
+
   defimpl Wardrik.Effect do
     def preview(%{id: id}), do: %{"revoking_token" => %{"id" => id}}
     def audit(%{id: id}), do: [{:token_revoked, id}]

@@ -1,7 +1,8 @@
 defmodule Wardrik.Operations.ReadServers do
   @moduledoc """
   The MCP servers an owner added, through the host's `Wardrik.Servers`:
-  each one's name, URL and how its agents sign in to it.
+  each one's name, URL and how its agents sign in to it, a
+  `Wardrik.Servers.Listed`.
   """
 
   @behaviour Wardrik.Catalog.Entry
@@ -41,7 +42,10 @@ defmodule Wardrik.Operations.ReadServers do
   def run(%__MODULE__{owner: owner}, caller) do
     case Wardrik.Servers.list(Host.servers(caller.host), owner) do
       :unsupported -> {:error, Wardrik.Servers.None.unsupported()}
-      servers -> {:ok, Resource.servers(servers)}
+      servers -> {:ok, servers}
     end
   end
+
+  @impl Wardrik.Query
+  def render(servers), do: Resource.servers(servers)
 end

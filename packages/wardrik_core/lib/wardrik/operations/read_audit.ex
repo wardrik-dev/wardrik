@@ -2,7 +2,7 @@ defmodule Wardrik.Operations.ReadAudit do
   @moduledoc """
   A page of `Wardrik.Audit`, what people changed across the deployment: up
   to `limit` changes after the sequence number `starting_after`, oldest
-  first. Where the log was trimmed past it, the error is a `:gap`, as
+  first, each a `Wardrik.Event.Log.Entry`. Where the log was trimmed past it, the error is a `:gap`, as
   `Wardrik.Operations.ReadEvents` answers for an agent's log.
   """
 
@@ -11,6 +11,7 @@ defmodule Wardrik.Operations.ReadAudit do
 
   alias Wardrik.Deployment
   alias Wardrik.Event.Log
+  alias Wardrik.Event.Log.Entry
   alias Wardrik.Operations.ReadEvents
 
   @enforce_keys [:limit]
@@ -29,8 +30,11 @@ defmodule Wardrik.Operations.ReadAudit do
     store = Wardrik.Host.store(caller.host)
 
     case Log.read(store, :audit, starting_after: starting_after, limit: limit) do
-      {:ok, changes} -> {:ok, %{"changes" => changes}}
+      {:ok, changes} -> {:ok, Entry.numbered(changes, starting_after)}
       {:gap, oldest} -> {:error, ReadEvents.gap(oldest)}
     end
   end
+
+  @impl Wardrik.Query
+  def render(entries), do: %{"changes" => Enum.map(entries, & &1.event)}
 end

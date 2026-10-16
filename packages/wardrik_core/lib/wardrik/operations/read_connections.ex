@@ -26,7 +26,10 @@ defmodule Wardrik.Operations.ReadConnections do
   def run(%__MODULE__{owner: owner}, caller) do
     case Connections.list(Host.connections(caller.host), Owner.owner_of(owner)) do
       :unsupported -> {:error, Wardrik.Connections.None.unsupported()}
-      connections -> {:ok, Wardrik.Resource.connections(connections)}
+      connections -> {:ok, connections}
     end
   end
+
+  @impl Wardrik.Query
+  def render(connections), do: Wardrik.Resource.connections(connections)
 end

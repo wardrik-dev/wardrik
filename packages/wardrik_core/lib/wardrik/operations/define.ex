@@ -2,8 +2,8 @@ defmodule Wardrik.Operations.Define do
   @moduledoc """
   Defines an agent, or defines it again: the host's `Wardrik.Definition`
   reads `definition` into a spec, which runs under the caller's ceiling
-  ahead of its own hooks. The answer is the agent's snapshot, `:created`
-  where it did not run before.
+  ahead of its own hooks. The answer is the agent's
+  `Wardrik.Agent.Snapshot`, `:created` where it did not run before.
   """
 
   @behaviour Wardrik.AgentOperation
@@ -13,6 +13,7 @@ defmodule Wardrik.Operations.Define do
   require Logger
 
   alias Wardrik.Agent
+  alias Wardrik.Agent.Snapshot
   alias Wardrik.Change
   alias Wardrik.Error
   alias Wardrik.Fleet
@@ -46,7 +47,7 @@ defmodule Wardrik.Operations.Define do
     do: {:error, Error.new(:invalid, "An agent is defined with its definition")}
 
   @impl Wardrik.Catalog.Entry
-  def labels(%{"labels" => labels}), do: labels
+  def labels(%Snapshot{labels: labels}), do: labels
 
   @impl Wardrik.AgentOperation
   def subject(%__MODULE__{agent: id}), do: id
@@ -82,14 +83,16 @@ defmodule Wardrik.Operations.Define do
 
     case Fleet.put(spec) do
       {:ok, _pid} ->
-        {if(created, do: :created, else: :ok),
-         Resource.snapshot(spec.id, Agent.snapshot(spec.id))}
+        {if(created, do: :created, else: :ok), Agent.snapshot(spec.id)}
 
       {:error, reason} ->
         Logger.warning("#{spec.id} did not start: #{inspect(reason)}")
         {:error, Error.new(:unavailable, "#{spec.id} did not start.")}
     end
   end
+
+  @impl Wardrik.Command
+  def render(snapshot), do: Resource.snapshot(snapshot)
 
   defimpl Wardrik.Effect do
     def preview(%{agent: id, definition: definition}),

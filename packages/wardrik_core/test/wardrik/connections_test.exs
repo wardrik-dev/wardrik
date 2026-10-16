@@ -6,6 +6,7 @@ defmodule Wardrik.ConnectionsTest do
   alias Wardrik.Caller
   alias Wardrik.Command
   alias Wardrik.Connections
+  alias Wardrik.Connections.Connecting
   alias Wardrik.Error
   alias Wardrik.Grant
   alias Wardrik.Host
@@ -93,12 +94,19 @@ defmodule Wardrik.ConnectionsTest do
 
   describe "listing" do
     test "says who holds each account offered, never a value", %{provider: provider} do
-      assert {:ok, %{"connections" => connections}} = read(caller("acme/@jon/"))
+      assert {:ok, connections} = read(caller("acme/@jon/"))
 
       assert connections == [
-               %{"provider" => "github", "held_by" => "person"},
-               %{"provider" => provider}
+               %{provider: "github", held_by: :person},
+               %{provider: provider, held_by: nil}
              ]
+
+      assert ReadConnections.render(connections) == %{
+               "connections" => [
+                 %{"provider" => "github", "held_by" => "person"},
+                 %{"provider" => provider}
+               ]
+             }
     end
 
     test "is of the person a scope names, else the person the caller acts as" do
@@ -151,19 +159,20 @@ defmodule Wardrik.ConnectionsTest do
                  provider: provider
                )
 
-      assert {:ok,
-              %{
-                "connected" => false,
-                "authorization" => %{"url" => "https://auth.example.com/" <> _}
-              }} = Command.run(request, caller("acme/@jon/"))
+      assert {:ok, %Connecting{authorization: %{url: "https://auth.example.com/" <> _}} = asked} =
+               Command.run(request, caller("acme/@jon/"))
+
+      assert %{"connected" => false, "authorization" => %{"url" => _url}} = Connect.render(asked)
 
       assert_received {:connect, ^provider, {"acme", "jon"}, @jon}
 
       {:ok, request} =
         Connections.Owner.request(Connect, caller("acme/@jon/"), :person, provider: "github")
 
-      assert {:ok, %{"provider" => "github", "connected" => true}} =
+      assert {:ok, %Connecting{provider: "github", authorization: nil} = held} =
                Command.run(request, caller("acme/@jon/"))
+
+      assert Connect.render(held) == %{"provider" => "github", "connected" => true}
     end
 
     test "is refused for an account not offered, without define, or for the org without it" do
@@ -188,10 +197,7 @@ defmodule Wardrik.ConnectionsTest do
       assert {"secret.removed", %{"type" => "user", "id" => "jon"}} =
                List.last(Audit.about("secrets/github"))
 
-      assert {:ok, %{"connections" => [%{"provider" => "github"} = github | _]}} =
-               read(caller("acme/@jon/"))
-
-      refute Map.has_key?(github, "held_by")
+      assert {:ok, [%{provider: "github", held_by: nil} | _]} = read(caller("acme/@jon/"))
       assert {:error, %Error{type: :not_found}} = Command.run(request, caller("acme/@jon/"))
     end
   end
