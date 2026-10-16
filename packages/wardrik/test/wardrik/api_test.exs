@@ -144,6 +144,11 @@ defmodule Wardrik.APITest do
 
     assert {:ok, %{"call_1" => {:deny, "Not now."}}} =
              Wardrik.agent_deny(session, denied, ["call_1"], reason: "Not now.")
+
+    decided = parked(session)
+
+    assert {:ok, %{"call_1" => {:approve, "Fine."}}} =
+             Wardrik.agent_decide(session, decided, %{"call_1" => {:approve, "Fine."}})
   end
 
   test "an agent is stopped, spawned, cancelled and moved", %{session: session, root: root} do
@@ -234,6 +239,10 @@ defmodule Wardrik.APITest do
     assert %{"call_1" => :approve} = Wardrik.agent_approve!(session, parked, "call_1")
     denied = parked(session)
     assert %{"call_1" => {:deny, _reason}} = Wardrik.agent_deny!(session, denied, "call_1")
+    decided = parked(session)
+
+    assert %{"call_1" => :approve} =
+             Wardrik.agent_decide!(session, decided, %{"call_1" => :approve})
 
     echo = start({AgentRunners, :echo, [self(), "ok"]})
     assert %Message{} = Wardrik.agent_ask!(session, echo, "hi")

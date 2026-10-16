@@ -43,16 +43,22 @@ defmodule WardrikMCP.Servers do
   @spec list(t(), Prefix.t()) :: [Server.t()]
   def list(%__MODULE__{store: store}, owner) do
     for remote <- Remote.list(store, owner),
-        do: %Server{
-          name: remote.key.name,
-          url: remote.url,
-          auth: Auth.name(remote.auth),
-          secret: secret(remote.auth)
-        }
+        do:
+          %Server{
+            name: remote.key.name,
+            url: remote.url,
+            auth: Auth.name(remote.auth),
+            only: remote.filters[:only],
+            except: remote.filters[:except]
+          }
+          |> struct!(signs_in(remote.auth))
   end
 
-  defp secret(%Auth.Secret{name: name}), do: name
-  defp secret(_auth), do: nil
+  defp signs_in(%Auth.Secret{} = secret),
+    do: [secret: secret.name, header: secret.header, scheme: secret.scheme]
+
+  defp signs_in(%Auth.OAuth{scopes: [_ | _] = scopes}), do: [scopes: scopes]
+  defp signs_in(_auth), do: []
 
   @doc false
   @spec add(t(), Prefix.t(), keyword()) ::

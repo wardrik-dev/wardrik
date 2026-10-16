@@ -361,10 +361,20 @@ defmodule Wardrik do
     decide(session, agent, calls, {:deny, opts[:reason]})
   end
 
-  defp decide(session, agent, calls, decision) do
-    decisions = Map.new(List.wrap(calls), &{&1, decision})
-    change(session, %Operations.Decide{agent: agent, decisions: decisions})
-  end
+  defp decide(session, agent, calls, decision),
+    do: agent_decide(session, agent, Map.new(List.wrap(calls), &{&1, decision}))
+
+  @doc """
+  Decides several of the calls `agent` waits on at once, each by its id:
+  `:approve`, `{:approve, note}` or `{:deny, reason}`, as `agent_approve/4`
+  and `agent_deny/4` decide one kind. Acknowledged with the decisions taken;
+  calls left out stay waiting.
+  """
+  @doc group: "Talking to an agent"
+  @spec agent_decide(Session.t(), AgentID.t(), %{String.t() => Operations.Decide.decision()}) ::
+          {:ok, %{String.t() => Operations.Decide.decision()}} | {:error, Error.t()}
+  def agent_decide(%Session{} = session, %AgentID{} = agent, decisions) when is_map(decisions),
+    do: change(session, %Operations.Decide{agent: agent, decisions: decisions})
 
   @doc """
   Where a person authorizes the call `call` that `agent` waits on: the page,
@@ -563,18 +573,33 @@ defmodule Wardrik do
     do: read(session, %Operations.ReadServers{owner: owner})
 
   @doc """
-  Adds `server` for `owner`'s agents, by its name, URL and how they sign in
-  to it, and answers it, with where someone signs in to it first where they
-  have to.
+  Adds `server` for `owner`'s agents, by its name, URL, how they sign in to
+  it and which of its tools they take, and answers it, with where someone
+  signs in to it first where they have to.
   """
   @doc group: "Servers and connections"
   @spec servers_add(Session.t(), Prefix.t(), Server.t()) ::
           {:ok, Server.t()} | {:error, Error.t()}
   def servers_add(%Session{} = session, %Prefix{} = owner, %Server{} = server) do
-    how = if server.secret, do: %{"name" => server.secret}, else: %{}
-    fields = %{"url" => server.url, "auth" => %{server.auth => how}}
+    how =
+      case server.auth do
+        "secret" -> given(name: server.secret, header: server.header, scheme: server.scheme)
+        "oauth" -> given(scopes: server.scopes)
+        _none -> %{}
+      end
+
+    fields =
+      Map.merge(
+        %{"url" => server.url, "auth" => %{server.auth => how}},
+        given(only: server.only, except: server.except)
+      )
+
     change(session, %Operations.AddServer{owner: owner, name: server.name, fields: fields})
   end
+
+  # The fields of `pairs` that are given, by their names as text.
+  defp given(pairs),
+    do: for({key, value} <- pairs, value != nil, into: %{}, do: {"#{key}", value})
 
   @doc "Removes the MCP server `name` `owner` added, and answers it."
   @doc group: "Servers and connections"
@@ -731,6 +756,13 @@ defmodule Wardrik do
         }
   def agent_deny!(session, agent, calls, opts \\ []),
     do: unwrap(agent_deny(session, agent, calls, opts))
+
+  @doc "As `agent_decide/3`, answering the value, or raising the `Wardrik.Error`."
+  @doc group: "Talking to an agent"
+  @spec agent_decide!(Session.t(), AgentID.t(), %{String.t() => Operations.Decide.decision()}) ::
+          %{String.t() => Operations.Decide.decision()}
+  def agent_decide!(session, agent, decisions),
+    do: unwrap(agent_decide(session, agent, decisions))
 
   @doc "As `agent_authorization_read/3`, answering the value, or raising the `Wardrik.Error`."
   @doc group: "Talking to an agent"

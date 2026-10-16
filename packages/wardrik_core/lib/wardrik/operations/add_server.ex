@@ -73,6 +73,11 @@ defmodule Wardrik.Operations.AddServer do
       url: fields["url"],
       auth: auth,
       secret: how["name"],
+      header: how["header"],
+      scheme: how["scheme"],
+      scopes: how["scopes"],
+      only: fields["only"],
+      except: fields["except"],
       authorization: link
     }
   end
