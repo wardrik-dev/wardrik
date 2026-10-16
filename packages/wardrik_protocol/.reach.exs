@@ -4,7 +4,8 @@
 # SDKs all read it.
 [
   layers: [
-    protocol: ["WardrikProtocol", "WardrikProtocol.*"]
+    protocol: ["WardrikProtocol", "WardrikProtocol.*"],
+    bundle: "Mix.Tasks.WardrikProtocol.Bundle"
   ],
   checks: [
     layer_coverage: [

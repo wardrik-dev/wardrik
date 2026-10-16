@@ -76,7 +76,7 @@ defmodule WardrikDaemonTest do
     assert {:ok, %{status: 400, body: body}} = Req.put(api, json: %{"policy" => "lax"})
     assert body["error"]["message"] == "policy names lax, which is not a policy in policies/"
 
-    assert {:ok, %{status: 201}} =
+    assert {:ok, %{status: 200}} =
              Req.put(api, json: %{"policy" => "careful", "instructions" => "You help."})
 
     assert Wardrik.Fleet.lookup(key)
@@ -90,7 +90,7 @@ defmodule WardrikDaemonTest do
               }
             }} = Req.get(api, url: "definition")
 
-    assert {:ok, %{status: 200, body: %{"forgotten" => [_key]}}} = Req.delete(api)
+    assert {:ok, %{status: 204}} = Req.delete(api)
     assert Wardrik.Fleet.lookup(key) == nil
     assert {:ok, %{status: 404}} = Req.get(api, url: "definition")
   end

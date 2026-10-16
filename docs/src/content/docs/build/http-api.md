@@ -157,16 +157,17 @@ curl -s -X DELETE -H "authorization: Bearer $TOKEN" http://127.0.0.1:4747/v1/age
 ```
 
 - `cancel` stops the running turn, drops the messages behind it, and abandons one waiting on a
-  person. An agent taking no turn is left as it is. It answers `{"cancelled": ["acme/triage"]}`.
+  person. An agent taking no turn is left as it is. It answers `202`.
 - `DELETE .../conversation` empties the conversation and its
-  [outside label](/concepts/outside-content/). It answers `409` while a turn runs or waits.
-- `DELETE` stops the agent and removes its conversation and triggers, answering
-  `{"forgotten": ["acme/triage"], "kept": [], "failed": []}`.
+  [outside label](/concepts/outside-content/), and answers the snapshot. It answers `409` while a
+  turn runs or waits.
+- `DELETE` stops the agent and removes its conversation and triggers, answering `204`.
 - `POST /v1/agents/cancel?prefix=acme/` and `DELETE /v1/agents?prefix=acme/` act on every agent
-  under a prefix. `?plan=true` on any change answers what it would do and does nothing.
+  under a prefix.
 - `GET /v1/agents?prefix=acme/` lists agents; `GET /v1/interrupts` lists the calls they wait on.
-- `POST .../stop` puts an agent to sleep with its conversation. `POST .../spawn` starts it again,
-  starts one the server defines, or has the server define one as `wardrik agent spawn` does.
+- `POST .../stop` puts an agent to sleep with its conversation, and answers it. `POST .../spawn`
+  starts it again, starts one the server defines, or has the server define one as
+  `wardrik agent spawn` does.
 - `POST .../move` with `{"node": "wardrik@box2"}`, or `spawn` with a node, takes a token over every
   agent.
 - Triggers are set and removed at `/triggers/{name}`; see

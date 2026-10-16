@@ -1,0 +1,4818 @@
+{
+  "components": {
+    "parameters": {
+      "export": {
+        "description": "The export's name: no / or whitespace, and not beginning with @ or _.",
+        "in": "path",
+        "name": "export",
+        "required": true,
+        "schema": {
+          "pattern": "^[^/@_\\s][^/\\s]*$",
+          "type": "string"
+        }
+      },
+      "interrupt": {
+        "description": "The id of the call the agent waits on.",
+        "in": "path",
+        "name": "interrupt",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "last_event_id": {
+        "description": "The last sequence a stream read, in place of starting_after.",
+        "in": "header",
+        "name": "Last-Event-ID",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "limit": {
+        "description": "How many to answer at most.",
+        "in": "query",
+        "name": "limit",
+        "required": false,
+        "schema": {
+          "default": 100,
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "name": {
+        "description": "The agent's name.",
+        "in": "path",
+        "name": "name",
+        "required": true,
+        "schema": {
+          "pattern": "^[^/@_\\s][^/\\s]*$",
+          "type": "string"
+        }
+      },
+      "org": {
+        "description": "The agent's org.",
+        "in": "path",
+        "name": "org",
+        "required": true,
+        "schema": {
+          "pattern": "^[^/@_\\s][^/\\s]*$",
+          "type": "string"
+        }
+      },
+      "owner": {
+        "description": "org for the caller's org's; the caller's own where left out.",
+        "in": "query",
+        "name": "owner",
+        "required": false,
+        "schema": {
+          "enum": [
+            "org"
+          ],
+          "type": "string"
+        }
+      },
+      "prefix": {
+        "description": "The agents under it, as acme/ or acme/@jon/; the token's whole scope where left out.",
+        "in": "query",
+        "name": "prefix",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "prefix_named": {
+        "allowEmptyValue": true,
+        "description": "The agents under it, as acme/; prefix= alone is every agent.",
+        "in": "query",
+        "name": "prefix",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "provider": {
+        "description": "The account's provider.",
+        "in": "path",
+        "name": "provider",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "secret": {
+        "description": "The trigger's secret, for a sender that sets no header.",
+        "in": "path",
+        "name": "secret",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "server": {
+        "description": "The server's name.",
+        "in": "path",
+        "name": "server",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "starting_after": {
+        "description": "The last sequence already read.",
+        "in": "query",
+        "name": "starting_after",
+        "required": false,
+        "schema": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "trigger": {
+        "description": "The trigger's name.",
+        "in": "path",
+        "name": "trigger",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "user": {
+        "description": "The user the agent works for, after @.",
+        "in": "path",
+        "name": "user",
+        "required": true,
+        "schema": {
+          "pattern": "^[^/@_\\s][^/\\s]*$",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "It conflicts with what is there, such as an agent file's agent, or a turn running: conflict."
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The caller may not do this: forbidden."
+      },
+      "Gone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The log was trimmed past the cursor: gap, with oldest, the first sequence it holds."
+      },
+      "Invalid": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The request does not read: invalid_request."
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "No such agent, or one outside the caller's scope, or nothing else by that name: not_found."
+      },
+      "NotSupported": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The host offers nothing for this: not_supported."
+      },
+      "TooLarge": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "A request to a trigger is at most 1 MB: invalid_request."
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "No credential, or one that is not known or was revoked: unauthorized."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Something it needs cannot be reached now: unavailable."
+      },
+      "UpgradeRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The route is a WebSocket: upgrade_required."
+      }
+    },
+    "schemas": {
+      "Agent": {
+        "additionalProperties": false,
+        "description": "One entry of GET /v1/agents.",
+        "examples": [
+          {
+            "asleep": false,
+            "id": "acme/triage",
+            "name": "triage",
+            "node": "wardrik@box1",
+            "outcome": "ok",
+            "pending": 0,
+            "status": "parked"
+          }
+        ],
+        "properties": {
+          "asleep": {
+            "description": "Whether it has gone to sleep for having had nothing to do; it wakes when something asks it.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The agent's key, org/name, or org/@user/name for one that works for a user.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "node": {
+            "description": "The node the agent runs on. Absent while it sleeps.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "How the last run ended. Absent before the first.",
+            "enum": [
+              "ok",
+              "failed",
+              "interrupted"
+            ],
+            "type": "string"
+          },
+          "pending": {
+            "description": "Messages waiting for the next run.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "parked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "pending",
+          "asleep"
+        ],
+        "title": "An agent, listed",
+        "type": "object"
+      },
+      "AgentAnswer": {
+        "additionalProperties": false,
+        "description": "One agent, as the fleet lists it.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          }
+        },
+        "required": [
+          "agent"
+        ],
+        "type": "object"
+      },
+      "AgentDefinition": {
+        "additionalProperties": false,
+        "description": "The body of PUT /v1/agents/{key}, and the definition GET /v1/agents/{key}/definition answers, an agent file's included. An agent file's frontmatter takes the same keys, with its body as instructions, and name, org and user besides.",
+        "examples": [
+          {
+            "channels": [
+              "slack"
+            ],
+            "compaction": {
+              "at": 0.6,
+              "keep": 0.25
+            },
+            "context": [
+              "MEMORY.md",
+              "shared/team/CONVENTIONS.md"
+            ],
+            "description": "Watches the incident queue.",
+            "idle_timeout": 900,
+            "instructions": "You watch the incident queue.",
+            "max_iterations": 12,
+            "model": "anthropic:claude-sonnet-5",
+            "notify": {
+              "on": [
+                "parked",
+                "failed",
+                "finished"
+              ],
+              "to": [
+                "ops"
+              ]
+            },
+            "policy": {
+              "ask": [
+                "linear/*"
+              ]
+            },
+            "retries": [
+              2,
+              10,
+              30
+            ],
+            "timeout": 600,
+            "tools": [
+              "web_search",
+              "linear/*",
+              "files"
+            ],
+            "triggers": [
+              {
+                "every": "*/30 * * * *",
+                "name": "sweep",
+                "prompt": "Check the incident queue."
+              }
+            ],
+            "workspace": {
+              "shared": {
+                "team": "acme"
+              }
+            }
+          }
+        ],
+        "properties": {
+          "channels": {
+            "description": "The chat channels, as config.yaml names them, it may be chosen to answer in.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "compaction": {
+            "description": "When the agent summarises its older history, as shares of the model's window; false never does.",
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "at": {
+                    "exclusiveMaximum": 1,
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "keep": {
+                    "exclusiveMaximum": 1,
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "window": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "context": {
+            "description": "The files read into each turn, at most 20, in the agent's tree or one it shares, up to 16 KB of them unless max_bytes says. tools names files to read them with.",
+            "oneOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "files": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "max_bytes": {
+                    "maximum": 262144,
+                    "minimum": 1024,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "description": {
+            "description": "What the agent is for, in words a person reads.",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "description": "How many seconds the agent may have nothing to do before it sleeps, until something asks it. The server's default when absent.",
+            "oneOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "const": "infinity"
+              }
+            ]
+          },
+          "instructions": {
+            "description": "The system prompt.",
+            "type": "string"
+          },
+          "max_iterations": {
+            "description": "How many rounds of tool calls a turn may make.",
+            "oneOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "const": "infinity"
+              }
+            ]
+          },
+          "model": {
+            "description": "The model, as provider:model.",
+            "type": "string"
+          },
+          "notify": {
+            "description": "Who hears when the agent parks, fails or answers: a target config.yaml's notify names, a list of them, or to and on. A target tells only the agents of the orgs it serves.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "on": {
+                    "description": "What is sent: parked and failed turns unless set, and finished for what a turn answered.",
+                    "items": {
+                      "enum": [
+                        "parked",
+                        "failed",
+                        "finished"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "to": {
+                    "description": "The targets, as config.yaml's notify names them.",
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "to"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "description": "A policy the server holds, by name.",
+                "type": "string"
+              },
+              {
+                "description": "Rules, as a policy file writes them.",
+                "type": "object"
+              }
+            ]
+          },
+          "retries": {
+            "description": "How many seconds a turn waits before asking a model call again that failed for a passing reason, such as a timeout, one for each try: [1, 5] where neither this nor the host's defaults say. [] never asks again.",
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "timeout": {
+            "description": "How many seconds a turn may take.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tools": {
+            "description": "What the agent may call: a tool the server ships, by name; files for the file tools over the agent's own tree and the trees it shares; server/* for every tool of an MCP server; workers/* for every tool the connected tool workers offer it; self/* for its operations on itself; agents/* for its operations on the agents of its org; or * for all of them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "triggers": {
+            "description": "The triggers that ask the agent something when they come round, each with a prompt or a prompt_file. A definition put again replaces them all, and PUT and DELETE /v1/agents/{key}/triggers/{trigger} change one. Any other field is the source's that the trigger watches, which one of them names; without one, it asks on every run. A trigger on a clock has every, and a timezone a cron expression is read in; a webhook has webhook in its place, holding its secret and how a request is verified, and is sent requests at POST /v1/hooks/{key}/{trigger}.",
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "every": {
+                  "description": "A cron expression, or a duration such as 30m.",
+                  "type": "string"
+                },
+                "jitter": {
+                  "description": "Up to this many seconds of delay, chosen at random each time.",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "missed": {
+                  "description": "What a trigger does about the firings it missed while down.",
+                  "enum": [
+                    "run_once",
+                    "skip"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The trigger's name, trigger-1, trigger-2 and so on by its place in the list where it is left out.",
+                  "type": "string"
+                },
+                "overlap": {
+                  "description": "What a firing does while a run is still going: skip it, or queue its prompt.",
+                  "enum": [
+                    "skip",
+                    "queue"
+                  ],
+                  "type": "string"
+                },
+                "prompt": {
+                  "description": "What the agent is asked each time.",
+                  "type": "string"
+                },
+                "prompt_file": {
+                  "description": "In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.",
+                  "type": "string"
+                },
+                "timezone": {
+                  "description": "The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "workspace": {
+            "additionalProperties": false,
+            "description": "The trees the agent shares with other agents. Only trees the token's scope covers, and tools names files to reach them.",
+            "properties": {
+              "shared": {
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "description": "A tree: org, org/name or org/@user/name.",
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "read",
+                            "write"
+                          ]
+                        },
+                        "tree": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "tree"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "description": "The trees shared with the agent, by the name each is seen under at shared/<name>/: a tree, or a tree and a mode, write unless it says read.",
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "title": "An agent's definition",
+        "type": "object"
+      },
+      "AgentSnapshot": {
+        "additionalProperties": false,
+        "description": "The body of GET /v1/agents/{key}, and of a PUT there. sequence is the last event the agent's log has written: read and follow the log from there.",
+        "examples": [
+          {
+            "agent": {
+              "id": "acme/triage",
+              "name": "triage"
+            },
+            "conversation": {
+              "id": "acme/triage/5f1c2a"
+            },
+            "interrupts": [
+              {
+                "id": "toolu_01",
+                "message": "Open an issue?",
+                "reason": "tool_approval",
+                "tool_call_id": "toolu_01"
+              }
+            ],
+            "labels": [],
+            "messages": [
+              {
+                "parts": [
+                  {
+                    "content": "What's on fire?",
+                    "type": "text"
+                  }
+                ],
+                "role": "user"
+              }
+            ],
+            "outcome": "ok",
+            "pending": 0,
+            "provider": {
+              "name": "anthropic"
+            },
+            "request": {
+              "model": "claude-sonnet-5"
+            },
+            "run": {
+              "id": "4bf92f3577b34da6a3ce929d0e0e4736"
+            },
+            "sequence": 41,
+            "status": "parked"
+          }
+        ],
+        "properties": {
+          "agent": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "The agent's key, org/name, or org/@user/name for one that works for a user.",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          "conversation": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "The key and generation; it changes when the agent is forgotten and started again.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "interrupts": {
+            "items": {
+              "$ref": "#/components/schemas/Defs/$defs/interrupt"
+            },
+            "type": "array"
+          },
+          "labels": {
+            "description": "What the agent's history holds, as labels, such as outside for content nobody on the agent's side wrote. Every turn carries them until the history is cleared.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Defs/$defs/message"
+            },
+            "type": "array"
+          },
+          "outcome": {
+            "description": "How the last run ended, or null before the first.",
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "failed",
+                  "interrupted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "provider": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "model"
+            ],
+            "type": "object"
+          },
+          "run": {
+            "description": "The run going on, or null between runs.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Defs/$defs/run"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sequence": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "running",
+              "parked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "conversation",
+          "status",
+          "pending",
+          "request",
+          "run",
+          "interrupts",
+          "messages",
+          "labels",
+          "outcome",
+          "sequence"
+        ],
+        "title": "An agent's snapshot",
+        "type": "object"
+      },
+      "Agents": {
+        "additionalProperties": false,
+        "description": "The agents, each as the fleet lists it.",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "agents"
+        ],
+        "type": "object"
+      },
+      "Authorization": {
+        "additionalProperties": false,
+        "description": "Where a person authorizes the call an interrupt with reason authorization waits on: what GET /v1/agents/{key}/interrupts/{id}/authorization answers, to a token that may decide the agent's calls. The link is in no event.",
+        "examples": [
+          {
+            "code": "WDJB-MJHT",
+            "url": "https://github.com/login/device"
+          },
+          {
+            "url": "https://auth.example.com/authorize?client_id=…&state=…"
+          }
+        ],
+        "properties": {
+          "code": {
+            "description": "The code to enter at the page, where one is needed.",
+            "type": "string"
+          },
+          "url": {
+            "description": "The page to open.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "An authorization",
+        "type": "object"
+      },
+      "Cancelled": {
+        "additionalProperties": false,
+        "description": "The IDs of the agents whose turn was ended.",
+        "properties": {
+          "cancelled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "type": "object"
+      },
+      "Changes": {
+        "additionalProperties": false,
+        "description": "A page of the audit, oldest first.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/Cloudevent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "type": "object"
+      },
+      "Cloudevent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "object"
+          },
+          "datacontenttype": {
+            "const": "application/json"
+          },
+          "dataschema": {
+            "pattern": "^urn:wardrik:schema:v1:[a-z_]+\\.[a-z_]+$",
+            "type": "string"
+          },
+          "id": {
+            "description": "A UUIDv7.",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "parentspanid": {
+            "pattern": "^[0-9a-f]{16}$",
+            "type": "string"
+          },
+          "sequence": {
+            "description": "CloudEvents' sequence extension. Durable events only.",
+            "pattern": "^[0-9]{12}$",
+            "type": "string"
+          },
+          "source": {
+            "description": "The agent, or audit for a change people made.",
+            "pattern": "^wardrik://[^/]+/(agents/.+|audit)$",
+            "type": "string"
+          },
+          "specversion": {
+            "const": "1.0"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "traceparent": {
+            "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+            "type": "string"
+          },
+          "tracestate": {
+            "type": "string"
+          },
+          "type": {
+            "pattern": "^wardrik\\.[a-z_]+\\.[a-z_]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "specversion",
+          "id",
+          "source",
+          "type",
+          "subject",
+          "time",
+          "datacontenttype",
+          "dataschema",
+          "traceparent",
+          "data"
+        ],
+        "title": "A Wardrik event, as a CloudEvent",
+        "type": "object"
+      },
+      "Connecting": {
+        "additionalProperties": false,
+        "description": "What POST /v1/connections/{provider} answers: that the owner holds the account already, or where to authorize it.",
+        "examples": [
+          {
+            "connected": true,
+            "provider": "github"
+          },
+          {
+            "authorization": {
+              "url": "https://auth.example.com/authorize?client_id=…&state=…"
+            },
+            "connected": false,
+            "provider": "linear"
+          }
+        ],
+        "properties": {
+          "authorization": {
+            "$ref": "#/components/schemas/Authorization",
+            "description": "Where to authorize it, where it is not held yet."
+          },
+          "connected": {
+            "description": "Whether the owner holds it already.",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "The account's name, as the deployment configures it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "connected"
+        ],
+        "title": "A connection asked for",
+        "type": "object"
+      },
+      "ConnectionAnswer": {
+        "additionalProperties": false,
+        "description": "One account an owner held.",
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/Connections/properties/connections/items"
+          }
+        },
+        "required": [
+          "connection"
+        ],
+        "type": "object"
+      },
+      "Connections": {
+        "additionalProperties": false,
+        "description": "The accounts an owner's org is offered, and who holds each: what GET /v1/connections answers. A value is never answered.",
+        "examples": [
+          {
+            "connections": [
+              {
+                "held_by": "person",
+                "provider": "github"
+              },
+              {
+                "provider": "linear"
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "connections": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "held_by": {
+                  "description": "Whose a call of the owner's would use: the person's own, their org's, or the deployment's. Absent where nobody holds it.",
+                  "enum": [
+                    "person",
+                    "org",
+                    "deployment"
+                  ]
+                },
+                "provider": {
+                  "description": "The account's name, as the deployment configures it.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connections"
+        ],
+        "title": "Connections",
+        "type": "object"
+      },
+      "Decided": {
+        "additionalProperties": false,
+        "description": "Each call decided, by its id.",
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "decision": {
+                  "enum": [
+                    "approved",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "decision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "type": "object"
+      },
+      "Decisions": {
+        "additionalProperties": false,
+        "description": "The body of POST /v1/agents/{key}/decisions: what a person decides of the calls an agent waits on, taken together. The answer lists each call's id with approved or rejected.",
+        "examples": [
+          {
+            "decisions": [
+              {
+                "decision": "approve",
+                "id": "toolu_01",
+                "note": "Only staging."
+              }
+            ]
+          },
+          {
+            "decisions": [
+              {
+                "decision": "reject",
+                "id": "toolu_01",
+                "reason": "Not this quarter."
+              },
+              {
+                "decision": "approve",
+                "id": "toolu_02"
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "decision": {
+                  "enum": [
+                    "approve",
+                    "reject"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "description": "The id of a call the agent waits on, an interrupt's.",
+                  "type": "string"
+                },
+                "note": {
+                  "description": "For an approval, what the agent is told with it.",
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "For a rejection, why, which the agent is told.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "decision"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "title": "Decisions",
+        "type": "object"
+      },
+      "DefinitionRead": {
+        "additionalProperties": false,
+        "description": "What GET /v1/agents/{key}/definition answers: the definition last put, as it was sent, and the tools it names that offer nothing yet.",
+        "examples": [
+          {
+            "definition": {
+              "instructions": "Answer customers' questions about their orders.",
+              "tools": [
+                "crm/*"
+              ]
+            },
+            "missing": [
+              "crm/*"
+            ]
+          }
+        ],
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AgentDefinition"
+          },
+          "missing": {
+            "description": "The tools the definition names that offer nothing yet, such as server/* for an MCP server its owner has not added. Each offers its tools once what it names is there, without the definition being put again.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "definition",
+          "missing"
+        ],
+        "title": "A definition, as read",
+        "type": "object"
+      },
+      "Defs": {
+        "$defs": {
+          "cost": {
+            "additionalProperties": false,
+            "description": "What a call cost, the same figure a budget counts.",
+            "properties": {
+              "micro_usd": {
+                "description": "Whole micro-dollars: 1000000 is one US dollar.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "description": "provider where the provider reported the figure, catalog where Wardrik priced the tokens at the model catalog's prices, tool where the tool reported it.",
+                "enum": [
+                  "provider",
+                  "catalog",
+                  "tool"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "micro_usd",
+              "source"
+            ],
+            "type": "object"
+          },
+          "decided": {
+            "additionalProperties": false,
+            "description": "Who decided a call.",
+            "properties": {
+              "by": {
+                "description": "hook where hooks allowed the call by name or one refused it, person where a person answered it, default where no hook named it and nothing asked, ledger where the ledger could not record it.",
+                "enum": [
+                  "hook",
+                  "person",
+                  "default",
+                  "ledger"
+                ],
+                "type": "string"
+              },
+              "hooks": {
+                "description": "The hooks that allowed the call, refused it, or asked a person about it.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "by"
+            ],
+            "type": "object"
+          },
+          "duration_ms": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "description": "A low-cardinality code, as OpenTelemetry's error.type.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "message"
+            ],
+            "type": "object"
+          },
+          "interrupt": {
+            "additionalProperties": false,
+            "description": "A call a run waits on a person for.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "labels": {
+                "description": "The labels of what the run had read, which may be what asked for the call: outside for content nobody on the agent's side wrote.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "description": "The tool the call is for, as the agent names it; none for a model's approval.",
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "tool_approval",
+                  "model_approval",
+                  "authorization",
+                  "in_doubt"
+                ],
+                "type": "string"
+              },
+              "tool_call_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "message"
+            ],
+            "type": "object"
+          },
+          "message": {
+            "additionalProperties": false,
+            "description": "A message in OpenTelemetry's GenAI shape. On message.started and message.delta only its id is given.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "parts": {
+                "items": {
+                  "$ref": "#/components/schemas/Defs/$defs/part"
+                },
+                "type": "array"
+              },
+              "role": {
+                "description": "system, user, assistant or tool.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "parts"
+            ],
+            "type": "object"
+          },
+          "message_ref": {
+            "additionalProperties": false,
+            "description": "A message, by its id.",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "part": {
+            "additionalProperties": false,
+            "description": "One part of a message, tagged by type, as OpenTelemetry's GenAI conventions define them.",
+            "properties": {
+              "arguments": {
+                "description": "Any JSON value. Stored as a flattened field."
+              },
+              "content": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "modality": {
+                "enum": [
+                  "image",
+                  "video",
+                  "audio",
+                  "document"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "response": {
+                "description": "Any JSON value. Stored as a flattened field."
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "type": {
+                "description": "text, reasoning, tool_call, tool_call_response, uri, file or blob.",
+                "type": "string"
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "principal": {
+            "additionalProperties": false,
+            "description": "Who did something, and how they were known.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "description": "shell, ssh, terminal, channel, oauth, token, webhook, agent or user. A channel's id is the channel's name and the id it knows them by, as slack/U024BE7LH.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          "run": {
+            "additionalProperties": false,
+            "description": "A run, by the W3C trace id it runs under.",
+            "properties": {
+              "id": {
+                "pattern": "^[0-9a-f]{32}$",
+                "type": "string"
+              },
+              "message_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "served_by": {
+            "additionalProperties": false,
+            "description": "What answered a tool call, as its tool names it: a tool worker's token, for one.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "tool": {
+            "additionalProperties": false,
+            "properties": {
+              "call": {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "description": "Any JSON value. Stored as a flattened field."
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "result": {
+                    "description": "Any JSON value. Stored as a flattened field."
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "type": "object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "call"
+            ],
+            "type": "object"
+          },
+          "usage": {
+            "additionalProperties": false,
+            "description": "Token usage, as gen_ai.usage.* without the prefix.",
+            "properties": {
+              "cache_read": {
+                "additionalProperties": false,
+                "properties": {
+                  "input_tokens": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "input_tokens": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "output_tokens": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reasoning": {
+                "additionalProperties": false,
+                "properties": {
+                  "output_tokens": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "title": "Shared definitions"
+      },
+      "Delivery": {
+        "additionalProperties": false,
+        "description": "What became of a request delivered to a trigger.",
+        "properties": {
+          "delivery": {
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "enum": [
+                  "asked",
+                  "seen"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "delivery"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "description": "What every answer of 400 and above holds. A 410 adds oldest, the first sequence the log still holds.",
+        "examples": [
+          {
+            "error": {
+              "message": "No agent runs under acme/triage.",
+              "type": "not_found"
+            }
+          }
+        ],
+        "properties": {
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "oldest": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": {
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "forbidden",
+                  "not_found",
+                  "conflict",
+                  "gap",
+                  "upgrade_required",
+                  "not_supported",
+                  "unavailable",
+                  "internal"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "An error",
+        "type": "object"
+      },
+      "Events": {
+        "additionalProperties": false,
+        "description": "A page of an agent's log, oldest first.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/Cloudevent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
+      "Export": {
+        "additionalProperties": false,
+        "description": "What GET /v1/exports/{name} answers: the events after the export's cursor, in every log the caller may read.",
+        "examples": [
+          {
+            "events": [],
+            "gaps": [
+              {
+                "after": 12,
+                "log": "acme/triage",
+                "oldest": 30
+              }
+            ],
+            "next": "eyJhY21lL3RyaWFnZSI6NDF9"
+          }
+        ],
+        "properties": {
+          "events": {
+            "description": "Oldest first within each log; each event's source names its log, and its sequence its place there.",
+            "items": {
+              "$ref": "#/components/schemas/Cloudevent"
+            },
+            "type": "array"
+          },
+          "gaps": {
+            "description": "Each log trimmed past the cursor, which was read from its oldest event.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "description": "The sequence the cursor was at.",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "log": {
+                  "description": "audit, or the agent's ID.",
+                  "type": "string"
+                },
+                "oldest": {
+                  "description": "The oldest sequence the log still held.",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "log",
+                "after",
+                "oldest"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next": {
+            "description": "What POST /v1/exports/{name} takes, as {\"next\": …}, to move the cursor past these events.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "events",
+          "next",
+          "gaps"
+        ],
+        "title": "A page of an export",
+        "type": "object"
+      },
+      "Forgotten": {
+        "additionalProperties": false,
+        "description": "What a removal did: the IDs removed, those an agent file keeps with why, and those not removed with why.",
+        "properties": {
+          "failed": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "why"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "forgotten": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kept": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "why"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "forgotten",
+          "kept",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "InputServersAdd": {
+        "additionalProperties": false,
+        "description": "What adding an MCP server for an owner's agents takes: its name, its URL, how they sign in to it, and which of its tools they take.",
+        "examples": [
+          {
+            "auth": {
+              "oauth": {
+                "scopes": [
+                  "write"
+                ]
+              }
+            },
+            "name": "social",
+            "url": "https://mcp.social.example/mcp"
+          },
+          {
+            "auth": {
+              "secret": {
+                "name": "crm-key"
+              }
+            },
+            "name": "crm",
+            "url": "https://mcp.crm.example/mcp"
+          },
+          {
+            "auth": {
+              "none": {}
+            },
+            "name": "docs",
+            "only": [
+              "search"
+            ],
+            "url": "https://docs.example.com/mcp"
+          }
+        ],
+        "properties": {
+          "auth": {
+            "description": "How the owner's agents sign in to it.",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "none": {
+                    "additionalProperties": false,
+                    "description": "It takes no credential.",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "none"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "oauth": {
+                    "additionalProperties": false,
+                    "description": "The owner signs in in a browser, as the server's own authorization server asks; the token is kept for them.",
+                    "properties": {
+                      "scopes": {
+                        "description": "The scopes to ask for, the server's own unless it says.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "oauth"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "secret": {
+                    "additionalProperties": false,
+                    "description": "A key the owner keeps in the vault, sent with every call.",
+                    "properties": {
+                      "header": {
+                        "description": "The header it is sent in; authorization unless it says.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "The secret's name in the owner's vault.",
+                        "type": "string"
+                      },
+                      "scheme": {
+                        "description": "What comes before it in the header; Bearer unless it says, and nothing where it is empty.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "secret"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "except": {
+            "description": "The server's own names of the tools to leave.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "What the owner's agents call it: their definitions name its tools as name/*, and each tool arrives as name__tool. Letters, digits, - and _, up to 32, never __.",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "only": {
+            "description": "The server's own names of the tools to take, every one unless it says.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "url": {
+            "description": "The server's whole URL, over https, reached as Streamable HTTP.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "auth"
+        ],
+        "title": "servers.add",
+        "type": "object"
+      },
+      "Interrupts": {
+        "additionalProperties": false,
+        "description": "The calls agents wait on a person for, each with the agent it is for.",
+        "properties": {
+          "interrupts": {
+            "items": {
+              "$ref": "#/components/schemas/ListedInterrupt"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "interrupts"
+        ],
+        "type": "object"
+      },
+      "ListedInterrupt": {
+        "additionalProperties": false,
+        "description": "A call an agent waits on a person for, as v1/defs.json's interrupt, with the agent it is for.",
+        "properties": {
+          "agent": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "The agent's ID, its key.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/id"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/labels"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/message"
+          },
+          "name": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/name"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/reason"
+          },
+          "tool_call_id": {
+            "$ref": "#/components/schemas/Defs/$defs/interrupt/properties/tool_call_id"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "message",
+          "agent"
+        ],
+        "type": "object"
+      },
+      "Message": {
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "parts"
+            ]
+          }
+        ],
+        "description": "A message: its text as content, or as text parts, under an id of the caller's, or one it is given.",
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/Defs/$defs/part"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "MessageQueued": {
+        "additionalProperties": false,
+        "description": "The message queued, by its id.",
+        "properties": {
+          "message": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "Next": {
+        "properties": {
+          "next": {
+            "description": "A page's next.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "next"
+        ],
+        "type": "object"
+      },
+      "Node": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "description": "A node's name, as wardrik@host.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "type": "object"
+      },
+      "Nodes": {
+        "additionalProperties": false,
+        "description": "The deployment's nodes, each with how many agents run on it, and how many agents sleep on none: what GET /v1/deployment/nodes answers.",
+        "examples": [
+          {
+            "asleep": 40,
+            "nodes": [
+              {
+                "agents": 12,
+                "name": "wardrik@box1"
+              },
+              {
+                "agents": 9,
+                "name": "wardrik@box2"
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "asleep": {
+            "description": "How many agents sleep, on no node, until something asks them.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agents": {
+                  "description": "How many agents run on it.",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "description": "The node's name, as an agent's node is given.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "agents"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "asleep"
+        ],
+        "title": "Nodes",
+        "type": "object"
+      },
+      "Placement": {
+        "description": "Where to start it: on node, to a token over every agent alone; anywhere where left out.",
+        "properties": {
+          "node": {
+            "description": "A node's name, as wardrik@host.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Reloaded": {
+        "additionalProperties": false,
+        "description": "The nodes that read their agents' definitions again.",
+        "properties": {
+          "reloaded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "reloaded"
+        ],
+        "type": "object"
+      },
+      "ServerAdded": {
+        "additionalProperties": false,
+        "description": "What POST /v1/servers answers: that the owner's agents can call the server now, or where someone signs in to it first.",
+        "examples": [
+          {
+            "connected": true,
+            "server": "docs"
+          },
+          {
+            "authorization": {
+              "url": "https://auth.crm.example/authorize?client_id=…&state=…"
+            },
+            "connected": false,
+            "server": "crm"
+          }
+        ],
+        "properties": {
+          "authorization": {
+            "$ref": "#/components/schemas/Authorization",
+            "description": "Where to sign in to it, where someone has to first."
+          },
+          "connected": {
+            "description": "Whether its agents can call it now.",
+            "type": "boolean"
+          },
+          "server": {
+            "description": "The server's name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "connected"
+        ],
+        "title": "A server added",
+        "type": "object"
+      },
+      "ServerAnswer": {
+        "additionalProperties": false,
+        "description": "One MCP server an owner added.",
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/Servers/properties/servers/items"
+          }
+        },
+        "required": [
+          "server"
+        ],
+        "type": "object"
+      },
+      "Servers": {
+        "additionalProperties": false,
+        "description": "The MCP servers an owner added for their agents: what GET /v1/servers answers.",
+        "examples": [
+          {
+            "servers": [
+              {
+                "auth": "secret",
+                "name": "crm",
+                "url": "https://mcp.crm.example/mcp"
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "servers": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "auth": {
+                  "description": "How its agents sign in to it.",
+                  "enum": [
+                    "oauth",
+                    "secret",
+                    "none"
+                  ]
+                },
+                "name": {
+                  "description": "What the owner's agents call it.",
+                  "type": "string"
+                },
+                "url": {
+                  "description": "The server's URL.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "url",
+                "auth"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "servers"
+        ],
+        "title": "Servers",
+        "type": "object"
+      },
+      "Trigger": {
+        "additionalProperties": true,
+        "description": "A trigger as it was put, the trigger field of what PUT /v1/agents/{key}/triggers/{trigger} answers. A trigger on a clock has every, missed and jitter, and a cron expression its timezone, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook, its secret and how a request is verified, and asks as each request arrives.",
+        "examples": [
+          {
+            "every": "*/30 * * * *",
+            "jitter": 0,
+            "missed": "run_once",
+            "name": "sweep",
+            "overlap": "skip",
+            "prompt": "Check the queue.",
+            "timezone": "Etc/UTC"
+          },
+          {
+            "name": "issues",
+            "overlap": "queue",
+            "prompt": "An event is below.",
+            "webhook": {
+              "secret": "${ISSUES_HOOK_SECRET}",
+              "verify": "shared"
+            }
+          }
+        ],
+        "properties": {
+          "every": {
+            "description": "A cron expression, or a duration such as 30m.",
+            "type": "string"
+          },
+          "jitter": {
+            "description": "Up to this many seconds of delay, chosen at random each time.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missed": {
+            "description": "What a trigger does about the firings it missed while down.",
+            "enum": [
+              "run_once",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overlap": {
+            "description": "What a firing does while a run is still going: skip it, or queue its prompt.",
+            "enum": [
+              "skip",
+              "queue"
+            ],
+            "type": "string"
+          },
+          "prompt": {
+            "description": "What the agent is asked each time.",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "prompt",
+          "overlap"
+        ],
+        "title": "A trigger",
+        "type": "object"
+      },
+      "TriggerAnswer": {
+        "additionalProperties": false,
+        "description": "A trigger.",
+        "properties": {
+          "trigger": {
+            "$ref": "#/components/schemas/Trigger"
+          }
+        },
+        "required": [
+          "trigger"
+        ],
+        "type": "object"
+      },
+      "TriggerDefinition": {
+        "additionalProperties": true,
+        "description": "The body of PUT /v1/agents/{key}/triggers/{trigger}, with a prompt or a prompt_file. A trigger on a clock has every, and a cron expression a timezone where it is not UTC; overlap is skip, missed is run_once and jitter is 0 where they are left out, and any other field is the source's that it watches, which one of them names; without one, it asks on every run. A webhook has webhook in place of every, holding its secret, as ${NAME}, and verify, shared or standard; it is sent requests at POST /v1/hooks/{key}/{trigger}, and its overlap is queue where it says none.",
+        "examples": [
+          {
+            "every": "*/30 * * * *",
+            "overlap": "skip",
+            "prompt": "Check the queue."
+          },
+          {
+            "every": "0 18 * * 1-5",
+            "prompt": "Write up what happened today.",
+            "timezone": "Europe/Berlin"
+          },
+          {
+            "prompt": "An event is below.",
+            "webhook": {
+              "secret": "${ISSUES_HOOK_SECRET}"
+            }
+          }
+        ],
+        "properties": {
+          "every": {
+            "description": "A cron expression, or a duration such as 30m.",
+            "type": "string"
+          },
+          "jitter": {
+            "description": "Up to this many seconds of delay, chosen at random each time.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missed": {
+            "description": "What a trigger does about the firings it missed while down.",
+            "enum": [
+              "run_once",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "overlap": {
+            "description": "What a firing does while a run is still going: skip it, or queue its prompt.",
+            "enum": [
+              "skip",
+              "queue"
+            ],
+            "type": "string"
+          },
+          "prompt": {
+            "description": "What the agent is asked each time.",
+            "type": "string"
+          },
+          "prompt_file": {
+            "description": "In place of prompt, a file in the agent's tree: each time, the agent is asked to read it and do what it says. tools names files to read it with.",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The time zone a cron expression in every is read in, by its IANA name, as Europe/Berlin; Etc/UTC where it is left out. A duration counts elapsed time and takes none.",
+            "type": "string"
+          }
+        },
+        "title": "A trigger's definition",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "description": "A token, or what the host's authenticator takes.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Wardrik's agents over HTTP. Each operation's x-wardrik-function names the function of the Elixir module Wardrik it calls. Every request presents a bearer token; an agent outside its scope is answered as one that does not exist, 404, and one inside it the token may not act on so, 403. Every answer of 400 and above is an error, as v1/error.json describes. Besides those each operation lists, any route answers 500 where something went wrong, and 503 where credentials cannot be checked.",
+    "license": {
+      "identifier": "Apache-2.0",
+      "name": "Apache-2.0"
+    },
+    "title": "Wardrik",
+    "version": "1"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/agents": {
+      "delete": {
+        "description": "Removes every agent under the prefix, with everything each had, but those an agent file declares.",
+        "operationId": "agents_forget",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/prefix_named"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forgotten"
+                }
+              }
+            },
+            "description": "Which agents went, which stayed and why, and which could not be removed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Remove every agent under a prefix",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agents_forget"
+      },
+      "get": {
+        "operationId": "agents_list",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/prefix"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agents"
+                }
+              }
+            },
+            "description": "The agents, each as the fleet lists it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "The agents under a prefix",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agents_list"
+      }
+    },
+    "/v1/agents/cancel": {
+      "post": {
+        "operationId": "agents_cancel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/prefix_named"
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cancelled"
+                }
+              }
+            },
+            "description": "The agents whose turn was ended."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Cancel the turn of every agent under a prefix",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agents_cancel"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}": {
+      "delete": {
+        "operationId": "user_agent_forget",
+        "responses": {
+          "204": {
+            "description": "Removed, with everything it had, its definition and triggers included."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Remove an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_forget"
+      },
+      "get": {
+        "operationId": "user_agent_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "What it is doing, what it waits on, and its conversation; sequence is the last event its log has written."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "An agent's snapshot",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "put": {
+        "description": "Starts the agent the definition describes, or brings the one running to it. 409 where an agent file declares it.",
+        "operationId": "user_agent_define",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "Its snapshot: started on the definition, or brought to it with its conversation."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Define an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_define"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/cancel": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "user_agent_cancel",
+        "responses": {
+          "202": {
+            "description": "Taken: the turn and what is queued behind it end; the agent keeps running."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Cancel an agent's turn",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_cancel"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/conversation": {
+      "delete": {
+        "description": "Empties the conversation, and the labels of what it held. 409 while it runs a turn or waits on a person.",
+        "operationId": "user_agent_clear",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "Its snapshot, with the conversation empty."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Empty an agent's conversation",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_clear"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/@{user}/{name}/decisions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "user_agent_decide",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decisions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decided"
+                }
+              }
+            },
+            "description": "Each call decided, approved or rejected."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Decide the calls an agent waits on",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_decide"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/definition": {
+      "get": {
+        "operationId": "user_agent_definition_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinitionRead"
+                }
+              }
+            },
+            "description": "The definition last put, as it was sent, and the tools it names that offer nothing yet."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "An agent's definition",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_definition_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/@{user}/{name}/events": {
+      "get": {
+        "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
+        "operationId": "user_agent_events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/starting_after"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/last_event_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Events"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "An agent's log",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_events"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/@{user}/{name}/interrupts/{interrupt}/authorization": {
+      "get": {
+        "operationId": "user_agent_authorization_read",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/interrupt"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Authorization"
+                }
+              }
+            },
+            "description": "The page, and the code to enter where one is needed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Where a person authorizes a call",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_authorization_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/@{user}/{name}/messages": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "user_agent_ask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageQueued"
+                }
+              }
+            },
+            "description": "The message, queued; the turn that answers it is in the agent's log."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Send an agent a message",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_ask"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/move": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "description": "To a token over every agent alone.",
+        "operationId": "user_agent_move",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Node"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, started again on the node with its conversation."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Move an agent to a node",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_move"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/spawn": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "operationId": "user_agent_spawn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Placement"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, as the fleet lists it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Start an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_spawn"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/stop": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "user_agent_stop",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, asleep: its conversation kept until something asks it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Stop an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_stop"
+      }
+    },
+    "/v1/agents/{org}/@{user}/{name}/triggers/{trigger}": {
+      "delete": {
+        "operationId": "user_agent_trigger_remove",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/trigger"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAnswer"
+                }
+              }
+            },
+            "description": "The trigger, as it was."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Remove a trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_remove"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "put": {
+        "description": "Sets the trigger in the agent's definition. 404 where no definition is kept, 409 where an agent file declares the agent.",
+        "operationId": "user_agent_trigger_set",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/trigger"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAnswer"
+                }
+              }
+            },
+            "description": "The trigger, as it was put."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Set a trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_set"
+      }
+    },
+    "/v1/agents/{org}/{name}": {
+      "delete": {
+        "operationId": "agent_forget",
+        "responses": {
+          "204": {
+            "description": "Removed, with everything it had, its definition and triggers included."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Remove an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_forget"
+      },
+      "get": {
+        "operationId": "agent_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "What it is doing, what it waits on, and its conversation; sequence is the last event its log has written."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "An agent's snapshot",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "put": {
+        "description": "Starts the agent the definition describes, or brings the one running to it. 409 where an agent file declares it.",
+        "operationId": "agent_define",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "Its snapshot: started on the definition, or brought to it with its conversation."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Define an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_define"
+      }
+    },
+    "/v1/agents/{org}/{name}/cancel": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "agent_cancel",
+        "responses": {
+          "202": {
+            "description": "Taken: the turn and what is queued behind it end; the agent keeps running."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Cancel an agent's turn",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_cancel"
+      }
+    },
+    "/v1/agents/{org}/{name}/conversation": {
+      "delete": {
+        "description": "Empties the conversation, and the labels of what it held. 409 while it runs a turn or waits on a person.",
+        "operationId": "agent_clear",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnapshot"
+                }
+              }
+            },
+            "description": "Its snapshot, with the conversation empty."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Empty an agent's conversation",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_clear"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/{name}/decisions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "agent_decide",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decisions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decided"
+                }
+              }
+            },
+            "description": "Each call decided, approved or rejected."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "summary": "Decide the calls an agent waits on",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_decide"
+      }
+    },
+    "/v1/agents/{org}/{name}/definition": {
+      "get": {
+        "operationId": "agent_definition_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinitionRead"
+                }
+              }
+            },
+            "description": "The definition last put, as it was sent, and the tools it names that offer nothing yet."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "An agent's definition",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_definition_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/{name}/events": {
+      "get": {
+        "description": "Reads after Last-Event-ID, or ?starting_after=. 410 where the log was trimmed past the cursor; read the snapshot and follow from its sequence.",
+        "operationId": "agent_events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/starting_after"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/last_event_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Events"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A page of the log, or with Accept: text/event-stream the log as server-sent events, after the cursor and then as it is written."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "An agent's log",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_events"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/{name}/interrupts/{interrupt}/authorization": {
+      "get": {
+        "operationId": "agent_authorization_read",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/interrupt"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Authorization"
+                }
+              }
+            },
+            "description": "The page, and the code to enter where one is needed."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Where a person authorizes a call",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_authorization_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ]
+    },
+    "/v1/agents/{org}/{name}/messages": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "agent_ask",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageQueued"
+                }
+              }
+            },
+            "description": "The message, queued; the turn that answers it is in the agent's log."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Send an agent a message",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_ask"
+      }
+    },
+    "/v1/agents/{org}/{name}/move": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "description": "To a token over every agent alone.",
+        "operationId": "agent_move",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Node"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, started again on the node with its conversation."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Move an agent to a node",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_move"
+      }
+    },
+    "/v1/agents/{org}/{name}/spawn": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "description": "Starts it on its definition or from the store, or answers the one running. A node, to a token over every agent alone.",
+        "operationId": "agent_spawn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Placement"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, as the fleet lists it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Start an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_spawn"
+      }
+    },
+    "/v1/agents/{org}/{name}/stop": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "post": {
+        "operationId": "agent_stop",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnswer"
+                }
+              }
+            },
+            "description": "The agent, asleep: its conversation kept until something asks it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "Stop an agent",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agent_stop"
+      }
+    },
+    "/v1/agents/{org}/{name}/triggers/{trigger}": {
+      "delete": {
+        "operationId": "agent_trigger_remove",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/trigger"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAnswer"
+                }
+              }
+            },
+            "description": "The trigger, as it was."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Remove a trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_remove"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        }
+      ],
+      "put": {
+        "description": "Sets the trigger in the agent's definition. 404 where no definition is kept, 409 where an agent file declares the agent.",
+        "operationId": "agent_trigger_set",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/trigger"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAnswer"
+                }
+              }
+            },
+            "description": "The trigger, as it was put."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Set a trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_set"
+      }
+    },
+    "/v1/connections": {
+      "get": {
+        "operationId": "connections_list",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connections"
+                }
+              }
+            },
+            "description": "Each account, and who holds it."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "The accounts an owner is offered",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-function": "connections_list"
+      }
+    },
+    "/v1/connections/{provider}": {
+      "delete": {
+        "operationId": "connections_disconnect",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionAnswer"
+                }
+              }
+            },
+            "description": "The connection, as it was held."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "Forget an account",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-function": "connections_disconnect"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/provider"
+        }
+      ],
+      "post": {
+        "operationId": "connections_connect",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connecting"
+                }
+              }
+            },
+            "description": "Where to authorize it, or that it is held already."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Connect an account",
+        "tags": [
+          "Connections"
+        ],
+        "x-wardrik-function": "connections_connect"
+      }
+    },
+    "/v1/deployment/audit": {
+      "get": {
+        "operationId": "deployment_audit",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/starting_after"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Changes"
+                }
+              }
+            },
+            "description": "What people changed across the deployment, after the cursor."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        },
+        "summary": "A page of the audit",
+        "tags": [
+          "Deployment"
+        ],
+        "x-wardrik-function": "deployment_audit"
+      }
+    },
+    "/v1/deployment/nodes": {
+      "get": {
+        "operationId": "deployment_nodes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Nodes"
+                }
+              }
+            },
+            "description": "Each node with how many agents run on it, and how many sleep."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "summary": "The deployment's nodes",
+        "tags": [
+          "Deployment"
+        ],
+        "x-wardrik-function": "deployment_nodes"
+      }
+    },
+    "/v1/deployment/reload": {
+      "post": {
+        "operationId": "deployment_reload",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reloaded"
+                }
+              }
+            },
+            "description": "The nodes that read them."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Read every agent's definition again",
+        "tags": [
+          "Deployment"
+        ],
+        "x-wardrik-function": "deployment_reload"
+      }
+    },
+    "/v1/exports/{export}": {
+      "delete": {
+        "operationId": "export_forget",
+        "responses": {
+          "204": {
+            "description": "Deleted: the export reads from the start again."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "Delete an export's cursor",
+        "tags": [
+          "Exports"
+        ],
+        "x-wardrik-function": "export_forget"
+      },
+      "get": {
+        "operationId": "export_read",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            },
+            "description": "The events after the export's cursor, in every log the caller may read."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "A page of an export",
+        "tags": [
+          "Exports"
+        ],
+        "x-wardrik-function": "export_read"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/export"
+        }
+      ],
+      "post": {
+        "operationId": "export_advance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Next"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Moved past the page."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "summary": "Move an export's cursor",
+        "tags": [
+          "Exports"
+        ],
+        "x-wardrik-function": "export_advance"
+      }
+    },
+    "/v1/hooks/{org}/@{user}/{name}/{trigger}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        },
+        {
+          "$ref": "#/components/parameters/trigger"
+        }
+      ],
+      "post": {
+        "description": "A request from outside, as the trigger it names: the trigger checks it. With the trigger's secret in the path for a sender that sets no header.",
+        "operationId": "user_agent_trigger_deliver",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          },
+          "description": "The service's request, checked against its signature whole.",
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            },
+            "description": "Taken: asked, or seen where the same request came before."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Deliver a request to a webhook trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_deliver"
+      }
+    },
+    "/v1/hooks/{org}/@{user}/{name}/{trigger}/{secret}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/user"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        },
+        {
+          "$ref": "#/components/parameters/trigger"
+        },
+        {
+          "$ref": "#/components/parameters/secret"
+        }
+      ],
+      "post": {
+        "description": "A request from outside, as the trigger it names: the trigger checks it. With the trigger's secret in the path for a sender that sets no header.",
+        "operationId": "user_agent_trigger_deliver_with_secret",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          },
+          "description": "The service's request, checked against its signature whole.",
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            },
+            "description": "Taken: asked, or seen where the same request came before."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Deliver a request to a webhook trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_deliver"
+      }
+    },
+    "/v1/hooks/{org}/{name}/{trigger}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        },
+        {
+          "$ref": "#/components/parameters/trigger"
+        }
+      ],
+      "post": {
+        "description": "A request from outside, as the trigger it names: the trigger checks it. With the trigger's secret in the path for a sender that sets no header.",
+        "operationId": "agent_trigger_deliver",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          },
+          "description": "The service's request, checked against its signature whole.",
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            },
+            "description": "Taken: asked, or seen where the same request came before."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Deliver a request to a webhook trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_deliver"
+      }
+    },
+    "/v1/hooks/{org}/{name}/{trigger}/{secret}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "$ref": "#/components/parameters/name"
+        },
+        {
+          "$ref": "#/components/parameters/trigger"
+        },
+        {
+          "$ref": "#/components/parameters/secret"
+        }
+      ],
+      "post": {
+        "description": "A request from outside, as the trigger it names: the trigger checks it. With the trigger's secret in the path for a sender that sets no header.",
+        "operationId": "agent_trigger_deliver_with_secret",
+        "requestBody": {
+          "content": {
+            "*/*": {
+              "schema": {}
+            }
+          },
+          "description": "The service's request, checked against its signature whole.",
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            },
+            "description": "Taken: asked, or seen where the same request came before."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Deliver a request to a webhook trigger",
+        "tags": [
+          "Triggers"
+        ],
+        "x-wardrik-function": "agent_trigger_deliver"
+      }
+    },
+    "/v1/interrupts": {
+      "get": {
+        "operationId": "agents_parked",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/prefix"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Interrupts"
+                }
+              }
+            },
+            "description": "Each call, as an interrupt, with the agent it is for."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "summary": "The calls agents under a prefix wait on a person for",
+        "tags": [
+          "Agents"
+        ],
+        "x-wardrik-function": "agents_parked"
+      }
+    },
+    "/v1/servers": {
+      "get": {
+        "operationId": "servers_list",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Servers"
+                }
+              }
+            },
+            "description": "Each server, by its name, URL and how its agents sign in."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "The MCP servers an owner added",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-function": "servers_list"
+      },
+      "post": {
+        "operationId": "servers_add",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InputServersAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerAdded"
+                }
+              }
+            },
+            "description": "Added: its agents can call it now, or once someone signs in where it says."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Add an MCP server",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-function": "servers_add"
+      }
+    },
+    "/v1/servers/{server}": {
+      "delete": {
+        "operationId": "servers_remove",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerAnswer"
+                }
+              }
+            },
+            "description": "The server, as it was."
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotSupported"
+          }
+        },
+        "summary": "Remove an MCP server",
+        "tags": [
+          "Servers"
+        ],
+        "x-wardrik-function": "servers_remove"
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/server"
+        }
+      ]
+    },
+    "/v1/workers": {
+      "get": {
+        "description": "A WebSocket a tool worker holds open, to a token that may :serve.",
+        "operationId": "workers",
+        "responses": {
+          "101": {
+            "description": "Switched to a WebSocket, over which the worker offers tools and answers calls to them."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          }
+        },
+        "summary": "A tool worker's socket",
+        "tags": [
+          "Workers"
+        ],
+        "x-wardrik-function": "workers"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "A daemon, as it listens by default.",
+      "url": "http://127.0.0.1:4747"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Defining agents, talking to them, and their lives.",
+      "name": "Agents"
+    },
+    {
+      "description": "What starts an agent's turns: clocks, feeds and webhooks.",
+      "name": "Triggers"
+    },
+    {
+      "description": "The accounts an owner's agents act with.",
+      "name": "Connections"
+    },
+    {
+      "description": "The MCP servers an owner adds for their agents.",
+      "name": "Servers"
+    },
+    {
+      "description": "Every log a caller may read, followed by a cursor of its own.",
+      "name": "Exports"
+    },
+    {
+      "description": "The deployment itself, to a token over every agent.",
+      "name": "Deployment"
+    },
+    {
+      "description": "Tools offered from a process of the caller's own.",
+      "name": "Workers"
+    }
+  ]
+}

@@ -80,30 +80,30 @@ answers an agent with is its key.
 | `DELETE /v1/agents?prefix=` | removes every agent under the prefix but those agent files declare; answers which went, which stayed and why |
 | `GET /v1/interrupts` | the calls agents under `?prefix=`, or every one the token reaches, wait on a person for |
 | `GET /v1/agents/{key}` | the agent's snapshot, with `sequence`, the last event its log has written |
-| `PUT /v1/agents/{key}` | starts the agent a definition describes, `201`, or brings the one running to it, `200`; answers its snapshot |
+| `PUT /v1/agents/{key}` | starts the agent a definition describes, or brings the one running to it; answers its snapshot |
 | `GET /v1/agents/{key}/definition` | the definition last put, as it was sent, with the tools it names that offer nothing yet as `missing` |
-| `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included; `409` where an agent file declares it |
+| `DELETE /v1/agents/{key}` | stops the agent and deletes everything it had, its definition and triggers included, `204`; `409` where an agent file declares it |
 | `GET /v1/agents/{key}/events` | its log as server-sent events, with `Accept: text/event-stream`; otherwise a page of it as JSON |
 | `POST /v1/agents/{key}/messages` | queues a message for the agent to answer, `202` |
 | `POST /v1/agents/{key}/decisions` | approves or rejects calls the agent is waiting on, together |
 | `GET /v1/agents/{key}/interrupts/{id}/authorization` | where a person authorizes a call waiting with reason `authorization` |
 | `POST /v1/agents/{key}/cancel` | stops what the agent is doing, and drops what is queued, `202` |
 | `POST /v1/agents/{key}/spawn` | starts the agent; with `{"node": ...}`, on that node, to a token over every agent |
-| `POST /v1/agents/{key}/stop` | stops the agent, keeping its conversation, so it sleeps until something asks it |
+| `POST /v1/agents/{key}/stop` | stops the agent, keeping its conversation, so it sleeps until something asks it; answers it, asleep |
 | `POST /v1/agents/{key}/move` | starts the agent again on `{"node": ...}`, with its conversation, to a token over every agent |
-| `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and the labels of what it held, `204`; `409` while it runs a turn or waits on a person |
-| `PUT /v1/agents/{key}/triggers/{trigger}` | sets a trigger, `201`, or changes it, `200`; `404` where no definition is kept, `409` where an agent file declares the agent |
-| `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, `204` |
+| `DELETE /v1/agents/{key}/conversation` | empties the agent's conversation, and the labels of what it held, and answers its snapshot; `409` while it runs a turn or waits on a person |
+| `PUT /v1/agents/{key}/triggers/{trigger}` | sets or changes a trigger, and answers it; `404` where no definition is kept, `409` where an agent file declares the agent |
+| `DELETE /v1/agents/{key}/triggers/{trigger}` | stops the trigger and deletes it, and answers it as it was |
 | `POST /v1/hooks/{key}/{trigger}`, or `.../{trigger}/{secret}` | delivers a service's request to a webhook trigger; see [Webhooks](#webhooks) |
 | `GET /v1/exports/{name}` | a page of every log the caller may read, after the export's cursor |
 | `POST /v1/exports/{name}` | moves the export's cursor to a page's `next`, `204` |
 | `DELETE /v1/exports/{name}` | deletes the export's cursor, so it reads from the start again, `204` |
 | `GET /v1/connections` | the accounts the caller's org is offered, and whether they, the org or the deployment holds each |
 | `POST /v1/connections/{provider}` | connects an account: where to authorize it, or that it is held already |
-| `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, `204` |
+| `DELETE /v1/connections/{provider}` | forgets the account, so the next call that needs it asks again, and answers it as it was held |
 | `GET /v1/servers` | the MCP servers the caller added for their own agents |
 | `POST /v1/servers` | adds an MCP server for the caller's agents, `201`: that they can call it now, or where to sign in to it first |
-| `DELETE /v1/servers/{name}` | removes the server, so the caller's agents can no longer call it, `204` |
+| `DELETE /v1/servers/{name}` | removes the server, so the caller's agents can no longer call it, and answers it as it was |
 | `POST /v1/deployment/reload` | has every node read its agent and policy files again, and answers those nodes |
 | `GET /v1/deployment/nodes` | the deployment's nodes, each with how many agents run on it, and how many sleep |
 | `GET /v1/deployment/audit` | a page of what people changed across the deployment, after `?starting_after=` |
@@ -111,10 +111,12 @@ answers an agent with is its key.
 
 The `/v1/deployment` routes are for a token over every agent alone.
 
-A route that changes something answers what it would do, and does nothing, with `?plan=true`: a
-cancel answers `{"cancelling": [...]}`, and a removal
-`{"forgetting": [...], "keeping": [{"id": ..., "why": ...}]}`. Done, a cancel answers
-`{"cancelled": [...]}`, and a removal `{"forgotten": [...], "kept": [...], "failed": [...]}`.
+A cancel under a prefix answers `{"cancelled": [...]}`, and a removal
+`{"forgotten": [...], "kept": [{"id": ..., "why": ...}], "failed": [...]}`.
+
+`wardrik_protocol`'s `priv/openapi.json` is every route in OpenAPI 3.1: what each takes and
+answers, and the function of `Wardrik` it calls. A client generator in any language reads
+`priv/openapi.bundled.json`, the same with every schema in it.
 
 [Resources](#resources), below, lists what each route takes and answers. The TypeScript SDK's types
 are generated from the same schemas.

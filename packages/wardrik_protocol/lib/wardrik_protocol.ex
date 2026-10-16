@@ -14,6 +14,11 @@ defmodule WardrikProtocol do
       by its name with `_` for `.`, such as `input_agent_trigger_set.json`
     * the rest - one per HTTP API resource, such as `agent.json`
 
+  Beside them, `priv/openapi.json` is the HTTP API whole, in OpenAPI 3.1:
+  every route, what it takes and what it answers, each a `$ref` to the
+  schemas above (`openapi/0`). `priv/openapi.bundled.json` is the same with
+  every schema in it, for a client generator; see `WardrikProtocol.OpenAPI`.
+
   `WardrikProtocol.Resolver` finds them by `$id` for JSV:
 
       root = JSV.build!(%{"$ref" => "urn:wardrik:schema:v1:agent"}, resolver: WardrikProtocol.Resolver)
@@ -30,6 +35,10 @@ defmodule WardrikProtocol do
   @doc "Where the schemas are as files, for a reader that takes them from disk rather than by `$id`."
   @spec dir() :: Path.t()
   def dir, do: Application.app_dir(:wardrik_protocol, "priv/v1")
+
+  @doc "Where `openapi.json` is, whose `$ref`s name the schemas in `dir/0` as `v1/<file name>`."
+  @spec openapi() :: Path.t()
+  def openapi, do: Application.app_dir(:wardrik_protocol, "priv/openapi.json")
 
   @doc """
   The schema `name`, such as `"input_agent_trigger_set"`, whole: each `$ref`

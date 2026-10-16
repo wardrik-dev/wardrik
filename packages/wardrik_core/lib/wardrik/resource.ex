@@ -120,15 +120,12 @@ defmodule Wardrik.Resource do
 
   @doc "The connections an owner is offered, and who holds each, where anyone does."
   @spec connections([Connection.t()]) :: map()
-  def connections(connections) do
-    %{
-      "connections" =>
-        for(
-          %Connection{provider: provider, held_by: held_by} <- connections,
-          do: Value.put(%{"provider" => provider}, "held_by", held_by && to_string(held_by))
-        )
-    }
-  end
+  def connections(connections), do: %{"connections" => Enum.map(connections, &connection/1)}
+
+  @doc "One connection: its provider, and who holds it, where anyone does."
+  @spec connection(Connection.t()) :: map()
+  def connection(%Connection{provider: provider, held_by: held_by}),
+    do: Value.put(%{"provider" => provider}, "held_by", held_by && to_string(held_by))
 
   @doc "A connection asked for: held already, or where to authorize it."
   @spec connecting(Connection.t()) :: map()
@@ -140,15 +137,12 @@ defmodule Wardrik.Resource do
 
   @doc "The MCP servers an owner added, each by its name, URL and how its agents sign in."
   @spec servers([Server.t()]) :: map()
-  def servers(servers) do
-    %{
-      "servers" =>
-        for(
-          %Server{name: name, url: url, auth: auth} <- servers,
-          do: %{"name" => name, "url" => url, "auth" => auth}
-        )
-    }
-  end
+  def servers(servers), do: %{"servers" => Enum.map(servers, &server/1)}
+
+  @doc "One MCP server an owner added: its name, URL and how its agents sign in."
+  @spec server(Server.t()) :: map()
+  def server(%Server{name: name, url: url, auth: auth}),
+    do: %{"name" => name, "url" => url, "auth" => auth}
 
   @doc "A server added: its agents can call it now, or once someone signs in where it says."
   @spec server_added(Server.t()) :: map()

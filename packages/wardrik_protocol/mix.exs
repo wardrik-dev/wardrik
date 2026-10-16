@@ -26,7 +26,8 @@ defmodule WardrikProtocol.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv/v1 .formatter.exs mix.exs README.md LICENSE)
+      files:
+        ~w(lib priv/v1 priv/openapi.json priv/openapi.bundled.json .formatter.exs mix.exs README.md LICENSE)
     ]
   end
 
