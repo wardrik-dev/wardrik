@@ -3,8 +3,8 @@ defmodule WardrikChannel.Workspace do
   A channel as it acts in one workspace it is installed in: the channel's
   `WardrikChannel.Context` and the `WardrikChannel.Installation`. An
   adapter makes one for each thing it hears, with `new/2`, and hands it to
-  `WardrikChannel.received/2`, and a room of it, a `WardrikChannel.Place`,
-  to `WardrikChannel.Rooms`.
+  `WardrikChannel.received/2`, and a `WardrikChannel.Room` of it to
+  `WardrikChannel.Rooms`.
 
   The host's answers in the context are each given the installation, so a
   host that serves many owners answers for the one it was installed for.

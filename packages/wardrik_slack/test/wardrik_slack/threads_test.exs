@@ -82,7 +82,7 @@ defmodule WardrikSlack.ThreadsTest do
     {:ok, workspace} = Workspace.new(channels[name].context, "T1")
 
     {:bound, _room, _offer} =
-      Rooms.joined(WardrikChannel.Place.new(workspace, "C1"), name: "books")
+      Rooms.joined(WardrikChannel.Room.new(workspace, "C1"), name: "books")
 
     on_exit(fn -> Fleet.forget_under(AgentID.Prefix.of(agent)) end)
 

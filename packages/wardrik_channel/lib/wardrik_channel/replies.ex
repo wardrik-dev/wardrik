@@ -35,9 +35,9 @@ defmodule WardrikChannel.Replies do
   """
 
   alias Wardrik.AgentID
-  alias WardrikChannel.Place
   alias WardrikChannel.Replies.Server
   alias WardrikChannel.Replies.State
+  alias WardrikChannel.Room
 
   @name WardrikChannel.Replies.Rooms
 
@@ -87,33 +87,33 @@ defmodule WardrikChannel.Replies do
   end
 
   @doc """
-  Posts in `thread` of the place what `agent` answers from now on, unless
+  Posts in `thread` of the room what `agent` answers from now on, unless
   the thread is followed already.
   """
-  @spec follow(Place.t(), String.t(), AgentID.t()) :: :ok
-  def follow(%Place{workspace: %{installation: installation}} = place, thread, %AgentID{} = agent) do
-    state = State.new(installation.channel, installation.workspace, place.room)
-    child = {Server, key: Place.key(place), initial_state: state}
-    {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(replies(place), child)
+  @spec follow(Room.t(), String.t(), AgentID.t()) :: :ok
+  def follow(%Room{workspace: %{installation: installation}} = room, thread, %AgentID{} = agent) do
+    state = State.new(installation.channel, installation.workspace, room.id)
+    child = {Server, key: Room.key(room), initial_state: state}
+    {:ok, {pid, _meta}} = DurableServer.Supervisor.ensure_started_child(replies(room), child)
     GenServer.call(pid, {:follow, thread, agent})
   end
 
   @doc """
-  Posts again in `thread` of the place the calls its agent waits on. A post
+  Posts again in `thread` of the room the calls its agent waits on. A post
   refused is not tried again.
   """
-  @spec remind(Place.t(), String.t()) :: :ok
-  def remind(%Place{} = place, thread) do
-    case DurableServer.Supervisor.lookup(replies(place), Place.key(place)) do
+  @spec remind(Room.t(), String.t()) :: :ok
+  def remind(%Room{} = room, thread) do
+    case DurableServer.Supervisor.lookup(replies(room), Room.key(room)) do
       {pid, _meta} -> GenServer.cast(pid, {:remind, thread})
       nil -> :ok
     end
   end
 
-  @doc "Posts nothing more in the place, and forgets its threads."
-  @spec forget(Place.t()) :: :ok | {:error, term()}
-  def forget(%Place{} = place),
-    do: DurableServer.Supervisor.terminate_and_delete_child(replies(place), Place.key(place))
+  @doc "Posts nothing more in the room, and forgets its threads."
+  @spec forget(Room.t()) :: :ok | {:error, term()}
+  def forget(%Room{} = room),
+    do: DurableServer.Supervisor.terminate_and_delete_child(replies(room), Room.key(room))
 
-  defp replies(%Place{workspace: workspace}), do: workspace.context.replies
+  defp replies(%Room{workspace: workspace}), do: workspace.context.replies
 end

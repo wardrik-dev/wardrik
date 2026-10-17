@@ -20,8 +20,8 @@ defmodule WardrikSlack.Rooms do
   """
 
   alias Wardrik.AgentID
+  alias WardrikChannel.Binding
   alias WardrikChannel.Offer
-  alias WardrikChannel.Place
   alias WardrikChannel.Room
   alias WardrikChannel.Workspace
 
@@ -38,7 +38,7 @@ defmodule WardrikSlack.Rooms do
       workspace = Keyword.fetch!(opts, :workspace)
 
       workspace
-      |> Place.new(room)
+      |> Room.new(room)
       |> WardrikChannel.Rooms.joined(name: name(room, opts), by: sender(event["inviter"], opts))
       |> message(workspace, opts)
       |> post(room, opts)
@@ -51,7 +51,7 @@ defmodule WardrikSlack.Rooms do
       when type in ["channel_left", "group_left"] do
     opts
     |> Keyword.fetch!(:workspace)
-    |> Place.new(room)
+    |> Room.new(room)
     |> WardrikChannel.Rooms.left(by: sender(event["actor_id"], opts))
   end
 
@@ -68,13 +68,13 @@ defmodule WardrikSlack.Rooms do
       )
       when action in ["agent", "answers", "create", "more"] do
     workspace = Keyword.fetch!(opts, :workspace)
-    %{"id" => room} = channel = Map.get(payload, "channel", %{})
+    %{"id" => id} = channel = Map.get(payload, "channel", %{})
     user = Map.get(payload, "user", %{})
     by = sender(user["id"], opts, user["username"] || user["name"])
-    place = Place.new(workspace, room)
+    room = Room.new(workspace, id)
 
     reply =
-      case act(action, value(pressed), place, name: channel["name"], by: by) do
+      case act(action, value(pressed), room, name: channel["name"], by: by) do
         {:error, message} when is_binary(message) -> WardrikSlack.ephemeral(message)
         shown -> Map.put(message(shown, workspace, opts), :replace_original, true)
       end
@@ -84,9 +84,9 @@ defmodule WardrikSlack.Rooms do
 
   def answer(_payload, _opts), do: :ignored
 
-  defp act("agent", text, place, opts) do
+  defp act("agent", text, room, opts) do
     with {:ok, agent} <- AgentID.parse(to_string(text)),
-         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(place, agent, by: opts[:by]) do
+         {:ok, bound, offer} <- WardrikChannel.Rooms.chose(room, agent, by: opts[:by]) do
       {:bound, bound, offer}
     else
       {:error, :not_offered} -> {:error, "That agent is no longer offered here."}
@@ -94,28 +94,28 @@ defmodule WardrikSlack.Rooms do
     end
   end
 
-  defp act("answers", answers, place, opts) do
+  defp act("answers", answers, room, opts) do
     answers = if answers == "everything", do: :everything, else: :mentions
 
-    case WardrikChannel.Rooms.answers(place, answers, by: opts[:by]) do
+    case WardrikChannel.Rooms.answers(room, answers, by: opts[:by]) do
       {:ok, bound, offer} -> {:bound, bound, offer}
-      {:error, :not_bound} -> WardrikChannel.Rooms.choices(place, name: opts[:name])
+      {:error, :not_bound} -> WardrikChannel.Rooms.choices(room, name: opts[:name])
     end
   end
 
-  defp act("create", name, place, opts) do
+  defp act("create", name, room, opts) do
     with {:ok, bound, offer} <-
-           WardrikChannel.Rooms.create(place, to_string(name), by: opts[:by]),
+           WardrikChannel.Rooms.create(room, to_string(name), by: opts[:by]),
          do: {:bound, bound, offer}
   end
 
-  defp act("more", "stop", place, opts) do
-    :ok = WardrikChannel.Rooms.left(place, by: opts[:by])
+  defp act("more", "stop", room, opts) do
+    :ok = WardrikChannel.Rooms.left(room, by: opts[:by])
     :stopped
   end
 
-  defp act("more", _choose, place, opts),
-    do: WardrikChannel.Rooms.choices(place, name: opts[:name])
+  defp act("more", _choose, room, opts),
+    do: WardrikChannel.Rooms.choices(room, name: opts[:name])
 
   # A button carries its value; a menu, the option chosen.
   defp value(%{"value" => value}), do: value
@@ -127,7 +127,7 @@ defmodule WardrikSlack.Rooms do
   @doc false
   @spec message(WardrikChannel.Rooms.shown() | :stopped, Workspace.t(), keyword()) ::
           %{text: String.t(), blocks: [map()]}
-  def message({:bound, %Room{agent: agent, answers: answers}, offer}, workspace, opts) do
+  def message({:bound, %Binding{agent: agent, answers: answers}, offer}, workspace, opts) do
     text = ":wave: *#{agent}* answers here now."
 
     {how, toggle} =

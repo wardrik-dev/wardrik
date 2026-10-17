@@ -18,17 +18,18 @@ defmodule WardrikChannel.Rooms do
   as taking the bot out of it, or asking it to stop answering there, does,
   and `WardrikChannel.Replies` posts nothing more in its threads.
 
-  Each acts on a `WardrikChannel.Place`, a room of a workspace the channel
+  Each acts on a `WardrikChannel.Room`, a room of a workspace the channel
   is installed in, and what is offered there is what the host offers that
-  installation. Who made a change is each one's `:by`. Each binding is a `WardrikChannel.Room` kept in
-  the store of the host the channel runs on, and each change is recorded in
-  `Wardrik.Audit` with the person who made it.
+  installation. Who made a change is each one's `:by`. Each binding is a
+  `WardrikChannel.Binding` kept in the store of the host the channel runs
+  on, and each change is recorded in `Wardrik.Audit` with the person who
+  made it.
   """
 
   alias Wardrik.AgentID
   alias Wardrik.Audit
+  alias WardrikChannel.Binding
   alias WardrikChannel.Offer
-  alias WardrikChannel.Place
   alias WardrikChannel.Room
   alias WardrikChannel.Workspace
 
@@ -36,99 +37,99 @@ defmodule WardrikChannel.Rooms do
 
   @typedoc "What a room shows once something has changed there."
   @type shown() ::
-          {:bound, Room.t(), Offer.t() | nil}
+          {:bound, Binding.t(), Offer.t() | nil}
           | {:choose, [Offer.t()]}
           | {:create, String.t()}
           | :none
 
-  @doc "The binding of the place, where it has one."
-  @spec get(Place.t()) :: Room.t() | nil
-  def get(%Place{} = place), do: place |> store() |> WardrikStore.get(@ns, Place.key(place))
+  @doc "What the room is bound to, where it is bound."
+  @spec get(Room.t()) :: Binding.t() | nil
+  def get(%Room{} = room), do: room |> store() |> WardrikStore.get(@ns, Room.key(room))
 
   @doc """
-  The bot was invited into the place: binds it to the one agent the
+  The bot was invited into the room: binds it to the one agent the
   channel offers, or answers what to offer instead. Options:
 
     * `:name` - what the room is called in the channel, its id unless given
     * `:by` - who invited it, where the channel says
   """
-  @spec joined(Place.t(), keyword()) :: shown()
-  def joined(%Place{workspace: workspace} = place, opts \\ []) do
+  @spec joined(Room.t(), keyword()) :: shown()
+  def joined(%Room{workspace: workspace} = room, opts \\ []) do
     opts = Keyword.validate!(opts, [:name, :by])
 
     case Workspace.offered(workspace) do
-      [offer] -> {:bound, bind(place, offer.agent, :mentions, opts[:by]), offer}
-      [] -> unoffered(place, opts[:name])
+      [offer] -> {:bound, bind(room, offer.agent, :mentions, opts[:by]), offer}
+      [] -> unoffered(room, opts[:name])
       offers -> {:choose, offers}
     end
   end
 
   @doc """
-  What the place offers someone who asks to change its agent: the agents to
+  What the room offers someone who asks to change its agent: the agents to
   choose among, or what to do where there are none. Options: `:name`, what
   the room is called in the channel, its id unless given.
   """
-  @spec choices(Place.t(), keyword()) :: shown()
-  def choices(%Place{workspace: workspace} = place, opts \\ []) do
+  @spec choices(Room.t(), keyword()) :: shown()
+  def choices(%Room{workspace: workspace} = room, opts \\ []) do
     opts = Keyword.validate!(opts, [:name])
 
     case Workspace.offered(workspace) do
-      [] -> unoffered(place, opts[:name])
+      [] -> unoffered(room, opts[:name])
       offers -> {:choose, offers}
     end
   end
 
-  defp unoffered(%Place{workspace: workspace, room: room}, name),
-    do: if(Workspace.creatable?(workspace), do: {:create, name || room}, else: :none)
+  defp unoffered(%Room{workspace: workspace, id: id}, name),
+    do: if(Workspace.creatable?(workspace), do: {:create, name || id}, else: :none)
 
   @doc """
-  `agent` was chosen to answer in the place: binds it, answering when
+  `agent` was chosen to answer in the room: binds it, answering when
   mentioned. `{:error, :not_offered}` where the channel does not offer it,
   or no longer does. Options: `:by`, who chose it.
   """
-  @spec chose(Place.t(), AgentID.t(), keyword()) ::
-          {:ok, Room.t(), Offer.t()} | {:error, :not_offered}
-  def chose(%Place{workspace: workspace} = place, %AgentID{} = agent, opts \\ []) do
+  @spec chose(Room.t(), AgentID.t(), keyword()) ::
+          {:ok, Binding.t(), Offer.t()} | {:error, :not_offered}
+  def chose(%Room{workspace: workspace} = room, %AgentID{} = agent, opts \\ []) do
     opts = Keyword.validate!(opts, [:by])
 
     case Enum.find(Workspace.offered(workspace), &(&1.agent == agent)) do
-      %Offer{} = offer -> {:ok, bind(place, agent, :mentions, opts[:by]), offer}
+      %Offer{} = offer -> {:ok, bind(room, agent, :mentions, opts[:by]), offer}
       nil -> {:error, :not_offered}
     end
   end
 
   @doc """
-  Someone asked for an agent to be created for the place, named after
-  `name`: creates it, as the host does, and binds the place to it. Options:
+  Someone asked for an agent to be created for the room, named after
+  `name`: creates it, as the host does, and binds the room to it. Options:
   `:by`, who asked.
   """
-  @spec create(Place.t(), String.t(), keyword()) ::
-          {:ok, Room.t(), Offer.t()} | {:error, String.t()}
-  def create(%Place{workspace: workspace} = place, name, opts \\ []) when is_binary(name) do
+  @spec create(Room.t(), String.t(), keyword()) ::
+          {:ok, Binding.t(), Offer.t()} | {:error, String.t()}
+  def create(%Room{workspace: workspace} = room, name, opts \\ []) when is_binary(name) do
     opts = Keyword.validate!(opts, [:by])
 
     if Workspace.creatable?(workspace) do
       with {:ok, %Offer{} = offer} <- Workspace.create(workspace, name, by: opts[:by]),
-           do: {:ok, bind(place, offer.agent, :mentions, opts[:by]), offer}
+           do: {:ok, bind(room, offer.agent, :mentions, opts[:by]), offer}
     else
       {:error, "Agents are not created from here; whoever runs Wardrik can offer one."}
     end
   end
 
   @doc """
-  Changes when the agent bound to the place answers. Options: `:by`, who
+  Changes when the agent bound to the room answers. Options: `:by`, who
   changed it.
   """
-  @spec answers(Place.t(), Room.answers(), keyword()) ::
-          {:ok, Room.t(), Offer.t() | nil} | {:error, :not_bound}
-  def answers(%Place{workspace: workspace} = place, answers, opts \\ [])
+  @spec answers(Room.t(), Binding.answers(), keyword()) ::
+          {:ok, Binding.t(), Offer.t() | nil} | {:error, :not_bound}
+  def answers(%Room{workspace: workspace} = room, answers, opts \\ [])
       when answers in [:mentions, :everything] do
     opts = Keyword.validate!(opts, [:by])
 
-    case get(place) do
-      %Room{agent: agent} ->
+    case get(room) do
+      %Binding{agent: agent} ->
         offer = Enum.find(Workspace.offered(workspace), &(&1.agent == agent))
-        {:ok, bind(place, agent, answers, opts[:by]), offer}
+        {:ok, bind(room, agent, answers, opts[:by]), offer}
 
       nil ->
         {:error, :not_bound}
@@ -136,43 +137,42 @@ defmodule WardrikChannel.Rooms do
   end
 
   @doc """
-  No agent answers in the place any longer, as someone asked, or as taking
+  No agent answers in the room any longer, as someone asked, or as taking
   the bot out of it does. Options: `:by`, who asked, where the channel says.
   """
-  @spec left(Place.t(), keyword()) :: :ok
-  def left(%Place{} = place, opts \\ []) do
+  @spec left(Room.t(), keyword()) :: :ok
+  def left(%Room{} = room, opts \\ []) do
     opts = Keyword.validate!(opts, [:by])
 
-    case get(place) do
-      %Room{channel: channel, room: room} ->
-        :ok = place |> store() |> WardrikStore.delete(@ns, Place.key(place))
-        :ok = WardrikChannel.Replies.forget(place)
-        Audit.record(audit(place), {:room_unbound, channel, room}, by: opts[:by])
+    case get(room) do
+      %Binding{channel: channel, room: id} ->
+        :ok = room |> store() |> WardrikStore.delete(@ns, Room.key(room))
+        :ok = WardrikChannel.Replies.forget(room)
+        Audit.record(audit(room), {:room_unbound, channel, id}, by: opts[:by])
 
       nil ->
         :ok
     end
   end
 
-  defp bind(%Place{workspace: workspace, room: room} = place, agent, answers, by) do
+  defp bind(%Room{workspace: workspace, id: id} = room, agent, answers, by) do
     %{installation: installation} = workspace
 
-    bound = %Room{
+    bound = %Binding{
       channel: installation.channel,
       workspace: installation.workspace,
-      room: room,
+      room: id,
       agent: agent,
       answers: answers
     }
 
-    {:ok, _vsn} = place |> store() |> WardrikStore.put(@ns, Place.key(place), bound)
+    {:ok, _vsn} = room |> store() |> WardrikStore.put(@ns, Room.key(room), bound)
 
-    :ok =
-      Audit.record(audit(place), {:room_bound, bound.channel, room, agent, answers}, by: by)
+    :ok = Audit.record(audit(room), {:room_bound, bound.channel, id, agent, answers}, by: by)
 
     bound
   end
 
-  defp store(%Place{workspace: workspace}), do: Wardrik.Host.store(workspace.context.host)
-  defp audit(%Place{workspace: workspace}), do: Wardrik.Host.audit(workspace.context.host)
+  defp store(%Room{workspace: workspace}), do: Wardrik.Host.store(workspace.context.host)
+  defp audit(%Room{workspace: workspace}), do: Wardrik.Host.audit(workspace.context.host)
 end

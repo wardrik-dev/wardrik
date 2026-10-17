@@ -123,8 +123,8 @@ defmodule WardrikChannel do
   ## Rooms
 
   An adapter tells `WardrikChannel.Rooms` when its bot is invited into a
-  room or taken out of one, and what was chosen there, handing it the room
-  as a `WardrikChannel.Place` of its workspace. See `WardrikChannel.Rooms` for how a room comes to have
+  room or taken out of one, and what was chosen there, handing it the
+  `WardrikChannel.Room`. See `WardrikChannel.Rooms` for how a room comes to have
   an agent.
 
   ## Threads
@@ -147,12 +147,12 @@ defmodule WardrikChannel do
   alias Wardrik.AgentID
   alias Wardrik.AgentID.Prefix
   alias Wardrik.Error
+  alias WardrikChannel.Binding
   alias WardrikChannel.Channel
   alias WardrikChannel.Context
   alias WardrikChannel.Inbound
   alias WardrikChannel.Installation
   alias WardrikChannel.Outbound
-  alias WardrikChannel.Place
   alias WardrikChannel.Replies
   alias WardrikChannel.Request
   alias WardrikChannel.Response
@@ -349,12 +349,12 @@ defmodule WardrikChannel do
           {:asked, AgentID.t()} | :ignored | {:error, String.t()}
   def received(%Workspace{} = workspace, %Inbound{} = inbound) do
     thread = inbound.thread || inbound.id
-    place = Place.new(workspace, inbound.room)
+    room = Room.new(workspace, inbound.room)
 
-    with %Room{} = room <- Rooms.get(place),
-         agent = conversation(room, thread),
-         true <- answers?(room, inbound, agent) do
-      ask(place, inbound, thread, agent)
+    with %Binding{} = binding <- Rooms.get(room),
+         agent = conversation(binding, thread),
+         true <- answers?(binding, inbound, agent) do
+      ask(room, inbound, thread, agent)
     else
       _unanswered -> :ignored
     end
@@ -362,13 +362,13 @@ defmodule WardrikChannel do
 
   # Whether the agent waited on a person is asked before the message, so a
   # turn the message starts, and parks, is not taken for one already waiting.
-  defp ask(%Place{workspace: workspace} = place, inbound, thread, agent) do
+  defp ask(%Room{workspace: workspace} = room, inbound, thread, agent) do
     with {:ok, session} <- reached(workspace.context, inbound.sender, agent),
          {:ok, _pid} <- Workspace.start(workspace, agent),
-         :ok <- Replies.follow(place, thread, agent),
+         :ok <- Replies.follow(room, thread, agent),
          waiting? = match?([_ | _], Wardrik.Agent.parked(agent)),
          {:ok, _message} <- Wardrik.agent_ask(session, agent, inbound.text, id: inbound.id) do
-      if waiting?, do: Replies.remind(place, thread)
+      if waiting?, do: Replies.remind(room, thread)
       {:asked, agent}
     else
       {:error, %Error{type: :not_found}} -> {:error, "#{agent} stopped before it could be asked."}
@@ -387,13 +387,13 @@ defmodule WardrikChannel do
     end
   end
 
-  @doc "The agent that answers in `thread` of the room `room` is bound as."
-  @spec conversation(Room.t(), String.t()) :: AgentID.t()
-  def conversation(%Room{room: room, agent: agent}, thread),
+  @doc "The agent that answers in `thread` of the room `binding` binds."
+  @spec conversation(Binding.t(), String.t()) :: AgentID.t()
+  def conversation(%Binding{room: room, agent: agent}, thread),
     do: AgentID.put_external_id(agent, room <> "-" <> thread)
 
-  defp answers?(_room, %Inbound{mentioned?: true}, _agent), do: true
-  defp answers?(%Room{answers: :everything}, _inbound, _agent), do: true
-  defp answers?(_room, %Inbound{thread: nil}, _agent), do: false
-  defp answers?(_room, _inbound, agent), do: Wardrik.Fleet.stored?(agent)
+  defp answers?(_binding, %Inbound{mentioned?: true}, _agent), do: true
+  defp answers?(%Binding{answers: :everything}, _inbound, _agent), do: true
+  defp answers?(_binding, %Inbound{thread: nil}, _agent), do: false
+  defp answers?(_binding, _inbound, agent), do: Wardrik.Fleet.stored?(agent)
 end
