@@ -1,0 +1,151 @@
+---
+// One agent file, read a part at a time: each tab marks the lines that do
+// one job and says what they do. Without script, the first part shows.
+import { Code } from '@astrojs/starlight/components';
+
+const file = `---
+description: Keeps the books for the accounting team.
+tools: [quickbooks/*, files]
+channels: [slack]
+triggers:
+  - name: close
+    every: "0 7 * * 1-5"
+    timezone: America/Los_Angeles
+    prompt: Reconcile yesterday's transactions.
+  - name: invoices
+    webhook:
+      secret: \${INVOICE_HOOK_SECRET}
+    prompt: A new invoice is below. Draft a bill for it.
+policy:
+  allow:
+    - quickbooks/search_*
+    - quickbooks/create-bill(params.bill.Line.Amount < 1000)
+  ask:
+    quickbooks/create-bill(params.bill.Line.Amount >= 1000): A line of $1,000 or more.
+  deny:
+    quickbooks/create_bill_payment: Paying bills is for people.
+  budget:
+    usd: 10.00
+    tokens: 2000000
+    per: day
+    grant: {usd: 5.00}
+    on_exhausted: ask
+notify: {to: [accounting], on: [parked, failed]}
+---
+You keep the books. Say what you will post before you post it.`;
+
+// The MCP server quickbooks/* names: Intuit's, as examples/business/books.md
+// runs it. Its tools take their arguments under `params`.
+const server = `mcp:
+  quickbooks:
+    command: node
+    args: [/opt/quickbooks-online-mcp-server/dist/index.js]
+    trusted: true
+    env:
+      QUICKBOOKS_CLIENT_ID: \${QUICKBOOKS_CLIENT_ID}
+      QUICKBOOKS_REFRESH_TOKEN: \${QUICKBOOKS_REFRESH_TOKEN}
+      # and the secret, realm id and environment`;
+
+// Line numbers count from the file's first line, 1.
+const parts = [
+	{ id: 'policy', label: 'Policy', lines: [14, 15, 16, 17, 18, 19, 20, 21], title: 'Run, wait, or refuse', body: 'A bill posts on its own when every line is under $1,000. Any line of $1,000 or more waits for a person. Bill payments are always refused.', href: '/concepts/rules/', link: 'Writing rules' },
+	{ id: 'tools', label: 'Tools', lines: [3], title: 'Tools from MCP servers', body: '`quickbooks/*` is every tool of the MCP server config.yaml names quickbooks: Intuit’s, run on the daemon’s machine. `trusted: true` says its answers are your own books, not content from outside. `files` is a tool the daemon ships.', snippet: server, snippetTitle: 'config.yaml', href: '/examples/business/books/', link: 'The whole books example' },
+	{ id: 'triggers', label: 'Triggers', lines: [5, 6, 7, 8, 9, 10, 11, 12, 13], title: 'Runs on its own', body: 'Closes the books weekdays at 7:00 Los Angeles time. An invoice sent by webhook starts a run too. Its body is content from outside, so the bill it drafts waits for a person, however small.', kinds: [['every', 'on a clock: cron or an interval'], ['feed', 'when an RSS or Atom feed has new entries'], ['webhook', 'when a service sends a request']], href: '/build/triggers/', link: 'Triggers' },
+	{ id: 'approvals', label: 'Approvals', lines: [18, 19, 28], title: 'Approvals in Slack', body: 'A bill that waits is posted to accounting’s Slack room with its arguments. An approver there presses Approve or Deny.', href: '/channels/slack/#who-approves', link: 'Who approves' },
+	{ id: 'budget', label: 'Budget', lines: [22, 23, 24, 25, 26, 27], title: 'A daily cap', body: '$10 or 2M tokens a day. When it runs out, the agent asks, and an approval grants $5 more.', href: '/concepts/budgets/', link: 'Budgets' },
+	{ id: 'notify', label: 'Notify', lines: [28], title: 'Tells the right people', body: 'Waiting calls and failures go to accounting.', href: '/build/notices/', link: 'Notices' },
+];
+
+// `code` in a part's body, as code.
+const inline = (text: string) => text.split(/`([^`]+)`/).map((piece, index) => (index % 2 ? `<code>${piece}</code>` : piece)).join('');
+---
+
+<div class="file-tour not-content" data-file-tour>
+	<div class="file-tour-tabs" role="tablist" aria-label="Parts of the agent file">
+		{parts.map((part, index) => (
+			<button type="button" role="tab" id={`file-tour-tab-${part.id}`} aria-controls={`file-tour-panel-${part.id}`} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1} data-lines={part.lines.join(' ')}>{part.label}</button>
+		))}
+	</div>
+	<div class="file-tour-body">
+		<div class="file-tour-code">
+			<Code code={file} lang="markdown" title="~/.config/wardrik/agents/books.md" mark={parts[0].lines} wrap />
+		</div>
+		<div>
+			{parts.map((part, index) => (
+				<div class="file-tour-panel" role="tabpanel" id={`file-tour-panel-${part.id}`} aria-labelledby={`file-tour-tab-${part.id}`} hidden={index !== 0}>
+					<h3>{part.title}</h3>
+					<p set:html={inline(part.body)} />
+					{part.kinds && (
+						<dl class="file-tour-kinds">
+							{part.kinds.map(([key, what]) => <div><dt><code>{key}</code></dt><dd>{what}</dd></div>)}
+						</dl>
+					)}
+					{part.snippet && <Code code={part.snippet} lang="yaml" title={part.snippetTitle} />}
+					<a href={part.href}>{part.link}</a>
+				</div>
+			))}
+		</div>
+	</div>
+</div>
+
+<script>
+	for (const tour of document.querySelectorAll<HTMLElement>('[data-file-tour]')) {
+		const tabs = [...tour.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+		const lines = [...tour.querySelectorAll<HTMLElement>('.file-tour-code .ec-line')];
+
+		const select = (tab: HTMLButtonElement) => {
+			const marked = new Set(tab.dataset.lines?.split(' ').map(Number));
+			for (const other of tabs) {
+				const selected = other === tab;
+				other.setAttribute('aria-selected', String(selected));
+				other.tabIndex = selected ? 0 : -1;
+				tour.querySelector<HTMLElement>(`#${other.getAttribute('aria-controls')}`)!.hidden = !selected;
+			}
+			lines.forEach((line, index) => {
+				line.classList.toggle('mark', marked.has(index + 1));
+				line.classList.toggle('highlight', marked.has(index + 1));
+			});
+		};
+
+		tour.dataset.ready = '';
+		tabs.forEach((tab, index) => {
+			tab.addEventListener('click', () => select(tab));
+			tab.addEventListener('keydown', (event) => {
+				const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+				const target = step ? tabs[(index + step + tabs.length) % tabs.length]
+					: event.key === 'Home' ? tabs[0]
+					: event.key === 'End' ? tabs[tabs.length - 1]
+					: undefined;
+				if (!target) return;
+				event.preventDefault();
+				target.focus();
+				select(target);
+			});
+		});
+	}
+</script>
+
+<style>
+	.file-tour-tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--sl-color-gray-5); }
+	.file-tour-tabs button { margin-bottom: -1px; padding: 0.625rem 0.875rem; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--sl-color-gray-3); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+	.file-tour-tabs button:hover { color: var(--sl-color-white); }
+	.file-tour-tabs button[aria-selected='true'] { border-bottom-color: var(--sl-color-accent); color: var(--sl-color-white); }
+	.file-tour-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 2rem 3rem; align-items: start; }
+	.file-tour-code { min-width: 0; }
+	/* Lines outside the part step back, once script can bring them forward. */
+	.file-tour[data-ready] .file-tour-code :global(.ec-line:not(.mark)) { opacity: 0.55; transition: opacity 150ms; }
+	.file-tour-panel { padding-top: 0.5rem; }
+	.file-tour-panel h3 { margin: 0 0 0.625rem; color: var(--sl-color-white); font-size: 1.375rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.3; }
+	.file-tour-panel p { margin: 0 0 1.25rem; color: var(--sl-color-gray-2); font-size: 1rem; line-height: 1.7; text-wrap: pretty; }
+	.file-tour-panel a { font-size: 0.875rem; }
+	.file-tour-panel p code,
+	.file-tour-kinds code { font-family: var(--sl-font-mono); font-size: 0.875em; color: var(--sl-color-white); }
+	.file-tour-kinds { margin: 0 0 1.25rem; }
+	.file-tour-kinds > div { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 1rem; padding-block: 0.625rem; border-top: 1px solid var(--sl-color-gray-5); font-size: 0.875rem; }
+	.file-tour-kinds dd { margin: 0; color: var(--sl-color-gray-2); }
+	.file-tour-panel :global(.expressive-code) { margin-bottom: 1.25rem; }
+	@media (max-width: 52rem) {
+		.file-tour-body { grid-template-columns: minmax(0, 1fr); }
+		.file-tour-body > :last-child { order: -1; }
+	}
+</style>

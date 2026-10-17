@@ -1,11 +1,1 @@
----
-interface Props { withCli?: boolean }
-const { withCli = false } = Astro.props;
----
-
-<span class="wordmark" translate="no" role={withCli ? 'img' : undefined} aria-label={withCli ? 'Wardrik' : undefined}>Ward{withCli && <span class="wordmark-bracket">[</span>}r<span class="wordmark-i">i</span>k{withCli && <span class="wordmark-bracket">]</span>}</span>
-
-<style>
-	.wordmark { white-space: nowrap; }
-	.wordmark-bracket { color: var(--sl-color-gray-3); font-weight: 400; }
-</style>
+<span class="wordmark" translate="no">Wardr<span class="wordmark-i">i</span>k</span>

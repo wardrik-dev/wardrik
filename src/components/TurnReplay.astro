@@ -1,0 +1,332 @@
+---
+// Turns from four examples, as `rik watch` prints them (WardrikConsole.Printer):
+// a line when a call starts and when it finishes or is refused, the calls a
+// turn parks on, then its answer. The person decides in Slack, where the
+// notice reads as WardrikSlack.Notices posts it and, once pressed, says who
+// decided (WardrikSlack.Answers); the terminal shows the turn carrying on.
+//
+// Without script, or with reduced motion, the first turn shows whole, its
+// Slack notice under it. With script, the turns play in a loop while in view:
+// the notice opens over the terminal when a call parks, says who decided, and
+// closes before the turn carries on.
+
+type Part = { text: string; tone?: string };
+type Line = { parts: Part[]; band?: 'wait' | 'ok' | 'no'; after?: boolean };
+type Scenario = {
+	id: string; label: string; agent: string; room: string;
+	tool: string; prompt: string; args: string; outside?: boolean;
+	decider: string; denied?: string; lines: Line[];
+};
+
+const started = (name: string, args: string): Line => ({ parts: [{ text: '  ' }, { text: '→', tone: 'start' }, { text: ` ${name}` }, { text: ` ${args}`, tone: 'faint' }] });
+const finished = (name: string, band?: Line['band']): Line => ({ band, parts: [{ text: '  ' }, { text: '✓', tone: 'ok' }, { text: ` ${name}` }] });
+const refused = (name: string, reason: string): Line => ({ band: 'no', parts: [{ text: '  ' }, { text: '✗', tone: 'no' }, { text: ` ${name} was refused: ` }, { text: reason, tone: 'no' }] });
+const parked = (name: string, id: string, prompt: string): Line[] => [
+	{ band: 'wait', parts: [{ text: 'Waiting on a person for 1 call:', tone: 'wait' }] },
+	{ band: 'wait', parts: [{ text: '  ' }, { text: '?', tone: 'wait' }, { text: ` ${name}  ${id}  ` }, { text: prompt, tone: 'wait' }] },
+];
+const answer = (text: string): Line => ({ parts: [{ text }] });
+const later = (lines: Line[]) => lines.map((line) => ({ ...line, after: true }));
+
+// Each from its example: examples/business/books.md, team/incident-responder.md,
+// business/front-desk.md and you/your-week.md, with their tools, rules, rooms
+// and approvers.
+const scenarios: Scenario[] = [
+	{
+		id: 'books', label: 'Books', agent: 'acme/books', room: '#accounting', decider: 'maria',
+		tool: 'quickbooks/create-bill', prompt: 'A line of $1,000 or more.',
+		args: '{"params":{"bill":{"Line":[{"Amount":9400,…}],…}}}',
+		lines: [
+			started('quickbooks/search_bills', '{"params":{…}}'),
+			finished('quickbooks/search_bills'),
+			...parked('quickbooks/create-bill', 'call_7c2e', 'A line of $1,000 or more.'),
+			...later([
+				started('quickbooks/create-bill', '{"params":{"bill":{"Line":[{"Amount":9400,…'),
+				finished('quickbooks/create-bill', 'ok'),
+				refused('quickbooks/create_bill_payment', 'Paying bills is for people.'),
+				answer('Entered the Northwind Freight bill once Maria approved it.'),
+				answer('Paying it is left to you.'),
+			]),
+		],
+	},
+	{
+		id: 'incident', label: 'Incident', agent: 'acme/oncall', room: '#incidents', decider: 'devon',
+		tool: 'github/actions_run_trigger', prompt: 'This rolls back.', outside: true,
+		args: '{"method":"run_workflow","workflow_id":"rollback.yml",…}',
+		lines: [
+			started('datadog/search_datadog_logs', '{"query":"service:checkout status:error",…'),
+			finished('datadog/search_datadog_logs'),
+			started('github/list_commits', '{"repo":"checkout",…'),
+			finished('github/list_commits'),
+			refused('k8s/resources_scale', 'More than 20 replicas goes through capacity planning.'),
+			...parked('github/actions_run_trigger', 'call_3b9d', 'This rolls back.'),
+			...later([
+				started('github/actions_run_trigger', '{"method":"run_workflow","workflow_id":"rollback.yml",…'),
+				finished('github/actions_run_trigger', 'ok'),
+				answer('Rolled checkout back to the deploy before 14:02.'),
+			]),
+		],
+	},
+	{
+		id: 'judge', label: 'Judge', agent: 'acme/front-desk', room: '#front-desk', decider: 'sam',
+		tool: 'gmail/create_draft', prompt: 'Judged 94% likely: Does this draft promise the customer a refund?', outside: true,
+		args: '{"body":"Sorry about the wheel. We’ll refund the repair in full.",…}',
+		denied: 'Offer store credit instead.',
+		lines: [
+			started('gmail/search_threads', '{…}'),
+			finished('gmail/search_threads'),
+			started('gmail/label_thread', '{…}'),
+			finished('gmail/label_thread'),
+			...parked('gmail/create_draft', 'call_5a20', 'Judged 94% likely: Does this draft promise the customer a refund?'),
+			...later([
+				refused('gmail/create_draft', 'Denied in Slack by sam: Offer store credit instead.'),
+				started('gmail/create_draft', '{"body":"Sorry about the wheel. We’d like to offer store credit…'),
+				finished('gmail/create_draft', 'ok'),
+				answer('Drafted a reply offering store credit, labelled Complaint.'),
+			]),
+		],
+	},
+	{
+		id: 'week', label: 'Your week', agent: 'acme/@jo/week', room: '#week', decider: 'jo',
+		tool: 'gcal/create_event', prompt: 'This invites other people.', outside: true,
+		args: '{"summary":"Q3 review","attendeeEmails":["priya@…"],…}',
+		lines: [
+			started('gcal/create_event', '{"summary":"Focus: Q3 numbers",…'),
+			finished('gcal/create_event'),
+			started('gmail/create_draft', '{…}'),
+			finished('gmail/create_draft'),
+			...parked('gcal/create_event', 'call_9e41', 'This invites other people.'),
+			...later([
+				started('gcal/create_event', '{"summary":"Q3 review","attendeeEmails":["priya@…'),
+				finished('gcal/create_event', 'ok'),
+				answer('Focus time is held 9 to 11, an agenda is drafted,'),
+				answer('and Priya has the invite.'),
+			]),
+		],
+	},
+];
+---
+
+<figure class="turn-replay not-content" data-turn-replay aria-label="Agents' turns, as rik watch shows them, with decisions in Slack">
+	<div class="replay-stage">
+		{scenarios.map((scenario, index) => (
+			<div class="replay-scenario" data-scenario={scenario.id} hidden={index !== 0} data-decided data-denies={scenario.denied ? '' : undefined}>
+				<div class="replay-terminal">
+					<p class="replay-command"><span aria-hidden="true">❯</span><code>rik watch {scenario.agent}</code><span class="replay-label">Illustrative output</span></p>
+					<pre tabindex="0"><code>{scenario.lines.map(({ parts, band, after }) => <span class:list={['replay-line', band && `band-${band}`]} data-after={after ? '' : undefined}>{parts.map(({ text, tone }) => <span class={tone}>{text}</span>)}</span>)}</code></pre>
+				</div>
+				<div class="replay-notice">
+					<span class="replay-avatar" aria-hidden="true">r<span class="wordmark-i">i</span>k</span>
+					<div class="replay-message">
+						<p class="replay-meta"><strong>Wardrik</strong> <span>{scenario.room}</span><span class="replay-state"><span class="replay-chip replay-chip-wait">Waiting</span>{scenario.denied ? <span class="replay-chip replay-chip-no">Denied</span> : <span class="replay-chip replay-chip-ok">Approved</span>}</span></p>
+						<p><strong>{scenario.agent}</strong> is waiting on you.</p>
+						<p class="replay-call"><code>{scenario.tool}</code><span class="replay-prompt">{scenario.prompt}</span></p>
+						{scenario.outside && <p class="replay-read">It has read content from outside, which may be what asked for this.</p>}
+						<pre class="replay-args"><code>{scenario.args}</code></pre>
+						<div class="replay-outcome">
+							<div class="replay-actions" aria-hidden="true">
+								<span class="replay-note">A note for the agent, sent with either button</span>
+								<p><span class="replay-approve">Approve</span><span class="replay-deny">Deny</span></p>
+							</div>
+							<p class="replay-decided">{scenario.denied ? 'Denied' : 'Approved'} <code>{scenario.tool}</code> — @{scenario.decider}{scenario.denied && `: ${scenario.denied}`}</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		))}
+	</div>
+	<div class="replay-controls" hidden>
+		<div class="replay-picker" role="group" aria-label="Choose a turn">
+			{scenarios.map((scenario, index) => <button type="button" data-pick={index} aria-pressed={index === 0 ? 'true' : 'false'}>{scenario.label}</button>)}
+		</div>
+		<button type="button" class="replay-toggle" data-toggle aria-label="Pause">
+			<svg class="icon-pause" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="2.5" height="10" rx=".75" /><rect x="9.5" y="3" width="2.5" height="10" rx=".75" /></svg>
+			<svg class="icon-play" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9a.75.75 0 0 0 1.13.65l7.5-4.5a.75.75 0 0 0 0-1.3l-7.5-4.5A.75.75 0 0 0 5 3.5Z" /></svg>
+		</button>
+	</div>
+</figure>
+
+<script>
+	// How long each moment holds, in milliseconds.
+	const pace = { line: 550, parked: 1000, open: 1800, press: 450, decided: 2400, closed: 450, read: 4500 };
+	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+	const sleep = (ms: number, signal: AbortSignal) =>
+		new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(resolve, ms);
+			signal.addEventListener('abort', () => (clearTimeout(timer), reject(signal.reason)), { once: true });
+		});
+
+	for (const figure of document.querySelectorAll<HTMLElement>('[data-turn-replay]')) {
+		const scenarios = [...figure.querySelectorAll<HTMLElement>('[data-scenario]')];
+		const picks = [...figure.querySelectorAll<HTMLButtonElement>('[data-pick]')];
+		const toggle = figure.querySelector<HTMLButtonElement>('[data-toggle]')!;
+		let current = 0;
+		let paused = reduced.matches;
+		let visible = false;
+		let run: AbortController | undefined;
+
+		// A turn shown whole: every line, and its notice decided.
+		const whole = (scenario: HTMLElement) => {
+			for (const line of scenario.querySelectorAll('.replay-line')) line.setAttribute('data-shown', '');
+			scenario.setAttribute('data-decided', '');
+			scenario.removeAttribute('data-open');
+		};
+
+		const select = (index: number) => {
+			current = index;
+			scenarios.forEach((scenario, i) => {
+				scenario.hidden = i !== index;
+				scenario.toggleAttribute('inert', i !== index);
+			});
+			picks.forEach((pick, i) => pick.setAttribute('aria-pressed', String(i === index)));
+		};
+
+		const play = async (signal: AbortSignal) => {
+			for (;;) {
+				const scenario = scenarios[current];
+				const lines = [...scenario.querySelectorAll<HTMLElement>('.replay-line')];
+				lines.forEach((line) => line.removeAttribute('data-shown'));
+				scenario.removeAttribute('data-decided');
+				scenario.removeAttribute('data-open');
+				scenario.removeAttribute('data-pressing');
+				for (const line of lines) {
+					if (line.hasAttribute('data-after') && !scenario.hasAttribute('data-decided')) {
+						await sleep(pace.parked, signal);
+						scenario.setAttribute('data-open', '');
+						await sleep(pace.open, signal);
+						scenario.setAttribute('data-pressing', '');
+						await sleep(pace.press, signal);
+						scenario.removeAttribute('data-pressing');
+						scenario.setAttribute('data-decided', '');
+						await sleep(pace.decided, signal);
+						scenario.removeAttribute('data-open');
+						await sleep(pace.closed, signal);
+					}
+					line.setAttribute('data-shown', '');
+					await sleep(pace.line, signal);
+				}
+				await sleep(pace.read, signal);
+				select((current + 1) % scenarios.length);
+			}
+		};
+
+		// Plays while unpaused and in view; otherwise the turn shows whole.
+		const update = () => {
+			run?.abort();
+			run = undefined;
+			figure.toggleAttribute('data-animated', !paused);
+			toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+			toggle.toggleAttribute('data-paused', paused);
+			if (paused || !visible) return whole(scenarios[current]);
+			run = new AbortController();
+			play(run.signal).catch(() => {});
+		};
+
+		picks.forEach((pick, index) => pick.addEventListener('click', () => (select(index), update())));
+		toggle.addEventListener('click', () => ((paused = !paused), update()));
+		figure.querySelector<HTMLElement>('.replay-controls')!.hidden = false;
+
+		new IntersectionObserver(([entry]) => {
+			if (entry.isIntersecting === visible) return;
+			visible = entry.isIntersecting;
+			update();
+		}, { threshold: 0.4 }).observe(figure);
+		update();
+	}
+</script>
+
+<style>
+	.turn-replay { margin: 0; }
+	/* Every turn takes the same place, so the tallest sets the height and switching never shifts the page. */
+	.replay-stage { display: grid; }
+	.replay-scenario { position: relative; grid-area: 1 / 1; min-width: 0; }
+	.replay-scenario[hidden] { display: block; visibility: hidden; }
+
+	/* The terminal: one dark ground in both themes, as code is everywhere. */
+	.replay-terminal { overflow: hidden; border: 1px solid #23272e; border-radius: 12px; background: #0f1115; color: #e6e8eb; box-shadow: 0 24px 48px -24px rgb(0 0 0 / 0.5); }
+	.replay-command { display: flex; align-items: baseline; gap: 0.75rem; margin: 0; padding: 0.875rem 1.125rem; border-bottom: 1px solid #23272e; font-family: var(--sl-font-mono); font-size: 0.8125rem; }
+	.replay-command > span:first-child { color: #6ccb8e; }
+	.replay-command code { color: #f4f5f7; font-size: inherit; }
+	.replay-label { margin-inline-start: auto; color: #9aa3ae; font-family: var(--sl-font); font-size: 0.6875rem; white-space: nowrap; }
+	.replay-terminal pre { margin: 0; padding: 1rem 1.125rem 2rem; overflow: hidden; background: none; font-size: 0.75rem; line-height: 1.9; transition: opacity 250ms; }
+	.replay-terminal pre code { font-family: var(--sl-font-mono); font-size: inherit; }
+	/* A line is cut to the width, as the printer cuts it to the terminal's. */
+	.replay-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+	.start { color: #7dd3e0; }
+	.ok { color: #6ccb8e; }
+	.no { color: #f38b82; }
+	.wait { color: #fb8a4b; }
+	.faint { color: #6b737e; }
+	/* Bands mark the lines that matter: a call waiting on a person in Ember, as
+	 * everywhere someone decides, then what was approved and what was refused. */
+	.replay-line[class*='band-'] { margin-inline: -1.125rem; padding-inline: calc(1.125rem - 2px) 1.125rem; border-inline-start: 2px solid; }
+	.band-wait { border-color: #fb8a4b; background: #fb8a4b1a; }
+	.band-ok { border-color: #6ccb8e; background: #6ccb8e14; }
+	.band-no { border-color: #f38b82; background: #f38b8214; }
+
+	/* The Slack notice: the theme's own surfaces. Whole, it sits under the terminal's foot. */
+	.replay-notice { position: relative; display: flex; gap: 0.75rem; width: 90%; box-sizing: border-box; margin: -1.5rem 0 0 auto; padding: 1rem; border: 1px solid var(--sl-color-gray-5); border-inline-start: 3px solid var(--sl-color-green); border-radius: 12px; background: var(--sl-color-black); box-shadow: 0 16px 40px -16px rgb(0 0 0 / 0.45); font-size: 0.8125rem; line-height: 1.55; }
+	.replay-scenario[data-denies] .replay-notice { border-inline-start-color: var(--sl-color-red); }
+	.replay-scenario:not([data-decided]) .replay-notice { border-inline-start-color: var(--sl-color-accent); }
+	.replay-message { flex: 1; min-width: 0; }
+	.replay-notice p { margin: 0; }
+	.replay-notice strong { color: var(--sl-color-white); font-weight: 600; }
+	.replay-notice code { font-family: var(--sl-font-mono); font-size: 0.75rem; }
+	.replay-avatar { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; box-sizing: border-box; border: 1px solid var(--sl-color-gray-5); border-radius: 7px; background: var(--sl-color-gray-6); color: var(--sl-color-white); font-size: 0.8125rem; font-weight: 600; letter-spacing: -0.035em; line-height: 1; }
+	.replay-meta { display: flex; align-items: baseline; gap: 0.375rem; }
+	.replay-meta > span:not(.replay-state) { color: var(--sl-color-gray-3); font-size: 0.6875rem; }
+	.replay-state { display: grid; margin-inline-start: auto; }
+	.replay-chip { grid-area: 1 / 1; justify-self: end; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.5rem; border-radius: 5px; font-size: 0.6875rem; font-weight: 500; white-space: nowrap; }
+	.replay-chip::before { content: ''; width: 0.3125rem; height: 0.3125rem; border-radius: 50%; background: currentColor; }
+	.replay-chip-wait { background: var(--sl-color-accent-low); color: var(--sl-color-text-accent); }
+	.replay-chip-ok { background: var(--sl-color-green-low); color: var(--sl-color-green); }
+	.replay-chip-no { background: var(--sl-color-red-low); color: var(--sl-color-red); }
+	/* Whole, the call reads as Slack posts it: the tool, then the question. */
+	.replay-notice .replay-call { display: flex; flex-wrap: wrap; column-gap: 0.5rem; margin-top: 0.25rem; color: var(--sl-color-white); }
+	.replay-notice .replay-read { margin-top: 0.25rem; color: var(--sl-color-gray-3); font-size: 0.75rem; font-style: italic; }
+	.replay-notice .replay-args { margin: 0.5rem 0 0; padding: 0.375rem 0.625rem; overflow: hidden; border-radius: 4px; background: var(--sl-color-gray-6); color: var(--sl-color-gray-2); text-overflow: ellipsis; white-space: nowrap; }
+	.replay-args code { font-size: 0.6875rem; }
+	/* The note box and buttons give way to who decided, in one place, so the notice keeps its size. */
+	.replay-outcome { display: grid; margin-top: 0.5rem; }
+	.replay-outcome > * { grid-area: 1 / 1; }
+	.replay-note { display: block; margin-bottom: 0.5rem; padding: 0.3125rem 0.625rem; border: 1px solid var(--sl-color-gray-5); border-radius: 5px; color: var(--sl-color-gray-3); font-size: 0.6875rem; }
+	.replay-actions p { display: flex; gap: 0.5rem; }
+	.replay-actions p span { padding: 0.25rem 0.75rem; border: 1px solid var(--sl-color-gray-4); border-radius: 6px; color: var(--sl-color-white); font-size: 0.75rem; font-weight: 500; }
+	.replay-actions .replay-approve { border-color: var(--sl-color-white); background: var(--sl-color-white); color: var(--sl-color-black); }
+	.replay-decided { align-self: start; color: var(--sl-color-gray-2); font-size: 0.75rem; }
+	.replay-scenario:not([data-decided]) :is(.replay-decided, .replay-chip-ok, .replay-chip-no),
+	.replay-scenario[data-decided] :is(.replay-actions, .replay-chip-wait) { visibility: hidden; }
+
+	/* Playing: lines print in turn, and the notice opens over the terminal while a call waits, then closes. */
+	.turn-replay[data-animated] .replay-line:not([data-shown]) { visibility: hidden; }
+	.turn-replay[data-animated] .replay-notice { position: absolute; inset: auto 0.75rem 0.75rem; width: auto; margin: 0; opacity: 0; translate: 0 0.75rem; pointer-events: none; transition: opacity 300ms, translate 300ms; }
+	.turn-replay[data-animated] [data-open] .replay-notice { opacity: 1; translate: 0 0; }
+	.turn-replay[data-animated] [data-open] pre { opacity: 0.4; }
+	/* Playing, the notice keeps what reads at a glance: who asks, why it waits, and who decided. The arguments,
+	 * what it read and the note box return when paused. */
+	.turn-replay[data-animated] :is(.replay-read, .replay-args, .replay-note) { display: none; }
+	.turn-replay[data-animated] .replay-call { flex-direction: column-reverse; margin-top: 0.625rem; }
+	.turn-replay[data-animated] .replay-prompt { color: var(--sl-color-text-accent); font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; text-wrap: balance; }
+	.turn-replay[data-animated] [data-decided] .replay-prompt { color: var(--sl-color-white); }
+	.turn-replay[data-animated] .replay-call code { margin-top: 0.25rem; color: var(--sl-color-gray-3); }
+	.turn-replay[data-animated] .replay-outcome { margin-top: 0.75rem; }
+	/* The press: the button that decides sinks and rings, just before the decision replaces it. */
+	.replay-actions p span { transition: scale 150ms, box-shadow 150ms; }
+	[data-pressing]:not([data-denies]) .replay-approve,
+	[data-pressing][data-denies] .replay-deny { scale: 0.94; box-shadow: 0 0 0 3px color-mix(in srgb, var(--sl-color-white) 30%, transparent); }
+
+	.replay-controls { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+	.replay-picker { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+	.replay-controls button { padding: 0.3125rem 0.625rem; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--sl-color-gray-3); font: inherit; font-size: 0.75rem; cursor: pointer; }
+	.replay-controls button:hover { color: var(--sl-color-white); }
+	.replay-picker [aria-pressed='true'] { border-color: var(--sl-color-gray-5); background: var(--sl-color-gray-6); color: var(--sl-color-white); }
+	.replay-toggle { display: grid; place-items: center; margin-inline-start: auto; }
+	.replay-toggle > svg { grid-area: 1 / 1; }
+	.replay-toggle[data-paused] .icon-pause,
+	.replay-toggle:not([data-paused]) .icon-play { visibility: hidden; }
+
+	@media (prefers-reduced-motion: reduce) {
+		.turn-replay[data-animated] .replay-notice,
+		.replay-terminal pre { transition: none; }
+	}
+</style>
