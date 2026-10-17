@@ -36,7 +36,7 @@ channels:
   slack:
     type: slack
     token: ${SLACK_BOT_TOKEN}
-    app_token: ${SLACK_APP_TOKEN}
+    signing_secret: ${SLACK_SIGNING_SECRET}
     admins: ["@jon"]
 
 notify:
@@ -100,8 +100,8 @@ mcp:
   search: {url: https://search.example.com/mcp, credential: SEARCH_API_KEY}
 
 channels:
-  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", app_token: "${PAYMENTS_SLACK_APP_TOKEN}"}
-  growth-slack: {type: slack, token: "${GROWTH_SLACK_BOT_TOKEN}", app_token: "${GROWTH_SLACK_APP_TOKEN}"}
+  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", signing_secret: "${PAYMENTS_SLACK_SIGNING_SECRET}"}
+  growth-slack: {type: slack, token: "${GROWTH_SLACK_BOT_TOKEN}", signing_secret: "${GROWTH_SLACK_SIGNING_SECRET}"}
 
 orgs:
   "*":
@@ -236,11 +236,14 @@ Chat media agents are reached through, each by a name of the deployment's own.
 | Key | Means |
 | --- | --- |
 | `type` | the kind of channel, such as `slack` |
+| `token` | the token it acts with in the one workspace it reaches, such as a Slack bot token; without one, nothing is posted |
 | `approvers` | who decides what an agent waits on in its rooms: the people named, or `anyone` in the channel; where none are named, whoever asked for the turn decides, and a shell decides the rest |
 | `admins` | who may change its orgs' agents |
 | `create` | `false` stops people creating an agent in a room that has none; where `defaults` name a policy, one is made from them unless set |
 
-The rest of a channel's keys are its kind's, such as Slack's `token` and `app_token`. A channel
+The rest of a channel's keys are its kind's, such as Slack's `signing_secret` and `app_token`. What
+its medium sends it over HTTP reaches the daemon at `/v1/channels/NAME/`; see [`http`](#http). A
+channel
 offers the agents of the orgs that [`orgs`](#orgs) lists it for. An agent is offered in a channel's
 rooms where its file lists the channel. See
 [Channels](/channels/) and
@@ -262,7 +265,8 @@ notify:
       secret: ${WARDRIK_WEBHOOK_SECRET}
 ```
 
-A room target takes `channel`, `room`, and `approvers`, who may answer it. A webhook takes `url` and
+A room target takes `channel`, which names a `token` to post with, `room`, and `approvers`, who may
+answer it. A webhook takes `url` and
 optionally `secret`. A target tells the agents of the orgs that [`orgs`](#orgs) lists it for. See
 [Send notices](/build/notices/).
 
@@ -325,6 +329,9 @@ Without `storage`, the store is on the node's disk under `WARDRIK_DATA_DIR`. See
 
 `port` and `ip` for the HTTP API, `127.0.0.1:4747` unless set, and `trusted_workers: true` where
 tool workers' answers are the deployment's own. See [HTTP API](/reference/http-api/).
+Beside the API, it serves what each channel's medium sends under `/v1/channels/`, and what services
+send webhook triggers under `/v1/hooks/`; see
+[A public address](/run/public-address/).
 
 ## ssh
 

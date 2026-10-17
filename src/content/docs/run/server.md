@@ -24,13 +24,14 @@ The script makes the daemon's user and installs Caddy, so the server needs nothi
 
 ## Put it on the server
 
-1. Make the team's [Slack app](/channels/slack/#a-slack-app) from the manifest, and keep its two
-   tokens.
+1. Make the team's [Slack app](/channels/slack/#a-slack-app) from the manifest, with
+   `acme.example.com` as its address, and keep its bot token and signing secret. Slack checks the
+   address once the daemon runs, under **Event Subscriptions**.
 2. Write the team's env file, readable by you alone:
 
    ```sh title="~/customers/acme/env"
    SLACK_BOT_TOKEN=xoxb-...
-   SLACK_APP_TOKEN=xapp-...
+   SLACK_SIGNING_SECRET=...
    ANTHROPIC_API_KEY=sk-ant-...
    ```
 
@@ -95,7 +96,7 @@ what the last one sealed.
 | `~wardrik/.config/wardrik/config.yaml` | The org, model and policy, the callback's address, the Slack channel and its approvers | Kept |
 | `~wardrik/.config/wardrik/agents`, `policies` | An example agent offered in Slack, and the policy every agent gets | Kept; a missing file is put back |
 | `~wardrik/.local/share/wardrik` | The store, and the vault's key unless the env file sets `WARDRIK_VAULT_KEY` | Kept |
-| `/etc/caddy/Caddyfile` | `/oauth/` and `/v1/hooks/` passed to the daemon; 404 for anything else | Written again |
+| `/etc/caddy/Caddyfile` | `/oauth/`, `/v1/hooks/` and `/v1/channels/` passed to the daemon; 404 for anything else | Written again |
 
 ### More variables
 

@@ -21,7 +21,7 @@ mcp:
   stripe: {url: https://mcp.stripe.com, credential: STRIPE_AGENT_KEY}
 
 channels:
-  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", app_token: "${PAYMENTS_SLACK_APP_TOKEN}"}
+  payments-slack: {type: slack, token: "${PAYMENTS_SLACK_BOT_TOKEN}", signing_secret: "${PAYMENTS_SLACK_SIGNING_SECRET}"}
 
 orgs:
   payments:
